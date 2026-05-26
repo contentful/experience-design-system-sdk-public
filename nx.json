@@ -1,0 +1,96 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "targetDefaults": {
+    "build": {
+      "dependsOn": [
+        "^build",
+        "clean"
+      ],
+      "cache": true,
+      "inputs": [
+        "package",
+        "^package"
+      ]
+    },
+    "test": {
+      "cache": true,
+      "inputs": [
+        "default",
+        "^package",
+        "{workspaceRoot}/vitest.config.ts"
+      ]
+    },
+    "lint": {
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/eslint.config.ts",
+        "{workspaceRoot}/.eslintrc.json"
+      ]
+    },
+    "typecheck": {
+      "cache": true,
+      "inputs": [
+        "default",
+        "^package"
+      ]
+    },
+    "nx-release-publish": {
+      "options": {
+        "registry": "https://npm.pkg.github.com"
+      }
+    }
+  },
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals"
+    ],
+    "package": [
+      "default",
+      "!{projectRoot}/**/?(*.)+(spec|test).[jt]s?(x)?(.snap)",
+      "!{projectRoot}/tsconfig.spec.json",
+      "!{projectRoot}/.eslintrc.json",
+      "!{projectRoot}/eslint.config.js",
+      "!{projectRoot}/**/*.md"
+    ],
+    "sharedGlobals": []
+  },
+  "plugins": [
+    {
+      "plugin": "@nx/js",
+      "options": {
+        "buildTargetName": "build",
+        "testTargetName": "test",
+        "lintTargetName": "lint",
+        "typeCheckTargetName": "typecheck"
+      }
+    }
+  ],
+  "release": {
+    "projects": [
+      "packages/*"
+    ],
+    "changelog": {
+      "workspaceChangelog": false,
+      "projectChangelog": false,
+      "automaticFromRef": true
+    },
+    "version": {
+      "conventionalCommits": true,
+      "fallbackCurrentVersionResolver": "disk",
+      "versionActionsOptions": {
+        "installIgnoreScripts": true
+      },
+      "git": {
+        "commit": true,
+        "push": true,
+        "tag": true
+      }
+    }
+  },
+  "tui": {
+    "enabled": false
+  },
+  "analytics": false
+}

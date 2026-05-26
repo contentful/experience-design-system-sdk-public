@@ -1,0 +1,56 @@
+{
+  "name": "@contentful/experience-design-system-cli",
+  "version": "2.3.1",
+  "description": "Contentful Experiences design system import CLI",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "experience-design-system-cli": "./bin/cli.js",
+    "exo": "./bin/cli.js"
+  },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "node": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "skills/"
+  ],
+  "scripts": {
+    "build": "nx build experience-design-system-cli",
+    "typecheck": "nx typecheck experience-design-system-cli",
+    "clean": "nx clean experience-design-system-cli",
+    "test": "nx test experience-design-system-cli",
+    "test:watch": "nx test:watch experience-design-system-cli",
+    "lint": "nx lint experience-design-system-cli",
+    "lint:fix": "nx lint:fix experience-design-system-cli"
+  },
+  "dependencies": {
+    "@contentful/experience-design-system-types": "workspace:*",
+    "@vue/compiler-sfc": "^3.5.31",
+    "commander": "^13.1.0",
+    "ink": "^4.4.1",
+    "react": "^18.3.1",
+    "react-devtools-core": "^4.19.1",
+    "react-dom": "^18.3.1",
+    "ts-morph": "^27.0.2",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@tsconfig/node24": "^24.0.3",
+    "@types/node": "^24.0.3",
+    "@types/react": "^18.3.24",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "ink-testing-library": "^4.0.0",
+    "typescript-eslint": "^8.52.0",
+    "vitest": "^4.0.16"
+  }
+}

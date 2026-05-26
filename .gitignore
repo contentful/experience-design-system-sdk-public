@@ -1,0 +1,20 @@
+# dist
+**/node_modules
+**/dist
+**/built
+
+# misc
+*.log
+**/*.DS_Store
+**/.env
+**/.env.*
+**/.envrc
+
+# editors
+.vscode/
+.idea/
+
+.nx
+tmp/
+
+.pnpm-store/

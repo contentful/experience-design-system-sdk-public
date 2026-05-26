@@ -1,0 +1,73 @@
+[
+  {
+    "name": "Accordion",
+    "source": "packages/experience-design-system-cli/test/fixtures/sample-components/Accordion.tsx",
+    "props": [
+      {
+        "name": "align",
+        "type": "\"start\" | \"end\"",
+        "category": "design",
+        "required": false,
+        "defaultValue": "end"
+      }
+    ],
+    "slots": [
+      {
+        "name": "children"
+      }
+    ]
+  },
+  {
+    "name": "AccordionHeader",
+    "source": "packages/experience-design-system-cli/test/fixtures/sample-components/AccordionHeader.tsx",
+    "props": [
+      {
+        "name": "element",
+        "type": "HeadingElement",
+        "category": "design",
+        "required": false,
+        "defaultValue": "h2"
+      }
+    ],
+    "slots": [
+      {
+        "name": "children"
+      }
+    ]
+  },
+  {
+    "name": "AccordionItem",
+    "source": "packages/experience-design-system-cli/test/fixtures/sample-components/AccordionItem.tsx",
+    "props": [
+      {
+        "name": "title",
+        "type": "React.ReactNode",
+        "category": "content",
+        "required": false,
+        "defaultValue": "Accordion Title"
+      },
+      {
+        "name": "titleElement",
+        "type": "HeadingElement",
+        "category": "design",
+        "required": false,
+        "defaultValue": "h2"
+      }
+    ],
+    "slots": [
+      {
+        "name": "children"
+      }
+    ]
+  },
+  {
+    "name": "AccordionPanel",
+    "source": "packages/experience-design-system-cli/test/fixtures/sample-components/AccordionPanel.tsx",
+    "props": [],
+    "slots": [
+      {
+        "name": "children"
+      }
+    ]
+  }
+]

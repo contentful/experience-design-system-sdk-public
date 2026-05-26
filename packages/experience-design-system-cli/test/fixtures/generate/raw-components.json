@@ -1,0 +1,11 @@
+[
+  {
+    "name": "Button",
+    "source": "/fake/src/Button.tsx",
+    "framework": "react",
+    "props": [
+      { "name": "label", "type": "string", "required": true, "category": "content" }
+    ],
+    "slots": []
+  }
+]

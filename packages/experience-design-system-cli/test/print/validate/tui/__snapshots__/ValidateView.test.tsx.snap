@@ -1,0 +1,28 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ValidateView > matches snapshot for all valid 1`] = `
+"experience-design-system-cli  validate                                            [?] help  [q] quit
+
+  ✓ components.json   CDF v1   Valid CDF v1 — 5 components found
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ All files valid                                                                              [q] │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘"
+`;
+
+exports[`ValidateView > matches snapshot with errors 1`] = `
+"experience-design-system-cli  validate                                            [?] help  [q] quit
+
+  ✗ components.json   CDF v1   2 errors
+  ✓ tokens.json   DTCG   valid
+
+  ──────────────────────────────────────────────────────────────────────
+  components.json errors
+  ──────────────────────────────────────────────────────────────────────
+
+    ✗ /Button/$properties/label: must have required property '$type'
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ 1 file invalid                                                                     scroll ↑↓ [q] │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘"
+`;

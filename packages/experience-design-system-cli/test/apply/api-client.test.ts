@@ -1,0 +1,310 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { ImportApiClient, ApiError } from '../../src/apply/api-client.js';
+import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
+
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
+
+afterEach(() => {
+  vi.resetAllMocks();
+});
+
+function createClient() {
+  return new ImportApiClient({
+    cmaToken: 'test-token',
+    spaceId: 'space1',
+    environmentId: 'master',
+  });
+}
+
+describe('ImportApiClient — validateToken', () => {
+  it('calls GET /users/me to verify the token', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: () => Promise.resolve({ sys: { type: 'User', id: 'user-1' } }),
+      text: () => Promise.resolve(''),
+    });
+
+    const client = createClient();
+    await client.validateToken();
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch.mock.calls[0][0]).toBe('https://api.contentful.com/users/me');
+  });
+
+  it('throws ApiError on 401', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 401,
+      headers: new Headers(),
+      text: () =>
+        Promise.resolve(JSON.stringify({ sys: { type: 'Error', id: 'AccessTokenInvalid' }, message: 'Invalid token' })),
+    });
+
+    const client = createClient();
+    await expect(client.validateToken()).rejects.toThrow(/CMA token is invalid or revoked/);
+  });
+
+  it('does not 401 for tokens that lack space-membership but can call design-systems endpoints', async () => {
+    // Regression: /users/me does not enforce per-space role assignments, so it succeeds for any
+    // valid token regardless of space access. This is by design — the design-systems API
+    // performs its own org-level entitlement check on previewImport/applyImport.
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: () => Promise.resolve({ sys: { type: 'User', id: 'user-1' } }),
+      text: () => Promise.resolve(''),
+    });
+
+    const client = createClient();
+    await expect(client.validateToken()).resolves.toBeUndefined();
+  });
+
+  it('uses the provided host when overridden', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: () => Promise.resolve({ sys: { type: 'User', id: 'user-1' } }),
+      text: () => Promise.resolve(''),
+    });
+
+    const client = new ImportApiClient({
+      cmaToken: 'test-token',
+      spaceId: 'fhuxdukarhrp',
+      environmentId: 'master',
+      host: 'https://api.flinkly.com',
+    });
+    await client.validateToken();
+
+    expect(mockFetch.mock.calls[0][0]).toBe('https://api.flinkly.com/users/me');
+  });
+
+  it('throws ApiError on unexpected non-200', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      headers: new Headers(),
+      text: () => Promise.resolve('Internal Server Error'),
+    });
+
+    const client = createClient();
+    await expect(client.validateToken()).rejects.toThrow(ApiError);
+  });
+});
+
+describe('ImportApiClient — previewImport', () => {
+  it('sends POST with manifest body and returns parsed response', async () => {
+    const serverResponse: ServerPreviewResponse = {
+      components: { new: [], changed: [], unchanged: [], removed: [] },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(serverResponse),
+      text: () => Promise.resolve(JSON.stringify(serverResponse)),
+    });
+
+    const client = createClient();
+    const result = await client.previewImport({
+      componentsManifest: { Button: {} },
+    });
+
+    expect(result).toEqual(serverResponse);
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.contentful.com/spaces/space1/environments/master/design_systems/imports/preview',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ componentsManifest: { Button: {} } }),
+      }),
+    );
+  });
+
+  it('throws ApiError on non-200 response', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: () => Promise.resolve('{"message":"At least one manifest field required"}'),
+    });
+
+    const client = createClient();
+    await expect(client.previewImport({})).rejects.toThrow(ApiError);
+  });
+
+  it('does not send x-contentful-organization-id header (server resolves org from space)', async () => {
+    const serverResponse: ServerPreviewResponse = {
+      components: { new: [], changed: [], unchanged: [], removed: [] },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(serverResponse),
+      text: () => Promise.resolve(''),
+    });
+
+    const client = createClient();
+    await client.previewImport({ tokensManifest: {} });
+
+    const callHeaders = mockFetch.mock.calls[0][1].headers;
+    expect(callHeaders['x-contentful-organization-id']).toBeUndefined();
+  });
+});
+
+describe('ImportApiClient — applyImport', () => {
+  it('sends POST with manifest + acknowledgeBreakingChanges and returns 202 response', async () => {
+    const opResponse: ApplyOperationResponse = {
+      sys: {
+        type: 'ApplyOperation',
+        id: 'op-1',
+        status: 'queued',
+        createdAt: '2026-01-01T00:00:00Z',
+        createdBy: { sys: { type: 'Link', linkType: 'User', id: 'user-1' } },
+      },
+      summary: { total: 2, pending: 2, succeeded: 0, failed: 0 },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 202,
+      json: () => Promise.resolve(opResponse),
+      text: () => Promise.resolve(JSON.stringify(opResponse)),
+    });
+
+    const client = createClient();
+    const result = await client.applyImport({ componentsManifest: { Button: {} } }, true);
+
+    expect(result).toEqual(opResponse);
+    const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(callBody.acknowledgeBreakingChanges).toBe(true);
+  });
+
+  it('throws ApiError with gate details on 422', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 422,
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            sys: { type: 'Error', id: 'UnprocessableEntity' },
+            message: 'Breaking changes require acknowledgement',
+            details: { breakingComponentIds: ['Button'], affectedEntities: 5 },
+          }),
+        ),
+    });
+
+    const client = createClient();
+    await expect(client.applyImport({ componentsManifest: { Button: {} } }, false)).rejects.toThrow(ApiError);
+  });
+});
+
+describe('ImportApiClient — pollOperation', () => {
+  it('returns immediately when operation is in terminal state', async () => {
+    const finalOp: ApplyOperationResponse = {
+      sys: {
+        type: 'ApplyOperation',
+        id: 'op-1',
+        status: 'succeeded',
+        createdAt: '2026-01-01T00:00:00Z',
+        createdBy: { sys: { type: 'Link', linkType: 'User', id: 'user-1' } },
+      },
+      summary: { total: 2, pending: 0, succeeded: 2, failed: 0 },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(finalOp),
+      text: () => Promise.resolve(JSON.stringify(finalOp)),
+    });
+
+    const client = createClient();
+    const result = await client.pollOperation('op-1');
+
+    expect(result.sys.status).toBe('succeeded');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('polls until terminal state is reached', async () => {
+    const queuedOp: ApplyOperationResponse = {
+      sys: {
+        type: 'ApplyOperation',
+        id: 'op-1',
+        status: 'queued',
+        createdAt: '2026-01-01T00:00:00Z',
+        createdBy: { sys: { type: 'Link', linkType: 'User', id: 'user-1' } },
+      },
+      summary: { total: 2, pending: 2, succeeded: 0, failed: 0 },
+    };
+    const succeededOp: ApplyOperationResponse = {
+      sys: {
+        type: 'ApplyOperation',
+        id: 'op-1',
+        status: 'succeeded',
+        createdAt: '2026-01-01T00:00:00Z',
+        createdBy: { sys: { type: 'Link', linkType: 'User', id: 'user-1' } },
+      },
+      summary: { total: 2, pending: 0, succeeded: 2, failed: 0 },
+    };
+
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(queuedOp),
+        text: () => Promise.resolve(''),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(succeededOp),
+        text: () => Promise.resolve(''),
+      });
+
+    const client = createClient();
+    const result = await client.pollOperation('op-1', {
+      intervalMs: 10,
+      maxAttempts: 5,
+    });
+
+    expect(result.sys.status).toBe('succeeded');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws after max attempts exceeded', async () => {
+    const runningOp: ApplyOperationResponse = {
+      sys: {
+        type: 'ApplyOperation',
+        id: 'op-1',
+        status: 'running',
+        createdAt: '2026-01-01T00:00:00Z',
+        createdBy: { sys: { type: 'Link', linkType: 'User', id: 'user-1' } },
+      },
+      summary: { total: 2, pending: 1, succeeded: 1, failed: 0 },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(runningOp),
+      text: () => Promise.resolve(''),
+    });
+
+    const client = createClient();
+    await expect(client.pollOperation('op-1', { intervalMs: 10, maxAttempts: 3 })).rejects.toThrow('timed out');
+  });
+
+  it('throws ApiError on non-200 poll response', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: () => Promise.resolve('{"message":"Operation not found"}'),
+    });
+
+    const client = createClient();
+    await expect(client.pollOperation('op-1')).rejects.toThrow(ApiError);
+  });
+});

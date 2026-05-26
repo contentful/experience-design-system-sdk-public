@@ -1,0 +1,85 @@
+{
+  "name": "experience-design-system-cli",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/experience-design-system-cli/src",
+  "projectType": "application",
+  "tags": [],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/packages/experience-design-system-cli/dist"],
+      "options": {
+        "parallel": false,
+        "commands": [
+          "rm -rf packages/experience-design-system-cli/dist",
+          "nx run experience-design-system-cli:compile"
+        ]
+      },
+      "dependsOn": ["^build"]
+    },
+    "compile": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "packages/experience-design-system-cli/dist",
+        "main": "packages/experience-design-system-cli/src/index.ts",
+        "tsConfig": "packages/experience-design-system-cli/tsconfig.build.json",
+        "assets": []
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run",
+        "cwd": "packages/experience-design-system-cli"
+      },
+      "dependsOn": ["build"]
+    },
+    "test:watch": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest",
+        "cwd": "packages/experience-design-system-cli"
+      },
+      "dependsOn": ["build"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint",
+        "cwd": "packages/experience-design-system-cli"
+      },
+      "dependsOn": ["build"]
+    },
+    "lint:fix": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint --fix",
+        "cwd": "packages/experience-design-system-cli"
+      },
+      "dependsOn": ["build"]
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "packages/experience-design-system-cli"
+      },
+      "dependsOn": ["build"]
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "rm -rf dist",
+        "cwd": "packages/experience-design-system-cli"
+      }
+    },
+    "nx-release-publish": {
+      "executor": "@nx/js:release-publish",
+      "options": {
+        "packageRoot": "packages/experience-design-system-cli"
+      },
+      "dependsOn": ["build"]
+    }
+  }
+}
