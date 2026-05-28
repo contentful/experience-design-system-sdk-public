@@ -277,6 +277,15 @@ function isStencilFile(sourceFile: SourceFile): boolean {
   return sourceFile.getImportDeclarations().some((imp) => imp.getModuleSpecifierValue() === '@stencil/core');
 }
 
+function sourceFileUsesCreateContext(sourceFile: SourceFile): boolean {
+  // Match React.createContext(...) and createContext(...) call expressions
+  return sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).some((call) => {
+    const expr = call.getExpression();
+    const text = expr.getText();
+    return text === 'createContext' || text === 'React.createContext';
+  });
+}
+
 function isNextJsComponent(filePath: string, exportedNames: string[]): boolean {
   const normalized = filePath.replace(/\\/g, '/');
   const isAppRouterFile = /\/app\/.*\/(page|layout)\.[jt]sx?$/.test(normalized);
@@ -2107,6 +2116,7 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
 function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComponentDefinition[] {
   const components: RawComponentDefinition[] = [];
   const exported = sourceFile.getExportedDeclarations();
+  const usesCreateContext = sourceFileUsesCreateContext(sourceFile);
 
   for (const [exportKey, declarations] of exported) {
     let name = exportKey;
@@ -2141,6 +2151,7 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
         framework: isNext ? 'next' : 'react',
         props: [],
         slots: [],
+        ...(usesCreateContext && { usesCreateContext: true }),
       });
       continue;
     }
@@ -2241,6 +2252,7 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
       framework: isNext ? 'next' : 'react',
       props: propsAfterSlotExpansion,
       slots: finalSlots,
+      ...(usesCreateContext && { usesCreateContext: true }),
     });
   }
 
