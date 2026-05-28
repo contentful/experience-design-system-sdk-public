@@ -16,25 +16,19 @@ function makeComponent(partial: Partial<RawComponentDefinition>): RawComponentDe
 describe('isNonAuthorableComponent', () => {
   describe('Rule A: name pattern', () => {
     it('flags components whose name ends with Provider', () => {
-      const result = isNonAuthorableComponent(
-        makeComponent({ name: 'AbmProvider', usesCreateContext: true }),
-      );
+      const result = isNonAuthorableComponent(makeComponent({ name: 'AbmProvider', usesCreateContext: true }));
       expect(result.skip).toBe(true);
       expect(result.reason).toMatch(/provider/i);
     });
 
     it('flags components whose name ends with Context', () => {
-      const result = isNonAuthorableComponent(
-        makeComponent({ name: 'ThemeContext', usesCreateContext: true }),
-      );
+      const result = isNonAuthorableComponent(makeComponent({ name: 'ThemeContext', usesCreateContext: true }));
       expect(result.skip).toBe(true);
     });
 
     it('does NOT flag Provider-named components without createContext usage', () => {
       // e.g. a visual "FeatureProvider" that just composes UI; conservative — keep it
-      const result = isNonAuthorableComponent(
-        makeComponent({ name: 'FeatureProvider', usesCreateContext: false }),
-      );
+      const result = isNonAuthorableComponent(makeComponent({ name: 'FeatureProvider', usesCreateContext: false }));
       expect(result.skip).toBe(false);
     });
   });
@@ -85,9 +79,7 @@ describe('isNonAuthorableComponent', () => {
 
     it('treats components with only a children slot and no props as authorable layout wrappers', () => {
       // empty props, default slot only — could be a layout component, keep it
-      const result = isNonAuthorableComponent(
-        makeComponent({ name: 'Stack', props: [] }),
-      );
+      const result = isNonAuthorableComponent(makeComponent({ name: 'Stack', props: [] }));
       expect(result.skip).toBe(false);
       expect(result.reason).toBeUndefined();
     });
@@ -114,9 +106,7 @@ describe('isNonAuthorableComponent', () => {
         makeComponent({
           name: 'AbmProvider',
           usesCreateContext: undefined,
-          props: [
-            { name: 'title', type: 'string', required: true, category: 'content' },
-          ],
+          props: [{ name: 'title', type: 'string', required: true, category: 'content' }],
         }),
       );
       expect(result.skip).toBe(false);
