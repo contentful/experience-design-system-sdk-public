@@ -10,6 +10,7 @@ import { registerAnalyzeEditCommand } from './select/command.js';
 import { registerAnalyzeSelectAgentCommand } from './select-agent/command.js';
 import { openPipelineDb, getOrCreateSession, createStep, updateStep, storeRawComponents } from '../session/db.js';
 import { preClassifyComponent } from './pre-classify.js';
+import { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
 
 interface AnalyzeExtractOptions {
   project: string;
@@ -152,24 +153,36 @@ export function registerAnalyzeCommand(program: Command): void {
       });
       const stepId = createStep(db, sessionId, 'analyze extract', { project: projectRoot });
       const classifiedComponents = extraction.components.map(preClassifyComponent);
-      storeRawComponents(db, sessionId, classifiedComponents);
+      const filteredComponents: typeof classifiedComponents = [];
+      const filterWarnings: string[] = [];
+      for (const component of classifiedComponents) {
+        const verdict = isNonAuthorableComponent(component);
+        if (verdict.skip) {
+          filterWarnings.push(`Skipped non-authorable component: ${component.name} (${verdict.reason})`);
+          continue;
+        }
+        filteredComponents.push(component);
+      }
+      storeRawComponents(db, sessionId, filteredComponents);
       updateStep(db, stepId, 'complete', { sessionId });
       db.close();
 
-      const zeroPropComponents = classifiedComponents.filter((c) => c.props.length === 0 && c.slots.length === 0);
+      const allWarnings = [...extraction.warnings, ...filterWarnings];
+
+      const zeroPropComponents = filteredComponents.filter((c) => c.props.length === 0 && c.slots.length === 0);
 
       const analyzeResult: AnalyzeViewResult = {
         sourceDirectory,
         sessionId,
         fileCount: sourceFiles.length,
-        components: classifiedComponents.map((c) => ({
+        components: filteredComponents.map((c) => ({
           name: c.name,
           framework: c.framework,
           propCount: c.props.length,
           slotCount: c.slots.length,
-          warnings: extraction.warnings.filter((w) => w.startsWith(c.name + ':')),
+          warnings: allWarnings.filter((w) => w.startsWith(c.name + ':')),
         })),
-        totalWarnings: extraction.warnings.length,
+        totalWarnings: allWarnings.length,
         zeroPropComponents: zeroPropComponents.map((c) => ({ name: c.name, source: c.source })),
       };
 
@@ -197,9 +210,9 @@ export function registerAnalyzeCommand(program: Command): void {
           summaryLines.push('These may be Storybook stories, context providers, or SSR utilities.');
           summaryLines.push("Review them in 'analyze select' before generating.");
         }
-        if (extraction.warnings.length > 0) {
-          summaryLines.push(`Warnings (${extraction.warnings.length}):`);
-          summaryLines.push(...extraction.warnings.map((w) => `- ${w}`));
+        if (allWarnings.length > 0) {
+          summaryLines.push(`Warnings (${allWarnings.length}):`);
+          summaryLines.push(...allWarnings.map((w) => `- ${w}`));
         } else {
           summaryLines.push('Warnings: none');
         }
