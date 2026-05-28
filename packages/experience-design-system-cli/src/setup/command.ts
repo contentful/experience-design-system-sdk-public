@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import type { Command } from 'commander';
-import { readExoCredentials, writeExoCredentials, exoCredentialsPath } from '../credentials-store.js';
+import { readExperiencesCredentials, writeExperiencesCredentials, experiencesCredentialsPath } from '../credentials-store.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -201,7 +201,7 @@ async function setupNode(): Promise<boolean> {
     info(`nvm detected. Will run: nvm install ${REQUIRED_NODE_MAJOR} && nvm use ${REQUIRED_NODE_MAJOR}`);
     const go = await confirm(`Install and switch to Node ${REQUIRED_NODE_MAJOR} via nvm?`);
     if (!go) {
-      warn(`Skipped. Re-run exo setup after switching to Node ${REQUIRED_NODE_MAJOR}.`);
+      warn(`Skipped. Re-run experiences setup after switching to Node ${REQUIRED_NODE_MAJOR}.`);
       return false;
     }
     // nvm is a shell function so we source it and run in a subshell
@@ -216,7 +216,7 @@ async function setupNode(): Promise<boolean> {
       info(`Run manually: nvm install ${REQUIRED_NODE_MAJOR} && nvm use ${REQUIRED_NODE_MAJOR}`);
       return false;
     }
-    ok(`Node ${REQUIRED_NODE_MAJOR} installed via nvm. Re-run exo setup in a fresh shell to pick it up.`);
+    ok(`Node ${REQUIRED_NODE_MAJOR} installed via nvm. Re-run experiences setup in a fresh shell to pick it up.`);
     return false; // Need fresh shell to get the new node on PATH
   }
 
@@ -224,7 +224,7 @@ async function setupNode(): Promise<boolean> {
     info(`fnm detected. Will run: fnm install ${REQUIRED_NODE_MAJOR} && fnm use ${REQUIRED_NODE_MAJOR}`);
     const go = await confirm(`Install and switch to Node ${REQUIRED_NODE_MAJOR} via fnm?`);
     if (!go) {
-      warn(`Skipped. Re-run exo setup after switching to Node ${REQUIRED_NODE_MAJOR}.`);
+      warn(`Skipped. Re-run experiences setup after switching to Node ${REQUIRED_NODE_MAJOR}.`);
       return false;
     }
     const result = await runSpawn('fnm', ['install', String(REQUIRED_NODE_MAJOR)]);
@@ -244,7 +244,7 @@ async function setupNode(): Promise<boolean> {
         info(`Run manually: fnm default ${REQUIRED_NODE_MAJOR}`);
       }
     }
-    ok(`Node ${REQUIRED_NODE_MAJOR} installed via fnm. Re-run exo setup in a fresh shell.`);
+    ok(`Node ${REQUIRED_NODE_MAJOR} installed via fnm. Re-run experiences setup in a fresh shell.`);
     return false;
   }
 
@@ -262,7 +262,7 @@ async function setupNode(): Promise<boolean> {
       info('Install manually: https://github.com/nvm-sh/nvm#installing-and-updating');
       return false;
     }
-    ok('nvm installed. Open a new shell, then re-run exo setup.');
+    ok('nvm installed. Open a new shell, then re-run experiences setup.');
     return false;
   }
 
@@ -355,7 +355,7 @@ async function setupBuild(repoRoot: string): Promise<boolean> {
 
 async function setupAgent(): Promise<boolean> {
   section('Step 4: Coding agent (claude, codex, opencode, or cursor)', '[required]');
-  info('exo import uses a coding agent to generate component definitions.');
+  info('experiences import uses a coding agent to generate component definitions.');
   info('');
 
   const agents: Array<{ name: string; binary: string; installHint: string }> = [
@@ -430,7 +430,7 @@ async function setupAgent(): Promise<boolean> {
     return true;
   }
 
-  warn('Skipped. Install a coding agent before running exo import.');
+  warn('Skipped. Install a coding agent before running experiences import.');
   return false;
 }
 
@@ -438,10 +438,10 @@ async function setupAgent(): Promise<boolean> {
 
 async function setupContentfulCredentials(): Promise<boolean> {
   section('Step 5: Contentful credentials', '[optional]');
-  info(`Saved to ${exoCredentialsPath()} — loaded automatically by exo import.`);
+  info(`Saved to ${experiencesCredentialsPath()} — loaded automatically by experiences import.`);
   info('');
 
-  const stored = await readExoCredentials();
+  const stored = await readExperiencesCredentials();
   const currentSpace = stored.spaceId;
   const currentEnv = stored.environmentId;
   const currentToken = stored.cmaToken;
@@ -474,7 +474,7 @@ async function setupContentfulCredentials(): Promise<boolean> {
     if (allSet) {
       ok('Credentials already configured — no changes made');
     } else {
-      warn('Skipped. exo import will prompt for credentials interactively.');
+      warn('Skipped. experiences import will prompt for credentials interactively.');
     }
     return true;
   }
@@ -499,9 +499,9 @@ async function setupContentfulCredentials(): Promise<boolean> {
     return false;
   }
 
-  await writeExoCredentials({ spaceId, environmentId, cmaToken });
-  ok(`Credentials saved to ${exoCredentialsPath()}`);
-  info('Run exo import — the credentials step will be pre-filled automatically.');
+  await writeExperiencesCredentials({ spaceId, environmentId, cmaToken });
+  ok(`Credentials saved to ${experiencesCredentialsPath()}`);
+  info('Run experiences import — the credentials step will be pre-filled automatically.');
 
   return true;
 }
@@ -510,7 +510,7 @@ async function setupContentfulCredentials(): Promise<boolean> {
 
 async function setupQoL(profilePath: string): Promise<void> {
   section('Step 6: Optional extras', '[optional]');
-  info('These are not required for exo import but improve the experience.');
+  info('These are not required for experiences import but improve the experience.');
   info('');
 
   // 6a: EDS_EXTRACT_CONCURRENCY
@@ -520,7 +520,7 @@ async function setupQoL(profilePath: string): Promise<void> {
     info('Default is 4. Set higher (e.g. 8) on fast machines to speed up large codebases.');
     const setConcurrency = await confirm('Add EDS_EXTRACT_CONCURRENCY=8 to your profile?', false);
     if (setConcurrency) {
-      await appendToProfile(profilePath, '# exo performance\nexport EDS_EXTRACT_CONCURRENCY=8');
+      await appendToProfile(profilePath, '# experiences performance\nexport EDS_EXTRACT_CONCURRENCY=8');
       ok(`EDS_EXTRACT_CONCURRENCY=8 written to ${profilePath}`);
     } else {
       dim('     skipped');
@@ -682,7 +682,7 @@ async function checkAgent(): Promise<boolean> {
   }
 
   warn('No coding agent found on PATH');
-  info('The coding agent is required for the generate steps in exo import.');
+  info('The coding agent is required for the generate steps in experiences import.');
   info('Install one of:');
   info('  • Claude Code:   npm install -g @anthropic-ai/claude-code');
   info('  • OpenAI Codex:  npm install -g @openai/codex');
@@ -695,11 +695,11 @@ async function checkAgent(): Promise<boolean> {
 export function registerSetupCommand(program: Command): void {
   program
     .command('doctor')
-    .description('Check prerequisites so exo import runs without errors')
+    .description('Check prerequisites so experiences import runs without errors')
     .option('--skip-build', 'Skip the pnpm install + build step (useful if already built)')
     .option('--skip-agent', 'Skip the coding agent check')
     .action(async (opts: { skipBuild?: boolean; skipAgent?: boolean }) => {
-      process.stderr.write('\x1b[1mexo doctor\x1b[0m — checking your environment\n');
+      process.stderr.write('\x1b[1mexperiences doctor\x1b[0m — checking your environment\n');
 
       const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -747,34 +747,34 @@ export function registerSetupCommand(program: Command): void {
       }
 
       if (requiredFailed.length === 0 && failed.length === 0) {
-        process.stderr.write('\n\x1b[32m\x1b[1m✓ All checks passed. You are ready to run: exo import\x1b[0m\n\n');
+        process.stderr.write('\n\x1b[32m\x1b[1m✓ All checks passed. You are ready to run: experiences import\x1b[0m\n\n');
         process.exit(0);
       } else if (requiredFailed.length === 0) {
         process.stderr.write('\n\x1b[33m\x1b[1m⚠ Required checks passed, but optional checks failed.\x1b[0m\n');
         process.stderr.write(
-          '  You can run \x1b[1mexo import\x1b[0m but the generate steps may fail without a coding agent.\n\n',
+          '  You can run \x1b[1mexperiences import\x1b[0m but the generate steps may fail without a coding agent.\n\n',
         );
         process.exit(0);
       } else {
         process.stderr.write(
           `\n\x1b[31m\x1b[1m✗ ${requiredFailed.length} required check${requiredFailed.length === 1 ? '' : 's'} failed.\x1b[0m\n`,
         );
-        process.stderr.write('  Fix the issues above, then re-run \x1b[1mexo doctor\x1b[0m.\n\n');
+        process.stderr.write('  Fix the issues above, then re-run \x1b[1mexperiences doctor\x1b[0m.\n\n');
         process.exit(1);
       }
     });
 
   program
     .command('setup')
-    .description('Interactive setup wizard: installs prerequisites and configures credentials for exo import')
+    .description('Interactive setup wizard: installs prerequisites and configures credentials for experiences import')
     .option('--skip-build', 'Skip the pnpm install + build step')
     .option('--skip-agent', 'Skip the coding agent check')
     .option('--skip-credentials', 'Skip the Contentful credentials step')
     .option('--skip-optional', 'Skip optional quality-of-life extras')
     .action(
       async (opts: { skipBuild?: boolean; skipAgent?: boolean; skipCredentials?: boolean; skipOptional?: boolean }) => {
-        process.stdout.write('\n\x1b[1mexo setup\x1b[0m — interactive setup wizard\n');
-        process.stdout.write('Sets up everything you need to run \x1b[1mexo import\x1b[0m.\n');
+        process.stdout.write('\n\x1b[1mexperiences setup\x1b[0m — interactive setup wizard\n');
+        process.stdout.write('Sets up everything you need to run \x1b[1mexperiences import\x1b[0m.\n');
         process.stdout.write(
           'Required steps are marked \x1b[31m[required]\x1b[0m, optional ones \x1b[2m[optional]\x1b[0m.\n',
         );
@@ -791,7 +791,7 @@ export function registerSetupCommand(program: Command): void {
 
         if (!nodeOk) {
           process.stdout.write(
-            '\n\x1b[33mNode.js setup requires a shell restart. Re-run exo setup afterwards.\x1b[0m\n\n',
+            '\n\x1b[33mNode.js setup requires a shell restart. Re-run experiences setup afterwards.\x1b[0m\n\n',
           );
           process.exit(0);
         }
@@ -849,7 +849,7 @@ export function registerSetupCommand(program: Command): void {
         process.stdout.write('\n');
 
         if (requiredFailed.length === 0) {
-          process.stdout.write('\x1b[32m\x1b[1m✓ Setup complete. You can now run: exo import\x1b[0m\n');
+          process.stdout.write('\x1b[32m\x1b[1m✓ Setup complete. You can now run: experiences import\x1b[0m\n');
           if (optionalFailed.length > 0) {
             process.stdout.write("  (Some optional steps were skipped — that's fine.)\n");
           }
@@ -857,14 +857,14 @@ export function registerSetupCommand(program: Command): void {
           process.stdout.write(
             `\x1b[33m\x1b[1m⚠ ${requiredFailed.length} required step${requiredFailed.length === 1 ? '' : 's'} incomplete.\x1b[0m\n`,
           );
-          process.stdout.write('  Complete the steps above, then re-run \x1b[1mexo setup\x1b[0m.\n');
+          process.stdout.write('  Complete the steps above, then re-run \x1b[1mexperiences setup\x1b[0m.\n');
         }
 
-        // ── Offer exo doctor ───────────────────────────────────────────────────
+        // ── Offer experiences doctor ───────────────────────────────────────────────────
         process.stdout.write('\n');
         const runDoctor =
           process.stdout.isTTY &&
-          (await confirm('Run exo doctor now to verify your environment?', requiredFailed.length === 0));
+          (await confirm('Run experiences doctor now to verify your environment?', requiredFailed.length === 0));
         if (runDoctor) {
           process.stdout.write('\n');
           const cliBin = process.argv[1] ?? fileURLToPath(import.meta.url);
@@ -876,7 +876,7 @@ export function registerSetupCommand(program: Command): void {
           process.exit(doctorResult.exitCode);
         }
 
-        process.stdout.write('\nRun \x1b[1mexo doctor\x1b[0m at any time to re-check your environment.\n\n');
+        process.stdout.write('\nRun \x1b[1mexperiences doctor\x1b[0m at any time to re-check your environment.\n\n');
         process.exit(requiredFailed.length === 0 ? 0 : 1);
       },
     );

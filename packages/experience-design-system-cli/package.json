@@ -6,7 +6,7 @@
   "type": "module",
   "bin": {
     "experience-design-system-cli": "./bin/cli.js",
-    "exo": "./bin/cli.js"
+    "experiences": "./bin/cli.js"
   },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",

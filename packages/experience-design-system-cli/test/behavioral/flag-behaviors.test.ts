@@ -1,5 +1,5 @@
 /**
- * Deep behavioral assertions for 6 flags in the exo CLI.
+ * Deep behavioral assertions for 6 flags in the experiences CLI.
  *
  * These tests go beyond "flag accepted, exit 0" and verify that each flag
  * actually changes observable behavior.

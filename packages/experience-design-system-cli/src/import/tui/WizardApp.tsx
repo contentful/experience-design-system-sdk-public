@@ -109,7 +109,7 @@ function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; std
   });
 }
 
-const WIZARD_LOG = join(tmpdir(), 'exo-import-wizard.log');
+const WIZARD_LOG = join(tmpdir(), 'experiences-import-wizard.log');
 
 function logStep(entry: Record<string, unknown>): void {
   const line = JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n';
@@ -138,7 +138,7 @@ export function WizardApp({
   const terminalWidth = stdout?.columns ?? 80;
   const logInit = useRef(false);
   if (!logInit.current) {
-    writeFileSync(WIZARD_LOG, `--- exo import session ${new Date().toISOString()} ---\n`);
+    writeFileSync(WIZARD_LOG, `--- experiences import session ${new Date().toISOString()} ---\n`);
     logInit.current = true;
   }
 
@@ -247,7 +247,7 @@ export function WizardApp({
       update({
         step: 'error',
         errorStep: `${state.agent} auth check`,
-        errorMessage: `The \`${state.agent}\` CLI was not found on your PATH.\n\nInstall it, then re-run \`exo import\`.`,
+        errorMessage: `The \`${state.agent}\` CLI was not found on your PATH.\n\nInstall it, then re-run \`experiences import\`.`,
       });
       return false;
     }
@@ -257,7 +257,7 @@ export function WizardApp({
         errorStep: `${state.agent} auth check`,
         errorMessage:
           `${state.agent} is not authenticated.\n\n` +
-          `Run \`${state.agent}\` in your terminal to log in, then re-run \`exo import\`.\n\n` +
+          `Run \`${state.agent}\` in your terminal to log in, then re-run \`experiences import\`.\n\n` +
           'If you are using AWS Bedrock, run:\n' +
           '  aws sso login --profile <your-profile>',
       });
@@ -1225,7 +1225,7 @@ export function WizardApp({
             ]
               .filter(Boolean)
               .join('\n')}
-            context="Your files are saved to disk. Run `exo import` again when you're ready to push to Contentful."
+            context="Your files are saved to disk. Run `experiences import` again when you're ready to push to Contentful."
             continueLabel="Exit"
             showSkip={false}
             onContinue={() => process.exit(0)}

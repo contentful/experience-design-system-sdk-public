@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { resolve, join } from 'node:path';
 import { runPipeline } from './orchestrator.js';
-import { readExoCredentials } from '../credentials-store.js';
+import { readExperiencesCredentials } from '../credentials-store.js';
 
 export function registerImportCommand(program: Command): void {
   program
@@ -85,7 +85,7 @@ export function registerImportCommand(program: Command): void {
             initialProjectPath?: string;
             host?: string;
           };
-          const creds = await readExoCredentials();
+          const creds = await readExperiencesCredentials();
           const { waitUntilExit } = render(
             createElement<WizardProps>(WizardApp, {
               initialSpaceId: creds.spaceId,

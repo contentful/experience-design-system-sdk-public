@@ -110,13 +110,13 @@ export function CredentialsStep({
       <Box marginTop={1}>
         <Text>
           {initialSpaceId && initialCmaToken
-            ? 'Credentials pre-filled from exo setup. Press Enter to continue or edit any field to update.'
+            ? 'Credentials pre-filled from experiences setup. Press Enter to continue or edit any field to update.'
             : 'Enter your Contentful credentials to continue.'}
         </Text>
       </Box>
       {!(initialSpaceId && initialCmaToken) && (
         <Text dimColor>
-          Tip: run exo setup to save these to ~/.config/exo/credentials.json so they pre-fill here automatically.
+          Tip: run experiences setup to save these to ~/.config/experiences/credentials.json so they pre-fill here automatically.
         </Text>
       )}
 

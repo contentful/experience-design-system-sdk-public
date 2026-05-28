@@ -15,7 +15,7 @@ type FullFixture = TestFixture & { artifactsDir: string };
 
 async function createFullFixture(): Promise<FullFixture> {
   const fixture = await createTestFixture();
-  const artifactsDir = await mkdtemp(join(tmpdir(), 'exo-e2e-artifacts-'));
+  const artifactsDir = await mkdtemp(join(tmpdir(), 'experiences-e2e-artifacts-'));
 
   const db = openPipelineDb(fixture.dbPath);
   const stepId = createStep(db, fixture.sessionId, 'analyze extract', { project: fixture.projectDir });

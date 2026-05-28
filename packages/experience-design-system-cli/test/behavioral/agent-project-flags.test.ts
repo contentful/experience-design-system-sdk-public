@@ -111,7 +111,7 @@ describe('analyze extract --project scans source files', () => {
   it('--project with a nonexistent directory exits non-zero', async () => {
     const dbPath = await makeFreshDbPath();
     const { code } = await runCliWithEnv(
-      ['analyze', 'extract', '--project', '/tmp/nonexistent-exo-dir-xyz-000'],
+      ['analyze', 'extract', '--project', '/tmp/nonexistent-experiences-dir-xyz-000'],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
       15000,
     );
@@ -236,7 +236,7 @@ describe('import --project runs analyze extract against the specified path', () 
       [
         'import',
         '--project',
-        '/tmp/nonexistent-exo-dir-xyz-import-test',
+        '/tmp/nonexistent-experiences-dir-xyz-import-test',
         '--skip-generate',
         '--skip-apply',
         '--select-all',

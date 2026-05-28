@@ -19,7 +19,7 @@ if (!existsSync(npmBinDir)) mkdirSync(npmBinDir, { recursive: true });
 
 chmodSync(target, 0o755);
 
-for (const name of ['exo', 'experience-design-system-cli']) {
+for (const name of ['experiences', 'experience-design-system-cli']) {
   const link = join(npmBinDir, name);
   try { rmSync(link); } catch {}
   try {

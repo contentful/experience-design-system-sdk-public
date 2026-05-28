@@ -30,8 +30,8 @@ export type TestFixture = {
 };
 
 export async function createTestFixture(components = SAMPLE_COMPONENTS): Promise<TestFixture> {
-  const dbDir = await mkdtemp(join(tmpdir(), 'exo-e2e-db-'));
-  const projectDir = await mkdtemp(join(tmpdir(), 'exo-e2e-proj-'));
+  const dbDir = await mkdtemp(join(tmpdir(), 'experiences-e2e-db-'));
+  const projectDir = await mkdtemp(join(tmpdir(), 'experiences-e2e-proj-'));
   const dbPath = join(dbDir, 'pipeline.db');
 
   await mkdir(join(projectDir, 'src'), { recursive: true });

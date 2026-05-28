@@ -32,7 +32,7 @@ describe('print commands — flag variations', () => {
     it('writes components JSON to file with --out', async () => {
       // The fixture seeds RAW components only; print components needs CDF-generated components.
       // A session without CDF data exits 1. We verify the flag is accepted and the error is clean.
-      const outDir = await mkdtemp(join(tmpdir(), 'exo-print-'));
+      const outDir = await mkdtemp(join(tmpdir(), 'experiences-print-'));
       const outPath = join(outDir, 'components.json');
       const { stderr, code } = await runCliWithEnv(
         ['print', 'components', '--session', fixture.sessionId, '--out', outPath],
@@ -45,7 +45,7 @@ describe('print commands — flag variations', () => {
 
     it('--out flag is accepted and not treated as unknown', async () => {
       // Ensure --out does not cause a "unknown option" error regardless of session state.
-      const outDir = await mkdtemp(join(tmpdir(), 'exo-print-flag-'));
+      const outDir = await mkdtemp(join(tmpdir(), 'experiences-print-flag-'));
       const outPath = join(outDir, 'components.json');
       const { stderr } = await runCliWithEnv(
         ['print', 'components', '--session', fixture.sessionId, '--out', outPath],
@@ -58,7 +58,7 @@ describe('print commands — flag variations', () => {
       // Seed a session with actual CDF components via a separate DB setup.
       const { openPipelineDb, getOrCreateSession, storeCDFComponents } = await import('../../src/session/db.js');
       const { mkdtemp: mkd, rm } = await import('node:fs/promises');
-      const cdfDir = await mkd(join(tmpdir(), 'exo-cdf-'));
+      const cdfDir = await mkd(join(tmpdir(), 'experiences-cdf-'));
       const cdfDbPath = join(cdfDir, 'pipeline.db');
 
       const db = openPipelineDb(cdfDbPath);
@@ -79,7 +79,7 @@ describe('print commands — flag variations', () => {
       ]);
       db.close();
 
-      const outDir = await mkd(join(tmpdir(), 'exo-cdf-out-'));
+      const outDir = await mkd(join(tmpdir(), 'experiences-cdf-out-'));
       const outPath = join(outDir, 'components.json');
 
       const { code } = await runCliWithEnv(['print', 'components', '--session', sessionId, '--out', outPath], {
@@ -106,7 +106,7 @@ describe('print commands — flag variations', () => {
 
     it('--session flag is accepted for print tokens', async () => {
       // A session without generated tokens exits 1 cleanly — not an unknown-flag error.
-      const outDir = await mkdtemp(join(tmpdir(), 'exo-tok-flag-'));
+      const outDir = await mkdtemp(join(tmpdir(), 'experiences-tok-flag-'));
       const outPath = join(outDir, 'tokens.json');
       const { stderr, code } = await runCliWithEnv(
         ['print', 'tokens', '--session', fixture.sessionId, '--out', outPath],
