@@ -14,32 +14,24 @@ function makeComponent(partial: Partial<RawComponentDefinition>): RawComponentDe
 }
 
 describe('isNonAuthorableComponent', () => {
-  describe('Rule A: name pattern', () => {
-    it('flags components whose name ends with Provider', () => {
-      const result = isNonAuthorableComponent(makeComponent({ name: 'AbmProvider', usesCreateContext: true }));
+  describe('R1: zero props and zero slots', () => {
+    it('flags components with no props and no slots', () => {
+      const result = isNonAuthorableComponent(makeComponent({ name: 'GtmHeadScript', props: [], slots: [] }));
       expect(result.skip).toBe(true);
-      expect(result.reason).toMatch(/provider/i);
+      expect(result.reason).toMatch(/no props and no slots/i);
     });
 
-    it('flags components whose name ends with Context', () => {
-      const result = isNonAuthorableComponent(makeComponent({ name: 'ThemeContext', usesCreateContext: true }));
-      expect(result.skip).toBe(true);
-    });
-
-    it('does NOT flag Provider-named components without createContext usage', () => {
-      // e.g. a visual "FeatureProvider" that just composes UI; conservative — keep it
-      const result = isNonAuthorableComponent(makeComponent({ name: 'FeatureProvider', usesCreateContext: false }));
+    it('does NOT flag a layout component with zero props but a children slot', () => {
+      const result = isNonAuthorableComponent(makeComponent({ name: 'Stack', props: [], slots: [{ name: 'default', isDefault: true }] }));
       expect(result.skip).toBe(false);
     });
   });
 
-  describe('Rule B: createContext source signal', () => {
-    it('flags components from files using createContext when prop signature matches Context.Provider', () => {
-      // Use a name that does NOT end in Provider/Context so Rule A doesn't fire,
-      // forcing the predicate down to Rule B.
+  describe('R2: createContext + value prop', () => {
+    it('flags components with a literal value prop in a createContext source', () => {
       const result = isNonAuthorableComponent(
         makeComponent({
-          name: 'AbmShell',
+          name: 'AbmProvider',
           usesCreateContext: true,
           props: [{ name: 'value', type: 'AbmAccount | null', required: true }],
         }),
@@ -47,46 +39,149 @@ describe('isNonAuthorableComponent', () => {
       expect(result.skip).toBe(true);
       expect(result.reason).toMatch(/value prop/i);
     });
-  });
 
-  describe('Rule C: no authorable props', () => {
-    it('flags components where every prop is unclassified after pre-classify', () => {
+    it('does NOT flag a value prop when source does not use createContext', () => {
       const result = isNonAuthorableComponent(
         makeComponent({
-          name: 'Analytics',
+          name: 'Slider',
+          usesCreateContext: false,
+          props: [{ name: 'value', type: 'number', required: true, category: 'state' }],
+        }),
+      );
+      expect(result.skip).toBe(false);
+    });
+  });
+
+  describe('R3: createContext + zero props', () => {
+    it('flags zero-prop components in a createContext source', () => {
+      const result = isNonAuthorableComponent(
+        makeComponent({
+          name: 'FontProvider',
+          usesCreateContext: true,
+          props: [],
+          slots: [{ name: 'default', isDefault: true }],
+        }),
+      );
+      expect(result.skip).toBe(true);
+      expect(result.reason).toMatch(/no props/i);
+    });
+
+    it('does NOT flag zero-prop components when source does not use createContext', () => {
+      const result = isNonAuthorableComponent(
+        makeComponent({ name: 'Container', usesCreateContext: false, props: [] }),
+      );
+      expect(result.skip).toBe(false);
+    });
+  });
+
+  describe('R4: createContext + single non-handler prop', () => {
+    it('flags createContext components with one named-type data prop', () => {
+      const result = isNonAuthorableComponent(
+        makeComponent({
+          name: 'LocaleProvider',
+          usesCreateContext: true,
+          props: [{ name: 'locale', type: 'Locale', required: true, category: 'state' }],
+        }),
+      );
+      expect(result.skip).toBe(true);
+      expect(result.reason).toMatch(/single non-handler prop/i);
+    });
+
+    it('flags createContext components with one array data prop', () => {
+      const result = isNonAuthorableComponent(
+        makeComponent({
+          name: 'NavigationProvider',
+          usesCreateContext: true,
+          props: [{ name: 'navItems', type: 'INavItemProps[]', required: true }],
+        }),
+      );
+      expect(result.skip).toBe(true);
+    });
+
+    it('does NOT flag createContext components when the single prop is a handler', () => {
+      // This is a state-setter shape, which is a different kind of context (setter context)
+      // and shouldn't trip R4 — let other rules decide.
+      const result = isNonAuthorableComponent(
+        makeComponent({
+          name: 'CounterSetterProvider',
+          usesCreateContext: true,
+          props: [{ name: 'setCount', type: 'Dispatch<SetStateAction<number>>', required: true }],
+        }),
+      );
+      // R5 should catch this (all-handlers), so result.skip should still be true,
+      // but the reason should be R5, not R4.
+      expect(result.skip).toBe(true);
+      expect(result.reason).toMatch(/handler or ref/i);
+    });
+
+    it('does NOT flag a single-prop content component without createContext', () => {
+      const result = isNonAuthorableComponent(
+        makeComponent({
+          name: 'RichTextComponent',
+          usesCreateContext: false,
+          props: [{ name: 'richTextData', type: 'Document', required: true }],
+        }),
+      );
+      expect(result.skip).toBe(false);
+    });
+
+    it('does NOT fire R4 when there are 2+ props (lets R5 or keep handle it)', () => {
+      const result = isNonAuthorableComponent(
+        makeComponent({
+          name: 'TwoPropProvider',
+          usesCreateContext: true,
           props: [
-            { name: 'config', type: 'AnalyticsConfig', required: true },
-            { name: 'tracker', type: 'Tracker', required: false },
+            { name: 'locale', type: 'Locale', required: true },
+            { name: 'theme', type: 'Theme', required: true },
+          ],
+        }),
+      );
+      expect(result.skip).toBe(false);
+    });
+  });
+
+  describe('R5: every prop is a handler or ref', () => {
+    it('flags components where every prop is a function-typed handler', () => {
+      const result = isNonAuthorableComponent(
+        makeComponent({
+          name: 'OsanoCookiePlaceholder',
+          props: [{ name: 'onBannerLoaded', type: '() => void', required: true }],
+        }),
+      );
+      expect(result.skip).toBe(true);
+      expect(result.reason).toMatch(/handler or ref/i);
+    });
+
+    it('flags components with mixed handler + setter + ref props', () => {
+      const result = isNonAuthorableComponent(
+        makeComponent({
+          name: 'FeedbackCard',
+          props: [
+            { name: 'setShowModal', type: '(show: boolean) => void', required: true },
+            { name: 'innerRef', type: 'RefObject<HTMLDivElement>', required: false },
           ],
         }),
       );
       expect(result.skip).toBe(true);
-      expect(result.reason).toMatch(/no authorable props/i);
     });
 
-    it('does NOT flag components with at least one classified prop', () => {
+    it('does NOT flag components with at least one non-handler prop', () => {
       const result = isNonAuthorableComponent(
         makeComponent({
-          name: 'Accordion',
+          name: 'NavigationPanelMobile',
           props: [
-            { name: 'title', type: 'string', required: true, category: 'content' },
-            { name: 'config', type: 'AnalyticsConfig', required: false },
+            { name: 'handleClose', type: '() => void', required: true },
+            { name: 'isOpen', type: 'boolean', required: true, category: 'state' },
+            { name: 'navItems', type: 'INavItemProps[]', required: true },
           ],
         }),
       );
       expect(result.skip).toBe(false);
     });
-
-    it('treats components with only a children slot and no props as authorable layout wrappers', () => {
-      // empty props, default slot only — could be a layout component, keep it
-      const result = isNonAuthorableComponent(makeComponent({ name: 'Stack', props: [] }));
-      expect(result.skip).toBe(false);
-      expect(result.reason).toBeUndefined();
-    });
   });
 
-  describe('Control: ordinary visual components', () => {
-    it('does NOT flag a normal component', () => {
+  describe('Control: ordinary authoring components are kept', () => {
+    it('keeps a component with content/design/state props', () => {
       const result = isNonAuthorableComponent(
         makeComponent({
           name: 'Accordion',
@@ -99,9 +194,23 @@ describe('isNonAuthorableComponent', () => {
       expect(result.skip).toBe(false);
     });
 
-    it('handles components with no usesCreateContext flag set (treats as falsy)', () => {
-      // Optional flag may be undefined when extractor didn't see createContext;
-      // predicate should treat that as Rule A/B falsy without throwing.
+    it('keeps a CMS-driven wrapper with any-typed content props', () => {
+      // This is the regression case from the original Rule C: 100% any-typed props
+      // should NOT be dropped — they're CMS-driven authoring components.
+      const result = isNonAuthorableComponent(
+        makeComponent({
+          name: 'BasicCardWrapper',
+          props: [
+            { name: 'title', type: 'any', required: true },
+            { name: 'description', type: 'any', required: true },
+            { name: 'linkUrl', type: 'any', required: true },
+          ],
+        }),
+      );
+      expect(result.skip).toBe(false);
+    });
+
+    it('handles undefined usesCreateContext as falsy without throwing', () => {
       const result = isNonAuthorableComponent(
         makeComponent({
           name: 'AbmProvider',
