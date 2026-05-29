@@ -101,9 +101,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint, test]
     if: >-
-      (github.ref == 'refs/heads/main' && github.event_name == 'push' && github.event.head_commit.author.name != 'contentful-automation[bot]') ||
-      (github.ref != 'refs/heads/main' && github.event_name == 'push') ||
-      github.event_name == 'pull_request'
+      github.event_name == 'push' &&
+      github.event.head_commit.author.name != 'contentful-automation[bot]'
     permissions:
       contents: write
       actions: read
