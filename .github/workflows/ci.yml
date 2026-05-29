@@ -161,7 +161,7 @@ jobs:
       - name: Install dependencies
         run: |
           pnpm config set @contentful:registry https://npm.pkg.github.com
-          pnpm config set -- //npm.pkg.github.com/:_authToken ${{ steps.vault.outputs.GITHUB_PACKAGES_WRITE_TOKEN }}
+          pnpm config set -- //npm.pkg.github.com/:_authToken ${{ steps.vault.outputs.GITHUB_PACKAGES_READ_TOKEN }}
           pnpm install --frozen-lockfile
 
       - name: Set NX SHAs
@@ -175,4 +175,4 @@ jobs:
         run: pnpm release
         env:
           GITHUB_TOKEN: ${{ steps.vault.outputs.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ steps.vault.outputs.GITHUB_PACKAGES_WRITE_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
