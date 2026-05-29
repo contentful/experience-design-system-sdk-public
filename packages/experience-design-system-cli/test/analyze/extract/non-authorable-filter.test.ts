@@ -22,7 +22,9 @@ describe('isNonAuthorableComponent', () => {
     });
 
     it('does NOT flag a layout component with zero props but a children slot', () => {
-      const result = isNonAuthorableComponent(makeComponent({ name: 'Stack', props: [], slots: [{ name: 'default', isDefault: true }] }));
+      const result = isNonAuthorableComponent(
+        makeComponent({ name: 'Stack', props: [], slots: [{ name: 'default', isDefault: true }] }),
+      );
       expect(result.skip).toBe(false);
     });
   });
