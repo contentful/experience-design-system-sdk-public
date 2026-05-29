@@ -84,11 +84,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.vault.outputs.GITHUB_TOKEN }}
 
-      - name: Trigger npm publish on public repo
-        run: |
-          gh workflow run publish-public.yml \
-            --repo contentful/experience-design-system-sdk-public \
-            --field version=${{ steps.version.outputs.version }} \
-            --field dry_run=false
-        env:
-          GITHUB_TOKEN: ${{ steps.vault.outputs.GITHUB_TOKEN }}
+      # publish-public.yml auto-triggers on the tag push above via its push.tags trigger
