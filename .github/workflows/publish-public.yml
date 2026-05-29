@@ -1,6 +1,9 @@
 name: Publish Public
 
 on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"  # Auto-publish on stable release tags
   workflow_dispatch:
     inputs:
       version:
@@ -34,20 +37,29 @@ jobs:
           secrets: |
             github/token/${{ github.event.repository.name }}-semantic-release token | GITHUB_TOKEN ;
 
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Checkout at version tag
         uses: actions/checkout@v6
         with:
-          ref: v${{ inputs.version }}
+          ref: v${{ steps.version.outputs.version }}
           token: ${{ steps.vault.outputs.GITHUB_TOKEN }}
 
       - name: Validate version tag exists
         run: |
           git fetch --tags
-          if ! git rev-parse "v${{ inputs.version }}" > /dev/null 2>&1; then
-            echo "Error: tag v${{ inputs.version }} does not exist"
+          if ! git rev-parse "v${{ steps.version.outputs.version }}" > /dev/null 2>&1; then
+            echo "Error: tag v${{ steps.version.outputs.version }} does not exist"
             exit 1
           fi
-          echo "Tag v${{ inputs.version }} confirmed"
+          echo "Tag v${{ steps.version.outputs.version }} confirmed"
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
@@ -67,19 +79,19 @@ jobs:
           pnpm --filter @contentful/experience-design-system-cli run build
 
       - name: Publish @contentful/experience-design-system-types
-        if: ${{ !inputs.dry_run }}
+        if: ${{ inputs.dry_run != true }}
         run: pnpm --filter @contentful/experience-design-system-types publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish @contentful/experience-design-system-cli
-        if: ${{ !inputs.dry_run }}
+        if: ${{ inputs.dry_run != true }}
         run: pnpm --filter @contentful/experience-design-system-cli publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Dry run — show what would be published
-        if: ${{ inputs.dry_run }}
+        if: ${{ inputs.dry_run == true }}
         run: |
           echo "[dry-run] Would publish @contentful/experience-design-system-types to npmjs.com"
           pnpm --filter @contentful/experience-design-system-types publish --access public --no-git-checks --dry-run
