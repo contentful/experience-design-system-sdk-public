@@ -169,8 +169,6 @@ export function registerAnalyzeCommand(program: Command): void {
 
       const allWarnings = [...extraction.warnings, ...filterWarnings];
 
-      const zeroPropComponents = filteredComponents.filter((c) => c.props.length === 0 && c.slots.length === 0);
-
       const analyzeResult: AnalyzeViewResult = {
         sourceDirectory,
         sessionId,
@@ -183,7 +181,6 @@ export function registerAnalyzeCommand(program: Command): void {
           warnings: allWarnings.filter((w) => w.startsWith(c.name + ':')),
         })),
         totalWarnings: allWarnings.length,
-        zeroPropComponents: zeroPropComponents.map((c) => ({ name: c.name, source: c.source })),
       };
 
       if (process.stdout.isTTY) {
@@ -202,14 +199,6 @@ export function registerAnalyzeCommand(program: Command): void {
           `Scanned ${pluralize(sourceFiles.length, 'source file')} in ${sourceDirectory}`,
           `Extracted ${pluralize(extraction.components.length, 'component')}`,
         ];
-        if (zeroPropComponents.length > 0) {
-          summaryLines.push(
-            `Warning: ${pluralize(zeroPropComponents.length, 'component')} extracted with 0 props and 0 slots:`,
-          );
-          summaryLines.push(...zeroPropComponents.map((c) => `  ${c.name} (${c.source})`));
-          summaryLines.push('These may be Storybook stories, context providers, or SSR utilities.');
-          summaryLines.push("Review them in 'analyze select' before generating.");
-        }
         if (allWarnings.length > 0) {
           summaryLines.push(`Warnings (${allWarnings.length}):`);
           summaryLines.push(...allWarnings.map((w) => `- ${w}`));
