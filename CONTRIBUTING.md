@@ -2,10 +2,10 @@
 
 ## Prerequisites
 
-| Tool | Version | Notes |
-|---|---|---|
-| Node.js | 24 (see `.nvmrc`) | Use `nvm use` to switch automatically |
-| pnpm | 10.27.0+ | Run `corepack enable` then `corepack prepare` |
+| Tool    | Version           | Notes                                         |
+| ------- | ----------------- | --------------------------------------------- |
+| Node.js | 24 (see `.nvmrc`) | Use `nvm use` to switch automatically         |
+| pnpm    | 10.27.0+          | Run `corepack enable` then `corepack prepare` |
 
 The repo uses GitHub Packages as its npm registry for `@contentful`-scoped packages. You need a GitHub personal access token with `read:packages` scope:
 
@@ -100,6 +100,7 @@ type(scope): description
 Valid types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `ci`, `build`, `revert`
 
 Examples:
+
 ```
 feat(cli): add --format flag to analyze command
 fix(analyze): handle SVGProps without inflating prop count
@@ -169,12 +170,12 @@ Commit the updated snapshot files alongside the code change.
 
 All CI runs via GitHub Actions (`.github/workflows/ci.yml`):
 
-| Job | Trigger | What it does |
-|---|---|---|
-| `lint` | PR, merge group, push to main | ESLint + Prettier via `pnpm affected:lint` |
-| `test` | PR, merge group, push to main | Vitest + TypeScript compile via `pnpm affected:test` |
-| `release` | Push to main (non-bot) | `pnpm release-packages` → semantic release to GitHub Packages |
-| `release-dev` | PR, non-main push | `pnpm release-development-packages` → prerelease version |
+| Job           | Trigger                       | What it does                                                  |
+| ------------- | ----------------------------- | ------------------------------------------------------------- |
+| `lint`        | PR, merge group, push to main | ESLint + Prettier via `pnpm affected:lint`                    |
+| `test`        | PR, merge group, push to main | Vitest + TypeScript compile via `pnpm affected:test`          |
+| `release`     | Push to main (non-bot)        | `pnpm release-packages` → semantic release to GitHub Packages |
+| `release-dev` | PR, non-main push             | `pnpm release-development-packages` → prerelease version      |
 
 Nx affected detection uses `nrwl/nx-set-shas` to compare `NX_BASE..NX_HEAD`. Only packages with changed files run lint/test/build.
 
@@ -189,10 +190,10 @@ Releases are fully automated. On every merge to `main`:
 
 **You do not manually bump versions or create tags.** The commit type determines the version:
 
-| Commit type | Version bump |
-|---|---|
-| `fix` | patch (0.0.x) |
-| `feat` | minor (0.x.0) |
+| Commit type                         | Version bump  |
+| ----------------------------------- | ------------- |
+| `fix`                               | patch (0.0.x) |
+| `feat`                              | minor (0.x.0) |
 | `feat!` or `BREAKING CHANGE` footer | major (x.0.0) |
 
 Dev prereleases are published automatically from PRs and non-main branches with a `0.0.0-dev-build-<sha>` identifier.
