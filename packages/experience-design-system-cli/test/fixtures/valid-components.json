@@ -1,0 +1,20 @@
+{
+  "$schema": "https://contentful.com/schemas/cdf/v1",
+  "Button": {
+    "$type": "component",
+    "$description": "A button component",
+    "$properties": {
+      "label": { "$type": "string", "$category": "content" },
+      "variant": { "$type": "enum", "$category": "design", "$values": ["primary", "secondary"] }
+    }
+  },
+  "forms": {
+    "TextInput": {
+      "$type": "component",
+      "$properties": {
+        "value": { "$type": "string", "$category": "content" },
+        "disabled": { "$type": "string", "$category": "state", "$default": "false" }
+      }
+    }
+  }
+}

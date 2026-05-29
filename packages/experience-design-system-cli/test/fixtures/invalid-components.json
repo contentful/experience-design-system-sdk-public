@@ -1,0 +1,10 @@
+{
+  "$schema": "https://contentful.com/schemas/cdf/v1",
+  "Button": {
+    "$type": "component",
+    "$properties": {
+      "label": { "$type": "select", "$category": "content" },
+      "icon": { "$type": "string" }
+    }
+  }
+}

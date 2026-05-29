@@ -1,0 +1,5 @@
+[
+  { "id": "desktop", "query": "(min-width: 1024px)", "displayName": "Desktop", "previewSize": "100%" },
+  { "id": "tablet", "query": "(min-width: 768px)", "displayName": "Tablet", "previewSize": "768px" },
+  { "id": "mobile", "query": "*", "displayName": "Mobile", "previewSize": "375px" }
+]

@@ -1,0 +1,51 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`AnalyzeView > matches snapshot with no warnings 1`] = `
+"experience-design-system-cli  analyze                                             [?] help  [q] quit
+
+  Scanned 42 source files in /project/src
+  Extracted 2 components
+  Session: test-session-abc123
+
+  ──────────────────────────────────────────────────────────────────────
+  Components
+  ──────────────────────────────────────────────────────────────────────
+
+   Button              react     5 props   1 slot
+   Input               react     3 props   0 slots
+
+  Run: analyze select --session test-session-abc123
+
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Press Enter or q to exit                                                                         │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘"
+`;
+
+exports[`AnalyzeView > matches snapshot with warnings 1`] = `
+"experience-design-system-cli  analyze                                             [?] help  [q] quit
+
+  Scanned 42 source files in /project/src
+  Extracted 2 components
+  Session: test-session-abc123
+
+  ──────────────────────────────────────────────────────────────────────
+  Components
+  ──────────────────────────────────────────────────────────────────────
+
+   Button              react     5 props   1 slot
+  ⚠ Input               react     3 props   0 slots  1 warning
+
+  ──────────────────────────────────────────────────────────────────────
+  Warnings (1)
+  ──────────────────────────────────────────────────────────────────────
+
+    ⚠ Input: prop onChange has inferred type any
+
+  Run: analyze select --session test-session-abc123
+
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Press Enter or q to exit                                                                         │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘"
+`;

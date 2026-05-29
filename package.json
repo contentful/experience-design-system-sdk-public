@@ -1,0 +1,54 @@
+{
+  "name": "@contentful/experience-design-system-sdk",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.27.0",
+  "workspaces": [
+    "./packages/*"
+  ],
+  "scripts": {
+    "build": "nx run-many -t build",
+    "typecheck": "nx run-many -t typecheck",
+    "clean": "nx run-many -t clean",
+    "test": "nx run-many -t test",
+    "lint": "nx run-many -t lint",
+    "lint:fix": "nx run-many -t lint:fix",
+    "lint:commits": "commitlint",
+    "lint:staged": "lint-staged",
+    "affected:build": "nx affected -t build --parallel=3",
+    "affected:test": "nx affected -t test --parallel=3",
+    "affected:lint": "nx affected -t lint --parallel=3",
+    "release": "node ./scripts/release.js",
+    "prepare": "[ -n \"$CI\" ] || husky",
+    "postbuild": "[ -n \"$CI\" ] || node scripts/link-cli.js"
+  },
+  "commitlint": {
+    "extends": [
+      "@commitlint/config-conventional"
+    ],
+    "rules": {
+      "body-max-line-length": [
+        2,
+        "always",
+        200
+      ]
+    }
+  },
+  "lint-staged": {
+    "*.{js,ts}": [
+      "./scripts/precommit-checks.sh"
+    ],
+    "**/package.json": "./scripts/update-lockfile.sh"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.3.0",
+    "@commitlint/config-conventional": "^20.3.0",
+    "@nx/js": "^22.3.3",
+    "@nx/workspace": "^22.3.3",
+    "conventional-changelog-conventionalcommits": "^9.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "nx": "^22.3.3",
+    "semver": "^7.7.3"
+  }
+}

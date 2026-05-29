@@ -1,0 +1,44 @@
+{
+  "$schema": "https://contentful.com/schemas/cdf/v1",
+  "Button": {
+    "$type": "component",
+    "$description": "A clickable button component",
+    "$properties": {
+      "label": {
+        "$type": "string",
+        "$category": "content",
+        "$required": true
+      },
+      "variant": {
+        "$type": "enum",
+        "$category": "design",
+        "$values": ["primary", "secondary", "ghost"]
+      },
+      "color": {
+        "$type": "token",
+        "$category": "design",
+        "$token.kind": "color"
+      }
+    }
+  },
+  "Card": {
+    "$type": "component",
+    "$description": "A card container",
+    "$properties": {
+      "title": {
+        "$type": "string",
+        "$category": "content"
+      },
+      "padding": {
+        "$type": "token",
+        "$category": "design",
+        "$token.kind": "dimension"
+      }
+    },
+    "$slots": {
+      "content": {
+        "$description": "Card body content"
+      }
+    }
+  }
+}

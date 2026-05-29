@@ -1,0 +1,42 @@
+{
+  "name": "@contentful/experience-design-system-types",
+  "version": "2.5.2",
+  "license": "MIT",
+  "type": "module",
+  "module": "./dist/src/index.js",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "node": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "nx build experience-design-system-types",
+    "typecheck": "nx typecheck experience-design-system-types",
+    "clean": "nx clean experience-design-system-types",
+    "test": "nx test experience-design-system-types",
+    "test:watch": "nx test:watch experience-design-system-types",
+    "lint": "nx lint experience-design-system-types",
+    "lint:fix": "nx lint:fix experience-design-system-types"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@tsconfig/node24": "^24.0.3",
+    "@types/node": "^24.0.3",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.52.0",
+    "vitest": "^4.0.16"
+  }
+}

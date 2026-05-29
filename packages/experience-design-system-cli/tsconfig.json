@@ -1,0 +1,21 @@
+{
+  "extends": "@tsconfig/node24",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM"],
+    "types": ["node"],
+    "typeRoots": ["./node_modules/@types", "../../node_modules/@types"],
+    "sourceMap": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noEmitOnError": true,
+    "noErrorTruncation": true,
+    "pretty": true,
+    "declaration": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "noEmit": true
+  },
+  "exclude": ["dist", "test/fixtures", "test/analyze/extract/fixtures", "test/analyze/select/tui/fixtures"]
+}
