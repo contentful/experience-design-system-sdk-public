@@ -24,8 +24,7 @@ function isHandlerOrRefProp(prop: RawPropDefinition): boolean {
  * Uses prop-shape signals only — no component-name or source-path patterns.
  * A design system can live anywhere under any naming convention; relying on
  * suffixes like `*Provider` or paths like `src/lib/` would silently fail in
- * other repos. See `docs/superpowers/plans/2026-05-28-rule-c-monte-carlo-eval.md`
- * for the data and reasoning.
+ * other repos.
  */
 export function isNonAuthorableComponent(component: RawComponentDefinition): NonAuthorableResult {
   const { props, slots, usesCreateContext } = component;
