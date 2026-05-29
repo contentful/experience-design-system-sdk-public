@@ -1,6 +1,8 @@
 # @contentful/experience-design-system-cli
 
-CLI for extracting, reviewing, generating, validating, and pushing Contentful Experience Design System component definitions.
+CLI for extracting, reviewing, generating, validating, and pushing Contentful Experience Design System component definitions into [Experience Orchestration (ExO)](https://www.contentful.com/help/experience-orchestration/).
+
+**Binary names:** `experiences` (primary), `exo` (alias), `experience-design-system-cli` (long-form). All three point to the same executable.
 
 ## Pipeline Overview
 
