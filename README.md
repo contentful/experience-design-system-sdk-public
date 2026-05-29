@@ -1,14 +1,14 @@
 # Experience Design System SDK
 
-CLI for ingesting a design system component library into [Contentful Experience Orchestration (ExO)](https://www.contentful.com/help/experience-orchestration/).
+CLI for ingesting a design system component library into Contentful Experiences.
 
 ## What is this?
 
-Contentful Experience Orchestration lets you compose pages and layouts from your own design system components. For that to work, Contentful needs to know what components exist, what props they accept, and how those props map to ExO concepts like content fields, design tokens, and interactive state.
+Contentful Experiences lets you compose pages and layouts from your own design system components. For that to work, Contentful needs to know what components exist, what props they accept, and how those props map to experience orchestration concepts like content fields, design tokens, and interactive state.
 
 Describing all of that by hand is slow and error-prone. This CLI automates the whole thing.
 
-Point it at your component library. It reads your TypeScript/JSX/Vue/Astro source files, uses an AI coding agent to figure out which components belong in ExO and generate their structured definitions, and pushes everything to Contentful. You go from "has a design system" to "components available in Experience Orchestration" in one command.
+Point it at your component library repository. It reads your TypeScript/JSX/Vue/Astro source files, uses an AI coding agent to figure out which components belong in experiences and generate their structured definitions, and pushes everything to Contentful.
 
 ## How it works
 
@@ -18,16 +18,16 @@ The pipeline has four stages:
 1. analyze        →   2. select         →   3. generate        →   4. apply
    scan source         AI picks which        AI generates           push to
    extract props       components go         CDF definitions        Contentful
-   into session DB     into ExO              back into session DB   via Sources API
+   into session DB     into Experiences     back into session DB   via Sources API
 ```
 
 **1. analyze** — Scans your source files (`.tsx`, `.ts`, `.jsx`, `.vue`, `.astro`) using the TypeScript compiler. Extracts component names, props, slots, and prop types. Stores everything in a local SQLite session database.
 
 **2. select** — An AI agent reviews every extracted component and decides which ones belong in Experience Orchestration (visible UI: atoms, molecules, organisms) vs. which ones to skip (hooks, context providers, analytics wrappers, routing utilities). You can also do this step manually with the interactive TUI.
 
-**3. generate** — An AI agent takes the accepted components and generates [CDF (Component Definition Format)](ARCHITECTURE.md#cdf-component-definition-format) definitions: structured JSON that maps each prop to an ExO property type (content, design, or state) and optionally links it to your design token library.
+**3. generate** — An AI agent takes the accepted components and generates CDF (Component Definition Format) definitions: structured JSON that maps each prop to an component property type (content, design, or state) and optionally links it to your design token library.
 
-**4. apply** — Diffs your generated definitions against what already exists in Contentful, shows you what will change, and writes component types and design tokens to ExO via the Sources API.
+**4. apply** — Diffs your generated definitions against what already exists in Contentful, shows you what will change, and writes component types and design tokens to Experiences via the Sources API.
 
 All intermediate data lives in a local SQLite session database — no JSON files are written between steps. Each command reads its inputs from the session and writes its outputs back. Any step can be re-run in isolation or resumed after a failure.
 
@@ -79,7 +79,7 @@ experiences import \
 # 1. Extract components from source (prints session=<id> to stdout)
 experiences analyze extract --project /path/to/your/lib
 
-# 2. AI agent picks which components belong in ExO
+# 2. AI agent picks which components belong in Experiences
 experiences analyze select-agent --agent claude
 
 # 3. AI agent generates CDF component definitions
@@ -107,7 +107,7 @@ Full documentation — every flag, every subcommand — is in [`packages/experie
 |---|---|
 | `experiences analyze extract` | Scan source files and extract raw component definitions |
 | `experiences analyze select` | Interactively pick which components to include (TUI) |
-| `experiences analyze select-agent` | AI agent picks which components belong in ExO |
+| `experiences analyze select-agent` | AI agent picks which components belong in Experiences |
 | `experiences generate components` | AI agent generates CDF definitions from raw analysis |
 | `experiences generate tokens` | AI agent generates DTCG design tokens from raw token data |
 | `experiences apply preview` | Read-only diff — what would change in Contentful |
