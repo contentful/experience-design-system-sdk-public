@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish (e.g. 0.0.1, no v prefix) — must match a git tag vX.Y.Z on main"
+        description: "Version to publish (e.g. 2.3.1, no v prefix) — must match a git tag vX.Y.Z on main"
         required: true
         type: string
       dry_run:
@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+      id-token: write  # Required for OIDC trusted publishing
       actions: read
     steps:
       - name: Retrieve Secrets from Vault
@@ -56,6 +56,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "lts/*"
+          registry-url: "https://registry.npmjs.org"  # Wires up OIDC token as NODE_AUTH_TOKEN
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -65,20 +66,17 @@ jobs:
           pnpm --filter @contentful/experience-design-system-types run build
           pnpm --filter @contentful/experience-design-system-cli run build
 
-      - name: Configure npm auth
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" >> ~/.npmrc
-          echo "@contentful:registry=https://registry.npmjs.org" >> ~/.npmrc
-        env:
-          NODE_AUTH_TOKEN: ${{ steps.vault.outputs.GITHUB_TOKEN }}
-
       - name: Publish @contentful/experience-design-system-types
         if: ${{ !inputs.dry_run }}
         run: pnpm --filter @contentful/experience-design-system-types publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish @contentful/experience-design-system-cli
         if: ${{ !inputs.dry_run }}
         run: pnpm --filter @contentful/experience-design-system-cli publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Dry run — show what would be published
         if: ${{ inputs.dry_run }}
