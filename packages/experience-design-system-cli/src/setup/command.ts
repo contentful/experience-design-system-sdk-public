@@ -510,9 +510,7 @@ async function setupContentfulCredentials(): Promise<boolean> {
   info('');
   info('API host: leave blank for the standard endpoint (api.contentful.com).');
   info('EU-hosted spaces use: https://api.eu.contentful.com');
-  const hostInput = await prompt(
-    `  API host${currentHost ? ` [${currentHost}]` : ' [https://api.contentful.com]'}: `,
-  );
+  const hostInput = await prompt(`  API host${currentHost ? ` [${currentHost}]` : ' [https://api.contentful.com]'}: `);
   const host = hostInput.trim() || currentHost || '';
 
   await writeExperiencesCredentials({ spaceId, environmentId, cmaToken, ...(host ? { host } : {}) });
