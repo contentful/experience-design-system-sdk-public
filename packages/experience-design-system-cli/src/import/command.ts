@@ -81,6 +81,7 @@ export function registerImportCommand(program: Command): void {
             initialSpaceId?: string;
             initialEnvironmentId?: string;
             initialCmaToken?: string;
+            initialHost?: string;
             initialAgent?: string;
             initialProjectPath?: string;
             host?: string;
@@ -91,6 +92,7 @@ export function registerImportCommand(program: Command): void {
               initialSpaceId: creds.spaceId,
               initialEnvironmentId: creds.environmentId || 'master',
               initialCmaToken: creds.cmaToken,
+              initialHost: creds.host,
               initialAgent: opts.agent !== 'claude' ? opts.agent : undefined,
               initialProjectPath: opts.project !== '.' ? resolve(opts.project) : undefined,
               host: opts.host,

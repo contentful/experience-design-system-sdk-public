@@ -6,6 +6,7 @@ export type ExperiencesCredentials = {
   spaceId: string;
   environmentId: string;
   cmaToken: string;
+  host?: string;
 };
 
 const CREDENTIALS_DIR = join(homedir(), '.config', 'experiences');
@@ -15,16 +16,20 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
   try {
     const raw = await readFile(CREDENTIALS_PATH, 'utf8');
     const parsed = JSON.parse(raw) as Partial<ExperiencesCredentials>;
+    const host = process.env['EDS_HOST'] ?? parsed.host;
     return {
       spaceId: process.env['CONTENTFUL_SPACE_ID'] ?? parsed.spaceId ?? '',
       environmentId: process.env['CONTENTFUL_ENVIRONMENT_ID'] ?? parsed.environmentId ?? '',
       cmaToken: process.env['CONTENTFUL_MANAGEMENT_TOKEN'] ?? parsed.cmaToken ?? '',
+      ...(host ? { host } : {}),
     };
   } catch {
+    const host = process.env['EDS_HOST'];
     return {
       spaceId: process.env['CONTENTFUL_SPACE_ID'] ?? '',
       environmentId: process.env['CONTENTFUL_ENVIRONMENT_ID'] ?? '',
       cmaToken: process.env['CONTENTFUL_MANAGEMENT_TOKEN'] ?? '',
+      ...(host ? { host } : {}),
     };
   }
 }

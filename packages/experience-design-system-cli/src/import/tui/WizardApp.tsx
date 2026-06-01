@@ -86,6 +86,7 @@ type WizardState = {
   spaceId: string;
   environmentId: string;
   cmaToken: string;
+  host: string;
   credentialsError: string;
   serverPreview: ServerPreviewResponse | null;
   manifest: ManifestPayload | null;
@@ -120,6 +121,7 @@ export type WizardAppProps = {
   initialSpaceId?: string;
   initialEnvironmentId?: string;
   initialCmaToken?: string;
+  initialHost?: string;
   initialAgent?: string;
   initialProjectPath?: string;
   host?: string;
@@ -129,6 +131,7 @@ export function WizardApp({
   initialSpaceId = '',
   initialEnvironmentId = 'master',
   initialCmaToken = '',
+  initialHost,
   initialAgent,
   initialProjectPath,
   host,
@@ -170,6 +173,7 @@ export function WizardApp({
     spaceId: initialSpaceId,
     environmentId: initialEnvironmentId,
     cmaToken: initialCmaToken,
+    host: initialHost ?? apiHost ?? '',
     credentialsError: '',
     serverPreview: null,
     manifest: null,
@@ -552,15 +556,15 @@ export function WizardApp({
     void runPreview(sid, tp, state.spaceId, state.environmentId, state.cmaToken);
   };
 
-  const confirmCredentials = (spaceId: string, environmentId: string, cmaToken: string) => {
+  const confirmCredentials = (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
     credentialsRef.current = { spaceId, environmentId, cmaToken };
-    update({ spaceId, environmentId, cmaToken, step: 'credential-test-gate' });
+    update({ spaceId, environmentId, cmaToken, host, step: 'credential-test-gate' });
   };
 
   const validateCredentials = async (spaceId: string, environmentId: string, cmaToken: string) => {
     update({ step: 'validating-credentials' });
     try {
-      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: apiHost });
+      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: state.host || apiHost });
       await client.validateToken();
       const { extractSessionId, tokensPath } = sessionRef.current;
       void runPreview(extractSessionId, tokensPath, spaceId, environmentId, cmaToken);
@@ -588,7 +592,7 @@ export function WizardApp({
   ) => {
     update({ step: 'previewing' });
     try {
-      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: apiHost });
+      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: state.host || apiHost });
 
       let components: Array<{
         key: string;
@@ -724,7 +728,7 @@ export function WizardApp({
     }
     update({ step: 'pushing' });
     try {
-      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: apiHost });
+      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: state.host || apiHost });
       let operation = await client.applyImport(manifest, acknowledgeBreakingChanges);
       try {
         logStep({
@@ -1121,6 +1125,7 @@ export function WizardApp({
             initialSpaceId={state.spaceId}
             initialEnvironmentId={state.environmentId}
             initialCmaToken={state.cmaToken}
+            initialHost={state.host}
             error={state.credentialsError || undefined}
             onConfirm={confirmCredentials}
             onContinue={confirmCredentials}
