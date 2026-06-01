@@ -15,7 +15,3 @@ custom_guidelines:
       path: './.bito/guidelines/repo-truth-and-boundaries.txt'
     - name: 'Domain Invariants'
       path: './.bito/guidelines/domain-invariants.txt'
-  per_language:
-    typescript:
-      name: 'Domain Invariants'
-      path: './.bito/guidelines/domain-invariants.txt'

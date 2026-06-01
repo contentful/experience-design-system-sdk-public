@@ -82,10 +82,12 @@ violations of these rules in any PR.
   introduce SDK or HTTP-API calls into this path — it is a firm constraint.
 - Raw components are passed inline as a JSON block in the prompt, not via a
   file path. PromptOptions.rawComponentsInline is the carrier.
-- The generate components / generate tokens output protocol uses
-  <<<EDS_OUTPUT_START>>> / <<<EDS_OUTPUT_END>>> sentinel markers; the analyze
-  select-agent protocol uses one JSON object per stdout line with no sentinel.
-  Do not mix the two protocols.
+- The generate components / generate tokens output protocol emits one JSON
+  tool-call object per line to stdout, parsed by parseToolCallLines() in
+  agent-runner.ts (no sentinel markers). The analyze select-agent protocol
+  also emits one JSON object per stdout line, parsed by
+  parseSelectToolCallLines(). Do not introduce sentinel-bracketed output
+  for these commands.
 
 ## Build and CI
 
