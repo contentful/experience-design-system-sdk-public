@@ -1,0 +1,98 @@
+Critical technical invariants for the Experience Design System SDK. Flag
+violations of these rules in any PR.
+
+## Public packages (npm)
+
+- The repo ships two public packages from packages/:
+  @contentful/experience-design-system-cli and
+  @contentful/experience-design-system-types.
+- Any non-additive change to types, command flags, exit codes, or stdout
+  contracts in these packages is a breaking change. Flag it as such — the
+  release pipeline triggers a major bump from the BREAKING CHANGE: footer, not
+  from the feat!: shorthand alone, so make sure the footer is present.
+- Conventional Commits are enforced by commitlint at PR-title level.
+  type: fix | feat | feat! map to patch | minor | major.
+- Use chore: only for changes that should not trigger a release (tooling, CI,
+  config). Anything user-facing must be feat: or fix:.
+
+## React extractor (the most failure-prone area)
+
+- The extractor lives at
+  packages/experience-design-system-cli/src/analyze/extract/react.ts. Read the
+  "DOM attribute prop surfacing" section of ARCHITECTURE.md before reviewing
+  changes here.
+- Never call getType().getProperties() on a type that extends a DOM attribute
+  wrapper (HTMLAttributes, ButtonHTMLAttributes, InputHTMLAttributes, SVGProps,
+  etc.). This produces hundreds of inflated props.
+- The EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES map in react.ts controls which DOM
+  wrapper types are intercepted. If a change introduces a new DOM wrapper type
+  without adding it to this map, flag it.
+- Prop count invariants: Button ~32, Input ~28, SVG icon components ~11. If a
+  change to extraction logic could affect these, ask the author to verify.
+- Every code path that processes a "children" property must check the
+  suppressNeverChildrenSlot guard before surfacing it. The guard appears in
+  extractPropsFromTypeSymbols and must also appear in
+  extractPropsFromInterfaceDeclaration's hasExpandableDomHeritage branch. A
+  children prop surfaced without this guard is a bug.
+
+## Pipeline data flow
+
+- All intermediary data between commands flows through the SQLite session
+  database at ~/.contentful/experience-design-system-cli/pipeline.db (override
+  with EDS_PIPELINE_DB_PATH). There are no intermediary JSON files between
+  analyze extract and generate components.
+- If a PR introduces a file-based handoff between pipeline stages, flag it —
+  this is a firm constraint.
+- DatabaseSync (Node's built-in synchronous SQLite) is used throughout. All
+  multi-statement operations must use explicit BEGIN/COMMIT/ROLLBACK so SIGINT
+  cannot leave the DB in a partially-written state. Do not allow async
+  alternatives on this path.
+- Apply-path session state is in a separate import.db at
+  ~/.contentful/experience-design-system-cli/import.db (override with
+  EDS_IMPORT_DB_PATH). Keep these two databases independent.
+- Tests that exercise analyze extract, generate components, or apply push must
+  set EDS_PIPELINE_DB_PATH and EDS_IMPORT_DB_PATH to temp paths to avoid
+  polluting a developer's real DB.
+
+## ESM and TypeScript
+
+- All packages have "type": "module". Imports in TypeScript source use .js
+  extensions. This is correct for ESM + tsc — do not flag it.
+- Ink v4 is ESM-only. Do not introduce require() calls.
+- typescript is a runtime dependency of the CLI (it compiles customer code at
+  analysis time). Do not flag it as misplaced in package.json.
+- The CLI's compiled output lands in dist/src/ (not dist/) due to @nx/js:tsc
+  preserving the src/ prefix. Do not flag dist/src/ paths as incorrect.
+
+## CDF and DTCG mapping (apply path)
+
+- $category === "content" or "state" routes a property to contentProperties[].
+- $category === "design" routes a property to designProperties[]; the outer
+  keys of designProperties are viewport IDs, not property names.
+- DTCG mapping returns { error } for unknown $type values; preserve that
+  contract instead of throwing.
+- The diff phase pre-fetches all remote entities once and deep-compares after
+  stripping sys metadata. Per-entity round-trips for the diff are a regression.
+- The apply push loop must abort on 401/403, retry with backoff on 429, and
+  re-fetch on 409. Do not collapse these into a single retry policy.
+
+## Generate command
+
+- The generate command invokes coding agents as subprocesses only. Do not
+  introduce SDK or HTTP-API calls into this path — it is a firm constraint.
+- Raw components are passed inline as a JSON block in the prompt, not via a
+  file path. PromptOptions.rawComponentsInline is the carrier.
+- The generate components / generate tokens output protocol uses
+  <<<EDS_OUTPUT_START>>> / <<<EDS_OUTPUT_END>>> sentinel markers; the analyze
+  select-agent protocol uses one JSON object per stdout line with no sentinel.
+  Do not mix the two protocols.
+
+## Build and CI
+
+- This is an Nx monorepo. Use pnpm scripts (pnpm build, pnpm test, pnpm lint)
+  or pnpm -F <package> for single-package work. Do not invoke tsc directly.
+- The pre-commit hook runs lint:staged and commitlint. Do not allow PRs that
+  state --no-verify was used to bypass it.
+- nrwl/nx-set-shas drives affected detection. When a base branch was merged
+  before a stacked branch, "no packages changed" can appear — that is expected
+  and not a CI failure to fix in the PR.
