@@ -449,6 +449,7 @@ async function setupContentfulCredentials(): Promise<boolean> {
   const currentSpace = stored.spaceId;
   const currentEnv = stored.environmentId;
   const currentToken = stored.cmaToken;
+  const currentHost = stored.host ?? '';
   const hasAny = !!(currentSpace || currentEnv || currentToken);
 
   if (hasAny) {
@@ -467,6 +468,9 @@ async function setupContentfulCredentials(): Promise<boolean> {
       ok(`CMA Token       ${'•'.repeat(Math.min(currentToken.length, 8))}...`);
     } else {
       warn('CMA Token       (not set)');
+    }
+    if (currentHost) {
+      ok(`API Host        ${currentHost}`);
     }
     info('');
   }
@@ -503,9 +507,20 @@ async function setupContentfulCredentials(): Promise<boolean> {
     return false;
   }
 
-  await writeExperiencesCredentials({ spaceId, environmentId, cmaToken });
+  info('');
+  info('API host: leave blank for the standard endpoint (api.contentful.com).');
+  info('EU-hosted spaces use: https://api.eu.contentful.com');
+  const hostInput = await prompt(
+    `  API host${currentHost ? ` [${currentHost}]` : ' [https://api.contentful.com]'}: `,
+  );
+  const host = hostInput.trim() || currentHost || '';
+
+  await writeExperiencesCredentials({ spaceId, environmentId, cmaToken, ...(host ? { host } : {}) });
   ok(`Credentials saved to ${experiencesCredentialsPath()}`);
-  info('Run experiences import — the credentials step will be pre-filled automatically.');
+  if (host) {
+    ok(`API host set to ${host}`);
+  }
+  info('Run experiences import — credentials will be pre-filled automatically.');
 
   return true;
 }
