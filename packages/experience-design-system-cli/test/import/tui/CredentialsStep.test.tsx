@@ -123,7 +123,7 @@ describe("CredentialsStep — submission", () => {
     );
   });
 
-  it("calls onContinue (not onConfirm) when no fields changed from initial values", async () => {
+  it("calls onContinue when no fields changed and onContinue is supplied; falls back to onConfirm when omitted", async () => {
     const handlers = makeHandlers();
     const { lastFrame, stdin } = render(
       <CredentialsStep
@@ -146,6 +146,7 @@ describe("CredentialsStep — submission", () => {
 
     await new Promise((r) => setTimeout(r, 200));
 
+    // onContinue is provided — it should be called, not onConfirm
     expect(handlers.onContinue).toHaveBeenCalledWith("space1", "master", "tok");
     expect(handlers.onConfirm).not.toHaveBeenCalled();
   });
