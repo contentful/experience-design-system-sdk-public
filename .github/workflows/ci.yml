@@ -89,7 +89,7 @@ jobs:
         run: pnpm affected:build
 
   test-summary:
-    name: Test
+    name: Test Summary
     runs-on: ubuntu-latest
     needs: [lint, test]
     if: always()
