@@ -44,15 +44,10 @@ All intermediate data lives in a local SQLite session database — no JSON files
 
 - **Node.js 24** — run `nvm use` (`.nvmrc` is included)
 - **pnpm 10.27.0+** — `corepack enable && corepack prepare`
-- **GitHub Packages token** — a personal access token with `read:packages` scope for `@contentful`-scoped packages
 - **A coding agent** in `$PATH` for `generate` commands — Claude Code, OpenAI Codex, OpenCode, or Cursor (see [agent setup](packages/experience-design-system-cli/README.md#coding-agent))
 - **A Contentful CMA token** for `apply` commands — set `CONTENTFUL_MANAGEMENT_TOKEN` (see [credentials](packages/experience-design-system-cli/README.md#contentful-credentials))
 
 ```bash
-# Configure GitHub Packages registry
-pnpm config set @contentful:registry https://npm.pkg.github.com
-pnpm config set -- //npm.pkg.github.com/:_authToken <your-github-token>
-
 # Install dependencies
 pnpm install
 

@@ -7,13 +7,6 @@
 | Node.js | 24 (see `.nvmrc`) | Use `nvm use` to switch automatically |
 | pnpm | 10.27.0+ | Run `corepack enable` then `corepack prepare` |
 
-The repo uses GitHub Packages as its npm registry for `@contentful`-scoped packages. You need a GitHub personal access token with `read:packages` scope:
-
-```bash
-pnpm config set @contentful:registry https://npm.pkg.github.com
-pnpm config set -- //npm.pkg.github.com/:_authToken <your-token>
-```
-
 ## Getting Started
 
 ```bash
