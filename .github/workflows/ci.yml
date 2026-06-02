@@ -118,10 +118,16 @@ jobs:
     steps:
       - name: Retrieve Secrets from Vault
         id: vault
-        uses: contentful/vault-github-actions/action@v1
+        uses: hashicorp/vault-action@v4.0.0
         with:
           url: ${{ secrets.VAULT_URL }}
-          template-preset: semantic-release
+          role: ${{ github.event.repository.name }}-github-action
+          method: jwt
+          path: github-actions
+          exportEnv: false
+          secrets: |
+            github/token/${{ github.event.repository.name }}-semantic-release token | GITHUB_TOKEN ;
+            secret/data/github/github_packages_write GITHUB_PACKAGES_WRITE_TOKEN | GITHUB_PACKAGES_WRITE_TOKEN ;
 
       - name: Checkout
         uses: actions/checkout@v6
