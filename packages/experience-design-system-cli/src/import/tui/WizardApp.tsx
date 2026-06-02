@@ -556,9 +556,9 @@ export function WizardApp({
     void runPreview(sid, tp, state.spaceId, state.environmentId, state.cmaToken);
   };
 
-  const confirmCredentials = (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
+  const confirmCredentials = (spaceId: string, environmentId: string, cmaToken: string) => {
     credentialsRef.current = { spaceId, environmentId, cmaToken };
-    update({ spaceId, environmentId, cmaToken, host, step: 'credential-test-gate' });
+    update({ spaceId, environmentId, cmaToken, step: 'credential-test-gate' });
   };
 
   const validateCredentials = async (spaceId: string, environmentId: string, cmaToken: string) => {
@@ -1125,7 +1125,6 @@ export function WizardApp({
             initialSpaceId={state.spaceId}
             initialEnvironmentId={state.environmentId}
             initialCmaToken={state.cmaToken}
-            initialHost={state.host}
             error={state.credentialsError || undefined}
             onConfirm={confirmCredentials}
             onContinue={confirmCredentials}
