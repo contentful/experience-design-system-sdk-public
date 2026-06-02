@@ -12,6 +12,8 @@ analyze extract   →   analyze select-agent   →   generate components   →  
 
 `analyze select-agent` uses an AI agent to decide which extracted components belong in Contentful Experience Orchestration. You can substitute it with `analyze select` for manual/pattern-based selection.
 
+**Determinism boundary.** `analyze extract` is fully deterministic: ts-morph AST parsing produces the same component list and prop shape on every run, then a deterministic pre-classifier and a structural non-authorable filter (see below) shape the output. AI enters the pipeline at `analyze select-agent` and `generate components`, where coding agents make per-component decisions. This split keeps the extracted artifact reproducible and inspectable — if an extracted component looks wrong, the cause is in the rules, not in agent variability.
+
 All intermediate data flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). No JSON files are written between steps — each command reads its inputs from the session and writes its outputs back to it. Use `print` to export session data to JSON files on demand (e.g. for inspection or manual validation).
 
 ---
@@ -90,6 +92,18 @@ experience-design-system-cli analyze extract --project <path> [--dir <src-dir>]
 Scans `.tsx`, `.ts`, `.jsx`, `.js`, `.vue`, and `.astro` files. Ignores `node_modules`, `dist`, `build`, `.next`, `.nuxt`, `coverage`, `storybook-static`, and `out` directories. Also ignores `*.stories.*`, `*.story.*`, `*.spec.*`, and `*.test.*` files.
 
 Writes extracted components to the session database and prints `session=<id>` to stdout. In an interactive terminal, a scrollable TUI displays the extraction summary (including a warning for any components with 0 props and 0 slots); press `q` or `Enter` to exit.
+
+#### Non-authorable component filter
+
+Before storing components, `analyze extract` runs a deterministic filter that drops infrastructure components which have no authoring surface (Context providers, analytics shims, security utilities, layout helpers). The filter uses prop-shape signals only — no component-name or source-path patterns — so it works regardless of how a host repo organizes its design system. A component is dropped if **any** of:
+
+1. Zero props and zero slots.
+2. Source calls `createContext()` and the component has a prop literally named `value`.
+3. Source calls `createContext()` and the component has zero props.
+4. Source calls `createContext()` and the component has exactly one non-handler prop.
+5. Every prop is a handler or ref (function-typed, `EventHandler`, `Dispatch`, `SetStateAction`, `Ref<>`, name starts with `on`/`set`, or named `ref`/`innerRef`).
+
+Each dropped component is reported as a warning (`Skipped non-authorable component: <Name> (<reason>)`) so the operator can audit. The rule set was selected via Monte-Carlo evaluation against a hand-labelled corpus to maximize precision (zero false positives) over recall — components that look like normal authoring surface but are actually infrastructure are deferred to the AI selection stage rather than dropped here.
 
 ---
 
