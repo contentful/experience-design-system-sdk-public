@@ -68,14 +68,15 @@ function promptSecret(question: string): Promise<string> {
     });
     let value = '';
     process.stdout.write(question);
+    let origWrite: ((s: string) => void) | null = null;
     if (process.stdin.isTTY) {
       // Intercept the readline output write so we can replace echoed chars with *
-      const origWrite = (rl as unknown as { output: { write: (s: string) => void } }).output.write.bind(
+      origWrite = (rl as unknown as { output: { write: (s: string) => void } }).output.write.bind(
         (rl as unknown as { output: NodeJS.WriteStream }).output,
       );
       (rl as unknown as { output: { write: (s: string) => void } }).output.write = (s: string) => {
         // Allow newline through; suppress everything else (the echoed characters)
-        if (s === '\r\n' || s === '\n' || s === '\r') origWrite(s);
+        if (s === '\r\n' || s === '\n' || s === '\r') origWrite!(s);
       };
     }
     rl.on('line', (line) => {
@@ -83,7 +84,14 @@ function promptSecret(question: string): Promise<string> {
       rl.close();
     });
     rl.once('close', () => {
+      // Restore stdout.write before resolving — the interceptor patches rl.output.write
+      // which is process.stdout.write, so without restoring it all subsequent output is swallowed.
+      if (origWrite) {
+        (rl as unknown as { output: { write: (s: string) => void } }).output.write = origWrite;
+      }
       process.stdout.write('\n');
+      // rl.close() pauses stdin; resume it so subsequent prompt() calls work.
+      process.stdin.resume();
       resolve(value);
     });
   });
