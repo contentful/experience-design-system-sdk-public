@@ -32,6 +32,12 @@ export interface RawComponentDefinition {
   framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil';
   props: RawPropDefinition[];
   slots: RawSlotDefinition[];
+  /**
+   * True when the source file declaring this component calls
+   * React.createContext / createContext. Used downstream to filter
+   * non-authorable context-provider components.
+   */
+  usesCreateContext?: boolean;
 }
 
 export interface ComponentExtractionResult {

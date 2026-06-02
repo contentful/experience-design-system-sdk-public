@@ -15,7 +15,6 @@ export type AnalyzeViewResult = {
     warnings: string[];
   }>;
   totalWarnings: number;
-  zeroPropComponents?: Array<{ name: string; source: string }>;
 };
 
 type AnalyzeViewProps = {
@@ -80,24 +79,6 @@ export function AnalyzeView({ result, onExit }: AnalyzeViewProps): React.ReactEl
             )}
           </Box>
         ))}
-        {result.zeroPropComponents && result.zeroPropComponents.length > 0 && (
-          <>
-            <Text> </Text>
-            <Text dimColor>{'─'.repeat(70)}</Text>
-            <Text bold color="yellow">
-              {'Zero-prop components (' + result.zeroPropComponents.length + ')'}
-            </Text>
-            <Text dimColor>{'─'.repeat(70)}</Text>
-            <Text color="yellow">{'  These may be Storybook stories, context providers, or SSR utilities.'}</Text>
-            <Text color="yellow">{'  Review them in `analyze select` before generating.'}</Text>
-            <Text> </Text>
-            {result.zeroPropComponents.map((c) => (
-              <Text key={c.name} color="yellow">
-                {'  ' + c.name + ' (' + c.source + ')'}
-              </Text>
-            ))}
-          </>
-        )}
         {result.totalWarnings > 0 && (
           <>
             <Text> </Text>
