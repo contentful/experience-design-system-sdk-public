@@ -33,10 +33,10 @@ All intermediate data lives in a local SQLite session database — no JSON files
 
 ## Packages
 
-| Package | Description |
-|---|---|
-| [`@contentful/experience-design-system-cli`](packages/experience-design-system-cli/) | The CLI + interactive TUI — analyze, review, generate, validate, and push component definitions |
-| [`@contentful/experience-design-system-types`](packages/experience-design-system-types/) | Shared TypeScript types and Zod schemas for the CDF and DTCG data formats |
+| Package                                                                                  | Description                                                                                     |
+| ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [`@contentful/experience-design-system-cli`](packages/experience-design-system-cli/)     | The CLI + interactive TUI — analyze, review, generate, validate, and push component definitions |
+| [`@contentful/experience-design-system-types`](packages/experience-design-system-types/) | Shared TypeScript types and Zod schemas for the CDF and DTCG data formats                       |
 
 ## Quick Start
 
@@ -98,56 +98,22 @@ experiences apply push \
 
 Full documentation — every flag, every subcommand — is in [`packages/experience-design-system-cli/README.md`](packages/experience-design-system-cli/README.md).
 
-| Command | What it does |
-|---|---|
-| `experiences analyze extract` | Scan source files and extract raw component definitions |
-| `experiences analyze select` | Interactively pick which components to include (TUI) |
-| `experiences analyze select-agent` | AI agent picks which components belong in Experiences |
-| `experiences generate components` | AI agent generates CDF definitions from raw analysis |
-| `experiences generate tokens` | AI agent generates DTCG design tokens from raw token data |
-| `experiences apply preview` | Read-only diff — what would change in Contentful |
-| `experiences apply select` | Checkbox TUI to pick a subset of entities to push |
-| `experiences apply push` | Write component types and design tokens to Contentful |
-| `experiences import` | Run the full pipeline in one command |
-| `experiences print components` | Export generated components to `components.json` |
-| `experiences print tokens` | Export generated tokens to `tokens.json` |
-| `experiences print validate` | Validate CDF or DTCG files against their schemas |
-| `experiences session list` | List pipeline sessions |
-| `experiences session show <id>` | Show all steps for a session |
-| `experiences session stats` | Show aggregate storage and record counts |
-| `experiences session prune` | Delete old sessions |
-| `experiences doctor` | Health check — verify Node version, credentials, and agent binaries |
-
-## Development
-
-```bash
-# Build all packages
-pnpm build
-
-# Run all tests
-pnpm test
-
-# Lint all packages
-pnpm lint
-
-# Affected-only variants (faster for local iteration)
-pnpm affected:build
-pnpm affected:test
-pnpm affected:lint
-
-# Single package
-pnpm -F @contentful/experience-design-system-cli build
-pnpm -F @contentful/experience-design-system-cli test
-```
-
-Run the CLI directly from source:
-
-```bash
-node packages/experience-design-system-cli/bin/cli.js --help
-```
-
-## Releases
-
-Releases are automated on merge to `main` via Nx Release + GitHub Packages. Commit type determines version bump: `fix` → patch, `feat` → minor, `feat!` → major. Dev prereleases are published from PRs automatically.
-
-All commit messages must follow [Conventional Commits](https://www.conventionalcommits.org/).
+| Command                            | What it does                                                        |
+| ---------------------------------- | ------------------------------------------------------------------- |
+| `experiences analyze extract`      | Scan source files and extract raw component definitions             |
+| `experiences analyze select`       | Interactively pick which components to include (TUI)                |
+| `experiences analyze select-agent` | AI agent picks which components belong in Experiences               |
+| `experiences generate components`  | AI agent generates CDF definitions from raw analysis                |
+| `experiences generate tokens`      | AI agent generates DTCG design tokens from raw token data           |
+| `experiences apply preview`        | Read-only diff — what would change in Contentful                    |
+| `experiences apply select`         | Checkbox TUI to pick a subset of entities to push                   |
+| `experiences apply push`           | Write component types and design tokens to Contentful               |
+| `experiences import`               | Run the full pipeline in one command                                |
+| `experiences print components`     | Export generated components to `components.json`                    |
+| `experiences print tokens`         | Export generated tokens to `tokens.json`                            |
+| `experiences print validate`       | Validate CDF or DTCG files against their schemas                    |
+| `experiences session list`         | List pipeline sessions                                              |
+| `experiences session show <id>`    | Show all steps for a session                                        |
+| `experiences session stats`        | Show aggregate storage and record counts                            |
+| `experiences session prune`        | Delete old sessions                                                 |
+| `experiences doctor`               | Health check — verify Node version, credentials, and agent binaries |
