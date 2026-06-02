@@ -1,0 +1,13 @@
+name: Release Guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  merge_group:
+
+jobs:
+  wait-for-releases:
+    name: Wait for ongoing releases
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Release concurrency is handled by the release job in ci.yml"
