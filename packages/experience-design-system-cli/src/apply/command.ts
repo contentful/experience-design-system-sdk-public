@@ -1,5 +1,5 @@
-import { createElement } from 'react';
-import { render } from 'ink';
+import React, { createElement, useState } from 'react';
+import { render, useInput } from 'ink';
 import { access, readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Command } from 'commander';
@@ -16,8 +16,6 @@ import { openPipelineDb, loadCDFComponents } from '../session/db.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
 import { ServerPreviewApp, ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
 import { SelectView, makeSelectKey, type SelectableEntity } from './tui/SelectView.js';
-import React, { useState } from 'react';
-import { useInput } from 'ink';
 
 function die(message: string): never {
   process.stderr.write(`${message}\n`);
