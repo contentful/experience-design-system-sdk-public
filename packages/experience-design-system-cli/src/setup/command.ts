@@ -89,7 +89,8 @@ function promptSecret(question: string): Promise<string> {
       if (origWrite) {
         (rl as unknown as { output: { write: (s: string) => void } }).output.write = origWrite;
       }
-      process.stdout.write('\n');
+      // In TTY mode readline already emitted \n when Enter was pressed; only add one in non-TTY.
+      if (!process.stdin.isTTY) process.stdout.write('\n');
       // rl.close() pauses stdin; resume it so subsequent prompt() calls work.
       process.stdin.resume();
       resolve(value);
