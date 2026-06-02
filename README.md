@@ -11,23 +11,19 @@ Tools for extracting, validating, reviewing, and importing design system compone
 
 ## Quick Start
 
-### Prerequisites
-
-- Node.js 24 (see `.nvmrc` — use `nvm use` to switch automatically)
-- pnpm 10.27.0+ (`corepack enable && corepack prepare`)
-- A coding agent CLI in `$PATH` for `generate` commands (Claude Code, OpenAI Codex, OpenCode, or Cursor — see [agent setup](packages/experience-design-system-cli/README.md#prerequisites))
-- A Contentful CMA token for `apply` commands — set `CONTENTFUL_MANAGEMENT_TOKEN` (see [Contentful credentials](packages/experience-design-system-cli/README.md#prerequisites))
+### Install
 
 ```bash
-# Install dependencies
-pnpm install
-
-# Build all packages (also links experiences / exo to your PATH via postbuild)
-pnpm build
-
-# Verify the CLI is available
-experiences --help
+npm install -g @contentful/experience-design-system-cli
 ```
+
+This puts `experiences` (and the aliases `exo` and `experience-design-system-cli`) on your PATH.
+
+### Prerequisites
+
+- **Node.js 22.5+** — required for the built-in SQLite module (`node:sqlite`)
+- **A coding agent** in `$PATH` for `generate` commands — Claude Code, OpenAI Codex, OpenCode, or Cursor (see [agent setup](packages/experience-design-system-cli/README.md#coding-agent))
+- **A Contentful CMA token** for `apply` commands — set `CONTENTFUL_MANAGEMENT_TOKEN` (see [Contentful credentials](packages/experience-design-system-cli/README.md#contentful-credentials))
 
 ### Using the CLI
 
@@ -88,17 +84,22 @@ See [`packages/experience-design-system-cli/README.md`](packages/experience-desi
 
 ## Development
 
+To contribute, clone the repo and install from source:
+
 ```bash
-# Build all packages
-pnpm build
+git clone https://github.com/contentful/experience-design-system-sdk-public.git
+cd experience-design-system-sdk-public
+pnpm install
+pnpm build   # compiles dist/ and symlinks experiences / exo to your PATH
+```
 
-# Run all tests
+Common tasks:
+
+```bash
 pnpm test
-
-# Lint all packages
 pnpm lint
 
-# Affected-only (faster for local iteration)
+# Affected-only (faster for PRs)
 pnpm affected:build
 pnpm affected:test
 pnpm affected:lint
@@ -108,11 +109,13 @@ pnpm -F @contentful/experience-design-system-cli build
 pnpm -F @contentful/experience-design-system-cli test
 ```
 
-Run the CLI directly from source without relying on PATH symlinks:
+If the PATH symlinks fail, run the CLI directly from source:
 
 ```bash
 node packages/experience-design-system-cli/bin/cli.js --help
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contributor guide.
 
 ## Releases
 
