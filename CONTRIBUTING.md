@@ -7,13 +7,6 @@
 | Node.js | 24 (see `.nvmrc`) | Use `nvm use` to switch automatically |
 | pnpm | 10.27.0+ | Run `corepack enable` then `corepack prepare` |
 
-The repo uses GitHub Packages as its npm registry for `@contentful`-scoped packages. You need a GitHub personal access token with `read:packages` scope:
-
-```bash
-pnpm config set @contentful:registry https://npm.pkg.github.com
-pnpm config set -- //npm.pkg.github.com/:_authToken <your-token>
-```
-
 ## Getting Started
 
 ```bash
@@ -38,9 +31,6 @@ pnpm typecheck
 packages/
   experience-design-system-cli/    # CLI + TUI
   experience-design-system-types/  # Shared types and schemas
-docs/
-  adr/                             # Architecture Decision Records
-  specs/                           # Feature specifications
 .github/workflows/                 # CI/CD pipelines
 scripts/                           # Release automation
 ```
@@ -69,17 +59,16 @@ pnpm -F @contentful/experience-design-system-cli lint:fix
 
 ### Running the CLI locally
 
-After building, the CLI is available at:
+`pnpm build` runs a `postbuild` hook that symlinks `experiences`, `exo`, and `experience-design-system-cli` into your global npm bin directory. After building, all three commands are available on your PATH:
+
+```bash
+experiences --help
+```
+
+If the symlink step fails (e.g. permission error on the global bin dir), run the CLI directly from source:
 
 ```bash
 node packages/experience-design-system-cli/bin/cli.js --help
-```
-
-Or install it globally from the local build:
-
-```bash
-npm install -g packages/experience-design-system-cli
-experience-design-system-cli --help
 ```
 
 ### Testing the analyze command against a real codebase
@@ -155,16 +144,6 @@ Commit the updated snapshot files alongside the code change.
 2. Register it in `src/analyze/extract/pipeline.ts` — add to the `extractors` array and provide a `fileFilter`
 3. Write tests in `test/analyze/extract/<framework>.test.ts`
 
-## Architecture Decision Records
-
-Significant technical decisions are documented as ADRs in `docs/adr/`. When you make a decision that future contributors would need to understand (a non-obvious trade-off, a deliberate restriction, a workaround for an external constraint), write an ADR:
-
-1. Copy the format from `docs/adr/README.md`
-2. Name it `docs/adr/YYYY-MM-DD-short-title.md`
-3. Add it to the index table in `docs/adr/README.md`
-
-ADRs are written at decision time and not retroactively updated. If a decision is reversed, write a new ADR that supersedes the old one.
-
 ## Branching and Deployment
 
 - `main` — production; release on every push
@@ -186,8 +165,6 @@ All CI runs via GitHub Actions (`.github/workflows/ci.yml`):
 |---|---|---|
 | `lint` | PR, merge group, push to main | ESLint + Prettier via `pnpm affected:lint` |
 | `test` | PR, merge group, push to main | Vitest + TypeScript compile via `pnpm affected:test` |
-| `release` | Push to main (non-bot) | `pnpm release-packages` → semantic release to GitHub Packages |
-| `release-dev` | PR, non-main push | `pnpm release-development-packages` → prerelease version |
 
 Nx affected detection uses `nrwl/nx-set-shas` to compare `NX_BASE..NX_HEAD`. Only packages with changed files run lint/test/build.
 
@@ -195,10 +172,10 @@ Releases follow [Conventional Commits](https://www.conventionalcommits.org/): `f
 
 ## Release Process
 
-Releases are fully automated. On every merge to `main`:
+Releases are fully automated. On every merge to `main` in the source repo:
 
 1. CI runs lint + test
-2. If passing, `pnpm release-packages` runs Nx Release, which reads conventional commit history to determine the version bump, tags the release, and publishes to GitHub Packages
+2. If passing, Nx Release reads conventional commit history to determine the version bump, tags the release, and publishes to [npmjs.com](https://www.npmjs.com/package/@contentful/experience-design-system-cli)
 
 **You do not manually bump versions or create tags.** The commit type determines the version:
 
@@ -208,4 +185,4 @@ Releases are fully automated. On every merge to `main`:
 | `feat` | minor (0.x.0) |
 | `feat!` or `BREAKING CHANGE` footer | major (x.0.0) |
 
-Dev prereleases are published automatically from PRs and non-main branches with a `0.0.0-dev-build-<sha>` identifier.
+Dev prereleases are published automatically from PRs with a `0.0.0-dev-build-<sha>` identifier.

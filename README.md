@@ -15,23 +15,18 @@ Tools for extracting, validating, reviewing, and importing design system compone
 
 - Node.js 24 (see `.nvmrc` — use `nvm use` to switch automatically)
 - pnpm 10.27.0+ (`corepack enable && corepack prepare`)
-- GitHub personal access token with `read:packages` scope (for `@contentful`-scoped packages)
 - A coding agent CLI in `$PATH` for `generate` commands (Claude Code, OpenAI Codex, OpenCode, or Cursor — see [agent setup](packages/experience-design-system-cli/README.md#prerequisites))
 - A Contentful CMA token for `apply` commands — set `CONTENTFUL_MANAGEMENT_TOKEN` (see [Contentful credentials](packages/experience-design-system-cli/README.md#prerequisites))
 
 ```bash
-# Configure GitHub Packages registry
-pnpm config set @contentful:registry https://npm.pkg.github.com
-pnpm config set -- //npm.pkg.github.com/:_authToken <your-token>
-
 # Install dependencies
 pnpm install
 
-# Build all packages
+# Build all packages (also links experiences / exo to your PATH via postbuild)
 pnpm build
 
-# Run tests
-pnpm test
+# Verify the CLI is available
+experiences --help
 ```
 
 ### Using the CLI
@@ -44,28 +39,28 @@ All intermediate data flows through a local SQLite session database — no JSON 
 
 ```bash
 # 1. Extract component definitions from a project (stores results in session DB, prints session=<id>)
-experience-design-system-cli analyze extract --project /path/to/your/lib
+experiences analyze extract --project /path/to/your/lib
 
-# 2. Interactively review and select components for generation
-experience-design-system-cli analyze select
+# 2. AI agent picks which components belong in Experience Orchestration
+experiences analyze select-agent --agent claude
 
 # 3. Invoke a coding agent to generate CDF component definitions (stored in session DB)
-experience-design-system-cli generate components --agent claude
+experiences generate components --agent claude
 
 # 4. Preview what will be created/updated in Contentful (reads from session DB, no writes)
-experience-design-system-cli apply preview \
+experiences apply preview \
   --session <id> \
   --space-id $CONTENTFUL_SPACE_ID \
   --environment-id master
 
 # 5. (Optional) Interactively select a subset of entities to push
-experience-design-system-cli apply select \
+experiences apply select \
   --session <id> \
   --space-id $CONTENTFUL_SPACE_ID \
   --environment-id master
 
 # 6. Push entities to Contentful ExO (reads from session DB)
-experience-design-system-cli apply push \
+experiences apply push \
   --session <id> \
   --space-id $CONTENTFUL_SPACE_ID \
   --environment-id master
@@ -74,7 +69,7 @@ experience-design-system-cli apply push \
 **Or run the full pipeline in one command:**
 
 ```bash
-experience-design-system-cli import \
+experiences import \
   --project /path/to/your/lib \
   --space-id $CONTENTFUL_SPACE_ID \
   --environment-id master \
@@ -90,8 +85,6 @@ See [`packages/experience-design-system-cli/README.md`](packages/experience-desi
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System overview, package structure, data formats, extractor internals, CI/CD |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, workflow, testing, commit convention, release process |
 | [AGENTS.md](AGENTS.md) | What AI coding agents need to know — sharp edges, invariants, gotchas |
-| [docs/adr/](docs/adr/) | Architecture Decision Records — why significant decisions were made |
-| [docs/specs/](docs/specs/) | Feature specifications |
 
 ## Development
 
@@ -115,8 +108,14 @@ pnpm -F @contentful/experience-design-system-cli build
 pnpm -F @contentful/experience-design-system-cli test
 ```
 
+Run the CLI directly from source without relying on PATH symlinks:
+
+```bash
+node packages/experience-design-system-cli/bin/cli.js --help
+```
+
 ## Releases
 
-Releases are automated on merge to `main` via Nx Release + GitHub Packages. Commit type determines version bump: `fix` → patch, `feat` → minor, `feat!` → major. Dev prereleases are published from PRs automatically.
+Releases are published to [npmjs.com](https://www.npmjs.com/package/@contentful/experience-design-system-cli). Commit type determines version bump: `fix` → patch, `feat` → minor, `feat!` → major.
 
 All commit messages must follow [Conventional Commits](https://www.conventionalcommits.org/).
