@@ -102,3 +102,74 @@ jobs:
           if [[ "${{ needs.lint.result }}" == "failure" || "${{ needs.test.result }}" == "failure" ]]; then
             exit 1
           fi
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    if: >-
+      (github.ref == 'refs/heads/main' && github.event_name == 'push' && github.event.head_commit.author.name != 'contentful-automation[bot]') ||
+      (github.ref != 'refs/heads/main' && github.event_name == 'push') ||
+      github.event_name == 'pull_request'
+    permissions:
+      contents: write
+      id-token: write
+      actions: read
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Retrieve Secrets from Vault
+        id: vault
+        uses: hashicorp/vault-action@v4.0.0
+        with:
+          url: ${{ secrets.VAULT_URL }}
+          role: ${{ github.event.repository.name }}-github-action
+          method: jwt
+          path: github-actions
+          exportEnv: false
+          secrets: |
+            github/token/${{ github.event.repository.name }}-semantic-release token | GITHUB_TOKEN ;
+            secret/data/github/github_packages_write GITHUB_PACKAGES_WRITE_TOKEN | GITHUB_PACKAGES_WRITE_TOKEN ;
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ steps.vault.outputs.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config --global user.name "contentful-automation[bot]"
+          user_id=$(gh api "/users/contentful-automation[bot]" --jq .id)
+          git config --global user.email "${user_id}+contentful-automation[bot]@users.noreply.github.com"
+        env:
+          GITHUB_TOKEN: ${{ steps.vault.outputs.GITHUB_TOKEN }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "lts/*"
+
+      - name: Install dependencies
+        run: |
+          pnpm config set @contentful:registry https://npm.pkg.github.com
+          pnpm config set -- //npm.pkg.github.com/:_authToken ${{ steps.vault.outputs.GITHUB_PACKAGES_WRITE_TOKEN }}
+          pnpm install --frozen-lockfile
+
+      - name: Set NX SHAs
+        uses: nrwl/nx-set-shas@v5
+
+      - name: Pull latest changes from main
+        if: github.ref == 'refs/heads/main'
+        run: git pull --rebase origin main
+
+      - name: Release
+        run: pnpm release
+        env:
+          GITHUB_TOKEN: ${{ steps.vault.outputs.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ steps.vault.outputs.GITHUB_PACKAGES_WRITE_TOKEN }}

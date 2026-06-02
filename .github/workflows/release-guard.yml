@@ -9,47 +9,5 @@ jobs:
   wait-for-releases:
     name: Wait for ongoing releases
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
     steps:
-      - name: Wait for running release workflows
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const maxWaitMinutes = 30;
-            const pollIntervalSeconds = 30;
-            const maxIterations = (maxWaitMinutes * 60) / pollIntervalSeconds;
-            
-            for (let i = 0; i < maxIterations; i++) {
-              const { data: runs } = await github.rest.actions.listWorkflowRuns({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id: 'ci.yml',
-                status: 'in_progress',
-                branch: 'main'
-              });
-              
-              const releaseJobs = runs.workflow_runs.filter(run => {
-                return run.event === 'push' && run.head_branch === 'main';
-              });
-              
-              if (releaseJobs.length === 0) {
-                console.log('No release workflows currently in progress. Safe to merge.');
-                return;
-              }
-              
-              console.log(`Waiting for ${releaseJobs.length} release workflow(s) to complete...`);
-              console.log('Running releases:', releaseJobs.map(r => ({
-                id: r.id,
-                name: r.name,
-                started: r.created_at,
-                url: r.html_url
-              })));
-              
-              if (i < maxIterations - 1) {
-                console.log(`Checking again in ${pollIntervalSeconds} seconds...`);
-                await new Promise(resolve => setTimeout(resolve, pollIntervalSeconds * 1000));
-              }
-            }
-            
-            core.setFailed(`Timed out after ${maxWaitMinutes} minutes waiting for release workflows to complete.`);
+      - run: echo "Release concurrency is handled by the release job in ci.yml"
