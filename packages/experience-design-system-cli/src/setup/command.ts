@@ -512,7 +512,6 @@ async function setupContentfulCredentials(): Promise<boolean> {
     warn('Space ID and CMA token are required. Skipped.');
     return false;
   }
-
   const hostInput = await prompt(`  API host [${currentHost || 'https://api.contentful.com'}]: `);
   const host = hostInput.trim() || currentHost || '';
 
