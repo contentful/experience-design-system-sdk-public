@@ -36,6 +36,7 @@ jobs:
           exportEnv: false
           secrets: |
             github/token/${{ github.event.repository.name }}-semantic-release token | GITHUB_TOKEN ;
+            secret/data/npm/contentful-publish token | NPM_TOKEN ;
 
       - name: Resolve version
         id: version
@@ -82,13 +83,13 @@ jobs:
         if: ${{ inputs.dry_run != true }}
         run: pnpm --filter @contentful/experience-design-system-types publish --access public --no-git-checks
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ steps.vault.outputs.NPM_TOKEN }}
 
       - name: Publish @contentful/experience-design-system-cli
         if: ${{ inputs.dry_run != true }}
         run: pnpm --filter @contentful/experience-design-system-cli publish --access public --no-git-checks
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ steps.vault.outputs.NPM_TOKEN }}
 
       - name: Dry run — show what would be published
         if: ${{ inputs.dry_run == true }}
