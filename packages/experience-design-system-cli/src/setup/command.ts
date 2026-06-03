@@ -11,6 +11,7 @@ import {
   writeExperiencesCredentials,
   experiencesCredentialsPath,
 } from '../credentials-store.js';
+import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -45,7 +46,15 @@ function dim(msg: string): void {
 
 // ── Prompt helpers ────────────────────────────────────────────────────────────
 
+function isInteractivePromptSession(): boolean {
+  return !!(process.stdin.isTTY && process.stdout.isTTY);
+}
+
 function prompt(question: string): Promise<string> {
+  if (!isInteractivePromptSession()) {
+    return Promise.resolve('');
+  }
+
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve) => {
     rl.question(question, (answer) => {
@@ -56,6 +65,10 @@ function prompt(question: string): Promise<string> {
 }
 
 function promptSecret(question: string): Promise<string> {
+  if (!isInteractivePromptSession()) {
+    return Promise.resolve('');
+  }
+
   // Use readline for all prompts — mixing raw-mode stdin listeners with
   // readline createInterface causes readline to buffer+unshift unconsumed
   // input back onto the stream, which the raw listener then re-reads,
@@ -68,14 +81,15 @@ function promptSecret(question: string): Promise<string> {
     });
     let value = '';
     process.stdout.write(question);
+    let origWrite: ((s: string) => void) | null = null;
     if (process.stdin.isTTY) {
       // Intercept the readline output write so we can replace echoed chars with *
-      const origWrite = (rl as unknown as { output: { write: (s: string) => void } }).output.write.bind(
+      origWrite = (rl as unknown as { output: { write: (s: string) => void } }).output.write.bind(
         (rl as unknown as { output: NodeJS.WriteStream }).output,
       );
       (rl as unknown as { output: { write: (s: string) => void } }).output.write = (s: string) => {
         // Allow newline through; suppress everything else (the echoed characters)
-        if (s === '\r\n' || s === '\n' || s === '\r') origWrite(s);
+        if (s === '\r\n' || s === '\n' || s === '\r') origWrite!(s);
       };
     }
     rl.on('line', (line) => {
@@ -83,13 +97,25 @@ function promptSecret(question: string): Promise<string> {
       rl.close();
     });
     rl.once('close', () => {
-      process.stdout.write('\n');
+      // Restore stdout.write before resolving — the interceptor patches rl.output.write
+      // which is process.stdout.write, so without restoring it all subsequent output is swallowed.
+      if (origWrite) {
+        (rl as unknown as { output: { write: (s: string) => void } }).output.write = origWrite;
+      }
+      // In TTY mode readline already emitted \n when Enter was pressed; only add one in non-TTY.
+      if (!process.stdin.isTTY) process.stdout.write('\n');
+      // rl.close() pauses stdin; resume it so subsequent prompt() calls work.
+      process.stdin.resume();
       resolve(value);
     });
   });
 }
 
 async function confirm(question: string, defaultYes = true): Promise<boolean> {
+  if (!isInteractivePromptSession()) {
+    return false;
+  }
+
   const hint = defaultYes ? '[Y/n]' : '[y/N]';
   const answer = await prompt(`  ${question} ${hint} `);
   if (!answer) return defaultYes;
@@ -449,6 +475,8 @@ async function setupContentfulCredentials(): Promise<boolean> {
   const currentSpace = stored.spaceId;
   const currentEnv = stored.environmentId;
   const currentToken = stored.cmaToken;
+  const storedHost = stored.host;
+  const currentHost = storedHost ?? DEFAULT_CONFIGURED_HOST;
   const hasAny = !!(currentSpace || currentEnv || currentToken);
 
   if (hasAny) {
@@ -468,6 +496,7 @@ async function setupContentfulCredentials(): Promise<boolean> {
     } else {
       warn('CMA Token       (not set)');
     }
+    ok(`API Host        ${currentHost}`);
     info('');
   }
 
@@ -502,10 +531,13 @@ async function setupContentfulCredentials(): Promise<boolean> {
     warn('Space ID and CMA token are required. Skipped.');
     return false;
   }
+  const hostInput = await prompt(`  API host [${currentHost}]: `);
+  const host = toConfiguredHost(hostInput) ?? storedHost;
 
-  await writeExperiencesCredentials({ spaceId, environmentId, cmaToken });
+  await writeExperiencesCredentials({ spaceId, environmentId, cmaToken, ...(host ? { host } : {}) });
   ok(`Credentials saved to ${experiencesCredentialsPath()}`);
-  info('Run experiences import — the credentials step will be pre-filled automatically.');
+  ok(`API host set to ${host ?? DEFAULT_CONFIGURED_HOST}`);
+  info('Run experiences import — credentials will be pre-filled automatically.');
 
   return true;
 }

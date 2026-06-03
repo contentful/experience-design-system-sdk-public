@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { resolve, join } from 'node:path';
 import { runPipeline } from './orchestrator.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
+import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 
 export function registerImportCommand(program: Command): void {
   program
@@ -81,6 +82,7 @@ export function registerImportCommand(program: Command): void {
             initialSpaceId?: string;
             initialEnvironmentId?: string;
             initialCmaToken?: string;
+            initialHost?: string;
             initialAgent?: string;
             initialProjectPath?: string;
             host?: string;
@@ -91,6 +93,7 @@ export function registerImportCommand(program: Command): void {
               initialSpaceId: creds.spaceId,
               initialEnvironmentId: creds.environmentId || 'master',
               initialCmaToken: creds.cmaToken,
+              initialHost: toConfiguredHost(opts.host ?? creds.host) ?? DEFAULT_CONFIGURED_HOST,
               initialAgent: opts.agent !== 'claude' ? opts.agent : undefined,
               initialProjectPath: opts.project !== '.' ? resolve(opts.project) : undefined,
               host: opts.host,

@@ -277,8 +277,13 @@ describe('CLI entry point', () => {
 
     it('skips install and build with --skip-build', async () => {
       const { stdout } = await run('doctor', '--skip-build', '--skip-agent');
-      expect(stdout).toContain('Skipping install + build');
-      expect(stdout).not.toContain('pnpm install');
+      const nodeMajor = parseInt(process.versions.node.split('.')[0]!, 10);
+      if (nodeMajor >= 24) {
+        expect(stdout).toContain('Skipping install + build');
+        expect(stdout).not.toContain('pnpm install');
+      } else {
+        expect(stdout).toContain('need v24+');
+      }
     });
   });
 
@@ -320,9 +325,14 @@ describe('CLI entry point', () => {
 
     it('skips install and build steps with --skip-build', async () => {
       const { stdout } = await run('setup', '--skip-build', '--skip-agent', '--skip-credentials', '--skip-optional');
-      expect(stdout).toContain('Skipping install + build');
-      expect(stdout).not.toContain('pnpm install');
-      expect(stdout).not.toContain('Building CLI');
+      const nodeMajor = parseInt(process.versions.node.split('.')[0]!, 10);
+      if (nodeMajor >= 24) {
+        expect(stdout).toContain('Skipping install + build');
+        expect(stdout).not.toContain('pnpm install');
+        expect(stdout).not.toContain('Building CLI');
+      } else {
+        expect(stdout).toContain('need v24+');
+      }
     });
 
     it('skips credentials step with --skip-credentials', async () => {

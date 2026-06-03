@@ -306,6 +306,12 @@ describe('import — push-related flags', () => {
     expect(code).toBe(0);
   });
 
+  it('--host <hostname> is accepted without requiring https://', async () => {
+    const { stderr, code } = await run([...skipAll(), '--host', 'api.contentful.com'], baseEnv());
+    expect(stderr).not.toContain("unknown option '--host'");
+    expect(code).toBe(0);
+  });
+
   it('--no-cache is accepted and overrides --skip-analyze (forces re-run)', async () => {
     const { stderr } = await run([...skipAll(), '--no-cache'], baseEnv(), 30_000);
     expect(stderr).not.toContain("unknown option '--no-cache'");
