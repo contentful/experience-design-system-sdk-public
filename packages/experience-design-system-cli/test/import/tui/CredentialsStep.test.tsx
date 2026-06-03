@@ -2,6 +2,7 @@ import { render } from 'ink-testing-library';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { waitForFrame } from '../../helpers/wait-for-frame.js';
 import { CredentialsStep } from '../../../src/import/tui/steps/CredentialsStep.js';
+import { DEFAULT_CONFIGURED_HOST } from '../../../src/host-utils.js';
 
 const mockExit = vi
   .spyOn(process, 'exit')
@@ -21,7 +22,7 @@ function makeHandlers() {
 }
 
 describe('CredentialsStep — rendering', () => {
-  it('renders all three credential fields', async () => {
+  it('renders all four credential fields', async () => {
     const handlers = makeHandlers();
     const { lastFrame } = render(
       <CredentialsStep initialSpaceId="" initialEnvironmentId="master" initialCmaToken="" {...handlers} />,
@@ -29,14 +30,15 @@ describe('CredentialsStep — rendering', () => {
 
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Space ID') && f.includes('Environment') && f.includes('CMA Token'),
+      (f) => f.includes('Space ID') && f.includes('Environment') && f.includes('CMA Token') && f.includes('API Host'),
       3000,
     );
 
     expect(frame).toContain('Space ID');
     expect(frame).toContain('Environment');
     expect(frame).toContain('CMA Token');
-    expect(frame).not.toContain('API Host');
+    expect(frame).toContain('API Host');
+    expect(frame).toContain(DEFAULT_CONFIGURED_HOST);
   });
 
   it('pre-fills values from initial props', async () => {
@@ -46,6 +48,7 @@ describe('CredentialsStep — rendering', () => {
         initialSpaceId="my-space"
         initialEnvironmentId="staging"
         initialCmaToken="secret"
+        initialHost="https://api.eu.contentful.com"
         {...handlers}
       />,
     );
@@ -58,6 +61,7 @@ describe('CredentialsStep — rendering', () => {
 
     expect(frame).toContain('my-space');
     expect(frame).toContain('staging');
+    expect(frame).toContain('api.eu.contentful.com');
   });
 
   it('shows hint text when credentials are pre-filled', async () => {
@@ -93,20 +97,22 @@ describe('CredentialsStep — submission', () => {
     stdin.write('\r'); // spaceId → environmentId
     stdin.write('\r'); // accept default "master" → cmaToken
     stdin.write('mytoken');
-    stdin.write('\r'); // submit
+    stdin.write('\r'); // cmaToken → host
+    stdin.write('\r'); // submit with the pre-filled default host
 
     await new Promise((r) => setTimeout(r, 200));
 
-    expect(handlers.onConfirm).toHaveBeenCalledWith('myspace', 'master', 'mytoken');
+    expect(handlers.onConfirm).toHaveBeenCalledWith('myspace', 'master', 'mytoken', DEFAULT_CONFIGURED_HOST);
   });
 
-  it('calls onContinue when no fields changed and onContinue is supplied; falls back to onConfirm when omitted', async () => {
+  it('includes host value in onConfirm when set', async () => {
     const handlers = makeHandlers();
     const { lastFrame, stdin } = render(
       <CredentialsStep
-        initialSpaceId="space1"
+        initialSpaceId=""
         initialEnvironmentId="master"
-        initialCmaToken="tok"
+        initialCmaToken=""
+        initialHost=""
         {...handlers}
       />,
     );
@@ -117,13 +123,42 @@ describe('CredentialsStep — submission', () => {
       3000,
     );
 
+    stdin.write('myspace');
+    stdin.write('\r'); // spaceId → environmentId
+    stdin.write('\r'); // accept default "master" → cmaToken
+    stdin.write('mytoken');
+    stdin.write('\r'); // cmaToken → host
+    for (let i = 0; i < DEFAULT_CONFIGURED_HOST.length; i++) {
+      stdin.write('\b');
+    }
+    stdin.write('https://api.eu.contentful.com');
+    stdin.write('\r'); // submit
+
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect(handlers.onConfirm).toHaveBeenCalledWith('myspace', 'master', 'mytoken', 'api.eu.contentful.com');
+  });
+
+  it('calls onContinue when no fields changed and onContinue is supplied; falls back to onConfirm when omitted', async () => {
+    const handlers = makeHandlers();
+    const { lastFrame, stdin } = render(
+      <CredentialsStep initialSpaceId="space1" initialEnvironmentId="master" initialCmaToken="tok" {...handlers} />,
+    );
+
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Space ID'),
+      3000,
+    );
+
     stdin.write('\r'); // spaceId → environmentId
     stdin.write('\r'); // environmentId → cmaToken
+    stdin.write('\r'); // cmaToken → host
     stdin.write('\r'); // submit without changing anything
 
     await new Promise((r) => setTimeout(r, 200));
 
-    expect(handlers.onContinue).toHaveBeenCalledWith('space1', 'master', 'tok');
+    expect(handlers.onContinue).toHaveBeenCalledWith('space1', 'master', 'tok', DEFAULT_CONFIGURED_HOST);
     expect(handlers.onConfirm).not.toHaveBeenCalled();
   });
 
@@ -141,6 +176,7 @@ describe('CredentialsStep — submission', () => {
 
     stdin.write('\r'); // spaceId (empty) → environmentId
     stdin.write('\r'); // environmentId → cmaToken
+    stdin.write('\r'); // cmaToken (empty) → host
     stdin.write('\r'); // attempt submit with empty required fields
 
     const frame = await waitForFrame(
@@ -155,7 +191,7 @@ describe('CredentialsStep — submission', () => {
 });
 
 describe('CredentialsStep — navigation', () => {
-  it('tab cycles through all three fields', async () => {
+  it('tab cycles through all four fields', async () => {
     const handlers = makeHandlers();
     const { lastFrame, stdin } = render(
       <CredentialsStep initialSpaceId="s" initialEnvironmentId="master" initialCmaToken="t" {...handlers} />,
@@ -169,6 +205,7 @@ describe('CredentialsStep — navigation', () => {
 
     stdin.write('\t'); // → environmentId
     stdin.write('\t'); // → cmaToken
+    stdin.write('\t'); // → host
     stdin.write('\t'); // wraps back to spaceId
 
     const frame = await waitForFrame(

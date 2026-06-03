@@ -83,6 +83,26 @@ describe('ImportApiClient — validateToken', () => {
     expect(mockFetch.mock.calls[0][0]).toBe('https://mock-api.example.com/users/me');
   });
 
+  it('adds https:// when the provided host omits a scheme', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: () => Promise.resolve({ sys: { type: 'User', id: 'user-1' } }),
+      text: () => Promise.resolve(''),
+    });
+
+    const client = new ImportApiClient({
+      cmaToken: 'test-token',
+      spaceId: 'fhuxdukarhrp',
+      environmentId: 'master',
+      host: 'api.eu.contentful.com',
+    });
+    await client.validateToken();
+
+    expect(mockFetch.mock.calls[0][0]).toBe('https://api.eu.contentful.com/users/me');
+  });
+
   it('throws ApiError on unexpected non-200', async () => {
     mockFetch.mockResolvedValue({
       ok: false,

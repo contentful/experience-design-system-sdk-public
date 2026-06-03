@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../../host-utils.js';
 
-type Field = 'spaceId' | 'environmentId' | 'cmaToken';
+type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host';
 
 type CredentialsStepProps = {
   summary?: string;
@@ -10,10 +11,11 @@ type CredentialsStepProps = {
   initialSpaceId?: string;
   initialEnvironmentId?: string;
   initialCmaToken?: string;
+  initialHost?: string;
   /** Called when the user submits with any field changed from its initial value */
-  onConfirm: (spaceId: string, environmentId: string, cmaToken: string) => void;
+  onConfirm: (spaceId: string, environmentId: string, cmaToken: string, host: string) => void;
   /** Called when the user submits without changing any field (use existing creds as-is) */
-  onContinue?: (spaceId: string, environmentId: string, cmaToken: string) => void;
+  onContinue?: (spaceId: string, environmentId: string, cmaToken: string, host: string) => void;
   onQuit: () => void;
 };
 
@@ -23,13 +25,16 @@ export function CredentialsStep({
   initialSpaceId = '',
   initialEnvironmentId = 'master',
   initialCmaToken = '',
+  initialHost,
   onConfirm,
   onContinue,
   onQuit,
 }: CredentialsStepProps): React.ReactElement {
+  const normalizedInitialHost = toConfiguredHost(initialHost) ?? DEFAULT_CONFIGURED_HOST;
   const [spaceId, setSpaceId] = useState(initialSpaceId);
   const [environmentId, setEnvironmentId] = useState(initialEnvironmentId);
   const [cmaToken, setCmaToken] = useState(initialCmaToken);
+  const [host, setHost] = useState(normalizedInitialHost);
   const [activeField, setActiveField] = useState<Field>('spaceId');
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [cursorVisible, setCursorVisible] = useState(true);
@@ -49,25 +54,33 @@ export function CredentialsStep({
         setActiveField('cmaToken');
         return;
       }
+      if (activeField === 'cmaToken') {
+        setActiveField('host');
+        return;
+      }
       // Submit
       if (!spaceId.trim() || !environmentId.trim() || !cmaToken.trim()) {
         setInlineError('All fields are required.');
         return;
       }
       setInlineError(null);
+      const submittedHost = toConfiguredHost(host) ?? DEFAULT_CONFIGURED_HOST;
       const unchanged =
         spaceId.trim() === initialSpaceId &&
         environmentId.trim() === initialEnvironmentId &&
-        cmaToken.trim() === initialCmaToken;
+        cmaToken.trim() === initialCmaToken &&
+        submittedHost === normalizedInitialHost;
       if (unchanged && onContinue) {
-        onContinue(spaceId.trim(), environmentId.trim(), cmaToken.trim());
+        onContinue(spaceId.trim(), environmentId.trim(), cmaToken.trim(), submittedHost);
       } else {
-        onConfirm(spaceId.trim(), environmentId.trim(), cmaToken.trim());
+        onConfirm(spaceId.trim(), environmentId.trim(), cmaToken.trim(), submittedHost);
       }
       return;
     }
     if (key.tab) {
-      setActiveField((f) => (f === 'spaceId' ? 'environmentId' : f === 'environmentId' ? 'cmaToken' : 'spaceId'));
+      setActiveField((f) =>
+        f === 'spaceId' ? 'environmentId' : f === 'environmentId' ? 'cmaToken' : f === 'cmaToken' ? 'host' : 'spaceId',
+      );
       return;
     }
     if (key.escape || input === 'q') {
@@ -77,13 +90,15 @@ export function CredentialsStep({
     if (key.backspace || key.delete) {
       if (activeField === 'spaceId') setSpaceId((v) => v.slice(0, -1));
       else if (activeField === 'environmentId') setEnvironmentId((v) => v.slice(0, -1));
-      else setCmaToken((v) => v.slice(0, -1));
+      else if (activeField === 'cmaToken') setCmaToken((v) => v.slice(0, -1));
+      else setHost((v) => v.slice(0, -1));
       return;
     }
     if (input && !key.ctrl && !key.meta) {
       if (activeField === 'spaceId') setSpaceId((v) => v + input);
       else if (activeField === 'environmentId') setEnvironmentId((v) => v + input);
-      else setCmaToken((v) => v + input);
+      else if (activeField === 'cmaToken') setCmaToken((v) => v + input);
+      else setHost((v) => v + input);
     }
   });
 
@@ -92,11 +107,12 @@ export function CredentialsStep({
   function renderField(label: string, value: string, field: Field, masked = false) {
     const isActive = activeField === field;
     const display = masked ? '•'.repeat(value.length) : value;
+    const fallback = field === 'host' ? DEFAULT_CONFIGURED_HOST : <Text dimColor>(empty)</Text>;
     return (
       <Box gap={1}>
         <Text color={isActive ? 'cyan' : undefined}>{'?'}</Text>
         <Text bold={isActive}>{label}:</Text>
-        <Text>{isActive ? display + cursor : display || <Text dimColor>(empty)</Text>}</Text>
+        <Text>{isActive ? display + cursor : display || fallback}</Text>
       </Box>
     );
   }
@@ -125,7 +141,9 @@ export function CredentialsStep({
         {renderField('Space ID', spaceId, 'spaceId')}
         {renderField('Environment', environmentId, 'environmentId')}
         {renderField('CMA Token', cmaToken, 'cmaToken', true)}
+        {renderField('API Host', host, 'host')}
       </Box>
+      {activeField === 'host' && <Text dimColor>Default: api.contentful.com · EU spaces: api.eu.contentful.com</Text>}
 
       {displayError && <Text color="red">✗ {displayError}</Text>}
 

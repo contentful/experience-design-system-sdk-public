@@ -6,6 +6,7 @@ import { waitForFrame } from '../../helpers/wait-for-frame.js';
 // ── Mock external modules BEFORE importing WizardApp ─────────────────────────
 
 vi.mock('../../../src/apply/api-client.js', () => ({
+  DEFAULT_HOST: 'https://api.contentful.com',
   ImportApiClient: vi.fn().mockImplementation(() => ({
     resolveOrganizationId: vi.fn().mockResolvedValue('org-123'),
     setOrganizationId: vi.fn(),

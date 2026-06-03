@@ -11,6 +11,7 @@ import {
   writeExperiencesCredentials,
   experiencesCredentialsPath,
 } from '../credentials-store.js';
+import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -45,7 +46,15 @@ function dim(msg: string): void {
 
 // ── Prompt helpers ────────────────────────────────────────────────────────────
 
+function isInteractivePromptSession(): boolean {
+  return !!(process.stdin.isTTY && process.stdout.isTTY);
+}
+
 function prompt(question: string): Promise<string> {
+  if (!isInteractivePromptSession()) {
+    return Promise.resolve('');
+  }
+
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve) => {
     rl.question(question, (answer) => {
@@ -56,6 +65,10 @@ function prompt(question: string): Promise<string> {
 }
 
 function promptSecret(question: string): Promise<string> {
+  if (!isInteractivePromptSession()) {
+    return Promise.resolve('');
+  }
+
   // Use readline for all prompts — mixing raw-mode stdin listeners with
   // readline createInterface causes readline to buffer+unshift unconsumed
   // input back onto the stream, which the raw listener then re-reads,
@@ -99,6 +112,10 @@ function promptSecret(question: string): Promise<string> {
 }
 
 async function confirm(question: string, defaultYes = true): Promise<boolean> {
+  if (!isInteractivePromptSession()) {
+    return false;
+  }
+
   const hint = defaultYes ? '[Y/n]' : '[y/N]';
   const answer = await prompt(`  ${question} ${hint} `);
   if (!answer) return defaultYes;
@@ -458,7 +475,8 @@ async function setupContentfulCredentials(): Promise<boolean> {
   const currentSpace = stored.spaceId;
   const currentEnv = stored.environmentId;
   const currentToken = stored.cmaToken;
-  const currentHost = stored.host ?? '';
+  const storedHost = stored.host;
+  const currentHost = storedHost ?? DEFAULT_CONFIGURED_HOST;
   const hasAny = !!(currentSpace || currentEnv || currentToken);
 
   if (hasAny) {
@@ -478,7 +496,7 @@ async function setupContentfulCredentials(): Promise<boolean> {
     } else {
       warn('CMA Token       (not set)');
     }
-    ok(`API Host        ${currentHost || 'https://api.contentful.com'}`);
+    ok(`API Host        ${currentHost}`);
     info('');
   }
 
@@ -513,14 +531,12 @@ async function setupContentfulCredentials(): Promise<boolean> {
     warn('Space ID and CMA token are required. Skipped.');
     return false;
   }
-  const hostInput = await prompt(`  API host [${currentHost || 'https://api.contentful.com'}]: `);
-  const host = hostInput.trim() || currentHost || '';
+  const hostInput = await prompt(`  API host [${currentHost}]: `);
+  const host = toConfiguredHost(hostInput) ?? storedHost;
 
   await writeExperiencesCredentials({ spaceId, environmentId, cmaToken, ...(host ? { host } : {}) });
   ok(`Credentials saved to ${experiencesCredentialsPath()}`);
-  if (host) {
-    ok(`API host set to ${host}`);
-  }
+  ok(`API host set to ${host ?? DEFAULT_CONFIGURED_HOST}`);
   info('Run experiences import — credentials will be pre-filled automatically.');
 
   return true;

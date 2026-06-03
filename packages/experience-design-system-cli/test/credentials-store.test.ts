@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { DEFAULT_CONFIGURED_HOST } from '../src/host-utils.js';
 
 // ── Hoist mock fns so they are available inside the vi.mock factory ────────
 
@@ -67,7 +68,7 @@ describe('readExperiencesCredentials', () => {
 
     const creds = await readExperiencesCredentials();
 
-    expect(creds.host).toBe('https://api.eu.contentful.com');
+    expect(creds.host).toBe('api.eu.contentful.com');
   });
 
   it('EDS_HOST env var overrides saved host', async () => {
@@ -83,7 +84,7 @@ describe('readExperiencesCredentials', () => {
 
     const creds = await readExperiencesCredentials();
 
-    expect(creds.host).toBe('https://api.eu.contentful.com');
+    expect(creds.host).toBe('api.eu.contentful.com');
   });
 
   it('EDS_HOST env var sets host even when file is missing', async () => {
@@ -92,7 +93,22 @@ describe('readExperiencesCredentials', () => {
 
     const creds = await readExperiencesCredentials();
 
-    expect(creds.host).toBe('https://api.eu.contentful.com');
+    expect(creds.host).toBe('api.eu.contentful.com');
+  });
+
+  it('falls back to the bare default host display when setup omitted host', async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({
+        spaceId: 'abc123',
+        environmentId: 'master',
+        cmaToken: 'tok',
+      }),
+    );
+
+    const creds = await readExperiencesCredentials();
+
+    expect(creds.host).toBeUndefined();
+    expect(DEFAULT_CONFIGURED_HOST).toBe('api.contentful.com');
   });
 
   it('env vars override saved spaceId and cmaToken', async () => {
@@ -128,7 +144,7 @@ describe('writeExperiencesCredentials', () => {
     expect(mockWriteFile).toHaveBeenCalledTimes(1);
     const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
     expect(written.spaceId).toBe('space1');
-    expect(written.host).toBe('https://api.eu.contentful.com');
+    expect(written.host).toBe('api.eu.contentful.com');
   });
 
   it('writes credentials without host when host is undefined', async () => {
