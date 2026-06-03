@@ -168,11 +168,6 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: git pull --rebase origin main
 
-      - name: Setup npmrc for publishing
-        run: |
-          echo "//npm.pkg.github.com/:_authToken=${{ steps.vault.outputs.GITHUB_PACKAGES_WRITE_TOKEN }}" > ./.npmrc
-          echo "@contentful:registry=https://npm.pkg.github.com" >> ./.npmrc
-
       - name: Release
         run: pnpm release
         env:
