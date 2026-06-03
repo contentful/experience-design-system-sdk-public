@@ -18,6 +18,10 @@
       "node": "./dist/src/index.js"
     }
   },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com/"
+  },
   "files": [
     "bin/",
     "dist/",
