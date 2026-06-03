@@ -7,13 +7,6 @@
 | Node.js | 24 (see `.nvmrc`) | Use `nvm use` to switch automatically |
 | pnpm | 10.27.0+ | Run `corepack enable` then `corepack prepare` |
 
-The repo uses GitHub Packages as its npm registry for `@contentful`-scoped packages. You need a GitHub personal access token with `read:packages` scope:
-
-```bash
-pnpm config set @contentful:registry https://npm.pkg.github.com
-pnpm config set -- //npm.pkg.github.com/:_authToken <your-token>
-```
-
 ## Getting Started
 
 ```bash
@@ -38,9 +31,6 @@ pnpm typecheck
 packages/
   experience-design-system-cli/    # CLI + TUI
   experience-design-system-types/  # Shared types and schemas
-docs/
-  adr/                             # Architecture Decision Records
-  specs/                           # Feature specifications
 .github/workflows/                 # CI/CD pipelines
 scripts/                           # Release automation
 ```
@@ -154,16 +144,6 @@ Commit the updated snapshot files alongside the code change.
 1. Create `src/analyze/extract/<framework>.ts` implementing the `ComponentExtractor` interface from `src/types.ts`
 2. Register it in `src/analyze/extract/pipeline.ts` — add to the `extractors` array and provide a `fileFilter`
 3. Write tests in `test/analyze/extract/<framework>.test.ts`
-
-## Architecture Decision Records
-
-Significant technical decisions are documented as ADRs in `docs/adr/`. When you make a decision that future contributors would need to understand (a non-obvious trade-off, a deliberate restriction, a workaround for an external constraint), write an ADR:
-
-1. Copy the format from `docs/adr/README.md`
-2. Name it `docs/adr/YYYY-MM-DD-short-title.md`
-3. Add it to the index table in `docs/adr/README.md`
-
-ADRs are written at decision time and not retroactively updated. If a decision is reversed, write a new ADR that supersedes the old one.
 
 ## Branching and Deployment
 

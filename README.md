@@ -1,122 +1,94 @@
 # Experience Design System SDK
 
-Tools for extracting, validating, reviewing, and importing design system component definitions into Contentful Experience Orchestration (ExO).
+Contentful Experiences lets you compose pages and layouts from your own design system components. The `@contentful/experience-design-system-cli` imports your design system into Contentful. It extracts Component Type definitions from your local codebase, invokes an AI agent to generate Component Definition Format (CDF) definitions, and pushes them to your Contentful space.
 
-## What's in this repo
+Your codebase remains the single source of truth. The CLI analyzes your source files (`.tsx`, `.ts`, `.jsx`, `.js`, `.vue`, `.astro`) using static analysis, then delegates property classification and CDF generation to a coding agent.
 
-| Package | Version | Description |
-|---|---|---|
-| [`@contentful/experience-design-system-cli`](packages/experience-design-system-cli/) | see package.json | CLI + TUI for analyzing, generating, validating, reviewing, and importing component definitions |
-| [`@contentful/experience-design-system-types`](packages/experience-design-system-types/) | see package.json | Shared TypeScript types and schemas for CDF and DTCG formats |
+## Prerequisites
+
+- **Node.js 24**
+- **pnpm 10.27.0+**
+- **A coding agent** in `$PATH` — Claude Code, Codex, OpenCode, or Cursor
+- **A Contentful CMA token** — set `CONTENTFUL_MANAGEMENT_TOKEN`
 
 ## Quick Start
 
-### Prerequisites
-
-- Node.js 24 (see `.nvmrc` — use `nvm use` to switch automatically)
-- pnpm 10.27.0+ (`corepack enable && corepack prepare`)
-- GitHub personal access token with `read:packages` scope (for `@contentful`-scoped packages)
-- A coding agent CLI in `$PATH` for `generate` commands (Claude Code, OpenAI Codex, OpenCode, or Cursor — see [agent setup](packages/experience-design-system-cli/README.md#prerequisites))
-- A Contentful CMA token for `apply` commands — set `CONTENTFUL_MANAGEMENT_TOKEN` (see [Contentful credentials](packages/experience-design-system-cli/README.md#prerequisites))
+### Install
 
 ```bash
-# Configure GitHub Packages registry
-pnpm config set @contentful:registry https://npm.pkg.github.com
-pnpm config set -- //npm.pkg.github.com/:_authToken <your-token>
-
-# Install dependencies
+git clone https://github.com/contentful/experience-design-system-sdk-public.git
+cd experience-design-system-sdk-public
 pnpm install
-
-# Build all packages
 pnpm build
-
-# Run tests
-pnpm test
 ```
 
-### Using the CLI
-
-Run each step individually, or use `import` to orchestrate the whole pipeline at once.
-
-All intermediate data flows through a local SQLite session database — no JSON files are written between steps. Each command reads its inputs from the session and writes its outputs back to it. Use [`print`](#print-commands) to export session data to JSON on demand.
-
-**Step-by-step:**
+### Link the CLI globally
 
 ```bash
-# 1. Extract component definitions from a project (stores results in session DB, prints session=<id>)
-experience-design-system-cli analyze extract --project /path/to/your/lib
-
-# 2. Interactively review and select components for generation
-experience-design-system-cli analyze select
-
-# 3. Invoke a coding agent to generate CDF component definitions (stored in session DB)
-experience-design-system-cli generate components --agent claude
-
-# 4. Preview what will be created/updated in Contentful (reads from session DB, no writes)
-experience-design-system-cli apply preview \
-  --session <id> \
-  --space-id $CONTENTFUL_SPACE_ID \
-  --environment-id master
-
-# 5. (Optional) Interactively select a subset of entities to push
-experience-design-system-cli apply select \
-  --session <id> \
-  --space-id $CONTENTFUL_SPACE_ID \
-  --environment-id master
-
-# 6. Push entities to Contentful ExO (reads from session DB)
-experience-design-system-cli apply push \
-  --session <id> \
-  --space-id $CONTENTFUL_SPACE_ID \
-  --environment-id master
+cd packages/experience-design-system-cli
+pnpm link --global
 ```
 
-**Or run the full pipeline in one command:**
+### Setup
 
 ```bash
-experience-design-system-cli import \
-  --project /path/to/your/lib \
+experiences setup
+```
+
+### Run
+
+```bash
+experiences import
+```
+
+Or with explicit flags:
+
+```bash
+experiences import \
+  --project /path/to/your/component-library \
   --space-id $CONTENTFUL_SPACE_ID \
   --environment-id master \
   --agent claude
 ```
 
-See [`packages/experience-design-system-cli/README.md`](packages/experience-design-system-cli/README.md) for full command documentation.
+## How it works
 
-## Documentation
+The CLI runs your component library through four stages:
 
-| Document | What it covers |
-|---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System overview, package structure, data formats, extractor internals, CI/CD |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, workflow, testing, commit convention, release process |
-| [AGENTS.md](AGENTS.md) | What AI coding agents need to know — sharp edges, invariants, gotchas |
-| [docs/adr/](docs/adr/) | Architecture Decision Records — why significant decisions were made |
-| [docs/specs/](docs/specs/) | Feature specifications |
+**1. Analyze** — Reads your source files and extracts every component: its name, props, and types.
 
-## Development
+**2. Select** — An AI agent reviews the extracted components and decides which ones make sense to expose in Contentful Experiences (buttons, cards, layouts) and which to skip (hooks, context providers, utilities). You can also review and adjust this list yourself using the interactive TUI.
 
-```bash
-# Build all packages
-pnpm build
+**3. Generate** — An AI agent takes the selected components and produces structured definitions that tell Contentful what each prop is for — whether it holds content, a design token, or interactive state.
 
-# Run all tests
-pnpm test
+**4. Apply** — Shows you a preview of what will change in your Contentful space, then pushes the component definitions when you're ready.
 
-# Lint all packages
-pnpm lint
+Each stage saves its output locally, so you can re-run or resume any step without starting over.
 
-# Affected-only (faster for local iteration)
-pnpm affected:build
-pnpm affected:test
-pnpm affected:lint
+## Packages
 
-# Single package
-pnpm -F @contentful/experience-design-system-cli build
-pnpm -F @contentful/experience-design-system-cli test
-```
+| Package                                                                                  | Description                                                                                     |
+| ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [`@contentful/experience-design-system-cli`](packages/experience-design-system-cli/)     | The CLI + interactive TUI — analyze, review, generate, validate, and push component definitions |
+| [`@contentful/experience-design-system-types`](packages/experience-design-system-types/) | Shared types and schemas for the CDF and DTCG data formats                                      |
 
-## Releases
+## Command Reference
 
-Releases are automated on merge to `main` via Nx Release + GitHub Packages. Commit type determines version bump: `fix` → patch, `feat` → minor, `feat!` → major. Dev prereleases are published from PRs automatically.
+Full documentation for every flag, every subcommand is in [`packages/experience-design-system-cli/README.md`](packages/experience-design-system-cli/README.md).
 
-All commit messages must follow [Conventional Commits](https://www.conventionalcommits.org/).
+| Command                            | What it does                                                        |
+| ---------------------------------- | ------------------------------------------------------------------- |
+| `experiences setup`                | Interactive setup — configure credentials and agent                 |
+| `experiences analyze extract`      | Scan source files and extract raw component definitions             |
+| `experiences analyze select`       | Interactively pick which components to include (TUI)                |
+| `experiences analyze select-agent` | AI agent picks which components belong in Experiences               |
+| `experiences generate components`  | AI agent generates CDF definitions from raw analysis                |
+| `experiences generate tokens`      | AI agent generates DTCG design tokens from raw token data           |
+| `experiences apply preview`        | Read-only diff — what would change in Contentful                    |
+| `experiences apply select`         | Checkbox TUI to pick a subset of entities to push                   |
+| `experiences apply push`           | Write component types and design tokens to Contentful               |
+| `experiences import`               | Run the full pipeline in one command                                |
+| `experiences print components`     | Export generated components to `components.json`                    |
+| `experiences print tokens`         | Export generated tokens to `tokens.json`                            |
+| `experiences print validate`       | Validate CDF or DTCG files against their schemas                    |
+| `experiences doctor`               | Health check — verify Node version, credentials, and agent binaries |

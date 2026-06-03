@@ -1,8 +1,8 @@
 # @contentful/experience-design-system-cli
 
-CLI for extracting, reviewing, generating, validating, and pushing Contentful Experience Design System component definitions.
+CLI for extracting, reviewing, generating, validating, and pushing Contentful Experience Design System component definitions into Experiences
 
-## Pipeline Overview
+## CLI Overview
 
 The commands form a pipeline. Run them in order, or use `import` to orchestrate the whole thing at once:
 
