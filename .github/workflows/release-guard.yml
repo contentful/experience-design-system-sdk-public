@@ -9,5 +9,6 @@ jobs:
   wait-for-releases:
     name: Wait for ongoing releases
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - run: echo "Release concurrency is handled by the release job in ci.yml"
