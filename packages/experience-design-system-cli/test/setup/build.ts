@@ -6,10 +6,13 @@ export function setup() {
   // Suppress node:sqlite ExperimentalWarning in CLI child processes spawned by tests
   process.env.NODE_NO_WARNINGS = '1';
 
-  const distIndex = resolve(import.meta.dirname, '../../dist/index.js');
-  if (!existsSync(distIndex)) {
-    execFileSync('pnpm', ['exec', 'tsc', '-p', 'tsconfig.build.json'], {
-      cwd: resolve(import.meta.dirname, '../..'),
+  const packageRoot = resolve(import.meta.dirname, '../..');
+  const distEntry = resolve(import.meta.dirname, '../../dist/src/index.js');
+  const distPackageJson = resolve(import.meta.dirname, '../../dist/package.json');
+
+  if (!existsSync(distEntry) || !existsSync(distPackageJson)) {
+    execFileSync('pnpm', ['build'], {
+      cwd: packageRoot,
       stdio: 'inherit',
     });
   }

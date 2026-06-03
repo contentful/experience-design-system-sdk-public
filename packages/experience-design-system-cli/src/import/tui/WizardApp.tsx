@@ -31,6 +31,8 @@ import {
 } from '../../session/db.js';
 import { checkAgentAuth, type AgentName } from '../../generate/agent-runner.js';
 import { normalizePath } from '../path-utils.js';
+import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
+import { writeExperiencesCredentials } from '../../credentials-store.js';
 
 type WizardStep =
   | 'welcome'
@@ -86,6 +88,7 @@ type WizardState = {
   spaceId: string;
   environmentId: string;
   cmaToken: string;
+  host: string;
   credentialsError: string;
   serverPreview: ServerPreviewResponse | null;
   manifest: ManifestPayload | null;
@@ -120,6 +123,7 @@ export type WizardAppProps = {
   initialSpaceId?: string;
   initialEnvironmentId?: string;
   initialCmaToken?: string;
+  initialHost?: string;
   initialAgent?: string;
   initialProjectPath?: string;
   host?: string;
@@ -129,11 +133,13 @@ export function WizardApp({
   initialSpaceId = '',
   initialEnvironmentId = 'master',
   initialCmaToken = '',
+  initialHost,
   initialAgent,
   initialProjectPath,
   host,
 }: WizardAppProps = {}): React.ReactElement {
-  const apiHost = host ?? process.env['EDS_HOST'];
+  const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
+  const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
   const logInit = useRef(false);
@@ -170,6 +176,7 @@ export function WizardApp({
     spaceId: initialSpaceId,
     environmentId: initialEnvironmentId,
     cmaToken: initialCmaToken,
+    host: resolveWizardHost(toConfiguredHost(initialHost)),
     credentialsError: '',
     serverPreview: null,
     manifest: null,
@@ -489,7 +496,7 @@ export function WizardApp({
     }
     if (returnToPreview) {
       const { extractSessionId, tokensPath } = sessionRef.current;
-      void runPreview(extractSessionId, tokensPath, state.spaceId, state.environmentId, state.cmaToken);
+      void runPreview(extractSessionId, tokensPath, state.spaceId, state.environmentId, state.cmaToken, state.host);
     } else {
       advanceToPushFlow(generatedAcceptedCount);
     }
@@ -549,21 +556,48 @@ export function WizardApp({
 
     // Re-preview with updated definitions
     const { extractSessionId: sid, tokensPath: tp } = sessionRef.current;
-    void runPreview(sid, tp, state.spaceId, state.environmentId, state.cmaToken);
+    void runPreview(sid, tp, state.spaceId, state.environmentId, state.cmaToken, state.host);
   };
 
-  const confirmCredentials = (spaceId: string, environmentId: string, cmaToken: string) => {
+  const advanceWithCredentials = (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
+    const resolvedHost = resolveWizardHost(host);
     credentialsRef.current = { spaceId, environmentId, cmaToken };
-    update({ spaceId, environmentId, cmaToken, step: 'credential-test-gate' });
+    update({
+      spaceId,
+      environmentId,
+      cmaToken,
+      host: resolvedHost,
+      credentialsError: '',
+      step: 'credential-test-gate',
+    });
   };
 
-  const validateCredentials = async (spaceId: string, environmentId: string, cmaToken: string) => {
+  const confirmCredentials = async (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
+    const resolvedHost = resolveWizardHost(host);
+    try {
+      await writeExperiencesCredentials({ spaceId, environmentId, cmaToken, host: resolvedHost });
+      advanceWithCredentials(spaceId, environmentId, cmaToken, resolvedHost);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Unable to save credentials';
+      update({
+        spaceId,
+        environmentId,
+        cmaToken,
+        host: resolvedHost,
+        credentialsError: `Failed to save credentials: ${message}`,
+        step: 'credentials',
+      });
+    }
+  };
+
+  const validateCredentials = async (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
     update({ step: 'validating-credentials' });
     try {
-      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: apiHost });
+      const resolvedHost = resolveWizardHost(host);
+      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: resolvedHost });
       await client.validateToken();
       const { extractSessionId, tokensPath } = sessionRef.current;
-      void runPreview(extractSessionId, tokensPath, spaceId, environmentId, cmaToken);
+      void runPreview(extractSessionId, tokensPath, spaceId, environmentId, cmaToken, resolvedHost);
     } catch (e) {
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
         update({ step: 'credentials', credentialsError: e.message });
@@ -585,10 +619,12 @@ export function WizardApp({
     spaceId: string,
     environmentId: string,
     cmaToken: string,
+    host: string,
   ) => {
     update({ step: 'previewing' });
+    const resolvedHost = resolveWizardHost(host);
     try {
-      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: apiHost });
+      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: resolvedHost });
 
       let components: Array<{
         key: string;
@@ -683,7 +719,7 @@ export function WizardApp({
               `Not found (404). Check that the space ID, environment ID, and host are correct.\n\n` +
               `  Space:       ${spaceId}\n` +
               `  Environment: ${environmentId}\n` +
-              (apiHost ? `  Host:        ${apiHost}\n` : '') +
+              (resolvedHost ? `  Host:        ${resolvedHost}\n` : '') +
               `\nIf using a custom --host, make sure the space exists on that host.`,
           });
           return;
@@ -701,6 +737,7 @@ export function WizardApp({
     spaceId: string,
     environmentId: string,
     cmaToken: string,
+    host: string,
     acknowledgeBreakingChanges: boolean,
     preview?: ServerPreviewResponse | null,
   ) => {
@@ -724,7 +761,8 @@ export function WizardApp({
     }
     update({ step: 'pushing' });
     try {
-      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: apiHost });
+      const resolvedHost = resolveWizardHost(host);
+      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: resolvedHost });
       let operation = await client.applyImport(manifest, acknowledgeBreakingChanges);
       try {
         logStep({
@@ -1121,9 +1159,12 @@ export function WizardApp({
             initialSpaceId={state.spaceId}
             initialEnvironmentId={state.environmentId}
             initialCmaToken={state.cmaToken}
+            initialHost={state.host}
             error={state.credentialsError || undefined}
-            onConfirm={confirmCredentials}
-            onContinue={confirmCredentials}
+            onConfirm={(spaceId, environmentId, cmaToken, host) => {
+              void confirmCredentials(spaceId, environmentId, cmaToken, host);
+            }}
+            onContinue={advanceWithCredentials}
             onQuit={() => process.exit(0)}
           />
         );
@@ -1138,11 +1179,18 @@ export function WizardApp({
             skipLabel="Skip and continue"
             showSkip={true}
             onContinue={() => {
-              void validateCredentials(state.spaceId, state.environmentId, state.cmaToken);
+              void validateCredentials(state.spaceId, state.environmentId, state.cmaToken, state.host);
             }}
             onSkip={() => {
               const { extractSessionId, tokensPath } = sessionRef.current;
-              void runPreview(extractSessionId, tokensPath, state.spaceId, state.environmentId, state.cmaToken);
+              void runPreview(
+                extractSessionId,
+                tokensPath,
+                state.spaceId,
+                state.environmentId,
+                state.cmaToken,
+                state.host,
+              );
             }}
             onQuit={() => process.exit(0)}
           />
@@ -1182,6 +1230,7 @@ export function WizardApp({
                 state.spaceId,
                 state.environmentId,
                 state.cmaToken,
+                state.host,
                 acknowledge,
                 state.serverPreview,
               );

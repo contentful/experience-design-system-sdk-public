@@ -3,8 +3,9 @@ import type {
   ServerPreviewResponse,
   ApplyOperationResponse,
 } from '@contentful/experience-design-system-types';
+import { DEFAULT_API_HOST, toApiHost } from '../host-utils.js';
 
-export const DEFAULT_HOST = 'https://api.contentful.com';
+export const DEFAULT_HOST = DEFAULT_API_HOST;
 
 export interface ApiClientOptions {
   host?: string;
@@ -51,7 +52,7 @@ export class ImportApiClient {
   private environmentId: string;
 
   constructor(opts: ApiClientOptions) {
-    this.host = opts.host ?? DEFAULT_HOST;
+    this.host = toApiHost(opts.host);
     this.token = opts.cmaToken;
     this.spaceId = opts.spaceId;
     this.environmentId = opts.environmentId;
