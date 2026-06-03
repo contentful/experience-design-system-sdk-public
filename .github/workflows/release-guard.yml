@@ -5,6 +5,8 @@ on:
     types: [opened, synchronize, reopened]
   merge_group:
 
+permissions: {}
+
 jobs:
   wait-for-releases:
     name: Wait for ongoing releases
