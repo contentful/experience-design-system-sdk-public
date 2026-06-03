@@ -4,14 +4,14 @@ Contentful Experiences lets you compose pages and layouts from your own design s
 
 Your codebase remains the single source of truth. The CLI analyzes your source files (`.tsx`, `.ts`, `.jsx`, `.js`, `.vue`, `.astro`) using static analysis, then delegates property classification and CDF generation to a coding agent.
 
+## Prerequisites
+
+- **Node.js 24**
+- **pnpm 10.27.0+**
+- **A coding agent** in `$PATH` — Claude Code, Codex, OpenCode, or Cursor
+- **A Contentful CMA token** — set `CONTENTFUL_MANAGEMENT_TOKEN`
+
 ## Quick Start
-
-### Prerequisites
-
-- **Node.js 24** — run `nvm use` (`.nvmrc` is included)
-- **pnpm 10.27.0+** — `corepack enable && corepack prepare`
-- **A coding agent** in `$PATH` for `generate` commands — Claude Code, OpenAI Codex, OpenCode, or Cursor (see [agent setup](packages/experience-design-system-cli/README.md#coding-agent))
-- **A Contentful CMA token** for `apply` commands — set `CONTENTFUL_MANAGEMENT_TOKEN` (see [credentials](packages/experience-design-system-cli/README.md#contentful-credentials))
 
 ### Install
 
@@ -22,7 +22,26 @@ pnpm install
 pnpm build
 ```
 
-### Run the full pipeline
+### Link the CLI globally
+
+```bash
+cd packages/experience-design-system-cli
+pnpm link --global
+```
+
+### Setup
+
+```bash
+experiences setup
+```
+
+### Run
+
+```bash
+experiences import
+```
+
+Or with explicit flags:
 
 ```bash
 experiences import \
@@ -34,38 +53,32 @@ experiences import \
 
 ## How it works
 
-The pipeline has four stages:
+The CLI runs your component library through four stages:
 
-```
-1. analyze        →   2. select         →   3. generate        →   4. apply
-   scan source         AI picks which        AI generates           push to
-   extract props       components go         CDF definitions        Contentful
-   into session DB     into Experiences     back into session DB   via Sources API
-```
+**1. Analyze** — Reads your source files and extracts every component: its name, props, and types.
 
-**1. analyze** — Scans your source files (`.tsx`, `.ts`, `.jsx`, `.vue`, `.astro`) using the TypeScript compiler. Extracts component names, props, slots, and prop types. Stores everything in a local SQLite session database.
+**2. Select** — An AI agent reviews the extracted components and decides which ones make sense to expose in Contentful Experiences (buttons, cards, layouts) and which to skip (hooks, context providers, utilities). You can also review and adjust this list yourself using the interactive TUI.
 
-**2. select** — An AI agent reviews every extracted component and decides which ones belong in Experience Orchestration (visible UI: atoms, molecules, organisms) vs. which ones to skip (hooks, context providers, analytics wrappers, routing utilities). You can also do this step manually with the interactive TUI.
+**3. Generate** — An AI agent takes the selected components and produces structured definitions that tell Contentful what each prop is for — whether it holds content, a design token, or interactive state.
 
-**3. generate** — An AI agent takes the accepted components and generates CDF (Component Definition Format) definitions: structured JSON that maps each prop to an component property type (content, design, or state) and optionally links it to your design token library.
+**4. Apply** — Shows you a preview of what will change in your Contentful space, then pushes the component definitions when you're ready.
 
-**4. apply** — Diffs your generated definitions against what already exists in Contentful, shows you what will change, and writes component types and design tokens to Experiences via the Sources API.
-
-All intermediate data lives in a local SQLite session database — no JSON files are written between steps. Each command reads its inputs from the session and writes its outputs back. Any step can be re-run in isolation or resumed after a failure.
+Each stage saves its output locally, so you can re-run or resume any step without starting over.
 
 ## Packages
 
 | Package                                                                                  | Description                                                                                     |
 | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | [`@contentful/experience-design-system-cli`](packages/experience-design-system-cli/)     | The CLI + interactive TUI — analyze, review, generate, validate, and push component definitions |
-| [`@contentful/experience-design-system-types`](packages/experience-design-system-types/) | Shared TypeScript types and Zod schemas for the CDF and DTCG data formats                       |
+| [`@contentful/experience-design-system-types`](packages/experience-design-system-types/) | Shared types and schemas for the CDF and DTCG data formats                                      |
 
 ## Command Reference
 
-Full documentation — every flag, every subcommand — is in [`packages/experience-design-system-cli/README.md`](packages/experience-design-system-cli/README.md).
+Full documentation for every flag, every subcommand is in [`packages/experience-design-system-cli/README.md`](packages/experience-design-system-cli/README.md).
 
 | Command                            | What it does                                                        |
 | ---------------------------------- | ------------------------------------------------------------------- |
+| `experiences setup`                | Interactive setup — configure credentials and agent                 |
 | `experiences analyze extract`      | Scan source files and extract raw component definitions             |
 | `experiences analyze select`       | Interactively pick which components to include (TUI)                |
 | `experiences analyze select-agent` | AI agent picks which components belong in Experiences               |
@@ -78,8 +91,4 @@ Full documentation — every flag, every subcommand — is in [`packages/experie
 | `experiences print components`     | Export generated components to `components.json`                    |
 | `experiences print tokens`         | Export generated tokens to `tokens.json`                            |
 | `experiences print validate`       | Validate CDF or DTCG files against their schemas                    |
-| `experiences session list`         | List pipeline sessions                                              |
-| `experiences session show <id>`    | Show all steps for a session                                        |
-| `experiences session stats`        | Show aggregate storage and record counts                            |
-| `experiences session prune`        | Delete old sessions                                                 |
 | `experiences doctor`               | Health check — verify Node version, credentials, and agent binaries |
