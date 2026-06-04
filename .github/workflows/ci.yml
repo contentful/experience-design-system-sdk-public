@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - canary
     paths:
       - "packages/**"
   pull_request:
@@ -108,8 +109,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint, test]
     if: >-
-      (github.ref == 'refs/heads/main' && github.event_name == 'push' && github.event.head_commit.author.name != 'contentful-automation[bot]') ||
-      (github.ref != 'refs/heads/main' && github.event_name == 'push') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.head_commit.author.name != 'contentful-automation[bot]') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/canary' && github.actor != 'dependabot[bot]' && github.event.head_commit.author.name != 'contentful-automation[bot]') ||
+      (github.event_name == 'push' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/canary') ||
       github.event_name == 'pull_request'
     permissions:
       contents: write
@@ -139,7 +141,7 @@ jobs:
           token: ${{ steps.vault.outputs.GITHUB_TOKEN }}
 
       - name: Configure Git
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/canary'
         run: |
           git config --global user.name "contentful-automation[bot]"
           user_id=$(gh api "/users/contentful-automation[bot]" --jq .id)
@@ -167,6 +169,12 @@ jobs:
       - name: Pull latest changes from main
         if: github.ref == 'refs/heads/main'
         run: git pull --rebase origin main
+
+      - name: Sync main into canary
+        if: github.ref == 'refs/heads/canary'
+        run: |
+          git fetch origin main
+          git merge origin/main --no-edit
 
       - name: Release
         run: pnpm release

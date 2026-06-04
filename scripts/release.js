@@ -3,9 +3,58 @@
 import { releaseVersion, releasePublish } from 'nx/release/index.js'
 import { execSync } from 'node:child_process'
 
-const isDev = process.env.GITHUB_REF !== 'refs/heads/main'
+const branch = process.env.GITHUB_REF?.replace('refs/heads/', '') ?? ''
+const isMain = branch === 'main'
+const isCanary = branch === 'canary'
 
-if (isDev) {
+if (isCanary) {
+  // Canary: conventional commits drive which packages bump and by how much.
+  // The alpha preid formats the version as X.Y.Z-alpha.N so it is clearly
+  // pre-release and never collides with a stable version number.
+  // Git commit + tag + push are enabled (nx.json defaults) so each canary
+  // release is a real, traceable tag in the repo.
+  console.log('Running canary release...')
+
+  try {
+    const { releaseGraph, projectsVersionData } = await releaseVersion({
+      preid: 'alpha',
+      dryRun: false,
+      verbose: true,
+    })
+
+    // If conventional commits found no feat/fix since the last tag, all
+    // packages report the same version — nothing to publish.
+    const hasChanges = Object.values(projectsVersionData).some(
+      ({ newVersion, currentVersion }) => newVersion !== currentVersion
+    )
+
+    if (!hasChanges) {
+      console.log('No releasable changes since last canary tag. Exiting.')
+      process.exit(0)
+    }
+
+    for (const [project, { currentVersion, newVersion }] of Object.entries(projectsVersionData)) {
+      console.log(`  ${project}: ${currentVersion} → ${newVersion}`)
+    }
+
+    const publishResults = await releasePublish({
+      releaseGraph,
+      tag: 'canary',
+      dryRun: false,
+      verbose: true,
+    })
+
+    console.log('\n✓ Canary packages published successfully!')
+    const allSucceeded = Object.values(publishResults).every((r) => r.code === 0)
+    process.exit(allSucceeded ? 0 : 1)
+  } catch (error) {
+    console.error('Canary release failed:', error)
+    process.exit(1)
+  }
+} else if (!isMain) {
+  // Dev: publish a throwaway SHA-stamped prerelease to GitHub Packages with
+  // --tag dev for PR and branch preview builds. No git commit/tag/push so
+  // these builds leave no permanent trace in the repo.
   const REF = `dev-build-${execSync('git rev-parse --short HEAD', {
     encoding: 'utf-8',
   }).trim()}`
@@ -66,6 +115,8 @@ if (isDev) {
     process.exit(1)
   }
 } else {
+  // Main: stable release driven by conventional commits. NX reads commit
+  // history, bumps the version, commits, tags, pushes, then publishes.
   console.log('Running NX release version...')
 
   try {
