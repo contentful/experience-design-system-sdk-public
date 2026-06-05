@@ -457,9 +457,11 @@ export async function runPipeline(
   progressWriter(`Pipeline complete. Session: ${sessionId}`);
 
   if (opts.spaceId && opts.environmentId && !opts.skipApply) {
+    const apiHost = opts.host ?? 'api.contentful.com';
+    const appHost = apiHost.replace(/^api\./, 'app.');
     progressWriter('');
     progressWriter(
-      `View your design system:  https://app.contentful.com/spaces/${opts.spaceId}/environments/${opts.environmentId}/exo/components`,
+      `View your design system:  https://${appHost}/spaces/${opts.spaceId}/environments/${opts.environmentId}/components`,
     );
   }
 
