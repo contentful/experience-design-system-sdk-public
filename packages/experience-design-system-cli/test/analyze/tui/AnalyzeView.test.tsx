@@ -16,6 +16,8 @@ const result: AnalyzeViewResult = {
       propCount: 5,
       slotCount: 1,
       warnings: [],
+      extractionConfidence: 95,
+      needsReview: false,
     },
     {
       name: 'Input',
@@ -23,6 +25,8 @@ const result: AnalyzeViewResult = {
       propCount: 3,
       slotCount: 0,
       warnings: ['prop onChange has inferred type any'],
+      extractionConfidence: 55,
+      needsReview: true,
     },
   ],
   totalWarnings: 1,

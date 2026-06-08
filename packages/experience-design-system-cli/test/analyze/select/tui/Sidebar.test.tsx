@@ -4,10 +4,10 @@ import { Sidebar } from '../../../../src/analyze/select/tui/components/Sidebar.j
 import type { ReviewComponentSummary } from '../../../../src/analyze/select/types.js';
 
 const components: ReviewComponentSummary[] = [
-  { id: 'a', name: 'Button', status: 'accepted' },
-  { id: 'b', name: 'Card', status: 'rejected' },
-  { id: 'c', name: 'Input', status: 'needs-review' },
-  { id: 'd', name: 'Select', status: 'reviewed' },
+  { id: 'a', name: 'Button', status: 'accepted', extractionConfidence: 95, needsReview: false },
+  { id: 'b', name: 'Card', status: 'rejected', extractionConfidence: 90, needsReview: false },
+  { id: 'c', name: 'Input', status: 'needs-review', extractionConfidence: 60, needsReview: true },
+  { id: 'd', name: 'Select', status: 'reviewed', extractionConfidence: 80, needsReview: false },
 ];
 
 describe('Sidebar', () => {
@@ -30,9 +30,9 @@ describe('Sidebar', () => {
     expect(frame).toContain('~');
   });
 
-  it('truncates names longer than 13 chars', () => {
+  it('truncates names longer than 11 chars at default width', () => {
     const longComponents: ReviewComponentSummary[] = [
-      { id: 'x', name: 'VeryLongComponentName', status: 'needs-review' },
+      { id: 'x', name: 'VeryLongComponentName', status: 'needs-review', extractionConfidence: 50, needsReview: true },
     ];
     const { lastFrame } = render(
       <Sidebar
@@ -46,8 +46,8 @@ describe('Sidebar', () => {
       />,
     );
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('VeryLongCompo…');
-    expect(frame).not.toContain('VeryLongComponentName');
+    expect(frame).not.toContain('VeryLongComponentName ');
+    expect(frame).toContain('…');
   });
 
   it('shows scroll indicators when content overflows', () => {
@@ -55,6 +55,8 @@ describe('Sidebar', () => {
       id: String(i),
       name: `Comp${i}`,
       status: 'needs-review' as const,
+      extractionConfidence: 50,
+      needsReview: true,
     }));
     const { lastFrame } = render(
       <Sidebar
@@ -70,5 +72,28 @@ describe('Sidebar', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toContain('▲');
     expect(frame).toContain('▼');
+  });
+
+  it('renders component names without confidence scores (scores are in detail header)', () => {
+    const mixed: ReviewComponentSummary[] = [
+      { id: '1', name: 'Good', status: 'needs-review', extractionConfidence: 95, needsReview: false },
+      { id: '2', name: 'Medium', status: 'needs-review', extractionConfidence: 65, needsReview: false },
+      { id: '3', name: 'Flagged', status: 'needs-review', extractionConfidence: 40, needsReview: true },
+    ];
+    const { lastFrame } = render(
+      <Sidebar
+        components={mixed}
+        selectedId={null}
+        focused={false}
+        scrollOffset={0}
+        visibleCount={10}
+        onSelect={vi.fn()}
+        onScrollChange={vi.fn()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Good');
+    expect(frame).toContain('Medium');
+    expect(frame).toContain('Flagged');
   });
 });

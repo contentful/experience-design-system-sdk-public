@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { readFile } from 'node:fs/promises';
 import type { PreviewAnnotation, ReviewComponentStatus, ReviewSessionSnapshot } from '../types.js';
@@ -61,6 +61,11 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
   } | null>(null);
   const [sidebarScrollOffset, setSidebarScrollOffset] = useState(0);
   const [jsonScrollOffset, setJsonScrollOffset] = useState(0);
+  // Keeps the visual sort order in sync for use inside keymap handlers (which close over a stale render)
+  const sortedIdsRef = useRef<string[]>([]);
+  // Source code kept separate from session state so lazy loading never mutates
+  // session.components — that would invalidate useMemo(sessionSummary) and flash the sidebar
+  const [sourceCodeById, setSourceCodeById] = useState<Record<string, string>>({});
   const [previewAnnotations, setPreviewAnnotations] = useState<Record<string, PreviewAnnotation>>(() => {
     const raw = process.env['EDS_PREVIEW_ANNOTATIONS'];
     if (!raw) return {};
@@ -166,13 +171,23 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
     };
   }, []);
 
-  // Sync loaded session into local state
+  // Sync loaded session into local state; selectedId is set to null here
+  // and will be corrected to the first sorted item on first render via the effect below
   useEffect(() => {
     if (loadedSession && !session) {
       setSession(loadedSession);
-      setSelectedId(loadedSession.components[0]?.id ?? null);
+      setSelectedId(null);
     }
   }, [loadedSession]);
+
+  // Once the sort order is known (after first render), select the first sorted item.
+  // Runs only when session transitions from null → loaded.
+  const sessionLoaded = session !== null;
+  useEffect(() => {
+    if (sessionLoaded && selectedId === null && sortedIdsRef.current.length > 0) {
+      setSelectedId(sortedIdsRef.current[0]!);
+    }
+  }, [sessionLoaded]);
 
   useEffect(() => {
     if (session && !previewResponse) {
@@ -212,24 +227,20 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
     }
   }, [session]);
 
-  // Lazy source code loading
+  // Lazy source code loading — writes to sourceCodeById, NOT session.components,
+  // so it doesn't invalidate useMemo(sessionSummary) and cause a sidebar flash
   useEffect(() => {
     if (!session || !selectedId) return;
+    if (sourceCodeById[selectedId] !== undefined) return; // already loaded
     const selectedComponent = session.components.find((c) => c.id === selectedId);
-    if (!selectedComponent || selectedComponent.sourceCode !== null) return;
+    if (!selectedComponent) return;
 
     readFile(selectedComponent.resolvedSourcePath, 'utf8')
       .then((code) => {
-        setSession((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            components: prev.components.map((c) => (c.id === selectedComponent.id ? { ...c, sourceCode: code } : c)),
-          };
-        });
+        setSourceCodeById((prev) => ({ ...prev, [selectedId]: code }));
       })
       .catch(() => {
-        // Leave as null; SourcePanel shows [No source available]
+        setSourceCodeById((prev) => ({ ...prev, [selectedId]: '' }));
       });
   }, [selectedId]);
 
@@ -276,18 +287,20 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
     {
       onSidebarUp: () => {
         if (!session) return;
-        const idx = session.components.findIndex((c) => c.id === selectedId);
+        const ids = sortedIdsRef.current;
+        const idx = ids.indexOf(selectedId ?? '');
         if (idx > 0) {
-          setSelectedId(session.components[idx - 1].id);
+          setSelectedId(ids[idx - 1]!);
           setJsonScrollOffset(0);
           setSidebarScrollOffset((prev) => Math.min(prev, idx - 1));
         }
       },
       onSidebarDown: () => {
         if (!session) return;
-        const idx = session.components.findIndex((c) => c.id === selectedId);
-        if (idx < session.components.length - 1) {
-          setSelectedId(session.components[idx + 1].id);
+        const ids = sortedIdsRef.current;
+        const idx = ids.indexOf(selectedId ?? '');
+        if (idx < ids.length - 1) {
+          setSelectedId(ids[idx + 1]!);
           setJsonScrollOffset(0);
           setSidebarScrollOffset((prev) => {
             const newIdx = idx + 1;
@@ -309,7 +322,10 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
         setEditMode(true);
         setDraftsByComponentId((prev) => ({
           ...prev,
-          [selectedId]: prev[selectedId] ?? JSON.stringify(component.editedProposal, null, 2),
+          [selectedId]: (() => {
+            const { extractionConfidence: _c, reviewReasons: _r, needsReview: _n, ...rest } = component.editedProposal;
+            return prev[selectedId] ?? JSON.stringify(rest, null, 2);
+          })(),
         }));
       },
       onToggleSource: () => {
@@ -354,6 +370,33 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
     },
   );
 
+  // Sorted order: flagged+unresolved first, then ascending confidence.
+  // Memoised above early returns (React rules of hooks) so the array reference
+  // is stable between renders — prevents Sidebar repainting on scroll/select.
+  const sessionSummary = useMemo(
+    () =>
+      (session?.components ?? [])
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          status: c.status,
+          previewAnnotation: previewAnnotations[c.name] as PreviewAnnotation | undefined,
+          extractionConfidence: c.originalProposal.extractionConfidence ?? 100,
+          needsReview: c.originalProposal.needsReview ?? false,
+        }))
+        .sort((a, b) => {
+          const aFlagged = a.needsReview && a.status === 'needs-review' ? 0 : 1;
+          const bFlagged = b.needsReview && b.status === 'needs-review' ? 0 : 1;
+          if (aFlagged !== bFlagged) return aFlagged - bFlagged;
+          return a.extractionConfidence - b.extractionConfidence;
+        }),
+    [session?.components, previewAnnotations],
+  );
+
+  // Stable ID order — kept in a ref for use inside keymap handlers
+  const sortedIds = useMemo(() => sessionSummary.map((c) => c.id), [sessionSummary]);
+  sortedIdsRef.current = sortedIds;
+
   if (loading) {
     return <Text>Loading session...</Text>;
   }
@@ -374,13 +417,6 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
   if (finalizedResult) {
     return <FinalizedScreen result={finalizedResult} />;
   }
-
-  const sessionSummary = session.components.map((c) => ({
-    id: c.id,
-    name: c.name,
-    status: c.status,
-    previewAnnotation: previewAnnotations[c.name] as PreviewAnnotation | undefined,
-  }));
 
   const selectedRecord = session.components.find((c) => c.id === selectedId) ?? null;
   const sessionDetail = selectedRecord ? createReviewSessionDetail({ ...session, components: [selectedRecord] }) : null;
@@ -404,7 +440,10 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
         ];
 
   const collapsed = terminalWidth < 80;
-  const visibleCount = 20;
+  // TopBar(1) + statusbar(1) + footer(1) + border padding(2) = ~5 chrome rows
+  const CHROME_ROWS = 5;
+  const terminalRows = stdout?.rows ?? 24;
+  const visibleCount = Math.max(1, terminalRows - CHROME_ROWS);
 
   const longestName = session.components.reduce((max, c) => Math.max(max, c.name.length), 0);
   // icon + space + name + 2 border chars; min 14, max 22
@@ -580,7 +619,7 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
             {selectedDetail ? (
               <ComponentDetail
                 component={selectedDetail}
-                sourceCode={selectedRecord?.sourceCode ?? null}
+                sourceCode={selectedId ? (sourceCodeById[selectedId] ?? null) : null}
                 draftValue={selectedId ? (draftsByComponentId[selectedId] ?? '') : ''}
                 editMode={editMode}
                 sourceVisible={sourceVisible}

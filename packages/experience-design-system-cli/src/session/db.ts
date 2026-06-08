@@ -73,15 +73,18 @@ CREATE TABLE IF NOT EXISTS steps (
 );
 
 CREATE TABLE IF NOT EXISTS raw_components (
-  session_id    TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  component_id  TEXT NOT NULL,
-  name          TEXT NOT NULL,
-  source        TEXT NOT NULL,
-  framework     TEXT NOT NULL,
-  extracted_at  TEXT NOT NULL,
-  status        TEXT NOT NULL DEFAULT 'extracted',
-  cdf_schema    TEXT,
-  description   TEXT,
+  session_id             TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  component_id           TEXT NOT NULL,
+  name                   TEXT NOT NULL,
+  source                 TEXT NOT NULL,
+  framework              TEXT NOT NULL,
+  extracted_at           TEXT NOT NULL,
+  status                 TEXT NOT NULL DEFAULT 'extracted',
+  cdf_schema             TEXT,
+  description            TEXT,
+  extraction_confidence  INTEGER NOT NULL DEFAULT 100,
+  review_reasons         TEXT NOT NULL DEFAULT '[]',
+  needs_review           INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (session_id, component_id)
 );
 
@@ -206,6 +209,19 @@ function applyDbMigrations(db: DatabaseSync): void {
   }>;
   if (!cols.some((c) => c.name === 'required')) {
     db.exec('ALTER TABLE raw_slots ADD COLUMN required INTEGER NOT NULL DEFAULT 1 CHECK (required IN (0, 1))');
+  }
+
+  // Add extraction confidence scoring columns if they don't exist yet (added in v0.6.0).
+  const rawCompCols = db.prepare('PRAGMA table_info(raw_components)').all() as Array<{ name: string }>;
+  const rawCompColNames = new Set(rawCompCols.map((c) => c.name));
+  if (!rawCompColNames.has('extraction_confidence')) {
+    db.exec('ALTER TABLE raw_components ADD COLUMN extraction_confidence INTEGER NOT NULL DEFAULT 100');
+  }
+  if (!rawCompColNames.has('review_reasons')) {
+    db.exec("ALTER TABLE raw_components ADD COLUMN review_reasons TEXT NOT NULL DEFAULT '[]'");
+  }
+  if (!rawCompColNames.has('needs_review')) {
+    db.exec('ALTER TABLE raw_components ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0');
   }
 
   // Add generation_cache table if it doesn't exist yet.
@@ -521,8 +537,8 @@ export function storeRawComponents(
   const now = new Date().toISOString();
 
   const insertComp = db.prepare(
-    `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, extraction_confidence, review_reasons, needs_review)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertProp = db.prepare(
     `INSERT INTO raw_props
@@ -589,7 +605,17 @@ export function storeRawComponents(
 
     for (const comp of components) {
       const componentId = deriveComponentId(comp.name, comp.source);
-      insertComp.run(sessionId, componentId, comp.name, comp.source, comp.framework, now);
+      insertComp.run(
+        sessionId,
+        componentId,
+        comp.name,
+        comp.source,
+        comp.framework,
+        now,
+        comp.extractionConfidence ?? 100,
+        JSON.stringify(comp.reviewReasons ?? []),
+        comp.needsReview ? 1 : 0,
+      );
 
       for (let i = 0; i < comp.props.length; i++) {
         const prop = comp.props[i]!;
@@ -719,12 +745,17 @@ export function loadRawComponents(
   allowedNames?: Set<string>,
 ): RawComponentWithId[] {
   const all = db
-    .prepare('SELECT component_id, name, source, framework FROM raw_components WHERE session_id = ? ORDER BY rowid')
+    .prepare(
+      'SELECT component_id, name, source, framework, extraction_confidence, review_reasons, needs_review FROM raw_components WHERE session_id = ? ORDER BY rowid',
+    )
     .all(sessionId) as Array<{
     component_id: string;
     name: string;
     source: string;
     framework: string;
+    extraction_confidence: number;
+    review_reasons: string;
+    needs_review: number;
   }>;
 
   const components = allowedNames ? all.filter((c) => allowedNames.has(c.name)) : all;
@@ -797,6 +828,15 @@ export function loadRawComponents(
       name: c.name,
       source: c.source,
       framework: c.framework as RawComponentDefinition['framework'],
+      extractionConfidence: c.extraction_confidence ?? 100,
+      reviewReasons: (() => {
+        try {
+          return JSON.parse(c.review_reasons ?? '[]') as string[];
+        } catch {
+          return [];
+        }
+      })(),
+      needsReview: Boolean(c.needs_review),
       props: (propsByComponent.get(c.component_id) ?? []).map((p): RawPropDefinition => {
         const av = allowedValuesByProp.get(`${c.component_id}::${p.name}`);
         const prop: RawPropDefinition = {

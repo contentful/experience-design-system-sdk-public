@@ -70,8 +70,20 @@ export function ComponentDetail({
     sourceWidth = 0;
   }
 
-  const originalJson = JSON.stringify(component.originalProposal, null, 2);
-  const editedJson = JSON.stringify(component.editedProposal, null, 2);
+  // Strip internal scoring fields — they're metadata, not part of the component definition
+  const stripScoring = ({
+    extractionConfidence: _c,
+    reviewReasons: _r,
+    needsReview: _n,
+    ...rest
+  }: typeof component.originalProposal) => rest;
+  const originalJson = JSON.stringify(stripScoring(component.originalProposal), null, 2);
+  const editedJson = JSON.stringify(stripScoring(component.editedProposal), null, 2);
+
+  const conf = component.originalProposal.extractionConfidence ?? 100;
+  const nr = component.originalProposal.needsReview ?? false;
+  const confColor = nr ? 'red' : conf >= 80 ? 'white' : conf >= 50 ? 'yellow' : 'red';
+  const confLabel = (nr ? '⚑ ' : '') + 'confidence: ' + String(conf);
 
   return (
     <Box flexDirection="column" flexGrow={1}>
@@ -81,6 +93,7 @@ export function ComponentDetail({
           const ann = annotationLabel(previewAnnotation);
           return ann ? <Text color={ann.color}>{ann.text}</Text> : null;
         })()}
+        <Text color={confColor}>{' — ' + confLabel}</Text>
         <Box flexGrow={1} />
         <Text dimColor>
           {sourceVisible ? '[s] hide src' : '[s] src'}

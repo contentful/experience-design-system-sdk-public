@@ -11,6 +11,7 @@ import { registerAnalyzeSelectAgentCommand } from './select-agent/command.js';
 import { openPipelineDb, getOrCreateSession, createStep, updateStep, storeRawComponents } from '../session/db.js';
 import { preClassifyComponent } from './pre-classify.js';
 import { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
+import { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
 
 interface AnalyzeExtractOptions {
   project: string;
@@ -161,7 +162,13 @@ export function registerAnalyzeCommand(program: Command): void {
           filterWarnings.push(`Skipped non-authorable component: ${component.name} (${verdict.reason})`);
           continue;
         }
-        filteredComponents.push(component);
+        const { confidence, reasons } = computeExtractionScore(component);
+        filteredComponents.push({
+          ...component,
+          extractionConfidence: confidence,
+          reviewReasons: reasons,
+          needsReview: deriveNeedsReview(confidence),
+        });
       }
       storeRawComponents(db, sessionId, filteredComponents);
       updateStep(db, stepId, 'complete', { sessionId });
@@ -179,6 +186,8 @@ export function registerAnalyzeCommand(program: Command): void {
           propCount: c.props.length,
           slotCount: c.slots.length,
           warnings: allWarnings.filter((w) => w.startsWith(c.name + ':')),
+          extractionConfidence: c.extractionConfidence ?? 100,
+          needsReview: c.needsReview ?? false,
         })),
         totalWarnings: allWarnings.length,
       };
