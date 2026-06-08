@@ -8,34 +8,21 @@ Follows the same pattern as the translation team's local eval runner. Scores eac
 
 ### AWS credentials
 
-The eval calls Claude via Contentful's Bedrock instance. You need AWS credentials with Bedrock access configured in the `us-east-1` region.
-
-**Option A — AWS profile (recommended for local runs)**
-
-```bash
-aws configure --profile contentful-bedrock
-# enter your Access Key ID, Secret Access Key, region: us-east-1
-
-# then run with:
-AWS_PROFILE=contentful-bedrock pnpm start
-```
-
-**Option B — environment variables**
+The eval calls Claude via Contentful's Bedrock instance, the same way as `translation-eval`. Set these env vars before running:
 
 ```bash
 export AWS_ACCESS_KEY_ID=...
 export AWS_SECRET_ACCESS_KEY=...
-export AWS_SESSION_TOKEN=...   # if using temporary credentials
-export AWS_REGION=us-east-1
-pnpm start
+export AWS_SESSION_TOKEN=...   # if using a temporary/assumed role
+export AWS_REGION=us-east-1    # default, can omit
 ```
 
-Ask in #dx-design-system-integrations for the Bedrock access credentials or IAM role to assume.
+Ask in #dx-design-system-integrations for the credentials — the translation team (`translation-eval`) uses the same Bedrock setup.
 
-The default model is `us.anthropic.claude-sonnet-4-6`. Override with `BEDROCK_MODEL_ID`:
+The default model is `global.anthropic.claude-opus-4-7` (same as translation-eval). Override with `BEDROCK_MODEL_ID`:
 
 ```bash
-BEDROCK_MODEL_ID=us.anthropic.claude-opus-4-7 pnpm start
+BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-4-6 pnpm start
 ```
 
 ## Setup
