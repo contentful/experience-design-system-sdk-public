@@ -6,6 +6,7 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "start:save-baseline": "tsx src/index.ts --save-baseline",
+    "pull-corpus": "git -C corpus pull 2>/dev/null || git clone git@github.com:contentful/dsi-eval-data.git corpus",
     "build-corpus": "tsx scripts/build-corpus.ts",
     "type-check": "tsc --noEmit"
   },

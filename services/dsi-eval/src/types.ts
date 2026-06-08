@@ -66,13 +66,22 @@ export type EvalResult = {
   baselineComparison?: BaselineComparison;
 };
 
+export type FrameworkStats = {
+  count: number;
+  avgCoverage: number;
+  medianCoverage: number;
+  avgMappingQuality: number | null;
+};
+
 export type RunSummary = {
   runAt: string;
   totalEntries: number;
   errorCount: number;
   avgComponentCoverage: number;
+  medianComponentCoverage: number;
   hallucinationFailures: number;
   avgMappingQuality: number | null;
+  frameworkBreakdown: Record<string, FrameworkStats>;
   baselineLoaded: boolean;
   regressions: number;
 };

@@ -12,6 +12,7 @@ Stage 0 (AST extraction) is deterministic and covered by unit tests, not evals.
 ```bash
 cd services/dsi-eval
 pnpm install
+pnpm pull-corpus   # requires access to contentful/dsi-eval-data
 ```
 
 AWS credentials are picked up automatically by the SDK (IAM role, `~/.aws/credentials`, or env vars).
