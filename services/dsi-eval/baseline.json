@@ -1,4 +1,113 @@
 {
-  "savedAt": null,
-  "entries": []
+  "savedAt": "2026-06-08T21:48:55.962Z",
+  "entries": [
+    {
+      "repo": "ant-design",
+      "componentCoverageRatio": 0.5,
+      "hallucinationPass": true,
+      "mappingQualityScore": 3
+    },
+    {
+      "repo": "carbon-components-vue",
+      "componentCoverageRatio": 1,
+      "hallucinationPass": true,
+      "mappingQualityScore": 4
+    },
+    {
+      "repo": "carbon-labs",
+      "componentCoverageRatio": 0.8333333333333334,
+      "hallucinationPass": true,
+      "mappingQualityScore": 4
+    },
+    {
+      "repo": "circuit-ui",
+      "componentCoverageRatio": 0.9166666666666666,
+      "hallucinationPass": true,
+      "mappingQualityScore": 4
+    },
+    {
+      "repo": "example",
+      "componentCoverageRatio": 1,
+      "hallucinationPass": true,
+      "mappingQualityScore": 5
+    },
+    {
+      "repo": "fluentui-web-components",
+      "componentCoverageRatio": 0.9166666666666666,
+      "hallucinationPass": true,
+      "mappingQualityScore": 4
+    },
+    {
+      "repo": "forma-36",
+      "componentCoverageRatio": 1,
+      "hallucinationPass": true,
+      "mappingQualityScore": 4
+    },
+    {
+      "repo": "ionic-framework",
+      "componentCoverageRatio": 1,
+      "hallucinationPass": true,
+      "mappingQualityScore": 4
+    },
+    {
+      "repo": "material-ui",
+      "componentCoverageRatio": 0.1111111111111111,
+      "hallucinationPass": true,
+      "mappingQualityScore": 2
+    },
+    {
+      "repo": "polaris",
+      "componentCoverageRatio": 0.9166666666666666,
+      "hallucinationPass": true,
+      "mappingQualityScore": 4
+    },
+    {
+      "repo": "porsche-design-system",
+      "componentCoverageRatio": 1,
+      "hallucinationPass": true,
+      "mappingQualityScore": 4
+    },
+    {
+      "repo": "primevue",
+      "componentCoverageRatio": 1,
+      "hallucinationPass": true,
+      "mappingQualityScore": 4
+    },
+    {
+      "repo": "radix-ui-primitives",
+      "componentCoverageRatio": 0,
+      "hallucinationPass": true,
+      "mappingQualityScore": 2
+    },
+    {
+      "repo": "shoelace",
+      "componentCoverageRatio": 1,
+      "hallucinationPass": true,
+      "mappingQualityScore": 5
+    },
+    {
+      "repo": "spectrum-web-components",
+      "componentCoverageRatio": 1,
+      "hallucinationPass": true,
+      "mappingQualityScore": 5
+    },
+    {
+      "repo": "starlight",
+      "componentCoverageRatio": 0.8333333333333334,
+      "hallucinationPass": true,
+      "mappingQualityScore": 4
+    },
+    {
+      "repo": "vuetify",
+      "componentCoverageRatio": 0.9166666666666666,
+      "hallucinationPass": true,
+      "mappingQualityScore": 4
+    },
+    {
+      "repo": "zendesk-react-components",
+      "componentCoverageRatio": 0.08333333333333333,
+      "hallucinationPass": true,
+      "mappingQualityScore": 2
+    }
+  ]
 }
