@@ -1,0 +1,931 @@
+{
+  "repo": "porsche-design-system",
+  "repoUrl": "https://github.com/porsche-design-system/porsche-design-system",
+  "rawComponents": [
+    {
+      "name": "GridLayout",
+      "source": "packages/components-react/src/components/GridLayout.tsx",
+      "framework": "react",
+      "props": [
+        {
+          "name": "visualizeGrid",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "true"
+        }
+      ],
+      "slots": []
+    },
+    {
+      "name": "GridLayout",
+      "source": "packages/components-vue/src/components/GridLayout.vue",
+      "framework": "vue",
+      "props": [
+        {
+          "name": "visualizeGrid",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "true"
+        }
+      ],
+      "slots": []
+    },
+    {
+      "name": "PAccordion",
+      "source": "packages/components/src/components/accordion/accordion.tsx",
+      "framework": "stencil",
+      "props": [
+        {
+          "name": "compact",
+          "type": "boolean",
+          "required": false,
+          "description": "Displays the Accordion as compact version with thinner border and smaller paddings."
+        },
+        {
+          "name": "heading",
+          "type": "string",
+          "required": false,
+          "description": "Defines the heading used in accordion."
+        },
+        {
+          "name": "headingTag",
+          "type": "AccordionHeadingTag",
+          "required": false,
+          "defaultValue": "h2",
+          "description": "Sets a heading tag, so it fits correctly within the outline of the page."
+        },
+        {
+          "name": "open",
+          "type": "boolean",
+          "required": false,
+          "description": "Defines if accordion is open."
+        },
+        {
+          "name": "size",
+          "type": "BreakpointCustomizable<AccordionSize>",
+          "required": false,
+          "defaultValue": "small",
+          "description": "The text size."
+        },
+        {
+          "name": "sticky",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "tag",
+          "type": "AccordionTag",
+          "required": false,
+          "description": "[DEPRECATED] , will be removed with next major release, use `heading-tag` instead.\nSets a heading tag, so it fits correctly within the outline of the page."
+        },
+        {
+          "name": "theme",
+          "type": "Theme",
+          "required": false,
+          "defaultValue": "light",
+          "description": "Adapts the color when used on dark background."
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true,
+          "description": "Default slot for the main content"
+        },
+        {
+          "name": "heading",
+          "isDefault": false,
+          "description": "Defines the heading used in the accordion. Can be used alternatively to the heading prop. Please **refrain** from using any other than text content as slotted markup."
+        }
+      ]
+    },
+    {
+      "name": "PBanner",
+      "source": "packages/components/src/components/banner/banner.tsx",
+      "framework": "stencil",
+      "props": [
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "defaultValue": "",
+          "description": "Description of the banner."
+        },
+        {
+          "name": "dismissButton",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "true",
+          "description": "If false, the banner will not have a dismiss button."
+        },
+        {
+          "name": "heading",
+          "type": "string",
+          "required": false,
+          "defaultValue": "",
+          "description": "Heading of the banner."
+        },
+        {
+          "name": "headingTag",
+          "type": "BannerHeadingTag",
+          "required": false,
+          "defaultValue": "h5",
+          "description": "Sets a heading tag, so it fits correctly within the outline of the page."
+        },
+        {
+          "name": "open",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "If true, the banner is open."
+        },
+        {
+          "name": "persistent",
+          "type": "boolean",
+          "required": false,
+          "description": "[DEPRECATED] since v3.0.0, will be removed with next major release, use `dismissButton` instead.\nDefines if the banner can be closed/removed by the user."
+        },
+        {
+          "name": "state",
+          "type": "BannerState",
+          "required": false,
+          "defaultValue": "info",
+          "description": "State of the banner."
+        },
+        {
+          "name": "theme",
+          "type": "Theme",
+          "required": false,
+          "defaultValue": "light",
+          "description": "Adapts the banner color depending on the theme."
+        },
+        {
+          "name": "width",
+          "type": "BannerWidth",
+          "required": false,
+          "description": "[DEPRECATED] Has no effect anymore"
+        }
+      ],
+      "slots": [
+        {
+          "name": "description",
+          "isDefault": false,
+          "description": "Defines the description used in the banner. Can be used alternatively to the description prop. Can be used for rich content."
+        },
+        {
+          "name": "heading",
+          "isDefault": false,
+          "description": "Defines the heading used in the banner. Can be used alternatively to the heading prop. Can be used for rich content."
+        },
+        {
+          "name": "title",
+          "isDefault": false,
+          "description": "[DEPRECATED] Please use the heading prop or slot=\"heading\" instead."
+        }
+      ]
+    },
+    {
+      "name": "PCarousel",
+      "source": "packages/components/src/components/carousel/carousel.tsx",
+      "framework": "stencil",
+      "props": [
+        {
+          "name": "activeSlideIndex",
+          "type": "number",
+          "required": false,
+          "defaultValue": "0",
+          "description": "Defines which slide to be active (zero-based numbering)."
+        },
+        {
+          "name": "alignControls",
+          "type": "CarouselAlignControls",
+          "required": false,
+          "defaultValue": "auto",
+          "description": "Alignment of slotted controls"
+        },
+        {
+          "name": "alignHeader",
+          "type": "CarouselAlignHeader",
+          "required": false,
+          "defaultValue": "start",
+          "description": "Alignment of heading and description"
+        },
+        {
+          "name": "aria",
+          "type": "SelectedAriaAttributes<CarouselAriaAttribute>",
+          "required": false,
+          "description": "Add ARIA attributes."
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Defines the description used in the carousel."
+        },
+        {
+          "name": "disablePagination",
+          "type": "BreakpointCustomizable<boolean>",
+          "required": false,
+          "description": "[DEPRECATED] since v3.0.0, will be removed with next major release, use `pagination` instead.\nIf true, the carousel will not show pagination bullets at the bottom."
+        },
+        {
+          "name": "focusOnCenterSlide",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "Indicates whether focus should be set on the center slide.\nIf true, the carousel loops by individual slide; otherwise, it loops by page."
+        },
+        {
+          "name": "gradientColor",
+          "type": "CarouselGradientColor",
+          "required": false,
+          "defaultValue": "none",
+          "description": "Adapts the background gradient for the left and right edge."
+        },
+        {
+          "name": "heading",
+          "type": "string",
+          "required": false,
+          "description": "Defines the heading used in the carousel."
+        },
+        {
+          "name": "headingSize",
+          "type": "CarouselHeadingSize",
+          "required": false,
+          "defaultValue": "x-large",
+          "description": "Defines the heading size used in the carousel."
+        },
+        {
+          "name": "intl",
+          "type": "CarouselInternationalization",
+          "required": false,
+          "description": "Override the default wordings that are used for aria-labels on the next/prev buttons and pagination."
+        },
+        {
+          "name": "pagination",
+          "type": "BreakpointCustomizable<boolean>",
+          "required": false,
+          "defaultValue": "true",
+          "description": "If false, the carousel will not show pagination bullets at the bottom."
+        },
+        {
+          "name": "rewind",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "true",
+          "description": "Whether the slides should rewind from last to first slide and vice versa."
+        },
+        {
+          "name": "skipLinkTarget",
+          "type": "string",
+          "required": false,
+          "description": "Defines target of skip link (to skip carousel entries)."
+        },
+        {
+          "name": "slidesPerPage",
+          "type": "BreakpointCustomizable<CarouselSlidesPerPage>",
+          "required": false,
+          "defaultValue": "1",
+          "description": "Sets the amount of slides visible at the same time. Can be set to `auto` if you want to define different widths per slide via CSS."
+        },
+        {
+          "name": "theme",
+          "type": "Theme",
+          "required": false,
+          "defaultValue": "light",
+          "description": "Adapts the color when used on dark background."
+        },
+        {
+          "name": "trimSpace",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "true",
+          "description": "Determines whether to trim spaces before/after the carousel if `focusOnCenterSlide` option is true."
+        },
+        {
+          "name": "width",
+          "type": "CarouselWidth",
+          "required": false,
+          "defaultValue": "basic",
+          "description": "Defines the outer spacings between the carousel and the left and right screen sides."
+        },
+        {
+          "name": "wrapContent",
+          "type": "boolean",
+          "required": false,
+          "description": "[DEPRECATED] Has no effect anymore"
+        }
+      ],
+      "slots": [
+        {
+          "name": "`slide-${i}`",
+          "isDefault": false
+        },
+        {
+          "name": "controls",
+          "isDefault": false,
+          "description": "Shows a sidebar area on the **start** side (**left** in **LTR** mode / **right** in **RTL** mode). On mobile view it transforms into a flyout."
+        },
+        {
+          "name": "default",
+          "isDefault": true,
+          "description": "Default slot for the carousel slides."
+        },
+        {
+          "name": "description",
+          "isDefault": false,
+          "description": "Shows a footer section, flowing under the content area when scrollable."
+        },
+        {
+          "name": "heading",
+          "isDefault": false,
+          "description": "Renders a heading above the carousel."
+        }
+      ]
+    },
+    {
+      "name": "PFlag",
+      "source": "packages/components/src/components/flag/flag.tsx",
+      "framework": "stencil",
+      "props": [
+        {
+          "name": "aria",
+          "type": "SelectedAriaAttributes<FlagAriaAttribute>",
+          "required": false,
+          "description": "A map of ARIA attributes to enhance the flag's accessibility. For example, use `{ 'aria-label': 'German flag' }` to provide a descriptive label for screen readers."
+        },
+        {
+          "name": "name",
+          "type": "FlagName",
+          "required": false,
+          "defaultValue": "de",
+          "description": "Specifies the country flag to display. Use the two-letter ISO 3166-1 alpha-2 country code. For example, use `us` for the United States, `de` for Germany, `gb` for Great Britain."
+        },
+        {
+          "name": "size",
+          "type": "FlagSize",
+          "required": false,
+          "defaultValue": "small",
+          "description": "The size of the flag. Pre-defined sizes are aligned with the Porsche Next typescale. Available values are `small`, `medium`, `large`, etc."
+        }
+      ],
+      "slots": []
+    },
+    {
+      "name": "PInputEmail",
+      "source": "packages/components/src/components/input-email/input-email.tsx",
+      "framework": "stencil",
+      "props": [
+        {
+          "name": "autoComplete",
+          "type": "string",
+          "required": false,
+          "description": "Provides a hint to the browser about what type of data the field expects, which can assist with autofill features (e.g., autocomplete='email')."
+        },
+        {
+          "name": "compact",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "A boolean value that, if present, renders the input field as a compact version."
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "defaultValue": "",
+          "description": "Supplementary text providing more context or explanation for the input."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "A boolean value that, if present, makes the input field unusable and unclickable. The value will not be submitted with the form."
+        },
+        {
+          "name": "form",
+          "type": "string",
+          "required": false,
+          "description": "Specifies the id of the <form> element that the input belongs to (useful if the input is not a direct descendant of the form)."
+        },
+        {
+          "name": "hideLabel",
+          "type": "BreakpointCustomizable<boolean>",
+          "required": false,
+          "defaultValue": "false",
+          "description": "Controls the visibility of the label."
+        },
+        {
+          "name": "indicator",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "Controls the visibility of the email icon."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": false,
+          "defaultValue": "",
+          "description": "Text content for a user-facing label."
+        },
+        {
+          "name": "loading",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false"
+        },
+        {
+          "name": "maxLength",
+          "type": "number",
+          "required": false,
+          "description": "A non-negative integer specifying the maximum number of characters the user can enter into the input."
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "required": false,
+          "defaultValue": "",
+          "description": "Dynamic feedback text for validation or status."
+        },
+        {
+          "name": "minLength",
+          "type": "number",
+          "required": false,
+          "description": "A non-negative integer specifying the minimum number of characters required for the input's value to be considered valid."
+        },
+        {
+          "name": "multiple",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "A boolean value that, if present, it allows the user to enter a list of multiple email addresses, separated by commas (and optional whitespace). The browser will validate each email address in the list."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "The name of the input field, used when submitting the form data."
+        },
+        {
+          "name": "pattern",
+          "type": "string",
+          "required": false,
+          "description": "Specifies a regular expression that the input's value must match for the value to pass constraint validation. This allows for more specific email validation rules than the browser's default (e.g., restricting to a specific domain). If provided, it overrides the browser's default email validation."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "required": false,
+          "defaultValue": "",
+          "description": "A string that provides a brief hint to the user about what kind of information is expected in the field (e.g., placeholder='you@example.com'). This text is displayed when the input field is empty."
+        },
+        {
+          "name": "readOnly",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "A boolean value that, if present, makes the input field uneditable by the user, but its value will still be submitted with the form."
+        },
+        {
+          "name": "required",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "A boolean value that, if present, indicates that the input field must be filled out before the form can be submitted."
+        },
+        {
+          "name": "state",
+          "type": "InputEmailState",
+          "required": false,
+          "defaultValue": "none",
+          "description": "Indicates the validation or overall status of the input component."
+        },
+        {
+          "name": "theme",
+          "type": "Theme",
+          "required": false,
+          "defaultValue": "light",
+          "description": "Controls the visual appearance of the component."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false,
+          "defaultValue": "",
+          "description": "The default email address (or comma-separated list of addresses) for the input."
+        }
+      ],
+      "slots": [
+        {
+          "name": "description",
+          "isDefault": false,
+          "description": "Shows a description. Only [phrasing content](https://developer.mozilla.org/en-US/docs/Web/Guide/HTML/Content_categories#Phrasing_content) is allowed."
+        },
+        {
+          "name": "end",
+          "isDefault": false,
+          "description": "Shows content at the end of the input (e.g. toggle button, unit suffix)."
+        },
+        {
+          "name": "label",
+          "isDefault": false,
+          "description": "Shows a label. Only [phrasing content](https://developer.mozilla.org/en-US/docs/Web/Guide/HTML/Content_categories#Phrasing_content) is allowed."
+        },
+        {
+          "name": "label-after",
+          "isDefault": false,
+          "description": "Places additional content after the label text (for content that should not be part of the label, e.g. external links or `p-popover`)."
+        },
+        {
+          "name": "message",
+          "isDefault": false,
+          "description": "Shows a state message. Only [phrasing content](https://developer.mozilla.org/en-US/docs/Web/Guide/HTML/Content_categories#Phrasing_content) is allowed."
+        },
+        {
+          "name": "start",
+          "isDefault": false,
+          "description": "Shows content at the start of the input (e.g. unit prefix)."
+        }
+      ]
+    },
+    {
+      "name": "PLinkSocial",
+      "source": "packages/components/src/components/link-social/link-social.tsx",
+      "framework": "stencil",
+      "props": [
+        {
+          "name": "compact",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "Displays as compact version."
+        },
+        {
+          "name": "hideLabel",
+          "type": "BreakpointCustomizable<boolean>",
+          "required": false,
+          "defaultValue": "false",
+          "description": "Show or hide label."
+        },
+        {
+          "name": "href",
+          "type": "string",
+          "required": false,
+          "description": "When providing an url then the component will be rendered as `<a>`."
+        },
+        {
+          "name": "icon",
+          "type": "LinkSocialIcon",
+          "required": false,
+          "description": "The icon shown."
+        },
+        {
+          "name": "iconSource",
+          "type": "string",
+          "required": false,
+          "description": "A URL path to a custom icon."
+        },
+        {
+          "name": "rel",
+          "type": "string",
+          "required": false,
+          "description": "Specifies the relationship of the target object to the link object."
+        },
+        {
+          "name": "target",
+          "type": "LinkSocialTarget",
+          "required": false,
+          "defaultValue": "_self",
+          "description": "Target attribute where the link should be opened."
+        },
+        {
+          "name": "theme",
+          "type": "Theme",
+          "required": false,
+          "defaultValue": "light",
+          "description": "Adapts the link color when used on dark background."
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true,
+          "description": "Default slot to render the link label."
+        }
+      ]
+    },
+    {
+      "name": "PPinCode",
+      "source": "packages/components/src/components/pin-code/pin-code.tsx",
+      "framework": "stencil",
+      "props": [
+        {
+          "name": "compact",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "A boolean value that, if present, renders the pin-code as a compact version."
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "defaultValue": "",
+          "description": "The description text."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "Disables the Pin Code. No events will be triggered while disabled state is active."
+        },
+        {
+          "name": "form",
+          "type": "string",
+          "required": false,
+          "description": "The id of a form element the pin-code should be associated with."
+        },
+        {
+          "name": "hideLabel",
+          "type": "BreakpointCustomizable<boolean>",
+          "required": false,
+          "defaultValue": "false",
+          "description": "Show or hide label and description text. For better accessibility it is recommended to show the label."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": false,
+          "defaultValue": "",
+          "description": "The label text."
+        },
+        {
+          "name": "length",
+          "type": "PinCodeLength",
+          "required": false,
+          "defaultValue": "4",
+          "description": "Number of characters of the Pin Code."
+        },
+        {
+          "name": "loading",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "Disables the Pin Code and shows a loading indicator. No events will be triggered while loading state is active."
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "required": false,
+          "defaultValue": "",
+          "description": "The message styled depending on validation state."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "description": "Name of the control."
+        },
+        {
+          "name": "required",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "Marks the Pin Code as required."
+        },
+        {
+          "name": "state",
+          "type": "PinCodeState",
+          "required": false,
+          "defaultValue": "none",
+          "description": "The validation state."
+        },
+        {
+          "name": "theme",
+          "type": "Theme",
+          "required": false,
+          "defaultValue": "light",
+          "description": "Adapts the color depending on the theme."
+        },
+        {
+          "name": "type",
+          "type": "PinCodeType",
+          "required": false,
+          "defaultValue": "number",
+          "description": "Pin Code type."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false,
+          "defaultValue": "",
+          "description": "Sets the initial value of the Pin Code."
+        }
+      ],
+      "slots": [
+        {
+          "name": "description",
+          "isDefault": false,
+          "description": "Shows a description. Only [phrasing content](https://developer.mozilla.org/en-US/docs/Web/Guide/HTML/Content_categories#Phrasing_content) is allowed."
+        },
+        {
+          "name": "label",
+          "isDefault": false,
+          "description": "Shows a label. Only [phrasing content](https://developer.mozilla.org/en-US/docs/Web/Guide/HTML/Content_categories#Phrasing_content) is allowed."
+        },
+        {
+          "name": "label-after",
+          "isDefault": false,
+          "description": "Places additional content after the label text (for content that should not be part of the label, e.g. external links or `p-popover`)."
+        },
+        {
+          "name": "message",
+          "isDefault": false,
+          "description": "Shows a state message. Only [phrasing content](https://developer.mozilla.org/en-US/docs/Web/Guide/HTML/Content_categories#Phrasing_content) is allowed."
+        }
+      ]
+    },
+    {
+      "name": "PSheet",
+      "source": "packages/components/src/components/sheet/sheet.tsx",
+      "framework": "stencil",
+      "props": [
+        {
+          "name": "aria",
+          "type": "SelectedAriaAttributes<SheetAriaAttribute>",
+          "required": false,
+          "description": "Add ARIA attributes."
+        },
+        {
+          "name": "disableBackdropClick",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "If true, the sheet will not be closable via backdrop click."
+        },
+        {
+          "name": "dismissButton",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "true",
+          "description": "If false, the sheet will not have a dismiss button."
+        },
+        {
+          "name": "open",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "description": "If true, the sheet is open."
+        },
+        {
+          "name": "theme",
+          "type": "Theme",
+          "required": false,
+          "defaultValue": "light",
+          "description": "Adapts the sheet color depending on the theme."
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true,
+          "description": "Default slot for the main content."
+        },
+        {
+          "name": "header",
+          "isDefault": false,
+          "description": "Renders a header section above the content area."
+        }
+      ]
+    },
+    {
+      "name": "PTableRow",
+      "source": "packages/components/src/components/table/table-row/table-row.tsx",
+      "framework": "stencil",
+      "props": [],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true,
+          "description": "Default slot for the table row content."
+        }
+      ]
+    },
+    {
+      "name": "PToast",
+      "source": "packages/components/src/components/toast/toast/toast.tsx",
+      "framework": "stencil",
+      "props": [
+        {
+          "name": "theme",
+          "type": "Theme",
+          "required": false,
+          "defaultValue": "light",
+          "description": "Adapts the toast color depending on the theme."
+        }
+      ],
+      "slots": []
+    }
+  ],
+  "expectedComponents": [
+    {
+      "name": "GridLayout",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Single optional `visualizeGrid` boolean prop defaulting to `true`.",
+        "slotNotes": "No slots."
+      }
+    },
+    {
+      "name": "GridLayout",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Single optional `visualizeGrid` boolean prop defaulting to `true`.",
+        "slotNotes": "No slots."
+      }
+    },
+    {
+      "name": "PAccordion",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Eight public props including size/theme/heading/open/sticky; `headingTag` defaults to `h2`.",
+        "slotNotes": "Default content slot plus named `heading` slot."
+      }
+    },
+    {
+      "name": "PBanner",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Banner props include open, heading, description, state, dismissButton, persistent, width, and theme.",
+        "slotNotes": "Named `heading`, `title`, and `description` slots."
+      }
+    },
+    {
+      "name": "PCarousel",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Nineteen public props cover layout, pagination, accessibility, theming, and deprecated compatibility flags.",
+        "slotNotes": "Default slide content plus named `controls`, `description`, `heading`, and dynamic `slide-${i}` slots."
+      }
+    },
+    {
+      "name": "PFlag",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Three public props: `name`, `size`, and the `aria` attribute map; `name` defaults to `de` and `size` defaults to `small`.",
+        "slotNotes": "No slots."
+      }
+    },
+    {
+      "name": "PInputEmail",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Twenty-one public props cover native email attributes, validation state, label and helper copy, theming, and required `name`.",
+        "slotNotes": "Named `label`, `label-after`, `description`, `message`, `start`, and `end` slots."
+      }
+    },
+    {
+      "name": "PLinkSocial",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Eight public props cover icon selection, link target/rel, compact and hideLabel state, and theme.",
+        "slotNotes": "Default label slot."
+      }
+    },
+    {
+      "name": "PPinCode",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Fifteen public props cover label and description copy, form integration, validation state, length and type, and theme.",
+        "slotNotes": "Named `label`, `label-after`, `description`, and `message` slots."
+      }
+    },
+    {
+      "name": "PSheet",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Five public props: `aria`, `disableBackdropClick`, `dismissButton`, `open`, and `theme`.",
+        "slotNotes": "Default content slot plus named `header` slot."
+      }
+    },
+    {
+      "name": "PTableRow",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "No public props.",
+        "slotNotes": "Default slot for the table row content."
+      }
+    },
+    {
+      "name": "PToast",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Single `theme` prop; toast messages are supplied imperatively through `addMessage()` rather than props.",
+        "slotNotes": "No slots."
+      }
+    }
+  ]
+}

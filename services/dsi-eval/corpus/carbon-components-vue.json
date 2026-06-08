@@ -1,0 +1,365 @@
+{
+  "repo": "carbon-components-vue",
+  "repoUrl": "https://github.com/carbon-design-system/carbon-components-vue",
+  "rawComponents": [
+    {
+      "name": "_CvAccordionItemSkeleton",
+      "source": "src/components/CvAccordion/_CvAccordionItemSkeleton.vue",
+      "framework": "vue",
+      "props": [
+        {
+          "name": "open",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false"
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "name": "_CvDataTableRowInner",
+      "source": "src/components/CvDataTable/_CvDataTableRowInner.vue",
+      "framework": "vue",
+      "props": [
+        {
+          "name": "ariaLabelCollapseRow",
+          "type": "string",
+          "required": false,
+          "defaultValue": "Collapse current row"
+        },
+        {
+          "name": "ariaLabelExpandRow",
+          "type": "string",
+          "required": false,
+          "defaultValue": "Expand current row"
+        },
+        {
+          "name": "ariaLabelForBatchCheckbox",
+          "type": "string",
+          "required": false,
+          "defaultValue": "undefined"
+        },
+        {
+          "name": "checked",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "expanded",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "expandingRow",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "overflowMenu",
+          "type": "any[]",
+          "required": false,
+          "defaultValue": "() => []"
+        },
+        {
+          "name": "rowId",
+          "type": "string",
+          "required": false,
+          "defaultValue": "undefined"
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false,
+          "defaultValue": "undefined"
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "name": "_CvEmpty",
+      "source": "src/components/CvEmpty/_CvEmpty.vue",
+      "framework": "vue",
+      "props": [],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "name": "_CvSvg",
+      "source": "src/components/CvSvg/_CvSvg.vue",
+      "framework": "vue",
+      "props": [
+        {
+          "name": "svg",
+          "type": "any",
+          "required": false,
+          "defaultValue": "undefined"
+        }
+      ],
+      "slots": []
+    },
+    {
+      "name": "_SbContainer",
+      "source": "src/components/CvTabs/_SbContainer.vue",
+      "framework": "vue",
+      "props": [],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "name": "CvCodeSnippetSkeleton",
+      "source": "src/components/CvCodeSnippet/CvCodeSnippetSkeleton.vue",
+      "framework": "vue",
+      "props": [
+        {
+          "name": "kind",
+          "type": "string",
+          "required": false,
+          "defaultValue": "CvCodeSnippetConsts.codeSnippetKinds[0]"
+        },
+        {
+          "name": "light",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false"
+        }
+      ],
+      "slots": []
+    },
+    {
+      "name": "CvDatePickerSkeleton",
+      "source": "src/components/CvDatePicker/CvDatePickerSkeleton.vue",
+      "framework": "vue",
+      "props": [
+        {
+          "name": "formItem",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "true"
+        },
+        {
+          "name": "id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "required": false,
+          "defaultValue": "simple"
+        },
+        {
+          "name": "label",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "true"
+        }
+      ],
+      "slots": []
+    },
+    {
+      "name": "CvHeaderMenuButton",
+      "source": "src/components/CvUIShell/CvHeaderMenuButton.vue",
+      "framework": "vue",
+      "props": [
+        {
+          "name": "active",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "ariaControls",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "slots": []
+    },
+    {
+      "name": "CvNumberInputSkeleton",
+      "source": "src/components/CvNumberInput/CvNumberInputSkeleton.vue",
+      "framework": "vue",
+      "props": [],
+      "slots": []
+    },
+    {
+      "name": "CvSideNavIcon",
+      "source": "src/components/CvUIShell/CvSideNavIcon.vue",
+      "framework": "vue",
+      "props": [
+        {
+          "name": "small",
+          "type": "boolean",
+          "required": false
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "name": "CvStructuredListItemStandard",
+      "source": "src/components/CvStructuredList/CvStructuredListItemStandard.vue",
+      "framework": "vue",
+      "props": [],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "name": "CvTileExpandable",
+      "source": "src/components/CvTile/CvTileExpandable.vue",
+      "framework": "vue",
+      "props": [
+        {
+          "name": "expanded",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "tileCollapsedLabel",
+          "type": "string",
+          "required": false,
+          "defaultValue": "undefined"
+        },
+        {
+          "name": "tileExpandedLabel",
+          "type": "string",
+          "required": false,
+          "defaultValue": "undefined"
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        },
+        {
+          "name": "below",
+          "isDefault": false
+        }
+      ]
+    }
+  ],
+  "expectedComponents": [
+    {
+      "name": "_CvAccordionItemSkeleton",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "The skeleton item defines a single optional `open` boolean prop with default `false`.",
+        "slotNotes": "Default slot for placeholder accordion body content."
+      }
+    },
+    {
+      "name": "_CvDataTableRowInner",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "The row inner component declares table-control props including `ariaLabelForBatchCheckbox`, `checked`, `expanded`, `expandingRow`, `ariaLabelExpandRow`, `ariaLabelCollapseRow`, `overflowMenu`, `value`, and `rowId`.",
+        "slotNotes": "Default slot for the row cell content."
+      }
+    },
+    {
+      "name": "_CvEmpty",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "No authored props; this helper simply forwards `$attrs` through an empty wrapper.",
+        "slotNotes": "Default slot for whatever content should render in place."
+      }
+    },
+    {
+      "name": "_CvSvg",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "The helper exposes a single `svg` prop that accepts either a string or component object, defaulting to `undefined`.",
+        "slotNotes": "No authored slots."
+      }
+    },
+    {
+      "name": "_SbContainer",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "No authored props.",
+        "slotNotes": "Default slot for the wrapped tabs container content."
+      }
+    },
+    {
+      "name": "CvCodeSnippetSkeleton",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Declared props are `kind` and `light`, with defaults from `CvCodeSnippetConsts.codeSnippetKinds[0]` and `false`.",
+        "slotNotes": "No authored slots."
+      }
+    },
+    {
+      "name": "CvDatePickerSkeleton",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Declared props are `formItem`, `label`, `kind`, and the shared optional `id` prop mixed in from `propsCvId`.",
+        "slotNotes": "No authored slots."
+      }
+    },
+    {
+      "name": "CvHeaderMenuButton",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Declared props are `active` and required `ariaControls`.",
+        "slotNotes": "No authored slots."
+      }
+    },
+    {
+      "name": "CvNumberInputSkeleton",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "No authored props.",
+        "slotNotes": "No authored slots."
+      }
+    },
+    {
+      "name": "CvSideNavIcon",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Single optional `small` boolean prop.",
+        "slotNotes": "Default slot for icon content."
+      }
+    },
+    {
+      "name": "CvStructuredListItemStandard",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "No authored props.",
+        "slotNotes": "Default slot for structured-list cell content."
+      }
+    },
+    {
+      "name": "CvTileExpandable",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Declared props are `expanded`, `tileCollapsedLabel`, and `tileExpandedLabel`.",
+        "slotNotes": "Default slot for above-the-fold content plus named `below` slot for expanded content."
+      }
+    }
+  ]
+}

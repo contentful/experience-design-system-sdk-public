@@ -1,0 +1,545 @@
+{
+  "repo": "polaris",
+  "repoUrl": "https://github.com/Shopify/polaris",
+  "rawComponents": [
+    {
+      "name": "AccountConnection",
+      "source": "polaris-react/src/components/AccountConnection/AccountConnection.tsx",
+      "framework": "react",
+      "props": [
+        {
+          "name": "accountName",
+          "type": "string",
+          "required": false,
+          "defaultValue": ""
+        },
+        {
+          "name": "action",
+          "type": "Action",
+          "required": false
+        },
+        {
+          "name": "avatarUrl",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "connected",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false"
+        },
+        {
+          "name": "title",
+          "type": "React.ReactNode",
+          "required": false
+        }
+      ],
+      "slots": [
+        {
+          "name": "details",
+          "isDefault": false
+        },
+        {
+          "name": "termsOfService",
+          "isDefault": false
+        }
+      ]
+    },
+    {
+      "name": "Action",
+      "source": "polaris-react/src/components/Listbox/components/Action/Action.tsx",
+      "framework": "react",
+      "props": [
+        {
+          "name": "accessibilityLabel",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "divider",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "icon",
+          "type": "IconProps['source']",
+          "required": false
+        },
+        {
+          "name": "selected",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "name": "Activator",
+      "source": "polaris-react/src/components/Picker/components/Activator/Activator.tsx",
+      "framework": "react",
+      "props": [
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "onClick",
+          "type": "() => void",
+          "required": false
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "selected",
+          "type": "string",
+          "required": false
+        }
+      ],
+      "slots": []
+    },
+    {
+      "name": "WithinContentContainerBanner",
+      "source": "polaris-react/src/components/Banner/Banner.tsx",
+      "framework": "react",
+      "props": [
+        {
+          "name": "backgroundColor",
+          "type": "BoxProps['background']",
+          "required": true
+        },
+        {
+          "name": "textColor",
+          "type": "ColorTextAlias",
+          "required": true
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        },
+        {
+          "name": "actionButtons",
+          "isDefault": false
+        },
+        {
+          "name": "bannerIcon",
+          "isDefault": false
+        },
+        {
+          "name": "bannerTitle",
+          "isDefault": false
+        },
+        {
+          "name": "dismissButton",
+          "isDefault": false
+        }
+      ]
+    },
+    {
+      "name": "Collapsible",
+      "source": "polaris-react/src/components/Collapsible/Collapsible.tsx",
+      "framework": "react",
+      "props": [
+        {
+          "name": "expandOnPrint",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "onAnimationEnd",
+          "type": "() => void",
+          "required": false
+        },
+        {
+          "name": "open",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "transition",
+          "type": "boolean | Transition",
+          "required": false,
+          "defaultValue": "true"
+        },
+        {
+          "name": "variant",
+          "type": "\"block\" | \"inline\"",
+          "required": false,
+          "allowedValues": [
+            "block",
+            "inline"
+          ],
+          "defaultValue": "block"
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "name": "FileUpload",
+      "source": "polaris-react/src/components/DropZone/components/FileUpload/FileUpload.tsx",
+      "framework": "react",
+      "props": [
+        {
+          "name": "actionHint",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "actionTitle",
+          "type": "string",
+          "required": false,
+          "defaultValue": "i18n.translate(\n      `Polaris.DropZone.${allowMultipleKey}.actionTitle${typeSuffix}`,\n    )"
+        }
+      ],
+      "slots": []
+    },
+    {
+      "name": "Indicator",
+      "source": "polaris-react/src/components/Indicator/Indicator.tsx",
+      "framework": "react",
+      "props": [
+        {
+          "name": "pulse",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "true"
+        }
+      ],
+      "slots": []
+    },
+    {
+      "name": "LegacyTabs",
+      "source": "polaris-react/src/components/LegacyTabs/LegacyTabs.tsx",
+      "framework": "react",
+      "props": [
+        {
+          "name": "disclosureText",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "fitted",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "onSelect",
+          "type": "(selectedTabIndex: number) => void",
+          "required": false
+        },
+        {
+          "name": "selected",
+          "type": "number",
+          "required": true
+        },
+        {
+          "name": "tabs",
+          "type": "TabDescriptor[]",
+          "required": true
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "name": "PageActions",
+      "source": "polaris-react/src/components/PageActions/PageActions.tsx",
+      "framework": "react",
+      "props": [
+        {
+          "name": "primaryAction",
+          "type": "(DisableableAction & LoadableAction) | React.ReactNode",
+          "required": false
+        },
+        {
+          "name": "secondaryActions",
+          "type": "ComplexAction[] | React.ReactNode",
+          "required": false
+        }
+      ],
+      "slots": []
+    },
+    {
+      "name": "SearchDismissOverlay",
+      "source": "polaris-react/src/components/TopBar/components/SearchDismissOverlay/SearchDismissOverlay.tsx",
+      "framework": "react",
+      "props": [
+        {
+          "name": "onDismiss",
+          "type": "() => void",
+          "required": false
+        },
+        {
+          "name": "visible",
+          "type": "boolean",
+          "required": true
+        }
+      ],
+      "slots": []
+    },
+    {
+      "name": "SkeletonDisplayText",
+      "source": "polaris-react/src/components/SkeletonDisplayText/SkeletonDisplayText.tsx",
+      "framework": "react",
+      "props": [
+        {
+          "name": "maxWidth",
+          "type": "`${number}ch` | `${number}%`",
+          "required": false
+        },
+        {
+          "name": "size",
+          "type": "Size",
+          "required": false,
+          "allowedValues": [
+            "extraLarge",
+            "large",
+            "medium",
+            "small"
+          ],
+          "defaultValue": "medium"
+        }
+      ],
+      "slots": []
+    },
+    {
+      "name": "Tooltip",
+      "source": "polaris-react/src/components/Tooltip/Tooltip.tsx",
+      "framework": "react",
+      "props": [
+        {
+          "name": "accessibilityLabel",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "activatorWrapper",
+          "type": "string",
+          "required": false,
+          "defaultValue": "span"
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "borderRadius",
+          "type": "BorderRadius",
+          "required": false
+        },
+        {
+          "name": "dismissOnMouseOut",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "hasUnderline",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "hoverDelay",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "onClose",
+          "type": "() => void",
+          "required": false
+        },
+        {
+          "name": "onOpen",
+          "type": "() => void",
+          "required": false
+        },
+        {
+          "name": "padding",
+          "type": "Padding",
+          "required": false,
+          "defaultValue": "default"
+        },
+        {
+          "name": "persistOnClick",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "preferredPosition",
+          "type": "import(\"/tmp/dsi-eval-corpus-clones/polaris/polaris-react/src/components/PositionedOverlay/utilities/math\").PreferredPosition",
+          "required": false,
+          "allowedValues": [
+            "above",
+            "below",
+            "cover",
+            "mostSpace"
+          ],
+          "defaultValue": "above"
+        },
+        {
+          "name": "width",
+          "type": "Width",
+          "required": false,
+          "allowedValues": [
+            "default",
+            "wide"
+          ],
+          "defaultValue": "default"
+        },
+        {
+          "name": "zIndexOverride",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        },
+        {
+          "name": "content",
+          "isDefault": false
+        }
+      ]
+    }
+  ],
+  "expectedComponents": [
+    {
+      "name": "AccountConnection",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Should expose the optional account-connection props: `title`, `details`, `termsOfService`, `accountName`, `avatarUrl`, `connected`, and `action`, with defaulted consumer props treated as optional.",
+        "slotNotes": "No slots."
+      }
+    },
+    {
+      "name": "Action",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Should expose the inherited option props like `value`, `accessibilityLabel`, `selected`, `disabled`, and `divider`, plus the local `icon` prop.",
+        "slotNotes": "Default slot for the option content."
+      }
+    },
+    {
+      "name": "Activator",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Should expose the optional `disabled`, `label`, `placeholder`, `selected`, and `onClick` props.",
+        "slotNotes": "No slots."
+      }
+    },
+    {
+      "name": "Banner",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Should expose the optional banner props `title`, `icon`, `hideIcon`, `tone`, `action`, `secondaryAction`, `onDismiss`, and `stopAnnouncements`.",
+        "slotNotes": "Default slot for the banner body content."
+      }
+    },
+    {
+      "name": "Collapsible",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Should expose required `id` and `open`, optional `expandOnPrint`, `variant`, `transition`, and `onAnimationEnd`, with the defaulted `variant` and `transition` props treated as optional.",
+        "slotNotes": "Default slot for collapsible content."
+      }
+    },
+    {
+      "name": "FileUpload",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Should expose the optional `actionTitle` and `actionHint` props, with `actionTitle` defaulting from the drop-zone i18n key.",
+        "slotNotes": "No slots."
+      }
+    },
+    {
+      "name": "Indicator",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Should expose the optional `pulse` prop with its defaulted `true` value.",
+        "slotNotes": "No slots."
+      }
+    },
+    {
+      "name": "LegacyTabs",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Should expose required `selected` and `tabs`, optional `fitted`, `disclosureText`, and `onSelect`, with child panel content passed separately.",
+        "slotNotes": "Default slot for the shared panel content."
+      }
+    },
+    {
+      "name": "PageActions",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Should expose the optional `primaryAction` and `secondaryActions` unions, where each prop accepts either action descriptors or React nodes.",
+        "slotNotes": "No slots."
+      }
+    },
+    {
+      "name": "SearchDismissOverlay",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Should expose required `visible` and optional `onDismiss`.",
+        "slotNotes": "No slots."
+      }
+    },
+    {
+      "name": "SkeletonDisplayText",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Should expose optional `size` and `maxWidth`, with `size` defaulting to `medium`.",
+        "slotNotes": "No slots."
+      }
+    },
+    {
+      "name": "Tooltip",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Should expose required `content`, optional controls such as `active`, `hoverDelay`, `dismissOnMouseOut`, `preferredPosition`, `activatorWrapper`, `accessibilityLabel`, `width`, `padding`, `borderRadius`, `zIndexOverride`, `hasUnderline`, `persistOnClick`, `onOpen`, and `onClose`, with defaults where present.",
+        "slotNotes": "Default slot for the tooltip activator content."
+      }
+    }
+  ]
+}

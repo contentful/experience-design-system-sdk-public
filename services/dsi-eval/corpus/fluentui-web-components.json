@@ -1,0 +1,693 @@
+{
+  "repo": "fluentui-web-components",
+  "repoUrl": "https://github.com/microsoft/fluentui",
+  "rawComponents": [
+    {
+      "name": "Accordion",
+      "source": "packages/web-components/src/accordion/accordion.ts",
+      "framework": "web-component",
+      "props": [
+        {
+          "name": "expandmode",
+          "type": "AccordionExpandMode",
+          "required": false,
+          "defaultValue": "AccordionExpandMode.multi"
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true,
+          "description": "The default slot for the accordion items"
+        }
+      ]
+    },
+    {
+      "name": "AccordionItem",
+      "source": "packages/web-components/src/accordion-item/accordion-item.ts",
+      "framework": "web-component",
+      "props": [
+        {
+          "name": "block",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false"
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false"
+        },
+        {
+          "name": "expanded",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false"
+        },
+        {
+          "name": "headinglevel",
+          "type": "1 | 2 | 3 | 4 | 5 | 6",
+          "required": false,
+          "defaultValue": "2"
+        },
+        {
+          "name": "id",
+          "type": "string",
+          "required": false,
+          "defaultValue": "uniqueId('accordion-')"
+        },
+        {
+          "name": "markerPosition",
+          "type": "AccordionItemMarkerPosition",
+          "required": false
+        },
+        {
+          "name": "size",
+          "type": "AccordionItemSize",
+          "required": false
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true,
+          "description": "The default slot for accordion item content"
+        },
+        {
+          "name": "heading",
+          "isDefault": false,
+          "description": "Content which serves as the accordion item heading and text of the expand button"
+        },
+        {
+          "name": "marker-collapsed",
+          "isDefault": false,
+          "description": "The collapsed icon"
+        },
+        {
+          "name": "marker-expanded",
+          "isDefault": false,
+          "description": "The expanded icon"
+        },
+        {
+          "name": "start",
+          "isDefault": false,
+          "description": "Content positioned before heading in the collapsed state"
+        }
+      ]
+    },
+    {
+      "name": "AnchorButton",
+      "source": "packages/web-components/src/anchor-button/anchor-button.ts",
+      "framework": "web-component",
+      "props": [
+        {
+          "name": "appearance",
+          "type": "AnchorButtonAppearance | undefined",
+          "required": false
+        },
+        {
+          "name": "download",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "href",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "hreflang",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "iconOnly",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false"
+        },
+        {
+          "name": "ping",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "referrerpolicy",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "rel",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "shape",
+          "type": "AnchorButtonShape | undefined",
+          "required": false
+        },
+        {
+          "name": "size",
+          "type": "AnchorButtonSize",
+          "required": false
+        },
+        {
+          "name": "target",
+          "type": "AnchorTarget",
+          "required": false
+        },
+        {
+          "name": "type",
+          "type": "string",
+          "required": false
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true,
+          "description": "The default slot for anchor content"
+        },
+        {
+          "name": "end",
+          "isDefault": false,
+          "description": "Content which can be provided after the anchor content"
+        },
+        {
+          "name": "start",
+          "isDefault": false,
+          "description": "Content which can be provided before the anchor content"
+        }
+      ]
+    },
+    {
+      "name": "Button",
+      "source": "packages/web-components/src/button/button.ts",
+      "framework": "web-component",
+      "props": [
+        {
+          "name": "appearance",
+          "type": "ButtonAppearance",
+          "required": false
+        },
+        {
+          "name": "autofocus",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "defaultSlottedContent",
+          "type": "HTMLElement[]",
+          "required": false
+        },
+        {
+          "name": "disabled",
+          "type": "any",
+          "required": false,
+          "defaultValue": "false"
+        },
+        {
+          "name": "disabledFocusable",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false"
+        },
+        {
+          "name": "formAction",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "formAttribute",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "formEnctype",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "formMethod",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "formNoValidate",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "formTarget",
+          "type": "ButtonFormTarget",
+          "required": false
+        },
+        {
+          "name": "iconOnly",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "shape",
+          "type": "ButtonShape",
+          "required": false
+        },
+        {
+          "name": "size",
+          "type": "ButtonSize",
+          "required": false
+        },
+        {
+          "name": "type",
+          "type": "ButtonType",
+          "required": false
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true,
+          "description": "The default slot for button content"
+        },
+        {
+          "name": "end",
+          "isDefault": false,
+          "description": "Content which can be provided after the button content"
+        },
+        {
+          "name": "start",
+          "isDefault": false,
+          "description": "Content which can be provided before the button content"
+        }
+      ]
+    },
+    {
+      "name": "DialogBody",
+      "source": "packages/web-components/src/dialog-body/dialog-body.ts",
+      "framework": "web-component",
+      "props": [],
+      "slots": [
+        {
+          "name": "action",
+          "isDefault": false
+        },
+        {
+          "name": "close",
+          "isDefault": false
+        },
+        {
+          "name": "default",
+          "isDefault": true
+        },
+        {
+          "name": "title",
+          "isDefault": false
+        },
+        {
+          "name": "title-action",
+          "isDefault": false
+        }
+      ]
+    },
+    {
+      "name": "Divider",
+      "source": "packages/web-components/src/divider/divider.ts",
+      "framework": "web-component",
+      "props": [
+        {
+          "name": "alignContent",
+          "type": "DividerAlignContent",
+          "required": false
+        },
+        {
+          "name": "appearance",
+          "type": "DividerAppearance",
+          "required": false
+        },
+        {
+          "name": "inset",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": "DividerOrientation",
+          "required": false
+        },
+        {
+          "name": "role",
+          "type": "DividerRole",
+          "required": false
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "name": "Image",
+      "source": "packages/web-components/src/image/image.ts",
+      "framework": "web-component",
+      "props": [
+        {
+          "name": "block",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "bordered",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "fit",
+          "type": "ImageFit",
+          "required": false
+        },
+        {
+          "name": "shadow",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "shape",
+          "type": "ImageShape",
+          "required": false
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "name": "MenuButton",
+      "source": "packages/web-components/src/menu-button/menu-button.ts",
+      "framework": "web-component",
+      "props": [
+        {
+          "name": "appearance",
+          "type": "ButtonAppearance",
+          "required": false
+        },
+        {
+          "name": "autofocus",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "defaultSlottedContent",
+          "type": "HTMLElement[]",
+          "required": false
+        },
+        {
+          "name": "disabled",
+          "type": "any",
+          "required": false,
+          "defaultValue": "false"
+        },
+        {
+          "name": "disabledFocusable",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false"
+        },
+        {
+          "name": "formAction",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "formAttribute",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "formEnctype",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "formMethod",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "formNoValidate",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "formTarget",
+          "type": "ButtonFormTarget",
+          "required": false
+        },
+        {
+          "name": "iconOnly",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "shape",
+          "type": "ButtonShape",
+          "required": false
+        },
+        {
+          "name": "size",
+          "type": "ButtonSize",
+          "required": false
+        },
+        {
+          "name": "type",
+          "type": "ButtonType",
+          "required": false
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true,
+          "description": "The default slot for button content"
+        },
+        {
+          "name": "end",
+          "isDefault": false,
+          "description": "Content which can be provided after the button content"
+        },
+        {
+          "name": "start",
+          "isDefault": false,
+          "description": "Content which can be provided before the button content"
+        }
+      ]
+    },
+    {
+      "name": "ProgressBar",
+      "source": "packages/web-components/src/progress-bar/progress-bar.ts",
+      "framework": "web-component",
+      "props": [
+        {
+          "name": "shape",
+          "type": "ProgressBarShape",
+          "required": false
+        },
+        {
+          "name": "thickness",
+          "type": "ProgressBarThickness",
+          "required": false
+        },
+        {
+          "name": "validationState",
+          "type": "ProgressBarValidationState | null",
+          "required": false,
+          "defaultValue": "null"
+        }
+      ],
+      "slots": []
+    },
+    {
+      "name": "Spinner",
+      "source": "packages/web-components/src/spinner/spinner.ts",
+      "framework": "web-component",
+      "props": [
+        {
+          "name": "appearance",
+          "type": "SpinnerAppearance",
+          "required": false
+        },
+        {
+          "name": "size",
+          "type": "SpinnerSize",
+          "required": false
+        }
+      ],
+      "slots": [
+        {
+          "name": "indicator",
+          "isDefault": false
+        }
+      ]
+    },
+    {
+      "name": "Tooltip",
+      "source": "packages/web-components/src/tooltip/tooltip.ts",
+      "framework": "web-component",
+      "props": [
+        {
+          "name": "anchor",
+          "type": "string",
+          "required": false,
+          "defaultValue": ""
+        },
+        {
+          "name": "delay",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "id",
+          "type": "string",
+          "required": false,
+          "defaultValue": "uniqueId('tooltip-')"
+        },
+        {
+          "name": "positioning",
+          "type": "TooltipPositioningOption",
+          "required": false
+        }
+      ],
+      "slots": [
+        {
+          "name": "default",
+          "isDefault": true
+        }
+      ]
+    }
+  ],
+  "expectedComponents": [
+    {
+      "name": "Accordion",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "The public prop surface is the `expandmode` attribute.",
+        "slotNotes": "Default slot for accordion items."
+      }
+    },
+    {
+      "name": "AccordionItem",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Inherited public props include `headinglevel`, `expanded`, `disabled`, and `id`, and local props include `size`, `markerPosition`, and `block`.",
+        "slotNotes": "Public slots are `start`, `heading`, default, `marker-expanded`, and `marker-collapsed`."
+      }
+    },
+    {
+      "name": "AnchorButton",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Inherited public anchor props include `download`, `href`, `hreflang`, `ping`, `referrerpolicy`, `rel`, `target`, and `type`, plus local `appearance`, `shape`, `size`, and `iconOnly`.",
+        "slotNotes": "Public slots are `start`, default, and `end`."
+      }
+    },
+    {
+      "name": "Button",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Inherited public button props include `autofocus`, `disabled`, `disabledFocusable`, `formAction`, `formAttribute`, `formEnctype`, `formMethod`, `formNoValidate`, `formTarget`, `name`, `type`, `value`, and the public `defaultSlottedContent` reference, plus local `appearance`, `shape`, `size`, and `iconOnly`.",
+        "slotNotes": "Public slots are `start`, default, and `end`."
+      }
+    },
+    {
+      "name": "DialogBody",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "No public props are declared on the class.",
+        "slotNotes": "The template exposes `title`, `title-action`, `close`, default, and `action` slots."
+      }
+    },
+    {
+      "name": "Divider",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Local public props are `alignContent`, `appearance`, and `inset`, and inherited public props include `orientation` and `role`.",
+        "slotNotes": "The template exposes a default slot for divider content."
+      }
+    },
+    {
+      "name": "Image",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Public props are `block`, `bordered`, `shadow`, `fit`, and `shape`.",
+        "slotNotes": "The image template exposes a default slot."
+      }
+    },
+    {
+      "name": "MenuButton",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "The component inherits the button surface, including `autofocus`, `disabled`, `disabledFocusable`, `formAction`, `formAttribute`, `formEnctype`, `formMethod`, `formNoValidate`, `formTarget`, `name`, `type`, `value`, `defaultSlottedContent`, `appearance`, `shape`, `size`, and `iconOnly`.",
+        "slotNotes": "Public slots are `start`, default, and `end`."
+      }
+    },
+    {
+      "name": "ProgressBar",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Local public props are `thickness` and `shape`, and the inherited public prop is `validationState`.",
+        "slotNotes": "No slots."
+      }
+    },
+    {
+      "name": "Spinner",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Public props are `size` and `appearance`.",
+        "slotNotes": "No slots."
+      }
+    },
+    {
+      "name": "Tabs",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Inherited public props include `activeid`, `activetab`, and `orientation`, and local public props include `appearance`, `disabled`, and `size`.",
+        "slotNotes": "The template exposes `start`, `tab`, `end`, and `tabpanel` slots."
+      }
+    },
+    {
+      "name": "Tooltip",
+      "verdict": "accurate",
+      "expectedNotes": {
+        "propNotes": "Public props are `id`, `delay`, `positioning`, and `anchor`; internal fields such as `elementInternals` and the anchor event handlers should not surface.",
+        "slotNotes": "The tooltip template exposes a default slot for tooltip content."
+      }
+    }
+  ]
+}
