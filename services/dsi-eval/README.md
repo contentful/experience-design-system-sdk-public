@@ -1,6 +1,11 @@
 # dsi-eval
 
-AI evals for DSI pipeline stages 1 (select) and 2 (generate).
+Evals for the two LLM stages of the DSI pipeline:
+
+- **Stage 1 (select)** — given a list of raw extracted components, the LLM picks which ones are worth generating CDF for
+- **Stage 2 (generate)** — given the selected components, the LLM generates the CDF component definitions
+
+Stage 0 (AST extraction) is deterministic and covered by unit tests, not evals.
 
 ## Setup
 
@@ -9,13 +14,7 @@ cd services/dsi-eval
 pnpm install
 ```
 
-Set AWS credentials (ask in #dx-design-system-integrations):
-
-```bash
-export AWS_ACCESS_KEY_ID=...
-export AWS_SECRET_ACCESS_KEY=...
-export AWS_SESSION_TOKEN=...
-```
+AWS credentials are picked up automatically by the SDK (IAM role, `~/.aws/credentials`, or env vars).
 
 ## Run
 
