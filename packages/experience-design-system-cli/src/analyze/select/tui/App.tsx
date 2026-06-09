@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { readFile } from 'node:fs/promises';
 import type { PreviewAnnotation, ReviewComponentStatus, ReviewSessionSnapshot } from '../types.js';
@@ -66,8 +66,13 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
   } | null>(null);
   const [sidebarScrollOffset, setSidebarScrollOffset] = useState(0);
   const [jsonScrollOffset, setJsonScrollOffset] = useState(0);
-  // Keeps the visual sort order in sync for use inside keymap handlers (which close over a stale render)
+  // Refs for values read inside keymap handlers — avoids stale closures.
+  // React state updates are async; by the time the next keypress fires the
+  // component may not have re-rendered yet, so reading from state directly
+  // causes the "double press needed" bug. Refs are always live.
   const sortedIdsRef = useRef<string[]>([]);
+  const selectedIdRef = useRef<string | null>(null);
+  const visibleCountRef = useRef<number>(20);
   // Source code kept separate from session state so lazy loading never mutates
   // session.components — that would invalidate useMemo(sessionSummary) and flash the sidebar
   const [sourceCodeById, setSourceCodeById] = useState<Record<string, string>>({});
@@ -293,7 +298,7 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
       onSidebarUp: () => {
         if (!session) return;
         const ids = sortedIdsRef.current;
-        const idx = ids.indexOf(selectedId ?? '');
+        const idx = ids.indexOf(selectedIdRef.current ?? '');
         if (idx > 0) {
           setSelectedId(ids[idx - 1]!);
           setJsonScrollOffset(0);
@@ -303,31 +308,35 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
       onSidebarDown: () => {
         if (!session) return;
         const ids = sortedIdsRef.current;
-        const idx = ids.indexOf(selectedId ?? '');
+        const idx = ids.indexOf(selectedIdRef.current ?? '');
         if (idx < ids.length - 1) {
           setSelectedId(ids[idx + 1]!);
           setJsonScrollOffset(0);
           setSidebarScrollOffset((prev) => {
             const newIdx = idx + 1;
-            return newIdx >= prev + visibleCount ? newIdx - visibleCount + 1 : prev;
+            const vc = visibleCountRef.current;
+            return newIdx >= prev + vc ? newIdx - vc + 1 : prev;
           });
         }
       },
       onSidebarSelect: () => {},
       onAccept: () => {
-        if (selectedId) void updateStatus(selectedId, 'accepted');
+        const id = selectedIdRef.current;
+        if (id) void updateStatus(id, 'accepted');
       },
       onReject: () => {
-        if (selectedId) void updateStatus(selectedId, 'rejected');
+        const id = selectedIdRef.current;
+        if (id) void updateStatus(id, 'rejected');
       },
       onEnterEditMode: () => {
-        if (!session || !selectedId) return;
-        const component = session.components.find((c) => c.id === selectedId);
+        const id = selectedIdRef.current;
+        if (!session || !id) return;
+        const component = session.components.find((c) => c.id === id);
         if (!component) return;
         setEditMode(true);
         setDraftsByComponentId((prev) => ({
           ...prev,
-          [selectedId]: prev[selectedId] ?? JSON.stringify(stripScoringFields(component.editedProposal), null, 2),
+          [id]: prev[id] ?? JSON.stringify(stripScoringFields(component.editedProposal), null, 2),
         }));
       },
       onToggleSource: () => {
@@ -400,7 +409,19 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
 
   // Stable ID order — kept in a ref for use inside keymap handlers
   const sortedIds = useMemo(() => sessionSummary.map((c) => c.id), [sessionSummary]);
-  sortedIdsRef.current = sortedIds;
+
+  // Sync refs after every render so keymap handlers always read committed values.
+  // useLayoutEffect fires synchronously after the DOM is updated but before the
+  // browser paints, guaranteeing the refs match what's on screen when the next
+  // keypress arrives. We also compute visibleCount here (unconditionally, before
+  // early returns) so visibleCountRef is always up-to-date.
+  const CHROME_ROWS_EARLY = 5;
+  const visibleCountEarly = Math.max(1, (stdout?.rows ?? 24) - CHROME_ROWS_EARLY);
+  useLayoutEffect(() => {
+    sortedIdsRef.current = sortedIds;
+    selectedIdRef.current = selectedId;
+    visibleCountRef.current = visibleCountEarly;
+  });
 
   if (loading) {
     return <Text>Loading session...</Text>;

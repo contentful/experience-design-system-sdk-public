@@ -95,5 +95,5 @@ export function useImmediateInput(handler: InputHandler): void {
     return () => {
       stdin.off('data', handleData);
     };
-  }, [stdin]);
+  }, []); // Register once on mount. Handler is always fresh via handlerRef — no re-registration needed.
 }
