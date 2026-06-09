@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { PreviewAnnotation, ReviewComponentDetail } from '../../types.js';
+import { stripScoringFields } from '../../../../types.js';
 import { JsonPanel } from './JsonPanel.js';
 import { FieldEditor } from './FieldEditor.js';
 import { SourcePanel } from './SourcePanel.js';
@@ -70,15 +71,8 @@ export function ComponentDetail({
     sourceWidth = 0;
   }
 
-  // Strip internal scoring fields — they're metadata, not part of the component definition
-  const stripScoring = ({
-    extractionConfidence: _c,
-    reviewReasons: _r,
-    needsReview: _n,
-    ...rest
-  }: typeof component.originalProposal) => rest;
-  const originalJson = JSON.stringify(stripScoring(component.originalProposal), null, 2);
-  const editedJson = JSON.stringify(stripScoring(component.editedProposal), null, 2);
+  const originalJson = JSON.stringify(stripScoringFields(component.originalProposal), null, 2);
+  const editedJson = JSON.stringify(stripScoringFields(component.editedProposal), null, 2);
 
   const conf = component.originalProposal.extractionConfidence ?? null;
   const nr = component.originalProposal.needsReview ?? false;

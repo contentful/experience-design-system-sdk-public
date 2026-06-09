@@ -3,6 +3,7 @@ import { Box, Text, useStdout } from 'ink';
 import { readFile } from 'node:fs/promises';
 import type { PreviewAnnotation, ReviewComponentStatus, ReviewSessionSnapshot } from '../types.js';
 import { createReviewSessionDetail } from '../types.js';
+import { stripScoringFields } from '../../../types.js';
 import { TopBar } from './components/TopBar.js';
 import { Sidebar } from './components/Sidebar.js';
 import { ComponentDetail } from './components/ComponentDetail.js';
@@ -322,10 +323,7 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
         setEditMode(true);
         setDraftsByComponentId((prev) => ({
           ...prev,
-          [selectedId]: (() => {
-            const { extractionConfidence: _c, reviewReasons: _r, needsReview: _n, ...rest } = component.editedProposal;
-            return prev[selectedId] ?? JSON.stringify(rest, null, 2);
-          })(),
+          [selectedId]: prev[selectedId] ?? JSON.stringify(stripScoringFields(component.editedProposal), null, 2),
         }));
       },
       onToggleSource: () => {

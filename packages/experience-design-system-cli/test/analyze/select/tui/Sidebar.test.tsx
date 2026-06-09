@@ -30,7 +30,7 @@ describe('Sidebar', () => {
     expect(frame).toContain('~');
   });
 
-  it('truncates names longer than 11 chars at default width', () => {
+  it('truncates names that exceed maxNameLen (width 18 - 4 = 14 chars)', () => {
     const longComponents: ReviewComponentSummary[] = [
       { id: 'x', name: 'VeryLongComponentName', status: 'needs-review', extractionConfidence: 50, needsReview: true },
     ];
