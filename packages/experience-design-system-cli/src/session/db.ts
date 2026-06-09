@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS raw_components (
   status                 TEXT NOT NULL DEFAULT 'extracted',
   cdf_schema             TEXT,
   description            TEXT,
-  extraction_confidence  INTEGER NOT NULL DEFAULT 100,
+  extraction_confidence  INTEGER,
   review_reasons         TEXT NOT NULL DEFAULT '[]',
   needs_review           INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (session_id, component_id)
@@ -215,7 +215,7 @@ function applyDbMigrations(db: DatabaseSync): void {
   const rawCompCols = db.prepare('PRAGMA table_info(raw_components)').all() as Array<{ name: string }>;
   const rawCompColNames = new Set(rawCompCols.map((c) => c.name));
   if (!rawCompColNames.has('extraction_confidence')) {
-    db.exec('ALTER TABLE raw_components ADD COLUMN extraction_confidence INTEGER NOT NULL DEFAULT 100');
+    db.exec('ALTER TABLE raw_components ADD COLUMN extraction_confidence INTEGER');
   }
   if (!rawCompColNames.has('review_reasons')) {
     db.exec("ALTER TABLE raw_components ADD COLUMN review_reasons TEXT NOT NULL DEFAULT '[]'");
@@ -612,7 +612,7 @@ export function storeRawComponents(
         comp.source,
         comp.framework,
         now,
-        comp.extractionConfidence ?? 100,
+        comp.extractionConfidence ?? null,
         JSON.stringify(comp.reviewReasons ?? []),
         comp.needsReview ? 1 : 0,
       );
@@ -753,7 +753,7 @@ export function loadRawComponents(
     name: string;
     source: string;
     framework: string;
-    extraction_confidence: number;
+    extraction_confidence: number | null;
     review_reasons: string;
     needs_review: number;
   }>;
@@ -828,7 +828,7 @@ export function loadRawComponents(
       name: c.name,
       source: c.source,
       framework: c.framework as RawComponentDefinition['framework'],
-      extractionConfidence: c.extraction_confidence ?? 100,
+      extractionConfidence: c.extraction_confidence ?? null,
       reviewReasons: (() => {
         try {
           return JSON.parse(c.review_reasons ?? '[]') as string[];

@@ -38,7 +38,7 @@ export interface RawComponentDefinition {
    * non-authorable context-provider components.
    */
   usesCreateContext?: boolean;
-  extractionConfidence?: number;
+  extractionConfidence?: number | null; // 1–5 scale; null = not yet scored
   reviewReasons?: string[];
   needsReview?: boolean;
 }

@@ -1,7 +1,10 @@
 import type { RawComponentDefinition } from '../../types.js';
 
+// 1 = very low confidence (likely wrong), 5 = very high confidence (clearly correct)
+export type ExtractionConfidence = 1 | 2 | 3 | 4 | 5;
+
 export type ExtractionScore = {
-  confidence: number; // 0–100
+  confidence: ExtractionConfidence;
   reasons: string[];
 };
 
@@ -49,55 +52,68 @@ function isWidePrimitiveUnion(type: string): boolean {
   const nullability = new Set(['null', 'undefined']);
   const baseCount = parts.filter((p) => basePrimitives.has(p)).length;
   const nullabilityCount = parts.filter((p) => nullability.has(p)).length;
-  // Wide only when there are 3+ base primitives, or 2+ base primitives combined with nullability modifiers
   return baseCount >= 3 || (baseCount >= 2 && nullabilityCount > 0 && baseCount + nullabilityCount >= 3);
 }
 
-export function computeExtractionScore(component: RawComponentDefinition): ExtractionScore {
-  let confidence = 100;
+// Count the number of issues found for scoring
+function countIssues(component: RawComponentDefinition): { count: number; reasons: string[] } {
+  let count = 0;
   const reasons: string[] = [];
 
-  // No props and no slots — extractor likely missed something or component is a wrapper
   if (component.props.length === 0 && component.slots.length === 0) {
-    confidence -= 15;
+    count++;
     reasons.push('no-props-or-slots');
   }
 
-  for (const prop of component.props) {
-    // Opaque types — extractor couldn't resolve the real type
-    if (OPAQUE_TYPES.has(prop.type.trim())) {
-      confidence -= 20;
-      reasons.push(`opaque-type:${prop.name}`);
-      break; // only penalise once per component
-    }
-
-    // Wide primitive union — hard for the AI agent to classify meaningfully
-    if (isWidePrimitiveUnion(prop.type)) {
-      confidence -= 10;
-      reasons.push(`wide-union:${prop.name}`);
-      break; // only penalise once
-    }
-
-    // Non-obvious prop name with no description
-    if (!prop.description && !OBVIOUS_PROP_NAMES.has(prop.name)) {
-      confidence -= 10;
-      reasons.push('props-missing-description');
-      break; // only penalise once
-    }
-  }
-
-  // High prop count — possible DOM inflation near-miss or overly broad extraction
   if (component.props.length > 50) {
-    confidence -= 20;
+    count++;
     reasons.push(`high-prop-count:${component.props.length}`);
   }
 
+  for (const prop of component.props) {
+    if (OPAQUE_TYPES.has(prop.type.trim())) {
+      count++;
+      reasons.push(`opaque-type:${prop.name}`);
+      break;
+    }
+    if (isWidePrimitiveUnion(prop.type)) {
+      count++;
+      reasons.push(`wide-union:${prop.name}`);
+      break;
+    }
+    if (!prop.description && !OBVIOUS_PROP_NAMES.has(prop.name)) {
+      count++;
+      reasons.push('props-missing-description');
+      break;
+    }
+  }
+
+  return { count, reasons: [...new Set(reasons)] };
+}
+
+// Maps issue count to a 1–5 confidence scale:
+//   0 issues → 5 (clean)
+//   1 issue  → 4 (minor concern)
+//   2 issues → 3 (moderate concern)
+//   3 issues → 2 (significant concern)
+//   4+ issues → 1 (likely wrong)
+function issueCountToConfidence(count: number): ExtractionConfidence {
+  if (count === 0) return 5;
+  if (count === 1) return 4;
+  if (count === 2) return 3;
+  if (count === 3) return 2;
+  return 1;
+}
+
+export function computeExtractionScore(component: RawComponentDefinition): ExtractionScore {
+  const { count, reasons } = countIssues(component);
   return {
-    confidence: Math.max(0, Math.min(100, confidence)),
-    reasons: [...new Set(reasons)], // deduplicate
+    confidence: issueCountToConfidence(count),
+    reasons,
   };
 }
 
-export function deriveNeedsReview(confidence: number): boolean {
-  return confidence < 70;
+// Flag components scoring 2 or below for human review
+export function deriveNeedsReview(confidence: ExtractionConfidence): boolean {
+  return confidence <= 2;
 }

@@ -13,7 +13,7 @@ export type AnalyzeViewResult = {
     propCount: number;
     slotCount: number;
     warnings: string[];
-    extractionConfidence: number;
+    extractionConfidence: number | null;
     needsReview: boolean;
   }>;
   totalWarnings: number;
@@ -89,9 +89,10 @@ export function AnalyzeView({ result, onExit }: AnalyzeViewProps): React.ReactEl
         <Text> </Text>
         {showScrollUp && <Text dimColor> ▲ scroll up</Text>}
         {visible.map((component) => {
-          const conf = component.extractionConfidence ?? 100;
-          const confColor = component.needsReview ? 'red' : conf >= 80 ? 'white' : conf >= 50 ? 'yellow' : 'red';
-          const confLabel = (component.needsReview ? '⚑ ' : '') + String(conf);
+          const conf = component.extractionConfidence;
+          const confColor =
+            conf === null ? 'gray' : component.needsReview ? 'red' : conf >= 4 ? 'white' : conf >= 3 ? 'yellow' : 'red';
+          const confLabel = conf === null ? '—' : (component.needsReview ? '⚑ ' : '') + String(conf);
           return (
             <Box key={component.name}>
               {component.warnings.length > 0 && <Text color="yellow">⚠ </Text>}

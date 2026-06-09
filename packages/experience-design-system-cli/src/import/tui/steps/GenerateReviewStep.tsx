@@ -221,7 +221,7 @@ export function GenerateReviewStep({
     id: c.key,
     name: c.key,
     status: c.status,
-    extractionConfidence: 100,
+    extractionConfidence: null,
     needsReview: false,
   }));
 

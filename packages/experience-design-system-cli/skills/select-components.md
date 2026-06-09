@@ -70,16 +70,21 @@ Emit one JSON object on a single line. Lines not starting with `{` are ignored b
 **Two tool calls — emit exactly one:**
 
 ```
-{"tool":"select_component","name":"<ComponentName>","reason":"<brief reason>","confidence":<0-100>}
+{"tool":"select_component","name":"<ComponentName>","reason":"<brief reason>","confidence":<1-5>}
 
-{"tool":"reject_component","name":"<ComponentName>","reason":"<brief reason>","confidence":<0-100>}
+{"tool":"reject_component","name":"<ComponentName>","reason":"<brief reason>","confidence":<1-5>}
 ```
 
 **Rules:**
 - Emit exactly one JSON object, on one line. No multi-line JSON. No markdown fences.
 - The `name` must match the component name in the input.
 - `reason` is a brief phrase documenting your decision.
-- `confidence` is your certainty (0–100) that the decision is correct. Use 90–100 for obvious cases (clear UI atom or obvious infrastructure), 60–80 for borderline cases (few props, ambiguous purpose), and below 60 when you're genuinely unsure.
+- `confidence` is your certainty (1–5) that the decision is correct:
+  - **5** — obvious case, no doubt (clear UI atom, or clear infrastructure with no visual output)
+  - **4** — likely correct, minor ambiguity
+  - **3** — uncertain, borderline component (few props, ambiguous purpose, could go either way)
+  - **2** — low confidence, guessing
+  - **1** — very unsure, human review strongly recommended
 - Emit prose lines (not starting with `{`) to log your reasoning before the final tool call.
 
 ---

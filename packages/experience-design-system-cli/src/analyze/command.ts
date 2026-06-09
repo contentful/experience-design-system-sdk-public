@@ -186,7 +186,7 @@ export function registerAnalyzeCommand(program: Command): void {
           propCount: c.props.length,
           slotCount: c.slots.length,
           warnings: allWarnings.filter((w) => w.startsWith(c.name + ':')),
-          extractionConfidence: c.extractionConfidence ?? 100,
+          extractionConfidence: c.extractionConfidence ?? null,
           needsReview: c.needsReview ?? false,
         })),
         totalWarnings: allWarnings.length,

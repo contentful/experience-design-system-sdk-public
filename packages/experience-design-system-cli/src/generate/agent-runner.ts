@@ -50,14 +50,14 @@ export interface SelectComponentCall {
   tool: 'select_component';
   name: string;
   reason?: string;
-  confidence?: number; // 0–100, agent's certainty this belongs in ExO
+  confidence?: number; // 1–5 scale, agent's certainty this belongs in ExO
 }
 
 export interface RejectComponentCall {
   tool: 'reject_component';
   name: string;
   reason?: string;
-  confidence?: number; // 0–100, agent's certainty this should be excluded
+  confidence?: number; // 1–5 scale, agent's certainty this should be excluded
 }
 
 export type SelectToolCall = SelectComponentCall | RejectComponentCall;
@@ -100,7 +100,7 @@ export function parseSelectToolCallLines(stdout: string): ParsedSelectToolCalls 
       name: rec.name,
     } as SelectToolCall;
     if (typeof rec.reason === 'string') (call as SelectComponentCall).reason = rec.reason;
-    if (typeof rec.confidence === 'number' && rec.confidence >= 0 && rec.confidence <= 100) {
+    if (typeof rec.confidence === 'number' && rec.confidence >= 1 && rec.confidence <= 5) {
       if (call.tool === 'select_component') {
         (call as SelectComponentCall).confidence = rec.confidence;
       } else {

@@ -381,14 +381,17 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
           name: c.name,
           status: c.status,
           previewAnnotation: previewAnnotations[c.name] as PreviewAnnotation | undefined,
-          extractionConfidence: c.originalProposal.extractionConfidence ?? 100,
+          extractionConfidence: c.originalProposal.extractionConfidence ?? null,
           needsReview: c.originalProposal.needsReview ?? false,
         }))
         .sort((a, b) => {
           const aFlagged = a.needsReview && a.status === 'needs-review' ? 0 : 1;
           const bFlagged = b.needsReview && b.status === 'needs-review' ? 0 : 1;
           if (aFlagged !== bFlagged) return aFlagged - bFlagged;
-          return a.extractionConfidence - b.extractionConfidence;
+          // null (unscored) sorts last; lower numeric score sorts first (most concerning)
+          const aConf = a.extractionConfidence ?? 6;
+          const bConf = b.extractionConfidence ?? 6;
+          return aConf - bConf;
         }),
     [session?.components, previewAnnotations],
   );

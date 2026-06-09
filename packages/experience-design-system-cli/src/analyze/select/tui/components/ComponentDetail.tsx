@@ -80,10 +80,10 @@ export function ComponentDetail({
   const originalJson = JSON.stringify(stripScoring(component.originalProposal), null, 2);
   const editedJson = JSON.stringify(stripScoring(component.editedProposal), null, 2);
 
-  const conf = component.originalProposal.extractionConfidence ?? 100;
+  const conf = component.originalProposal.extractionConfidence ?? null;
   const nr = component.originalProposal.needsReview ?? false;
-  const confColor = nr ? 'red' : conf >= 80 ? 'white' : conf >= 50 ? 'yellow' : 'red';
-  const confLabel = (nr ? '⚑ ' : '') + 'confidence: ' + String(conf);
+  const confColor = conf === null ? 'gray' : nr ? 'red' : conf >= 4 ? 'white' : conf >= 3 ? 'yellow' : 'red';
+  const confLabel = conf === null ? 'confidence: —' : (nr ? '⚑ ' : '') + 'confidence: ' + String(conf) + '/5';
 
   return (
     <Box flexDirection="column" flexGrow={1}>
