@@ -66,7 +66,7 @@ export function buildMarkdownReport(results: EvalResult[], summary: RunSummary):
       const { coverageDelta, mappingDelta } = result.baselineComparison;
       const coverageSign = coverageDelta >= 0 ? '+' : '';
       lines.push(`\n**vs baseline:** coverage ${coverageSign}${(coverageDelta * 100).toFixed(1)}%` +
-        (mappingDelta !== null ? `, mapping ${coverageDelta >= 0 ? '+' : ''}${mappingDelta}` : ''));
+        (mappingDelta !== null ? `, mapping ${mappingDelta >= 0 ? '+' : ''}${mappingDelta}` : ''));
     }
 
     lines.push('');
