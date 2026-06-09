@@ -14,20 +14,33 @@ export async function runStage1(rawComponents: RawComponentDefinition[]): Promis
 
   await Promise.all(
     rawComponents.map(async (component) => {
-      const prompt = await buildPrompt({
-        skill: 'select',
-        mode: 'autonomous',
-        rawComponentsInline: JSON.stringify([component], null, 2),
-        outDir: '/tmp',
-      });
+      try {
+        const prompt = await buildPrompt({
+          skill: 'select',
+          mode: 'autonomous',
+          rawComponentsInline: JSON.stringify([component], null, 2),
+          outDir: '/tmp',
+        });
 
-      const stdout = await invokeBedrock(prompt, 1024);
-      const { calls } = parseSelectToolCallLines(stdout);
+        const stdout = await invokeBedrock(prompt, 1024);
+        const { calls, warnings } = parseSelectToolCallLines(stdout);
 
-      const decision = calls.find((c) => c.name === component.name);
-      if (decision?.tool === 'select_component') {
-        accepted.push(component);
-      } else {
+        if (warnings.length > 0) {
+          for (const w of warnings) {
+            console.debug(`  [stage1] parse warning for ${component.name}: ${w}`);
+          }
+        }
+
+        const decision = calls.find((c) => c.name === component.name);
+        if (decision?.tool === 'select_component') {
+          accepted.push(component);
+        } else {
+          rejected.push(component.name);
+        }
+      } catch (err) {
+        console.warn(
+          `  [stage1] component "${component.name}" failed — skipping: ${err instanceof Error ? err.message : String(err)}`,
+        );
         rejected.push(component.name);
       }
     }),

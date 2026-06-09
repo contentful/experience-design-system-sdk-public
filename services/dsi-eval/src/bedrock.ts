@@ -7,10 +7,32 @@ const BASE_DELAY_MS = 2000;
 
 const client = new BedrockRuntimeClient({ region: AWS_REGION });
 
-function isRateLimitError(err: unknown): boolean {
+function isRetryableError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
-  return msg.includes('too many requests') || msg.includes('throttling') || msg.includes('rate');
+  const name = (err as { name?: string }).name ?? '';
+
+  // Rate limit / throttling
+  if (msg.includes('too many requests') || msg.includes('throttling') || msg.includes('rate')) {
+    return true;
+  }
+
+  // Bedrock transient server-side errors
+  if (
+    name === 'ServiceUnavailableException' ||
+    name === 'InternalServerException' ||
+    msg.includes('service unavailable') ||
+    msg.includes('internal server error')
+  ) {
+    return true;
+  }
+
+  // Generic HTTP 5xx patterns surfaced in error messages
+  if (/\b5\d{2}\b/.test(msg)) {
+    return true;
+  }
+
+  return false;
 }
 
 export async function invokeBedrock(prompt: string, maxTokens = 8096): Promise<string> {
@@ -38,9 +60,9 @@ export async function invokeBedrock(prompt: string, maxTokens = 8096): Promise<s
         .join('');
     } catch (err) {
       lastErr = err;
-      if (!isRateLimitError(err)) throw err;
+      if (!isRetryableError(err)) throw err;
       const delay = BASE_DELAY_MS * 2 ** attempt;
-      console.warn(`  [bedrock] rate limited — retrying in ${delay / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      console.warn(`  [bedrock] transient error — retrying in ${delay / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES}): ${err instanceof Error ? err.message : String(err)}`);
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
