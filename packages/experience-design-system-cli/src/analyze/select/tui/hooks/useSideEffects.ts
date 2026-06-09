@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import { readFile } from 'node:fs/promises';
 import type { AppState, AppAction } from '../state.js';
 import type { ReviewComponentStatus, ReviewSessionSnapshot, PreviewAnnotation } from '../../types.js';
@@ -22,8 +22,13 @@ type Dispatch = (action: AppAction) => void;
  */
 export function useSideEffects(state: AppState, dispatch: Dispatch, services: Services): void {
   const prevRef = useRef<AppState>(state);
+  // Per-instance timer ref — avoids module-level state shared between test instances
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
+  // useLayoutEffect: fires synchronously after commit, before next render.
+  // This guarantees transitions are detected even if two renders fire in rapid
+  // succession — prevRef.current is updated before the next render reads it.
+  useLayoutEffect(() => {
     const prev = prevRef.current;
     prevRef.current = state;
 
@@ -32,10 +37,10 @@ export function useSideEffects(state: AppState, dispatch: Dispatch, services: Se
       void services.saveState(state.session);
     }
 
-    // ── Draft persist: mode just left editing ─────────────────────────────
+    // ── Draft persist: mode left editing (but not via discard — discard clears the draft) ──
     if (prev.mode.type === 'editing' && state.mode.type !== 'editing') {
       const { componentId } = prev.mode;
-      const draft = state.draftsByComponentId[componentId];
+      const draft = state.draftsByComponentId[componentId]; // undefined if discarded
       if (draft && state.session && state.paths) {
         void persistDraft(componentId, draft, state, dispatch, services);
       }
@@ -50,7 +55,7 @@ export function useSideEffects(state: AppState, dispatch: Dispatch, services: Se
 
     // ── Preview refresh: session components changed ───────────────────────
     if (state.session?.components !== prev.session?.components && state.session) {
-      schedulePreviewRefresh(state, dispatch, services.sessionId);
+      schedulePreviewRefresh(state, dispatch, services.sessionId, previewTimerRef);
     }
   });
 
@@ -80,13 +85,6 @@ export function useSideEffects(state: AppState, dispatch: Dispatch, services: Se
       process.off('SIGINT', handler);
     };
   }, [state.draftsByComponentId]);
-
-  // ── QUIT_CONFIRM: exit process ────────────────────────────────────────────
-  useEffect(() => {
-    if (state.mode.type !== 'dialog') return;
-    // QUIT_CONFIRM keeps mode as-is in the reducer; we detect it differently:
-    // QuitDialog's confirm button directly calls process.exit in App.tsx
-  }, []);
 
   // ── Auto-clear errors ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -206,79 +204,78 @@ async function persistFinalize(state: AppState, dispatch: Dispatch, services: Se
   }
 }
 
-const previewTimers = new Map<string, ReturnType<typeof setTimeout>>();
+function schedulePreviewRefresh(
+  state: AppState,
+  dispatch: Dispatch,
+  sessionId: string,
+  timerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
+): void {
+  if (timerRef.current) clearTimeout(timerRef.current);
 
-function schedulePreviewRefresh(state: AppState, dispatch: Dispatch, sessionId: string): void {
-  const existing = previewTimers.get(sessionId);
-  if (existing) clearTimeout(existing);
+  timerRef.current = setTimeout(() => {
+    timerRef.current = null;
 
-  previewTimers.set(
-    sessionId,
-    setTimeout(() => {
-      previewTimers.delete(sessionId);
-
-      // Sync session to DB
-      const db = openPipelineDb();
-      try {
-        db.prepare(`UPDATE raw_components SET status = 'extracted' WHERE session_id = ?`).run(sessionId);
-        const acceptedNames = state
-          .session!.components.filter((c) => c.status === 'accepted' || c.status === 'reviewed')
-          .map((c) => c.name);
-        if (acceptedNames.length > 0) {
-          db.prepare(
-            `UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name IN (${acceptedNames.map(() => '?').join(',')})`,
-          ).run(sessionId, ...acceptedNames);
-        }
-      } finally {
-        db.close();
+    // Sync session to DB
+    const db = openPipelineDb();
+    try {
+      db.prepare(`UPDATE raw_components SET status = 'extracted' WHERE session_id = ?`).run(sessionId);
+      const acceptedNames = state
+        .session!.components.filter((c) => c.status === 'accepted' || c.status === 'reviewed')
+        .map((c) => c.name);
+      if (acceptedNames.length > 0) {
+        db.prepare(
+          `UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name IN (${acceptedNames.map(() => '?').join(',')})`,
+        ).run(sessionId, ...acceptedNames);
       }
+    } finally {
+      db.close();
+    }
 
-      const cmaToken = process.env['EDS_CMA_TOKEN'];
-      const spaceId = process.env['EDS_SPACE_ID'];
-      const environmentId = process.env['EDS_ENVIRONMENT_ID'];
-      const tokensPath = process.env['EDS_TOKENS_PATH'];
-      if (!cmaToken || !spaceId || !environmentId) return;
+    const cmaToken = process.env['EDS_CMA_TOKEN'];
+    const spaceId = process.env['EDS_SPACE_ID'];
+    const environmentId = process.env['EDS_ENVIRONMENT_ID'];
+    const tokensPath = process.env['EDS_TOKENS_PATH'];
+    if (!cmaToken || !spaceId || !environmentId) return;
 
-      dispatch({ type: 'PREVIEW_START' });
-      void (async () => {
+    dispatch({ type: 'PREVIEW_START' });
+    void (async () => {
+      try {
+        const pdb = openPipelineDb();
+        let components: Array<{ key: string; entry: unknown }> = [];
         try {
-          const pdb = openPipelineDb();
-          let components: Array<{ key: string; entry: unknown }> = [];
-          try {
-            components = loadCDFComponents(pdb, sessionId);
-          } finally {
-            pdb.close();
-          }
-
-          let tokens: unknown[] = [];
-          if (tokensPath) tokens = await readTokensFromPath('tokens', tokensPath);
-
-          const manifest = buildManifest(
-            components as Parameters<typeof buildManifest>[0],
-            tokens as Parameters<typeof buildManifest>[1],
-          );
-          if (!manifest.componentsManifest) manifest.componentsManifest = {};
-
-          const client = new ImportApiClient({ cmaToken, spaceId, environmentId });
-          const preview: ServerPreviewResponse = await client.previewImport(manifest);
-
-          const annotations: Record<string, PreviewAnnotation> = {};
-          for (const item of preview.components.new) {
-            const name = ((item as unknown as Record<string, unknown>).name as string) ?? '';
-            if (name) annotations[name] = 'new';
-          }
-          for (const item of preview.components.removed) annotations[item.name] = 'removed';
-          for (const item of preview.components.changed) {
-            annotations[item.current.name] =
-              item.changeClassification?.classification === 'breaking' ? 'breaking' : 'changed';
-          }
-
-          dispatch({ type: 'PREVIEW_SUCCESS', response: preview, annotations });
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          dispatch({ type: 'PREVIEW_ERROR', message: msg.includes('token') ? 'Preview request failed' : msg });
+          components = loadCDFComponents(pdb, sessionId);
+        } finally {
+          pdb.close();
         }
-      })();
-    }, 500),
-  );
+
+        let tokens: unknown[] = [];
+        if (tokensPath) tokens = await readTokensFromPath('tokens', tokensPath);
+
+        const manifest = buildManifest(
+          components as Parameters<typeof buildManifest>[0],
+          tokens as Parameters<typeof buildManifest>[1],
+        );
+        if (!manifest.componentsManifest) manifest.componentsManifest = {};
+
+        const client = new ImportApiClient({ cmaToken, spaceId, environmentId });
+        const preview: ServerPreviewResponse = await client.previewImport(manifest);
+
+        const annotations: Record<string, PreviewAnnotation> = {};
+        for (const item of preview.components.new) {
+          const name = ((item as unknown as Record<string, unknown>).name as string) ?? '';
+          if (name) annotations[name] = 'new';
+        }
+        for (const item of preview.components.removed) annotations[item.name] = 'removed';
+        for (const item of preview.components.changed) {
+          annotations[item.current.name] =
+            item.changeClassification?.classification === 'breaking' ? 'breaking' : 'changed';
+        }
+
+        dispatch({ type: 'PREVIEW_SUCCESS', response: preview, annotations });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        dispatch({ type: 'PREVIEW_ERROR', message: msg.includes('token') ? 'Preview request failed' : msg });
+      }
+    })();
+  }, 500);
 }

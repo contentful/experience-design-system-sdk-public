@@ -208,9 +208,7 @@ export type AppAction =
   | { type: 'APPROVE_ALL' }
   | { type: 'ENTER_EDIT' }
   | { type: 'EDITOR_KEY'; input: string; key: Parameters<typeof applyEditorKey>[2]; visibleHeight: number }
-  | { type: 'EDITOR_VALIDATE' } // Ctrl+S — validate then trigger DRAFT_SAVE if valid
-  | { type: 'DRAFT_SAVE'; validatedValue: string } // only dispatched after successful JSON.parse
-  | { type: 'DRAFT_SAVE_INVALID'; error: string } // JSON.parse failed
+  | { type: 'EDITOR_VALIDATE' } // Ctrl+S: validate JSON; if valid, transition to browsing (side effect persists draft)
   | { type: 'DRAFT_DISCARD' }
   | { type: 'TOGGLE_FOCUS' }
   | { type: 'SCROLL_UP' }
@@ -354,21 +352,6 @@ export function reducer(state: AppState, action: AppAction): AppState {
           editor: { ...state.editor, validationError: e instanceof Error ? e.message : String(e) },
         };
       }
-    }
-
-    case 'DRAFT_SAVE': {
-      // Called after successful validation — value is already in draftsByComponentId
-      if (state.mode.type !== 'editing') return state;
-      return {
-        ...state,
-        mode: { type: 'browsing', sidebarFocused: true, sourceVisible: false },
-        editor: null,
-      };
-    }
-
-    case 'DRAFT_SAVE_INVALID': {
-      if (!state.editor) return state;
-      return { ...state, editor: { ...state.editor, validationError: action.error } };
     }
 
     case 'DRAFT_DISCARD': {
