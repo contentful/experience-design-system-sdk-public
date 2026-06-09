@@ -12,7 +12,7 @@ Stage 0 (AST extraction) is deterministic and covered by unit tests, not evals.
 ```bash
 cd services/dsi-eval
 pnpm install
-DSI_EVAL_CORPUS_REPO=git@github.com:contentful/dsi-eval-data.git pnpm pull-corpus
+DSI_EVAL_CORPUS_REPO=<ask-the-team> pnpm pull-corpus
 AWS_PROFILE=bedrock pnpm start
 ```
 
