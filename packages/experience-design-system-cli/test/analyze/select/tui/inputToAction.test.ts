@@ -138,17 +138,22 @@ describe('inputToAction — editing mode', () => {
     mode: { type: 'editing', componentId: 'b' },
   };
 
-  it('Ctrl+S saves draft', () => {
-    expect(inputToAction('s', { ...noKey, ctrl: true }, editing, 20, 120)).toEqual({ type: 'DRAFT_SAVE' });
+  it('Ctrl+S triggers EDITOR_VALIDATE', () => {
+    expect(inputToAction('s', { ...noKey, ctrl: true }, editing, 20, 120)).toEqual({ type: 'EDITOR_VALIDATE' });
   });
 
   it('Esc discards draft', () => {
     expect(inputToAction('', { ...noKey, escape: true }, editing, 20, 120)).toEqual({ type: 'DRAFT_DISCARD' });
   });
 
-  it('all other keys return null (handled by JsonEditor)', () => {
-    expect(inputToAction('a', noKey, editing, 20, 120)).toBeNull();
-    expect(inputToAction('', { ...noKey, upArrow: true }, editing, 20, 120)).toBeNull();
-    expect(inputToAction('x', noKey, editing, 20, 120)).toBeNull();
+  it('printable keys dispatch EDITOR_KEY (handled by reducer)', () => {
+    const action = inputToAction('a', noKey, editing, 20, 120);
+    expect(action).not.toBeNull();
+    expect(action?.type).toBe('EDITOR_KEY');
+  });
+
+  it('arrow keys in editor dispatch EDITOR_KEY', () => {
+    const action = inputToAction('', { ...noKey, upArrow: true }, editing, 20, 120);
+    expect(action?.type).toBe('EDITOR_KEY');
   });
 });

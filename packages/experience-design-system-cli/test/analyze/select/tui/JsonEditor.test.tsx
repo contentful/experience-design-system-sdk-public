@@ -1,140 +1,107 @@
 import { render } from 'ink-testing-library';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { JsonEditor } from '../../../../src/analyze/select/tui/components/JsonEditor.js';
+import { applyEditorKey } from '../../../../src/analyze/select/tui/state.js';
+import type { EditorState } from '../../../../src/analyze/select/tui/state.js';
 
-const INITIAL_VALUE = '{\n  "name": "Button"\n}';
+const noKey = {
+  ctrl: false,
+  meta: false,
+  return: false,
+  backspace: false,
+  delete: false,
+  escape: false,
+  upArrow: false,
+  downArrow: false,
+  leftArrow: false,
+  rightArrow: false,
+};
 
-describe('JsonEditor', () => {
+function makeEditor(value: string): EditorState {
+  return {
+    cursor: { lines: value.split('\n'), cursorRow: 0, cursorCol: 0 },
+    undoStack: [],
+    scrollRow: 0,
+    validationError: null,
+  };
+}
+
+describe('JsonEditor (pure render)', () => {
   it('renders the initial value', () => {
-    const { lastFrame } = render(
-      <JsonEditor
-        value={INITIAL_VALUE}
-        width={60}
-        height={10}
-        onChange={vi.fn()}
-        onSave={vi.fn()}
-        onDiscard={vi.fn()}
-      />,
-    );
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('"name"');
+    const editorState = makeEditor('{\n  "name": "Button"\n}');
+    const { lastFrame } = render(<JsonEditor editorState={editorState} width={60} height={10} />);
+    expect(lastFrame()).toContain('"name"');
   });
 
-  it('calls onSave with valid JSON on Ctrl+S', async () => {
-    const onSave = vi.fn();
-    const { stdin } = render(
-      <JsonEditor
-        value={INITIAL_VALUE}
-        width={60}
-        height={10}
-        onChange={vi.fn()}
-        onSave={onSave}
-        onDiscard={vi.fn()}
-      />,
-    );
-    stdin.write('\x13'); // Ctrl+S
-    await new Promise((r) => setTimeout(r, 30));
-    expect(onSave).toHaveBeenCalled();
-  });
-
-  it('shows error and does not call onSave for invalid JSON on Ctrl+S', async () => {
-    const onSave = vi.fn();
-    const { stdin, lastFrame } = render(
-      <JsonEditor
-        value="{ invalid json"
-        width={60}
-        height={10}
-        onChange={vi.fn()}
-        onSave={onSave}
-        onDiscard={vi.fn()}
-      />,
-    );
-    stdin.write('\x13'); // Ctrl+S
-    await new Promise((r) => setTimeout(r, 30));
-    expect(onSave).not.toHaveBeenCalled();
+  it('renders validation error when set', () => {
+    const editorState: EditorState = { ...makeEditor('bad json'), validationError: 'Invalid JSON: unexpected token' };
+    const { lastFrame } = render(<JsonEditor editorState={editorState} width={60} height={10} />);
     expect(lastFrame()).toContain('Invalid JSON');
   });
+});
 
-  it('calls onDiscard on Esc', async () => {
-    const onDiscard = vi.fn();
-    const { stdin } = render(
-      <JsonEditor
-        value={INITIAL_VALUE}
-        width={60}
-        height={10}
-        onChange={vi.fn()}
-        onSave={vi.fn()}
-        onDiscard={onDiscard}
-      />,
-    );
-    stdin.write('\x1b'); // Esc
-    await new Promise((r) => setTimeout(r, 30));
-    expect(onDiscard).toHaveBeenCalled();
+describe('applyEditorKey (pure function)', () => {
+  it('inserts a printable character', () => {
+    const e = makeEditor('{}');
+    // Move cursor right past '{' then type 'x'
+    const moved = applyEditorKey(e, '', { ...noKey, rightArrow: true }, 20)!;
+    const typed = applyEditorKey(moved, 'x', noKey, 20)!;
+    expect(typed.cursor.lines[0]).toBe('{x}');
+    expect(typed.cursor.cursorCol).toBe(2);
   });
 
-  it('calls onChange when a character is typed', async () => {
-    const onChange = vi.fn();
-    const { stdin } = render(
-      <JsonEditor
-        value={INITIAL_VALUE}
-        width={60}
-        height={10}
-        onChange={onChange}
-        onSave={vi.fn()}
-        onDiscard={vi.fn()}
-      />,
-    );
-    stdin.write('x');
-    await new Promise((r) => setTimeout(r, 30));
-    expect(onChange).toHaveBeenCalled();
+  it('inserts newline on Enter', () => {
+    const e = makeEditor('{"a":1}');
+    const next = applyEditorKey(e, '', { ...noKey, return: true }, 20)!;
+    expect(next.cursor.lines.length).toBe(2);
+    expect(next.cursor.lines[0]).toBe('');
+    expect(next.cursor.cursorRow).toBe(1);
   });
 
-  it('reverts last change on Ctrl+Z', async () => {
-    const onChange = vi.fn();
-    const { stdin } = render(
-      <JsonEditor
-        value={INITIAL_VALUE}
-        width={60}
-        height={10}
-        onChange={onChange}
-        onSave={vi.fn()}
-        onDiscard={vi.fn()}
-      />,
-    );
-    // Type a character, then undo it
-    stdin.write('x');
-    await new Promise((r) => setTimeout(r, 30));
-    const callsAfterType = onChange.mock.calls.length;
-    expect(callsAfterType).toBeGreaterThan(0);
-
-    stdin.write('\x1a'); // Ctrl+Z
-    await new Promise((r) => setTimeout(r, 30));
-    // onChange is called again after undo (restores previous state)
-    expect(onChange.mock.calls.length).toBeGreaterThan(callsAfterType);
+  it('deletes character before cursor on Backspace', () => {
+    const e = makeEditor('ab');
+    const moved = applyEditorKey(e, '', { ...noKey, rightArrow: true }, 20)!;
+    const deleted = applyEditorKey(moved, '', { ...noKey, backspace: true }, 20)!;
+    expect(deleted.cursor.lines[0]).toBe('b');
+    expect(deleted.cursor.cursorCol).toBe(0);
   });
 
-  it('inserts newline on Enter', async () => {
-    const onChange = vi.fn();
-    const { stdin } = render(
-      <JsonEditor value='{"a":1}' width={60} height={10} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
-    );
-    stdin.write('\r'); // Enter
-    await new Promise((r) => setTimeout(r, 30));
-    expect(onChange).toHaveBeenCalled();
-    const lastValue = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
-    expect(lastValue).toContain('\n');
+  it('moves cursor left', () => {
+    const e = makeEditor('abc');
+    const moved = applyEditorKey(e, '', { ...noKey, rightArrow: true }, 20)!;
+    const back = applyEditorKey(moved, '', { ...noKey, leftArrow: true }, 20)!;
+    expect(back.cursor.cursorCol).toBe(0);
   });
 
-  it('deletes character before cursor on Backspace', async () => {
-    const onChange = vi.fn();
-    const { stdin } = render(
-      <JsonEditor value='{"a":1}' width={60} height={10} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
-    );
-    // Move right to position cursor after first char, then backspace
-    stdin.write('\x1b[C'); // right arrow
-    await new Promise((r) => setTimeout(r, 30));
-    stdin.write('\x7f'); // backspace
-    await new Promise((r) => setTimeout(r, 30));
-    expect(onChange).toHaveBeenCalled();
+  it('moves cursor up', () => {
+    const e = makeEditor('line1\nline2');
+    const down = applyEditorKey(e, '', { ...noKey, downArrow: true }, 20)!;
+    expect(down.cursor.cursorRow).toBe(1);
+    const up = applyEditorKey(down, '', { ...noKey, upArrow: true }, 20)!;
+    expect(up.cursor.cursorRow).toBe(0);
+  });
+
+  it('undoes last change', () => {
+    const e = makeEditor('ab');
+    const typed = applyEditorKey(e, 'x', noKey, 20)!;
+    expect(typed.cursor.lines[0]).toBe('xab');
+    const undone = applyEditorKey(typed, 'z', { ...noKey, ctrl: true }, 20)!;
+    expect(undone.cursor.lines[0]).toBe('ab');
+  });
+
+  it('returns null when no movement possible (up at top)', () => {
+    const e = makeEditor('single line');
+    expect(applyEditorKey(e, '', { ...noKey, upArrow: true }, 20)).toBeNull();
+  });
+
+  it('syncs scroll when cursor goes below visible area', () => {
+    const lines = Array.from({ length: 30 }, (_, i) => `line${i}`).join('\n');
+    let e = makeEditor(lines);
+    // Move cursor to row 25
+    for (let i = 0; i < 25; i++) {
+      e = applyEditorKey(e, '', { ...noKey, downArrow: true }, 10)!;
+    }
+    expect(e.scrollRow).toBeGreaterThan(0);
+    expect(e.cursor.cursorRow).toBeLessThan(e.scrollRow + 10);
   });
 });

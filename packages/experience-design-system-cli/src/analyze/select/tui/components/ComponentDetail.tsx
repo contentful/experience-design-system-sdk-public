@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { PreviewAnnotation, ReviewComponentDetail } from '../../types.js';
+import type { EditorState } from '../state.js';
 import { stripScoringFields } from '../../../../types.js';
 import { JsonPanel } from './JsonPanel.js';
 import { JsonEditor } from './JsonEditor.js';
@@ -9,15 +10,15 @@ import { SourcePanel } from './SourcePanel.js';
 type ComponentDetailProps = {
   component: ReviewComponentDetail;
   sourceCode: string | null;
-  draftValue: string;
+  draftValue: string; // current draft text (for read-only panel when not editing)
   editMode: boolean;
+  editorState: EditorState | null; // non-null when editMode=true
   sourceVisible: boolean;
   jsonScrollOffset: number;
   sourceScrollX: number;
   sourceScrollY: number;
   terminalWidth: number;
   previewAnnotation?: PreviewAnnotation;
-  onDraftChange: (value: string) => void;
   onSaveDraft: () => void;
   onDiscardDraft: () => void;
   onScrollChange: (offset: number) => void;
@@ -43,15 +44,15 @@ export function ComponentDetail({
   sourceCode,
   draftValue,
   editMode,
+  editorState,
   sourceVisible,
   jsonScrollOffset,
   sourceScrollX,
   sourceScrollY,
   terminalWidth,
   previewAnnotation,
-  onDraftChange,
-  onSaveDraft,
-  onDiscardDraft,
+  onSaveDraft: _onSaveDraft,
+  onDiscardDraft: _onDiscardDraft,
 }: ComponentDetailProps): React.ReactElement {
   const sidebarWidth = terminalWidth < 80 ? 5 : 20;
   const availableWidth = terminalWidth - sidebarWidth - 2;
@@ -104,15 +105,8 @@ export function ComponentDetail({
           active={false}
         />
         <Text> </Text>
-        {editMode ? (
-          <JsonEditor
-            value={draftValue || editedJson}
-            width={editWidth}
-            height={panelHeight}
-            onChange={onDraftChange}
-            onSave={onSaveDraft}
-            onDiscard={onDiscardDraft}
-          />
+        {editMode && editorState ? (
+          <JsonEditor editorState={editorState} width={editWidth} height={panelHeight} />
         ) : (
           <JsonPanel
             label="EDIT (draft)"

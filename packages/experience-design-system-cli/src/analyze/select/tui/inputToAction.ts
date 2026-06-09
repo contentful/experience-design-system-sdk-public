@@ -1,31 +1,17 @@
-import type { AppAction, AppState } from './state.js';
+import type { AppAction, AppState, applyEditorKey } from './state.js';
 
-// Key shape produced by useImmediateInput's parseInput()
-export type Key = {
-  upArrow: boolean;
-  downArrow: boolean;
-  leftArrow: boolean;
-  rightArrow: boolean;
-  pageDown: boolean;
-  pageUp: boolean;
-  return: boolean;
-  escape: boolean;
-  ctrl: boolean;
-  shift: boolean;
+// Full key shape from useImmediateInput — superset of what applyEditorKey needs
+export type Key = Parameters<typeof applyEditorKey>[2] & {
   tab: boolean;
-  backspace: boolean;
-  delete: boolean;
-  meta: boolean;
+  pageUp: boolean;
+  pageDown: boolean;
+  shift: boolean;
 };
 
 /**
- * Pure function: maps a raw keypress to an AppAction (or null if no action).
- *
- * No hooks. No closures over stale React state. All branching is on the
- * current mode, which comes from the reducer's committed state.
- *
- * When mode=editing, only Ctrl+S and Esc produce actions — all other keys
- * return null so JsonEditor's own useImmediateInput listener handles them.
+ * Pure function: maps a keypress to an AppAction (or null).
+ * No hooks. No closures over stale React state.
+ * Branching is on mode — the committed state from the reducer.
  */
 export function inputToAction(
   input: string,
@@ -36,7 +22,7 @@ export function inputToAction(
 ): AppAction | null {
   const { mode } = state;
 
-  // ── Dialog mode: only y/Enter and n/Esc ──────────────────────────────────
+  // ── Dialog ────────────────────────────────────────────────────────────────
   if (mode.type === 'dialog') {
     if (input === 'y' || key.return) {
       if (mode.which === 'finalize') return { type: 'FINALIZE_CONFIRM' };
@@ -47,20 +33,21 @@ export function inputToAction(
     return null;
   }
 
-  // ── Editing mode: Ctrl+S / Esc only — all other keys go to JsonEditor ────
+  // ── Editing ───────────────────────────────────────────────────────────────
   if (mode.type === 'editing') {
-    if (key.ctrl && input === 's') return { type: 'DRAFT_SAVE' };
+    if (key.ctrl && input === 's') return { type: 'EDITOR_VALIDATE' };
     if (key.escape) return { type: 'DRAFT_DISCARD' };
-    return null;
+    // All other keys go to the editor
+    return { type: 'EDITOR_KEY', input, key, visibleHeight: visibleCount - 4 };
   }
 
-  // ── Finalized mode ────────────────────────────────────────────────────────
+  // ── Finalized ─────────────────────────────────────────────────────────────
   if (mode.type === 'finalized') {
     if (key.return || input === 'q' || key.escape) process.exit(0);
     return null;
   }
 
-  // ── Browsing mode ─────────────────────────────────────────────────────────
+  // ── Browsing ──────────────────────────────────────────────────────────────
   if (input === 'q') return { type: 'OPEN_DIALOG', which: 'quit' };
   if (input === '?') return { type: 'OPEN_DIALOG', which: 'help' };
   if (input === 'F') return { type: 'OPEN_DIALOG', which: 'finalize' };
