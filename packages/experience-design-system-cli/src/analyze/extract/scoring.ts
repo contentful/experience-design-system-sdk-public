@@ -40,13 +40,17 @@ const OBVIOUS_PROP_NAMES = new Set([
   'aria-describedby',
 ]);
 
-// A union is "wide" if it mixes primitive base types with no additional narrowing
+// A union is "wide" if it mixes 3+ distinct base primitive types (ignoring nullability modifiers).
+// e.g. "string | number | boolean" → wide. "string | null | undefined" → NOT wide (just nullable string).
 function isWidePrimitiveUnion(type: string): boolean {
-  // e.g. "string | number | boolean" — three or more base primitives
   const parts = type.split('|').map((p) => p.trim());
   if (parts.length < 3) return false;
-  const primitives = new Set(['string', 'number', 'boolean', 'null', 'undefined']);
-  return parts.filter((p) => primitives.has(p)).length >= 3;
+  const basePrimitives = new Set(['string', 'number', 'boolean']);
+  const nullability = new Set(['null', 'undefined']);
+  const baseCount = parts.filter((p) => basePrimitives.has(p)).length;
+  const nullabilityCount = parts.filter((p) => nullability.has(p)).length;
+  // Wide only when there are 3+ base primitives, or 2+ base primitives combined with nullability modifiers
+  return baseCount >= 3 || (baseCount >= 2 && nullabilityCount > 0 && baseCount + nullabilityCount >= 3);
 }
 
 export function computeExtractionScore(component: RawComponentDefinition): ExtractionScore {
