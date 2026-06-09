@@ -6,7 +6,7 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "start:save-baseline": "tsx src/index.ts --save-baseline",
-    "pull-corpus": "git -C corpus pull 2>/dev/null || git clone \"${DSI_EVAL_CORPUS_REPO:?Set DSI_EVAL_CORPUS_REPO to your corpus repo SSH URL}\" corpus",
+    "pull-corpus": "git -C .corpus-repo pull 2>/dev/null || git clone \"${DSI_EVAL_CORPUS_REPO:?Set DSI_EVAL_CORPUS_REPO=git@github.com:contentful/dsi-eval-data.git}\" .corpus-repo && cp .corpus-repo/corpus/*.json corpus/ && cp .corpus-repo/baseline.json baseline.json",
     "build-corpus": "tsx scripts/build-corpus.ts",
     "type-check": "tsc --noEmit"
   },

@@ -12,9 +12,11 @@ Stage 0 (AST extraction) is deterministic and covered by unit tests, not evals.
 ```bash
 cd services/dsi-eval
 pnpm install
-DSI_EVAL_CORPUS_REPO=<ask-the-team> pnpm pull-corpus
+DSI_EVAL_CORPUS_REPO=git@github.com:contentful/dsi-eval-data.git pnpm pull-corpus
 AWS_PROFILE=bedrock pnpm start
 ```
+
+`pull-corpus` clones `dsi-eval-data` into `.corpus-repo/` (gitignored) and copies the corpus JSON files and baseline into place. Re-run it any time the corpus is updated.
 
 ## For external contributors
 
