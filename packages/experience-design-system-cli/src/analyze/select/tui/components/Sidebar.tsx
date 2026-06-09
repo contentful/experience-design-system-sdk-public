@@ -66,7 +66,7 @@ export function Sidebar({
         const isSelected = component.id === selectedId;
         const icon = statusIcon(component.status);
         const color = statusColor(component.status);
-        const maxNameLen = Math.max(1, width - 5);
+        const maxNameLen = Math.max(1, width - 4);
         const name = truncateName(component.name, maxNameLen);
 
         if (collapsed) {

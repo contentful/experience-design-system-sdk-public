@@ -27,6 +27,8 @@ export type ReviewComponentSummary = {
   name: string;
   status: ReviewComponentStatus;
   previewAnnotation?: PreviewAnnotation;
+  extractionConfidence: number | null; // 1–5 scale; null = not yet scored
+  needsReview: boolean;
 };
 
 export type ReviewSessionSnapshot = {
@@ -59,6 +61,8 @@ export function createReviewSessionSummary(session: ReviewSessionSnapshot): Revi
       id: component.id,
       name: component.name,
       status: component.status,
+      extractionConfidence: component.originalProposal.extractionConfidence ?? null,
+      needsReview: component.originalProposal.needsReview ?? false,
     })),
   };
 }

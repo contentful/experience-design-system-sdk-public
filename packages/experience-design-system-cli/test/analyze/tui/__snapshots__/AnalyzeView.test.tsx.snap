@@ -11,8 +11,8 @@ exports[`AnalyzeView > matches snapshot with no warnings 1`] = `
   Components
   ──────────────────────────────────────────────────────────────────────
 
-   Button              react     5 props   1 slot
-   Input               react     3 props   0 slots
+   Button              react     5 props   1 slot  95
+   Input               react     3 props   0 slots ⚑ 55
 
   Run: analyze select --session test-session-abc123
 
@@ -33,8 +33,8 @@ exports[`AnalyzeView > matches snapshot with warnings 1`] = `
   Components
   ──────────────────────────────────────────────────────────────────────
 
-   Button              react     5 props   1 slot
-  ⚠ Input               react     3 props   0 slots  1 warning
+   Button              react     5 props   1 slot  95
+  ⚠ Input               react     3 props   0 slots ⚑ 55  ⚠ 1 warning
 
   ──────────────────────────────────────────────────────────────────────
   Warnings (1)

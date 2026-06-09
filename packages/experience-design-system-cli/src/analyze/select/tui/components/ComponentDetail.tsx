@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { PreviewAnnotation, ReviewComponentDetail } from '../../types.js';
+import { stripScoringFields } from '../../../../types.js';
 import { JsonPanel } from './JsonPanel.js';
 import { FieldEditor } from './FieldEditor.js';
 import { SourcePanel } from './SourcePanel.js';
@@ -70,8 +71,13 @@ export function ComponentDetail({
     sourceWidth = 0;
   }
 
-  const originalJson = JSON.stringify(component.originalProposal, null, 2);
-  const editedJson = JSON.stringify(component.editedProposal, null, 2);
+  const originalJson = JSON.stringify(stripScoringFields(component.originalProposal), null, 2);
+  const editedJson = JSON.stringify(stripScoringFields(component.editedProposal), null, 2);
+
+  const conf = component.originalProposal.extractionConfidence ?? null;
+  const nr = component.originalProposal.needsReview ?? false;
+  const confColor = conf === null ? 'gray' : nr ? 'red' : conf >= 4 ? 'white' : conf >= 3 ? 'yellow' : 'red';
+  const confLabel = conf === null ? 'confidence: —' : (nr ? '⚑ ' : '') + 'confidence: ' + String(conf) + '/5';
 
   return (
     <Box flexDirection="column" flexGrow={1}>
@@ -81,6 +87,7 @@ export function ComponentDetail({
           const ann = annotationLabel(previewAnnotation);
           return ann ? <Text color={ann.color}>{ann.text}</Text> : null;
         })()}
+        <Text color={confColor}>{' — ' + confLabel}</Text>
         <Box flexGrow={1} />
         <Text dimColor>
           {sourceVisible ? '[s] hide src' : '[s] src'}

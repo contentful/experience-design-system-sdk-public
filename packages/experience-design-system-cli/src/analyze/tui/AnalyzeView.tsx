@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 import { TopBar } from '../select/tui/components/TopBar.js';
 import { useImmediateInput } from '../select/tui/hooks/useImmediateInput.js';
 
@@ -13,6 +13,8 @@ export type AnalyzeViewResult = {
     propCount: number;
     slotCount: number;
     warnings: string[];
+    extractionConfidence: number | null;
+    needsReview: boolean;
   }>;
   totalWarnings: number;
 };
@@ -29,6 +31,12 @@ function truncateName(name: string, maxLen = 30): string {
 
 export function AnalyzeView({ result, onExit }: AnalyzeViewProps): React.ReactElement {
   const [scrollOffset, setScrollOffset] = useState(0);
+  const { stdout } = useStdout();
+  // Header lines: TopBar(1) + summary(3) + blank(1) + dividers+header(3) + blank(1) + footer(1) + footer-bar(1) = ~12
+  const HEADER_ROWS = 12;
+  const terminalRows = stdout?.rows ?? 24;
+  const visibleCount = Math.max(1, terminalRows - HEADER_ROWS);
+  const maxOffset = Math.max(0, result.components.length - visibleCount);
 
   useImmediateInput((input, key) => {
     if (input === 'q' || key.return) {
@@ -38,13 +46,17 @@ export function AnalyzeView({ result, onExit }: AnalyzeViewProps): React.ReactEl
     if (key.upArrow || input === 'k') {
       setScrollOffset((o) => Math.max(0, o - 1));
     } else if (key.downArrow || input === 'j') {
-      setScrollOffset((o) => o + 1);
+      setScrollOffset((o) => Math.min(maxOffset, o + 1));
     } else if (input === 'g') {
       setScrollOffset(0);
     } else if (input === 'G') {
-      setScrollOffset(Math.max(0, result.components.length + 10));
+      setScrollOffset(maxOffset);
     }
   });
+
+  const visible = result.components.slice(scrollOffset, scrollOffset + visibleCount);
+  const showScrollUp = scrollOffset > 0;
+  const showScrollDown = scrollOffset + visibleCount < result.components.length;
 
   return (
     <Box flexDirection="column">
@@ -61,24 +73,44 @@ export function AnalyzeView({ result, onExit }: AnalyzeViewProps): React.ReactEl
         <Text dimColor>{'Session: ' + result.sessionId}</Text>
         <Text> </Text>
         <Text dimColor>{'─'.repeat(70)}</Text>
-        <Text bold>Components</Text>
+        <Text bold>
+          {'Components' +
+            (showScrollUp || showScrollDown
+              ? '  (' +
+                (scrollOffset + 1) +
+                '–' +
+                Math.min(scrollOffset + visibleCount, result.components.length) +
+                ' of ' +
+                result.components.length +
+                ')'
+              : '')}
+        </Text>
         <Text dimColor>{'─'.repeat(70)}</Text>
         <Text> </Text>
-        {result.components.slice(scrollOffset).map((component) => (
-          <Box key={component.name}>
-            {component.warnings.length > 0 && <Text color="yellow">⚠ </Text>}
-            {component.warnings.length === 0 && <Text> </Text>}
-            <Text>{truncateName(component.name).padEnd(20)}</Text>
-            <Text dimColor>{component.framework.padEnd(10)}</Text>
-            <Text>{(component.propCount + ' props').padEnd(10)}</Text>
-            <Text>{component.slotCount + ' ' + (component.slotCount === 1 ? 'slot' : 'slots')}</Text>
-            {component.warnings.length > 0 && (
-              <Text color="yellow">
-                {'  ' + component.warnings.length + ' warning' + (component.warnings.length === 1 ? '' : 's')}
-              </Text>
-            )}
-          </Box>
-        ))}
+        {showScrollUp && <Text dimColor> ▲ scroll up</Text>}
+        {visible.map((component) => {
+          const conf = component.extractionConfidence;
+          const confColor =
+            conf === null ? 'gray' : component.needsReview ? 'red' : conf >= 4 ? 'white' : conf >= 3 ? 'yellow' : 'red';
+          const confLabel = conf === null ? '—' : (component.needsReview ? '⚑ ' : '') + String(conf);
+          return (
+            <Box key={component.name}>
+              {component.warnings.length > 0 && <Text color="yellow">⚠ </Text>}
+              {component.warnings.length === 0 && <Text> </Text>}
+              <Text>{truncateName(component.name).padEnd(20)}</Text>
+              <Text dimColor>{component.framework.padEnd(10)}</Text>
+              <Text>{(component.propCount + ' props').padEnd(10)}</Text>
+              <Text>{(component.slotCount + ' ' + (component.slotCount === 1 ? 'slot' : 'slots')).padEnd(8)}</Text>
+              <Text color={confColor}>{confLabel}</Text>
+              {component.warnings.length > 0 && (
+                <Text color="yellow">
+                  {'  ⚠ ' + component.warnings.length + ' warning' + (component.warnings.length === 1 ? '' : 's')}
+                </Text>
+              )}
+            </Box>
+          );
+        })}
+        {showScrollDown && <Text dimColor> ▼ scroll down</Text>}
         {result.totalWarnings > 0 && (
           <>
             <Text> </Text>
