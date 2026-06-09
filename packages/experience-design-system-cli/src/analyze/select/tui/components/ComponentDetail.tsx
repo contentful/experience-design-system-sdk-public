@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 import type { PreviewAnnotation, ReviewComponentDetail } from '../../types.js';
 import { stripScoringFields } from '../../../../types.js';
 import { JsonPanel } from './JsonPanel.js';
-import { FieldEditor } from './FieldEditor.js';
+import { JsonEditor } from './JsonEditor.js';
 import { SourcePanel } from './SourcePanel.js';
 
 type ComponentDetailProps = {
@@ -105,7 +105,7 @@ export function ComponentDetail({
         />
         <Text> </Text>
         {editMode ? (
-          <FieldEditor
+          <JsonEditor
             value={draftValue || editedJson}
             width={editWidth}
             height={panelHeight}
