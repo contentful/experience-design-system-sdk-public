@@ -1,19 +1,13 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { useImmediateInput } from '../hooks/useImmediateInput.js';
 
 type HelpOverlayProps = {
   mode: 'analyze' | 'validate' | 'review';
   onClose: () => void;
 };
 
-export function HelpOverlay({ mode, onClose }: HelpOverlayProps): React.ReactElement {
-  useImmediateInput((input, key) => {
-    if (input === '?' || key.escape) {
-      onClose();
-    }
-  });
-
+// Pure render — input handled by inputToAction in App.
+export function HelpOverlay({ mode, onClose: _onClose }: HelpOverlayProps): React.ReactElement {
   return (
     <Box flexDirection="column" borderStyle="round" padding={1} width={46}>
       <Text bold>{'─'.repeat(18) + ' Help ' + '─'.repeat(18)}</Text>

@@ -1,6 +1,5 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { useImmediateInput } from '../hooks/useImmediateInput.js';
 
 type FinalizeDialogProps = {
   accepted: number;
@@ -10,21 +9,14 @@ type FinalizeDialogProps = {
   onCancel: () => void;
 };
 
+// Pure render — input handled by inputToAction in App.
 export function FinalizeDialog({
   accepted,
   rejected,
   needsReview,
-  onConfirm,
-  onCancel,
+  onConfirm: _onConfirm,
+  onCancel: _onCancel,
 }: FinalizeDialogProps): React.ReactElement {
-  useImmediateInput((input, key) => {
-    if (input === 'y' || key.return) {
-      onConfirm();
-    } else if (input === 'n' || key.escape) {
-      onCancel();
-    }
-  });
-
   const allResolved = needsReview === 0;
 
   return (

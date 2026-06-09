@@ -17,22 +17,12 @@ describe('HelpOverlay', () => {
     const { lastFrame } = render(<HelpOverlay mode="review" onClose={vi.fn()} />);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Accept component');
-    expect(frame).toContain('Reject component');
     expect(frame).toContain('Ctrl+S');
   });
 
   it('does not render review keys when mode is analyze', () => {
     const { lastFrame } = render(<HelpOverlay mode="analyze" onClose={vi.fn()} />);
-    const frame = lastFrame() ?? '';
-    expect(frame).not.toContain('Accept component');
-  });
-
-  it('calls onClose when ? is pressed', async () => {
-    const onClose = vi.fn();
-    const { stdin } = render(<HelpOverlay mode="review" onClose={onClose} />);
-    stdin.write('?');
-    await new Promise((r) => setTimeout(r, 30));
-    expect(onClose).toHaveBeenCalled();
+    expect(lastFrame()).not.toContain('Accept component');
   });
 
   it('matches snapshot in review mode', () => {

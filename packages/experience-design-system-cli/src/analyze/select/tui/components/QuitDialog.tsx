@@ -1,6 +1,5 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { useImmediateInput } from '../hooks/useImmediateInput.js';
 
 type QuitDialogProps = {
   hasUnsavedDrafts: boolean;
@@ -8,15 +7,12 @@ type QuitDialogProps = {
   onCancel: () => void;
 };
 
-export function QuitDialog({ hasUnsavedDrafts, onConfirm, onCancel }: QuitDialogProps): React.ReactElement {
-  useImmediateInput((input, key) => {
-    if (input === 'y' || key.return) {
-      onConfirm();
-    } else if (input === 'n' || key.escape) {
-      onCancel();
-    }
-  });
-
+// Pure render — input handled by inputToAction in App.
+export function QuitDialog({
+  hasUnsavedDrafts,
+  onConfirm: _onConfirm,
+  onCancel: _onCancel,
+}: QuitDialogProps): React.ReactElement {
   return (
     <Box flexDirection="column" borderStyle="round" padding={1} width={50}>
       <Text bold>{'─'.repeat(19) + ' Quit ' + '─'.repeat(19)}</Text>

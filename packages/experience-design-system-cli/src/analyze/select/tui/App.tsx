@@ -1,9 +1,8 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useReducer, useRef } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { readFile } from 'node:fs/promises';
-import type { PreviewAnnotation, ReviewComponentStatus, ReviewSessionSnapshot } from '../types.js';
+import type { ReviewComponentStatus } from '../types.js';
 import { createReviewSessionDetail } from '../types.js';
-import { stripScoringFields } from '../../../types.js';
 import { TopBar } from './components/TopBar.js';
 import { Sidebar } from './components/Sidebar.js';
 import { ComponentDetail } from './components/ComponentDetail.js';
@@ -12,11 +11,11 @@ import { HelpOverlay } from './components/HelpOverlay.js';
 import { FinalizeDialog } from './components/FinalizeDialog.js';
 import { QuitDialog } from './components/QuitDialog.js';
 import { PreviewSummaryBar } from './components/PreviewSummaryBar.js';
-import { useKeymap } from './hooks/useKeymap.js';
 import { useImmediateInput } from './hooks/useImmediateInput.js';
 import { useRawMode } from './hooks/useRawMode.js';
-import { computeScrollOffset } from './utils.js';
 import { useSession } from './hooks/useSession.js';
+import { reducer, initialState } from './state.js';
+import { inputToAction } from './inputToAction.js';
 import { openPipelineDb, storeRawComponents, loadCDFComponents } from '../../../session/db.js';
 import { ImportApiClient } from '../../../apply/api-client.js';
 import { readTokensFromPath } from '../../../apply/manifest.js';
@@ -32,8 +31,8 @@ type AppProps = {
 export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.ReactElement {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
+  const visibleCount = Math.max(1, (stdout?.rows ?? 24) - 5);
 
-  // Raw mode managed once at the App level — not per input hook.
   useRawMode();
 
   const {
@@ -49,104 +48,183 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
     reviewRoot,
   });
 
-  const [session, setSession] = useState<ReviewSessionSnapshot | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [draftsByComponentId, setDraftsByComponentId] = useState<Record<string, string>>({});
-  const [sidebarFocused, setSidebarFocused] = useState(true);
-  const [editMode, setEditMode] = useState(false);
-  const [sourceVisible, setSourceVisible] = useState(false);
-  const [activeDialog, setActiveDialog] = useState<'none' | 'help' | 'finalize' | 'quit'>('none');
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [finalizedResult, setFinalizedResult] = useState<{
-    accepted: number;
-    rejected: number;
-    excluded: number;
-  } | null>(null);
-  const [sidebarScrollOffset, setSidebarScrollOffset] = useState(0);
-  const [jsonScrollOffset, setJsonScrollOffset] = useState(0);
-  // Refs for values read inside keymap handlers — avoids stale closures.
-  // React state updates are async; by the time the next keypress fires the
-  // component may not have re-rendered yet, so reading from state directly
-  // causes the "double press needed" bug. Refs are always live.
-  const sortedIdsRef = useRef<string[]>([]);
-  const selectedIdRef = useRef<string | null>(null);
-  const visibleCountRef = useRef<number>(20);
-  // Source code kept separate from session state so lazy loading never mutates
-  // session.components — that would invalidate useMemo(sessionSummary) and flash the sidebar
-  const [sourceCodeById, setSourceCodeById] = useState<Record<string, string>>({});
-  const [previewAnnotations, setPreviewAnnotations] = useState<Record<string, PreviewAnnotation>>(() => {
-    const raw = process.env['EDS_PREVIEW_ANNOTATIONS'];
-    if (!raw) return {};
-    try {
-      return JSON.parse(raw) as Record<string, PreviewAnnotation>;
-    } catch {
-      return {};
-    }
+  const [state, dispatch] = useReducer(reducer, initialState);
+
+  // Keep a ref to the latest state so the single stdin listener always reads
+  // committed values — avoids stale closure since the listener is registered once.
+  const stateRef = useRef(state);
+  const visibleCountRef = useRef(visibleCount);
+  const terminalWidthRef = useRef(terminalWidth);
+  stateRef.current = state;
+  visibleCountRef.current = visibleCount;
+  terminalWidthRef.current = terminalWidth;
+
+  // ── Single stdin listener — the entire input model ────────────────────────
+  useImmediateInput((input, key) => {
+    const action = inputToAction(input, key, stateRef.current, visibleCountRef.current, terminalWidthRef.current);
+    if (action) dispatch(action);
+    // When mode=editing, inputToAction returns null for text/arrow keys so
+    // JsonEditor's own listener handles cursor movement unimpeded.
   });
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [previewResponse, setPreviewResponse] = useState<ServerPreviewResponse | null>(null);
 
-  const refreshPreview = useCallback(async () => {
-    const cmaToken = process.env['EDS_CMA_TOKEN'];
-    const spaceId = process.env['EDS_SPACE_ID'];
-    const environmentId = process.env['EDS_ENVIRONMENT_ID'];
-    const tokensPath = process.env['EDS_TOKENS_PATH'];
-    if (!cmaToken || !spaceId || !environmentId) return;
-
-    setPreviewLoading(true);
-    try {
-      const db = openPipelineDb();
-      let components: Array<{ key: string; entry: unknown }> = [];
-      try {
-        components = loadCDFComponents(db, sessionId);
-      } finally {
-        db.close();
-      }
-
-      let tokens: unknown[] = [];
-      if (tokensPath) tokens = await readTokensFromPath('tokens', tokensPath);
-      const manifest = buildManifest(
-        components as Parameters<typeof buildManifest>[0],
-        tokens as Parameters<typeof buildManifest>[1],
-      );
-      if (!manifest.componentsManifest) manifest.componentsManifest = {};
-      const client = new ImportApiClient({ cmaToken, spaceId, environmentId });
-      const preview: ServerPreviewResponse = await client.previewImport(manifest);
-
-      const annotations: Record<string, PreviewAnnotation> = {};
-      for (const item of preview.components.new) {
-        const name = ((item as unknown as Record<string, unknown>).name as string) ?? '';
-        if (name) annotations[name] = 'new';
-      }
-      for (const item of preview.components.removed) {
-        annotations[item.name] = 'removed';
-      }
-      for (const item of preview.components.changed) {
-        if (item.changeClassification?.classification === 'breaking') {
-          annotations[item.current.name] = 'breaking';
-        } else {
-          annotations[item.current.name] = 'changed';
-        }
-      }
-      setPreviewAnnotations(annotations);
-      setPreviewResponse(preview);
-      setPreviewError(null);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setPreviewError(msg.includes('token') ? 'Preview request failed' : msg);
-    } finally {
-      setPreviewLoading(false);
+  // ── Load session into reducer ─────────────────────────────────────────────
+  useEffect(() => {
+    if (loadedSession && !state.session) {
+      dispatch({ type: 'SESSION_LOADED', session: loadedSession, paths });
     }
-  }, [sessionId]);
+  }, [loadedSession]);
 
-  const syncSessionToDb = useCallback(
-    (currentSession: ReviewSessionSnapshot) => {
+  // ── SIGINT ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = () => {
+      if (Object.keys(state.draftsByComponentId).length > 0) {
+        dispatch({ type: 'OPEN_DIALOG', which: 'quit' });
+      } else {
+        process.exit(1);
+      }
+    };
+    process.on('SIGINT', handler);
+    return () => {
+      process.off('SIGINT', handler);
+    };
+  }, [state.draftsByComponentId]);
+
+  // ── Quit confirm side-effect ──────────────────────────────────────────────
+  useEffect(() => {
+    if (state.mode.type !== 'dialog' || state.mode.which !== 'quit') return;
+    // handled by QUIT_CONFIRM action — actual exit triggered when reducer
+    // returns QUIT_CONFIRM; we need to watch for that transition
+  }, [state.mode]);
+
+  // Watch for QUIT_CONFIRM — exit and log event
+  const prevModeRef = useRef(state.mode);
+  useEffect(() => {
+    const prev = prevModeRef.current;
+    prevModeRef.current = state.mode;
+    if (prev.type === 'dialog' && prev.which === 'quit' && state.mode.type !== 'dialog') {
+      // CLOSE_DIALOG was dispatched (cancel), nothing to do
+    }
+  }, [state.mode]);
+
+  // ── Persist session on status changes (accept/reject/approve-all) ────────
+  useEffect(() => {
+    if (!state.session || !paths || state.pendingSessionSave === 0) return;
+    void saveState(state.session);
+  }, [state.pendingSessionSave]);
+
+  // ── Save draft side-effect ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!state.pendingDraftSave || !state.session || !paths) return;
+    const componentId = state.pendingDraftSave;
+    const draft = state.draftsByComponentId[componentId];
+    if (!draft) {
+      dispatch({ type: 'DRAFT_PERSIST_DONE', componentId, updatedComponents: state.session.components });
+      return;
+    }
+    void (async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parsed = JSON.parse(draft) as Record<string, any>;
+        const component = state.session!.components.find((c) => c.id === componentId);
+        const currentStatus = component?.status;
+        const newStatus: ReviewComponentStatus =
+          currentStatus === 'needs-review' ? 'reviewed' : (currentStatus ?? 'reviewed');
+
+        const updatedComponents = state.session!.components.map((c) =>
+          c.id === componentId ? { ...c, editedProposal: parsed as typeof c.editedProposal, status: newStatus } : c,
+        );
+
+        await saveState({ ...state.session!, components: updatedComponents });
+        await appendEvent({ type: 'draft_saved', payload: { componentId } });
+
+        const db = openPipelineDb();
+        try {
+          storeRawComponents(
+            db,
+            sessionId,
+            updatedComponents.map((c) => c.editedProposal),
+            {
+              status: 'generated',
+              preserveCDF: true,
+            },
+          );
+        } finally {
+          db.close();
+        }
+
+        dispatch({ type: 'DRAFT_PERSIST_DONE', componentId, updatedComponents });
+      } catch {
+        // JSON parse error — JsonEditor shows the error inline; just clear pending
+        dispatch({ type: 'DRAFT_PERSIST_DONE', componentId, updatedComponents: state.session!.components });
+      }
+    })();
+  }, [state.pendingDraftSave]);
+
+  // ── Finalize side-effect ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (state.mode.type !== 'finalized' || !state.session || !paths) return;
+    const { accepted, rejected, excluded } = state.mode;
+    void (async () => {
+      try {
+        await appendEvent({ type: 'finalized', payload: { accepted, rejected, excluded } });
+
+        const acceptedNames = new Set(
+          state.session!.components.filter((c) => c.status === 'accepted').map((c) => c.name),
+        );
+        const db = openPipelineDb();
+        try {
+          storeRawComponents(
+            db,
+            sessionId,
+            state.session!.components.map((c) => c.editedProposal),
+            {
+              status: 'extracted',
+              preserveCDF: true,
+            },
+          );
+          if (acceptedNames.size > 0) {
+            db.prepare(
+              `UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name IN (${[...acceptedNames].map(() => '?').join(',')})`,
+            ).run(sessionId, ...acceptedNames);
+          }
+        } finally {
+          db.close();
+        }
+
+        process.stdout.write(
+          JSON.stringify({ status: 'finalized', sessionDir: paths.sessionDir, accepted, rejected, excluded }, null, 2) +
+            '\n',
+        );
+      } catch (err) {
+        dispatch({ type: 'SAVE_ERROR', message: String(err) });
+      }
+    })();
+  }, [state.mode.type === 'finalized']);
+
+  // ── Lazy source code loading ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!state.selectedId || !state.session) return;
+    if (state.sourceCodeById[state.selectedId] !== undefined) return;
+    const component = state.session.components.find((c) => c.id === state.selectedId);
+    if (!component) return;
+    readFile(component.resolvedSourcePath, 'utf8')
+      .then((code) => dispatch({ type: 'SOURCE_LOADED', componentId: state.selectedId!, code }))
+      .catch(() => dispatch({ type: 'SOURCE_LOADED', componentId: state.selectedId!, code: '' }));
+  }, [state.selectedId]);
+
+  // ── Preview refresh (debounced) ───────────────────────────────────────────
+  const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!state.session || state.pendingPreviewRefresh === 0) return;
+
+    if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
+    previewDebounceRef.current = setTimeout(() => {
+      // Sync session to DB first
       const db = openPipelineDb();
       try {
         db.prepare(`UPDATE raw_components SET status = 'extracted' WHERE session_id = ?`).run(sessionId);
-        const acceptedNames = currentSession.components
-          .filter((c) => c.status === 'accepted' || c.status === 'reviewed')
+        const acceptedNames = state
+          .session!.components.filter((c) => c.status === 'accepted' || c.status === 'reviewed')
           .map((c) => c.name);
         if (acceptedNames.length > 0) {
           db.prepare(
@@ -156,276 +234,107 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
       } finally {
         db.close();
       }
-    },
-    [sessionId],
-  );
 
-  const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+      // Then refresh preview
+      const cmaToken = process.env['EDS_CMA_TOKEN'];
+      const spaceId = process.env['EDS_SPACE_ID'];
+      const environmentId = process.env['EDS_ENVIRONMENT_ID'];
+      const tokensPath = process.env['EDS_TOKENS_PATH'];
+      if (!cmaToken || !spaceId || !environmentId) return;
 
-  const debouncedRefreshPreview = useCallback(
-    (currentSession: ReviewSessionSnapshot) => {
-      if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
-      previewDebounceRef.current = setTimeout(() => {
-        syncSessionToDb(currentSession);
-        void refreshPreview();
-      }, 500);
-    },
-    [syncSessionToDb, refreshPreview],
-  );
-
-  useEffect(() => {
-    return () => {
-      if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
-    };
-  }, []);
-
-  // Sync loaded session into local state; selectedId is set to null here
-  // and will be corrected to the first sorted item on first render via the effect below
-  useEffect(() => {
-    if (loadedSession && !session) {
-      setSession(loadedSession);
-      setSelectedId(null);
-    }
-  }, [loadedSession]);
-
-  // Once the sort order is known (after first render), select the first sorted item.
-  // Runs only when session transitions from null → loaded.
-  const sessionLoaded = session !== null;
-  useEffect(() => {
-    if (sessionLoaded && selectedId === null && sortedIdsRef.current.length > 0) {
-      setSelectedId(sortedIdsRef.current[0]!);
-    }
-  }, [sessionLoaded]);
-
-  useEffect(() => {
-    if (session && !previewResponse) {
-      const raw = process.env['EDS_PREVIEW_COUNTS'];
-      if (raw) {
+      dispatch({ type: 'PREVIEW_START' });
+      void (async () => {
         try {
-          const counts = JSON.parse(raw) as {
-            compNew: number;
-            compChanged: number;
-            compRemoved: number;
-            compUnchanged: number;
-            tokNew: number;
-            tokChanged: number;
-            tokRemoved: number;
-            tokUnchanged: number;
-          };
-          setPreviewResponse({
-            components: {
-              new: Array(counts.compNew).fill({}),
-              changed: Array(counts.compChanged).fill({}),
-              removed: Array(counts.compRemoved).fill({}),
-              unchanged: Array(counts.compUnchanged).fill({}),
-            },
-            tokens: {
-              new: Array(counts.tokNew).fill({}),
-              changed: Array(counts.tokChanged).fill({}),
-              removed: Array(counts.tokRemoved).fill({}),
-              unchanged: Array(counts.tokUnchanged).fill({}),
-            },
-          } as unknown as ServerPreviewResponse);
-        } catch (err) {
-          process.stderr.write(
-            `[eds] failed to parse EDS_PREVIEW_COUNTS: ${err instanceof Error ? err.message : String(err)}\n`,
+          const pdb = openPipelineDb();
+          let components: Array<{ key: string; entry: unknown }> = [];
+          try {
+            components = loadCDFComponents(pdb, sessionId);
+          } finally {
+            pdb.close();
+          }
+          let tokens: unknown[] = [];
+          if (tokensPath) tokens = await readTokensFromPath('tokens', tokensPath);
+          const manifest = buildManifest(
+            components as Parameters<typeof buildManifest>[0],
+            tokens as Parameters<typeof buildManifest>[1],
           );
+          if (!manifest.componentsManifest) manifest.componentsManifest = {};
+          const client = new ImportApiClient({ cmaToken, spaceId, environmentId });
+          const preview: ServerPreviewResponse = await client.previewImport(manifest);
+
+          const annotations: Record<string, import('../types.js').PreviewAnnotation> = {};
+          for (const item of preview.components.new) {
+            const name = ((item as unknown as Record<string, unknown>).name as string) ?? '';
+            if (name) annotations[name] = 'new';
+          }
+          for (const item of preview.components.removed) annotations[item.name] = 'removed';
+          for (const item of preview.components.changed) {
+            annotations[item.current.name] =
+              item.changeClassification?.classification === 'breaking' ? 'breaking' : 'changed';
+          }
+          dispatch({ type: 'PREVIEW_SUCCESS', response: preview, annotations });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          dispatch({ type: 'PREVIEW_ERROR', message: msg.includes('token') ? 'Preview request failed' : msg });
         }
-      }
-    }
-  }, [session]);
+      })();
+    }, 500);
 
-  // Lazy source code loading — writes to sourceCodeById, NOT session.components,
-  // so it doesn't invalidate useMemo(sessionSummary) and cause a sidebar flash
-  useEffect(() => {
-    if (!session || !selectedId) return;
-    if (sourceCodeById[selectedId] !== undefined) return; // already loaded
-    const selectedComponent = session.components.find((c) => c.id === selectedId);
-    if (!selectedComponent) return;
-
-    readFile(selectedComponent.resolvedSourcePath, 'utf8')
-      .then((code) => {
-        setSourceCodeById((prev) => ({ ...prev, [selectedId]: code }));
-      })
-      .catch(() => {
-        setSourceCodeById((prev) => ({ ...prev, [selectedId]: '' }));
-      });
-  }, [selectedId]);
-
-  // SIGINT handler
-  useEffect(() => {
-    const handler = () => {
-      if (Object.keys(draftsByComponentId).length > 0) {
-        setActiveDialog('quit');
-      } else {
-        process.exit(1);
-      }
-    };
-    process.on('SIGINT', handler);
     return () => {
-      process.off('SIGINT', handler);
+      if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
     };
-  }, [draftsByComponentId]);
+  }, [state.pendingPreviewRefresh]);
 
-  const updateStatus = async (componentId: string, newStatus: ReviewComponentStatus) => {
-    if (!session || !paths) return;
-    const updatedSession: ReviewSessionSnapshot = {
-      ...session,
-      components: session.components.map((c) => (c.id === componentId ? { ...c, status: newStatus } : c)),
-    };
-    setSession(updatedSession);
-    await saveState(updatedSession);
-    const component = session.components.find((c) => c.id === componentId);
-    await appendEvent({
-      type: 'status_changed',
-      payload: { componentId, from: component?.status, to: newStatus },
-    });
-    debouncedRefreshPreview(updatedSession);
-  };
+  // ── Seed preview from env (non-live mode) ─────────────────────────────────
+  useEffect(() => {
+    if (!state.session || state.previewResponse) return;
+    const raw = process.env['EDS_PREVIEW_COUNTS'];
+    if (!raw) return;
+    try {
+      const counts = JSON.parse(raw) as Record<string, number>;
+      const make = (n: number) => Array(n).fill({}) as unknown[];
+      dispatch({
+        type: 'PREVIEW_SUCCESS',
+        response: {
+          components: {
+            new: make(counts.compNew ?? 0),
+            changed: make(counts.compChanged ?? 0),
+            removed: make(counts.compRemoved ?? 0),
+            unchanged: make(counts.compUnchanged ?? 0),
+          },
+          tokens: {
+            new: make(counts.tokNew ?? 0),
+            changed: make(counts.tokChanged ?? 0),
+            removed: make(counts.tokRemoved ?? 0),
+            unchanged: make(counts.tokUnchanged ?? 0),
+          },
+        } as unknown as ServerPreviewResponse,
+        annotations: {},
+      });
+    } catch {}
+  }, [state.session]);
 
-  const dialogOpen = activeDialog !== 'none';
+  // ── Auto-clear save error ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!state.saveError) return;
+    const t = setTimeout(() => dispatch({ type: 'CLEAR_ERRORS' }), 3000);
+    return () => clearTimeout(t);
+  }, [state.saveError]);
 
-  useKeymap(
-    { sidebarFocused, editMode, dialogOpen },
-    {
-      onSidebarUp: () => {
-        if (!session) return;
-        const ids = sortedIdsRef.current;
-        const idx = ids.indexOf(selectedIdRef.current ?? '');
-        if (idx > 0) {
-          setSelectedId(ids[idx - 1]!);
-          setJsonScrollOffset(0);
-          setSidebarScrollOffset((prev) => computeScrollOffset(idx - 1, prev, visibleCountRef.current));
-        }
-      },
-      onSidebarDown: () => {
-        if (!session) return;
-        const ids = sortedIdsRef.current;
-        const idx = ids.indexOf(selectedIdRef.current ?? '');
-        if (idx < ids.length - 1) {
-          setSelectedId(ids[idx + 1]!);
-          setJsonScrollOffset(0);
-          setSidebarScrollOffset((prev) => computeScrollOffset(idx + 1, prev, visibleCountRef.current));
-        }
-      },
-      onAccept: () => {
-        const id = selectedIdRef.current;
-        if (id) void updateStatus(id, 'accepted');
-      },
-      onReject: () => {
-        const id = selectedIdRef.current;
-        if (id) void updateStatus(id, 'rejected');
-      },
-      onEnterEditMode: () => {
-        const id = selectedIdRef.current;
-        if (!session || !id) return;
-        const component = session.components.find((c) => c.id === id);
-        if (!component) return;
-        setEditMode(true);
-        setDraftsByComponentId((prev) => ({
-          ...prev,
-          [id]: prev[id] ?? JSON.stringify(stripScoringFields(component.editedProposal), null, 2),
-        }));
-      },
-      onToggleSource: () => {
-        if (terminalWidth < 120) {
-          setSaveError('Terminal too narrow for source panel (need 120+ cols)');
-          setTimeout(() => setSaveError(null), 3000);
-          return;
-        }
-        setSourceVisible((prev) => !prev);
-      },
-      onScrollUp: () => setJsonScrollOffset((prev) => Math.max(0, prev - 1)),
-      onScrollDown: () => setJsonScrollOffset((prev) => prev + 1),
-      onToggleFocus: () => setSidebarFocused((prev) => !prev),
-      onApproveAll: async () => {
-        if (!session || !paths) return;
-        const updatedComponents = session.components.map((c) =>
-          c.status === 'needs-review' ? { ...c, status: 'accepted' as ReviewComponentStatus } : c,
-        );
-        const affected =
-          updatedComponents.filter((c) => c.status === 'accepted').length -
-          session.components.filter((c) => c.status === 'accepted').length;
-        const updatedSession = { ...session, components: updatedComponents };
-        setSession(updatedSession);
-        await saveState(updatedSession);
-        await appendEvent({ type: 'approve_all', payload: { affected } });
-        syncSessionToDb(updatedSession);
-        void refreshPreview();
-      },
-      onFinalize: () => setActiveDialog('finalize'),
-      onQuit: () => {
-        if (Object.keys(draftsByComponentId).length > 0) {
-          setActiveDialog('quit');
-        } else {
-          process.exit(1);
-        }
-      },
-      onToggleHelp: () => setActiveDialog((d) => (d === 'help' ? 'none' : 'help')),
-    },
-  );
-
-  // Sorted order: flagged+unresolved first, then ascending confidence.
-  // Memoised above early returns (React rules of hooks) so the array reference
-  // is stable between renders — prevents Sidebar repainting on scroll/select.
-  const sessionSummary = useMemo(
-    () =>
-      (session?.components ?? [])
-        .map((c) => ({
-          id: c.id,
-          name: c.name,
-          status: c.status,
-          previewAnnotation: previewAnnotations[c.name] as PreviewAnnotation | undefined,
-          extractionConfidence: c.originalProposal.extractionConfidence ?? null,
-          needsReview: c.originalProposal.needsReview ?? false,
-        }))
-        .sort((a, b) => {
-          const aFlagged = a.needsReview && a.status === 'needs-review' ? 0 : 1;
-          const bFlagged = b.needsReview && b.status === 'needs-review' ? 0 : 1;
-          if (aFlagged !== bFlagged) return aFlagged - bFlagged;
-          // null (unscored) sorts last; lower numeric score sorts first (most concerning)
-          const aConf = a.extractionConfidence ?? 6;
-          const bConf = b.extractionConfidence ?? 6;
-          return aConf - bConf;
-        }),
-    [session?.components, previewAnnotations],
-  );
-
-  // Stable ID order — kept in a ref for use inside keymap handlers
-  const sortedIds = useMemo(() => sessionSummary.map((c) => c.id), [sessionSummary]);
-
-  // Hoist visibleCount above early returns so the ref is always up to date.
-  // TopBar(1) + statusbar(1) + footer(1) + border padding(2) = ~5 chrome rows
-  const visibleCount = Math.max(1, (stdout?.rows ?? 24) - 5);
-
-  // Sync refs after every render so keymap handlers always read committed values.
-  // useLayoutEffect fires synchronously after DOM update, before next event.
-  useLayoutEffect(() => {
-    sortedIdsRef.current = sortedIds;
-    selectedIdRef.current = selectedId;
-    visibleCountRef.current = visibleCount;
-  });
-
-  if (loading) {
-    return <Text>Loading session...</Text>;
-  }
-
-  if (sessionError) {
+  // ── Derived render values ─────────────────────────────────────────────────
+  if (loading) return <Text>Loading session...</Text>;
+  if (sessionError)
     return (
       <Text color="red">
         {sessionError}
         {'\nPress q to exit.'}
       </Text>
     );
-  }
+  if (!state.session) return <Text color="red">Session unavailable.</Text>;
 
-  if (!session || !paths) {
-    return <Text color="red">Session unavailable.</Text>;
-  }
+  const { mode, session, selectedId, sidebarScrollOffset, jsonScrollOffset } = state;
 
-  if (finalizedResult) {
-    return <FinalizedScreen result={finalizedResult} />;
-  }
+  if (mode.type === 'finalized') return <FinalizedScreen result={mode} />;
 
   const selectedRecord = session.components.find((c) => c.id === selectedId) ?? null;
   const sessionDetail = selectedRecord ? createReviewSessionDetail({ ...session, components: [selectedRecord] }) : null;
@@ -436,7 +345,12 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
   const reviewedCount = session.components.filter((c) => c.status === 'reviewed').length;
   const needsReviewCount = session.components.filter((c) => c.status === 'needs-review').length;
 
-  const hints = editMode
+  const dialogOpen = mode.type === 'dialog';
+  const isEditing = mode.type === 'editing';
+  const sourceVisible = mode.type === 'browsing' && mode.sourceVisible;
+  const sidebarFocused = mode.type === 'browsing' && mode.sidebarFocused;
+
+  const hints = isEditing
     ? [
         { key: 'Ctrl+S', label: 'save' },
         { key: 'Esc', label: 'discard' },
@@ -449,158 +363,45 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
         ];
 
   const collapsed = terminalWidth < 80;
-
   const longestName = session.components.reduce((max, c) => Math.max(max, c.name.length), 0);
-  // icon + space + name + 2 border chars; min 14, max 22
   const sidebarWidth = collapsed ? 3 : Math.min(Math.max(longestName + 4, 14), 22);
 
-  const handleDraftSave = async () => {
-    if (!selectedId || !session || !paths) return;
-    const draft = draftsByComponentId[selectedId];
-    if (!draft) return;
-
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const parsed = JSON.parse(draft) as Record<string, any>;
-      const currentStatus = session.components.find((c) => c.id === selectedId)?.status;
-      const newStatus = currentStatus === 'needs-review' ? ('reviewed' as ReviewComponentStatus) : currentStatus!;
-
-      const updatedSession: ReviewSessionSnapshot = {
-        ...session,
-        components: session.components.map((c) =>
-          c.id === selectedId
-            ? {
-                ...c,
-                editedProposal: parsed as typeof c.editedProposal,
-                status: newStatus,
-              }
-            : c,
-        ),
-      };
-
-      const { [selectedId]: _removed, ...remainingDrafts } = draftsByComponentId;
-
-      setSession(updatedSession);
-      setDraftsByComponentId(remainingDrafts);
-      setEditMode(false);
-
-      await saveState(updatedSession);
-      await appendEvent({
-        type: 'draft_saved',
-        payload: { componentId: selectedId },
-      });
-
-      // Sync all edited proposals to pipeline DB (keep 'generated' for preview)
-      const allEdited = updatedSession.components.map((c) => c.editedProposal);
-      const syncDb = openPipelineDb();
-      try {
-        storeRawComponents(syncDb, sessionId, allEdited, {
-          status: 'generated',
-          preserveCDF: true,
-        });
-      } finally {
-        syncDb.close();
-      }
-      void refreshPreview();
-    } catch {
-      // JSON parse error — JsonEditor already shows the error inline
-    }
-  };
-
-  const handleDraftDiscard = () => {
-    if (!selectedId) return;
-    const { [selectedId]: _removed, ...remainingDrafts } = draftsByComponentId;
-    setDraftsByComponentId(remainingDrafts);
-    setEditMode(false);
-  };
-
-  const handleFinalize = async () => {
-    if (!session || !paths) return;
-    try {
-      await appendEvent({
-        type: 'finalized',
-        payload: {
-          accepted: acceptedCount,
-          rejected: rejectedCount,
-          excluded: needsReviewCount,
-        },
-      });
-
-      // Write all components back to DB, marking accepted as 'generated'
-      // so loadCDFComponents (push/preview) only picks up accepted ones,
-      // but loadRawComponents (editor re-entry) still finds all of them
-      const acceptedNames = new Set(session.components.filter((c) => c.status === 'accepted').map((c) => c.name));
-      const db = openPipelineDb();
-      try {
-        storeRawComponents(
-          db,
-          sessionId,
-          session.components.map((c) => c.editedProposal),
-          { status: 'extracted', preserveCDF: true },
-        );
-        if (acceptedNames.size > 0) {
-          db.prepare(
-            `UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name IN (${[...acceptedNames].map(() => '?').join(',')})`,
-          ).run(sessionId, ...acceptedNames);
-        }
-      } finally {
-        db.close();
-      }
-
-      const output =
-        JSON.stringify(
-          {
-            status: 'finalized',
-            sessionDir: paths.sessionDir,
-            accepted: acceptedCount,
-            rejected: rejectedCount,
-            excluded: needsReviewCount,
-          },
-          null,
-          2,
-        ) + '\n';
-      process.stdout.write(output);
-      setFinalizedResult({
-        accepted: acceptedCount,
-        rejected: rejectedCount,
-        excluded: needsReviewCount,
-      });
-    } catch (err) {
-      setSaveError(String(err));
-    }
-  };
+  const sessionSummary = state.sortedIds
+    .map((id) => session.components.find((c) => c.id === id))
+    .filter(Boolean)
+    .map((c) => ({
+      id: c!.id,
+      name: c!.name,
+      status: c!.status,
+      previewAnnotation: state.previewAnnotations[c!.name] as import('../types.js').PreviewAnnotation | undefined,
+      extractionConfidence: c!.originalProposal.extractionConfidence ?? null,
+      needsReview: c!.originalProposal.needsReview ?? false,
+    }));
 
   return (
     <Box flexDirection="column">
       <TopBar subcommand="analyze select" hints={hints} />
 
-      {activeDialog === 'help' && <HelpOverlay mode="review" onClose={() => setActiveDialog('none')} />}
-
-      {activeDialog === 'finalize' && (
+      {mode.type === 'dialog' && mode.which === 'help' && (
+        <HelpOverlay mode="review" onClose={() => dispatch({ type: 'CLOSE_DIALOG' })} />
+      )}
+      {mode.type === 'dialog' && mode.which === 'finalize' && (
         <FinalizeDialog
           accepted={acceptedCount}
           rejected={rejectedCount}
           needsReview={needsReviewCount}
-          onConfirm={() => {
-            void handleFinalize();
-          }}
-          onCancel={() => setActiveDialog('none')}
+          onConfirm={() => dispatch({ type: 'FINALIZE_CONFIRM' })}
+          onCancel={() => dispatch({ type: 'CLOSE_DIALOG' })}
         />
       )}
-
-      {activeDialog === 'quit' && (
+      {mode.type === 'dialog' && mode.which === 'quit' && (
         <QuitDialog
-          hasUnsavedDrafts={Object.keys(draftsByComponentId).length > 0}
+          hasUnsavedDrafts={Object.keys(state.draftsByComponentId).length > 0}
           onConfirm={async () => {
-            if (paths) {
-              await appendEvent({
-                type: 'session_quit',
-                payload: { reason: 'user_quit' },
-              });
-            }
+            if (paths) await appendEvent({ type: 'session_quit', payload: { reason: 'user_quit' } });
             process.exit(1);
           }}
-          onCancel={() => setActiveDialog('none')}
+          onCancel={() => dispatch({ type: 'CLOSE_DIALOG' })}
         />
       )}
 
@@ -612,11 +413,8 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
             focused={sidebarFocused}
             scrollOffset={sidebarScrollOffset}
             visibleCount={visibleCount}
-            onSelect={(id) => {
-              setSelectedId(id);
-              setJsonScrollOffset(0);
-            }}
-            onScrollChange={setSidebarScrollOffset}
+            onSelect={(id) => dispatch({ type: 'SELECT', id })}
+            onScrollChange={(offset) => dispatch({ type: 'SELECT', id: state.sortedIds[offset] ?? state.selectedId! })}
             collapsed={collapsed}
             width={sidebarWidth}
           />
@@ -624,27 +422,25 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
             {selectedDetail ? (
               <ComponentDetail
                 component={selectedDetail}
-                sourceCode={selectedId ? (sourceCodeById[selectedId] ?? null) : null}
-                draftValue={selectedId ? (draftsByComponentId[selectedId] ?? '') : ''}
-                editMode={editMode}
+                sourceCode={selectedId ? (state.sourceCodeById[selectedId] ?? null) : null}
+                draftValue={selectedId ? (state.draftsByComponentId[selectedId] ?? '') : ''}
+                editMode={isEditing}
                 sourceVisible={sourceVisible}
                 jsonScrollOffset={jsonScrollOffset}
                 sourceScrollX={0}
                 sourceScrollY={0}
                 terminalWidth={terminalWidth}
-                previewAnnotation={selectedRecord ? previewAnnotations[selectedRecord.name] : undefined}
-                onDraftChange={(value) => {
-                  if (!selectedId) return;
-                  setDraftsByComponentId((prev) => ({
-                    ...prev,
-                    [selectedId!]: value,
-                  }));
-                }}
-                onSaveDraft={() => {
-                  void handleDraftSave();
-                }}
-                onDiscardDraft={handleDraftDiscard}
-                onScrollChange={setJsonScrollOffset}
+                previewAnnotation={
+                  selectedRecord
+                    ? (state.previewAnnotations[selectedRecord.name] as
+                        | import('../types.js').PreviewAnnotation
+                        | undefined)
+                    : undefined
+                }
+                onDraftChange={(value) => dispatch({ type: 'DRAFT_CHANGE', value })}
+                onSaveDraft={() => dispatch({ type: 'DRAFT_SAVE' })}
+                onDiscardDraft={() => dispatch({ type: 'DRAFT_DISCARD' })}
+                onScrollChange={(_offset) => dispatch({ type: 'SCROLL_UP' })}
               />
             ) : (
               <Text dimColor>No component selected</Text>
@@ -653,9 +449,9 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
         </Box>
       )}
 
-      <PreviewSummaryBar preview={previewResponse} loading={previewLoading} />
-      {previewError && <Text color="yellow">{'⚠ Preview: ' + previewError}</Text>}
-      {saveError && <Text color="red">{'⚠ ' + saveError}</Text>}
+      <PreviewSummaryBar preview={state.previewResponse} loading={state.previewLoading} />
+      {state.previewError && <Text color="yellow">{'⚠ Preview: ' + state.previewError}</Text>}
+      {state.saveError && <Text color="red">{'⚠ ' + state.saveError}</Text>}
 
       {!dialogOpen && (
         <StatusBar
@@ -675,9 +471,7 @@ function FinalizedScreen({
   result: { accepted: number; rejected: number; excluded: number };
 }): React.ReactElement {
   useImmediateInput((_input, key) => {
-    if (key.return || _input === 'q' || key.escape) {
-      process.exit(0);
-    }
+    if (key.return || _input === 'q' || key.escape) process.exit(0);
   });
 
   return (
