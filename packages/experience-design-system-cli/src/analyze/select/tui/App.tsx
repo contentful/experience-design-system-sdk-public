@@ -162,8 +162,6 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
             focused={sidebarFocused}
             scrollOffset={sidebarScrollOffset}
             visibleCount={visibleCount}
-            onSelect={(id) => dispatch({ type: 'SELECT', id })}
-            onScrollChange={(_offset) => {}}
             collapsed={collapsed}
             width={sidebarWidth}
           />
@@ -187,9 +185,6 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
                         | undefined)
                     : undefined
                 }
-                onSaveDraft={() => dispatch({ type: 'EDITOR_VALIDATE' })}
-                onDiscardDraft={() => dispatch({ type: 'DRAFT_DISCARD' })}
-                onScrollChange={(_offset) => {}}
               />
             ) : (
               <Text dimColor>No component selected</Text>

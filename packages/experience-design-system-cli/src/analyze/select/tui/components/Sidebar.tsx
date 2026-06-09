@@ -8,8 +8,6 @@ type SidebarProps = {
   focused: boolean;
   scrollOffset: number;
   visibleCount: number;
-  onSelect: (id: string) => void;
-  onScrollChange: (offset: number) => void;
   collapsed?: boolean;
   width?: number;
 };

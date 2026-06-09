@@ -1,5 +1,5 @@
 import { render } from 'ink-testing-library';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Sidebar } from '../../../../src/analyze/select/tui/components/Sidebar.js';
 import type { ReviewComponentSummary } from '../../../../src/analyze/select/types.js';
 
@@ -13,15 +13,7 @@ const components: ReviewComponentSummary[] = [
 describe('Sidebar', () => {
   it('renders correct status symbols', () => {
     const { lastFrame } = render(
-      <Sidebar
-        components={components}
-        selectedId="a"
-        focused={false}
-        scrollOffset={0}
-        visibleCount={10}
-        onSelect={vi.fn()}
-        onScrollChange={vi.fn()}
-      />,
+      <Sidebar components={components} selectedId="a" focused={false} scrollOffset={0} visibleCount={10} />,
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('✓');
@@ -35,15 +27,7 @@ describe('Sidebar', () => {
       { id: 'x', name: 'VeryLongComponentName', status: 'needs-review', extractionConfidence: 50, needsReview: true },
     ];
     const { lastFrame } = render(
-      <Sidebar
-        components={longComponents}
-        selectedId={null}
-        focused={false}
-        scrollOffset={0}
-        visibleCount={10}
-        onSelect={vi.fn()}
-        onScrollChange={vi.fn()}
-      />,
+      <Sidebar components={longComponents} selectedId={null} focused={false} scrollOffset={0} visibleCount={10} />,
     );
     const frame = lastFrame() ?? '';
     expect(frame).not.toContain('VeryLongComponentName ');
@@ -59,15 +43,7 @@ describe('Sidebar', () => {
       needsReview: true,
     }));
     const { lastFrame } = render(
-      <Sidebar
-        components={manyComponents}
-        selectedId="0"
-        focused={false}
-        scrollOffset={1}
-        visibleCount={5}
-        onSelect={vi.fn()}
-        onScrollChange={vi.fn()}
-      />,
+      <Sidebar components={manyComponents} selectedId="0" focused={false} scrollOffset={1} visibleCount={5} />,
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('▲');
@@ -81,15 +57,7 @@ describe('Sidebar', () => {
       { id: '3', name: 'Flagged', status: 'needs-review', extractionConfidence: 40, needsReview: true },
     ];
     const { lastFrame } = render(
-      <Sidebar
-        components={mixed}
-        selectedId={null}
-        focused={false}
-        scrollOffset={0}
-        visibleCount={10}
-        onSelect={vi.fn()}
-        onScrollChange={vi.fn()}
-      />,
+      <Sidebar components={mixed} selectedId={null} focused={false} scrollOffset={0} visibleCount={10} />,
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Good');

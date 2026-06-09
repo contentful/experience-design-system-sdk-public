@@ -256,14 +256,6 @@ export function GenerateReviewStep({
             focused={sidebarFocused}
             scrollOffset={sidebarScrollOffset}
             visibleCount={VISIBLE_COUNT}
-            onSelect={(id) => {
-              const idx = components.findIndex((c) => c.key === id);
-              if (idx >= 0) {
-                setSelectedIdx(idx);
-                setJsonScrollOffset(0);
-              }
-            }}
-            onScrollChange={setSidebarScrollOffset}
             width={sidebarWidth}
           />
           <Box flexGrow={1} paddingLeft={1} flexDirection="column">

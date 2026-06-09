@@ -10,7 +10,7 @@ import { SourcePanel } from './SourcePanel.js';
 type ComponentDetailProps = {
   component: ReviewComponentDetail;
   sourceCode: string | null;
-  draftValue: string; // current draft text (for read-only panel when not editing)
+  draftValue: string; // shown in read-only panel when not editing
   editMode: boolean;
   editorState: EditorState | null; // non-null when editMode=true
   sourceVisible: boolean;
@@ -19,9 +19,6 @@ type ComponentDetailProps = {
   sourceScrollY: number;
   terminalWidth: number;
   previewAnnotation?: PreviewAnnotation;
-  onSaveDraft: () => void;
-  onDiscardDraft: () => void;
-  onScrollChange: (offset: number) => void;
 };
 
 function annotationLabel(annotation: PreviewAnnotation | undefined): { text: string; color: string } | null {
@@ -51,8 +48,6 @@ export function ComponentDetail({
   sourceScrollY,
   terminalWidth,
   previewAnnotation,
-  onSaveDraft: _onSaveDraft,
-  onDiscardDraft: _onDiscardDraft,
 }: ComponentDetailProps): React.ReactElement {
   const sidebarWidth = terminalWidth < 80 ? 5 : 20;
   const availableWidth = terminalWidth - sidebarWidth - 2;
