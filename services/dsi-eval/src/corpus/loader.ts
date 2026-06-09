@@ -48,9 +48,13 @@ export async function loadCorpus(repoFilter?: string): Promise<CorpusEntry[]> {
 
   for (const file of jsonFiles) {
     const raw = JSON.parse(await readFile(join(CORPUS_DIR, file), 'utf-8'));
-    const parsed = CorpusEntrySchema.parse(raw);
-    if (!repoFilter || parsed.repo === repoFilter) {
-      entries.push(parsed as CorpusEntry);
+    const result = CorpusEntrySchema.safeParse(raw);
+    if (!result.success) {
+      console.warn(`[corpus] skipping ${file} — not a valid corpus entry`);
+      continue;
+    }
+    if (!repoFilter || result.data.repo === repoFilter) {
+      entries.push(result.data as CorpusEntry);
     }
   }
 
