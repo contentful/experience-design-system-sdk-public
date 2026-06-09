@@ -73,15 +73,18 @@ function parseInput(data: string): { input: string; key: Key } {
  * Like Ink's useInput, but uses useLayoutEffect so the listener is registered
  * synchronously after render. This allows stdin.write() calls in tests to work
  * immediately after render() without awaiting effects.
+ *
+ * Raw mode is NOT toggled here — it is managed once at the App level via
+ * useRawMode. Toggling setRawMode per-hook caused brief raw-mode drops during
+ * re-renders (e.g. when FieldEditor mounted alongside useKeymap), blanking the
+ * terminal.
  */
 export function useImmediateInput(handler: InputHandler): void {
-  const { stdin, setRawMode } = useStdin();
+  const { stdin } = useStdin();
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
 
   useLayoutEffect(() => {
-    setRawMode(true);
-
     const handleData = (data: Buffer | string) => {
       const str = Buffer.isBuffer(data) ? data.toString('utf8') : data;
       const { input, key } = parseInput(str);
@@ -91,7 +94,6 @@ export function useImmediateInput(handler: InputHandler): void {
     stdin.on('data', handleData);
     return () => {
       stdin.off('data', handleData);
-      setRawMode(false);
     };
-  }, [stdin, setRawMode]);
+  }, [stdin]);
 }

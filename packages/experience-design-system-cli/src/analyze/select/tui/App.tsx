@@ -14,6 +14,7 @@ import { QuitDialog } from './components/QuitDialog.js';
 import { PreviewSummaryBar } from './components/PreviewSummaryBar.js';
 import { useKeymap } from './hooks/useKeymap.js';
 import { useImmediateInput } from './hooks/useImmediateInput.js';
+import { useRawMode } from './hooks/useRawMode.js';
 import { useSession } from './hooks/useSession.js';
 import { openPipelineDb, storeRawComponents, loadCDFComponents } from '../../../session/db.js';
 import { ImportApiClient } from '../../../apply/api-client.js';
@@ -30,6 +31,9 @@ type AppProps = {
 export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.ReactElement {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
+
+  // Raw mode managed once at the App level — not per input hook.
+  useRawMode();
 
   const {
     session: loadedSession,

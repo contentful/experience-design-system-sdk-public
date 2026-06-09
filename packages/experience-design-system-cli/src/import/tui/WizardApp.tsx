@@ -7,6 +7,7 @@ import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFile, spawn } from 'node:child_process';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
+import { useRawMode } from '../../analyze/select/tui/hooks/useRawMode.js';
 import type { ReviewSessionSnapshot } from '../../analyze/select/types.js';
 import { WelcomeStep } from './steps/WelcomeStep.js';
 import { PathValidationStep } from './steps/PathValidationStep.js';
@@ -140,6 +141,7 @@ export function WizardApp({
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
+  useRawMode();
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
   const logInit = useRef(false);

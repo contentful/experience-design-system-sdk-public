@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import type { ValidationDiagnostic } from '../validators/format-errors.js';
 import { TopBar } from '../../../analyze/select/tui/components/TopBar.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import { useRawMode } from '../../../analyze/select/tui/hooks/useRawMode.js';
 
 export type ValidateViewEntry = {
   filePath: string;
@@ -18,6 +19,7 @@ type ValidateViewProps = {
 };
 
 export function ValidateView({ results, onExit }: ValidateViewProps): React.ReactElement {
+  useRawMode();
   const [scrollOffset, setScrollOffset] = useState(0);
   const allValid = results.every((r) => r.valid);
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { TopBar } from '../select/tui/components/TopBar.js';
 import { useImmediateInput } from '../select/tui/hooks/useImmediateInput.js';
+import { useRawMode } from '../select/tui/hooks/useRawMode.js';
 
 export type AnalyzeViewResult = {
   sourceDirectory: string;
@@ -30,6 +31,7 @@ function truncateName(name: string, maxLen = 30): string {
 }
 
 export function AnalyzeView({ result, onExit }: AnalyzeViewProps): React.ReactElement {
+  useRawMode();
   const [scrollOffset, setScrollOffset] = useState(0);
   const { stdout } = useStdout();
   // Header lines: TopBar(1) + summary(3) + blank(1) + dividers+header(3) + blank(1) + footer(1) + footer-bar(1) = ~12
