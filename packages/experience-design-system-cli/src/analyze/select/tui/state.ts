@@ -2,6 +2,7 @@ import type {
   PreviewAnnotation,
   ReviewComponentRecord,
   ReviewComponentStatus,
+  ReviewComponentSummary,
   ReviewSessionSnapshot,
 } from '../types.js';
 import type { ServerPreviewResponse } from '@contentful/experience-design-system-types';
@@ -158,6 +159,7 @@ export type AppState = {
   paths: { sessionDir: string; statePath: string; eventsPath: string } | null;
   selectedId: string | null;
   sortedIds: string[];
+  sessionSummary: ReviewComponentSummary[]; // stable reference — only rebuilt when data changes
   sidebarScrollOffset: number;
   jsonScrollOffset: number;
   draftsByComponentId: Record<string, string>;
@@ -176,6 +178,7 @@ export const initialState: AppState = {
   paths: null,
   selectedId: null,
   sortedIds: [],
+  sessionSummary: [],
   sidebarScrollOffset: 0,
   jsonScrollOffset: 0,
   draftsByComponentId: {},
@@ -226,19 +229,15 @@ export type AppAction =
   | { type: 'CLEAR_ERRORS' }
   | { type: 'DRAFT_PERSIST_DONE'; componentId: string; updatedComponents: ReviewComponentRecord[] };
 
-// ── Derived sort ──────────────────────────────────────────────────────────────
+// ── Derived data ──────────────────────────────────────────────────────────────
 
-function computeSortedIds(
-  components: ReviewSessionSnapshot['components'],
-  annotations: Record<string, PreviewAnnotation>,
-): string[] {
+function computeSortedIds(components: ReviewSessionSnapshot['components']): string[] {
   return [...components]
     .map((c) => ({
       id: c.id,
       needsReview: c.originalProposal.needsReview ?? false,
       status: c.status,
       conf: c.originalProposal.extractionConfidence ?? 6,
-      _annotation: annotations[c.name],
     }))
     .sort((a, b) => {
       const aF = a.needsReview && a.status === 'needs-review' ? 0 : 1;
@@ -249,10 +248,48 @@ function computeSortedIds(
     .map((c) => c.id);
 }
 
+// Builds a stable summary array for Sidebar — same reference if nothing changed.
+// Keeping this in state means Sidebar never re-renders on scroll/selection alone.
+function computeSessionSummary(
+  components: ReviewSessionSnapshot['components'],
+  annotations: Record<string, PreviewAnnotation>,
+  sortedIds: string[],
+): ReviewComponentSummary[] {
+  return sortedIds
+    .map((id) => components.find((c) => c.id === id))
+    .filter((c): c is ReviewSessionSnapshot['components'][number] => !!c)
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+      previewAnnotation: annotations[c.name] as PreviewAnnotation | undefined,
+      extractionConfidence: c.originalProposal.extractionConfidence ?? null,
+      needsReview: c.originalProposal.needsReview ?? false,
+    }));
+}
+
+// Rebuild both sortedIds and sessionSummary from updated components + annotations.
+function withUpdatedSession(
+  state: AppState,
+  components: ReviewSessionSnapshot['components'],
+  annotations?: Record<string, PreviewAnnotation>,
+): AppState {
+  const ann = annotations ?? state.previewAnnotations;
+  const sortedIds = computeSortedIds(components);
+  const sessionSummary = computeSessionSummary(components, ann, sortedIds);
+  return {
+    ...state,
+    session: { ...state.session!, components },
+    previewAnnotations: ann,
+    sortedIds,
+    sessionSummary,
+  };
+}
+
 function updateStatus(state: AppState, newStatus: ReviewComponentStatus): AppState {
   if (!state.session || !state.selectedId) return state;
   const components = state.session.components.map((c) => (c.id === state.selectedId ? { ...c, status: newStatus } : c));
-  return { ...state, session: { ...state.session, components } };
+  return withUpdatedSession(state, components);
 }
 
 // ── Reducer ───────────────────────────────────────────────────────────────────
@@ -260,8 +297,16 @@ function updateStatus(state: AppState, newStatus: ReviewComponentStatus): AppSta
 export function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'SESSION_LOADED': {
-      const sortedIds = computeSortedIds(action.session.components, state.previewAnnotations);
-      return { ...state, session: action.session, paths: action.paths, sortedIds, selectedId: sortedIds[0] ?? null };
+      const sortedIds = computeSortedIds(action.session.components);
+      const sessionSummary = computeSessionSummary(action.session.components, state.previewAnnotations, sortedIds);
+      return {
+        ...state,
+        session: action.session,
+        paths: action.paths,
+        sortedIds,
+        sessionSummary,
+        selectedId: sortedIds[0] ?? null,
+      };
     }
 
     case 'SELECT':
@@ -303,7 +348,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
       const components = state.session.components.map((c) =>
         c.status === 'needs-review' ? { ...c, status: 'accepted' as ReviewComponentStatus } : c,
       );
-      return { ...state, session: { ...state.session, components } };
+      return withUpdatedSession(state, components);
     }
 
     case 'ENTER_EDIT': {
@@ -369,11 +414,8 @@ export function reducer(state: AppState, action: AppAction): AppState {
     case 'DRAFT_PERSIST_DONE': {
       const { componentId, updatedComponents } = action;
       const { [componentId]: _removed, ...remaining } = state.draftsByComponentId;
-      return {
-        ...state,
-        session: state.session ? { ...state.session, components: updatedComponents } : state.session,
-        draftsByComponentId: remaining,
-      };
+      const base = withUpdatedSession(state, updatedComponents);
+      return { ...base, draftsByComponentId: remaining };
     }
 
     case 'TOGGLE_FOCUS': {
@@ -418,7 +460,9 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, previewLoading: true };
 
     case 'PREVIEW_SUCCESS': {
-      const sortedIds = computeSortedIds(state.session?.components ?? [], action.annotations);
+      const components = state.session?.components ?? [];
+      const sortedIds = computeSortedIds(components);
+      const sessionSummary = computeSessionSummary(components, action.annotations, sortedIds);
       return {
         ...state,
         previewResponse: action.response,
@@ -426,6 +470,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
         previewLoading: false,
         previewError: null,
         sortedIds,
+        sessionSummary,
       };
     }
 

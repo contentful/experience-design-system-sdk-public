@@ -115,17 +115,7 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
   const longestName = session.components.reduce((m, c) => Math.max(m, c.name.length), 0);
   const sidebarWidth = collapsed ? 3 : Math.min(Math.max(longestName + 4, 14), 22);
 
-  const sessionSummary = state.sortedIds
-    .map((id) => session.components.find((c) => c.id === id))
-    .filter(Boolean)
-    .map((c) => ({
-      id: c!.id,
-      name: c!.name,
-      status: c!.status,
-      previewAnnotation: state.previewAnnotations[c!.name] as import('../types.js').PreviewAnnotation | undefined,
-      extractionConfidence: c!.originalProposal.extractionConfidence ?? null,
-      needsReview: c!.originalProposal.needsReview ?? false,
-    }));
+  const { sessionSummary } = state; // stable reference — only changes when data changes, never on scroll/select
 
   return (
     <Box flexDirection="column">
