@@ -31,56 +31,58 @@ async function runEval() {
 
   const results: EvalResult[] = [];
 
-  for (const entry of corpus) {
-    console.log(`[${entry.repo}] Running Stage 1 (select)...`);
-    const result: EvalResult = {
-      repo: entry.repo,
-      cdf: null,
-      componentCoverage: null,
-      hallucination: null,
-    };
-
-    try {
-      const { accepted } = await runStage1(entry.rawComponents);
-      console.log(`[${entry.repo}] Stage 1 done — ${accepted.length}/${entry.rawComponents.length} accepted`);
-
-      console.log(`[${entry.repo}] Running Stage 2 (generate)...`);
-      result.cdf = await runStage2(accepted);
-      console.log(`[${entry.repo}] Stage 2 done`);
-    } catch (err) {
-      result.error = {
-        stage: result.cdf === null ? 'stage1' : 'stage2',
-        message: err instanceof Error ? err.message : String(err),
+  await Promise.all(
+    corpus.map(async (entry) => {
+      console.log(`[${entry.repo}] Running Stage 1 (select)...`);
+      const result: EvalResult = {
+        repo: entry.repo,
+        cdf: null,
+        componentCoverage: null,
+        hallucination: null,
       };
+
+      try {
+        const { accepted } = await runStage1(entry.rawComponents);
+        console.log(`[${entry.repo}] Stage 1 done — ${accepted.length}/${entry.rawComponents.length} accepted`);
+
+        console.log(`[${entry.repo}] Running Stage 2 (generate)...`);
+        result.cdf = await runStage2(accepted);
+        console.log(`[${entry.repo}] Stage 2 done`);
+      } catch (err) {
+        result.error = {
+          stage: result.cdf === null ? 'stage1' : 'stage2',
+          message: err instanceof Error ? err.message : String(err),
+        };
+        results.push(result);
+        console.error(`[${entry.repo}] ❌ Error: ${result.error.message}`);
+        return;
+      }
+
+      try {
+        result.componentCoverage = scoreComponentCoverage(result.cdf, entry);
+        result.hallucination = scoreHallucination(result.cdf);
+        console.log(`[${entry.repo}] coverage=${(result.componentCoverage.ratio * 100).toFixed(1)}% hallucination=${result.hallucination.pass ? 'pass' : 'FAIL'}`);
+      } catch (err) {
+        result.error = { stage: 'score', message: err instanceof Error ? err.message : String(err) };
+        results.push(result);
+        return;
+      }
+
+      try {
+        console.log(`[${entry.repo}] Running judge scorer...`);
+        result.judgeScore = await scoreMappingQuality(result.cdf, entry);
+        console.log(`[${entry.repo}] mapping-quality=${result.judgeScore.mapping_quality.score}/5`);
+      } catch (err) {
+        result.error = { stage: 'judge', message: err instanceof Error ? err.message : String(err) };
+      }
+
+      if (baseline) {
+        result.baselineComparison = compareToBaseline(result, baseline);
+      }
+
       results.push(result);
-      console.error(`[${entry.repo}] ❌ Error: ${result.error.message}`);
-      continue;
-    }
-
-    try {
-      result.componentCoverage = scoreComponentCoverage(result.cdf, entry);
-      result.hallucination = scoreHallucination(result.cdf);
-      console.log(`[${entry.repo}] coverage=${(result.componentCoverage.ratio * 100).toFixed(1)}% hallucination=${result.hallucination.pass ? 'pass' : 'FAIL'}`);
-    } catch (err) {
-      result.error = { stage: 'score', message: err instanceof Error ? err.message : String(err) };
-      results.push(result);
-      continue;
-    }
-
-    try {
-      console.log(`[${entry.repo}] Running judge scorer...`);
-      result.judgeScore = await scoreMappingQuality(result.cdf, entry);
-      console.log(`[${entry.repo}] mapping-quality=${result.judgeScore.mapping_quality.score}/5`);
-    } catch (err) {
-      result.error = { stage: 'judge', message: err instanceof Error ? err.message : String(err) };
-    }
-
-    if (baseline) {
-      result.baselineComparison = compareToBaseline(result, baseline);
-    }
-
-    results.push(result);
-  }
+    }),
+  );
 
   const scored = results.filter((r) => !r.error && r.componentCoverage);
 
