@@ -4,13 +4,11 @@ type KeymapContext = {
   sidebarFocused: boolean;
   editMode: boolean;
   dialogOpen: boolean;
-  disabled: boolean;
 };
 
 type KeymapHandlers = {
   onSidebarUp: () => void;
   onSidebarDown: () => void;
-  onSidebarSelect: () => void;
   onAccept: () => void;
   onReject: () => void;
   onEnterEditMode: () => void;
@@ -26,7 +24,6 @@ type KeymapHandlers = {
 
 export function useKeymap(context: KeymapContext, handlers: KeymapHandlers): void {
   useImmediateInput((input, key) => {
-    if (context.disabled) return;
     if (context.dialogOpen) return;
     if (context.editMode) return;
 
@@ -50,8 +47,6 @@ export function useKeymap(context: KeymapContext, handlers: KeymapHandlers): voi
       handlers.onFinalize();
       return;
     }
-
-    // a/r/e/s work regardless of sidebar focus
     if (input === 'a') {
       handlers.onAccept();
       return;
@@ -70,19 +65,11 @@ export function useKeymap(context: KeymapContext, handlers: KeymapHandlers): voi
     }
 
     if (context.sidebarFocused) {
-      if (key.upArrow || input === 'k') {
-        handlers.onSidebarUp();
-      } else if (key.downArrow || input === 'j') {
-        handlers.onSidebarDown();
-      } else if (key.return) {
-        handlers.onSidebarSelect();
-      }
+      if (key.upArrow || input === 'k') handlers.onSidebarUp();
+      else if (key.downArrow || input === 'j') handlers.onSidebarDown();
     } else {
-      if (key.upArrow || input === 'k') {
-        handlers.onScrollUp();
-      } else if (key.downArrow || input === 'j') {
-        handlers.onScrollDown();
-      }
+      if (key.upArrow || input === 'k') handlers.onScrollUp();
+      else if (key.downArrow || input === 'j') handlers.onScrollDown();
     }
   });
 }

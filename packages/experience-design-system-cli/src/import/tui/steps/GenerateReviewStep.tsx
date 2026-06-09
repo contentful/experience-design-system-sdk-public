@@ -8,6 +8,7 @@ import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
 import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
 import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import { computeScrollOffset } from '../../../analyze/select/tui/utils.js';
 import { openPipelineDb, loadCDFComponents, storeCDFComponents } from '../../../session/db.js';
 import type { ReviewComponentStatus, ReviewComponentSummary } from '../../../analyze/select/types.js';
 
@@ -187,7 +188,7 @@ export function GenerateReviewStep({
         const newIdx = Math.min(components.length - 1, selectedIdx + 1);
         setSelectedIdx(newIdx);
         setJsonScrollOffset(0);
-        setSidebarScrollOffset((prev) => (newIdx >= prev + VISIBLE_COUNT ? newIdx - VISIBLE_COUNT + 1 : prev));
+        setSidebarScrollOffset((prev) => computeScrollOffset(newIdx, prev, VISIBLE_COUNT));
       }
     } else {
       if (key.upArrow || input === 'k') {
@@ -310,18 +311,7 @@ export function GenerateReviewStep({
           </Box>
         </Box>
       )}
-      {!dialogOpen && (
-        <StatusBar
-          accepted={accepted}
-          rejected={rejected}
-          reviewed={0}
-          needsReview={needsReview}
-          onApproveAll={() => {
-            setComponents((prev) => prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c)));
-          }}
-          onFinalize={() => setShowFinalize(true)}
-        />
-      )}
+      {!dialogOpen && <StatusBar accepted={accepted} rejected={rejected} reviewed={0} needsReview={needsReview} />}
     </Box>
   );
 }

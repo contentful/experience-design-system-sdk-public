@@ -6,8 +6,6 @@ type StatusBarProps = {
   rejected: number;
   reviewed: number;
   needsReview: number;
-  onApproveAll: () => void;
-  onFinalize: () => void;
 };
 
 export function StatusBar({ accepted, rejected, reviewed, needsReview }: StatusBarProps): React.ReactElement {

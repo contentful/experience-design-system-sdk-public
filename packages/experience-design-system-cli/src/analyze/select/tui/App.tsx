@@ -15,6 +15,7 @@ import { PreviewSummaryBar } from './components/PreviewSummaryBar.js';
 import { useKeymap } from './hooks/useKeymap.js';
 import { useImmediateInput } from './hooks/useImmediateInput.js';
 import { useRawMode } from './hooks/useRawMode.js';
+import { computeScrollOffset } from './utils.js';
 import { useSession } from './hooks/useSession.js';
 import { openPipelineDb, storeRawComponents, loadCDFComponents } from '../../../session/db.js';
 import { ImportApiClient } from '../../../apply/api-client.js';
@@ -54,10 +55,7 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
   const [sidebarFocused, setSidebarFocused] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [sourceVisible, setSourceVisible] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
-  const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
-  const [showQuitDialog, setShowQuitDialog] = useState(false);
-  const [isSaving] = useState(false);
+  const [activeDialog, setActiveDialog] = useState<'none' | 'help' | 'finalize' | 'quit'>('none');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [finalizedResult, setFinalizedResult] = useState<{
     accepted: number;
@@ -258,7 +256,7 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
   useEffect(() => {
     const handler = () => {
       if (Object.keys(draftsByComponentId).length > 0) {
-        setShowQuitDialog(true);
+        setActiveDialog('quit');
       } else {
         process.exit(1);
       }
@@ -285,15 +283,10 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
     debouncedRefreshPreview(updatedSession);
   };
 
-  const dialogOpen = showHelp || showFinalizeDialog || showQuitDialog;
+  const dialogOpen = activeDialog !== 'none';
 
   useKeymap(
-    {
-      sidebarFocused,
-      editMode,
-      dialogOpen,
-      disabled: isSaving,
-    },
+    { sidebarFocused, editMode, dialogOpen },
     {
       onSidebarUp: () => {
         if (!session) return;
@@ -302,7 +295,7 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
         if (idx > 0) {
           setSelectedId(ids[idx - 1]!);
           setJsonScrollOffset(0);
-          setSidebarScrollOffset((prev) => Math.min(prev, idx - 1));
+          setSidebarScrollOffset((prev) => computeScrollOffset(idx - 1, prev, visibleCountRef.current));
         }
       },
       onSidebarDown: () => {
@@ -312,14 +305,9 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
         if (idx < ids.length - 1) {
           setSelectedId(ids[idx + 1]!);
           setJsonScrollOffset(0);
-          setSidebarScrollOffset((prev) => {
-            const newIdx = idx + 1;
-            const vc = visibleCountRef.current;
-            return newIdx >= prev + vc ? newIdx - vc + 1 : prev;
-          });
+          setSidebarScrollOffset((prev) => computeScrollOffset(idx + 1, prev, visibleCountRef.current));
         }
       },
-      onSidebarSelect: () => {},
       onAccept: () => {
         const id = selectedIdRef.current;
         if (id) void updateStatus(id, 'accepted');
@@ -347,12 +335,8 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
         }
         setSourceVisible((prev) => !prev);
       },
-      onScrollUp: () => {
-        setJsonScrollOffset((prev) => Math.max(0, prev - 1));
-      },
-      onScrollDown: () => {
-        setJsonScrollOffset((prev) => prev + 1);
-      },
+      onScrollUp: () => setJsonScrollOffset((prev) => Math.max(0, prev - 1)),
+      onScrollDown: () => setJsonScrollOffset((prev) => prev + 1),
       onToggleFocus: () => setSidebarFocused((prev) => !prev),
       onApproveAll: async () => {
         if (!session || !paths) return;
@@ -369,15 +353,15 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
         syncSessionToDb(updatedSession);
         void refreshPreview();
       },
-      onFinalize: () => setShowFinalizeDialog(true),
+      onFinalize: () => setActiveDialog('finalize'),
       onQuit: () => {
         if (Object.keys(draftsByComponentId).length > 0) {
-          setShowQuitDialog(true);
+          setActiveDialog('quit');
         } else {
           process.exit(1);
         }
       },
-      onToggleHelp: () => setShowHelp((prev) => !prev),
+      onToggleHelp: () => setActiveDialog((d) => (d === 'help' ? 'none' : 'help')),
     },
   );
 
@@ -410,17 +394,16 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
   // Stable ID order — kept in a ref for use inside keymap handlers
   const sortedIds = useMemo(() => sessionSummary.map((c) => c.id), [sessionSummary]);
 
+  // Hoist visibleCount above early returns so the ref is always up to date.
+  // TopBar(1) + statusbar(1) + footer(1) + border padding(2) = ~5 chrome rows
+  const visibleCount = Math.max(1, (stdout?.rows ?? 24) - 5);
+
   // Sync refs after every render so keymap handlers always read committed values.
-  // useLayoutEffect fires synchronously after the DOM is updated but before the
-  // browser paints, guaranteeing the refs match what's on screen when the next
-  // keypress arrives. We also compute visibleCount here (unconditionally, before
-  // early returns) so visibleCountRef is always up-to-date.
-  const CHROME_ROWS_EARLY = 5;
-  const visibleCountEarly = Math.max(1, (stdout?.rows ?? 24) - CHROME_ROWS_EARLY);
+  // useLayoutEffect fires synchronously after DOM update, before next event.
   useLayoutEffect(() => {
     sortedIdsRef.current = sortedIds;
     selectedIdRef.current = selectedId;
-    visibleCountRef.current = visibleCountEarly;
+    visibleCountRef.current = visibleCount;
   });
 
   if (loading) {
@@ -466,10 +449,6 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
         ];
 
   const collapsed = terminalWidth < 80;
-  // TopBar(1) + statusbar(1) + footer(1) + border padding(2) = ~5 chrome rows
-  const CHROME_ROWS = 5;
-  const terminalRows = stdout?.rows ?? 24;
-  const visibleCount = Math.max(1, terminalRows - CHROME_ROWS);
 
   const longestName = session.components.reduce((max, c) => Math.max(max, c.name.length), 0);
   // icon + space + name + 2 border chars; min 14, max 22
@@ -595,9 +574,9 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
     <Box flexDirection="column">
       <TopBar subcommand="analyze select" hints={hints} />
 
-      {showHelp && <HelpOverlay mode="review" onClose={() => setShowHelp(false)} />}
+      {activeDialog === 'help' && <HelpOverlay mode="review" onClose={() => setActiveDialog('none')} />}
 
-      {showFinalizeDialog && (
+      {activeDialog === 'finalize' && (
         <FinalizeDialog
           accepted={acceptedCount}
           rejected={rejectedCount}
@@ -605,11 +584,11 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
           onConfirm={() => {
             void handleFinalize();
           }}
-          onCancel={() => setShowFinalizeDialog(false)}
+          onCancel={() => setActiveDialog('none')}
         />
       )}
 
-      {showQuitDialog && (
+      {activeDialog === 'quit' && (
         <QuitDialog
           hasUnsavedDrafts={Object.keys(draftsByComponentId).length > 0}
           onConfirm={async () => {
@@ -621,11 +600,11 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
             }
             process.exit(1);
           }}
-          onCancel={() => setShowQuitDialog(false)}
+          onCancel={() => setActiveDialog('none')}
         />
       )}
 
-      {!showHelp && !showFinalizeDialog && !showQuitDialog && (
+      {!dialogOpen && (
         <Box flexGrow={1}>
           <Sidebar
             components={sessionSummary}
@@ -684,8 +663,6 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
           rejected={rejectedCount}
           reviewed={reviewedCount}
           needsReview={needsReviewCount}
-          onApproveAll={() => {}}
-          onFinalize={() => setShowFinalizeDialog(true)}
         />
       )}
     </Box>

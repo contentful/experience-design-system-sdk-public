@@ -8,28 +8,26 @@ export type UseUndoResult<T> = {
   clear: () => void;
 };
 
+type UndoState<T> = { stack: T[]; current: T };
+
+// Single-state implementation — push and undo are atomic single setState calls,
+// eliminating the double-render that caused flash in the JsonEditor.
 export function useUndo<T>(initial: T, maxSize = 50): UseUndoResult<T> {
-  const [stack, setStack] = useState<T[]>([]);
-  const [current, setCurrent] = useState<T>(initial);
+  const [state, setState] = useState<UndoState<T>>({ stack: [], current: initial });
 
   return {
-    current,
-    push: (next: T) => {
-      setStack((prev) => {
-        const newStack = [...prev, current];
-        return newStack.length > maxSize ? newStack.slice(1) : newStack;
-      });
-      setCurrent(next);
-    },
-    undo: () => {
-      setStack((prev) => {
-        if (prev.length === 0) return prev;
-        const newStack = prev.slice(0, -1);
-        setCurrent(prev[prev.length - 1]);
-        return newStack;
-      });
-    },
-    canUndo: stack.length > 0,
-    clear: () => setStack([]),
+    current: state.current,
+    push: (next: T) =>
+      setState(({ stack, current }) => {
+        const newStack = [...stack, current];
+        return { stack: newStack.length > maxSize ? newStack.slice(1) : newStack, current: next };
+      }),
+    undo: () =>
+      setState(({ stack, current }) => {
+        if (stack.length === 0) return { stack, current };
+        return { stack: stack.slice(0, -1), current: stack[stack.length - 1]! };
+      }),
+    canUndo: state.stack.length > 0,
+    clear: () => setState(({ current }) => ({ stack: [], current })),
   };
 }
