@@ -101,7 +101,11 @@ export function parseSelectToolCallLines(stdout: string): ParsedSelectToolCalls 
     } as SelectToolCall;
     if (typeof rec.reason === 'string') (call as SelectComponentCall).reason = rec.reason;
     if (typeof rec.confidence === 'number' && rec.confidence >= 0 && rec.confidence <= 100) {
-      (call as typeof call).confidence = rec.confidence;
+      if (call.tool === 'select_component') {
+        (call as SelectComponentCall).confidence = rec.confidence;
+      } else {
+        (call as RejectComponentCall).confidence = rec.confidence;
+      }
     }
     calls.push(call);
   }
