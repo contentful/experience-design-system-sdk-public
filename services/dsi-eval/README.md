@@ -14,13 +14,11 @@ The harness is LLM-provider-agnostic. It defines a `LlmClient` interface and loa
 ```bash
 cd services/dsi-eval
 pnpm install
-DSI_EVAL_CORPUS_REPO=git@github.com:contentful/dsi-eval-data.git pnpm pull-corpus
-DSI_EVAL_LLM_CLIENT=./.corpus-repo/dist/bedrock-client.js AWS_PROFILE=bedrock pnpm start
+DSI_EVAL_CORPUS_REPO=<corpus-repo-ssh-url> pnpm pull-corpus
+DSI_EVAL_LLM_CLIENT=./.corpus-repo/dist/client.js pnpm start
 ```
 
-`pull-corpus` clones the private corpus repo into `.corpus-repo/` (gitignored), installs its dependencies, builds the LLM client, and copies the corpus JSON files and baseline into place. Re-run it any time the corpus is updated.
-
-AWS credentials are resolved by the standard SDK credential chain — IAM role, `~/.aws/credentials`, env vars, or a named profile (`AWS_PROFILE=bedrock`). Run `aws sso login --profile bedrock` first if your session has expired.
+`pull-corpus` clones the internal corpus repo into `.corpus-repo/` (gitignored), installs its dependencies, builds the LLM client, and copies the corpus JSON files and baseline into place. Re-run it any time the corpus is updated. The corpus repo README covers authentication and any credentials required to run the client.
 
 ## For external contributors
 
