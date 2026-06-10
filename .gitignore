@@ -18,3 +18,9 @@
 tmp/
 
 .pnpm-store/
+
+# dsi-eval — corpus and results are private (license + confidentiality)
+services/dsi-eval/corpus/*.json
+services/dsi-eval/baseline.json
+services/dsi-eval/eval-report*.md
+services/dsi-eval/.corpus-repo/

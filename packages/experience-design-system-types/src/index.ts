@@ -1,4 +1,4 @@
-// CDF (Component Definition Format)
+// CDF (Component Definition Format) exports
 export {
   validateCDF,
   parseCDFComponents,
