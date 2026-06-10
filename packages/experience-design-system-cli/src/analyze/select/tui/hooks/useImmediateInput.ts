@@ -75,11 +75,13 @@ function parseInput(data: string): { input: string; key: Key } {
  * immediately after render() without awaiting effects.
  */
 export function useImmediateInput(handler: InputHandler): void {
-  const { stdin } = useStdin();
+  const { stdin, setRawMode } = useStdin();
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
 
   useLayoutEffect(() => {
+    setRawMode(true);
+
     const handleData = (data: Buffer | string) => {
       const str = Buffer.isBuffer(data) ? data.toString('utf8') : data;
       const { input, key } = parseInput(str);
@@ -89,6 +91,7 @@ export function useImmediateInput(handler: InputHandler): void {
     stdin.on('data', handleData);
     return () => {
       stdin.off('data', handleData);
+      setRawMode(false);
     };
-  }, [stdin]);
+  }, [stdin, setRawMode]);
 }

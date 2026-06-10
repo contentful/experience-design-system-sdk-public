@@ -7,8 +7,8 @@ type JsonEditorProps = {
   value: string;
   width: number;
   height: number;
-  onChange: (value: string) => void;
-  onSave: () => void;
+  // Called with the final JSON string only on Ctrl+S (not on every keystroke)
+  onSave: (value: string) => void;
   onDiscard: () => void;
 };
 
@@ -18,7 +18,7 @@ type EditorCursor = {
   cursorCol: number;
 };
 
-export function JsonEditor({ value, width, height, onChange, onSave, onDiscard }: JsonEditorProps): React.ReactElement {
+export function JsonEditor({ value, width, height, onSave, onDiscard }: JsonEditorProps): React.ReactElement {
   const undo = useUndo<EditorCursor>({
     lines: value.split('\n'),
     cursorRow: 0,
@@ -43,13 +43,11 @@ export function JsonEditor({ value, width, height, onChange, onSave, onDiscard }
     const currentCol = undo.current.cursorCol;
 
     if (key.ctrl && input === 's') {
-      // Validate and save
       const text = currentLines.join('\n');
       try {
         JSON.parse(text);
         setValidationError(null);
-        onChange(text);
-        onSave();
+        onSave(text);
       } catch (e) {
         setValidationError(e instanceof Error ? e.message : String(e));
       }
@@ -63,7 +61,6 @@ export function JsonEditor({ value, width, height, onChange, onSave, onDiscard }
 
     if (key.ctrl && input === 'z') {
       undo.undo();
-      onChange(undo.current.lines.join('\n'));
       return;
     }
 
@@ -90,7 +87,6 @@ export function JsonEditor({ value, width, height, onChange, onSave, onDiscard }
           newCol = prevLen;
         }
       } else {
-        // Delete key
         if (currentCol < newLines[currentRow].length) {
           newLines[currentRow] = newLines[currentRow].slice(0, currentCol) + newLines[currentRow].slice(currentCol + 1);
         } else if (currentRow < newLines.length - 1) {
@@ -115,29 +111,26 @@ export function JsonEditor({ value, width, height, onChange, onSave, onDiscard }
     } else if (key.upArrow) {
       if (currentRow > 0) {
         newRow = currentRow - 1;
-        newCol = Math.min(currentCol, newLines[currentRow - 1].length);
+        newCol = Math.min(currentCol, newLines[newRow].length);
       }
     } else if (key.downArrow) {
       if (currentRow < newLines.length - 1) {
         newRow = currentRow + 1;
-        newCol = Math.min(currentCol, newLines[currentRow + 1].length);
+        newCol = Math.min(currentCol, newLines[newRow].length);
       }
     } else if (input === '\x1b[H' || input === '\x1b[1~') {
-      // Home key
       newCol = 0;
     } else if (input === '\x1b[F' || input === '\x1b[4~') {
-      // End key
       newCol = newLines[currentRow].length;
     } else if (input && input.length === 1 && !key.ctrl && !key.meta) {
-      // Printable character
       newLines[currentRow] = newLines[currentRow].slice(0, currentCol) + input + newLines[currentRow].slice(currentCol);
       newCol = currentCol + 1;
     } else {
-      return; // No change
+      return;
     }
 
     undo.push({ lines: newLines, cursorRow: newRow, cursorCol: newCol });
-    onChange(newLines.join('\n'));
+    // No onChange call here — state stays inside JsonEditor until Ctrl+S
   });
 
   const innerWidth = Math.max(1, width - 2);
@@ -145,27 +138,24 @@ export function JsonEditor({ value, width, height, onChange, onSave, onDiscard }
 
   return (
     <Box flexDirection="column" width={width} borderStyle="single" borderColor="white">
-      <Text bold>{'EDIT [EDITING — Ctrl+S save · Esc discard]'}</Text>
+      <Text bold>{'EDIT  [Ctrl+S save · Ctrl+Z undo · Esc discard]'}</Text>
       {visibleLines.map((line, displayRow) => {
         const actualRow = displayRow + scrollRow;
         const displayLine = line.slice(scrollCol, scrollCol + innerWidth);
 
         if (actualRow === cursorRow) {
-          // Render cursor on this line
           const beforeCursor = displayLine.slice(0, cursorCol - scrollCol);
           const cursorChar = displayLine[cursorCol - scrollCol] ?? ' ';
           const afterCursor = displayLine.slice(cursorCol - scrollCol + 1);
-
           return (
-            <Box key={displayRow}>
+            <Box key={actualRow}>
               <Text>{beforeCursor}</Text>
               <Text inverse>{cursorChar}</Text>
               <Text>{afterCursor}</Text>
             </Box>
           );
         }
-
-        return <Text key={displayRow}>{displayLine}</Text>;
+        return <Text key={actualRow}>{displayLine}</Text>;
       })}
       {validationError && <Text color="red">{'✗ Invalid JSON: ' + validationError}</Text>}
     </Box>

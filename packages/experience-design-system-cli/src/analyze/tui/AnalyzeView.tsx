@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Box, Text, useStdout, useStdin } from 'ink';
+import React, { useState } from 'react';
+import { Box, Text, useStdout } from 'ink';
 import { TopBar } from '../select/tui/components/TopBar.js';
 import { useImmediateInput } from '../select/tui/hooks/useImmediateInput.js';
 
@@ -32,13 +32,6 @@ function truncateName(name: string, maxLen = 30): string {
 export function AnalyzeView({ result, onExit }: AnalyzeViewProps): React.ReactElement {
   const [scrollOffset, setScrollOffset] = useState(0);
   const { stdout } = useStdout();
-  const { setRawMode } = useStdin();
-  useEffect(() => {
-    setRawMode(true);
-    return () => {
-      setRawMode(false);
-    };
-  }, [setRawMode]);
   // Header lines: TopBar(1) + summary(3) + blank(1) + dividers+header(3) + blank(1) + footer(1) + footer-bar(1) = ~12
   const HEADER_ROWS = 12;
   const terminalRows = stdout?.rows ?? 24;

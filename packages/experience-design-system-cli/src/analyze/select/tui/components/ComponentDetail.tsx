@@ -17,8 +17,7 @@ type ComponentDetailProps = {
   sourceScrollY: number;
   terminalWidth: number;
   previewAnnotation?: PreviewAnnotation;
-  onDraftChange: (value: string) => void;
-  onSaveDraft: () => void;
+  onSaveDraft: (value: string) => void; // receives final value only on Ctrl+S
   onDiscardDraft: () => void;
   onScrollChange: (offset: number) => void;
 };
@@ -49,7 +48,6 @@ export function ComponentDetail({
   sourceScrollY,
   terminalWidth,
   previewAnnotation,
-  onDraftChange,
   onSaveDraft,
   onDiscardDraft,
 }: ComponentDetailProps): React.ReactElement {
@@ -109,7 +107,6 @@ export function ComponentDetail({
             value={draftValue || editedJson}
             width={editWidth}
             height={panelHeight}
-            onChange={onDraftChange}
             onSave={onSaveDraft}
             onDiscard={onDiscardDraft}
           />
