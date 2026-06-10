@@ -2,6 +2,8 @@ import { writeFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadCorpus } from './corpus/loader.js';
+import { loadLlmClient } from './client-loader.js';
+import { setClient } from './llm-client.js';
 import { runStage1 } from './runner/stage1.js';
 import { runStage2 } from './runner/stage2.js';
 import { scoreComponentCoverage, scoreHallucination } from './scorers/deterministic.js';
@@ -18,6 +20,9 @@ const saveBaselineFlag = args.includes('--save-baseline');
 const repoFilter = args.find((a) => a.startsWith('--repo='))?.split('=')[1];
 
 async function runEval() {
+  const client = await loadLlmClient();
+  setClient(client);
+
   console.log('Loading corpus...');
   const corpus = await loadCorpus(repoFilter);
   console.log(`Running eval on ${corpus.length} repo(s)...\n`);

@@ -1,7 +1,7 @@
 import { buildPrompt } from '@contentful/experience-design-system-cli/src/generate/prompt-builder.js';
 import { parseToolCallLines } from '@contentful/experience-design-system-cli/src/generate/agent-runner.js';
 import { CDF_V1_SCHEMA_URL } from '@contentful/experience-design-system-types/src/cdf/schema.js';
-import { invokeBedrock } from '../bedrock.js';
+import { getClient } from '../llm-client.js';
 import type { RawComponentDefinition, CDFFile, CDFComponentEntry, CDFPropertyDefinition } from '../types.js';
 import type { CDFSlotDefinition } from '@contentful/experience-design-system-types/src/cdf/types.js';
 
@@ -17,7 +17,7 @@ export async function runStage2(selectedComponents: RawComponentDefinition[]): P
         outDir: '/tmp',
       });
 
-      const stdout = await invokeBedrock(prompt);
+      const stdout = await getClient().invoke(prompt);
       const { calls } = parseToolCallLines(stdout);
 
       const entry: CDFComponentEntry = {

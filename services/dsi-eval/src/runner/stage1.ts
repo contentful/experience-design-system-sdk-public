@@ -1,6 +1,6 @@
 import { buildPrompt } from '@contentful/experience-design-system-cli/src/generate/prompt-builder.js';
 import { parseSelectToolCallLines } from '@contentful/experience-design-system-cli/src/generate/agent-runner.js';
-import { invokeBedrock } from '../bedrock.js';
+import { getClient } from '../llm-client.js';
 import type { RawComponentDefinition } from '../types.js';
 
 export type Stage1Result = {
@@ -22,7 +22,7 @@ export async function runStage1(rawComponents: RawComponentDefinition[]): Promis
           outDir: '/tmp',
         });
 
-        const stdout = await invokeBedrock(prompt, 1024);
+        const stdout = await getClient().invoke(prompt, 1024);
         const { calls, warnings } = parseSelectToolCallLines(stdout);
 
         if (warnings.length > 0) {

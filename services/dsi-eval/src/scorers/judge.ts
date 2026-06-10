@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { invokeBedrock } from '../bedrock.js';
+import { getClient } from '../llm-client.js';
 import type { CDFFile } from '../types.js';
 import type { CorpusEntry, JudgeResult } from '../types.js';
 
@@ -37,7 +37,7 @@ export async function scoreMappingQuality(cdf: CDFFile, corpus: CorpusEntry): Pr
     .replace('{{EXPECTED_COMPONENTS}}', JSON.stringify(corpus.expectedComponents, null, 2))
     .replace('{{CDF_OUTPUT}}', JSON.stringify(cdf, null, 2));
 
-  const response = await invokeBedrock(prompt, 1024);
+  const response = await getClient().invoke(prompt, 1024);
   const jsonMatch = /\{[\s\S]*\}/.exec(response);
   if (!jsonMatch) throw new Error(`Judge returned non-JSON response: ${response.slice(0, 200)}`);
 
