@@ -18,7 +18,9 @@ DSI_EVAL_CORPUS_REPO=<corpus-repo-ssh-url> pnpm pull-corpus
 DSI_EVAL_LLM_CLIENT=./.corpus-repo/dist/client.js pnpm start
 ```
 
-`pull-corpus` clones the internal corpus repo into `.corpus-repo/` (gitignored), installs its dependencies, builds the LLM client, and copies the corpus JSON files and baseline into place. Re-run it any time the corpus is updated. The corpus repo README covers authentication and any credentials required to run the client.
+`pull-corpus` clones the internal corpus repo into `.corpus-repo/` (gitignored), installs its dependencies, builds the LLM client, and copies the corpus JSON files and baseline into place. Re-run it any time the corpus is updated.
+
+For the corpus repo SSH URL, authentication setup, and any credentials required to run the client, refer to the corpus repo's README.
 
 ## For external contributors
 
