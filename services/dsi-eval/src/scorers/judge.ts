@@ -39,8 +39,13 @@ export async function scoreMappingQuality(cdf: CDFFile, corpus: CorpusEntry): Pr
 
   const response = await getClient().invoke(prompt, 1024);
   const jsonMatch = /\{[\s\S]*\}/.exec(response);
-  if (!jsonMatch) throw new Error(`Judge returned non-JSON response: ${response.slice(0, 200)}`);
+  if (!jsonMatch) throw new Error(`Judge returned non-JSON response for "${corpus.repo}": ${response.slice(0, 200)}`);
 
-  const parsed = JudgeResultSchema.parse(JSON.parse(stripFences(jsonMatch[0])));
-  return parsed;
+  try {
+    return JudgeResultSchema.parse(JSON.parse(stripFences(jsonMatch[0])));
+  } catch (err) {
+    throw new Error(
+      `Judge response for "${corpus.repo}" failed schema validation: ${err instanceof Error ? err.message : String(err)}\nRaw response: ${response.slice(0, 300)}`,
+    );
+  }
 }

@@ -79,6 +79,8 @@ async function runEval() {
         console.log(`[${entry.repo}] mapping-quality=${result.judgeScore.mapping_quality.score}/5`);
       } catch (err) {
         result.error = { stage: 'judge', message: err instanceof Error ? err.message : String(err) };
+        results.push(result);
+        return;
       }
 
       if (baseline) {
@@ -127,6 +129,7 @@ async function runEval() {
     };
   }
 
+  const judgedScored = scored.filter((r) => r.judgeScore);
   const summary: RunSummary = {
     runAt: new Date().toISOString(),
     totalEntries: results.length,
@@ -136,11 +139,8 @@ async function runEval() {
       : 0,
     medianComponentCoverage: median(coverageRatios),
     hallucinationFailures: results.filter((r) => r.hallucination && !r.hallucination.pass).length,
-    avgMappingQuality: scored.some((r) => r.judgeScore)
-      ? scored
-          .filter((r) => r.judgeScore)
-          .reduce((sum, r) => sum + r.judgeScore!.mapping_quality.score, 0) /
-        scored.filter((r) => r.judgeScore).length
+    avgMappingQuality: judgedScored.length
+      ? judgedScored.reduce((sum, r) => sum + r.judgeScore!.mapping_quality.score, 0) / judgedScored.length
       : null,
     frameworkBreakdown,
     baselineLoaded: baseline !== null,
@@ -149,8 +149,12 @@ async function runEval() {
 
   const report = buildMarkdownReport(results, summary);
   const reportPath = resolve(__dirname, '..', `eval-report-${Date.now()}.md`);
-  await writeFile(reportPath, report);
-  console.log(`\nReport written to: ${reportPath}`);
+  try {
+    await writeFile(reportPath, report);
+    console.log(`\nReport written to: ${reportPath}`);
+  } catch (err) {
+    console.error(`\nFailed to write report to "${reportPath}": ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   if (saveBaselineFlag) {
     await saveBaseline(BASELINE_PATH, results);

@@ -11,7 +11,14 @@ export async function loadLlmClient(): Promise<LlmClient> {
     );
   }
   const resolved = resolve(process.cwd(), modulePath);
-  const mod = await import(resolved) as Record<string, unknown>;
+  let mod: Record<string, unknown>;
+  try {
+    mod = await import(resolved) as Record<string, unknown>;
+  } catch (err) {
+    throw new Error(
+      `Failed to load LLM client module from "${resolved}": ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   if (typeof mod.createClient !== 'function') {
     throw new Error(`${modulePath} must export a createClient() function`);
   }
