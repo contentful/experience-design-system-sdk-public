@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text, useStdout, useStdin } from 'ink';
 import { join, resolve } from 'node:path';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { access, readFile, stat } from 'node:fs/promises';
@@ -141,6 +141,13 @@ export function WizardApp({
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
   const { stdout } = useStdout();
+  const { setRawMode } = useStdin();
+  useEffect(() => {
+    setRawMode(true);
+    return () => {
+      setRawMode(false);
+    };
+  }, [setRawMode]);
   const terminalWidth = stdout?.columns ?? 80;
   const logInit = useRef(false);
   if (!logInit.current) {

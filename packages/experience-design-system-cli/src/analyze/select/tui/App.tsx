@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text, useStdout, useStdin } from 'ink';
 import { readFile } from 'node:fs/promises';
 import type { PreviewAnnotation, ReviewComponentStatus, ReviewSessionSnapshot } from '../types.js';
 import { createReviewSessionDetail } from '../types.js';
@@ -29,6 +29,16 @@ type AppProps = {
 
 export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.ReactElement {
   const { stdout } = useStdout();
+  const { setRawMode } = useStdin();
+
+  // Manage raw mode once at the App level so useImmediateInput doesn't toggle
+  // it per-hook — concurrent setRawMode(false) calls during re-renders caused flicker
+  useEffect(() => {
+    setRawMode(true);
+    return () => {
+      setRawMode(false);
+    };
+  }, [setRawMode]);
   const terminalWidth = stdout?.columns ?? 80;
 
   const {

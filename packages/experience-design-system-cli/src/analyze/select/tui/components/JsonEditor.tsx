@@ -28,13 +28,6 @@ export function JsonEditor({ value, width, height, onChange, onSave, onDiscard }
   const [scrollRow, setScrollRow] = useState(0);
   const [scrollCol] = useState(0);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [cursorVisible, setCursorVisible] = useState(true);
-
-  // Blinking cursor
-  useEffect(() => {
-    const interval = setInterval(() => setCursorVisible((v) => !v), 500);
-    return () => clearInterval(interval);
-  }, []);
 
   const { lines, cursorRow, cursorCol } = undo.current;
 
@@ -166,7 +159,7 @@ export function JsonEditor({ value, width, height, onChange, onSave, onDiscard }
           return (
             <Box key={displayRow}>
               <Text>{beforeCursor}</Text>
-              <Text inverse={cursorVisible}>{cursorChar}</Text>
+              <Text inverse>{cursorChar}</Text>
               <Text>{afterCursor}</Text>
             </Box>
           );
