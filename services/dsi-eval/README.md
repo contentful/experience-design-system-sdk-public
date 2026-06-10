@@ -14,13 +14,13 @@ The harness is LLM-provider-agnostic. It defines a `LlmClient` interface and loa
 ```bash
 cd services/dsi-eval
 pnpm install
-DSI_EVAL_CORPUS_REPO=<corpus-repo-ssh-url> pnpm pull-corpus
+DSI_EVAL_CORPUS_REPO=git@github.com:contentful/dsi-eval-data.git pnpm pull-corpus
 DSI_EVAL_LLM_CLIENT=./.corpus-repo/dist/client.js pnpm start
 ```
 
-`pull-corpus` clones the internal corpus repo into `.corpus-repo/` (gitignored), installs its dependencies, builds the LLM client, and copies the corpus JSON files and baseline into place. Re-run it any time the corpus is updated.
+`pull-corpus` clones the corpus repo into `.corpus-repo/` (gitignored), installs its dependencies, builds the LLM client, and copies the corpus JSON files and baseline into place. Re-run it any time the corpus is updated.
 
-For the corpus repo SSH URL, authentication setup, and any credentials required to run the client, refer to the corpus repo's README.
+For authentication setup and any credentials required to run the client, refer to the corpus repo's README.
 
 ## For external contributors
 
