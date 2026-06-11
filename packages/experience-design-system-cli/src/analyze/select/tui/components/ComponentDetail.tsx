@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 import type { PreviewAnnotation, ReviewComponentDetail } from '../../types.js';
 import { stripScoringFields } from '../../../../types.js';
 import { JsonPanel } from './JsonPanel.js';
-import { FieldEditor } from './FieldEditor.js';
+import { JsonEditor } from './JsonEditor.js';
 import { SourcePanel } from './SourcePanel.js';
 
 type ComponentDetailProps = {
@@ -17,8 +17,7 @@ type ComponentDetailProps = {
   sourceScrollY: number;
   terminalWidth: number;
   previewAnnotation?: PreviewAnnotation;
-  onDraftChange: (value: string) => void;
-  onSaveDraft: () => void;
+  onSaveDraft: (value: string) => void;
   onDiscardDraft: () => void;
   onScrollChange: (offset: number) => void;
 };
@@ -49,7 +48,6 @@ export function ComponentDetail({
   sourceScrollY,
   terminalWidth,
   previewAnnotation,
-  onDraftChange,
   onSaveDraft,
   onDiscardDraft,
 }: ComponentDetailProps): React.ReactElement {
@@ -105,11 +103,10 @@ export function ComponentDetail({
         />
         <Text> </Text>
         {editMode ? (
-          <FieldEditor
+          <JsonEditor
             value={draftValue || editedJson}
             width={editWidth}
             height={panelHeight}
-            onChange={onDraftChange}
             onSave={onSaveDraft}
             onDiscard={onDiscardDraft}
           />
