@@ -78,7 +78,7 @@ describe('JsonEditor', () => {
     expect(onSave).toHaveBeenCalled();
   });
 
-  it('arrow keys and backspace do not crash', async () => {
+  it('arrow keys and backspace keys do not crash and editor remains functional', async () => {
     const onDiscard = vi.fn();
     const { stdin, lastFrame } = render(
       <JsonEditor value={INITIAL_VALUE} width={60} height={10} onSave={vi.fn()} onDiscard={onDiscard} />,
