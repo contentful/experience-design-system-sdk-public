@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { execSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { Command } from 'commander';
@@ -19,10 +19,15 @@ function registerBuildCommand(program: Command): void {
   program
     .command('build')
     .description('Rebuild from source and re-link exo/experiences binaries to this build')
-    .action(() => {
+    .action(async () => {
       const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
       process.stderr.write('⚙  Building from source...\n');
-      execSync('pnpm build', { cwd: pkgRoot, stdio: 'inherit' });
+      const exitCode = await new Promise<number>((resolvePromise) => {
+        const child = spawn('pnpm', ['build'], { cwd: pkgRoot, stdio: 'inherit' });
+        child.on('error', () => resolvePromise(1));
+        child.on('exit', (code) => resolvePromise(code ?? 1));
+      });
+      process.exit(exitCode);
     });
 }
 

@@ -28,7 +28,7 @@
     "skills/"
   ],
   "scripts": {
-    "build": "nx build experience-design-system-cli && BINDIR=$(dirname $(which node)) && for cmd in exo exo-dev experiences experience-design-system-cli; do ln -sf \"$(pwd)/bin/cli.js\" \"$BINDIR/$cmd\"; done",
+    "build": "nx build experience-design-system-cli && BINDIR=$(dirname $(which node)) && for cmd in exo experiences experience-design-system-cli; do ln -sf \"$(pwd)/bin/cli.js\" \"$BINDIR/$cmd\"; done",
     "typecheck": "nx typecheck experience-design-system-cli",
     "clean": "nx clean experience-design-system-cli",
     "test": "nx test experience-design-system-cli",
