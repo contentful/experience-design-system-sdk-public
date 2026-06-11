@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`AnalyzeView > matches snapshot with no warnings 1`] = `
-"experience-design-system-cli  analyze                                             [?] help  [q] quit
+"experience-design-system-cli  analyze                                     [?] help  [q] quit  v2.7.2
 
   Scanned 42 source files in /project/src
   Extracted 2 components
@@ -23,7 +23,7 @@ exports[`AnalyzeView > matches snapshot with no warnings 1`] = `
 `;
 
 exports[`AnalyzeView > matches snapshot with warnings 1`] = `
-"experience-design-system-cli  analyze                                             [?] help  [q] quit
+"experience-design-system-cli  analyze                                     [?] help  [q] quit  v2.7.2
 
   Scanned 42 source files in /project/src
   Extracted 2 components
