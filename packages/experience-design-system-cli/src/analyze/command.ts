@@ -20,6 +20,7 @@ import { preClassifyComponent } from './pre-classify.js';
 import { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
 import { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
 import { describeReviewReasons, inspectComponentSource } from './extract/source-inspection.js';
+import { validateExtractedComponents } from './extract/validate.js';
 
 interface AnalyzeExtractOptions {
   project: string;
@@ -215,7 +216,8 @@ export function registerAnalyzeCommand(program: Command): void {
             deriveNeedsReview(confidence) || inspection.wrapperConfidence >= 4 || inspection.keepDespiteZeroSurface,
         });
       }
-      storeRawComponents(db, sessionId, filteredComponents);
+      const validatedComponents = validateExtractedComponents(filteredComponents);
+      storeRawComponents(db, sessionId, validatedComponents);
       storeScannedFiles(
         db,
         sessionId,

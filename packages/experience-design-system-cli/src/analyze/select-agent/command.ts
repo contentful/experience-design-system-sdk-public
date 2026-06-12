@@ -16,6 +16,7 @@ import type { RawComponentDefinition } from '../../types.js';
 import { OutputFormatter, c } from '../../output/format.js';
 import { buildRepoContextIndex, buildSelectionContext, type SelectionContext } from './context-builder.js';
 import { isAbsolute, resolve } from 'node:path';
+import { validateExtractedComponents, shouldExcludeDueToValidation } from '../extract/validate.js';
 
 const VALID_AGENTS = new Set<string>(['claude', 'codex', 'opencode', 'cursor']);
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 3 * 60 * 1000);
@@ -246,6 +247,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
     .option('--model <name>', 'Model to use (defaults to a small/fast model per agent)')
     .option('--verbose', 'Show full agent output including reasoning text')
     .option('--dry-run', 'Print the prompt for the first component without invoking the agent')
+    .option('--exclude-invalid', 'Automatically reject components with validation errors (empty names, collisions)')
     .action(
       async (opts: {
         session?: string;
@@ -254,6 +256,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         model?: string;
         verbose?: boolean;
         dryRun?: boolean;
+        excludeInvalid?: boolean;
       }) => {
         if (!VALID_AGENTS.has(opts.agent)) {
           process.stderr.write(
@@ -283,6 +286,30 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           return;
         }
 
+        // Re-run validation (not persisted to DB, so always recompute).
+        const validatedComponents = validateExtractedComponents(rawComponents);
+
+        // If --exclude-invalid, split out errored components before sending to LLM.
+        const invalidComponents = opts.excludeInvalid ? validatedComponents.filter(shouldExcludeDueToValidation) : [];
+        const componentsForAgent = opts.excludeInvalid
+          ? validatedComponents.filter((comp) => !shouldExcludeDueToValidation(comp))
+          : validatedComponents;
+
+        if (invalidComponents.length > 0) {
+          process.stderr.write(
+            c.yellow(
+              `Auto-rejecting ${invalidComponents.length} component(s) with validation errors (--exclude-invalid):\n`,
+            ),
+          );
+          for (const comp of invalidComponents) {
+            const codes = (comp.validationIssues ?? [])
+              .filter((i) => i.severity === 'error')
+              .map((i) => i.code)
+              .join(', ');
+            process.stderr.write(`  ✗  ${comp.name}  ${codes}\n`);
+          }
+        }
+
         if (selectionRoot && scannedFiles.length > 0) {
           scannedFiles = scannedFiles.map((f) => (isAbsolute(f) ? f : resolve(selectionRoot, f)));
         }
@@ -294,11 +321,11 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           );
         }
 
-        let selectionCandidates: SelectionCandidate[] = rawComponents.map((component) => ({ component }));
+        let selectionCandidates: SelectionCandidate[] = componentsForAgent.map((component) => ({ component }));
         if (selectionRoot && scannedFiles.length > 0) {
           const repoIndex = await buildRepoContextIndex(selectionRoot, scannedFiles).catch(() => null);
           if (repoIndex) {
-            selectionCandidates = rawComponents.map((component) => ({
+            selectionCandidates = componentsForAgent.map((component) => ({
               component,
               selectionContext: buildSelectionContext(repoIndex, component),
             }));
@@ -306,6 +333,13 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         }
 
         if (opts.dryRun) {
+          if (selectionCandidates.length === 0) {
+            process.stderr.write(
+              'No valid components to preview — all components were excluded due to validation errors.\n',
+            );
+            process.exit(0);
+            return;
+          }
           const first = selectionCandidates[0]!;
           const prompt = await buildPrompt({
             skill: 'select',
@@ -320,7 +354,12 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
 
         const selectResults = await selectAllComponents(agent, opts.model, selectionCandidates, opts.verbose ?? false);
 
+        // Build decision map from results. Seed auto-rejections from validation exclusions first.
         const decisions = new Map<string, 'accepted' | 'rejected' | null>();
+        for (const comp of invalidComponents) {
+          decisions.set(componentKey(comp), 'rejected');
+        }
+
         for (const r of selectResults) {
           decisions.set(r.componentKey, r.decision);
         }
@@ -328,7 +367,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         const artifactsRoot = getRefineArtifactsRoot();
         let snapshot: ReviewSessionSnapshot;
         try {
-          snapshot = await loadReviewInput(rawComponents, {
+          snapshot = await loadReviewInput(validatedComponents, {
             reviewRoot: selectionRoot ?? undefined,
           });
           snapshot = await ensureRefineSession(sessionId, artifactsRoot, snapshot);

@@ -14,7 +14,12 @@ type SidebarProps = {
   width?: number;
 };
 
-function statusIcon(status: ReviewComponentStatus): string {
+export function statusIcon(
+  status: ReviewComponentStatus,
+  validationErrorCount: number,
+  validationWarningCount: number,
+): string {
+  if (validationErrorCount > 0 || validationWarningCount > 0) return '⚠';
   switch (status) {
     case 'accepted':
       return '✓';
@@ -27,7 +32,13 @@ function statusIcon(status: ReviewComponentStatus): string {
   }
 }
 
-function statusColor(status: ReviewComponentStatus): string {
+export function statusColor(
+  status: ReviewComponentStatus,
+  validationErrorCount: number,
+  validationWarningCount: number,
+): string {
+  if (validationErrorCount > 0) return 'red';
+  if (validationWarningCount > 0) return 'yellow';
   switch (status) {
     case 'accepted':
       return 'green';
@@ -45,6 +56,13 @@ function truncateName(name: string, maxLen: number): string {
   return name.slice(0, maxLen) + '…';
 }
 
+export function sortComponentsForSidebar(components: ReviewComponentSummary[]): ReviewComponentSummary[] {
+  const withErrors = components.filter((c) => c.validationErrorCount > 0);
+  const withWarnings = components.filter((c) => c.validationErrorCount === 0 && c.validationWarningCount > 0);
+  const clean = components.filter((c) => c.validationErrorCount === 0 && c.validationWarningCount === 0);
+  return [...withErrors, ...withWarnings, ...clean];
+}
+
 export function Sidebar({
   components,
   selectedId,
@@ -54,9 +72,10 @@ export function Sidebar({
   collapsed = false,
   width: widthProp,
 }: SidebarProps): React.ReactElement {
-  const visible = components.slice(scrollOffset, scrollOffset + visibleCount);
+  const sorted = sortComponentsForSidebar(components);
+  const visible = sorted.slice(scrollOffset, scrollOffset + visibleCount);
   const showScrollUp = scrollOffset > 0;
-  const showScrollDown = scrollOffset + visibleCount < components.length;
+  const showScrollDown = scrollOffset + visibleCount < sorted.length;
   const width = collapsed ? 3 : (widthProp ?? 18);
 
   return (
@@ -64,8 +83,8 @@ export function Sidebar({
       {showScrollUp && !collapsed && <Text dimColor>▲</Text>}
       {visible.map((component) => {
         const isSelected = component.id === selectedId;
-        const icon = statusIcon(component.status);
-        const color = statusColor(component.status);
+        const icon = statusIcon(component.status, component.validationErrorCount, component.validationWarningCount);
+        const color = statusColor(component.status, component.validationErrorCount, component.validationWarningCount);
         const maxNameLen = Math.max(1, width - 4);
         const name = truncateName(component.name, maxNameLen);
 

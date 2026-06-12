@@ -3,7 +3,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { AnalyzeView } from '../../../src/analyze/tui/AnalyzeView.js';
 import type { AnalyzeViewResult } from '../../../src/analyze/tui/AnalyzeView.js';
 
-const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+// Strip ANSI escapes AND the package version so snapshots survive release bumps.
+const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '').replace(/v\d+\.\d+\.\d+/g, 'v<version>');
 
 const result: AnalyzeViewResult = {
   sourceDirectory: '/project/src',
