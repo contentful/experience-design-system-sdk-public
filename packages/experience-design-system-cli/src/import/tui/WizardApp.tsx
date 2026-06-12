@@ -18,7 +18,8 @@ import { DoneStep } from './steps/DoneStep.js';
 import { ErrorStep } from './steps/ErrorStep.js';
 import { TokenInputStep } from './steps/TokenInputStep.js';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
-import { ImportApiClient, ApiError } from '../../apply/api-client.js';
+import { ImportApiClient, ApiError, parsePreviewValidationErrors, type PreviewValidationError } from '../../apply/api-client.js';
+import { patchReviewStateWithValidationErrors, rejectComponentsByName } from '../../analyze/select/command.js';
 import { readTokensFromPath, hasBreakingChangesWithImpact } from '../../apply/manifest.js';
 import { buildManifest } from '@contentful/experience-design-system-types';
 import type { ServerPreviewResponse, ManifestPayload } from '@contentful/experience-design-system-types';
@@ -58,7 +59,8 @@ type WizardStep =
   | 'printing'
   | 'print-gate'
   | 'done'
-  | 'error';
+  | 'error'
+  | 'preview-validation-error';
 
 type PushResult = {
   componentTypes: { created: number; updated: number; failed: number };
@@ -100,6 +102,7 @@ type WizardState = {
   errorMessage: string;
   errorAllowCredentialRetry: boolean;
   authCheckStepNumber: number;
+  previewValidationErrors: PreviewValidationError[];
 };
 
 function findCliPath(): string {
@@ -213,6 +216,7 @@ export function WizardApp({
     errorMessage: '',
     errorAllowCredentialRetry: false,
     authCheckStepNumber: 1,
+    previewValidationErrors: [],
   });
 
   useEffect(() => {
@@ -598,6 +602,16 @@ export function WizardApp({
     void runPreview(sid, tp, state.spaceId, state.environmentId, state.cmaToken, state.host);
   };
 
+  const runSkipValidationErrorsAndRetry = async (errors: PreviewValidationError[]) => {
+    const sessionId = state.extractSessionId;
+    if (sessionId) {
+      const names = [...new Set(errors.map((e) => e.componentName))];
+      await rejectComponentsByName(sessionId, names);
+    }
+    const { extractSessionId: sid, tokensPath: tp } = sessionRef.current;
+    void runPreview(sid, tp, state.spaceId, state.environmentId, state.cmaToken, state.host);
+  };
+
   const advanceWithCredentials = (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
     const resolvedHost = resolveWizardHost(host);
     credentialsRef.current = { spaceId, environmentId, cmaToken };
@@ -762,6 +776,16 @@ export function WizardApp({
               `\nIf using a custom --host, make sure the space exists on that host.`,
           });
           return;
+        }
+        if (e.status === 422) {
+          const errors = parsePreviewValidationErrors(e.body);
+          if (errors.length > 0) {
+            if (extractSessionId) {
+              await patchReviewStateWithValidationErrors(extractSessionId, errors);
+            }
+            update({ step: 'preview-validation-error', previewValidationErrors: errors });
+            return;
+          }
         }
         update({ step: 'error', errorStep: 'apply preview', errorMessage: e.message, errorAllowCredentialRetry: true });
         return;
@@ -1333,6 +1357,30 @@ export function WizardApp({
             spaceId={state.spaceId}
             environmentId={state.environmentId}
             onExit={() => process.exit(totalFailed > 0 ? 1 : 0)}
+          />
+        );
+      }
+
+      case 'preview-validation-error': {
+        const uniqueNames = [...new Set(state.previewValidationErrors.map((e) => e.componentName))];
+        const errorLines = state.previewValidationErrors
+          .map((e) => `  ${e.componentName}: ${e.message}`)
+          .join('\n');
+        return (
+          <GateStep
+            successMessage="Preview validation failed"
+            summary={errorLines}
+            context={`${uniqueNames.length} component${uniqueNames.length === 1 ? '' : 's'} failed server validation. Edit their definitions in the review TUI, or skip them and retry preview without them.`}
+            continueLabel="Edit definitions"
+            skipLabel={`Skip ${uniqueNames.length === 1 ? uniqueNames[0] : `${uniqueNames.length} components`} and retry`}
+            showSkip={true}
+            onContinue={() => {
+              void runEditFromPreview(null);
+            }}
+            onSkip={() => {
+              void runSkipValidationErrorsAndRetry(state.previewValidationErrors);
+            }}
+            onQuit={() => process.exit(0)}
           />
         );
       }
