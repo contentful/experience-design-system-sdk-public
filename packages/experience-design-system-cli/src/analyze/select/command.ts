@@ -322,6 +322,35 @@ export async function patchReviewStateWithValidationErrors(
   return { patchedNames, missingNames };
 }
 
+/**
+ * Mark components whose names appear in `names` as `status: 'rejected'` in the
+ * review state file. Used by the wizard's "skip and retry" path after a 422: the
+ * offending components are excluded so re-running preview doesn't trigger another
+ * validation error for the same components.
+ */
+export async function rejectComponentsByName(
+  sessionId: string,
+  names: string[],
+  opts: { artifactsRoot?: string } = {},
+): Promise<void> {
+  if (names.length === 0) return;
+  const artifactsRoot = opts.artifactsRoot ?? getRefineArtifactsRoot();
+  const paths = await getRefineSessionPaths(sessionId, artifactsRoot);
+  const nameSet = new Set(names);
+
+  let snapshot: ReviewSessionSnapshot;
+  try {
+    snapshot = JSON.parse(await readFile(paths.statePath, 'utf8')) as ReviewSessionSnapshot;
+  } catch {
+    return;
+  }
+
+  const components = snapshot.components.map((c) =>
+    nameSet.has(c.name) ? { ...c, status: 'rejected' as const } : c,
+  );
+  await saveReviewState(paths.statePath, { ...snapshot, components });
+}
+
 function resolveSessionId(sessionFlag: string | undefined): string {
   if (sessionFlag) return sessionFlag;
 
