@@ -62,6 +62,7 @@ export function parsePreviewValidationErrors(body: string): PreviewValidationErr
   if (!Array.isArray(errors)) return [];
   const out: PreviewValidationError[] = [];
   for (const raw of errors) {
+    if (typeof raw !== 'object' || raw === null) continue;
     const entry = raw as { path?: unknown; message?: unknown };
     if (typeof entry.path !== 'string' || typeof entry.message !== 'string') continue;
     if (!entry.path.startsWith(COMPONENT_PATH_PREFIX)) continue;
