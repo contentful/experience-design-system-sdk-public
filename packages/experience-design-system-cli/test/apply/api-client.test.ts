@@ -427,4 +427,20 @@ describe('parsePreviewValidationErrors', () => {
   it('returns [] for empty body string', () => {
     expect(parsePreviewValidationErrors('')).toEqual([]);
   });
+
+  it('returns [] for null/undefined/primitive entries in errors[]', () => {
+    const body = JSON.stringify({
+      details: {
+        errors: [null, undefined, 5, 'string', { path: 'manifest:components/Good/$slots/', message: 'real' }],
+      },
+    });
+    const result = parsePreviewValidationErrors(body);
+    expect(result).toEqual([{ componentName: 'Good', path: 'manifest:components/Good/$slots/', message: 'real' }]);
+  });
+
+  it('returns [] for top-level non-object parsed bodies (null, primitive)', () => {
+    expect(parsePreviewValidationErrors('null')).toEqual([]);
+    expect(parsePreviewValidationErrors('42')).toEqual([]);
+    expect(parsePreviewValidationErrors('"hello"')).toEqual([]);
+  });
 });
