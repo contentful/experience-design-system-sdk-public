@@ -1,6 +1,6 @@
 {
   "name": "@contentful/experience-design-system-cli",
-  "version": "2.7.3",
+  "version": "2.7.4",
   "description": "Contentful Experiences design system import CLI",
   "license": "MIT",
   "type": "module",
