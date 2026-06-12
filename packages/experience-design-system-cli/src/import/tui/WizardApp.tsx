@@ -19,13 +19,8 @@ import { ErrorStep } from './steps/ErrorStep.js';
 import { TokenInputStep } from './steps/TokenInputStep.js';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
 import { PreviewValidationErrorStep } from './steps/PreviewValidationErrorStep.js';
-import {
-  ImportApiClient,
-  ApiError,
-  parsePreviewValidationErrors,
-  type PreviewValidationError,
-} from '../../apply/api-client.js';
-import { patchReviewStateWithValidationErrors, rejectComponentsByName } from '../../analyze/select/command.js';
+import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
+import { handlePreview422, applySkipValidationErrors } from './wizard-422-helpers.js';
 import { readTokensFromPath, hasBreakingChangesWithImpact } from '../../apply/manifest.js';
 import { buildManifest } from '@contentful/experience-design-system-types';
 import type { ServerPreviewResponse, ManifestPayload } from '@contentful/experience-design-system-types';
@@ -695,11 +690,7 @@ export function WizardApp({
   };
 
   const runSkipValidationErrorsAndRetry = async (errors: PreviewValidationError[]) => {
-    const sessionId = state.extractSessionId;
-    if (sessionId) {
-      const names = [...new Set(errors.map((e) => e.componentName))];
-      await rejectComponentsByName(sessionId, names);
-    }
+    await applySkipValidationErrors(state.extractSessionId, errors);
     const { extractSessionId: sid, tokensPath: tp } = sessionRef.current;
     void runPreview(sid, tp, state.spaceId, state.environmentId, state.cmaToken, state.host);
   };
@@ -884,22 +875,16 @@ export function WizardApp({
           });
           return;
         }
-        if (e.status === 422) {
-          const errors = parsePreviewValidationErrors(e.body);
-          if (errors.length > 0) {
-            let missingNames: string[] = [];
-            if (extractSessionId) {
-              const result = await patchReviewStateWithValidationErrors(extractSessionId, errors);
-              missingNames = result.missingNames;
-            }
-            update({
-              step: 'preview-validation-error',
-              previewValidationErrors: errors,
-              previewValidationMissingNames: missingNames,
-            });
-            return;
-          }
+        const outcome = await handlePreview422(e, extractSessionId);
+        if (outcome.kind === 'validation-error') {
+          update({
+            step: 'preview-validation-error',
+            previewValidationErrors: outcome.errors,
+            previewValidationMissingNames: outcome.missingNames,
+          });
+          return;
         }
+        // 'unparseable' and 'not-422' both fall through to the generic error branch below.
         update({
           step: 'error',
           errorStep: 'apply preview',
