@@ -6,7 +6,8 @@ export type ExtractionValidationIssueCode =
   | 'EMPTY_SLOT_NAME'
   | 'PROP_SLOT_NAME_COLLISION'
   | 'DUPLICATE_COMPONENT_NAME'
-  | 'EMPTY_COMPONENT';
+  | 'EMPTY_COMPONENT'
+  | 'SERVER_VALIDATION_FAILED';
 
 export type ExtractionValidationIssue = {
   severity: 'error' | 'warning';
