@@ -323,10 +323,19 @@ export async function patchReviewStateWithValidationErrors(
 }
 
 /**
- * Mark components whose names appear in `names` as `status: 'rejected'` in the
- * review state file. Used by the wizard's "skip and retry" path after a 422: the
- * offending components are excluded so re-running preview doesn't trigger another
- * validation error for the same components.
+ * Exclude components whose names appear in `names` from the next preview/push.
+ * Used by the wizard's "skip and retry" path after a 422.
+ *
+ * Two stores are updated:
+ *   - Pipeline DB (`raw_components.status` → `'generate-rejected'`) so that
+ *     `loadCDFComponents()` excludes them from the next manifest. This is the
+ *     load-bearing change — preview reads from the DB, not the JSON file.
+ *   - Review state JSON (`status` → `'rejected'`) so that if the user re-enters
+ *     the analyze-select TUI later, the rejected status is reflected.
+ *
+ * `'generate-rejected'` matches the existing convention for "component was
+ * generated successfully but later excluded" (see GenerateReviewStep) — the
+ * component generated fine locally but failed server-side validation.
  */
 export async function rejectComponentsByName(
   sessionId: string,
@@ -334,6 +343,17 @@ export async function rejectComponentsByName(
   opts: { artifactsRoot?: string } = {},
 ): Promise<void> {
   if (names.length === 0) return;
+
+  const db = openPipelineDb();
+  try {
+    const placeholders = names.map(() => '?').join(',');
+    db.prepare(
+      `UPDATE raw_components SET status = 'generate-rejected' WHERE session_id = ? AND name IN (${placeholders})`,
+    ).run(sessionId, ...names);
+  } finally {
+    db.close();
+  }
+
   const artifactsRoot = opts.artifactsRoot ?? getRefineArtifactsRoot();
   const paths = await getRefineSessionPaths(sessionId, artifactsRoot);
   const nameSet = new Set(names);
@@ -453,7 +473,9 @@ export function registerAnalyzeEditCommand(program: Command): void {
         // Non-interactive path
         if (nonInteractive) {
           const stepDb = openPipelineDb();
-          const stepId = createStep(stepDb, sessionId, 'analyze select', { sessionId });
+          const stepId = createStep(stepDb, sessionId, 'analyze select', {
+            sessionId,
+          });
           try {
             await runNonInteractive(
               snapshot,
