@@ -231,21 +231,6 @@ function applyDbMigrations(db: DatabaseSync): void {
     db.exec('ALTER TABLE raw_components ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0');
   }
 
-  // Add scanned_files table if it doesn't exist yet (added in v0.7.0).
-  const scannedFilesTable = db
-    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='scanned_files'`)
-    .all() as Array<{ name: string }>;
-  if (scannedFilesTable.length === 0) {
-    db.exec(`
-      CREATE TABLE scanned_files (
-        session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        path        TEXT NOT NULL,
-        PRIMARY KEY (session_id, path)
-      );
-      CREATE INDEX idx_scanned_files_session ON scanned_files(session_id);
-    `);
-  }
-
   // Add generation_cache table if it doesn't exist yet.
   const tables = db
     .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='generation_cache'`)
