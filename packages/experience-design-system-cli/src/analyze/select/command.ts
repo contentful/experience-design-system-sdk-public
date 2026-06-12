@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createElement } from 'react';
 import { render } from 'ink';
@@ -13,6 +13,8 @@ import {
   shouldExcludeDueToValidation,
   formatExclusionWarning,
 } from '../extract/validate.js';
+import type { PreviewValidationError } from '../../apply/api-client.js';
+import type { ExtractionValidationIssue } from '../../types.js';
 
 type RefineCommandOptions = {
   session?: string;
@@ -254,6 +256,70 @@ export async function loadAndValidateForReview(
   }
   const validatedComponents = validateExtractedComponents(rawComponents);
   return loadReviewInput(validatedComponents, { reviewRoot: projectRoot });
+}
+
+/**
+ * Synthesize SERVER_VALIDATION_FAILED issues onto the review state file's
+ * matching components. Used by the wizard's 422 recovery path: after a
+ * preview-API validation error, this runs before re-launching the
+ * analyze-select TUI so the Sidebar's existing red-warning rendering
+ * pins the offenders to the top.
+ *
+ * Idempotent on identical input is NOT a contract: each call appends.
+ * The wizard's 422 path is a one-shot per preview attempt, so duplicate
+ * issues only matter if a caller invokes this twice without the user
+ * round-tripping through the TUI in between.
+ */
+export async function patchReviewStateWithValidationErrors(
+  sessionId: string,
+  errors: PreviewValidationError[],
+  opts: { artifactsRoot?: string } = {},
+): Promise<{ patchedNames: string[]; missingNames: string[] }> {
+  const artifactsRoot = opts.artifactsRoot ?? getRefineArtifactsRoot();
+  const paths = await getRefineSessionPaths(sessionId, artifactsRoot);
+
+  let snapshot: ReviewSessionSnapshot;
+  try {
+    await access(paths.statePath);
+    snapshot = JSON.parse(await readFile(paths.statePath, 'utf8')) as ReviewSessionSnapshot;
+  } catch {
+    snapshot = await loadAndValidateForReview(sessionId, undefined);
+    snapshot = await ensureRefineSession(sessionId, artifactsRoot, snapshot);
+  }
+
+  const errorsByName = new Map<string, PreviewValidationError[]>();
+  for (const err of errors) {
+    const list = errorsByName.get(err.componentName) ?? [];
+    list.push(err);
+    errorsByName.set(err.componentName, list);
+  }
+
+  const patchedNames: string[] = [];
+  const knownNames = new Set(snapshot.components.map((c) => c.name));
+  const components = snapshot.components.map((c) => {
+    const matched = errorsByName.get(c.name);
+    if (!matched || matched.length === 0) return c;
+    patchedNames.push(c.name);
+    const newIssues: ExtractionValidationIssue[] = matched.map((err) => ({
+      severity: 'error',
+      code: 'SERVER_VALIDATION_FAILED',
+      message: err.message,
+    }));
+    const existing = c.originalProposal.validationIssues ?? [];
+    return {
+      ...c,
+      originalProposal: {
+        ...c.originalProposal,
+        validationIssues: [...existing, ...newIssues],
+      },
+    };
+  });
+
+  const missingNames = [...errorsByName.keys()].filter((n) => !knownNames.has(n));
+
+  await saveReviewState(paths.statePath, { ...snapshot, components });
+
+  return { patchedNames, missingNames };
 }
 
 function resolveSessionId(sessionFlag: string | undefined): string {
