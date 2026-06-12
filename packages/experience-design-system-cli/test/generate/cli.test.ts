@@ -12,6 +12,7 @@ import {
   loadCDFComponents,
 } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
+import { HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON } from '../../src/analyze/extract/source-inspection.js';
 
 const bin = resolve(import.meta.dirname, '../../bin/cli.js');
 
@@ -37,12 +38,12 @@ const RAW_COMPONENTS: RawComponentDefinition[] = [
   },
 ];
 
-async function seedDb(dbPath: string): Promise<string> {
+async function seedDb(dbPath: string, components = RAW_COMPONENTS): Promise<string> {
   const db = openPipelineDb(dbPath);
   const { sessionId } = getOrCreateSession(db, 'new', undefined, {
     command: 'analyze extract',
   });
-  storeRawComponents(db, sessionId, RAW_COMPONENTS);
+  storeRawComponents(db, sessionId, components);
   const stepId = createStep(db, sessionId, 'analyze extract', {
     project: '/fake',
   });
@@ -57,7 +58,12 @@ async function run(
   fakeAgentScript?: string,
   fakeAgentName = 'claude',
   sessionId?: string,
-): Promise<{ stdout: string; stderr: string; code: number | null; dbPath: string }> {
+): Promise<{
+  stdout: string;
+  stderr: string;
+  code: number | null;
+  dbPath: string;
+}> {
   const fakeBinDir = await createTempDir('fake-bin-');
   const dbDir = await createTempDir('gen-db-');
   const dbPath = join(dbDir, 'pipeline.db');
@@ -81,7 +87,12 @@ async function run(
 
   return new Promise((res) => {
     execFile('node', [bin, ...finalArgs], { env }, (error, stdout, stderr) => {
-      res({ stdout, stderr, code: error?.code ? Number(error.code) : 0, dbPath });
+      res({
+        stdout,
+        stderr,
+        code: error?.code ? Number(error.code) : 0,
+        dbPath,
+      });
     });
   });
 }
@@ -317,6 +328,72 @@ describe('generate components — tool-call protocol output', () => {
     expect(stored.length).toBeGreaterThan(0);
     expect(stored[0]?.key).toBe('Button');
     expect(stored[0]?.entry.$properties['label']?.$type).toBe('string');
+  });
+
+  it('preserves accepted data-fetch wrappers for generation', async () => {
+    const dbDir = await createTempDir('gen-wrapper-guard-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const sid = await seedDb(dbPath, [
+      ...RAW_COMPONENTS,
+      {
+        name: 'HeroBannerGql',
+        source: '/fake/src/HeroBannerGql.tsx',
+        framework: 'react',
+        props: [
+          { name: 'id', type: 'string', required: true },
+          { name: 'locale', type: 'string', required: true },
+          { name: 'preview', type: 'boolean', required: true },
+        ],
+        slots: [],
+        reviewReasons: [HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON, 'data-wrapper:generated-query-hook'],
+        needsReview: true,
+        extractionConfidence: 2,
+      },
+    ]);
+
+    const fakeBinDir = await createTempDir('fake-bin-wrapper-guard-');
+    const fakeAgent = join(fakeBinDir, 'claude');
+    await writeFile(
+      fakeAgent,
+      `#!/usr/bin/env node
+process.stdout.write('{"tool":"classify_component","description":"Generated component"}\\n');
+process.stdout.write('{"tool":"classify_prop","prop":"label","cdf_type":"string","cdf_category":"content","required":true,"description":"Label"}\\n');
+process.stdout.write('{"tool":"classify_prop","prop":"id","cdf_type":"string","cdf_category":"state","required":true,"description":"Identifier"}\\n');
+process.exit(0);
+`,
+    );
+    await chmod(fakeAgent, 0o755);
+
+    const { stderr, code } = await new Promise<{
+      stdout: string;
+      stderr: string;
+      code: number | null;
+    }>((res) => {
+      execFile(
+        'node',
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid],
+        {
+          env: {
+            ...process.env,
+            PATH: `${fakeBinDir}:${process.env.PATH}`,
+            EDS_PIPELINE_DB_PATH: dbPath,
+          },
+        },
+        (err, stdout, innerStderr) =>
+          res({
+            stdout,
+            stderr: innerStderr,
+            code: err?.code ? Number(err.code) : 0,
+          }),
+      );
+    });
+    expect(code).toBe(0);
+    expect(stderr).not.toContain('skipped 1 high-confidence data-fetch wrapper');
+
+    const db = openPipelineDb(dbPath);
+    const stored = loadCDFComponents(db, sid);
+    db.close();
+    expect(stored.map((component) => component.key).sort()).toEqual(['Button', 'HeroBannerGql']);
   });
 
   it('exits 1 when agent exits non-zero', async () => {

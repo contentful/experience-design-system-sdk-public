@@ -1,17 +1,25 @@
 import { createElement } from 'react';
 import { render } from 'ink';
 import { mkdir, readdir, stat } from 'node:fs/promises';
-import { isAbsolute, join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Command } from 'commander';
 import { extractComponents } from './extract/pipeline.js';
 import { AnalyzeView } from './tui/AnalyzeView.js';
 import type { AnalyzeViewResult } from './tui/AnalyzeView.js';
 import { registerAnalyzeEditCommand } from './select/command.js';
 import { registerAnalyzeSelectAgentCommand } from './select-agent/command.js';
-import { openPipelineDb, getOrCreateSession, createStep, updateStep, storeRawComponents } from '../session/db.js';
+import {
+  openPipelineDb,
+  getOrCreateSession,
+  createStep,
+  updateStep,
+  storeRawComponents,
+  storeScannedFiles,
+} from '../session/db.js';
 import { preClassifyComponent } from './pre-classify.js';
 import { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
 import { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
+import { describeReviewReasons, inspectComponentSource } from './extract/source-inspection.js';
 
 interface AnalyzeExtractOptions {
   project: string;
@@ -55,6 +63,12 @@ function pluralize(count: number, singular: string, plural = `${singular}s`): st
 
 function resolveFromProjectRoot(projectRoot: string, inputPath: string): string {
   return isAbsolute(inputPath) ? inputPath : resolve(projectRoot, inputPath);
+}
+
+function wrapperConfidenceToIssueCount(confidence: number): number {
+  if (confidence >= 4) return 2;
+  if (confidence === 3) return 1;
+  return 0;
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -152,25 +166,61 @@ export function registerAnalyzeCommand(program: Command): void {
         inputPath: projectRoot,
         outDir,
       });
-      const stepId = createStep(db, sessionId, 'analyze extract', { project: projectRoot });
+      const stepId = createStep(db, sessionId, 'analyze extract', {
+        project: projectRoot,
+      });
       const classifiedComponents = extraction.components.map(preClassifyComponent);
+      const inspectedComponents = await Promise.all(
+        classifiedComponents.map(async (component) => ({
+          component,
+          inspection: await inspectComponentSource(component),
+        })),
+      );
       const filteredComponents: typeof classifiedComponents = [];
       const filterWarnings: string[] = [];
-      for (const component of classifiedComponents) {
+      for (const { component, inspection } of inspectedComponents) {
         const verdict = isNonAuthorableComponent(component);
-        if (verdict.skip) {
+        const keepDespiteZeroSurface =
+          verdict.skip && verdict.reason === 'component has no props and no slots' && inspection.keepDespiteZeroSurface;
+
+        if (verdict.skip && !keepDespiteZeroSurface) {
           filterWarnings.push(`Skipped non-authorable component: ${component.name} (${verdict.reason})`);
           continue;
         }
-        const { confidence, reasons } = computeExtractionScore(component);
+
+        if (keepDespiteZeroSurface) {
+          filterWarnings.push(
+            `${component.name}: retained despite 0 props/slots because the source renders visible or compositional UI`,
+          );
+        }
+
+        if (inspection.reviewReasons.length > 0) {
+          const reviewNotes = describeReviewReasons(inspection.reviewReasons)
+            .filter((note) => note !== 'high-confidence data-fetch wrapper')
+            .join('; ');
+          if (reviewNotes) {
+            filterWarnings.push(`${component.name}: ${reviewNotes}`);
+          }
+        }
+
+        const { confidence, reasons } = computeExtractionScore(component, {
+          additionalIssueCount: wrapperConfidenceToIssueCount(inspection.wrapperConfidence),
+          additionalReasons: inspection.reviewReasons,
+        });
         filteredComponents.push({
           ...component,
           extractionConfidence: confidence,
           reviewReasons: reasons,
-          needsReview: deriveNeedsReview(confidence),
+          needsReview:
+            deriveNeedsReview(confidence) || inspection.wrapperConfidence >= 4 || inspection.keepDespiteZeroSurface,
         });
       }
       storeRawComponents(db, sessionId, filteredComponents);
+      storeScannedFiles(
+        db,
+        sessionId,
+        sourceFiles.map((f) => relative(projectRoot, f)),
+      );
       updateStep(db, stepId, 'complete', { sessionId });
       db.close();
 

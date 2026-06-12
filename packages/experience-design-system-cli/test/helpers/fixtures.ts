@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
-import { openPipelineDb, storeRawComponents, getOrCreateSession } from '../../src/session/db.js';
+import { openPipelineDb, storeRawComponents, storeScannedFiles, getOrCreateSession } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 
 export const SAMPLE_COMPONENTS: RawComponentDefinition[] = [
@@ -9,7 +9,14 @@ export const SAMPLE_COMPONENTS: RawComponentDefinition[] = [
     name: 'Button',
     source: 'src/Button.tsx',
     framework: 'react',
-    props: [{ name: 'variant', type: 'string', required: false, defaultValue: '"primary"' }],
+    props: [
+      {
+        name: 'variant',
+        type: 'string',
+        required: false,
+        defaultValue: '"primary"',
+      },
+    ],
     slots: [{ name: 'children', isDefault: true }],
   },
   {
@@ -26,6 +33,7 @@ export type TestFixture = {
   dbDir: string;
   projectDir: string;
   sessionId: string;
+  addScannedFiles: (absolutePaths: string[]) => void;
   cleanup: () => Promise<void>;
 };
 
@@ -35,13 +43,25 @@ export async function createTestFixture(components = SAMPLE_COMPONENTS): Promise
   const dbPath = join(dbDir, 'pipeline.db');
 
   await mkdir(join(projectDir, 'src'), { recursive: true });
+  const componentSourcePaths: string[] = [];
   for (const comp of components) {
-    await writeFile(join(projectDir, comp.source), `// stub ${comp.name}`, 'utf8');
+    const sourcePath = join(projectDir, comp.source);
+    await mkdir(dirname(sourcePath), { recursive: true });
+    await writeFile(sourcePath, `// stub ${comp.name}`, 'utf8');
+    componentSourcePaths.push(sourcePath);
   }
 
   const db = openPipelineDb(dbPath);
-  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+  const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+    command: 'analyze extract',
+  });
   storeRawComponents(db, sessionId, components);
+  // Store project-relative paths, matching what analyze extract now persists.
+  storeScannedFiles(
+    db,
+    sessionId,
+    components.map((c) => c.source),
+  );
   db.close();
 
   return {
@@ -49,6 +69,18 @@ export async function createTestFixture(components = SAMPLE_COMPONENTS): Promise
     dbDir,
     projectDir,
     sessionId,
+    addScannedFiles: (paths: string[]) => {
+      const db2 = openPipelineDb(dbPath);
+      try {
+        const existing = db2.prepare('SELECT path FROM scanned_files WHERE session_id = ?').all(sessionId) as Array<{
+          path: string;
+        }>;
+        const relativePaths = paths.map((p) => (isAbsolute(p) ? relative(projectDir, p) : p));
+        storeScannedFiles(db2, sessionId, [...existing.map((r) => r.path), ...relativePaths]);
+      } finally {
+        db2.close();
+      }
+    },
     cleanup: async () => {
       await rm(dbDir, { recursive: true, force: true });
       await rm(projectDir, { recursive: true, force: true });
