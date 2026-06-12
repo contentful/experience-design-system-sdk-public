@@ -18,7 +18,12 @@ import { DoneStep } from './steps/DoneStep.js';
 import { ErrorStep } from './steps/ErrorStep.js';
 import { TokenInputStep } from './steps/TokenInputStep.js';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
-import { ImportApiClient, ApiError, parsePreviewValidationErrors, type PreviewValidationError } from '../../apply/api-client.js';
+import {
+  ImportApiClient,
+  ApiError,
+  parsePreviewValidationErrors,
+  type PreviewValidationError,
+} from '../../apply/api-client.js';
 import { patchReviewStateWithValidationErrors, rejectComponentsByName } from '../../analyze/select/command.js';
 import { readTokensFromPath, hasBreakingChangesWithImpact } from '../../apply/manifest.js';
 import { buildManifest } from '@contentful/experience-design-system-types';
@@ -1383,9 +1388,7 @@ export function WizardApp({
 
       case 'preview-validation-error': {
         const uniqueNames = [...new Set(state.previewValidationErrors.map((e) => e.componentName))];
-        const errorLines = state.previewValidationErrors
-          .map((e) => `  ${e.componentName}: ${e.message}`)
-          .join('\n');
+        const errorLines = state.previewValidationErrors.map((e) => `  ${e.componentName}: ${e.message}`).join('\n');
         return (
           <GateStep
             successMessage="Preview validation failed"

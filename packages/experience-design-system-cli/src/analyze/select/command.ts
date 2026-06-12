@@ -345,9 +345,7 @@ export async function rejectComponentsByName(
     return;
   }
 
-  const components = snapshot.components.map((c) =>
-    nameSet.has(c.name) ? { ...c, status: 'rejected' as const } : c,
-  );
+  const components = snapshot.components.map((c) => (nameSet.has(c.name) ? { ...c, status: 'rejected' as const } : c));
   await saveReviewState(paths.statePath, { ...snapshot, components });
 }
 
