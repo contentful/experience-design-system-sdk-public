@@ -30,6 +30,50 @@ export class ApiError extends Error {
   }
 }
 
+export interface PreviewValidationError {
+  componentName: string;
+  path: string;
+  message: string;
+}
+
+const COMPONENT_PATH_PREFIX = 'manifest:components/';
+
+/**
+ * Parse the JSON body of a 422 from `previewImport()` into structured
+ * per-component validation errors. Returns [] for any malformed input
+ * so callers can fall back to the generic error path without try/catch.
+ *
+ * Path shape: `manifest:components/<Name>/$slots/<key>` or
+ * `manifest:components/<Name>/$properties/<key>`. Only the component
+ * name is extracted today; `path` and `message` are kept verbatim so
+ * future surfaces (debug logging, headless retry in SP-4) can render
+ * the field-level detail.
+ */
+export function parsePreviewValidationErrors(body: string): PreviewValidationError[] {
+  if (!body) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const details = (parsed as { details?: unknown })?.details;
+  const errors = (details as { errors?: unknown })?.errors;
+  if (!Array.isArray(errors)) return [];
+  const out: PreviewValidationError[] = [];
+  for (const raw of errors) {
+    const entry = raw as { path?: unknown; message?: unknown };
+    if (typeof entry.path !== 'string' || typeof entry.message !== 'string') continue;
+    if (!entry.path.startsWith(COMPONENT_PATH_PREFIX)) continue;
+    const tail = entry.path.slice(COMPONENT_PATH_PREFIX.length);
+    const slash = tail.indexOf('/');
+    const componentName = slash === -1 ? tail : tail.slice(0, slash);
+    if (!componentName) continue;
+    out.push({ componentName, path: entry.path, message: entry.message });
+  }
+  return out;
+}
+
 async function request(url: string, options: RequestInit & { token: string }): Promise<Response> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${options.token}`,
