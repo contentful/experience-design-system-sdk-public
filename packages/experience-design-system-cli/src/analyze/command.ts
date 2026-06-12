@@ -216,7 +216,11 @@ export function registerAnalyzeCommand(program: Command): void {
         });
       }
       storeRawComponents(db, sessionId, filteredComponents);
-      storeScannedFiles(db, sessionId, sourceFiles.map((f) => relative(projectRoot, f)));
+      storeScannedFiles(
+        db,
+        sessionId,
+        sourceFiles.map((f) => relative(projectRoot, f)),
+      );
       updateStep(db, stepId, 'complete', { sessionId });
       db.close();
 

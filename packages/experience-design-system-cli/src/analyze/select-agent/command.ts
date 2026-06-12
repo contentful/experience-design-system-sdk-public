@@ -14,11 +14,7 @@ import { parseSelectToolCallLines, runAgent } from '../../generate/agent-runner.
 import type { AgentName, SelectToolCall } from '../../generate/agent-runner.js';
 import type { RawComponentDefinition } from '../../types.js';
 import { OutputFormatter, c } from '../../output/format.js';
-import {
-  buildRepoContextIndex,
-  buildSelectionContext,
-  type SelectionContext,
-} from './context-builder.js';
+import { buildRepoContextIndex, buildSelectionContext, type SelectionContext } from './context-builder.js';
 import { isAbsolute, resolve } from 'node:path';
 
 const VALID_AGENTS = new Set<string>(['claude', 'codex', 'opencode', 'cursor']);
@@ -159,14 +155,24 @@ async function selectOneComponent(
 
   if (result.timedOut) {
     process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.yellow('timed out')}\n`);
-    return { componentKey: componentKey(component), componentName: component.name, decision: null, failed: true };
+    return {
+      componentKey: componentKey(component),
+      componentName: component.name,
+      decision: null,
+      failed: true,
+    };
   }
 
   if (result.exitCode !== 0) {
     process.stderr.write(
       `  ${pos}  ${c.bold(component.name)}  ${c.red(`agent exited with code ${result.exitCode}`)}\n`,
     );
-    return { componentKey: componentKey(component), componentName: component.name, decision: null, failed: true };
+    return {
+      componentKey: componentKey(component),
+      componentName: component.name,
+      decision: null,
+      failed: true,
+    };
   }
 
   const { calls, warnings } = parseSelectToolCallLines(result.stdout);
@@ -180,7 +186,12 @@ async function selectOneComponent(
   const call = calls.find((toolCall): toolCall is SelectToolCall => toolCall.name === component.name) ?? calls[0];
   if (!call) {
     process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.yellow('no tool call')}\n`);
-    return { componentKey: componentKey(component), componentName: component.name, decision: null, failed: true };
+    return {
+      componentKey: componentKey(component),
+      componentName: component.name,
+      decision: null,
+      failed: true,
+    };
   }
 
   const decision = call.tool === 'select_component' ? 'accepted' : 'rejected';

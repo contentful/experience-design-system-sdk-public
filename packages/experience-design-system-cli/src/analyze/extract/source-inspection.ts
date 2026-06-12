@@ -121,7 +121,8 @@ export async function inspectComponentSource(component: RawComponentDefinition):
   const reviewReasons: string[] = [];
   let wrapperScore = 0;
 
-  const hasGeneratedQueryHook = GENERATED_IMPORT_PATTERN.test(sourceText) && GENERATED_QUERY_HOOK_PATTERN.test(sourceText);
+  const hasGeneratedQueryHook =
+    GENERATED_IMPORT_PATTERN.test(sourceText) && GENERATED_QUERY_HOOK_PATTERN.test(sourceText);
   const infraProps = infraPropNames(component);
   const siblingImports = collectSiblingRendererImports(sourceText);
 

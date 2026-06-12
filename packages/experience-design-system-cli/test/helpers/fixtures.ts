@@ -57,7 +57,11 @@ export async function createTestFixture(components = SAMPLE_COMPONENTS): Promise
   });
   storeRawComponents(db, sessionId, components);
   // Store project-relative paths, matching what analyze extract now persists.
-  storeScannedFiles(db, sessionId, components.map((c) => c.source));
+  storeScannedFiles(
+    db,
+    sessionId,
+    components.map((c) => c.source),
+  );
   db.close();
 
   return {
@@ -68,9 +72,9 @@ export async function createTestFixture(components = SAMPLE_COMPONENTS): Promise
     addScannedFiles: (paths: string[]) => {
       const db2 = openPipelineDb(dbPath);
       try {
-        const existing = db2
-          .prepare('SELECT path FROM scanned_files WHERE session_id = ?')
-          .all(sessionId) as Array<{ path: string }>;
+        const existing = db2.prepare('SELECT path FROM scanned_files WHERE session_id = ?').all(sessionId) as Array<{
+          path: string;
+        }>;
         const relativePaths = paths.map((p) => (isAbsolute(p) ? relative(projectDir, p) : p));
         storeScannedFiles(db2, sessionId, [...existing.map((r) => r.path), ...relativePaths]);
       } finally {
