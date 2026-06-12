@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { ImportApiClient, ApiError } from '../../src/apply/api-client.js';
+import { ImportApiClient, ApiError, parsePreviewValidationErrors } from '../../src/apply/api-client.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
 
 const mockFetch = vi.fn();
@@ -326,5 +326,121 @@ describe('ImportApiClient — pollOperation', () => {
 
     const client = createClient();
     await expect(client.pollOperation('op-1')).rejects.toThrow(ApiError);
+  });
+});
+
+describe('parsePreviewValidationErrors', () => {
+  it('extracts component name, path, and message from a slot-path error', () => {
+    const body = JSON.stringify({
+      sys: { type: 'Error', id: 'ValidationFailed' },
+      message: 'Validation error',
+      details: {
+        errors: [{ path: 'manifest:components/PageLink/$slots/', message: 'Slot id must be a non-empty string' }],
+      },
+    });
+    const result = parsePreviewValidationErrors(body);
+    expect(result).toEqual([
+      {
+        componentName: 'PageLink',
+        path: 'manifest:components/PageLink/$slots/',
+        message: 'Slot id must be a non-empty string',
+      },
+    ]);
+  });
+
+  it('extracts component name from a properties-path error', () => {
+    const body = JSON.stringify({
+      details: {
+        errors: [{ path: 'manifest:components/Button/$properties/variant', message: 'variant required' }],
+      },
+    });
+    const result = parsePreviewValidationErrors(body);
+    expect(result).toEqual([
+      {
+        componentName: 'Button',
+        path: 'manifest:components/Button/$properties/variant',
+        message: 'variant required',
+      },
+    ]);
+  });
+
+  it('returns multiple entries when the body lists multiple errors', () => {
+    const body = JSON.stringify({
+      details: {
+        errors: [
+          { path: 'manifest:components/PageLink/$slots/', message: 'Slot id must be a non-empty string' },
+          { path: 'manifest:components/Button/$properties/variant', message: 'variant required' },
+        ],
+      },
+    });
+    const result = parsePreviewValidationErrors(body);
+    expect(result.map((e) => e.componentName)).toEqual(['PageLink', 'Button']);
+  });
+
+  it('returns [] for malformed JSON', () => {
+    expect(parsePreviewValidationErrors('not json')).toEqual([]);
+  });
+
+  it('returns [] when details.errors is missing', () => {
+    expect(parsePreviewValidationErrors(JSON.stringify({ message: 'oops' }))).toEqual([]);
+  });
+
+  it('returns [] when details.errors is not an array', () => {
+    expect(parsePreviewValidationErrors(JSON.stringify({ details: { errors: 'nope' } }))).toEqual([]);
+  });
+
+  it('skips entries whose path does not start with manifest:components/', () => {
+    const body = JSON.stringify({
+      details: {
+        errors: [
+          { path: 'manifest:tokens/foo', message: 'unrelated' },
+          { path: 'manifest:components/Good/$slots/', message: 'real' },
+        ],
+      },
+    });
+    const result = parsePreviewValidationErrors(body);
+    expect(result).toEqual([{ componentName: 'Good', path: 'manifest:components/Good/$slots/', message: 'real' }]);
+  });
+
+  it('skips entries with non-string path or message', () => {
+    const body = JSON.stringify({
+      details: {
+        errors: [
+          { path: null, message: 'no path' },
+          { path: 'manifest:components/Good/', message: 42 },
+        ],
+      },
+    });
+    expect(parsePreviewValidationErrors(body)).toEqual([]);
+  });
+
+  it('handles a path with no trailing field segment', () => {
+    const body = JSON.stringify({
+      details: {
+        errors: [{ path: 'manifest:components/SoloComp', message: 'top-level' }],
+      },
+    });
+    const result = parsePreviewValidationErrors(body);
+    expect(result).toEqual([{ componentName: 'SoloComp', path: 'manifest:components/SoloComp', message: 'top-level' }]);
+  });
+
+  it('returns [] for empty body string', () => {
+    expect(parsePreviewValidationErrors('')).toEqual([]);
+  });
+
+  it('returns [] for null/undefined/primitive entries in errors[]', () => {
+    const body = JSON.stringify({
+      details: {
+        errors: [null, undefined, 5, 'string', { path: 'manifest:components/Good/$slots/', message: 'real' }],
+      },
+    });
+    const result = parsePreviewValidationErrors(body);
+    expect(result).toEqual([{ componentName: 'Good', path: 'manifest:components/Good/$slots/', message: 'real' }]);
+  });
+
+  it('returns [] for top-level non-object parsed bodies (null, primitive)', () => {
+    expect(parsePreviewValidationErrors('null')).toEqual([]);
+    expect(parsePreviewValidationErrors('42')).toEqual([]);
+    expect(parsePreviewValidationErrors('"hello"')).toEqual([]);
   });
 });
