@@ -16,7 +16,11 @@ import type { RawComponentDefinition } from '../../types.js';
 import { OutputFormatter, c } from '../../output/format.js';
 import { buildRepoContextIndex, buildSelectionContext, type SelectionContext } from './context-builder.js';
 import { isAbsolute, resolve } from 'node:path';
-import { validateExtractedComponents, shouldExcludeDueToValidation } from '../extract/validate.js';
+import {
+  validateExtractedComponents,
+  shouldExcludeDueToValidation,
+  formatExclusionWarning,
+} from '../extract/validate.js';
 
 const VALID_AGENTS = new Set<string>(['claude', 'codex', 'opencode', 'cursor']);
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 3 * 60 * 1000);
@@ -247,7 +251,10 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
     .option('--model <name>', 'Model to use (defaults to a small/fast model per agent)')
     .option('--verbose', 'Show full agent output including reasoning text')
     .option('--dry-run', 'Print the prompt for the first component without invoking the agent')
-    .option('--exclude-invalid', 'Automatically reject components with validation errors (empty names, collisions)')
+    .option(
+      '--exclude-invalid',
+      'No-op — error-severity components are always excluded (kept for backward compatibility)',
+    )
     .action(
       async (opts: {
         session?: string;
@@ -289,26 +296,12 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         // Re-run validation (not persisted to DB, so always recompute).
         const validatedComponents = validateExtractedComponents(rawComponents);
 
-        // If --exclude-invalid, split out errored components before sending to LLM.
-        const invalidComponents = opts.excludeInvalid ? validatedComponents.filter(shouldExcludeDueToValidation) : [];
-        const componentsForAgent = opts.excludeInvalid
-          ? validatedComponents.filter((comp) => !shouldExcludeDueToValidation(comp))
-          : validatedComponents;
+        // Always exclude error-severity components — they can never be fixed by the LLM.
+        const invalidComponents = validatedComponents.filter(shouldExcludeDueToValidation);
+        const componentsForAgent = validatedComponents.filter((comp) => !shouldExcludeDueToValidation(comp));
 
-        if (invalidComponents.length > 0) {
-          process.stderr.write(
-            c.yellow(
-              `Auto-rejecting ${invalidComponents.length} component(s) with validation errors (--exclude-invalid):\n`,
-            ),
-          );
-          for (const comp of invalidComponents) {
-            const codes = (comp.validationIssues ?? [])
-              .filter((i) => i.severity === 'error')
-              .map((i) => i.code)
-              .join(', ');
-            process.stderr.write(`  ✗  ${comp.name}  ${codes}\n`);
-          }
-        }
+        const exclusionWarning = formatExclusionWarning(invalidComponents);
+        if (exclusionWarning) process.stderr.write(c.yellow(exclusionWarning));
 
         if (selectionRoot && scannedFiles.length > 0) {
           scannedFiles = scannedFiles.map((f) => (isAbsolute(f) ? f : resolve(selectionRoot, f)));
