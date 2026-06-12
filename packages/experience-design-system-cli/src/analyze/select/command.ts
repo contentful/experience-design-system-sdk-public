@@ -8,7 +8,12 @@ import { loadReviewInput } from './parser.js';
 import { App } from './tui/App.js';
 import type { ReviewSessionPaths, ReviewSessionSnapshot } from './types.js';
 import { openPipelineDb, loadRawComponents, storeRawComponents, createStep, updateStep } from '../../session/db.js';
-import { validateExtractedComponents, shouldExcludeDueToValidation } from '../extract/validate.js';
+import {
+  validateExtractedComponents,
+  shouldExcludeDueToValidation,
+  formatExclusionWarning,
+} from '../extract/validate.js';
+import type { RawComponentDefinition } from '../../types.js';
 
 type RefineCommandOptions = {
   session?: string;
@@ -116,7 +121,7 @@ async function runNonInteractive(
         if (rejectPatterns.some((p) => nameLower.includes(p))) {
           return { ...c, status: 'rejected' };
         }
-        if (selectAll && opts.excludeInvalid && shouldExcludeDueToValidation(c.originalProposal)) {
+        if (selectAll && shouldExcludeDueToValidation(c.originalProposal)) {
           return { ...c, status: 'rejected' };
         }
         if (selectAll || selectPatterns.some((p) => nameLower.includes(p))) {
@@ -159,6 +164,13 @@ async function runNonInteractive(
   const accepted = result.components.filter((c) => c.status === 'accepted');
   const rejected = result.components.filter((c) => c.status === 'rejected');
 
+  if (selectAll) {
+    const autoRejected = result.components
+      .filter((c) => c.status === 'rejected' && shouldExcludeDueToValidation(c.originalProposal))
+      .map((c) => ({ name: c.name, validationIssues: c.originalProposal.validationIssues }));
+    process.stderr.write(formatExclusionWarning(autoRejected));
+  }
+
   // Persist decisions to session state so pipeline orchestrator can read them
   await saveReviewState(paths.statePath, result);
 
@@ -200,6 +212,43 @@ export async function loadAndValidateForReview(
   }
   const validatedComponents = validateExtractedComponents(rawComponents);
   return loadReviewInput(validatedComponents, { reviewRoot: projectRoot });
+}
+
+/**
+ * Split a snapshot into (invalid component names, valid components) using the
+ * extraction validator's error severity. Used by --exclude-invalid.
+ */
+export function partitionForExcludeInvalid(snapshot: ReviewSessionSnapshot): {
+  invalidNames: string[];
+  validComponents: RawComponentDefinition[];
+} {
+  const invalidNames: string[] = [];
+  const validComponents: RawComponentDefinition[] = [];
+  for (const record of snapshot.components) {
+    if (shouldExcludeDueToValidation(record.originalProposal)) {
+      invalidNames.push(record.name);
+    } else {
+      validComponents.push(record.originalProposal);
+    }
+  }
+  return { invalidNames, validComponents };
+}
+
+/**
+ * Apply select-all decisions to a snapshot. Components with error-severity
+ * validation issues are always auto-rejected — they cannot silently pass
+ * through bulk-approve regardless of flags.
+ */
+export function applySelectAllDecisions(snapshot: ReviewSessionSnapshot): ReviewSessionSnapshot {
+  return {
+    ...snapshot,
+    components: snapshot.components.map((c) => {
+      if (shouldExcludeDueToValidation(c.originalProposal)) {
+        return { ...c, status: 'rejected' };
+      }
+      return { ...c, status: 'accepted' };
+    }),
+  };
 }
 
 function resolveSessionId(sessionFlag: string | undefined): string {
@@ -245,7 +294,7 @@ export function registerAnalyzeEditCommand(program: Command): void {
     .option('--patch <path>', 'Path to a JSON patch file for structured component overrides')
     .option(
       '--exclude-invalid',
-      'Auto-reject components with validation errors when bulk-selecting (no-op without --select-all)',
+      'No-op — error-severity components are always excluded with --select-all (kept for backward compatibility)',
     )
     .action(
       async ({

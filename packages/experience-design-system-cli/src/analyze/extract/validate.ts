@@ -42,13 +42,14 @@ export function validateExtractedComponents(components: RawComponentDefinition[]
       }
     }
 
-    const propNames = new Set(component.props.map((p) => p.name));
+    const propNames = new Set(component.props.map((p) => p.name.trim()).filter(Boolean));
     for (let i = 0; i < component.slots.length; i++) {
-      if (component.slots[i].name && propNames.has(component.slots[i].name)) {
+      const slotName = component.slots[i].name.trim();
+      if (slotName && propNames.has(slotName)) {
         issues.push({
           severity: 'error',
           code: 'PROP_SLOT_NAME_COLLISION',
-          message: `"${component.slots[i].name}" is used as both a prop name and a slot name`,
+          message: `"${slotName}" is used as both a prop name and a slot name`,
           field: `slots[${i}].name`,
         });
       }
@@ -77,4 +78,24 @@ export function validateExtractedComponents(components: RawComponentDefinition[]
 
 export function shouldExcludeDueToValidation(component: RawComponentDefinition): boolean {
   return (component.validationIssues ?? []).some((i) => i.severity === 'error');
+}
+
+/**
+ * Format a stderr-ready warning describing components auto-rejected by the
+ * extraction gate. Used by `analyze select --select-all` and `select-agent`
+ * so both paths emit a consistent message.
+ */
+export function formatExclusionWarning(
+  rejected: Array<{ name: string; validationIssues?: ExtractionValidationIssue[] }>,
+): string {
+  if (rejected.length === 0) return '';
+  const lines = [`Warning: ${rejected.length} component(s) excluded due to validation errors:`];
+  for (const comp of rejected) {
+    const codes = (comp.validationIssues ?? [])
+      .filter((i) => i.severity === 'error')
+      .map((i) => i.code)
+      .join(', ');
+    lines.push(`  ✗  ${comp.name}  ${codes}`);
+  }
+  return lines.join('\n') + '\n';
 }

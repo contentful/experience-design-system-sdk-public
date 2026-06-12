@@ -206,6 +206,19 @@ describe('validateExtractedComponents', () => {
       const collisions = (result[0].validationIssues ?? []).filter((i) => i.code === 'PROP_SLOT_NAME_COLLISION');
       expect(collisions).toHaveLength(2);
     });
+
+    it('flags collision even when prop and slot names differ only by whitespace', () => {
+      const components = [
+        makeComponent({
+          props: [{ name: ' icon', type: 'string', required: false }],
+          slots: [{ name: 'icon ', isDefault: false }],
+        }),
+      ];
+      const result = validateExtractedComponents(components);
+      expect(result[0].validationIssues).toContainEqual(
+        expect.objectContaining({ severity: 'error', code: 'PROP_SLOT_NAME_COLLISION' }),
+      );
+    });
   });
 
   describe('DUPLICATE_COMPONENT_NAME', () => {
@@ -283,5 +296,67 @@ describe('validateExtractedComponents', () => {
       expect(result[0].source).toBe('/src/Card.tsx');
       expect(result[0].extractionConfidence).toBe(4);
     });
+  });
+});
+
+import { formatExclusionWarning } from '../../../src/analyze/extract/validate.js';
+
+describe('formatExclusionWarning', () => {
+  it('returns empty string when no components are excluded', () => {
+    expect(formatExclusionWarning([])).toBe('');
+  });
+
+  it('formats a single excluded component with its error codes', () => {
+    const out = formatExclusionWarning([
+      {
+        name: 'BadComponent',
+        validationIssues: [{ severity: 'error', code: 'EMPTY_SLOT_NAME', message: '' }],
+      },
+    ]);
+    expect(out).toContain('Warning: 1 component(s) excluded due to validation errors:');
+    expect(out).toContain('✗  BadComponent  EMPTY_SLOT_NAME');
+  });
+
+  it('lists each excluded component on its own line, joins multiple error codes with comma', () => {
+    const out = formatExclusionWarning([
+      {
+        name: 'A',
+        validationIssues: [
+          { severity: 'error', code: 'EMPTY_COMPONENT_NAME', message: '' },
+          { severity: 'error', code: 'EMPTY_SLOT_NAME', message: '' },
+        ],
+      },
+      {
+        name: 'B',
+        validationIssues: [{ severity: 'error', code: 'PROP_SLOT_NAME_COLLISION', message: '' }],
+      },
+    ]);
+    expect(out).toContain('Warning: 2 component(s) excluded due to validation errors:');
+    expect(out).toContain('✗  A  EMPTY_COMPONENT_NAME, EMPTY_SLOT_NAME');
+    expect(out).toContain('✗  B  PROP_SLOT_NAME_COLLISION');
+  });
+
+  it('only includes error-severity issues, never warnings', () => {
+    const out = formatExclusionWarning([
+      {
+        name: 'C',
+        validationIssues: [
+          { severity: 'error', code: 'EMPTY_SLOT_NAME', message: '' },
+          { severity: 'warning', code: 'EMPTY_COMPONENT', message: '' },
+        ],
+      },
+    ]);
+    expect(out).toContain('EMPTY_SLOT_NAME');
+    expect(out).not.toContain('EMPTY_COMPONENT');
+  });
+
+  it('ends with a newline so callers can write directly to stderr', () => {
+    const out = formatExclusionWarning([
+      {
+        name: 'X',
+        validationIssues: [{ severity: 'error', code: 'EMPTY_COMPONENT_NAME', message: '' }],
+      },
+    ]);
+    expect(out.endsWith('\n')).toBe(true);
   });
 });
