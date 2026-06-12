@@ -126,7 +126,7 @@ describe('validateExtractedComponents', () => {
   });
 
   describe('EMPTY_SLOT_NAME', () => {
-    it('flags a slot with an empty name as an error', () => {
+    it('flags a slot with an empty name as a warning (auto-recovered by SP-2 rename)', () => {
       const components = [
         makeComponent({
           slots: [{ name: '', isDefault: false }],
@@ -134,7 +134,7 @@ describe('validateExtractedComponents', () => {
       ];
       const result = validateExtractedComponents(components);
       expect(result[0].validationIssues).toContainEqual(
-        expect.objectContaining({ severity: 'error', code: 'EMPTY_SLOT_NAME', field: 'slots[0].name' }),
+        expect.objectContaining({ severity: 'warning', code: 'EMPTY_SLOT_NAME', field: 'slots[0].name' }),
       );
     });
 
@@ -321,11 +321,11 @@ describe('formatExclusionWarning', () => {
     const out = formatExclusionWarning([
       {
         name: 'BadComponent',
-        validationIssues: [{ severity: 'error', code: 'EMPTY_SLOT_NAME', message: '' }],
+        validationIssues: [{ severity: 'error', code: 'EMPTY_PROP_NAME', message: '' }],
       },
     ]);
     expect(out).toContain('Warning: 1 component(s) excluded due to validation errors:');
-    expect(out).toContain('✗  BadComponent  EMPTY_SLOT_NAME');
+    expect(out).toContain('✗  BadComponent  EMPTY_PROP_NAME');
   });
 
   it('lists each excluded component on its own line, joins multiple error codes with comma', () => {
@@ -334,7 +334,7 @@ describe('formatExclusionWarning', () => {
         name: 'A',
         validationIssues: [
           { severity: 'error', code: 'EMPTY_COMPONENT_NAME', message: '' },
-          { severity: 'error', code: 'EMPTY_SLOT_NAME', message: '' },
+          { severity: 'error', code: 'EMPTY_PROP_NAME', message: '' },
         ],
       },
       {
@@ -343,7 +343,7 @@ describe('formatExclusionWarning', () => {
       },
     ]);
     expect(out).toContain('Warning: 2 component(s) excluded due to validation errors:');
-    expect(out).toContain('✗  A  EMPTY_COMPONENT_NAME, EMPTY_SLOT_NAME');
+    expect(out).toContain('✗  A  EMPTY_COMPONENT_NAME, EMPTY_PROP_NAME');
     expect(out).toContain('✗  B  PROP_SLOT_NAME_COLLISION');
   });
 
@@ -352,12 +352,12 @@ describe('formatExclusionWarning', () => {
       {
         name: 'C',
         validationIssues: [
-          { severity: 'error', code: 'EMPTY_SLOT_NAME', message: '' },
+          { severity: 'error', code: 'EMPTY_PROP_NAME', message: '' },
           { severity: 'warning', code: 'EMPTY_COMPONENT', message: '' },
         ],
       },
     ]);
-    expect(out).toContain('EMPTY_SLOT_NAME');
+    expect(out).toContain('EMPTY_PROP_NAME');
     expect(out).not.toContain('EMPTY_COMPONENT');
   });
 

@@ -49,7 +49,7 @@ describe('analyze select cold-start re-validation', () => {
 
     const validated = validateExtractedComponents(reloaded);
     expect(validated[0].validationIssues).toContainEqual(
-      expect.objectContaining({ severity: 'error', code: 'EMPTY_SLOT_NAME' }),
+      expect.objectContaining({ severity: 'warning', code: 'EMPTY_SLOT_NAME' }),
     );
   });
 
@@ -77,7 +77,7 @@ describe('analyze select cold-start re-validation', () => {
     const snapshot = await loadReviewInput(validated, { reviewRoot: tmpDir });
 
     expect(snapshot.components[0].originalProposal.validationIssues).toContainEqual(
-      expect.objectContaining({ severity: 'error', code: 'EMPTY_SLOT_NAME' }),
+      expect.objectContaining({ severity: 'warning', code: 'EMPTY_SLOT_NAME' }),
     );
   });
 });
@@ -124,7 +124,7 @@ describe('loadAndValidateForReview helper (used by analyze select)', () => {
     const snapshot = await loadAndValidateForReview(sessionId, tmpDir);
 
     expect(snapshot.components[0].originalProposal.validationIssues).toContainEqual(
-      expect.objectContaining({ severity: 'error', code: 'EMPTY_SLOT_NAME' }),
+      expect.objectContaining({ severity: 'warning', code: 'EMPTY_SLOT_NAME' }),
     );
   });
 });

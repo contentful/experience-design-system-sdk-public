@@ -92,8 +92,10 @@ describe('analyze select --select-all --exclude-invalid stderr output', () => {
         name: 'BadSlot',
         source: join(tmpDir, 'BadSlot.tsx'),
         framework: 'react',
-        props: [],
-        slots: [{ name: '', isDefault: false }],
+        // Empty prop name → EMPTY_PROP_NAME (error severity). EMPTY_SLOT_NAME
+        // is a warning post-SP-2 since renameEmptySlots auto-recovers it.
+        props: [{ name: '', type: 'string', required: false }],
+        slots: [],
       },
       {
         name: 'Good',
@@ -120,7 +122,7 @@ describe('analyze select --select-all --exclude-invalid stderr output', () => {
     expect(result.stderr).toContain('Warning:');
     expect(result.stderr).toContain('1 component(s) excluded due to validation errors');
     expect(result.stderr).toContain('BadSlot');
-    expect(result.stderr).toContain('EMPTY_SLOT_NAME');
+    expect(result.stderr).toContain('EMPTY_PROP_NAME');
   });
 
   it('still prints the Accepted/Rejected count line', async () => {
@@ -189,8 +191,10 @@ describe('analyze select --select-all idempotency', () => {
         name: 'BadSlot',
         source: join(tmpDir, 'BadSlot.tsx'),
         framework: 'react',
-        props: [],
-        slots: [{ name: '', isDefault: false }],
+        // Empty prop name → EMPTY_PROP_NAME (error severity). EMPTY_SLOT_NAME
+        // is a warning post-SP-2 since renameEmptySlots auto-recovers it.
+        props: [{ name: '', type: 'string', required: false }],
+        slots: [],
       },
       {
         name: 'Good',
@@ -246,9 +250,9 @@ describe('analyze select --select-all idempotency', () => {
     }
   });
 
-  it('preserves the rejected components empty-named slot in raw_slots after the run', async () => {
-    // The empty-slot row must survive — re-validation on a re-run reads it
-    // and re-derives the EMPTY_SLOT_NAME issue. If the row was deleted, the
+  it('preserves the rejected components empty-named prop in raw_props after the run', async () => {
+    // The empty-prop row must survive — re-validation on a re-run reads it
+    // and re-derives the EMPTY_PROP_NAME issue. If the row was deleted, the
     // second run sees no validation errors and the gate's failure mode is
     // silently lost.
     await run(
@@ -258,11 +262,11 @@ describe('analyze select --select-all idempotency', () => {
 
     const db = openPipelineDb(dbPath);
     try {
-      const slots = db.prepare(`SELECT name FROM raw_slots WHERE session_id = ?`).all(sessionId) as Array<{
+      const props = db.prepare(`SELECT name FROM raw_props WHERE session_id = ?`).all(sessionId) as Array<{
         name: string;
       }>;
-      // BadSlot's empty-named slot must still be there.
-      expect(slots.map((s) => s.name)).toContain('');
+      // BadSlot's empty-named prop must still be there.
+      expect(props.map((p) => p.name)).toContain('');
     } finally {
       db.close();
     }
@@ -299,8 +303,10 @@ describe('analyze select --select-all without --exclude-invalid (fail-loud gate)
         name: 'BadSlot',
         source: join(tmpDir, 'BadSlot.tsx'),
         framework: 'react',
-        props: [],
-        slots: [{ name: '', isDefault: false }],
+        // Empty prop name → EMPTY_PROP_NAME (error severity). EMPTY_SLOT_NAME
+        // is a warning post-SP-2 since renameEmptySlots auto-recovers it.
+        props: [{ name: '', type: 'string', required: false }],
+        slots: [],
       },
       {
         name: 'Good',
@@ -334,7 +340,7 @@ describe('analyze select --select-all without --exclude-invalid (fail-loud gate)
 
     expect(result.stderr).toContain('1 component(s) failed validation');
     expect(result.stderr).toContain('BadSlot');
-    expect(result.stderr).toContain('EMPTY_SLOT_NAME');
+    expect(result.stderr).toContain('EMPTY_PROP_NAME');
   });
 
   it('hints at the --exclude-invalid flag in the failure message', async () => {
