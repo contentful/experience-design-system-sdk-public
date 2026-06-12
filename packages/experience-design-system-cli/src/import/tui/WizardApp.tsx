@@ -18,6 +18,7 @@ import { DoneStep } from './steps/DoneStep.js';
 import { ErrorStep } from './steps/ErrorStep.js';
 import { TokenInputStep } from './steps/TokenInputStep.js';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
+import { PreviewValidationErrorStep } from './steps/PreviewValidationErrorStep.js';
 import {
   ImportApiClient,
   ApiError,
@@ -92,7 +93,12 @@ type WizardState = {
   generatedAcceptedCount: number;
   renamedSlotsCount: number;
   generateProgress: { done: number; total: number; current: string } | null;
-  extractProgress: { scanned: number; filesProcessed: number; totalFiles: number; componentsFound: number } | null;
+  extractProgress: {
+    scanned: number;
+    filesProcessed: number;
+    totalFiles: number;
+    componentsFound: number;
+  } | null;
   componentsPath: string;
   spaceId: string;
   environmentId: string;
@@ -108,6 +114,7 @@ type WizardState = {
   errorAllowCredentialRetry: boolean;
   authCheckStepNumber: number;
   previewValidationErrors: PreviewValidationError[];
+  previewValidationMissingNames: string[];
 };
 
 function findCliPath(): string {
@@ -194,8 +201,15 @@ export function WizardApp({
     logInit.current = true;
   }
 
-  const credentialsRef = useRef<{ spaceId: string; environmentId: string; cmaToken: string } | null>(null);
-  const sessionRef = useRef<{ extractSessionId: string | null; tokensPath: string }>({
+  const credentialsRef = useRef<{
+    spaceId: string;
+    environmentId: string;
+    cmaToken: string;
+  } | null>(null);
+  const sessionRef = useRef<{
+    extractSessionId: string | null;
+    tokensPath: string;
+  }>({
     extractSessionId: null,
     tokensPath: '',
   });
@@ -238,6 +252,7 @@ export function WizardApp({
     errorAllowCredentialRetry: false,
     authCheckStepNumber: 1,
     previewValidationErrors: [],
+    previewValidationMissingNames: [],
   });
 
   useEffect(() => {
@@ -328,7 +343,11 @@ export function WizardApp({
   // ── Step runners ────────────────────────────────────────────────────────
 
   const runGenerateTokens = async (rawTokensPath: string, outDir: string) => {
-    const result = await new Promise<{ exitCode: number; stdout: string; stderr: string }>((res) => {
+    const result = await new Promise<{
+      exitCode: number;
+      stdout: string;
+      stderr: string;
+    }>((res) => {
       const child = spawn('node', [
         findCliPath(),
         'generate',
@@ -349,7 +368,11 @@ export function WizardApp({
       child.on('exit', (code) => res({ exitCode: code ?? 0, stdout, stderr }));
     });
     if (result.exitCode !== 0) {
-      update({ step: 'error', errorStep: 'generate tokens', errorMessage: result.stderr.trim() || 'Unknown error' });
+      update({
+        step: 'error',
+        errorStep: 'generate tokens',
+        errorMessage: result.stderr.trim() || 'Unknown error',
+      });
       return;
     }
     const sessionMatch = /^session:\s*(.+)$/m.exec(result.stdout);
@@ -360,7 +383,11 @@ export function WizardApp({
     if (tokenSessionId) printArgs.push('--session', tokenSessionId);
     const r = await runCli(printArgs);
     if (r.exitCode !== 0) {
-      update({ step: 'error', errorStep: 'print tokens', errorMessage: r.stderr.trim() || 'Unknown error' });
+      update({
+        step: 'error',
+        errorStep: 'print tokens',
+        errorMessage: r.stderr.trim() || 'Unknown error',
+      });
       return;
     }
     update({ step: 'path-validation', tokensPath, tokenSessionId });
@@ -369,7 +396,11 @@ export function WizardApp({
   const runExtract = async (projectPath: string) => {
     const outDir = join(resolve(projectPath), '.contentful');
     update({ step: 'extracting', outDir, extractProgress: null });
-    const r = await new Promise<{ exitCode: number; stdout: string; stderr: string }>((res) => {
+    const r = await new Promise<{
+      exitCode: number;
+      stdout: string;
+      stderr: string;
+    }>((res) => {
       const child = spawn('node', [findCliPath(), 'analyze', 'extract', '--project', projectPath]);
       let stdout = '';
       let stderr = '';
@@ -414,7 +445,11 @@ export function WizardApp({
       child.on('exit', (code) => res({ exitCode: code ?? 0, stdout, stderr }));
     });
     if (r.exitCode !== 0) {
-      update({ step: 'error', errorStep: 'analyze extract', errorMessage: r.stderr.trim() || 'Unknown error' });
+      update({
+        step: 'error',
+        errorStep: 'analyze extract',
+        errorMessage: r.stderr.trim() || 'Unknown error',
+      });
       return;
     }
     const sessionMatch = /^session=(.+)$/m.exec(r.stdout);
@@ -429,7 +464,11 @@ export function WizardApp({
       });
       return;
     }
-    update({ step: 'review-extraction-gate', extractSessionId, extractedCount });
+    update({
+      step: 'review-extraction-gate',
+      extractSessionId,
+      extractedCount,
+    });
   };
 
   const runAnalyzeSelect = async (
@@ -438,7 +477,12 @@ export function WizardApp({
     tokensPath: string,
     acceptAll: boolean,
   ) => {
-    logStep({ fn: 'runAnalyzeSelect:enter', sessionId, extractedCount, acceptAll });
+    logStep({
+      fn: 'runAnalyzeSelect:enter',
+      sessionId,
+      extractedCount,
+      acceptAll,
+    });
     let acceptedCount: number;
 
     if (!acceptAll && state.serverPreview && !process.env['EDS_PREVIEW_ANNOTATIONS']) {
@@ -455,7 +499,11 @@ export function WizardApp({
     if (!acceptAll) clearPreviewEnvVars();
 
     if (r.exitCode !== 0) {
-      update({ step: 'error', errorStep: 'analyze select', errorMessage: r.stderr.trim() || 'Unknown error' });
+      update({
+        step: 'error',
+        errorStep: 'analyze select',
+        errorMessage: r.stderr.trim() || 'Unknown error',
+      });
       return;
     }
     // Read accepted count from the review state file (since TUI subprocess inherits stdio
@@ -488,7 +536,11 @@ export function WizardApp({
   };
 
   const runGenerate = async (extractSessionId: string, tokensPath: string, acceptedCount: number) => {
-    const result = await new Promise<{ exitCode: number; stdout: string; stderr: string }>((res) => {
+    const result = await new Promise<{
+      exitCode: number;
+      stdout: string;
+      stderr: string;
+    }>((res) => {
       const args = [findCliPath(), 'generate', 'components', '--agent', state.agent, '--session', extractSessionId];
       if (tokensPath) args.push('--tokens', tokensPath);
       const child = spawn('node', args);
@@ -502,7 +554,14 @@ export function WizardApp({
         stderr += chunk;
         for (const line of chunk.split('\n')) {
           const m = /\[(\d+)\/(\d+)\]\s+(.+)/.exec(line);
-          if (m) update({ generateProgress: { done: Number(m[1]), total: Number(m[2]), current: m[3]!.trim() } });
+          if (m)
+            update({
+              generateProgress: {
+                done: Number(m[1]),
+                total: Number(m[2]),
+                current: m[3]!.trim(),
+              },
+            });
         }
       });
       child.on('exit', (code) => res({ exitCode: code ?? 0, stdout, stderr }));
@@ -549,7 +608,11 @@ export function WizardApp({
       if (sessionId) {
         const r = await runCliInteractive(['generate', 'components', 'edit', '--session', sessionId]);
         if (r.exitCode !== 0) {
-          update({ step: 'error', errorStep: 'generate edit', errorMessage: r.stderr.trim() || 'Unknown error' });
+          update({
+            step: 'error',
+            errorStep: 'generate edit',
+            errorMessage: r.stderr.trim() || 'Unknown error',
+          });
           return;
         }
         const acceptedMatch = /Accepted: (\d+)/.exec(r.stderr);
@@ -589,7 +652,11 @@ export function WizardApp({
   const runEditFromPreview = async (preview: ServerPreviewResponse | null) => {
     const sessionId = state.extractSessionId;
     if (!sessionId) {
-      update({ step: 'error', errorStep: 'edit definitions', errorMessage: 'No session available for editing' });
+      update({
+        step: 'error',
+        errorStep: 'edit definitions',
+        errorMessage: 'No session available for editing',
+      });
       return;
     }
 
@@ -614,7 +681,11 @@ export function WizardApp({
     clearPreviewEnvVars();
 
     if (r.exitCode !== 0) {
-      update({ step: 'error', errorStep: 'edit definitions', errorMessage: 'Editor exited with an error' });
+      update({
+        step: 'error',
+        errorStep: 'edit definitions',
+        errorMessage: 'Editor exited with an error',
+      });
       return;
     }
 
@@ -649,7 +720,12 @@ export function WizardApp({
   const confirmCredentials = async (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
     const resolvedHost = resolveWizardHost(host);
     try {
-      await writeExperiencesCredentials({ spaceId, environmentId, cmaToken, host: resolvedHost });
+      await writeExperiencesCredentials({
+        spaceId,
+        environmentId,
+        cmaToken,
+        host: resolvedHost,
+      });
       advanceWithCredentials(spaceId, environmentId, cmaToken, resolvedHost);
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Unable to save credentials';
@@ -668,7 +744,12 @@ export function WizardApp({
     update({ step: 'validating-credentials' });
     try {
       const resolvedHost = resolveWizardHost(host);
-      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: resolvedHost });
+      const client = new ImportApiClient({
+        cmaToken,
+        spaceId,
+        environmentId,
+        host: resolvedHost,
+      });
       await client.validateToken();
       const { extractSessionId, tokensPath } = sessionRef.current;
       void runPreview(extractSessionId, tokensPath, spaceId, environmentId, cmaToken, resolvedHost);
@@ -698,7 +779,12 @@ export function WizardApp({
     update({ step: 'previewing' });
     const resolvedHost = resolveWizardHost(host);
     try {
-      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: resolvedHost });
+      const client = new ImportApiClient({
+        cmaToken,
+        spaceId,
+        environmentId,
+        host: resolvedHost,
+      });
 
       let components: Array<{
         key: string;
@@ -801,18 +887,34 @@ export function WizardApp({
         if (e.status === 422) {
           const errors = parsePreviewValidationErrors(e.body);
           if (errors.length > 0) {
+            let missingNames: string[] = [];
             if (extractSessionId) {
-              await patchReviewStateWithValidationErrors(extractSessionId, errors);
+              const result = await patchReviewStateWithValidationErrors(extractSessionId, errors);
+              missingNames = result.missingNames;
             }
-            update({ step: 'preview-validation-error', previewValidationErrors: errors });
+            update({
+              step: 'preview-validation-error',
+              previewValidationErrors: errors,
+              previewValidationMissingNames: missingNames,
+            });
             return;
           }
         }
-        update({ step: 'error', errorStep: 'apply preview', errorMessage: e.message, errorAllowCredentialRetry: true });
+        update({
+          step: 'error',
+          errorStep: 'apply preview',
+          errorMessage: e.message,
+          errorAllowCredentialRetry: true,
+        });
         return;
       }
       const msg = e instanceof Error ? e.message : 'Preview failed';
-      update({ step: 'error', errorStep: 'apply preview', errorMessage: msg, errorAllowCredentialRetry: true });
+      update({
+        step: 'error',
+        errorStep: 'apply preview',
+        errorMessage: msg,
+        errorAllowCredentialRetry: true,
+      });
     }
   };
 
@@ -846,16 +948,27 @@ export function WizardApp({
     update({ step: 'pushing' });
     try {
       const resolvedHost = resolveWizardHost(host);
-      const client = new ImportApiClient({ cmaToken, spaceId, environmentId, host: resolvedHost });
+      const client = new ImportApiClient({
+        cmaToken,
+        spaceId,
+        environmentId,
+        host: resolvedHost,
+      });
       let operation = await client.applyImport(manifest, acknowledgeBreakingChanges);
       try {
         logStep({
-          applyResponse: { status: operation?.sys?.status, id: operation?.sys?.id, keys: Object.keys(operation ?? {}) },
+          applyResponse: {
+            status: operation?.sys?.status,
+            id: operation?.sys?.id,
+            keys: Object.keys(operation ?? {}),
+          },
         });
       } catch (err) {
         process.stderr.write(`[eds] log write failed: ${err instanceof Error ? err.message : String(err)}\n`);
       }
-      update({ pushProgress: `Queued (operation ${operation.sys.id.slice(0, 8)}...)` });
+      update({
+        pushProgress: `Queued (operation ${operation.sys.id.slice(0, 8)}...)`,
+      });
 
       let pollCount = 0;
       operation = await client.pollOperation(operation.sys.id, {
@@ -867,7 +980,13 @@ export function WizardApp({
             update({ pushProgress: `${done}/${s.total} entities processed` });
           }
           try {
-            logStep({ pollTick: { attempt: pollCount, status: op.sys.status, summary: op.summary } });
+            logStep({
+              pollTick: {
+                attempt: pollCount,
+                status: op.sys.status,
+                summary: op.summary,
+              },
+            });
           } catch (err) {
             process.stderr.write(`[eds] log write failed: ${err instanceof Error ? err.message : String(err)}\n`);
           }
@@ -929,7 +1048,12 @@ export function WizardApp({
       update({ step: 'done', pushResult });
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Push failed';
-      update({ step: 'error', errorStep: 'apply push', errorMessage: msg, errorAllowCredentialRetry: true });
+      update({
+        step: 'error',
+        errorStep: 'apply push',
+        errorMessage: msg,
+        errorAllowCredentialRetry: true,
+      });
     }
   };
 
@@ -940,7 +1064,11 @@ export function WizardApp({
     if (extractSessionId) printArgs.push('--session', extractSessionId);
     const r = await runCli(printArgs);
     if (r.exitCode !== 0) {
-      update({ step: 'error', errorStep: 'print components', errorMessage: r.stderr.trim() || 'Unknown error' });
+      update({
+        step: 'error',
+        errorStep: 'print components',
+        errorMessage: r.stderr.trim() || 'Unknown error',
+      });
       return;
     }
     // tokensPath is already on disk from generate-tokens step; just record it
@@ -963,7 +1091,11 @@ export function WizardApp({
             stat(state.rawTokensPath).catch(() => null),
           ]);
           const sourceChanged = sourceStat ? sourceStat.mtimeMs > tokensStat.mtimeMs : false;
-          update({ step: 'token-reuse-gate', tokensPath: existingTokensPath, tokenSourceChanged: sourceChanged });
+          update({
+            step: 'token-reuse-gate',
+            tokensPath: existingTokensPath,
+            tokenSourceChanged: sourceChanged,
+          });
         } catch {
           // No existing tokens — need LLM to generate
           if (await runAgentAuthCheck('generating-tokens')) {
@@ -1196,7 +1328,10 @@ export function WizardApp({
           <GenerateReviewStep
             extractSessionId={state.extractSessionId}
             onFinalize={(accepted, rejected) => {
-              update({ generatedAcceptedCount: accepted, step: 'push-decision-gate' });
+              update({
+                generatedAcceptedCount: accepted,
+                step: 'push-decision-gate',
+              });
               void Promise.resolve();
               // log so orchestrator can read it
               process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}\n`);
@@ -1387,17 +1522,11 @@ export function WizardApp({
       }
 
       case 'preview-validation-error': {
-        const uniqueNames = [...new Set(state.previewValidationErrors.map((e) => e.componentName))];
-        const errorLines = state.previewValidationErrors.map((e) => `  ${e.componentName}: ${e.message}`).join('\n');
         return (
-          <GateStep
-            successMessage="Preview validation failed"
-            summary={errorLines}
-            context={`${uniqueNames.length} component${uniqueNames.length === 1 ? '' : 's'} failed server validation. Edit their definitions in the review TUI, or skip them and retry preview without them.`}
-            continueLabel="Edit definitions"
-            skipLabel={`Skip ${uniqueNames.length === 1 ? uniqueNames[0] : `${uniqueNames.length} components`} and retry`}
-            showSkip={true}
-            onContinue={() => {
+          <PreviewValidationErrorStep
+            errors={state.previewValidationErrors}
+            missingNames={state.previewValidationMissingNames}
+            onEdit={() => {
               void runEditFromPreview(null);
             }}
             onSkip={() => {
