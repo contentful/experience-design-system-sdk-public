@@ -29,6 +29,7 @@ export interface PipelineOptions {
   viewports?: string;
   host?: string;
   dryRun?: boolean;
+  excludeInvalid?: boolean;
   selectAll?: boolean;
   select?: string[];
   deselect?: string[];
@@ -200,6 +201,7 @@ export async function runPipeline(
     if (useAgentSelect) {
       editArgs = ['analyze', 'select-agent', '--session', extractSessionId, '--agent', opts.agent];
       if (opts.model) editArgs.push('--model', opts.model);
+      if (opts.excludeInvalid) editArgs.push('--exclude-invalid');
     } else {
       editArgs = ['analyze', 'select', '--session', extractSessionId];
       if (opts.select && opts.select.length > 0) {

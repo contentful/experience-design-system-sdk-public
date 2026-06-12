@@ -8,6 +8,7 @@ import { loadReviewInput } from './parser.js';
 import { App } from './tui/App.js';
 import type { ReviewSessionPaths, ReviewSessionSnapshot } from './types.js';
 import { openPipelineDb, loadRawComponents, storeRawComponents, createStep, updateStep } from '../../session/db.js';
+import { validateExtractedComponents, shouldExcludeDueToValidation } from '../extract/validate.js';
 
 type RefineCommandOptions = {
   session?: string;
@@ -18,6 +19,7 @@ type RefineCommandOptions = {
   deselect?: string[];
   select?: string[];
   patch?: string;
+  excludeInvalid?: boolean;
 };
 
 interface PatchOperation {
@@ -114,6 +116,9 @@ async function runNonInteractive(
         if (rejectPatterns.some((p) => nameLower.includes(p))) {
           return { ...c, status: 'rejected' };
         }
+        if (selectAll && opts.excludeInvalid && shouldExcludeDueToValidation(c.originalProposal)) {
+          return { ...c, status: 'rejected' };
+        }
         if (selectAll || selectPatterns.some((p) => nameLower.includes(p))) {
           return { ...c, status: 'accepted' };
         }
@@ -174,6 +179,29 @@ async function runNonInteractive(
   process.stderr.write(`Accepted: ${accepted.length}  Rejected: ${rejected.length}\n`);
 }
 
+/**
+ * Load components from the pipeline DB and re-run extraction validation.
+ *
+ * `validationIssues` is intentionally not persisted (the validator is pure
+ * and cheap to re-run), so any cold-start of `analyze select` from a prior
+ * `analyze extract` session needs to recompute it before building the
+ * review snapshot — otherwise the TUI sees no validation errors at all.
+ */
+export async function loadAndValidateForReview(
+  sessionId: string,
+  projectRoot: string | undefined,
+): Promise<ReviewSessionSnapshot> {
+  const db = openPipelineDb();
+  let rawComponents;
+  try {
+    rawComponents = loadRawComponents(db, sessionId);
+  } finally {
+    db.close();
+  }
+  const validatedComponents = validateExtractedComponents(rawComponents);
+  return loadReviewInput(validatedComponents, { reviewRoot: projectRoot });
+}
+
 function resolveSessionId(sessionFlag: string | undefined): string {
   if (sessionFlag) return sessionFlag;
 
@@ -215,6 +243,10 @@ export function registerAnalyzeEditCommand(program: Command): void {
     .option('--accept-all', 'Alias for --select-all', false)
     .option('--reject <pattern>', 'Alias for --deselect <pattern> (repeatable)', collect, [])
     .option('--patch <path>', 'Path to a JSON patch file for structured component overrides')
+    .option(
+      '--exclude-invalid',
+      'Auto-reject components with validation errors when bulk-selecting (no-op without --select-all)',
+    )
     .action(
       async ({
         session: sessionFlag,
@@ -225,18 +257,19 @@ export function registerAnalyzeEditCommand(program: Command): void {
         deselect,
         select,
         patch,
+        excludeInvalid,
       }: RefineCommandOptions) => {
         const sessionId = resolveSessionId(sessionFlag);
 
         const db = openPipelineDb();
-        let rawComponents;
+        let rawComponentCount = 0;
         try {
-          rawComponents = loadRawComponents(db, sessionId);
+          rawComponentCount = loadRawComponents(db, sessionId).length;
         } finally {
           db.close();
         }
 
-        if (rawComponents.length === 0) {
+        if (rawComponentCount === 0) {
           process.stderr.write(`Error: session '${sessionId}' has no raw components. Run analyze extract first.\n`);
           process.exit(1);
           return;
@@ -255,9 +288,7 @@ export function registerAnalyzeEditCommand(program: Command): void {
         let paths: ReviewSessionPaths;
         let snapshot: ReviewSessionSnapshot;
         try {
-          snapshot = await loadReviewInput(rawComponents, {
-            reviewRoot: projectRoot,
-          });
+          snapshot = await loadAndValidateForReview(sessionId, projectRoot);
           paths = await getRefineSessionPaths(sessionId, artifactsRoot);
           if (!nonInteractive) {
             snapshot = await ensureRefineSession(sessionId, artifactsRoot, snapshot);
@@ -279,7 +310,17 @@ export function registerAnalyzeEditCommand(program: Command): void {
           try {
             await runNonInteractive(
               snapshot,
-              { session: sessionFlag, projectRoot, acceptAll, selectAll, reject, deselect, select, patch },
+              {
+                session: sessionFlag,
+                projectRoot,
+                acceptAll,
+                selectAll,
+                reject,
+                deselect,
+                select,
+                patch,
+                excludeInvalid,
+              },
               paths,
               sessionId,
             );

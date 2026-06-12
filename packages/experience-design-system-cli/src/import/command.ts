@@ -36,6 +36,7 @@ export function registerImportCommand(program: Command): void {
     .option('--no-cache', 'Re-run all steps even if output already exists')
     .option('--yes', 'Skip interactive confirmation in apply push')
     .option('--verbose', 'Show full agent output and all entity progress')
+    .option('--exclude-invalid', 'Automatically reject components with validation errors (empty names, collisions)')
     .option('--viewports <path>', 'JSON file with viewport array (passed to apply push)')
     .option('--host <url>', 'Override API base URL (passed to apply push)')
     .option('--dry-run', 'Print generate components prompt without invoking the agent')
@@ -59,6 +60,7 @@ export function registerImportCommand(program: Command): void {
         cache?: boolean;
         yes?: boolean;
         verbose?: boolean;
+        excludeInvalid?: boolean;
         viewports?: string;
         host?: string;
         dryRun?: boolean;
@@ -139,6 +141,7 @@ export function registerImportCommand(program: Command): void {
             noCache: opts.cache === false,
             yes: opts.yes ?? false,
             verbose: opts.verbose ?? false,
+            excludeInvalid: opts.excludeInvalid ?? false,
             viewports: opts.viewports,
             host: opts.host,
             dryRun: opts.dryRun,

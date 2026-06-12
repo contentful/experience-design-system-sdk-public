@@ -1,5 +1,20 @@
 import type { DesignTokenType } from '@contentful/experience-design-system-types';
 
+export type ExtractionValidationIssueCode =
+  | 'EMPTY_COMPONENT_NAME'
+  | 'EMPTY_PROP_NAME'
+  | 'EMPTY_SLOT_NAME'
+  | 'PROP_SLOT_NAME_COLLISION'
+  | 'DUPLICATE_COMPONENT_NAME'
+  | 'EMPTY_COMPONENT';
+
+export type ExtractionValidationIssue = {
+  severity: 'error' | 'warning';
+  code: ExtractionValidationIssueCode;
+  message: string;
+  field?: string;
+};
+
 export interface RawTokenDefinition {
   name: string;
   value: string;
@@ -41,6 +56,7 @@ export interface RawComponentDefinition {
   extractionConfidence?: number | null; // 1–5 scale; null = not yet scored
   reviewReasons?: string[];
   needsReview?: boolean;
+  validationIssues?: ExtractionValidationIssue[];
 }
 
 export interface ComponentExtractionResult {
