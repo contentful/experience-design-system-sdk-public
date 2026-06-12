@@ -1631,9 +1631,9 @@ export function storeScannedFiles(db: DatabaseSync, sessionId: string, filePaths
 }
 
 export function loadScannedFiles(db: DatabaseSync, sessionId: string): string[] {
-  const rows = db
-    .prepare('SELECT path FROM scanned_files WHERE session_id = ? ORDER BY path')
-    .all(sessionId) as Array<{ path: string }>;
+  const rows = db.prepare('SELECT path FROM scanned_files WHERE session_id = ? ORDER BY path').all(sessionId) as Array<{
+    path: string;
+  }>;
   return rows.map((r) => r.path);
 }
 

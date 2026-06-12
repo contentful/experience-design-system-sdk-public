@@ -109,7 +109,16 @@ describe('select-agent command — decision persistence', () => {
     cleanupItems.push(agent.cleanup);
 
     const { code, stderr } = await runCliWithEnv(
-      ['analyze', 'select-agent', '--agent', 'claude', '--session', fixture.sessionId, '--project-root', fixture.projectDir],
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
       baseEnv(fixture, artifactsDir, agent.env()),
     );
 
@@ -146,7 +155,16 @@ describe('select-agent command — decision persistence', () => {
     cleanupItems.push(agent.cleanup);
 
     const { code, stderr } = await runCliWithEnv(
-      ['analyze', 'select-agent', '--agent', 'claude', '--session', fixture.sessionId, '--project-root', fixture.projectDir],
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
       baseEnv(fixture, artifactsDir, agent.env()),
     );
 
@@ -170,8 +188,20 @@ describe('select-agent command — decision persistence', () => {
     cleanupItems.push(agent.cleanup);
 
     await runCliWithEnv(
-      ['analyze', 'select-agent', '--agent', 'claude', '--session', fixture.sessionId, '--project-root', fixture.projectDir],
-      baseEnv(fixture, artifactsDir, agent.env()),
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      {
+        ...baseEnv(fixture, artifactsDir, agent.env()),
+        EDS_GENERATE_CONCURRENCY: '1',
+      },
     );
 
     const count = await readFile(agent.countFile, 'utf8');
@@ -195,7 +225,16 @@ describe('select-agent command — decision persistence', () => {
     cleanupItems.push(agent.cleanup);
 
     const { code } = await runCliWithEnv(
-      ['analyze', 'select-agent', '--agent', 'claude', '--session', fixture.sessionId, '--project-root', fixture.projectDir],
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
       baseEnv(fixture, artifactsDir, agent.env()),
     );
 
@@ -226,13 +265,20 @@ describe('select-agent command — agent failure modes', () => {
       },
     ]);
 
-    const agent = await createScriptedAgent('claude', [
-      'just some prose with no tool call json here',
-    ]);
+    const agent = await createScriptedAgent('claude', ['just some prose with no tool call json here']);
     cleanupItems.push(agent.cleanup);
 
     const { code, stderr } = await runCliWithEnv(
-      ['analyze', 'select-agent', '--agent', 'claude', '--session', fixture.sessionId, '--project-root', fixture.projectDir],
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
       baseEnv(fixture, artifactsDir, agent.env()),
     );
 
@@ -258,7 +304,16 @@ describe('select-agent command — agent failure modes', () => {
     cleanupItems.push(() => rm(badAgent, { recursive: true, force: true }));
 
     const { code } = await runCliWithEnv(
-      ['analyze', 'select-agent', '--agent', 'claude', '--session', fixture.sessionId, '--project-root', fixture.projectDir],
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
       {
         EDS_PIPELINE_DB_PATH: fixture.dbPath,
         EDS_REVIEW_ARTIFACTS_DIR: artifactsDir,
