@@ -1,4 +1,5 @@
 import type { RawComponentDefinition } from '../../types.js';
+import type { SelectionAudit } from '../select-agent/consensus.js';
 
 export type PreviewAnnotation = 'new' | 'changed' | 'removed' | 'breaking';
 
@@ -12,6 +13,7 @@ export type ReviewComponentRecord = {
   originalProposal: RawComponentDefinition;
   editedProposal: RawComponentDefinition;
   status: ReviewComponentStatus;
+  selectionAudit?: SelectionAudit;
 };
 
 export type ReviewComponentDetail = {
@@ -20,6 +22,7 @@ export type ReviewComponentDetail = {
   originalProposal: RawComponentDefinition;
   editedProposal: RawComponentDefinition;
   status: ReviewComponentStatus;
+  selectionAudit?: SelectionAudit;
 };
 
 export type ReviewComponentSummary = {
@@ -75,6 +78,7 @@ export function createReviewSessionDetail(session: ReviewSessionSnapshot): Revie
       originalProposal: component.originalProposal,
       editedProposal: component.editedProposal,
       status: component.status,
+      selectionAudit: component.selectionAudit,
     })),
   };
 }

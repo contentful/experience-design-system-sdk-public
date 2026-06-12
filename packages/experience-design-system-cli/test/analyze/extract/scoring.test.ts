@@ -41,14 +41,20 @@ describe('computeExtractionScore', () => {
   });
 
   it('returns 4 for a wide primitive union (string | number | boolean)', () => {
-    const result = computeExtractionScore(makeComponent({ props: [makeProp('value', 'string | number | boolean')] }));
+    const result = computeExtractionScore(
+      makeComponent({
+        props: [makeProp('value', 'string | number | boolean')],
+      }),
+    );
     expect(result.confidence).toBe(4);
     expect(result.reasons.some((r) => r.startsWith('wide-union:'))).toBe(true);
   });
 
   it('does NOT penalise string | null | undefined (just nullable string)', () => {
     const result = computeExtractionScore(
-      makeComponent({ props: [makeProp('label', 'string | null | undefined', 'Button label')] }),
+      makeComponent({
+        props: [makeProp('label', 'string | null | undefined', 'Button label')],
+      }),
     );
     expect(result.confidence).toBe(5);
     expect(result.reasons).toHaveLength(0);
@@ -98,6 +104,21 @@ describe('computeExtractionScore', () => {
     const result = computeExtractionScore(makeComponent());
     const unique = new Set(result.reasons);
     expect(result.reasons.length).toBe(unique.size);
+  });
+
+  it('applies additional issue counts and review reasons from source inspection', () => {
+    const result = computeExtractionScore(
+      makeComponent({
+        props: [makeProp('variant', 'string', 'Visual variant of the button')],
+      }),
+      {
+        additionalIssueCount: 2,
+        additionalReasons: ['data-fetch-wrapper', 'data-wrapper:generated-query-hook'],
+      },
+    );
+    expect(result.confidence).toBe(3);
+    expect(result.reasons).toContain('data-fetch-wrapper');
+    expect(result.reasons).toContain('data-wrapper:generated-query-hook');
   });
 });
 

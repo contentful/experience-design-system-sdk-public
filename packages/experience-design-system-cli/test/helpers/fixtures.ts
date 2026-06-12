@@ -1,5 +1,5 @@
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { openPipelineDb, storeRawComponents, getOrCreateSession } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
@@ -9,7 +9,14 @@ export const SAMPLE_COMPONENTS: RawComponentDefinition[] = [
     name: 'Button',
     source: 'src/Button.tsx',
     framework: 'react',
-    props: [{ name: 'variant', type: 'string', required: false, defaultValue: '"primary"' }],
+    props: [
+      {
+        name: 'variant',
+        type: 'string',
+        required: false,
+        defaultValue: '"primary"',
+      },
+    ],
     slots: [{ name: 'children', isDefault: true }],
   },
   {
@@ -36,11 +43,15 @@ export async function createTestFixture(components = SAMPLE_COMPONENTS): Promise
 
   await mkdir(join(projectDir, 'src'), { recursive: true });
   for (const comp of components) {
-    await writeFile(join(projectDir, comp.source), `// stub ${comp.name}`, 'utf8');
+    const sourcePath = join(projectDir, comp.source);
+    await mkdir(dirname(sourcePath), { recursive: true });
+    await writeFile(sourcePath, `// stub ${comp.name}`, 'utf8');
   }
 
   const db = openPipelineDb(dbPath);
-  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+  const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+    command: 'analyze extract',
+  });
   storeRawComponents(db, sessionId, components);
   db.close();
 

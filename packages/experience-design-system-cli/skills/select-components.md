@@ -20,14 +20,16 @@ The entity being defined — a **Component Type** — is the schema that tells C
 
 ---
 
-## The one rule: does it render visible UI?
+## The one rule: is this the author-facing UI component?
 
-**Accept** the component if it renders visible UI — regardless of whether it is an atom, molecule, or organism, and regardless of whether it has many or few configurable props. A footer icon with two props (`icon`, `label`) is just as valid as a parallax hero with fifteen props.
+**Accept** the component if it is the component that directly defines the author-facing UI surface — regardless of whether it is an atom, molecule, or organism, and regardless of whether it has many or few configurable props. A footer icon with two props (`icon`, `label`) is just as valid as a parallax hero with fifteen props.
 
-**Reject** the component only if its primary purpose produces zero visual output:
+**Reject** the component if its primary purpose is framework or data-loading infrastructure rather than the author-facing UI surface:
+
 - It is a React hook (name starts `use` or `Use`)
 - It is a pure context provider with no visual output
 - It is a Ninetailed/personalization platform wrapper (its job is routing to variants, not rendering content)
+- It is a data-fetch wrapper that loads data for a sibling renderer and then forwards that data into the sibling renderer
 - It is an analytics/event-tracking component (fires events, renders nothing)
 - It is a security or infrastructure utility (no UI at all)
 
@@ -37,29 +39,49 @@ The entity being defined — a **Component Type** — is the schema that tells C
 
 These are **not** valid reasons to reject a component:
 
-| Invalid reason | Why it is wrong |
-|---|---|
-| "Only atoms/low-level" | Atoms are first-class Component Types in Contentful Experience Orchestration |
-| "Tightly coupled to a parent component" | Contentful Experience Orchestration handles composition at the experience layer |
+| Invalid reason                                     | Why it is wrong                                                                                                           |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| "Only atoms/low-level"                             | Atoms are first-class Component Types in Contentful Experience Orchestration                                              |
+| "Tightly coupled to a parent component"            | Contentful Experience Orchestration handles composition at the experience layer                                           |
 | "Has A/B testing or personalization-related props" | These props are classified as `state` or excluded in the generate step — their presence does not disqualify the component |
-| "Has no marketer-configurable props" | Marketers are not the only users; designers and developers configure components too |
-| "Domain-specific or feature-level" | Press releases, newsrooms, search — all valid content components |
-| "Server-side or SSR" | Server components that render visible UI are valid |
-| "Few configurable props" | One or two props is fine |
+| "Has no marketer-configurable props"               | Marketers are not the only users; designers and developers configure components too                                       |
+| "Domain-specific or feature-level"                 | Press releases, newsrooms, search — all valid content components                                                          |
+| "Server-side or SSR"                               | Server components that render visible UI are valid                                                                        |
+| "Few configurable props"                           | One or two props is fine                                                                                                  |
 
 ---
 
 ## Reject only these categories
 
-| Category | Why |
-|---|---|
-| **React hooks** | `useXxx` / `UseXxx` — functions, not renderable components. Zero visual output. |
-| **Pure context providers** | Wrap children to pass context but render no UI themselves |
-| **A/B testing or personalization wrappers** | Components whose *entire purpose* is routing users to content variants or tracking experiment participation — they render no UI of their own |
-| **Analytics and event tracking** | Components that only fire analytics events and render nothing visible |
-| **Security utilities** | Non-visual security primitives with no rendered output |
+| Category                                    | Why                                                                                                                                                                 |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **React hooks**                             | `useXxx` / `UseXxx` — functions, not renderable components. Zero visual output.                                                                                     |
+| **Pure context providers**                  | Wrap children to pass context but render no UI themselves                                                                                                           |
+| **A/B testing or personalization wrappers** | Components whose _entire purpose_ is routing users to content variants or tracking experiment participation — they render no UI of their own                        |
+| **Data-fetch wrappers**                     | Components whose job is to load or resolve data for a sibling renderer. Even if they eventually return visible UI, the sibling renderer is the real Component Type. |
+| **Analytics and event tracking**            | Components that only fire analytics events and render nothing visible                                                                                               |
+| **Security utilities**                      | Non-visual security primitives with no rendered output                                                                                                              |
 
-> **Variant routing rule**: Reject a component if its entire purpose is deciding *which* content variant to show — that is framework infrastructure, not a Component Type. Do **not** reject a component merely because it *contains* some A/B testing or personalization-related props — those props are handled as `state` in the generate step.
+> **Variant routing rule**: Reject a component if its entire purpose is deciding _which_ content variant to show — that is framework infrastructure, not a Component Type. Do **not** reject a component merely because it _contains_ some A/B testing or personalization-related props — those props are handled as `state` in the generate step.
+
+> **Data-fetch wrapper rule**: Reject a component if it imports or calls a generated query hook, loads data, and then forwards that data into a sibling renderer. The sibling renderer is the Component Type; the data-loader wrapper is not.
+
+## Using `selectionContext`
+
+If the input includes `selectionContext`, treat it as the only repo-level context you may use. It is already bounded to the customer-provided project files and may include:
+
+- the component source file
+- sibling files in the same folder
+- import/export summaries
+- resolver or registry references
+- one likely parent usage site
+
+Use that bounded context to distinguish the author-facing renderer from infrastructure wrappers. In particular:
+
+- If the component imports a sibling renderer and mainly forwards fetched data into it, reject the wrapper and prefer the sibling renderer.
+- If sibling files show a presentation-focused renderer with the real authoring props, that renderer is the Component Type.
+- Resolver or parent-usage references help show how the repo treats the component, but they do not override the renderer-vs-wrapper rule.
+- Do not assume access to any files outside `selectionContext`.
 
 ---
 
@@ -76,6 +98,7 @@ Emit one JSON object on a single line. Lines not starting with `{` are ignored b
 ```
 
 **Rules:**
+
 - Emit exactly one JSON object, on one line. No multi-line JSON. No markdown fences.
 - The `name` must match the component name in the input.
 - `reason` is a brief phrase documenting your decision.
@@ -134,6 +157,12 @@ UseHelpNavigation — React hook, not a renderable component
 ```
 Providers — React context provider with no visual output
 {"tool":"reject_component","name":"Providers","reason":"pure context provider — no visual output"}
+```
+
+```
+HeroBannerGql — fetch wrapper that loads data and forwards it into HeroBanner
+It may eventually return visible UI, but the author-facing component is HeroBanner, not HeroBannerGql.
+{"tool":"reject_component","name":"HeroBannerGql","reason":"data-fetch wrapper — loads data for a sibling renderer rather than defining the author-facing UI surface"}
 ```
 
 ```

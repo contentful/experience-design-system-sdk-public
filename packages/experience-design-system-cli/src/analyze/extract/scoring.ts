@@ -8,6 +8,11 @@ export type ExtractionScore = {
   reasons: string[];
 };
 
+export interface ExtractionScoreOptions {
+  additionalIssueCount?: number;
+  additionalReasons?: string[];
+}
+
 // Prop type strings that indicate the extractor couldn't resolve a concrete type
 const OPAQUE_TYPES = new Set(['any', 'unknown', 'object', 'Record<string, unknown>', 'Record<string, any>']);
 
@@ -56,7 +61,10 @@ function isWidePrimitiveUnion(type: string): boolean {
 }
 
 // Count the number of issues found for scoring
-function countIssues(component: RawComponentDefinition): { count: number; reasons: string[] } {
+function countIssues(
+  component: RawComponentDefinition,
+  options: ExtractionScoreOptions = {},
+): { count: number; reasons: string[] } {
   let count = 0;
   const reasons: string[] = [];
 
@@ -88,6 +96,11 @@ function countIssues(component: RawComponentDefinition): { count: number; reason
     }
   }
 
+  count += options.additionalIssueCount ?? 0;
+  if (options.additionalReasons && options.additionalReasons.length > 0) {
+    reasons.push(...options.additionalReasons);
+  }
+
   return { count, reasons: [...new Set(reasons)] };
 }
 
@@ -105,8 +118,11 @@ function issueCountToConfidence(count: number): ExtractionConfidence {
   return 1;
 }
 
-export function computeExtractionScore(component: RawComponentDefinition): ExtractionScore {
-  const { count, reasons } = countIssues(component);
+export function computeExtractionScore(
+  component: RawComponentDefinition,
+  options: ExtractionScoreOptions = {},
+): ExtractionScore {
+  const { count, reasons } = countIssues(component, options);
   return {
     confidence: issueCountToConfidence(count),
     reasons,
