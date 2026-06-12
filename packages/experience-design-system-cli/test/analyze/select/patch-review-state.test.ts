@@ -390,4 +390,168 @@ describe('rejectComponentsByName', () => {
     // 'NotThere' is not present, no row should have been added
     expect(Object.keys(statuses).sort()).toEqual(['Button', 'PageLink']);
   });
+
+  it('makes loadCDFComponents-style status filter exclude the rejected component', async () => {
+    // Direct contract test: loadCDFComponents reads `WHERE status = 'generated'`
+    // (db.ts:1046). After rejectComponentsByName flips status, the row must
+    // disappear from that query. This is the load-bearing invariant Bug 1
+    // exposed — without the DB UPDATE, the next preview sees the same rows.
+    const sessionId = await seedSession();
+    await rejectComponentsByName(sessionId, ['Button']);
+
+    const db = openPipelineDb();
+    try {
+      const generated = db
+        .prepare(`SELECT name FROM raw_components WHERE session_id = ? AND status = 'generated'`)
+        .all(sessionId) as Array<{ name: string }>;
+      expect(generated.map((r) => r.name)).toEqual(['PageLink']);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('handles rejecting all components at once', async () => {
+    const sessionId = await seedSession();
+    await rejectComponentsByName(sessionId, ['Button', 'PageLink']);
+
+    const statuses = readDbStatuses(sessionId);
+    expect(statuses).toEqual({ Button: 'generate-rejected', PageLink: 'generate-rejected' });
+  });
+
+  it('quotes names so SQL injection in a component name does not corrupt the UPDATE', async () => {
+    // Defense-in-depth: parsePreviewValidationErrors extracts componentName
+    // from a server-controlled body. If the server ever returns a name
+    // containing a quote or semicolon, the prepared-statement binding must
+    // treat it as data, not SQL.
+    const sessionId = await seedSession();
+    const malicious = "Button'; DROP TABLE raw_components; --";
+    await rejectComponentsByName(sessionId, [malicious]);
+
+    // Both rows should still exist (the table wasn't dropped).
+    const statuses = readDbStatuses(sessionId);
+    expect(Object.keys(statuses).sort()).toEqual(['Button', 'PageLink']);
+    // No row matched the malicious name — both stay 'generated'.
+    expect(statuses['Button']).toBe('generated');
+    expect(statuses['PageLink']).toBe('generated');
+  });
+
+  it('is idempotent — calling twice with the same names leaves status the same', async () => {
+    const sessionId = await seedSession();
+    await rejectComponentsByName(sessionId, ['Button']);
+    await rejectComponentsByName(sessionId, ['Button']);
+
+    const statuses = readDbStatuses(sessionId);
+    expect(statuses['Button']).toBe('generate-rejected');
+    expect(statuses['PageLink']).toBe('generated');
+  });
+});
+
+describe('patchReviewStateWithValidationErrors — additional edge cases', () => {
+  let tmpDir: string;
+  let prevDbPath: string | undefined;
+  let prevArtifactsRoot: string | undefined;
+  let artifactsRoot: string;
+  let goodSrc: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'eds-patch-edge-'));
+    prevDbPath = process.env.EDS_PIPELINE_DB_PATH;
+    prevArtifactsRoot = process.env.EDS_REVIEW_ARTIFACTS_DIR;
+    process.env.EDS_PIPELINE_DB_PATH = join(tmpDir, 'pipeline.db');
+    artifactsRoot = join(tmpDir, 'reviews');
+    process.env.EDS_REVIEW_ARTIFACTS_DIR = artifactsRoot;
+    goodSrc = join(tmpDir, 'PageLink.tsx');
+    await writeFile(goodSrc, '// PageLink\n');
+  });
+
+  afterEach(async () => {
+    if (prevDbPath === undefined) delete process.env.EDS_PIPELINE_DB_PATH;
+    else process.env.EDS_PIPELINE_DB_PATH = prevDbPath;
+    if (prevArtifactsRoot === undefined) delete process.env.EDS_REVIEW_ARTIFACTS_DIR;
+    else process.env.EDS_REVIEW_ARTIFACTS_DIR = prevArtifactsRoot;
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('appends additional issues on a second call — explicit non-idempotent contract', async () => {
+    // Documented behavior in the function's JSDoc: "Idempotent on identical
+    // input is NOT a contract: each call appends." Lock that in so a future
+    // refactor that "fixes" it has to update both the contract and the
+    // wizard's call site (which assumes single-shot per preview attempt).
+    const db = openPipelineDb();
+    const { sessionId } = getOrCreateSession(db, undefined, undefined, {
+      command: 'analyze extract',
+      inputPath: tmpDir,
+      outDir: tmpDir,
+    });
+    storeRawComponents(db, sessionId, [
+      {
+        name: 'PageLink',
+        source: goodSrc,
+        framework: 'react',
+        props: [],
+        // Need at least one slot to avoid the EMPTY_COMPONENT warning, which
+        // would inflate validationIssues counts and obscure the appends-on-each-call
+        // contract this test is asserting.
+        slots: [{ name: 'children', isDefault: true }],
+      },
+    ]);
+    db.close();
+
+    await patchReviewStateWithValidationErrors(sessionId, [
+      { componentName: 'PageLink', path: 'manifest:components/PageLink/$slots/', message: 'first' },
+    ]);
+    await patchReviewStateWithValidationErrors(sessionId, [
+      { componentName: 'PageLink', path: 'manifest:components/PageLink/$slots/', message: 'first' },
+    ]);
+
+    const statePath = resolve(artifactsRoot, sessionId, 'current-review-state.json');
+    const state = JSON.parse(await readFile(statePath, 'utf8')) as ReviewSessionSnapshot;
+    const pageLink = state.components.find((c) => c.name === 'PageLink')!;
+    const serverIssues = (pageLink.originalProposal.validationIssues ?? []).filter(
+      (i) => i.code === 'SERVER_VALIDATION_FAILED',
+    );
+    expect(serverIssues).toHaveLength(2);
+    expect(serverIssues.map((i) => i.message)).toEqual(['first', 'first']);
+  });
+
+  it('returns missing names but still patches the matched ones (partial match is not a hard failure)', async () => {
+    // Important for the wizard UX: if the server reports an error against a
+    // component the local session never knew about (e.g. session drift),
+    // we still want to surface what we CAN match. A hard failure here would
+    // strand the user on a generic error screen.
+    const db = openPipelineDb();
+    const { sessionId } = getOrCreateSession(db, undefined, undefined, {
+      command: 'analyze extract',
+      inputPath: tmpDir,
+      outDir: tmpDir,
+    });
+    storeRawComponents(db, sessionId, [
+      {
+        name: 'PageLink',
+        source: goodSrc,
+        framework: 'react',
+        props: [],
+        slots: [{ name: 'children', isDefault: true }],
+      },
+    ]);
+    db.close();
+
+    const result = await patchReviewStateWithValidationErrors(sessionId, [
+      { componentName: 'PageLink', path: 'manifest:components/PageLink/$slots/', message: 'real' },
+      { componentName: 'Phantom', path: 'manifest:components/Phantom/$slots/', message: 'ghost' },
+      { componentName: 'AlsoMissing', path: 'manifest:components/AlsoMissing/$slots/', message: 'ghost' },
+    ]);
+
+    expect(result.patchedNames).toEqual(['PageLink']);
+    expect(result.missingNames.sort()).toEqual(['AlsoMissing', 'Phantom']);
+
+    const statePath = resolve(artifactsRoot, sessionId, 'current-review-state.json');
+    const state = JSON.parse(await readFile(statePath, 'utf8')) as ReviewSessionSnapshot;
+    expect(state.components).toHaveLength(1);
+    const serverIssues = (state.components[0]!.originalProposal.validationIssues ?? []).filter(
+      (i) => i.code === 'SERVER_VALIDATION_FAILED',
+    );
+    expect(serverIssues).toHaveLength(1);
+    expect(serverIssues[0]!.message).toBe('real');
+  });
 });
