@@ -1,7 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { RawComponentDefinition } from '../../types.js';
-import type { SelectionContextSummary } from './consensus.js';
+
+export type SelectionContextSummary = {
+  boundaryRoot: string;
+  siblingFileCount: number;
+  resolverReferenceCount: number;
+  hasParentUsageSite: boolean;
+};
 
 const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.ts', '.tsx', '.vue']);
 

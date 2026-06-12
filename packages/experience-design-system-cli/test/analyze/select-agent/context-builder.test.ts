@@ -145,6 +145,7 @@ export function Home() {
 
   it('does not build context for a component outside the provided root', async () => {
     const root = await createTempRepo();
+    await writeFile(join(root, 'some-file.tsx'), '// placeholder', 'utf8');
     const index = await buildRepoContextIndex(root, [join(root, 'some-file.tsx')]);
 
     const component: RawComponentDefinition = {
