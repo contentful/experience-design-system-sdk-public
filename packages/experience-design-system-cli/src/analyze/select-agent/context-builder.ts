@@ -1,38 +1,9 @@
-import { readFile, readdir, stat } from 'node:fs/promises';
-import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { RawComponentDefinition } from '../../types.js';
 import type { SelectionContextSummary } from './consensus.js';
 
 const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.ts', '.tsx', '.vue']);
-const IGNORED_DIRECTORY_NAMES = new Set([
-  '.git',
-  '.next',
-  '.nuxt',
-  'build',
-  'coverage',
-  'demo',
-  'demos',
-  'dist',
-  'example',
-  'examples',
-  'node_modules',
-  'out',
-  'storybook-static',
-]);
-const IGNORED_FILE_SUFFIXES = new Set([
-  '.stories.ts',
-  '.stories.tsx',
-  '.stories.js',
-  '.stories.jsx',
-  '.story.ts',
-  '.story.tsx',
-  '.story.js',
-  '.story.jsx',
-  '.spec.ts',
-  '.spec.tsx',
-  '.test.ts',
-  '.test.tsx',
-]);
 
 const IMPORT_PATTERN = /import\s+(?:type\s+)?(.+?)\s+from\s+['"]([^'"]+)['"]/g;
 const EXPORT_NAMED_PATTERN = /export\s+(?:const|function|class|type|interface|enum)\s+([A-Za-z0-9_]+)/g;
@@ -99,36 +70,6 @@ function truncateText(text: string, maxChars: number): string {
 function isWithinRoot(path: string, root: string): boolean {
   const relativePath = relative(root, path);
   return relativePath !== '..' && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath);
-}
-
-async function collectSourceFiles(directory: string): Promise<string[]> {
-  const files: string[] = [];
-
-  async function visit(currentDirectory: string): Promise<void> {
-    const entries = await readdir(currentDirectory, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const fullPath = join(currentDirectory, entry.name);
-
-      if (entry.isDirectory()) {
-        if (!IGNORED_DIRECTORY_NAMES.has(entry.name)) {
-          await visit(fullPath);
-        }
-        continue;
-      }
-
-      if (!entry.isFile()) continue;
-
-      const extension = extname(entry.name);
-      if (!SCANNED_FILE_EXTENSIONS.has(extension) || entry.name.endsWith('.d.ts')) continue;
-      if ([...IGNORED_FILE_SUFFIXES].some((suffix) => entry.name.endsWith(suffix))) continue;
-
-      files.push(fullPath);
-    }
-  }
-
-  await visit(directory);
-  return files.sort();
 }
 
 function parseImportedNames(importClause: string): string[] {
@@ -289,12 +230,10 @@ function findParentUsageSite(
   };
 }
 
-export async function buildRepoContextIndex(root: string): Promise<RepoContextIndex | null> {
+export async function buildRepoContextIndex(root: string, filePaths: string[]): Promise<RepoContextIndex | null> {
+  if (filePaths.length === 0) return null;
   const resolvedRoot = resolve(root);
-  const rootStats = await stat(resolvedRoot).catch(() => null);
-  if (!rootStats?.isDirectory()) return null;
 
-  const filePaths = await collectSourceFiles(resolvedRoot);
   const files = await Promise.all(
     filePaths.map(
       async (absolutePath): Promise<IndexedFile> => ({

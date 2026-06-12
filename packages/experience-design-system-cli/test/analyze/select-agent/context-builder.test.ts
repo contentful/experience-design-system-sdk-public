@@ -87,7 +87,16 @@ export function Home() {
       'utf8',
     );
 
-    const index = await buildRepoContextIndex(root);
+    const filePaths = [
+      join(root, 'src/components/HeroBannerGql.tsx'),
+      join(root, 'src/components/HeroBanner.tsx'),
+      join(root, 'src/components/registry.ts'),
+      join(root, 'src/pages/Home.tsx'),
+      join(root, 'src/__generated/useHeroBannerQuery.ts'),
+      join(root, 'outside.tsx'),
+    ];
+
+    const index = await buildRepoContextIndex(root, filePaths);
     expect(index).not.toBeNull();
 
     const component: RawComponentDefinition = {
@@ -136,7 +145,7 @@ export function Home() {
 
   it('does not build context for a component outside the provided root', async () => {
     const root = await createTempRepo();
-    const index = await buildRepoContextIndex(root);
+    const index = await buildRepoContextIndex(root, [join(root, 'some-file.tsx')]);
 
     const component: RawComponentDefinition = {
       name: 'ForeignComponent',

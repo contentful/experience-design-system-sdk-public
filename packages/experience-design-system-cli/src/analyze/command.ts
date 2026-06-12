@@ -8,7 +8,7 @@ import { AnalyzeView } from './tui/AnalyzeView.js';
 import type { AnalyzeViewResult } from './tui/AnalyzeView.js';
 import { registerAnalyzeEditCommand } from './select/command.js';
 import { registerAnalyzeSelectAgentCommand } from './select-agent/command.js';
-import { openPipelineDb, getOrCreateSession, createStep, updateStep, storeRawComponents } from '../session/db.js';
+import { openPipelineDb, getOrCreateSession, createStep, updateStep, storeRawComponents, storeScannedFiles } from '../session/db.js';
 import { preClassifyComponent } from './pre-classify.js';
 import { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
 import { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
@@ -209,6 +209,7 @@ export function registerAnalyzeCommand(program: Command): void {
         });
       }
       storeRawComponents(db, sessionId, filteredComponents);
+      storeScannedFiles(db, sessionId, sourceFiles);
       updateStep(db, stepId, 'complete', { sessionId });
       db.close();
 

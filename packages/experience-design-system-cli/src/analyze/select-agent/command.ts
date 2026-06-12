@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { openPipelineDb, loadRawComponents, createStep, updateStep } from '../../session/db.js';
+import { openPipelineDb, loadRawComponents, loadScannedFiles, createStep, updateStep } from '../../session/db.js';
 import {
   appendReviewEvent,
   getRefineArtifactsRoot,
@@ -306,8 +306,10 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
 
         const db = openPipelineDb();
         let rawComponents;
+        let scannedFiles: string[] = [];
         try {
           rawComponents = loadRawComponents(db, sessionId);
+          scannedFiles = loadScannedFiles(db, sessionId);
         } finally {
           db.close();
         }
@@ -319,8 +321,8 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         }
 
         let selectionCandidates: SelectionCandidate[] = rawComponents.map((component) => ({ component }));
-        if (selectionRoot) {
-          const repoIndex = await buildRepoContextIndex(selectionRoot).catch(() => null);
+        if (selectionRoot && scannedFiles.length > 0) {
+          const repoIndex = await buildRepoContextIndex(selectionRoot, scannedFiles).catch(() => null);
           if (repoIndex) {
             selectionCandidates = rawComponents.map((component) => ({
               component,

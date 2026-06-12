@@ -166,6 +166,12 @@ CREATE TABLE IF NOT EXISTS generation_cache (
   PRIMARY KEY (input_hash, entity_type, entity_id)
 );
 
+CREATE TABLE IF NOT EXISTS scanned_files (
+  session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  path        TEXT NOT NULL,
+  PRIMARY KEY (session_id, path)
+);
+
 CREATE INDEX IF NOT EXISTS idx_steps_session            ON steps(session_id);
 CREATE INDEX IF NOT EXISTS idx_steps_command            ON steps(session_id, command);
 CREATE INDEX IF NOT EXISTS idx_raw_components_session   ON raw_components(session_id);
@@ -175,6 +181,7 @@ CREATE INDEX IF NOT EXISTS idx_raw_tokens_session       ON raw_tokens(session_id
 CREATE INDEX IF NOT EXISTS idx_raw_token_groups_session ON raw_token_groups(session_id);
 CREATE INDEX IF NOT EXISTS idx_generation_cache_entity  ON generation_cache(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_generation_cache_session ON generation_cache(source_session_id);
+CREATE INDEX IF NOT EXISTS idx_scanned_files_session    ON scanned_files(session_id);
 `;
 
 export function getPipelineDbPath(): string {
@@ -222,6 +229,21 @@ function applyDbMigrations(db: DatabaseSync): void {
   }
   if (!rawCompColNames.has('needs_review')) {
     db.exec('ALTER TABLE raw_components ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0');
+  }
+
+  // Add scanned_files table if it doesn't exist yet (added in v0.7.0).
+  const scannedFilesTable = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='scanned_files'`)
+    .all() as Array<{ name: string }>;
+  if (scannedFilesTable.length === 0) {
+    db.exec(`
+      CREATE TABLE scanned_files (
+        session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        path        TEXT NOT NULL,
+        PRIMARY KEY (session_id, path)
+      );
+      CREATE INDEX idx_scanned_files_session ON scanned_files(session_id);
+    `);
   }
 
   // Add generation_cache table if it doesn't exist yet.
@@ -1606,6 +1628,28 @@ export function storeCache(
        human_edited = CASE WHEN generation_cache.human_edited = 1 THEN 1 ELSE excluded.human_edited END,
        updated_at = excluded.updated_at`,
   ).run(inputHash, entityType, entityId, sourceSessionId, humanEdited ? 1 : 0, now, now);
+}
+
+export function storeScannedFiles(db: DatabaseSync, sessionId: string, filePaths: string[]): void {
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM scanned_files WHERE session_id = ?').run(sessionId);
+    const insert = db.prepare('INSERT INTO scanned_files (session_id, path) VALUES (?, ?)');
+    for (const path of filePaths) {
+      insert.run(sessionId, path);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
+export function loadScannedFiles(db: DatabaseSync, sessionId: string): string[] {
+  const rows = db
+    .prepare('SELECT path FROM scanned_files WHERE session_id = ? ORDER BY path')
+    .all(sessionId) as Array<{ path: string }>;
+  return rows.map((r) => r.path);
 }
 
 export function markCacheHumanEdited(db: DatabaseSync, entityType: 'component' | 'token_set', entityId: string): void {

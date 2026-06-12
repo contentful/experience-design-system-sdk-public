@@ -252,6 +252,13 @@ export function Home() {
         'utf8',
       );
 
+      wrapperFixture.addScannedFiles([
+        join(wrapperFixture.projectDir, 'src/components/HeroBanner.tsx'),
+        join(wrapperFixture.projectDir, 'src/components/registry.ts'),
+        join(wrapperFixture.projectDir, 'src/pages/Home.tsx'),
+        join(wrapperFixture.projectDir, 'src/__generated/useHeroBannerQuery.ts'),
+      ]);
+
       const { stdout, code } = await runCliWithEnv(
         [
           'analyze',
