@@ -83,6 +83,7 @@ type WizardState = {
   autoRejectedCount: number;
   generatedCount: number;
   generatedAcceptedCount: number;
+  renamedSlotsCount: number;
   generateProgress: { done: number; total: number; current: string } | null;
   extractProgress: { scanned: number; filesProcessed: number; totalFiles: number; componentsFound: number } | null;
   componentsPath: string;
@@ -117,6 +118,12 @@ export function formatAcceptanceSummary(opts: { accepted: number; autoRejected: 
   const acceptedClause = `${opts.accepted} component${opts.accepted === 1 ? '' : 's'} accepted`;
   if (opts.autoRejected === 0) return `${acceptedClause}.`;
   return `${acceptedClause}, ${opts.autoRejected} excluded due to validation errors.`;
+}
+
+export function formatGeneratedSummary(opts: { generated: number; renamedSlots: number }): string {
+  const generatedClause = `Generated definitions for ${opts.generated} component${opts.generated === 1 ? '' : 's'}.`;
+  if (opts.renamedSlots === 0) return generatedClause;
+  return `${generatedClause} ${opts.renamedSlots} unnamed slot${opts.renamedSlots === 1 ? '' : 's'} renamed (children / slot_<n>) so the LLM could classify them.`;
 }
 
 function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
@@ -186,6 +193,7 @@ export function WizardApp({
     autoRejectedCount: 0,
     generatedCount: 0,
     generatedAcceptedCount: 0,
+    renamedSlotsCount: 0,
     generateProgress: null,
     extractProgress: null,
     componentsPath: '',
@@ -487,7 +495,15 @@ export function WizardApp({
     const generateSessionId = sessionMatch ? sessionMatch[1]!.trim() : null;
     const countMatch = /(\d+) components?/.exec(result.stderr);
     const generatedCount = countMatch ? Number(countMatch[1]) : acceptedCount;
-    update({ step: 'review-generated-gate', generateSessionId, generatedCount, generateProgress: null });
+    const renamedMatch = /^renamed-slots:\s*(\d+)$/m.exec(result.stdout);
+    const renamedSlotsCount = renamedMatch ? Number(renamedMatch[1]) : 0;
+    update({
+      step: 'review-generated-gate',
+      generateSessionId,
+      generatedCount,
+      renamedSlotsCount,
+      generateProgress: null,
+    });
   };
 
   const advanceToPushFlow = (generatedAcceptedCount: number) => {
@@ -1104,7 +1120,7 @@ export function WizardApp({
         return (
           <GateStep
             successMessage={`Step ${stepNum} complete — definitions generated`}
-            summary={`Generated definitions for ${state.generatedCount} component${state.generatedCount === 1 ? '' : 's'}.`}
+            summary={formatGeneratedSummary({ generated: state.generatedCount, renamedSlots: state.renamedSlotsCount })}
             context="Take a final look before pushing to Contentful. You can accept, reject, or inspect each component's generated definition."
             continueLabel="Review definitions"
             skipLabel="Approve all and skip"

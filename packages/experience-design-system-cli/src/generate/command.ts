@@ -29,6 +29,7 @@ import {
   storeCache,
   copyComponentFromCache,
   copyTokensFromCache,
+  renameEmptySlots,
   type RawComponentWithId,
 } from '../session/db.js';
 import { getRefineArtifactsRoot, getRefineSessionPaths } from '../analyze/select/persistence.js';
@@ -150,6 +151,7 @@ interface ComponentRunResult {
   failed: boolean;
   error?: string;
   cached?: boolean;
+  renamedSlotsCount: number;
 }
 
 async function runOneComponent(
@@ -181,6 +183,7 @@ async function runOneComponent(
         warnings: [],
         failed: false,
         cached: true,
+        renamedSlotsCount: 0,
       };
     }
     // Check for pinned (human-edited) entry with a different hash
@@ -196,8 +199,26 @@ async function runOneComponent(
         warnings: [`${component.name}: source changed but human edits preserved`],
         failed: false,
         cached: true,
+        renamedSlotsCount: 0,
       };
     }
+  }
+
+  // Rename empty-named slots in the DB and patch the in-memory component so the
+  // prompt sees the heuristic names. applyToolCalls matches by name — a row with
+  // name="" would never be reachable by a classify_slot call otherwise.
+  const { renames, warnings: renameWarnings } = renameEmptySlots(
+    db,
+    sessionId,
+    component.component_id,
+    component.name,
+    component.slots.length,
+  );
+  let effectiveSlots = component.slots;
+  if (renames.length > 0) {
+    const renameMap = new Map(renames.map((r) => [r.oldName, r.newName]));
+    effectiveSlots = component.slots.map((s) => (renameMap.has(s.name) ? { ...s, name: renameMap.get(s.name)! } : s));
+    for (const w of renameWarnings) process.stderr.write(`  ${c.yellow('⚠')}  ${w}\n`);
   }
 
   const rawComponentsInline = JSON.stringify(
@@ -207,7 +228,7 @@ async function runOneComponent(
         source: component.source,
         framework: component.framework,
         props: component.props,
-        slots: component.slots,
+        slots: effectiveSlots,
       },
     ],
     null,
@@ -256,6 +277,7 @@ async function runOneComponent(
         warnings: [],
         failed: true,
         error: `timed out after ${DEFAULT_TIMEOUT_MS / 60000} minutes`,
+        renamedSlotsCount: renames.length,
       };
     }
 
@@ -283,6 +305,7 @@ async function runOneComponent(
       slots: applied.slots,
       warnings: applied.warnings,
       failed: false,
+      renamedSlotsCount: renames.length,
     };
   }
 
@@ -294,6 +317,7 @@ async function runOneComponent(
     warnings: [],
     failed: true,
     error: lastError,
+    renamedSlotsCount: renames.length,
   };
 }
 
@@ -519,6 +543,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
 
     const totalClassified = generated.reduce((s, r) => s + r.classified, 0);
     const totalExcluded = generated.reduce((s, r) => s + r.excluded, 0);
+    const totalRenamedSlots = componentResults.reduce((s, r) => s + r.renamedSlotsCount, 0);
     const allOk = failed.length === 0;
     const cachedNote = cachedResults.length > 0 ? c.dim(`  (${cachedResults.length} cached)`) : '';
     process.stderr.write(
@@ -528,6 +553,8 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         c.dim(`  ${totalClassified} classified, ${totalExcluded} excluded`) +
         '\n',
     );
+    // Machine-parseable summary on stdout for the wizard / orchestrator.
+    process.stdout.write(`renamed-slots: ${totalRenamedSlots}\n`);
 
     if (generated.length === 0 && cachedResults.length === 0) {
       die('Error: all components failed to generate — check agent output above');

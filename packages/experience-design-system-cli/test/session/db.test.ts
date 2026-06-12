@@ -26,6 +26,7 @@ import {
   markCacheHumanEdited,
   copyComponentFromCache,
   copyTokensFromCache,
+  renameEmptySlots,
 } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 import type {
@@ -1261,6 +1262,262 @@ describe('generation cache', () => {
       expect(loaded.groups[0]?.path).toBe('color');
       expect(loaded.groups[0]?.$description).toBe('Brand colors');
       db.close();
+    });
+  });
+});
+
+describe('renameEmptySlots', () => {
+  function seedComponentWithSlots(
+    dbPath: string,
+    slots: Array<{ name: string; isDefault: boolean }>,
+  ): { sessionId: string; componentId: string } {
+    const db = openPipelineDb(dbPath);
+    const { sessionId } = getOrCreateSession(db, undefined, undefined, {
+      command: 'analyze extract',
+      inputPath: '/tmp',
+      outDir: '/tmp',
+    });
+    storeRawComponents(db, sessionId, [
+      {
+        name: 'TestComponent',
+        source: '/tmp/TestComponent.tsx',
+        framework: 'react',
+        props: [],
+        slots,
+      },
+    ]);
+    const row = db.prepare(`SELECT component_id FROM raw_components WHERE session_id = ?`).get(sessionId) as {
+      component_id: string;
+    };
+    db.close();
+    return { sessionId, componentId: row.component_id };
+  }
+
+  it('returns empty renames and no warnings when all slots have names', async () => {
+    await withTempDb((dbPath) => {
+      const { sessionId, componentId } = seedComponentWithSlots(dbPath, [{ name: 'children', isDefault: true }]);
+      const db = openPipelineDb(dbPath);
+      const result = renameEmptySlots(db, sessionId, componentId, 'TestComponent', 1);
+      db.close();
+      expect(result.renames).toHaveLength(0);
+      expect(result.warnings).toHaveLength(0);
+    });
+  });
+
+  it('renames a single empty-named slot to "children"', async () => {
+    await withTempDb((dbPath) => {
+      const { sessionId, componentId } = seedComponentWithSlots(dbPath, [{ name: '', isDefault: false }]);
+      const db = openPipelineDb(dbPath);
+      const result = renameEmptySlots(db, sessionId, componentId, 'TestComponent', 1);
+      db.close();
+      expect(result.renames).toHaveLength(1);
+      expect(result.renames[0]).toEqual({ oldName: '', newName: 'children' });
+      expect(result.warnings[0]).toContain('"children"');
+      // Verify DB row was updated
+      const db2 = openPipelineDb(dbPath);
+      const slots = loadRawComponents(db2, sessionId)[0]!.slots;
+      db2.close();
+      expect(slots.map((s) => s.name)).toEqual(['children']);
+    });
+  });
+
+  it('uses positional name when the component has multiple total slots (one named, one empty)', async () => {
+    await withTempDb((dbPath) => {
+      // Two total slots: one named, one empty. slotCount=2 → positional name.
+      const { sessionId, componentId } = seedComponentWithSlots(dbPath, [
+        { name: 'header', isDefault: false },
+        { name: '', isDefault: false },
+      ]);
+      const db = openPipelineDb(dbPath);
+      const result = renameEmptySlots(db, sessionId, componentId, 'TestComponent', 2);
+      db.close();
+      expect(result.renames).toHaveLength(1);
+      expect(result.renames[0]!.newName).toBe('slot_1');
+      const db2 = openPipelineDb(dbPath);
+      const slots = loadRawComponents(db2, sessionId)[0]!.slots;
+      db2.close();
+      expect(slots.map((s) => s.name).sort()).toEqual(['header', 'slot_1']);
+    });
+  });
+
+  it('is idempotent — calling twice on the same DB state is a no-op', async () => {
+    await withTempDb((dbPath) => {
+      const { sessionId, componentId } = seedComponentWithSlots(dbPath, [{ name: '', isDefault: false }]);
+      const db = openPipelineDb(dbPath);
+      const first = renameEmptySlots(db, sessionId, componentId, 'TestComponent', 1);
+      const second = renameEmptySlots(db, sessionId, componentId, 'TestComponent', 1);
+      db.close();
+      expect(first.renames).toHaveLength(1);
+      expect(second.renames).toHaveLength(0);
+      expect(second.warnings).toHaveLength(0);
+    });
+  });
+
+  it('re-extract restores name="" so a subsequent rename re-fires', async () => {
+    await withTempDb((dbPath) => {
+      const { sessionId, componentId } = seedComponentWithSlots(dbPath, [{ name: '', isDefault: false }]);
+
+      const db = openPipelineDb(dbPath);
+      const first = renameEmptySlots(db, sessionId, componentId, 'TestComponent', 1);
+      expect(first.renames).toHaveLength(1);
+      db.close();
+
+      // Re-extract: storeRawComponents deletes existing rows for the session
+      // and re-inserts with the original definitions, so the rename is undone.
+      const db2 = openPipelineDb(dbPath);
+      storeRawComponents(db2, sessionId, [
+        {
+          name: 'TestComponent',
+          source: '/tmp/TestComponent.tsx',
+          framework: 'react',
+          props: [],
+          slots: [{ name: '', isDefault: false }],
+        },
+      ]);
+      const newComponentId = (
+        db2.prepare(`SELECT component_id FROM raw_components WHERE session_id = ?`).get(sessionId) as {
+          component_id: string;
+        }
+      ).component_id;
+      const second = renameEmptySlots(db2, sessionId, newComponentId, 'TestComponent', 1);
+      db2.close();
+      expect(second.renames).toHaveLength(1);
+      expect(second.renames[0]!.newName).toBe('children');
+    });
+  });
+
+  it('skips whitespace-only slot names the same way as empty', async () => {
+    await withTempDb((dbPath) => {
+      const { sessionId, componentId } = seedComponentWithSlots(dbPath, [{ name: '   ', isDefault: false }]);
+      const db = openPipelineDb(dbPath);
+      const result = renameEmptySlots(db, sessionId, componentId, 'TestComponent', 1);
+      db.close();
+      expect(result.renames).toHaveLength(1);
+      expect(result.renames[0]!.newName).toBe('children');
+    });
+  });
+});
+
+describe('loadCDFComponents — empty-key sanitization (Option D / hallucination insurance)', () => {
+  it('drops empty-named slots from the CDF entry so buildManifest never sees them', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'PageLink',
+          source: 'src/PageLink.tsx',
+          framework: 'react',
+          props: [{ name: 'href', type: 'string', required: true, category: 'content' }],
+          slots: [
+            { name: 'children', isDefault: true, description: 'Body content' },
+            { name: '', isDefault: false, description: 'Hallucinated empty' },
+          ],
+        },
+      ]);
+      // Mark as generated and classify the prop, so loadCDFComponents returns the entry.
+      db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ?`).run(sessionId);
+      db.prepare(`UPDATE raw_props SET cdf_type = 'string', cdf_category = 'content' WHERE session_id = ?`).run(
+        sessionId,
+      );
+
+      const loaded = loadCDFComponents(db, sessionId);
+      db.close();
+      expect(loaded).toHaveLength(1);
+      const slotKeys = Object.keys(loaded[0]!.entry.$slots ?? {});
+      expect(slotKeys).toEqual(['children']);
+      expect(slotKeys).not.toContain('');
+    });
+  });
+
+  it('end-to-end: rename → generate → loadCDFComponents → buildManifest produces no empty keys', async () => {
+    const { buildManifest } = await import('@contentful/experience-design-system-types');
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      // Extract: a component with one empty-named slot — the exact shape that
+      // produced the original "Slot id must be a non-empty string" 422.
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'PageLink',
+          source: 'src/PageLink.tsx',
+          framework: 'react',
+          props: [{ name: 'href', type: 'string', required: true, category: 'content' }],
+          slots: [{ name: '', isDefault: true }],
+        },
+      ]);
+      const componentId = (
+        db.prepare(`SELECT component_id FROM raw_components WHERE session_id = ?`).get(sessionId) as {
+          component_id: string;
+        }
+      ).component_id;
+
+      // Generate guard step — rename the empty slot before classification.
+      const renameResult = renameEmptySlots(db, sessionId, componentId, 'PageLink', 1);
+      expect(renameResult.renames).toEqual([{ oldName: '', newName: 'children' }]);
+
+      // Simulate the LLM classifying href + children, then mark generated.
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'PageLink',
+        [
+          {
+            tool: 'classify_prop',
+            prop: 'href',
+            cdf_type: 'string',
+            cdf_category: 'content',
+          },
+          {
+            tool: 'classify_slot',
+            slot: 'children',
+            description: 'Body',
+          },
+        ],
+        [],
+      );
+      db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ?`).run(sessionId);
+
+      const components = loadCDFComponents(db, sessionId);
+      db.close();
+
+      const manifest = buildManifest(components, []);
+      const slotKeys = Object.keys(
+        (manifest.componentsManifest?.['PageLink'] as { $slots?: Record<string, unknown> }).$slots ?? {},
+      );
+      expect(slotKeys).toEqual(['children']);
+      expect(slotKeys).not.toContain('');
+    });
+  });
+
+  it('drops empty-named props from the CDF entry', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [
+            { name: 'title', type: 'string', required: true, category: 'content' },
+            { name: '', type: 'string', required: false, category: 'content' },
+          ],
+          slots: [],
+        },
+      ]);
+      db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ?`).run(sessionId);
+      db.prepare(`UPDATE raw_props SET cdf_type = 'string', cdf_category = 'content' WHERE session_id = ?`).run(
+        sessionId,
+      );
+
+      const loaded = loadCDFComponents(db, sessionId);
+      db.close();
+      expect(loaded).toHaveLength(1);
+      const propKeys = Object.keys(loaded[0]!.entry.$properties);
+      expect(propKeys).toEqual(['title']);
+      expect(propKeys).not.toContain('');
     });
   });
 });
