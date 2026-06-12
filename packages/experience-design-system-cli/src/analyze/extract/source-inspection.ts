@@ -121,20 +121,25 @@ export async function inspectComponentSource(component: RawComponentDefinition):
   const reviewReasons: string[] = [];
   let wrapperScore = 0;
 
+  const hasGeneratedQueryHook = GENERATED_IMPORT_PATTERN.test(sourceText) && GENERATED_QUERY_HOOK_PATTERN.test(sourceText);
+  const infraProps = infraPropNames(component);
+  const siblingImports = collectSiblingRendererImports(sourceText);
+
   if (GQL_FILENAME_PATTERN.test(component.source)) {
     reviewReasons.push('data-wrapper:gql-filename');
     wrapperScore += 1;
   }
 
-  if (GENERATED_IMPORT_PATTERN.test(sourceText) && GENERATED_QUERY_HOOK_PATTERN.test(sourceText)) {
+  if (hasGeneratedQueryHook) {
     reviewReasons.push('data-wrapper:generated-query-hook');
     wrapperScore += 3;
   }
 
-  const siblingImports = collectSiblingRendererImports(sourceText);
-  if (siblingImports.length > 0) {
+  // Require corroboration from a stronger signal before counting sibling imports —
+  // otherwise any composed component that imports two sub-components scores +1 here.
+  if (siblingImports.length > 0 && (hasGeneratedQueryHook || infraProps.length > 0)) {
     reviewReasons.push('data-wrapper:sibling-renderer-import');
-    wrapperScore += 2;
+    wrapperScore += 1;
   }
 
   if (hasSiblingForwardRender(sourceText, siblingImports)) {
@@ -147,13 +152,12 @@ export async function inspectComponentSource(component: RawComponentDefinition):
     wrapperScore += 1;
   }
 
-  const infraProps = infraPropNames(component);
   if (infraProps.length > 0) {
     reviewReasons.push('data-wrapper:infra-props');
     wrapperScore += 2;
   }
 
-  if (LOADING_NULL_GUARD_PATTERN.test(sourceText) || /return\s+null\b/.test(sourceText)) {
+  if (LOADING_NULL_GUARD_PATTERN.test(sourceText)) {
     reviewReasons.push('data-wrapper:loading-null-guard');
     wrapperScore += 1;
   }

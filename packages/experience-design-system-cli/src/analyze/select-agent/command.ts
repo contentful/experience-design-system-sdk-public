@@ -19,7 +19,7 @@ import {
   buildSelectionContext,
   type SelectionContext,
 } from './context-builder.js';
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 
 const VALID_AGENTS = new Set<string>(['claude', 'codex', 'opencode', 'cursor']);
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 3 * 60 * 1000);
@@ -270,6 +270,17 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           process.stderr.write(`Error: session '${sessionId}' has no raw components. Run analyze extract first.\n`);
           process.exit(1);
           return;
+        }
+
+        if (selectionRoot && scannedFiles.length > 0) {
+          scannedFiles = scannedFiles.map((f) => (isAbsolute(f) ? f : resolve(selectionRoot, f)));
+        }
+
+        if (selectionRoot && scannedFiles.length === 0 && rawComponents.length > 0) {
+          process.stderr.write(
+            'warn: session has no scanned-files index (likely extracted on an older CLI version). ' +
+              'Re-run `analyze extract` to enable data-fetch wrapper detection during selection.\n',
+          );
         }
 
         let selectionCandidates: SelectionCandidate[] = rawComponents.map((component) => ({ component }));

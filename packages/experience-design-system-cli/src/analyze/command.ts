@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { render } from 'ink';
 import { mkdir, readdir, stat } from 'node:fs/promises';
-import { isAbsolute, join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Command } from 'commander';
 import { extractComponents } from './extract/pipeline.js';
 import { AnalyzeView } from './tui/AnalyzeView.js';
@@ -209,7 +209,7 @@ export function registerAnalyzeCommand(program: Command): void {
         });
       }
       storeRawComponents(db, sessionId, filteredComponents);
-      storeScannedFiles(db, sessionId, sourceFiles);
+      storeScannedFiles(db, sessionId, sourceFiles.map((f) => relative(projectRoot, f)));
       updateStep(db, stepId, 'complete', { sessionId });
       db.close();
 

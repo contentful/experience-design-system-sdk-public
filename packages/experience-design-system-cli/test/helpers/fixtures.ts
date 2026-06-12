@@ -1,5 +1,5 @@
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import { openPipelineDb, storeRawComponents, storeScannedFiles, getOrCreateSession } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
@@ -56,7 +56,8 @@ export async function createTestFixture(components = SAMPLE_COMPONENTS): Promise
     command: 'analyze extract',
   });
   storeRawComponents(db, sessionId, components);
-  storeScannedFiles(db, sessionId, componentSourcePaths);
+  // Store project-relative paths, matching what analyze extract now persists.
+  storeScannedFiles(db, sessionId, components.map((c) => c.source));
   db.close();
 
   return {
@@ -64,13 +65,14 @@ export async function createTestFixture(components = SAMPLE_COMPONENTS): Promise
     dbDir,
     projectDir,
     sessionId,
-    addScannedFiles: (absolutePaths: string[]) => {
+    addScannedFiles: (paths: string[]) => {
       const db2 = openPipelineDb(dbPath);
       try {
         const existing = db2
           .prepare('SELECT path FROM scanned_files WHERE session_id = ?')
           .all(sessionId) as Array<{ path: string }>;
-        storeScannedFiles(db2, sessionId, [...existing.map((r) => r.path), ...absolutePaths]);
+        const relativePaths = paths.map((p) => (isAbsolute(p) ? relative(projectDir, p) : p));
+        storeScannedFiles(db2, sessionId, [...existing.map((r) => r.path), ...relativePaths]);
       } finally {
         db2.close();
       }
