@@ -19,6 +19,16 @@ export interface ApiClientOptions {
   environmentId: string;
 }
 
+// Cap on the body slice appended to ApiError.message. Bumped from 1000 →
+// 16384 so realistic 422 ValidationFailed reports (which list every
+// offending component, ~100 chars per error, easily exceeds 1KB once you
+// cross ~10 components) survive intact through subprocess stderr. The
+// orchestrator's parseOffendingComponentNames does JSON.parse on this slice
+// and silently fails to recover any offenders if the JSON is mid-truncated.
+// The cap stays in place to keep a runaway server response from blowing up
+// log output.
+const ERROR_BODY_LOG_CAP = 16384;
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -27,9 +37,10 @@ export class ApiError extends Error {
   ) {
     super(message);
     if (body) {
-      // Append a trimmed version of the response body so callers that only
-      // log e.message don't silently swallow the server's error detail.
-      const trimmed = body.length > 1000 ? body.slice(0, 1000) + '…' : body;
+      // Append a (possibly trimmed) version of the response body so callers
+      // that only log e.message don't silently swallow the server's error
+      // detail.
+      const trimmed = body.length > ERROR_BODY_LOG_CAP ? body.slice(0, ERROR_BODY_LOG_CAP) + '…' : body;
       this.message = `${message}\n${trimmed}`;
     }
   }

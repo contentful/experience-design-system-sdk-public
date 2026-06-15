@@ -503,3 +503,53 @@ describe('phase-prefix constants — orchestrator contract', () => {
     expect(APPLY_ERROR_PREFIX).toContain('apply');
   });
 });
+
+describe('ApiError — body preservation for orchestrator retry parsing', () => {
+  // Builds a realistic CDF validation-failed body with N component errors.
+  // Each error is ~100 chars including JSON overhead, so 20 errors ≈ 2KB.
+  function makeValidationFailedBody(errorCount: number): string {
+    return JSON.stringify({
+      sys: { type: 'Error', id: 'ValidationFailed' },
+      message: 'Validation error',
+      details: {
+        errors: Array.from({ length: errorCount }, (_, i) => ({
+          path: `manifest:components/Component${i}/$slots/`,
+          message: `Slot id must be a non-empty string for Component${i}`,
+        })),
+      },
+    });
+  }
+
+  it('keeps a 2KB body parseable as JSON in e.message — orchestrator retry parses from stderr', () => {
+    // The orchestrator pipes the subprocess stderr (which contains e.message
+    // verbatim via die()) through parsePreviewValidationErrors. If ApiError
+    // truncates the body mid-JSON, the parser fails and the retry loop gives
+    // up — no exclusion, no recovery. Anything above ~10 component errors
+    // exceeds the original 1000-char trim cap.
+    const body = makeValidationFailedBody(20);
+    expect(body.length).toBeGreaterThan(1000); // sanity — confirms we're testing the truncation case
+
+    const err = new ApiError(`${PREVIEW_ERROR_PREFIX} 422`, 422, body);
+
+    // The body portion must remain valid JSON so JSON.parse succeeds.
+    const newlineIdx = err.message.indexOf('\n');
+    expect(newlineIdx).toBeGreaterThan(-1);
+    const bodyPart = err.message.slice(newlineIdx + 1);
+    expect(() => JSON.parse(bodyPart)).not.toThrow();
+  });
+
+  it('still trims pathologically large bodies (>16KB) so a runaway server response cannot exhaust memory in logs', () => {
+    // Bound: keep the cap; just raise it from 1000 to something realistic.
+    // Anything beyond ~16KB is almost certainly a runaway response, not a
+    // real validation report.
+    const huge = makeValidationFailedBody(500); // ~50KB
+    expect(huge.length).toBeGreaterThan(20000);
+
+    const err = new ApiError(`${PREVIEW_ERROR_PREFIX} 422`, 422, huge);
+
+    // Must be capped (i.e. truncated), but the cap must be high enough to
+    // accommodate realistic 422 reports.
+    expect(err.message.length).toBeLessThan(huge.length);
+    expect(err.message.length).toBeGreaterThan(10000);
+  });
+});
