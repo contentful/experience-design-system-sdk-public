@@ -57,7 +57,7 @@ export function validateExtractedComponents(components: RawComponentDefinition[]
     const nameKey = component.name.trim();
     if (nameKey && (nameCounts.get(nameKey) ?? 0) > 1) {
       issues.push({
-        severity: 'warning',
+        severity: 'error',
         code: 'DUPLICATE_COMPONENT_NAME',
         message: `Component name "${component.name}" appears more than once in the extracted set`,
       });

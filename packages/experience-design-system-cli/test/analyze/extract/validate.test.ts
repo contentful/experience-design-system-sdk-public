@@ -62,7 +62,7 @@ describe('RawComponentDefinition with validationIssues', () => {
   });
 });
 
-import { validateExtractedComponents } from '../../../src/analyze/extract/validate.js';
+import { validateExtractedComponents, shouldExcludeDueToValidation } from '../../../src/analyze/extract/validate.js';
 
 function makeComponent(overrides: Partial<RawComponentDefinition> = {}): RawComponentDefinition {
   return {
@@ -209,7 +209,7 @@ describe('validateExtractedComponents', () => {
   });
 
   describe('DUPLICATE_COMPONENT_NAME', () => {
-    it('flags components with duplicate names across the set as a warning', () => {
+    it('flags both components with duplicate names across the set as errors', () => {
       const components = [
         makeComponent({ name: 'Button', source: '/pkg-a/Button.tsx' }),
         makeComponent({ name: 'Button', source: '/pkg-b/Button.tsx' }),
@@ -218,7 +218,8 @@ describe('validateExtractedComponents', () => {
       const allIssues = result.flatMap((c) => c.validationIssues ?? []);
       const dupeIssues = allIssues.filter((i) => i.code === 'DUPLICATE_COMPONENT_NAME');
       expect(dupeIssues).toHaveLength(2);
-      expect(dupeIssues[0].severity).toBe('warning');
+      expect(dupeIssues[0].severity).toBe('error');
+      expect(dupeIssues[1].severity).toBe('error');
     });
 
     it('does not flag when all component names are unique', () => {
@@ -226,6 +227,16 @@ describe('validateExtractedComponents', () => {
       const result = validateExtractedComponents(components);
       const allIssues = result.flatMap((c) => c.validationIssues ?? []);
       expect(allIssues.filter((i) => i.code === 'DUPLICATE_COMPONENT_NAME')).toHaveLength(0);
+    });
+
+    it('causes shouldExcludeDueToValidation to return true for duplicate-named components', () => {
+      const components = [
+        makeComponent({ name: 'Button', source: '/pkg-a/Button.tsx' }),
+        makeComponent({ name: 'Button', source: '/pkg-b/Button.tsx' }),
+      ];
+      const result = validateExtractedComponents(components);
+      expect(shouldExcludeDueToValidation(result[0])).toBe(true);
+      expect(shouldExcludeDueToValidation(result[1])).toBe(true);
     });
   });
 

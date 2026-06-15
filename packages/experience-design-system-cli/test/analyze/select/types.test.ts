@@ -57,7 +57,7 @@ describe('createReviewSessionSummary validation counts', () => {
     const snap = makeSnapshot({
       validationIssues: [
         { severity: 'warning', code: 'EMPTY_COMPONENT', message: '' },
-        { severity: 'warning', code: 'DUPLICATE_COMPONENT_NAME', message: '' },
+        { severity: 'warning', code: 'EMPTY_COMPONENT', message: '' },
       ],
     });
     const summary = createReviewSessionSummary(snap);
