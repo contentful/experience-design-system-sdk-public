@@ -54,19 +54,39 @@ describe('sortComponentsForSidebar three-way partition', () => {
 });
 
 describe('statusIcon / statusColor warning vs error', () => {
-  it('returns yellow ⚠ for warning-only component', () => {
-    expect(statusIcon('needs-review', 0, 1)).toBe('⚠');
+  it('warning-only component shows status icon (not ⚠) so user accept/reject decision is visible', () => {
+    // Color stays yellow so the warning cue is preserved, but the icon reflects user decision.
+    expect(statusIcon('needs-review', 0, 1)).toBe('·');
     expect(statusColor('needs-review', 0, 1)).toBe('yellow');
   });
 
-  it('returns red ⚠ when both errors and warnings present (errors win)', () => {
+  it('warning-only accepted component shows ✓, not ⚠', () => {
+    expect(statusIcon('accepted', 0, 1)).toBe('✓');
+    expect(statusColor('accepted', 0, 1)).toBe('yellow');
+  });
+
+  it('warning-only rejected component shows ✗, not ⚠', () => {
+    expect(statusIcon('rejected', 0, 1)).toBe('✗');
+    expect(statusColor('rejected', 0, 1)).toBe('yellow');
+  });
+
+  it('warning-only reviewed component shows ~, not ⚠', () => {
+    expect(statusIcon('reviewed', 0, 1)).toBe('~');
+    expect(statusColor('reviewed', 0, 1)).toBe('yellow');
+  });
+
+  it('returns red ⚠ when both errors and warnings present (errors override icon and color)', () => {
     expect(statusIcon('needs-review', 1, 1)).toBe('⚠');
     expect(statusColor('needs-review', 1, 1)).toBe('red');
   });
 
-  it('returns red ⚠ for error-only component', () => {
+  it('error-only component overrides icon to ⚠ regardless of status (component is structurally broken)', () => {
     expect(statusIcon('needs-review', 1, 0)).toBe('⚠');
     expect(statusColor('needs-review', 1, 0)).toBe('red');
+    expect(statusIcon('accepted', 1, 0)).toBe('⚠');
+    expect(statusColor('accepted', 1, 0)).toBe('red');
+    expect(statusIcon('rejected', 1, 0)).toBe('⚠');
+    expect(statusIcon('reviewed', 1, 0)).toBe('⚠');
   });
 
   it('returns clean status icon and color when no validation issues', () => {
@@ -76,5 +96,7 @@ describe('statusIcon / statusColor warning vs error', () => {
     expect(statusColor('rejected', 0, 0)).toBe('red');
     expect(statusIcon('needs-review', 0, 0)).toBe('·');
     expect(statusColor('needs-review', 0, 0)).toBe('white');
+    expect(statusIcon('reviewed', 0, 0)).toBe('~');
+    expect(statusColor('reviewed', 0, 0)).toBe('yellow');
   });
 });

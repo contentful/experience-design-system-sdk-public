@@ -17,9 +17,13 @@ type SidebarProps = {
 export function statusIcon(
   status: ReviewComponentStatus,
   validationErrorCount: number,
-  validationWarningCount: number,
+  // Warnings deliberately do NOT override the icon — the user's accept/reject
+  // decision must remain visible. Color is already yellow via statusColor for
+  // warning-only components, so the warning cue is preserved.
+  _validationWarningCount: number,
 ): string {
-  if (validationErrorCount > 0 || validationWarningCount > 0) return '⚠';
+  // Errors override — a structurally broken component should never render as ✓/✗.
+  if (validationErrorCount > 0) return '⚠';
   switch (status) {
     case 'accepted':
       return '✓';
