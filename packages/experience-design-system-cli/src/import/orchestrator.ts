@@ -104,6 +104,45 @@ export function parseOffendingComponentNames(output: string): string[] {
   return [...new Set(errors.map((e) => e.componentName))];
 }
 
+/**
+ * Build the apply-push StepResult record. Centralizes the success/failure
+ * shape so excludedByValidationRetry is recorded consistently in both
+ * branches — previously the total-failure branch dropped it, leaving users
+ * with a failed pipeline and no audit trail of what was auto-excluded
+ * before the retry loop gave up.
+ */
+export function buildPushStepResult(args: {
+  created: number;
+  updated: number;
+  failed: number;
+  durationMs: number;
+  stderr: string;
+  excludedByRetry: string[];
+  totalFailure?: boolean;
+}): StepResult {
+  const { created, updated, failed, durationMs, stderr, excludedByRetry, totalFailure } = args;
+  const excludedDetail = excludedByRetry.length > 0 ? { excludedByValidationRetry: excludedByRetry } : {};
+
+  if (totalFailure) {
+    const detail = excludedByRetry.length > 0 ? { ...excludedDetail } : undefined;
+    return {
+      step: 'apply push',
+      status: 'failed',
+      durationMs,
+      error: stderr,
+      ...(detail ? { detail } : {}),
+    };
+  }
+
+  const status: StepResult['status'] = failed > 0 ? 'failed' : 'complete';
+  return {
+    step: 'apply push',
+    status,
+    durationMs,
+    detail: { created, updated, failed, ...excludedDetail },
+  };
+}
+
 export async function runPipeline(
   opts: PipelineOptions,
   progressWriter: (line: string) => void,
@@ -486,33 +525,37 @@ export async function runPipeline(
       // Total failure — nothing was pushed
       updateStep(db, pushStepId, 'failed', {}, r.stderr);
       progressWriter(`${pushLabel}✗  failed (${(durationMs / 1000).toFixed(1)}s)`);
-      steps.push({
-        step: 'apply push',
-        status: 'failed',
-        durationMs,
-        error: r.stderr,
-      });
+      steps.push(
+        buildPushStepResult({
+          created,
+          updated,
+          failed,
+          durationMs,
+          stderr: r.stderr,
+          excludedByRetry,
+          totalFailure: true,
+        }),
+      );
       db.close();
       return { session: sessionId, project: projectRoot, steps };
     }
 
-    const stepStatus = failed > 0 ? 'failed' : 'complete';
-    updateStep(db, pushStepId, stepStatus === 'complete' ? 'complete' : 'failed', { components: componentsPath });
+    const stepResult = buildPushStepResult({
+      created,
+      updated,
+      failed,
+      durationMs,
+      stderr: r.stderr,
+      excludedByRetry,
+    });
+    updateStep(db, pushStepId, stepResult.status === 'complete' ? 'complete' : 'failed', {
+      components: componentsPath,
+    });
     const statusIcon = failed > 0 ? '⚠' : '✓';
     progressWriter(
       `${pushLabel}${statusIcon}  ${created} created, ${updated} updated, ${failed} failed  (${(durationMs / 1000).toFixed(1)}s)`,
     );
-    steps.push({
-      step: 'apply push',
-      status: stepStatus,
-      durationMs,
-      detail: {
-        created,
-        updated,
-        failed,
-        ...(excludedByRetry.length > 0 ? { excludedByValidationRetry: excludedByRetry } : {}),
-      },
-    });
+    steps.push(stepResult);
   }
 
   progressWriter('');
