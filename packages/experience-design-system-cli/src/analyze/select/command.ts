@@ -8,6 +8,11 @@ import { loadReviewInput } from './parser.js';
 import { App } from './tui/App.js';
 import type { ReviewSessionPaths, ReviewSessionSnapshot } from './types.js';
 import { openPipelineDb, loadRawComponents, storeRawComponents, createStep, updateStep } from '../../session/db.js';
+import {
+  validateExtractedComponents,
+  shouldExcludeDueToValidation,
+  formatExclusionWarning,
+} from '../extract/validate.js';
 
 type RefineCommandOptions = {
   session?: string;
@@ -18,6 +23,7 @@ type RefineCommandOptions = {
   deselect?: string[];
   select?: string[];
   patch?: string;
+  excludeInvalid?: boolean;
 };
 
 interface PatchOperation {
@@ -106,12 +112,43 @@ async function runNonInteractive(
   const selectPatterns = (opts.select ?? []).map((p) => p.toLowerCase());
   const selectAll = opts.acceptAll || opts.selectAll;
 
+  // Fail-loud gate: --select-all stops with a non-zero exit when ANY component
+  // has error-severity validation issues. The user must opt in to auto-rejection
+  // with --exclude-invalid. Silent exclusion in CI / orchestrator contexts is
+  // dangerous — the caller should see and acknowledge that components are
+  // being dropped from the import.
+  if (selectAll && !opts.excludeInvalid) {
+    const invalid = result.components.filter((c) => shouldExcludeDueToValidation(c.originalProposal));
+    if (invalid.length > 0) {
+      const lines = [
+        `Error: ${invalid.length} component(s) failed validation; refusing --select-all without --exclude-invalid:`,
+      ];
+      for (const c of invalid) {
+        const codes = (c.originalProposal.validationIssues ?? [])
+          .filter((i) => i.severity === 'error')
+          .map((i) => i.code)
+          .join(', ');
+        lines.push(`  ✗  ${c.name}  ${codes}`);
+      }
+      lines.push('');
+      lines.push(
+        'Re-run with --exclude-invalid to auto-reject these components, or run analyze select interactively to fix them.',
+      );
+      process.stderr.write(lines.join('\n') + '\n');
+      process.exit(1);
+      return;
+    }
+  }
+
   if (selectAll || rejectPatterns.length > 0 || selectPatterns.length > 0) {
     result = {
       ...result,
       components: result.components.map((c) => {
         const nameLower = c.name.toLowerCase();
         if (rejectPatterns.some((p) => nameLower.includes(p))) {
+          return { ...c, status: 'rejected' };
+        }
+        if (selectAll && opts.excludeInvalid && shouldExcludeDueToValidation(c.originalProposal)) {
           return { ...c, status: 'rejected' };
         }
         if (selectAll || selectPatterns.some((p) => nameLower.includes(p))) {
@@ -154,11 +191,33 @@ async function runNonInteractive(
   const accepted = result.components.filter((c) => c.status === 'accepted');
   const rejected = result.components.filter((c) => c.status === 'rejected');
 
+  // Surface what was excluded by --select-all --exclude-invalid so the
+  // non-interactive caller (CI, orchestrator, scripted pipeline) doesn't
+  // have to guess what failed validation. The warning is printed BEFORE
+  // saveReviewState so the message lands ahead of the bare counts.
+  if (selectAll && opts.excludeInvalid) {
+    const autoRejected = rejected
+      .filter((c) => shouldExcludeDueToValidation(c.originalProposal))
+      .map((c) => ({ name: c.name, validationIssues: c.originalProposal.validationIssues }));
+    process.stderr.write(formatExclusionWarning(autoRejected));
+  }
+
   // Persist decisions to session state so pipeline orchestrator can read them
   await saveReviewState(paths.statePath, result);
 
-  // Sync edited proposals back to the DB so generation uses the user's edits
-  if (accepted.length > 0) {
+  // Sync edited proposals back to the DB so generation uses the user's edits.
+  //
+  // Only --patch can mutate editedProposal — the other non-interactive flags
+  // (--select-all / --select / --deselect / --reject / --exclude-invalid)
+  // change status only. Calling storeRawComponents in the no-edit case is
+  // not just wasteful: it's destructive. storeRawComponents starts with
+  // `DELETE FROM raw_components WHERE session_id = ?` and re-inserts only
+  // the components passed in — so on a --select-all run, every rejected
+  // component (including its raw_slots / raw_props children) is physically
+  // removed. A second invocation of the same command would then see a
+  // smaller snapshot, lose the rejected component(s), and report different
+  // counts.
+  if (opts.patch && accepted.length > 0) {
     const db = openPipelineDb();
     try {
       storeRawComponents(
@@ -172,6 +231,29 @@ async function runNonInteractive(
   }
 
   process.stderr.write(`Accepted: ${accepted.length}  Rejected: ${rejected.length}\n`);
+}
+
+/**
+ * Load components from the pipeline DB and re-run extraction validation.
+ *
+ * `validationIssues` is intentionally not persisted (the validator is pure
+ * and cheap to re-run), so any cold-start of `analyze select` from a prior
+ * `analyze extract` session needs to recompute it before building the
+ * review snapshot — otherwise the TUI sees no validation errors at all.
+ */
+export async function loadAndValidateForReview(
+  sessionId: string,
+  projectRoot: string | undefined,
+): Promise<ReviewSessionSnapshot> {
+  const db = openPipelineDb();
+  let rawComponents;
+  try {
+    rawComponents = loadRawComponents(db, sessionId);
+  } finally {
+    db.close();
+  }
+  const validatedComponents = validateExtractedComponents(rawComponents);
+  return loadReviewInput(validatedComponents, { reviewRoot: projectRoot });
 }
 
 function resolveSessionId(sessionFlag: string | undefined): string {
@@ -215,6 +297,10 @@ export function registerAnalyzeEditCommand(program: Command): void {
     .option('--accept-all', 'Alias for --select-all', false)
     .option('--reject <pattern>', 'Alias for --deselect <pattern> (repeatable)', collect, [])
     .option('--patch <path>', 'Path to a JSON patch file for structured component overrides')
+    .option(
+      '--exclude-invalid',
+      'Auto-reject components with validation errors when bulk-selecting (no-op without --select-all)',
+    )
     .action(
       async ({
         session: sessionFlag,
@@ -225,18 +311,19 @@ export function registerAnalyzeEditCommand(program: Command): void {
         deselect,
         select,
         patch,
+        excludeInvalid,
       }: RefineCommandOptions) => {
         const sessionId = resolveSessionId(sessionFlag);
 
         const db = openPipelineDb();
-        let rawComponents;
+        let rawComponentCount = 0;
         try {
-          rawComponents = loadRawComponents(db, sessionId);
+          rawComponentCount = loadRawComponents(db, sessionId).length;
         } finally {
           db.close();
         }
 
-        if (rawComponents.length === 0) {
+        if (rawComponentCount === 0) {
           process.stderr.write(`Error: session '${sessionId}' has no raw components. Run analyze extract first.\n`);
           process.exit(1);
           return;
@@ -255,9 +342,7 @@ export function registerAnalyzeEditCommand(program: Command): void {
         let paths: ReviewSessionPaths;
         let snapshot: ReviewSessionSnapshot;
         try {
-          snapshot = await loadReviewInput(rawComponents, {
-            reviewRoot: projectRoot,
-          });
+          snapshot = await loadAndValidateForReview(sessionId, projectRoot);
           paths = await getRefineSessionPaths(sessionId, artifactsRoot);
           if (!nonInteractive) {
             snapshot = await ensureRefineSession(sessionId, artifactsRoot, snapshot);
@@ -279,7 +364,17 @@ export function registerAnalyzeEditCommand(program: Command): void {
           try {
             await runNonInteractive(
               snapshot,
-              { session: sessionFlag, projectRoot, acceptAll, selectAll, reject, deselect, select, patch },
+              {
+                session: sessionFlag,
+                projectRoot,
+                acceptAll,
+                selectAll,
+                reject,
+                deselect,
+                select,
+                patch,
+                excludeInvalid,
+              },
               paths,
               sessionId,
             );

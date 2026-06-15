@@ -29,6 +29,8 @@ export type ReviewComponentSummary = {
   previewAnnotation?: PreviewAnnotation;
   extractionConfidence: number | null; // 1–5 scale; null = not yet scored
   needsReview: boolean;
+  validationErrorCount: number;
+  validationWarningCount: number;
 };
 
 export type ReviewSessionSnapshot = {
@@ -55,15 +57,34 @@ export type ReviewSessionPaths = {
   statePath: string;
 };
 
+export function countValidationIssues(component: RawComponentDefinition): {
+  errors: number;
+  warnings: number;
+} {
+  const issues = component.validationIssues ?? [];
+  let errors = 0;
+  let warnings = 0;
+  for (const issue of issues) {
+    if (issue.severity === 'error') errors++;
+    else if (issue.severity === 'warning') warnings++;
+  }
+  return { errors, warnings };
+}
+
 export function createReviewSessionSummary(session: ReviewSessionSnapshot): ReviewSessionSummary {
   return {
-    components: session.components.map((component) => ({
-      id: component.id,
-      name: component.name,
-      status: component.status,
-      extractionConfidence: component.originalProposal.extractionConfidence ?? null,
-      needsReview: component.originalProposal.needsReview ?? false,
-    })),
+    components: session.components.map((component) => {
+      const counts = countValidationIssues(component.originalProposal);
+      return {
+        id: component.id,
+        name: component.name,
+        status: component.status,
+        extractionConfidence: component.originalProposal.extractionConfidence ?? null,
+        needsReview: component.originalProposal.needsReview ?? false,
+        validationErrorCount: counts.errors,
+        validationWarningCount: counts.warnings,
+      };
+    }),
   };
 }
 

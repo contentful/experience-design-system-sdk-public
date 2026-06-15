@@ -223,6 +223,8 @@ export function GenerateReviewStep({
     status: c.status,
     extractionConfidence: null,
     needsReview: false,
+    validationErrorCount: 0,
+    validationWarningCount: 0,
   }));
 
   const longestName = components.reduce((m, c) => Math.max(m, c.key.length), 0);

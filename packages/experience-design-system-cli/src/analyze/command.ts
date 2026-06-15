@@ -20,6 +20,8 @@ import { preClassifyComponent } from './pre-classify.js';
 import { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
 import { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
 import { describeReviewReasons, inspectComponentSource } from './extract/source-inspection.js';
+import { validateExtractedComponents } from './extract/validate.js';
+import { buildAnalyzeViewRows } from './build-analyze-view-rows.js';
 
 interface AnalyzeExtractOptions {
   project: string;
@@ -215,7 +217,8 @@ export function registerAnalyzeCommand(program: Command): void {
             deriveNeedsReview(confidence) || inspection.wrapperConfidence >= 4 || inspection.keepDespiteZeroSurface,
         });
       }
-      storeRawComponents(db, sessionId, filteredComponents);
+      const validatedComponents = validateExtractedComponents(filteredComponents);
+      storeRawComponents(db, sessionId, validatedComponents);
       storeScannedFiles(
         db,
         sessionId,
@@ -226,20 +229,19 @@ export function registerAnalyzeCommand(program: Command): void {
 
       const allWarnings = [...extraction.warnings, ...filterWarnings];
 
+      const { rows: componentRows, totalErrors } = buildAnalyzeViewRows(
+        filteredComponents,
+        validatedComponents,
+        allWarnings,
+      );
+
       const analyzeResult: AnalyzeViewResult = {
         sourceDirectory,
         sessionId,
         fileCount: sourceFiles.length,
-        components: filteredComponents.map((c) => ({
-          name: c.name,
-          framework: c.framework,
-          propCount: c.props.length,
-          slotCount: c.slots.length,
-          warnings: allWarnings.filter((w) => w.startsWith(c.name + ':')),
-          extractionConfidence: c.extractionConfidence ?? null,
-          needsReview: c.needsReview ?? false,
-        })),
+        components: componentRows,
         totalWarnings: allWarnings.length,
+        totalErrors,
       };
 
       if (process.stdout.isTTY) {
@@ -258,10 +260,18 @@ export function registerAnalyzeCommand(program: Command): void {
           `Scanned ${pluralize(sourceFiles.length, 'source file')} in ${sourceDirectory}`,
           `Extracted ${pluralize(extraction.components.length, 'component')}`,
         ];
+        if (totalErrors > 0) {
+          summaryLines.push(`Errors (${totalErrors}):`);
+          for (const c of componentRows) {
+            for (const e of c.errors) {
+              summaryLines.push(`- ${c.name}: ${e}`);
+            }
+          }
+        }
         if (allWarnings.length > 0) {
           summaryLines.push(`Warnings (${allWarnings.length}):`);
           summaryLines.push(...allWarnings.map((w) => `- ${w}`));
-        } else {
+        } else if (totalErrors === 0) {
           summaryLines.push('Warnings: none');
         }
         process.stderr.write(summaryLines.join('\n') + '\n');

@@ -13,10 +13,18 @@ export type AnalyzeViewResult = {
     propCount: number;
     slotCount: number;
     warnings: string[];
+    /**
+     * Error-severity validation messages. Components with any errors will be
+     * auto-rejected by the next step (`analyze select --select-all`), so the
+     * extract TUI surfaces them prominently — both with a per-row ✗ badge
+     * and a dedicated Errors section below the component list.
+     */
+    errors: string[];
     extractionConfidence: number | null;
     needsReview: boolean;
   }>;
   totalWarnings: number;
+  totalErrors: number;
 };
 
 type AnalyzeViewProps = {
@@ -95,14 +103,20 @@ export function AnalyzeView({ result, onExit }: AnalyzeViewProps): React.ReactEl
           const confLabel = conf === null ? '—' : (component.needsReview ? '⚑ ' : '') + String(conf);
           return (
             <Box key={component.name}>
-              {component.warnings.length > 0 && <Text color="yellow">⚠ </Text>}
-              {component.warnings.length === 0 && <Text> </Text>}
+              {component.errors.length > 0 && <Text color="red">✗ </Text>}
+              {component.errors.length === 0 && component.warnings.length > 0 && <Text color="yellow">⚠ </Text>}
+              {component.errors.length === 0 && component.warnings.length === 0 && <Text> </Text>}
               <Text>{truncateName(component.name).padEnd(20)}</Text>
               <Text dimColor>{component.framework.padEnd(10)}</Text>
               <Text>{(component.propCount + ' props').padEnd(10)}</Text>
               <Text>{(component.slotCount + ' ' + (component.slotCount === 1 ? 'slot' : 'slots')).padEnd(8)}</Text>
               <Text color={confColor}>{confLabel}</Text>
-              {component.warnings.length > 0 && (
+              {component.errors.length > 0 && (
+                <Text color="red">
+                  {'  ✗ ' + component.errors.length + ' error' + (component.errors.length === 1 ? '' : 's')}
+                </Text>
+              )}
+              {component.errors.length === 0 && component.warnings.length > 0 && (
                 <Text color="yellow">
                   {'  ⚠ ' + component.warnings.length + ' warning' + (component.warnings.length === 1 ? '' : 's')}
                 </Text>
@@ -111,6 +125,25 @@ export function AnalyzeView({ result, onExit }: AnalyzeViewProps): React.ReactEl
           );
         })}
         {showScrollDown && <Text dimColor> ▼ scroll down</Text>}
+        {result.totalErrors > 0 && (
+          <>
+            <Text> </Text>
+            <Text dimColor>{'─'.repeat(70)}</Text>
+            <Text bold color="red">
+              {'Errors (' + result.totalErrors + ')'}
+            </Text>
+            <Text dimColor>{'─'.repeat(70)}</Text>
+            <Text> </Text>
+            {result.components
+              .filter((c) => c.errors.length > 0)
+              .flatMap((c) => c.errors.map((e) => ({ component: c.name, error: e })))
+              .map((e, i) => (
+                <Text key={i} color="red">
+                  {'  ✗ ' + e.component + ': ' + e.error}
+                </Text>
+              ))}
+          </>
+        )}
         {result.totalWarnings > 0 && (
           <>
             <Text> </Text>

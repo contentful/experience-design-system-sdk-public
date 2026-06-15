@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 import type { PreviewAnnotation, ReviewComponentStatus, ReviewSessionSnapshot } from '../types.js';
 import { createReviewSessionDetail } from '../types.js';
 import { TopBar } from './components/TopBar.js';
-import { Sidebar } from './components/Sidebar.js';
+import { Sidebar, sortComponentsForSidebar } from './components/Sidebar.js';
+import { countValidationIssues } from '../types.js';
 import { ComponentDetail } from './components/ComponentDetail.js';
 import { StatusBar } from './components/StatusBar.js';
 import { HelpOverlay } from './components/HelpOverlay.js';
@@ -357,21 +358,21 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
   // Must be before early returns — Rules of Hooks
   const sessionSummary = useMemo(
     () =>
-      (session?.components ?? [])
-        .map((c) => ({
-          id: c.id,
-          name: c.name,
-          status: c.status,
-          previewAnnotation: previewAnnotations[c.name] as PreviewAnnotation | undefined,
-          extractionConfidence: c.originalProposal.extractionConfidence ?? null,
-          needsReview: c.originalProposal.needsReview ?? false,
-        }))
-        .sort((a, b) => {
-          const aF = a.needsReview && a.status === 'needs-review' ? 0 : 1;
-          const bF = b.needsReview && b.status === 'needs-review' ? 0 : 1;
-          if (aF !== bF) return aF - bF;
-          return (a.extractionConfidence ?? 6) - (b.extractionConfidence ?? 6);
+      sortComponentsForSidebar(
+        (session?.components ?? []).map((c) => {
+          const counts = countValidationIssues(c.originalProposal);
+          return {
+            id: c.id,
+            name: c.name,
+            status: c.status,
+            previewAnnotation: previewAnnotations[c.name] as PreviewAnnotation | undefined,
+            extractionConfidence: c.originalProposal.extractionConfidence ?? null,
+            needsReview: c.originalProposal.needsReview ?? false,
+            validationErrorCount: counts.errors,
+            validationWarningCount: counts.warnings,
+          };
         }),
+      ),
     [session?.components, previewAnnotations],
   );
 

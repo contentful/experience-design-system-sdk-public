@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`ValidateView > matches snapshot for all valid 1`] = `
-"experience-design-system-cli  validate                                    [?] help  [q] quit  v2.7.3
+"experience-design-system-cli  validate                                    [?] help  [q] quit  v<version>
 
   ✓ components.json   CDF v1   Valid CDF v1 — 5 components found
 
@@ -11,7 +11,7 @@ exports[`ValidateView > matches snapshot for all valid 1`] = `
 `;
 
 exports[`ValidateView > matches snapshot with errors 1`] = `
-"experience-design-system-cli  validate                                    [?] help  [q] quit  v2.7.3
+"experience-design-system-cli  validate                                    [?] help  [q] quit  v<version>
 
   ✗ components.json   CDF v1   2 errors
   ✓ tokens.json   DTCG   valid

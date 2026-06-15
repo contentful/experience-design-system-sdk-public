@@ -15,6 +15,38 @@ const require = createRequire(import.meta.url);
 
 const pkg = require('../package.json') as { version: string };
 
+type SpawnedChild = {
+  on(event: 'error', listener: (err: unknown) => void): unknown;
+  on(event: 'exit', listener: (code: number | null) => void): unknown;
+};
+
+/**
+ * Run the spawn lifecycle for the build command. Extracted so the
+ * error-surfacing path is testable: previously `child.on('error', ...)`
+ * silently returned exit code 1 with no context, leaving the user
+ * staring at a generic non-zero exit when `pnpm` wasn't on PATH.
+ */
+export async function runBuild(opts: {
+  spawnFn: () => SpawnedChild;
+  stderrWrite: (chunk: string) => void;
+}): Promise<{ exitCode: number }> {
+  return new Promise((resolvePromise) => {
+    const child = opts.spawnFn();
+    let settled = false;
+    const settle = (exitCode: number): void => {
+      if (settled) return;
+      settled = true;
+      resolvePromise({ exitCode });
+    };
+    child.on('error', (err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      opts.stderrWrite(`Error: failed to spawn build subprocess: ${message}\n`);
+      settle(1);
+    });
+    child.on('exit', (code) => settle(code ?? 1));
+  });
+}
+
 function registerBuildCommand(program: Command): void {
   program
     .command('build')
@@ -22,10 +54,9 @@ function registerBuildCommand(program: Command): void {
     .action(async () => {
       const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
       process.stderr.write('⚙  Building from source...\n');
-      const exitCode = await new Promise<number>((resolvePromise) => {
-        const child = spawn('pnpm', ['build'], { cwd: pkgRoot, stdio: 'inherit' });
-        child.on('error', () => resolvePromise(1));
-        child.on('exit', (code) => resolvePromise(code ?? 1));
+      const { exitCode } = await runBuild({
+        spawnFn: () => spawn('pnpm', ['build'], { cwd: pkgRoot, stdio: 'inherit' }) as SpawnedChild,
+        stderrWrite: (s) => process.stderr.write(s),
       });
       process.exit(exitCode);
     });

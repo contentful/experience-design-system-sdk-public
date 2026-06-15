@@ -4,10 +4,42 @@ import { Sidebar } from '../../../../src/analyze/select/tui/components/Sidebar.j
 import type { ReviewComponentSummary } from '../../../../src/analyze/select/types.js';
 
 const components: ReviewComponentSummary[] = [
-  { id: 'a', name: 'Button', status: 'accepted', extractionConfidence: 95, needsReview: false },
-  { id: 'b', name: 'Card', status: 'rejected', extractionConfidence: 90, needsReview: false },
-  { id: 'c', name: 'Input', status: 'needs-review', extractionConfidence: 60, needsReview: true },
-  { id: 'd', name: 'Select', status: 'reviewed', extractionConfidence: 80, needsReview: false },
+  {
+    id: 'a',
+    name: 'Button',
+    status: 'accepted',
+    extractionConfidence: 95,
+    needsReview: false,
+    validationErrorCount: 0,
+    validationWarningCount: 0,
+  },
+  {
+    id: 'b',
+    name: 'Card',
+    status: 'rejected',
+    extractionConfidence: 90,
+    needsReview: false,
+    validationErrorCount: 0,
+    validationWarningCount: 0,
+  },
+  {
+    id: 'c',
+    name: 'Input',
+    status: 'needs-review',
+    extractionConfidence: 60,
+    needsReview: true,
+    validationErrorCount: 0,
+    validationWarningCount: 0,
+  },
+  {
+    id: 'd',
+    name: 'Select',
+    status: 'reviewed',
+    extractionConfidence: 80,
+    needsReview: false,
+    validationErrorCount: 0,
+    validationWarningCount: 0,
+  },
 ];
 
 describe('Sidebar', () => {
@@ -32,7 +64,15 @@ describe('Sidebar', () => {
 
   it('truncates names that exceed maxNameLen (width 18 - 4 = 14 chars)', () => {
     const longComponents: ReviewComponentSummary[] = [
-      { id: 'x', name: 'VeryLongComponentName', status: 'needs-review', extractionConfidence: 50, needsReview: true },
+      {
+        id: 'x',
+        name: 'VeryLongComponentName',
+        status: 'needs-review',
+        extractionConfidence: 50,
+        needsReview: true,
+        validationErrorCount: 0,
+        validationWarningCount: 0,
+      },
     ];
     const { lastFrame } = render(
       <Sidebar
@@ -57,6 +97,8 @@ describe('Sidebar', () => {
       status: 'needs-review' as const,
       extractionConfidence: 50,
       needsReview: true,
+      validationErrorCount: 0,
+      validationWarningCount: 0,
     }));
     const { lastFrame } = render(
       <Sidebar
@@ -76,9 +118,33 @@ describe('Sidebar', () => {
 
   it('renders component names without confidence scores (scores are in detail header)', () => {
     const mixed: ReviewComponentSummary[] = [
-      { id: '1', name: 'Good', status: 'needs-review', extractionConfidence: 95, needsReview: false },
-      { id: '2', name: 'Medium', status: 'needs-review', extractionConfidence: 65, needsReview: false },
-      { id: '3', name: 'Flagged', status: 'needs-review', extractionConfidence: 40, needsReview: true },
+      {
+        id: '1',
+        name: 'Good',
+        status: 'needs-review',
+        extractionConfidence: 95,
+        needsReview: false,
+        validationErrorCount: 0,
+        validationWarningCount: 0,
+      },
+      {
+        id: '2',
+        name: 'Medium',
+        status: 'needs-review',
+        extractionConfidence: 65,
+        needsReview: false,
+        validationErrorCount: 0,
+        validationWarningCount: 0,
+      },
+      {
+        id: '3',
+        name: 'Flagged',
+        status: 'needs-review',
+        extractionConfidence: 40,
+        needsReview: true,
+        validationErrorCount: 0,
+        validationWarningCount: 0,
+      },
     ];
     const { lastFrame } = render(
       <Sidebar
