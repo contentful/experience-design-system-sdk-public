@@ -60,11 +60,29 @@ function truncateName(name: string, maxLen: number): string {
   return name.slice(0, maxLen) + '…';
 }
 
+/**
+ * Sort key for stable secondary ordering within a validation tier:
+ * needs-review components first, then by extractionConfidence ascending
+ * (lowest confidence first, null treated as highest = last). Used to be
+ * applied inline in App.tsx, then this helper sorted again — pulled in
+ * here so the sort happens once.
+ */
+function withinTierComparator(a: ReviewComponentSummary, b: ReviewComponentSummary): number {
+  const aPending = a.needsReview && a.status === 'needs-review' ? 0 : 1;
+  const bPending = b.needsReview && b.status === 'needs-review' ? 0 : 1;
+  if (aPending !== bPending) return aPending - bPending;
+  return (a.extractionConfidence ?? 6) - (b.extractionConfidence ?? 6);
+}
+
 export function sortComponentsForSidebar(components: ReviewComponentSummary[]): ReviewComponentSummary[] {
   const withErrors = components.filter((c) => c.validationErrorCount > 0);
   const withWarnings = components.filter((c) => c.validationErrorCount === 0 && c.validationWarningCount > 0);
   const clean = components.filter((c) => c.validationErrorCount === 0 && c.validationWarningCount === 0);
-  return [...withErrors, ...withWarnings, ...clean];
+  return [
+    ...[...withErrors].sort(withinTierComparator),
+    ...[...withWarnings].sort(withinTierComparator),
+    ...[...clean].sort(withinTierComparator),
+  ];
 }
 
 export function Sidebar({

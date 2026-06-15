@@ -359,26 +359,19 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
   const sessionSummary = useMemo(
     () =>
       sortComponentsForSidebar(
-        (session?.components ?? [])
-          .map((c) => {
-            const counts = countValidationIssues(c.originalProposal);
-            return {
-              id: c.id,
-              name: c.name,
-              status: c.status,
-              previewAnnotation: previewAnnotations[c.name] as PreviewAnnotation | undefined,
-              extractionConfidence: c.originalProposal.extractionConfidence ?? null,
-              needsReview: c.originalProposal.needsReview ?? false,
-              validationErrorCount: counts.errors,
-              validationWarningCount: counts.warnings,
-            };
-          })
-          .sort((a, b) => {
-            const aF = a.needsReview && a.status === 'needs-review' ? 0 : 1;
-            const bF = b.needsReview && b.status === 'needs-review' ? 0 : 1;
-            if (aF !== bF) return aF - bF;
-            return (a.extractionConfidence ?? 6) - (b.extractionConfidence ?? 6);
-          }),
+        (session?.components ?? []).map((c) => {
+          const counts = countValidationIssues(c.originalProposal);
+          return {
+            id: c.id,
+            name: c.name,
+            status: c.status,
+            previewAnnotation: previewAnnotations[c.name] as PreviewAnnotation | undefined,
+            extractionConfidence: c.originalProposal.extractionConfidence ?? null,
+            needsReview: c.originalProposal.needsReview ?? false,
+            validationErrorCount: counts.errors,
+            validationWarningCount: counts.warnings,
+          };
+        }),
       ),
     [session?.components, previewAnnotations],
   );
