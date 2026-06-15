@@ -30,6 +30,22 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Thrown when pollOperation reaches maxAttempts without a terminal status.
+ * Carries the last known operation state so callers can show partial progress
+ * rather than treating the timeout as a hard failure — the operation is likely
+ * still running and will complete on the server.
+ */
+export class OperationTimeoutError extends Error {
+  constructor(
+    message: string,
+    public readonly lastOperation: ApplyOperationResponse,
+  ) {
+    super(message);
+    this.name = 'OperationTimeoutError';
+  }
+}
+
 async function request(url: string, options: RequestInit & { token: string }): Promise<Response> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${options.token}`,
@@ -122,6 +138,8 @@ export class ImportApiClient {
     const maxAttempts = opts.maxAttempts ?? 150;
     const terminalStatuses = new Set(['succeeded', 'partial', 'failed']);
 
+    let lastOp: ApplyOperationResponse | null = null;
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const url = `${this.base()}/design_systems/imports/apply/${encodeURIComponent(operationId)}`;
       const res = await fetch(url, {
@@ -132,6 +150,7 @@ export class ImportApiClient {
         throw new ApiError(`poll failed: ${res.status}`, res.status, await res.text());
       }
       const op = (await res.json()) as ApplyOperationResponse;
+      lastOp = op;
       opts.onProgress?.(op);
       if (terminalStatuses.has(op.sys.status)) {
         return op;
@@ -143,6 +162,14 @@ export class ImportApiClient {
         await new Promise((resolve) => setTimeout(resolve, baseDelay + jitter));
       }
     }
-    throw new Error(`Operation ${operationId} timed out after ${maxAttempts} attempts`);
+
+    // Operation is still running after maxAttempts — throw a typed error that
+    // carries the last known state. Callers should NOT treat this as a failure:
+    // the operation is likely still processing on the server.
+    throw new OperationTimeoutError(
+      `Operation ${operationId} is still processing after ${maxAttempts} poll attempts. ` +
+        `It will continue running on the server — check your space for the final result.`,
+      lastOp!,
+    );
   }
 }

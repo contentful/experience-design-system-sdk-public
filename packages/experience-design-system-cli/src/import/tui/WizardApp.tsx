@@ -18,7 +18,7 @@ import { DoneStep } from './steps/DoneStep.js';
 import { ErrorStep } from './steps/ErrorStep.js';
 import { TokenInputStep } from './steps/TokenInputStep.js';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
-import { ImportApiClient, ApiError } from '../../apply/api-client.js';
+import { ImportApiClient, ApiError, OperationTimeoutError } from '../../apply/api-client.js';
 import { readTokensFromPath, hasBreakingChangesWithImpact } from '../../apply/manifest.js';
 import { buildManifest } from '@contentful/experience-design-system-types';
 import type { ServerPreviewResponse, ManifestPayload } from '@contentful/experience-design-system-types';
@@ -64,6 +64,8 @@ type PushResult = {
   componentTypes: { created: number; updated: number; failed: number };
   designTokens: { created: number; updated: number; failed: number };
   summary?: { total: number; succeeded: number; failed: number };
+  /** True when polling timed out — the operation is still running on the server */
+  timedOut?: boolean;
 };
 
 type WizardState = {
@@ -844,6 +846,45 @@ export function WizardApp({
       }
       update({ step: 'done', pushResult });
     } catch (e) {
+      if (e instanceof OperationTimeoutError) {
+        // The operation is still running on the server — surface what we know
+        // rather than showing a hard failure. Build a pushResult from last-known
+        // state so DoneStep shows partial progress and an informational message.
+        const op = e.lastOperation;
+        const items = op.items ?? [];
+        const timeoutResult: PushResult =
+          items.length > 0
+            ? {
+                componentTypes: {
+                  created: items.filter(
+                    (i) => i.entityType === 'ComponentType' && i.action === 'create' && i.status === 'succeeded',
+                  ).length,
+                  updated: items.filter(
+                    (i) => i.entityType === 'ComponentType' && i.action === 'update' && i.status === 'succeeded',
+                  ).length,
+                  failed: items.filter((i) => i.entityType === 'ComponentType' && i.status === 'failed').length,
+                },
+                designTokens: {
+                  created: items.filter(
+                    (i) => i.entityType === 'DesignToken' && i.action === 'create' && i.status === 'succeeded',
+                  ).length,
+                  updated: items.filter(
+                    (i) => i.entityType === 'DesignToken' && i.action === 'update' && i.status === 'succeeded',
+                  ).length,
+                  failed: items.filter((i) => i.entityType === 'DesignToken' && i.status === 'failed').length,
+                },
+                summary: op.summary,
+                timedOut: true,
+              }
+            : {
+                componentTypes: { created: 0, updated: 0, failed: 0 },
+                designTokens: { created: 0, updated: 0, failed: 0 },
+                summary: op.summary,
+                timedOut: true,
+              };
+        update({ step: 'done', pushResult: timeoutResult });
+        return;
+      }
       const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Push failed';
       update({ step: 'error', errorStep: 'apply push', errorMessage: msg, errorAllowCredentialRetry: true });
     }
@@ -1291,6 +1332,7 @@ export function WizardApp({
             componentTypes={state.pushResult.componentTypes}
             designTokens={state.pushResult.designTokens}
             summary={state.pushResult.summary}
+            timedOut={state.pushResult.timedOut}
             spaceId={state.spaceId}
             environmentId={state.environmentId}
             onExit={() => process.exit(totalFailed > 0 ? 1 : 0)}
