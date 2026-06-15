@@ -26,6 +26,7 @@ type RefineCommandOptions = {
   select?: string[];
   patch?: string;
   excludeInvalid?: boolean;
+  excludeComponents?: string;
 };
 
 interface PatchOperation {
@@ -159,6 +160,26 @@ async function runNonInteractive(
         return c;
       }),
     };
+  }
+
+  // Apply --exclude-components: force-reject the named components regardless of
+  // how --select-all / --select / --deselect classified them. Used by the
+  // orchestrator's 422 retry loop to exclude server-validation offenders.
+  if (opts.excludeComponents) {
+    const excludeNames = new Set(
+      opts.excludeComponents
+        .split(',')
+        .map((n) => n.trim())
+        .filter(Boolean),
+    );
+    if (excludeNames.size > 0) {
+      result = {
+        ...result,
+        components: result.components.map((c) =>
+          excludeNames.has(c.name) ? { ...c, status: 'rejected' as const } : c,
+        ),
+      };
+    }
   }
 
   // Apply --patch
@@ -414,6 +435,10 @@ export function registerAnalyzeEditCommand(program: Command): void {
       '--exclude-invalid',
       'With --select-all: auto-reject components with validation errors instead of failing loud (opt-in bypass for the gate)',
     )
+    .option(
+      '--exclude-components <names>',
+      'Comma-separated component names to force-reject, regardless of other selection flags',
+    )
     .action(
       async ({
         session: sessionFlag,
@@ -425,6 +450,7 @@ export function registerAnalyzeEditCommand(program: Command): void {
         select,
         patch,
         excludeInvalid,
+        excludeComponents,
       }: RefineCommandOptions) => {
         const sessionId = resolveSessionId(sessionFlag);
 
@@ -450,7 +476,8 @@ export function registerAnalyzeEditCommand(program: Command): void {
           (reject ?? []).length > 0 ||
           (deselect ?? []).length > 0 ||
           (select ?? []).length > 0 ||
-          !!patch;
+          !!patch ||
+          !!excludeComponents;
 
         let paths: ReviewSessionPaths;
         let snapshot: ReviewSessionSnapshot;
@@ -489,6 +516,7 @@ export function registerAnalyzeEditCommand(program: Command): void {
                 select,
                 patch,
                 excludeInvalid,
+                excludeComponents,
               },
               paths,
               sessionId,

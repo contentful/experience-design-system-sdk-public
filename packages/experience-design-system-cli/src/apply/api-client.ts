@@ -7,6 +7,11 @@ import { DEFAULT_API_HOST, toApiHost } from '../host-utils.js';
 
 export const DEFAULT_HOST = DEFAULT_API_HOST;
 
+// Phase-prefix constants used at the two ApiError throw sites below and
+// imported by orchestrator.ts to identify preview-phase 422s for retry.
+export const PREVIEW_ERROR_PREFIX = 'preview failed:';
+export const APPLY_ERROR_PREFIX = 'apply failed:';
+
 export interface ApiClientOptions {
   host?: string;
   cmaToken: string;
@@ -135,7 +140,7 @@ export class ImportApiClient {
       body: JSON.stringify(manifest),
     });
     if (!res.ok) {
-      throw new ApiError(`preview failed: ${res.status}`, res.status, await res.text());
+      throw new ApiError(`${PREVIEW_ERROR_PREFIX} ${res.status}`, res.status, await res.text());
     }
     return (await res.json()) as ServerPreviewResponse;
   }
@@ -148,7 +153,7 @@ export class ImportApiClient {
       body: JSON.stringify({ ...manifest, acknowledgeBreakingChanges }),
     });
     if (!res.ok) {
-      throw new ApiError(`apply failed: ${res.status}`, res.status, await res.text());
+      throw new ApiError(`${APPLY_ERROR_PREFIX} ${res.status}`, res.status, await res.text());
     }
     return (await res.json()) as ApplyOperationResponse;
   }

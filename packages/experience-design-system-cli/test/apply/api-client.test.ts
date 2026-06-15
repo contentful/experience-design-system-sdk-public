@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { ImportApiClient, ApiError, parsePreviewValidationErrors } from '../../src/apply/api-client.js';
+import {
+  ImportApiClient,
+  ApiError,
+  parsePreviewValidationErrors,
+  PREVIEW_ERROR_PREFIX,
+  APPLY_ERROR_PREFIX,
+} from '../../src/apply/api-client.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
 
 const mockFetch = vi.fn();
@@ -442,5 +448,58 @@ describe('parsePreviewValidationErrors', () => {
     expect(parsePreviewValidationErrors('null')).toEqual([]);
     expect(parsePreviewValidationErrors('42')).toEqual([]);
     expect(parsePreviewValidationErrors('"hello"')).toEqual([]);
+  });
+});
+
+describe('phase-prefix constants — orchestrator contract', () => {
+  it('previewImport throws ApiError whose message starts with PREVIEW_ERROR_PREFIX on non-200', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 422,
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            sys: { type: 'Error', id: 'ValidationFailed' },
+            message: 'Validation error',
+            details: { errors: [] },
+          }),
+        ),
+    });
+
+    const client = createClient();
+    try {
+      await client.previewImport({});
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      expect((e as ApiError).message).toMatch(new RegExp(`^${PREVIEW_ERROR_PREFIX}`));
+    }
+  });
+
+  it('applyImport throws ApiError whose message starts with APPLY_ERROR_PREFIX on non-200', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 422,
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            sys: { type: 'Error', id: 'UnprocessableEntity' },
+            message: 'Breaking changes',
+          }),
+        ),
+    });
+
+    const client = createClient();
+    try {
+      await client.applyImport({}, false);
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      expect((e as ApiError).message).toMatch(new RegExp(`^${APPLY_ERROR_PREFIX}`));
+    }
+  });
+
+  it('PREVIEW_ERROR_PREFIX and APPLY_ERROR_PREFIX are distinct strings', () => {
+    expect(PREVIEW_ERROR_PREFIX).not.toBe(APPLY_ERROR_PREFIX);
+    expect(PREVIEW_ERROR_PREFIX).toContain('preview');
+    expect(APPLY_ERROR_PREFIX).toContain('apply');
   });
 });

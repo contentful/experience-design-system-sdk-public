@@ -9,6 +9,7 @@ import {
   updateStep,
   findLatestSessionForCommand,
 } from '../session/db.js';
+import { PREVIEW_ERROR_PREFIX, parsePreviewValidationErrors } from '../apply/api-client.js';
 
 export interface PipelineOptions {
   project: string;
@@ -82,6 +83,25 @@ async function runStep(
       res({ exitCode: code ?? 0, stdout, stderr });
     });
   });
+}
+
+const MAX_VALIDATION_RETRIES = Number(process.env['EDS_MAX_VALIDATION_RETRIES'] ?? 2);
+
+export function isPreviewValidationError(result: { exitCode: number; stderr: string }): boolean {
+  return (
+    result.exitCode !== 0 &&
+    result.stderr.includes(`${PREVIEW_ERROR_PREFIX} 422`) &&
+    result.stderr.includes('"ValidationFailed"')
+  );
+}
+
+export function parseOffendingComponentNames(output: string): string[] {
+  // The 422 body is appended to the ApiError message by the constructor and
+  // written to stderr by die(). Extract the JSON portion by finding the first '{'.
+  const jsonStart = output.indexOf('{');
+  if (jsonStart === -1) return [];
+  const errors = parsePreviewValidationErrors(output.slice(jsonStart));
+  return [...new Set(errors.map((e) => e.componentName))];
 }
 
 export async function runPipeline(
@@ -396,7 +416,37 @@ export async function runPipeline(
       components: componentsPath,
     });
     const t0 = Date.now();
-    const r = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
+    let r = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
+
+    // Bounded retry loop: on a preview-phase 422 with a parseable ValidationFailed
+    // body, exclude the offending components and re-run apply push.
+    const excludedByRetry: string[] = [];
+    let validationRetryCount = 0;
+    while (validationRetryCount < MAX_VALIDATION_RETRIES && isPreviewValidationError(r) && extractSessionId) {
+      const offenders = parseOffendingComponentNames(r.stderr + r.stdout);
+      if (offenders.length === 0) break; // unparseable body — give up and surface original error
+
+      process.stderr.write(
+        `[retry ${validationRetryCount + 1}/${MAX_VALIDATION_RETRIES}] Preview validation failed — excluding ${offenders.join(', ')} and retrying\n`,
+      );
+      excludedByRetry.push(...offenders);
+
+      const rejectArgs = [
+        'analyze',
+        'select',
+        '--session',
+        extractSessionId,
+        '--select-all',
+        '--exclude-components',
+        offenders.join(','),
+      ];
+      const rejectResult = await runStep(rejectArgs, cliPath);
+      if (rejectResult.exitCode !== 0) break; // selection step failed — give up
+
+      r = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
+      validationRetryCount++;
+    }
+
     const durationMs = Date.now() - t0;
 
     // Parse push result JSON from stdout to distinguish partial vs total failure
@@ -451,7 +501,12 @@ export async function runPipeline(
       step: 'apply push',
       status: stepStatus,
       durationMs,
-      detail: { created, updated, failed },
+      detail: {
+        created,
+        updated,
+        failed,
+        ...(excludedByRetry.length > 0 ? { excludedByValidationRetry: excludedByRetry } : {}),
+      },
     });
   }
 
