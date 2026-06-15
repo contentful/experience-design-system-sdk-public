@@ -228,20 +228,35 @@ export function registerAnalyzeCommand(program: Command): void {
 
       const allWarnings = [...extraction.warnings, ...filterWarnings];
 
-      const analyzeResult: AnalyzeViewResult = {
-        sourceDirectory,
-        sessionId,
-        fileCount: sourceFiles.length,
-        components: filteredComponents.map((c) => ({
+      // Map validated components by name so we can attach error-tier issues
+      // to each row. validatedComponents shares ordering with filteredComponents
+      // (validateExtractedComponents preserves order), but key by name to avoid
+      // a positional dependency.
+      const validatedByName = new Map(validatedComponents.map((vc) => [vc.name, vc]));
+      let totalErrors = 0;
+      const componentRows = filteredComponents.map((c) => {
+        const validated = validatedByName.get(c.name);
+        const errorIssues = (validated?.validationIssues ?? []).filter((i) => i.severity === 'error');
+        totalErrors += errorIssues.length;
+        return {
           name: c.name,
           framework: c.framework,
           propCount: c.props.length,
           slotCount: c.slots.length,
           warnings: allWarnings.filter((w) => w.startsWith(c.name + ':')),
+          errors: errorIssues.map((i) => i.message),
           extractionConfidence: c.extractionConfidence ?? null,
           needsReview: c.needsReview ?? false,
-        })),
+        };
+      });
+
+      const analyzeResult: AnalyzeViewResult = {
+        sourceDirectory,
+        sessionId,
+        fileCount: sourceFiles.length,
+        components: componentRows,
         totalWarnings: allWarnings.length,
+        totalErrors,
       };
 
       if (process.stdout.isTTY) {
@@ -260,10 +275,18 @@ export function registerAnalyzeCommand(program: Command): void {
           `Scanned ${pluralize(sourceFiles.length, 'source file')} in ${sourceDirectory}`,
           `Extracted ${pluralize(extraction.components.length, 'component')}`,
         ];
+        if (totalErrors > 0) {
+          summaryLines.push(`Errors (${totalErrors}):`);
+          for (const c of componentRows) {
+            for (const e of c.errors) {
+              summaryLines.push(`- ${c.name}: ${e}`);
+            }
+          }
+        }
         if (allWarnings.length > 0) {
           summaryLines.push(`Warnings (${allWarnings.length}):`);
           summaryLines.push(...allWarnings.map((w) => `- ${w}`));
-        } else {
+        } else if (totalErrors === 0) {
           summaryLines.push('Warnings: none');
         }
         process.stderr.write(summaryLines.join('\n') + '\n');
