@@ -104,12 +104,18 @@ interface ServerApplyDoneProps {
   operation: ApplyOperationResponse;
   spaceId: string;
   environmentId: string;
+  timedOut?: boolean;
 }
 
-export function ServerApplyDone({ operation, spaceId, environmentId }: ServerApplyDoneProps): React.ReactElement {
+export function ServerApplyDone({
+  operation,
+  spaceId,
+  environmentId,
+  timedOut,
+}: ServerApplyDoneProps): React.ReactElement {
   useInput((input, key) => {
     if (key.escape || input === 'q') {
-      process.exit(operation.sys.status === 'succeeded' ? 0 : 1);
+      process.exit(timedOut || operation.sys.status === 'succeeded' ? 0 : 1);
     }
   });
 
@@ -117,13 +123,26 @@ export function ServerApplyDone({ operation, spaceId, environmentId }: ServerApp
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
-      <Text bold>
-        Import complete — {environmentId} @ {spaceId}
-      </Text>
+      {timedOut ? (
+        <Text bold color="yellow">
+          ⏱ Still processing — {environmentId} @ {spaceId}
+        </Text>
+      ) : (
+        <Text bold>
+          Import complete — {environmentId} @ {spaceId}
+        </Text>
+      )}
       <Text> </Text>
+      {timedOut && (
+        <>
+          <Text color="yellow"> The operation is still running on the server and will complete on its own.</Text>
+          <Text dimColor> Check your space in a few minutes to see the final result.</Text>
+          <Text> </Text>
+        </>
+      )}
       <Text color="green"> ✓ {operation.summary.succeeded} succeeded</Text>
       {operation.summary.failed > 0 && <Text color="red"> ✗ {operation.summary.failed} failed</Text>}
-      {operation.summary.failed === 0 && <Text dimColor> All entities imported successfully.</Text>}
+      {operation.summary.failed === 0 && !timedOut && <Text dimColor> All entities imported successfully.</Text>}
       {failures.length > 0 && (
         <Box flexDirection="column">
           <Text> </Text>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { ImportApiClient, ApiError } from '../../src/apply/api-client.js';
+import { ImportApiClient, ApiError, OperationTimeoutError } from '../../src/apply/api-client.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
 
 const mockFetch = vi.fn();
@@ -295,7 +295,7 @@ describe('ImportApiClient — pollOperation', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it('throws after max attempts exceeded', async () => {
+  it('throws OperationTimeoutError after max attempts exceeded, carrying last operation state', async () => {
     const runningOp: ApplyOperationResponse = {
       sys: {
         type: 'ApplyOperation',
@@ -314,7 +314,10 @@ describe('ImportApiClient — pollOperation', () => {
     });
 
     const client = createClient();
-    await expect(client.pollOperation('op-1', { intervalMs: 10, maxAttempts: 3 })).rejects.toThrow('timed out');
+    const error = await client.pollOperation('op-1', { intervalMs: 10, maxAttempts: 3 }).catch((e) => e);
+    expect(error).toBeInstanceOf(OperationTimeoutError);
+    expect(error.message).toContain('still processing');
+    expect(error.lastOperation).toEqual(runningOp);
   });
 
   it('throws ApiError on non-200 poll response', async () => {

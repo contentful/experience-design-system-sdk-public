@@ -11,7 +11,7 @@ import {
   buildFilteredManifest,
 } from '@contentful/experience-design-system-types';
 import type { CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
-import { ApiError, ImportApiClient } from './api-client.js';
+import { ApiError, ImportApiClient, OperationTimeoutError } from './api-client.js';
 import { openPipelineDb, loadCDFComponents } from '../session/db.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
 import { ServerPreviewApp, ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
@@ -615,6 +615,13 @@ export function registerApplyCommand(program: Command): void {
         try {
           operation = await client.pollOperation(operation.sys.id);
         } catch (e) {
+          if (e instanceof OperationTimeoutError) {
+            process.stderr.write(`⏱  ${e.message}\n`);
+            const summary = buildApplyOutput(e.lastOperation, spaceId, environmentId);
+            process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
+            process.exit(0);
+            return;
+          }
           if (e instanceof ApiError) die(`Error: ${e.message}`);
           throw e;
         }
@@ -666,6 +673,18 @@ export function registerApplyCommand(program: Command): void {
           try {
             operation = await client.pollOperation(operation.sys.id);
           } catch (e) {
+            if (e instanceof OperationTimeoutError) {
+              instance.rerender(
+                createElement(ServerApplyDone, {
+                  operation: e.lastOperation,
+                  spaceId,
+                  environmentId,
+                  timedOut: true,
+                }),
+              );
+              resolvePromise();
+              return;
+            }
             if (e instanceof ApiError) {
               instance.rerender(
                 createElement(ServerApplyProgress, {
@@ -807,6 +826,13 @@ export function registerApplyCommand(program: Command): void {
         try {
           operation = await client.pollOperation(operation.sys.id);
         } catch (e) {
+          if (e instanceof OperationTimeoutError) {
+            process.stderr.write(`⏱  ${e.message}\n`);
+            const summary = buildApplyOutput(e.lastOperation, spaceId, environmentId);
+            process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
+            process.exit(0);
+            return;
+          }
           if (e instanceof ApiError) die(`Error: ${e.message}`);
           throw e;
         }
@@ -870,6 +896,18 @@ export function registerApplyCommand(program: Command): void {
           try {
             operation = await client.pollOperation(operation.sys.id);
           } catch (e) {
+            if (e instanceof OperationTimeoutError) {
+              instance.rerender(
+                createElement(ServerApplyDone, {
+                  operation: e.lastOperation,
+                  spaceId,
+                  environmentId,
+                  timedOut: true,
+                }),
+              );
+              resolvePromise();
+              return;
+            }
             if (e instanceof ApiError) {
               instance.rerender(
                 createElement(ServerApplyProgress, {

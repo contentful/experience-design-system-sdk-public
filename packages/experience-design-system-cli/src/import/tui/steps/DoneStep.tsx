@@ -14,6 +14,7 @@ type DoneStepProps = {
   summary?: { total: number; succeeded: number; failed: number };
   spaceId: string;
   environmentId: string;
+  timedOut?: boolean;
   onExit: () => void;
 };
 
@@ -23,6 +24,7 @@ export function DoneStep({
   summary,
   spaceId,
   environmentId,
+  timedOut,
   onExit,
 }: DoneStepProps): React.ReactElement {
   useImmediateInput((input, key) => {
@@ -33,7 +35,7 @@ export function DoneStep({
 
   const totalFailed = componentTypes.failed + designTokens.failed;
   const totalPushed = componentTypes.created + componentTypes.updated + designTokens.created + designTokens.updated;
-  const success = totalFailed === 0;
+  const success = totalFailed === 0 && !timedOut;
 
   function EntityRows({ entity, label }: { entity: EntityResult; label: string }) {
     return (
@@ -71,7 +73,11 @@ export function DoneStep({
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      {success ? (
+      {timedOut ? (
+        <Text bold color="yellow">
+          ⏱ Still processing
+        </Text>
+      ) : success ? (
         <Text bold color="green">
           Done!
         </Text>
@@ -79,6 +85,13 @@ export function DoneStep({
         <Text bold color="yellow">
           ⚠ Finished with errors
         </Text>
+      )}
+
+      {timedOut && (
+        <Box flexDirection="column" gap={0} marginTop={1}>
+          <Text color="yellow">The operation is still running on the server and will complete on its own.</Text>
+          <Text dimColor>Check your space in a few minutes to see the final result.</Text>
+        </Box>
       )}
 
       {totalPushed === 0 && totalFailed === 0 && !summary ? (
