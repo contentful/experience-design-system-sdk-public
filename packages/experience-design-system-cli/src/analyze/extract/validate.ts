@@ -78,3 +78,24 @@ export function validateExtractedComponents(components: RawComponentDefinition[]
 export function shouldExcludeDueToValidation(component: RawComponentDefinition): boolean {
   return (component.validationIssues ?? []).some((i) => i.severity === 'error');
 }
+
+/**
+ * Format a stderr-ready warning describing components auto-rejected by the
+ * extraction gate. Used by `analyze select --select-all --exclude-invalid` so
+ * a non-interactive caller (CI, orchestrator, scripted pipeline) can see WHICH
+ * components were excluded and WHY — not just the bare counts.
+ */
+export function formatExclusionWarning(
+  rejected: Array<{ name: string; validationIssues?: ExtractionValidationIssue[] }>,
+): string {
+  if (rejected.length === 0) return '';
+  const lines = [`Warning: ${rejected.length} component(s) excluded due to validation errors:`];
+  for (const comp of rejected) {
+    const codes = (comp.validationIssues ?? [])
+      .filter((i) => i.severity === 'error')
+      .map((i) => i.code)
+      .join(', ');
+    lines.push(`  ✗  ${comp.name}  ${codes}`);
+  }
+  return lines.join('\n') + '\n';
+}

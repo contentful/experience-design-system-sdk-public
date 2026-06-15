@@ -8,7 +8,11 @@ import { loadReviewInput } from './parser.js';
 import { App } from './tui/App.js';
 import type { ReviewSessionPaths, ReviewSessionSnapshot } from './types.js';
 import { openPipelineDb, loadRawComponents, storeRawComponents, createStep, updateStep } from '../../session/db.js';
-import { validateExtractedComponents, shouldExcludeDueToValidation } from '../extract/validate.js';
+import {
+  validateExtractedComponents,
+  shouldExcludeDueToValidation,
+  formatExclusionWarning,
+} from '../extract/validate.js';
 
 type RefineCommandOptions = {
   session?: string;
@@ -158,6 +162,17 @@ async function runNonInteractive(
 
   const accepted = result.components.filter((c) => c.status === 'accepted');
   const rejected = result.components.filter((c) => c.status === 'rejected');
+
+  // Surface what was excluded by --select-all --exclude-invalid so the
+  // non-interactive caller (CI, orchestrator, scripted pipeline) doesn't
+  // have to guess what failed validation. The warning is printed BEFORE
+  // saveReviewState so the message lands ahead of the bare counts.
+  if (selectAll && opts.excludeInvalid) {
+    const autoRejected = rejected
+      .filter((c) => shouldExcludeDueToValidation(c.originalProposal))
+      .map((c) => ({ name: c.name, validationIssues: c.originalProposal.validationIssues }));
+    process.stderr.write(formatExclusionWarning(autoRejected));
+  }
 
   // Persist decisions to session state so pipeline orchestrator can read them
   await saveReviewState(paths.statePath, result);
