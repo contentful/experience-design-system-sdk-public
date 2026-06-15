@@ -174,19 +174,19 @@ describe('--exclude-components — DB state after retry-loop invocation', () => 
     expect(cdfNames.sort()).toEqual(['A', 'C']);
   });
 
-  it('REGRESSION GUARD: --select-all + --exclude-components still wipes generate state — do not call this combination from the retry loop', async () => {
-    // Documents the lingering behavior: combining --select-all with
-    // --exclude-components routes through the rebuild path
-    // (storeRawComponents → DELETE + re-INSERT) which resets surviving
-    // components to status='extracted' and drops cdf_type. The orchestrator
-    // explicitly avoids this combination; this test pins the contract so a
-    // future "convenience" change to either runNonInteractive or the
-    // orchestrator's rejectArgs doesn't silently re-introduce it.
+  it('SEALED: --select-all + --exclude-components no longer wipes generate state (PR #31 idempotency fix)', async () => {
+    // Pre-PR #31 behavior: combining --select-all with --exclude-components
+    // routed through the rebuild path (storeRawComponents → DELETE + re-INSERT)
+    // and reset surviving components to status='extracted' / dropped cdf_type.
+    // The wizard's old retry loop guarded against this by avoiding the
+    // combination; PR #31 sealed the destructive path by gating
+    // storeRawComponents behind `opts.patch` (the only flag that legitimately
+    // mutates editedProposal). The DB now stays untouched on status-only flag
+    // combinations.
     //
-    // If a future fix makes --select-all + --exclude-components also preserve
-    // the post-generate state, this test should be updated or removed —
-    // it's a guard against the *current* implementation, not a permanent
-    // contract.
+    // This test pins the sealed contract: even if a caller passes the
+    // combination, the post-generate DB state survives and the next
+    // `apply push` still finds the surviving components.
     const result = await runCli(
       [
         'analyze',
@@ -204,8 +204,13 @@ describe('--exclude-components — DB state after retry-loop invocation', () => 
     expect(result.code).toBe(0);
 
     const { statuses, cdfNames } = readState();
-    expect(statuses['A']).toBe('extracted');
-    expect(statuses['C']).toBe('extracted');
-    expect(cdfNames).toEqual([]);
+    // DB state is untouched by either flag — the JSON state file reflects the
+    // rejection but raw_components.status is unchanged. (The orchestrator
+    // doesn't call this combination; --exclude-components on its own
+    // short-circuits through rejectComponentsByName which DOES update the DB.)
+    expect(statuses['A']).toBe('generated');
+    expect(statuses['B']).toBe('generated');
+    expect(statuses['C']).toBe('generated');
+    expect(cdfNames.sort()).toEqual(['A', 'B', 'C']);
   });
 });

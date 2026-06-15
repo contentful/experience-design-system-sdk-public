@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { applySelectAllDecisions, partitionForExcludeInvalid } from '../../../src/analyze/select/command.js';
 import { shouldExcludeDueToValidation } from '../../../src/analyze/extract/validate.js';
 import { countValidationIssues, createReviewSessionSummary } from '../../../src/analyze/select/types.js';
 import type { ReviewSessionSnapshot } from '../../../src/analyze/select/types.js';
@@ -45,34 +44,37 @@ describe('SERVER_VALIDATION_FAILED — SP-1 contract integration', () => {
     expect(shouldExcludeDueToValidation(proposal)).toBe(true);
   });
 
-  it('applySelectAllDecisions auto-rejects components patched with SERVER_VALIDATION_FAILED', () => {
-    const snapshot = makeSnapshot([
-      makeComponent('Good', undefined),
-      makeComponent('Bad', [
-        { severity: 'error', code: 'SERVER_VALIDATION_FAILED', message: 'fails server validation' },
-      ]),
+  it('SERVER_VALIDATION_FAILED behaves like other error-severity codes for bulk-approve auto-rejection', () => {
+    // The runNonInteractive `--select-all --exclude-invalid` path filters
+    // components by shouldExcludeDueToValidation; this test pins that
+    // SERVER_VALIDATION_FAILED slots into that predicate alongside extraction-time
+    // codes. Without it, the wizard's "skip and retry" → re-run analyze select
+    // path would silently re-include components the server already rejected.
+    const good = makeComponent('Good', undefined);
+    const bad = makeComponent('Bad', [
+      { severity: 'error', code: 'SERVER_VALIDATION_FAILED', message: 'fails server validation' },
     ]);
-
-    const result = applySelectAllDecisions(snapshot);
-
-    const statuses = Object.fromEntries(result.components.map((c) => [c.name, c.status]));
-    expect(statuses).toEqual({ Good: 'accepted', Bad: 'rejected' });
+    expect(shouldExcludeDueToValidation(good)).toBe(false);
+    expect(shouldExcludeDueToValidation(bad)).toBe(true);
   });
 
-  it('partitionForExcludeInvalid drops SERVER_VALIDATION_FAILED components from validComponents', () => {
-    const snapshot = makeSnapshot([
+  it('snapshots with SERVER_VALIDATION_FAILED partition correctly via shouldExcludeDueToValidation', () => {
+    // Mirrors the previous partitionForExcludeInvalid test but exercises the
+    // public predicate that the headless --exclude-invalid path uses.
+    const components = [
       makeComponent('Good', undefined),
       makeComponent('Bad', [{ severity: 'error', code: 'SERVER_VALIDATION_FAILED', message: 'fails' }]),
       makeComponent('AlsoBad', [
         { severity: 'error', code: 'SERVER_VALIDATION_FAILED', message: 'also fails' },
         { severity: 'warning', code: 'EMPTY_COMPONENT', message: 'unrelated warn' },
       ]),
-    ]);
+    ];
 
-    const { invalidNames, validComponents } = partitionForExcludeInvalid(snapshot);
+    const invalid = components.filter(shouldExcludeDueToValidation).map((c) => c.name);
+    const valid = components.filter((c) => !shouldExcludeDueToValidation(c)).map((c) => c.name);
 
-    expect(invalidNames.sort()).toEqual(['AlsoBad', 'Bad']);
-    expect(validComponents.map((c) => c.name)).toEqual(['Good']);
+    expect(invalid.sort()).toEqual(['AlsoBad', 'Bad']);
+    expect(valid).toEqual(['Good']);
   });
 
   it('countValidationIssues counts SERVER_VALIDATION_FAILED as an error so the Sidebar warning badge renders', () => {
