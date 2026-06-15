@@ -431,12 +431,17 @@ export async function runPipeline(
       );
       excludedByRetry.push(...offenders);
 
+      // No --select-all here: that would route through runNonInteractive's
+      // rebuild path, which DELETEs all rows and re-inserts with default
+      // status='extracted' — wiping the post-`generate components` state
+      // (status='generated' + raw_props.cdf_type) the next apply push reads.
+      // The bare --exclude-components form takes the rejectComponentsByName
+      // early-return: pure UPDATE, no rebuild.
       const rejectArgs = [
         'analyze',
         'select',
         '--session',
         extractSessionId,
-        '--select-all',
         '--exclude-components',
         offenders.join(','),
       ];

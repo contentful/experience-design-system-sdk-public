@@ -1,5 +1,5 @@
 import { access, readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { createElement } from 'react';
 import { render } from 'ink';
 import type { Command } from 'commander';
@@ -109,6 +109,39 @@ async function runNonInteractive(
   paths: ReviewSessionPaths,
   sessionId: string,
 ): Promise<void> {
+  // --exclude-components on its own (no --select-all / --select / --deselect /
+  // --reject / --patch) is the orchestrator's 422 retry-loop invocation: only
+  // the named components should change. The rebuild path below calls
+  // storeRawComponents which DELETEs all rows and re-inserts with default
+  // status='extracted', wiping the post-generate state required by
+  // loadCDFComponents (status='generated' + raw_props.cdf_type populated).
+  // Short-circuit through rejectComponentsByName, which is a pure UPDATE.
+  const onlyExcludeComponents =
+    !!opts.excludeComponents &&
+    !opts.acceptAll &&
+    !opts.selectAll &&
+    !(opts.select ?? []).length &&
+    !(opts.deselect ?? []).length &&
+    !(opts.reject ?? []).length &&
+    !opts.patch;
+  if (onlyExcludeComponents) {
+    const names = opts
+      .excludeComponents!.split(',')
+      .map((n) => n.trim())
+      .filter(Boolean);
+    if (names.length > 0) {
+      // paths.sessionDir = resolve(artifactsRoot, sessionId), so dirname gives
+      // back the artifactsRoot — keeps rejectComponentsByName from re-resolving
+      // it via env var when the caller already knows it.
+      const artifactsRoot = dirname(paths.sessionDir);
+      await rejectComponentsByName(sessionId, names, { artifactsRoot });
+    }
+    const accepted = snapshot.components.filter((c) => c.status === 'accepted').length;
+    const rejected = snapshot.components.filter((c) => c.status === 'rejected').length + (names.length || 0);
+    process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}\n`);
+    return;
+  }
+
   let result = { ...snapshot };
 
   const rejectPatterns = [...(opts.reject ?? []), ...(opts.deselect ?? [])].map((p) => p.toLowerCase());
