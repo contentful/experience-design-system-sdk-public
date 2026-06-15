@@ -21,6 +21,7 @@ import { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
 import { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
 import { describeReviewReasons, inspectComponentSource } from './extract/source-inspection.js';
 import { validateExtractedComponents } from './extract/validate.js';
+import { buildAnalyzeViewRows } from './build-analyze-view-rows.js';
 
 interface AnalyzeExtractOptions {
   project: string;
@@ -228,27 +229,11 @@ export function registerAnalyzeCommand(program: Command): void {
 
       const allWarnings = [...extraction.warnings, ...filterWarnings];
 
-      // Map validated components by name so we can attach error-tier issues
-      // to each row. validatedComponents shares ordering with filteredComponents
-      // (validateExtractedComponents preserves order), but key by name to avoid
-      // a positional dependency.
-      const validatedByName = new Map(validatedComponents.map((vc) => [vc.name, vc]));
-      let totalErrors = 0;
-      const componentRows = filteredComponents.map((c) => {
-        const validated = validatedByName.get(c.name);
-        const errorIssues = (validated?.validationIssues ?? []).filter((i) => i.severity === 'error');
-        totalErrors += errorIssues.length;
-        return {
-          name: c.name,
-          framework: c.framework,
-          propCount: c.props.length,
-          slotCount: c.slots.length,
-          warnings: allWarnings.filter((w) => w.startsWith(c.name + ':')),
-          errors: errorIssues.map((i) => i.message),
-          extractionConfidence: c.extractionConfidence ?? null,
-          needsReview: c.needsReview ?? false,
-        };
-      });
+      const { rows: componentRows, totalErrors } = buildAnalyzeViewRows(
+        filteredComponents,
+        validatedComponents,
+        allWarnings,
+      );
 
       const analyzeResult: AnalyzeViewResult = {
         sourceDirectory,
