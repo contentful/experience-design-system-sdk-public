@@ -9,6 +9,7 @@ import {
   updateStep,
   findLatestSessionForCommand,
 } from '../session/db.js';
+import { PREVIEW_ERROR_PREFIX, VALIDATION_FAILED_CODE, parsePreviewValidationErrors } from '../apply/api-client.js';
 
 export interface PipelineOptions {
   project: string;
@@ -82,6 +83,64 @@ async function runStep(
       res({ exitCode: code ?? 0, stdout, stderr });
     });
   });
+}
+
+const MAX_VALIDATION_RETRIES = Number(process.env['EDS_MAX_VALIDATION_RETRIES'] ?? 2);
+
+export function isPreviewValidationError(result: { exitCode: number; stderr: string }): boolean {
+  return (
+    result.exitCode !== 0 &&
+    result.stderr.includes(`${PREVIEW_ERROR_PREFIX} 422`) &&
+    result.stderr.includes(VALIDATION_FAILED_CODE)
+  );
+}
+
+export function parseOffendingComponentNames(output: string): string[] {
+  // The 422 body is appended to the ApiError message by the constructor and
+  // written to stderr by die(). Extract the JSON portion by finding the first '{'.
+  const jsonStart = output.indexOf('{');
+  if (jsonStart === -1) return [];
+  const errors = parsePreviewValidationErrors(output.slice(jsonStart));
+  return [...new Set(errors.map((e) => e.componentName))];
+}
+
+/**
+ * Build the apply-push StepResult record. Centralizes the success/failure
+ * shape so excludedByValidationRetry is recorded consistently in both
+ * branches — previously the total-failure branch dropped it, leaving users
+ * with a failed pipeline and no audit trail of what was auto-excluded
+ * before the retry loop gave up.
+ */
+export function buildPushStepResult(args: {
+  created: number;
+  updated: number;
+  failed: number;
+  durationMs: number;
+  stderr: string;
+  excludedByRetry: string[];
+  totalFailure?: boolean;
+}): StepResult {
+  const { created, updated, failed, durationMs, stderr, excludedByRetry, totalFailure } = args;
+  const excludedDetail = excludedByRetry.length > 0 ? { excludedByValidationRetry: excludedByRetry } : {};
+
+  if (totalFailure) {
+    const detail = excludedByRetry.length > 0 ? { ...excludedDetail } : undefined;
+    return {
+      step: 'apply push',
+      status: 'failed',
+      durationMs,
+      error: stderr,
+      ...(detail ? { detail } : {}),
+    };
+  }
+
+  const status: StepResult['status'] = failed > 0 ? 'failed' : 'complete';
+  return {
+    step: 'apply push',
+    status,
+    durationMs,
+    detail: { created, updated, failed, ...excludedDetail },
+  };
 }
 
 export async function runPipeline(
@@ -396,7 +455,42 @@ export async function runPipeline(
       components: componentsPath,
     });
     const t0 = Date.now();
-    const r = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
+    let r = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
+
+    // Bounded retry loop: on a preview-phase 422 with a parseable ValidationFailed
+    // body, exclude the offending components and re-run apply push.
+    const excludedByRetry: string[] = [];
+    let validationRetryCount = 0;
+    while (validationRetryCount < MAX_VALIDATION_RETRIES && isPreviewValidationError(r) && extractSessionId) {
+      const offenders = parseOffendingComponentNames(r.stderr + r.stdout);
+      if (offenders.length === 0) break; // unparseable body — give up and surface original error
+
+      process.stderr.write(
+        `[retry ${validationRetryCount + 1}/${MAX_VALIDATION_RETRIES}] Preview validation failed — excluding ${offenders.join(', ')} and retrying\n`,
+      );
+      excludedByRetry.push(...offenders);
+
+      // No --select-all here: that would route through runNonInteractive's
+      // rebuild path, which DELETEs all rows and re-inserts with default
+      // status='extracted' — wiping the post-`generate components` state
+      // (status='generated' + raw_props.cdf_type) the next apply push reads.
+      // The bare --exclude-components form takes the rejectComponentsByName
+      // early-return: pure UPDATE, no rebuild.
+      const rejectArgs = [
+        'analyze',
+        'select',
+        '--session',
+        extractSessionId,
+        '--exclude-components',
+        offenders.join(','),
+      ];
+      const rejectResult = await runStep(rejectArgs, cliPath);
+      if (rejectResult.exitCode !== 0) break; // selection step failed — give up
+
+      r = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
+      validationRetryCount++;
+    }
+
     const durationMs = Date.now() - t0;
 
     // Parse push result JSON from stdout to distinguish partial vs total failure
@@ -431,28 +525,37 @@ export async function runPipeline(
       // Total failure — nothing was pushed
       updateStep(db, pushStepId, 'failed', {}, r.stderr);
       progressWriter(`${pushLabel}✗  failed (${(durationMs / 1000).toFixed(1)}s)`);
-      steps.push({
-        step: 'apply push',
-        status: 'failed',
-        durationMs,
-        error: r.stderr,
-      });
+      steps.push(
+        buildPushStepResult({
+          created,
+          updated,
+          failed,
+          durationMs,
+          stderr: r.stderr,
+          excludedByRetry,
+          totalFailure: true,
+        }),
+      );
       db.close();
       return { session: sessionId, project: projectRoot, steps };
     }
 
-    const stepStatus = failed > 0 ? 'failed' : 'complete';
-    updateStep(db, pushStepId, stepStatus === 'complete' ? 'complete' : 'failed', { components: componentsPath });
+    const stepResult = buildPushStepResult({
+      created,
+      updated,
+      failed,
+      durationMs,
+      stderr: r.stderr,
+      excludedByRetry,
+    });
+    updateStep(db, pushStepId, stepResult.status === 'complete' ? 'complete' : 'failed', {
+      components: componentsPath,
+    });
     const statusIcon = failed > 0 ? '⚠' : '✓';
     progressWriter(
       `${pushLabel}${statusIcon}  ${created} created, ${updated} updated, ${failed} failed  (${(durationMs / 1000).toFixed(1)}s)`,
     );
-    steps.push({
-      step: 'apply push',
-      status: stepStatus,
-      durationMs,
-      detail: { created, updated, failed },
-    });
+    steps.push(stepResult);
   }
 
   progressWriter('');

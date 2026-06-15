@@ -7,12 +7,36 @@ import { DEFAULT_API_HOST, toApiHost } from '../host-utils.js';
 
 export const DEFAULT_HOST = DEFAULT_API_HOST;
 
+// Phase-prefix constants used at the two ApiError throw sites below and
+// imported by orchestrator.ts to identify preview-phase 422s for retry.
+export const PREVIEW_ERROR_PREFIX = 'preview failed:';
+export const APPLY_ERROR_PREFIX = 'apply failed:';
+
+// Substring match the orchestrator uses to distinguish a parseable
+// component-level validation failure from generic 422s. Quoted because the
+// match runs against the raw JSON body (which contains `"code":"ValidationFailed"`).
+// If the server ever changes the casing or naming, isPreviewValidationError
+// silently returns false and the retry loop never fires — so this lives next
+// to the prefixes as a deliberate, named contract rather than an inline
+// magic string in the orchestrator.
+export const VALIDATION_FAILED_CODE = '"ValidationFailed"';
+
 export interface ApiClientOptions {
   host?: string;
   cmaToken: string;
   spaceId: string;
   environmentId: string;
 }
+
+// Cap on the body slice appended to ApiError.message. Bumped from 1000 →
+// 16384 so realistic 422 ValidationFailed reports (which list every
+// offending component, ~100 chars per error, easily exceeds 1KB once you
+// cross ~10 components) survive intact through subprocess stderr. The
+// orchestrator's parseOffendingComponentNames does JSON.parse on this slice
+// and silently fails to recover any offenders if the JSON is mid-truncated.
+// The cap stays in place to keep a runaway server response from blowing up
+// log output.
+const ERROR_BODY_LOG_CAP = 16384;
 
 export class ApiError extends Error {
   constructor(
@@ -22,12 +46,58 @@ export class ApiError extends Error {
   ) {
     super(message);
     if (body) {
-      // Append a trimmed version of the response body so callers that only
-      // log e.message don't silently swallow the server's error detail.
-      const trimmed = body.length > 1000 ? body.slice(0, 1000) + '…' : body;
+      // Append a (possibly trimmed) version of the response body so callers
+      // that only log e.message don't silently swallow the server's error
+      // detail.
+      const trimmed = body.length > ERROR_BODY_LOG_CAP ? body.slice(0, ERROR_BODY_LOG_CAP) + '…' : body;
       this.message = `${message}\n${trimmed}`;
     }
   }
+}
+
+export interface PreviewValidationError {
+  componentName: string;
+  path: string;
+  message: string;
+}
+
+const COMPONENT_PATH_PREFIX = 'manifest:components/';
+
+/**
+ * Parse the JSON body of a 422 from `previewImport()` into structured
+ * per-component validation errors. Returns [] for any malformed input
+ * so callers can fall back to the generic error path without try/catch.
+ *
+ * Path shape: `manifest:components/<Name>/$slots/<key>` or
+ * `manifest:components/<Name>/$properties/<key>`. Only the component
+ * name is extracted today; `path` and `message` are kept verbatim so
+ * future surfaces (debug logging, headless retry in SP-4) can render
+ * the field-level detail.
+ */
+export function parsePreviewValidationErrors(body: string): PreviewValidationError[] {
+  if (!body) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const details = (parsed as { details?: unknown })?.details;
+  const errors = (details as { errors?: unknown })?.errors;
+  if (!Array.isArray(errors)) return [];
+  const out: PreviewValidationError[] = [];
+  for (const raw of errors) {
+    if (typeof raw !== 'object' || raw === null) continue;
+    const entry = raw as { path?: unknown; message?: unknown };
+    if (typeof entry.path !== 'string' || typeof entry.message !== 'string') continue;
+    if (!entry.path.startsWith(COMPONENT_PATH_PREFIX)) continue;
+    const tail = entry.path.slice(COMPONENT_PATH_PREFIX.length);
+    const slash = tail.indexOf('/');
+    const componentName = slash === -1 ? tail : tail.slice(0, slash);
+    if (!componentName) continue;
+    out.push({ componentName, path: entry.path, message: entry.message });
+  }
+  return out;
 }
 
 async function request(url: string, options: RequestInit & { token: string }): Promise<Response> {
@@ -90,7 +160,7 @@ export class ImportApiClient {
       body: JSON.stringify(manifest),
     });
     if (!res.ok) {
-      throw new ApiError(`preview failed: ${res.status}`, res.status, await res.text());
+      throw new ApiError(`${PREVIEW_ERROR_PREFIX} ${res.status}`, res.status, await res.text());
     }
     return (await res.json()) as ServerPreviewResponse;
   }
@@ -103,7 +173,7 @@ export class ImportApiClient {
       body: JSON.stringify({ ...manifest, acknowledgeBreakingChanges }),
     });
     if (!res.ok) {
-      throw new ApiError(`apply failed: ${res.status}`, res.status, await res.text());
+      throw new ApiError(`${APPLY_ERROR_PREFIX} ${res.status}`, res.status, await res.text());
     }
     return (await res.json()) as ApplyOperationResponse;
   }

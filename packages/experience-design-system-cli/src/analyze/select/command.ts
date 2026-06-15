@@ -1,5 +1,5 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { access, readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import { createElement } from 'react';
 import { render } from 'ink';
 import type { Command } from 'commander';
@@ -13,6 +13,8 @@ import {
   shouldExcludeDueToValidation,
   formatExclusionWarning,
 } from '../extract/validate.js';
+import type { PreviewValidationError } from '../../apply/api-client.js';
+import type { ExtractionValidationIssue } from '../../types.js';
 
 type RefineCommandOptions = {
   session?: string;
@@ -24,6 +26,7 @@ type RefineCommandOptions = {
   select?: string[];
   patch?: string;
   excludeInvalid?: boolean;
+  excludeComponents?: string;
 };
 
 interface PatchOperation {
@@ -106,6 +109,39 @@ async function runNonInteractive(
   paths: ReviewSessionPaths,
   sessionId: string,
 ): Promise<void> {
+  // --exclude-components on its own (no --select-all / --select / --deselect /
+  // --reject / --patch) is the orchestrator's 422 retry-loop invocation: only
+  // the named components should change. The rebuild path below calls
+  // storeRawComponents which DELETEs all rows and re-inserts with default
+  // status='extracted', wiping the post-generate state required by
+  // loadCDFComponents (status='generated' + raw_props.cdf_type populated).
+  // Short-circuit through rejectComponentsByName, which is a pure UPDATE.
+  const onlyExcludeComponents =
+    !!opts.excludeComponents &&
+    !opts.acceptAll &&
+    !opts.selectAll &&
+    !(opts.select ?? []).length &&
+    !(opts.deselect ?? []).length &&
+    !(opts.reject ?? []).length &&
+    !opts.patch;
+  if (onlyExcludeComponents) {
+    const names = opts
+      .excludeComponents!.split(',')
+      .map((n) => n.trim())
+      .filter(Boolean);
+    if (names.length > 0) {
+      // paths.sessionDir = resolve(artifactsRoot, sessionId), so dirname gives
+      // back the artifactsRoot — keeps rejectComponentsByName from re-resolving
+      // it via env var when the caller already knows it.
+      const artifactsRoot = dirname(paths.sessionDir);
+      await rejectComponentsByName(sessionId, names, { artifactsRoot });
+    }
+    const accepted = snapshot.components.filter((c) => c.status === 'accepted').length;
+    const rejected = snapshot.components.filter((c) => c.status === 'rejected').length + (names.length || 0);
+    process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}\n`);
+    return;
+  }
+
   let result = { ...snapshot };
 
   const rejectPatterns = [...(opts.reject ?? []), ...(opts.deselect ?? [])].map((p) => p.toLowerCase());
@@ -157,6 +193,26 @@ async function runNonInteractive(
         return c;
       }),
     };
+  }
+
+  // Apply --exclude-components: force-reject the named components regardless of
+  // how --select-all / --select / --deselect classified them. Used by the
+  // orchestrator's 422 retry loop to exclude server-validation offenders.
+  if (opts.excludeComponents) {
+    const excludeNames = new Set(
+      opts.excludeComponents
+        .split(',')
+        .map((n) => n.trim())
+        .filter(Boolean),
+    );
+    if (excludeNames.size > 0) {
+      result = {
+        ...result,
+        components: result.components.map((c) =>
+          excludeNames.has(c.name) ? { ...c, status: 'rejected' as const } : c,
+        ),
+      };
+    }
   }
 
   // Apply --patch
@@ -256,6 +312,117 @@ export async function loadAndValidateForReview(
   return loadReviewInput(validatedComponents, { reviewRoot: projectRoot });
 }
 
+/**
+ * Synthesize SERVER_VALIDATION_FAILED issues onto the review state file's
+ * matching components. Used by the wizard's 422 recovery path: after a
+ * preview-API validation error, this runs before re-launching the
+ * analyze-select TUI so the Sidebar's existing red-warning rendering
+ * pins the offenders to the top.
+ *
+ * Idempotent on identical input is NOT a contract: each call appends.
+ * The wizard's 422 path is a one-shot per preview attempt, so duplicate
+ * issues only matter if a caller invokes this twice without the user
+ * round-tripping through the TUI in between.
+ */
+export async function patchReviewStateWithValidationErrors(
+  sessionId: string,
+  errors: PreviewValidationError[],
+  opts: { artifactsRoot?: string } = {},
+): Promise<{ patchedNames: string[]; missingNames: string[] }> {
+  const artifactsRoot = opts.artifactsRoot ?? getRefineArtifactsRoot();
+  const paths = await getRefineSessionPaths(sessionId, artifactsRoot);
+
+  let snapshot: ReviewSessionSnapshot;
+  try {
+    await access(paths.statePath);
+    snapshot = JSON.parse(await readFile(paths.statePath, 'utf8')) as ReviewSessionSnapshot;
+  } catch {
+    snapshot = await loadAndValidateForReview(sessionId, undefined);
+    snapshot = await ensureRefineSession(sessionId, artifactsRoot, snapshot);
+  }
+
+  const errorsByName = new Map<string, PreviewValidationError[]>();
+  for (const err of errors) {
+    const list = errorsByName.get(err.componentName) ?? [];
+    list.push(err);
+    errorsByName.set(err.componentName, list);
+  }
+
+  const patchedNames: string[] = [];
+  const knownNames = new Set(snapshot.components.map((c) => c.name));
+  const components = snapshot.components.map((c) => {
+    const matched = errorsByName.get(c.name);
+    if (!matched || matched.length === 0) return c;
+    patchedNames.push(c.name);
+    const newIssues: ExtractionValidationIssue[] = matched.map((err) => ({
+      severity: 'error',
+      code: 'SERVER_VALIDATION_FAILED',
+      message: err.message,
+    }));
+    const existing = c.originalProposal.validationIssues ?? [];
+    return {
+      ...c,
+      originalProposal: {
+        ...c.originalProposal,
+        validationIssues: [...existing, ...newIssues],
+      },
+    };
+  });
+
+  const missingNames = [...errorsByName.keys()].filter((n) => !knownNames.has(n));
+
+  await saveReviewState(paths.statePath, { ...snapshot, components });
+
+  return { patchedNames, missingNames };
+}
+
+/**
+ * Exclude components whose names appear in `names` from the next preview/push.
+ * Used by the wizard's "skip and retry" path after a 422.
+ *
+ * Two stores are updated:
+ *   - Pipeline DB (`raw_components.status` → `'generate-rejected'`) so that
+ *     `loadCDFComponents()` excludes them from the next manifest. This is the
+ *     load-bearing change — preview reads from the DB, not the JSON file.
+ *   - Review state JSON (`status` → `'rejected'`) so that if the user re-enters
+ *     the analyze-select TUI later, the rejected status is reflected.
+ *
+ * `'generate-rejected'` matches the existing convention for "component was
+ * generated successfully but later excluded" (see GenerateReviewStep) — the
+ * component generated fine locally but failed server-side validation.
+ */
+export async function rejectComponentsByName(
+  sessionId: string,
+  names: string[],
+  opts: { artifactsRoot?: string } = {},
+): Promise<void> {
+  if (names.length === 0) return;
+
+  const db = openPipelineDb();
+  try {
+    const placeholders = names.map(() => '?').join(',');
+    db.prepare(
+      `UPDATE raw_components SET status = 'generate-rejected' WHERE session_id = ? AND name IN (${placeholders})`,
+    ).run(sessionId, ...names);
+  } finally {
+    db.close();
+  }
+
+  const artifactsRoot = opts.artifactsRoot ?? getRefineArtifactsRoot();
+  const paths = await getRefineSessionPaths(sessionId, artifactsRoot);
+  const nameSet = new Set(names);
+
+  let snapshot: ReviewSessionSnapshot;
+  try {
+    snapshot = JSON.parse(await readFile(paths.statePath, 'utf8')) as ReviewSessionSnapshot;
+  } catch {
+    return;
+  }
+
+  const components = snapshot.components.map((c) => (nameSet.has(c.name) ? { ...c, status: 'rejected' as const } : c));
+  await saveReviewState(paths.statePath, { ...snapshot, components });
+}
+
 function resolveSessionId(sessionFlag: string | undefined): string {
   if (sessionFlag) return sessionFlag;
 
@@ -301,6 +468,10 @@ export function registerAnalyzeEditCommand(program: Command): void {
       '--exclude-invalid',
       'With --select-all: auto-reject components with validation errors instead of failing loud (opt-in bypass for the gate)',
     )
+    .option(
+      '--exclude-components <names>',
+      'Comma-separated component names to force-reject, regardless of other selection flags',
+    )
     .action(
       async ({
         session: sessionFlag,
@@ -312,6 +483,7 @@ export function registerAnalyzeEditCommand(program: Command): void {
         select,
         patch,
         excludeInvalid,
+        excludeComponents,
       }: RefineCommandOptions) => {
         const sessionId = resolveSessionId(sessionFlag);
 
@@ -337,7 +509,8 @@ export function registerAnalyzeEditCommand(program: Command): void {
           (reject ?? []).length > 0 ||
           (deselect ?? []).length > 0 ||
           (select ?? []).length > 0 ||
-          !!patch;
+          !!patch ||
+          !!excludeComponents;
 
         let paths: ReviewSessionPaths;
         let snapshot: ReviewSessionSnapshot;
@@ -360,7 +533,9 @@ export function registerAnalyzeEditCommand(program: Command): void {
         // Non-interactive path
         if (nonInteractive) {
           const stepDb = openPipelineDb();
-          const stepId = createStep(stepDb, sessionId, 'analyze select', { sessionId });
+          const stepId = createStep(stepDb, sessionId, 'analyze select', {
+            sessionId,
+          });
           try {
             await runNonInteractive(
               snapshot,
@@ -374,6 +549,7 @@ export function registerAnalyzeEditCommand(program: Command): void {
                 select,
                 patch,
                 excludeInvalid,
+                excludeComponents,
               },
               paths,
               sessionId,

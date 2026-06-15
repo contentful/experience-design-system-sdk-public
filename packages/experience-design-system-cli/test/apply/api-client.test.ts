@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { ImportApiClient, ApiError } from '../../src/apply/api-client.js';
+import {
+  ImportApiClient,
+  ApiError,
+  parsePreviewValidationErrors,
+  PREVIEW_ERROR_PREFIX,
+  APPLY_ERROR_PREFIX,
+} from '../../src/apply/api-client.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
 
 const mockFetch = vi.fn();
@@ -326,5 +332,224 @@ describe('ImportApiClient — pollOperation', () => {
 
     const client = createClient();
     await expect(client.pollOperation('op-1')).rejects.toThrow(ApiError);
+  });
+});
+
+describe('parsePreviewValidationErrors', () => {
+  it('extracts component name, path, and message from a slot-path error', () => {
+    const body = JSON.stringify({
+      sys: { type: 'Error', id: 'ValidationFailed' },
+      message: 'Validation error',
+      details: {
+        errors: [{ path: 'manifest:components/PageLink/$slots/', message: 'Slot id must be a non-empty string' }],
+      },
+    });
+    const result = parsePreviewValidationErrors(body);
+    expect(result).toEqual([
+      {
+        componentName: 'PageLink',
+        path: 'manifest:components/PageLink/$slots/',
+        message: 'Slot id must be a non-empty string',
+      },
+    ]);
+  });
+
+  it('extracts component name from a properties-path error', () => {
+    const body = JSON.stringify({
+      details: {
+        errors: [{ path: 'manifest:components/Button/$properties/variant', message: 'variant required' }],
+      },
+    });
+    const result = parsePreviewValidationErrors(body);
+    expect(result).toEqual([
+      {
+        componentName: 'Button',
+        path: 'manifest:components/Button/$properties/variant',
+        message: 'variant required',
+      },
+    ]);
+  });
+
+  it('returns multiple entries when the body lists multiple errors', () => {
+    const body = JSON.stringify({
+      details: {
+        errors: [
+          { path: 'manifest:components/PageLink/$slots/', message: 'Slot id must be a non-empty string' },
+          { path: 'manifest:components/Button/$properties/variant', message: 'variant required' },
+        ],
+      },
+    });
+    const result = parsePreviewValidationErrors(body);
+    expect(result.map((e) => e.componentName)).toEqual(['PageLink', 'Button']);
+  });
+
+  it('returns [] for malformed JSON', () => {
+    expect(parsePreviewValidationErrors('not json')).toEqual([]);
+  });
+
+  it('returns [] when details.errors is missing', () => {
+    expect(parsePreviewValidationErrors(JSON.stringify({ message: 'oops' }))).toEqual([]);
+  });
+
+  it('returns [] when details.errors is not an array', () => {
+    expect(parsePreviewValidationErrors(JSON.stringify({ details: { errors: 'nope' } }))).toEqual([]);
+  });
+
+  it('skips entries whose path does not start with manifest:components/', () => {
+    const body = JSON.stringify({
+      details: {
+        errors: [
+          { path: 'manifest:tokens/foo', message: 'unrelated' },
+          { path: 'manifest:components/Good/$slots/', message: 'real' },
+        ],
+      },
+    });
+    const result = parsePreviewValidationErrors(body);
+    expect(result).toEqual([{ componentName: 'Good', path: 'manifest:components/Good/$slots/', message: 'real' }]);
+  });
+
+  it('skips entries with non-string path or message', () => {
+    const body = JSON.stringify({
+      details: {
+        errors: [
+          { path: null, message: 'no path' },
+          { path: 'manifest:components/Good/', message: 42 },
+        ],
+      },
+    });
+    expect(parsePreviewValidationErrors(body)).toEqual([]);
+  });
+
+  it('handles a path with no trailing field segment', () => {
+    const body = JSON.stringify({
+      details: {
+        errors: [{ path: 'manifest:components/SoloComp', message: 'top-level' }],
+      },
+    });
+    const result = parsePreviewValidationErrors(body);
+    expect(result).toEqual([{ componentName: 'SoloComp', path: 'manifest:components/SoloComp', message: 'top-level' }]);
+  });
+
+  it('returns [] for empty body string', () => {
+    expect(parsePreviewValidationErrors('')).toEqual([]);
+  });
+
+  it('returns [] for null/undefined/primitive entries in errors[]', () => {
+    const body = JSON.stringify({
+      details: {
+        errors: [null, undefined, 5, 'string', { path: 'manifest:components/Good/$slots/', message: 'real' }],
+      },
+    });
+    const result = parsePreviewValidationErrors(body);
+    expect(result).toEqual([{ componentName: 'Good', path: 'manifest:components/Good/$slots/', message: 'real' }]);
+  });
+
+  it('returns [] for top-level non-object parsed bodies (null, primitive)', () => {
+    expect(parsePreviewValidationErrors('null')).toEqual([]);
+    expect(parsePreviewValidationErrors('42')).toEqual([]);
+    expect(parsePreviewValidationErrors('"hello"')).toEqual([]);
+  });
+});
+
+describe('phase-prefix constants — orchestrator contract', () => {
+  it('previewImport throws ApiError whose message starts with PREVIEW_ERROR_PREFIX on non-200', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 422,
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            sys: { type: 'Error', id: 'ValidationFailed' },
+            message: 'Validation error',
+            details: { errors: [] },
+          }),
+        ),
+    });
+
+    const client = createClient();
+    try {
+      await client.previewImport({});
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      expect((e as ApiError).message).toMatch(new RegExp(`^${PREVIEW_ERROR_PREFIX}`));
+    }
+  });
+
+  it('applyImport throws ApiError whose message starts with APPLY_ERROR_PREFIX on non-200', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 422,
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            sys: { type: 'Error', id: 'UnprocessableEntity' },
+            message: 'Breaking changes',
+          }),
+        ),
+    });
+
+    const client = createClient();
+    try {
+      await client.applyImport({}, false);
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      expect((e as ApiError).message).toMatch(new RegExp(`^${APPLY_ERROR_PREFIX}`));
+    }
+  });
+
+  it('PREVIEW_ERROR_PREFIX and APPLY_ERROR_PREFIX are distinct strings', () => {
+    expect(PREVIEW_ERROR_PREFIX).not.toBe(APPLY_ERROR_PREFIX);
+    expect(PREVIEW_ERROR_PREFIX).toContain('preview');
+    expect(APPLY_ERROR_PREFIX).toContain('apply');
+  });
+});
+
+describe('ApiError — body preservation for orchestrator retry parsing', () => {
+  // Builds a realistic CDF validation-failed body with N component errors.
+  // Each error is ~100 chars including JSON overhead, so 20 errors ≈ 2KB.
+  function makeValidationFailedBody(errorCount: number): string {
+    return JSON.stringify({
+      sys: { type: 'Error', id: 'ValidationFailed' },
+      message: 'Validation error',
+      details: {
+        errors: Array.from({ length: errorCount }, (_, i) => ({
+          path: `manifest:components/Component${i}/$slots/`,
+          message: `Slot id must be a non-empty string for Component${i}`,
+        })),
+      },
+    });
+  }
+
+  it('keeps a 2KB body parseable as JSON in e.message — orchestrator retry parses from stderr', () => {
+    // The orchestrator pipes the subprocess stderr (which contains e.message
+    // verbatim via die()) through parsePreviewValidationErrors. If ApiError
+    // truncates the body mid-JSON, the parser fails and the retry loop gives
+    // up — no exclusion, no recovery. Anything above ~10 component errors
+    // exceeds the original 1000-char trim cap.
+    const body = makeValidationFailedBody(20);
+    expect(body.length).toBeGreaterThan(1000); // sanity — confirms we're testing the truncation case
+
+    const err = new ApiError(`${PREVIEW_ERROR_PREFIX} 422`, 422, body);
+
+    // The body portion must remain valid JSON so JSON.parse succeeds.
+    const newlineIdx = err.message.indexOf('\n');
+    expect(newlineIdx).toBeGreaterThan(-1);
+    const bodyPart = err.message.slice(newlineIdx + 1);
+    expect(() => JSON.parse(bodyPart)).not.toThrow();
+  });
+
+  it('still trims pathologically large bodies (>16KB) so a runaway server response cannot exhaust memory in logs', () => {
+    // Bound: keep the cap; just raise it from 1000 to something realistic.
+    // Anything beyond ~16KB is almost certainly a runaway response, not a
+    // real validation report.
+    const huge = makeValidationFailedBody(500); // ~50KB
+    expect(huge.length).toBeGreaterThan(20000);
+
+    const err = new ApiError(`${PREVIEW_ERROR_PREFIX} 422`, 422, huge);
+
+    // Must be capped (i.e. truncated), but the cap must be high enough to
+    // accommodate realistic 422 reports.
+    expect(err.message.length).toBeLessThan(huge.length);
+    expect(err.message.length).toBeGreaterThan(10000);
   });
 });

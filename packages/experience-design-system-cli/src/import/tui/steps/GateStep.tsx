@@ -12,6 +12,7 @@ type GateStepProps = {
   onSkip?: () => void;
   onQuit: () => void;
   showSkip?: boolean;
+  intent?: 'success' | 'error';
 };
 
 export function GateStep({
@@ -24,6 +25,7 @@ export function GateStep({
   onSkip,
   onQuit,
   showSkip = true,
+  intent = 'success',
 }: GateStepProps): React.ReactElement {
   useImmediateInput((input, key) => {
     if (key.return) {
@@ -40,9 +42,13 @@ export function GateStep({
     }
   });
 
+  const headerColor = intent === 'error' ? 'red' : 'green';
+  const headerIcon = intent === 'error' ? '✗' : '✓';
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Text color="green">✓ {successMessage}</Text>
+      <Text color={headerColor}>
+        {headerIcon} {successMessage}
+      </Text>
       {summary && <Text dimColor>{summary}</Text>}
 
       <Box marginTop={1}>
