@@ -205,8 +205,19 @@ async function runNonInteractive(
   // Persist decisions to session state so pipeline orchestrator can read them
   await saveReviewState(paths.statePath, result);
 
-  // Sync edited proposals back to the DB so generation uses the user's edits
-  if (accepted.length > 0) {
+  // Sync edited proposals back to the DB so generation uses the user's edits.
+  //
+  // Only --patch can mutate editedProposal — the other non-interactive flags
+  // (--select-all / --select / --deselect / --reject / --exclude-invalid)
+  // change status only. Calling storeRawComponents in the no-edit case is
+  // not just wasteful: it's destructive. storeRawComponents starts with
+  // `DELETE FROM raw_components WHERE session_id = ?` and re-inserts only
+  // the components passed in — so on a --select-all run, every rejected
+  // component (including its raw_slots / raw_props children) is physically
+  // removed. A second invocation of the same command would then see a
+  // smaller snapshot, lose the rejected component(s), and report different
+  // counts.
+  if (opts.patch && accepted.length > 0) {
     const db = openPipelineDb();
     try {
       storeRawComponents(

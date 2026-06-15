@@ -160,6 +160,115 @@ describe('analyze select --select-all --exclude-invalid stderr output', () => {
   });
 });
 
+describe('analyze select --select-all idempotency', () => {
+  // Re-running --select-all --exclude-invalid against the same session must
+  // produce identical results. The first run was destructive (storeRawComponents
+  // rebuilds the table from accepted-only, deleting rejected rows), so the
+  // second run saw a different snapshot and reported wrong counts.
+  let tmpDir: string;
+  let dbPath: string;
+  let artifactsRoot: string;
+  let sessionId: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'eds-idempotent-'));
+    dbPath = join(tmpDir, 'pipeline.db');
+    artifactsRoot = join(tmpDir, 'reviews');
+    await writeFile(join(tmpDir, 'BadSlot.tsx'), '// BadSlot\n');
+    await writeFile(join(tmpDir, 'Good.tsx'), '// Good\n');
+
+    const db = openPipelineDb(dbPath);
+    const { sessionId: sid } = getOrCreateSession(db, undefined, undefined, {
+      command: 'analyze extract',
+      inputPath: tmpDir,
+      outDir: tmpDir,
+    });
+    sessionId = sid;
+    storeRawComponents(db, sessionId, [
+      {
+        name: 'BadSlot',
+        source: join(tmpDir, 'BadSlot.tsx'),
+        framework: 'react',
+        props: [],
+        slots: [{ name: '', isDefault: false }],
+      },
+      {
+        name: 'Good',
+        source: join(tmpDir, 'Good.tsx'),
+        framework: 'react',
+        props: [{ name: 'variant', type: 'string', required: false }],
+        slots: [],
+      },
+    ]);
+    db.close();
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('--select-all --exclude-invalid produces the same counts on a second run', async () => {
+    const args = [
+      'analyze',
+      'select',
+      '--session',
+      sessionId,
+      '--project-root',
+      tmpDir,
+      '--select-all',
+      '--exclude-invalid',
+    ];
+    const first = await run(args, { artifactsRoot, dbPath });
+    expect(first.code).toBe(0);
+    expect(first.stderr).toMatch(/Accepted:\s*1\s+Rejected:\s*1/);
+
+    const second = await run(args, { artifactsRoot, dbPath });
+    expect(second.code).toBe(0);
+    expect(second.stderr).toMatch(/Accepted:\s*1\s+Rejected:\s*1/);
+  });
+
+  it('does NOT delete rejected components from raw_components', async () => {
+    // Direct DB inspection: after the first run, both rows must still exist.
+    // Otherwise re-running, re-validating, or auditing the session is broken.
+    await run(
+      ['analyze', 'select', '--session', sessionId, '--project-root', tmpDir, '--select-all', '--exclude-invalid'],
+      { artifactsRoot, dbPath },
+    );
+
+    const db = openPipelineDb(dbPath);
+    try {
+      const rows = db.prepare(`SELECT name FROM raw_components WHERE session_id = ?`).all(sessionId) as Array<{
+        name: string;
+      }>;
+      expect(rows.map((r) => r.name).sort()).toEqual(['BadSlot', 'Good']);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('preserves the rejected components empty-named slot in raw_slots after the run', async () => {
+    // The empty-slot row must survive — re-validation on a re-run reads it
+    // and re-derives the EMPTY_SLOT_NAME issue. If the row was deleted, the
+    // second run sees no validation errors and the gate's failure mode is
+    // silently lost.
+    await run(
+      ['analyze', 'select', '--session', sessionId, '--project-root', tmpDir, '--select-all', '--exclude-invalid'],
+      { artifactsRoot, dbPath },
+    );
+
+    const db = openPipelineDb(dbPath);
+    try {
+      const slots = db.prepare(`SELECT name FROM raw_slots WHERE session_id = ?`).all(sessionId) as Array<{
+        name: string;
+      }>;
+      // BadSlot's empty-named slot must still be there.
+      expect(slots.map((s) => s.name)).toContain('');
+    } finally {
+      db.close();
+    }
+  });
+});
+
 describe('analyze select --select-all without --exclude-invalid (fail-loud gate)', () => {
   // Default behavior: --select-all stops with a non-zero exit when ANY
   // component has error-severity validation issues. The user must opt in
