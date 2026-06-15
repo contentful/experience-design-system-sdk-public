@@ -159,3 +159,119 @@ describe('analyze select --select-all --exclude-invalid stderr output', () => {
     expect(result.stderr).toMatch(/Accepted:\s*1\s+Rejected:\s*0/);
   });
 });
+
+describe('analyze select --select-all without --exclude-invalid (fail-loud gate)', () => {
+  // Default behavior: --select-all stops with a non-zero exit when ANY
+  // component has error-severity validation issues. The user must opt in
+  // to the auto-reject path with --exclude-invalid. Rationale: silent
+  // exclusion is dangerous in CI/orchestrator contexts — the caller should
+  // see and acknowledge that components are being dropped.
+  let tmpDir: string;
+  let dbPath: string;
+  let artifactsRoot: string;
+  let sessionId: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'eds-failloud-'));
+    dbPath = join(tmpDir, 'pipeline.db');
+    artifactsRoot = join(tmpDir, 'reviews');
+    await writeFile(join(tmpDir, 'BadSlot.tsx'), '// BadSlot\n');
+    await writeFile(join(tmpDir, 'Good.tsx'), '// Good\n');
+
+    const db = openPipelineDb(dbPath);
+    const { sessionId: sid } = getOrCreateSession(db, undefined, undefined, {
+      command: 'analyze extract',
+      inputPath: tmpDir,
+      outDir: tmpDir,
+    });
+    sessionId = sid;
+    storeRawComponents(db, sessionId, [
+      {
+        name: 'BadSlot',
+        source: join(tmpDir, 'BadSlot.tsx'),
+        framework: 'react',
+        props: [],
+        slots: [{ name: '', isDefault: false }],
+      },
+      {
+        name: 'Good',
+        source: join(tmpDir, 'Good.tsx'),
+        framework: 'react',
+        props: [{ name: 'variant', type: 'string', required: false }],
+        slots: [],
+      },
+    ]);
+    db.close();
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('exits non-zero when error-tier validation issues exist and --exclude-invalid is NOT set', async () => {
+    const result = await run(['analyze', 'select', '--session', sessionId, '--project-root', tmpDir, '--select-all'], {
+      artifactsRoot,
+      dbPath,
+    });
+
+    expect(result.code).not.toBe(0);
+  });
+
+  it('lists the offending components + error codes in the failure message', async () => {
+    const result = await run(['analyze', 'select', '--session', sessionId, '--project-root', tmpDir, '--select-all'], {
+      artifactsRoot,
+      dbPath,
+    });
+
+    expect(result.stderr).toContain('1 component(s) failed validation');
+    expect(result.stderr).toContain('BadSlot');
+    expect(result.stderr).toContain('EMPTY_SLOT_NAME');
+  });
+
+  it('hints at the --exclude-invalid flag in the failure message', async () => {
+    const result = await run(['analyze', 'select', '--session', sessionId, '--project-root', tmpDir, '--select-all'], {
+      artifactsRoot,
+      dbPath,
+    });
+
+    expect(result.stderr).toContain('--exclude-invalid');
+  });
+
+  it('does NOT modify session state when the gate fails (no Accepted/Rejected line)', async () => {
+    // The gate must short-circuit BEFORE saveReviewState runs — otherwise a
+    // CI run that sees the failure and re-runs would inherit a partial state.
+    const result = await run(['analyze', 'select', '--session', sessionId, '--project-root', tmpDir, '--select-all'], {
+      artifactsRoot,
+      dbPath,
+    });
+
+    expect(result.stderr).not.toMatch(/Accepted:\s*\d+\s+Rejected:\s*\d+/);
+  });
+
+  it('exits 0 when --select-all is passed and there are NO error-tier issues', async () => {
+    // Re-seed without the bad component
+    const db = openPipelineDb(dbPath);
+    db.prepare(`DELETE FROM raw_components WHERE session_id = ?`).run(sessionId);
+    db.close();
+
+    const db2 = openPipelineDb(dbPath);
+    storeRawComponents(db2, sessionId, [
+      {
+        name: 'Good',
+        source: join(tmpDir, 'Good.tsx'),
+        framework: 'react',
+        props: [{ name: 'variant', type: 'string', required: false }],
+        slots: [],
+      },
+    ]);
+    db2.close();
+
+    const result = await run(['analyze', 'select', '--session', sessionId, '--project-root', tmpDir, '--select-all'], {
+      artifactsRoot,
+      dbPath,
+    });
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toMatch(/Accepted:\s*1\s+Rejected:\s*0/);
+  });
+});

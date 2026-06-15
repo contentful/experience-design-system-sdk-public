@@ -112,6 +112,34 @@ async function runNonInteractive(
   const selectPatterns = (opts.select ?? []).map((p) => p.toLowerCase());
   const selectAll = opts.acceptAll || opts.selectAll;
 
+  // Fail-loud gate: --select-all stops with a non-zero exit when ANY component
+  // has error-severity validation issues. The user must opt in to auto-rejection
+  // with --exclude-invalid. Silent exclusion in CI / orchestrator contexts is
+  // dangerous — the caller should see and acknowledge that components are
+  // being dropped from the import.
+  if (selectAll && !opts.excludeInvalid) {
+    const invalid = result.components.filter((c) => shouldExcludeDueToValidation(c.originalProposal));
+    if (invalid.length > 0) {
+      const lines = [
+        `Error: ${invalid.length} component(s) failed validation; refusing --select-all without --exclude-invalid:`,
+      ];
+      for (const c of invalid) {
+        const codes = (c.originalProposal.validationIssues ?? [])
+          .filter((i) => i.severity === 'error')
+          .map((i) => i.code)
+          .join(', ');
+        lines.push(`  ✗  ${c.name}  ${codes}`);
+      }
+      lines.push('');
+      lines.push(
+        'Re-run with --exclude-invalid to auto-reject these components, or run analyze select interactively to fix them.',
+      );
+      process.stderr.write(lines.join('\n') + '\n');
+      process.exit(1);
+      return;
+    }
+  }
+
   if (selectAll || rejectPatterns.length > 0 || selectPatterns.length > 0) {
     result = {
       ...result,
