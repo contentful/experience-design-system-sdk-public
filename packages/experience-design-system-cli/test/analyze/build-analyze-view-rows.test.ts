@@ -8,7 +8,7 @@ describe('buildAnalyzeViewRows', () => {
     // P1.3 regression — Bito flagged that keying validated components by `name`
     // silently dropped errors for the first of any duplicate-named pair, since
     // `Map.set` overwrites by key. We seed two components named "Button" with
-    // DIFFERENT non-duplicate validation findings (empty slot name vs.
+    // DIFFERENT non-duplicate validation findings (empty prop name vs.
     // prop/slot collision) so the test asserts the positional pairing
     // contract directly without depending on duplicate-name behaviour itself.
     const filteredComponents: RawComponentDefinition[] = [
@@ -16,9 +16,9 @@ describe('buildAnalyzeViewRows', () => {
         name: 'Button',
         source: '/src/a/Button.tsx',
         framework: 'react',
-        props: [],
-        // Empty slot name → EMPTY_SLOT_NAME error.
-        slots: [{ name: '', isDefault: false }],
+        // Empty prop name → EMPTY_PROP_NAME error.
+        props: [{ name: '', type: 'string', required: false }],
+        slots: [],
       },
       {
         name: 'Button',
@@ -33,7 +33,7 @@ describe('buildAnalyzeViewRows', () => {
 
     // Sanity: validate produced an aligned array with errors on each.
     expect(validatedComponents).toHaveLength(2);
-    expect((validatedComponents[0].validationIssues ?? []).some((i) => i.code === 'EMPTY_SLOT_NAME')).toBe(true);
+    expect((validatedComponents[0].validationIssues ?? []).some((i) => i.code === 'EMPTY_PROP_NAME')).toBe(true);
     expect((validatedComponents[1].validationIssues ?? []).some((i) => i.code === 'PROP_SLOT_NAME_COLLISION')).toBe(
       true,
     );
@@ -43,13 +43,13 @@ describe('buildAnalyzeViewRows', () => {
     expect(rows).toHaveLength(2);
     // Each row must surface its OWN component's errors. Under a name-keyed
     // Map, both rows get the second component's errors — the first row's
-    // EMPTY_SLOT_NAME is silently dropped.
-    expect(rows[0].errors.some((m) => m === 'Slot at index 0 has an empty name')).toBe(true);
+    // EMPTY_PROP_NAME is silently dropped.
+    expect(rows[0].errors.some((m) => m === 'Prop at index 0 has an empty name')).toBe(true);
     expect(rows[1].errors.some((m) => m.includes('used as both a prop name and a slot name'))).toBe(true);
     // The first row must NOT carry the second component's collision error,
-    // and the second row must NOT carry the first component's empty-slot error.
+    // and the second row must NOT carry the first component's empty-prop error.
     expect(rows[0].errors.some((m) => m.includes('used as both a prop name and a slot name'))).toBe(false);
-    expect(rows[1].errors.some((m) => m === 'Slot at index 0 has an empty name')).toBe(false);
+    expect(rows[1].errors.some((m) => m === 'Prop at index 0 has an empty name')).toBe(false);
     // Total must include errors from both rows.
     expect(totalErrors).toBe(rows[0].errors.length + rows[1].errors.length);
     expect(totalErrors).toBeGreaterThanOrEqual(2);

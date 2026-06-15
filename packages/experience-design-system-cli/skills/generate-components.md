@@ -251,6 +251,8 @@ For each `RawSlotDefinition`:
   - `false` if clearly optional (icon slot, footer slot with a default, decorative slot)
   - Default to `true` when the source gives no signal
 
+**Pre-named slots:** If the input contains a slot whose `name` was already inferred by the pipeline (e.g. `"children"`, `"slot_0"`), treat it as you would any named slot — classify it normally. The pipeline renames empty-named slots to heuristic names before passing them to you; your job is to confirm or enrich the classification (set `required`, `description`, `allowed_components`), not to rename again.
+
 ---
 
 ## Examples

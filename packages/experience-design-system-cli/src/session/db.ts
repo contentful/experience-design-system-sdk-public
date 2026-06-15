@@ -872,6 +872,61 @@ export function loadRawComponents(
   );
 }
 
+/**
+ * Rename empty-named slots in the DB to heuristic names before generation.
+ * The LLM classify_slot tool call is matched back to the DB row by name, so a
+ * row with name="" can never be updated by the LLM — renaming it here makes it
+ * classifiable. Returns one warning string per renamed slot.
+ */
+export function renameEmptySlots(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  componentName: string,
+  slotCount: number,
+): { renames: Array<{ oldName: string; newName: string }>; warnings: string[] } {
+  const emptySlots = db
+    .prepare(
+      `SELECT name, position FROM raw_slots
+       WHERE session_id = ? AND component_id = ? AND trim(name) = ''
+       ORDER BY position`,
+    )
+    .all(sessionId, componentId) as Array<{ name: string; position: number }>;
+
+  if (emptySlots.length === 0) return { renames: [], warnings: [] };
+
+  const renames: Array<{ oldName: string; newName: string }> = [];
+  const warnings: string[] = [];
+
+  const rename = db.prepare(
+    `UPDATE raw_slots SET name = ? WHERE session_id = ? AND component_id = ? AND name = ? AND position = ?`,
+  );
+
+  // Multi-statement write — wrap in a transaction so a SIGINT or driver error
+  // mid-loop leaves raw_slots either fully renamed or fully untouched, never
+  // half-renamed (which would corrupt the prompt-vs-DB invariant the LLM
+  // relies on for classify_slot). Matches the existing BEGIN/COMMIT pattern
+  // throughout this file (see storeRawComponents, createStep, etc.).
+  db.exec('BEGIN');
+  try {
+    for (const slot of emptySlots) {
+      // Single unnamed slot → "children". Multiple → positional names.
+      const newName = slotCount === 1 ? 'children' : `slot_${slot.position}`;
+      rename.run(newName, sessionId, componentId, slot.name, slot.position);
+      renames.push({ oldName: slot.name, newName });
+      warnings.push(
+        `${componentName}: slot at position ${slot.position} had empty name — renamed to "${newName}" for classification`,
+      );
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+
+  return { renames, warnings };
+}
+
 function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
   const map = new Map<string, T[]>();
   for (const item of items) {
@@ -1078,6 +1133,11 @@ export function loadCDFComponents(
 
       const $properties: CDFComponentEntry['$properties'] = {};
       for (const p of compProps) {
+        // Hallucination insurance: drop any prop whose name didn't survive trim.
+        // The pre-generate rename guard catches empty-named slots, but if the LLM
+        // hallucinated a classify_prop with an empty name into the DB, surface
+        // nothing to the manifest builder rather than emitting "$properties: { '': ... }".
+        if (!p.name.trim()) continue;
         const av = allowedValuesByProp.get(`${component_id}::${p.name}`);
         const propDef: CDFComponentEntry['$properties'][string] = {
           $type: p.cdf_type as CDFComponentEntry['$properties'][string]['$type'],
@@ -1100,6 +1160,10 @@ export function loadCDFComponents(
       const compSlots = slotsByComponent.get(component_id) ?? [];
       const $slots: CDFComponentEntry['$slots'] = {};
       for (const s of compSlots) {
+        // Hallucination insurance: same as $properties — drop empty-named slots
+        // before they reach buildManifest, which faithfully passes empty keys
+        // through and triggers a 422 from the preview API.
+        if (!s.name.trim()) continue;
         const ac = allowedComponentsBySlot.get(`${component_id}::${s.name}`);
         const slotDef: NonNullable<CDFComponentEntry['$slots']>[string] = {};
         if (s.description !== null) slotDef.$description = s.description;

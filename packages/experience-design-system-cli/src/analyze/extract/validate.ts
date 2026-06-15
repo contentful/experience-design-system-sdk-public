@@ -33,8 +33,13 @@ export function validateExtractedComponents(components: RawComponentDefinition[]
 
     for (let i = 0; i < component.slots.length; i++) {
       if (!component.slots[i].name.trim()) {
+        // Warning, not error: SP-2's renameEmptySlots auto-recovers empty slot
+        // names to children/slot_<n> before the LLM prompt, so the component
+        // can still be generated. Asymmetric with EMPTY_PROP_NAME (still error)
+        // because that path silently drops empty-named props in
+        // loadCDFComponents — real data loss — instead of recovering them.
         issues.push({
-          severity: 'error',
+          severity: 'warning',
           code: 'EMPTY_SLOT_NAME',
           message: `Slot at index ${i} has an empty name`,
           field: `slots[${i}].name`,

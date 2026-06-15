@@ -73,8 +73,11 @@ const invalidComponent: RawComponentDefinition = {
   name: 'BadComponent',
   source: 'packages/experience-design-system-cli/test/fixtures/sample-components/Accordion.tsx',
   framework: 'react',
-  props: [],
-  slots: [{ name: '', isDefault: false }],
+  // Empty prop name → EMPTY_PROP_NAME (error severity). EMPTY_SLOT_NAME is a
+  // warning since SP-2's renameEmptySlots auto-recovers it; it would not trip
+  // the fail-loud gate.
+  props: [{ name: '', type: 'string', required: false }],
+  slots: [],
 };
 
 describe('extraction gate — --select-all fails loud; --exclude-invalid is the explicit bypass', () => {
@@ -125,7 +128,7 @@ describe('extraction gate — --select-all fails loud; --exclude-invalid is the 
     expect(stderr).toContain('failed validation');
     expect(stderr).toContain('--exclude-invalid');
     expect(stderr).toContain('BadComponent');
-    expect(stderr).toContain('EMPTY_SLOT_NAME');
+    expect(stderr).toContain('EMPTY_PROP_NAME');
     // Gate must fire BEFORE any state mutation — no Accepted/Rejected counts.
     expect(stderr).not.toMatch(/Accepted:\s*\d+\s+Rejected:\s*\d+/);
   });
@@ -139,7 +142,7 @@ describe('extraction gate — --select-all fails loud; --exclude-invalid is the 
     expect(code).toBe(0);
     expect(stderr).toMatch(/Warning:.*1 component/);
     expect(stderr).toContain('BadComponent');
-    expect(stderr).toContain('EMPTY_SLOT_NAME');
+    expect(stderr).toContain('EMPTY_PROP_NAME');
     expect(stderr).toContain('Accepted: 1');
     expect(stderr).toContain('Rejected: 1');
   });
