@@ -12,6 +12,15 @@ export const DEFAULT_HOST = DEFAULT_API_HOST;
 export const PREVIEW_ERROR_PREFIX = 'preview failed:';
 export const APPLY_ERROR_PREFIX = 'apply failed:';
 
+// Substring match the orchestrator uses to distinguish a parseable
+// component-level validation failure from generic 422s. Quoted because the
+// match runs against the raw JSON body (which contains `"code":"ValidationFailed"`).
+// If the server ever changes the casing or naming, isPreviewValidationError
+// silently returns false and the retry loop never fires — so this lives next
+// to the prefixes as a deliberate, named contract rather than an inline
+// magic string in the orchestrator.
+export const VALIDATION_FAILED_CODE = '"ValidationFailed"';
+
 export interface ApiClientOptions {
   host?: string;
   cmaToken: string;

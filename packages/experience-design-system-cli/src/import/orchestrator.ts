@@ -9,7 +9,7 @@ import {
   updateStep,
   findLatestSessionForCommand,
 } from '../session/db.js';
-import { PREVIEW_ERROR_PREFIX, parsePreviewValidationErrors } from '../apply/api-client.js';
+import { PREVIEW_ERROR_PREFIX, VALIDATION_FAILED_CODE, parsePreviewValidationErrors } from '../apply/api-client.js';
 
 export interface PipelineOptions {
   project: string;
@@ -91,7 +91,7 @@ export function isPreviewValidationError(result: { exitCode: number; stderr: str
   return (
     result.exitCode !== 0 &&
     result.stderr.includes(`${PREVIEW_ERROR_PREFIX} 422`) &&
-    result.stderr.includes('"ValidationFailed"')
+    result.stderr.includes(VALIDATION_FAILED_CODE)
   );
 }
 
