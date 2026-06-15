@@ -20,7 +20,7 @@ import { TokenInputStep } from './steps/TokenInputStep.js';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
 import { PreviewValidationErrorStep } from './steps/PreviewValidationErrorStep.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
-import { handlePreview422, applySkipValidationErrors } from './wizard-422-helpers.js';
+import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
 import { readTokensFromPath, hasBreakingChangesWithImpact } from '../../apply/manifest.js';
 import { buildManifest } from '@contentful/experience-design-system-types';
 import type { ServerPreviewResponse, ManifestPayload } from '@contentful/experience-design-system-types';
@@ -834,7 +834,7 @@ export function WizardApp({
         }
       }
 
-      update({ step: 'preview-gate', serverPreview: preview, manifest });
+      update({ step: 'preview-gate', serverPreview: preview, manifest, ...clearedValidationErrorState() });
     } catch (e) {
       if (e instanceof ApiError) {
         if (e.status === 401 || e.status === 403) {

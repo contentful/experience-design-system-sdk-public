@@ -36,6 +36,23 @@ export async function handlePreview422(
 }
 
 /**
+ * The WizardState patch the wizard should spread into any update that
+ * transitions OUT of the preview-validation-error step (e.g. into
+ * preview-gate after a successful retry). Without this, the validation-error
+ * arrays linger in state and any future code path that reads them sees stale
+ * data from a prior failed attempt.
+ */
+export function clearedValidationErrorState(): {
+  previewValidationErrors: PreviewValidationError[];
+  previewValidationMissingNames: string[];
+} {
+  return {
+    previewValidationErrors: [],
+    previewValidationMissingNames: [],
+  };
+}
+
+/**
  * Run the "skip and retry" side effect: dedup the offending component
  * names from a list of errors and call `rejectComponentsByName`. Returns
  * the deduped names so the caller can log them or include them in test

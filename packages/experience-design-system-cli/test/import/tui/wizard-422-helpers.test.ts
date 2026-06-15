@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { handlePreview422, applySkipValidationErrors } from '../../../src/import/tui/wizard-422-helpers.js';
+import {
+  handlePreview422,
+  applySkipValidationErrors,
+  clearedValidationErrorState,
+} from '../../../src/import/tui/wizard-422-helpers.js';
 import { ApiError } from '../../../src/apply/api-client.js';
 
 const VALID_BODY = JSON.stringify({
@@ -129,5 +133,32 @@ describe('applySkipValidationErrors', () => {
 
     expect(reject).not.toHaveBeenCalled();
     expect(names).toEqual([]);
+  });
+});
+
+describe('clearedValidationErrorState', () => {
+  // The validation-error step state lives in the WizardState across
+  // preview attempts. When a retry succeeds and we move to preview-gate,
+  // the wizard MUST clear these fields — otherwise the state lingers and
+  // any future transition that re-renders the validation-error step (or a
+  // future feature that reads the field) sees stale data from a previous
+  // failed attempt.
+  //
+  // Hoisting this as a tiny pure helper makes the contract explicit and
+  // testable. The wizard spreads this object into the preview-gate update.
+
+  it('returns a patch that empties both validation-error fields', () => {
+    expect(clearedValidationErrorState()).toEqual({
+      previewValidationErrors: [],
+      previewValidationMissingNames: [],
+    });
+  });
+
+  it('returns a fresh object each call (no shared-reference aliasing)', () => {
+    const a = clearedValidationErrorState();
+    const b = clearedValidationErrorState();
+    expect(a).not.toBe(b);
+    expect(a.previewValidationErrors).not.toBe(b.previewValidationErrors);
+    expect(a.previewValidationMissingNames).not.toBe(b.previewValidationMissingNames);
   });
 });
