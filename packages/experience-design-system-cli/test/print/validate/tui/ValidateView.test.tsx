@@ -3,8 +3,17 @@ import { describe, it, expect, vi } from 'vitest';
 import { ValidateView } from '../../../../src/print/validate/tui/ValidateView.js';
 import type { ValidateViewEntry } from '../../../../src/print/validate/tui/ValidateView.js';
 
-// Strip ANSI escapes AND the package version so snapshots survive release bumps.
-const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '').replace(/v\d+\.\d+\.\d+/g, 'v<version>');
+// Strip ANSI escapes, normalize the package version, AND collapse the TopBar's
+// variable-width gap. See AnalyzeView.test.tsx for the full rationale; the
+// short version: ink/string-width disagree across Node versions on some chars,
+// so `<Box justifyContent="space-between">` produces 1+ char of width drift
+// between local snapshot capture and CI. The sentinel keeps the snapshot
+// readable but width-agnostic.
+const stripAnsi = (s: string) =>
+  s
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .replace(/v\d+\.\d+\.\d+/g, 'v<version>')
+    .replace(/(experience-design-system-cli {2}\S+) +(\[\?\])/, '$1   $2');
 
 const validResults: ValidateViewEntry[] = [
   {

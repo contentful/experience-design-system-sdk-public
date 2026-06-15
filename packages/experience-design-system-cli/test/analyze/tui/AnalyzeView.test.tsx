@@ -3,8 +3,17 @@ import { describe, it, expect, vi } from 'vitest';
 import { AnalyzeView } from '../../../src/analyze/tui/AnalyzeView.js';
 import type { AnalyzeViewResult } from '../../../src/analyze/tui/AnalyzeView.js';
 
-// Strip ANSI escapes AND the package version so snapshots survive release bumps.
-const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '').replace(/v\d+\.\d+\.\d+/g, 'v<version>');
+// Strip ANSI escapes, normalize the package version, AND collapse the TopBar's
+// variable-width gap. `<Box justifyContent="space-between">` fills the gap
+// between the left subcommand and the right hints+version with however many
+// spaces fit the terminal width; that width differs by 1+ char between local
+// capture and CI because ink/string-width disagree on some chars across Node
+// versions. The sentinel keeps the snapshot readable but width-agnostic.
+const stripAnsi = (s: string) =>
+  s
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .replace(/v\d+\.\d+\.\d+/g, 'v<version>')
+    .replace(/(experience-design-system-cli {2}\S+) +(\[\?\])/, '$1   $2');
 
 const result: AnalyzeViewResult = {
   sourceDirectory: '/project/src',
