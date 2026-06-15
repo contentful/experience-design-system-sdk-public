@@ -42,13 +42,14 @@ export function validateExtractedComponents(components: RawComponentDefinition[]
       }
     }
 
-    const propNames = new Set(component.props.map((p) => p.name));
+    const propNames = new Set(component.props.map((p) => p.name.trim()).filter(Boolean));
     for (let i = 0; i < component.slots.length; i++) {
-      if (component.slots[i].name && propNames.has(component.slots[i].name)) {
+      const slotName = component.slots[i].name.trim();
+      if (slotName && propNames.has(slotName)) {
         issues.push({
           severity: 'error',
           code: 'PROP_SLOT_NAME_COLLISION',
-          message: `"${component.slots[i].name}" is used as both a prop name and a slot name`,
+          message: `"${slotName}" is used as both a prop name and a slot name`,
           field: `slots[${i}].name`,
         });
       }
@@ -81,9 +82,11 @@ export function shouldExcludeDueToValidation(component: RawComponentDefinition):
 
 /**
  * Format a stderr-ready warning describing components auto-rejected by the
- * extraction gate. Used by `analyze select --select-all --exclude-invalid` so
- * a non-interactive caller (CI, orchestrator, scripted pipeline) can see WHICH
- * components were excluded and WHY — not just the bare counts.
+ * extraction gate. Used by `analyze select --select-all --exclude-invalid`
+ * and `analyze select-agent --exclude-invalid` so both opt-in paths emit a
+ * consistent message — non-interactive callers (CI, orchestrator, scripted
+ * pipeline) need to see WHICH components were excluded and WHY, not just
+ * the bare counts.
  */
 export function formatExclusionWarning(
   rejected: Array<{ name: string; validationIssues?: ExtractionValidationIssue[] }>,

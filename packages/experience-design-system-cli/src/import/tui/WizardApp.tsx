@@ -80,6 +80,7 @@ type WizardState = {
   generateSessionId: string | null;
   extractedCount: number;
   acceptedCount: number;
+  autoRejectedCount: number;
   generatedCount: number;
   generatedAcceptedCount: number;
   generateProgress: { done: number; total: number; current: string } | null;
@@ -102,6 +103,25 @@ type WizardState = {
 
 function findCliPath(): string {
   return join(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..', 'bin', 'cli.js');
+}
+
+export function buildAnalyzeSelectArgs(opts: { sessionId: string; acceptAll: boolean }): string[] {
+  const args = ['analyze', 'select', '--session', opts.sessionId];
+  if (opts.acceptAll) {
+    // The wizard pre-shows validation errors in the analyze-extract TUI before
+    // reaching this gate, so the user has already seen what will be excluded.
+    // Pass --exclude-invalid to bypass the headless fail-loud gate (which is
+    // for CI / scripted callers that need to fail loud) — the wizard surfaces
+    // the auto-rejection via formatAcceptanceSummary on the next screen.
+    args.push('--select-all', '--exclude-invalid');
+  }
+  return args;
+}
+
+export function formatAcceptanceSummary(opts: { accepted: number; autoRejected: number }): string {
+  const acceptedClause = `${opts.accepted} component${opts.accepted === 1 ? '' : 's'} accepted`;
+  if (opts.autoRejected === 0) return `${acceptedClause}.`;
+  return `${acceptedClause}, ${opts.autoRejected} excluded due to validation errors.`;
 }
 
 function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
@@ -168,6 +188,7 @@ export function WizardApp({
     generateSessionId: null,
     extractedCount: 0,
     acceptedCount: 0,
+    autoRejectedCount: 0,
     generatedCount: 0,
     generatedAcceptedCount: 0,
     generateProgress: null,
@@ -391,37 +412,44 @@ export function WizardApp({
   ) => {
     logStep({ fn: 'runAnalyzeSelect:enter', sessionId, extractedCount, acceptAll });
     let acceptedCount: number;
-    if (acceptAll) {
-      logStep({ fn: 'runAnalyzeSelect:acceptAll-skip-spawn' });
-      acceptedCount = extractedCount;
-    } else {
-      if (state.serverPreview && !process.env['EDS_PREVIEW_ANNOTATIONS']) {
-        process.env['EDS_PREVIEW_ANNOTATIONS'] = JSON.stringify(buildPreviewAnnotations(state.serverPreview));
-      }
 
-      update({ step: 'analyze-select' });
-      const r = await runCliInteractive(['analyze', 'select', '--session', sessionId]);
-
-      logStep({ fn: 'runAnalyzeSelect:post-spawn', exitCode: r.exitCode });
-      clearPreviewEnvVars();
-
-      if (r.exitCode !== 0) {
-        update({ step: 'error', errorStep: 'analyze select', errorMessage: r.stderr.trim() || 'Unknown error' });
-        return;
-      }
-      // Read accepted count from the review state file (since TUI subprocess inherits stdio)
-      const artifactsRoot = process.env['EDS_REVIEW_ARTIFACTS_DIR']
-        ? resolve(process.env['EDS_REVIEW_ARTIFACTS_DIR'])
-        : resolve(homedir(), '.contentful', 'experience-design-system-cli', 'reviews');
-      const reviewStatePath = resolve(artifactsRoot, sessionId, 'current-review-state.json');
-      try {
-        const reviewState = JSON.parse(await readFile(reviewStatePath, 'utf8')) as ReviewSessionSnapshot;
-        acceptedCount = reviewState.components.filter((c) => c.status === 'accepted').length;
-      } catch {
-        acceptedCount = extractedCount;
-      }
+    if (!acceptAll && state.serverPreview && !process.env['EDS_PREVIEW_ANNOTATIONS']) {
+      process.env['EDS_PREVIEW_ANNOTATIONS'] = JSON.stringify(buildPreviewAnnotations(state.serverPreview));
     }
-    update({ acceptedCount });
+
+    if (!acceptAll) {
+      update({ step: 'analyze-select' });
+    }
+    const args = buildAnalyzeSelectArgs({ sessionId, acceptAll });
+    const r = acceptAll ? await runCli(args) : await runCliInteractive(args);
+
+    logStep({ fn: 'runAnalyzeSelect:post-spawn', exitCode: r.exitCode, args });
+    if (!acceptAll) clearPreviewEnvVars();
+
+    if (r.exitCode !== 0) {
+      update({ step: 'error', errorStep: 'analyze select', errorMessage: r.stderr.trim() || 'Unknown error' });
+      return;
+    }
+    // Read accepted count from the review state file (since TUI subprocess inherits stdio
+    // in the manual review path; in the bulk path we also persist to the same file).
+    // Also extract auto-rejected count (components with error-severity validation issues
+    // dropped by the gate) so the user sees what was excluded on the next step.
+    const artifactsRoot = process.env['EDS_REVIEW_ARTIFACTS_DIR']
+      ? resolve(process.env['EDS_REVIEW_ARTIFACTS_DIR'])
+      : resolve(homedir(), '.contentful', 'experience-design-system-cli', 'reviews');
+    const reviewStatePath = resolve(artifactsRoot, sessionId, 'current-review-state.json');
+    let autoRejectedCount = 0;
+    try {
+      const reviewState = JSON.parse(await readFile(reviewStatePath, 'utf8')) as ReviewSessionSnapshot;
+      acceptedCount = reviewState.components.filter((c) => c.status === 'accepted').length;
+      autoRejectedCount = reviewState.components.filter(
+        (c) =>
+          c.status === 'rejected' && (c.originalProposal.validationIssues ?? []).some((i) => i.severity === 'error'),
+      ).length;
+    } catch {
+      acceptedCount = extractedCount;
+    }
+    update({ acceptedCount, autoRejectedCount });
     if (acceptedCount > 0) {
       if (await runAgentAuthCheck('generating')) {
         void runGenerate(sessionId, tokensPath, acceptedCount);
@@ -1070,7 +1098,7 @@ export function WizardApp({
             stepNumber={stepNum}
             totalSteps={totalSteps}
             title="Generating definitions"
-            description={`${state.acceptedCount} component${state.acceptedCount === 1 ? '' : 's'} accepted. ${state.agent} is mapping your TypeScript types to Contentful's CDF format.${hasTokens ? ' Using your design tokens for prop resolution.' : ''}`}
+            description={`${formatAcceptanceSummary({ accepted: state.acceptedCount, autoRejected: state.autoRejectedCount })} ${state.agent} is mapping your TypeScript types to Contentful's CDF format.${hasTokens ? ' Using your design tokens for prop resolution.' : ''}`}
             detail={progressDetail}
           />
         );
@@ -1078,10 +1106,15 @@ export function WizardApp({
 
       case 'review-generated-gate': {
         const stepNum = hasTokens ? 4 : 3;
+        const generatedClause = `Generated definitions for ${state.generatedCount} component${state.generatedCount === 1 ? '' : 's'}.`;
+        const exclusionClause =
+          state.autoRejectedCount > 0
+            ? ` ${state.autoRejectedCount} component${state.autoRejectedCount === 1 ? '' : 's'} excluded earlier due to validation errors.`
+            : '';
         return (
           <GateStep
             successMessage={`Step ${stepNum} complete — definitions generated`}
-            summary={`Generated definitions for ${state.generatedCount} component${state.generatedCount === 1 ? '' : 's'}.`}
+            summary={`${generatedClause}${exclusionClause}`}
             context="Take a final look before pushing to Contentful. You can accept, reject, or inspect each component's generated definition."
             continueLabel="Review definitions"
             skipLabel="Approve all and skip"

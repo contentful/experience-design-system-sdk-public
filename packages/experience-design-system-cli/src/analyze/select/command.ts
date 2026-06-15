@@ -299,7 +299,7 @@ export function registerAnalyzeEditCommand(program: Command): void {
     .option('--patch <path>', 'Path to a JSON patch file for structured component overrides')
     .option(
       '--exclude-invalid',
-      'Auto-reject components with validation errors when bulk-selecting (no-op without --select-all)',
+      'With --select-all: auto-reject components with validation errors instead of failing loud (opt-in bypass for the gate)',
     )
     .action(
       async ({
