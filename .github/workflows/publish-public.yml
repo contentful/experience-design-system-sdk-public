@@ -29,7 +29,7 @@ jobs:
     steps:
       - name: Retrieve Secrets from Vault
         id: vault
-        uses: hashicorp/vault-action@v4.0.0
+        uses: hashicorp/vault-action@892a26828f195e65540a40b4768ae4571f51ebfc # v4.0.0
         with:
           url: ${{ secrets.VAULT_URL }}
           role: ${{ github.event.repository.name }}-github-action
@@ -49,7 +49,7 @@ jobs:
           fi
 
       - name: Checkout at version tag
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: v${{ steps.version.outputs.version }}
           token: ${{ steps.vault.outputs.GITHUB_TOKEN }}
@@ -64,10 +64,10 @@ jobs:
           echo "Tag v${{ steps.version.outputs.version }} confirmed"
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "lts/*"
           registry-url: "https://registry.npmjs.org"  # Wires up OIDC token as NODE_AUTH_TOKEN
