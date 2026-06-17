@@ -173,10 +173,6 @@ async function selectOneComponent(
     process.stderr.write(
       `  ${pos}  ${c.bold(component.name)}  ${c.red(`agent exited with code ${result.exitCode}`)}\n`,
     );
-    const errText = result.stderr.trim();
-    if (errText) {
-      process.stderr.write(`${errText}\n`);
-    }
     return {
       componentKey: componentKey(component),
       componentName: component.name,
