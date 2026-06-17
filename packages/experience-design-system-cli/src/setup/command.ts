@@ -882,9 +882,6 @@ export function registerSetupCommand(program: Command): void {
       async (opts: { skipBuild?: boolean; skipAgent?: boolean; skipCredentials?: boolean; skipOptional?: boolean }) => {
         process.stdout.write('\n\x1b[1mexperiences setup\x1b[0m — interactive setup wizard\n');
         process.stdout.write('Sets up everything you need to run \x1b[1mexperiences import\x1b[0m.\n');
-        process.stdout.write(
-          'Required steps are marked \x1b[31m[required]\x1b[0m, optional ones \x1b[2m[optional]\x1b[0m.\n',
-        );
 
         const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
         const repoRoot = join(pkgRoot, '..', '..');
