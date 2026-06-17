@@ -421,7 +421,7 @@ async function promptCodexModel(): Promise<string | undefined> {
 }
 
 async function setupAgent(): Promise<{ agent: string | undefined; agentModel: string | undefined }> {
-  section('Step 4: Coding agent (claude, codex, opencode, or cursor)', '[required]');
+  section('Step 4: Coding agent (claude, codex, or opencode)', '[required]');
   info('experiences import uses a coding agent to generate component definitions.');
   info('');
 
