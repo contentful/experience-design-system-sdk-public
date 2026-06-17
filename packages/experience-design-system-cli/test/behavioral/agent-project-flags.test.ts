@@ -129,6 +129,7 @@ describe('--agent accepts all documented agent names', () => {
 
   const baseEnv = () => ({
     EDS_PIPELINE_DB_PATH: fixture.dbPath,
+    EDS_CREDENTIALS_PATH: join(fixture.dbPath.replace(/\/[^/]+$/, ''), 'no-credentials.json'),
     NODE_NO_WARNINGS: '1',
   });
 
@@ -182,7 +183,7 @@ describe('--agent accepts all documented agent names', () => {
       baseEnv(),
     );
     expect(code).not.toBe(0);
-    expect(stderr).toContain('unknown agent');
+    expect(stderr).toContain('no agent configured');
   });
 });
 

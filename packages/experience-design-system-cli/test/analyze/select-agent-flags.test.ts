@@ -41,13 +41,13 @@ describe('analyze select-agent — flag variations', () => {
 
   // ── Required flag guard ───────────────────────────────────────────────────
 
-  it('fails without required --agent flag', async () => {
+  it('fails with an unrecognised --agent value', async () => {
     const { code, stderr } = await runCliWithEnv(
-      ['analyze', 'select-agent', '--session', fixture.sessionId],
+      ['analyze', 'select-agent', '--agent', 'fake-agent-xyz', '--session', fixture.sessionId],
       baseEnv(),
     );
     expect(code).not.toBe(0);
-    expect(stderr).toMatch(/--agent|required/i);
+    expect(stderr).toContain('no agent configured');
   });
 
   // ── --dry-run ─────────────────────────────────────────────────────────────
