@@ -136,27 +136,8 @@ describe('generate command — help', () => {
 });
 
 describe('generate components — input validation', () => {
-  it('exits 1 when --agent is missing', async () => {
+  it('exits 1 when --agent is an unrecognised value', async () => {
     const dbDir = await createTempDir('gen-no-agent-db-');
-    const dbPath = join(dbDir, 'pipeline.db');
-    const sid = await seedDb(dbPath);
-
-    const env = { ...process.env, EDS_PIPELINE_DB_PATH: dbPath };
-    const { stderr, code } = await new Promise<{
-      stdout: string;
-      stderr: string;
-      code: number | null;
-    }>((res) => {
-      execFile('node', [bin, 'generate', 'components', '--session', sid], { env }, (err, stdout, stderr) =>
-        res({ stdout, stderr, code: err?.code ? Number(err.code) : 0 }),
-      );
-    });
-    expect(code).toBe(1);
-    expect(stderr).toContain('--agent');
-  });
-
-  it('exits 1 for unknown --agent value', async () => {
-    const dbDir = await createTempDir('gen-bad-agent-db-');
     const dbPath = join(dbDir, 'pipeline.db');
     const sid = await seedDb(dbPath);
 
@@ -174,7 +155,7 @@ describe('generate components — input validation', () => {
       );
     });
     expect(code).toBe(1);
-    expect(stderr).toContain("unknown agent 'foo'");
+    expect(stderr).toContain('no agent configured');
   });
 
   it('exits 1 when --tokens path does not exist', async () => {

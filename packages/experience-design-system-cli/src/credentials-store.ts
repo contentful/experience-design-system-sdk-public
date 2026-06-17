@@ -8,6 +8,8 @@ export type ExperiencesCredentials = {
   environmentId: string;
   cmaToken: string;
   host?: string;
+  agent?: string;
+  agentModel?: string;
 };
 
 const CREDENTIALS_DIR = join(homedir(), '.config', 'experiences');
@@ -23,6 +25,8 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
       environmentId: process.env['CONTENTFUL_ENVIRONMENT_ID'] ?? parsed.environmentId ?? '',
       cmaToken: process.env['CONTENTFUL_MANAGEMENT_TOKEN'] ?? parsed.cmaToken ?? '',
       ...(host ? { host } : {}),
+      ...(parsed.agent ? { agent: parsed.agent } : {}),
+      ...(parsed.agentModel ? { agentModel: parsed.agentModel } : {}),
     };
   } catch {
     const host = toConfiguredHost(process.env['EDS_HOST']);
@@ -36,7 +40,7 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
 }
 
 export async function writeExperiencesCredentials(creds: ExperiencesCredentials): Promise<void> {
-  const { host: _host, ...rest } = creds;
+  const { host: _host, agent, agentModel, ...rest } = creds;
   const host = toConfiguredHost(creds.host);
   await mkdir(CREDENTIALS_DIR, { recursive: true });
   await writeFile(
@@ -45,6 +49,8 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
       {
         ...rest,
         ...(host ? { host } : {}),
+        ...(agent ? { agent } : {}),
+        ...(agentModel ? { agentModel } : {}),
       },
       null,
       2,

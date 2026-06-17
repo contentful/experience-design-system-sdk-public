@@ -383,31 +383,85 @@ async function setupBuild(repoRoot: string): Promise<boolean> {
 
 // ── Step 4: agent CLI ─────────────────────────────────────────────────────────
 
-async function setupAgent(): Promise<boolean> {
-  section('Step 4: Coding agent (claude, codex, opencode, or cursor)', '[required]');
+const AGENT_DEFS: Array<{ name: string; binary: string; installHint: string }> = [
+  { name: 'Claude Code', binary: 'claude', installHint: 'npm install -g @anthropic-ai/claude-code && claude login' },
+  { name: 'OpenAI Codex', binary: 'codex', installHint: 'npm install -g @openai/codex  (requires OPENAI_API_KEY)' },
+  { name: 'OpenCode', binary: 'opencode', installHint: 'npm install -g opencode-ai && opencode auth' },
+];
+
+function pick(items: Array<{ label: string; description?: string }>, defaultIdx = 0): void {
+  items.forEach((item, i) => {
+    const num = `\x1b[1m[${i + 1}]\x1b[0m`;
+    const desc = item.description ? `  \x1b[2m${item.description}\x1b[0m` : '';
+    const def = i === defaultIdx ? `  \x1b[2m(default)\x1b[0m` : '';
+    process.stdout.write(`     ${num} ${item.label}${desc}${def}\n`);
+  });
+  process.stdout.write(`     \x1b[2m[s] Skip\x1b[0m\n`);
+}
+
+async function promptCodexModel(): Promise<string | undefined> {
+  if (process.env['OPENAI_API_KEY']) return undefined; // API key users get the default (gpt-4.1-nano)
+  info('');
+  process.stdout.write(`     \x1b[33m⚠\x1b[0m  No OPENAI_API_KEY — using ChatGPT account authentication.\n`);
+  info('  Tip: run \x1b[1mcodex\x1b[0m then type \x1b[1m/model\x1b[0m to browse all available models.');
+  info('');
+  info('  Choose a model:');
+  info('');
+  pick([
+    { label: 'gpt-5.4-mini', description: 'fast, lower cost' },
+    { label: 'gpt-5.5', description: 'most capable' },
+    { label: 'gpt-5.4' },
+  ]);
+  info('');
+  const choice = await prompt('  \x1b[2m›\x1b[0m Your choice [1]: ');
+  if (choice === '1' || choice === '') return 'gpt-5.4-mini';
+  if (choice === '2') return 'gpt-5.5';
+  if (choice === '3') return 'gpt-5.4';
+  return undefined;
+}
+
+async function setupAgent(): Promise<{ agent: string | undefined; agentModel: string | undefined }> {
+  section('Step 4: Coding agent (claude, codex, or opencode)', '[required]');
   info('experiences import uses a coding agent to generate component definitions.');
   info('');
 
-  const agents: Array<{ name: string; binary: string; installHint: string }> = [
-    { name: 'Claude Code', binary: 'claude', installHint: 'npm install -g @anthropic-ai/claude-code && claude login' },
-    { name: 'OpenAI Codex', binary: 'codex', installHint: 'npm install -g @openai/codex  (requires OPENAI_API_KEY)' },
-    { name: 'OpenCode', binary: 'opencode', installHint: 'npm install -g opencode-ai && opencode auth' },
-  ];
+  const found = (await Promise.all(AGENT_DEFS.map(async (a) => ((await binaryExists(a.binary)) ? a : null)))).filter(
+    (a): a is (typeof AGENT_DEFS)[number] => a !== null,
+  );
 
-  for (const agent of agents) {
-    if (await binaryExists(agent.binary)) {
-      ok(`${agent.name} (${agent.binary}) found`);
-      return true;
+  if (found.length === 1) {
+    ok(`${found[0]!.name} (${found[0]!.binary}) found`);
+    const agentModel = found[0]!.binary === 'codex' ? await promptCodexModel() : undefined;
+    return { agent: found[0]!.binary, agentModel };
+  }
+
+  if (found.length > 1) {
+    info('Multiple coding agents found. Choose one to use as the default:');
+    info('');
+    pick(found.map((a) => ({ label: `${a.name}`, description: a.binary })));
+    info('');
+    const choice = await prompt('  \x1b[2m›\x1b[0m Your choice [1]: ');
+    if (choice.toLowerCase() === 's') {
+      warn('Skipped. Install a coding agent before running experiences import.');
+      return { agent: undefined, agentModel: undefined };
     }
+    const parsed = choice === '' ? 1 : parseInt(choice, 10);
+    const idx = Number.isNaN(parsed) || parsed < 1 || parsed > found.length ? 0 : parsed - 1;
+    const selected = found[idx]!;
+    ok(`${selected.name} \x1b[2m(${selected.binary})\x1b[0m selected`);
+    const agentModel = selected.binary === 'codex' ? await promptCodexModel() : undefined;
+    return { agent: selected.binary, agentModel };
   }
 
   warn('No coding agent found on PATH');
   info('');
   info('Choose one to install:');
-  info('  [1] Claude Code (recommended) — npm install -g @anthropic-ai/claude-code');
-  info('  [2] OpenAI Codex             — npm install -g @openai/codex');
-  info('  [3] OpenCode                 — npm install -g opencode-ai');
-  info('  [s] Skip for now');
+  info('');
+  pick([
+    { label: 'Claude Code', description: 'npm install -g @anthropic-ai/claude-code' },
+    { label: 'OpenAI Codex', description: 'npm install -g @openai/codex' },
+    { label: 'OpenCode', description: 'npm install -g opencode-ai' },
+  ]);
   info('');
 
   const choice = await prompt('  Your choice: ');
@@ -417,51 +471,51 @@ async function setupAgent(): Promise<boolean> {
     if (r.exitCode !== 0) {
       fail('Install failed');
       info(r.stderr.trim().split('\n').slice(0, 5).join('\n'));
-      return false;
+      return { agent: undefined, agentModel: undefined };
     }
     if (!(await binaryExists('claude'))) {
       fail('claude binary not found on PATH after install — check your npm global bin directory');
-      return false;
+      return { agent: undefined, agentModel: undefined };
     }
     ok('Claude Code installed');
     info('');
     info('Next: run `claude login` to authenticate (browser OAuth).');
     info('Or set ANTHROPIC_API_KEY in your shell profile.');
-    return true;
+    return { agent: 'claude', agentModel: undefined };
   }
 
   if (choice === '2') {
     const r = await runSpawn('npm', ['install', '-g', '@openai/codex']);
     if (r.exitCode !== 0) {
       fail('Install failed');
-      return false;
+      return { agent: undefined, agentModel: undefined };
     }
     if (!(await binaryExists('codex'))) {
       fail('codex binary not found on PATH after install — check your npm global bin directory');
-      return false;
+      return { agent: undefined, agentModel: undefined };
     }
     ok('OpenAI Codex installed');
-    info('Set OPENAI_API_KEY in your shell profile to authenticate.');
-    return true;
+    const agentModel = await promptCodexModel();
+    return { agent: 'codex', agentModel };
   }
 
   if (choice === '3') {
     const r = await runSpawn('npm', ['install', '-g', 'opencode-ai']);
     if (r.exitCode !== 0) {
       fail('Install failed');
-      return false;
+      return { agent: undefined, agentModel: undefined };
     }
     if (!(await binaryExists('opencode'))) {
       fail('opencode binary not found on PATH after install — check your npm global bin directory');
-      return false;
+      return { agent: undefined, agentModel: undefined };
     }
     ok('OpenCode installed');
     info('Run `opencode auth` to configure your provider.');
-    return true;
+    return { agent: 'opencode', agentModel: undefined };
   }
 
   warn('Skipped. Install a coding agent before running experiences import.');
-  return false;
+  return { agent: undefined, agentModel: undefined };
 }
 
 // ── Step 5: Contentful credentials ───────────────────────────────────────────
@@ -534,7 +588,8 @@ async function setupContentfulCredentials(): Promise<boolean> {
   const hostInput = await prompt(`  API host [${currentHost}]: `);
   const host = toConfiguredHost(hostInput) ?? storedHost;
 
-  await writeExperiencesCredentials({ spaceId, environmentId, cmaToken, ...(host ? { host } : {}) });
+  const existing = await readExperiencesCredentials();
+  await writeExperiencesCredentials({ ...existing, spaceId, environmentId, cmaToken, ...(host ? { host } : {}) });
   ok(`Credentials saved to ${experiencesCredentialsPath()}`);
   ok(`API host set to ${host ?? DEFAULT_CONFIGURED_HOST}`);
   info('Run experiences import — credentials will be pre-filled automatically.');
@@ -704,15 +759,29 @@ async function checkBuild(pkgRoot: string): Promise<boolean> {
 async function checkAgent(): Promise<boolean> {
   section('Checking coding agent');
 
-  const agents = [
-    { name: 'Claude Code', binary: 'claude' },
-    { name: 'OpenAI Codex', binary: 'codex' },
-    { name: 'OpenCode', binary: 'opencode' },
-  ];
+  const agents = AGENT_DEFS;
+
+  const creds = await readExperiencesCredentials();
+  const savedAgent = creds.agent;
+  const savedModel = creds.agentModel;
+
+  if (savedAgent) {
+    const found = await binaryExists(savedAgent);
+    if (found) {
+      const modelStr = savedModel ? ` — model: ${savedModel}` : '';
+      ok(`${savedAgent}${modelStr} (saved preference)`);
+      return true;
+    } else {
+      warn(`Saved agent '${savedAgent}' not found on PATH`);
+      info(`Re-run experiences setup to reconfigure.`);
+      return false;
+    }
+  }
 
   for (const agent of agents) {
     if (await binaryExists(agent.binary)) {
       ok(`${agent.name} (${agent.binary}) found`);
+      info('Tip: run experiences setup to save a default agent and model.');
       return true;
     }
   }
@@ -813,9 +882,6 @@ export function registerSetupCommand(program: Command): void {
       async (opts: { skipBuild?: boolean; skipAgent?: boolean; skipCredentials?: boolean; skipOptional?: boolean }) => {
         process.stdout.write('\n\x1b[1mexperiences setup\x1b[0m — interactive setup wizard\n');
         process.stdout.write('Sets up everything you need to run \x1b[1mexperiences import\x1b[0m.\n');
-        process.stdout.write(
-          'Required steps are marked \x1b[31m[required]\x1b[0m, optional ones \x1b[2m[optional]\x1b[0m.\n',
-        );
 
         const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
         const repoRoot = join(pkgRoot, '..', '..');
@@ -848,8 +914,13 @@ export function registerSetupCommand(program: Command): void {
 
         // Step 4: agent
         if (!opts.skipAgent) {
-          const agentOk = await setupAgent();
-          results.push({ name: 'coding agent', passed: agentOk, required: true });
+          const { agent, agentModel } = await setupAgent();
+          if (agent) {
+            const stored = await readExperiencesCredentials();
+            const { agentModel: _staleModel, ...storedWithoutModel } = stored;
+            await writeExperiencesCredentials({ ...storedWithoutModel, agent, ...(agentModel ? { agentModel } : {}) });
+          }
+          results.push({ name: 'coding agent', passed: !!agent, required: true });
         } else {
           info('\nSkipping agent check (--skip-agent)');
           results.push({ name: 'coding agent', passed: true, required: false });
