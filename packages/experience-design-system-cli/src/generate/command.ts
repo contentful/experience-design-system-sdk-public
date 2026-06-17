@@ -35,6 +35,7 @@ import {
 import { getRefineArtifactsRoot, getRefineSessionPaths } from '../analyze/select/persistence.js';
 import type { ReviewSessionSnapshot } from '../analyze/select/types.js';
 import type { RawComponentDefinition } from '../types.js';
+import { readExperiencesCredentials } from '../credentials-store.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -44,7 +45,7 @@ const DEFAULT_COMPONENT_CONCURRENCY = 10;
 const RETRY_BACKOFF_MS = Number(process.env.EDS_RETRY_BACKOFF_MS ?? 5_000);
 
 interface GenerateSubcommandOptions {
-  agent: string;
+  agent?: string;
   model?: string;
   session?: string;
   rawTokens?: string;
@@ -408,10 +409,15 @@ async function loadAcceptedNames(sessionId: string): Promise<Set<string> | null>
 }
 
 async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, verbose = false): Promise<void> {
-  if (!VALID_AGENTS.has(opts.agent)) {
-    die(`Error: unknown agent '${opts.agent}'. Accepted values: claude, codex, opencode, cursor`);
+  const savedCreds = await readExperiencesCredentials();
+  const agentName = opts.agent ?? savedCreds.agent;
+  const model = opts.model ?? savedCreds.agentModel;
+  if (!agentName || !VALID_AGENTS.has(agentName)) {
+    die(
+      `Error: no agent configured. Pass --agent <name> or run experiences setup. Accepted values: claude, codex, opencode, cursor`,
+    );
   }
-  const agent = opts.agent as AgentName;
+  const agent = agentName as AgentName;
 
   if (skill === 'tokens' && !opts.rawTokens) {
     die('Error: --raw-tokens is required when using generate tokens');
@@ -513,7 +519,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     try {
       componentResults = await runAllComponents(
         agent,
-        opts.model,
+        model,
         db,
         sessionId,
         allComponents,
@@ -629,7 +635,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
 
       const result = await runAgent({
         agent,
-        model: opts.model,
+        model,
         prompt,
         interactive: false,
         timeoutMs: DEFAULT_TIMEOUT_MS * 5,
@@ -694,7 +700,10 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
 
 function addAgentFlags(cmd: Command): Command {
   return cmd
-    .requiredOption('--agent <name>', 'Agent to use: claude, codex, opencode, cursor')
+    .option(
+      '--agent <name>',
+      'Agent to use: claude, codex, opencode, cursor (defaults to value saved by experiences setup)',
+    )
     .option('--model <name>', 'Model to use (defaults to a small/fast model per agent)')
     .option('--verbose', 'Show full agent output including reasoning text')
     .option('--dry-run', 'Print the prompt without invoking the agent')

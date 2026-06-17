@@ -294,7 +294,7 @@ const AGENT_BINARIES: Record<AgentName, string> = {
 // Default to small/fast models for single-component classification — cheap and accurate enough.
 const DEFAULT_MODELS: Record<AgentName, string> = {
   claude: 'haiku',
-  codex: 'gpt-4.1-nano', // requires OPENAI_API_KEY; ChatGPT account users must pass --model
+  codex: 'gpt-5.4-mini', // requires OPENAI_API_KEY; ChatGPT account users must pass --model
   opencode: 'claude-haiku-4-5',
   cursor: 'claude-3-5-haiku-20241022',
 };
@@ -334,8 +334,11 @@ export async function runAgent(options: {
 
   return new Promise((resolve) => {
     const child = spawn(binary, args, {
-      stdio: interactive ? 'inherit' : ['ignore', 'pipe', 'pipe'],
+      stdio: interactive ? 'inherit' : ['pipe', 'pipe', 'pipe'],
     });
+    if (!interactive) {
+      child.stdin?.end();
+    }
 
     let stdout = '';
     let stderr = '';

@@ -13,6 +13,7 @@ import { buildPrompt } from '../../generate/prompt-builder.js';
 import { parseSelectToolCallLines, runAgent } from '../../generate/agent-runner.js';
 import type { AgentName, SelectToolCall } from '../../generate/agent-runner.js';
 import type { RawComponentDefinition } from '../../types.js';
+import { readExperiencesCredentials } from '../../credentials-store.js';
 import { OutputFormatter, c } from '../../output/format.js';
 import { buildRepoContextIndex, buildSelectionContext, type SelectionContext } from './context-builder.js';
 import { isAbsolute, resolve } from 'node:path';
@@ -172,6 +173,10 @@ async function selectOneComponent(
     process.stderr.write(
       `  ${pos}  ${c.bold(component.name)}  ${c.red(`agent exited with code ${result.exitCode}`)}\n`,
     );
+    const errText = result.stderr.trim();
+    if (errText) {
+      process.stderr.write(`${errText}\n`);
+    }
     return {
       componentKey: componentKey(component),
       componentName: component.name,
@@ -247,7 +252,10 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
     .description('Use an AI agent to select components for Contentful Experience Orchestration')
     .option('--session <id>', 'Session ID from analyze extract (defaults to most recent)')
     .option('--project-root <path>', 'Project root for resolving component source files')
-    .requiredOption('--agent <name>', 'Agent to use: claude, codex, opencode, cursor')
+    .option(
+      '--agent <name>',
+      'Agent to use: claude, codex, opencode, cursor (defaults to value saved by experiences setup)',
+    )
     .option('--model <name>', 'Model to use (defaults to a small/fast model per agent)')
     .option('--verbose', 'Show full agent output including reasoning text')
     .option('--dry-run', 'Print the prompt for the first component without invoking the agent')
@@ -259,21 +267,24 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
       async (opts: {
         session?: string;
         projectRoot?: string;
-        agent: string;
+        agent?: string;
         model?: string;
         verbose?: boolean;
         dryRun?: boolean;
         excludeInvalid?: boolean;
       }) => {
-        if (!VALID_AGENTS.has(opts.agent)) {
+        const savedCreds = await readExperiencesCredentials();
+        const agentName = opts.agent ?? savedCreds.agent;
+        const model = opts.model ?? savedCreds.agentModel;
+        if (!agentName || !VALID_AGENTS.has(agentName)) {
           process.stderr.write(
-            `Error: unknown agent '${opts.agent}'. Accepted values: claude, codex, opencode, cursor\n`,
+            `Error: no agent configured. Pass --agent <name> or run experiences setup. Accepted values: claude, codex, opencode, cursor\n`,
           );
           process.exit(1);
           return;
         }
 
-        const agent = opts.agent as AgentName;
+        const agent = agentName as AgentName;
         const sessionId = resolveSessionId(opts.session);
         const selectionRoot = resolveProjectRoot(sessionId, opts.projectRoot);
 
@@ -368,7 +379,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           return;
         }
 
-        const selectResults = await selectAllComponents(agent, opts.model, selectionCandidates, opts.verbose ?? false);
+        const selectResults = await selectAllComponents(agent, model, selectionCandidates, opts.verbose ?? false);
 
         // Build decision map from results. Seed auto-rejections from validation exclusions first.
         const decisions = new Map<string, 'accepted' | 'rejected' | null>();
