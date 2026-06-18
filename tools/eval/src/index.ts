@@ -7,6 +7,7 @@ import { setClient } from './llm-client.js';
 import { runStage1 } from './runner/stage1.js';
 import { runStage2 } from './runner/stage2.js';
 import { scoreComponentCoverage, scoreHallucination } from './scorers/deterministic.js';
+import { scoreDevPropLeakage } from './scorers/dev-props.js';
 import { scoreMappingQuality } from './scorers/judge.js';
 import { loadBaseline, saveBaseline, compareToBaseline } from './report/baseline.js';
 import { buildMarkdownReport } from './report/markdown.js';
@@ -18,6 +19,7 @@ const BASELINE_PATH = resolve(__dirname, '..', 'baseline.json');
 const args = process.argv.slice(2);
 const saveBaselineFlag = args.includes('--save-baseline');
 const repoFilter = args.find((a) => a.startsWith('--repo='))?.split('=')[1];
+const jsonOutPath = args.find((a) => a.startsWith('--json-out='))?.split('=')[1];
 
 async function runEval() {
   const client = await loadLlmClient();
@@ -66,7 +68,12 @@ async function runEval() {
       try {
         result.componentCoverage = scoreComponentCoverage(result.cdf, entry);
         result.hallucination = scoreHallucination(result.cdf);
-        console.log(`[${entry.repo}] coverage=${(result.componentCoverage.ratio * 100).toFixed(1)}% hallucination=${result.hallucination.pass ? 'pass' : 'FAIL'}`);
+        result.devPropLeakage = scoreDevPropLeakage(result.cdf);
+        console.log(
+          `[${entry.repo}] coverage=${(result.componentCoverage.ratio * 100).toFixed(1)}% hallucination=${
+            result.hallucination.pass ? 'pass' : 'FAIL'
+          } dev-prop-leakage=${result.devPropLeakage.leaked}/${result.devPropLeakage.totalProps}`,
+        );
       } catch (err) {
         result.error = { stage: 'score', message: err instanceof Error ? err.message : String(err) };
         results.push(result);
@@ -130,6 +137,8 @@ async function runEval() {
   }
 
   const judgedScored = scored.filter((r) => r.judgeScore);
+  const devPropLeakageTotal = results.reduce((sum, r) => sum + (r.devPropLeakage?.leaked ?? 0), 0);
+  const totalPropsOutput = results.reduce((sum, r) => sum + (r.devPropLeakage?.totalProps ?? 0), 0);
   const summary: RunSummary = {
     runAt: new Date().toISOString(),
     totalEntries: results.length,
@@ -139,6 +148,8 @@ async function runEval() {
       : 0,
     medianComponentCoverage: median(coverageRatios),
     hallucinationFailures: results.filter((r) => r.hallucination && !r.hallucination.pass).length,
+    devPropLeakageTotal,
+    totalPropsOutput,
     avgMappingQuality: judgedScored.length
       ? judgedScored.reduce((sum, r) => sum + r.judgeScore!.mapping_quality.score, 0) / judgedScored.length
       : null,
@@ -156,6 +167,15 @@ async function runEval() {
     console.error(`\nFailed to write report to "${reportPath}": ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  if (jsonOutPath) {
+    try {
+      await writeFile(jsonOutPath, JSON.stringify({ summary, results }, null, 2));
+      console.log(`JSON results written to: ${jsonOutPath}`);
+    } catch (err) {
+      console.error(`Failed to write JSON to "${jsonOutPath}": ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   if (saveBaselineFlag) {
     await saveBaseline(BASELINE_PATH, results);
     console.log('Baseline saved.');
@@ -165,6 +185,7 @@ async function runEval() {
   console.log(`  Avg coverage:    ${(summary.avgComponentCoverage * 100).toFixed(1)}%`);
   console.log(`  Median coverage: ${(summary.medianComponentCoverage * 100).toFixed(1)}%`);
   console.log(`  Hallucinations:  ${summary.hallucinationFailures} failure(s)`);
+  console.log(`  Dev-prop leakage: ${summary.devPropLeakageTotal} / ${summary.totalPropsOutput} props`);
   if (summary.avgMappingQuality !== null) {
     console.log(`  Mapping quality: ${summary.avgMappingQuality.toFixed(2)}/5`);
   }

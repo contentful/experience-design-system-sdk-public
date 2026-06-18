@@ -24,3 +24,9 @@ services/dsi-eval/corpus/*.json
 services/dsi-eval/baseline.json
 services/dsi-eval/eval-report*.md
 services/dsi-eval/.corpus-repo/
+tools/eval/corpus/*.json
+tools/eval/baseline.json
+tools/eval/eval-report*.md
+tools/eval/trial-report-*.md
+tools/eval/.corpus-repo/
+tools/eval/.eval-worktrees/
