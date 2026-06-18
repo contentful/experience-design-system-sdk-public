@@ -53,6 +53,16 @@ const DOM_PASS_THROUGH_PROPS = new Set<string>([
   'pt',
   'ptOptions',
   'unstyled',
+  // Polymorphic component props
+  'as',
+  'element',
+  'component',
+  // QA / vendor test attributes
+  'dataQa',
+  'data-qa',
+  // Vue v-model internals
+  'modelValue',
+  'modelModifiers',
 ]);
 
 function isDomPassThroughProp(name: string): boolean {

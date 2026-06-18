@@ -142,7 +142,7 @@ For each `RawPropDefinition`, apply in order:
 2. **Common semantic props — DO classify, do not exclude.** The LLM has been over-excluding these because they sound like framework internals; they are not. Classify each per the rest of this tree:
    - `icon` / `leftIcon` / `rightIcon` / `prefixIcon` / `suffixIcon` — slot or `string` (icon name); see slot guidance below
    - `items` / `options` / `actions` / `links` — usually array content; if the element shape is simple, classify as `string` (comma-separated names/IDs) and note in `description`. Only exclude when elements are deep nested objects with no flat representation.
-   - `value` / `modelValue` (Vue) — content prop, usually `string` (or `enum` if from a fixed set)
+   - `value` (the bare prop, not `modelValue`) — content prop, usually `string` (or `enum` if from a fixed set). Note: Vue's `modelValue` / `modelModifiers` are excluded by pre-classify because they're v-model framework wiring.
    - `form` (when not the literal `<form>` HTML attribute) — typically content; classify as `string` unless it's a complex form-config object
    - `inputId` / `componentId` — these CAN be content (anchor IDs, marketer-set tracking refs). Classify as `string`, `cdf_category: "content"` when the type is a plain string. Only exclude if the prop is clearly internal (e.g. typed as a generated React ID).
    - `accessibleNameRef` / `accessibleDescriptionRef` (web components) — these are ID references for a11y wiring; classify as `string`, `cdf_category: "state"` (behavioral wiring, not design or content).

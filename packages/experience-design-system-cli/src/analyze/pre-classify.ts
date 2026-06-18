@@ -81,6 +81,16 @@ const DOM_PASS_THROUGH_PROPS = new Set([
   'pt',
   'ptOptions',
   'unstyled',
+  // Polymorphic component props — change rendered HTML/component, not marketer-visible behavior
+  'as',
+  'element',
+  'component',
+  // QA / vendor test attributes
+  'dataQa',
+  'data-qa',
+  // Vue v-model internals — framework wiring, never marketer-configurable
+  'modelValue',
+  'modelModifiers',
 ]);
 
 function isDomPassThroughProp(name: string): boolean {

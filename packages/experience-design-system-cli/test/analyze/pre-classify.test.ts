@@ -158,6 +158,36 @@ describe('preClassifyProp', () => {
       });
     });
 
+    it('excludes polymorphic component props (as, element, component)', () => {
+      expect(preClassifyProp(makeProp({ name: 'as', type: 'ElementType' }))).toEqual({
+        category: 'exclude',
+      });
+      expect(preClassifyProp(makeProp({ name: 'element', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+      expect(preClassifyProp(makeProp({ name: 'component', type: 'ElementType' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes Vue v-model internals (modelValue, modelModifiers)', () => {
+      expect(preClassifyProp(makeProp({ name: 'modelValue', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+      expect(preClassifyProp(makeProp({ name: 'modelModifiers', type: 'object' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes vendor QA attributes (dataQa, data-qa)', () => {
+      expect(preClassifyProp(makeProp({ name: 'dataQa', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+      expect(preClassifyProp(makeProp({ name: 'data-qa', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
     it('does NOT exclude unrelated names that contain "name"', () => {
       // "fileName" is a content prop — only the bare "name" attribute is excluded
       expect(preClassifyProp(makeProp({ name: 'fileName', type: 'string' }))?.category).not.toBe('exclude');
