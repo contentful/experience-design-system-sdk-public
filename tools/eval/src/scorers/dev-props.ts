@@ -1,4 +1,4 @@
-import type { CDFFile, CDFComponentEntry, DevPropLeakageResult } from '../types.js';
+import type { CDFFile, CDFComponentEntry, CorpusEntry, DevPropLeakageResult } from '../types.js';
 
 /**
  * DOM / a11y / framework pass-through props that should never appear as
@@ -53,8 +53,12 @@ function isDomPassThroughProp(name: string): boolean {
  * Counts DOM / a11y / data-* pass-through props that leaked into the CDF
  * output as marketer-configurable properties. Lower is better; 0 means no
  * developer-facing props were exposed in the editor UI.
+ *
+ * Also computes a per-prop confusion matrix on the DOM pass-through axis,
+ * using the corpus entry's input `rawComponents` to see every prop the
+ * pipeline was asked about (not just the ones that survived to the CDF).
  */
-export function scoreDevPropLeakage(cdf: CDFFile): DevPropLeakageResult {
+export function scoreDevPropLeakage(cdf: CDFFile, corpus: CorpusEntry): DevPropLeakageResult {
   let leaked = 0;
   let totalProps = 0;
   const leakedByComponent: Record<string, string[]> = {};
@@ -74,5 +78,35 @@ export function scoreDevPropLeakage(cdf: CDFFile): DevPropLeakageResult {
     }
   }
 
-  return { leaked, totalProps, leakedByComponent };
+  let truePositive = 0;
+  let falseNegative = 0;
+  let falsePositive = 0;
+  let trueNegative = 0;
+
+  for (const inputComponent of corpus.rawComponents) {
+    const cdfEntry = cdf[inputComponent.name];
+    const isCdfEntry =
+      cdfEntry && typeof cdfEntry === 'object' && '$type' in cdfEntry && (cdfEntry as CDFComponentEntry).$type === 'component';
+    const outputProps = isCdfEntry ? new Set(Object.keys((cdfEntry as CDFComponentEntry).$properties ?? {})) : new Set<string>();
+
+    for (const inputProp of inputComponent.props) {
+      const isPassThrough = isDomPassThroughProp(inputProp.name);
+      const wasExcluded = !outputProps.has(inputProp.name);
+
+      if (isPassThrough && wasExcluded) truePositive++;
+      else if (isPassThrough && !wasExcluded) falseNegative++;
+      else if (!isPassThrough && wasExcluded) falsePositive++;
+      else trueNegative++;
+    }
+  }
+
+  const denominator = truePositive + falseNegative;
+  const recall = denominator === 0 ? 1 : truePositive / denominator;
+
+  return {
+    leaked,
+    totalProps,
+    leakedByComponent,
+    confusion: { truePositive, falseNegative, falsePositive, trueNegative, recall },
+  };
 }

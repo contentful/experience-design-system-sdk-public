@@ -68,7 +68,7 @@ async function runEval() {
       try {
         result.componentCoverage = scoreComponentCoverage(result.cdf, entry);
         result.hallucination = scoreHallucination(result.cdf);
-        result.devPropLeakage = scoreDevPropLeakage(result.cdf);
+        result.devPropLeakage = scoreDevPropLeakage(result.cdf, entry);
         console.log(
           `[${entry.repo}] coverage=${(result.componentCoverage.ratio * 100).toFixed(1)}% hallucination=${
             result.hallucination.pass ? 'pass' : 'FAIL'
@@ -139,6 +139,24 @@ async function runEval() {
   const judgedScored = scored.filter((r) => r.judgeScore);
   const devPropLeakageTotal = results.reduce((sum, r) => sum + (r.devPropLeakage?.leaked ?? 0), 0);
   const totalPropsOutput = results.reduce((sum, r) => sum + (r.devPropLeakage?.totalProps ?? 0), 0);
+  const devPropConfusion = results.reduce(
+    (acc, r) => {
+      const c = r.devPropLeakage?.confusion;
+      if (c) {
+        acc.truePositive += c.truePositive;
+        acc.falseNegative += c.falseNegative;
+        acc.falsePositive += c.falsePositive;
+        acc.trueNegative += c.trueNegative;
+      }
+      return acc;
+    },
+    { truePositive: 0, falseNegative: 0, falsePositive: 0, trueNegative: 0 },
+  );
+  const recallDenom = devPropConfusion.truePositive + devPropConfusion.falseNegative;
+  const devPropConfusionWithRecall = {
+    ...devPropConfusion,
+    recall: recallDenom === 0 ? 1 : devPropConfusion.truePositive / recallDenom,
+  };
   const summary: RunSummary = {
     runAt: new Date().toISOString(),
     totalEntries: results.length,
@@ -150,6 +168,7 @@ async function runEval() {
     hallucinationFailures: results.filter((r) => r.hallucination && !r.hallucination.pass).length,
     devPropLeakageTotal,
     totalPropsOutput,
+    devPropConfusion: devPropConfusionWithRecall,
     avgMappingQuality: judgedScored.length
       ? judgedScored.reduce((sum, r) => sum + r.judgeScore!.mapping_quality.score, 0) / judgedScored.length
       : null,
@@ -186,6 +205,10 @@ async function runEval() {
   console.log(`  Median coverage: ${(summary.medianComponentCoverage * 100).toFixed(1)}%`);
   console.log(`  Hallucinations:  ${summary.hallucinationFailures} failure(s)`);
   console.log(`  Dev-prop leakage: ${summary.devPropLeakageTotal} / ${summary.totalPropsOutput} props`);
+  const c = summary.devPropConfusion;
+  console.log(
+    `  Dev-prop confusion: TP=${c.truePositive} FN=${c.falseNegative} FP=${c.falsePositive} TN=${c.trueNegative} (recall=${(c.recall * 100).toFixed(1)}%)`,
+  );
   if (summary.avgMappingQuality !== null) {
     console.log(`  Mapping quality: ${summary.avgMappingQuality.toFixed(2)}/5`);
   }

@@ -41,6 +41,30 @@ export type DevPropLeakageResult = {
   totalProps: number;
   /** The leaked prop names per component (capped to 10 per component for report size). */
   leakedByComponent: Record<string, string[]>;
+
+  /**
+   * Confusion matrix on the DOM pass-through axis. Positive class = "the prop
+   * is a DOM/a11y/data-* pass-through that should be excluded from the CDF."
+   * Predicted positive = the pipeline excluded the prop (it does not appear in
+   * the CDF's $properties).
+   *
+   * Computed across the input `rawComponents` for the corpus entry, so we
+   * see every prop the pipeline was asked about — not just what survived.
+   */
+  confusion: {
+    /** DOM pass-through prop, correctly excluded by the pipeline. */
+    truePositive: number;
+    /** DOM pass-through prop that leaked into the CDF (= `leaked`). */
+    falseNegative: number;
+    /** Non-DOM prop that the pipeline excluded. Includes legitimate exclusions
+     * of callbacks/refs/complex types, so this is not pure "over-exclusion."
+     * Use it as a sanity check, not a primary metric. */
+    falsePositive: number;
+    /** Non-DOM prop, correctly classified into the CDF. */
+    trueNegative: number;
+    /** TP / (TP + FN) — share of DOM pass-through props the pipeline correctly hid. */
+    recall: number;
+  };
 };
 
 export type JudgeScore = {
@@ -92,6 +116,14 @@ export type RunSummary = {
   hallucinationFailures: number;
   devPropLeakageTotal: number;
   totalPropsOutput: number;
+  /** Aggregate DOM pass-through confusion matrix across all corpus entries. */
+  devPropConfusion: {
+    truePositive: number;
+    falseNegative: number;
+    falsePositive: number;
+    trueNegative: number;
+    recall: number;
+  };
   avgMappingQuality: number | null;
   frameworkBreakdown: Record<string, FrameworkStats>;
   baselineLoaded: boolean;

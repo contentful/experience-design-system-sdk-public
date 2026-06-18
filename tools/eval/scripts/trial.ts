@@ -122,6 +122,11 @@ function summarizeBranch(branch: string, trials: TrialRunResult[]): TrialBranchS
   const totalProps = trials.map((t) => t.summary.totalPropsOutput);
   const judgeScores = trials.map((t) => t.summary.avgMappingQuality).filter((v): v is number => v !== null);
   const halluc = trials.map((t) => t.summary.hallucinationFailures);
+  const tps = trials.map((t) => t.summary.devPropConfusion.truePositive);
+  const fns = trials.map((t) => t.summary.devPropConfusion.falseNegative);
+  const fps = trials.map((t) => t.summary.devPropConfusion.falsePositive);
+  const tns = trials.map((t) => t.summary.devPropConfusion.trueNegative);
+  const recalls = trials.map((t) => t.summary.devPropConfusion.recall);
 
   return {
     branch,
@@ -133,6 +138,13 @@ function summarizeBranch(branch: string, trials: TrialRunResult[]): TrialBranchS
       ? { mean: mean(judgeScores), stddev: stddev(judgeScores) }
       : null,
     hallucinationFailures: { mean: mean(halluc), stddev: stddev(halluc) },
+    devPropConfusion: {
+      truePositive: { mean: mean(tps), stddev: stddev(tps) },
+      falseNegative: { mean: mean(fns), stddev: stddev(fns) },
+      falsePositive: { mean: mean(fps), stddev: stddev(fps) },
+      trueNegative: { mean: mean(tns), stddev: stddev(tns) },
+      recall: { mean: mean(recalls), stddev: stddev(recalls) },
+    },
     rawTrials: trials,
   };
 }

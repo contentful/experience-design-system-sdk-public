@@ -15,6 +15,14 @@ export type TrialBranchSummary = {
   totalPropsOutput: Stat;
   avgMappingQuality: Stat | null;
   hallucinationFailures: Stat;
+  /** Mean across trials of the aggregate DOM pass-through confusion matrix. */
+  devPropConfusion: {
+    truePositive: Stat;
+    falseNegative: Stat;
+    falsePositive: Stat;
+    trueNegative: Stat;
+    recall: Stat;
+  };
   rawTrials: TrialRunResult[];
 };
 
@@ -70,6 +78,31 @@ export function buildTrialReport(opts: TrialReportOptions): string {
   );
   lines.push(
     `| Hallucination failures | ${fmt(control.hallucinationFailures, 1)} | ${fmt(candidate.hallucinationFailures, 1)} | ${diff(candidate.hallucinationFailures, control.hallucinationFailures, 1)} |`,
+  );
+  lines.push('');
+
+  lines.push('## DOM pass-through classification — confusion matrix');
+  lines.push('');
+  lines.push(
+    'Positive class = "the prop is a DOM/a11y/data-* pass-through that should be excluded from the CDF." Predicted positive = the pipeline excluded it.',
+  );
+  lines.push('');
+  lines.push('| Outcome | Control | Candidate | Δ | Meaning |');
+  lines.push('|---|---|---|---|---|');
+  lines.push(
+    `| TP (correct exclude) | ${fmt(control.devPropConfusion.truePositive, 1)} | ${fmt(candidate.devPropConfusion.truePositive, 1)} | ${diff(candidate.devPropConfusion.truePositive, control.devPropConfusion.truePositive, 1)} | DOM prop the pipeline correctly hid |`,
+  );
+  lines.push(
+    `| FN (leak) | ${fmt(control.devPropConfusion.falseNegative, 1)} | ${fmt(candidate.devPropConfusion.falseNegative, 1)} | ${diff(candidate.devPropConfusion.falseNegative, control.devPropConfusion.falseNegative, 1)} | DOM prop that escaped to the editor — the customer pain |`,
+  );
+  lines.push(
+    `| FP (over-exclude) | ${fmt(control.devPropConfusion.falsePositive, 1)} | ${fmt(candidate.devPropConfusion.falsePositive, 1)} | ${diff(candidate.devPropConfusion.falsePositive, control.devPropConfusion.falsePositive, 1)} | Non-DOM prop the pipeline excluded — includes legit excludes (callbacks, refs) so use as a sanity check |`,
+  );
+  lines.push(
+    `| TN (correct include) | ${fmt(control.devPropConfusion.trueNegative, 1)} | ${fmt(candidate.devPropConfusion.trueNegative, 1)} | ${diff(candidate.devPropConfusion.trueNegative, control.devPropConfusion.trueNegative, 1)} | Non-DOM prop the pipeline kept |`,
+  );
+  lines.push(
+    `| Recall | ${pctFmt(control.devPropConfusion.recall)} | ${pctFmt(candidate.devPropConfusion.recall)} | ${pctDiff(candidate.devPropConfusion.recall, control.devPropConfusion.recall)} | TP / (TP + FN) — share of DOM pass-through props correctly hidden |`,
   );
   lines.push('');
 
