@@ -78,6 +78,49 @@ DSI_EVAL_LLM_CLIENT=./my-llm-client.js pnpm start
 pnpm start                       # run all corpus entries
 pnpm start -- --repo=my-ds       # run one repo
 pnpm start:save-baseline         # run and save scores as new baseline
+pnpm start -- --json-out=results.json   # also write structured JSON results
 ```
 
 Output: `eval-report-<timestamp>.md`
+
+## A/B trials between branches
+
+`pnpm trial` runs the eval N times against two branches (control + candidate) using
+git worktrees, then aggregates results into a comparison report. Use this to
+measure whether a prompt or pre-classifier change moves the metrics in the
+expected direction across multiple non-deterministic Bedrock invocations.
+
+```bash
+DSI_EVAL_LLM_CLIENT=./.corpus-repo/dist/bedrock-client.js \
+DSI_EVAL_CORPUS_REPO=git@github.com:contentful/dsi-eval-data.git \
+AWS_PROFILE=bedrock \
+pnpm trial \
+  --control main \
+  --candidate fix/integ-llm-exclude-dom-passthrough-props \
+  --trials 3 \
+  --repo forma-36       # optional: scope to one corpus entry while iterating
+```
+
+The harness creates worktrees under `tools/eval/.eval-worktrees/` (gitignored),
+runs `pnpm install --prefer-offline` and `pnpm pull-corpus` once per worktree,
+then runs N trials per branch sequentially. Output: `trial-report-<timestamp>.md`
+with per-metric mean ± stddev and the candidate − control diff.
+
+Cost: each trial invokes ~22 repos × ~12 components × 2 stages of Bedrock
+calls. With `--trials 3` and 2 branches that's ~6× a single eval run. Scope
+with `--repo` while iterating.
+
+### Alignment with production
+
+The eval calls `preClassifyComponent()` (from the CLI's static analyzer) on
+every corpus entry before building the LLM prompt. This mirrors the production
+pipeline (`packages/experience-design-system-cli/src/analyze/command.ts`) so
+that pre-classifier changes are measured by the eval, not silently bypassed.
+
+### Dev-prop leakage metric
+
+Each run reports a `devPropLeakage` count: how many DOM / accessibility /
+data-* pass-through props ended up as marketer-configurable properties in the
+output CDF. Lower is better; 0 means no developer-facing props leaked into
+the editor UI. The exclusion list mirrors `pre-classify.ts`'s
+`DOM_PASS_THROUGH_PROPS` set (see `src/scorers/dev-props.ts`).

@@ -1,5 +1,6 @@
 import { buildPrompt } from '@contentful/experience-design-system-cli/src/generate/prompt-builder.js';
 import { parseToolCallLines } from '@contentful/experience-design-system-cli/src/generate/agent-runner.js';
+import { preClassifyComponent } from '@contentful/experience-design-system-cli/src/analyze/pre-classify.js';
 import { CDF_V1_SCHEMA_URL } from '@contentful/experience-design-system-types/src/cdf/schema.js';
 import { getClient } from '../llm-client.js';
 import type { RawComponentDefinition, CDFFile, CDFComponentEntry, CDFPropertyDefinition } from '../types.js';
@@ -11,10 +12,12 @@ export async function runStage2(selectedComponents: RawComponentDefinition[]): P
   await Promise.all(
     selectedComponents.map(async (component) => {
       try {
+        // Apply pre-classification before the LLM step (mirrors analyze/command.ts).
+        const classified = preClassifyComponent(component);
         const prompt = await buildPrompt({
           skill: 'components',
           mode: 'autonomous',
-          rawComponentsInline: JSON.stringify([component], null, 2),
+          rawComponentsInline: JSON.stringify([classified], null, 2),
           outDir: '/tmp',
         });
 

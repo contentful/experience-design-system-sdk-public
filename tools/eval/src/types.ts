@@ -34,6 +34,15 @@ export type HallucinationResult = {
   violations: Array<{ component: string; prop: string; invalidType: string }>;
 };
 
+export type DevPropLeakageResult = {
+  /** Number of props in the output CDF that match a known DOM/a11y/data-* pass-through name. */
+  leaked: number;
+  /** Total props in the output CDF (denominator for leakage rate). */
+  totalProps: number;
+  /** The leaked prop names per component (capped to 10 per component for report size). */
+  leakedByComponent: Record<string, string[]>;
+};
+
 export type JudgeScore = {
   score: 1 | 2 | 3 | 4 | 5;
   reason: string;
@@ -62,6 +71,7 @@ export type EvalResult = {
   error?: { stage: 'stage1' | 'stage2' | 'score' | 'judge'; message: string };
   componentCoverage: ComponentCoverageResult | null;
   hallucination: HallucinationResult | null;
+  devPropLeakage?: DevPropLeakageResult;
   judgeScore?: JudgeResult;
   baselineComparison?: BaselineComparison;
 };
@@ -80,6 +90,8 @@ export type RunSummary = {
   avgComponentCoverage: number;
   medianComponentCoverage: number;
   hallucinationFailures: number;
+  devPropLeakageTotal: number;
+  totalPropsOutput: number;
   avgMappingQuality: number | null;
   frameworkBreakdown: Record<string, FrameworkStats>;
   baselineLoaded: boolean;

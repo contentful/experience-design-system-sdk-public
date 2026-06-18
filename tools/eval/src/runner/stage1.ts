@@ -1,5 +1,6 @@
 import { buildPrompt } from '@contentful/experience-design-system-cli/src/generate/prompt-builder.js';
 import { parseSelectToolCallLines } from '@contentful/experience-design-system-cli/src/generate/agent-runner.js';
+import { preClassifyComponent } from '@contentful/experience-design-system-cli/src/analyze/pre-classify.js';
 import { getClient } from '../llm-client.js';
 import type { RawComponentDefinition } from '../types.js';
 
@@ -15,10 +16,15 @@ export async function runStage1(rawComponents: RawComponentDefinition[]): Promis
   await Promise.all(
     rawComponents.map(async (component) => {
       try {
+        // Mirror the production pipeline: analyze/command.ts runs preClassifyComponent
+        // on every extracted component before the LLM ever sees it. The corpus stores
+        // raw rawComponents without category hints, so we apply pre-classification here
+        // to stop the eval from silently testing a different code path than production.
+        const classified = preClassifyComponent(component);
         const prompt = await buildPrompt({
           skill: 'select',
           mode: 'autonomous',
-          rawComponentsInline: JSON.stringify([component], null, 2),
+          rawComponentsInline: JSON.stringify([classified], null, 2),
           outDir: '/tmp',
         });
 
