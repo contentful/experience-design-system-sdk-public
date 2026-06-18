@@ -65,6 +65,22 @@ export type DevPropLeakageResult = {
     /** TP / (TP + FN) — share of DOM pass-through props the pipeline correctly hid. */
     recall: number;
   };
+  /**
+   * Detailed FP records — every non-DOM prop that the pipeline excluded.
+   * Useful for self-healing the LLM prompt: filter to entries where
+   * `preClassifyExcluded === false` to find props the LLM dropped on its own
+   * (the interesting subset; pre-classify-driven excludes are intentional).
+   */
+  falsePositives: Array<{
+    component: string;
+    prop: string;
+    type: string;
+    /** What the deterministic pre-classifier said about this prop. */
+    preClassifyCategory: 'content' | 'design' | 'state' | 'exclude' | null;
+    /** True if the pre-classifier requested exclusion (so the LLM's call
+     * was just following the hint — not really an over-exclusion to fix). */
+    preClassifyExcluded: boolean;
+  }>;
 };
 
 export type JudgeScore = {

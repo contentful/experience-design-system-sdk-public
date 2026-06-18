@@ -1,3 +1,4 @@
+import { preClassifyProp } from '@contentful/experience-design-system-cli/src/analyze/pre-classify.js';
 import type { CDFFile, CDFComponentEntry, CorpusEntry, DevPropLeakageResult } from '../types.js';
 
 /**
@@ -82,6 +83,7 @@ export function scoreDevPropLeakage(cdf: CDFFile, corpus: CorpusEntry): DevPropL
   let falseNegative = 0;
   let falsePositive = 0;
   let trueNegative = 0;
+  const falsePositives: DevPropLeakageResult['falsePositives'] = [];
 
   for (const inputComponent of corpus.rawComponents) {
     const cdfEntry = cdf[inputComponent.name];
@@ -95,8 +97,21 @@ export function scoreDevPropLeakage(cdf: CDFFile, corpus: CorpusEntry): DevPropL
 
       if (isPassThrough && wasExcluded) truePositive++;
       else if (isPassThrough && !wasExcluded) falseNegative++;
-      else if (!isPassThrough && wasExcluded) falsePositive++;
-      else trueNegative++;
+      else if (!isPassThrough && wasExcluded) {
+        falsePositive++;
+        // Re-derive the pre-classifier verdict to label whether this exclusion
+        // was already requested by the deterministic stage. preClassifyProp is
+        // the same function the runner uses; calling it here is a stable read
+        // of the static rule set, not a behaviour duplication.
+        const pre = preClassifyProp(inputProp);
+        falsePositives.push({
+          component: inputComponent.name,
+          prop: inputProp.name,
+          type: inputProp.type,
+          preClassifyCategory: pre?.category ?? null,
+          preClassifyExcluded: pre?.category === 'exclude',
+        });
+      } else trueNegative++;
     }
   }
 
@@ -108,5 +123,6 @@ export function scoreDevPropLeakage(cdf: CDFFile, corpus: CorpusEntry): DevPropL
     totalProps,
     leakedByComponent,
     confusion: { truePositive, falseNegative, falsePositive, trueNegative, recall },
+    falsePositives,
   };
 }

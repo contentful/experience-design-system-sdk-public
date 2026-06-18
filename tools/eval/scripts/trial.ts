@@ -149,6 +149,61 @@ function summarizeBranch(branch: string, trials: TrialRunResult[]): TrialBranchS
   };
 }
 
+/**
+ * Collects the "interesting" false-positives from a branch's trials: the
+ * non-DOM props the pipeline excluded that pre-classify did NOT pre-emptively
+ * exclude. These are over-exclusions the LLM made on its own, and the most
+ * useful signal for prompt refinement.
+ *
+ * Output is shaped for direct consumption by a self-heal agent: per prop name,
+ * frequency across all trials and per-component examples.
+ */
+function collectInterestingFps(branchSummary: TrialBranchSummary): {
+  branch: string;
+  trials: number;
+  totalInteresting: number;
+  byProp: Array<{
+    prop: string;
+    occurrences: number;
+    examples: Array<{ component: string; type: string; repo: string; trial: number }>;
+  }>;
+} {
+  type Example = { component: string; type: string; repo: string; trial: number };
+  const byProp = new Map<string, Example[]>();
+
+  for (let i = 0; i < branchSummary.rawTrials.length; i++) {
+    const trial = branchSummary.rawTrials[i];
+    for (const r of trial.results) {
+      const fps = r.devPropLeakage?.falsePositives ?? [];
+      for (const fp of fps) {
+        if (fp.preClassifyExcluded) continue;
+        if (!byProp.has(fp.prop)) byProp.set(fp.prop, []);
+        byProp.get(fp.prop)!.push({
+          component: fp.component,
+          type: fp.type,
+          repo: r.repo,
+          trial: i + 1,
+        });
+      }
+    }
+  }
+
+  const sorted = [...byProp.entries()]
+    .map(([prop, examples]) => ({
+      prop,
+      occurrences: examples.length,
+      examples: examples.slice(0, 10),
+    }))
+    .sort((a, b) => b.occurrences - a.occurrences);
+
+  return {
+    branch: branchSummary.branch,
+    trials: branchSummary.trials,
+    totalInteresting: sorted.reduce((s, e) => s + e.occurrences, 0),
+    byProp: sorted,
+  };
+}
+
 function mean(xs: number[]): number {
   if (xs.length === 0) return 0;
   return xs.reduce((s, v) => s + v, 0) / xs.length;
@@ -208,6 +263,14 @@ async function main() {
   });
   await writeFile(reportPath, report);
   console.log(`\nTrial report written to: ${reportPath}`);
+
+  // Sidecar JSON: every interesting FP (LLM dropped the prop on its own,
+  // pre-classify did not request exclusion) for the candidate branch, ready
+  // to feed into a self-heal prompt-refinement loop.
+  const fpPath = reportPath.replace(/\.md$/, '-false-positives.json');
+  const candidateFps = collectInterestingFps(branchSummaries[1]);
+  await writeFile(fpPath, JSON.stringify(candidateFps, null, 2));
+  console.log(`Candidate false-positives written to: ${fpPath}`);
 
   if (!values['keep-worktrees']) {
     console.log('Cleaning up worktrees…');

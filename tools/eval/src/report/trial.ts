@@ -131,6 +131,41 @@ export function buildTrialReport(opts: TrialReportOptions): string {
   }
   lines.push('');
 
+  lines.push('## Top candidate false positives (LLM-driven over-excludes)');
+  lines.push('');
+  lines.push(
+    'Non-DOM props the pipeline excluded that pre-classify did **not** pre-emptively exclude — these are over-exclusions the LLM made on its own, the most useful signal for prompt refinement. Capped at 30 most frequent.',
+  );
+  lines.push('');
+  lines.push('| Prop | Occurrences | Sample components |');
+  lines.push('|---|---|---|');
+
+  const fpFreq = new Map<string, { count: number; samples: Array<{ component: string; repo: string }> }>();
+  for (const trial of candidate.rawTrials) {
+    for (const r of trial.results) {
+      const fps = r.devPropLeakage?.falsePositives ?? [];
+      for (const fp of fps) {
+        if (fp.preClassifyExcluded) continue;
+        if (!fpFreq.has(fp.prop)) fpFreq.set(fp.prop, { count: 0, samples: [] });
+        const entry = fpFreq.get(fp.prop)!;
+        entry.count++;
+        if (entry.samples.length < 3) entry.samples.push({ component: fp.component, repo: r.repo });
+      }
+    }
+  }
+  const topFps = [...fpFreq.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 30);
+  if (topFps.length === 0) {
+    lines.push('| _none_ | — | — |');
+  } else {
+    for (const [prop, info] of topFps) {
+      const samples = info.samples.map((s) => `${s.repo}/${s.component}`).join(', ');
+      lines.push(`| \`${prop}\` | ${info.count} | ${samples} |`);
+    }
+  }
+  lines.push('');
+  lines.push('See the `*-false-positives.json` sidecar for the full list with raw types and trial indexes — feed it to the prompt-refinement agent.');
+  lines.push('');
+
   lines.push('## Per-repo dev-prop leakage (control trial 1 vs candidate trial 1)');
   lines.push('');
   lines.push('| Repo | Control leakage | Candidate leakage |');
