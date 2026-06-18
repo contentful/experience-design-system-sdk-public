@@ -38,6 +38,47 @@ function isComplexType(type: string): boolean {
   return !isSimpleType(type);
 }
 
+const DOM_PASS_THROUGH_PROPS = new Set([
+  'className',
+  'class',
+  'style',
+  'styles',
+  'id',
+  'role',
+  'tabIndex',
+  'tabindex',
+  'name',
+  'htmlFor',
+  'for',
+  'slot',
+  'is',
+  'lang',
+  'dir',
+  'hidden',
+  'draggable',
+  'spellCheck',
+  'spellcheck',
+  'contentEditable',
+  'contenteditable',
+  'inputMode',
+  'inputmode',
+  'autoComplete',
+  'autocomplete',
+  'autoFocus',
+  'autofocus',
+  'translate',
+  'part',
+  'exportparts',
+]);
+
+function isDomPassThroughProp(name: string): boolean {
+  if (DOM_PASS_THROUGH_PROPS.has(name)) return true;
+  // aria-label, aria-hidden, ariaLabel, ariaHidden — both kebab and camel forms
+  if (/^aria[-A-Z]/.test(name)) return true;
+  if (name.startsWith('data-')) return true;
+  return false;
+}
+
 /**
  * Deterministic pre-classification rule engine.
  * Applies rules in priority order and returns on the first match.
@@ -71,9 +112,12 @@ export function preClassifyProp(prop: RawPropDefinition): PreClassification | un
     return { category: 'exclude' };
   }
 
-  // Rule 6: className, style, styles
-  if (name === 'className' || name === 'style' || name === 'styles') {
-    return { category: 'design', cdfTypeHint: 'string' };
+  // Rule 6: DOM / a11y / framework pass-through props
+  // These are escape hatches developers use to wire components into the DOM.
+  // Marketers should never configure them in the ExO editor; exposing them
+  // generates noise that obscures the props that actually carry intent.
+  if (isDomPassThroughProp(name)) {
+    return { category: 'exclude' };
   }
 
   // Rule 7: String literal union

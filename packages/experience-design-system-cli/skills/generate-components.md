@@ -131,8 +131,13 @@ The pre-classified `category` in the raw input is a starting point — correct i
 
 For each `RawPropDefinition`, apply in order:
 
-1. **Framework internal?** (`ref`, event handlers, `testId`, `data-testid`, `key`) → `exclude_prop`.
-2. **CSS design prop?** (`className`, `style`, `styles`, positional/geometric props like `top`, `bottom`, `left`, `right`, `rotation`, `offset`) → `classify_prop`, `cdf_type: "string"`, `cdf_category: "design"`.
+1. **Framework / DOM / accessibility pass-through?** → `exclude_prop`. These are escape hatches for developers, not configurable surfaces for marketers. Exposing them in the ExO editor adds noise that obscures the props that actually carry intent. Always exclude:
+   - Framework internals: `ref`, `innerRef`, event handlers (any `onSomething`), `testId`, `data-testid`, `key`
+   - DOM pass-through: `className`, `class`, `style`, `styles`, `id`, `role`, `tabIndex`, `name` (the bare HTML form `name` attribute), `htmlFor`, `for`, `slot`, `is`, `lang`, `dir`, `hidden`, `draggable`, `spellCheck`, `contentEditable`, `inputMode`, `autoComplete`, `autoFocus`, `translate`, `part`, `exportparts`
+   - Accessibility pass-through: any `aria-*` or `ariaSomething` prop, including `aria-label`, `aria-hidden`, `aria-describedby`, `aria-controls`
+   - Data attributes: any `data-*` prop
+   - **Important caveat**: only exclude when the prop is one of these *as the bare HTML attribute*. Compound names like `fileName`, `displayName`, `dataset`, `dataSource`, `roleDescription`, `idLabel` are not pass-through — classify them normally.
+2. **Positional/geometric design prop?** (`top`, `bottom`, `left`, `right`, `rotation`, `offset`, `zIndex`) → `classify_prop`, `cdf_type: "string"`, `cdf_category: "design"`.
 3. **Has `tokenReference`?** → `cdf_type: "token"`, resolve `token_kind` via sidecar lookup (see below). This overrides all other heuristics.
 4. **Union of string literals** (e.g. `'a' | 'b' | 'c'`)? → `cdf_type: "enum"`, extract literals into `values`.
 5. **Raw type is `string`** and prop name is `href`, `url`, or clearly a URL? → `cdf_type: "string"`, `cdf_category: "content"`.
@@ -268,7 +273,7 @@ Input:
     {"name":"variant","type":"'primary'|'secondary'|'ghost'","category":"design","defaultValue":"'primary'"},
     {"name":"disabled","type":"boolean","category":"design"},
     {"name":"onClick","type":"()=>void","category":"state"},
-    {"name":"className","type":"string","category":"design"}
+    {"name":"className","type":"string"}
   ],
   "slots": [{"name":"icon","description":"Optional leading icon"}]
 }
@@ -286,8 +291,8 @@ disabled is a boolean state prop — raw category says design, correcting to sta
 {"tool":"classify_prop","prop":"disabled","cdf_type":"boolean","cdf_category":"state","required":false,"default":false,"description":"Disables the button"}
 onClick is an event handler — framework internal
 {"tool":"exclude_prop","prop":"onClick","reason":"event handler — framework internal"}
-className is a CSS design escape hatch — classify as string/design
-{"tool":"classify_prop","prop":"className","cdf_type":"string","cdf_category":"design","required":false,"description":"CSS class override"}
+className is a DOM pass-through — developers wire CSS, marketers never set this
+{"tool":"exclude_prop","prop":"className","reason":"DOM pass-through — not a marketer-configurable surface"}
 icon slot is clearly optional (decorative leading icon)
 {"tool":"classify_slot","slot":"icon","required":false,"description":"Optional leading icon"}
 ```
@@ -337,7 +342,7 @@ Before emitting any tool calls, verify:
 5. Every `cdf_type: "token"` has `token_kind` (or a warning in `description` if lookup failed)
 6. No `cdf_type: "link"` — all href/url props use `string`
 7. `required` values are JSON booleans, not strings
-8. Framework internals (`ref`, event handlers, test IDs) are excluded — `className`, `style`, and `styles` are classified as `string` design props; discrete positional/geometric props (`top`, `bottom`, `left`, `right`, `rotation`, etc.) are also classified
+8. Framework, DOM, accessibility, and data-* pass-through props are excluded — `className`, `style`, `id`, `role`, `tabIndex`, `name` (bare HTML form attribute), `aria-*`, `data-*`, etc. Discrete positional/geometric props (`top`, `bottom`, `left`, `right`, `rotation`, etc.) ARE classified as `string` design props.
 9. No `cdf_type: "link"` used — `link` is reserved and rejected by the CLI parser
 10. No `cdf_type: "number"` used — this is not a supported type; use `"string"` with numeric defaults. `cdf_type: "boolean"` IS valid — use it for boolean toggle props.
 
