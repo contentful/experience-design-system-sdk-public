@@ -79,12 +79,18 @@ function pullCorpus(worktreePath: string): void {
   if (!process.env.DSI_EVAL_CORPUS_REPO) {
     throw new Error('DSI_EVAL_CORPUS_REPO env var must be set (e.g. git@github.com:contentful/dsi-eval-data.git)');
   }
+  // The pull-corpus script's final `cp .corpus-repo/corpus/*.json corpus/`
+  // assumes corpus/ exists. In a fresh worktree it doesn't yet.
+  mkdirSync(resolve(evalDirInWt, 'corpus'), { recursive: true });
   console.log(`[worktree] pull-corpus in ${evalDirInWt}`);
-  spawnSync('pnpm', ['pull-corpus'], {
+  const res = spawnSync('pnpm', ['pull-corpus'], {
     cwd: evalDirInWt,
     stdio: 'inherit',
     env: process.env,
   });
+  if (res.status !== 0) {
+    throw new Error(`pull-corpus failed in ${evalDirInWt} (exit ${res.status})`);
+  }
 }
 
 function runTrial(branch: string, worktreePath: string, trialIdx: number, repoFilter?: string): TrialRunResult {
