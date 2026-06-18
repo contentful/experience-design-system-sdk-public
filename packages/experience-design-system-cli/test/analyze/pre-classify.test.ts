@@ -137,6 +137,27 @@ describe('preClassifyProp', () => {
       });
     });
 
+    it('excludes bare aria prop (object aria-attributes bag)', () => {
+      expect(preClassifyProp(makeProp({ name: 'aria', type: 'AriaAttributes' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes className-shaped variants (rootClassName, classNames, prefixCls, classes)', () => {
+      expect(preClassifyProp(makeProp({ name: 'rootClassName', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+      expect(preClassifyProp(makeProp({ name: 'classNames', type: 'Record<string, string>' }))).toEqual({
+        category: 'exclude',
+      });
+      expect(preClassifyProp(makeProp({ name: 'prefixCls', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+      expect(preClassifyProp(makeProp({ name: 'classes', type: 'Record<string, string>' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
     it('does NOT exclude unrelated names that contain "name"', () => {
       // "fileName" is a content prop — only the bare "name" attribute is excluded
       expect(preClassifyProp(makeProp({ name: 'fileName', type: 'string' }))?.category).not.toBe('exclude');

@@ -11,10 +11,16 @@ import type { CDFFile, CDFComponentEntry, CorpusEntry, DevPropLeakageResult } fr
  * to be stable across branches under test.
  */
 const DOM_PASS_THROUGH_PROPS = new Set<string>([
+  // Bare HTML / framework styling pass-through
   'className',
   'class',
+  'classes',
+  'classNames',
+  'rootClassName',
+  'prefixCls',
   'style',
   'styles',
+  // Bare HTML attributes
   'id',
   'role',
   'tabIndex',
@@ -41,11 +47,18 @@ const DOM_PASS_THROUGH_PROPS = new Set<string>([
   'translate',
   'part',
   'exportparts',
+  'aria',
+  // Framework theming / pass-through escape hatches — dev-facing
+  'dt',
+  'pt',
+  'ptOptions',
+  'unstyled',
 ]);
 
 function isDomPassThroughProp(name: string): boolean {
   if (DOM_PASS_THROUGH_PROPS.has(name)) return true;
-  if (/^aria[-A-Z]/.test(name)) return true;
+  // aria, aria-label, ariaLabel — bare, kebab, and camel forms
+  if (/^aria(-|[A-Z]|$)/.test(name)) return true;
   if (name.startsWith('data-')) return true;
   return false;
 }

@@ -39,10 +39,16 @@ function isComplexType(type: string): boolean {
 }
 
 const DOM_PASS_THROUGH_PROPS = new Set([
+  // Bare HTML / framework styling pass-through
   'className',
   'class',
+  'classes',
+  'classNames',
+  'rootClassName',
+  'prefixCls',
   'style',
   'styles',
+  // Bare HTML attributes
   'id',
   'role',
   'tabIndex',
@@ -69,6 +75,12 @@ const DOM_PASS_THROUGH_PROPS = new Set([
   'translate',
   'part',
   'exportparts',
+  'aria',
+  // Framework theming / pass-through escape hatches — dev-facing, never marketer-configurable
+  'dt',
+  'pt',
+  'ptOptions',
+  'unstyled',
 ]);
 
 function isDomPassThroughProp(name: string): boolean {
