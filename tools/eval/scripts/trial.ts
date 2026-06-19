@@ -128,6 +128,16 @@ function summarizeBranch(branch: string, trials: TrialRunResult[]): TrialBranchS
   const tns = trials.map((t) => t.summary.devPropConfusion.trueNegative);
   const recalls = trials.map((t) => t.summary.devPropConfusion.recall);
 
+  const costsWithData = trials.map((t) => t.summary.llmCost).filter((c): c is NonNullable<typeof c> => c != null);
+  const llmCost =
+    costsWithData.length > 0
+      ? {
+          inputTokens: { mean: mean(costsWithData.map((c) => c.inputTokens)), stddev: stddev(costsWithData.map((c) => c.inputTokens)) },
+          outputTokens: { mean: mean(costsWithData.map((c) => c.outputTokens)), stddev: stddev(costsWithData.map((c) => c.outputTokens)) },
+          estimatedUsd: { mean: mean(costsWithData.map((c) => c.estimatedUsd)), stddev: stddev(costsWithData.map((c) => c.estimatedUsd)) },
+        }
+      : undefined;
+
   return {
     branch,
     trials: trials.length,
@@ -145,6 +155,7 @@ function summarizeBranch(branch: string, trials: TrialRunResult[]): TrialBranchS
       trueNegative: { mean: mean(tns), stddev: stddev(tns) },
       recall: { mean: mean(recalls), stddev: stddev(recalls) },
     },
+    llmCost,
     rawTrials: trials,
   };
 }

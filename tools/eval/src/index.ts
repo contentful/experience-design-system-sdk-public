@@ -157,6 +157,20 @@ async function runEval() {
     ...devPropConfusion,
     recall: recallDenom === 0 ? 1 : devPropConfusion.truePositive / recallDenom,
   };
+  // Opus 4 Bedrock pricing (us-east-1 cross-region inference, June 2026)
+  const COST_PER_1M_INPUT_USD = 15;
+  const COST_PER_1M_OUTPUT_USD = 75;
+  const usage = client.getTotalUsage?.();
+  const llmCost = usage
+    ? {
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        estimatedUsd:
+          (usage.inputTokens / 1_000_000) * COST_PER_1M_INPUT_USD +
+          (usage.outputTokens / 1_000_000) * COST_PER_1M_OUTPUT_USD,
+      }
+    : undefined;
+
   const summary: RunSummary = {
     runAt: new Date().toISOString(),
     totalEntries: results.length,
@@ -175,6 +189,7 @@ async function runEval() {
     frameworkBreakdown,
     baselineLoaded: baseline !== null,
     regressions: results.filter((r) => r.baselineComparison?.regressions.length).length,
+    llmCost,
   };
 
   const report = buildMarkdownReport(results, summary);
@@ -217,6 +232,10 @@ async function runEval() {
     for (const [fw, stats] of Object.entries(summary.frameworkBreakdown)) {
       console.log(`  ${fw.padEnd(16)} coverage avg=${(stats.avgCoverage * 100).toFixed(1)}% median=${(stats.medianCoverage * 100).toFixed(1)}%${stats.avgMappingQuality !== null ? ` quality=${stats.avgMappingQuality.toFixed(1)}/5` : ''} (${stats.count} repo${stats.count !== 1 ? 's' : ''})`);
     }
+  }
+  if (summary.llmCost) {
+    const { inputTokens, outputTokens, estimatedUsd } = summary.llmCost;
+    console.log(`  LLM tokens:      ${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out (~$${estimatedUsd.toFixed(2)})`);
   }
   if (summary.baselineLoaded) {
     console.log(`\n  Regressions:     ${summary.regressions}`);

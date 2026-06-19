@@ -1,5 +1,7 @@
 export interface LlmClient {
   invoke(prompt: string, maxTokens?: number): Promise<string>;
+  /** Returns cumulative token usage for all invoke() calls made on this client instance. */
+  getTotalUsage?(): { inputTokens: number; outputTokens: number };
 }
 
 let _client: LlmClient | null = null;

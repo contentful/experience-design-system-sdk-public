@@ -144,4 +144,11 @@ export type RunSummary = {
   frameworkBreakdown: Record<string, FrameworkStats>;
   baselineLoaded: boolean;
   regressions: number;
+  /** Token usage and estimated cost for this eval run. Populated when the LLM client exposes getTotalUsage(). */
+  llmCost?: {
+    inputTokens: number;
+    outputTokens: number;
+    /** Estimated USD cost based on Bedrock Opus 4 pricing ($15/1M input, $75/1M output). */
+    estimatedUsd: number;
+  };
 };

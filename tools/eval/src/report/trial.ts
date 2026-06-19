@@ -23,6 +23,12 @@ export type TrialBranchSummary = {
     trueNegative: Stat;
     recall: Stat;
   };
+  /** Token usage across trials (summed, not averaged — total spend for this branch's N trials). */
+  llmCost?: {
+    inputTokens: Stat;
+    outputTokens: Stat;
+    estimatedUsd: Stat;
+  };
   rawTrials: TrialRunResult[];
 };
 
@@ -79,6 +85,17 @@ export function buildTrialReport(opts: TrialReportOptions): string {
   lines.push(
     `| Hallucination failures | ${fmt(control.hallucinationFailures, 1)} | ${fmt(candidate.hallucinationFailures, 1)} | ${diff(candidate.hallucinationFailures, control.hallucinationFailures, 1)} |`,
   );
+  if (control.llmCost || candidate.llmCost) {
+    const fmtUsd = (stat: Stat | undefined) => (stat ? `$${stat.mean.toFixed(2)} ± $${stat.stddev.toFixed(2)}` : 'n/a');
+    const diffUsd = (c: Stat | undefined, ctrl: Stat | undefined) => {
+      if (!c || !ctrl) return 'n/a';
+      const d = c.mean - ctrl.mean;
+      return `${d >= 0 ? '+' : ''}$${d.toFixed(2)}`;
+    };
+    lines.push(
+      `| Est. cost / trial | ${fmtUsd(control.llmCost?.estimatedUsd)} | ${fmtUsd(candidate.llmCost?.estimatedUsd)} | ${diffUsd(candidate.llmCost?.estimatedUsd, control.llmCost?.estimatedUsd)} |`,
+    );
+  }
   lines.push('');
 
   lines.push('## DOM pass-through classification — confusion matrix');
@@ -114,11 +131,14 @@ export function buildTrialReport(opts: TrialReportOptions): string {
 
   lines.push('## Per-trial raw');
   lines.push('');
+  const fmtTrialCost = (s: RunSummary) =>
+    s.llmCost ? `, cost=~$${s.llmCost.estimatedUsd.toFixed(2)} (${s.llmCost.inputTokens.toLocaleString()}in/${s.llmCost.outputTokens.toLocaleString()}out)` : '';
+
   lines.push('### Control — ' + control.branch);
   for (let i = 0; i < control.rawTrials.length; i++) {
     const s = control.rawTrials[i].summary;
     lines.push(
-      `- Trial ${i + 1}: coverage=${(s.avgComponentCoverage * 100).toFixed(1)}%, leakage=${s.devPropLeakageTotal}/${s.totalPropsOutput}, mapping=${s.avgMappingQuality?.toFixed(2) ?? 'n/a'}, halluc=${s.hallucinationFailures}`,
+      `- Trial ${i + 1}: coverage=${(s.avgComponentCoverage * 100).toFixed(1)}%, leakage=${s.devPropLeakageTotal}/${s.totalPropsOutput}, mapping=${s.avgMappingQuality?.toFixed(2) ?? 'n/a'}, halluc=${s.hallucinationFailures}${fmtTrialCost(s)}`,
     );
   }
   lines.push('');
@@ -126,7 +146,7 @@ export function buildTrialReport(opts: TrialReportOptions): string {
   for (let i = 0; i < candidate.rawTrials.length; i++) {
     const s = candidate.rawTrials[i].summary;
     lines.push(
-      `- Trial ${i + 1}: coverage=${(s.avgComponentCoverage * 100).toFixed(1)}%, leakage=${s.devPropLeakageTotal}/${s.totalPropsOutput}, mapping=${s.avgMappingQuality?.toFixed(2) ?? 'n/a'}, halluc=${s.hallucinationFailures}`,
+      `- Trial ${i + 1}: coverage=${(s.avgComponentCoverage * 100).toFixed(1)}%, leakage=${s.devPropLeakageTotal}/${s.totalPropsOutput}, mapping=${s.avgMappingQuality?.toFixed(2) ?? 'n/a'}, halluc=${s.hallucinationFailures}${fmtTrialCost(s)}`,
     );
   }
   lines.push('');
