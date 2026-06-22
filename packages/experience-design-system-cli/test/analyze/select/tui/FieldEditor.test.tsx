@@ -41,14 +41,12 @@ const STRING_COMPONENT = JSON.stringify(
 const tick = () => new Promise((r) => setTimeout(r, 30));
 
 /**
- * For an enum prop with description auto-focused, drive the editor into the
- * `values` field. Field order is: type, category, required, values, description.
- * Mount lands on `description` (last). Press Esc → row mode. Press Return →
- * first field (type). Then j×3 to walk: type → category → required → values.
+ * For an enum prop, drive the editor into the `values` field. Field order is:
+ * type, category, required, values, description. Mount lands on the prop ROW
+ * (no field active). Press Return → first field (type). Then j×3 to walk:
+ * type → category → required → values.
  */
 async function navigateToValuesField(stdin: { write: (data: string) => void }): Promise<void> {
-  stdin.write('\x1b'); // Esc → row mode
-  await tick();
   stdin.write('\r'); // Return → field mode at `type`
   await tick();
   stdin.write('j'); // type → category
@@ -59,8 +57,8 @@ async function navigateToValuesField(stdin: { write: (data: string) => void }): 
   await tick();
 }
 
-describe('FieldEditor — auto-focus description (Fix 2)', () => {
-  it('mounts with description field auto-active for the first prop', () => {
+describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
+  it('mounts at the row level with NO field auto-active', () => {
     const { lastFrame } = render(
       <FieldEditor
         value={STRING_COMPONENT}
@@ -72,13 +70,14 @@ describe('FieldEditor — auto-focus description (Fix 2)', () => {
       />,
     );
     const frame = lastFrame() ?? '';
-    // Hint reflects description-active state.
-    expect(frame).toMatch(/Type to edit/);
-    // The description value is rendered.
+    // Hint reflects row-level navigation, not description-text-entry.
+    expect(frame).toMatch(/navigate rows/);
+    expect(frame).not.toMatch(/Type to edit/);
+    // The description value is still rendered (just not active).
     expect(frame).toContain('Hero title');
   });
 
-  it('typed characters extend the description without needing Return first', async () => {
+  it('typed characters at the row level do NOT edit the description', async () => {
     const onChange = vi.fn();
     const { stdin } = render(
       <FieldEditor
@@ -92,12 +91,61 @@ describe('FieldEditor — auto-focus description (Fix 2)', () => {
     );
     stdin.write('!');
     await tick();
-    expect(onChange).toHaveBeenCalled();
-    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
-    expect(lastCall).toContain('Hero title!');
+    // Row-level: '!' is not bound, so onChange should not fire.
+    expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('arrow down navigates to the next row from description-active state', async () => {
+  it('Return on a row enters field-edit at the FIRST field (type)', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    stdin.write('\r'); // Return → first field
+    await tick();
+    const frame = lastFrame() ?? '';
+    // 'type' is the first field; its picker hint shows.
+    expect(frame).toMatch(/cycle/);
+  });
+
+  it('navigates type → category → required → description via j', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    // Return → type field
+    stdin.write('\r');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/cycle/);
+
+    // j → category (still picker-cycle hint)
+    stdin.write('j');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/cycle/);
+
+    // j → required (toggle hint)
+    stdin.write('j');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/toggle/);
+
+    // j → description (text-entry hint)
+    stdin.write('j');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Type to edit/);
+  });
+
+  it('arrow down at row level moves to the next row WITHOUT auto-focusing description', async () => {
     const value = JSON.stringify(
       {
         Card: {
@@ -113,19 +161,21 @@ describe('FieldEditor — auto-focus description (Fix 2)', () => {
     );
 
     const onChange = vi.fn();
-    const { stdin } = render(
+    const { stdin, lastFrame } = render(
       <FieldEditor value={value} width={80} height={20} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
-    // After arrow-down, description for `body` is auto-focused — typing edits it.
+    // Arrow-down at row level moves to `body` row but does NOT enter field-edit.
     stdin.write('\x1b[B');
     await tick();
+    // Typing 'Z' at row level should not write into the description.
     stdin.write('Z');
     await tick();
-    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
-    expect(lastCall).toMatch(/secondZ/);
+    expect(onChange).not.toHaveBeenCalled();
+    // Hint should still be row-level navigation.
+    expect(lastFrame() ?? '').toMatch(/navigate rows/);
   });
 
-  it('j/k inside description types literal characters (not row navigation)', async () => {
+  it('j/k inside description (after explicitly entering it) types literal characters', async () => {
     const onChange = vi.fn();
     const { stdin } = render(
       <FieldEditor
@@ -137,12 +187,49 @@ describe('FieldEditor — auto-focus description (Fix 2)', () => {
         onDiscard={vi.fn()}
       />,
     );
+    // Walk: row → Return (type) → j → j → j → description.
+    stdin.write('\r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    // Now description is active — j/k should type literal characters.
     stdin.write('j');
     await tick();
     stdin.write('k');
     await tick();
+    expect(onChange).toHaveBeenCalled();
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
     expect(lastCall).toContain('Hero titlejk');
+  });
+
+  it('description-active state shows the bordered cyan affordance', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    // Walk to description.
+    stdin.write('\r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Bordered box renders with cyan border characters around description.
+    expect(frame).toMatch(/Type to edit/);
+    expect(frame).toContain('Hero title');
   });
 });
 

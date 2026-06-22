@@ -145,8 +145,12 @@ export function GenerateReviewStep({
     if (loading || loadError) return;
     if (dialogOpen) return;
 
-    // Tab toggles focus between sidebar and panel — works in any focus state.
-    if (key.tab) {
+    // Tab (or `e`) toggles focus between sidebar and panel — works in any
+    // focus state. `e` is preserved as the primary cross-key from the pre-
+    // 4bb522b UX; Tab is the alias. (Conflict with FieldEditor's enum-values
+    // `e` binding is gated by `active` — when sidebar is focused, FieldEditor
+    // is inactive and ignores `e`.)
+    if (key.tab || input === 'e') {
       setSidebarFocused((prev) => !prev);
       return;
     }
@@ -279,7 +283,7 @@ export function GenerateReviewStep({
                     {propCount} prop{propCount !== 1 ? 's' : ''}
                     {slotCount > 0 ? ` · ${slotCount} slot${slotCount !== 1 ? 's' : ''}` : ''}
                     {'  '}
-                    {sidebarFocused ? '[Tab] focus panel' : '[Tab] focus list'}
+                    {sidebarFocused ? '[e/Tab] focus panel' : '[e/Tab] focus list'}
                   </Text>
                 </Box>
                 {showJson ? (
@@ -308,8 +312,8 @@ export function GenerateReviewStep({
                   {sidebarFocused
                     ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
-                      '  [F] finalize  [Tab] focus panel  [q] quit'
-                    : '  [Tab] focus list  ' + (showJson ? '(JSON view)' : '(edit fields)')}
+                      '  [F] finalize  [e/Tab] focus panel  [q] quit'
+                    : '  [e/Tab] focus list  ' + (showJson ? '(JSON view)' : '(edit fields)')}
                 </Text>
               </>
             ) : (

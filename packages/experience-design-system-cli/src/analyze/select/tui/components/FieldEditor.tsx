@@ -398,10 +398,11 @@ function SlotRow({
 type PropField = 'type' | 'category' | 'required' | 'description' | 'tokenKind' | 'values';
 type SlotField = 'required' | 'description';
 
-// Field order is intentional: description is LAST so it's both the auto-focused
-// initial target and the "edge" that arrow-down escapes from to the next row.
-// Without this ordering, advancing past description via j/k would re-enter
-// text-entry mode and trap typed `j`/`k` characters.
+// Field order is intentional: description is LAST so it's the "edge" of the
+// field cycle. The user reaches description by walking through type → category
+// → required → [tokenKind?] → [values?] → description via j/k; once active,
+// description swallows j/k as literal text input. Putting it last means the
+// user has to deliberately navigate to it, avoiding accidental text-entry.
 function propFields(prop: PropState): PropField[] {
   const fields: PropField[] = ['type', 'category', 'required'];
   if (prop.type === 'token') fields.push('tokenKind');
@@ -427,24 +428,27 @@ export function FieldEditor({
   const [editorState, setEditorState] = useState<EditorState>(initialState);
   const [parseErr] = useState<string | null>(parseError);
 
-  // Navigation state — initial state auto-focuses the description field of the
-  // first prop (or slot, if there are no props). This surfaces the most common
-  // edit target without requiring a Return drill.
+  // Navigation state — initial state lands at the row level with NO field
+  // auto-active. The user presses Return to enter field-edit at the first
+  // field of the row (type), then j/k to walk through fields uniformly:
+  // type → category → required → [tokenKind?] → [values?] → description.
+  // Description is reached via navigation, not auto-focus — this avoids
+  // trapping the user in description-edit (where j/k type literals).
   const initialFocus = (() => {
     if (initialState.props.length > 0) {
       return {
-        focusLevel: 'field' as FocusLevel,
+        focusLevel: 'prop' as FocusLevel,
         inSlots: false,
-        activeField: 'description' as PropField | SlotField,
-        textCursor: initialState.props[0].description.length,
+        activeField: null as PropField | SlotField | null,
+        textCursor: 0,
       };
     }
     if (initialState.slots.length > 0) {
       return {
-        focusLevel: 'field' as FocusLevel,
+        focusLevel: 'slot' as FocusLevel,
         inSlots: true,
-        activeField: 'description' as PropField | SlotField,
-        textCursor: initialState.slots[0].description.length,
+        activeField: null as PropField | SlotField | null,
+        textCursor: 0,
       };
     }
     return {
@@ -484,22 +488,6 @@ export function FieldEditor({
   const commit = (next: EditorState) => {
     setEditorState(next);
     onChange(serializeState(next, value));
-  };
-
-  // Helpers for jumping into description-field auto-focus when row changes.
-  const focusDescriptionForProp = (idx: number) => {
-    const p = props[idx];
-    if (!p) return;
-    setFocusLevel('field');
-    setActiveField('description');
-    setTextCursor(p.description.length);
-  };
-  const focusDescriptionForSlot = (idx: number) => {
-    const s = slots[idx];
-    if (!s) return;
-    setFocusLevel('field');
-    setActiveField('description');
-    setTextCursor(s.description.length);
   };
 
   useImmediateInput((input, key) => {
@@ -563,35 +551,31 @@ export function FieldEditor({
     }
 
     // ── Prop-level navigation (not inside a field) ───────────────────────────
-    // With description auto-focus, the user mostly skips this level — but it's
-    // still reachable via Esc from a field.
+    // Arrows / j / k move between rows. Return enters field-edit at the FIRST
+    // field of the current prop (type). No auto-focus on description.
     if (focusLevel === 'prop') {
       if (key.upArrow || input === 'k') {
         if (propIdx > 0) {
-          const nextIdx = propIdx - 1;
-          setPropIdx(nextIdx);
-          focusDescriptionForProp(nextIdx);
+          setPropIdx(propIdx - 1);
         } else if (slots.length > 0) {
           setInSlots(true);
           setSlotIdx(slots.length - 1);
-          focusDescriptionForSlot(slots.length - 1);
+          setFocusLevel('slot');
         }
         return;
       }
       if (key.downArrow || input === 'j') {
         if (propIdx < props.length - 1) {
-          const nextIdx = propIdx + 1;
-          setPropIdx(nextIdx);
-          focusDescriptionForProp(nextIdx);
+          setPropIdx(propIdx + 1);
         } else if (slots.length > 0) {
           setInSlots(true);
           setSlotIdx(0);
-          focusDescriptionForSlot(0);
+          setFocusLevel('slot');
         }
         return;
       }
       if (key.return && currentProp) {
-        // Enter field editing on the first field of this prop
+        // Enter field editing on the first field of this prop (type).
         setFocusLevel('field');
         setActiveField(propFields(currentProp)[0] ?? null);
         setTextCursor(currentProp.description.length);
@@ -601,24 +585,22 @@ export function FieldEditor({
     }
 
     // ── Slot-level navigation ────────────────────────────────────────────────
+    // Arrows / j / k move between rows. Return enters field-edit at the FIRST
+    // field of the slot (required). No auto-focus on description.
     if (focusLevel === 'slot') {
       if (key.upArrow || input === 'k') {
         if (slotIdx > 0) {
-          const nextIdx = slotIdx - 1;
-          setSlotIdx(nextIdx);
-          focusDescriptionForSlot(nextIdx);
+          setSlotIdx(slotIdx - 1);
         } else if (props.length > 0) {
           setInSlots(false);
           setPropIdx(props.length - 1);
-          focusDescriptionForProp(props.length - 1);
+          setFocusLevel('prop');
         }
         return;
       }
       if (key.downArrow || input === 'j') {
         if (slotIdx < slots.length - 1) {
-          const nextIdx = slotIdx + 1;
-          setSlotIdx(nextIdx);
-          focusDescriptionForSlot(nextIdx);
+          setSlotIdx(slotIdx + 1);
         }
         return;
       }
@@ -640,38 +622,38 @@ export function FieldEditor({
       const arrowUp = key.upArrow;
       const arrowDown = key.downArrow;
 
-      // ── Inside description: arrow keys navigate ROWS (auto-focusing
-      //    description on the new row); j/k type literal characters.
+      // ── Inside description: arrow keys exit field-edit and navigate ROWS
+      //    at the row level (NOT auto-focusing description on the new row);
+      //    j/k type literal characters into the description.
       if (isDescriptionTextEntry && (arrowUp || arrowDown)) {
+        const exitToRow = (nextInSlots: boolean) => {
+          setFocusLevel(nextInSlots ? 'slot' : 'prop');
+          setActiveField(null);
+        };
         if (arrowUp) {
           if (!inSlots && propIdx > 0) {
-            const nextIdx = propIdx - 1;
-            setPropIdx(nextIdx);
-            focusDescriptionForProp(nextIdx);
+            setPropIdx(propIdx - 1);
+            exitToRow(false);
           } else if (inSlots && slotIdx > 0) {
-            const nextIdx = slotIdx - 1;
-            setSlotIdx(nextIdx);
-            focusDescriptionForSlot(nextIdx);
+            setSlotIdx(slotIdx - 1);
+            exitToRow(true);
           } else if (inSlots && slotIdx === 0 && props.length > 0) {
             setInSlots(false);
-            const nextIdx = props.length - 1;
-            setPropIdx(nextIdx);
-            focusDescriptionForProp(nextIdx);
+            setPropIdx(props.length - 1);
+            exitToRow(false);
           }
         } else {
           // arrowDown
           if (!inSlots && propIdx < props.length - 1) {
-            const nextIdx = propIdx + 1;
-            setPropIdx(nextIdx);
-            focusDescriptionForProp(nextIdx);
+            setPropIdx(propIdx + 1);
+            exitToRow(false);
           } else if (!inSlots && propIdx === props.length - 1 && slots.length > 0) {
             setInSlots(true);
             setSlotIdx(0);
-            focusDescriptionForSlot(0);
+            exitToRow(true);
           } else if (inSlots && slotIdx < slots.length - 1) {
-            const nextIdx = slotIdx + 1;
-            setSlotIdx(nextIdx);
-            focusDescriptionForSlot(nextIdx);
+            setSlotIdx(slotIdx + 1);
+            exitToRow(true);
           }
         }
         return;

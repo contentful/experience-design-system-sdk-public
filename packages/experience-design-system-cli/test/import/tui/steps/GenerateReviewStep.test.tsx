@@ -96,3 +96,37 @@ describe('GenerateReviewStep — form by default (Fix 1)', () => {
     expect(frame).toMatch(/\[J\] hide JSON/);
   });
 });
+
+describe('GenerateReviewStep — sidebar↔panel cross-key (Bug 1)', () => {
+  it('initial hint shows [e/Tab] focus panel when sidebar is focused', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/\[e\/Tab\] focus panel/);
+  });
+
+  it('pressing e from sidebar crosses focus to the panel', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('e');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // After crossing, the bottom hint reflects panel-focused state.
+    expect(frame).toMatch(/\[e\/Tab\] focus list/);
+  });
+
+  it('Tab still works as an alias to cross focus', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('\t');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/\[e\/Tab\] focus list/);
+  });
+});
