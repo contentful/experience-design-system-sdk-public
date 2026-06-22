@@ -2,12 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { join, resolve } from 'node:path';
 import { appendFileSync, writeFileSync } from 'node:fs';
-import { access, readFile, stat } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { access, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFile, spawn } from 'node:child_process';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
-import type { ReviewSessionSnapshot } from '../../analyze/select/types.js';
 import { WelcomeStep } from './steps/WelcomeStep.js';
 import { PathValidationStep } from './steps/PathValidationStep.js';
 import { RunningStep } from './steps/RunningStep.js';
@@ -17,7 +16,6 @@ import { WizardPreviewStep } from './steps/WizardPreviewStep.js';
 import { DoneStep } from './steps/DoneStep.js';
 import { ErrorStep } from './steps/ErrorStep.js';
 import { TokenInputStep } from './steps/TokenInputStep.js';
-import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
 import { PreviewValidationErrorStep } from './steps/PreviewValidationErrorStep.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
@@ -51,13 +49,8 @@ type WizardStep =
   | 'path-validation'
   | 'extracting'
   | 'scope-gate'
-  | 'review-extraction-gate'
-  | 'analyze-select'
   | 'generating'
   | 'final-review'
-  | 'review-generated-gate'
-  | 'generate-edit'
-  | 'generate-review'
   | 'push-decision-gate'
   | 'credentials'
   | 'previewing'
@@ -122,19 +115,6 @@ function findCliPath(): string {
   return join(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..', 'bin', 'cli.js');
 }
 
-export function buildAnalyzeSelectArgs(opts: { sessionId: string; acceptAll: boolean }): string[] {
-  const args = ['analyze', 'select', '--session', opts.sessionId];
-  if (opts.acceptAll) {
-    // The wizard pre-shows validation errors in the analyze-extract TUI before
-    // reaching this gate, so the user has already seen what will be excluded.
-    // Pass --exclude-invalid to bypass the headless fail-loud gate (which is
-    // for CI / scripted callers that need to fail loud) — the wizard surfaces
-    // the auto-rejection via formatAcceptanceSummary on the next screen.
-    args.push('--select-all', '--exclude-invalid');
-  }
-  return args;
-}
-
 export function buildGenerateComponentsArgs(opts: {
   sessionId: string;
   tokensPath?: string;
@@ -153,23 +133,6 @@ export function formatAcceptanceSummary(opts: { accepted: number; autoRejected: 
   const acceptedClause = `${opts.accepted} component${opts.accepted === 1 ? '' : 's'} accepted`;
   if (opts.autoRejected === 0) return `${acceptedClause}.`;
   return `${acceptedClause}, ${opts.autoRejected} excluded due to validation errors.`;
-}
-
-export function formatGeneratedSummary(opts: {
-  generated: number;
-  renamedSlots: number;
-  autoRejected: number;
-}): string {
-  const generatedClause = `Generated definitions for ${opts.generated} component${opts.generated === 1 ? '' : 's'}.`;
-  const renamedClause =
-    opts.renamedSlots > 0
-      ? ` ${opts.renamedSlots} unnamed slot${opts.renamedSlots === 1 ? '' : 's'} renamed (children / slot_<n>) so the LLM could classify them.`
-      : '';
-  const exclusionClause =
-    opts.autoRejected > 0
-      ? ` ${opts.autoRejected} component${opts.autoRejected === 1 ? '' : 's'} excluded earlier due to validation errors.`
-      : '';
-  return `${generatedClause}${renamedClause}${exclusionClause}`;
 }
 
 function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
@@ -488,70 +451,6 @@ export function WizardApp({
     });
   };
 
-  const runAnalyzeSelect = async (
-    sessionId: string,
-    extractedCount: number,
-    tokensPath: string,
-    acceptAll: boolean,
-  ) => {
-    logStep({
-      fn: 'runAnalyzeSelect:enter',
-      sessionId,
-      extractedCount,
-      acceptAll,
-    });
-    let acceptedCount: number;
-
-    if (!acceptAll && state.serverPreview && !process.env['EDS_PREVIEW_ANNOTATIONS']) {
-      process.env['EDS_PREVIEW_ANNOTATIONS'] = JSON.stringify(buildPreviewAnnotations(state.serverPreview));
-    }
-
-    if (!acceptAll) {
-      update({ step: 'analyze-select' });
-    }
-    const args = buildAnalyzeSelectArgs({ sessionId, acceptAll });
-    const r = acceptAll ? await runCli(args) : await runCliInteractive(args);
-
-    logStep({ fn: 'runAnalyzeSelect:post-spawn', exitCode: r.exitCode, args });
-    if (!acceptAll) clearPreviewEnvVars();
-
-    if (r.exitCode !== 0) {
-      update({
-        step: 'error',
-        errorStep: 'analyze select',
-        errorMessage: r.stderr.trim() || 'Unknown error',
-      });
-      return;
-    }
-    // Read accepted count from the review state file (since TUI subprocess inherits stdio
-    // in the manual review path; in the bulk path we also persist to the same file).
-    // Also extract auto-rejected count (components with error-severity validation issues
-    // dropped by the gate) so the user sees what was excluded on the next step.
-    const artifactsRoot = process.env['EDS_REVIEW_ARTIFACTS_DIR']
-      ? resolve(process.env['EDS_REVIEW_ARTIFACTS_DIR'])
-      : resolve(homedir(), '.contentful', 'experience-design-system-cli', 'reviews');
-    const reviewStatePath = resolve(artifactsRoot, sessionId, 'current-review-state.json');
-    let autoRejectedCount = 0;
-    try {
-      const reviewState = JSON.parse(await readFile(reviewStatePath, 'utf8')) as ReviewSessionSnapshot;
-      acceptedCount = reviewState.components.filter((c) => c.status === 'accepted').length;
-      autoRejectedCount = reviewState.components.filter(
-        (c) =>
-          c.status === 'rejected' && (c.originalProposal.validationIssues ?? []).some((i) => i.severity === 'error'),
-      ).length;
-    } catch {
-      acceptedCount = extractedCount;
-    }
-    update({ acceptedCount, autoRejectedCount });
-    if (acceptedCount > 0) {
-      if (await runAgentAuthCheck('generating')) {
-        void runGenerate(sessionId, tokensPath, acceptedCount);
-      }
-    } else {
-      advanceToPushFlow(0);
-    }
-  };
-
   const runGenerate = async (extractSessionId: string, tokensPath: string, acceptedCount: number) => {
     const result = await new Promise<{
       exitCode: number;
@@ -617,51 +516,7 @@ export function WizardApp({
     update({ generatedAcceptedCount, step: 'credentials' });
   };
 
-  const runGenerateEdit = async (
-    sessionId: string | null,
-    generatedCount: number,
-    acceptAll: boolean,
-    returnToPreview = false,
-  ) => {
-    let generatedAcceptedCount: number;
-    if (acceptAll) {
-      generatedAcceptedCount = generatedCount;
-    } else {
-      update({ step: 'generate-edit' });
-      if (sessionId) {
-        const r = await runCliInteractive(['generate', 'components', 'edit', '--session', sessionId]);
-        if (r.exitCode !== 0) {
-          update({
-            step: 'error',
-            errorStep: 'generate edit',
-            errorMessage: r.stderr.trim() || 'Unknown error',
-          });
-          return;
-        }
-        const acceptedMatch = /Accepted: (\d+)/.exec(r.stderr);
-        generatedAcceptedCount = acceptedMatch ? Number(acceptedMatch[1]) : generatedCount;
-      } else {
-        generatedAcceptedCount = generatedCount;
-      }
-    }
-    if (returnToPreview) {
-      const { extractSessionId, tokensPath } = sessionRef.current;
-      void runPreview(extractSessionId, tokensPath, state.spaceId, state.environmentId, state.cmaToken, state.host);
-    } else {
-      advanceToPushFlow(generatedAcceptedCount);
-    }
-  };
-
-  const clearPreviewEnvVars = () => {
-    delete process.env['EDS_PREVIEW_ANNOTATIONS'];
-    delete process.env['EDS_PREVIEW_COUNTS'];
-    delete process.env['EDS_CMA_TOKEN'];
-    delete process.env['EDS_SPACE_ID'];
-    delete process.env['EDS_ENVIRONMENT_ID'];
-    delete process.env['EDS_TOKENS_PATH'];
-  };
-
-  const runEditFromPreview = async (_preview: ServerPreviewResponse | null) => {
+  const runEditFromPreview = async () => {
     // Post-preview edits land in the unified final-review screen.
     update({ step: 'final-review' });
   };
@@ -1235,49 +1090,6 @@ export function WizardApp({
         );
       }
 
-      case 'review-extraction-gate': {
-        const stepNum = hasTokens ? 2 : 1;
-        return (
-          <GateStep
-            successMessage={`Step ${stepNum} complete`}
-            summary={`Found ${state.extractedCount} component${state.extractedCount === 1 ? '' : 's'}.`}
-            context="Ready to review what was extracted? You can correct any props the extractor got wrong, or approve everything and move on."
-            continueLabel="Review components"
-            skipLabel="Approve all and skip"
-            onContinue={() => {
-              if (!state.extractSessionId) {
-                update({
-                  step: 'error',
-                  errorStep: 'analyze extract',
-                  errorMessage: 'Extract session ID missing — please re-run.',
-                });
-                return;
-              }
-              void runAnalyzeSelect(state.extractSessionId, state.extractedCount, state.tokensPath, false);
-            }}
-            onSkip={() => {
-              if (!state.extractSessionId) {
-                update({
-                  step: 'error',
-                  errorStep: 'analyze extract',
-                  errorMessage: 'Extract session ID missing — please re-run.',
-                });
-                return;
-              }
-              void runAnalyzeSelect(state.extractSessionId, state.extractedCount, state.tokensPath, true);
-            }}
-            onQuit={() => process.exit(0)}
-          />
-        );
-      }
-
-      case 'analyze-select':
-        return (
-          <Box paddingX={2} paddingY={1}>
-            <Text dimColor>Launching component review... (the TUI will appear shortly)</Text>
-          </Box>
-        );
-
       case 'generating': {
         const p = state.generateProgress;
         const stepNum = hasTokens ? 4 : 3;
@@ -1309,62 +1121,6 @@ export function WizardApp({
           />
         );
       }
-
-      case 'review-generated-gate': {
-        const stepNum = hasTokens ? 4 : 3;
-        return (
-          <GateStep
-            successMessage={`Step ${stepNum} complete — definitions generated`}
-            summary={formatGeneratedSummary({
-              generated: state.generatedCount,
-              renamedSlots: state.renamedSlotsCount,
-              autoRejected: state.autoRejectedCount,
-            })}
-            context="Take a final look before pushing to Contentful. You can accept, reject, or inspect each component's generated definition."
-            continueLabel="Review definitions"
-            skipLabel="Approve all and skip"
-            onContinue={() => {
-              update({ step: 'generate-review' });
-            }}
-            onSkip={() => {
-              void runGenerateEdit(state.generateSessionId, state.generatedCount, true);
-            }}
-            onQuit={() => process.exit(0)}
-          />
-        );
-      }
-
-      case 'generate-review': {
-        if (!state.extractSessionId) {
-          return (
-            <Box paddingX={2} paddingY={1}>
-              <Text color="red">Error: no session ID — cannot load generated definitions.</Text>
-            </Box>
-          );
-        }
-        return (
-          <GenerateReviewStep
-            extractSessionId={state.extractSessionId}
-            onFinalize={(accepted, rejected) => {
-              update({
-                generatedAcceptedCount: accepted,
-                step: 'push-decision-gate',
-              });
-              void Promise.resolve();
-              // log so orchestrator can read it
-              process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}\n`);
-            }}
-            onQuit={() => process.exit(0)}
-          />
-        );
-      }
-
-      case 'generate-edit':
-        return (
-          <Box paddingX={2} paddingY={1}>
-            <Text dimColor>Launching definition review... (the TUI will appear shortly)</Text>
-          </Box>
-        );
 
       case 'push-decision-gate': {
         const tokenDesc = hasTokens ? 'tokens.json' : null;
@@ -1477,7 +1233,7 @@ export function WizardApp({
               );
             }}
             onEdit={() => {
-              void runEditFromPreview(state.serverPreview);
+              void runEditFromPreview();
             }}
             onSaveFiles={() => {
               void runPrintFiles(state.extractSessionId, state.outDir);
@@ -1545,7 +1301,7 @@ export function WizardApp({
             errors={state.previewValidationErrors}
             missingNames={state.previewValidationMissingNames}
             onEdit={() => {
-              void runEditFromPreview(null);
+              void runEditFromPreview();
             }}
             onSkip={() => {
               void runSkipValidationErrorsAndRetry(state.previewValidationErrors);
@@ -1577,37 +1333,3 @@ export function WizardApp({
   );
 }
 
-function buildPreviewAnnotations(preview: ServerPreviewResponse | null): Record<string, string> {
-  const annotations: Record<string, string> = {};
-  if (!preview) return annotations;
-  for (const item of preview.components.new) {
-    const key = ((item as unknown as Record<string, unknown>).key as string) ?? '';
-    if (key) annotations[key] = 'new';
-  }
-  for (const item of preview.components.removed) {
-    annotations[item.name] = 'removed';
-  }
-  for (const item of preview.components.changed) {
-    if (item.changeClassification?.classification === 'breaking') {
-      annotations[item.current.name] = 'breaking';
-    } else {
-      annotations[item.current.name] = 'changed';
-    }
-  }
-  return annotations;
-}
-
-// Interactive subprocess helper — uses spawn with inherited stdio so child isTTY is true
-function runCliInteractive(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  logStep({
-    fn: 'runCliInteractive:spawn',
-    args,
-  });
-  return new Promise((res) => {
-    const child = spawn('node', [findCliPath(), ...args], { stdio: 'inherit' });
-    child.on('exit', (code) => {
-      logStep({ fn: 'runCliInteractive:exit', args, exitCode: code ?? 0 });
-      res({ exitCode: code ?? 0, stdout: '', stderr: '' });
-    });
-  });
-}
