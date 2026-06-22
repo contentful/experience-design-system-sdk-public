@@ -1,8 +1,9 @@
 import { Box, Text } from 'ink';
 import React from 'react';
 import { ScopeGateStep } from './steps/ScopeGateStep.js';
+import type { ScopeComponent } from './steps/ScopeGateStep.js';
 
-export type ScopeComponent = { name: string; componentId: string };
+export type { ScopeComponent };
 
 export type ScopeGateHostProps = {
   components: ReadonlyArray<ScopeComponent>;
