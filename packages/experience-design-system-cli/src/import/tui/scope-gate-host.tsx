@@ -41,7 +41,7 @@ function ScopeGateAutoAccept({
 }): React.ReactElement {
   React.useEffect(() => {
     onConfirm({ accepted: components.map((c) => c.name), rejected: [] });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // fire once on mount; deps intentionally empty so a re-render with new components doesn't double-confirm
   }, []);
   return (
     <Box paddingX={2} paddingY={1}>

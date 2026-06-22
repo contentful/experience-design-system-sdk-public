@@ -22,6 +22,7 @@ describe('ScopeGateHost', () => {
     const onConfirm = vi.fn();
     render(<ScopeGateHost components={TWO} autoAccept onConfirm={onConfirm} onQuit={() => {}} />);
     await new Promise((r) => setImmediate(r));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onConfirm).toHaveBeenCalledWith({ accepted: ['Button', 'Card'], rejected: [] });
   });
 
@@ -31,5 +32,14 @@ describe('ScopeGateHost', () => {
     );
     const out = lastFrame() ?? '';
     expect(out).toMatch(/no components/i);
+  });
+
+  it('shows the empty error even when autoAccept is true', () => {
+    const onConfirm = vi.fn();
+    const { lastFrame } = render(
+      <ScopeGateHost components={[]} autoAccept onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    expect(lastFrame() ?? '').toMatch(/no components/i);
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 });
