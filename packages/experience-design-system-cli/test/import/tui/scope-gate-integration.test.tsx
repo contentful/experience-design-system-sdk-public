@@ -48,8 +48,8 @@ describe('ScopeGateStep + applyScopeDecisions integration', () => {
       );
       // Cursor starts on 'Button' (alphabetical). Move down to 'Junk' and deselect.
       stdin.write('j');
-      stdin.write(' ');
-      stdin.write('\r');
+      stdin.write('a');
+      stdin.write('f');
 
       expect(onConfirm).toHaveBeenCalledTimes(1);
       const rows = db

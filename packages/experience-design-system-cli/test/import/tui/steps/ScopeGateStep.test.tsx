@@ -23,12 +23,12 @@ describe('ScopeGateStep', () => {
     expect(out).toContain('Junk');
   });
 
-  it('calls onConfirm with all-accepted on Enter when no toggles happened', () => {
+  it('calls onConfirm with all-accepted on f when no toggles happened', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    stdin.write('\r'); // Enter
+    stdin.write('f');
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onConfirm.mock.calls[0][0]).toEqual({
       accepted: ['Button', 'Card', 'Junk'],
@@ -36,37 +36,67 @@ describe('ScopeGateStep', () => {
     });
   });
 
-  it('toggles selection with Space and confirms with Enter', () => {
+  it('toggles selection with a and confirms with f', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Move down twice (j) to land on 'Junk' then Space to deselect
+    // Move down twice (j) to land on 'Junk' then 'a' to toggle off
     stdin.write('j');
     stdin.write('j');
-    stdin.write(' ');
-    stdin.write('\r');
+    stdin.write('a');
+    stdin.write('f');
     expect(onConfirm).toHaveBeenCalledWith({
       accepted: ['Button', 'Card'],
       rejected: ['Junk'],
     });
   });
 
-  it("'n' deselects all and 'a' re-selects all", () => {
+  it('A toggles all', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    stdin.write('n');
-    stdin.write('\r');
+    // First A: all currently included → flip to all rejected
+    stdin.write('A');
+    stdin.write('f');
     expect(onConfirm).toHaveBeenLastCalledWith({
       accepted: [],
       rejected: ['Button', 'Card', 'Junk'],
     });
 
-    stdin.write('a');
-    stdin.write('\r');
+    // Second A: all currently rejected → flip back to all accepted
+    stdin.write('A');
+    stdin.write('f');
     expect(onConfirm).toHaveBeenLastCalledWith({
+      accepted: ['Button', 'Card', 'Junk'],
+      rejected: [],
+    });
+  });
+
+  it('r explicitly rejects the cursor component', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    // Cursor starts at Button. Move down once to land on Card, then reject it.
+    stdin.write('j');
+    stdin.write('r');
+    stdin.write('f');
+    expect(onConfirm).toHaveBeenCalledWith({
+      accepted: ['Button', 'Junk'],
+      rejected: ['Card'],
+    });
+  });
+
+  it('F (capital) also confirms', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    stdin.write('F');
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onConfirm.mock.calls[0][0]).toEqual({
       accepted: ['Button', 'Card', 'Junk'],
       rejected: [],
     });

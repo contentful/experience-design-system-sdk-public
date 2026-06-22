@@ -15,7 +15,7 @@ describe('ScopeGateHost', () => {
     const out = lastFrame() ?? '';
     expect(out).toContain('Button');
     expect(out).toContain('Card');
-    expect(out).toContain('confirm'); // keybinding hint, not present in auto-accept mode
+    expect(out).toContain('continue'); // keybinding hint, not present in auto-accept mode
   });
 
   it('fires onConfirm with all-accepted on mount when autoAccept is true (no user input)', async () => {

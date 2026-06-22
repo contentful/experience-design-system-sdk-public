@@ -10,6 +10,8 @@ export type ScopeGateStepProps = {
   onQuit: () => void;
 };
 
+const VISIBLE_COUNT = 10;
+
 export function ScopeGateStep({
   components,
   onConfirm,
@@ -19,6 +21,7 @@ export function ScopeGateStep({
     () => new Set(components.map((c) => c.name)),
   );
   const [cursor, setCursor] = useState(0);
+  const [scrollOffset, setScrollOffset] = useState(0);
 
   const partition = (): { accepted: string[]; rejected: string[] } => {
     const accepted: string[] = [];
@@ -35,19 +38,11 @@ export function ScopeGateStep({
       onQuit();
       return;
     }
-    if (key.return) {
+    if (input === 'f' || input === 'F') {
       onConfirm(partition());
       return;
     }
     if (input === 'a') {
-      setIncluded(new Set(components.map((c) => c.name)));
-      return;
-    }
-    if (input === 'n') {
-      setIncluded(new Set());
-      return;
-    }
-    if (input === ' ') {
       const name = components[cursor]?.name;
       if (!name) return;
       setIncluded((prev) => {
@@ -58,18 +53,49 @@ export function ScopeGateStep({
       });
       return;
     }
+    if (input === 'A') {
+      // If every component is currently included, clear all; otherwise include all.
+      const allIncluded = components.every((c) => included.has(c.name));
+      if (allIncluded) setIncluded(new Set());
+      else setIncluded(new Set(components.map((c) => c.name)));
+      return;
+    }
+    if (input === 'r') {
+      const name = components[cursor]?.name;
+      if (!name) return;
+      setIncluded((prev) => {
+        if (!prev.has(name)) return prev;
+        const next = new Set(prev);
+        next.delete(name);
+        return next;
+      });
+      return;
+    }
     if (key.upArrow || input === 'k') {
-      setCursor((c) => Math.max(0, c - 1));
+      setCursor((c) => {
+        const next = Math.max(0, c - 1);
+        setScrollOffset((prev) => Math.min(prev, next));
+        return next;
+      });
       return;
     }
     if (key.downArrow || input === 'j') {
-      setCursor((c) => Math.min(components.length - 1, c + 1));
+      setCursor((c) => {
+        const next = Math.min(components.length - 1, c + 1);
+        setScrollOffset((prev) => (next >= prev + VISIBLE_COUNT ? next - VISIBLE_COUNT + 1 : prev));
+        return next;
+      });
       return;
     }
   });
 
   const includedCount = included.size;
   const total = components.length;
+
+  const visibleEnd = Math.min(scrollOffset + VISIBLE_COUNT, total);
+  const visible = components.slice(scrollOffset, visibleEnd);
+  const above = scrollOffset;
+  const below = Math.max(0, total - visibleEnd);
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
@@ -80,29 +106,65 @@ export function ScopeGateStep({
       </Text>
 
       <Box flexDirection="column" marginTop={1}>
-        {components.map((c, i) => {
+        {above > 0 && <Text dimColor>↑ {above} above</Text>}
+        {visible.map((c, vi) => {
+          const i = vi + scrollOffset;
           const isCursor = i === cursor;
           const isIn = included.has(c.name);
           const marker = isIn ? '[✓]' : '[ ]';
           const prefix = isCursor ? '›' : ' ';
+          if (isCursor) {
+            return (
+              <Text key={c.componentId} color="cyan">
+                {prefix} {marker} {c.name}
+              </Text>
+            );
+          }
+          if (!isIn) {
+            return (
+              <Text key={c.componentId} dimColor>
+                {prefix} {marker} {c.name}
+              </Text>
+            );
+          }
           return (
-            <Text key={c.componentId} color={isCursor ? 'cyan' : undefined}>
-              {prefix} {marker} {c.name}
+            <Text key={c.componentId}>
+              {prefix} <Text color="green">{marker}</Text> {c.name}
             </Text>
           );
         })}
+        {below > 0 && <Text dimColor>↓ {below} below</Text>}
       </Box>
 
       <Box gap={3} marginTop={1}>
-        <Text dimColor>
-          {includedCount}/{total} included
+        {includedCount > 0 ? (
+          <Text>
+            <Text color="green">{includedCount}</Text>
+            <Text dimColor>
+              /{total} included
+            </Text>
+          </Text>
+        ) : (
+          <Text color="yellow">none included</Text>
+        )}
+        <Text>
+          <Text color="cyan">[j/k]</Text> <Text dimColor>move</Text>
         </Text>
-        <Text dimColor>[j/k] move</Text>
-        <Text dimColor>[Space] toggle</Text>
-        <Text dimColor>[a] all</Text>
-        <Text dimColor>[n] none</Text>
-        <Text dimColor>[Enter] confirm</Text>
-        <Text dimColor>[q] quit</Text>
+        <Text>
+          <Text color="cyan">[a]</Text> <Text dimColor>toggle</Text>
+        </Text>
+        <Text>
+          <Text color="cyan">[A]</Text> <Text dimColor>toggle all</Text>
+        </Text>
+        <Text>
+          <Text color="cyan">[r]</Text> <Text dimColor>reject</Text>
+        </Text>
+        <Text>
+          <Text color="cyan">[f]</Text> <Text dimColor>continue</Text>
+        </Text>
+        <Text>
+          <Text color="cyan">[q]</Text> <Text dimColor>quit</Text>
+        </Text>
       </Box>
     </Box>
   );
