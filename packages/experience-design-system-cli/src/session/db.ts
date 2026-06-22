@@ -1180,6 +1180,20 @@ export function loadCDFComponents(
     .filter((c): c is { key: string; entry: CDFComponentEntry } => c !== null);
 }
 
+export function loadScopeComponents(
+  db: DatabaseSync,
+  sessionId: string,
+): Array<{ name: string; componentId: string }> {
+  const rows = db
+    .prepare(
+      `SELECT name, component_id FROM raw_components
+       WHERE session_id = ? AND status = 'extracted'
+       ORDER BY name`,
+    )
+    .all(sessionId) as Array<{ name: string; component_id: string }>;
+  return rows.map((r) => ({ name: r.name, componentId: r.component_id }));
+}
+
 export function applyScopeDecisions(
   db: DatabaseSync,
   sessionId: string,
