@@ -135,6 +135,20 @@ export function buildAnalyzeSelectArgs(opts: { sessionId: string; acceptAll: boo
   return args;
 }
 
+export function buildGenerateComponentsArgs(opts: {
+  sessionId: string;
+  tokensPath?: string;
+  agent: string;
+}): string[] {
+  // The SHA-based component cache benefits the wizard re-run path (only
+  // changed components re-generate) but is invisible to the user, so a
+  // regression that silently disabled it would land unnoticed. Never pass
+  // --no-cache from the wizard — pinned by wizard-cache.test.ts.
+  const args = ['generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
+  if (opts.tokensPath) args.push('--tokens', opts.tokensPath);
+  return args;
+}
+
 export function formatAcceptanceSummary(opts: { accepted: number; autoRejected: number }): string {
   const acceptedClause = `${opts.accepted} component${opts.accepted === 1 ? '' : 's'} accepted`;
   if (opts.autoRejected === 0) return `${acceptedClause}.`;
@@ -544,8 +558,14 @@ export function WizardApp({
       stdout: string;
       stderr: string;
     }>((res) => {
-      const args = [findCliPath(), 'generate', 'components', '--agent', state.agent, '--session', extractSessionId];
-      if (tokensPath) args.push('--tokens', tokensPath);
+      const args = [
+        findCliPath(),
+        ...buildGenerateComponentsArgs({
+          sessionId: extractSessionId,
+          tokensPath,
+          agent: state.agent,
+        }),
+      ];
       const child = spawn('node', args);
       let stdout = '';
       let stderr = '';
