@@ -145,13 +145,17 @@ export function GenerateReviewStep({
     if (loading || loadError) return;
     if (dialogOpen) return;
 
-    // Tab (or `e`) toggles focus between sidebar and panel — works in any
-    // focus state. `e` is preserved as the primary cross-key from the pre-
-    // 4bb522b UX; Tab is the alias. (Conflict with FieldEditor's enum-values
-    // `e` binding is gated by `active` — when sidebar is focused, FieldEditor
-    // is inactive and ignores `e`.)
-    if (key.tab || input === 'e') {
+    // Tab toggles focus bidirectionally between sidebar and panel. `e` is a
+    // sidebar-only alias for crossing INTO the panel — gating it to the
+    // sidebar-focused state prevents collision with FieldEditor's enum-values
+    // `e` binding (INTEG-4254) when the panel is focused. Crossing back from
+    // panel to sidebar is Tab-only.
+    if (key.tab) {
       setSidebarFocused((prev) => !prev);
+      return;
+    }
+    if (input === 'e' && sidebarFocused) {
+      setSidebarFocused(false);
       return;
     }
 
@@ -283,7 +287,7 @@ export function GenerateReviewStep({
                     {propCount} prop{propCount !== 1 ? 's' : ''}
                     {slotCount > 0 ? ` · ${slotCount} slot${slotCount !== 1 ? 's' : ''}` : ''}
                     {'  '}
-                    {sidebarFocused ? '[e/Tab] focus panel' : '[e/Tab] focus list'}
+                    {sidebarFocused ? '[e/Tab] focus panel' : '[Tab] focus list'}
                   </Text>
                 </Box>
                 {showJson ? (
@@ -313,7 +317,7 @@ export function GenerateReviewStep({
                     ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel  [q] quit'
-                    : '  [e/Tab] focus list  ' + (showJson ? '(JSON view)' : '(edit fields)')}
+                    : '  [Tab] focus list  ' + (showJson ? '(JSON view)' : '(edit fields)')}
                 </Text>
               </>
             ) : (

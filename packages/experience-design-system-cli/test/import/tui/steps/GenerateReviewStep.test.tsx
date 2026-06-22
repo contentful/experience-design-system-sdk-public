@@ -116,7 +116,8 @@ describe('GenerateReviewStep — sidebar↔panel cross-key (Bug 1)', () => {
     await tick();
     const frame = lastFrame() ?? '';
     // After crossing, the bottom hint reflects panel-focused state.
-    expect(frame).toMatch(/\[e\/Tab\] focus list/);
+    // `e` is sidebar-only now, so the panel-focused hint advertises Tab only.
+    expect(frame).toMatch(/\[Tab\] focus list/);
   });
 
   it('Tab still works as an alias to cross focus', async () => {
@@ -127,6 +128,28 @@ describe('GenerateReviewStep — sidebar↔panel cross-key (Bug 1)', () => {
     stdin.write('\t');
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/\[e\/Tab\] focus list/);
+    expect(frame).toMatch(/\[Tab\] focus list/);
+  });
+
+  it('pressing e while panel is focused does NOT cross back to sidebar (gated)', async () => {
+    // `e` is gated to sidebar-focused state to avoid colliding with
+    // FieldEditor's enum-values `e` binding (INTEG-4254). Crossing back
+    // is Tab-only.
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // Cross into panel via Tab.
+    stdin.write('\t');
+    await tick();
+    let frame = lastFrame() ?? '';
+    expect(frame).toMatch(/\[Tab\] focus list/);
+    // Now press `e` — should fall through to FieldEditor, NOT toggle focus
+    // back to sidebar. Hint should still indicate panel-focused.
+    stdin.write('e');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/\[Tab\] focus list/);
+    expect(frame).not.toMatch(/\[e\/Tab\] focus panel/);
   });
 });
