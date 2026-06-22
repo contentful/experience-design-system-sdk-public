@@ -33,6 +33,7 @@ import {
   backfillUnclassifiedProps,
 } from '../../session/db.js';
 import { ScopeGateHost, type ScopeComponent } from './scope-gate-host.js';
+import { FinalReviewHost } from './final-review-host.js';
 import { runScopeGate } from './runScopeGate.js';
 import { checkAgentAuth, type AgentName } from '../../generate/agent-runner.js';
 import { normalizePath } from '../path-utils.js';
@@ -53,6 +54,7 @@ type WizardStep =
   | 'review-extraction-gate'
   | 'analyze-select'
   | 'generating'
+  | 'final-review'
   | 'review-generated-gate'
   | 'generate-edit'
   | 'generate-review'
@@ -583,7 +585,7 @@ export function WizardApp({
     const renamedMatch = /^renamed-slots:\s*(\d+)$/m.exec(result.stdout);
     const renamedSlotsCount = renamedMatch ? Number(renamedMatch[1]) : 0;
     update({
-      step: 'review-generated-gate',
+      step: 'final-review',
       generateSessionId,
       generatedCount,
       renamedSlotsCount,
@@ -630,17 +632,6 @@ export function WizardApp({
     }
   };
 
-  const setPreviewEnvVars = () => {
-    const creds = credentialsRef.current;
-    const cmaToken = creds?.cmaToken || state.cmaToken;
-    const spaceId = creds?.spaceId || state.spaceId;
-    const environmentId = creds?.environmentId || state.environmentId;
-    if (cmaToken) process.env['EDS_CMA_TOKEN'] = cmaToken;
-    if (spaceId) process.env['EDS_SPACE_ID'] = spaceId;
-    if (environmentId) process.env['EDS_ENVIRONMENT_ID'] = environmentId;
-    process.env['EDS_TOKENS_PATH'] = state.tokensPath || '';
-  };
-
   const clearPreviewEnvVars = () => {
     delete process.env['EDS_PREVIEW_ANNOTATIONS'];
     delete process.env['EDS_PREVIEW_COUNTS'];
@@ -650,49 +641,9 @@ export function WizardApp({
     delete process.env['EDS_TOKENS_PATH'];
   };
 
-  const runEditFromPreview = async (preview: ServerPreviewResponse | null) => {
-    const sessionId = state.extractSessionId;
-    if (!sessionId) {
-      update({
-        step: 'error',
-        errorStep: 'edit definitions',
-        errorMessage: 'No session available for editing',
-      });
-      return;
-    }
-
-    process.env['EDS_PREVIEW_ANNOTATIONS'] = JSON.stringify(buildPreviewAnnotations(preview));
-    if (preview) {
-      process.env['EDS_PREVIEW_COUNTS'] = JSON.stringify({
-        compNew: preview.components.new.length,
-        compChanged: preview.components.changed.length,
-        compRemoved: preview.components.removed.length,
-        compUnchanged: preview.components.unchanged.length,
-        tokNew: preview.tokens.new.length,
-        tokChanged: preview.tokens.changed.length,
-        tokRemoved: preview.tokens.removed.length,
-        tokUnchanged: preview.tokens.unchanged.length,
-      });
-    }
-    setPreviewEnvVars();
-
-    update({ step: 'analyze-select' });
-    const r = await runCliInteractive(['analyze', 'select', '--session', sessionId]);
-
-    clearPreviewEnvVars();
-
-    if (r.exitCode !== 0) {
-      update({
-        step: 'error',
-        errorStep: 'edit definitions',
-        errorMessage: 'Editor exited with an error',
-      });
-      return;
-    }
-
-    // Re-preview with updated definitions
-    const { extractSessionId: sid, tokensPath: tp } = sessionRef.current;
-    void runPreview(sid, tp, state.spaceId, state.environmentId, state.cmaToken, state.host);
+  const runEditFromPreview = async (_preview: ServerPreviewResponse | null) => {
+    // Post-preview edits land in the unified final-review screen.
+    update({ step: 'final-review' });
   };
 
   const runSkipValidationErrorsAndRetry = async (errors: PreviewValidationError[]) => {
@@ -1320,6 +1271,21 @@ export function WizardApp({
             title="Generating definitions"
             description={`${formatAcceptanceSummary({ accepted: state.acceptedCount, autoRejected: state.autoRejectedCount })} ${state.agent} is mapping your TypeScript types to Contentful's CDF format.${hasTokens ? ' Using your design tokens for prop resolution.' : ''}`}
             detail={progressDetail}
+          />
+        );
+      }
+
+      case 'final-review': {
+        return (
+          <FinalReviewHost
+            extractSessionId={state.extractSessionId}
+            generatedCount={state.generatedCount}
+            autoAccept={autoAcceptScope}
+            onFinalize={(accepted, rejected) => {
+              update({ generatedAcceptedCount: accepted, step: 'push-decision-gate' });
+              process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}\n`);
+            }}
+            onQuit={() => process.exit(0)}
           />
         );
       }
