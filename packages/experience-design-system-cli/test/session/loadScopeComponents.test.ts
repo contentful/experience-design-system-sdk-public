@@ -36,6 +36,7 @@ describe('loadScopeComponents', () => {
 
       expect(result.map((r) => r.name)).toEqual(['Button', 'Card']);
       expect(result.every((r) => typeof r.componentId === 'string' && r.componentId.length > 0)).toBe(true);
+      expect(new Set(result.map((r) => r.componentId)).size).toBe(result.length);
     });
   });
 
@@ -44,6 +45,32 @@ describe('loadScopeComponents', () => {
       const db = openPipelineDb(dbPath);
       expect(loadScopeComponents(db, 'nonexistent-session')).toEqual([]);
       db.close();
+    });
+  });
+
+  it('excludes components whose status is not extracted', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+        inputPath: '/proj',
+      });
+      storeRawComponents(
+        db,
+        sessionId,
+        [makeComponent('Button'), makeComponent('Card'), makeComponent('AlreadyAccepted')],
+        { status: 'extracted' },
+      );
+      // Flip one to 'generated' to simulate a partially-finalized session
+      db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name = ?`).run(
+        sessionId,
+        'AlreadyAccepted',
+      );
+
+      const result = loadScopeComponents(db, sessionId);
+      db.close();
+
+      expect(result.map((r) => r.name)).toEqual(['Button', 'Card']);
     });
   });
 });
