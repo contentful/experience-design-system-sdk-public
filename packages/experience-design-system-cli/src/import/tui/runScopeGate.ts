@@ -1,3 +1,4 @@
+import { writeScopeDecisionsSnapshot } from '../../analyze/select/persistence.js';
 import { applyScopeDecisions, openPipelineDb } from '../../session/db.js';
 
 export async function runScopeGate(opts: {
@@ -9,6 +10,11 @@ export async function runScopeGate(opts: {
   const db = openPipelineDb();
   try {
     applyScopeDecisions(db, opts.sessionId, opts.decisions);
+    // Also persist a review-state snapshot so `generate components` can filter
+    // out rejected components via loadAcceptedNames. Without this the wizard's
+    // scope-gate decisions never reach the generator and rejected components
+    // get processed by the LLM anyway.
+    await writeScopeDecisionsSnapshot(db, opts.sessionId, opts.decisions);
   } finally {
     db.close();
   }
