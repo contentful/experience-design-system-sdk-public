@@ -4,7 +4,7 @@ export async function runScopeGate(opts: {
   sessionId: string;
   decisions: { accepted: string[]; rejected: string[] };
   onAdvanceToGenerate: (info: { sessionId: string; acceptedCount: number }) => Promise<void> | void;
-  onAdvanceToPushFlow: (acceptedCount: number) => void;
+  onAdvanceToPushFlow: (acceptedCount: number) => Promise<void> | void;
 }): Promise<void> {
   const db = openPipelineDb();
   try {
@@ -15,6 +15,6 @@ export async function runScopeGate(opts: {
   if (opts.decisions.accepted.length > 0) {
     await opts.onAdvanceToGenerate({ sessionId: opts.sessionId, acceptedCount: opts.decisions.accepted.length });
   } else {
-    opts.onAdvanceToPushFlow(0);
+    await opts.onAdvanceToPushFlow(0);
   }
 }

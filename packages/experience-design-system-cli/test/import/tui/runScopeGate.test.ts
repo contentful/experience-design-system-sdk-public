@@ -91,6 +91,19 @@ describe('runScopeGate', () => {
 
       expect(onAdvanceToGenerate).not.toHaveBeenCalled();
       expect(onAdvanceToPushFlow).toHaveBeenCalledWith(0);
+
+      const db = openPipelineDb(dbPath);
+      try {
+        const rows = db
+          .prepare('SELECT name, status FROM raw_components WHERE session_id = ? ORDER BY name')
+          .all(sessionId) as Array<{ name: string; status: string }>;
+        expect(rows).toEqual([
+          { name: 'Button', status: 'extracted' },
+          { name: 'Junk', status: 'extracted' },
+        ]);
+      } finally {
+        db.close();
+      }
     });
   });
 });
