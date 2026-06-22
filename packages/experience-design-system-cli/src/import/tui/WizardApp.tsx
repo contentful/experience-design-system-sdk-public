@@ -27,10 +27,13 @@ import type { ServerPreviewResponse, ManifestPayload } from '@contentful/experie
 import {
   openPipelineDb,
   loadCDFComponents,
+  loadScopeComponents,
   seedCDFFromPreviewResponse,
   seedDefaultsFromChangedItems,
   backfillUnclassifiedProps,
 } from '../../session/db.js';
+import { ScopeGateHost, type ScopeComponent } from './scope-gate-host.js';
+import { runScopeGate } from './runScopeGate.js';
 import { checkAgentAuth, type AgentName } from '../../generate/agent-runner.js';
 import { normalizePath } from '../path-utils.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
@@ -46,6 +49,7 @@ type WizardStep =
   | 'generating-tokens'
   | 'path-validation'
   | 'extracting'
+  | 'scope-gate'
   | 'review-extraction-gate'
   | 'analyze-select'
   | 'generating'
@@ -175,6 +179,7 @@ export type WizardAppProps = {
   initialAgent?: string;
   initialProjectPath?: string;
   host?: string;
+  autoAcceptScope?: boolean;
 };
 
 export function WizardApp({
@@ -185,6 +190,7 @@ export function WizardApp({
   initialAgent,
   initialProjectPath,
   host,
+  autoAcceptScope = false,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -460,7 +466,7 @@ export function WizardApp({
       return;
     }
     update({
-      step: 'review-extraction-gate',
+      step: 'scope-gate',
       extractSessionId,
       extractedCount,
     });
@@ -1213,6 +1219,47 @@ export function WizardApp({
             title="Extracting components"
             description="I'm scanning your files and figuring out what components exist, what props they have, and how they're structured. This is fully automatic — sit tight."
             detail={extractDetail}
+          />
+        );
+      }
+
+      case 'scope-gate': {
+        if (!state.extractSessionId) {
+          return (
+            <Box paddingX={2} paddingY={1}>
+              <Text color="red">Error: extract session ID missing — please re-run.</Text>
+            </Box>
+          );
+        }
+        const sessionId = state.extractSessionId;
+        const db = openPipelineDb();
+        let components: ScopeComponent[];
+        try {
+          components = loadScopeComponents(db, sessionId);
+        } finally {
+          db.close();
+        }
+        return (
+          <ScopeGateHost
+            components={components}
+            autoAccept={autoAcceptScope}
+            onConfirm={(decisions) => {
+              void runScopeGate({
+                sessionId,
+                decisions,
+                onAdvanceToGenerate: async ({ sessionId: sid, acceptedCount }) => {
+                  update({ acceptedCount, autoRejectedCount: 0 });
+                  if (await runAgentAuthCheck('generating')) {
+                    void runGenerate(sid, state.tokensPath, acceptedCount);
+                  }
+                },
+                onAdvanceToPushFlow: (count) => {
+                  update({ acceptedCount: count, autoRejectedCount: 0 });
+                  advanceToPushFlow(count);
+                },
+              });
+            }}
+            onQuit={() => process.exit(0)}
           />
         );
       }
