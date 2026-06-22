@@ -85,7 +85,7 @@ export function registerImportCommand(program: Command): void {
         // (which runs the wizard but skips the scope gate). Anything else would hang.
         if (!process.stdout.isTTY && !isHeadless && !autoAcceptScope) {
           process.stderr.write(
-            'Error: experiences import is interactive. Pass --auto-accept-scope (or use the headless flags --skip-analyze/--skip-generate/--skip-apply/--yes) for scripted callers.\n',
+            'Error: experiences import is interactive. Pass --auto-accept-scope, or use a headless mode by providing credentials (--space-id, --environment-id, --cma-token) or one of --skip-analyze, --skip-generate, --skip-apply, --yes, --dry-run.\n',
           );
           process.exit(1);
           return;
