@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'ink-testing-library';
-import React from 'react';
 import { ScopeGateStep } from '../../../../src/import/tui/steps/ScopeGateStep.js';
 
 const FIXTURE = [
