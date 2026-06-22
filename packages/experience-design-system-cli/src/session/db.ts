@@ -1180,6 +1180,24 @@ export function loadCDFComponents(
     .filter((c): c is { key: string; entry: CDFComponentEntry } => c !== null);
 }
 
+export function applyScopeDecisions(
+  db: DatabaseSync,
+  sessionId: string,
+  decisions: { accepted: string[]; rejected: string[] },
+): void {
+  const accepted = [...new Set(decisions.accepted)];
+  if (accepted.length > 0) {
+    const placeholders = accepted.map(() => '?').join(',');
+    db.prepare(
+      `UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name IN (${placeholders})`,
+    ).run(sessionId, ...accepted);
+  }
+  // Rejected components are intentionally left at status='extracted'.
+  // loadCDFComponents only picks up status='generated', so this is sufficient
+  // to exclude them from generate / push without a destructive write.
+  db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), sessionId);
+}
+
 export function storeDTCGTokens(
   db: DatabaseSync,
   sessionId: string,
