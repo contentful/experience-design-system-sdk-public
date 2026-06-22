@@ -43,7 +43,8 @@ export function GenerateReviewStep({
   const [sidebarFocused, setSidebarFocused] = useState(true);
   const [showFinalize, setShowFinalize] = useState(false);
   const [showQuit, setShowQuit] = useState(false);
-  const [editMode, setEditMode] = useState(false);
+  // FieldEditor is the default editor. JSON view is an opt-in read-only toggle.
+  const [showJson, setShowJson] = useState(false);
   const [draftValue, setDraftValue] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -120,7 +121,6 @@ export function GenerateReviewStep({
           i === selectedIdx ? { ...c, entry, status: c.status === 'needs-review' ? 'accepted' : c.status } : c,
         ),
       );
-      setEditMode(false);
       setDraftValue('');
       setSaveError(null);
       const db = openPipelineDb();
@@ -135,7 +135,6 @@ export function GenerateReviewStep({
   };
 
   const handleEditDiscard = () => {
-    setEditMode(false);
     setDraftValue('');
     setSaveError(null);
   };
@@ -145,18 +144,24 @@ export function GenerateReviewStep({
   useImmediateInput((input, key) => {
     if (loading || loadError) return;
     if (dialogOpen) return;
-    if (editMode) return;
 
+    // Tab toggles focus between sidebar and panel — works in any focus state.
+    if (key.tab) {
+      setSidebarFocused((prev) => !prev);
+      return;
+    }
+
+    // When the panel is focused, FieldEditor (or JsonPanel) owns the keys.
+    // Only Tab (handled above) should escape from the panel-focused state.
+    if (!sidebarFocused) return;
+
+    // Sidebar-focused keymap.
     if (input === 'q') {
       setShowQuit(true);
       return;
     }
     if (input === 'F') {
       setShowFinalize(true);
-      return;
-    }
-    if (key.tab) {
-      setSidebarFocused((prev) => !prev);
       return;
     }
     if (input === 'a') {
@@ -171,30 +176,27 @@ export function GenerateReviewStep({
       setComponents((prev) => prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c)));
       return;
     }
-    if (input === 'e' && selected) {
-      setDraftValue(JSON.stringify({ [selected.key]: selected.entry }, null, 2));
-      setEditMode(true);
+    if (input === 'J') {
+      // Toggle read-only JSON view.
+      setShowJson((prev) => !prev);
+      setJsonScrollOffset(0);
       return;
     }
 
-    if (sidebarFocused) {
-      if (key.upArrow || input === 'k') {
-        const newIdx = Math.max(0, selectedIdx - 1);
-        setSelectedIdx(newIdx);
-        setJsonScrollOffset(0);
-        setSidebarScrollOffset((prev) => Math.min(prev, newIdx));
-      } else if (key.downArrow || input === 'j') {
-        const newIdx = Math.min(components.length - 1, selectedIdx + 1);
-        setSelectedIdx(newIdx);
-        setJsonScrollOffset(0);
-        setSidebarScrollOffset((prev) => (newIdx >= prev + VISIBLE_COUNT ? newIdx - VISIBLE_COUNT + 1 : prev));
-      }
-    } else {
-      if (key.upArrow || input === 'k') {
-        setJsonScrollOffset((prev) => Math.max(0, prev - 1));
-      } else if (key.downArrow || input === 'j') {
-        setJsonScrollOffset((prev) => prev + 1);
-      }
+    if (key.upArrow || input === 'k') {
+      const newIdx = Math.max(0, selectedIdx - 1);
+      setSelectedIdx(newIdx);
+      setJsonScrollOffset(0);
+      setDraftValue('');
+      setSaveError(null);
+      setSidebarScrollOffset((prev) => Math.min(prev, newIdx));
+    } else if (key.downArrow || input === 'j') {
+      const newIdx = Math.min(components.length - 1, selectedIdx + 1);
+      setSelectedIdx(newIdx);
+      setJsonScrollOffset(0);
+      setDraftValue('');
+      setSaveError(null);
+      setSidebarScrollOffset((prev) => (newIdx >= prev + VISIBLE_COUNT ? newIdx - VISIBLE_COUNT + 1 : prev));
     }
   });
 
@@ -280,30 +282,34 @@ export function GenerateReviewStep({
                     {sidebarFocused ? '[Tab] focus panel' : '[Tab] focus list'}
                   </Text>
                 </Box>
-                {editMode ? (
-                  <FieldEditor
-                    value={draftValue || selectedJson}
-                    width={panelWidth}
-                    height={PANEL_HEIGHT}
-                    onChange={setDraftValue}
-                    onSave={handleEditSave}
-                    onDiscard={handleEditDiscard}
-                  />
-                ) : (
+                {showJson ? (
                   <JsonPanel
-                    label="GENERATED DEFINITION"
+                    label="GENERATED DEFINITION (read-only)"
                     value={selectedJson}
                     scrollOffset={jsonScrollOffset}
                     width={panelWidth}
                     height={PANEL_HEIGHT}
                     active={!sidebarFocused}
                   />
+                ) : (
+                  <FieldEditor
+                    key={selected.key}
+                    value={draftValue || selectedJson}
+                    width={panelWidth}
+                    height={PANEL_HEIGHT}
+                    active={!sidebarFocused}
+                    onChange={setDraftValue}
+                    onSave={handleEditSave}
+                    onDiscard={handleEditDiscard}
+                  />
                 )}
                 {saveError && <Text color="red">{'✗ ' + saveError}</Text>}
                 <Text dimColor>
-                  {editMode
-                    ? '  [Ctrl+S] save  [Esc] discard'
-                    : '  [a] accept  [r] reject  [e] edit  [A] accept all  [F] finalize  [Tab] toggle focus  [q] quit'}
+                  {sidebarFocused
+                    ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
+                      (showJson ? 'hide JSON' : 'show JSON') +
+                      '  [F] finalize  [Tab] focus panel  [q] quit'
+                    : '  [Tab] focus list  ' + (showJson ? '(JSON view)' : '(edit fields)')}
                 </Text>
               </>
             ) : (

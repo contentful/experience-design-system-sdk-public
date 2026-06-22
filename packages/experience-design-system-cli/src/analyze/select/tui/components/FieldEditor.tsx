@@ -18,6 +18,13 @@ type FieldEditorProps = {
   value: string;
   width: number;
   height: number;
+  /**
+   * When false, the editor is mounted but does not consume keystrokes.
+   * Used by callers (e.g. GenerateReviewStep) that toggle focus between
+   * a sidebar and this editor — the editor stays visible while the sidebar
+   * has the keyboard.
+   */
+  active?: boolean;
   onChange: (value: string) => void;
   onSave: () => void;
   onDiscard: () => void;
@@ -31,9 +38,11 @@ type FieldEditorProps = {
  *   'prop'     — a $properties entry (name + its fields shown inline)
  *   'slot'     — a $slots entry
  *   'field'    — an individual field inside the active prop/slot (editing mode)
- *   'value'    — a single item inside a $values list (editing mode)
+ *
+ * Note: the previous `'value'` level was flattened — when activeField is `'values'`,
+ * value-list manipulation (a/e/r/reorder) happens directly without an extra Return.
  */
-type FocusLevel = 'section' | 'prop' | 'slot' | 'field' | 'value';
+type FocusLevel = 'section' | 'prop' | 'slot' | 'field';
 
 type PropState = {
   name: string;
@@ -202,6 +211,8 @@ function PropRow({
   textCursor,
   valueCursor,
   cursorVisible,
+  editingValue,
+  valueText,
   width,
 }: {
   prop: PropState;
@@ -210,10 +221,13 @@ function PropRow({
   textCursor: number;
   valueCursor: number;
   cursorVisible: boolean;
+  editingValue: { mode: 'add' | 'edit'; index?: number } | null;
+  valueText: string;
   width: number;
 }): React.ReactElement {
   const cursor = cursorVisible ? '█' : ' ';
   const bg = selected ? 'blue' : undefined;
+  const descActive = activeField === 'description';
 
   // Name column — fixed 14 chars
   const nameDisplay = prop.name.length > 14 ? prop.name.slice(0, 13) + '…' : prop.name.padEnd(14);
@@ -264,37 +278,60 @@ function PropRow({
         )}
       </Box>
 
-      {/* $description sub-row — only when selected */}
-      {selected && (
+      {/* $description sub-row — only when selected. Active state shows a
+          bordered box to make the editing target visible. */}
+      {selected && descActive && (
+        <Box paddingLeft={2} flexDirection="row">
+          <Text dimColor>desc:</Text>
+          <Box flexGrow={1} borderStyle="round" borderColor="cyan" paddingX={1}>
+            <Text>{prop.description.slice(0, textCursor)}</Text>
+            <Text inverse={cursorVisible}>{prop.description[textCursor] ?? cursor}</Text>
+            <Text>{prop.description.slice(textCursor + 1)}</Text>
+          </Box>
+        </Box>
+      )}
+      {selected && !descActive && (
         <Box paddingLeft={2} gap={1}>
           <Text dimColor>desc:</Text>
-          {activeField === 'description' ? (
-            <Box>
-              <Text>{prop.description.slice(0, textCursor)}</Text>
-              <Text inverse={cursorVisible}>{prop.description[textCursor] ?? cursor}</Text>
-              <Text>{prop.description.slice(textCursor + 1)}</Text>
-            </Box>
-          ) : (
-            <Text color="green">{prop.description || '—'}</Text>
-          )}
+          <Text color="green">{prop.description || '—'}</Text>
         </Box>
       )}
 
       {/* $values sub-list — only when selected and type=enum */}
       {selected && prop.type === 'enum' && (
         <Box paddingLeft={2} flexDirection="column">
-          <Text dimColor>values:</Text>
-          {prop.values.length === 0 && <Text dimColor> (none)</Text>}
-          {prop.values.map((v, i) => (
-            <Box key={i} gap={1} paddingLeft={2}>
-              <Text color={activeField === 'values' && valueCursor === i ? 'cyan' : 'white'}>
-                {activeField === 'values' && valueCursor === i ? `▶ ${v}` : `  ${v}`}
-              </Text>
-            </Box>
-          ))}
-          {activeField === 'values' && (
+          <Box>
+            <Text dimColor>values:</Text>
+            {activeField === 'values' && (
+              <Text dimColor>{'  [a]dd  [e]dit  [r]emove  [↑↓] navigate  [K/J] reorder'}</Text>
+            )}
+          </Box>
+          {prop.values.length === 0 && !editingValue && <Text dimColor> (none — press [a] to add)</Text>}
+          {prop.values.map((v, i) => {
+            const isActiveCursor = activeField === 'values' && valueCursor === i;
+            const isBeingEdited = editingValue?.mode === 'edit' && editingValue.index === i;
+            if (isBeingEdited) {
+              return (
+                <Box key={i} paddingLeft={2}>
+                  <Text color="cyan">{'✎ '}</Text>
+                  <Text>{valueText}</Text>
+                  <Text inverse={cursorVisible}> </Text>
+                </Box>
+              );
+            }
+            return (
+              <Box key={i} gap={1} paddingLeft={2}>
+                <Text color={isActiveCursor ? 'cyan' : 'white'}>
+                  {isActiveCursor ? `▶ ${v}` : `  ${v}`}
+                </Text>
+              </Box>
+            );
+          })}
+          {editingValue?.mode === 'add' && (
             <Box paddingLeft={2}>
-              <Text dimColor>[+] add [x] remove [[] up []] down [Esc] done</Text>
+              <Text color="cyan">{'+ '}</Text>
+              <Text>{valueText}</Text>
+              <Text inverse={cursorVisible}> </Text>
             </Box>
           )}
         </Box>
@@ -336,18 +373,20 @@ function SlotRow({
           <Toggle value={slot.required} active={false} />
         )}
       </Box>
-      {selected && (
+      {selected && activeField === 'description' && (
+        <Box paddingLeft={2} flexDirection="row">
+          <Text dimColor>desc:</Text>
+          <Box flexGrow={1} borderStyle="round" borderColor="cyan" paddingX={1}>
+            <Text>{slot.description.slice(0, textCursor)}</Text>
+            <Text inverse={cursorVisible}>{slot.description[textCursor] ?? cursor}</Text>
+            <Text>{slot.description.slice(textCursor + 1)}</Text>
+          </Box>
+        </Box>
+      )}
+      {selected && activeField !== 'description' && (
         <Box paddingLeft={2} gap={1}>
           <Text dimColor>desc:</Text>
-          {activeField === 'description' ? (
-            <Box>
-              <Text>{slot.description.slice(0, textCursor)}</Text>
-              <Text inverse={cursorVisible}>{slot.description[textCursor] ?? cursor}</Text>
-              <Text>{slot.description.slice(textCursor + 1)}</Text>
-            </Box>
-          ) : (
-            <Text color="green">{slot.description || '—'}</Text>
-          )}
+          <Text color="green">{slot.description || '—'}</Text>
         </Box>
       )}
     </Box>
@@ -359,11 +398,15 @@ function SlotRow({
 type PropField = 'type' | 'category' | 'required' | 'description' | 'tokenKind' | 'values';
 type SlotField = 'required' | 'description';
 
-const PROP_FIELDS_BASE: PropField[] = ['type', 'category', 'required', 'description'];
+// Field order is intentional: description is LAST so it's both the auto-focused
+// initial target and the "edge" that arrow-down escapes from to the next row.
+// Without this ordering, advancing past description via j/k would re-enter
+// text-entry mode and trap typed `j`/`k` characters.
 function propFields(prop: PropState): PropField[] {
-  const fields: PropField[] = [...PROP_FIELDS_BASE];
-  if (prop.type === 'token') fields.splice(3, 0, 'tokenKind');
+  const fields: PropField[] = ['type', 'category', 'required'];
+  if (prop.type === 'token') fields.push('tokenKind');
   if (prop.type === 'enum') fields.push('values');
+  fields.push('description');
   return fields;
 }
 const SLOT_FIELDS: SlotField[] = ['required', 'description'];
@@ -374,6 +417,7 @@ export function FieldEditor({
   value,
   width,
   height,
+  active = true,
   onChange,
   onSave,
   onDiscard,
@@ -383,21 +427,49 @@ export function FieldEditor({
   const [editorState, setEditorState] = useState<EditorState>(initialState);
   const [parseErr] = useState<string | null>(parseError);
 
-  // Navigation state
-  const [focusLevel, setFocusLevel] = useState<FocusLevel>('prop');
+  // Navigation state — initial state auto-focuses the description field of the
+  // first prop (or slot, if there are no props). This surfaces the most common
+  // edit target without requiring a Return drill.
+  const initialFocus = (() => {
+    if (initialState.props.length > 0) {
+      return {
+        focusLevel: 'field' as FocusLevel,
+        inSlots: false,
+        activeField: 'description' as PropField | SlotField,
+        textCursor: initialState.props[0].description.length,
+      };
+    }
+    if (initialState.slots.length > 0) {
+      return {
+        focusLevel: 'field' as FocusLevel,
+        inSlots: true,
+        activeField: 'description' as PropField | SlotField,
+        textCursor: initialState.slots[0].description.length,
+      };
+    }
+    return {
+      focusLevel: 'prop' as FocusLevel,
+      inSlots: false,
+      activeField: null as PropField | SlotField | null,
+      textCursor: 0,
+    };
+  })();
+
+  const [focusLevel, setFocusLevel] = useState<FocusLevel>(initialFocus.focusLevel);
   const [propIdx, setPropIdx] = useState(0);
   const [slotIdx, setSlotIdx] = useState(0);
-  // Whether we're navigating props (true) or slots (false) at the top level
-  const [inSlots, setInSlots] = useState(false);
+  // Whether we're navigating props (false) or slots (true) at the top level
+  const [inSlots, setInSlots] = useState(initialFocus.inSlots);
   // Active field within a prop/slot
-  const [activeField, setActiveField] = useState<PropField | SlotField | null>(null);
+  const [activeField, setActiveField] = useState<PropField | SlotField | null>(initialFocus.activeField);
   // Text cursor position for description fields
-  const [textCursor, setTextCursor] = useState(0);
+  const [textCursor, setTextCursor] = useState(initialFocus.textCursor);
   // Value list cursor for $values editing
   const [valueCursor, setValueCursor] = useState(0);
-  // New value being typed in $values add mode
-  const [addingValue, setAddingValue] = useState(false);
-  const [newValueText, setNewValueText] = useState('');
+  // Inline text-entry mode for adding/editing a $values entry.
+  // mode='add' — append on Enter; mode='edit' — replace at index on Enter.
+  const [editingValue, setEditingValue] = useState<{ mode: 'add' | 'edit'; index?: number } | null>(null);
+  const [valueText, setValueText] = useState('');
 
   const [validationError, setValidationError] = useState<string | null>(null);
   const [cursorVisible] = useState(true);
@@ -414,7 +486,65 @@ export function FieldEditor({
     onChange(serializeState(next, value));
   };
 
+  // Helpers for jumping into description-field auto-focus when row changes.
+  const focusDescriptionForProp = (idx: number) => {
+    const p = props[idx];
+    if (!p) return;
+    setFocusLevel('field');
+    setActiveField('description');
+    setTextCursor(p.description.length);
+  };
+  const focusDescriptionForSlot = (idx: number) => {
+    const s = slots[idx];
+    if (!s) return;
+    setFocusLevel('field');
+    setActiveField('description');
+    setTextCursor(s.description.length);
+  };
+
   useImmediateInput((input, key) => {
+    if (!active) return;
+
+    // ── Inline value text-entry (add or edit) ─ highest priority ───────────
+    if (editingValue && currentProp && activeField === 'values') {
+      const vals = currentProp.values;
+      if (key.return) {
+        const trimmed = valueText.trim();
+        if (trimmed) {
+          let nextVals: string[];
+          let cursorAfter: number;
+          if (editingValue.mode === 'add') {
+            nextVals = [...vals, trimmed];
+            cursorAfter = nextVals.length - 1;
+          } else {
+            const idx = editingValue.index ?? 0;
+            nextVals = vals.map((v, i) => (i === idx ? trimmed : v));
+            cursorAfter = idx;
+          }
+          const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
+          commit({ ...editorState, props: nextProps });
+          setValueCursor(cursorAfter);
+        }
+        setEditingValue(null);
+        setValueText('');
+        return;
+      }
+      if (key.escape) {
+        setEditingValue(null);
+        setValueText('');
+        return;
+      }
+      if (key.backspace) {
+        setValueText((t) => t.slice(0, -1));
+        return;
+      }
+      if (input && input.length === 1 && !key.ctrl && !key.meta) {
+        setValueText((t) => t + input);
+        return;
+      }
+      return;
+    }
+
     // ── Save / Discard ───────────────────────────────────────────────────────
     if (key.ctrl && input === 's') {
       setValidationError(null);
@@ -426,14 +556,6 @@ export function FieldEditor({
         // Exit field editing back to prop/slot row level
         setFocusLevel(inSlots ? 'slot' : 'prop');
         setActiveField(null);
-        setAddingValue(false);
-        setNewValueText('');
-        return;
-      }
-      if (focusLevel === 'value') {
-        setFocusLevel('field');
-        setAddingValue(false);
-        setNewValueText('');
         return;
       }
       onDiscard();
@@ -441,26 +563,30 @@ export function FieldEditor({
     }
 
     // ── Prop-level navigation (not inside a field) ───────────────────────────
+    // With description auto-focus, the user mostly skips this level — but it's
+    // still reachable via Esc from a field.
     if (focusLevel === 'prop') {
       if (key.upArrow || input === 'k') {
         if (propIdx > 0) {
-          setPropIdx((i) => i - 1);
-          setActiveField(null);
+          const nextIdx = propIdx - 1;
+          setPropIdx(nextIdx);
+          focusDescriptionForProp(nextIdx);
         } else if (slots.length > 0) {
           setInSlots(true);
-          setFocusLevel('slot');
-          setActiveField(null);
+          setSlotIdx(slots.length - 1);
+          focusDescriptionForSlot(slots.length - 1);
         }
         return;
       }
       if (key.downArrow || input === 'j') {
         if (propIdx < props.length - 1) {
-          setPropIdx((i) => i + 1);
-          setActiveField(null);
+          const nextIdx = propIdx + 1;
+          setPropIdx(nextIdx);
+          focusDescriptionForProp(nextIdx);
         } else if (slots.length > 0) {
           setInSlots(true);
-          setFocusLevel('slot');
-          setActiveField(null);
+          setSlotIdx(0);
+          focusDescriptionForSlot(0);
         }
         return;
       }
@@ -478,20 +604,21 @@ export function FieldEditor({
     if (focusLevel === 'slot') {
       if (key.upArrow || input === 'k') {
         if (slotIdx > 0) {
-          setSlotIdx((i) => i - 1);
-          setActiveField(null);
+          const nextIdx = slotIdx - 1;
+          setSlotIdx(nextIdx);
+          focusDescriptionForSlot(nextIdx);
         } else if (props.length > 0) {
           setInSlots(false);
-          setFocusLevel('prop');
           setPropIdx(props.length - 1);
-          setActiveField(null);
+          focusDescriptionForProp(props.length - 1);
         }
         return;
       }
       if (key.downArrow || input === 'j') {
         if (slotIdx < slots.length - 1) {
-          setSlotIdx((i) => i + 1);
-          setActiveField(null);
+          const nextIdx = slotIdx + 1;
+          setSlotIdx(nextIdx);
+          focusDescriptionForSlot(nextIdx);
         }
         return;
       }
@@ -508,32 +635,93 @@ export function FieldEditor({
     if (focusLevel === 'field') {
       const fields = inSlots ? SLOT_FIELDS : currentProp ? propFields(currentProp) : [];
       const currentFieldIdx = fields.indexOf(activeField as never);
+      const isDescriptionTextEntry = activeField === 'description';
+      const isValuesNav = activeField === 'values';
+      const arrowUp = key.upArrow;
+      const arrowDown = key.downArrow;
 
-      if (key.upArrow || input === 'k') {
-        if (currentFieldIdx > 0) {
-          const next = fields[currentFieldIdx - 1] as PropField | SlotField;
-          setActiveField(next);
-          if (next === 'description') {
-            const desc = inSlots ? (currentSlot?.description ?? '') : (currentProp?.description ?? '');
-            setTextCursor(desc.length);
+      // ── Inside description: arrow keys navigate ROWS (auto-focusing
+      //    description on the new row); j/k type literal characters.
+      if (isDescriptionTextEntry && (arrowUp || arrowDown)) {
+        if (arrowUp) {
+          if (!inSlots && propIdx > 0) {
+            const nextIdx = propIdx - 1;
+            setPropIdx(nextIdx);
+            focusDescriptionForProp(nextIdx);
+          } else if (inSlots && slotIdx > 0) {
+            const nextIdx = slotIdx - 1;
+            setSlotIdx(nextIdx);
+            focusDescriptionForSlot(nextIdx);
+          } else if (inSlots && slotIdx === 0 && props.length > 0) {
+            setInSlots(false);
+            const nextIdx = props.length - 1;
+            setPropIdx(nextIdx);
+            focusDescriptionForProp(nextIdx);
           }
         } else {
-          // Back to row navigation
-          setFocusLevel(inSlots ? 'slot' : 'prop');
-          setActiveField(null);
+          // arrowDown
+          if (!inSlots && propIdx < props.length - 1) {
+            const nextIdx = propIdx + 1;
+            setPropIdx(nextIdx);
+            focusDescriptionForProp(nextIdx);
+          } else if (!inSlots && propIdx === props.length - 1 && slots.length > 0) {
+            setInSlots(true);
+            setSlotIdx(0);
+            focusDescriptionForSlot(0);
+          } else if (inSlots && slotIdx < slots.length - 1) {
+            const nextIdx = slotIdx + 1;
+            setSlotIdx(nextIdx);
+            focusDescriptionForSlot(nextIdx);
+          }
         }
         return;
       }
-      if (key.downArrow || input === 'j') {
-        if (currentFieldIdx < fields.length - 1) {
-          const next = fields[currentFieldIdx + 1] as PropField | SlotField;
-          setActiveField(next);
-          if (next === 'description') {
-            const desc = inSlots ? (currentSlot?.description ?? '') : (currentProp?.description ?? '');
-            setTextCursor(desc.length);
-          }
+
+      // ── Inside values: arrow keys AND j/k navigate BETWEEN VALUES, not
+      //    between fields. Reorder is K/J (capital).
+      if (isValuesNav && currentProp) {
+        const vals = currentProp.values;
+        if (arrowUp || input === 'k') {
+          setValueCursor((c) => Math.max(0, c - 1));
+          return;
         }
-        return;
+        if (arrowDown || input === 'j') {
+          setValueCursor((c) => Math.max(0, Math.min(vals.length - 1, c + 1)));
+          return;
+        }
+      }
+
+      // ── Other fields (type/category/required/tokenKind): j/k or arrows
+      //    move between fields.
+      if (!isDescriptionTextEntry && !isValuesNav) {
+        const navUp = arrowUp || input === 'k';
+        const navDown = arrowDown || input === 'j';
+        if (navUp) {
+          if (currentFieldIdx > 0) {
+            const next = fields[currentFieldIdx - 1] as PropField | SlotField;
+            setActiveField(next);
+            if (next === 'description') {
+              const desc = inSlots ? (currentSlot?.description ?? '') : (currentProp?.description ?? '');
+              setTextCursor(desc.length);
+            }
+          } else {
+            // Back to row navigation
+            setFocusLevel(inSlots ? 'slot' : 'prop');
+            setActiveField(null);
+          }
+          return;
+        }
+        if (navDown) {
+          if (currentFieldIdx < fields.length - 1) {
+            const next = fields[currentFieldIdx + 1] as PropField | SlotField;
+            setActiveField(next);
+            if (next === 'description') {
+              const desc = inSlots ? (currentSlot?.description ?? '') : (currentProp?.description ?? '');
+              setTextCursor(desc.length);
+            }
+          }
+          return;
+        }
       }
 
       // ── Picker fields (left/right cycle) ──────────────────────────────────
@@ -636,92 +824,52 @@ export function FieldEditor({
         return;
       }
 
-      // ── Enter $values sub-list ─────────────────────────────────────────────
-      if (activeField === 'values' && key.return && currentProp) {
-        setFocusLevel('value');
-        setValueCursor(0);
-        return;
-      }
+      // ── $values inline manipulation (flat — no extra Return) ───────────────
+      if (activeField === 'values' && currentProp) {
+        const vals = currentProp.values;
 
-      return;
-    }
-
-    // ── Value-list editing ────────────────────────────────────────────────────
-    if (focusLevel === 'value' && currentProp) {
-      const vals = currentProp.values;
-
-      if (addingValue) {
-        // Typing a new value
-        if (key.return) {
-          if (newValueText.trim()) {
-            const nextVals = [...vals, newValueText.trim()];
-            const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
-            commit({ ...editorState, props: nextProps });
-            setValueCursor(nextVals.length - 1);
-          }
-          setAddingValue(false);
-          setNewValueText('');
+        // a — add new value (inline text-entry)
+        if (input === 'a') {
+          setEditingValue({ mode: 'add' });
+          setValueText('');
           return;
         }
-        if (key.escape) {
-          setAddingValue(false);
-          setNewValueText('');
+
+        // e — edit value at cursor (inline text-entry, pre-filled)
+        if (input === 'e' && vals.length > 0) {
+          setEditingValue({ mode: 'edit', index: valueCursor });
+          setValueText(vals[valueCursor] ?? '');
           return;
         }
-        if (key.backspace) {
-          setNewValueText((t) => t.slice(0, -1));
+
+        // r — remove value at cursor
+        if (input === 'r' && vals.length > 0) {
+          const nextVals = vals.filter((_, i) => i !== valueCursor);
+          const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
+          commit({ ...editorState, props: nextProps });
+          setValueCursor((c) => Math.max(0, Math.min(c, nextVals.length - 1)));
           return;
         }
-        if (input && input.length === 1 && !key.ctrl && !key.meta) {
-          setNewValueText((t) => t + input);
+
+        // K (Shift+K) — move value up
+        if (input === 'K' && valueCursor > 0) {
+          const nextVals = [...vals];
+          [nextVals[valueCursor - 1], nextVals[valueCursor]] = [nextVals[valueCursor], nextVals[valueCursor - 1]];
+          const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
+          commit({ ...editorState, props: nextProps });
+          setValueCursor((c) => c - 1);
           return;
         }
-        return;
-      }
 
-      if (key.upArrow || input === 'k') {
-        setValueCursor((c) => Math.max(0, c - 1));
-        return;
-      }
-      if (key.downArrow || input === 'j') {
-        setValueCursor((c) => Math.max(0, Math.min(vals.length - 1, c + 1)));
-        return;
-      }
-      if (key.escape) {
-        setFocusLevel('field');
-        return;
-      }
-
-      if (input === '+') {
-        setAddingValue(true);
-        setNewValueText('');
-        return;
-      }
-
-      if (input === 'x' && vals.length > 0) {
-        const nextVals = vals.filter((_, i) => i !== valueCursor);
-        const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
-        commit({ ...editorState, props: nextProps });
-        setValueCursor((c) => Math.max(0, Math.min(c, nextVals.length - 1)));
-        return;
-      }
-
-      // '[' moves item up, ']' moves item down
-      if (input === '[' && valueCursor > 0) {
-        const nextVals = [...vals];
-        [nextVals[valueCursor - 1], nextVals[valueCursor]] = [nextVals[valueCursor], nextVals[valueCursor - 1]];
-        const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
-        commit({ ...editorState, props: nextProps });
-        setValueCursor((c) => c - 1);
-        return;
-      }
-
-      if (input === ']' && valueCursor < vals.length - 1) {
-        const nextVals = [...vals];
-        [nextVals[valueCursor], nextVals[valueCursor + 1]] = [nextVals[valueCursor + 1], nextVals[valueCursor]];
-        const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
-        commit({ ...editorState, props: nextProps });
-        setValueCursor((c) => c + 1);
+        // J (Shift+J) — move value down
+        if (input === 'J' && valueCursor < vals.length - 1) {
+          const nextVals = [...vals];
+          [nextVals[valueCursor], nextVals[valueCursor + 1]] = [nextVals[valueCursor + 1], nextVals[valueCursor]];
+          const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
+          commit({ ...editorState, props: nextProps });
+          setValueCursor((c) => c + 1);
+          return;
+        }
         return;
       }
 
@@ -755,18 +903,26 @@ export function FieldEditor({
     );
   }
 
-  const modeLabel =
-    focusLevel === 'field' && activeField === 'description'
-      ? '← → move cursor  Esc exit field'
-      : focusLevel === 'field' && (activeField === 'type' || activeField === 'category' || activeField === 'tokenKind')
-        ? '← → cycle values  ↑↓ next field  Esc exit'
-        : focusLevel === 'field' && activeField === 'required'
-          ? 'Space/Enter toggle  ↑↓ next field  Esc exit'
-          : focusLevel === 'field' && activeField === 'values'
-            ? 'Enter edit list  Esc exit field'
-            : focusLevel === 'value'
-              ? '+ add  x remove  [ up  ] down  Esc done'
-              : '↑↓ navigate  Enter edit fields  Ctrl+S save  Esc discard';
+  const modeLabel = (() => {
+    if (editingValue) {
+      return editingValue.mode === 'add'
+        ? 'Enter to add · Esc to cancel'
+        : 'Enter to save edit · Esc to cancel';
+    }
+    if (focusLevel === 'field' && activeField === 'description') {
+      return 'Type to edit  ←→ cursor  ↑↓ row  Esc exit  Ctrl+S save';
+    }
+    if (focusLevel === 'field' && (activeField === 'type' || activeField === 'category' || activeField === 'tokenKind')) {
+      return '←→ cycle  ↑↓/jk next field  Esc exit';
+    }
+    if (focusLevel === 'field' && activeField === 'required') {
+      return 'Space/Enter toggle  ↑↓/jk next field  Esc exit';
+    }
+    if (focusLevel === 'field' && activeField === 'values') {
+      return '[a]dd  [e]dit  [r]emove  ↑↓/jk navigate  [K/J] reorder  Esc exit';
+    }
+    return '↑↓/jk navigate rows  Enter edit fields  Ctrl+S save  Esc discard';
+  })();
 
   // Build visible rows
   type Row = { kind: 'header'; label: string } | { kind: 'prop'; idx: number } | { kind: 'slot'; idx: number };
@@ -784,7 +940,7 @@ export function FieldEditor({
   // Scroll to keep selected row visible
   const selectedRowIdx = rows.findIndex(
     (r) =>
-      (r.kind === 'prop' && !inSlots && r.idx === propIdx && focusLevel !== 'section') ||
+      (r.kind === 'prop' && !inSlots && r.idx === propIdx) ||
       (r.kind === 'slot' && inSlots && r.idx === slotIdx),
   );
   const visibleRows = Math.max(1, height - 3); // title + hint bar + border
@@ -818,6 +974,8 @@ export function FieldEditor({
                 textCursor={textCursor}
                 valueCursor={valueCursor}
                 cursorVisible={cursorVisible}
+                editingValue={isSelected ? editingValue : null}
+                valueText={isSelected ? valueText : ''}
                 width={innerWidth}
               />
             );
@@ -838,15 +996,6 @@ export function FieldEditor({
           );
         })}
 
-        {/* "Adding value" inline input */}
-        {focusLevel === 'value' && addingValue && (
-          <Box paddingLeft={4} gap={1}>
-            <Text color="cyan">+ </Text>
-            <Text>{newValueText}</Text>
-            <Text inverse={cursorVisible}> </Text>
-            <Text dimColor>(Enter confirm · Esc cancel)</Text>
-          </Box>
-        )}
       </Box>
 
       {validationError && <Text color="red">{'✗ ' + validationError}</Text>}
