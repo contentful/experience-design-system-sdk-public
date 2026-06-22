@@ -131,15 +131,30 @@ The pre-classified `category` in the raw input is a starting point — correct i
 
 For each `RawPropDefinition`, apply in order:
 
-1. **Framework internal?** (`ref`, event handlers, `testId`, `data-testid`, `key`) → `exclude_prop`.
-2. **CSS design prop?** (`className`, `style`, `styles`, positional/geometric props like `top`, `bottom`, `left`, `right`, `rotation`, `offset`) → `classify_prop`, `cdf_type: "string"`, `cdf_category: "design"`.
-3. **Has `tokenReference`?** → `cdf_type: "token"`, resolve `token_kind` via sidecar lookup (see below). This overrides all other heuristics.
-4. **Union of string literals** (e.g. `'a' | 'b' | 'c'`)? → `cdf_type: "enum"`, extract literals into `values`.
-5. **Raw type is `string`** and prop name is `href`, `url`, or clearly a URL? → `cdf_type: "string"`, `cdf_category: "content"`.
-6. **Raw type is `string` / `number` / `boolean`?** → For `boolean`, use `cdf_type: "boolean"` with `default: true` or `false` (native boolean). For `number`, use `cdf_type: "string"` with `default` as the numeric value as a string (e.g. `"0"`). For `string`, use `cdf_type: "string"`.
-7. **Media/image type** (`ImageProps`, `MediaSource`, asset types)? → `cdf_type: "media"`.
-8. **Rich text / markup** (`ReactNode` used as content, HTML string)? → `cdf_type: "richtext"`.
-9. **Complex type — resolve before excluding** (see below).
+1. **Framework / DOM / accessibility pass-through?** → `exclude_prop`. These are escape hatches for developers, not configurable surfaces for marketers. Exposing them in the ExO editor adds noise that obscures the props that actually carry intent. Always exclude:
+   - Framework internals: `ref`, `innerRef`, event handlers (any `onSomething`), `testId`, `data-testid`, `key`
+   - DOM pass-through: `className`, `class`, `classes`, `classNames`, `rootClassName`, `prefixCls`, `style`, `styles`, `id`, `role`, `tabIndex`, `name` (the bare HTML form `name` attribute), `htmlFor`, `for`, `slot`, `is`, `lang`, `dir`, `hidden`, `draggable`, `spellCheck`, `contentEditable`, `inputMode`, `autoComplete`, `autoFocus`, `translate`, `part`, `exportparts`
+   - Accessibility pass-through: any `aria-*` or `ariaSomething` prop (including bare `aria` as an aria-attributes object), `aria-label`, `aria-hidden`, `aria-describedby`, `aria-controls`
+   - Data attributes: any `data-*` prop
+   - **Polymorphic component props**: `as`, `element`, `component` (when typed as an HTML tag string or component reference) — these change rendered HTML, not marketer-visible behavior
+   - **Framework theming / pass-through escape hatches**: PrimeVue's `dt` / `pt` / `ptOptions` / `unstyled`, MUI/Chakra-style `sx`, anything explicitly typed as a developer "override" / "passthrough" object
+   - **Important caveat**: only exclude when the prop is one of these *as the bare HTML attribute or framework-internal pass-through*. Compound names like `fileName`, `displayName`, `dataset`, `dataSource`, `roleDescription`, `idLabel` are not pass-through — classify them normally.
+2. **Common semantic props — DO classify, do not exclude.** The LLM has been over-excluding these because they sound like framework internals; they are not. Classify each per the rest of this tree:
+   - `icon` / `leftIcon` / `rightIcon` / `prefixIcon` / `suffixIcon` — slot or `string` (icon name); see slot guidance below
+   - `items` / `options` / `actions` / `links` — usually array content; if the element shape is simple, classify as `string` (comma-separated names/IDs) and note in `description`. Only exclude when elements are deep nested objects with no flat representation.
+   - `value` (the bare prop, not `modelValue`) — content prop, usually `string` (or `enum` if from a fixed set). Note: Vue's `modelValue` / `modelModifiers` are excluded by pre-classify because they're v-model framework wiring.
+   - `form` (when not the literal `<form>` HTML attribute) — typically content; classify as `string` unless it's a complex form-config object
+   - `inputId` / `componentId` — these CAN be content (anchor IDs, marketer-set tracking refs). Classify as `string`, `cdf_category: "content"` when the type is a plain string. Only exclude if the prop is clearly internal (e.g. typed as a generated React ID).
+   - `accessibleNameRef` / `accessibleDescriptionRef` (web components) — these are ID references for a11y wiring; classify as `string`, `cdf_category: "state"` (behavioral wiring, not design or content).
+   - `eventDetails` / similar telemetry props — `cdf_category: "state"`.
+3. **Positional/geometric design prop?** (`top`, `bottom`, `left`, `right`, `rotation`, `offset`, `zIndex`) → `classify_prop`, `cdf_type: "string"`, `cdf_category: "design"`.
+4. **Has `tokenReference`?** → `cdf_type: "token"`, resolve `token_kind` via sidecar lookup (see below). This overrides all other heuristics.
+5. **Union of string literals** (e.g. `'a' | 'b' | 'c'`)? → `cdf_type: "enum"`, extract literals into `values`.
+6. **Raw type is `string`** and prop name is `href`, `url`, or clearly a URL? → `cdf_type: "string"`, `cdf_category: "content"`.
+7. **Raw type is `string` / `number` / `boolean`?** → For `boolean`, use `cdf_type: "boolean"` with `default: true` or `false` (native boolean). For `number`, use `cdf_type: "string"` with `default` as the numeric value as a string (e.g. `"0"`). For `string`, use `cdf_type: "string"`.
+8. **Media/image type** (`ImageProps`, `MediaSource`, asset types)? → `cdf_type: "media"`.
+9. **Rich text / markup** (`ReactNode` used as content, HTML string)? → `cdf_type: "richtext"`.
+10. **Complex type — resolve before excluding** (see below).
 
 ---
 
@@ -268,7 +283,7 @@ Input:
     {"name":"variant","type":"'primary'|'secondary'|'ghost'","category":"design","defaultValue":"'primary'"},
     {"name":"disabled","type":"boolean","category":"design"},
     {"name":"onClick","type":"()=>void","category":"state"},
-    {"name":"className","type":"string","category":"design"}
+    {"name":"className","type":"string"}
   ],
   "slots": [{"name":"icon","description":"Optional leading icon"}]
 }
@@ -286,8 +301,8 @@ disabled is a boolean state prop — raw category says design, correcting to sta
 {"tool":"classify_prop","prop":"disabled","cdf_type":"boolean","cdf_category":"state","required":false,"default":false,"description":"Disables the button"}
 onClick is an event handler — framework internal
 {"tool":"exclude_prop","prop":"onClick","reason":"event handler — framework internal"}
-className is a CSS design escape hatch — classify as string/design
-{"tool":"classify_prop","prop":"className","cdf_type":"string","cdf_category":"design","required":false,"description":"CSS class override"}
+className is a DOM pass-through — developers wire CSS, marketers never set this
+{"tool":"exclude_prop","prop":"className","reason":"DOM pass-through — not a marketer-configurable surface"}
 icon slot is clearly optional (decorative leading icon)
 {"tool":"classify_slot","slot":"icon","required":false,"description":"Optional leading icon"}
 ```
@@ -337,7 +352,7 @@ Before emitting any tool calls, verify:
 5. Every `cdf_type: "token"` has `token_kind` (or a warning in `description` if lookup failed)
 6. No `cdf_type: "link"` — all href/url props use `string`
 7. `required` values are JSON booleans, not strings
-8. Framework internals (`ref`, event handlers, test IDs) are excluded — `className`, `style`, and `styles` are classified as `string` design props; discrete positional/geometric props (`top`, `bottom`, `left`, `right`, `rotation`, etc.) are also classified
+8. Framework, DOM, accessibility, and data-* pass-through props are excluded — `className`/`classes`/`classNames`/`rootClassName`/`prefixCls`, `style`, `id`, `role`, `tabIndex`, `name` (bare HTML form attribute), `aria-*` (and bare `aria`), `data-*`, polymorphic `as`/`element`/`component`, framework theming `dt`/`pt`/`ptOptions`/`unstyled`/`sx`. Discrete positional/geometric props (`top`, `bottom`, `left`, `right`, `rotation`, etc.) ARE classified as `string` design props. Common semantic props (`icon`, `items`, `actions`, `options`, `value`, `form`, `inputId`, `componentId`) are NOT excluded — classify them per their content/design/state nature.
 9. No `cdf_type: "link"` used — `link` is reserved and rejected by the CLI parser
 10. No `cdf_type: "number"` used — this is not a supported type; use `"string"` with numeric defaults. `cdf_type: "boolean"` IS valid — use it for boolean toggle props.
 

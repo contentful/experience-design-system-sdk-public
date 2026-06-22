@@ -70,19 +70,133 @@ describe('preClassifyProp', () => {
     });
   });
 
-  describe('Rule 6: className, style, styles', () => {
-    it('classifies className as design', () => {
+  describe('Rule 6: DOM / a11y / framework pass-through props', () => {
+    it('excludes className', () => {
       expect(preClassifyProp(makeProp({ name: 'className', type: 'string' }))).toEqual({
-        category: 'design',
-        cdfTypeHint: 'string',
+        category: 'exclude',
       });
     });
 
-    it('classifies style as design', () => {
+    it('excludes style', () => {
       expect(preClassifyProp(makeProp({ name: 'style', type: 'React.CSSProperties' }))).toEqual({
-        category: 'design',
-        cdfTypeHint: 'string',
+        category: 'exclude',
       });
+    });
+
+    it('excludes styles', () => {
+      expect(preClassifyProp(makeProp({ name: 'styles', type: 'object' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes id', () => {
+      expect(preClassifyProp(makeProp({ name: 'id', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes role', () => {
+      expect(preClassifyProp(makeProp({ name: 'role', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes tabIndex', () => {
+      expect(preClassifyProp(makeProp({ name: 'tabIndex', type: 'number' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes name (HTML form name attribute)', () => {
+      expect(preClassifyProp(makeProp({ name: 'name', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes htmlFor', () => {
+      expect(preClassifyProp(makeProp({ name: 'htmlFor', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes aria-label', () => {
+      expect(preClassifyProp(makeProp({ name: 'aria-label', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes ariaLabel (camel form)', () => {
+      expect(preClassifyProp(makeProp({ name: 'ariaLabel', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes any data-* attribute', () => {
+      expect(preClassifyProp(makeProp({ name: 'data-tracking-id', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes bare aria prop (object aria-attributes bag)', () => {
+      expect(preClassifyProp(makeProp({ name: 'aria', type: 'AriaAttributes' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes className-shaped variants (rootClassName, classNames, prefixCls, classes)', () => {
+      expect(preClassifyProp(makeProp({ name: 'rootClassName', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+      expect(preClassifyProp(makeProp({ name: 'classNames', type: 'Record<string, string>' }))).toEqual({
+        category: 'exclude',
+      });
+      expect(preClassifyProp(makeProp({ name: 'prefixCls', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+      expect(preClassifyProp(makeProp({ name: 'classes', type: 'Record<string, string>' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes polymorphic component props (as, element, component)', () => {
+      expect(preClassifyProp(makeProp({ name: 'as', type: 'ElementType' }))).toEqual({
+        category: 'exclude',
+      });
+      expect(preClassifyProp(makeProp({ name: 'element', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+      expect(preClassifyProp(makeProp({ name: 'component', type: 'ElementType' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes Vue v-model internals (modelValue, modelModifiers)', () => {
+      expect(preClassifyProp(makeProp({ name: 'modelValue', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+      expect(preClassifyProp(makeProp({ name: 'modelModifiers', type: 'object' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('excludes vendor QA attributes (dataQa, data-qa)', () => {
+      expect(preClassifyProp(makeProp({ name: 'dataQa', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+      expect(preClassifyProp(makeProp({ name: 'data-qa', type: 'string' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
+    it('does NOT exclude unrelated names that contain "name"', () => {
+      // "fileName" is a content prop — only the bare "name" attribute is excluded
+      expect(preClassifyProp(makeProp({ name: 'fileName', type: 'string' }))?.category).not.toBe('exclude');
+    });
+
+    it('does NOT exclude props that merely start with "data" but are not data-* attrs', () => {
+      // "dataset" or "dataSource" should not be touched
+      expect(preClassifyProp(makeProp({ name: 'dataset', type: 'string' }))?.category).not.toBe('exclude');
+      expect(preClassifyProp(makeProp({ name: 'dataSource', type: 'string' }))?.category).not.toBe('exclude');
     });
   });
 
