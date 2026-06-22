@@ -1185,6 +1185,7 @@ export function applyScopeDecisions(
   sessionId: string,
   decisions: { accepted: string[]; rejected: string[] },
 ): void {
+  const now = new Date().toISOString();
   const accepted = [...new Set(decisions.accepted)];
   if (accepted.length > 0) {
     const placeholders = accepted.map(() => '?').join(',');
@@ -1195,7 +1196,7 @@ export function applyScopeDecisions(
   // Rejected components are intentionally left at status='extracted'.
   // loadCDFComponents only picks up status='generated', so this is sufficient
   // to exclude them from generate / push without a destructive write.
-  db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), sessionId);
+  db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 }
 
 export function storeDTCGTokens(

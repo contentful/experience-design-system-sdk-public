@@ -92,4 +92,20 @@ describe('applyScopeDecisions', () => {
       expect(readStatuses(dbPath, s2).Shared).toBe('extracted');
     });
   });
+
+  it('lets accepted win when a name appears in both accepted and rejected', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+        inputPath: '/proj',
+      });
+      storeRawComponents(db, sessionId, [makeComponent('Foo')], { status: 'extracted' });
+
+      applyScopeDecisions(db, sessionId, { accepted: ['Foo'], rejected: ['Foo'] });
+
+      db.close();
+      expect(readStatuses(dbPath, sessionId)).toEqual({ Foo: 'generated' });
+    });
+  });
 });
