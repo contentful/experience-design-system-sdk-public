@@ -126,6 +126,17 @@ export function GenerateReviewStep({
     onResult: handleLivePreviewResult,
   });
 
+  // Manual spinner cycling (no extra dep) for the sidebar status-row
+  // indicator. Runs only while the live-preview hook reports `running`.
+  const SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
+  const [spinnerTick, setSpinnerTick] = useState(0);
+  useEffect(() => {
+    if (livePreviewHook.status !== 'running') return;
+    const id = setInterval(() => setSpinnerTick((t) => t + 1), 80);
+    return () => clearInterval(id);
+  }, [livePreviewHook.status]);
+  const livePreviewSpinner = SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length];
+
   useEffect(() => {
     async function load() {
       const db = openPipelineDb();
@@ -451,6 +462,10 @@ export function GenerateReviewStep({
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel  [q] quit'
                     : '  [Tab] focus list  ' + (showJson ? '(JSON view)' : '(edit fields)')}
+                  {livePreviewHook.status === 'running' && (
+                    <Text>{`  ${livePreviewSpinner} live preview`}</Text>
+                  )}
+                  {livePreviewHook.disabled && <Text>{'  · live preview disabled'}</Text>}
                 </Text>
               </>
             ) : (

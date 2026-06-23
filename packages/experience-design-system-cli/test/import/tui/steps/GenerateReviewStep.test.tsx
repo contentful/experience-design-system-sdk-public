@@ -32,6 +32,9 @@ const triggerSpy = vi.fn();
 let lastUseLivePreviewArgs: unknown = null;
 let lastOnResult: ((r: import('@contentful/experience-design-system-types').ServerPreviewResponse | null) => void) | null =
   null;
+// Mutable hook-return state used by Task 5 tests (declared up here so the
+// hoisted vi.mock factory below can reference it without TDZ at call time).
+let hookReturnOverride: { trigger: () => void; status: 'idle' | 'running'; disabled: boolean } | null = null;
 vi.mock('../../../../src/import/tui/useLivePreview.js', () => ({
   useLivePreview: (args: {
     enabled: boolean;
@@ -39,7 +42,10 @@ vi.mock('../../../../src/import/tui/useLivePreview.js', () => ({
   }) => {
     lastUseLivePreviewArgs = args;
     lastOnResult = args.onResult;
-    return { trigger: triggerSpy, status: 'idle' as const, disabled: false };
+    // hookReturnOverride is mutated by Task 5 tests via the shared state above;
+    // when null, the default idle/non-disabled return is used.
+    // eslint-disable-next-line @typescript-eslint/no-use-before-define
+    return hookReturnOverride ?? { trigger: triggerSpy, status: 'idle' as const, disabled: false };
   },
 }));
 
@@ -408,5 +414,41 @@ describe('GenerateReviewStep — Feature 2 live-preview wiring', () => {
     // the field plumbing is the assertion).
     expect(VALID_DRAFT).toBeTypeOf('string');
     expect(lastFrame() ?? '').toMatch(/Button/);
+  });
+});
+
+describe('GenerateReviewStep — Feature 2 spinner indicator', () => {
+  beforeEach(() => {
+    hookReturnOverride = null;
+  });
+
+  it('shows "live preview" + spinner glyph in the status row when status is running', async () => {
+    hookReturnOverride = { trigger: vi.fn(), status: 'running', disabled: false };
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/live preview/);
+  });
+
+  it('shows "live preview disabled" in dim text when hook reports disabled', async () => {
+    hookReturnOverride = { trigger: vi.fn(), status: 'idle', disabled: true };
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/live preview disabled/);
+  });
+
+  it('does NOT render any "live preview" indicator when idle and not disabled', async () => {
+    hookReturnOverride = { trigger: vi.fn(), status: 'idle', disabled: false };
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/live preview/);
   });
 });
