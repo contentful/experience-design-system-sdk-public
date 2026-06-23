@@ -1305,3 +1305,191 @@ describe('FieldEditor — empty-properties warning (Bug 2, INTEG-4257)', () => {
     expect(frame).toMatch(/No properties classified/i);
   });
 });
+
+describe('FieldEditor — Feature 1 (rationale + source view)', () => {
+  it('renders LLM rationale inline below description (dim, prefixed ~)', async () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={{
+          sourcePath: '/proj/Hero.tsx',
+          componentSource: '',
+          props: {
+            title: { rationale: 'inferred enum from named type ButtonVariant' },
+          },
+        }}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('~ inferred enum from named type ButtonVariant');
+  });
+
+  it('rationale is non-navigable — j/k from prop row does not land on it', async () => {
+    const { lastFrame, stdin } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={{
+          props: { title: { rationale: 'reasoning' } },
+        }}
+      />,
+    );
+    stdin.write('\r'); // Return → first field (type)
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Rationale row remains rendered; it is not a focusable field.
+    expect(frame).toContain('~ reasoning');
+  });
+
+  it('opens the source-view panel on `s` and renders the captured line slice', async () => {
+    const { lastFrame, stdin } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={{
+          sourcePath: '/proj/Hero.tsx',
+          componentSource: ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10'].join('\n'),
+          props: { title: { sourceStartLine: 3, sourceEndLine: 5, rationale: null } },
+        }}
+      />,
+    );
+    stdin.write('s');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('/proj/Hero.tsx');
+    expect(frame).toContain('lines 3');
+    expect(frame).toContain('L3');
+    expect(frame).toContain('L4');
+    expect(frame).toContain('L5');
+    expect(frame).not.toContain('L2');
+    expect(frame).not.toContain('L6');
+  });
+
+  it('toggles the source panel closed on a second `s`', async () => {
+    const { lastFrame, stdin } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={{
+          sourcePath: '/proj/Hero.tsx',
+          componentSource: 'A\nB\nC',
+          props: { title: { sourceStartLine: 1, sourceEndLine: 1 } },
+        }}
+      />,
+    );
+    stdin.write('s');
+    await tick();
+    expect(lastFrame() ?? '').toContain('/proj/Hero.tsx');
+    stdin.write('s');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/lines 1/);
+  });
+
+  it('Esc while panel is open closes panel and does not bubble to onExit', async () => {
+    const onExit = vi.fn();
+    const onDiscard = vi.fn();
+    const { stdin } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={onDiscard}
+        onExit={onExit}
+        metadata={{
+          sourcePath: '/proj/Hero.tsx',
+          componentSource: 'A',
+          props: { title: { sourceStartLine: 1, sourceEndLine: 1 } },
+        }}
+      />,
+    );
+    stdin.write('s');
+    await tick();
+    stdin.write(''); // Esc
+    await tick();
+    expect(onExit).not.toHaveBeenCalled();
+    expect(onDiscard).not.toHaveBeenCalled();
+  });
+
+  it('renders "(no source location captured)" when sourceStartLine is missing', async () => {
+    const { lastFrame, stdin } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={{
+          sourcePath: '/proj/Hero.tsx',
+          componentSource: 'A\nB',
+          props: { title: {} },
+        }}
+      />,
+    );
+    stdin.write('s');
+    await tick();
+    expect(lastFrame() ?? '').toContain('no source location captured');
+  });
+
+  it('renders "<unknown source path>" when sourcePath is missing', async () => {
+    const { lastFrame, stdin } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={{
+          componentSource: 'A\nB',
+          props: { title: { sourceStartLine: 1, sourceEndLine: 1 } },
+        }}
+      />,
+    );
+    stdin.write('s');
+    await tick();
+    expect(lastFrame() ?? '').toContain('<unknown source path>');
+  });
+
+  it('renders without metadata (backwards compatible)', async () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    // Component still renders normally; no rationale row.
+    expect(frame).toContain('title');
+    expect(frame).not.toContain('~ ');
+  });
+});

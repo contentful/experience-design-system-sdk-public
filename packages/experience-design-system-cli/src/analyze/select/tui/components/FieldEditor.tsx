@@ -14,6 +14,24 @@ import { useImmediateInput } from '../hooks/useImmediateInput.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+/** Per-prop / per-component metadata captured by the extractor + generate phase.
+ * Optional; when omitted, the FieldEditor renders without rationale/source
+ * affordances (backwards-compatible with mounts that pre-date Feature 1). */
+export type PropMetadata = {
+  rationale?: string | null;
+  sourceStartLine?: number | null;
+  sourceEndLine?: number | null;
+};
+
+export type FieldEditorMetadata = {
+  /** Absolute path to the component's source file. Null/undefined = unknown. */
+  sourcePath?: string | null;
+  /** Full source text of the component (used by the source-view panel). */
+  componentSource?: string | null;
+  /** Per-prop metadata keyed by prop name. */
+  props?: Record<string, PropMetadata>;
+};
+
 type FieldEditorProps = {
   value: string;
   width: number;
@@ -36,6 +54,8 @@ type FieldEditorProps = {
    * row-level Esc falls back to onDiscard for backward compatibility.
    */
   onExit?: () => void;
+  /** Feature 1: source code + LLM rationale metadata. Optional. */
+  metadata?: FieldEditorMetadata;
 };
 
 /**
@@ -339,6 +359,8 @@ function PropRow({
   editingValue,
   valueText,
   width,
+  rationale,
+  rowKey,
 }: {
   prop: PropState;
   selected: boolean;
@@ -349,6 +371,10 @@ function PropRow({
   editingValue: { mode: 'add' | 'edit'; index?: number } | null;
   valueText: string;
   width: number;
+  /** Feature 1: LLM rationale rendered inline below the description. */
+  rationale?: string | null;
+  /** Feature 1: stable key fragment used for the rationale React key. */
+  rowKey?: string;
 }): React.ReactElement {
   const cursor = cursorVisible ? '█' : ' ';
   const bg = selected ? 'blue' : undefined;
@@ -433,6 +459,22 @@ function PropRow({
         <Box paddingLeft={2} gap={1}>
           <Text dimColor>desc:</Text>
           <Text color="green">{prop.description || '—'}</Text>
+        </Box>
+      )}
+
+      {/* Feature 1: LLM rationale — rendered inline below description, dim,
+          non-navigable. Truncated at width − 8 chars. Always visible (no key).
+          The rationale is the LLM's internal reasoning slot; description above
+          remains the customer-facing copy. */}
+      {selected && rationale && rationale.trim().length > 0 && (
+        <Box paddingLeft={2} key={rowKey ? `rationale-${rowKey}` : undefined}>
+          <Text dimColor>
+            {(() => {
+              const max = Math.max(8, width - 8);
+              const text = `~ ${rationale}`;
+              return text.length > max ? text.slice(0, max - 1) + '…' : text;
+            })()}
+          </Text>
         </Box>
       )}
 
@@ -619,6 +661,7 @@ export function FieldEditor({
   onSave,
   onDiscard,
   onExit,
+  metadata,
 }: FieldEditorProps): React.ReactElement {
   const { state: initialState, error: parseError } = parseToState(value);
 
@@ -677,6 +720,10 @@ export function FieldEditor({
 
   const [validationError, setValidationError] = useState<string | null>(null);
   const [cursorVisible] = useState(true);
+
+  // Feature 1: source-view panel toggle. Opens with `s`, closes with `s` or Esc.
+  // When open, Esc closes the panel only (does not bubble to onExit).
+  const [sourceOpen, setSourceOpen] = useState(false);
 
   const props = editorState.props;
   const slots = editorState.slots;
@@ -748,6 +795,33 @@ export function FieldEditor({
       onSave();
       return;
     }
+
+    // ── Feature 1: source-view panel toggle ─────────────────────────────────
+    // `s` (without Ctrl) opens/closes the source-view panel. Skip when in
+    // inline text-entry contexts (description text-entry, value-list edit).
+    // Description text-entry is gated by focusLevel === 'field' && activeField
+    // === 'description' — we guard against typing 's' as a literal there.
+    const inDescriptionTextEntry =
+      focusLevel === 'field' && (activeField === 'description');
+    const inComponentDescTextEntry =
+      focusLevel === 'field' && inComponentDesc && (activeField === 'description');
+    if (
+      input === 's' &&
+      !key.ctrl &&
+      !key.meta &&
+      !inDescriptionTextEntry &&
+      !inComponentDescTextEntry
+    ) {
+      setSourceOpen((o) => !o);
+      return;
+    }
+
+    // ── Esc when source panel is open: close panel only, do not bubble ─────
+    if (key.escape && sourceOpen) {
+      setSourceOpen(false);
+      return;
+    }
+
     if (key.escape) {
       if (focusLevel === 'field') {
         // Exit field editing back to prop/slot/component-description row level
@@ -1342,6 +1416,7 @@ export function FieldEditor({
           if (row.kind === 'prop') {
             const p = props[row.idx]!;
             const isSelected = !inSlots && !inComponentDesc && row.idx === propIdx;
+            const propMeta = metadata?.props?.[p.name];
             return (
               <PropRow
                 key={`prop-${row.idx}`}
@@ -1354,6 +1429,8 @@ export function FieldEditor({
                 editingValue={isSelected ? editingValue : null}
                 valueText={isSelected ? valueText : ''}
                 width={innerWidth}
+                rationale={propMeta?.rationale ?? null}
+                rowKey={String(row.idx)}
               />
             );
           }
@@ -1376,6 +1453,40 @@ export function FieldEditor({
           );
         })}
       </Box>
+
+      {/* Feature 1: source-view panel — toggled by `s`. Slices componentSource
+          to the captured per-prop line range; falls back to a friendly notice
+          when source location is missing. */}
+      {sourceOpen &&
+        (() => {
+          const propMeta = !inSlots && !inComponentDesc && currentProp ? metadata?.props?.[currentProp.name] : undefined;
+          const start = propMeta?.sourceStartLine ?? null;
+          const end = propMeta?.sourceEndLine ?? null;
+          const path = metadata?.sourcePath ?? null;
+          const src = metadata?.componentSource ?? null;
+          const headerPath = path ?? '<unknown source path>';
+          if (!start || !end || !src) {
+            return (
+              <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
+                <Text dimColor bold>{`source: ${headerPath}`}</Text>
+                <Text dimColor>(no source location captured for this prop)</Text>
+                <Text dimColor>[s] close</Text>
+              </Box>
+            );
+          }
+          const lines = src.split('\n').slice(Math.max(0, start - 1), end);
+          return (
+            <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
+              <Text dimColor bold>{`${headerPath}: lines ${start}–${end}`}</Text>
+              {lines.map((ln, i) => (
+                <Text key={`source-line-${i}`} dimColor>
+                  {ln}
+                </Text>
+              ))}
+              <Text dimColor>[s] close · [Esc] close</Text>
+            </Box>
+          );
+        })()}
 
       {validationError && <Text color="red">{'✗ ' + validationError}</Text>}
       <Text dimColor>{modeLabel}</Text>
