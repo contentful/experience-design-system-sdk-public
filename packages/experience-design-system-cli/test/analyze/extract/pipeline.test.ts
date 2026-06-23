@@ -47,6 +47,61 @@ defineProps<{ title: string }>();
     expect(result.components.find((c) => c.name === 'Card')).toBeDefined();
   });
 
+  it('routes .svelte files through the Svelte extractor', async () => {
+    const reactFile = await writeFixture(
+      'Card.tsx',
+      `
+      export function Card({ title }: { title: string }) {
+        return <div>{title}</div>;
+      }
+    `,
+    );
+    const svelteFile = await writeFixture(
+      'Button.svelte',
+      `
+<script lang="ts">
+  interface Props { label: string; disabled?: boolean }
+  let { label, disabled = false }: Props = $props();
+</script>
+<button {disabled}>{label}</button>
+    `,
+    );
+
+    const result = await extractComponents([reactFile, svelteFile]);
+    expect(result.components).toHaveLength(2);
+    const button = result.components.find((c) => c.name === 'Button')!;
+    expect(button.framework).toBe('svelte');
+    expect(button.props.find((p) => p.name === 'label')!.required).toBe(true);
+    const card = result.components.find((c) => c.name === 'Card')!;
+    expect(card.framework).toBe('react');
+  });
+
+  it('dedupes same-named components across Svelte and React in the same package by path preference', async () => {
+    const svelteFile = await writeFixture(
+      'packages/ui/src/components/Button/Button.svelte',
+      `
+<script lang="ts">
+  interface Props { label: string }
+  let { label }: Props = $props();
+</script>
+<button>{label}</button>
+    `,
+    );
+    const reactFile = await writeFixture(
+      'packages/ui/src/components/Button/Button.tsx',
+      `
+      export function Button({ label }: { label: string }) {
+        return <button>{label}</button>;
+      }
+    `,
+    );
+
+    const result = await extractComponents([svelteFile, reactFile]);
+    // Same name + same package → dedup. Path-preference picks one;
+    // we just assert exactly one Button survives.
+    expect(result.components.filter((c) => c.name === 'Button')).toHaveLength(1);
+  });
+
   it('routes Vue TSX files through the Vue TSX extractor without duplicating React results', async () => {
     const reactFile = await writeFixture(
       'Button.tsx',
