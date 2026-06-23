@@ -77,7 +77,7 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 ```
 {"tool":"classify_component","description":"<required: one-sentence description of the component>"}
 
-{"tool":"classify_prop","prop":"<propName>","cdf_type":"<type>","cdf_category":"<category>","required":<bool>,"description":"<reason>","values":["a","b"],"token_kind":"color","default":"<value>"}
+{"tool":"classify_prop","prop":"<propName>","cdf_type":"<type>","cdf_category":"<category>","required":<bool>,"description":"<short customer-facing description>","reason":"<full internal rationale; not customer-facing>","values":["a","b"],"token_kind":"color","default":"<value>"}
 
 {"tool":"exclude_prop","prop":"<propName>","reason":"<why excluded>"}
 
@@ -92,7 +92,8 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 - `values` is required for `cdf_type: "enum"` — must be a non-empty string array.
 - `token_kind` is required for `cdf_type: "token"` — must be a DTCG `$type` string, e.g. `"color"`.
 - `required` must be a JSON boolean (`true`/`false`), not a string.
-- `description` on `classify_prop` documents your reasoning — always include it.
+- `description` on `classify_prop` is customer-facing — keep it short and subject to the description content rules below.
+- `reason` on `classify_prop` is **required** and is your internal rationale — shown to the developer reviewing the import, never to end-users. Use it to explain your reasoning in detail. The customer-facing description content rules below apply to `description` only, not to `reason`.
 
 **Description content rules (CRITICAL — applies to every `description` field on `classify_component`, `classify_prop`, and `classify_slot`):**
 
