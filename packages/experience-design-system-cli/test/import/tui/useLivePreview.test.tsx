@@ -201,6 +201,31 @@ describe('useLivePreview', () => {
     stderrSpy.mockRestore();
   });
 
+  it('treats 403 the same as 401 — disables for the session', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const { ApiError } = await import('../../../src/apply/api-client.js');
+    runLivePreviewMock.mockRejectedValueOnce(new ApiError('preview failed: 403', 403, ''));
+
+    let api: { trigger: () => void } | null = null;
+    let lastStatus: { status: string; disabled: boolean } | null = null;
+    render(
+      <Harness
+        onMount={(a) => (api = a)}
+        exposeStatus={(s) => {
+          lastStatus = s;
+        }}
+      />,
+    );
+    await flush();
+    api!.trigger();
+    await vi.advanceTimersByTimeAsync(500);
+    await flush();
+    await flush();
+    expect(lastStatus?.disabled).toBe(true);
+    stderrSpy.mockRestore();
+  });
+
   it('on non-401 error: logs to stderr but does not disable', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);

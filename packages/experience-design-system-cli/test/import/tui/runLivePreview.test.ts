@@ -201,6 +201,26 @@ describe('runLivePreview', () => {
     });
   });
 
+  it('re-throws 403 ApiError (caller will downgrade to disabled mode)', async () => {
+    await withTempDb(async ({ dbPath }) => {
+      const sessionId = seed(dbPath);
+      const { ApiError } = await import('../../../src/apply/api-client.js');
+      previewImportMock.mockRejectedValueOnce(new ApiError('preview failed: 403', 403, ''));
+      const { runLivePreview } = await import('../../../src/import/tui/runLivePreview.js');
+      await expect(
+        runLivePreview({
+          sessionId,
+          tokensPath: '',
+          spaceId: 'sp',
+          environmentId: 'master',
+          cmaToken: 't',
+          host: 'h',
+          generation: 1,
+        }),
+      ).rejects.toMatchObject({ status: 403 });
+    });
+  });
+
   it('preserves the generation token through to the result', async () => {
     await withTempDb(async ({ dbPath }) => {
       const sessionId = seed(dbPath);
