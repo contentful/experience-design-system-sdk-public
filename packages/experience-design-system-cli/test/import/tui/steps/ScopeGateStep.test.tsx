@@ -282,6 +282,41 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
     expect(arg.rejected).toEqual(expect.arrayContaining(['BadgeIcon', 'DivWrapper']));
   });
 
+  it('q during auto-filter running calls onCancelAutoFilter, not onQuit', () => {
+    const onQuit = vi.fn();
+    const onCancelAutoFilter = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep
+        components={MIXED}
+        onConfirm={() => {}}
+        onQuit={onQuit}
+        aiFilterStatus="running"
+        aiFilterProgress={{ done: 1, total: 5 }}
+        onCancelAutoFilter={onCancelAutoFilter}
+      />,
+    );
+    stdin.write('q');
+    expect(onCancelAutoFilter).toHaveBeenCalledTimes(1);
+    expect(onQuit).not.toHaveBeenCalled();
+  });
+
+  it('q after auto-filter completes calls onQuit (existing behavior)', () => {
+    const onQuit = vi.fn();
+    const onCancelAutoFilter = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep
+        components={MIXED}
+        onConfirm={() => {}}
+        onQuit={onQuit}
+        aiFilterStatus="complete"
+        onCancelAutoFilter={onCancelAutoFilter}
+      />,
+    );
+    stdin.write('q');
+    expect(onQuit).toHaveBeenCalledTimes(1);
+    expect(onCancelAutoFilter).not.toHaveBeenCalled();
+  });
+
   it('shows yellow banner when ALL components are AI-rejected', () => {
     const allRejected = [
       { name: 'A', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: 'r1' },

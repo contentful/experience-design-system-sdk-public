@@ -38,6 +38,7 @@ export function ScopeGateStep({
   aiFilterStatus = 'idle',
   aiFilterProgress = null,
   aiFilterError = null,
+  onCancelAutoFilter,
 }: ScopeGateStepProps): React.ReactElement {
   // Partition into AI-rejected (sidebar above) and main list. Excluded list is
   // computed once per `components` prop change; the operator's later moves
@@ -80,6 +81,13 @@ export function ScopeGateStep({
 
   useImmediateInput((input, key) => {
     if (input === 'q' || key.escape) {
+      // Feature 3: while auto-filter is running, q cancels the LLM run instead
+      // of quitting the wizard. After completion (or if no auto-filter ran), q
+      // falls back to the existing wizard-quit behavior.
+      if (aiFilterStatus === 'running' && onCancelAutoFilter) {
+        onCancelAutoFilter();
+        return;
+      }
       onQuit();
       return;
     }
