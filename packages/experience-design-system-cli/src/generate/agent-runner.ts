@@ -21,6 +21,8 @@ export interface ClassifyPropCall {
   required?: boolean;
   description?: string;
   default?: string | boolean;
+  /** Internal LLM rationale; not customer-facing. Persisted to raw_props.rationale. */
+  reason?: string;
 }
 
 export interface ExcludePropCall {
@@ -198,6 +200,7 @@ export function parseToolCallLines(stdout: string): ParsedToolCalls {
       if (typeof rec.required === 'boolean') call.required = rec.required;
       if (typeof rec.description === 'string') call.description = rec.description;
       if (typeof rec.default === 'string' || typeof rec.default === 'boolean') call.default = rec.default;
+      if (typeof rec.reason === 'string') call.reason = rec.reason;
       calls.push(call);
     } else if (tool === 'exclude_prop') {
       if (typeof rec.prop !== 'string' || !rec.prop) {
