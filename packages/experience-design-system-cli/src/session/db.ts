@@ -296,11 +296,11 @@ export function applyToolCalls(
   let slots = 0;
 
   const updateProp = db.prepare(
-    `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?
+    `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?, rationale = ?
      WHERE session_id = ? AND component_id = ? AND name = ?`,
   );
   const clearProp = db.prepare(
-    `UPDATE raw_props SET cdf_type = 'excluded', cdf_category = NULL, cdf_token_kind = NULL
+    `UPDATE raw_props SET cdf_type = 'excluded', cdf_category = NULL, cdf_token_kind = NULL, rationale = ?
      WHERE session_id = ? AND component_id = ? AND name = ?`,
   );
   const deleteAllowedValues = db.prepare(
@@ -339,6 +339,7 @@ export function applyToolCalls(
           call.token_kind ?? null,
           call.required !== undefined ? (call.required ? 1 : 0) : 0,
           call.description ?? null,
+          call.reason ?? null,
           sessionId,
           componentId,
           call.prop,
@@ -359,7 +360,7 @@ export function applyToolCalls(
         }
         classified++;
       } else if (call.tool === 'exclude_prop') {
-        clearProp.run(sessionId, componentId, call.prop);
+        clearProp.run(call.reason || null, sessionId, componentId, call.prop);
         excluded++;
       } else if (call.tool === 'classify_slot') {
         const slotRequired = call.required !== undefined ? (call.required ? 1 : 0) : 1;
