@@ -120,6 +120,8 @@ function extractProps(classDecl: ClassDeclaration): RawPropDefinition[] {
       ...(defaultValue !== undefined && { defaultValue }),
       ...(description && { description }),
       ...(allowedValues && { allowedValues }),
+      sourceStartLine: property.getStartLineNumber(),
+      sourceEndLine: property.getEndLineNumber(),
     });
   }
 
@@ -277,6 +279,7 @@ function extractFromSourceFile(sourceFile: SourceFile, warnings: string[]): RawC
     components.push({
       name,
       source: sourceFile.getFilePath(),
+      sourcePath: sourceFile.getFilePath(),
       framework: 'stencil',
       props,
       slots,
