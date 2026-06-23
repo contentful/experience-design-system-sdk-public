@@ -104,6 +104,7 @@ export function registerImportCommand(program: Command): void {
             initialProjectPath?: string;
             host?: string;
             autoAcceptScope?: boolean;
+            noCache?: boolean;
           };
           const creds = await readExperiencesCredentials();
           const { waitUntilExit } = render(
@@ -116,6 +117,7 @@ export function registerImportCommand(program: Command): void {
               initialProjectPath: opts.project !== '.' ? resolve(opts.project) : undefined,
               host: opts.host,
               autoAcceptScope,
+              noCache: opts.cache === false,
             }),
           );
           await waitUntilExit();
