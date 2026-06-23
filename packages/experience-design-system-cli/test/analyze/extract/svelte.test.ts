@@ -490,6 +490,104 @@ export interface ButtonProps {
     expect(c.props.find((p) => p.name === 'multiple')!.defaultValue).toBeUndefined();
   });
 
+  // ---------------------------------------------------------------------------
+  // INTEG-4273: extends / intersection / Omit / Pick / Partial resolution
+  // ---------------------------------------------------------------------------
+
+  it('resolves props from a local interface that extends another local interface', async () => {
+    const filePath = await writeFixture(
+      'Extended.svelte',
+      `
+<script lang="ts">
+  interface Base {
+    /** Base id */
+    id: string;
+    /** Common toggle */
+    enabled?: boolean;
+  }
+  interface Props extends Base {
+    /** Extended-only label */
+    label: string;
+  }
+  let { id, enabled = true, label }: Props = $props();
+</script>
+<div>{id}{label}</div>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath]);
+    const c = result.components[0]!;
+    const names = c.props.map((p) => p.name).sort();
+    expect(names).toEqual(['enabled', 'id', 'label']);
+    const id = c.props.find((p) => p.name === 'id')!;
+    expect(id.type).toBe('string');
+    expect(id.required).toBe(true);
+    expect(id.description).toBe('Base id');
+    const enabled = c.props.find((p) => p.name === 'enabled')!;
+    expect(enabled.required).toBe(false);
+    expect(enabled.defaultValue).toBe('true');
+  });
+
+  it('resolves Omit<T, K> in extends', async () => {
+    const filePath = await writeFixture(
+      'OmitExt.svelte',
+      `
+<script lang="ts">
+  interface Base { id: string; secret: string; label: string }
+  interface Props extends Omit<Base, 'secret'> {}
+  let { id, label }: Props = $props();
+</script>
+<div>{id}{label}</div>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath]);
+    const c = result.components[0]!;
+    const names = c.props.map((p) => p.name).sort();
+    expect(names).toEqual(['id', 'label']);
+    expect(names).not.toContain('secret');
+  });
+
+  it('resolves intersection types', async () => {
+    const filePath = await writeFixture(
+      'Intersect.svelte',
+      `
+<script lang="ts">
+  type A = { a: string };
+  type B = { b: number };
+  let { a, b }: A & B = $props();
+</script>
+<div>{a}{b}</div>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath]);
+    const c = result.components[0]!;
+    const names = c.props.map((p) => p.name).sort();
+    expect(names).toEqual(['a', 'b']);
+    expect(c.props.find((p) => p.name === 'a')!.type).toBe('string');
+    expect(c.props.find((p) => p.name === 'b')!.type).toBe('number');
+  });
+
+  it('resolves Partial<T> wrapping (every prop becomes optional)', async () => {
+    const filePath = await writeFixture(
+      'PartialProps.svelte',
+      `
+<script lang="ts">
+  interface Base { id: string; label: string }
+  type Props = Partial<Base>;
+  let { id, label }: Props = $props();
+</script>
+<div>{id}{label}</div>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath]);
+    const c = result.components[0]!;
+    expect(c.props.find((p) => p.name === 'id')!.required).toBe(false);
+    expect(c.props.find((p) => p.name === 'label')!.required).toBe(false);
+  });
+
   it('extracts component name from filename, not interface name', async () => {
     const filePath = await writeFixture(
       'Avatar/index.svelte',

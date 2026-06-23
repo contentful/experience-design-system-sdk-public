@@ -268,7 +268,7 @@ async function extractPropsFromCall(ctx: PropsCallContext): Promise<PropsExtract
 
   // Resolve the type members once (works for both ObjectPattern and Identifier id forms).
   const typeMembers = annotation
-    ? await resolveTypeMembers(annotation, ctx.instance, ctx.moduleScript, ctx.filePath)
+    ? await resolveTypeMembers(annotation, ctx.instance, ctx.moduleScript, ctx.filePath, ctx.source)
     : null;
 
   if (idType === 'ObjectPattern') {
@@ -306,6 +306,7 @@ async function resolveTypeMembers(
   instance: AstNode,
   moduleScript: AstNode | undefined,
   filePath: string,
+  source: string,
 ): Promise<ResolvedTypeMember[] | null> {
   // Snippet imports may live in either script block; collect from both.
   const snippetLocals = mergeSets(
@@ -313,31 +314,163 @@ async function resolveTypeMembers(
     moduleScript ? collectSnippetImportLocals(moduleScript) : new Set<string>(),
   );
 
-  // Inline type literal: `: { foo: string; ... }`
+  // Fast path 1: inline type literal with no extends/intersection. The AST already
+  // gives us member-level optional/type/JSDoc; no ts-morph needed.
   if (annotation.type === 'TSTypeLiteral') {
     return readMembersFromTypeLiteral(annotation, snippetLocals);
   }
 
-  // Named ref: `: Props` (or `: ButtonProps as Props` via aliasing — covered by the ref name).
+  // For named refs: try the AST fast path first (inline interface or type literal alias
+  // with no heritage clauses). If that returns >0 members AND the source declaration has
+  // no extends, we trust it. Otherwise fall back to ts-morph type-checker resolution to
+  // pick up extends / Omit / intersection / Partial / generics.
   if (annotation.type === 'TSTypeReference') {
     const refName = ((annotation['typeName'] as AstNode | undefined)?.['name'] as string | undefined) ?? null;
-    if (!refName) return null;
-
-    // Look in the instance + module scripts for a local interface/type alias named refName.
-    const local = findLocalTypeDeclaration(instance, refName, moduleScript);
-    if (local) {
-      return readMembersFromInterfaceOrAlias(local, snippetLocals);
+    if (refName) {
+      const local = findLocalTypeDeclaration(instance, refName, moduleScript);
+      if (local) {
+        const fastPathMembers = readMembersFromInterfaceOrAlias(local, snippetLocals);
+        if (fastPathMembers.length > 0 && !declarationHasHeritage(local)) {
+          return fastPathMembers;
+        }
+        // Heritage or empty body — fall through to ts-morph resolution.
+      } else {
+        // No local declaration — try import resolution via ts-morph.
+        const imported =
+          (await resolveImportedTypeMembers(refName, instance, filePath)) ??
+          (moduleScript ? await resolveImportedTypeMembers(refName, moduleScript, filePath) : null);
+        if (imported) return imported;
+      }
     }
-
-    // Otherwise: try to resolve the import and read the type from another file via ts-morph.
-    // Imports may live in either script block.
-    return (
-      (await resolveImportedTypeMembers(refName, instance, filePath)) ??
-      (moduleScript ? await resolveImportedTypeMembers(refName, moduleScript, filePath) : null)
-    );
   }
 
-  return null;
+  // Slow path: ts-morph type-checker resolution. Materializes the annotation text as
+  // `type __SveltePropsT__ = <annotation>;` inside an in-memory file containing the
+  // combined script bodies, then reads .getType().getProperties(). The TS checker
+  // resolves extends, &, Omit, Pick, Partial, generics — anything TS itself resolves.
+  return resolveViaTypeChecker(annotation, instance, moduleScript, filePath, source, snippetLocals);
+}
+
+function declarationHasHeritage(decl: AstNode): boolean {
+  if (decl.type === 'TSInterfaceDeclaration') {
+    const ext = decl['extends'] as AstNode[] | undefined;
+    return Array.isArray(ext) && ext.length > 0;
+  }
+  return false;
+}
+
+async function resolveViaTypeChecker(
+  annotation: AstNode,
+  instance: AstNode,
+  moduleScript: AstNode | undefined,
+  filePath: string,
+  source: string,
+  snippetLocals: Set<string>,
+): Promise<ResolvedTypeMember[] | null> {
+  const annotationText = sliceSource(source, annotation);
+  if (!annotationText) return null;
+
+  // Reconstruct the combined script content: module-script first, then instance.
+  // Both bodies share scope in the synthetic file, which is enough for TS to resolve
+  // local interfaces, type aliases, imports, and heritage clauses across them.
+  const moduleText = sliceScriptContent(source, moduleScript);
+  const instanceText = sliceScriptContent(source, instance);
+  const synthetic = [moduleText, instanceText, `type __SveltePropsT__ = ${annotationText};`].filter(Boolean).join('\n');
+
+  const project = new Project({
+    compilerOptions: { strict: false, target: 99, module: 99, allowJs: true, jsx: 1 },
+    useInMemoryFileSystem: false,
+    skipAddingFilesFromTsConfig: true,
+  });
+  // Place the synthetic file alongside the .svelte so relative imports resolve.
+  const syntheticPath = `${filePath}.__svelte-props__.ts`;
+  let sf: import('ts-morph').SourceFile;
+  try {
+    sf = project.createSourceFile(syntheticPath, synthetic, { overwrite: true });
+  } catch {
+    return null;
+  }
+
+  const alias = sf.getTypeAlias('__SveltePropsT__');
+  if (!alias) return null;
+
+  const type = alias.getType();
+  const apparent = type.getApparentType();
+  const properties = apparent.getProperties();
+  if (properties.length === 0) return null;
+
+  const members: ResolvedTypeMember[] = [];
+  for (const symbol of properties) {
+    const name = symbol.getName();
+    const declaration = symbol.getValueDeclaration() ?? symbol.getDeclarations()[0];
+    if (!declaration) continue;
+
+    const propType = symbol.getTypeAtLocation(declaration);
+    let typeText = propType.getText(declaration);
+    // Strip ` | undefined` for clean output on optional props.
+    const optional = symbol.isOptional();
+    if (optional) {
+      typeText = typeText.replace(/\s*\|\s*undefined$/, '').replace(/^undefined\s*\|\s*/, '');
+    }
+
+    const allowed = extractAllowedValuesFromType(propType);
+    const description = readJsDocFromDeclaration(declaration);
+    const isSnippet = isSnippetTypeText(typeText, snippetLocals);
+
+    members.push({
+      name,
+      optional,
+      typeText,
+      isSnippet,
+      ...(allowed ? { allowedValues: allowed } : {}),
+      ...(description ? { description } : {}),
+      // line/endLine: prefer AST-derived location when the source declaration is in our
+      // svelte file. ts-morph's synthetic location refers to the synthetic file and
+      // isn't useful for the user.
+    });
+  }
+  return members;
+}
+
+function sliceSource(source: string, node: AstNode): string | null {
+  const start = (node['start'] as number | undefined) ?? null;
+  const end = (node['end'] as number | undefined) ?? null;
+  if (start == null || end == null) return null;
+  return source.slice(start, end);
+}
+
+function sliceScriptContent(source: string, script: AstNode | undefined): string | null {
+  if (!script) return null;
+  const content = script['content'] as AstNode | undefined;
+  if (!content) return null;
+  return sliceSource(source, content);
+}
+
+function extractAllowedValuesFromType(type: import('ts-morph').Type): string[] | undefined {
+  if (!type.isUnion()) return undefined;
+  const out: string[] = [];
+  for (const t of type.getUnionTypes()) {
+    if (!t.isStringLiteral()) return undefined;
+    out.push(t.getLiteralValueOrThrow() as string);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function readJsDocFromDeclaration(decl: import('ts-morph').Node): string | undefined {
+  if (Node.isPropertySignature(decl) || Node.isInterfaceDeclaration(decl) || Node.isTypeAliasDeclaration(decl)) {
+    const jsdocs = decl.getJsDocs();
+    if (jsdocs.length > 0) return jsdocs[0]!.getDescription().trim() || undefined;
+  }
+  return undefined;
+}
+
+function isSnippetTypeText(typeText: string, snippetLocals: Set<string>): boolean {
+  // Direct match against the local Snippet name (handles aliasing).
+  for (const local of snippetLocals) {
+    if (typeText === local || typeText.startsWith(`${local}<`)) return true;
+  }
+  // Defensive fallback: TS may surface the canonical `Snippet` from the import.
+  return typeText === 'Snippet' || typeText.startsWith('Snippet<');
 }
 
 function mergeSets<T>(a: Set<T>, b: Set<T>): Set<T> {
