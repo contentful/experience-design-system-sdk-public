@@ -45,6 +45,10 @@ export function registerImportCommand(program: Command): void {
       '--no-auto-filter',
       'Skip the automatic AI pre-filter; jump straight to manual scope-gate (no-op when paired with --auto-accept-scope)',
     )
+    .option(
+      '--no-live-preview',
+      "Skip the automatic preview re-run after each FieldEditor save (no-op when paired with --auto-accept-scope)",
+    )
     .action(
       async (opts: {
         spaceId?: string;
@@ -71,6 +75,7 @@ export function registerImportCommand(program: Command): void {
         dryRun?: boolean;
         autoAcceptScope?: boolean;
         autoFilter?: boolean;
+        livePreview?: boolean;
       }) => {
         const isHeadless =
           opts.skipAnalyze ||
@@ -111,6 +116,7 @@ export function registerImportCommand(program: Command): void {
             autoAcceptScope?: boolean;
             noCache?: boolean;
             autoFilter?: boolean;
+            livePreview?: boolean;
           };
           const creds = await readExperiencesCredentials();
           const { waitUntilExit } = render(
@@ -125,6 +131,7 @@ export function registerImportCommand(program: Command): void {
               autoAcceptScope,
               noCache: opts.cache === false,
               autoFilter: opts.autoFilter !== false,
+              livePreview: opts.livePreview !== false,
             }),
           );
           await waitUntilExit();

@@ -7,6 +7,7 @@ import type { ServerPreviewResponse } from '@contentful/experience-design-system
 const SAMPLE_PREVIEW: ServerPreviewResponse = {
   components: { new: [], changed: [], removed: [], unchanged: [] },
   tokens: { new: [], changed: [], removed: [], unchanged: [] },
+  taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
 };
 
 const runLivePreviewMock = vi.fn();
@@ -187,7 +188,7 @@ describe('useLivePreview', () => {
     await vi.advanceTimersByTimeAsync(500);
     await flush();
     await flush();
-    expect(lastStatus?.disabled).toBe(true);
+    expect((lastStatus as { disabled: boolean } | null)?.disabled).toBe(true);
     expect(stderrSpy).toHaveBeenCalled();
     const stderrCall = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
     expect(stderrCall).toMatch(/live-preview/);
@@ -222,7 +223,7 @@ describe('useLivePreview', () => {
     await vi.advanceTimersByTimeAsync(500);
     await flush();
     await flush();
-    expect(lastStatus?.disabled).toBe(true);
+    expect((lastStatus as { disabled: boolean } | null)?.disabled).toBe(true);
     stderrSpy.mockRestore();
   });
 
@@ -246,7 +247,7 @@ describe('useLivePreview', () => {
     await vi.advanceTimersByTimeAsync(500);
     await flush();
     await flush();
-    expect(lastStatus?.disabled).toBe(false);
+    expect((lastStatus as { disabled: boolean } | null)?.disabled).toBe(false);
     const stderrCall = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
     expect(stderrCall).toMatch(/live-preview/);
     stderrSpy.mockRestore();

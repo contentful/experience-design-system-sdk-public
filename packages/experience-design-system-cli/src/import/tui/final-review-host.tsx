@@ -8,6 +8,13 @@ export type FinalReviewHostProps = {
   autoAccept: boolean;
   onFinalize: (accepted: number, rejected: number) => void;
   onQuit: () => void;
+  // Feature 2 plumbing — passed straight through to GenerateReviewStep.
+  livePreview?: boolean;
+  spaceId?: string;
+  environmentId?: string;
+  cmaToken?: string;
+  host?: string;
+  tokensPath?: string;
 };
 
 export function FinalReviewHost({
@@ -16,6 +23,12 @@ export function FinalReviewHost({
   autoAccept,
   onFinalize,
   onQuit,
+  livePreview,
+  spaceId,
+  environmentId,
+  cmaToken,
+  host,
+  tokensPath,
 }: FinalReviewHostProps): React.ReactElement {
   if (!extractSessionId) {
     return (
@@ -34,6 +47,12 @@ export function FinalReviewHost({
       extractSessionId={extractSessionId}
       onFinalize={onFinalize}
       onQuit={onQuit}
+      livePreview={livePreview}
+      spaceId={spaceId}
+      environmentId={environmentId}
+      cmaToken={cmaToken}
+      host={host}
+      tokensPath={tokensPath}
     />
   );
 }

@@ -33,6 +33,7 @@ function makeRaw(name: string): RawComponentDefinition {
 const SAMPLE_PREVIEW: ServerPreviewResponse = {
   components: { new: [], changed: [], removed: [], unchanged: [] },
   tokens: { new: [], changed: [], removed: [], unchanged: [] },
+  taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
 };
 
 function seed(dbPath: string): string {

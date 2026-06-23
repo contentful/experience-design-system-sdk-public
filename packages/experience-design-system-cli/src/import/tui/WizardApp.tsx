@@ -229,6 +229,10 @@ export type WizardAppProps = {
   // Default true (auto-filter ON). Plumbed from `experiences import` via
   // `--no-auto-filter`.
   autoFilter?: boolean;
+  // Feature 2: when false, skip the post-FieldEditor-save live preview
+  // re-run. Default true (live-preview ON). Plumbed from
+  // `experiences import` via `--no-live-preview`.
+  livePreview?: boolean;
 };
 
 export function WizardApp({
@@ -242,6 +246,7 @@ export function WizardApp({
   autoAcceptScope = false,
   noCache = false,
   autoFilter = true,
+  livePreview = true,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -1273,6 +1278,12 @@ export function WizardApp({
             extractSessionId={state.extractSessionId}
             generatedCount={state.generatedCount}
             autoAccept={autoAcceptScope}
+            livePreview={livePreview}
+            spaceId={state.spaceId}
+            environmentId={state.environmentId}
+            cmaToken={state.cmaToken}
+            host={state.host}
+            tokensPath={state.tokensPath}
             onFinalize={(accepted, rejected) => {
               update({ generatedAcceptedCount: accepted, step: 'push-decision-gate' });
               process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}\n`);

@@ -12,7 +12,8 @@ function makePreview(overrides: Partial<ServerPreviewResponse['components']>): S
       ...overrides,
     },
     tokens: { new: [], changed: [], removed: [], unchanged: [] },
-  } as ServerPreviewResponse;
+    taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
+  } as unknown as ServerPreviewResponse;
 }
 
 describe('applyPreviewAnnotations', () => {
