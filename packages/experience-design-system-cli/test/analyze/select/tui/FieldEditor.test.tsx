@@ -139,13 +139,14 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     await tick();
     expect(lastFrame() ?? '').toMatch(/toggle/);
 
-    // j → default (default sub-row active)
+    // j → default (default sub-row active). String-typed default is text-entry,
+    // so j becomes literal there — use ↓ arrow to advance to description.
     stdin.write('j');
     await tick();
     expect(lastFrame() ?? '').toMatch(/default:/);
 
-    // j → description (text-entry hint)
-    stdin.write('j');
+    // ↓ arrow → description (text-entry hint)
+    stdin.write('\x1b[B');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
@@ -192,8 +193,9 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    // Walk: row → Return (type) → j×4 → description.
-    // Cycle is type → category → required → default → description.
+    // Walk: row → Return (type) → j×3 → default → ↓ → description.
+    // Cycle is type → category → required → default → description. j is
+    // literal text in the (string-typed) default, so use ↓ to step past it.
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -202,7 +204,7 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     await tick();
     stdin.write('j');
     await tick();
-    stdin.write('j');
+    stdin.write('\x1b[B');
     await tick();
     // Now description is active — j/k should type literal characters.
     stdin.write('j');
@@ -226,6 +228,7 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
       />,
     );
     // Walk to description: type → category → required → default → description.
+    // Use ↓ arrow for the last hop since default is text-entry for strings.
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -234,7 +237,7 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     await tick();
     stdin.write('j');
     await tick();
-    stdin.write('j');
+    stdin.write('\x1b[B');
     await tick();
     const frame = lastFrame() ?? '';
     // Bordered box renders with cyan border characters around description.
@@ -458,7 +461,8 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    // Return → type → j → category → j → required → j → default → j → description
+    // Return → type → j → category → j → required → j → default → ↓ → description
+    // (↓ used for the last hop because j is literal text in string-typed default.)
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -467,7 +471,7 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     await tick();
     stdin.write('j');
     await tick();
-    stdin.write('j');
+    stdin.write('\x1b[B');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
     // Now arrow-down (NOT 'j' — j types literals in description) cycles to first field (type).
@@ -536,8 +540,9 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     const { stdin, lastFrame } = render(
       <FieldEditor value={value} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
-    // Return → type, j×4 → description on the FIRST prop.
-    // Cycle: type → category → required → default → description.
+    // Return → type, j×3 → default, ↓ → description on the FIRST prop.
+    // Cycle: type → category → required → default → description. j is literal
+    // text in default for string-typed props; use ↓ for the last hop.
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -546,7 +551,7 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     await tick();
     stdin.write('j');
     await tick();
-    stdin.write('j');
+    stdin.write('\x1b[B');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
     // Arrow-down inside description should now cycle to first field (type) of the SAME prop,
@@ -739,6 +744,125 @@ describe('FieldEditor — Feature 5: propFields ordering ($default before descri
       <FieldEditor value={RICHTEXT} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
     expect(lastFrame() ?? '').toContain('(not applicable)');
+  });
+});
+
+describe('FieldEditor — Feature 5: $default editor per prop type', () => {
+  it('string prop: typing characters at default field updates $default', async () => {
+    const onChange = vi.fn();
+    const { stdin } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    // Walk Return + j×3 → default.
+    stdin.write('\r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    // Now type 'H' 'i'.
+    stdin.write('H');
+    await tick();
+    stdin.write('i');
+    await tick();
+    expect(onChange).toHaveBeenCalled();
+    const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(last).toContain('"$default": "Hi"');
+  });
+
+  it('boolean prop: right arrow cycles default through true → false → unset → true', async () => {
+    const BOOL = JSON.stringify(
+      {
+        Box: {
+          $type: 'component',
+          $properties: {
+            visible: { $type: 'boolean', $category: 'content' },
+          },
+        },
+      },
+      null,
+      2,
+    );
+    const onChange = vi.fn();
+    const { stdin, lastFrame } = render(
+      <FieldEditor value={BOOL} width={80} height={20} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    // Walk Return + j×3 → default.
+    stdin.write('\r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    // Right arrow: (unset) → true.
+    stdin.write('\x1b[C');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/true/);
+    let last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(last).toContain('"$default": true');
+
+    // Right again: true → false.
+    stdin.write('\x1b[C');
+    await tick();
+    last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(last).toContain('"$default": false');
+
+    // Right again: false → (unset). $default should be omitted.
+    stdin.write('\x1b[C');
+    await tick();
+    last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(last).not.toContain('"$default"');
+  });
+
+  it('enum prop: right arrow cycles default through declared values plus (unset)', async () => {
+    const onChange = vi.fn();
+    const { stdin } = render(
+      <FieldEditor value={ENUM_COMPONENT} width={80} height={25} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    // Cycle for enum: type → category → required → values → default → description.
+    // Inside values, j/k navigate values not fields, so cycle backwards from
+    // type via ↑: type → description → default.
+    stdin.write('\r');
+    await tick();
+    stdin.write('\x1b[A'); // up: type → description (wrap)
+    await tick();
+    stdin.write('\x1b[A'); // up: description → default
+    await tick();
+    // Right arrow: (unset) → primary.
+    stdin.write('\x1b[C');
+    await tick();
+    let last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(last).toContain('"$default": "primary"');
+    // Next: primary → secondary
+    stdin.write('\x1b[C');
+    await tick();
+    last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(last).toContain('"$default": "secondary"');
+  });
+
+  it('renders (none) for an unset string default', () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(lastFrame() ?? '').toContain('(none)');
   });
 });
 

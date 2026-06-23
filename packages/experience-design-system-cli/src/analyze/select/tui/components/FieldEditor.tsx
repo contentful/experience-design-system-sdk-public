@@ -771,6 +771,13 @@ export function FieldEditor({
       const fields = inSlots ? SLOT_FIELDS : currentProp ? propFields(currentProp) : [];
       const currentFieldIdx = fields.indexOf(activeField as never);
       const isDescriptionTextEntry = activeField === 'description';
+      // String/token defaults are also text-entry; j/k must type literals
+      // there too (consistency with description). boolean/enum defaults use
+      // ←/→ pickers so j/k can keep cycling fields.
+      const isDefaultTextEntry =
+        activeField === 'default' &&
+        currentProp != null &&
+        (currentProp.type === 'string' || currentProp.type === 'token');
       const isValuesNav = activeField === 'values';
       const arrowUp = key.upArrow;
       const arrowDown = key.downArrow;
@@ -796,8 +803,8 @@ export function FieldEditor({
       //    description preserves literal text-entry for those characters. Use
       //    Esc to leave the current prop and return to row-level navigation.
       if (!isValuesNav) {
-        const navUp = arrowUp || (!isDescriptionTextEntry && input === 'k');
-        const navDown = arrowDown || (!isDescriptionTextEntry && input === 'j');
+        const navUp = arrowUp || (!isDescriptionTextEntry && !isDefaultTextEntry && input === 'k');
+        const navDown = arrowDown || (!isDescriptionTextEntry && !isDefaultTextEntry && input === 'j');
         if ((navUp || navDown) && fields.length > 0) {
           const lastIdx = fields.length - 1;
           const targetIdx = navDown
@@ -812,6 +819,10 @@ export function FieldEditor({
           if (next === 'description') {
             const desc = inSlots ? (currentSlot?.description ?? '') : (currentProp?.description ?? '');
             setTextCursor(desc.length);
+          } else if (next === 'default' && currentProp) {
+            // Land cursor at end of any string-typed default for ergonomic typing.
+            const cur = typeof currentProp.default === 'string' ? currentProp.default : '';
+            setTextCursor(cur.length);
           }
           return;
         }
@@ -864,6 +875,71 @@ export function FieldEditor({
         } else if (currentProp) {
           const nextProps = props.map((p, i) => (i === propIdx ? { ...p, required: !p.required } : p));
           commit({ ...editorState, props: nextProps });
+        }
+        return;
+      }
+
+      // ── $default editing per type ─────────────────────────────────────────
+      if (activeField === 'default' && currentProp) {
+        const setProp = (next: PropState) => {
+          const nextProps = props.map((p, i) => (i === propIdx ? next : p));
+          commit({ ...editorState, props: nextProps });
+        };
+
+        // boolean: tri-state cycle (unset → true → false → unset).
+        if (currentProp.type === 'boolean' && (key.leftArrow || key.rightArrow)) {
+          const cycle: (boolean | null)[] = [null, true, false];
+          const curIdx = cycle.findIndex((v) => v === currentProp.default);
+          const idx = curIdx < 0 ? 0 : curIdx;
+          const nextIdx = key.rightArrow
+            ? (idx + 1) % cycle.length
+            : (idx - 1 + cycle.length) % cycle.length;
+          setProp({ ...currentProp, default: cycle[nextIdx]! });
+          return;
+        }
+
+        // enum: cycle through prop.values plus (unset).
+        if (currentProp.type === 'enum' && (key.leftArrow || key.rightArrow)) {
+          const opts: (string | null)[] = [null, ...currentProp.values];
+          const cur = typeof currentProp.default === 'string' ? currentProp.default : null;
+          const curIdx = opts.findIndex((v) => v === cur);
+          const idx = curIdx < 0 ? 0 : curIdx;
+          const nextIdx = key.rightArrow
+            ? (idx + 1) % opts.length
+            : (idx - 1 + opts.length) % opts.length;
+          setProp({ ...currentProp, default: opts[nextIdx] });
+          return;
+        }
+
+        // string/token: text input. Mirrors description input subroutine.
+        if (currentProp.type === 'string' || currentProp.type === 'token') {
+          const cur = typeof currentProp.default === 'string' ? currentProp.default : '';
+          const setVal = (next: string) => setProp({ ...currentProp, default: next === '' ? null : next });
+          if (key.leftArrow) {
+            setTextCursor((c) => Math.max(0, c - 1));
+            return;
+          }
+          if (key.rightArrow) {
+            setTextCursor((c) => Math.min(cur.length, c + 1));
+            return;
+          }
+          if (key.backspace) {
+            if (textCursor > 0) {
+              setVal(cur.slice(0, textCursor - 1) + cur.slice(textCursor));
+              setTextCursor((c) => c - 1);
+            }
+            return;
+          }
+          if (key.delete) {
+            if (textCursor < cur.length) setVal(cur.slice(0, textCursor) + cur.slice(textCursor + 1));
+            return;
+          }
+          if (input && input.length === 1 && !key.ctrl && !key.meta && !key.return) {
+            setVal(cur.slice(0, textCursor) + input + cur.slice(textCursor));
+            setTextCursor((c) => c + 1);
+            return;
+          }
+          return;
         }
         return;
       }
