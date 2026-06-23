@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS raw_components (
   review_reasons         TEXT NOT NULL DEFAULT '[]',
   needs_review           INTEGER NOT NULL DEFAULT 0,
   source_path            TEXT,
+  reject_reason          TEXT,
   PRIMARY KEY (session_id, component_id)
 );
 
@@ -250,6 +251,13 @@ function applyDbMigrations(db: DatabaseSync): void {
   }
   if (!rawPropColNames.has('source_end_line')) {
     db.exec('ALTER TABLE raw_props ADD COLUMN source_end_line INTEGER');
+  }
+
+  // Feature 3: persist select-agent's reject reason on raw_components. Nullable,
+  // no DEFAULT — accepted components keep NULL, rejected ones store the LLM's
+  // reason (or `validation error: <codes>` for validation auto-rejections).
+  if (!rawCompColNames.has('reject_reason')) {
+    db.exec('ALTER TABLE raw_components ADD COLUMN reject_reason TEXT');
   }
 
   // Add generation_cache table if it doesn't exist yet.

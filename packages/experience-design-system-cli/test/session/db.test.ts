@@ -130,6 +130,55 @@ describe('openPipelineDb', () => {
       db2.close();
     });
   });
+
+  it('adds reject_reason column to raw_components (Feature 3)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const cols = db.prepare('PRAGMA table_info(raw_components)').all() as Array<{
+        name: string;
+        type: string;
+        notnull: number;
+      }>;
+      const byName = new Map(cols.map((c) => [c.name, c]));
+      expect(byName.has('reject_reason')).toBe(true);
+      expect(byName.get('reject_reason')!.type).toBe('TEXT');
+      expect(byName.get('reject_reason')!.notnull).toBe(0);
+      db.close();
+    });
+  });
+
+  it('Feature 3 reject_reason migration is idempotent across opens', async () => {
+    await withTempDb((dbPath) => {
+      const db1 = openPipelineDb(dbPath);
+      db1.close();
+      const db2 = openPipelineDb(dbPath);
+      const compCols = db2.prepare('PRAGMA table_info(raw_components)').all() as Array<{ name: string }>;
+      expect(compCols.map((c) => c.name).filter((n) => n === 'reject_reason').length).toBe(1);
+      db2.close();
+    });
+  });
+
+  it('preserves existing rows with reject_reason = NULL after migration', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      // Seed a session and a raw_component with the pre-Feature-3 columns only.
+      db.prepare(
+        `INSERT INTO sessions (id, created_at, updated_at)
+         VALUES ('s1', '2026-06-23T00:00:00Z', '2026-06-23T00:00:00Z')`
+      ).run();
+      db.prepare(
+        `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at)
+         VALUES ('s1', 'c1', 'Foo', 'src/Foo.tsx', 'react', '2026-06-23T00:00:00Z')`
+      ).run();
+      db.close();
+      const db2 = openPipelineDb(dbPath);
+      const row = db2
+        .prepare('SELECT reject_reason FROM raw_components WHERE session_id = ? AND component_id = ?')
+        .get('s1', 'c1') as { reject_reason: string | null };
+      expect(row.reject_reason).toBeNull();
+      db2.close();
+    });
+  });
 });
 
 describe('getOrCreateSession', () => {
