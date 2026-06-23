@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
@@ -279,6 +279,70 @@ export interface ApplyToolCallsResult {
   excluded: number;
   slots: number;
   warnings: string[];
+}
+
+/**
+ * Feature 1: load per-component metadata for surfacing in the review UI —
+ * source path, full source text, and per-prop rationale + source-location.
+ * Returns null when no row matches. Decoupled from loadCDFComponents so
+ * the CDF projection stays unaffected.
+ */
+export interface ComponentReviewMetadata {
+  sourcePath: string | null;
+  componentSource: string | null;
+  props: Record<string, { rationale: string | null; sourceStartLine: number | null; sourceEndLine: number | null }>;
+}
+
+export function loadComponentReviewMetadata(
+  db: DatabaseSync,
+  sessionId: string,
+  componentName: string,
+): ComponentReviewMetadata | null {
+  const compRow = db
+    .prepare(
+      `SELECT component_id, source, source_path FROM raw_components WHERE session_id = ? AND name = ?`,
+    )
+    .get(sessionId, componentName) as { component_id: string; source: string; source_path: string | null } | undefined;
+  if (!compRow) return null;
+
+  const propRows = db
+    .prepare(
+      `SELECT name, rationale, source_start_line, source_end_line FROM raw_props WHERE session_id = ? AND component_id = ?`,
+    )
+    .all(sessionId, compRow.component_id) as Array<{
+    name: string;
+    rationale: string | null;
+    source_start_line: number | null;
+    source_end_line: number | null;
+  }>;
+
+  const props: ComponentReviewMetadata['props'] = {};
+  for (const r of propRows) {
+    props[r.name] = {
+      rationale: r.rationale,
+      sourceStartLine: r.source_start_line,
+      sourceEndLine: r.source_end_line,
+    };
+  }
+
+  // raw_components.source historically stores the file path, not the file
+  // text. For the source-view panel to render real lines, prefer reading
+  // the file from disk via source_path. Fall back to whatever's in `source`
+  // (handles in-memory fixtures and tests).
+  let componentSource: string | null = compRow.source ?? null;
+  if (compRow.source_path) {
+    try {
+      componentSource = readFileSync(compRow.source_path, 'utf8');
+    } catch {
+      // File no longer exists or unreadable — leave fallback.
+    }
+  }
+
+  return {
+    sourcePath: compRow.source_path,
+    componentSource,
+    props,
+  };
 }
 
 export function applyToolCalls(

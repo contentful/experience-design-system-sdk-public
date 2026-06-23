@@ -408,6 +408,73 @@ describe('storeRawComponents + loadRawComponents', () => {
     });
   });
 
+  it('loadComponentReviewMetadata returns rationale and source location (Feature 1)', async () => {
+    const { loadComponentReviewMetadata, applyToolCalls } = await import('../../src/session/db.js');
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const components: RawComponentDefinition[] = [
+        {
+          name: 'Hero',
+          // intentionally not a real path — loader falls back to this text
+          source: 'L1\nL2\nL3\nL4',
+          framework: 'react',
+          props: [
+            { name: 'title', type: 'string', required: true, sourceStartLine: 2, sourceEndLine: 3 },
+          ],
+          slots: [],
+        },
+      ];
+      storeRawComponents(db, sessionId, components);
+      const compId = (
+        db
+          .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?`)
+          .get(sessionId, 'Hero') as { component_id: string }
+      ).component_id;
+
+      applyToolCalls(
+        db,
+        sessionId,
+        compId,
+        'Hero',
+        [
+          {
+            tool: 'classify_prop',
+            prop: 'title',
+            cdf_type: 'string',
+            cdf_category: 'content',
+            reason: 'inferred from PropertySignature',
+          },
+        ],
+        [],
+      );
+
+      const meta = loadComponentReviewMetadata(db, sessionId, 'Hero');
+      expect(meta).not.toBeNull();
+      expect(meta!.componentSource).toBe('L1\nL2\nL3\nL4');
+      expect(meta!.sourcePath).toBeNull();
+      expect(meta!.props.title?.rationale).toBe('inferred from PropertySignature');
+      expect(meta!.props.title?.sourceStartLine).toBe(2);
+      expect(meta!.props.title?.sourceEndLine).toBe(3);
+      db.close();
+    });
+  });
+
+  it('loadComponentReviewMetadata returns null when component is missing (Feature 1)', async () => {
+    const { loadComponentReviewMetadata } = await import('../../src/session/db.js');
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const meta = loadComponentReviewMetadata(db, sessionId, 'Nonexistent');
+      expect(meta).toBeNull();
+      db.close();
+    });
+  });
+
   it('loadRawComponents surfaces sourcePath and per-prop source lines (Feature 1)', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);

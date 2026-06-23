@@ -8,7 +8,14 @@ import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
 import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
 import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
-import { openPipelineDb, loadCDFComponents, storeCDFComponents } from '../../../session/db.js';
+import {
+  openPipelineDb,
+  loadCDFComponents,
+  storeCDFComponents,
+  loadComponentReviewMetadata,
+  type ComponentReviewMetadata,
+} from '../../../session/db.js';
+import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
 import type { ReviewComponentStatus, ReviewComponentSummary } from '../../../analyze/select/types.js';
 
 type CdfReviewEntry = {
@@ -68,6 +75,9 @@ export function GenerateReviewStep({
   const [showJson, setShowJson] = useState(false);
   const [draftValue, setDraftValue] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Feature 1: per-component review metadata (rationale + source location)
+  // for the currently-selected component. Reloaded when selection changes.
+  const [reviewMetadata, setReviewMetadata] = useState<ComponentReviewMetadata | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -96,6 +106,24 @@ export function GenerateReviewStep({
       setLoading(false);
     });
   }, []);
+
+  // Feature 1: load review metadata (rationale + source location) for the
+  // selected component when selection changes.
+  useEffect(() => {
+    const current = components[selectedIdx];
+    if (!current) {
+      setReviewMetadata(null);
+      return;
+    }
+    const db = openPipelineDb();
+    try {
+      setReviewMetadata(loadComponentReviewMetadata(db, extractSessionId, current.key));
+    } catch {
+      setReviewMetadata(null);
+    } finally {
+      db.close();
+    }
+  }, [selectedIdx, components, extractSessionId]);
 
   const updateStatus = (idx: number, status: ReviewComponentStatus) => {
     setComponents((prev) => prev.map((c, i) => (i === idx ? { ...c, status } : c)));
@@ -354,6 +382,15 @@ export function GenerateReviewStep({
                     onSave={handleEditSave}
                     onDiscard={handleEditDiscard}
                     onExit={() => setSidebarFocused(true)}
+                    metadata={
+                      reviewMetadata
+                        ? ({
+                            sourcePath: reviewMetadata.sourcePath,
+                            componentSource: reviewMetadata.componentSource,
+                            props: reviewMetadata.props,
+                          } as FieldEditorMetadata)
+                        : undefined
+                    }
                   />
                 )}
                 {saveError && <Text color="red">{'✗ ' + saveError}</Text>}
