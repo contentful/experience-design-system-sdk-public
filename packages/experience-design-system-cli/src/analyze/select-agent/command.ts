@@ -205,6 +205,12 @@ async function selectOneComponent(
   process.stderr.write(
     `  ${pos}  ${c.bold(component.name)}  ${finalColor(decision)}${call.reason ? `  ${c.dim(call.reason)}` : ''}\n`,
   );
+  // Feature 3: structured progress line consumed by the wizard's runAutoFilter
+  // parser. Reason is URL-encoded so it can safely contain colons / newlines.
+  const reasonEncoded = call.reason ? encodeURIComponent(call.reason) : '';
+  process.stderr.write(
+    `progress=select-agent:${index + 1}/${total}:${decision}:${component.name}:${reasonEncoded}\n`,
+  );
 
   return {
     componentKey: componentKey(component),

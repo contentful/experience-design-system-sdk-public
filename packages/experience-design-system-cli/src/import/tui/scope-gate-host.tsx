@@ -5,11 +5,18 @@ import type { ScopeComponent } from './steps/ScopeGateStep.js';
 
 export type { ScopeComponent };
 
+export type AutoFilterStatus = 'idle' | 'running' | 'complete' | 'cancelled' | 'failed';
+
 export type ScopeGateHostProps = {
   components: ReadonlyArray<ScopeComponent>;
   autoAccept: boolean;
   onConfirm: (decisions: { accepted: string[]; rejected: string[] }) => void;
   onQuit: () => void;
+  // Feature 3: auto-filter status surfacing.
+  aiFilterStatus?: AutoFilterStatus;
+  aiFilterProgress?: { done: number; total: number } | null;
+  aiFilterError?: string | null;
+  onCancelAutoFilter?: () => void;
 };
 
 export function ScopeGateHost({
@@ -17,6 +24,10 @@ export function ScopeGateHost({
   autoAccept,
   onConfirm,
   onQuit,
+  aiFilterStatus = 'idle',
+  aiFilterProgress = null,
+  aiFilterError = null,
+  onCancelAutoFilter,
 }: ScopeGateHostProps): React.ReactElement {
   if (components.length === 0) {
     return (
@@ -30,7 +41,17 @@ export function ScopeGateHost({
     return <ScopeGateAutoAccept components={components} onConfirm={onConfirm} />;
   }
 
-  return <ScopeGateStep components={[...components]} onConfirm={onConfirm} onQuit={onQuit} />;
+  return (
+    <ScopeGateStep
+      components={[...components]}
+      onConfirm={onConfirm}
+      onQuit={onQuit}
+      aiFilterStatus={aiFilterStatus}
+      aiFilterProgress={aiFilterProgress}
+      aiFilterError={aiFilterError}
+      onCancelAutoFilter={onCancelAutoFilter}
+    />
+  );
 }
 
 function ScopeGateAutoAccept({

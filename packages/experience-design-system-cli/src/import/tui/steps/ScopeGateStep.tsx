@@ -13,6 +13,12 @@ export type ScopeGateStepProps = {
   components: ScopeComponent[];
   onConfirm: (decisions: { accepted: string[]; rejected: string[] }) => void;
   onQuit: () => void;
+  // Feature 3: auto-filter overlay state. Optional so existing callers (and
+  // tests) without auto-filter still work unchanged.
+  aiFilterStatus?: 'idle' | 'running' | 'complete' | 'cancelled' | 'failed';
+  aiFilterProgress?: { done: number; total: number } | null;
+  aiFilterError?: string | null;
+  onCancelAutoFilter?: () => void;
 };
 
 const VISIBLE_COUNT = 10;

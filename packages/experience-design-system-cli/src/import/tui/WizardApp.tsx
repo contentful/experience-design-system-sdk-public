@@ -109,10 +109,73 @@ type WizardState = {
   authCheckStepNumber: number;
   previewValidationErrors: PreviewValidationError[];
   previewValidationMissingNames: string[];
+  // Feature 3: AI auto-filter state. `aiDecisions` keys by component name and
+  // is updated incrementally as the select-agent subprocess emits stderr
+  // progress lines. `aiFilterStatus` drives the scope-gate's running banner.
+  aiFilterStatus: 'idle' | 'running' | 'complete' | 'cancelled' | 'failed';
+  aiFilterProgress: { done: number; total: number } | null;
+  aiDecisions: Record<string, { decision: 'accepted' | 'rejected'; reason: string }>;
+  aiFilterError: string | null;
 };
 
 function findCliPath(): string {
   return join(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..', 'bin', 'cli.js');
+}
+
+export function buildSelectAgentArgs(opts: { sessionId: string; agent: string }): string[] {
+  // Feature 3: the wizard auto-filter run should never fail-loud on validation
+  // errors — those components surface in the AI-excluded section with a
+  // synthesized reason, not an exit-1 abort. So we always pass --exclude-invalid.
+  return [
+    'analyze',
+    'select-agent',
+    '--agent',
+    opts.agent,
+    '--session',
+    opts.sessionId,
+    '--exclude-invalid',
+  ];
+}
+
+export type AutoFilterProgress = {
+  n: number;
+  total: number;
+  decision: 'accepted' | 'rejected';
+  name: string;
+  reason: string;
+};
+
+export function parseAutoFilterProgressLine(line: string): AutoFilterProgress | null {
+  // Format: progress=select-agent:N/M:<decision>:<name>:<url-encoded-reason>
+  // Name and reason CANNOT contain `:` raw (name comes from component identifier
+  // which forbids colons; reason is URL-encoded). We split with a limit so any
+  // stray colon inside the URL-encoded reason wouldn't matter — but the encoder
+  // also handles `:` as `%3A` so this is defensive.
+  const prefix = 'progress=select-agent:';
+  if (!line.startsWith(prefix)) return null;
+  const rest = line.slice(prefix.length);
+  const parts = rest.split(':');
+  if (parts.length < 4) return null;
+  const [counter, decision, name, ...reasonParts] = parts;
+  if (!counter) return null;
+  const counterMatch = /^(\d+)\/(\d+)$/.exec(counter);
+  if (!counterMatch) return null;
+  if (decision !== 'accepted' && decision !== 'rejected') return null;
+  if (!name) return null;
+  const encodedReason = reasonParts.join(':');
+  let reason = '';
+  try {
+    reason = decodeURIComponent(encodedReason);
+  } catch {
+    reason = encodedReason;
+  }
+  return {
+    n: Number(counterMatch[1]),
+    total: Number(counterMatch[2]),
+    decision,
+    name,
+    reason,
+  };
 }
 
 export function buildGenerateComponentsArgs(opts: {
@@ -162,6 +225,10 @@ export type WizardAppProps = {
   host?: string;
   autoAcceptScope?: boolean;
   noCache?: boolean;
+  // Feature 3: when false, skip the auto-AI-filter subprocess after extract.
+  // Default true (auto-filter ON). Plumbed from `experiences import` via
+  // `--no-auto-filter`.
+  autoFilter?: boolean;
 };
 
 export function WizardApp({
@@ -174,6 +241,7 @@ export function WizardApp({
   host,
   autoAcceptScope = false,
   noCache = false,
+  autoFilter = true,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -197,6 +265,10 @@ export function WizardApp({
     extractSessionId: null,
     tokensPath: '',
   });
+
+  // Feature 3: holds the spawned `analyze select-agent` subprocess so the
+  // scope-gate's `q` (during running) can SIGTERM it for cancellation.
+  const autoFilterChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
 
   const [state, setState] = useState<WizardState>({
     step: initialProjectPath ? 'token-input' : 'welcome',
@@ -237,6 +309,10 @@ export function WizardApp({
     authCheckStepNumber: 1,
     previewValidationErrors: [],
     previewValidationMissingNames: [],
+    aiFilterStatus: 'idle',
+    aiFilterProgress: null,
+    aiDecisions: {},
+    aiFilterError: null,
   });
 
   useEffect(() => {
@@ -452,7 +528,82 @@ export function WizardApp({
       step: 'scope-gate',
       extractSessionId,
       extractedCount,
+      aiFilterStatus: autoFilter ? 'running' : 'idle',
+      aiFilterProgress: autoFilter ? { done: 0, total: extractedCount } : null,
+      aiDecisions: {},
+      aiFilterError: null,
     });
+    if (autoFilter && extractSessionId) {
+      void runAutoFilter(extractSessionId);
+    }
+  };
+
+  // Feature 3: spawn `analyze select-agent` after extract and stream decisions
+  // into wizard state via stderr progress lines. The subprocess writes
+  // `raw_components.status` + `reject_reason` itself (see Task 2), so the
+  // scope-gate UI re-loads via `loadScopeComponents` to get fresh data on every
+  // render — but we also keep a memory-side `aiDecisions` map for streaming UX.
+  const runAutoFilter = (sessionId: string): Promise<void> => {
+    return new Promise((res) => {
+      const args = buildSelectAgentArgs({ sessionId, agent: state.agent });
+      const child = spawn('node', [findCliPath(), ...args]);
+      autoFilterChildRef.current = child;
+      let stderr = '';
+      child.stderr.on('data', (d: Buffer) => {
+        const chunk = String(d);
+        stderr += chunk;
+        for (const line of chunk.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          const parsed = parseAutoFilterProgressLine(trimmed);
+          if (!parsed) continue;
+          setState((prev) => ({
+            ...prev,
+            aiFilterProgress: { done: parsed.n, total: parsed.total },
+            aiDecisions: {
+              ...prev.aiDecisions,
+              [parsed.name]: { decision: parsed.decision, reason: parsed.reason },
+            },
+          }));
+        }
+      });
+      child.on('exit', (code, signal) => {
+        autoFilterChildRef.current = null;
+        if (signal === 'SIGTERM') {
+          setState((prev) => ({ ...prev, aiFilterStatus: 'cancelled' }));
+        } else if ((code ?? 0) !== 0) {
+          const tail = stderr.split('\n').filter(Boolean).slice(-3).join(' / ');
+          setState((prev) => ({
+            ...prev,
+            aiFilterStatus: 'failed',
+            aiFilterError: tail || `exit ${code}`,
+          }));
+        } else {
+          setState((prev) => ({ ...prev, aiFilterStatus: 'complete' }));
+        }
+        res();
+      });
+      child.on('error', (err) => {
+        autoFilterChildRef.current = null;
+        setState((prev) => ({
+          ...prev,
+          aiFilterStatus: 'failed',
+          aiFilterError: err.message,
+        }));
+        res();
+      });
+    });
+  };
+
+  const cancelAutoFilter = (): void => {
+    const child = autoFilterChildRef.current;
+    if (child && !child.killed) {
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        // best-effort
+      }
+    }
   };
 
   const runGenerate = async (extractSessionId: string, tokensPath: string, acceptedCount: number) => {
@@ -1074,6 +1225,10 @@ export function WizardApp({
           <ScopeGateHost
             components={components}
             autoAccept={autoAcceptScope}
+            aiFilterStatus={state.aiFilterStatus}
+            aiFilterProgress={state.aiFilterProgress}
+            aiFilterError={state.aiFilterError}
+            onCancelAutoFilter={cancelAutoFilter}
             onConfirm={(decisions) => {
               void runScopeGate({
                 sessionId,
