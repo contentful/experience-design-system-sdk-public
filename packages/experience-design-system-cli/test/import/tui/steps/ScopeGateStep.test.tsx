@@ -220,6 +220,68 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
     expect(out).toContain('no reason given');
   });
 
+  it('collapses the AI-excluded section on c and re-expands on c again', () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep
+        components={MIXED}
+        onConfirm={() => {}}
+        onQuit={() => {}}
+        aiFilterStatus="complete"
+      />,
+    );
+    // Initially expanded — both reasons visible.
+    expect(lastFrame() ?? '').toContain('low semantic value');
+    stdin.write('c');
+    // Collapsed: header still present, but reasons hidden.
+    let out = lastFrame() ?? '';
+    expect(out).toContain('AI excluded (2)');
+    expect(out).not.toContain('low semantic value');
+    stdin.write('c');
+    out = lastFrame() ?? '';
+    expect(out).toContain('low semantic value');
+  });
+
+  it('c is a no-op when there are no AI-excluded components', () => {
+    const allAccepted = [
+      { name: 'Button', componentId: 'c0' },
+      { name: 'Card', componentId: 'c1' },
+    ];
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep
+        components={allAccepted}
+        onConfirm={onConfirm}
+        onQuit={() => {}}
+        aiFilterStatus="complete"
+      />,
+    );
+    stdin.write('c');
+    stdin.write('f');
+    // f still works — the c keypress did not break anything.
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('f confirms with AI-rejected components in the rejected list (dual-write contract)', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep
+        components={MIXED}
+        onConfirm={onConfirm}
+        onQuit={() => {}}
+        aiFilterStatus="complete"
+      />,
+    );
+    stdin.write('f');
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    const arg = onConfirm.mock.calls[0][0];
+    // Main list (Button, Card, Hero) → accepted.
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Card', 'Hero']));
+    // AI-rejected (BadgeIcon, DivWrapper) → rejected, so they flow through
+    // applyScopeDecisions / writeScopeDecisionsSnapshot. This pins the dual-
+    // write invariant from commit 4b4a1ac.
+    expect(arg.rejected).toEqual(expect.arrayContaining(['BadgeIcon', 'DivWrapper']));
+  });
+
   it('shows yellow banner when ALL components are AI-rejected', () => {
     const allRejected = [
       { name: 'A', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: 'r1' },

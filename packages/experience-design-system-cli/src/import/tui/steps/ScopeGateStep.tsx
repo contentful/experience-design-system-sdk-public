@@ -57,6 +57,9 @@ export function ScopeGateStep({
   );
   const [cursor, setCursor] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
+  // Feature 3 Task 6: collapse the AI-excluded section. Default expanded so
+  // operators see what was filtered on first render.
+  const [excludedCollapsed, setExcludedCollapsed] = useState(false);
 
   const partition = (): { accepted: string[]; rejected: string[] } => {
     const accepted: string[] = [];
@@ -110,6 +113,12 @@ export function ScopeGateStep({
         next.delete(name);
         return next;
       });
+      return;
+    }
+    if (input === 'c') {
+      // Toggle AI-excluded section collapse. No-op when nothing is excluded.
+      if (excludedList.length === 0) return;
+      setExcludedCollapsed((prev) => !prev);
       return;
     }
     if (key.upArrow || input === 'k') {
@@ -186,14 +195,18 @@ export function ScopeGateStep({
       {showExcludedSection && (
         <Box flexDirection="column" marginTop={1}>
           <Text color="cyan">
-            [AI excluded ({excludedList.length})]
+            [AI excluded ({excludedList.length})] <Text dimColor>[c]{excludedCollapsed ? 'expand' : 'collapse'}</Text>
           </Text>
-          {visibleExcluded.map((c) => (
-            <Text key={c.componentId} dimColor>
-              {'  '}[✓] {c.name} <Text dimColor>{truncateReason(c.aiReason)}</Text>
-            </Text>
-          ))}
-          {moreExcluded > 0 && <Text dimColor>{'  '}↓ {moreExcluded} more</Text>}
+          {!excludedCollapsed && (
+            <>
+              {visibleExcluded.map((c) => (
+                <Text key={c.componentId} dimColor>
+                  {'  '}[✓] {c.name} <Text dimColor>{truncateReason(c.aiReason)}</Text>
+                </Text>
+              ))}
+              {moreExcluded > 0 && <Text dimColor>{'  '}↓ {moreExcluded} more</Text>}
+            </>
+          )}
         </Box>
       )}
 
