@@ -726,57 +726,69 @@ function readMembersFromExternalFile(filePath: string, exportName: string): Reso
   const sf = project.addSourceFileAtPathIfExists(filePath);
   if (!sf) return null;
 
-  // Look for an exported interface or type alias with the given name.
-  for (const iface of sf.getInterfaces()) {
-    if (iface.getName() !== exportName) continue;
-    if (!iface.isExported()) continue;
-    return iface.getProperties().map((prop) => {
-      const typeNode = prop.getTypeNode();
-      const typeText = typeNode ? typeNode.getText() : prop.getType().getText(prop);
-      const allowed = extractAllowedValuesFromText(typeText);
-      const jsdocs = prop.getJsDocs();
-      const description = jsdocs.length > 0 ? jsdocs[0]!.getDescription().trim() : undefined;
-      return {
-        name: prop.getName(),
-        optional: prop.hasQuestionToken(),
+  // Use getExportedDeclarations() so re-export chains (`export { ... } from './x'`,
+  // `export * from './x'`, named or namespace) resolve transparently. ts-morph
+  // follows them recursively and returns the underlying declaration.
+  const exportedDeclarations = sf.getExportedDeclarations();
+  const decls = exportedDeclarations.get(exportName);
+  if (!decls || decls.length === 0) return null;
+
+  for (const decl of decls) {
+    if (Node.isInterfaceDeclaration(decl)) {
+      return readInterfaceMembers(decl);
+    }
+    if (Node.isTypeAliasDeclaration(decl)) {
+      const typeNode = decl.getTypeNode();
+      if (typeNode && Node.isTypeLiteral(typeNode)) {
+        return readTypeLiteralMembers(typeNode);
+      }
+    }
+  }
+
+  return null;
+}
+
+function readInterfaceMembers(iface: import('ts-morph').InterfaceDeclaration): ResolvedTypeMember[] {
+  return iface.getProperties().map((prop) => {
+    const typeNode = prop.getTypeNode();
+    const typeText = typeNode ? typeNode.getText() : prop.getType().getText(prop);
+    const allowed = extractAllowedValuesFromText(typeText);
+    const jsdocs = prop.getJsDocs();
+    const description = jsdocs.length > 0 ? jsdocs[0]!.getDescription().trim() : undefined;
+    return {
+      name: prop.getName(),
+      optional: prop.hasQuestionToken(),
+      typeText,
+      isSnippet: typeText === 'Snippet' || /^Snippet</.test(typeText),
+      ...(allowed ? { allowedValues: allowed } : {}),
+      ...(description ? { description } : {}),
+      line: prop.getStartLineNumber(),
+      endLine: prop.getEndLineNumber(),
+    } satisfies ResolvedTypeMember;
+  });
+}
+
+function readTypeLiteralMembers(typeNode: import('ts-morph').TypeLiteralNode): ResolvedTypeMember[] {
+  return typeNode.getMembers().flatMap((m) => {
+    if (!Node.isPropertySignature(m)) return [];
+    const tn = m.getTypeNode();
+    const typeText = tn ? tn.getText() : 'unknown';
+    const allowed = extractAllowedValuesFromText(typeText);
+    const jsdocs = m.getJsDocs();
+    const description = jsdocs.length > 0 ? jsdocs[0]!.getDescription().trim() : undefined;
+    return [
+      {
+        name: m.getName(),
+        optional: m.hasQuestionToken(),
         typeText,
         isSnippet: typeText === 'Snippet' || /^Snippet</.test(typeText),
         ...(allowed ? { allowedValues: allowed } : {}),
         ...(description ? { description } : {}),
-        line: prop.getStartLineNumber(),
-        endLine: prop.getEndLineNumber(),
-      };
-    });
-  }
-
-  for (const alias of sf.getTypeAliases()) {
-    if (alias.getName() !== exportName) continue;
-    if (!alias.isExported()) continue;
-    const typeNode = alias.getTypeNode();
-    if (!typeNode || !Node.isTypeLiteral(typeNode)) return null;
-    return typeNode.getMembers().flatMap((m) => {
-      if (!Node.isPropertySignature(m)) return [];
-      const tn = m.getTypeNode();
-      const typeText = tn ? tn.getText() : 'unknown';
-      const allowed = extractAllowedValuesFromText(typeText);
-      const jsdocs = m.getJsDocs();
-      const description = jsdocs.length > 0 ? jsdocs[0]!.getDescription().trim() : undefined;
-      return [
-        {
-          name: m.getName(),
-          optional: m.hasQuestionToken(),
-          typeText,
-          isSnippet: typeText === 'Snippet' || /^Snippet</.test(typeText),
-          ...(allowed ? { allowedValues: allowed } : {}),
-          ...(description ? { description } : {}),
-          line: m.getStartLineNumber(),
-          endLine: m.getEndLineNumber(),
-        } satisfies ResolvedTypeMember,
-      ];
-    });
-  }
-
-  return null;
+        line: m.getStartLineNumber(),
+        endLine: m.getEndLineNumber(),
+      } satisfies ResolvedTypeMember,
+    ];
+  });
 }
 
 function extractAllowedValuesFromText(typeText: string): string[] | undefined {

@@ -359,6 +359,74 @@ describe('SvelteComponentExtractor', () => {
   // Patterns observed in real corpus targets
   // ---------------------------------------------------------------------------
 
+  it('follows cross-file re-export chains (named re-export)', async () => {
+    // svelte-5-ui-lib pattern: index.ts re-exports the type from a sibling file.
+    await writeFixture(
+      'type.ts',
+      `
+export interface ButtonProps {
+  /** Color theme */
+  color?: 'red' | 'blue';
+  /** Disable interactions */
+  disabled?: boolean;
+}
+`,
+    );
+    await writeFixture('index.ts', `export { type ButtonProps } from './type.js';\n`);
+    const filePath = await writeFixture(
+      'Button.svelte',
+      `
+<script lang="ts">
+  import { type ButtonProps as Props } from './index.js';
+  let { color = 'blue', disabled = false }: Props = $props();
+</script>
+<button {disabled}>{color}</button>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath]);
+    const button = result.components[0]!;
+    const color = button.props.find((p) => p.name === 'color')!;
+    expect(color.type).toBe(`'red' | 'blue'`);
+    expect(color.allowedValues).toEqual(['red', 'blue']);
+    expect(color.defaultValue).toBe(`'blue'`);
+    expect(color.description).toBe('Color theme');
+    expect(button.props.find((p) => p.name === 'disabled')!.type).toBe('boolean');
+  });
+
+  it('follows namespace re-exports (export * from ...)', async () => {
+    await writeFixture(
+      'type.ts',
+      `
+export interface CardProps {
+  /** Header text */
+  title: string;
+  variant?: 'compact' | 'wide';
+}
+`,
+    );
+    await writeFixture('index.ts', `export * from './type.js';\n`);
+    const filePath = await writeFixture(
+      'Card.svelte',
+      `
+<script lang="ts">
+  import { type CardProps as Props } from './index.js';
+  let { title, variant = 'compact' }: Props = $props();
+</script>
+<div>{title}</div>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath]);
+    const card = result.components[0]!;
+    const title = card.props.find((p) => p.name === 'title')!;
+    expect(title.type).toBe('string');
+    expect(title.required).toBe(true);
+    expect(title.description).toBe('Header text');
+    const variant = card.props.find((p) => p.name === 'variant')!;
+    expect(variant.allowedValues).toEqual(['compact', 'wide']);
+  });
+
   it('handles svelte-5-ui-lib pattern: cross-file Props import alias', async () => {
     // import { type ButtonProps as Props } from '.';
     // We need ts-morph to follow the import; sibling file in same tempDir.
