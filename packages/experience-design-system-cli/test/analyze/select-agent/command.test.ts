@@ -326,6 +326,170 @@ describe('select-agent command — agent failure modes', () => {
   });
 });
 
+// ── Feature 3: reject_reason persistence ─────────────────────────────────────
+
+describe('select-agent command — reject_reason persistence (Feature 3)', () => {
+  it('persists LLM reason to raw_components.reject_reason on rejection', async () => {
+    const { fixture, artifactsDir } = await setup([
+      {
+        name: 'BadgeIcon',
+        source: 'src/BadgeIcon.tsx',
+        framework: 'react',
+        props: [{ name: 'icon', type: 'string', required: true }],
+        slots: [],
+      },
+    ]);
+
+    const agent = await createScriptedAgent('claude', [
+      '{"tool":"reject_component","name":"BadgeIcon","reason":"low semantic value","confidence":5}',
+    ]);
+    cleanupItems.push(agent.cleanup);
+
+    const { code } = await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      baseEnv(fixture, artifactsDir, agent.env()),
+    );
+    expect(code).toBe(0);
+
+    const { openPipelineDb } = await import('../../../src/session/db.js');
+    const db = openPipelineDb(fixture.dbPath);
+    try {
+      const row = db
+        .prepare('SELECT name, status, reject_reason FROM raw_components WHERE session_id = ? AND name = ?')
+        .get(fixture.sessionId, 'BadgeIcon') as { name: string; status: string; reject_reason: string | null };
+      expect(row.status).toBe('rejected');
+      expect(row.reject_reason).toBe('low semantic value');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('clears reject_reason to NULL on accepted components', async () => {
+    const { fixture, artifactsDir } = await setup([
+      {
+        name: 'Button',
+        source: 'src/Button.tsx',
+        framework: 'react',
+        props: [{ name: 'label', type: 'string', required: true }],
+        slots: [],
+      },
+    ]);
+
+    const agent = await createScriptedAgent('claude', [
+      '{"tool":"select_component","name":"Button","reason":"primary UI","confidence":5}',
+    ]);
+    cleanupItems.push(agent.cleanup);
+
+    const { code } = await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      baseEnv(fixture, artifactsDir, agent.env()),
+    );
+    expect(code).toBe(0);
+
+    const { openPipelineDb } = await import('../../../src/session/db.js');
+    const db = openPipelineDb(fixture.dbPath);
+    try {
+      const row = db
+        .prepare('SELECT status, reject_reason FROM raw_components WHERE session_id = ? AND name = ?')
+        .get(fixture.sessionId, 'Button') as { status: string; reject_reason: string | null };
+      expect(row.status).toBe('accepted');
+      expect(row.reject_reason).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('flips reject_reason to NULL when re-running flips a rejected component to accepted', async () => {
+    const { fixture, artifactsDir } = await setup([
+      {
+        name: 'Button',
+        source: 'src/Button.tsx',
+        framework: 'react',
+        props: [{ name: 'label', type: 'string', required: true }],
+        slots: [],
+      },
+    ]);
+
+    const rejectAgent = await createScriptedAgent('claude', [
+      '{"tool":"reject_component","name":"Button","reason":"too generic","confidence":5}',
+    ]);
+    cleanupItems.push(rejectAgent.cleanup);
+    await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      baseEnv(fixture, artifactsDir, rejectAgent.env()),
+    );
+
+    const { openPipelineDb } = await import('../../../src/session/db.js');
+    {
+      const db = openPipelineDb(fixture.dbPath);
+      try {
+        const row = db
+          .prepare('SELECT reject_reason FROM raw_components WHERE session_id = ? AND name = ?')
+          .get(fixture.sessionId, 'Button') as { reject_reason: string | null };
+        expect(row.reject_reason).toBe('too generic');
+      } finally {
+        db.close();
+      }
+    }
+
+    const acceptAgent = await createScriptedAgent('claude', [
+      '{"tool":"select_component","name":"Button","reason":"primary UI","confidence":5}',
+    ]);
+    cleanupItems.push(acceptAgent.cleanup);
+    await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      baseEnv(fixture, artifactsDir, acceptAgent.env()),
+    );
+
+    const db = openPipelineDb(fixture.dbPath);
+    try {
+      const row = db
+        .prepare('SELECT status, reject_reason FROM raw_components WHERE session_id = ? AND name = ?')
+        .get(fixture.sessionId, 'Button') as { status: string; reject_reason: string | null };
+      expect(row.status).toBe('accepted');
+      expect(row.reject_reason).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+});
+
 // ── selectionContext in prompt ────────────────────────────────────────────────
 
 describe('select-agent command — selectionContext in prompt', () => {

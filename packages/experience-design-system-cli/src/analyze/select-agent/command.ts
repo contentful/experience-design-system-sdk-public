@@ -379,12 +379,51 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
 
         // Build decision map from results. Seed auto-rejections from validation exclusions first.
         const decisions = new Map<string, 'accepted' | 'rejected' | null>();
+        // Track per-component reasons (for raw_components.reject_reason persistence).
+        // Validation auto-rejections get a synthesized "validation error: <codes>" reason
+        // so the scope-gate UI can distinguish wizard- vs LLM-driven exclusions.
+        const reasons = new Map<string, string | null>();
         for (const comp of invalidComponents) {
           decisions.set(componentKey(comp), 'rejected');
+          const codes = (comp.validationIssues ?? [])
+            .filter((i) => i.severity === 'error')
+            .map((i) => i.code)
+            .join(', ');
+          reasons.set(componentKey(comp), `validation error: ${codes}`);
         }
 
         for (const r of selectResults) {
           decisions.set(r.componentKey, r.decision);
+          if (r.decision === 'rejected' && r.reason) {
+            reasons.set(r.componentKey, r.reason);
+          } else if (r.decision === 'accepted') {
+            // Defensive: clear any previously-stored reason on re-runs that flip a
+            // rejected component to accepted.
+            reasons.set(r.componentKey, null);
+          }
+        }
+
+        // Feature 3: persist decisions to raw_components (status + reject_reason)
+        // so the wizard can render LLM exclusions in the scope-gate without re-reading
+        // the snapshot file. We open a fresh DB handle here (the earlier one was closed
+        // after loading raw components above) and reuse it for the step-recording below.
+        const persistDb = openPipelineDb();
+        try {
+          const updateStmt = persistDb.prepare(
+            `UPDATE raw_components
+             SET status = ?, reject_reason = ?
+             WHERE session_id = ? AND component_id = ?`,
+          );
+          for (const comp of validatedComponents as Array<RawComponentDefinition & { component_id?: string }>) {
+            const key = componentKey(comp);
+            const decision = decisions.get(key);
+            if (!decision) continue;
+            if (!comp.component_id) continue;
+            const reason = reasons.get(key) ?? null;
+            updateStmt.run(decision, decision === 'accepted' ? null : reason, sessionId, comp.component_id);
+          }
+        } finally {
+          persistDb.close();
         }
 
         const artifactsRoot = getRefineArtifactsRoot();
