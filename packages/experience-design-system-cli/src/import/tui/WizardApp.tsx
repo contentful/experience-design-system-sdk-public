@@ -37,6 +37,10 @@ import { checkAgentAuth, type AgentName } from '../../generate/agent-runner.js';
 import { normalizePath } from '../path-utils.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
 import { writeExperiencesCredentials } from '../../credentials-store.js';
+import {
+  nextStepAfterScopeGate,
+  nextStepAfterCredentialsValidated,
+} from './wizard-state-transitions.js';
 
 type WizardStep =
   | 'welcome'
@@ -233,6 +237,10 @@ export type WizardAppProps = {
   // re-run. Default true (live-preview ON). Plumbed from
   // `experiences import` via `--no-live-preview`.
   livePreview?: boolean;
+  // When true, skip the credentials/preview/push branch entirely. The wizard
+  // runs extract → scope-gate → generate → final-review and exits via
+  // print-gate. Plumbed from `experiences import` via `--no-push`.
+  noPush?: boolean;
 };
 
 export function WizardApp({
@@ -247,6 +255,7 @@ export function WizardApp({
   noCache = false,
   autoFilter = true,
   livePreview = true,
+  noPush = false,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -735,8 +744,7 @@ export function WizardApp({
         host: resolvedHost,
       });
       await client.validateToken();
-      const { extractSessionId, tokensPath } = sessionRef.current;
-      void runPreview(extractSessionId, tokensPath, spaceId, environmentId, cmaToken, resolvedHost);
+      await advanceAfterCredentialsValidated();
     } catch (e) {
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
         update({ step: 'credentials', credentialsError: e.message });
@@ -750,6 +758,37 @@ export function WizardApp({
         errorAllowCredentialRetry: false,
       });
     }
+  };
+
+  // Branch after credentials are known good (validated, or skipped via the
+  // credential-test-gate skip path). Either runs the generator (if there are
+  // accepted components) or jumps straight to push-decision-gate (if scope
+  // rejected everything but tokens/removals still need to be pushed).
+  const advanceAfterCredentialsValidated = async () => {
+    // If we already ran the generator (re-entering credentials from a late
+    // 401/403 raised by runPreview), skip back to push-decision-gate rather
+    // than re-running the LLM.
+    if (state.generateSessionId) {
+      update({ step: 'push-decision-gate' });
+      return;
+    }
+    const next = nextStepAfterCredentialsValidated({ acceptedCount: state.acceptedCount });
+    if (next === 'generating') {
+      const sid = sessionRef.current.extractSessionId;
+      if (!sid) {
+        update({
+          step: 'error',
+          errorStep: 'post-credentials',
+          errorMessage: 'Internal error: extract session ID missing after credential validation.',
+        });
+        return;
+      }
+      if (await runAgentAuthCheck('generating')) {
+        void runGenerate(sid, state.tokensPath, state.acceptedCount);
+      }
+      return;
+    }
+    update({ step: 'push-decision-gate' });
   };
 
   const runPreview = async (
@@ -1183,7 +1222,17 @@ export function WizardApp({
             onConfirm={(path) => {
               void runExtract(path);
             }}
-            onSkipComponents={() => update({ step: 'push-decision-gate', skipComponents: true })}
+            onSkipComponents={() => {
+              // No components — only design tokens to push. Still gather creds
+              // first (unless --no-push, in which case there is nothing to do
+              // and we save files instead).
+              if (noPush) {
+                update({ skipComponents: true, acceptedCount: 0 });
+                void runPrintFiles(state.extractSessionId, state.outDir);
+                return;
+              }
+              update({ step: 'credentials', skipComponents: true, acceptedCount: 0 });
+            }}
             onChangePath={() => update({ step: 'welcome' })}
             onQuit={() => process.exit(0)}
           />
@@ -1240,12 +1289,25 @@ export function WizardApp({
                 decisions,
                 onAdvanceToGenerate: async ({ sessionId: sid, acceptedCount }) => {
                   update({ acceptedCount, autoRejectedCount: 0 });
-                  if (await runAgentAuthCheck('generating')) {
-                    void runGenerate(sid, state.tokensPath, acceptedCount);
+                  const next = nextStepAfterScopeGate({ acceptedCount, noPush });
+                  if (next === 'generating') {
+                    if (await runAgentAuthCheck('generating')) {
+                      void runGenerate(sid, state.tokensPath, acceptedCount);
+                    }
+                    return;
                   }
+                  // next === 'credentials' (push enabled, gather + validate
+                  // creds upfront before we pay the LLM cost of generating).
+                  update({ step: 'credentials' });
                 },
                 onAdvanceToPushFlow: (count) => {
                   update({ acceptedCount: count, autoRejectedCount: 0 });
+                  const next = nextStepAfterScopeGate({ acceptedCount: count, noPush });
+                  if (next === 'print-gate') {
+                    void runPrintFiles(state.extractSessionId, state.outDir);
+                    return;
+                  }
+                  // 'credentials' — still need creds for tokens/removals push.
                   advanceToPushFlow(count);
                 },
               });
@@ -1285,8 +1347,13 @@ export function WizardApp({
             host={state.host}
             tokensPath={state.tokensPath}
             onFinalize={(accepted, rejected) => {
-              update({ generatedAcceptedCount: accepted, step: 'push-decision-gate' });
               process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}\n`);
+              if (noPush) {
+                update({ generatedAcceptedCount: accepted });
+                void runPrintFiles(state.extractSessionId, state.outDir);
+                return;
+              }
+              update({ generatedAcceptedCount: accepted, step: 'push-decision-gate' });
             }}
             onQuit={() => process.exit(0)}
           />
@@ -1311,7 +1378,17 @@ export function WizardApp({
             continueLabel="Push to Contentful"
             skipLabel={`Save ${files || 'files'} to disk`}
             onContinue={() => {
-              update({ step: 'credentials' });
+              // Creds were validated upfront (or skipped via the credential-test-gate
+              // skip path). Run the diff preview directly.
+              const { extractSessionId, tokensPath } = sessionRef.current;
+              void runPreview(
+                extractSessionId,
+                tokensPath,
+                state.spaceId,
+                state.environmentId,
+                state.cmaToken,
+                state.host,
+              );
             }}
             onSkip={() => {
               void runPrintFiles(state.extractSessionId, state.outDir);
@@ -1350,15 +1427,7 @@ export function WizardApp({
               void validateCredentials(state.spaceId, state.environmentId, state.cmaToken, state.host);
             }}
             onSkip={() => {
-              const { extractSessionId, tokensPath } = sessionRef.current;
-              void runPreview(
-                extractSessionId,
-                tokensPath,
-                state.spaceId,
-                state.environmentId,
-                state.cmaToken,
-                state.host,
-              );
+              void advanceAfterCredentialsValidated();
             }}
             onQuit={() => process.exit(0)}
           />

@@ -49,6 +49,10 @@ export function registerImportCommand(program: Command): void {
       '--no-live-preview',
       "Skip the automatic preview re-run after each FieldEditor save (no-op when paired with --auto-accept-scope)",
     )
+    .option(
+      '--no-push',
+      'Run extract → scope-gate → generate → final-review and exit without pushing to Contentful (no credentials prompt; live preview disabled)',
+    )
     .action(
       async (opts: {
         spaceId?: string;
@@ -76,6 +80,7 @@ export function registerImportCommand(program: Command): void {
         autoAcceptScope?: boolean;
         autoFilter?: boolean;
         livePreview?: boolean;
+        push?: boolean;
       }) => {
         const isHeadless =
           opts.skipAnalyze ||
@@ -117,6 +122,7 @@ export function registerImportCommand(program: Command): void {
             noCache?: boolean;
             autoFilter?: boolean;
             livePreview?: boolean;
+            noPush?: boolean;
           };
           const creds = await readExperiencesCredentials();
           const { waitUntilExit } = render(
@@ -132,6 +138,7 @@ export function registerImportCommand(program: Command): void {
               noCache: opts.cache === false,
               autoFilter: opts.autoFilter !== false,
               livePreview: opts.livePreview !== false,
+              noPush: opts.push === false,
             }),
           );
           await waitUntilExit();
