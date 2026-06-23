@@ -152,4 +152,24 @@ describe('GenerateReviewStep — sidebar↔panel cross-key (Bug 1)', () => {
     expect(frame).toMatch(/\[Tab\] focus list/);
     expect(frame).not.toMatch(/\[e\/Tab\] focus panel/);
   });
+
+  it('pressing Esc at FieldEditor row-level returns focus to the sidebar', async () => {
+    // Bug 1 fix: Esc inside the panel at row-level should call onExit which
+    // bounces focus back to the sidebar. This is the primary panel→sidebar
+    // exit affordance (alongside Tab and Ctrl+S).
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // Cross into panel.
+    stdin.write('\t');
+    await tick();
+    let frame = lastFrame() ?? '';
+    expect(frame).toMatch(/\[Tab\] focus list/);
+    // FieldEditor mounts at row-level. Esc should fire onExit → sidebar.
+    stdin.write('\x1b');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/\[e\/Tab\] focus panel/);
+  });
 });

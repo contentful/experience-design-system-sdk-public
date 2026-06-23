@@ -309,6 +309,7 @@ export function GenerateReviewStep({
                     onChange={setDraftValue}
                     onSave={handleEditSave}
                     onDiscard={handleEditDiscard}
+                    onExit={() => setSidebarFocused(true)}
                   />
                 )}
                 {saveError && <Text color="red">{'✗ ' + saveError}</Text>}

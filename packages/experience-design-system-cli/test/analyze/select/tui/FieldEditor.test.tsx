@@ -435,3 +435,181 @@ describe('FieldEditor — active prop gating', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
+  it('j at description (last field) cycles back to type (first field, same prop)', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    // Return → type → j → category → j → required → j → description
+    stdin.write('\r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Type to edit/);
+    // Now arrow-down (NOT 'j' — j types literals in description) cycles to first field (type).
+    stdin.write('\x1b[B');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // First field is `type` — picker hint shows.
+    expect(frame).toMatch(/cycle/);
+    expect(frame).not.toMatch(/Type to edit/);
+  });
+
+  it('arrow-up at type (first field) cycles to description (last field, same prop)', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    // Return → type field
+    stdin.write('\r');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/cycle/);
+    // arrow-up at first field cycles to last (description).
+    stdin.write('\x1b[A');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Type to edit/);
+  });
+
+  it('k at type (first field) cycles to description (last field, same prop)', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    stdin.write('\r');
+    await tick();
+    // k at type cycles back to description
+    stdin.write('k');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Type to edit/);
+  });
+
+  it('arrow-down inside description cycles to first field (type) instead of moving to next row', async () => {
+    const value = JSON.stringify(
+      {
+        Card: {
+          $type: 'component',
+          $properties: {
+            title: { $type: 'string', $category: 'content', $description: 'first' },
+            body: { $type: 'string', $category: 'content', $description: 'second' },
+          },
+        },
+      },
+      null,
+      2,
+    );
+    const { stdin, lastFrame } = render(
+      <FieldEditor value={value} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    // Return → type, j×3 → description on the FIRST prop.
+    stdin.write('\r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Type to edit/);
+    // Arrow-down inside description should now cycle to first field (type) of the SAME prop,
+    // not jump to the body row.
+    stdin.write('\x1b[B');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/cycle/); // type-picker hint
+    expect(frame).not.toMatch(/Type to edit/);
+  });
+});
+
+describe('FieldEditor — onExit panel-exit callback (Bug 1)', () => {
+  it('Esc at row-level calls onExit (not onDiscard)', async () => {
+    const onExit = vi.fn();
+    const onDiscard = vi.fn();
+    const { stdin } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={onDiscard}
+        onExit={onExit}
+      />,
+    );
+    // We mount at row-level. Pressing Esc here should call onExit.
+    stdin.write('\x1b');
+    await tick();
+    expect(onExit).toHaveBeenCalledTimes(1);
+    expect(onDiscard).not.toHaveBeenCalled();
+  });
+
+  it('Esc at field-level still drops to row-level (does NOT call onExit)', async () => {
+    const onExit = vi.fn();
+    const onDiscard = vi.fn();
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={onDiscard}
+        onExit={onExit}
+      />,
+    );
+    // Enter field-level
+    stdin.write('\r');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/cycle/);
+    // Esc at field-level drops to row-level — neither onExit nor onDiscard fires.
+    stdin.write('\x1b');
+    await tick();
+    expect(onExit).not.toHaveBeenCalled();
+    expect(onDiscard).not.toHaveBeenCalled();
+    expect(lastFrame() ?? '').toMatch(/navigate rows/);
+    // A second Esc at row-level fires onExit.
+    stdin.write('\x1b');
+    await tick();
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('Esc at row-level falls back to onDiscard when onExit is not provided', async () => {
+    const onDiscard = vi.fn();
+    const { stdin } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={onDiscard}
+      />,
+    );
+    stdin.write('\x1b');
+    await tick();
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+  });
+});

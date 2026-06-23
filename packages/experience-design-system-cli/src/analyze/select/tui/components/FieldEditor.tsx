@@ -28,6 +28,14 @@ type FieldEditorProps = {
   onChange: (value: string) => void;
   onSave: () => void;
   onDiscard: () => void;
+  /**
+   * Called when the user requests to exit the panel from row-level (Esc).
+   * Distinct from onDiscard, which drops pending edits without changing focus.
+   * Callers that embed FieldEditor inside a sidebar+panel layout wire this to
+   * return focus to the sidebar (e.g. setSidebarFocused(true)). When omitted,
+   * row-level Esc falls back to onDiscard for backward compatibility.
+   */
+  onExit?: () => void;
 };
 
 /**
@@ -321,9 +329,7 @@ function PropRow({
             }
             return (
               <Box key={i} gap={1} paddingLeft={2}>
-                <Text color={isActiveCursor ? 'cyan' : 'white'}>
-                  {isActiveCursor ? `▶ ${v}` : `  ${v}`}
-                </Text>
+                <Text color={isActiveCursor ? 'cyan' : 'white'}>{isActiveCursor ? `▶ ${v}` : `  ${v}`}</Text>
               </Box>
             );
           })}
@@ -422,6 +428,7 @@ export function FieldEditor({
   onChange,
   onSave,
   onDiscard,
+  onExit,
 }: FieldEditorProps): React.ReactElement {
   const { state: initialState, error: parseError } = parseToState(value);
 
@@ -546,7 +553,13 @@ export function FieldEditor({
         setActiveField(null);
         return;
       }
-      onDiscard();
+      // Row-level Esc: bounce focus back out of the panel via onExit.
+      // Falls back to onDiscard when the caller hasn't wired onExit.
+      if (onExit) {
+        onExit();
+      } else {
+        onDiscard();
+      }
       return;
     }
 
@@ -622,43 +635,6 @@ export function FieldEditor({
       const arrowUp = key.upArrow;
       const arrowDown = key.downArrow;
 
-      // ── Inside description: arrow keys exit field-edit and navigate ROWS
-      //    at the row level (NOT auto-focusing description on the new row);
-      //    j/k type literal characters into the description.
-      if (isDescriptionTextEntry && (arrowUp || arrowDown)) {
-        const exitToRow = (nextInSlots: boolean) => {
-          setFocusLevel(nextInSlots ? 'slot' : 'prop');
-          setActiveField(null);
-        };
-        if (arrowUp) {
-          if (!inSlots && propIdx > 0) {
-            setPropIdx(propIdx - 1);
-            exitToRow(false);
-          } else if (inSlots && slotIdx > 0) {
-            setSlotIdx(slotIdx - 1);
-            exitToRow(true);
-          } else if (inSlots && slotIdx === 0 && props.length > 0) {
-            setInSlots(false);
-            setPropIdx(props.length - 1);
-            exitToRow(false);
-          }
-        } else {
-          // arrowDown
-          if (!inSlots && propIdx < props.length - 1) {
-            setPropIdx(propIdx + 1);
-            exitToRow(false);
-          } else if (!inSlots && propIdx === props.length - 1 && slots.length > 0) {
-            setInSlots(true);
-            setSlotIdx(0);
-            exitToRow(true);
-          } else if (inSlots && slotIdx < slots.length - 1) {
-            setSlotIdx(slotIdx + 1);
-            exitToRow(true);
-          }
-        }
-        return;
-      }
-
       // ── Inside values: arrow keys AND j/k navigate BETWEEN VALUES, not
       //    between fields. Reorder is K/J (capital).
       if (isValuesNav && currentProp) {
@@ -673,34 +649,29 @@ export function FieldEditor({
         }
       }
 
-      // ── Other fields (type/category/required/tokenKind): j/k or arrows
-      //    move between fields.
-      if (!isDescriptionTextEntry && !isValuesNav) {
-        const navUp = arrowUp || input === 'k';
-        const navDown = arrowDown || input === 'j';
-        if (navUp) {
-          if (currentFieldIdx > 0) {
-            const next = fields[currentFieldIdx - 1] as PropField | SlotField;
-            setActiveField(next);
-            if (next === 'description') {
-              const desc = inSlots ? (currentSlot?.description ?? '') : (currentProp?.description ?? '');
-              setTextCursor(desc.length);
-            }
-          } else {
-            // Back to row navigation
-            setFocusLevel(inSlots ? 'slot' : 'prop');
-            setActiveField(null);
-          }
-          return;
-        }
-        if (navDown) {
-          if (currentFieldIdx < fields.length - 1) {
-            const next = fields[currentFieldIdx + 1] as PropField | SlotField;
-            setActiveField(next);
-            if (next === 'description') {
-              const desc = inSlots ? (currentSlot?.description ?? '') : (currentProp?.description ?? '');
-              setTextCursor(desc.length);
-            }
+      // ── Field cycling within the current prop/slot.
+      //    Arrows always cycle (including from description, which means in
+      //    description-active state arrows leave text-entry to navigate fields
+      //    of the SAME prop). j/k only cycle when NOT in description, so that
+      //    description preserves literal text-entry for those characters. Use
+      //    Esc to leave the current prop and return to row-level navigation.
+      if (!isValuesNav) {
+        const navUp = arrowUp || (!isDescriptionTextEntry && input === 'k');
+        const navDown = arrowDown || (!isDescriptionTextEntry && input === 'j');
+        if ((navUp || navDown) && fields.length > 0) {
+          const lastIdx = fields.length - 1;
+          const targetIdx = navDown
+            ? currentFieldIdx >= lastIdx
+              ? 0
+              : currentFieldIdx + 1
+            : currentFieldIdx <= 0
+              ? lastIdx
+              : currentFieldIdx - 1;
+          const next = fields[targetIdx] as PropField | SlotField;
+          setActiveField(next);
+          if (next === 'description') {
+            const desc = inSlots ? (currentSlot?.description ?? '') : (currentProp?.description ?? '');
+            setTextCursor(desc.length);
           }
           return;
         }
@@ -887,23 +858,24 @@ export function FieldEditor({
 
   const modeLabel = (() => {
     if (editingValue) {
-      return editingValue.mode === 'add'
-        ? 'Enter to add · Esc to cancel'
-        : 'Enter to save edit · Esc to cancel';
+      return editingValue.mode === 'add' ? 'Enter to add · Esc to cancel' : 'Enter to save edit · Esc to cancel';
     }
     if (focusLevel === 'field' && activeField === 'description') {
-      return 'Type to edit  ←→ cursor  ↑↓ row  Esc exit  Ctrl+S save';
+      return 'Type to edit  ←→ cursor  ↑↓ cycle field  Esc row  Ctrl+S save';
     }
-    if (focusLevel === 'field' && (activeField === 'type' || activeField === 'category' || activeField === 'tokenKind')) {
-      return '←→ cycle  ↑↓/jk next field  Esc exit';
+    if (
+      focusLevel === 'field' &&
+      (activeField === 'type' || activeField === 'category' || activeField === 'tokenKind')
+    ) {
+      return '←→ cycle value  ↑↓/jk cycle field  Esc row';
     }
     if (focusLevel === 'field' && activeField === 'required') {
-      return 'Space/Enter toggle  ↑↓/jk next field  Esc exit';
+      return 'Space/Enter toggle  ↑↓/jk cycle field  Esc row';
     }
     if (focusLevel === 'field' && activeField === 'values') {
-      return '[a]dd  [e]dit  [r]emove  ↑↓/jk navigate  [K/J] reorder  Esc exit';
+      return '[a]dd  [e]dit  [r]emove  ↑↓/jk navigate  [K/J] reorder  Esc row';
     }
-    return '↑↓/jk navigate rows  Enter edit fields  Ctrl+S save  Esc discard';
+    return '↑↓/jk navigate rows  Enter edit fields  Ctrl+S save  Esc exit panel';
   })();
 
   // Build visible rows
@@ -921,9 +893,7 @@ export function FieldEditor({
 
   // Scroll to keep selected row visible
   const selectedRowIdx = rows.findIndex(
-    (r) =>
-      (r.kind === 'prop' && !inSlots && r.idx === propIdx) ||
-      (r.kind === 'slot' && inSlots && r.idx === slotIdx),
+    (r) => (r.kind === 'prop' && !inSlots && r.idx === propIdx) || (r.kind === 'slot' && inSlots && r.idx === slotIdx),
   );
   const visibleRows = Math.max(1, height - 3); // title + hint bar + border
   const scrollStart = selectedRowIdx < 0 ? 0 : Math.max(0, Math.min(selectedRowIdx, rows.length - visibleRows));
@@ -977,7 +947,6 @@ export function FieldEditor({
             />
           );
         })}
-
       </Box>
 
       {validationError && <Text color="red">{'✗ ' + validationError}</Text>}
