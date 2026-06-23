@@ -565,13 +565,13 @@ export function storeRawComponents(
   const now = new Date().toISOString();
 
   const insertComp = db.prepare(
-    `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, extraction_confidence, review_reasons, needs_review)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, extraction_confidence, review_reasons, needs_review, source_path)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertProp = db.prepare(
     `INSERT INTO raw_props
-       (session_id, component_id, name, type, required, category, default_value, description, token_reference, position)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (session_id, component_id, name, type, required, category, default_value, description, token_reference, position, source_start_line, source_end_line)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertAllowedValue = db.prepare(
     `INSERT INTO raw_prop_allowed_values (session_id, component_id, prop_name, position, value)
@@ -643,6 +643,7 @@ export function storeRawComponents(
         comp.extractionConfidence ?? null,
         JSON.stringify(comp.reviewReasons ?? []),
         comp.needsReview ? 1 : 0,
+        comp.sourcePath ?? null,
       );
 
       for (let i = 0; i < comp.props.length; i++) {
@@ -658,6 +659,8 @@ export function storeRawComponents(
           prop.description ?? null,
           prop.tokenReference ?? null,
           i,
+          prop.sourceStartLine ?? null,
+          prop.sourceEndLine ?? null,
         );
         if (prop.allowedValues) {
           prop.allowedValues.forEach((v, j) => insertAllowedValue.run(sessionId, componentId, prop.name, j, v));
@@ -774,7 +777,7 @@ export function loadRawComponents(
 ): RawComponentWithId[] {
   const all = db
     .prepare(
-      'SELECT component_id, name, source, framework, extraction_confidence, review_reasons, needs_review FROM raw_components WHERE session_id = ? ORDER BY rowid',
+      'SELECT component_id, name, source, framework, extraction_confidence, review_reasons, needs_review, source_path FROM raw_components WHERE session_id = ? ORDER BY rowid',
     )
     .all(sessionId) as Array<{
     component_id: string;
@@ -784,6 +787,7 @@ export function loadRawComponents(
     extraction_confidence: number | null;
     review_reasons: string;
     needs_review: number;
+    source_path: string | null;
   }>;
 
   const components = allowedNames ? all.filter((c) => allowedNames.has(c.name)) : all;
@@ -792,7 +796,8 @@ export function loadRawComponents(
 
   const props = db
     .prepare(
-      `SELECT component_id, name, type, required, category, default_value, description, token_reference, position
+      `SELECT component_id, name, type, required, category, default_value, description, token_reference, position,
+              rationale, source_start_line, source_end_line
        FROM raw_props WHERE session_id = ? ORDER BY component_id, position`,
     )
     .all(sessionId) as Array<{
@@ -805,6 +810,9 @@ export function loadRawComponents(
     description: string | null;
     token_reference: string | null;
     position: number;
+    rationale: string | null;
+    source_start_line: number | null;
+    source_end_line: number | null;
   }>;
 
   const allowedValues = db
@@ -865,6 +873,7 @@ export function loadRawComponents(
         }
       })(),
       needsReview: Boolean(c.needs_review),
+      sourcePath: c.source_path ?? undefined,
       props: (propsByComponent.get(c.component_id) ?? []).map((p): RawPropDefinition => {
         const av = allowedValuesByProp.get(`${c.component_id}::${p.name}`);
         const prop: RawPropDefinition = {
@@ -877,6 +886,8 @@ export function loadRawComponents(
         if (p.description !== null) prop.description = p.description;
         if (p.token_reference !== null) prop.tokenReference = p.token_reference;
         if (av && av.length > 0) prop.allowedValues = av.map((v) => v.value);
+        if (p.source_start_line !== null) prop.sourceStartLine = p.source_start_line;
+        if (p.source_end_line !== null) prop.sourceEndLine = p.source_end_line;
         return prop;
       }),
       slots: (slotsByComponent.get(c.component_id) ?? []).map((s): RawSlotDefinition => {

@@ -33,6 +33,10 @@ export interface RawPropDefinition {
   allowedValues?: string[];
   description?: string;
   tokenReference?: string;
+  /** 1-indexed source line where this prop's declaration begins; relative to RawComponentDefinition.source. */
+  sourceStartLine?: number;
+  /** 1-indexed inclusive source line where this prop's declaration ends; relative to RawComponentDefinition.source. */
+  sourceEndLine?: number;
 }
 
 export interface RawSlotDefinition {
@@ -58,6 +62,8 @@ export interface RawComponentDefinition {
   reviewReasons?: string[];
   needsReview?: boolean;
   validationIssues?: ExtractionValidationIssue[];
+  /** Absolute path to the source file this component was extracted from. Null for synthesized / multi-file. */
+  sourcePath?: string;
 }
 
 export interface ComponentExtractionResult {

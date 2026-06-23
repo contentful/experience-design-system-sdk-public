@@ -332,6 +332,114 @@ describe('storeRawComponents + loadRawComponents', () => {
       db.close();
     });
   });
+
+  it('round-trips sourcePath and per-prop source location (Feature 1)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const components: RawComponentDefinition[] = [
+        {
+          name: 'Button',
+          source: 'export interface ButtonProps { label: string }',
+          framework: 'react',
+          sourcePath: '/proj/Button.tsx',
+          props: [
+            {
+              name: 'label',
+              type: 'string',
+              required: true,
+              sourceStartLine: 12,
+              sourceEndLine: 15,
+            },
+          ],
+          slots: [],
+        },
+      ];
+      storeRawComponents(db, sessionId, components);
+
+      const propRow = db
+        .prepare(
+          `SELECT rationale, source_start_line, source_end_line FROM raw_props WHERE session_id = ? AND name = ?`,
+        )
+        .get(sessionId, 'label') as { rationale: string | null; source_start_line: number; source_end_line: number };
+      expect(propRow.source_start_line).toBe(12);
+      expect(propRow.source_end_line).toBe(15);
+      // rationale is set later by the generate phase, not by storeRawComponents.
+      expect(propRow.rationale).toBeNull();
+
+      const compRow = db
+        .prepare(`SELECT source_path FROM raw_components WHERE session_id = ?`)
+        .get(sessionId) as { source_path: string | null };
+      expect(compRow.source_path).toBe('/proj/Button.tsx');
+      db.close();
+    });
+  });
+
+  it('stores NULL when sourcePath/source lines are undefined (Feature 1)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const components: RawComponentDefinition[] = [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [{ name: 'title', type: 'string', required: false }],
+          slots: [],
+        },
+      ];
+      storeRawComponents(db, sessionId, components);
+
+      const propRow = db
+        .prepare(`SELECT source_start_line, source_end_line FROM raw_props WHERE session_id = ?`)
+        .get(sessionId) as { source_start_line: number | null; source_end_line: number | null };
+      expect(propRow.source_start_line).toBeNull();
+      expect(propRow.source_end_line).toBeNull();
+
+      const compRow = db
+        .prepare(`SELECT source_path FROM raw_components WHERE session_id = ?`)
+        .get(sessionId) as { source_path: string | null };
+      expect(compRow.source_path).toBeNull();
+      db.close();
+    });
+  });
+
+  it('loadRawComponents surfaces sourcePath and per-prop source lines (Feature 1)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const components: RawComponentDefinition[] = [
+        {
+          name: 'Button',
+          source: 'src',
+          framework: 'react',
+          sourcePath: '/proj/Button.tsx',
+          props: [
+            {
+              name: 'label',
+              type: 'string',
+              required: true,
+              sourceStartLine: 3,
+              sourceEndLine: 3,
+            },
+          ],
+          slots: [],
+        },
+      ];
+      storeRawComponents(db, sessionId, components);
+      const loaded = loadRawComponents(db, sessionId);
+      expect(loaded[0]?.sourcePath).toBe('/proj/Button.tsx');
+      expect(loaded[0]?.props[0]?.sourceStartLine).toBe(3);
+      expect(loaded[0]?.props[0]?.sourceEndLine).toBe(3);
+      db.close();
+    });
+  });
 });
 
 describe('storeCDFComponents + loadCDFComponents', () => {
