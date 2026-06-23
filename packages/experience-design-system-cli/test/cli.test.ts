@@ -356,6 +356,12 @@ describe('experiences import flag surface', () => {
     expect(stdout).toContain('--no-cache');
   });
 
+  it('exposes --no-auto-filter in experiences import --help (Feature 3)', async () => {
+    const { stdout, code } = await run('import', '--help');
+    expect(code).toBe(0);
+    expect(stdout).toContain('--no-auto-filter');
+  });
+
   it('fails loud on non-TTY without --auto-accept-scope or other headless flags', async () => {
     // execFile gives us a non-TTY stdin/stdout by definition.
     const { code, stderr } = await run('import', '--project', '/tmp');

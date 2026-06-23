@@ -41,6 +41,10 @@ export function registerImportCommand(program: Command): void {
     .option('--host <url>', 'Override API base URL (passed to apply push)')
     .option('--dry-run', 'Print generate components prompt without invoking the agent')
     .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)')
+    .option(
+      '--no-auto-filter',
+      'Skip the automatic AI pre-filter; jump straight to manual scope-gate (no-op when paired with --auto-accept-scope)',
+    )
     .action(
       async (opts: {
         spaceId?: string;
@@ -66,6 +70,7 @@ export function registerImportCommand(program: Command): void {
         host?: string;
         dryRun?: boolean;
         autoAcceptScope?: boolean;
+        autoFilter?: boolean;
       }) => {
         const isHeadless =
           opts.skipAnalyze ||
@@ -105,6 +110,7 @@ export function registerImportCommand(program: Command): void {
             host?: string;
             autoAcceptScope?: boolean;
             noCache?: boolean;
+            autoFilter?: boolean;
           };
           const creds = await readExperiencesCredentials();
           const { waitUntilExit } = render(
@@ -118,6 +124,7 @@ export function registerImportCommand(program: Command): void {
               host: opts.host,
               autoAcceptScope,
               noCache: opts.cache === false,
+              autoFilter: opts.autoFilter !== false,
             }),
           );
           await waitUntilExit();
