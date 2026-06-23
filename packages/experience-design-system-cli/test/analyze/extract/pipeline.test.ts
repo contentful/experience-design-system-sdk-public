@@ -76,6 +76,51 @@ defineProps<{ title: string }>();
     expect(card.framework).toBe('react');
   });
 
+  it('skips SvelteKit route files (+page.svelte, +layout.svelte, +error.svelte)', async () => {
+    const page = await writeFixture(
+      'src/routes/about/+page.svelte',
+      `
+<script lang="ts">
+  let { data }: { data: unknown } = $props();
+</script>
+<div>{JSON.stringify(data)}</div>
+    `,
+    );
+    const layout = await writeFixture(
+      'src/routes/+layout.svelte',
+      `
+<script lang="ts">
+  import type { Snippet } from 'svelte';
+  let { children }: { children: Snippet } = $props();
+</script>
+<main>{@render children()}</main>
+    `,
+    );
+    const error = await writeFixture(
+      'src/routes/+error.svelte',
+      `
+<script lang="ts">
+  let { message }: { message: string } = $props();
+</script>
+<p>{message}</p>
+    `,
+    );
+    const component = await writeFixture(
+      'src/lib/Button.svelte',
+      `
+<script lang="ts">
+  interface Props { label: string }
+  let { label }: Props = $props();
+</script>
+<button>{label}</button>
+    `,
+    );
+
+    const result = await extractComponents([page, layout, error, component]);
+    const names = result.components.map((c) => c.name);
+    expect(names).toEqual(['Button']);
+  });
+
   it('dedupes same-named components across Svelte and React in the same package by path preference', async () => {
     const svelteFile = await writeFixture(
       'packages/ui/src/components/Button/Button.svelte',

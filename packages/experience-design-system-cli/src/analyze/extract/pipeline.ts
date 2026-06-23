@@ -42,7 +42,15 @@ const extractors: ComponentExtractor[] = [
   },
   {
     name: 'svelte',
-    fileFilter: (f) => f.endsWith('.svelte'),
+    fileFilter: (f) => {
+      if (!f.endsWith('.svelte')) return false;
+      // SvelteKit route conventions: +page.svelte, +layout.svelte, +error.svelte
+      // are framework-managed entrypoints, not authorable design-system components.
+      // Mirrors how Next.js page.tsx / layout.tsx are filtered in pre-classify.
+      const filename = f.replace(/\\/g, '/').split('/').pop() ?? '';
+      if (/^\+(page|layout|error)\.svelte$/.test(filename)) return false;
+      return true;
+    },
     extract: extractSvelteComponents,
   },
 ];
