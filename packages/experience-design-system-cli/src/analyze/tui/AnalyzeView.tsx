@@ -9,7 +9,7 @@ export type AnalyzeViewResult = {
   fileCount: number;
   components: Array<{
     name: string;
-    framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil';
+    framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil' | 'svelte';
     propCount: number;
     slotCount: number;
     warnings: string[];

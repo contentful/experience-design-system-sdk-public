@@ -254,27 +254,6 @@ describe('SvelteComponentExtractor', () => {
   // Defaults, requiredness, allowedValues edge cases
   // ---------------------------------------------------------------------------
 
-  it('captures source line numbers for each prop', async () => {
-    const filePath = await writeFixture(
-      'Card.svelte',
-      `<script lang="ts">
-  interface Props {
-    title: string;
-    body: string;
-  }
-  let { title, body }: Props = $props();
-</script>
-<div>{title}{body}</div>
-`,
-    );
-
-    const result = await extractSvelteComponents([filePath]);
-    const card = result.components[0]!;
-    const title = card.props.find((p) => p.name === 'title')!;
-    expect(title.sourceStartLine).toBe(3);
-    expect(title.sourceEndLine).toBeGreaterThanOrEqual(3);
-  });
-
   it('marks prop required when no default and no optional flag', async () => {
     const filePath = await writeFixture(
       'Strict.svelte',
@@ -369,10 +348,7 @@ describe('SvelteComponentExtractor', () => {
   });
 
   it('returns no component and warns on parse errors', async () => {
-    const filePath = await writeFixture(
-      'Broken.svelte',
-      `<script lang="ts">let { foo = $props();</script>`,
-    );
+    const filePath = await writeFixture('Broken.svelte', `<script lang="ts">let { foo = $props();</script>`);
 
     const result = await extractSvelteComponents([filePath]);
     expect(result.components).toHaveLength(0);

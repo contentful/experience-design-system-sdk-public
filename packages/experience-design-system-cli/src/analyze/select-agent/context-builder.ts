@@ -9,7 +9,7 @@ export type SelectionContextSummary = {
   hasParentUsageSite: boolean;
 };
 
-const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.ts', '.tsx', '.vue']);
+const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
 
 const IMPORT_PATTERN = /import\s+(?:type\s+)?(.+?)\s+from\s+['"]([^'"]+)['"]/g;
 const EXPORT_NAMED_PATTERN = /export\s+(?:const|function|class|type|interface|enum)\s+([A-Za-z0-9_]+)/g;

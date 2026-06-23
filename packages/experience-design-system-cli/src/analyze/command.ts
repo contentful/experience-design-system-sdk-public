@@ -28,7 +28,7 @@ interface AnalyzeExtractOptions {
   dir?: string;
 }
 
-const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.ts', '.tsx', '.vue']);
+const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
 const IGNORED_DIRECTORY_NAMES = new Set([
   '.git',
   '.next',

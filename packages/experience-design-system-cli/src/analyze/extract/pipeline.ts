@@ -5,6 +5,7 @@ import { extractVueTsxComponents } from './vue-tsx.js';
 import { extractVueComponents } from './vue.js';
 import { extractAstroComponents } from './astro.js';
 import { extractWebComponentDefinitions } from './web-components.js';
+import { extractSvelteComponents } from './svelte.js';
 
 type ExtractedComponent = ComponentExtractionResult['components'][number];
 
@@ -38,6 +39,11 @@ const extractors: ComponentExtractor[] = [
     name: 'web-components',
     fileFilter: (f) => /\.[jt]s$/.test(f) && !/\.[jt]sx$/.test(f) && !f.endsWith('.d.ts'),
     extract: extractWebComponentDefinitions,
+  },
+  {
+    name: 'svelte',
+    fileFilter: (f) => f.endsWith('.svelte'),
+    extract: extractSvelteComponents,
   },
 ];
 

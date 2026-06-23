@@ -45,7 +45,7 @@ export interface RawSlotDefinition {
 export interface RawComponentDefinition {
   name: string;
   source: string;
-  framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil';
+  framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil' | 'svelte';
   props: RawPropDefinition[];
   slots: RawSlotDefinition[];
   /**
