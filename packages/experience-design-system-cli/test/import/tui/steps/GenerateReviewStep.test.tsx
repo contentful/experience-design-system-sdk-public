@@ -452,3 +452,70 @@ describe('GenerateReviewStep — Feature 2 spinner indicator', () => {
     expect(frame).not.toMatch(/live preview/);
   });
 });
+
+// ── Bug pilot-2026-06-23: rapid j/k stutter / cursor loss ────────────────────
+// Holding `j` or `k` rapidly used to leave the cursor on a stale row because
+// each handler invocation read selectedIdx from a stale closure. The fix
+// rewrote j/k to use functional setState so each pending update sees the
+// previous value. This pins that contract: N j keystrokes advance the
+// cursor N rows (clamped by list length), even when fired before any
+// re-render has settled.
+describe('GenerateReviewStep — rapid j/k navigation (no stutter)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const makeEntry = (label: string): Entry => ({
+    $type: 'component',
+    $properties: { [label]: { $type: 'string', $category: 'content' } },
+  });
+
+  it('rapid j burst advances the cursor exactly N rows (no stale-closure regression)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // Names chosen so they sort alphabetically into a known order; all
+    // populated so none are sorted to the empty tier.
+    const KEYS = ['Aaa', 'Bbb', 'Ccc', 'Ddd', 'Eee'];
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(
+      KEYS.map((k) => ({ key: k, entry: makeEntry(k) })),
+    );
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // Fire 3 j's in quick succession (all in the same micro-batch).
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j');
+    await tick();
+    // After 3 j's, cursor should be on Ddd. Sidebar marks the selected row
+    // — we use the title at the top of the panel which mirrors selected.key.
+    const frame = lastFrame() ?? '';
+    // The panel title is rendered bold; just check the selected key string is
+    // present and is the expected one. We assert by checking that Ddd is on a
+    // line that also contains "prop" (the selected-component header).
+    const hasSelected = frame.split('\n').some((l) => l.includes('Ddd') && /\bprop/.test(l));
+    expect(hasSelected).toBe(true);
+  });
+
+  it('rapid k burst from middle position decrements cursor exactly N rows', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const KEYS = ['Aaa', 'Bbb', 'Ccc', 'Ddd', 'Eee'];
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(
+      KEYS.map((k) => ({ key: k, entry: makeEntry(k) })),
+    );
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // Move down 4 to land on Eee.
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j');
+    await tick();
+    // Now fire 2 k's quickly — cursor should be on Ccc.
+    stdin.write('k');
+    stdin.write('k');
+    await tick();
+    const frame = lastFrame() ?? '';
+    const hasSelected = frame.split('\n').some((l) => l.includes('Ccc') && /\bprop/.test(l));
+    expect(hasSelected).toBe(true);
+  });
+});

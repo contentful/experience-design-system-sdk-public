@@ -307,19 +307,32 @@ export function GenerateReviewStep({
     }
 
     if (key.upArrow || input === 'k') {
-      const newIdx = Math.max(0, selectedIdx - 1);
-      setSelectedIdx(newIdx);
+      // Pilot-2026-06-23 bug: rapid k/j bursts could lose cursor position
+      // because the previous implementation read `selectedIdx` from the
+      // handler's closure. Under high keyboard-repeat rate multiple key
+      // events fire between Ink render flushes, so every invocation saw the
+      // same stale value and recomputed the same `newIdx`. Using functional
+      // setState chains the updates correctly: each pending update sees the
+      // post-update value of the previous one. The viewport offset update is
+      // nested inside the cursor updater so it always reflects the same
+      // newIdx that selectedIdx is being set to.
+      setSelectedIdx((prev) => {
+        const newIdx = Math.max(0, prev - 1);
+        setSidebarScrollOffset((off) => Math.min(off, newIdx));
+        return newIdx;
+      });
       setJsonScrollOffset(0);
       setDraftValue('');
       setSaveError(null);
-      setSidebarScrollOffset((prev) => Math.min(prev, newIdx));
     } else if (key.downArrow || input === 'j') {
-      const newIdx = Math.min(components.length - 1, selectedIdx + 1);
-      setSelectedIdx(newIdx);
+      setSelectedIdx((prev) => {
+        const newIdx = Math.min(components.length - 1, prev + 1);
+        setSidebarScrollOffset((off) => (newIdx >= off + VISIBLE_COUNT ? newIdx - VISIBLE_COUNT + 1 : off));
+        return newIdx;
+      });
       setJsonScrollOffset(0);
       setDraftValue('');
       setSaveError(null);
-      setSidebarScrollOffset((prev) => (newIdx >= prev + VISIBLE_COUNT ? newIdx - VISIBLE_COUNT + 1 : prev));
     }
   });
 
