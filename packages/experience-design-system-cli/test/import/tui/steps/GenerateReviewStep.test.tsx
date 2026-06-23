@@ -27,10 +27,12 @@ vi.mock('../../../../src/session/db.js', () => ({
 }));
 
 let GenerateReviewStep: typeof import('../../../../src/import/tui/steps/GenerateReviewStep.js').GenerateReviewStep;
+let sortComponentsForSidebar: typeof import('../../../../src/import/tui/steps/GenerateReviewStep.js').sortComponentsForSidebar;
 
 beforeEach(async () => {
   const mod = await import('../../../../src/import/tui/steps/GenerateReviewStep.js');
   GenerateReviewStep = mod.GenerateReviewStep;
+  sortComponentsForSidebar = mod.sortComponentsForSidebar;
 });
 
 afterEach(() => {
@@ -214,5 +216,44 @@ describe('GenerateReviewStep — empty-component warning banner (Bug 2, INTEG-42
     await tick();
     const frame = lastFrame() ?? '';
     expect(frame).not.toMatch(/no classifiable props/i);
+  });
+});
+
+describe('GenerateReviewStep — sortComponentsForSidebar (Bug, INTEG-4259)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const FULL: Entry = {
+    $type: 'component',
+    $properties: { foo: { $type: 'string', $category: 'content' } },
+  };
+  const EMPTY: Entry = { $type: 'component', $properties: {} };
+
+  it('sorts empty components to the top and tie-breaks alphabetically within each tier', () => {
+    const input: Array<{ key: string; entry: Entry }> = [
+      { key: 'Apple', entry: FULL },
+      { key: 'Beta', entry: EMPTY },
+      { key: 'Charlie', entry: FULL },
+      { key: 'Alpha', entry: EMPTY },
+    ];
+    const result = sortComponentsForSidebar(input);
+    // Empty (Alpha, Beta) first alphabetical, then non-empty (Apple, Charlie) alphabetical.
+    expect(result.map((c) => c.key)).toEqual(['Alpha', 'Beta', 'Apple', 'Charlie']);
+  });
+
+  it('preserves alphabetical order when no components are empty', () => {
+    const input: Array<{ key: string; entry: Entry }> = [
+      { key: 'Charlie', entry: FULL },
+      { key: 'Apple', entry: FULL },
+    ];
+    const result = sortComponentsForSidebar(input);
+    expect(result.map((c) => c.key)).toEqual(['Apple', 'Charlie']);
+  });
+
+  it('preserves alphabetical order when every component is empty', () => {
+    const input: Array<{ key: string; entry: Entry }> = [
+      { key: 'Charlie', entry: EMPTY },
+      { key: 'Apple', entry: EMPTY },
+    ];
+    const result = sortComponentsForSidebar(input);
+    expect(result.map((c) => c.key)).toEqual(['Apple', 'Charlie']);
   });
 });

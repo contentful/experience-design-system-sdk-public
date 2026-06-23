@@ -23,6 +23,27 @@ type GenerateReviewStepProps = {
   onQuit: () => void;
 };
 
+/**
+ * Sort components for the final-review sidebar so the underlying data array
+ * matches the visual order. Empty components (zero classified $properties)
+ * surface at the top via the warning-tier path in Sidebar.tsx; we mirror that
+ * here so `selectedIdx` indexes into the same order the user sees. Without
+ * this, j/k navigation lands on different rows than the visually-selected
+ * one (INTEG-4259).
+ *
+ * Within each tier (empty / non-empty) we tie-break alphabetically by `key`.
+ */
+export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
+  components: T[],
+): T[] {
+  return [...components].sort((a, b) => {
+    const aEmpty = Object.keys(a.entry.$properties ?? {}).length === 0;
+    const bEmpty = Object.keys(b.entry.$properties ?? {}).length === 0;
+    if (aEmpty !== bEmpty) return aEmpty ? -1 : 1;
+    return a.key.localeCompare(b.key);
+  });
+}
+
 const VISIBLE_COUNT = 20;
 const PANEL_HEIGHT = 22;
 
@@ -62,7 +83,12 @@ export function GenerateReviewStep({
         setLoading(false);
         return;
       }
-      setComponents(cdfComponents.map(({ key, entry }) => ({ key, entry, status: 'needs-review' })));
+      const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
+        key,
+        entry,
+        status: 'needs-review',
+      }));
+      setComponents(sortComponentsForSidebar(reviewEntries));
       setLoading(false);
     }
     load().catch((e: unknown) => {
