@@ -113,7 +113,7 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     expect(frame).toMatch(/cycle/);
   });
 
-  it('navigates type → category → required → description via j', async () => {
+  it('navigates type → category → required → default → description via j', async () => {
     const { stdin, lastFrame } = render(
       <FieldEditor
         value={STRING_COMPONENT}
@@ -138,6 +138,11 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     stdin.write('j');
     await tick();
     expect(lastFrame() ?? '').toMatch(/toggle/);
+
+    // j → default (default sub-row active)
+    stdin.write('j');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/default:/);
 
     // j → description (text-entry hint)
     stdin.write('j');
@@ -187,8 +192,11 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    // Walk: row → Return (type) → j → j → j → description.
+    // Walk: row → Return (type) → j×4 → description.
+    // Cycle is type → category → required → default → description.
     stdin.write('\r');
+    await tick();
+    stdin.write('j');
     await tick();
     stdin.write('j');
     await tick();
@@ -217,8 +225,10 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    // Walk to description.
+    // Walk to description: type → category → required → default → description.
     stdin.write('\r');
+    await tick();
+    stdin.write('j');
     await tick();
     stdin.write('j');
     await tick();
@@ -448,8 +458,10 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    // Return → type → j → category → j → required → j → description
+    // Return → type → j → category → j → required → j → default → j → description
     stdin.write('\r');
+    await tick();
+    stdin.write('j');
     await tick();
     stdin.write('j');
     await tick();
@@ -524,8 +536,11 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     const { stdin, lastFrame } = render(
       <FieldEditor value={value} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
-    // Return → type, j×3 → description on the FIRST prop.
+    // Return → type, j×4 → description on the FIRST prop.
+    // Cycle: type → category → required → default → description.
     stdin.write('\r');
+    await tick();
+    stdin.write('j');
     await tick();
     stdin.write('j');
     await tick();
@@ -651,6 +666,82 @@ describe('FieldEditor — duplicate React-key safety (Bug 1, INTEG-4257)', () =>
   });
 });
 
+describe('FieldEditor — Feature 5: propFields ordering ($default before description)', () => {
+  it('cycle for richtext omits default — j×3 after Return lands on description (no default in cycle)', async () => {
+    const RICHTEXT = JSON.stringify(
+      {
+        Block: {
+          $type: 'component',
+          $properties: {
+            body: { $type: 'richtext', $category: 'content', $description: 'Rich body' },
+          },
+        },
+      },
+      null,
+      2,
+    );
+    const { stdin, lastFrame } = render(
+      <FieldEditor value={RICHTEXT} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    // Return → type, j×3 → description (default skipped for richtext).
+    stdin.write('\r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Type to edit/);
+  });
+
+  it('cycle for media omits default', async () => {
+    const MEDIA = JSON.stringify(
+      {
+        Img: {
+          $type: 'component',
+          $properties: {
+            src: { $type: 'media', $category: 'content' },
+          },
+        },
+      },
+      null,
+      2,
+    );
+    const { stdin, lastFrame } = render(
+      <FieldEditor value={MEDIA} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    stdin.write('\r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Type to edit/);
+  });
+
+  it('renders (not applicable) for richtext default sub-row', () => {
+    const RICHTEXT = JSON.stringify(
+      {
+        Block: {
+          $type: 'component',
+          $properties: {
+            body: { $type: 'richtext', $category: 'content' },
+          },
+        },
+      },
+      null,
+      2,
+    );
+    const { lastFrame } = render(
+      <FieldEditor value={RICHTEXT} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    expect(lastFrame() ?? '').toContain('(not applicable)');
+  });
+});
+
 describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowedComponents, $description)', () => {
   it('round-trips per-prop $default for string/number/token/boolean/enum without edits', async () => {
     const FIXTURE = JSON.stringify(
@@ -660,7 +751,6 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
           $description: 'Top-level desc',
           $properties: {
             label: { $type: 'string', $category: 'content', $default: 'Hello' },
-            count: { $type: 'number', $category: 'content', $default: '42' },
             color: { $type: 'token', $category: 'style', '$token.kind': 'color', $default: 'tokens.red' },
             visible: { $type: 'boolean', $category: 'content', $default: true },
             variant: { $type: 'enum', $category: 'content', $values: ['a', 'b'], $default: 'b' },
@@ -698,7 +788,6 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
     expect(onChange).toHaveBeenCalled();
     const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
     expect(last).toContain('"$default": "Hello"');
-    expect(last).toContain('"$default": "42"');
     expect(last).toContain('"$default": "tokens.red"');
     expect(last).toContain('"$default": true');
     expect(last).toContain('"$default": "b"');

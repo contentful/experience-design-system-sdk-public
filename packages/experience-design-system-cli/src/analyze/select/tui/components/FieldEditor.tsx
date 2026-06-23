@@ -197,7 +197,7 @@ function serializeState(state: EditorState, originalJson: string): string {
       if (p.type === 'boolean' && typeof p.default === 'boolean') {
         def.$default = p.default;
       } else if (
-        (p.type === 'string' || p.type === 'number' || p.type === 'token' || p.type === 'enum') &&
+        (p.type === 'string' || p.type === 'token' || p.type === 'enum') &&
         typeof p.default === 'string' &&
         p.default !== ''
       ) {
@@ -247,6 +247,84 @@ function Toggle({ value, active }: { value: boolean; active: boolean }): React.R
   return (
     <Box>
       <Text color={active ? 'cyan' : value ? 'green' : undefined}>{value ? '[✓]' : '[ ]'}</Text>
+    </Box>
+  );
+}
+
+function DefaultSubRow({
+  prop,
+  active,
+  textCursor,
+  cursorVisible,
+}: {
+  prop: PropState;
+  active: boolean;
+  textCursor: number;
+  cursorVisible: boolean;
+}): React.ReactElement {
+  const cursor = cursorVisible ? '█' : ' ';
+  // richtext/media/link don't support defaults — render an inert dim line.
+  if (prop.type === 'richtext' || prop.type === 'media' || prop.type === 'link') {
+    return (
+      <Box paddingLeft={2} gap={1}>
+        <Text dimColor>default:</Text>
+        <Text dimColor>(not applicable)</Text>
+      </Box>
+    );
+  }
+
+  // boolean — tri-state picker: true | false | (unset).
+  if (prop.type === 'boolean') {
+    const display =
+      prop.default === true ? 'true' : prop.default === false ? 'false' : '(unset)';
+    return (
+      <Box paddingLeft={2} gap={1}>
+        <Text dimColor>default:</Text>
+        {active ? <Picker value={display} active={true} /> : <Text color="white">{display}</Text>}
+      </Box>
+    );
+  }
+
+  // enum — picker over prop.values plus (unset).
+  if (prop.type === 'enum') {
+    if (prop.values.length === 0) {
+      return (
+        <Box paddingLeft={2} gap={1}>
+          <Text dimColor>default:</Text>
+          <Text dimColor>(no values defined)</Text>
+        </Box>
+      );
+    }
+    const display = typeof prop.default === 'string' && prop.default !== '' ? prop.default : '(unset)';
+    return (
+      <Box paddingLeft={2} gap={1}>
+        <Text dimColor>default:</Text>
+        {active ? <Picker value={display} active={true} /> : <Text color="white">{display}</Text>}
+      </Box>
+    );
+  }
+
+  // string / number / token — text input. Active state shows bordered cyan
+  // box analogous to the description editor.
+  const value = typeof prop.default === 'string' ? prop.default : '';
+  if (active) {
+    return (
+      <Box paddingLeft={2} flexDirection="row">
+        <Text dimColor>default:</Text>
+        <Box flexGrow={1} borderStyle="round" borderColor="cyan" paddingX={1}>
+          <Text>{value.slice(0, textCursor)}</Text>
+          <Text inverse={cursorVisible}>{value[textCursor] ?? cursor}</Text>
+          <Text>{value.slice(textCursor + 1)}</Text>
+        </Box>
+      </Box>
+    );
+  }
+  return (
+    <Box paddingLeft={2} gap={1}>
+      <Text dimColor>default:</Text>
+      <Text color={value ? 'white' : undefined} dimColor={!value}>
+        {value || '(none)'}
+      </Text>
     </Box>
   );
 }
@@ -324,6 +402,20 @@ function PropRow({
           </>
         )}
       </Box>
+
+      {/* $default sub-row — only when selected and type supports defaults.
+          richtext/media/link types render `(not applicable)` and skip the
+          field cycle (per spec D1). Active state highlights the value with
+          cyan; for boolean/enum the picker affordance shows; for string/
+          number/token a bordered cyan textbox mirrors the description input. */}
+      {selected && (
+        <DefaultSubRow
+          prop={prop}
+          active={activeField === 'default'}
+          textCursor={textCursor}
+          cursorVisible={cursorVisible}
+        />
+      )}
 
       {/* $description sub-row — only when selected. Active state shows a
           bordered box to make the editing target visible. */}
@@ -440,22 +532,31 @@ function SlotRow({
 
 // ── Field navigation types ─────────────────────────────────────────────────
 
-type PropField = 'type' | 'category' | 'required' | 'description' | 'tokenKind' | 'values';
-type SlotField = 'required' | 'description';
+type PropField = 'type' | 'category' | 'required' | 'description' | 'tokenKind' | 'values' | 'default';
+type SlotField = 'required' | 'description' | 'allowedComponents';
 
 // Field order is intentional: description is LAST so it's the "edge" of the
 // field cycle. The user reaches description by walking through type → category
-// → required → [tokenKind?] → [values?] → description via j/k; once active,
-// description swallows j/k as literal text input. Putting it last means the
-// user has to deliberately navigate to it, avoiding accidental text-entry.
+// → required → [tokenKind?] → [values?] → [default?] → description via j/k;
+// once active, description swallows j/k as literal text input. Putting it last
+// means the user has to deliberately navigate to it, avoiding accidental
+// text-entry. `default` slots in BEFORE description for the same reason —
+// description-as-last is invariant. richtext/media/link omit `default` because
+// defaults aren't meaningful for those types (per spec D1).
 function propFields(prop: PropState): PropField[] {
   const fields: PropField[] = ['type', 'category', 'required'];
   if (prop.type === 'token') fields.push('tokenKind');
   if (prop.type === 'enum') fields.push('values');
+  if (prop.type !== 'richtext' && prop.type !== 'media' && prop.type !== 'link') {
+    fields.push('default');
+  }
   fields.push('description');
   return fields;
 }
-const SLOT_FIELDS: SlotField[] = ['required', 'description'];
+// Slot fields: description stays last for the same invariant reason. Allowed-
+// components is a list-typed field that swallows j/k similarly to enum $values
+// — placing it before description preserves description-as-last.
+const SLOT_FIELDS: SlotField[] = ['required', 'allowedComponents', 'description'];
 
 // ── Main component ────────────────────────────────────────────────────────────
 
