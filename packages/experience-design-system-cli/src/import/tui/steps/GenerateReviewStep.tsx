@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
-import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
+import type { CDFComponentEntry, ServerPreviewResponse } from '@contentful/experience-design-system-types';
 import { Sidebar } from '../../../analyze/select/tui/components/Sidebar.js';
 import { JsonPanel } from '../../../analyze/select/tui/components/JsonPanel.js';
 import { FieldEditor } from '../../../analyze/select/tui/components/FieldEditor.js';
@@ -16,7 +16,13 @@ import {
   type ComponentReviewMetadata,
 } from '../../../session/db.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
-import type { ReviewComponentStatus, ReviewComponentSummary } from '../../../analyze/select/types.js';
+import type {
+  PreviewAnnotation,
+  ReviewComponentStatus,
+  ReviewComponentSummary,
+} from '../../../analyze/select/types.js';
+import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
+import { useLivePreview } from '../useLivePreview.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -28,6 +34,21 @@ type GenerateReviewStepProps = {
   extractSessionId: string;
   onFinalize: (accepted: number, rejected: number) => void;
   onQuit: () => void;
+  /**
+   * Feature 2 (live preview after every save). When `true` (default), the
+   * wizard re-runs `previewImport` after each successful FieldEditor Ctrl+S
+   * (debounced 500ms) and refreshes the sidebar's previewAnnotation badges.
+   * Operator opts out via `experiences import --no-live-preview`.
+   */
+  livePreview?: boolean;
+  // Creds + tokens path threaded from the wizard so the live-preview hook
+  // can call previewImport without re-prompting. Missing creds → silent
+  // no-op inside the hook.
+  spaceId?: string;
+  environmentId?: string;
+  cmaToken?: string;
+  host?: string;
+  tokensPath?: string;
 };
 
 /**
@@ -58,6 +79,12 @@ export function GenerateReviewStep({
   extractSessionId,
   onFinalize,
   onQuit,
+  livePreview = true,
+  spaceId = '',
+  environmentId = '',
+  cmaToken = '',
+  host = '',
+  tokensPath = '',
 }: GenerateReviewStepProps): React.ReactElement {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
@@ -78,6 +105,26 @@ export function GenerateReviewStep({
   // Feature 1: per-component review metadata (rationale + source location)
   // for the currently-selected component. Reloaded when selection changes.
   const [reviewMetadata, setReviewMetadata] = useState<ComponentReviewMetadata | null>(null);
+  // Feature 2: per-component preview annotations refreshed after every
+  // FieldEditor save via the useLivePreview hook below. Empty when live
+  // preview is disabled, when creds are missing, or before the first response.
+  const [previewAnnotations, setPreviewAnnotations] = useState<Map<string, PreviewAnnotation>>(new Map());
+
+  const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
+    if (!response) return;
+    setPreviewAnnotations(applyPreviewAnnotations(response));
+  };
+
+  const livePreviewHook = useLivePreview({
+    enabled: livePreview,
+    sessionId: extractSessionId,
+    tokensPath,
+    spaceId,
+    environmentId,
+    cmaToken,
+    host,
+    onResult: handleLivePreviewResult,
+  });
 
   useEffect(() => {
     async function load() {
@@ -183,6 +230,9 @@ export function GenerateReviewStep({
       } finally {
         db.close();
       }
+      // Feature 2: re-fire the live preview now that pipeline.db reflects
+      // the new state. The hook owns debounce + cred-missing short-circuit.
+      livePreviewHook.trigger();
     } catch (e) {
       setSaveError(String(e));
     }
@@ -293,6 +343,7 @@ export function GenerateReviewStep({
     id: c.key,
     name: isEmpty(c) ? `${c.key} (empty)` : c.key,
     status: c.status,
+    previewAnnotation: previewAnnotations.get(c.key),
     extractionConfidence: null,
     needsReview: false,
     validationErrorCount: 0,
