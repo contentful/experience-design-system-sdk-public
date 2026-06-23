@@ -60,12 +60,21 @@ type PropState = {
   description: string;
   values: string[];
   tokenKind: string;
+  /**
+   * Per-prop $default. null = unset. For boolean props the value is a
+   * boolean; for all other types it's stored as a string and serialized
+   * verbatim. richtext/media/link don't use this slot — defaults aren't
+   * meaningful for those types and the field is omitted from the cycle.
+   */
+  default: string | boolean | null;
 };
 
 type SlotState = {
   name: string;
   description: string;
   required: boolean;
+  /** $allowedComponents — list of component names. Empty = "any". */
+  allowedComponents: string[];
 };
 
 type EditorState = {
@@ -114,9 +123,20 @@ function parseToState(json: string): { state: EditorState; error: string | null 
   const rawProps = (component.$properties ?? {}) as Record<string, unknown>;
   const props: PropState[] = Object.entries(rawProps).map(([name, raw]) => {
     const p = (raw ?? {}) as Record<string, unknown>;
+    const type = CDF_PROPERTY_TYPES.includes(p.$type as never) ? (p.$type as PropState['type']) : 'string';
+    let defaultValue: string | boolean | null = null;
+    if (p.$default !== undefined && p.$default !== null) {
+      if (type === 'boolean') {
+        defaultValue = typeof p.$default === 'boolean' ? p.$default : null;
+      } else {
+        // Store as string for string/number/token/enum. Numbers/JSON values
+        // are stringified — downstream serialization re-emits the string.
+        defaultValue = typeof p.$default === 'string' ? p.$default : String(p.$default);
+      }
+    }
     return {
       name,
-      type: CDF_PROPERTY_TYPES.includes(p.$type as never) ? (p.$type as PropState['type']) : 'string',
+      type,
       category: CDF_PROPERTY_CATEGORIES.includes(p.$category as never)
         ? (p.$category as PropState['category'])
         : 'content',
@@ -124,6 +144,7 @@ function parseToState(json: string): { state: EditorState; error: string | null 
       description: typeof p.$description === 'string' ? p.$description : '',
       values: Array.isArray(p.$values) ? (p.$values as string[]).filter((v) => typeof v === 'string') : [],
       tokenKind: typeof p['$token.kind'] === 'string' ? p['$token.kind'] : '',
+      default: defaultValue,
     };
   });
 
@@ -134,6 +155,9 @@ function parseToState(json: string): { state: EditorState; error: string | null 
       name,
       description: typeof s.$description === 'string' ? s.$description : '',
       required: s.$required === true,
+      allowedComponents: Array.isArray(s.$allowedComponents)
+        ? (s.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
+        : [],
     };
   });
 
