@@ -190,6 +190,20 @@ function serializeState(state: EditorState, originalJson: string): string {
     if (p.description) def.$description = p.description;
     if (p.type === 'enum' && p.values.length > 0) def.$values = p.values;
     if (p.type === 'token' && p.tokenKind) def['$token.kind'] = p.tokenKind;
+    // $default — gated per type so e.g. boolean props don't get string defaults.
+    // Empty string == unset for text-typed defaults. richtext/media/link don't
+    // emit a default (defaults aren't meaningful for those types).
+    if (p.default !== null) {
+      if (p.type === 'boolean' && typeof p.default === 'boolean') {
+        def.$default = p.default;
+      } else if (
+        (p.type === 'string' || p.type === 'number' || p.type === 'token' || p.type === 'enum') &&
+        typeof p.default === 'string' &&
+        p.default !== ''
+      ) {
+        def.$default = p.default;
+      }
+    }
     $properties[p.name] = def;
   }
 
@@ -204,6 +218,7 @@ function serializeState(state: EditorState, originalJson: string): string {
       const slotDef: CDFSlotDefinition = {};
       if (s.description) slotDef.$description = s.description;
       if (s.required) slotDef.$required = true;
+      if (s.allowedComponents.length > 0) slotDef.$allowedComponents = s.allowedComponents;
       entry.$slots[s.name] = slotDef;
     }
   }

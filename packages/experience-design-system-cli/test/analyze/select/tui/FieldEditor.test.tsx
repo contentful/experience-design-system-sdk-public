@@ -651,6 +651,147 @@ describe('FieldEditor — duplicate React-key safety (Bug 1, INTEG-4257)', () =>
   });
 });
 
+describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowedComponents, $description)', () => {
+  it('round-trips per-prop $default for string/number/token/boolean/enum without edits', async () => {
+    const FIXTURE = JSON.stringify(
+      {
+        Mixer: {
+          $type: 'component',
+          $description: 'Top-level desc',
+          $properties: {
+            label: { $type: 'string', $category: 'content', $default: 'Hello' },
+            count: { $type: 'number', $category: 'content', $default: '42' },
+            color: { $type: 'token', $category: 'style', '$token.kind': 'color', $default: 'tokens.red' },
+            visible: { $type: 'boolean', $category: 'content', $default: true },
+            variant: { $type: 'enum', $category: 'content', $values: ['a', 'b'], $default: 'b' },
+          },
+        },
+      },
+      null,
+      2,
+    );
+
+    const onChange = vi.fn();
+    const onSave = vi.fn();
+    const { stdin } = render(
+      <FieldEditor
+        value={FIXTURE}
+        width={80}
+        height={30}
+        onChange={onChange}
+        onSave={onSave}
+        onDiscard={vi.fn()}
+      />,
+    );
+    // Force a serialize by toggling required on first prop, then toggling back.
+    stdin.write('\r'); // enter field-edit at type
+    await tick();
+    stdin.write('j'); // category
+    await tick();
+    stdin.write('j'); // required
+    await tick();
+    stdin.write(' '); // toggle required on
+    await tick();
+    stdin.write(' '); // toggle required off
+    await tick();
+
+    expect(onChange).toHaveBeenCalled();
+    const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(last).toContain('"$default": "Hello"');
+    expect(last).toContain('"$default": "42"');
+    expect(last).toContain('"$default": "tokens.red"');
+    expect(last).toContain('"$default": true');
+    expect(last).toContain('"$default": "b"');
+  });
+
+  it('round-trips per-slot $allowedComponents without edits', async () => {
+    const FIXTURE = JSON.stringify(
+      {
+        Container: {
+          $type: 'component',
+          $properties: {
+            title: { $type: 'string', $category: 'content' },
+          },
+          $slots: {
+            children: { $description: 'Body', $allowedComponents: ['Card', 'Hero'] },
+          },
+        },
+      },
+      null,
+      2,
+    );
+
+    const onChange = vi.fn();
+    const { stdin } = render(
+      <FieldEditor
+        value={FIXTURE}
+        width={80}
+        height={30}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    // Toggle required on title to force a serialize.
+    stdin.write('\r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write(' ');
+    await tick();
+    stdin.write(' ');
+    await tick();
+
+    const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(last).toContain('"$allowedComponents"');
+    expect(last).toContain('"Card"');
+    expect(last).toContain('"Hero"');
+  });
+
+  it('round-trips component-level $description without edits', async () => {
+    const FIXTURE = JSON.stringify(
+      {
+        Hero: {
+          $type: 'component',
+          $description: 'Top-level hero description',
+          $properties: {
+            title: { $type: 'string', $category: 'content' },
+          },
+        },
+      },
+      null,
+      2,
+    );
+
+    const onChange = vi.fn();
+    const { stdin } = render(
+      <FieldEditor
+        value={FIXTURE}
+        width={80}
+        height={30}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    stdin.write('\r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write(' ');
+    await tick();
+    stdin.write(' ');
+    await tick();
+
+    const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(last).toContain('"$description": "Top-level hero description"');
+  });
+});
+
 describe('FieldEditor — empty-properties warning (Bug 2, INTEG-4257)', () => {
   const EMPTY_PROPS_COMPONENT = JSON.stringify(
     {
