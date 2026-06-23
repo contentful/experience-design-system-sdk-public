@@ -123,40 +123,40 @@ describe('preClassifyProp', () => {
   });
 
   describe('Rule 9: Boolean + visual toggle', () => {
-    it('classifies hideChevron boolean as design', () => {
+    it('classifies hideChevron boolean as design with boolean hint', () => {
       expect(preClassifyProp(makeProp({ name: 'hideChevron', type: 'boolean' }))).toEqual({
         category: 'design',
-        cdfTypeHint: 'string',
+        cdfTypeHint: 'boolean',
       });
     });
 
-    it('classifies verticalTop boolean as design', () => {
+    it('classifies verticalTop boolean as design with boolean hint', () => {
       expect(preClassifyProp(makeProp({ name: 'verticalTop', type: 'boolean' }))).toEqual({
         category: 'design',
-        cdfTypeHint: 'string',
+        cdfTypeHint: 'boolean',
       });
     });
   });
 
   describe('Rule 10: Boolean + state names', () => {
-    it('classifies disabled boolean as state', () => {
+    it('classifies disabled boolean as state with boolean hint', () => {
       expect(preClassifyProp(makeProp({ name: 'disabled', type: 'boolean' }))).toEqual({
         category: 'state',
-        cdfTypeHint: 'string',
+        cdfTypeHint: 'boolean',
       });
     });
 
-    it('classifies loading boolean as state', () => {
+    it('classifies loading boolean as state with boolean hint', () => {
       expect(preClassifyProp(makeProp({ name: 'loading', type: 'boolean' }))).toEqual({
         category: 'state',
-        cdfTypeHint: 'string',
+        cdfTypeHint: 'boolean',
       });
     });
 
-    it('classifies isOpen boolean as state', () => {
+    it('classifies isOpen boolean as state with boolean hint', () => {
       expect(preClassifyProp(makeProp({ name: 'isOpen', type: 'boolean' }))).toEqual({
         category: 'state',
-        cdfTypeHint: 'string',
+        cdfTypeHint: 'boolean',
       });
     });
   });
@@ -226,11 +226,49 @@ describe('preClassifyProp', () => {
   });
 
   describe('Rule 15: Remaining booleans', () => {
-    it('classifies generic boolean prop as design', () => {
+    it('classifies generic boolean prop as design with boolean hint', () => {
       expect(preClassifyProp(makeProp({ name: 'rounded', type: 'boolean' }))).toEqual({
         category: 'design',
-        cdfTypeHint: 'string',
+        cdfTypeHint: 'boolean',
       });
+    });
+  });
+
+  describe('boolean cdfTypeHint never falls back to string', () => {
+    // CDF supports native boolean as a cdf_type since PR #76. The pre-classify
+    // hint must not bias the LLM toward 'string' for boolean-typed props.
+    const booleanCases = [
+      // Visual-toggle names (Rule 9)
+      'hideChevron',
+      'showLabel',
+      'enableEffect',
+      'disableAutoplay',
+      'verticalAlignment',
+      'horizontalLayout',
+      'reverseOrder',
+      'boldText',
+      'italicText',
+      'imageOnLeft',
+      'withBorder',
+      // State names (Rule 10)
+      'disabled',
+      'loading',
+      'expanded',
+      'isOpen',
+      'selected',
+      'checked',
+      'active',
+      'preview',
+      // Remaining booleans (Rule 15)
+      'rounded',
+      'flat',
+      'someArbitraryFlag',
+    ];
+
+    it.each(booleanCases)('classifies "%s: boolean" with cdfTypeHint of "boolean" (never "string")', (name) => {
+      const result = preClassifyProp(makeProp({ name, type: 'boolean' }));
+      expect(result?.cdfTypeHint).toBe('boolean');
+      expect(result?.cdfTypeHint).not.toBe('string');
     });
   });
 

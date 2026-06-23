@@ -2,7 +2,7 @@ import type { RawPropDefinition, RawComponentDefinition } from '../types.js';
 
 export interface PreClassification {
   category: 'content' | 'design' | 'state' | 'exclude';
-  cdfTypeHint?: 'string' | 'enum' | 'richtext' | 'media';
+  cdfTypeHint?: 'string' | 'enum' | 'richtext' | 'media' | 'boolean';
 }
 
 /**
@@ -95,7 +95,7 @@ export function preClassifyProp(prop: RawPropDefinition): PreClassification | un
   if (isBooleanType(type)) {
     const stateNames = ['disabled', 'loading', 'expanded', 'isOpen', 'selected', 'checked', 'active', 'preview'];
     if (stateNames.includes(name)) {
-      return { category: 'state', cdfTypeHint: 'string' };
+      return { category: 'state', cdfTypeHint: 'boolean' };
     }
   }
 
@@ -103,7 +103,7 @@ export function preClassifyProp(prop: RawPropDefinition): PreClassification | un
   if (isBooleanType(type)) {
     const visualToggle = /^(hide|show|enable|disable|vertical|horizontal|reverse|bold|italic|imageOn|with)/i;
     if (visualToggle.test(name)) {
-      return { category: 'design', cdfTypeHint: 'string' };
+      return { category: 'design', cdfTypeHint: 'boolean' };
     }
   }
 
@@ -138,7 +138,7 @@ export function preClassifyProp(prop: RawPropDefinition): PreClassification | un
 
   // Rule 15: Remaining booleans
   if (isBooleanType(type)) {
-    return { category: 'design', cdfTypeHint: 'string' };
+    return { category: 'design', cdfTypeHint: 'boolean' };
   }
 
   // Rule 16: Remaining numbers
