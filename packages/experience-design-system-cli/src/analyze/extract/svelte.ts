@@ -151,6 +151,12 @@ async function extractFromSvelteFile(
   component.reviewReasons = score.reasons;
   component.needsReview = deriveNeedsReview(score.confidence);
 
+  // Validation issues (EMPTY_COMPONENT_NAME / EMPTY_PROP_NAME / PROP_SLOT_NAME_COLLISION /
+  // DUPLICATE_COMPONENT_NAME / EMPTY_COMPONENT / EMPTY_SLOT_NAME) are populated
+  // centrally by validateExtractedComponents() in analyze/command.ts after all
+  // extractors return — same convention as React, Vue, Astro, Stencil, and
+  // web-components. No per-extractor work needed here.
+
   void propNamesTreatedAsSnippet; // currently informational; reserved for future validation
   return { component, warnings };
 }
