@@ -119,13 +119,15 @@ export function buildGenerateComponentsArgs(opts: {
   sessionId: string;
   tokensPath?: string;
   agent: string;
+  noCache?: boolean;
 }): string[] {
-  // The SHA-based component cache benefits the wizard re-run path (only
-  // changed components re-generate) but is invisible to the user, so a
-  // regression that silently disabled it would land unnoticed. Never pass
-  // --no-cache from the wizard — pinned by wizard-cache.test.ts.
+  // Default behavior preserves the SHA cache (re-runs only re-classify
+  // changed components). The operator opts into a full re-classify pass via
+  // `experiences import --no-cache`, which forwards through to the spawned
+  // `generate components` subprocess. See wizard-cache.test.ts.
   const args = ['generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
   if (opts.tokensPath) args.push('--tokens', opts.tokensPath);
+  if (opts.noCache) args.push('--no-cache');
   return args;
 }
 
