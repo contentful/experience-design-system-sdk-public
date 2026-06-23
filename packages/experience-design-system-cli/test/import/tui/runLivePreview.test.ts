@@ -222,6 +222,61 @@ describe('runLivePreview', () => {
     });
   });
 
+  it('emits "live-preview: <ms>ms" to stderr when EDS_VERBOSE is set on success', async () => {
+    await withTempDb(async ({ dbPath }) => {
+      const sessionId = seed(dbPath);
+      previewImportMock.mockResolvedValueOnce(SAMPLE_PREVIEW);
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const orig = process.env['EDS_VERBOSE'];
+      process.env['EDS_VERBOSE'] = '1';
+      try {
+        const { runLivePreview } = await import('../../../src/import/tui/runLivePreview.js');
+        await runLivePreview({
+          sessionId,
+          tokensPath: '',
+          spaceId: 'sp',
+          environmentId: 'master',
+          cmaToken: 't',
+          host: 'h',
+          generation: 1,
+        });
+        const written = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
+        expect(written).toMatch(/live-preview: \d+ms/);
+      } finally {
+        if (orig === undefined) delete process.env['EDS_VERBOSE'];
+        else process.env['EDS_VERBOSE'] = orig;
+        stderrSpy.mockRestore();
+      }
+    });
+  });
+
+  it('does NOT emit timing log when EDS_VERBOSE is unset', async () => {
+    await withTempDb(async ({ dbPath }) => {
+      const sessionId = seed(dbPath);
+      previewImportMock.mockResolvedValueOnce(SAMPLE_PREVIEW);
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const orig = process.env['EDS_VERBOSE'];
+      delete process.env['EDS_VERBOSE'];
+      try {
+        const { runLivePreview } = await import('../../../src/import/tui/runLivePreview.js');
+        await runLivePreview({
+          sessionId,
+          tokensPath: '',
+          spaceId: 'sp',
+          environmentId: 'master',
+          cmaToken: 't',
+          host: 'h',
+          generation: 1,
+        });
+        const written = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
+        expect(written).not.toMatch(/live-preview: \d+ms/);
+      } finally {
+        if (orig !== undefined) process.env['EDS_VERBOSE'] = orig;
+        stderrSpy.mockRestore();
+      }
+    });
+  });
+
   it('preserves the generation token through to the result', async () => {
     await withTempDb(async ({ dbPath }) => {
       const sessionId = seed(dbPath);
