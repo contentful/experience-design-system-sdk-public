@@ -161,6 +161,7 @@ export type WizardAppProps = {
   initialProjectPath?: string;
   host?: string;
   autoAcceptScope?: boolean;
+  noCache?: boolean;
 };
 
 export function WizardApp({
@@ -172,6 +173,7 @@ export function WizardApp({
   initialProjectPath,
   host,
   autoAcceptScope = false,
+  noCache = false,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -465,6 +467,7 @@ export function WizardApp({
           sessionId: extractSessionId,
           tokensPath,
           agent: state.agent,
+          noCache,
         }),
       ];
       const child = spawn('node', args);
