@@ -20,14 +20,10 @@ git clone https://github.com/contentful/experience-design-system-sdk-public.git
 cd experience-design-system-sdk-public
 pnpm install
 pnpm build
+pnpm -F @contentful/experience-design-system-cli build
 ```
 
-### Link the CLI globally
-
-```bash
-cd packages/experience-design-system-cli
-pnpm link --global
-```
+The final step builds the CLI package and symlinks the `experiences`, `exo`, and `experience-design-system-cli` commands alongside your `node` binary so they're available on your `$PATH`.
 
 ### Setup
 
