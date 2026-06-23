@@ -1289,18 +1289,36 @@ export function loadCDFComponents(
     });
 }
 
-export function loadScopeComponents(
-  db: DatabaseSync,
-  sessionId: string,
-): Array<{ name: string; componentId: string }> {
+export type ScopeComponentRow = {
+  name: string;
+  componentId: string;
+  aiDecision: 'accepted' | 'rejected' | null;
+  aiReason: string | null;
+};
+
+export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeComponentRow[] {
+  // Loads extract-stage components: those still pending operator review (`extracted`)
+  // plus those the Feature 3 auto-filter has already classified (`accepted` /
+  // `rejected`). Excludes `generated` (already past scope-gate) so re-runs of the
+  // wizard don't show already-confirmed components.
   const rows = db
     .prepare(
-      `SELECT name, component_id FROM raw_components
-       WHERE session_id = ? AND status = 'extracted'
+      `SELECT name, component_id, status, reject_reason FROM raw_components
+       WHERE session_id = ? AND status IN ('extracted', 'accepted', 'rejected')
        ORDER BY name`,
     )
-    .all(sessionId) as Array<{ name: string; component_id: string }>;
-  return rows.map((r) => ({ name: r.name, componentId: r.component_id }));
+    .all(sessionId) as Array<{
+    name: string;
+    component_id: string;
+    status: string;
+    reject_reason: string | null;
+  }>;
+  return rows.map((r) => ({
+    name: r.name,
+    componentId: r.component_id,
+    aiDecision: r.status === 'accepted' ? 'accepted' : r.status === 'rejected' ? 'rejected' : null,
+    aiReason: r.reject_reason,
+  }));
 }
 
 export function applyScopeDecisions(
@@ -1309,16 +1327,24 @@ export function applyScopeDecisions(
   decisions: { accepted: string[]; rejected: string[] },
 ): void {
   const now = new Date().toISOString();
-  const accepted = [...new Set(decisions.accepted)];
+  const acceptedSet = new Set(decisions.accepted);
+  const accepted = [...acceptedSet];
+  // Conflict precedence: accepted wins over rejected.
+  const rejected = [...new Set(decisions.rejected)].filter((n) => !acceptedSet.has(n));
+  // Rejected first so accepted writes can flip back to 'generated' afterwards
+  // if a name appears in both lists.
+  if (rejected.length > 0) {
+    const placeholders = rejected.map(() => '?').join(',');
+    db.prepare(
+      `UPDATE raw_components SET status = 'rejected' WHERE session_id = ? AND name IN (${placeholders})`,
+    ).run(sessionId, ...rejected);
+  }
   if (accepted.length > 0) {
     const placeholders = accepted.map(() => '?').join(',');
     db.prepare(
       `UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name IN (${placeholders})`,
     ).run(sessionId, ...accepted);
   }
-  // Rejected components are intentionally left at status='extracted'.
-  // loadCDFComponents only picks up status='generated', so this is sufficient
-  // to exclude them from generate / push without a destructive write.
   db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 }
 

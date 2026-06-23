@@ -74,7 +74,7 @@ describe('runScopeGate', () => {
           .all(sessionId) as Array<{ name: string; status: string }>;
         expect(rows).toEqual([
           { name: 'Button', status: 'generated' },
-          { name: 'Junk', status: 'extracted' },
+          { name: 'Junk', status: 'rejected' },
         ]);
       } finally {
         db.close();
@@ -111,8 +111,8 @@ describe('runScopeGate', () => {
           .prepare('SELECT name, status FROM raw_components WHERE session_id = ? ORDER BY name')
           .all(sessionId) as Array<{ name: string; status: string }>;
         expect(rows).toEqual([
-          { name: 'Button', status: 'extracted' },
-          { name: 'Junk', status: 'extracted' },
+          { name: 'Button', status: 'rejected' },
+          { name: 'Junk', status: 'rejected' },
         ]);
       } finally {
         db.close();

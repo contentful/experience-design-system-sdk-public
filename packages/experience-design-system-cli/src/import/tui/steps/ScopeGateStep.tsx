@@ -2,7 +2,12 @@ import { Box, Text } from 'ink';
 import React, { useState } from 'react';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 
-export type ScopeComponent = { name: string; componentId: string };
+export type ScopeComponent = {
+  name: string;
+  componentId: string;
+  aiDecision?: 'accepted' | 'rejected' | null;
+  aiReason?: string | null;
+};
 
 export type ScopeGateStepProps = {
   components: ScopeComponent[];

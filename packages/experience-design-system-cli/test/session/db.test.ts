@@ -27,6 +27,7 @@ import {
   copyComponentFromCache,
   copyTokensFromCache,
   renameEmptySlots,
+  loadScopeComponents,
 } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 import type {
@@ -177,6 +178,51 @@ describe('openPipelineDb', () => {
         .get('s1', 'c1') as { reject_reason: string | null };
       expect(row.reject_reason).toBeNull();
       db2.close();
+    });
+  });
+});
+
+describe('loadScopeComponents (Feature 3)', () => {
+  it('returns components with aiDecision/aiReason derived from status + reject_reason', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const baseComp = (overrides: Partial<RawComponentDefinition>): RawComponentDefinition => ({
+        name: 'X',
+        source: 'src/X.tsx',
+        framework: 'react',
+        props: [],
+        slots: [],
+        ...overrides,
+      });
+      storeRawComponents(db, sessionId, [
+        baseComp({ name: 'Accepted', source: 'src/Accepted.tsx' }),
+        baseComp({ name: 'Rejected', source: 'src/Rejected.tsx' }),
+        baseComp({ name: 'Untouched', source: 'src/Untouched.tsx' }),
+      ]);
+      // Simulate Feature 3 select-agent persistence:
+      db.prepare(
+        `UPDATE raw_components SET status = 'accepted', reject_reason = NULL WHERE session_id = ? AND name = 'Accepted'`,
+      ).run(sessionId);
+      db.prepare(
+        `UPDATE raw_components SET status = 'rejected', reject_reason = 'low semantic value' WHERE session_id = ? AND name = 'Rejected'`,
+      ).run(sessionId);
+      // 'Untouched' keeps default status='extracted', reject_reason=NULL.
+
+      const loaded = loadScopeComponents(db, sessionId);
+      db.close();
+
+      // Should return all three (not just status='extracted').
+      expect(loaded).toHaveLength(3);
+      const byName = new Map(loaded.map((c) => [c.name, c]));
+      expect(byName.get('Accepted')?.aiDecision).toBe('accepted');
+      expect(byName.get('Accepted')?.aiReason).toBeNull();
+      expect(byName.get('Rejected')?.aiDecision).toBe('rejected');
+      expect(byName.get('Rejected')?.aiReason).toBe('low semantic value');
+      expect(byName.get('Untouched')?.aiDecision).toBeNull();
+      expect(byName.get('Untouched')?.aiReason).toBeNull();
     });
   });
 });
