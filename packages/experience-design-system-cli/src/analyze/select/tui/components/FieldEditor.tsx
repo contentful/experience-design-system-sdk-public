@@ -50,7 +50,7 @@ type FieldEditorProps = {
  * Note: the previous `'value'` level was flattened — when activeField is `'values'`,
  * value-list manipulation (a/e/r/reorder) happens directly without an extra Return.
  */
-type FocusLevel = 'section' | 'prop' | 'slot' | 'field';
+type FocusLevel = 'section' | 'prop' | 'slot' | 'field' | 'componentDescription';
 
 type PropState = {
   name: string;
@@ -661,6 +661,9 @@ export function FieldEditor({
   const [slotIdx, setSlotIdx] = useState(0);
   // Whether we're navigating props (false) or slots (true) at the top level
   const [inSlots, setInSlots] = useState(initialFocus.inSlots);
+  // True when the active focus is the component-level $description row (rather
+  // than a prop/slot row). Lives parallel to inSlots — they're mutually exclusive.
+  const [inComponentDesc, setInComponentDesc] = useState(false);
   // Active field within a prop/slot
   const [activeField, setActiveField] = useState<PropField | SlotField | null>(initialFocus.activeField);
   // Text cursor position for description fields
@@ -747,8 +750,9 @@ export function FieldEditor({
     }
     if (key.escape) {
       if (focusLevel === 'field') {
-        // Exit field editing back to prop/slot row level
-        setFocusLevel(inSlots ? 'slot' : 'prop');
+        // Exit field editing back to prop/slot/component-description row level
+        if (inComponentDesc) setFocusLevel('componentDescription');
+        else setFocusLevel(inSlots ? 'slot' : 'prop');
         setActiveField(null);
         return;
       }
@@ -769,10 +773,11 @@ export function FieldEditor({
       if (key.upArrow || input === 'k') {
         if (propIdx > 0) {
           setPropIdx(propIdx - 1);
-        } else if (slots.length > 0) {
-          setInSlots(true);
-          setSlotIdx(slots.length - 1);
-          setFocusLevel('slot');
+        } else {
+          // From prop[0], k enters the component-description row above.
+          setFocusLevel('componentDescription');
+          setInSlots(false);
+          setInComponentDesc(true);
         }
         return;
       }
@@ -791,6 +796,37 @@ export function FieldEditor({
         setFocusLevel('field');
         setActiveField(propFields(currentProp)[0] ?? null);
         setTextCursor(currentProp.description.length);
+        return;
+      }
+      return;
+    }
+
+    // ── Component-description row navigation ─────────────────────────────────
+    if (focusLevel === 'componentDescription') {
+      if (key.upArrow || input === 'k') {
+        // Already at the top-most row — stay put.
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        // Move down into the first prop row, or first slot row when no props.
+        if (props.length > 0) {
+          setFocusLevel('prop');
+          setPropIdx(0);
+          setInSlots(false);
+          setInComponentDesc(false);
+        } else if (slots.length > 0) {
+          setFocusLevel('slot');
+          setSlotIdx(0);
+          setInSlots(true);
+          setInComponentDesc(false);
+        }
+        return;
+      }
+      if (key.return) {
+        // Enter the single field — description text input.
+        setFocusLevel('field');
+        setActiveField('description');
+        setTextCursor(editorState.componentDescription.length);
         return;
       }
       return;
@@ -1013,9 +1049,16 @@ export function FieldEditor({
 
       // ── Description text input ─────────────────────────────────────────────
       if (activeField === 'description') {
-        const getDesc = () => (inSlots ? (currentSlot?.description ?? '') : (currentProp?.description ?? ''));
+        const getDesc = () =>
+          inComponentDesc
+            ? editorState.componentDescription
+            : inSlots
+              ? (currentSlot?.description ?? '')
+              : (currentProp?.description ?? '');
         const setDesc = (next: string) => {
-          if (inSlots && currentSlot) {
+          if (inComponentDesc) {
+            commit({ ...editorState, componentDescription: next });
+          } else if (inSlots && currentSlot) {
             const nextSlots = slots.map((s, i) => (i === slotIdx ? { ...s, description: next } : s));
             commit({ ...editorState, slots: nextSlots });
           } else if (currentProp) {
@@ -1212,9 +1255,16 @@ export function FieldEditor({
   })();
 
   // Build visible rows
-  type Row = { kind: 'header'; label: string } | { kind: 'prop'; idx: number } | { kind: 'slot'; idx: number };
+  type Row =
+    | { kind: 'header'; label: string }
+    | { kind: 'prop'; idx: number }
+    | { kind: 'slot'; idx: number }
+    | { kind: 'component-description' };
 
   const rows: Row[] = [];
+  // Component-level $description always renders first so it's reachable as
+  // the topmost navigable row, even when empty (the operator can populate it).
+  rows.push({ kind: 'component-description' });
   if (props.length > 0) {
     rows.push({ kind: 'header', label: `── $properties (${props.length}) ` });
     props.forEach((_, i) => rows.push({ kind: 'prop', idx: i }));
@@ -1226,7 +1276,10 @@ export function FieldEditor({
 
   // Scroll to keep selected row visible
   const selectedRowIdx = rows.findIndex(
-    (r) => (r.kind === 'prop' && !inSlots && r.idx === propIdx) || (r.kind === 'slot' && inSlots && r.idx === slotIdx),
+    (r) =>
+      (r.kind === 'prop' && !inSlots && !inComponentDesc && r.idx === propIdx) ||
+      (r.kind === 'slot' && inSlots && r.idx === slotIdx) ||
+      (r.kind === 'component-description' && inComponentDesc),
   );
   const visibleRows = Math.max(1, height - 3); // title + hint bar + border
   const scrollStart = selectedRowIdx < 0 ? 0 : Math.max(0, Math.min(selectedRowIdx, rows.length - visibleRows));
@@ -1253,9 +1306,42 @@ export function FieldEditor({
               </Text>
             );
           }
+          if (row.kind === 'component-description') {
+            const isSelected = inComponentDesc;
+            const isEditing = isSelected && focusLevel === 'field' && activeField === 'description';
+            const desc = editorState.componentDescription;
+            return (
+              <Box key={`component-description-${i}`} flexDirection="column">
+                <Box gap={1}>
+                  <Text
+                    color={isSelected ? 'white' : 'cyan'}
+                    bold={isSelected}
+                    backgroundColor={isSelected ? 'blue' : undefined}
+                  >
+                    {' component-$description '}
+                  </Text>
+                </Box>
+                {isEditing ? (
+                  <Box paddingLeft={2} flexDirection="row">
+                    <Box flexGrow={1} borderStyle="round" borderColor="cyan" paddingX={1}>
+                      <Text>{desc.slice(0, textCursor)}</Text>
+                      <Text inverse={cursorVisible}>{desc[textCursor] ?? (cursorVisible ? '█' : ' ')}</Text>
+                      <Text>{desc.slice(textCursor + 1)}</Text>
+                    </Box>
+                  </Box>
+                ) : (
+                  <Box paddingLeft={2}>
+                    <Text color={desc ? 'green' : undefined} dimColor={!desc}>
+                      {desc || '(none — Return to edit)'}
+                    </Text>
+                  </Box>
+                )}
+              </Box>
+            );
+          }
           if (row.kind === 'prop') {
             const p = props[row.idx]!;
-            const isSelected = !inSlots && row.idx === propIdx;
+            const isSelected = !inSlots && !inComponentDesc && row.idx === propIdx;
             return (
               <PropRow
                 key={`prop-${row.idx}`}
