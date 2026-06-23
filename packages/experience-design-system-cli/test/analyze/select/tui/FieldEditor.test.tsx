@@ -613,3 +613,97 @@ describe('FieldEditor — onExit panel-exit callback (Bug 1)', () => {
     expect(onDiscard).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('FieldEditor — duplicate React-key safety (Bug 1, INTEG-4257)', () => {
+  it('renders both a $properties section header AND a prop with idx 0 without dropping either', () => {
+    // Pre-fix, the section header used key={i} (loop index in visibleRowSlice)
+    // while prop rows used key={row.idx}. When the visible slice contained a
+    // header at i=0 AND the prop at idx=0, both got key="0" — React kept only
+    // the second. Post-fix, header keys are prefixed with "header-" so both
+    // render.
+    const COMPONENT_WITH_HEADER_AND_PROP = JSON.stringify(
+      {
+        Hero: {
+          $type: 'component',
+          $properties: {
+            title: { $type: 'string', $category: 'content', $description: 'first' },
+          },
+        },
+      },
+      null,
+      2,
+    );
+    const { lastFrame } = render(
+      <FieldEditor
+        value={COMPONENT_WITH_HEADER_AND_PROP}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    // Section header rendered.
+    expect(frame).toContain('$properties');
+    // Prop name (rendered by PropRow at idx 0) also rendered.
+    expect(frame).toContain('title');
+  });
+});
+
+describe('FieldEditor — empty-properties warning (Bug 2, INTEG-4257)', () => {
+  const EMPTY_PROPS_COMPONENT = JSON.stringify(
+    {
+      OpaqueWidget: {
+        $type: 'component',
+        $properties: {},
+      },
+    },
+    null,
+    2,
+  );
+
+  const EMPTY_PROPS_WITH_SLOT = JSON.stringify(
+    {
+      OpaqueWidget: {
+        $type: 'component',
+        $properties: {},
+        $slots: { children: { $description: 'Body' } },
+      },
+    },
+    null,
+    2,
+  );
+
+  it('shows a yellow ⚠ banner when the component has zero $properties (no slots either)', () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={EMPTY_PROPS_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('⚠');
+    expect(frame).toMatch(/No properties classified/i);
+  });
+
+  it('shows the same warning when $properties is empty but $slots exists', () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={EMPTY_PROPS_WITH_SLOT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('⚠');
+    expect(frame).toMatch(/No properties classified/i);
+  });
+});

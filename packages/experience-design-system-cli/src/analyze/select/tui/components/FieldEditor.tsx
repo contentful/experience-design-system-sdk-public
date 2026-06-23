@@ -849,12 +849,20 @@ export function FieldEditor({
   if (props.length === 0 && slots.length === 0) {
     return (
       <Box flexDirection="column" width={width} borderStyle="single" borderColor="yellow">
-        <Text bold>FIELD EDITOR — no fields</Text>
-        <Text dimColor>This component has no properties or slots to edit.</Text>
+        <Text bold color="yellow">FIELD EDITOR — no fields</Text>
+        <Text color="yellow">
+          {'⚠ No properties classified for this component. The LLM didn\'t find anything to classify.'}
+        </Text>
+        <Text dimColor>You can add fields manually below or reject this component.</Text>
         <Text dimColor>Ctrl+S to save · Esc to discard</Text>
       </Box>
     );
   }
+
+  // When $properties is empty but $slots exist, surface the same warning
+  // prominently in the panel so the user understands why the component looks
+  // sparse — and can act on it (manually add a prop or reject).
+  const hasEmptyProperties = props.length === 0;
 
   const modeLabel = (() => {
     if (editingValue) {
@@ -900,16 +908,22 @@ export function FieldEditor({
   const visibleRowSlice = rows.slice(scrollStart, scrollStart + visibleRows);
 
   return (
-    <Box flexDirection="column" width={width} borderStyle="single" borderColor="cyan">
-      <Text bold color="cyan">
+    <Box flexDirection="column" width={width} borderStyle="single" borderColor={hasEmptyProperties ? 'yellow' : 'cyan'}>
+      <Text bold color={hasEmptyProperties ? 'yellow' : 'cyan'}>
         {'FIELDS [Ctrl+S save · Esc discard]'}
       </Text>
+
+      {hasEmptyProperties && (
+        <Text color="yellow">
+          {'⚠ No properties classified for this component. The LLM didn\'t find anything to classify. Reject this component or add fields manually.'}
+        </Text>
+      )}
 
       <Box flexDirection="column" width={innerWidth}>
         {visibleRowSlice.map((row, i) => {
           if (row.kind === 'header') {
             return (
-              <Text key={i} dimColor>
+              <Text key={`header-${i}`} dimColor>
                 {row.label}
               </Text>
             );
@@ -919,7 +933,7 @@ export function FieldEditor({
             const isSelected = !inSlots && row.idx === propIdx;
             return (
               <PropRow
-                key={row.idx}
+                key={`prop-${row.idx}`}
                 prop={p}
                 selected={isSelected}
                 activeField={isSelected && focusLevel === 'field' ? (activeField as PropField) : null}

@@ -227,18 +227,31 @@ export function GenerateReviewStep({
   const selected = components[selectedIdx] ?? null;
   const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
 
+  // A component with zero classified $properties is a real defensibility issue —
+  // it can't be pushed to Contentful (no fields). Surface it in the sidebar via
+  // the existing warning-color path (yellow) and a "(empty)" suffix so the user
+  // can see what went wrong. They can manually add props in FieldEditor or
+  // explicitly reject the component.
+  const isEmpty = (c: CdfReviewEntry): boolean => Object.keys(c.entry.$properties).length === 0;
+  const emptyCount = components.filter(isEmpty).length;
+
   const sidebarItems: ReviewComponentSummary[] = components.map((c) => ({
     id: c.key,
-    name: c.key,
+    name: isEmpty(c) ? `${c.key} (empty)` : c.key,
     status: c.status,
     extractionConfidence: null,
     needsReview: false,
     validationErrorCount: 0,
-    validationWarningCount: 0,
+    validationWarningCount: isEmpty(c) ? 1 : 0,
   }));
 
-  const longestName = components.reduce((m, c) => Math.max(m, c.key.length), 0);
-  const sidebarWidth = Math.min(Math.max(longestName + 4, 14), 22);
+  // Account for the "(empty)" suffix added to zero-prop component names so the
+  // sidebar doesn't truncate it.
+  const longestName = components.reduce(
+    (m, c) => Math.max(m, c.key.length + (isEmpty(c) ? ' (empty)'.length : 0)),
+    0,
+  );
+  const sidebarWidth = Math.min(Math.max(longestName + 4, 14), 30);
   const panelWidth = Math.max(10, terminalWidth - sidebarWidth - 4);
 
   const accepted = components.filter((c) => c.status === 'accepted').length;
@@ -259,6 +272,11 @@ export function GenerateReviewStep({
         />
       )}
       {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
+      {!dialogOpen && emptyCount > 0 && (
+        <Text color="yellow">
+          {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
+        </Text>
+      )}
       {!dialogOpen && (
         <Box>
           <Sidebar

@@ -1127,9 +1127,14 @@ export function loadCDFComponents(
   return components
     .map(({ component_id, name, description }) => {
       const compProps = propsByComponent.get(component_id) ?? [];
-      // Skip components with no CDF-classified props — sending them with empty
-      // $properties causes the server to flag all stored props as "removed" (breaking).
-      if (compProps.length === 0) return null;
+      // NOTE: Components with zero CDF-classified props are intentionally
+      // returned with an empty `$properties` object. Filtering them out here
+      // silently dropped them from the wizard's final-review (INTEG-4257),
+      // so the user couldn't see that the LLM had failed to classify anything
+      // and couldn't reject the empty component. Surface them instead — the
+      // wizard tags them with a ⚠ badge and an in-panel banner so the user
+      // can manually add props in FieldEditor or reject the component.
+      // Downstream consumers (buildManifest, push) tolerate empty $properties.
 
       const $properties: CDFComponentEntry['$properties'] = {};
       for (const p of compProps) {
@@ -1176,8 +1181,7 @@ export function loadCDFComponents(
       if (description !== null) entry.$description = description;
       if (Object.keys($slots).length > 0) entry.$slots = $slots;
       return { key: name, entry };
-    })
-    .filter((c): c is { key: string; entry: CDFComponentEntry } => c !== null);
+    });
 }
 
 export function loadScopeComponents(

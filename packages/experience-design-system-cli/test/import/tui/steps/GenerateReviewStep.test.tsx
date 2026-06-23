@@ -173,3 +173,46 @@ describe('GenerateReviewStep — sidebar↔panel cross-key (Bug 1)', () => {
     expect(frame).toMatch(/\[e\/Tab\] focus panel/);
   });
 });
+
+describe('GenerateReviewStep — empty-component warning banner (Bug 2, INTEG-4257)', () => {
+  it('renders a top-of-panel ⚠ banner when one or more components have empty $properties', async () => {
+    const EMPTY_ENTRY = {
+      $type: 'component' as const,
+      $properties: {},
+    };
+    const POPULATED_ENTRY = {
+      $type: 'component' as const,
+      $properties: {
+        label: { $type: 'string' as const, $category: 'content' as const },
+      },
+    };
+
+    const dbMod = await import('../../../../src/session/db.js');
+    // Use short names so the sidebar doesn't truncate the "(empty)" suffix
+    // under ink-testing-library's narrow column width.
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Btn', entry: POPULATED_ENTRY },
+      { key: 'Foo', entry: EMPTY_ENTRY },
+    ]);
+
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('⚠');
+    expect(frame).toMatch(/no classifiable props/i);
+    // Sidebar shows the "(empty)" suffix on the affected component.
+    expect(frame).toMatch(/Foo \(empty\)/);
+  });
+
+  it('does NOT render the banner when every component has at least one $properties entry', async () => {
+    // Default mock at module load returns a single populated component.
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/no classifiable props/i);
+  });
+});
