@@ -86,6 +86,7 @@ async function extractFromSvelteFile(
 
   const name = getSvelteComponentName(filePath);
   const instance = ast['instance'] as AstNode | undefined;
+  const moduleScript = ast['module'] as AstNode | undefined;
   const fragment = ast['fragment'] as AstNode | undefined;
 
   // Detect Svelte 4 export-let syntax — currently unsupported.
@@ -111,6 +112,7 @@ async function extractFromSvelteFile(
     const result = await extractPropsFromCall({
       propsCall,
       instance: instance!,
+      moduleScript,
       filePath,
       source,
       snippetLocals,
@@ -242,6 +244,7 @@ function collectSnippetImportLocals(instance: AstNode): Set<string> {
 interface PropsCallContext {
   propsCall: AstNode;
   instance: AstNode;
+  moduleScript?: AstNode;
   filePath: string;
   source: string;
   snippetLocals: Set<string>;
@@ -264,7 +267,9 @@ async function extractPropsFromCall(ctx: PropsCallContext): Promise<PropsExtract
   const annotation = (id?.['typeAnnotation'] as AstNode | undefined)?.['typeAnnotation'] as AstNode | undefined;
 
   // Resolve the type members once (works for both ObjectPattern and Identifier id forms).
-  const typeMembers = annotation ? await resolveTypeMembers(annotation, ctx.instance, ctx.filePath) : null;
+  const typeMembers = annotation
+    ? await resolveTypeMembers(annotation, ctx.instance, ctx.moduleScript, ctx.filePath)
+    : null;
 
   if (idType === 'ObjectPattern') {
     return extractFromDestructure(ctx.propsCall, ctx, typeMembers, warnings);
@@ -299,11 +304,18 @@ interface ResolvedTypeMember {
 async function resolveTypeMembers(
   annotation: AstNode,
   instance: AstNode,
+  moduleScript: AstNode | undefined,
   filePath: string,
 ): Promise<ResolvedTypeMember[] | null> {
+  // Snippet imports may live in either script block; collect from both.
+  const snippetLocals = mergeSets(
+    collectSnippetImportLocals(instance),
+    moduleScript ? collectSnippetImportLocals(moduleScript) : new Set<string>(),
+  );
+
   // Inline type literal: `: { foo: string; ... }`
   if (annotation.type === 'TSTypeLiteral') {
-    return readMembersFromTypeLiteral(annotation, /*localSnippetNames*/ getInstanceSnippetLocals(instance));
+    return readMembersFromTypeLiteral(annotation, snippetLocals);
   }
 
   // Named ref: `: Props` (or `: ButtonProps as Props` via aliasing — covered by the ref name).
@@ -311,30 +323,44 @@ async function resolveTypeMembers(
     const refName = ((annotation['typeName'] as AstNode | undefined)?.['name'] as string | undefined) ?? null;
     if (!refName) return null;
 
-    // Look in the instance script for a local interface/type alias named refName.
-    const local = findLocalTypeDeclaration(instance, refName);
+    // Look in the instance + module scripts for a local interface/type alias named refName.
+    const local = findLocalTypeDeclaration(instance, refName, moduleScript);
     if (local) {
-      return readMembersFromInterfaceOrAlias(local, getInstanceSnippetLocals(instance));
+      return readMembersFromInterfaceOrAlias(local, snippetLocals);
     }
 
     // Otherwise: try to resolve the import and read the type from another file via ts-morph.
-    return resolveImportedTypeMembers(refName, instance, filePath);
+    // Imports may live in either script block.
+    return (
+      (await resolveImportedTypeMembers(refName, instance, filePath)) ??
+      (moduleScript ? await resolveImportedTypeMembers(refName, moduleScript, filePath) : null)
+    );
   }
 
   return null;
 }
 
-function getInstanceSnippetLocals(instance: AstNode): Set<string> {
-  return collectSnippetImportLocals(instance);
+function mergeSets<T>(a: Set<T>, b: Set<T>): Set<T> {
+  const out = new Set<T>(a);
+  for (const v of b) out.add(v);
+  return out;
 }
 
-function findLocalTypeDeclaration(instance: AstNode, name: string): AstNode | null {
-  const body = (instance['content'] as AstNode | undefined)?.['body'] as AstNode[] | undefined;
-  if (!body) return null;
-  for (const stmt of body) {
-    if (stmt.type === 'TSInterfaceDeclaration' || stmt.type === 'TSTypeAliasDeclaration') {
-      const id = stmt['id'] as AstNode | undefined;
-      if (id?.['name'] === name) return stmt;
+function findLocalTypeDeclaration(instance: AstNode, name: string, module?: AstNode): AstNode | null {
+  // Skeleton-svelte and similar libraries declare the Props interface in
+  // <script lang="ts" module> and consume it in the regular <script>. Look
+  // in both bodies. Type declarations may also be wrapped in
+  // `export { ... }` statements (ExportNamedDeclaration with .declaration).
+  for (const script of [instance, module]) {
+    const body = (script?.['content'] as AstNode | undefined)?.['body'] as AstNode[] | undefined;
+    if (!body) continue;
+    for (const stmt of body) {
+      const decl =
+        stmt.type === 'ExportNamedDeclaration' ? ((stmt['declaration'] as AstNode | undefined) ?? stmt) : stmt;
+      if (decl.type === 'TSInterfaceDeclaration' || decl.type === 'TSTypeAliasDeclaration') {
+        const id = decl['id'] as AstNode | undefined;
+        if (id?.['name'] === name) return decl;
+      }
     }
   }
   return null;
