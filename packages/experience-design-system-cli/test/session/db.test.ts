@@ -78,6 +78,58 @@ describe('openPipelineDb', () => {
       db2.close();
     });
   });
+
+  it('adds rationale and source-location columns to raw_props (Feature 1)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const cols = db.prepare('PRAGMA table_info(raw_props)').all() as Array<{
+        name: string;
+        type: string;
+        notnull: number;
+        dflt_value: unknown;
+      }>;
+      const byName = new Map(cols.map((c) => [c.name, c]));
+      expect(byName.has('rationale')).toBe(true);
+      expect(byName.has('source_start_line')).toBe(true);
+      expect(byName.has('source_end_line')).toBe(true);
+      // All three nullable.
+      expect(byName.get('rationale')!.notnull).toBe(0);
+      expect(byName.get('source_start_line')!.notnull).toBe(0);
+      expect(byName.get('source_end_line')!.notnull).toBe(0);
+      db.close();
+    });
+  });
+
+  it('adds source_path column to raw_components (Feature 1)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const cols = db.prepare('PRAGMA table_info(raw_components)').all() as Array<{
+        name: string;
+        notnull: number;
+      }>;
+      const byName = new Map(cols.map((c) => [c.name, c]));
+      expect(byName.has('source_path')).toBe(true);
+      expect(byName.get('source_path')!.notnull).toBe(0);
+      db.close();
+    });
+  });
+
+  it('Feature 1 migrations are idempotent across opens', async () => {
+    await withTempDb((dbPath) => {
+      const db1 = openPipelineDb(dbPath);
+      db1.close();
+      // Reopen — should not double-add columns or error.
+      const db2 = openPipelineDb(dbPath);
+      const propCols = db2.prepare('PRAGMA table_info(raw_props)').all() as Array<{ name: string }>;
+      const propNames = propCols.map((c) => c.name);
+      expect(propNames.filter((n) => n === 'rationale').length).toBe(1);
+      expect(propNames.filter((n) => n === 'source_start_line').length).toBe(1);
+      expect(propNames.filter((n) => n === 'source_end_line').length).toBe(1);
+      const compCols = db2.prepare('PRAGMA table_info(raw_components)').all() as Array<{ name: string }>;
+      expect(compCols.map((c) => c.name).filter((n) => n === 'source_path').length).toBe(1);
+      db2.close();
+    });
+  });
 });
 
 describe('getOrCreateSession', () => {

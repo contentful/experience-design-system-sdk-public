@@ -85,23 +85,27 @@ CREATE TABLE IF NOT EXISTS raw_components (
   extraction_confidence  INTEGER,
   review_reasons         TEXT NOT NULL DEFAULT '[]',
   needs_review           INTEGER NOT NULL DEFAULT 0,
+  source_path            TEXT,
   PRIMARY KEY (session_id, component_id)
 );
 
 CREATE TABLE IF NOT EXISTS raw_props (
-  session_id      TEXT NOT NULL,
-  component_id    TEXT NOT NULL,
-  name            TEXT NOT NULL,
-  type            TEXT NOT NULL,
-  required        INTEGER NOT NULL CHECK (required IN (0, 1)),
-  category        TEXT CHECK (category IN ('content', 'design', 'state')),
-  default_value   TEXT,
-  description     TEXT,
-  token_reference TEXT,
-  position        INTEGER NOT NULL,
-  cdf_type        TEXT,
-  cdf_category    TEXT CHECK (cdf_category IN ('content', 'design', 'state')),
-  cdf_token_kind  TEXT,
+  session_id        TEXT NOT NULL,
+  component_id      TEXT NOT NULL,
+  name              TEXT NOT NULL,
+  type              TEXT NOT NULL,
+  required          INTEGER NOT NULL CHECK (required IN (0, 1)),
+  category          TEXT CHECK (category IN ('content', 'design', 'state')),
+  default_value     TEXT,
+  description       TEXT,
+  token_reference   TEXT,
+  position          INTEGER NOT NULL,
+  cdf_type          TEXT,
+  cdf_category      TEXT CHECK (cdf_category IN ('content', 'design', 'state')),
+  cdf_token_kind    TEXT,
+  rationale         TEXT,
+  source_start_line INTEGER,
+  source_end_line   INTEGER,
   PRIMARY KEY (session_id, component_id, name),
   FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
 );
@@ -229,6 +233,23 @@ function applyDbMigrations(db: DatabaseSync): void {
   }
   if (!rawCompColNames.has('needs_review')) {
     db.exec('ALTER TABLE raw_components ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0');
+  }
+
+  // Feature 1: per-component source path on raw_components, rationale + per-prop
+  // source location on raw_props. All nullable, no DEFAULT — existing rows survive.
+  if (!rawCompColNames.has('source_path')) {
+    db.exec('ALTER TABLE raw_components ADD COLUMN source_path TEXT');
+  }
+  const rawPropCols = db.prepare('PRAGMA table_info(raw_props)').all() as Array<{ name: string }>;
+  const rawPropColNames = new Set(rawPropCols.map((c) => c.name));
+  if (!rawPropColNames.has('rationale')) {
+    db.exec('ALTER TABLE raw_props ADD COLUMN rationale TEXT');
+  }
+  if (!rawPropColNames.has('source_start_line')) {
+    db.exec('ALTER TABLE raw_props ADD COLUMN source_start_line INTEGER');
+  }
+  if (!rawPropColNames.has('source_end_line')) {
+    db.exec('ALTER TABLE raw_props ADD COLUMN source_end_line INTEGER');
   }
 
   // Add generation_cache table if it doesn't exist yet.
