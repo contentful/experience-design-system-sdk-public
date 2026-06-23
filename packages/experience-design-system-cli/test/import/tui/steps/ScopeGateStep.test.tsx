@@ -317,6 +317,154 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
     expect(onCancelAutoFilter).not.toHaveBeenCalled();
   });
 
+  // ── Pilot-2026-06-23: cross-section navigation ──────────────────────────────
+  // F3 originally simplified Task 6 to "cursor stays in main list, c toggles
+  // collapse." Pilot testing surfaced that operators couldn't walk into the
+  // AI-excluded section to read rejection reasons. These tests pin the new
+  // cross-section behavior:
+  //   - cursor logical order is [...mainList, ...excludedList]
+  //   - initial cursor on first non-excluded row (mainList[0])
+  //   - j past last main-list row enters excluded section top (e0)
+  //   - k past first main-list row enters excluded section bottom (e_last)
+  //   - a on excluded row un-excludes (moves to main list)
+  //   - r on main row excludes (moves to AI-excluded)
+  //   - collapsed section: j/k cannot enter it
+  //   - s opens / closes the full reject_reason panel for the cursor row
+  describe('cross-section navigation', () => {
+    const MIXED = [
+      { name: 'Button', componentId: 'c0' },
+      { name: 'Card', componentId: 'c1' },
+      { name: 'BadgeIcon', componentId: 'c2', aiDecision: 'rejected' as const, aiReason: 'low semantic value' },
+      { name: 'DivWrapper', componentId: 'c3', aiDecision: 'rejected' as const, aiReason: 'no semantic content' },
+      { name: 'Hero', componentId: 'c4' },
+    ];
+
+    function cursorRow(frame: string): string | null {
+      const lines = frame.split('\n');
+      const r = lines.find((l) => l.includes('›'));
+      return r ?? null;
+    }
+
+    it('initial cursor is on the first non-excluded row (Button)', () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      const row = cursorRow(lastFrame() ?? '');
+      expect(row).not.toBeNull();
+      expect(row!).toContain('Button');
+    });
+
+    it('j past the last main-list row enters the AI-excluded section (top)', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      // Main list (in order): Button, Card, Hero. Press j 3 times: B→C→H→excluded[0]=BadgeIcon.
+      stdin.write('j');
+      stdin.write('j');
+      stdin.write('j');
+      const row = cursorRow(lastFrame() ?? '');
+      expect(row).not.toBeNull();
+      expect(row!).toContain('BadgeIcon');
+    });
+
+    it('k past the first main-list row enters the AI-excluded section (bottom)', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      // Cursor at Button (index 0). One k → DivWrapper (last excluded).
+      stdin.write('k');
+      const row = cursorRow(lastFrame() ?? '');
+      expect(row).not.toBeNull();
+      expect(row!).toContain('DivWrapper');
+    });
+
+    it('collapsed AI-excluded section: j/k stay inside main list', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      // Collapse the excluded section.
+      stdin.write('c');
+      // Now press k from Button — should stay on Button (no wrap into excluded).
+      stdin.write('k');
+      let row = cursorRow(lastFrame() ?? '');
+      expect(row).not.toBeNull();
+      expect(row!).toContain('Button');
+      // Press j 3 times from Button — should land on Hero (last main-list row),
+      // not enter the (collapsed) excluded section.
+      stdin.write('j');
+      stdin.write('j');
+      stdin.write('j');
+      row = cursorRow(lastFrame() ?? '');
+      expect(row).not.toBeNull();
+      expect(row!).toContain('Hero');
+    });
+
+    it('a on AI-excluded row un-excludes it (moves to main list, included by default)', () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      // Walk to BadgeIcon: j j j (Button → Card → Hero → BadgeIcon).
+      stdin.write('j');
+      stdin.write('j');
+      stdin.write('j');
+      // Un-exclude.
+      stdin.write('a');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      // BadgeIcon moved to main list AND defaulted to included.
+      expect(arg.accepted).toContain('BadgeIcon');
+      expect(arg.rejected).not.toContain('BadgeIcon');
+      // DivWrapper was untouched and remains rejected.
+      expect(arg.rejected).toContain('DivWrapper');
+    });
+
+    it('r on main-list row excludes it (moves to AI-excluded)', () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      // Cursor on Button. r excludes Button.
+      stdin.write('r');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.rejected).toContain('Button');
+      // Card and Hero remain included.
+      expect(arg.accepted).toContain('Card');
+      expect(arg.accepted).toContain('Hero');
+    });
+
+    it('s on AI-excluded row toggles the full reject_reason panel', () => {
+      // Reason is >60 chars so it gets truncated inline, but short enough
+      // that the panel renderer doesn't wrap it across lines.
+      const longReason = 'low semantic value AND layout-only primitive — full reason text';
+      // Sanity: longer than the inline truncation cap so the inline form
+      // ends in an ellipsis, not the full string.
+      expect(longReason.length).toBeGreaterThan(60);
+      const FIXTURE = [
+        { name: 'Button', componentId: 'c0' },
+        { name: 'Card', componentId: 'c1' },
+        { name: 'BadgeIcon', componentId: 'c2', aiDecision: 'rejected' as const, aiReason: longReason },
+      ];
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      // Walk to BadgeIcon: j j (Button → Card → BadgeIcon).
+      stdin.write('j');
+      stdin.write('j');
+      // Open source panel with full reason.
+      stdin.write('s');
+      let frame = lastFrame() ?? '';
+      // Full reason visible (not truncated by …).
+      expect(frame).toContain(longReason);
+      // Press s again to close.
+      stdin.write('s');
+      frame = lastFrame() ?? '';
+      // Panel header gone after toggle-off.
+      expect(frame).not.toContain('AI rejection reason');
+    });
+  });
+
   it('shows yellow banner when ALL components are AI-rejected', () => {
     const allRejected = [
       { name: 'A', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: 'r1' },
