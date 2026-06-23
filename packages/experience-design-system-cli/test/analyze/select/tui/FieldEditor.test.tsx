@@ -866,6 +866,155 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
   });
 });
 
+describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => {
+  const CONTAINER = JSON.stringify(
+    {
+      Container: {
+        $type: 'component',
+        $properties: {},
+        $slots: {
+          children: { $description: 'Body', $allowedComponents: ['Card', 'Hero'] },
+        },
+      },
+    },
+    null,
+    2,
+  );
+
+  // Helper: walk into the slot's allowedComponents field. Slot mounts at row,
+  // Return → first field (required), j → allowedComponents.
+  async function navigateToAllowedComponents(stdin: { write: (data: string) => void }): Promise<void> {
+    stdin.write('\r'); // Return → first field (required)
+    await tick();
+    stdin.write('j'); // required → allowedComponents
+    await tick();
+  }
+
+  it('renders the allowedComponents legend when active', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor value={CONTAINER} width={80} height={25} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    await navigateToAllowedComponents(stdin);
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/\[a\]dd/);
+    expect(frame).toMatch(/\[e\]dit/);
+    expect(frame).toMatch(/\[r\]emove/);
+    expect(frame).toMatch(/\[K\/J\] reorder/);
+    expect(frame).toContain('Card');
+    expect(frame).toContain('Hero');
+  });
+
+  it('a then typing then Enter appends a new component name', async () => {
+    const onChange = vi.fn();
+    const { stdin } = render(
+      <FieldEditor value={CONTAINER} width={80} height={25} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    await navigateToAllowedComponents(stdin);
+    onChange.mockClear();
+    stdin.write('a');
+    await tick();
+    'Btn'.split('').forEach((c) => stdin.write(c));
+    await tick();
+    stdin.write('\r');
+    await tick();
+    expect(onChange).toHaveBeenCalled();
+    const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(last).toContain('"Btn"');
+    expect(last).toContain('"Card"');
+    expect(last).toContain('"Hero"');
+  });
+
+  it('r removes the component at the cursor', async () => {
+    const onChange = vi.fn();
+    const { stdin } = render(
+      <FieldEditor value={CONTAINER} width={80} height={25} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    await navigateToAllowedComponents(stdin);
+    onChange.mockClear();
+    stdin.write('r'); // remove at cursor 0 = Card
+    await tick();
+    const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(last).not.toContain('"Card"');
+    expect(last).toContain('"Hero"');
+  });
+
+  it('J moves the component at the cursor down', async () => {
+    const onChange = vi.fn();
+    const { stdin } = render(
+      <FieldEditor value={CONTAINER} width={80} height={25} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    await navigateToAllowedComponents(stdin);
+    onChange.mockClear();
+    stdin.write('J');
+    await tick();
+    const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    const heroIdx = last.indexOf('"Hero"');
+    const cardIdx = last.indexOf('"Card"');
+    expect(heroIdx).toBeLessThan(cardIdx);
+  });
+
+  it('Esc cancels add mode', async () => {
+    const onChange = vi.fn();
+    const { stdin } = render(
+      <FieldEditor value={CONTAINER} width={80} height={25} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    await navigateToAllowedComponents(stdin);
+    onChange.mockClear();
+    stdin.write('a');
+    await tick();
+    stdin.write('z');
+    await tick();
+    stdin.write('\x1b');
+    await tick();
+    if (onChange.mock.calls.length > 0) {
+      const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+      expect(last).not.toContain('"z"');
+    }
+  });
+
+  it('renders (any) when allowedComponents is empty', () => {
+    const EMPTY = JSON.stringify(
+      {
+        Container: {
+          $type: 'component',
+          $properties: {},
+          $slots: { children: {} },
+        },
+      },
+      null,
+      2,
+    );
+    const { lastFrame } = render(
+      <FieldEditor value={EMPTY} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    expect(lastFrame() ?? '').toContain('(any)');
+  });
+
+  it('SLOT_FIELDS cycle: required → allowedComponents (down arrow); description reachable via wrap', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor value={CONTAINER} width={80} height={25} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    // Return → required (toggle hint).
+    stdin.write('\r');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/toggle/);
+    // ↓ → allowedComponents (legend visible).
+    stdin.write('\x1b[B');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/\[a\]dd/);
+    // Once inside allowedComponents, ↑↓ navigate the list (not fields) —
+    // mirrors enum $values. To reach description, wrap backwards via Esc +
+    // Return to first field, then ↑ wraps to last (description).
+    stdin.write('\x1b'); // Esc → row level
+    await tick();
+    stdin.write('\r'); // Return → required (first field)
+    await tick();
+    stdin.write('\x1b[A'); // ↑ → wrap to last field (description)
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Type to edit/);
+  });
+});
+
 describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowedComponents, $description)', () => {
   it('round-trips per-prop $default for string/number/token/boolean/enum without edits', async () => {
     const FIXTURE = JSON.stringify(

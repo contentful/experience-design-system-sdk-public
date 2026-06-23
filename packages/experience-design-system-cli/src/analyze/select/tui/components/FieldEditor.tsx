@@ -482,14 +482,20 @@ function SlotRow({
   selected,
   activeField,
   textCursor,
+  valueCursor,
   cursorVisible,
+  editingValue,
+  valueText,
   width,
 }: {
   slot: SlotState;
   selected: boolean;
   activeField: SlotField | null;
   textCursor: number;
+  valueCursor: number;
   cursorVisible: boolean;
+  editingValue: { mode: 'add' | 'edit'; index?: number } | null;
+  valueText: string;
   width: number;
 }): React.ReactElement {
   const cursor = cursorVisible ? '█' : ' ';
@@ -510,6 +516,50 @@ function SlotRow({
           <Toggle value={slot.required} active={false} />
         )}
       </Box>
+
+      {/* $allowedComponents sub-list — mirrors enum $values UX. Empty list
+          renders as `(any)` in dim text. */}
+      {selected && (
+        <Box paddingLeft={2} flexDirection="column">
+          <Box>
+            <Text dimColor>allowed:</Text>
+            {activeField === 'allowedComponents' && (
+              <Text dimColor>{'  [a]dd  [e]dit  [r]emove  [↑↓] navigate  [K/J] reorder'}</Text>
+            )}
+          </Box>
+          {slot.allowedComponents.length === 0 && !editingValue && (
+            <Box paddingLeft={2}>
+              <Text dimColor>{activeField === 'allowedComponents' ? '(any — press [a] to add)' : '(any)'}</Text>
+            </Box>
+          )}
+          {slot.allowedComponents.map((v, i) => {
+            const isActiveCursor = activeField === 'allowedComponents' && valueCursor === i;
+            const isBeingEdited = editingValue?.mode === 'edit' && editingValue.index === i;
+            if (isBeingEdited) {
+              return (
+                <Box key={i} paddingLeft={2}>
+                  <Text color="cyan">{'✎ '}</Text>
+                  <Text>{valueText}</Text>
+                  <Text inverse={cursorVisible}> </Text>
+                </Box>
+              );
+            }
+            return (
+              <Box key={i} gap={1} paddingLeft={2}>
+                <Text color={isActiveCursor ? 'cyan' : 'white'}>{isActiveCursor ? `▶ ${v}` : `  ${v}`}</Text>
+              </Box>
+            );
+          })}
+          {editingValue?.mode === 'add' && activeField === 'allowedComponents' && (
+            <Box paddingLeft={2}>
+              <Text color="cyan">{'+ '}</Text>
+              <Text>{valueText}</Text>
+              <Text inverse={cursorVisible}> </Text>
+            </Box>
+          )}
+        </Box>
+      )}
+
       {selected && activeField === 'description' && (
         <Box paddingLeft={2} flexDirection="row">
           <Text dimColor>desc:</Text>
@@ -641,23 +691,32 @@ export function FieldEditor({
     if (!active) return;
 
     // ── Inline value text-entry (add or edit) ─ highest priority ───────────
-    if (editingValue && currentProp && activeField === 'values') {
-      const vals = currentProp.values;
+    // Handles enum prop $values AND slot $allowedComponents — both use the
+    // same add/edit/remove/reorder list shape.
+    const isPropValuesEntry = editingValue && currentProp && activeField === 'values' && !inSlots;
+    const isSlotAllowedEntry = editingValue && currentSlot && activeField === 'allowedComponents' && inSlots;
+    if (isPropValuesEntry || isSlotAllowedEntry) {
+      const vals = isPropValuesEntry ? currentProp!.values : currentSlot!.allowedComponents;
       if (key.return) {
         const trimmed = valueText.trim();
         if (trimmed) {
           let nextVals: string[];
           let cursorAfter: number;
-          if (editingValue.mode === 'add') {
+          if (editingValue!.mode === 'add') {
             nextVals = [...vals, trimmed];
             cursorAfter = nextVals.length - 1;
           } else {
-            const idx = editingValue.index ?? 0;
+            const idx = editingValue!.index ?? 0;
             nextVals = vals.map((v, i) => (i === idx ? trimmed : v));
             cursorAfter = idx;
           }
-          const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
-          commit({ ...editorState, props: nextProps });
+          if (isPropValuesEntry) {
+            const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
+            commit({ ...editorState, props: nextProps });
+          } else {
+            const nextSlots = slots.map((s, i) => (i === slotIdx ? { ...s, allowedComponents: nextVals } : s));
+            commit({ ...editorState, slots: nextSlots });
+          }
           setValueCursor(cursorAfter);
         }
         setEditingValue(null);
@@ -778,21 +837,29 @@ export function FieldEditor({
         activeField === 'default' &&
         currentProp != null &&
         (currentProp.type === 'string' || currentProp.type === 'token');
-      const isValuesNav = activeField === 'values';
+      const isValuesNav = activeField === 'values' || activeField === 'allowedComponents';
       const arrowUp = key.upArrow;
       const arrowDown = key.downArrow;
 
       // ── Inside values: arrow keys AND j/k navigate BETWEEN VALUES, not
-      //    between fields. Reorder is K/J (capital).
-      if (isValuesNav && currentProp) {
-        const vals = currentProp.values;
-        if (arrowUp || input === 'k') {
-          setValueCursor((c) => Math.max(0, c - 1));
-          return;
-        }
-        if (arrowDown || input === 'j') {
-          setValueCursor((c) => Math.max(0, Math.min(vals.length - 1, c + 1)));
-          return;
+      //    between fields. Reorder is K/J (capital). Same logic for prop
+      //    enum $values and slot $allowedComponents.
+      if (isValuesNav) {
+        const vals =
+          activeField === 'values' && currentProp
+            ? currentProp.values
+            : activeField === 'allowedComponents' && currentSlot
+              ? currentSlot.allowedComponents
+              : null;
+        if (vals !== null) {
+          if (arrowUp || input === 'k') {
+            setValueCursor((c) => Math.max(0, c - 1));
+            return;
+          }
+          if (arrowDown || input === 'j') {
+            setValueCursor((c) => Math.max(0, Math.min(vals.length - 1, c + 1)));
+            return;
+          }
         }
       }
 
@@ -993,6 +1060,48 @@ export function FieldEditor({
         return;
       }
 
+      // ── $allowedComponents inline manipulation (slot-level) ──────────────
+      // Mirrors the $values block exactly, but operates on the slot's
+      // allowedComponents list.
+      if (activeField === 'allowedComponents' && currentSlot) {
+        const vals = currentSlot.allowedComponents;
+        const setSlotVals = (next: string[]) => {
+          const nextSlots = slots.map((s, i) => (i === slotIdx ? { ...s, allowedComponents: next } : s));
+          commit({ ...editorState, slots: nextSlots });
+        };
+        if (input === 'a') {
+          setEditingValue({ mode: 'add' });
+          setValueText('');
+          return;
+        }
+        if (input === 'e' && vals.length > 0) {
+          setEditingValue({ mode: 'edit', index: valueCursor });
+          setValueText(vals[valueCursor] ?? '');
+          return;
+        }
+        if (input === 'r' && vals.length > 0) {
+          const nextVals = vals.filter((_, i) => i !== valueCursor);
+          setSlotVals(nextVals);
+          setValueCursor((c) => Math.max(0, Math.min(c, nextVals.length - 1)));
+          return;
+        }
+        if (input === 'K' && valueCursor > 0) {
+          const nextVals = [...vals];
+          [nextVals[valueCursor - 1], nextVals[valueCursor]] = [nextVals[valueCursor], nextVals[valueCursor - 1]];
+          setSlotVals(nextVals);
+          setValueCursor((c) => c - 1);
+          return;
+        }
+        if (input === 'J' && valueCursor < vals.length - 1) {
+          const nextVals = [...vals];
+          [nextVals[valueCursor], nextVals[valueCursor + 1]] = [nextVals[valueCursor + 1], nextVals[valueCursor]];
+          setSlotVals(nextVals);
+          setValueCursor((c) => c + 1);
+          return;
+        }
+        return;
+      }
+
       // ── $values inline manipulation (flat — no extra Return) ───────────────
       if (activeField === 'values' && currentProp) {
         const vals = currentProp.values;
@@ -1096,7 +1205,7 @@ export function FieldEditor({
     if (focusLevel === 'field' && activeField === 'required') {
       return 'Space/Enter toggle  ↑↓/jk cycle field  Esc row';
     }
-    if (focusLevel === 'field' && activeField === 'values') {
+    if (focusLevel === 'field' && (activeField === 'values' || activeField === 'allowedComponents')) {
       return '[a]dd  [e]dit  [r]emove  ↑↓/jk navigate  [K/J] reorder  Esc row';
     }
     return '↑↓/jk navigate rows  Enter edit fields  Ctrl+S save  Esc exit panel';
@@ -1172,7 +1281,10 @@ export function FieldEditor({
               selected={isSelected}
               activeField={isSelected && focusLevel === 'field' ? (activeField as SlotField) : null}
               textCursor={textCursor}
+              valueCursor={valueCursor}
               cursorVisible={cursorVisible}
+              editingValue={isSelected ? editingValue : null}
+              valueText={isSelected ? valueText : ''}
               width={innerWidth}
             />
           );
