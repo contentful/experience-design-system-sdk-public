@@ -1550,6 +1550,7 @@ export function FieldEditor({
           <Text> </Text>
           <Text bold>Panels</Text>
           <Text>{'  s                toggle source-view for the current prop'}</Text>
+          <Text>{'  d                toggle removed-components panel (wizard final-review)'}</Text>
           <Text>{'  ?                toggle this overlay'}</Text>
           <Text> </Text>
           <Text dimColor>press ? or Esc to close</Text>

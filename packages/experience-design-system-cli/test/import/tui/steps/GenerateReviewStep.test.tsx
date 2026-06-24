@@ -641,6 +641,177 @@ describe('GenerateReviewStep — diff summary panel (R2)', () => {
   });
 });
 
+// ── Pilot-2026-06-24: removed-detail panel ('d' key) ────────────────────────
+// API reports N removed components but operators previously had no way to
+// see WHICH ones. The fix adds a `(d for details)` hint to the summary line
+// when removed > 0 and a modal-ish panel toggled by `d` listing each removed
+// component. The legend gains `d removed` and the FieldEditor `?` overlay
+// lists `d` alongside `s` and `?`.
+describe('GenerateReviewStep — removed-detail panel (d key)', () => {
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastUseLivePreviewArgs = null;
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  const previewWithRemoved = (names: string[]) =>
+    ({
+      components: {
+        new: [],
+        changed: [],
+        removed: names.map((n, i) => ({
+          id: `r${i}`,
+          name: n,
+          contentProperties: [],
+          designProperties: [],
+          slots: [],
+        })) as never,
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    }) as never;
+
+  it('summary omits "(d for details)" when removed.length === 0', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!({
+      components: { new: [], changed: [], removed: [], unchanged: ['Button'] },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    } as never);
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/d for details/);
+  });
+
+  it('summary includes "(d for details)" when removed.length > 0', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['Gone1', 'Gone2']));
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/d for details/);
+    expect(frame).toMatch(/2 removed/);
+  });
+
+  it('pressing d opens a panel listing removed component names', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['GoneAlpha', 'GoneBeta']));
+    await tick();
+    stdin.write('d');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Removed components/);
+    expect(frame).toMatch(/GoneAlpha/);
+    expect(frame).toMatch(/GoneBeta/);
+  });
+
+  it('pressing d again closes the panel', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['GoneAlpha']));
+    await tick();
+    stdin.write('d');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Removed components/);
+    stdin.write('d');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+  });
+
+  it('pressing Esc closes the panel', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['GoneAlpha']));
+    await tick();
+    stdin.write('d');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Removed components/);
+    stdin.write('\x1b');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+  });
+
+  it('when panel is open, j/k do not affect editor state', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const KEYS = ['Aaa', 'Bbb', 'Ccc'];
+    const POPULATED = {
+      $type: 'component' as const,
+      $properties: { foo: { $type: 'string' as const, $category: 'content' as const } },
+    };
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(
+      KEYS.map((k) => ({ key: k, entry: POPULATED })),
+    );
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['ZZZ']));
+    await tick();
+    stdin.write('d');
+    await tick();
+    // Panel open — j should be inert.
+    stdin.write('j');
+    stdin.write('j');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Selection still on Aaa (top of list).
+    const titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleLine).toContain('Aaa');
+  });
+
+  it('legend includes "d removed" when removed > 0', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['GoneAlpha']));
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/\[d\] removed/);
+  });
+
+  it('renders no "(d for details)" hint when livePreview=false', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+        livePreview={false}
+      />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/d for details/);
+  });
+
+  it('d key is inert when livePreview=false', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+        livePreview={false}
+      />,
+    );
+    await tick();
+    stdin.write('d');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+  });
+});
+
 // ── Bug pilot-2026-06-23: rapid j/k stutter / cursor loss ────────────────────
 // Holding `j` or `k` rapidly used to leave the cursor on a stale row because
 // each handler invocation read selectedIdx from a stale closure. The fix

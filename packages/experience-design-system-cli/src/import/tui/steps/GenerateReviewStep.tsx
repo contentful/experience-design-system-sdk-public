@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
-import type { CDFComponentEntry, ServerPreviewResponse } from '@contentful/experience-design-system-types';
+import type {
+  CDFComponentEntry,
+  ComponentTypeSummary,
+  ServerPreviewResponse,
+} from '@contentful/experience-design-system-types';
 import { Sidebar } from '../../../analyze/select/tui/components/Sidebar.js';
 import { JsonPanel } from '../../../analyze/select/tui/components/JsonPanel.js';
 import { FieldEditor } from '../../../analyze/select/tui/components/FieldEditor.js';
@@ -109,10 +113,16 @@ export function GenerateReviewStep({
   // FieldEditor save via the useLivePreview hook below. Empty when live
   // preview is disabled, when creds are missing, or before the first response.
   const [previewAnnotations, setPreviewAnnotations] = useState<Map<string, PreviewAnnotation>>(new Map());
+  // Pilot-2026-06-24: raw removed list for the `d` detail panel. The
+  // annotation map only carries kind, not the rich summaries we need to list
+  // names/ids when the operator asks "which ones?".
+  const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
+  const [showRemovedPanel, setShowRemovedPanel] = useState(false);
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
     setPreviewAnnotations(applyPreviewAnnotations(response, components.map((c) => c.key)));
+    setRemovedComponents(response.components.removed ?? []);
   };
 
   const livePreviewHook = useLivePreview({
@@ -276,6 +286,29 @@ export function GenerateReviewStep({
     if (loading || loadError) return;
     if (dialogOpen) return;
 
+    // Pilot-2026-06-24: removed-detail panel. When open, only `d` (toggle)
+    // and Esc (close) respond — all other input is swallowed so j/k/Enter/
+    // Ctrl+S can't move state behind the modal. Mirrors the `?` overlay
+    // pattern from 8f0c62e in FieldEditor.
+    if (showRemovedPanel) {
+      if (input === 'd' || key.escape) {
+        setShowRemovedPanel(false);
+      }
+      return;
+    }
+    // `d` opens the panel only when live-preview is enabled and there is at
+    // least one removed component to display. Sidebar-focused only so it
+    // doesn't collide with FieldEditor input.
+    if (
+      input === 'd' &&
+      sidebarFocused &&
+      livePreview &&
+      removedComponents.length > 0
+    ) {
+      setShowRemovedPanel(true);
+      return;
+    }
+
     // Tab toggles focus bidirectionally between sidebar and panel. `e` is a
     // sidebar-only alias for crossing INTO the panel — gating it to the
     // sidebar-focused state prevents collision with FieldEditor's enum-values
@@ -420,6 +453,18 @@ export function GenerateReviewStep({
         />
       )}
       {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
+      {showRemovedPanel && !dialogOpen && (
+        <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
+          <Text bold color="cyan">{`Removed components (${removedComponents.length})`}</Text>
+          <Text dimColor>these will be DELETED from the target space</Text>
+          <Text> </Text>
+          {removedComponents.map((rc) => (
+            <Text key={rc.id}>{`- ${rc.name}${rc.id ? `  (${rc.id})` : ''}`}</Text>
+          ))}
+          <Text> </Text>
+          <Text dimColor>press d or Esc to close</Text>
+        </Box>
+      )}
       {!dialogOpen && livePreview && (() => {
         // Pilot-2026-06-23 R2: at-a-glance diff summary at the top of the
         // step. Mutually exclusive states:
@@ -447,6 +492,9 @@ export function GenerateReviewStep({
             <Text color="yellow">{`${counts.changed} changed`}</Text>
             <Text>{' · '}</Text>
             <Text dimColor>{`${counts.removed} removed`}</Text>
+            {removedComponents.length > 0 && (
+              <Text dimColor>{' (d for details)'}</Text>
+            )}
             <Text>{' · '}</Text>
             <Text color="red" bold>
               {`${counts.breaking} breaking`}
@@ -526,7 +574,9 @@ export function GenerateReviewStep({
                   {sidebarFocused
                     ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
-                      '  [F] finalize  [e/Tab] focus panel  [q] quit'
+                      '  [F] finalize  [e/Tab] focus panel' +
+                      (livePreview && removedComponents.length > 0 ? '  [d] removed' : '') +
+                      '  [q] quit'
                     : '  [Tab] focus list  ' + (showJson ? '(JSON view)' : '(edit fields)')}
                   {livePreviewHook.status === 'running' && (
                     <Text>{`  ${livePreviewSpinner} live preview`}</Text>
