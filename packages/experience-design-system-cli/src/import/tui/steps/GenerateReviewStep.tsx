@@ -396,7 +396,10 @@ export function GenerateReviewStep({
     (m, c) => Math.max(m, c.key.length + (isEmpty(c) ? ' (empty)'.length : 0)),
     0,
   );
-  const sidebarWidth = Math.min(Math.max(longestName + 4, 14), 30);
+  // +5 = border (1) + status icon (1) + badge column (1) + space (1) + border (1).
+  // The badge column is reserved even when no annotation is present so the
+  // sidebar width doesn't jitter as live-preview annotations flip in/out.
+  const sidebarWidth = Math.min(Math.max(longestName + 5, 14), 30);
   const panelWidth = Math.max(10, terminalWidth - sidebarWidth - 4);
 
   const accepted = components.filter((c) => c.status === 'accepted').length;
