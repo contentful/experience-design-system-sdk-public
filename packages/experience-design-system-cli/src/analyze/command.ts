@@ -26,6 +26,7 @@ import { buildAnalyzeViewRows } from './build-analyze-view-rows.js';
 interface AnalyzeExtractOptions {
   project: string;
   dir?: string;
+  resolveUnreachable?: 'auto' | 'always' | 'never';
 }
 
 const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
@@ -132,7 +133,20 @@ export function registerAnalyzeCommand(program: Command): void {
     .description('Extract component definitions from a project')
     .requiredOption('--project <path>', 'Path to the project root')
     .option('--dir <path>', 'Path to the component source directory relative to the project root')
+    .option(
+      '--resolve-unreachable <mode>',
+      "Retry pass for unresolved Svelte Props types: 'auto' (default), 'always', or 'never'",
+      'auto',
+    )
     .action(async (opts: AnalyzeExtractOptions) => {
+      const resolveUnreachable: 'auto' | 'always' | 'never' = (() => {
+        const v = opts.resolveUnreachable ?? 'auto';
+        if (v !== 'auto' && v !== 'always' && v !== 'never') {
+          process.stderr.write(`Error: --resolve-unreachable must be one of 'auto', 'always', 'never' (got '${v}')\n`);
+          process.exit(1);
+        }
+        return v;
+      })();
       const projectRoot = resolve(opts.project);
       const outDir = join(projectRoot, '.contentful');
 
@@ -154,11 +168,15 @@ export function registerAnalyzeCommand(program: Command): void {
         }
       });
 
-      const extraction = await extractComponents(sourceFiles, ({ filesProcessed, componentsFound }) => {
-        if (!process.stdout.isTTY) {
-          process.stderr.write(`progress=extract:${filesProcessed}/${sourceFiles.length}:${componentsFound}\n`);
-        }
-      });
+      const extraction = await extractComponents(
+        sourceFiles,
+        ({ filesProcessed, componentsFound }) => {
+          if (!process.stdout.isTTY) {
+            process.stderr.write(`progress=extract:${filesProcessed}/${sourceFiles.length}:${componentsFound}\n`);
+          }
+        },
+        { resolveUnreachable, projectRoot },
+      );
 
       await mkdir(outDir, { recursive: true });
 

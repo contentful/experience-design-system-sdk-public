@@ -857,4 +857,194 @@ export interface ButtonProps {
     const result = await extractSvelteComponents([filePath]);
     expect(result.components[0]!.name).toBe('Avatar');
   });
+
+  // ---------------------------------------------------------------------------
+  // resolve-unreachable retry pass (Approach B)
+  //
+  // The retry pass kicks in after the normal extraction pass when components
+  // fail to resolve their declared Props type (typically cross-package extends).
+  // It rebuilds a richer ts-morph Project — first via tsconfig.json, then by
+  // adding .d.ts files from node_modules — and tries again.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Build N svelte fixtures, K of which have an unresolvable extends pattern.
+   * The unresolvable ones extend from a fictitious external package so the
+   * type checker can't reach the parent and the parser flags them.
+   */
+  async function writeUnresolvedFixtures(total: number, unresolved: number): Promise<string[]> {
+    const paths: string[] = [];
+    for (let i = 0; i < total; i++) {
+      const isUnresolved = i < unresolved;
+      const name = `Comp${i}`;
+      if (isUnresolved) {
+        // Pure cross-package extends with no local members → resolver returns 0
+        // → classifyUnresolved tags 'empty' → props-type-unresolved.
+        paths.push(
+          await writeFixture(
+            `${name}.svelte`,
+            `
+<script lang="ts">
+  import type { ExternalThing } from '@unresolvable/missing-package-${i}';
+  interface Props extends ExternalThing {}
+  let props: Props = $props();
+</script>
+<div></div>
+`,
+          ),
+        );
+      } else {
+        paths.push(
+          await writeFixture(
+            `${name}.svelte`,
+            `
+<script lang="ts">
+  interface Props { local: string; }
+  let { local }: Props = $props();
+</script>
+<div>{local}</div>
+`,
+          ),
+        );
+      }
+    }
+    return paths;
+  }
+
+  it('resolve-unreachable=auto skips when unresolved ratio is below 20%', async () => {
+    // 6 components, 1 unresolved → 16.7% → below threshold.
+    const filePaths = await writeUnresolvedFixtures(6, 1);
+    const result = await extractSvelteComponents(filePaths, undefined, {
+      resolveUnreachable: 'auto',
+      projectRoot: tempDir,
+    });
+    // No top-level retry-pass info warning means the retry was skipped.
+    expect(result.warnings.some((w) => w.startsWith('Unresolved-type retry pass'))).toBe(false);
+    // Original per-component unresolved warning still present.
+    expect(result.warnings.some((w) => /declared Props type .* resolved to/.test(w))).toBe(true);
+  });
+
+  it('resolve-unreachable=auto triggers when unresolved ratio is ≥20%', async () => {
+    // 5 components, 2 unresolved → 40% → above threshold; tempDir has no
+    // tsconfig but createTsconfig in this fixture lets the retry actually run.
+    const filePaths = await writeUnresolvedFixtures(5, 2);
+    // Plant a minimal tsconfig so the retry pass has something to load.
+    await writeFile(join(tempDir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { target: 'ESNext' } }));
+
+    const result = await extractSvelteComponents(filePaths, undefined, {
+      resolveUnreachable: 'auto',
+      projectRoot: tempDir,
+    });
+    expect(result.warnings.some((w) => w.startsWith('Unresolved-type retry pass (mode=auto)'))).toBe(true);
+  });
+
+  it('resolve-unreachable=never never retries even when everything is unresolved', async () => {
+    const filePaths = await writeUnresolvedFixtures(4, 4);
+    await writeFile(join(tempDir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { target: 'ESNext' } }));
+
+    const result = await extractSvelteComponents(filePaths, undefined, {
+      resolveUnreachable: 'never',
+      projectRoot: tempDir,
+    });
+    expect(result.warnings.some((w) => w.startsWith('Unresolved-type retry pass'))).toBe(false);
+  });
+
+  it('resolve-unreachable=always retries even at low unresolved ratios', async () => {
+    // 4 components, 1 unresolved → 25% (would trigger auto too, but the point
+    // here is to demonstrate `always` doesn't gate on the threshold).
+    const filePaths = await writeUnresolvedFixtures(4, 1);
+    await writeFile(join(tempDir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { target: 'ESNext' } }));
+
+    const result = await extractSvelteComponents(filePaths, undefined, {
+      resolveUnreachable: 'always',
+      projectRoot: tempDir,
+    });
+    expect(result.warnings.some((w) => w.startsWith('Unresolved-type retry pass (mode=always)'))).toBe(true);
+  });
+
+  it('tsconfig pass recovers a component whose Props extends a path-alias type', async () => {
+    // Path aliases (`$lib/*` → `./lib/*`) only resolve when the ts-morph
+    // Project is loaded with the user's tsconfig. The first pass uses a
+    // throwaway in-memory project with no tsconfig and fails; the retry pass
+    // shares a tsConfigFilePath-loaded Project that recovers.
+    await writeFile(
+      join(tempDir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          moduleResolution: 'Bundler',
+          baseUrl: '.',
+          paths: { '$lib/*': ['lib/*'] },
+        },
+      }),
+    );
+    await writeFixture('lib/types.ts', `export interface BaseProps { label: string; tone?: 'info' | 'danger'; }`);
+    const filePath = await writeFixture(
+      'Card.svelte',
+      `
+<script lang="ts">
+  import type { BaseProps } from '$lib/types';
+  interface Props extends BaseProps {}
+  let props: Props = $props();
+</script>
+<div></div>
+`,
+    );
+
+    // With retry enabled, tsconfig pass should recover label/tone via path alias.
+    const result = await extractSvelteComponents([filePath], undefined, {
+      resolveUnreachable: 'always',
+      projectRoot: tempDir,
+    });
+    const card = result.components[0]!;
+    const propNames = card.props.map((p) => p.name).sort();
+    expect(propNames).toContain('label');
+    expect(card.reviewReasons ?? []).not.toContain('props-type-unresolved');
+    // Per-component "declared Props type ... resolved to" warning should be gone.
+    expect(result.warnings.some((w) => /Card: declared Props type .* resolved to/.test(w))).toBe(false);
+    // Top-level retry-pass info warning recorded the recovery.
+    expect(result.warnings.some((w) => w.startsWith('Unresolved-type retry pass'))).toBe(true);
+  });
+
+  it('node_modules pass adds .d.ts from a fake package and recovers props', async () => {
+    // Build a fake node_modules entry with a package.json pointing at index.d.ts
+    // exporting a Props-shaped interface. The .svelte extends from that
+    // interface — ts-morph (without the package being in the program) won't
+    // resolve it in the first pass; the node_modules pass should locate the
+    // .d.ts via require.resolve + package.json#types and add it to the project.
+    await mkdir(join(tempDir, 'node_modules/fake-svelte-pkg'), { recursive: true });
+    await writeFile(
+      join(tempDir, 'node_modules/fake-svelte-pkg/package.json'),
+      JSON.stringify({ name: 'fake-svelte-pkg', main: 'index.js', types: 'index.d.ts' }),
+    );
+    await writeFile(join(tempDir, 'node_modules/fake-svelte-pkg/index.js'), `module.exports = {};`);
+    await writeFile(
+      join(tempDir, 'node_modules/fake-svelte-pkg/index.d.ts'),
+      `export interface FakeProps { color: string; size?: 'sm' | 'md' | 'lg'; }`,
+    );
+
+    const filePath = await writeFixture(
+      'Widget.svelte',
+      `
+<script lang="ts">
+  import type { FakeProps } from 'fake-svelte-pkg';
+  interface Props extends FakeProps {}
+  let props: Props = $props();
+</script>
+<div></div>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath], undefined, {
+      resolveUnreachable: 'always',
+      projectRoot: tempDir,
+    });
+    const widget = result.components[0]!;
+    const propNames = widget.props.map((p) => p.name).sort();
+    // We don't insist every prop comes through — we insist the parser actually
+    // saw the external members (color/size) that were unreachable before.
+    expect(propNames).toEqual(expect.arrayContaining(['color']));
+    expect(widget.reviewReasons ?? []).not.toContain('props-type-unresolved');
+  });
 });

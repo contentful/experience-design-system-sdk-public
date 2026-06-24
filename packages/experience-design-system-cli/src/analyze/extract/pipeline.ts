@@ -1,4 +1,4 @@
-import type { ComponentExtractionResult, ComponentExtractor } from '../../types.js';
+import type { ComponentExtractionResult, ComponentExtractor, ExtractorOptions } from '../../types.js';
 import { extractStencilComponents } from './stencil.js';
 import { extractReactComponents } from './react.js';
 import { extractVueTsxComponents } from './vue-tsx.js';
@@ -286,6 +286,7 @@ export type ExtractProgress = {
 export async function extractComponents(
   filePaths: string[],
   onProgress?: (progress: ExtractProgress) => void,
+  opts?: ExtractorOptions,
 ): Promise<ComponentExtractionResult> {
   const filesByExtractor = new Map<ComponentExtractor, string[]>();
 
@@ -312,15 +313,19 @@ export async function extractComponents(
       if (files.length === 0) return { components: [], warnings: [] };
       perExtractorFiles.set(extractor, 0);
       perExtractorComponents.set(extractor, 0);
-      const result = await extractor.extract(files, (p) => {
-        const prevFiles = perExtractorFiles.get(extractor) ?? 0;
-        const prevComponents = perExtractorComponents.get(extractor) ?? 0;
-        totalFilesProcessed += p.filesProcessed - prevFiles;
-        totalComponentsFound += p.componentsFound - prevComponents;
-        perExtractorFiles.set(extractor, p.filesProcessed);
-        perExtractorComponents.set(extractor, p.componentsFound);
-        onProgress?.({ filesProcessed: totalFilesProcessed, componentsFound: totalComponentsFound });
-      });
+      const result = await extractor.extract(
+        files,
+        (p) => {
+          const prevFiles = perExtractorFiles.get(extractor) ?? 0;
+          const prevComponents = perExtractorComponents.get(extractor) ?? 0;
+          totalFilesProcessed += p.filesProcessed - prevFiles;
+          totalComponentsFound += p.componentsFound - prevComponents;
+          perExtractorFiles.set(extractor, p.filesProcessed);
+          perExtractorComponents.set(extractor, p.componentsFound);
+          onProgress?.({ filesProcessed: totalFilesProcessed, componentsFound: totalComponentsFound });
+        },
+        opts,
+      );
       return result;
     }),
   );

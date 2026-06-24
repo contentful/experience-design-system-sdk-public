@@ -1,6 +1,7 @@
 import { basename, dirname, resolve, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import { parse as parseSvelte } from 'svelte/compiler';
 import { Project, Node, ScriptTarget, ModuleKind, ts } from 'ts-morph';
@@ -9,6 +10,7 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
+  ExtractorOptions,
 } from '../../types.js';
 import { computeExtractionScore, deriveNeedsReview } from './scoring.js';
 
@@ -27,15 +29,32 @@ interface Comment {
   value: string;
 }
 
+/**
+ * Per-component context captured during the first extraction pass, used by the
+ * retry pass to re-run type-member resolution against a richer ts-morph
+ * Project. Keyed by .svelte filePath (which also uniquely identifies a
+ * component within a single extraction).
+ */
+interface RetryContext {
+  filePath: string;
+  source: string;
+  instance: AstNode;
+  moduleScript: AstNode | undefined;
+  annotation: AstNode;
+  componentName: string;
+}
+
 export async function extractSvelteComponents(
   filePaths: string[],
   onProgress?: (p: { filesProcessed: number; componentsFound: number }) => void,
+  opts?: ExtractorOptions,
 ): Promise<ComponentExtractionResult> {
   const svelteFiles = filePaths.filter((f) => f.endsWith('.svelte'));
   if (svelteFiles.length === 0) return { components: [], warnings: [] };
 
   const warnings: string[] = [];
   const components: RawComponentDefinition[] = [];
+  const retryContexts = new Map<string, RetryContext>();
   let filesProcessed = 0;
   let componentsFound = 0;
 
@@ -46,12 +65,13 @@ export async function extractSvelteComponents(
       if (!filePath) break;
       try {
         const source = await readFile(filePath, 'utf-8');
-        const { component, warnings: fileWarnings } = await extractFromSvelteFile(filePath, source);
+        const { component, warnings: fileWarnings, retryContext } = await extractFromSvelteFile(filePath, source);
         warnings.push(...fileWarnings);
         if (component) {
           components.push(component);
           componentsFound++;
         }
+        if (retryContext) retryContexts.set(filePath, retryContext);
       } catch (e) {
         warnings.push(
           `${getSvelteComponentName(filePath)}: failed to extract from ${filePath} — ${e instanceof Error ? e.message : String(e)}`,
@@ -64,10 +84,425 @@ export async function extractSvelteComponents(
 
   await Promise.all(Array.from({ length: Math.min(SVELTE_EXTRACT_CONCURRENCY, svelteFiles.length) }, worker));
 
+  const finalWarnings = await maybeRunResolveUnreachableRetry(components, warnings, retryContexts, opts);
+
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
-    warnings: collapseUnresolvedTypeWarnings(warnings),
+    warnings: collapseUnresolvedTypeWarnings(finalWarnings),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Resolve-unreachable retry pass (Approach B)
+//
+// After the normal pass, components flagged `props-type-unresolved` get a
+// second look:
+//
+//   Step 1 — tsconfig pass: walk up from projectRoot to the nearest
+//   tsconfig.json and build ONE shared ts-morph Project loaded with that
+//   tsconfig. Re-run resolution per-component. Recovers cases where the type
+//   resolver needed path aliases / baseUrl / a real TS program.
+//
+//   Step 2 — node_modules pass: for components that still won't resolve,
+//   locate the imported package via Node's resolver, find its .d.ts entry,
+//   add it to the shared Project, and retry. Recovers cross-package extends
+//   like skeleton-svelte's `extends Omit<ZagProps, 'id'>` from @zag-js/*.
+//
+// Auto mode triggers only when ≥20% of svelte components in the run share
+// the unresolved-type pattern, so the cost of loading a full TS program is
+// paid only when it's likely to help.
+// ---------------------------------------------------------------------------
+
+async function maybeRunResolveUnreachableRetry(
+  components: RawComponentDefinition[],
+  warnings: string[],
+  retryContexts: Map<string, RetryContext>,
+  opts: ExtractorOptions | undefined,
+): Promise<string[]> {
+  const mode = opts?.resolveUnreachable ?? 'auto';
+  if (mode === 'never') return warnings;
+
+  const isUnresolved = (c: RawComponentDefinition) =>
+    (c.reviewReasons ?? []).includes('props-type-unresolved') && !!retryContexts.get(c.source);
+  const unresolvedCount = components.filter(isUnresolved).length;
+  if (unresolvedCount === 0) return warnings;
+
+  if (mode === 'auto') {
+    // Threshold: ≥20% of svelte components in the run.
+    const ratio = unresolvedCount / components.length;
+    if (ratio < 0.2) return warnings;
+  }
+
+  // Step 1 — tsconfig pass.
+  const projectRoot = opts?.projectRoot;
+  let project: Project | null = null;
+  let tsconfigPath: string | null = null;
+  if (projectRoot) {
+    tsconfigPath = findNearestTsconfig(projectRoot);
+  }
+  if (tsconfigPath) {
+    try {
+      project = new Project({
+        tsConfigFilePath: tsconfigPath,
+        skipAddingFilesFromTsConfig: false,
+        compilerOptions: {
+          // Allow declaration-only resolution and JS sources.
+          allowJs: true,
+          jsx: ts.JsxEmit.Preserve,
+        },
+      });
+    } catch {
+      project = null;
+    }
+  }
+
+  let recoveredViaTsconfig = 0;
+  if (project) {
+    for (const component of components) {
+      if (!isUnresolved(component)) continue;
+      const ctx = retryContexts.get(component.source);
+      if (!ctx) continue;
+      const recovered = await retryComponentWithProject(component, ctx, project, warnings);
+      if (recovered) recoveredViaTsconfig++;
+    }
+  }
+
+  // Step 2 — node_modules pass for whatever's still unresolved.
+  let recoveredViaNodeModules = 0;
+  const stillUnresolved = components.filter(isUnresolved);
+  if (stillUnresolved.length > 0) {
+    if (!project) {
+      // No tsconfig available — fall back to a lightweight project so we still
+      // get the node_modules pass. Force Node module resolution so that
+      // bare-specifier imports (e.g. `fake-svelte-pkg`) inside the synthetic
+      // file find their .d.ts entry on disk.
+      project = new Project({
+        compilerOptions: {
+          strict: false,
+          target: ScriptTarget.ESNext,
+          module: ModuleKind.ESNext,
+          moduleResolution: ts.ModuleResolutionKind.NodeJs,
+          allowJs: true,
+          jsx: ts.JsxEmit.Preserve,
+        },
+        useInMemoryFileSystem: false,
+        skipAddingFilesFromTsConfig: true,
+      });
+    }
+    for (const component of stillUnresolved) {
+      const ctx = retryContexts.get(component.source);
+      if (!ctx) continue;
+
+      // Locate the imported types referenced by the user's Props annotation
+      // and add their .d.ts files to the shared project.
+      const added = addImportedDeclarationsToProject(project, ctx);
+      if (added === 0) continue;
+
+      const recovered = await retryComponentWithProject(component, ctx, project, warnings);
+      if (recovered) recoveredViaNodeModules++;
+    }
+  }
+
+  // Only surface the informational summary when the retry actually had
+  // something to work with — i.e. a tsconfig was loaded OR we managed to
+  // recover at least one component via node_modules. Otherwise we'd be
+  // adding a top-level warning that says "we did nothing", which clutters
+  // the output (and breaks the per-component-prefix convention the TUI
+  // relies on for grouping).
+  const didMeaningfulWork = !!tsconfigPath || recoveredViaNodeModules > 0;
+  if (didMeaningfulWork) {
+    const remaining = components.filter(isUnresolved).length;
+    const parts: string[] = [];
+    if (tsconfigPath) {
+      parts.push(`tsconfig at ${tsconfigPath} recovered ${recoveredViaTsconfig} component(s)`);
+    }
+    parts.push(`node_modules pass recovered ${recoveredViaNodeModules} more`);
+    parts.push(`${remaining} component(s) remain unresolved`);
+    warnings.push(`Unresolved-type retry pass (mode=${mode}): ${parts.join('; ')}.`);
+  }
+
+  return warnings;
+}
+
+function findNearestTsconfig(startDir: string): string | null {
+  let dir = startDir;
+  // Cap at a reasonable depth to avoid scanning into / on weird inputs.
+  for (let i = 0; i < 16; i++) {
+    const candidate = join(dir, 'tsconfig.json');
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (!parent || parent === dir) return null;
+    dir = parent;
+  }
+  return null;
+}
+
+/**
+ * Re-run resolution for a single component against a shared Project.
+ * On success, mutate the component to replace props/slots/reviewReasons and
+ * remove the per-component "declared Props type ... resolved to ..." warning.
+ */
+async function retryComponentWithProject(
+  component: RawComponentDefinition,
+  ctx: RetryContext,
+  project: Project,
+  warnings: string[],
+): Promise<boolean> {
+  const snippetLocals = mergeSets(
+    collectSnippetImportLocals(ctx.instance),
+    ctx.moduleScript ? collectSnippetImportLocals(ctx.moduleScript) : new Set<string>(),
+  );
+
+  let members: ResolvedTypeMember[] | null = null;
+  try {
+    members = await resolveViaTypeChecker(
+      ctx.annotation,
+      ctx.instance,
+      ctx.moduleScript,
+      ctx.filePath,
+      ctx.source,
+      snippetLocals,
+      project,
+    );
+  } catch {
+    members = null;
+  }
+
+  if (!members || members.length === 0) return false;
+  // If the only members are Snippet-typed (the partial-heritage signal that
+  // tripped the original warning), we haven't actually recovered useful props.
+  if (members.every((m) => m.isSnippet)) return false;
+
+  const { props, snippetSlots } = extractFromTypeMembersOnly(members);
+  // Merge any template <slot> entries that survived the original pass — we
+  // can't easily re-derive those without re-parsing the fragment, but the
+  // existing component already has them.
+  const templateSlots = component.slots.filter((s) => !snippetSlots.some((ss) => ss.name === s.name));
+  component.props = props;
+  component.slots = mergeSlots(snippetSlots, templateSlots).slots;
+
+  // Drop props-type-unresolved from reasons; recompute confidence.
+  const remainingReasons = (component.reviewReasons ?? []).filter((r) => r !== 'props-type-unresolved');
+  const score = computeExtractionScore(component, {
+    additionalIssueCount: remainingReasons.length,
+    additionalReasons: remainingReasons,
+  });
+  component.extractionConfidence = score.confidence;
+  component.reviewReasons = score.reasons;
+  component.needsReview = deriveNeedsReview(score.confidence);
+
+  // Remove the per-component unresolved-type warning so it doesn't muddy the
+  // summary line / TUI grouping after recovery.
+  const componentName = component.name;
+  const idx = warnings.findIndex(
+    (w) => w.startsWith(`${componentName}: declared Props type `) && /resolved to /.test(w),
+  );
+  if (idx >= 0) warnings.splice(idx, 1);
+
+  return true;
+}
+
+/**
+ * Walk every type reference inside the user's Props annotation, find the
+ * matching ImportDeclaration in instance/module scripts, resolve the
+ * specifier via Node's resolver, locate sibling .d.ts files, and add them to
+ * the shared Project. Returns the number of newly-added files.
+ */
+function addImportedDeclarationsToProject(project: Project, ctx: RetryContext): number {
+  // Start with names referenced directly in the annotation (e.g. `Props`).
+  const importedNames = collectReferencedTypeNames(ctx.annotation);
+  // Also pull in names referenced from any LOCAL type/interface declaration the
+  // annotation points at — that's where heritage clauses (`extends FakeProps`)
+  // and intersections live, and they're the ones that name the imported type
+  // we actually need to add to the project.
+  for (const name of [...importedNames]) {
+    const localDecl =
+      findLocalTypeDeclaration(ctx.instance, name, ctx.moduleScript) ??
+      (ctx.moduleScript ? findLocalTypeDeclaration(ctx.moduleScript, name, ctx.instance) : null);
+    if (localDecl) {
+      for (const referenced of collectReferencedTypeNames(localDecl)) importedNames.add(referenced);
+    }
+  }
+  if (importedNames.size === 0) return 0;
+
+  const imports = collectImportSpecifiersForNames(ctx.instance, importedNames);
+  if (ctx.moduleScript) {
+    for (const [k, v] of collectImportSpecifiersForNames(ctx.moduleScript, importedNames)) imports.set(k, v);
+  }
+  if (imports.size === 0) return 0;
+
+  const req = createRequire(ctx.filePath);
+  let added = 0;
+  for (const specifier of imports.values()) {
+    if (specifier.startsWith('.')) continue; // already attempted by relative resolver path
+    const dtsPath = locateDtsForSpecifier(req, specifier, ctx.filePath);
+    if (!dtsPath) continue;
+    try {
+      const sf = project.addSourceFileAtPathIfExists(dtsPath);
+      if (sf) added++;
+    } catch {
+      // Ignore — best-effort.
+    }
+  }
+  return added;
+}
+
+/**
+ * Walk a TS type-annotation AST (or interface declaration) and gather every
+ * referenced type name. Handles:
+ *   - TSTypeReference (`Foo`, `Foo<Bar>`)
+ *   - TSExpressionWithTypeArguments (the `extends Foo` form on interfaces)
+ * That second case is critical: it's how `interface Props extends FakeProps {}`
+ * surfaces the imported `FakeProps` name we need to add to the project.
+ */
+function collectReferencedTypeNames(node: AstNode): Set<string> {
+  const names = new Set<string>();
+  walk(node);
+  return names;
+
+  function walk(n: AstNode | undefined) {
+    if (!n || typeof n !== 'object') return;
+    if (n.type === 'TSTypeReference') {
+      const tn = (n['typeName'] as AstNode | undefined)?.['name'] as string | undefined;
+      if (tn) names.add(tn);
+    }
+    if (n.type === 'TSExpressionWithTypeArguments') {
+      const exprName = (n['expression'] as AstNode | undefined)?.['name'] as string | undefined;
+      if (exprName) names.add(exprName);
+    }
+    for (const value of Object.values(n)) {
+      if (Array.isArray(value)) {
+        for (const v of value) {
+          if (v && typeof v === 'object') walk(v as AstNode);
+        }
+      } else if (value && typeof value === 'object' && (value as AstNode).type) {
+        walk(value as AstNode);
+      }
+    }
+  }
+}
+
+/**
+ * For each named identifier in `names`, find the import declaration that
+ * brought it into scope and return a map of `localName -> moduleSpecifier`.
+ */
+function collectImportSpecifiersForNames(script: AstNode, names: Set<string>): Map<string, string> {
+  const out = new Map<string, string>();
+  const body = (script['content'] as AstNode | undefined)?.['body'] as AstNode[] | undefined;
+  if (!body) return out;
+  for (const stmt of body) {
+    if (stmt.type !== 'ImportDeclaration') continue;
+    const specifierValue = (stmt['source'] as AstNode | undefined)?.['value'] as string | undefined;
+    if (!specifierValue) continue;
+    const specifiers = (stmt['specifiers'] as AstNode[] | undefined) ?? [];
+    for (const spec of specifiers) {
+      if (spec.type !== 'ImportSpecifier' && spec.type !== 'ImportDefaultSpecifier') continue;
+      const localName = (spec['local'] as AstNode | undefined)?.['name'] as string | undefined;
+      if (localName && names.has(localName)) out.set(localName, specifierValue);
+    }
+  }
+  return out;
+}
+
+/**
+ * Locate a `.d.ts` file for `specifier` resolved relative to `parentFile`.
+ * Tries a few strategies in priority order:
+ *   1. `package.json#types` / `package.json#exports.types`
+ *   2. sibling `.d.ts` / `.d.mts` next to the resolved JS entry
+ *   3. `index.d.ts` / `index.d.mts` in the package root
+ * Returns null if nothing resolves (no node_modules, dynamic import, etc.).
+ */
+function locateDtsForSpecifier(req: NodeJS.Require, specifier: string, parentFile: string): string | null {
+  let resolvedJs: string | null = null;
+  try {
+    resolvedJs = req.resolve(specifier);
+  } catch {
+    resolvedJs = null;
+  }
+
+  // Find the package root (nearest package.json above the resolved file or above the parentFile).
+  const seedDir = resolvedJs ? dirname(resolvedJs) : dirname(parentFile);
+  const pkgRoot = findPackageRootForSpecifier(seedDir, specifier);
+  if (pkgRoot) {
+    const pkgJsonPath = join(pkgRoot, 'package.json');
+    if (existsSync(pkgJsonPath)) {
+      try {
+        const pkgRaw = readFileSync(pkgJsonPath, 'utf-8') as string;
+        const pkg = JSON.parse(pkgRaw) as { types?: string; typings?: string; exports?: unknown };
+        const typesField = pkg.types ?? pkg.typings;
+        if (typeof typesField === 'string') {
+          const candidate = resolve(pkgRoot, typesField);
+          if (existsSync(candidate)) return candidate;
+        }
+        const exportsTypes = extractTypesFromExports(pkg.exports);
+        if (exportsTypes) {
+          const candidate = resolve(pkgRoot, exportsTypes);
+          if (existsSync(candidate)) return candidate;
+        }
+      } catch {
+        // Fall through to sibling probing.
+      }
+    }
+    // index.d.ts at the package root.
+    for (const entry of ['index.d.ts', 'index.d.mts']) {
+      const candidate = join(pkgRoot, entry);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+
+  // Sibling probing next to the resolved JS file.
+  if (resolvedJs) {
+    const noExt = resolvedJs.replace(/\.(m?js|cjs)$/, '');
+    for (const ext of ['.d.ts', '.d.mts']) {
+      const candidate = `${noExt}${ext}`;
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+
+  return null;
+}
+
+function findPackageRootForSpecifier(seedDir: string, specifier: string): string | null {
+  // For scoped (@x/y) and bare specifiers, the package root is the directory
+  // whose path ends with the specifier under a node_modules tree. Walk up.
+  let dir = seedDir;
+  for (let i = 0; i < 32; i++) {
+    if (existsSync(join(dir, 'package.json'))) {
+      // Check this is the package matching the specifier (best-effort: name field).
+      try {
+        const pkgRaw = readFileSync(join(dir, 'package.json'), 'utf-8') as string;
+        const pkg = JSON.parse(pkgRaw) as { name?: string };
+        // Either exact match or a sub-path import (foo/sub) where pkg.name === 'foo'.
+        if (pkg.name === specifier) return dir;
+        if (pkg.name && specifier.startsWith(`${pkg.name}/`)) return dir;
+      } catch {
+        // Ignore and continue walking.
+      }
+    }
+    const parent = dirname(dir);
+    if (!parent || parent === dir) return null;
+    dir = parent;
+  }
+  return null;
+}
+
+function extractTypesFromExports(exportsField: unknown): string | null {
+  if (!exportsField || typeof exportsField !== 'object') return null;
+  const exp = exportsField as Record<string, unknown>;
+  // Look for the "." entry first; fall back to top-level types if shape is conditional.
+  const root = (exp['.'] ?? exp) as unknown;
+  if (!root || typeof root !== 'object') return null;
+  const r = root as Record<string, unknown>;
+  if (typeof r['types'] === 'string') return r['types'];
+  // Conditional exports: try import → types, default → types.
+  for (const key of ['import', 'default', 'node']) {
+    const sub = r[key];
+    if (sub && typeof sub === 'object') {
+      const t = (sub as Record<string, unknown>)['types'];
+      if (typeof t === 'string') return t;
+    }
+  }
+  return null;
 }
 
 /**
@@ -96,7 +531,7 @@ function collapseUnresolvedTypeWarnings(warnings: string[]): string[] {
 async function extractFromSvelteFile(
   filePath: string,
   source: string,
-): Promise<{ component: RawComponentDefinition | null; warnings: string[] }> {
+): Promise<{ component: RawComponentDefinition | null; warnings: string[]; retryContext?: RetryContext }> {
   const warnings: string[] = [];
   // Derive the component name up front so warning messages can prefix it for
   // TUI grouping, even when parsing fails.
@@ -194,7 +629,27 @@ async function extractFromSvelteFile(
   // web-components. No per-extractor work needed here.
 
   void propNamesTreatedAsSnippet; // currently informational; reserved for future validation
-  return { component, warnings };
+
+  // Capture context for the resolve-unreachable retry pass. Only meaningful
+  // when extraction actually got back the props-type-unresolved signal AND
+  // we have the annotation node needed to re-run resolution.
+  let retryContext: RetryContext | undefined;
+  if (extractionReasons.includes('props-type-unresolved') && propsCall && instance) {
+    const id = propsCall['id'] as AstNode | undefined;
+    const annotation = (id?.['typeAnnotation'] as AstNode | undefined)?.['typeAnnotation'] as AstNode | undefined;
+    if (annotation) {
+      retryContext = {
+        filePath,
+        source,
+        instance,
+        moduleScript,
+        annotation,
+        componentName: name,
+      };
+    }
+  }
+
+  return { component, warnings, ...(retryContext ? { retryContext } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -494,6 +949,7 @@ async function resolveViaTypeChecker(
   filePath: string,
   source: string,
   snippetLocals: Set<string>,
+  externalProject?: Project,
 ): Promise<ResolvedTypeMember[] | null> {
   const annotationText = sliceSource(source, annotation);
   if (!annotationText) return null;
@@ -505,17 +961,22 @@ async function resolveViaTypeChecker(
   const instanceText = sliceScriptContent(source, instance);
   const synthetic = [moduleText, instanceText, `type __SveltePropsT__ = ${annotationText};`].filter(Boolean).join('\n');
 
-  const project = new Project({
-    compilerOptions: {
-      strict: false,
-      target: ScriptTarget.ESNext,
-      module: ModuleKind.ESNext,
-      allowJs: true,
-      jsx: ts.JsxEmit.Preserve,
-    },
-    useInMemoryFileSystem: false,
-    skipAddingFilesFromTsConfig: true,
-  });
+  // Reuse the caller-supplied Project if provided (the resolve-unreachable
+  // retry pass shares one Project across all components in the run); otherwise
+  // build a one-off project for this single call.
+  const project =
+    externalProject ??
+    new Project({
+      compilerOptions: {
+        strict: false,
+        target: ScriptTarget.ESNext,
+        module: ModuleKind.ESNext,
+        allowJs: true,
+        jsx: ts.JsxEmit.Preserve,
+      },
+      useInMemoryFileSystem: false,
+      skipAddingFilesFromTsConfig: true,
+    });
   // Place the synthetic file alongside the .svelte so relative imports resolve.
   const syntheticPath = `${filePath}.__svelte-props__.ts`;
   let sf: import('ts-morph').SourceFile;
