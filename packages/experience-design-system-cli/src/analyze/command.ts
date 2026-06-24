@@ -21,7 +21,7 @@ import { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
 import { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
 import { describeReviewReasons, inspectComponentSource } from './extract/source-inspection.js';
 import { validateExtractedComponents } from './extract/validate.js';
-import { buildAnalyzeViewRows } from './build-analyze-view-rows.js';
+import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
 
 interface AnalyzeExtractOptions {
   project: string;
@@ -266,16 +266,12 @@ export function registerAnalyzeCommand(program: Command): void {
       // Split warnings: per-component (those whose prefix matches a surviving component name)
       // are rendered under that component in the TUI; global ones (retry summaries,
       // non-authorable skips, anything else) are rendered at the top of the warnings panel
-      // so they don't disappear into the count.
-      //
-      // The matching rule MUST stay aligned with build-analyze-view-rows.ts which
-      // attaches per-component warnings via `w.startsWith(c.name + ':')`. Using
-      // the same `startsWith(name + ':')` here keeps the two halves symmetric —
-      // any warning attached to a component's row is excluded from globals (no
-      // double-render), and any warning not attached to any row falls through
-      // to globals (no silent drop).
-      const componentNames = componentRows.map((r) => r.name);
-      const globalWarnings = allWarnings.filter((w) => !componentNames.some((name) => w.startsWith(name + ':')));
+      // so they don't disappear into the count. `partitionGlobalWarnings` shares its
+      // matching rule with `buildAnalyzeViewRows` to keep the two halves symmetric.
+      const globalWarnings = partitionGlobalWarnings(
+        allWarnings,
+        componentRows.map((r) => r.name),
+      );
 
       const analyzeResult: AnalyzeViewResult = {
         sourceDirectory,
