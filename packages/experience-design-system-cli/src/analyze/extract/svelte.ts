@@ -284,7 +284,7 @@ async function extractPropsFromCall(ctx: PropsCallContext): Promise<PropsExtract
   if (idType === 'Identifier') {
     // const props: Props = $props(); — no destructure, no defaults, no per-name binding.
     if (typeMembers) {
-      return extractFromTypeMembersOnly(typeMembers, ctx.snippetLocals, warnings);
+      return extractFromTypeMembersOnly(typeMembers);
     }
     warnings.push(`${ctx.filePath}: $props() called without destructuring; cannot extract individual props`);
     return { props: [], snippetNames: new Set(), snippetSlots: [], warnings };
@@ -732,11 +732,7 @@ function extractFromDestructure(
   };
 }
 
-function extractFromTypeMembersOnly(
-  typeMembers: ResolvedTypeMember[],
-  _snippetLocals: Set<string>,
-  _warnings: string[],
-): PropsExtractionResult {
+function extractFromTypeMembersOnly(typeMembers: ResolvedTypeMember[]): PropsExtractionResult {
   const props: RawPropDefinition[] = [];
   const snippetNames = new Set<string>();
   const snippetSlots: RawSlotDefinition[] = [];
