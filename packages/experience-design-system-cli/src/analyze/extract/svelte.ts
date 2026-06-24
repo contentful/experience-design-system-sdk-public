@@ -278,8 +278,13 @@ async function retryComponentWithProject(
   // can't easily re-derive those without re-parsing the fragment, but the
   // existing component already has them.
   const templateSlots = component.slots.filter((s) => !snippetSlots.some((ss) => ss.name === s.name));
-  component.props = props;
-  component.slots = mergeSlots(snippetSlots, templateSlots).slots;
+  const finalSlots = mergeSlots(snippetSlots, templateSlots).slots;
+  // Defensive dedupe: if a name somehow ended up in both buckets (e.g. when ts-morph
+  // returned `any` for a Snippet member and the Snippet detector failed downstream),
+  // the slot wins — slot semantics aren't recoverable from a duplicated prop.
+  const slotNames = new Set(finalSlots.map((s) => s.name));
+  component.props = props.filter((p) => !slotNames.has(p.name));
+  component.slots = finalSlots;
 
   // Drop props-type-unresolved from reasons; recompute confidence.
   const remainingReasons = (component.reviewReasons ?? []).filter((r) => r !== 'props-type-unresolved');
@@ -1010,10 +1015,19 @@ async function resolveViaTypeChecker(
 
     const allowed = extractAllowedValuesFromType(propType);
     const description = readJsDocFromDeclaration(declaration);
-    // Snippet detection is alias-based first (works through generic instantiation
-    // and full type expansion) and falls back to text-matching for the simple
-    // case where alias info isn't available.
-    const isSnippet = typeRefersToSnippet(propType) || isSnippetTypeText(typeText, snippetLocals);
+    // Snippet detection — try three signals in order of reliability:
+    //   1. The author's declared type-node text on the property's source declaration.
+    //      This survives even when ts-morph fails to fully resolve a generic
+    //      instantiation and falls back to `any`/`unknown` (intermittent under
+    //      partial type-checker state).
+    //   2. The resolved type's alias-symbol chain — works when ts-morph DID fully
+    //      resolve the type (`Snippet<[T]>` expanded to its call signature).
+    //   3. Text-match on the rendered type. Last-resort fallback.
+    const declaredTypeText = readDeclaredTypeNodeText(declaration);
+    const isSnippet =
+      (declaredTypeText !== null && isSnippetTypeText(declaredTypeText, snippetLocals)) ||
+      typeRefersToSnippet(propType) ||
+      isSnippetTypeText(typeText, snippetLocals);
 
     members.push({
       name,
@@ -1060,6 +1074,21 @@ function readJsDocFromDeclaration(decl: import('ts-morph').Node): string | undef
     if (jsdocs.length > 0) return jsdocs[0]!.getDescription().trim() || undefined;
   }
   return undefined;
+}
+
+/**
+ * Read the literal text of the property's declared type annotation as the
+ * AUTHOR wrote it (e.g. `Snippet<[Attrs]>`), independent of what the TS
+ * checker resolved it to. This is critical because ts-morph's checker can
+ * intermittently fall back to `any`/`unknown` for cross-package generic
+ * instantiations, in which case the symbol-/alias-based detector has nothing
+ * to follow. The author's syntactic annotation is stable in either case.
+ */
+function readDeclaredTypeNodeText(decl: import('ts-morph').Node): string | null {
+  if (Node.isPropertySignature(decl)) {
+    return decl.getTypeNode()?.getText() ?? null;
+  }
+  return null;
 }
 
 function isSnippetTypeText(typeText: string, snippetLocals: Set<string>): boolean {

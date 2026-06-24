@@ -813,6 +813,38 @@ export interface ButtonProps {
     expect(c.props.some((p) => p.name === 'plain')).toBe(false);
   });
 
+  it('uses the declared type-node text to detect Snippet even when the resolver gives up', async () => {
+    // Real-world failure mode caught in skeleton-svelte: under partial type-checker
+    // state, ts-morph can return `any`/`unknown` for a Snippet generic instantiation
+    // — the alias-symbol detector then has nothing to follow. The declared type-node
+    // text is the author's `Snippet<...>` annotation regardless of resolution and
+    // is the source of truth.
+    const filePath = await writeFixture(
+      'WithSnippetGeneric.svelte',
+      `
+<script lang="ts" module>
+  import type { Snippet } from 'svelte';
+  type Attrs<T> = { kind: T };
+  interface Props {
+    /** May be unresolved by the checker but the annotation says Snippet */
+    element: Snippet<[Attrs<HTMLDivElement>]>;
+    label: string;
+  }
+</script>
+<script lang="ts">
+  const props: Props = $props();
+</script>
+<div>{JSON.stringify(props)}</div>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath]);
+    const c = result.components[0]!;
+    expect(c.props.map((p) => p.name)).toEqual(['label']);
+    expect(c.slots.map((s) => s.name)).toEqual(['element']);
+    expect(c.props.some((p) => p.name === 'element')).toBe(false);
+  });
+
   it('does not warn when the user genuinely typed an empty type literal', async () => {
     // An inline empty literal is a deliberate user choice, not a resolution failure.
     // We should NOT pollute warnings or flag review for this case.
