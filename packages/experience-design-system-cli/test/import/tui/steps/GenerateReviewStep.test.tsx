@@ -520,6 +520,116 @@ describe('GenerateReviewStep — Feature 2 spinner indicator', () => {
   });
 });
 
+// ── Pilot-2026-06-23 R2: top-of-step diff summary panel ─────────────────────
+// Operators want an at-a-glance count of new/changed/removed/breaking on
+// entry to final-review without having to scan every row's badge. The summary
+// renders above the empty-component banner; running/disabled states surface
+// in the same line; --no-live-preview suppresses it entirely.
+describe('GenerateReviewStep — diff summary panel (R2)', () => {
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastUseLivePreviewArgs = null;
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  it('renders count summary when previewAnnotations are populated', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    expect(lastOnResult).not.toBeNull();
+    lastOnResult!({
+      components: {
+        new: [{ name: 'A' } as never, { name: 'B' } as never],
+        changed: [
+          {
+            current: { id: '1', name: 'C', contentProperties: [], designProperties: [], slots: [] },
+            proposed: { $type: 'component', $properties: {} } as never,
+            hasPendingDraftChanges: false,
+            changeClassification: { classification: 'compatible', breakingChanges: [] },
+          },
+          {
+            current: { id: '2', name: 'D', contentProperties: [], designProperties: [], slots: [] },
+            proposed: { $type: 'component', $properties: {} } as never,
+            hasPendingDraftChanges: false,
+            changeClassification: { classification: 'breaking', breakingChanges: [] },
+          },
+        ],
+        removed: [{ name: 'E' } as never],
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    } as never);
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Summary line begins with "Preview:" and lists kind counts.
+    expect(frame).toMatch(/Preview:/);
+    expect(frame).toMatch(/2 new/);
+    expect(frame).toMatch(/1 changed/);
+    expect(frame).toMatch(/1 removed/);
+    expect(frame).toMatch(/1 breaking/);
+  });
+
+  it('shows "running" state when the hook is running and no annotations yet', async () => {
+    hookReturnOverride = { trigger: vi.fn(), status: 'running', disabled: false };
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Preview:.*running/);
+  });
+
+  it('shows "disabled" state with creds-rejected hint when hook reports disabled', async () => {
+    hookReturnOverride = { trigger: vi.fn(), status: 'idle', disabled: true };
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Preview:.*disabled/);
+  });
+
+  it('renders no summary when livePreview=false (--no-live-preview)', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+        livePreview={false}
+      />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/Preview:/);
+  });
+
+  it('renders nothing when idle, not disabled, and no annotations yet', async () => {
+    hookReturnOverride = { trigger: vi.fn(), status: 'idle', disabled: false };
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/Preview:/);
+  });
+
+  it('preserves existing surfaces — sidebar, status bar, focus hint', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Sidebar still renders the component
+    expect(frame).toMatch(/Button/);
+    // Focus hint still rendered
+    expect(frame).toMatch(/\[e\/Tab\] focus panel/);
+    // Status bar still rendered
+    expect(frame).toMatch(/accept all/);
+  });
+});
+
 // ── Bug pilot-2026-06-23: rapid j/k stutter / cursor loss ────────────────────
 // Holding `j` or `k` rapidly used to leave the cursor on a stale row because
 // each handler invocation read selectedIdx from a stale closure. The fix

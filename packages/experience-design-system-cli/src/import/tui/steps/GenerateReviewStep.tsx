@@ -420,6 +420,40 @@ export function GenerateReviewStep({
         />
       )}
       {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
+      {!dialogOpen && livePreview && (() => {
+        // Pilot-2026-06-23 R2: at-a-glance diff summary at the top of the
+        // step. Mutually exclusive states:
+        //   - hook running (and we don't yet have annotations) → spinner.
+        //   - hook disabled (creds rejected) → static disabled hint.
+        //   - annotations populated → counts.
+        //   - idle, no annotations, not disabled → render nothing.
+        const counts = { new: 0, changed: 0, removed: 0, breaking: 0 };
+        for (const v of previewAnnotations.values()) {
+          counts[v] = (counts[v] ?? 0) + 1;
+        }
+        const hasCounts = counts.new + counts.changed + counts.removed + counts.breaking > 0;
+        if (livePreviewHook.disabled) {
+          return <Text dimColor>{'Preview: disabled (creds rejected)'}</Text>;
+        }
+        if (livePreviewHook.status === 'running' && !hasCounts) {
+          return <Text dimColor>{`Preview: ${livePreviewSpinner} running...`}</Text>;
+        }
+        if (!hasCounts) return null;
+        return (
+          <Box>
+            <Text>{'Preview: '}</Text>
+            <Text color="green">{`${counts.new} new`}</Text>
+            <Text>{' · '}</Text>
+            <Text color="yellow">{`${counts.changed} changed`}</Text>
+            <Text>{' · '}</Text>
+            <Text dimColor>{`${counts.removed} removed`}</Text>
+            <Text>{' · '}</Text>
+            <Text color="red" bold>
+              {`${counts.breaking} breaking`}
+            </Text>
+          </Box>
+        );
+      })()}
       {!dialogOpen && emptyCount > 0 && (
         <Text color="yellow">
           {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
