@@ -201,14 +201,28 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
   mkdirSync(dirname(path), { recursive: true });
   try {
     const db = new DatabaseSync(path);
+    // Configure connection-level pragmas BEFORE running schema/migrations.
+    // - journal_mode=WAL: persistent on the DB file; readers don't block writers
+    //   and vice versa. (Also set in SCHEMA, but harmless to assert per-open.)
+    // - busy_timeout: per-connection; SQLite waits for a lock instead of
+    //   immediately throwing 'database is locked'. Critical when the wizard
+    //   main process and select-agent subprocesses contend on writes.
+    // - synchronous=NORMAL: safe under WAL, faster than FULL.
+    db.exec('PRAGMA journal_mode = WAL');
+    db.exec('PRAGMA busy_timeout = 5000');
+    db.exec('PRAGMA synchronous = NORMAL');
     db.exec(SCHEMA);
     applyDbMigrations(db);
     return db;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('database is locked')) {
-      process.stderr.write('Error: another CLI process is already running. Wait for it to finish and retry.\n');
-      process.exit(1);
+      // Throw a typed-ish error rather than process.exit(1). Calling exit
+      // from inside Ink's render reconciler crashes the TUI mid-frame and
+      // emits a noisy 'setState during render' warning. The CLI entry
+      // point (src/index.ts) catches and exits cleanly for non-TUI
+      // contexts; the wizard catches and transitions to its error step.
+      throw new Error('database is locked: another CLI process may be running. Retry once it exits.');
     }
     throw e;
   }

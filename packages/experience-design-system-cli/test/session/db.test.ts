@@ -80,6 +80,49 @@ describe('openPipelineDb', () => {
     });
   });
 
+  it('enables WAL journal mode on every open', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const row = db.prepare('PRAGMA journal_mode').get() as { journal_mode: string };
+      expect(row.journal_mode.toLowerCase()).toBe('wal');
+      db.close();
+    });
+  });
+
+  it('sets a non-zero busy_timeout on every open', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const row = db.prepare('PRAGMA busy_timeout').get() as { timeout: number };
+      expect(row.timeout).toBeGreaterThan(0);
+      db.close();
+    });
+  });
+
+  it('allows two concurrent handles against the same DB to write without raising "database is locked"', async () => {
+    await withTempDb((dbPath) => {
+      const db1 = openPipelineDb(dbPath);
+      const db2 = openPipelineDb(dbPath);
+      const now = new Date().toISOString();
+      // Two interleaved writes from separate connections — under rollback
+      // journal + no busy_timeout this would frequently throw "database is
+      // locked". With WAL + busy_timeout it should always succeed.
+      db1.prepare('INSERT INTO sessions (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(
+        's1',
+        null,
+        now,
+        now,
+      );
+      db2.prepare('INSERT INTO sessions (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(
+        's2',
+        null,
+        now,
+        now,
+      );
+      db1.close();
+      db2.close();
+    });
+  });
+
   it('adds rationale and source-location columns to raw_props (Feature 1)', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
