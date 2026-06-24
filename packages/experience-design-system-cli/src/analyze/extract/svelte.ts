@@ -269,9 +269,12 @@ async function retryComponentWithProject(
   }
 
   if (!members || members.length === 0) return false;
-  // If the only members are Snippet-typed (the partial-heritage signal that
-  // tripped the original warning), we haven't actually recovered useful props.
-  if (members.every((m) => m.isSnippet)) return false;
+  // Snippet-only resolution is still useful — it confirms the slot surface
+  // and lets us replace the original (which may have had fewer slot entries
+  // because the cold AST-only pass missed members declared in heritage).
+  // Apply the recovered slots, but DON'T drop `props-type-unresolved` from
+  // reasons (the prop side genuinely has no resolvable members).
+  const onlySnippets = members.every((m) => m.isSnippet);
 
   const { props, snippetSlots } = extractFromTypeMembersOnly(members);
   // Merge any template <slot> entries that survived the original pass — we
@@ -286,18 +289,24 @@ async function retryComponentWithProject(
   component.props = props.filter((p) => !slotNames.has(p.name));
   component.slots = finalSlots;
 
-  // Drop props-type-unresolved from reasons; recompute confidence.
-  const remainingReasons = (component.reviewReasons ?? []).filter((r) => r !== 'props-type-unresolved');
+  // Recompute confidence. When only Snippets came back, keep the
+  // `props-type-unresolved` reason — slot surface is real but the prop side
+  // is still legitimately unresolved (the extends-from-node_modules failed).
+  // When real props came back, drop the reason: full recovery.
+  const remainingReasons = onlySnippets
+    ? (component.reviewReasons ?? [])
+    : (component.reviewReasons ?? []).filter((r) => r !== 'props-type-unresolved');
   const score = computeExtractionScore(component, {
     additionalIssueCount: remainingReasons.length,
     additionalReasons: remainingReasons,
   });
   component.extractionConfidence = score.confidence;
   component.reviewReasons = score.reasons;
-  component.needsReview = deriveNeedsReview(score.confidence);
+  component.needsReview = deriveNeedsReview(score.confidence) || remainingReasons.includes('props-type-unresolved');
 
-  // Remove the per-component unresolved-type warning so it doesn't muddy the
-  // summary line / TUI grouping after recovery.
+  // Remove the per-component unresolved-type warning. The `props-type-unresolved`
+  // reason on the component itself still carries the signal for TUI drill-down;
+  // the warnings array is replaced by the collapsed summary upstream.
   const componentName = component.name;
   const idx = warnings.findIndex(
     (w) => w.startsWith(`${componentName}: declared Props type `) && /resolved to /.test(w),
@@ -514,23 +523,27 @@ function extractTypesFromExports(exportsField: unknown): string | null {
  * When a large fraction of components emit the same `declared Props type ...
  * resolved to ... properties` warning (typical of headless libraries like
  * skeleton-svelte that extend types from external packages we can't reach),
- * collapse them into a single summary line at the top + the per-component
- * details below. Per-component reviewReasons and needsReview stay intact;
- * this only affects the warnings array's readability.
+ * replace ALL of them with a single summary line. Per-component
+ * reviewReasons + needsReview flags stay intact, so the user can still
+ * drill into any individual component to see the issue — we just don't
+ * flood the top-level warnings panel with N near-identical lines.
  *
  * Threshold: 3 or more identical-shape warnings. Below that, the literal
- * per-component lines are clearer than a summary.
+ * per-component lines are short enough to keep as-is.
  */
 function collapseUnresolvedTypeWarnings(warnings: string[]): string[] {
   const isUnresolvedWarning = (w: string) => /declared Props type .* resolved to/.test(w);
-  const unresolved = warnings.filter(isUnresolvedWarning);
-  if (unresolved.length < 3) return warnings;
+  const unresolvedCount = warnings.filter(isUnresolvedWarning).length;
+  if (unresolvedCount < 3) return warnings;
 
+  const others = warnings.filter((w) => !isUnresolvedWarning(w));
   const summary =
-    `Unresolved component types: ${unresolved.length} components have a declared Props type the parser couldn't fully resolve — ` +
+    `Unresolved component types: ${unresolvedCount} components have a declared Props type the parser couldn't fully resolve — ` +
     `most often a cross-package extends pattern (e.g. an interface that extends a type from a node_modules package). ` +
+    `Each affected component is flagged with reviewReasons: ['props-type-unresolved'] and needsReview = true; ` +
+    `select one in the TUI to drill in. ` +
     `See https://github.com/contentful/experience-design-system-sdk-public/pull/44 for context and partner workarounds.`;
-  return [summary, ...warnings];
+  return [summary, ...others];
 }
 
 async function extractFromSvelteFile(

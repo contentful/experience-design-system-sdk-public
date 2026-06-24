@@ -722,10 +722,10 @@ export interface ButtonProps {
     }
   });
 
-  it('prepends a single summary warning when 3+ components share the unresolved-type pattern', async () => {
+  it('replaces per-component warnings with a single summary when 3+ share the unresolved-type pattern', async () => {
     // Skeleton-style library: many components, all extending unreachable external types.
-    // Per-component warnings stay (so the user can debug any specific one) but a
-    // summary line leads so the warnings panel isn't a wall of identical text.
+    // Wall-of-warnings UX → 1 summary. Per-component reviewReasons + needsReview
+    // remain so the user can drill into any specific component.
     const make = (name: string) =>
       writeFixture(
         `${name}/anatomy/root.svelte`,
@@ -745,11 +745,9 @@ export interface ButtonProps {
     const result = await extractSvelteComponents(files);
     expect(result.components).toHaveLength(4);
 
-    // Summary leads the warnings list; per-component lines follow.
-    expect(result.warnings.length).toBeGreaterThanOrEqual(5);
+    // Exactly one warning line — the summary; no per-component lines.
+    expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0]).toMatch(/^Unresolved component types: 4 components/);
-    const perComponent = result.warnings.slice(1).filter((w) => /declared Props type .* resolved to/.test(w));
-    expect(perComponent).toHaveLength(4);
   });
 
   it('does not collapse when fewer than 3 components share the pattern', async () => {
@@ -843,6 +841,38 @@ export interface ButtonProps {
     expect(c.props.map((p) => p.name)).toEqual(['label']);
     expect(c.slots.map((s) => s.name)).toEqual(['element']);
     expect(c.props.some((p) => p.name === 'element')).toBe(false);
+  });
+
+  it('collapse drops per-component lines when summarizing 3+ unresolved-type warnings', async () => {
+    // 264 near-identical warnings is unreadable. The summary line is the user-facing
+    // signal; the per-component reviewReasons + needsReview stay intact for drill-down.
+    const make = (name: string) =>
+      writeFixture(
+        `${name}/anatomy/root.svelte`,
+        `
+<script lang="ts" module>
+  import type { Props as ExtPkgProps } from '@unreachable-pkg/foo';
+  export interface ${name}RootProps extends Omit<ExtPkgProps, 'id'> {}
+</script>
+<script lang="ts">
+  const props: ${name}RootProps = $props();
+</script>
+<div>{JSON.stringify(props)}</div>
+`,
+      );
+
+    const files = await Promise.all([make('Accordion'), make('Dialog'), make('Slider'), make('Combobox')]);
+    const result = await extractSvelteComponents(files);
+
+    // Exactly one summary warning; no per-component warnings.
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatch(/^Unresolved component types: 4 components/);
+
+    // Each component still carries the reason + needs-review flag for drill-down.
+    for (const c of result.components) {
+      expect(c.reviewReasons).toContain('props-type-unresolved');
+      expect(c.needsReview).toBe(true);
+    }
   });
 
   it('does not warn when the user genuinely typed an empty type literal', async () => {

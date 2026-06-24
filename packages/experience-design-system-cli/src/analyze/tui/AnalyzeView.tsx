@@ -158,7 +158,10 @@ export function AnalyzeView({ result, onExit }: AnalyzeViewProps): React.ReactEl
               .flatMap((c) => c.warnings.map((w) => ({ component: c.name, warning: w })))
               .map((w, i) => (
                 <Text key={i} color="yellow">
-                  {'  ⚠ ' + w.component + ': ' + w.warning}
+                  {/* Warning bodies coming from extractors already lead with `<ComponentName>: ` (matches
+                       the convention build-analyze-view-rows uses to group warnings by component). Don't
+                       prepend the name a second time. */}
+                  {'  ⚠ ' + (w.warning.startsWith(w.component + ': ') ? w.warning : w.component + ': ' + w.warning)}
                 </Text>
               ))}
           </>
