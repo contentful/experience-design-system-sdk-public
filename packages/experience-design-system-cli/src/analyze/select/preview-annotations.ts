@@ -7,38 +7,60 @@ import type { PreviewAnnotation } from './types.js';
  * (and any other surface that wants to render diff badges next to a
  * component row).
  *
- * Precedence: `breaking` > `changed` > `new` > `removed`. (A single name
- * shouldn't appear in more than one bucket in practice; we walk the arrays
- * in a fixed order so the result is deterministic if one ever does.)
+ * The `new` bucket of `ServerPreviewResponse.components` is `CDFComponentEntry[]`
+ * — those entries do NOT carry a `name` field on the wire (the name is the
+ * KEY in the parent manifest). So instead of trying to read names off entries,
+ * we derive the "new" set as:
+ *
+ *   new = localNames \ (unchangedNames ∪ changedNames ∪ removedNames)
+ *
+ * Callers must pass the local manifest's component keys as `localNames` so
+ * we can perform the set difference. Removed components from the server that
+ * aren't in the local manifest are still annotated as `'removed'` (so the
+ * detail panel can list them).
+ *
+ * Precedence: `breaking` > `changed` > `removed` > `new`.
  *
  * Unchanged entries are omitted from the map — callers should treat
  * `map.get(name) === undefined` as "no annotation".
  */
-export function applyPreviewAnnotations(preview: ServerPreviewResponse): Map<string, PreviewAnnotation> {
+export function applyPreviewAnnotations(
+  preview: ServerPreviewResponse,
+  localNames: readonly string[],
+): Map<string, PreviewAnnotation> {
   const out = new Map<string, PreviewAnnotation>();
 
-  // `removed` first so `new` / `changed` can override if a name somehow
-  // appears in two buckets (defensive — shouldn't happen).
-  for (const entity of preview.components.removed) {
-    if (entity.name) out.set(entity.name, 'removed');
-  }
+  const unchanged = new Set(preview.components.unchanged);
 
-  for (const entry of preview.components.new) {
-    // `new` items are CDFComponentEntry but the server attaches the name on
-    // the serialized payload — mirror the WizardApp.tsx access pattern at
-    // lines 332-333.
-    const name = (entry as unknown as Record<string, unknown>)['name'];
-    if (typeof name === 'string') out.set(name, 'new');
-  }
-
+  // Annotate changed first; collect their names so we can exclude from "new".
+  const changedNames = new Set<string>();
   for (const item of preview.components.changed) {
-    const name = item.current?.name ?? (item.proposed as unknown as Record<string, unknown>)?.['name'];
+    const name = item.current?.name;
     if (typeof name !== 'string') continue;
+    changedNames.add(name);
     if (item.changeClassification?.classification === 'breaking') {
       out.set(name, 'breaking');
     } else {
       out.set(name, 'changed');
     }
+  }
+
+  // Annotate removed.
+  const removedNames = new Set<string>();
+  for (const entity of preview.components.removed) {
+    if (entity.name) {
+      removedNames.add(entity.name);
+      out.set(entity.name, 'removed');
+    }
+  }
+
+  // Derive `new` = localNames \ (unchanged ∪ changed ∪ removed).
+  for (const name of localNames) {
+    if (unchanged.has(name)) continue;
+    if (changedNames.has(name)) continue;
+    if (removedNames.has(name)) continue;
+    if (out.has(name)) continue;
+    out.set(name, 'new');
   }
 
   return out;

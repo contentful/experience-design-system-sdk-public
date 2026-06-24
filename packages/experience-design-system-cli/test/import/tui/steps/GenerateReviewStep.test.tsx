@@ -534,6 +534,15 @@ describe('GenerateReviewStep — diff summary panel (R2)', () => {
   });
 
   it('renders count summary when previewAnnotations are populated', async () => {
+    // Local manifest must contain the "new" names so the derivation
+    // (localNames \ unchanged ∪ changed ∪ removed) reports them as new.
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'A', entry: SAMPLE_ENTRY },
+      { key: 'B', entry: SAMPLE_ENTRY },
+      { key: 'C', entry: SAMPLE_ENTRY },
+      { key: 'D', entry: SAMPLE_ENTRY },
+    ]);
     const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
@@ -541,7 +550,7 @@ describe('GenerateReviewStep — diff summary panel (R2)', () => {
     expect(lastOnResult).not.toBeNull();
     lastOnResult!({
       components: {
-        new: [{ name: 'A' } as never, { name: 'B' } as never],
+        new: [],
         changed: [
           {
             current: { id: '1', name: 'C', contentProperties: [], designProperties: [], slots: [] },
@@ -556,7 +565,9 @@ describe('GenerateReviewStep — diff summary panel (R2)', () => {
             changeClassification: { classification: 'breaking', breakingChanges: [] },
           },
         ],
-        removed: [{ name: 'E' } as never],
+        removed: [
+          { id: 'e', name: 'E', contentProperties: [], designProperties: [], slots: [] } as never,
+        ],
         unchanged: [],
       },
       tokens: { new: [], changed: [], removed: [], unchanged: [] },

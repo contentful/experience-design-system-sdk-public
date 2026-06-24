@@ -112,7 +112,7 @@ export function GenerateReviewStep({
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
-    setPreviewAnnotations(applyPreviewAnnotations(response));
+    setPreviewAnnotations(applyPreviewAnnotations(response, components.map((c) => c.key)));
   };
 
   const livePreviewHook = useLivePreview({
