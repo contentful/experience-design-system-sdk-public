@@ -427,6 +427,49 @@ export interface CardProps {
     expect(variant.allowedValues).toEqual(['compact', 'wide']);
   });
 
+  it('honors aliased Snippet import in cross-file resolution', async () => {
+    // The external file imports Snippet under an alias. The hardcoded
+    // `typeText === 'Snippet'` check used to misclassify alias-typed members
+    // as regular props instead of slots.
+    await writeFixture(
+      'type.ts',
+      `
+import type { Snippet as LocalSnippet } from 'svelte';
+
+export interface AliasedProps {
+  /** Title text */
+  title: string;
+  /** Header slot */
+  header?: LocalSnippet;
+}
+`,
+    );
+    await writeFixture('index.ts', `export * from './type.js';\n`);
+    const filePath = await writeFixture(
+      'Aliased.svelte',
+      `
+<script lang="ts">
+  import { type AliasedProps as Props } from './index.js';
+  let { title, header }: Props = $props();
+</script>
+<div>{title}{#if header}{@render header()}{/if}</div>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath]);
+    const component = result.components[0]!;
+
+    // header should be a slot, not a prop
+    expect(component.props.find((p) => p.name === 'header')).toBeUndefined();
+    const headerSlot = component.slots.find((s) => s.name === 'header')!;
+    expect(headerSlot).toBeDefined();
+    expect(headerSlot.isDefault).toBe(false);
+
+    // title remains a regular prop
+    const title = component.props.find((p) => p.name === 'title')!;
+    expect(title.type).toBe('string');
+  });
+
   it('handles svelte-5-ui-lib pattern: cross-file Props import alias', async () => {
     // import { type ButtonProps as Props } from '.';
     // We need ts-morph to follow the import; sibling file in same tempDir.

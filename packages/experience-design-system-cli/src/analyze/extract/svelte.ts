@@ -865,6 +865,11 @@ function readMembersFromExternalFile(filePath: string, exportName: string): Reso
   const sf = project.addSourceFileAtPathIfExists(filePath);
   if (!sf) return null;
 
+  // Collect Snippet locals from the resolved file's own imports so that
+  // aliased imports (`import { Snippet as LocalSnippet } from 'svelte'`) are
+  // honored. Mirrors collectSnippetImportLocals() but adapted to ts-morph.
+  const snippetLocals = collectSnippetLocalsFromSourceFile(sf);
+
   // Use getExportedDeclarations() so re-export chains (`export { ... } from './x'`,
   // `export * from './x'`, named or namespace) resolve transparently. ts-morph
   // follows them recursively and returns the underlying declaration.
@@ -874,12 +879,19 @@ function readMembersFromExternalFile(filePath: string, exportName: string): Reso
 
   for (const decl of decls) {
     if (Node.isInterfaceDeclaration(decl)) {
-      return readInterfaceMembers(decl);
+      // The declaration may live in a different source file than `sf` if the
+      // export chain walked across files; pull snippet locals from that file
+      // so aliased imports are recognized.
+      const declSf = decl.getSourceFile();
+      const declLocals = declSf === sf ? snippetLocals : collectSnippetLocalsFromSourceFile(declSf);
+      return readInterfaceMembers(decl, declLocals);
     }
     if (Node.isTypeAliasDeclaration(decl)) {
       const typeNode = decl.getTypeNode();
       if (typeNode && Node.isTypeLiteral(typeNode)) {
-        return readTypeLiteralMembers(typeNode);
+        const declSf = decl.getSourceFile();
+        const declLocals = declSf === sf ? snippetLocals : collectSnippetLocalsFromSourceFile(declSf);
+        return readTypeLiteralMembers(typeNode, declLocals);
       }
     }
   }
@@ -887,7 +899,24 @@ function readMembersFromExternalFile(filePath: string, exportName: string): Reso
   return null;
 }
 
-function readInterfaceMembers(iface: import('ts-morph').InterfaceDeclaration): ResolvedTypeMember[] {
+function collectSnippetLocalsFromSourceFile(sf: import('ts-morph').SourceFile): Set<string> {
+  const locals = new Set<string>();
+  for (const importDecl of sf.getImportDeclarations()) {
+    if (importDecl.getModuleSpecifierValue() !== 'svelte') continue;
+    for (const named of importDecl.getNamedImports()) {
+      if (named.getName() === 'Snippet') {
+        const aliasNode = named.getAliasNode();
+        locals.add(aliasNode ? aliasNode.getText() : named.getName());
+      }
+    }
+  }
+  return locals;
+}
+
+function readInterfaceMembers(
+  iface: import('ts-morph').InterfaceDeclaration,
+  snippetLocals: Set<string>,
+): ResolvedTypeMember[] {
   return iface.getProperties().map((prop) => {
     const typeNode = prop.getTypeNode();
     const typeText = typeNode ? typeNode.getText() : prop.getType().getText(prop);
@@ -898,7 +927,7 @@ function readInterfaceMembers(iface: import('ts-morph').InterfaceDeclaration): R
       name: prop.getName(),
       optional: prop.hasQuestionToken(),
       typeText,
-      isSnippet: typeText === 'Snippet' || /^Snippet</.test(typeText),
+      isSnippet: isSnippetTypeText(typeText, snippetLocals),
       ...(allowed ? { allowedValues: allowed } : {}),
       ...(description ? { description } : {}),
       line: prop.getStartLineNumber(),
@@ -907,7 +936,10 @@ function readInterfaceMembers(iface: import('ts-morph').InterfaceDeclaration): R
   });
 }
 
-function readTypeLiteralMembers(typeNode: import('ts-morph').TypeLiteralNode): ResolvedTypeMember[] {
+function readTypeLiteralMembers(
+  typeNode: import('ts-morph').TypeLiteralNode,
+  snippetLocals: Set<string>,
+): ResolvedTypeMember[] {
   return typeNode.getMembers().flatMap((m) => {
     if (!Node.isPropertySignature(m)) return [];
     const tn = m.getTypeNode();
@@ -920,7 +952,7 @@ function readTypeLiteralMembers(typeNode: import('ts-morph').TypeLiteralNode): R
         name: m.getName(),
         optional: m.hasQuestionToken(),
         typeText,
-        isSnippet: typeText === 'Snippet' || /^Snippet</.test(typeText),
+        isSnippet: isSnippetTypeText(typeText, snippetLocals),
         ...(allowed ? { allowedValues: allowed } : {}),
         ...(description ? { description } : {}),
         line: m.getStartLineNumber(),
