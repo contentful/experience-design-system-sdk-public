@@ -1493,3 +1493,21 @@ describe('FieldEditor — Feature 1 (rationale + source view)', () => {
     expect(frame).not.toContain('~ ');
   });
 });
+
+describe('FieldEditor — discoverability footer (s source, ? help)', () => {
+  it('row-level footer advertises the source-view (`s`) and help (`?`) keys', () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/s source/);
+    expect(frame).toMatch(/\? help/);
+  });
+});

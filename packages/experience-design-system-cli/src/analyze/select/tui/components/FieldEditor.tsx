@@ -1325,7 +1325,7 @@ export function FieldEditor({
     if (focusLevel === 'field' && (activeField === 'values' || activeField === 'allowedComponents')) {
       return '[a]dd  [e]dit  [r]emove  ↑↓/jk navigate  [K/J] reorder  Esc row';
     }
-    return '↑↓/jk navigate rows  Enter edit fields  Ctrl+S save  Esc exit panel';
+    return '↑↓/jk navigate rows  Enter edit fields  s source  ? help  Ctrl+S save  Esc exit panel';
   })();
 
   // Build visible rows
