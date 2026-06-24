@@ -173,12 +173,24 @@ async function extractFromSvelteFile(
 // Component name
 // ---------------------------------------------------------------------------
 
+// Folder names that are pure scaffolding (anatomy / parts conventions popularized
+// by Ark UI, Zag, Skeleton). When a component file sits directly inside one of
+// these, the meaningful namespace is the grandparent directory.
+const ANATOMY_FOLDERS = new Set(['anatomy', 'parts']);
+
 function getSvelteComponentName(filePath: string): string {
   const file = basename(filePath, '.svelte');
+  const parentDir = basename(dirname(filePath));
   // index.svelte → use parent directory name (mirrors index.vue behavior).
-  if (file === 'index') {
-    const parent = basename(dirname(filePath));
-    return toPascalCase(parent);
+  if (file === 'index') return toPascalCase(parentDir);
+
+  // accordion/anatomy/root.svelte → AccordionRoot (avoids massive collisions
+  // when a single library has dozens of components named Root/Item/Trigger).
+  if (ANATOMY_FOLDERS.has(parentDir)) {
+    const grandparent = basename(dirname(dirname(filePath)));
+    if (grandparent && grandparent !== '.' && grandparent !== '/') {
+      return `${toPascalCase(grandparent)}${toPascalCase(file)}`;
+    }
   }
   return toPascalCase(file);
 }

@@ -717,6 +717,53 @@ export interface ButtonProps {
     expect(result.warnings.some((w) => /resolved to 0 properties/i.test(w))).toBe(false);
   });
 
+  // ---------------------------------------------------------------------------
+  // Naming — namespace by parent dir for anatomy/parts conventions
+  // ---------------------------------------------------------------------------
+
+  it('namespaces components under an anatomy/ folder by their grandparent dir', async () => {
+    // Skeleton-svelte / Ark / Zag pattern: accordion/anatomy/root.svelte,
+    // dialog/anatomy/root.svelte, slider/anatomy/root.svelte. Without
+    // namespacing they all collapse to "Root" and the central
+    // DUPLICATE_COMPONENT_NAME validator floods the output. Namespace by
+    // the grandparent dir so they become AccordionRoot, DialogRoot, etc.
+    const accRoot = await writeFixture(
+      'accordion/anatomy/root.svelte',
+      `<script lang="ts">interface P{a:string}let{a}:P=$props()</script><div>{a}</div>`,
+    );
+    const dlgRoot = await writeFixture(
+      'dialog/anatomy/root.svelte',
+      `<script lang="ts">interface P{b:string}let{b}:P=$props()</script><div>{b}</div>`,
+    );
+    const accCloseTrigger = await writeFixture(
+      'accordion/anatomy/close-trigger.svelte',
+      `<script lang="ts">interface P{c:string}let{c}:P=$props()</script><div>{c}</div>`,
+    );
+
+    const result = await extractSvelteComponents([accRoot, dlgRoot, accCloseTrigger]);
+    const names = result.components.map((c) => c.name).sort();
+    expect(names).toEqual(['AccordionCloseTrigger', 'AccordionRoot', 'DialogRoot']);
+  });
+
+  it('namespaces components under a parts/ folder the same way', async () => {
+    const filePath = await writeFixture(
+      'menu/parts/trigger.svelte',
+      `<script lang="ts">interface P{x:string}let{x}:P=$props()</script><div>{x}</div>`,
+    );
+    const result = await extractSvelteComponents([filePath]);
+    expect(result.components[0]!.name).toBe('MenuTrigger');
+  });
+
+  it('does not namespace ordinary nested components (no anatomy/parts marker)', async () => {
+    // accordion/root.svelte (no anatomy/) → just "Root", behavior unchanged.
+    const filePath = await writeFixture(
+      'accordion/root.svelte',
+      `<script lang="ts">interface P{a:string}let{a}:P=$props()</script><div>{a}</div>`,
+    );
+    const result = await extractSvelteComponents([filePath]);
+    expect(result.components[0]!.name).toBe('Root');
+  });
+
   it('extracts component name from filename, not interface name', async () => {
     const filePath = await writeFixture(
       'Avatar/index.svelte',
