@@ -267,11 +267,15 @@ export function registerAnalyzeCommand(program: Command): void {
       // are rendered under that component in the TUI; global ones (retry summaries,
       // non-authorable skips, anything else) are rendered at the top of the warnings panel
       // so they don't disappear into the count.
-      const componentNames = new Set(componentRows.map((r) => r.name));
-      const globalWarnings = allWarnings.filter((w) => {
-        const prefix = w.split(':', 1)[0]?.trim();
-        return !prefix || !componentNames.has(prefix);
-      });
+      //
+      // The matching rule MUST stay aligned with build-analyze-view-rows.ts which
+      // attaches per-component warnings via `w.startsWith(c.name + ':')`. Using
+      // the same `startsWith(name + ':')` here keeps the two halves symmetric —
+      // any warning attached to a component's row is excluded from globals (no
+      // double-render), and any warning not attached to any row falls through
+      // to globals (no silent drop).
+      const componentNames = componentRows.map((r) => r.name);
+      const globalWarnings = allWarnings.filter((w) => !componentNames.some((name) => w.startsWith(name + ':')));
 
       const analyzeResult: AnalyzeViewResult = {
         sourceDirectory,
