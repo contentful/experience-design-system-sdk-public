@@ -36,7 +36,7 @@ type CdfReviewEntry = {
 
 type GenerateReviewStepProps = {
   extractSessionId: string;
-  onFinalize: (accepted: number, rejected: number) => void;
+  onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
   /**
    * Feature 2 (live preview after every save). When `true` (default), the
@@ -214,8 +214,15 @@ export function GenerateReviewStep({
   };
 
   const handleFinalizeConfirm = () => {
-    const rejected = components.filter((c) => c.status === 'rejected').map((c) => c.key);
-    if (rejected.length > 0) {
+    // Strict opt-in: only EXPLICITLY ACCEPTED components ship. Anything left
+    // in 'needs-review' OR explicitly 'rejected' is downgraded to
+    // 'generate-rejected' so loadCDFComponents excludes it from the manifest.
+    // The operator told us they want accept-to-ship semantics — leaving a
+    // component unresolved should NOT silently push it (Pilot-2026-06-24 R2).
+    const explicitlyRejected = components.filter((c) => c.status === 'rejected').map((c) => c.key);
+    const unresolved = components.filter((c) => c.status === 'needs-review').map((c) => c.key);
+    const toReject = [...explicitlyRejected, ...unresolved];
+    if (toReject.length > 0) {
       const db = openPipelineDb();
       try {
         const stmt = db.prepare(
@@ -223,7 +230,7 @@ export function GenerateReviewStep({
         );
         db.exec('BEGIN');
         try {
-          for (const name of rejected) {
+          for (const name of toReject) {
             stmt.run(extractSessionId, name);
           }
           db.exec('COMMIT');
@@ -235,8 +242,8 @@ export function GenerateReviewStep({
         db.close();
       }
     }
-    const accepted = components.filter((c) => c.status !== 'rejected').length;
-    onFinalize(accepted, rejected.length);
+    const acceptedCount = components.filter((c) => c.status === 'accepted').length;
+    onFinalize(acceptedCount, explicitlyRejected.length, unresolved.length);
   };
 
   const handleEditSave = () => {

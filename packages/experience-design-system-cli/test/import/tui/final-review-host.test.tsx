@@ -32,7 +32,7 @@ describe('FinalReviewHost', () => {
     );
     await new Promise((r) => setImmediate(r));
     expect(onFinalize).toHaveBeenCalledTimes(1);
-    expect(onFinalize).toHaveBeenCalledWith(7, 0);
+    expect(onFinalize).toHaveBeenCalledWith(7, 0, 0);
   });
 
   it('does NOT auto-finalize when autoAccept is false', async () => {

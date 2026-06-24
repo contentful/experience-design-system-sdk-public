@@ -1373,8 +1373,10 @@ export function WizardApp({
             cmaToken={state.cmaToken}
             host={state.host}
             tokensPath={state.tokensPath}
-            onFinalize={(accepted, rejected) => {
-              process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}\n`);
+            onFinalize={(accepted, rejected, unresolved) => {
+              process.stderr.write(
+                `Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`,
+              );
               if (noPush) {
                 update({ generatedAcceptedCount: accepted });
                 void runPrintFiles(state.extractSessionId, state.outDir);

@@ -6,7 +6,7 @@ export type FinalReviewHostProps = {
   extractSessionId: string | null;
   generatedCount: number;
   autoAccept: boolean;
-  onFinalize: (accepted: number, rejected: number) => void;
+  onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
   // Feature 2 plumbing — passed straight through to GenerateReviewStep.
   livePreview?: boolean;
@@ -62,10 +62,10 @@ function FinalReviewAutoAccept({
   onFinalize,
 }: {
   generatedCount: number;
-  onFinalize: (accepted: number, rejected: number) => void;
+  onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
 }): React.ReactElement {
   React.useEffect(() => {
-    onFinalize(generatedCount, 0);
+    onFinalize(generatedCount, 0, 0);
     // fire once on mount; deps intentionally empty so a re-render with new generatedCount doesn't double-finalize
   }, []);
   return (

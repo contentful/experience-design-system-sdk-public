@@ -878,3 +878,114 @@ describe('GenerateReviewStep — rapid j/k navigation (no stutter)', () => {
     expect(hasSelected).toBe(true);
   });
 });
+
+// Pilot-2026-06-24 R2: strict opt-in semantics at finalize. Components left
+// in 'needs-review' (i.e. not explicitly accepted) must be downgraded to
+// 'generate-rejected' in the DB so loadCDFComponents excludes them from the
+// push manifest. Operator's mental model is "only what I explicitly accepted
+// should ship".
+describe('GenerateReviewStep — strict opt-in finalize semantics', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const makeEntry = (label: string): Entry => ({
+    $type: 'component',
+    $properties: { [label]: { $type: 'string', $category: 'content' } },
+  });
+
+  it('downgrades unresolved (needs-review) components to generate-rejected at finalize', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const KEYS = ['Aaa', 'Bbb', 'Ccc'];
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(
+      KEYS.map((k) => ({ key: k, entry: makeEntry(k) })),
+    );
+    // Capture the stmt.run calls on the prepared statement so we can assert
+    // which component names were marked rejected at finalize time.
+    const runSpy = vi.fn();
+    vi.mocked(dbMod.openPipelineDb).mockReturnValue({
+      prepare: vi.fn().mockReturnValue({ run: runSpy }),
+      exec: vi.fn(),
+      close: vi.fn(),
+    } as unknown as ReturnType<typeof dbMod.openPipelineDb>);
+
+    const onFinalize = vi.fn();
+    const { stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // Accept Aaa only. Bbb + Ccc remain needs-review.
+    stdin.write('a');
+    await tick();
+    stdin.write('F');
+    await tick();
+    stdin.write('y');
+    await tick();
+
+    const rejectedNames = runSpy.mock.calls.map((args) => args[1]).sort();
+    expect(rejectedNames).toEqual(['Bbb', 'Ccc']);
+    expect(onFinalize).toHaveBeenCalledWith(1, 0, 2);
+  });
+
+  it('still writes generate-rejected for explicitly rejected components', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const KEYS = ['Aaa', 'Bbb'];
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(
+      KEYS.map((k) => ({ key: k, entry: makeEntry(k) })),
+    );
+    const runSpy = vi.fn();
+    vi.mocked(dbMod.openPipelineDb).mockReturnValue({
+      prepare: vi.fn().mockReturnValue({ run: runSpy }),
+      exec: vi.fn(),
+      close: vi.fn(),
+    } as unknown as ReturnType<typeof dbMod.openPipelineDb>);
+
+    const onFinalize = vi.fn();
+    const { stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // Accept Aaa, explicitly reject Bbb.
+    stdin.write('a');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('r');
+    await tick();
+    stdin.write('F');
+    await tick();
+    stdin.write('y');
+    await tick();
+
+    const rejectedNames = runSpy.mock.calls.map((args) => args[1]);
+    expect(rejectedNames).toEqual(['Bbb']);
+    expect(onFinalize).toHaveBeenCalledWith(1, 1, 0);
+  });
+
+  it('writes no rejected rows when every component is explicitly accepted', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const KEYS = ['Aaa', 'Bbb', 'Ccc'];
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(
+      KEYS.map((k) => ({ key: k, entry: makeEntry(k) })),
+    );
+    const runSpy = vi.fn();
+    vi.mocked(dbMod.openPipelineDb).mockReturnValue({
+      prepare: vi.fn().mockReturnValue({ run: runSpy }),
+      exec: vi.fn(),
+      close: vi.fn(),
+    } as unknown as ReturnType<typeof dbMod.openPipelineDb>);
+
+    const onFinalize = vi.fn();
+    const { stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // Accept all via 'A'.
+    stdin.write('A');
+    await tick();
+    stdin.write('F');
+    await tick();
+    stdin.write('y');
+    await tick();
+
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(onFinalize).toHaveBeenCalledWith(3, 0, 0);
+  });
+});
