@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Review the single extracted React/Next.js component provided below and decide whether it belongs in **Contentful Experience Orchestration** as a Component Type. Output one JSON tool call to stdout.
+Review the extracted React/Next.js component(s) provided below and decide whether each belongs in **Contentful Experience Orchestration** as a Component Type. The input is a JSON array — you may receive 1–N components in a single message. Output one JSON tool call per input component to stdout, named after the component. Tool calls may appear in any order.
 
 ---
 
@@ -97,7 +97,7 @@ Use that bounded context to distinguish the author-facing renderer from infrastr
 
 Emit one JSON object on a single line. Lines not starting with `{` are ignored by the parser — use them freely for reasoning.
 
-**Two tool calls — emit exactly one:**
+**Two tool calls — emit exactly one per input component:**
 
 ```
 {"tool":"select_component","name":"<ComponentName>","reason":"<brief reason>","confidence":<1-5>}
@@ -107,8 +107,9 @@ Emit one JSON object on a single line. Lines not starting with `{` are ignored b
 
 **Rules:**
 
-- Emit exactly one JSON object, on one line. No multi-line JSON. No markdown fences.
-- The `name` must match the component name in the input.
+- Emit exactly one JSON object per line. No multi-line JSON. No markdown fences.
+- Emit exactly one tool call per input component. Tool calls may appear in any order.
+- The `name` must match a component name from the input array exactly.
 - `reason` is a brief phrase documenting your decision.
 - `confidence` is your certainty (1–5) that the decision is correct:
   - **5** — obvious case, no doubt (clear UI atom, or clear infrastructure with no visual output)

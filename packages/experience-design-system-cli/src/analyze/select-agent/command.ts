@@ -25,7 +25,16 @@ import {
 
 const VALID_AGENTS = new Set<string>(['claude', 'codex', 'opencode', 'cursor']);
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 3 * 60 * 1000);
-const DEFAULT_CONCURRENCY = 5;
+export const DEFAULT_CONCURRENCY = 10;
+export const DEFAULT_BATCH_SIZE = 5;
+
+function resolveBatchSize(): number {
+  const raw = process.env.EDS_SELECT_BATCH_SIZE;
+  if (!raw) return DEFAULT_BATCH_SIZE;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_BATCH_SIZE;
+  return Math.floor(n);
+}
 
 function resolveSessionId(sessionFlag: string | undefined): string {
   if (sessionFlag) return sessionFlag;
@@ -123,23 +132,26 @@ function resolveProjectRoot(sessionId: string, projectRootFlag: string | undefin
   }
 }
 
-async function selectOneComponent(
+type BatchItem = {
+  candidate: SelectionCandidate;
+  // Absolute index in the full components array — used for progress N/M.
+  index: number;
+};
+
+async function selectBatch(
   agent: AgentName,
   model: string | undefined,
-  candidate: SelectionCandidate,
-  index: number,
+  batch: BatchItem[],
   total: number,
   verbose: boolean,
-): Promise<SelectOneResult> {
-  const { component } = candidate;
+): Promise<SelectOneResult[]> {
   const prompt = await buildPrompt({
     skill: 'select',
     mode: 'autonomous',
-    rawComponentsInline: JSON.stringify([buildComponentData(candidate)], null, 2),
+    rawComponentsInline: JSON.stringify(batch.map((b) => buildComponentData(b.candidate)), null, 2),
     outDir: process.cwd(),
   });
 
-  const pos = c.dim(`[${index + 1}/${total}]`);
   let outputBuf = '';
   const formatter = new OutputFormatter(verbose, (s) => {
     outputBuf += s;
@@ -156,69 +168,95 @@ async function selectOneComponent(
   formatter.flush();
 
   if (verbose) {
-    process.stderr.write(`  ${pos}  ${c.bold(component.name)}\n${outputBuf}`);
+    const names = batch.map((b) => b.candidate.component.name).join(', ');
+    process.stderr.write(`  ${c.bold(`batch: ${names}`)}\n${outputBuf}`);
   }
 
+  // Feature 3: emit one progress= line per component (in input order) regardless
+  // of batch outcome. The wizard's runAutoFilter parser depends on this contract.
+  const emitProgress = (
+    item: BatchItem,
+    decision: 'accepted' | 'rejected',
+    reason: string | undefined,
+  ): void => {
+    const reasonEncoded = reason ? encodeURIComponent(reason) : '';
+    process.stderr.write(
+      `progress=select-agent:${item.index + 1}/${total}:${decision}:${item.candidate.component.name}:${reasonEncoded}\n`,
+    );
+  };
+
+  // Whole-batch failure: timeout or non-zero exit. Mark every item failed and
+  // do NOT emit progress lines (no decision was made).
   if (result.timedOut) {
-    process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.yellow('timed out')}\n`);
-    return {
-      componentKey: componentKey(component),
-      componentName: component.name,
+    for (const item of batch) {
+      const pos = c.dim(`[${item.index + 1}/${total}]`);
+      process.stderr.write(`  ${pos}  ${c.bold(item.candidate.component.name)}  ${c.yellow('timed out')}\n`);
+    }
+    return batch.map((item) => ({
+      componentKey: componentKey(item.candidate.component),
+      componentName: item.candidate.component.name,
       decision: null,
       failed: true,
-    };
+    }));
   }
 
   if (result.exitCode !== 0) {
-    process.stderr.write(
-      `  ${pos}  ${c.bold(component.name)}  ${c.red(`agent exited with code ${result.exitCode}`)}\n`,
-    );
-    return {
-      componentKey: componentKey(component),
-      componentName: component.name,
+    for (const item of batch) {
+      const pos = c.dim(`[${item.index + 1}/${total}]`);
+      process.stderr.write(
+        `  ${pos}  ${c.bold(item.candidate.component.name)}  ${c.red(`agent exited with code ${result.exitCode}`)}\n`,
+      );
+    }
+    return batch.map((item) => ({
+      componentKey: componentKey(item.candidate.component),
+      componentName: item.candidate.component.name,
       decision: null,
       failed: true,
-    };
+    }));
   }
 
   const { calls, warnings } = parseSelectToolCallLines(result.stdout);
 
   if (warnings.length > 0) {
     for (const warning of warnings) {
-      process.stderr.write(`  ${c.yellow('⚠')}  ${component.name}: ${warning}\n`);
+      process.stderr.write(`  ${c.yellow('⚠')}  batch: ${warning}\n`);
     }
   }
 
-  const call = calls.find((toolCall): toolCall is SelectToolCall => toolCall.name === component.name) ?? calls[0];
-  if (!call) {
-    process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.yellow('no tool call')}\n`);
-    return {
+  const results: SelectOneResult[] = [];
+  for (const item of batch) {
+    const { component } = item.candidate;
+    const pos = c.dim(`[${item.index + 1}/${total}]`);
+    const call = calls.find((toolCall): toolCall is SelectToolCall => toolCall.name === component.name);
+
+    if (!call) {
+      process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.yellow('no tool call')}\n`);
+      results.push({
+        componentKey: componentKey(component),
+        componentName: component.name,
+        decision: null,
+        failed: true,
+      });
+      continue;
+    }
+
+    const decision = call.tool === 'select_component' ? 'accepted' : 'rejected';
+    const finalColor = decision === 'accepted' ? c.green : c.red;
+    process.stderr.write(
+      `  ${pos}  ${c.bold(component.name)}  ${finalColor(decision)}${call.reason ? `  ${c.dim(call.reason)}` : ''}\n`,
+    );
+    emitProgress(item, decision, call.reason);
+
+    results.push({
       componentKey: componentKey(component),
       componentName: component.name,
-      decision: null,
-      failed: true,
-    };
+      decision,
+      reason: call.reason,
+      failed: false,
+    });
   }
 
-  const decision = call.tool === 'select_component' ? 'accepted' : 'rejected';
-  const finalColor = decision === 'accepted' ? c.green : c.red;
-  process.stderr.write(
-    `  ${pos}  ${c.bold(component.name)}  ${finalColor(decision)}${call.reason ? `  ${c.dim(call.reason)}` : ''}\n`,
-  );
-  // Feature 3: structured progress line consumed by the wizard's runAutoFilter
-  // parser. Reason is URL-encoded so it can safely contain colons / newlines.
-  const reasonEncoded = call.reason ? encodeURIComponent(call.reason) : '';
-  process.stderr.write(
-    `progress=select-agent:${index + 1}/${total}:${decision}:${component.name}:${reasonEncoded}\n`,
-  );
-
-  return {
-    componentKey: componentKey(component),
-    componentName: component.name,
-    decision,
-    reason: call.reason,
-    failed: false,
-  };
+  return results;
 }
 
 async function selectAllComponents(
@@ -228,23 +266,37 @@ async function selectAllComponents(
   verbose: boolean,
 ): Promise<SelectOneResult[]> {
   const concurrency = Number(process.env.EDS_GENERATE_CONCURRENCY ?? DEFAULT_CONCURRENCY);
+  const batchSize = resolveBatchSize();
+
+  // Chunk into batches of `batchSize`, preserving original indices for the
+  // per-component progress=select-agent: lines.
+  const batches: BatchItem[][] = [];
+  for (let i = 0; i < components.length; i += batchSize) {
+    const slice = components.slice(i, i + batchSize);
+    batches.push(slice.map((candidate, j) => ({ candidate, index: i + j })));
+  }
+
   process.stderr.write(
     `Validating ${c.bold(String(components.length))} component${components.length === 1 ? '' : 's'}` +
-      c.dim(`  (concurrency: ${concurrency})`) +
+      c.dim(`  (concurrency: ${concurrency}, batch: ${batchSize}, batches: ${batches.length})`) +
       '\n',
   );
 
   const results: SelectOneResult[] = new Array(components.length);
-  let next = 0;
+  let nextBatch = 0;
 
   async function worker(): Promise<void> {
-    while (next < components.length) {
-      const i = next++;
-      results[i] = await selectOneComponent(agent, model, components[i]!, i, components.length, verbose);
+    while (nextBatch < batches.length) {
+      const b = nextBatch++;
+      const batch = batches[b]!;
+      const batchResults = await selectBatch(agent, model, batch, components.length, verbose);
+      for (let k = 0; k < batch.length; k++) {
+        results[batch[k]!.index] = batchResults[k]!;
+      }
     }
   }
 
-  await Promise.all(Array.from({ length: Math.min(concurrency, components.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(concurrency, batches.length) }, worker));
   return results;
 }
 

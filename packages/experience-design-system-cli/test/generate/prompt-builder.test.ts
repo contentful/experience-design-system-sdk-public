@@ -141,6 +141,17 @@ describe('buildPrompt', () => {
     expect(prompt).toMatch(/SrOnly|screen[- ]reader[- ]only/i);
   });
 
+  it('select skill prompt advertises batch input (1–N components per message)', async () => {
+    const prompt = await buildPrompt({
+      skill: 'select',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      outDir: '/fake/out',
+    });
+    expect(prompt).toMatch(/1[-–]N components/);
+    expect(prompt).toMatch(/one tool call per input component/i);
+  });
+
   it('select skill prompt preserves the renderer-vs-wrapper guardrail (data-fetch wrapper rule)', async () => {
     // Pin the existing rejection-criteria so the new rule is additive, not a replacement.
     const prompt = await buildPrompt({
