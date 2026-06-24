@@ -722,6 +722,59 @@ export interface ButtonProps {
     }
   });
 
+  it('prepends a single summary warning when 3+ components share the unresolved-type pattern', async () => {
+    // Skeleton-style library: many components, all extending unreachable external types.
+    // Per-component warnings stay (so the user can debug any specific one) but a
+    // summary line leads so the warnings panel isn't a wall of identical text.
+    const make = (name: string) =>
+      writeFixture(
+        `${name}/anatomy/root.svelte`,
+        `
+<script lang="ts" module>
+  import type { Props as ExtPkgProps } from '@unreachable-pkg/foo';
+  export interface ${name}RootProps extends Omit<ExtPkgProps, 'id'> {}
+</script>
+<script lang="ts">
+  const props: ${name}RootProps = $props();
+</script>
+<div>{JSON.stringify(props)}</div>
+`,
+      );
+
+    const files = await Promise.all([make('Accordion'), make('Dialog'), make('Slider'), make('Combobox')]);
+    const result = await extractSvelteComponents(files);
+    expect(result.components).toHaveLength(4);
+
+    // Summary leads the warnings list; per-component lines follow.
+    expect(result.warnings.length).toBeGreaterThanOrEqual(5);
+    expect(result.warnings[0]).toMatch(/^Unresolved component types: 4 components/);
+    const perComponent = result.warnings.slice(1).filter((w) => /declared Props type .* resolved to/.test(w));
+    expect(perComponent).toHaveLength(4);
+  });
+
+  it('does not collapse when fewer than 3 components share the pattern', async () => {
+    // 2 unresolved → keep the per-component lines as-is; no summary noise.
+    const make = (name: string) =>
+      writeFixture(
+        `${name}/anatomy/root.svelte`,
+        `
+<script lang="ts" module>
+  import type { Props as ExtPkgProps } from '@unreachable-pkg/foo';
+  export interface ${name}RootProps extends Omit<ExtPkgProps, 'id'> {}
+</script>
+<script lang="ts">
+  const props: ${name}RootProps = $props();
+</script>
+<div>{JSON.stringify(props)}</div>
+`,
+      );
+
+    const files = await Promise.all([make('Accordion'), make('Dialog')]);
+    const result = await extractSvelteComponents(files);
+    expect(result.components).toHaveLength(2);
+    expect(result.warnings.some((w) => /^Unresolved component types:/.test(w))).toBe(false);
+  });
+
   it('does not warn when the user genuinely typed an empty type literal', async () => {
     // An inline empty literal is a deliberate user choice, not a resolution failure.
     // We should NOT pollute warnings or flag review for this case.

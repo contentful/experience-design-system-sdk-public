@@ -66,8 +66,31 @@ export async function extractSvelteComponents(
 
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
-    warnings,
+    warnings: collapseUnresolvedTypeWarnings(warnings),
   };
+}
+
+/**
+ * When a large fraction of components emit the same `declared Props type ...
+ * resolved to ... properties` warning (typical of headless libraries like
+ * skeleton-svelte that extend types from external packages we can't reach),
+ * collapse them into a single summary line at the top + the per-component
+ * details below. Per-component reviewReasons and needsReview stay intact;
+ * this only affects the warnings array's readability.
+ *
+ * Threshold: 3 or more identical-shape warnings. Below that, the literal
+ * per-component lines are clearer than a summary.
+ */
+function collapseUnresolvedTypeWarnings(warnings: string[]): string[] {
+  const isUnresolvedWarning = (w: string) => /declared Props type .* resolved to/.test(w);
+  const unresolved = warnings.filter(isUnresolvedWarning);
+  if (unresolved.length < 3) return warnings;
+
+  const summary =
+    `Unresolved component types: ${unresolved.length} components have a declared Props type the parser couldn't fully resolve — ` +
+    `most often a cross-package extends pattern (e.g. an interface that extends a type from a node_modules package). ` +
+    `See https://github.com/contentful/experience-design-system-sdk-public/pull/44 for context and partner workarounds.`;
+  return [summary, ...warnings];
 }
 
 async function extractFromSvelteFile(
