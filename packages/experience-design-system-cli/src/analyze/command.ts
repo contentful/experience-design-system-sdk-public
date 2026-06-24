@@ -263,6 +263,16 @@ export function registerAnalyzeCommand(program: Command): void {
         allWarnings,
       );
 
+      // Split warnings: per-component (those whose prefix matches a surviving component name)
+      // are rendered under that component in the TUI; global ones (retry summaries,
+      // non-authorable skips, anything else) are rendered at the top of the warnings panel
+      // so they don't disappear into the count.
+      const componentNames = new Set(componentRows.map((r) => r.name));
+      const globalWarnings = allWarnings.filter((w) => {
+        const prefix = w.split(':', 1)[0]?.trim();
+        return !prefix || !componentNames.has(prefix);
+      });
+
       const analyzeResult: AnalyzeViewResult = {
         sourceDirectory,
         sessionId,
@@ -270,6 +280,7 @@ export function registerAnalyzeCommand(program: Command): void {
         components: componentRows,
         totalWarnings: allWarnings.length,
         totalErrors,
+        globalWarnings,
       };
 
       if (process.stdout.isTTY) {

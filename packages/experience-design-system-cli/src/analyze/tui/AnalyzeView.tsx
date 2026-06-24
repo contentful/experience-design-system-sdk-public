@@ -25,6 +25,15 @@ export type AnalyzeViewResult = {
   }>;
   totalWarnings: number;
   totalErrors: number;
+  /**
+   * Top-level warnings not associated with any surviving component:
+   *   - retry-pass summary lines
+   *   - "Skipped non-authorable component: …" — the component was filtered out and has no row to attach to
+   *   - any other extractor warning whose prefix doesn't match a component in `components`
+   * Always rendered at the top of the Warnings panel so they're visible in the TUI.
+   * Optional for backwards compatibility with older fixtures; treated as `[]` when absent.
+   */
+  globalWarnings?: string[];
 };
 
 type AnalyzeViewProps = {
@@ -153,14 +162,20 @@ export function AnalyzeView({ result, onExit }: AnalyzeViewProps): React.ReactEl
             </Text>
             <Text dimColor>{'─'.repeat(70)}</Text>
             <Text> </Text>
+            {/* Global warnings: not associated with any surviving component (retry-pass summary,
+                non-authorable skips, etc.). Always shown so they don't get lost. */}
+            {(result.globalWarnings ?? []).map((w, i) => (
+              <Text key={`g${i}`} color="yellow">
+                {'  ⚠ ' + w}
+              </Text>
+            ))}
+            {/* Per-component warnings, grouped by component. The warning body usually leads with
+                `<ComponentName>: ` already (parser convention), so we don't prepend the name a second time. */}
             {result.components
               .filter((c) => c.warnings.length > 0)
               .flatMap((c) => c.warnings.map((w) => ({ component: c.name, warning: w })))
               .map((w, i) => (
-                <Text key={i} color="yellow">
-                  {/* Warning bodies coming from extractors already lead with `<ComponentName>: ` (matches
-                       the convention build-analyze-view-rows uses to group warnings by component). Don't
-                       prepend the name a second time. */}
+                <Text key={`c${i}`} color="yellow">
                   {'  ⚠ ' + (w.warning.startsWith(w.component + ': ') ? w.warning : w.component + ': ' + w.warning)}
                 </Text>
               ))}
