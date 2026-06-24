@@ -363,9 +363,11 @@ describe('GenerateReviewStep — Feature 2 live-preview wiring', () => {
 
   it('failed save (malformed draft via direct invariant) does NOT call trigger', async () => {
     // When draftValue is non-empty malformed JSON, JSON.parse throws and
-    // setSaveError fires — trigger must not be called. We can't easily
-    // type malformed JSON into the FieldEditor through Ink, so this test
-    // pins the contract via the absence of trigger calls before any save.
+    // setSaveError fires — trigger must not be called from that save path.
+    // We can't easily type malformed JSON into the FieldEditor through Ink,
+    // so this test pins the contract by counting trigger calls. After
+    // pilot-2026-06-23 R2, the on-entry effect fires trigger exactly once
+    // on load; no save = no additional trigger calls.
     render(
       <GenerateReviewStep
         extractSessionId="sess-1"
@@ -374,7 +376,9 @@ describe('GenerateReviewStep — Feature 2 live-preview wiring', () => {
       />,
     );
     await tick();
-    expect(triggerSpy).not.toHaveBeenCalled();
+    // Exactly one call — the on-entry fire — and no further trigger from a
+    // malformed save (because no save happens).
+    expect(triggerSpy).toHaveBeenCalledTimes(1);
   });
 
   it('onResult populates per-component previewAnnotation visible in sidebar', async () => {
@@ -414,6 +418,69 @@ describe('GenerateReviewStep — Feature 2 live-preview wiring', () => {
     // the field plumbing is the assertion).
     expect(VALID_DRAFT).toBeTypeOf('string');
     expect(lastFrame() ?? '').toMatch(/Button/);
+  });
+});
+
+// ── Pilot-2026-06-23 R2: live preview must fire on entry to final-review ────
+// Before this fix, livePreviewHook.trigger() was only invoked from
+// handleEditSave, so operators saw no diff badges until they Ctrl+S'd at
+// least once. The fix adds a one-shot effect that fires after components
+// load, respecting the existing opt-out paths (livePreview=false and
+// missing creds — the latter is the hook's own short-circuit).
+describe('GenerateReviewStep — initial live-preview trigger on entry (R2)', () => {
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastUseLivePreviewArgs = null;
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  it('fires trigger() once after components load with creds present', async () => {
+    render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+        spaceId="sp"
+        environmentId="master"
+        cmaToken="t"
+        host="h"
+        tokensPath="/tmp/tokens.json"
+      />,
+    );
+    await tick();
+    expect(triggerSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT fire trigger() when livePreview=false (--no-live-preview)', async () => {
+    render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+        livePreview={false}
+        spaceId="sp"
+        environmentId="master"
+        cmaToken="t"
+      />,
+    );
+    await tick();
+    expect(triggerSpy).not.toHaveBeenCalled();
+  });
+
+  it('still calls trigger() when creds are missing — the hook short-circuits internally', async () => {
+    // The cred-missing graceful no-op lives inside useLivePreview.trigger
+    // (F2's 18be9c0). The step component still calls trigger; the hook
+    // decides whether to fire the underlying API call.
+    render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+      />,
+    );
+    await tick();
+    expect(triggerSpy).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -165,6 +165,22 @@ export function GenerateReviewStep({
     });
   }, []);
 
+  // Pilot-2026-06-23 R2: fire the live preview once on entry to final-review
+  // so diff badges populate before the operator's first save. We gate on the
+  // livePreview prop to honor --no-live-preview without depending on the
+  // hook's internal short-circuit. Cred-missing is still handled by the
+  // hook's own no-op path.
+  useEffect(() => {
+    if (loading) return;
+    if (!livePreview) return;
+    if (components.length === 0) return;
+    livePreviewHook.trigger();
+    // Intentionally only on load completion — subsequent fires happen via
+    // handleEditSave. Adding livePreviewHook to deps would re-fire on every
+    // hook re-creation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
   // Feature 1: load review metadata (rationale + source location) for the
   // selected component when selection changes.
   useEffect(() => {
