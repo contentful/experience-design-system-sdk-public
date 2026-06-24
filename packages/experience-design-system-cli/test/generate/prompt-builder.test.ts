@@ -125,6 +125,34 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('Generate Components');
   });
 
+  it('select skill prompt includes utility-wrapper rejection rule (no authorable content surface)', async () => {
+    const prompt = await buildPrompt({
+      skill: 'select',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      outDir: '/fake/out',
+    });
+    // Distinctive phrase from the new rejection rule.
+    expect(prompt).toContain('Utility wrapper — no authorable content surface');
+    // The rule should call out structural-only props as a rejection signal.
+    expect(prompt).toMatch(/structural[- ]only/i);
+    // Concrete examples authors expect to be rejected.
+    expect(prompt).toMatch(/Portal/);
+    expect(prompt).toMatch(/SrOnly|screen[- ]reader[- ]only/i);
+  });
+
+  it('select skill prompt preserves the renderer-vs-wrapper guardrail (data-fetch wrapper rule)', async () => {
+    // Pin the existing rejection-criteria so the new rule is additive, not a replacement.
+    const prompt = await buildPrompt({
+      skill: 'select',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      outDir: '/fake/out',
+    });
+    expect(prompt).toContain('Data-fetch wrapper rule');
+    expect(prompt).toContain('React hooks');
+  });
+
   it('tokens autonomous preamble includes tool-call protocol instructions', async () => {
     const rawTokensInline = JSON.stringify([
       { name: '--color-primary', value: '#0066ff', source: 'css', inferredKind: 'color', ambiguous: false },
