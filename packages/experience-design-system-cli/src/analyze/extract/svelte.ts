@@ -107,6 +107,7 @@ async function extractFromSvelteFile(
   let props: RawPropDefinition[] = [];
   let propNamesTreatedAsSnippet = new Set<string>();
   let snippetSlotsFromProps: RawSlotDefinition[] = [];
+  const extractionReasons: string[] = [];
 
   if (propsCall) {
     const result = await extractPropsFromCall({
@@ -121,6 +122,7 @@ async function extractFromSvelteFile(
     propNamesTreatedAsSnippet = result.snippetNames;
     snippetSlotsFromProps = result.snippetSlots;
     warnings.push(...result.warnings);
+    if (result.additionalReasons) extractionReasons.push(...result.additionalReasons);
   } else if (instance) {
     // No $props() call. We've already ruled out v4 above; this means $props was used
     // but couldn't be located, or the script has no rune-style props at all.
@@ -145,11 +147,17 @@ async function extractFromSvelteFile(
     slots,
   };
 
-  // Score & flag review.
-  const score = computeExtractionScore(component);
+  // Score & flag review. Forward extraction-time reasons (e.g. props-type-unresolved)
+  // so they count toward the confidence score AND surface in reviewReasons.
+  const score = computeExtractionScore(component, {
+    additionalIssueCount: extractionReasons.length,
+    additionalReasons: extractionReasons,
+  });
   component.extractionConfidence = score.confidence;
   component.reviewReasons = score.reasons;
-  component.needsReview = deriveNeedsReview(score.confidence);
+  // A type-resolution failure is a strong signal something is wrong; force
+  // human review even when other heuristics keep confidence above the threshold.
+  component.needsReview = deriveNeedsReview(score.confidence) || extractionReasons.includes('props-type-unresolved');
 
   // Validation issues (EMPTY_COMPONENT_NAME / EMPTY_PROP_NAME / PROP_SLOT_NAME_COLLISION /
   // DUPLICATE_COMPONENT_NAME / EMPTY_COMPONENT / EMPTY_SLOT_NAME) are populated
@@ -261,6 +269,8 @@ interface PropsExtractionResult {
   snippetNames: Set<string>;
   snippetSlots: RawSlotDefinition[];
   warnings: string[];
+  /** Extra extraction-score reasons to merge into the component's reviewReasons. */
+  additionalReasons?: string[];
 }
 
 async function extractPropsFromCall(ctx: PropsCallContext): Promise<PropsExtractionResult> {
@@ -277,21 +287,89 @@ async function extractPropsFromCall(ctx: PropsCallContext): Promise<PropsExtract
     ? await resolveTypeMembers(annotation, ctx.instance, ctx.moduleScript, ctx.filePath, ctx.source)
     : null;
 
+  // Detect "we tried to resolve a real type and got nothing back" — distinct from
+  // the user genuinely typing an empty literal. Surface as both a warning (CLI
+  // stderr / analyze report) and a review reason (TUI / downstream gating).
+  const unresolved = classifyUnresolved(annotation, typeMembers, ctx.instance, ctx.moduleScript);
+  const additionalReasons: string[] = [];
+  if (unresolved) {
+    const refLabel = describeAnnotationForUser(annotation);
+    const heritageNote = unresolved === 'partial-heritage' ? ' (heritage clauses extending unreachable types)' : '';
+    warnings.push(
+      `${ctx.filePath}: declared Props type ${refLabel} resolved to ${unresolved === 'empty' ? '0' : 'only Snippet-typed'} properties${heritageNote} — possible cross-package extends or unreachable type. ` +
+        `See https://github.com/contentful/experience-design-system-sdk-public/pull/44 for context and partner workarounds.`,
+    );
+    additionalReasons.push('props-type-unresolved');
+  }
+
   if (idType === 'ObjectPattern') {
-    return extractFromDestructure(ctx.propsCall, ctx, typeMembers, warnings);
+    return extractFromDestructure(ctx.propsCall, ctx, typeMembers, warnings, additionalReasons);
   }
 
   if (idType === 'Identifier') {
     // const props: Props = $props(); — no destructure, no defaults, no per-name binding.
-    if (typeMembers) {
-      return extractFromTypeMembersOnly(typeMembers);
+    if (typeMembers && typeMembers.length > 0) {
+      return { ...extractFromTypeMembersOnly(typeMembers), warnings, additionalReasons };
     }
-    warnings.push(`${ctx.filePath}: $props() called without destructuring; cannot extract individual props`);
-    return { props: [], snippetNames: new Set(), snippetSlots: [], warnings };
+    if (!unresolved) {
+      warnings.push(`${ctx.filePath}: $props() called without destructuring; cannot extract individual props`);
+    }
+    return { props: [], snippetNames: new Set(), snippetSlots: [], warnings, additionalReasons };
   }
 
   warnings.push(`${ctx.filePath}: unrecognized $props() binding pattern (${idType})`);
-  return { props: [], snippetNames: new Set(), snippetSlots: [], warnings };
+  return { props: [], snippetNames: new Set(), snippetSlots: [], warnings, additionalReasons };
+}
+
+/**
+ * Classify whether the user's declared Props type failed to resolve usefully.
+ *
+ * - `'empty'`: the resolver returned no members for a non-trivial annotation.
+ * - `'partial-heritage'`: the source declaration has heritage clauses (extends /
+ *   intersection in module-script) but the resolver only surfaced Snippet-typed
+ *   members — strong signal that one or more parents pointed at unreachable
+ *   types (e.g. cross-package node_modules) and were silently dropped.
+ * - `null`: nothing to surface — either the user genuinely typed an empty
+ *   literal, omitted the annotation, or the resolver returned regular props.
+ */
+function classifyUnresolved(
+  annotation: AstNode | undefined,
+  members: ResolvedTypeMember[] | null,
+  instance: AstNode,
+  moduleScript: AstNode | undefined,
+): 'empty' | 'partial-heritage' | null {
+  if (!annotation) return null;
+  if (annotation.type === 'TSTypeLiteral') {
+    const litMembers = (annotation['members'] as AstNode[] | undefined) ?? [];
+    if (litMembers.length === 0) return null; // user genuinely typed `{}`
+  }
+  if (members === null || members.length === 0) return 'empty';
+
+  // Partial-heritage signal: declaration has extends and every surviving member
+  // is Snippet-typed. Real prop interfaces almost never declare every prop as a
+  // Snippet, so this is a strong "something fell off the resolution edge" hint.
+  if (annotation.type === 'TSTypeReference') {
+    const refName = ((annotation['typeName'] as AstNode | undefined)?.['name'] as string | undefined) ?? null;
+    if (refName) {
+      const decl = findLocalTypeDeclaration(instance, refName, moduleScript);
+      if (decl && declarationHasHeritage(decl) && members.every((m) => m.isSnippet)) {
+        return 'partial-heritage';
+      }
+    }
+  }
+  return null;
+}
+
+function describeAnnotationForUser(annotation: AstNode | undefined): string {
+  if (!annotation) return '<unknown>';
+  if (annotation.type === 'TSTypeReference') {
+    const name = ((annotation['typeName'] as AstNode | undefined)?.['name'] as string | undefined) ?? null;
+    return name ? `'${name}'` : '<unnamed reference>';
+  }
+  if (annotation.type === 'TSIntersectionType') return '<intersection>';
+  if (annotation.type === 'TSUnionType') return '<union>';
+  if (annotation.type === 'TSTypeLiteral') return '<inline literal>';
+  return `<${annotation.type}>`;
 }
 
 interface ResolvedTypeMember {
@@ -661,6 +739,7 @@ function extractFromDestructure(
   ctx: PropsCallContext,
   typeMembers: ResolvedTypeMember[] | null,
   warnings: string[],
+  additionalReasons?: string[],
 ): PropsExtractionResult {
   const id = propsCall['id'] as AstNode;
   const properties = (id['properties'] as AstNode[] | undefined) ?? [];
@@ -729,6 +808,7 @@ function extractFromDestructure(
     snippetNames,
     snippetSlots,
     warnings,
+    ...(additionalReasons && additionalReasons.length > 0 ? { additionalReasons } : {}),
   };
 }
 

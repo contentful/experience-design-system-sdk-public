@@ -631,6 +631,92 @@ export interface ButtonProps {
     expect(c.props.find((p) => p.name === 'label')!.required).toBe(false);
   });
 
+  // ---------------------------------------------------------------------------
+  // Unresolvable Props type — surface to the user
+  // ---------------------------------------------------------------------------
+
+  it('warns and flags review when a typed Props interface resolves to zero properties', async () => {
+    // Skeleton-svelte pattern: extends a type from an external package the resolver
+    // can't see (no local body, no in-scope ancestor). We emit a warning + a
+    // 'props-type-unresolved' review reason rather than producing a silent 0-prop
+    // component.
+    const filePath = await writeFixture(
+      'Skeletonish.svelte',
+      `
+<script lang="ts" module>
+  import type { Props as ExtPkgProps } from '@some-headless-pkg/accordion';
+  export interface SkeletonishProps extends Omit<ExtPkgProps, 'id'> {}
+</script>
+<script lang="ts">
+  const props: SkeletonishProps = $props();
+</script>
+<div>{JSON.stringify(props)}</div>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath]);
+    const c = result.components[0]!;
+    expect(c.props).toEqual([]);
+    expect(c.reviewReasons).toContain('props-type-unresolved');
+    expect(c.needsReview).toBe(true);
+    expect(result.warnings.some((w) => w.includes('Skeletonish.svelte') && /resolved to 0 properties/i.test(w))).toBe(
+      true,
+    );
+  });
+
+  it('warns on partial resolution: heritage clauses extend unreachable types and only Snippet-typed members resolve', async () => {
+    // Skeleton-svelte real-world pattern: the interface extends Omit<ExternalProps, ...>
+    // from a package the synthetic resolver can't see, plus a local PropsWithSnippet
+    // helper. Today TS gives us the Snippet from the local helper but silently drops
+    // every prop from the unreachable external extend. Without surfacing this, we'd
+    // ship a "Snippet-only" component that looks intentional but is a resolution gap.
+    const filePath = await writeFixture(
+      'PartiallyResolved.svelte',
+      `
+<script lang="ts" module>
+  import type { Snippet } from 'svelte';
+  import type { ExtProps } from '@unreachable-pkg/foo';
+  interface PropsWithEl { element: Snippet }
+  export interface PartiallyResolvedProps extends Omit<ExtProps, 'id'>, PropsWithEl {}
+</script>
+<script lang="ts">
+  const props: PartiallyResolvedProps = $props();
+</script>
+<div>{JSON.stringify(props)}</div>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath]);
+    const c = result.components[0]!;
+    expect(c.reviewReasons).toContain('props-type-unresolved');
+    expect(c.needsReview).toBe(true);
+    expect(
+      result.warnings.some(
+        (w) => w.includes('PartiallyResolved.svelte') && /resolved to/i.test(w) && /heritage/i.test(w),
+      ),
+    ).toBe(true);
+  });
+
+  it('does not warn when the user genuinely typed an empty type literal', async () => {
+    // An inline empty literal is a deliberate user choice, not a resolution failure.
+    // We should NOT pollute warnings or flag review for this case.
+    const filePath = await writeFixture(
+      'IntentionallyEmpty.svelte',
+      `
+<script lang="ts">
+  const _: {} = $props();
+</script>
+<div>static</div>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath]);
+    const c = result.components[0]!;
+    expect(c.props).toEqual([]);
+    expect(c.reviewReasons ?? []).not.toContain('props-type-unresolved');
+    expect(result.warnings.some((w) => /resolved to 0 properties/i.test(w))).toBe(false);
+  });
+
   it('extracts component name from filename, not interface name', async () => {
     const filePath = await writeFixture(
       'Avatar/index.svelte',
