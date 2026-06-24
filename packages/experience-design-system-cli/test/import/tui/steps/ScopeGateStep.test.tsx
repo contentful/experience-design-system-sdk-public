@@ -481,4 +481,104 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
     const out = lastFrame() ?? '';
     expect(out).toContain('AI excluded all components');
   });
+
+  // ── Pilot-2026-06-23 R1 + R3a: streaming AI-decision prop sync ──────────────
+  // The auto-filter writes decisions asynchronously, then re-renders with the
+  // updated `components` prop. The AI-excluded set MUST re-derive from the
+  // streaming prop, but operator overrides (a/r) must survive prop updates.
+  // Tracked as the delta-on-prop fix.
+  describe('streaming AI-decision sync (delta on prop)', () => {
+    it('AI-excluded section populates when components prop arrives with new aiDecision rejections after mount', () => {
+      const initial = [
+        { name: 'Button', componentId: 'c0' },
+        { name: 'Card', componentId: 'c1' },
+        { name: 'BadgeIcon', componentId: 'c2' },
+      ];
+      const { lastFrame, rerender } = render(
+        <ScopeGateStep
+          components={initial}
+          onConfirm={() => {}}
+          onQuit={() => {}}
+          aiFilterStatus="running"
+          aiFilterProgress={{ done: 0, total: 3 }}
+        />,
+      );
+      // Nothing is rejected yet on mount.
+      expect(lastFrame() ?? '').not.toContain('AI excluded');
+
+      // Auto-filter completes; prop is replaced with rejected decisions.
+      const updated = [
+        { name: 'Button', componentId: 'c0' },
+        { name: 'Card', componentId: 'c1' },
+        { name: 'BadgeIcon', componentId: 'c2', aiDecision: 'rejected' as const, aiReason: 'low semantic value' },
+      ];
+      rerender(
+        <ScopeGateStep
+          components={updated}
+          onConfirm={() => {}}
+          onQuit={() => {}}
+          aiFilterStatus="complete"
+        />,
+      );
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('AI excluded (1)');
+      expect(frame).toContain('BadgeIcon');
+      expect(frame).toContain('low semantic value');
+    });
+
+    it('operator r-exclude on a main row survives a streaming prop re-render', () => {
+      const initial = [
+        { name: 'Button', componentId: 'c0' },
+        { name: 'Card', componentId: 'c1' },
+      ];
+      const onConfirm = vi.fn();
+      const { stdin, rerender } = render(
+        <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="running" />,
+      );
+      // r excludes Button.
+      stdin.write('r');
+      // Prop streams in with no AI rejections, but operator's exclude must persist.
+      rerender(
+        <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      stdin.write('f');
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.rejected).toContain('Button');
+      expect(arg.accepted).toContain('Card');
+    });
+
+    it('operator a-unexclude on AI-rejected row survives a subsequent prop re-render adding new rejections', () => {
+      const initial = [
+        { name: 'Button', componentId: 'c0' },
+        { name: 'Card', componentId: 'c1' },
+        { name: 'BadgeIcon', componentId: 'c2', aiDecision: 'rejected' as const, aiReason: 'r1' },
+      ];
+      const onConfirm = vi.fn();
+      const { stdin, rerender } = render(
+        <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="running" />,
+      );
+      // Walk to BadgeIcon: j j (Button → Card → BadgeIcon).
+      stdin.write('j');
+      stdin.write('j');
+      // Un-exclude.
+      stdin.write('a');
+      // A new rejection streams in (DivWrapper rejected). Operator's un-exclude
+      // of BadgeIcon must persist.
+      const updated = [
+        ...initial,
+        { name: 'DivWrapper', componentId: 'c3', aiDecision: 'rejected' as const, aiReason: 'r2' },
+      ];
+      rerender(
+        <ScopeGateStep components={updated} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      // BadgeIcon: operator un-excluded → accepted.
+      expect(arg.accepted).toContain('BadgeIcon');
+      expect(arg.rejected).not.toContain('BadgeIcon');
+      // DivWrapper: streaming AI rejection → rejected.
+      expect(arg.rejected).toContain('DivWrapper');
+    });
+  });
 });

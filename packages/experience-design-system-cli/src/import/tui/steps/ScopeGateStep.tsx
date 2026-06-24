@@ -40,28 +40,30 @@ export function ScopeGateStep({
   aiFilterError = null,
   onCancelAutoFilter,
 }: ScopeGateStepProps): React.ReactElement {
-  // Initial AI-excluded set is derived from the prop. The user can later
-  // move components in/out of this set via `r` (exclude) and `a` (un-exclude
-  // when cursor is on an AI-excluded row). Tracking this as state — rather
-  // than re-deriving from the prop — is what makes cross-section moves
-  // possible (pilot-2026-06-23 fix).
-  const initialExcluded = useMemo(
-    () => new Set(components.filter((c) => c.aiDecision === 'rejected').map((c) => c.name)),
-    [components],
-  );
-  const [excludedNames, setExcludedNames] = useState<Set<string>>(initialExcluded);
+  // Pilot-2026-06-23 R1: treat operator decisions as a DELTA on top of the
+  // streaming `components` prop. The auto-filter writes decisions async,
+  // re-rendering with updated aiDecision values; the AI-excluded section must
+  // re-derive from the current prop. Operator overrides via `r` and `a` are
+  // tracked in two disjoint sets so they survive prop updates:
+  //   - userExcluded: names the operator explicitly excluded via `r`
+  //   - userUnExcluded: names the operator explicitly un-excluded via `a`
+  // Effective excluded = (aiDecision === 'rejected' ∪ userExcluded) \ userUnExcluded.
+  const [userExcluded, setUserExcluded] = useState<Set<string>>(new Set());
+  const [userUnExcluded, setUserUnExcluded] = useState<Set<string>>(new Set());
   // mainList preserves prop order minus currently-excluded names. excludedList
-  // preserves prop order of currently-excluded names. Both update reactively
-  // via excludedNames.
+  // preserves prop order of currently-excluded names. Both re-derive reactively
+  // from the streaming prop AND the operator delta sets.
   const { mainList, excludedList } = useMemo(() => {
     const main: ScopeComponent[] = [];
     const excluded: ScopeComponent[] = [];
     for (const c of components) {
-      if (excludedNames.has(c.name)) excluded.push(c);
+      const aiRejected = c.aiDecision === 'rejected';
+      const isExcluded = (aiRejected || userExcluded.has(c.name)) && !userUnExcluded.has(c.name);
+      if (isExcluded) excluded.push(c);
       else main.push(c);
     }
     return { mainList: main, excludedList: excluded };
-  }, [components, excludedNames]);
+  }, [components, userExcluded, userUnExcluded]);
 
   const [included, setIncluded] = useState<Set<string>>(
     () => new Set(components.filter((c) => c.aiDecision !== 'rejected').map((c) => c.name)),
@@ -92,12 +94,13 @@ export function ScopeGateStep({
       if (included.has(c.name)) accepted.push(c.name);
       else rejected.push(c.name);
     }
-    // AI-excluded components ALSO contribute to the rejected list when the
-    // operator confirms — they were never in `included`. This way the dual-
-    // write (status + snapshot) covers them.
+    // Everything in excludedList is rejected on confirm. With the delta-on-
+    // prop model, `included` may still contain a name that later became AI-
+    // rejected after streaming — the excludedList membership is the source
+    // of truth here. This preserves the dual-write (status + snapshot) for
+    // every excluded row.
     for (const c of excludedList) {
-      if (included.has(c.name)) accepted.push(c.name);
-      else rejected.push(c.name);
+      rejected.push(c.name);
     }
     return { accepted, rejected };
   };
@@ -138,7 +141,15 @@ export function ScopeGateStep({
       const target = flatList[cursor];
       if (!target) return;
       if (onExcluded) {
-        setExcludedNames((prev) => {
+        // Record the operator's un-exclude in the delta. Also clear any prior
+        // user-exclude so the two sets stay disjoint.
+        setUserUnExcluded((prev) => {
+          if (prev.has(target.name)) return prev;
+          const next = new Set(prev);
+          next.add(target.name);
+          return next;
+        });
+        setUserExcluded((prev) => {
           if (!prev.has(target.name)) return prev;
           const next = new Set(prev);
           next.delete(target.name);
@@ -173,10 +184,18 @@ export function ScopeGateStep({
       const target = flatList[cursor];
       if (!target) return;
       if (onExcluded) return;
-      setExcludedNames((prev) => {
+      // Record operator-exclude in the delta. Clear any prior un-exclude so
+      // the two sets stay disjoint.
+      setUserExcluded((prev) => {
         if (prev.has(target.name)) return prev;
         const next = new Set(prev);
         next.add(target.name);
+        return next;
+      });
+      setUserUnExcluded((prev) => {
+        if (!prev.has(target.name)) return prev;
+        const next = new Set(prev);
+        next.delete(target.name);
         return next;
       });
       setIncluded((prev) => {
