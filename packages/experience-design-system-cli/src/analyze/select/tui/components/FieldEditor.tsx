@@ -725,6 +725,12 @@ export function FieldEditor({
   // When open, Esc closes the panel only (does not bubble to onExit).
   const [sourceOpen, setSourceOpen] = useState(false);
 
+  // Discoverability overlay. `?` toggles a modal listing every wired
+  // keybinding grouped by context. While open, every other handler is inert
+  // — only `?` and Esc respond. Esc here closes the overlay and does NOT
+  // bubble to onExit.
+  const [showHelp, setShowHelp] = useState(false);
+
   const props = editorState.props;
   const slots = editorState.slots;
 
@@ -739,6 +745,38 @@ export function FieldEditor({
 
   useImmediateInput((input, key) => {
     if (!active) return;
+
+    // ── Help overlay (`?`) — highest priority ───────────────────────────────
+    // When open, only `?` (toggle) and Esc (close) respond. All other input
+    // is swallowed so j/k/Enter/Ctrl+S can't move state behind the modal.
+    if (showHelp) {
+      if (input === '?' || key.escape) {
+        setShowHelp(false);
+      }
+      return;
+    }
+    // Open the overlay. Skip when in any inline text-entry context to keep
+    // `?` literal there: description text-entry, string-typed default
+    // text-entry, and the values/allowedComponents add/edit text-entry.
+    const inDescriptionTextEntryForHelp =
+      focusLevel === 'field' && activeField === 'description';
+    const inStringDefaultTextEntryForHelp =
+      focusLevel === 'field' &&
+      activeField === 'default' &&
+      currentProp != null &&
+      (currentProp.type === 'string' || currentProp.type === 'token');
+    const inValueListTextEntry = editingValue != null;
+    if (
+      input === '?' &&
+      !key.ctrl &&
+      !key.meta &&
+      !inDescriptionTextEntryForHelp &&
+      !inStringDefaultTextEntryForHelp &&
+      !inValueListTextEntry
+    ) {
+      setShowHelp(true);
+      return;
+    }
 
     // ── Inline value text-entry (add or edit) ─ highest priority ───────────
     // Handles enum prop $values AND slot $allowedComponents — both use the
@@ -1488,6 +1526,35 @@ export function FieldEditor({
           );
         })()}
 
+      {showHelp && (
+        <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
+          <Text bold color="cyan">Keybindings</Text>
+          <Text> </Text>
+          <Text bold>Row navigation</Text>
+          <Text>{'  ↑/↓ or j/k       move between rows'}</Text>
+          <Text>{'  Enter            edit fields on the current row'}</Text>
+          <Text>{'  Esc              exit the panel'}</Text>
+          <Text> </Text>
+          <Text bold>Field editing</Text>
+          <Text>{'  ↑/↓ or j/k       cycle through fields (j/k literal in text inputs)'}</Text>
+          <Text>{'  ←/→              cycle picker values · move cursor in text inputs'}</Text>
+          <Text>{'  Space/Enter      toggle required'}</Text>
+          <Text>{'  Type             edit description / string default'}</Text>
+          <Text>{'  Ctrl+S           save changes'}</Text>
+          <Text>{'  Esc              exit field-edit back to the row'}</Text>
+          <Text> </Text>
+          <Text bold>Values / allowedComponents</Text>
+          <Text>{'  a / e / r        add · edit · remove'}</Text>
+          <Text>{'  ↑↓ or j/k        navigate the list'}</Text>
+          <Text>{'  K / J            reorder up · down'}</Text>
+          <Text> </Text>
+          <Text bold>Panels</Text>
+          <Text>{'  s                toggle source-view for the current prop'}</Text>
+          <Text>{'  ?                toggle this overlay'}</Text>
+          <Text> </Text>
+          <Text dimColor>press ? or Esc to close</Text>
+        </Box>
+      )}
       {validationError && <Text color="red">{'✗ ' + validationError}</Text>}
       <Text dimColor>{modeLabel}</Text>
     </Box>

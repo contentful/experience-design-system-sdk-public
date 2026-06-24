@@ -1511,3 +1511,94 @@ describe('FieldEditor — discoverability footer (s source, ? help)', () => {
     expect(frame).toMatch(/\? help/);
   });
 });
+
+describe('FieldEditor — keybindings overlay (`?`)', () => {
+  it('opens the overlay when `?` is pressed and lists wired keybindings', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={24}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    stdin.write('?');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Title is present.
+    expect(frame).toMatch(/Keybindings/);
+    // Lists at least one entry per group (row nav, field editing, panels).
+    expect(frame).toMatch(/navigate.*rows|move between rows/i);
+    expect(frame).toMatch(/Ctrl\+S/);
+    expect(frame).toMatch(/source-view|source/i);
+    // Foot of the overlay tells the user how to exit.
+    expect(frame).toMatch(/\? or Esc to close|press \? .* close/i);
+  });
+
+  it('a second `?` press closes the overlay', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={24}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    stdin.write('?');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Keybindings/);
+    stdin.write('?');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Keybindings/);
+  });
+
+  it('Esc closes the overlay', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={24}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    stdin.write('?');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Keybindings/);
+    stdin.write('\x1b');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Keybindings/);
+  });
+
+  it('while overlay is open j/k/Enter/Ctrl+S do NOT mutate state or trigger callbacks', async () => {
+    const onSave = vi.fn();
+    const onChange = vi.fn();
+    const { stdin } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={24}
+        onChange={onChange}
+        onSave={onSave}
+        onDiscard={vi.fn()}
+      />,
+    );
+    stdin.write('?');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('k');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    stdin.write('\x13'); // Ctrl+S
+    await tick();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
