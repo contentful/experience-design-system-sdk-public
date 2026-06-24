@@ -1,10 +1,11 @@
-import type { ComponentExtractionResult, ComponentExtractor } from '../../types.js';
+import type { ComponentExtractionResult, ComponentExtractor, ExtractorOptions } from '../../types.js';
 import { extractStencilComponents } from './stencil.js';
 import { extractReactComponents } from './react.js';
 import { extractVueTsxComponents } from './vue-tsx.js';
 import { extractVueComponents } from './vue.js';
 import { extractAstroComponents } from './astro.js';
 import { extractWebComponentDefinitions } from './web-components.js';
+import { extractSvelteComponents } from './svelte.js';
 
 type ExtractedComponent = ComponentExtractionResult['components'][number];
 
@@ -38,6 +39,19 @@ const extractors: ComponentExtractor[] = [
     name: 'web-components',
     fileFilter: (f) => /\.[jt]s$/.test(f) && !/\.[jt]sx$/.test(f) && !f.endsWith('.d.ts'),
     extract: extractWebComponentDefinitions,
+  },
+  {
+    name: 'svelte',
+    fileFilter: (f) => {
+      if (!f.endsWith('.svelte')) return false;
+      // SvelteKit route conventions: +page.svelte, +layout.svelte, +error.svelte
+      // are framework-managed entrypoints, not authorable design-system components.
+      // Mirrors how Next.js page.tsx / layout.tsx are filtered in pre-classify.
+      const filename = f.replace(/\\/g, '/').split('/').pop() ?? '';
+      if (/^\+(page|layout|error)\.svelte$/.test(filename)) return false;
+      return true;
+    },
+    extract: extractSvelteComponents,
   },
 ];
 
@@ -272,6 +286,7 @@ export type ExtractProgress = {
 export async function extractComponents(
   filePaths: string[],
   onProgress?: (progress: ExtractProgress) => void,
+  opts?: ExtractorOptions,
 ): Promise<ComponentExtractionResult> {
   const filesByExtractor = new Map<ComponentExtractor, string[]>();
 
@@ -298,15 +313,19 @@ export async function extractComponents(
       if (files.length === 0) return { components: [], warnings: [] };
       perExtractorFiles.set(extractor, 0);
       perExtractorComponents.set(extractor, 0);
-      const result = await extractor.extract(files, (p) => {
-        const prevFiles = perExtractorFiles.get(extractor) ?? 0;
-        const prevComponents = perExtractorComponents.get(extractor) ?? 0;
-        totalFilesProcessed += p.filesProcessed - prevFiles;
-        totalComponentsFound += p.componentsFound - prevComponents;
-        perExtractorFiles.set(extractor, p.filesProcessed);
-        perExtractorComponents.set(extractor, p.componentsFound);
-        onProgress?.({ filesProcessed: totalFilesProcessed, componentsFound: totalComponentsFound });
-      });
+      const result = await extractor.extract(
+        files,
+        (p) => {
+          const prevFiles = perExtractorFiles.get(extractor) ?? 0;
+          const prevComponents = perExtractorComponents.get(extractor) ?? 0;
+          totalFilesProcessed += p.filesProcessed - prevFiles;
+          totalComponentsFound += p.componentsFound - prevComponents;
+          perExtractorFiles.set(extractor, p.filesProcessed);
+          perExtractorComponents.set(extractor, p.componentsFound);
+          onProgress?.({ filesProcessed: totalFilesProcessed, componentsFound: totalComponentsFound });
+        },
+        opts,
+      );
       return result;
     }),
   );

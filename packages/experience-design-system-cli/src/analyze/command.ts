@@ -21,14 +21,15 @@ import { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
 import { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
 import { describeReviewReasons, inspectComponentSource } from './extract/source-inspection.js';
 import { validateExtractedComponents } from './extract/validate.js';
-import { buildAnalyzeViewRows } from './build-analyze-view-rows.js';
+import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
 
 interface AnalyzeExtractOptions {
   project: string;
   dir?: string;
+  resolveUnreachable?: 'auto' | 'always' | 'never';
 }
 
-const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.ts', '.tsx', '.vue']);
+const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
 const IGNORED_DIRECTORY_NAMES = new Set([
   '.git',
   '.next',
@@ -132,7 +133,20 @@ export function registerAnalyzeCommand(program: Command): void {
     .description('Extract component definitions from a project')
     .requiredOption('--project <path>', 'Path to the project root')
     .option('--dir <path>', 'Path to the component source directory relative to the project root')
+    .option(
+      '--resolve-unreachable <mode>',
+      "Retry pass for unresolved Svelte Props types: 'auto' (default), 'always', or 'never'",
+      'auto',
+    )
     .action(async (opts: AnalyzeExtractOptions) => {
+      const resolveUnreachable: 'auto' | 'always' | 'never' = (() => {
+        const v = opts.resolveUnreachable ?? 'auto';
+        if (v !== 'auto' && v !== 'always' && v !== 'never') {
+          process.stderr.write(`Error: --resolve-unreachable must be one of 'auto', 'always', 'never' (got '${v}')\n`);
+          process.exit(1);
+        }
+        return v;
+      })();
       const projectRoot = resolve(opts.project);
       const outDir = join(projectRoot, '.contentful');
 
@@ -154,11 +168,15 @@ export function registerAnalyzeCommand(program: Command): void {
         }
       });
 
-      const extraction = await extractComponents(sourceFiles, ({ filesProcessed, componentsFound }) => {
-        if (!process.stdout.isTTY) {
-          process.stderr.write(`progress=extract:${filesProcessed}/${sourceFiles.length}:${componentsFound}\n`);
-        }
-      });
+      const extraction = await extractComponents(
+        sourceFiles,
+        ({ filesProcessed, componentsFound }) => {
+          if (!process.stdout.isTTY) {
+            process.stderr.write(`progress=extract:${filesProcessed}/${sourceFiles.length}:${componentsFound}\n`);
+          }
+        },
+        { resolveUnreachable, projectRoot },
+      );
 
       await mkdir(outDir, { recursive: true });
 
@@ -205,16 +223,26 @@ export function registerAnalyzeCommand(program: Command): void {
           }
         }
 
+        // Preserve any extractor-level review reasons (e.g. `props-type-unresolved`
+        // from the Svelte parser) by merging them into the post-processing recompute.
+        // Without this, recomputing here clobbers the per-extractor signal.
+        const extractorReasons = component.reviewReasons ?? [];
         const { confidence, reasons } = computeExtractionScore(component, {
-          additionalIssueCount: wrapperConfidenceToIssueCount(inspection.wrapperConfidence),
-          additionalReasons: inspection.reviewReasons,
+          additionalIssueCount: wrapperConfidenceToIssueCount(inspection.wrapperConfidence) + extractorReasons.length,
+          additionalReasons: [...extractorReasons, ...inspection.reviewReasons],
         });
         filteredComponents.push({
           ...component,
           extractionConfidence: confidence,
           reviewReasons: reasons,
           needsReview:
-            deriveNeedsReview(confidence) || inspection.wrapperConfidence >= 4 || inspection.keepDespiteZeroSurface,
+            deriveNeedsReview(confidence) ||
+            inspection.wrapperConfidence >= 4 ||
+            inspection.keepDespiteZeroSurface ||
+            // An extractor-level type-resolution failure is a strong signal regardless
+            // of the otherwise-derived confidence threshold; force review.
+            extractorReasons.includes('props-type-unresolved') ||
+            (component.needsReview ?? false),
         });
       }
       const validatedComponents = validateExtractedComponents(filteredComponents);
@@ -235,6 +263,16 @@ export function registerAnalyzeCommand(program: Command): void {
         allWarnings,
       );
 
+      // Split warnings: per-component (those whose prefix matches a surviving component name)
+      // are rendered under that component in the TUI; global ones (retry summaries,
+      // non-authorable skips, anything else) are rendered at the top of the warnings panel
+      // so they don't disappear into the count. `partitionGlobalWarnings` shares its
+      // matching rule with `buildAnalyzeViewRows` to keep the two halves symmetric.
+      const globalWarnings = partitionGlobalWarnings(
+        allWarnings,
+        componentRows.map((r) => r.name),
+      );
+
       const analyzeResult: AnalyzeViewResult = {
         sourceDirectory,
         sessionId,
@@ -242,6 +280,7 @@ export function registerAnalyzeCommand(program: Command): void {
         components: componentRows,
         totalWarnings: allWarnings.length,
         totalErrors,
+        globalWarnings,
       };
 
       if (process.stdout.isTTY) {

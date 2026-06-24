@@ -45,7 +45,7 @@ export interface RawSlotDefinition {
 export interface RawComponentDefinition {
   name: string;
   source: string;
-  framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil';
+  framework: 'react' | 'next' | 'vue' | 'astro' | 'web-component' | 'stencil' | 'svelte';
   props: RawPropDefinition[];
   slots: RawSlotDefinition[];
   /**
@@ -70,10 +70,30 @@ export type ExtractorProgress = {
   componentsFound: number;
 };
 
+/**
+ * Optional extraction-time settings forwarded from the CLI through the
+ * pipeline to each extractor. Only the Svelte extractor currently consumes
+ * any of these; other extractors ignore the value.
+ */
+export interface ExtractorOptions {
+  /**
+   * Whether the Svelte extractor should run a retry pass for components whose
+   * declared Props type couldn't be resolved on the first pass (cross-package
+   * extends, path-alias-only types, etc.). See svelte.ts for the policy.
+   */
+  resolveUnreachable?: 'auto' | 'always' | 'never';
+  /** Absolute project root — used by the retry pass to locate tsconfig.json and node_modules. */
+  projectRoot?: string;
+}
+
 export interface ComponentExtractor {
   name: string;
   fileFilter: (filePath: string) => boolean;
-  extract(filePaths: string[], onProgress?: (p: ExtractorProgress) => void): Promise<ComponentExtractionResult>;
+  extract(
+    filePaths: string[],
+    onProgress?: (p: ExtractorProgress) => void,
+    opts?: ExtractorOptions,
+  ): Promise<ComponentExtractionResult>;
 }
 
 export interface TokenExtractor {
