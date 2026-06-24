@@ -1317,7 +1317,7 @@ function extractJsdocText(comments: Comment[]): string | undefined {
 
 function extractFromDestructure(
   propsCall: AstNode,
-  ctx: PropsCallContext,
+  _ctx: PropsCallContext,
   typeMembers: ResolvedTypeMember[] | null,
   warnings: string[],
   additionalReasons?: string[],
@@ -1380,11 +1380,14 @@ function extractFromDestructure(
   // contract = the destructure list. (Type-members-only path runs separately for the
   // `const props: Props = $props()` no-destructure case.)
 
-  if (dropsRest) {
-    warnings.push(
-      `${ctx.componentName}: rest element in $props() destructure dropped (${ctx.filePath}); cannot enumerate`,
-    );
-  }
+  // Note: a `...rest` element in the destructure is intentionally NOT warned on.
+  // Nearly every Svelte 5 component in real libraries uses rest-spread to pass
+  // arbitrary HTML attributes through to the underlying element, so this would
+  // fire on most components. The downstream pipeline already strips DOM/a11y
+  // pass-through attributes globally (see `project_dsi-dom-prop-exclusion-decision`),
+  // and the named props we DID extract from the destructure are the meaningful
+  // authoring API. Tracking the rest spread isn't useful signal.
+  void dropsRest;
 
   return {
     props: props.sort((a, b) => sortStable(a.name, b.name, propertyOrder(properties))),

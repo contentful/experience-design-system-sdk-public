@@ -361,7 +361,13 @@ describe('SvelteComponentExtractor', () => {
     expect(result.warnings.some((w) => /without destructuring/i.test(w))).toBe(true);
   });
 
-  it('drops rest element and warns', async () => {
+  it('extracts named destructure props and silently ignores rest spread', async () => {
+    // Nearly every Svelte 5 component in real libraries uses `...rest` to pass
+    // arbitrary HTML attributes through to the underlying element. Surfacing
+    // a warning per component drowned the analyze panel — and there's no
+    // actionable signal anyway since the downstream pipeline already strips
+    // DOM/a11y pass-through globally. We extract the named destructure props
+    // and leave the rest spread alone.
     const filePath = await writeFixture(
       'WithRest.svelte',
       `
@@ -376,7 +382,7 @@ describe('SvelteComponentExtractor', () => {
     const result = await extractSvelteComponents([filePath]);
     const c = result.components[0]!;
     expect(c.props.map((p) => p.name)).toEqual(['foo']);
-    expect(result.warnings.some((w) => /rest element/i.test(w))).toBe(true);
+    expect(result.warnings.some((w) => /rest element/i.test(w))).toBe(false);
   });
 
   it('returns no component and warns on parse errors', async () => {
