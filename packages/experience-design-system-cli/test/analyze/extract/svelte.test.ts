@@ -875,6 +875,44 @@ export interface ButtonProps {
     }
   });
 
+  it('Snippet-only recovery clears props-type-unresolved (the type DID resolve, just to slots)', async () => {
+    // When ts-morph successfully reads the resolved member list and every member
+    // is Snippet-typed, that's a complete answer — not a partial one. Keeping
+    // `props-type-unresolved` on these components made the retry summary nonsense
+    // ("recovered 236, 236 remain unresolved"). Confidence-driven needsReview
+    // (e.g. from `no-props-or-slots`) is the right signal for headless
+    // Snippet-only components, not props-type-unresolved.
+    await writeFixture(
+      'lib/local-types.ts',
+      `
+import type { Snippet } from 'svelte';
+export interface AnchorProps {
+  /** Render-the-element snippet */
+  element: Snippet;
+}
+`,
+    );
+    const filePath = await writeFixture(
+      'Anchor.svelte',
+      `
+<script lang="ts" module>
+  import type { AnchorProps } from './lib/local-types.js';
+</script>
+<script lang="ts">
+  const props: AnchorProps = $props();
+</script>
+<div>{JSON.stringify(props)}</div>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath]);
+    const c = result.components[0]!;
+    // Resolved fully via the AST fast path → slot known, no unresolved-type reason.
+    expect(c.slots.map((s) => s.name)).toContain('element');
+    expect(c.props).toEqual([]);
+    expect(c.reviewReasons ?? []).not.toContain('props-type-unresolved');
+  });
+
   it('does not warn when the user genuinely typed an empty type literal', async () => {
     // An inline empty literal is a deliberate user choice, not a resolution failure.
     // We should NOT pollute warnings or flag review for this case.

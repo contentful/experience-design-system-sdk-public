@@ -269,12 +269,11 @@ async function retryComponentWithProject(
   }
 
   if (!members || members.length === 0) return false;
-  // Snippet-only resolution is still useful — it confirms the slot surface
-  // and lets us replace the original (which may have had fewer slot entries
-  // because the cold AST-only pass missed members declared in heritage).
-  // Apply the recovered slots, but DON'T drop `props-type-unresolved` from
-  // reasons (the prop side genuinely has no resolvable members).
-  const onlySnippets = members.every((m) => m.isSnippet);
+  // If the resolver returned a complete member list — even when it's
+  // Snippet-only — that's a real answer, not a partial one. Apply it and
+  // drop `props-type-unresolved`. Whether the resulting component still
+  // needs review will be decided by the standard heuristics
+  // (no-props-or-slots, infra-fetch, etc.) downstream.
 
   const { props, snippetSlots } = extractFromTypeMembersOnly(members);
   // Merge any template <slot> entries that survived the original pass — we
@@ -289,24 +288,19 @@ async function retryComponentWithProject(
   component.props = props.filter((p) => !slotNames.has(p.name));
   component.slots = finalSlots;
 
-  // Recompute confidence. When only Snippets came back, keep the
-  // `props-type-unresolved` reason — slot surface is real but the prop side
-  // is still legitimately unresolved (the extends-from-node_modules failed).
-  // When real props came back, drop the reason: full recovery.
-  const remainingReasons = onlySnippets
-    ? (component.reviewReasons ?? [])
-    : (component.reviewReasons ?? []).filter((r) => r !== 'props-type-unresolved');
+  // Drop `props-type-unresolved` from reasons: the type DID resolve. Other
+  // heuristics (no-props-or-slots, infra-fetch, etc.) decide whether the
+  // recovered component still needs review.
+  const remainingReasons = (component.reviewReasons ?? []).filter((r) => r !== 'props-type-unresolved');
   const score = computeExtractionScore(component, {
     additionalIssueCount: remainingReasons.length,
     additionalReasons: remainingReasons,
   });
   component.extractionConfidence = score.confidence;
   component.reviewReasons = score.reasons;
-  component.needsReview = deriveNeedsReview(score.confidence) || remainingReasons.includes('props-type-unresolved');
+  component.needsReview = deriveNeedsReview(score.confidence);
 
-  // Remove the per-component unresolved-type warning. The `props-type-unresolved`
-  // reason on the component itself still carries the signal for TUI drill-down;
-  // the warnings array is replaced by the collapsed summary upstream.
+  // Remove the per-component unresolved-type warning — recovery is complete.
   const componentName = component.name;
   const idx = warnings.findIndex(
     (w) => w.startsWith(`${componentName}: declared Props type `) && /resolved to /.test(w),
