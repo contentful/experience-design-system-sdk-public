@@ -283,6 +283,10 @@ export function WizardApp({
   // Feature 3: holds the spawned `analyze select-agent` subprocess so the
   // scope-gate's `q` (during running) can SIGTERM it for cancellation.
   const autoFilterChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
+  // Promise that resolves when the auto-filter subprocess fully exits. Used
+  // by `cancelAutoFilterAndWait` so scope-gate confirm can guarantee its
+  // snapshot write goes AFTER the subprocess's last write.
+  const autoFilterDonePromiseRef = useRef<Promise<void> | null>(null);
 
   const [state, setState] = useState<WizardState>({
     step: initialProjectPath ? 'token-input' : 'welcome',
@@ -548,7 +552,7 @@ export function WizardApp({
       aiFilterError: null,
     });
     if (autoFilter && extractSessionId) {
-      void runAutoFilter(extractSessionId);
+      autoFilterDonePromiseRef.current = runAutoFilter(extractSessionId);
     }
   };
 
@@ -618,6 +622,27 @@ export function WizardApp({
         // best-effort
       }
     }
+  };
+
+  // Variant that returns a Promise resolving when the subprocess has fully
+  // exited. Used by scope-gate confirm to guarantee operator-write-last
+  // ordering on the review-state snapshot (PR #43 race fix).
+  const cancelAutoFilterAndWait = async (): Promise<void> => {
+    const child = autoFilterChildRef.current;
+    const donePromise = autoFilterDonePromiseRef.current;
+    if (!child || child.killed) {
+      // Subprocess already gone (or never started). If the Promise is still
+      // pending — e.g. exit handler hasn't fired yet — await it; otherwise
+      // resolve immediately.
+      if (donePromise) await donePromise;
+      return;
+    }
+    try {
+      child.kill('SIGTERM');
+    } catch {
+      // best-effort
+    }
+    if (donePromise) await donePromise;
   };
 
   const runGenerate = async (extractSessionId: string, tokensPath: string, acceptedCount: number) => {
@@ -1287,6 +1312,8 @@ export function WizardApp({
               void runScopeGate({
                 sessionId,
                 decisions,
+                cancelAutoFilter:
+                  state.aiFilterStatus === 'running' ? cancelAutoFilterAndWait : undefined,
                 onAdvanceToGenerate: async ({ sessionId: sid, acceptedCount }) => {
                   update({ acceptedCount, autoRejectedCount: 0 });
                   const next = nextStepAfterScopeGate({ acceptedCount, noPush });
