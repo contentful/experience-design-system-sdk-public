@@ -775,6 +775,44 @@ export interface ButtonProps {
     expect(result.warnings.some((w) => /^Unresolved component types:/.test(w))).toBe(false);
   });
 
+  it('detects Snippet via type-checker alias symbol when text expands to instantiated form', async () => {
+    // Realistic Skeleton-style: an interface extends another type that declares
+    // `element: Snippet<[Attrs<HTMLDivElement>]>`. Through a real TS program,
+    // ts-morph expands the type text to the instantiated form, so a regex on
+    // 'Snippet' alone won't match. Detection has to follow the alias symbol.
+    // Without a fix, `element` ends up duplicated (both prop and slot) and the
+    // central PROP_SLOT_NAME_COLLISION validator flags every component.
+    const filePath = await writeFixture(
+      'WithGenericSnippet.svelte',
+      `
+<script lang="ts" module>
+  import type { Snippet } from 'svelte';
+  type Attrs<T> = { kind: T };
+  interface Props {
+    /** Render-the-element snippet (instantiated through generics) */
+    element: Snippet<[Attrs<HTMLDivElement>]>;
+    /** Plain Snippet */
+    plain?: Snippet;
+    /** Real prop */
+    label: string;
+  }
+</script>
+<script lang="ts">
+  const props: Props = $props();
+</script>
+<div>{JSON.stringify(props)}</div>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath]);
+    const c = result.components[0]!;
+    expect(c.props.map((p) => p.name).sort()).toEqual(['label']);
+    expect(c.slots.map((s) => s.name).sort()).toEqual(['element', 'plain']);
+    // No collision warnings.
+    expect(c.props.some((p) => p.name === 'element')).toBe(false);
+    expect(c.props.some((p) => p.name === 'plain')).toBe(false);
+  });
+
   it('does not warn when the user genuinely typed an empty type literal', async () => {
     // An inline empty literal is a deliberate user choice, not a resolution failure.
     // We should NOT pollute warnings or flag review for this case.

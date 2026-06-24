@@ -1010,7 +1010,10 @@ async function resolveViaTypeChecker(
 
     const allowed = extractAllowedValuesFromType(propType);
     const description = readJsDocFromDeclaration(declaration);
-    const isSnippet = isSnippetTypeText(typeText, snippetLocals);
+    // Snippet detection is alias-based first (works through generic instantiation
+    // and full type expansion) and falls back to text-matching for the simple
+    // case where alias info isn't available.
+    const isSnippet = typeRefersToSnippet(propType) || isSnippetTypeText(typeText, snippetLocals);
 
     members.push({
       name,
@@ -1066,6 +1069,43 @@ function isSnippetTypeText(typeText: string, snippetLocals: Set<string>): boolea
   }
   // Defensive fallback: TS may surface the canonical `Snippet` from the import.
   return typeText === 'Snippet' || typeText.startsWith('Snippet<');
+}
+
+/**
+ * Detect Snippet-typed members through ts-morph's symbol/alias chain. This is
+ * the reliable path when the type checker has fully expanded a `Snippet<[T]>`
+ * into its instantiated form (call signature + parameters), where the literal
+ * text no longer contains the word "Snippet". We climb the type's aliasSymbol
+ * up to the original declaration and confirm it lives in the `svelte` package.
+ */
+type TsMorphType = import('ts-morph').Type;
+function typeRefersToSnippet(propType: TsMorphType): boolean {
+  const seen = new Set<TsMorphType>();
+  let cursor: TsMorphType | undefined = propType;
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor);
+    const aliasName = cursor.getAliasSymbol()?.getName();
+    const symName = cursor.getSymbol()?.getName();
+    if (aliasName === 'Snippet' || symName === 'Snippet') {
+      const decl = cursor.getAliasSymbol()?.getDeclarations()[0] ?? cursor.getSymbol()?.getDeclarations()[0];
+      const file = decl?.getSourceFile().getFilePath() ?? '';
+      // Accept Snippet from anywhere named "svelte" in the path; users almost
+      // never name an unrelated type "Snippet" in their own code, but the
+      // path check guards against the rare false positive.
+      if (file.includes('/svelte/') || file.includes('\\svelte\\') || file === '') return true;
+    }
+    // Strip optional `| undefined` and recurse into single-element unions
+    // (covers `Snippet | undefined` etc.).
+    if (cursor.isUnion()) {
+      const nonUndef: TsMorphType[] = cursor.getUnionTypes().filter((t) => !t.isUndefined() && !t.isNull());
+      if (nonUndef.length === 1) {
+        cursor = nonUndef[0];
+        continue;
+      }
+    }
+    break;
+  }
+  return false;
 }
 
 function mergeSets<T>(a: Set<T>, b: Set<T>): Set<T> {
