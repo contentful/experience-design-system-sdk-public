@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import os from 'node:os';
 import { parse as parseSvelte } from 'svelte/compiler';
-import { Project, Node } from 'ts-morph';
+import { Project, Node, ScriptTarget, ModuleKind, ts } from 'ts-morph';
 import type {
   RawComponentDefinition,
   RawPropDefinition,
@@ -384,7 +384,13 @@ async function resolveViaTypeChecker(
   const synthetic = [moduleText, instanceText, `type __SveltePropsT__ = ${annotationText};`].filter(Boolean).join('\n');
 
   const project = new Project({
-    compilerOptions: { strict: false, target: 99, module: 99, allowJs: true, jsx: 1 },
+    compilerOptions: {
+      strict: false,
+      target: ScriptTarget.ESNext,
+      module: ModuleKind.ESNext,
+      allowJs: true,
+      jsx: ts.JsxEmit.Preserve,
+    },
     useInMemoryFileSystem: false,
     skipAddingFilesFromTsConfig: true,
   });
@@ -858,7 +864,12 @@ function resolveLocalScriptModule(importingFilePath: string, specifier: string):
 
 function readMembersFromExternalFile(filePath: string, exportName: string): ResolvedTypeMember[] | null {
   const project = new Project({
-    compilerOptions: { strict: false, target: 99, module: 99, allowJs: true },
+    compilerOptions: {
+      strict: false,
+      target: ScriptTarget.ESNext,
+      module: ModuleKind.ESNext,
+      allowJs: true,
+    },
     useInMemoryFileSystem: false,
     skipAddingFilesFromTsConfig: true,
   });
