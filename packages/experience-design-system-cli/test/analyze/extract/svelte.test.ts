@@ -21,6 +21,38 @@ async function writeFixture(filename: string, content: string): Promise<string> 
   return filePath;
 }
 
+/**
+ * Build a `.svelte` fixture whose Props interface extends an unreachable
+ * external package — the canonical "we can't resolve this" shape used by
+ * Skeleton/Zag-style headless libraries. Returns the written filePath.
+ *
+ * Optional `moduleScriptExtras` lets a test inject extra declarations into
+ * the module script (e.g. a local `Snippet`-bearing helper interface) when
+ * exercising the partial-heritage signal.
+ */
+async function writeUnresolvedPropsFixture(
+  filename: string,
+  componentTypeName: string,
+  options: { moduleScriptExtras?: string; heritage?: string } = {},
+): Promise<string> {
+  const heritage = options.heritage ?? `Omit<ExtPkgProps, 'id'>`;
+  const extras = options.moduleScriptExtras ?? '';
+  return writeFixture(
+    filename,
+    `
+<script lang="ts" module>
+  import type { Props as ExtPkgProps } from '@some-headless-pkg/accordion';
+  ${extras}
+  export interface ${componentTypeName} extends ${heritage} {}
+</script>
+<script lang="ts">
+  const props: ${componentTypeName} = $props();
+</script>
+<div>{JSON.stringify(props)}</div>
+`,
+  );
+}
+
 describe('SvelteComponentExtractor', () => {
   // ---------------------------------------------------------------------------
   // Basic $props() with inline interface
@@ -640,19 +672,7 @@ export interface ButtonProps {
     // can't see (no local body, no in-scope ancestor). We emit a warning + a
     // 'props-type-unresolved' review reason rather than producing a silent 0-prop
     // component.
-    const filePath = await writeFixture(
-      'Skeletonish.svelte',
-      `
-<script lang="ts" module>
-  import type { Props as ExtPkgProps } from '@some-headless-pkg/accordion';
-  export interface SkeletonishProps extends Omit<ExtPkgProps, 'id'> {}
-</script>
-<script lang="ts">
-  const props: SkeletonishProps = $props();
-</script>
-<div>{JSON.stringify(props)}</div>
-`,
-    );
+    const filePath = await writeUnresolvedPropsFixture('Skeletonish.svelte', 'SkeletonishProps');
 
     const result = await extractSvelteComponents([filePath]);
     const c = result.components[0]!;
@@ -670,21 +690,10 @@ export interface ButtonProps {
     // helper. Today TS gives us the Snippet from the local helper but silently drops
     // every prop from the unreachable external extend. Without surfacing this, we'd
     // ship a "Snippet-only" component that looks intentional but is a resolution gap.
-    const filePath = await writeFixture(
-      'PartiallyResolved.svelte',
-      `
-<script lang="ts" module>
-  import type { Snippet } from 'svelte';
-  import type { ExtProps } from '@unreachable-pkg/foo';
-  interface PropsWithEl { element: Snippet }
-  export interface PartiallyResolvedProps extends Omit<ExtProps, 'id'>, PropsWithEl {}
-</script>
-<script lang="ts">
-  const props: PartiallyResolvedProps = $props();
-</script>
-<div>{JSON.stringify(props)}</div>
-`,
-    );
+    const filePath = await writeUnresolvedPropsFixture('PartiallyResolved.svelte', 'PartiallyResolvedProps', {
+      moduleScriptExtras: `import type { Snippet } from 'svelte'; interface PropsWithEl { element: Snippet }`,
+      heritage: `Omit<ExtPkgProps, 'id'>, PropsWithEl`,
+    });
 
     const result = await extractSvelteComponents([filePath]);
     const c = result.components[0]!;
