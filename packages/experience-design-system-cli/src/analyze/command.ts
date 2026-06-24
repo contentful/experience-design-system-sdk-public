@@ -205,16 +205,26 @@ export function registerAnalyzeCommand(program: Command): void {
           }
         }
 
+        // Preserve any extractor-level review reasons (e.g. `props-type-unresolved`
+        // from the Svelte parser) by merging them into the post-processing recompute.
+        // Without this, recomputing here clobbers the per-extractor signal.
+        const extractorReasons = component.reviewReasons ?? [];
         const { confidence, reasons } = computeExtractionScore(component, {
-          additionalIssueCount: wrapperConfidenceToIssueCount(inspection.wrapperConfidence),
-          additionalReasons: inspection.reviewReasons,
+          additionalIssueCount: wrapperConfidenceToIssueCount(inspection.wrapperConfidence) + extractorReasons.length,
+          additionalReasons: [...extractorReasons, ...inspection.reviewReasons],
         });
         filteredComponents.push({
           ...component,
           extractionConfidence: confidence,
           reviewReasons: reasons,
           needsReview:
-            deriveNeedsReview(confidence) || inspection.wrapperConfidence >= 4 || inspection.keepDespiteZeroSurface,
+            deriveNeedsReview(confidence) ||
+            inspection.wrapperConfidence >= 4 ||
+            inspection.keepDespiteZeroSurface ||
+            // An extractor-level type-resolution failure is a strong signal regardless
+            // of the otherwise-derived confidence threshold; force review.
+            extractorReasons.includes('props-type-unresolved') ||
+            (component.needsReview ?? false),
         });
       }
       const validatedComponents = validateExtractedComponents(filteredComponents);

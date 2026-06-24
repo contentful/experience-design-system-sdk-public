@@ -697,6 +697,31 @@ export interface ButtonProps {
     ).toBe(true);
   });
 
+  it('warnings start with the component name so the TUI can group them', async () => {
+    // The analyze TUI groups warnings to components by `<ComponentName>:` prefix
+    // (see build-analyze-view-rows.ts). Every parser-emitted warning must start
+    // with that prefix or the user never sees it.
+    const filePath = await writeFixture(
+      'accordion/anatomy/root.svelte',
+      `
+<script lang="ts" module>
+  import type { Props as ExtPkgProps } from '@unreachable-pkg/foo';
+  export interface AccordionRootProps extends Omit<ExtPkgProps, 'id'> {}
+</script>
+<script lang="ts">
+  const props: AccordionRootProps = $props();
+</script>
+<div>{JSON.stringify(props)}</div>
+`,
+    );
+
+    const result = await extractSvelteComponents([filePath]);
+    expect(result.warnings.length).toBeGreaterThan(0);
+    for (const w of result.warnings) {
+      expect(w).toMatch(/^AccordionRoot:/);
+    }
+  });
+
   it('does not warn when the user genuinely typed an empty type literal', async () => {
     // An inline empty literal is a deliberate user choice, not a resolution failure.
     // We should NOT pollute warnings or flag review for this case.

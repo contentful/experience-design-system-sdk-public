@@ -53,7 +53,9 @@ export async function extractSvelteComponents(
           componentsFound++;
         }
       } catch (e) {
-        warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
+        warnings.push(
+          `${getSvelteComponentName(filePath)}: failed to extract from ${filePath} — ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
       filesProcessed++;
       onProgress?.({ filesProcessed, componentsFound });
@@ -73,6 +75,9 @@ async function extractFromSvelteFile(
   source: string,
 ): Promise<{ component: RawComponentDefinition | null; warnings: string[] }> {
   const warnings: string[] = [];
+  // Derive the component name up front so warning messages can prefix it for
+  // TUI grouping, even when parsing fails.
+  const name = getSvelteComponentName(filePath);
 
   let ast: AstNode;
   try {
@@ -80,11 +85,10 @@ async function extractFromSvelteFile(
   } catch (e) {
     return {
       component: null,
-      warnings: [`Parse error in ${filePath}: ${e instanceof Error ? e.message : String(e)}`],
+      warnings: [`${name}: parse error in ${filePath}: ${e instanceof Error ? e.message : String(e)}`],
     };
   }
 
-  const name = getSvelteComponentName(filePath);
   const instance = ast['instance'] as AstNode | undefined;
   const moduleScript = ast['module'] as AstNode | undefined;
   const fragment = ast['fragment'] as AstNode | undefined;
@@ -92,7 +96,7 @@ async function extractFromSvelteFile(
   // Detect Svelte 4 export-let syntax — currently unsupported.
   if (instance && hasV4ExportLetProps(instance)) {
     warnings.push(
-      `Svelte 4 export let syntax not yet supported (file: ${filePath}); see INTEG-4267 for v5-only scope and follow-up`,
+      `${name}: Svelte 4 export let syntax not yet supported (${filePath}); see INTEG-4267 for v5-only scope and follow-up`,
     );
     return { component: null, warnings };
   }
@@ -115,6 +119,7 @@ async function extractFromSvelteFile(
       instance: instance!,
       moduleScript,
       filePath,
+      componentName: name,
       source,
       snippetLocals,
     });
@@ -129,14 +134,14 @@ async function extractFromSvelteFile(
     // Component still extracted (slots from template may exist).
   } else {
     // No script block at all — nothing to extract on the props side.
-    warnings.push(`${filePath} has no instance script block; no props extracted`);
+    warnings.push(`${name}: no instance script block (${filePath}); no props extracted`);
   }
 
   // --- Slot extraction ---
   const templateSlots = fragment ? extractTemplateSlots(fragment) : [];
   const { slots, mixedWarning } = mergeSlots(snippetSlotsFromProps, templateSlots);
   if (mixedWarning) {
-    warnings.push(`${filePath}: mixed Snippet and <slot> usage detected; preferring Snippet entries`);
+    warnings.push(`${name}: mixed Snippet and <slot> usage detected (${filePath}); preferring Snippet entries`);
   }
 
   const component: RawComponentDefinition = {
@@ -272,6 +277,8 @@ interface PropsCallContext {
   instance: AstNode;
   moduleScript?: AstNode;
   filePath: string;
+  /** Resolved component name; warnings prefix with `${componentName}: …` so the TUI groups them by component. */
+  componentName: string;
   source: string;
   snippetLocals: Set<string>;
 }
@@ -308,7 +315,7 @@ async function extractPropsFromCall(ctx: PropsCallContext): Promise<PropsExtract
     const refLabel = describeAnnotationForUser(annotation);
     const heritageNote = unresolved === 'partial-heritage' ? ' (heritage clauses extending unreachable types)' : '';
     warnings.push(
-      `${ctx.filePath}: declared Props type ${refLabel} resolved to ${unresolved === 'empty' ? '0' : 'only Snippet-typed'} properties${heritageNote} — possible cross-package extends or unreachable type. ` +
+      `${ctx.componentName}: declared Props type ${refLabel} resolved to ${unresolved === 'empty' ? '0' : 'only Snippet-typed'} properties${heritageNote} (${ctx.filePath}) — possible cross-package extends or unreachable type. ` +
         `See https://github.com/contentful/experience-design-system-sdk-public/pull/44 for context and partner workarounds.`,
     );
     additionalReasons.push('props-type-unresolved');
@@ -324,12 +331,14 @@ async function extractPropsFromCall(ctx: PropsCallContext): Promise<PropsExtract
       return { ...extractFromTypeMembersOnly(typeMembers), warnings, additionalReasons };
     }
     if (!unresolved) {
-      warnings.push(`${ctx.filePath}: $props() called without destructuring; cannot extract individual props`);
+      warnings.push(
+        `${ctx.componentName}: $props() called without destructuring (${ctx.filePath}); cannot extract individual props`,
+      );
     }
     return { props: [], snippetNames: new Set(), snippetSlots: [], warnings, additionalReasons };
   }
 
-  warnings.push(`${ctx.filePath}: unrecognized $props() binding pattern (${idType})`);
+  warnings.push(`${ctx.componentName}: unrecognized $props() binding pattern '${idType}' (${ctx.filePath})`);
   return { props: [], snippetNames: new Set(), snippetSlots: [], warnings, additionalReasons };
 }
 
@@ -812,7 +821,9 @@ function extractFromDestructure(
   // `const props: Props = $props()` no-destructure case.)
 
   if (dropsRest) {
-    warnings.push(`${ctx.filePath}: rest element in $props() destructure dropped (cannot enumerate)`);
+    warnings.push(
+      `${ctx.componentName}: rest element in $props() destructure dropped (${ctx.filePath}); cannot enumerate`,
+    );
   }
 
   return {
