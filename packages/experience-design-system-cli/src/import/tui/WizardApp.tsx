@@ -246,6 +246,10 @@ export type WizardAppProps = {
   // runs extract → scope-gate → generate → final-review and exits via
   // print-gate. Plumbed from `experiences import` via `--no-push`.
   noPush?: boolean;
+  // When true, push without writing components.json / tokens.json to disk.
+  // Mutually exclusive with `noPush` (validated at the CLI surface).
+  // Plumbed from `experiences import` via `--no-save`. Default false.
+  noSave?: boolean;
 };
 
 export function WizardApp({
@@ -261,6 +265,7 @@ export function WizardApp({
   autoFilter = true,
   livePreview = true,
   noPush = false,
+  noSave = false,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -1399,6 +1404,28 @@ export function WizardApp({
               if (noPush) {
                 update({ generatedAcceptedCount: accepted });
                 void runPrintFiles(state.extractSessionId, state.outDir);
+                return;
+              }
+              if (noSave) {
+                update({ generatedAcceptedCount: accepted });
+                const { extractSessionId, tokensPath } = sessionRef.current;
+                void runPreview(
+                  extractSessionId,
+                  tokensPath,
+                  state.spaceId,
+                  state.environmentId,
+                  state.cmaToken,
+                  state.host,
+                );
+                return;
+              }
+              if (autoAcceptScope) {
+                // Headless run with neither --no-save nor --no-push: pick the
+                // default "both" path automatically to preserve scripted
+                // (auto-accept-scope) UX from before the gate gained a third
+                // option. Operators who want push-only must pass --no-save.
+                update({ generatedAcceptedCount: accepted });
+                void runSaveAndPush();
                 return;
               }
               update({ generatedAcceptedCount: accepted, step: 'push-decision-gate' });

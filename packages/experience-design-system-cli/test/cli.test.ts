@@ -374,4 +374,16 @@ describe('experiences import flag surface', () => {
     expect(code).not.toBe(0);
     expect(stderr).toMatch(/auto-accept-scope|TTY/i);
   });
+
+  it('exposes --no-save in experiences import --help (Feature 2 save AND push)', async () => {
+    const { stdout, code } = await run('import', '--help');
+    expect(code).toBe(0);
+    expect(stdout).toContain('--no-save');
+  });
+
+  it('exits with an error when --no-save and --no-push are combined', async () => {
+    const { stderr, code } = await run('import', '--no-save', '--no-push');
+    expect(code).toBe(1);
+    expect(stderr).toContain('--no-save and --no-push together would do nothing');
+  });
 });
