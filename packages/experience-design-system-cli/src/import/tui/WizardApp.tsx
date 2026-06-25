@@ -17,6 +17,7 @@ import { DoneStep } from './steps/DoneStep.js';
 import { ErrorStep } from './steps/ErrorStep.js';
 import { TokenInputStep } from './steps/TokenInputStep.js';
 import { PreviewValidationErrorStep } from './steps/PreviewValidationErrorStep.js';
+import { nextStateAfterPrint } from './run-print-files-helpers.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
 import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
@@ -1096,7 +1097,11 @@ export function WizardApp({
     }
   };
 
-  const runPrintFiles = async (extractSessionId: string | null, outDir: string) => {
+  const runPrintFiles = async (
+    extractSessionId: string | null,
+    outDir: string,
+    opts: { skipGate?: boolean } = {},
+  ): Promise<{ ok: boolean }> => {
     update({ step: 'printing' });
     const componentsPath = join(outDir, 'components.json');
     const printArgs = ['print', 'components', '--out', componentsPath];
@@ -1108,10 +1113,11 @@ export function WizardApp({
         errorStep: 'print components',
         errorMessage: r.stderr.trim() || 'Unknown error',
       });
-      return;
+      return { ok: false };
     }
     // tokensPath is already on disk from generate-tokens step; just record it
-    update({ step: 'print-gate', componentsPath });
+    update(nextStateAfterPrint({ skipGate: opts.skipGate, componentsPath }));
+    return { ok: true };
   };
 
   // ── Effect: kick off automatic steps ───────────────────────────────────────────────
