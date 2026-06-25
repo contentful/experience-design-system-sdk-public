@@ -296,15 +296,15 @@ export function ScopeGateStep({
             const isCursor = i === cursor;
             const included = isIncluded(c);
             const aiFlagged = isAiFlagged(c);
-            const label = included ? '[✓ INCLUDED]' : '[  EXCLUDED]';
             const prefix = isCursor ? '›' : ' ';
             const aiBadge = aiFlagged ? AI_BADGE : '';
-            const rowLine = `${prefix} ${aiBadge}${label} ${c.name}`;
+            // R2: color-glyphs replace word labels. Green [✓] for included,
+            // red [✗] for excluded. The component name follows the same
+            // color UNLESS the row is the cursor row, in which case the
+            // name flips to cyan (state glyph keeps its red/green).
+            const stateGlyph = included ? '[✓]' : '[✗]';
+            const stateColor: 'green' | 'red' = included ? 'green' : 'red';
             const inlineReason = !isCursor && aiFlagged ? ` ${truncateReason(c.aiReason)}` : '';
-            // Pilot-2026-06-25 R2: insert section headers right before the
-            // first visible row of each section. The flatList is laid out as
-            // [...aiList, ...componentsList], so header conditions key off
-            // the row index.
             const showAiHeader = aiList.length > 0 && i === 0;
             const showComponentsHeader =
               componentsList.length > 0 && i === aiList.length;
@@ -318,7 +318,11 @@ export function ScopeGateStep({
               return (
                 <React.Fragment key={c.componentId}>
                   {header}
-                  <Text color="cyan">{rowLine}</Text>
+                  <Text>
+                    <Text color="cyan">{`${prefix} ${aiBadge}`}</Text>
+                    <Text color={stateColor}>{stateGlyph}</Text>
+                    <Text color="cyan">{` ${c.name}`}</Text>
+                  </Text>
                   {wrapReason && (
                     <Text dimColor>{`${REASON_WRAP_INDENT}${c.aiReason}`}</Text>
                   )}
@@ -329,7 +333,9 @@ export function ScopeGateStep({
               <React.Fragment key={c.componentId}>
                 {header}
                 <Text>
-                  {rowLine}
+                  <Text>{`${prefix} ${aiBadge}`}</Text>
+                  <Text color={stateColor}>{stateGlyph}</Text>
+                  <Text color={stateColor}>{` ${c.name}`}</Text>
                   {inlineReason !== '' && <Text dimColor>{inlineReason}</Text>}
                 </Text>
               </React.Fragment>

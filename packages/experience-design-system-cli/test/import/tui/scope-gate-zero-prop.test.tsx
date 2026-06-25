@@ -31,11 +31,11 @@ describe('zero-prop component preserved through auto-filter (Feature 3 regressio
     const out = lastFrame() ?? '';
     // Component must surface — never silently dropped.
     expect(out).toContain('OpaqueWidget');
-    // Pilot-2026-06-25: separate "AI excluded" section is gone — the row
-    // still surfaces but inline in the unified list with an [AI] badge and
-    // an EXCLUDED label.
+    // R2: row surfaces in the "AI recommended exclusions" section with the
+    // [AI] badge (replaced with `*` in Task 3) and a red [✗] glyph.
     expect(out).toContain('[AI]');
-    expect(out).toContain('EXCLUDED');
+    expect(out).toContain('[✗]');
+    expect(out).toMatch(/AI recommended exclusions/);
   });
 
   it('routes a zero-prop AI-accepted component into the main list', () => {

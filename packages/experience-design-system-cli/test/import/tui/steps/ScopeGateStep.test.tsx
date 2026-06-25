@@ -338,8 +338,8 @@ describe('ScopeGateStep — unified AI behavior', () => {
       // Cursor is on BadgeIcon (first AI row) at mount.
       stdin.write('a');
       const out = lastFrame() ?? '';
-      // BadgeIcon now INCLUDED but still wears [AI] badge.
-      expect(out).toMatch(/\[AI\][^\n]*INCLUDED[^\n]*BadgeIcon/);
+      // R2: BadgeIcon now INCLUDED (green [✓]) and still wears [AI] badge.
+      expect(out).toMatch(/\[AI\][^\n]*\[✓\][^\n]*BadgeIcon/);
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.accepted).toContain('BadgeIcon');

@@ -96,6 +96,37 @@ describe('ScopeGateStep — two-section render (R2 Task 1)', () => {
   });
 });
 
+describe('ScopeGateStep — color glyphs (R2 Task 2)', () => {
+  it('renders [✓] glyph for INCLUDED rows and [✗] for EXCLUDED rows', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).toContain('[✓]');
+    expect(out).toContain('[✗]');
+  });
+
+  it('emits NO INCLUDED / EXCLUDED word labels', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).not.toContain('INCLUDED');
+    expect(out).not.toContain('EXCLUDED');
+  });
+
+  it('places the [✓] glyph before included names and [✗] before excluded names', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    const out = lastFrame() ?? '';
+    // DebugPanel is AI-rejected -> red [✗] glyph in front.
+    expect(out).toMatch(/\[✗\][^\n]*DebugPanel/);
+    // Button is an INCLUDED component row -> green [✓] glyph in front.
+    expect(out).toMatch(/\[✓\][^\n]*Button/);
+  });
+});
+
 describe('ScopeGateStep — persistent [AI] badge (Task 2)', () => {
   it('renders an [AI] badge on rows where aiDecision === "rejected"', () => {
     const { lastFrame } = render(
