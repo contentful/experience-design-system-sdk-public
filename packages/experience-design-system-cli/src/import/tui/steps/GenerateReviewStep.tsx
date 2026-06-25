@@ -541,7 +541,7 @@ export function GenerateReviewStep({
             <Text>{' · '}</Text>
             <Text dimColor>{`${counts.removed} removed`}</Text>
             {removedComponents.length > 0 && (
-              <Text dimColor>{' (d for details)'}</Text>
+              <Text dimColor>{' ([d] removed list)'}</Text>
             )}
             <Text>{' · '}</Text>
             <Text color="red" bold>
@@ -623,7 +623,7 @@ export function GenerateReviewStep({
                     ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel' +
-                      (livePreview && removedComponents.length > 0 ? '  [d] removed' : '') +
+                      (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       '  [q] quit'
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
