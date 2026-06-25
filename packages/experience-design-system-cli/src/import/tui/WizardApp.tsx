@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFile, spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
+import { buildRunTeaserLine } from './run-teaser.js';
 import { PathPrompt } from '../../runs/path-prompt.js';
 import { SaveConflictGate } from '../../runs/save-conflict.js';
 import { detectSaveConflict, buildTimestampedSubdir } from '../../runs/save-path-resolver.js';
@@ -154,6 +155,8 @@ type WizardState = {
   // push is disabled at the push-decision-gate, and runPush refuses to
   // execute if it's somehow reached.
   credentialsSkipped: boolean;
+  /** Task 8 — id of the most recent run record written to runs.json. */
+  lastRunId: string | null;
 };
 
 function findCliPath(): string {
@@ -410,6 +413,7 @@ export function WizardApp({
     generatePrefetchStatus: 'idle',
     generatePrefetchError: null,
     credentialsSkipped: false,
+    lastRunId: null,
   });
 
   useEffect(() => {
@@ -1396,7 +1400,7 @@ export function WizardApp({
       // Append a run record on every successful write. Best-effort: append
       // failures must not break the wizard flow (they surface on stderr).
       try {
-        await appendRun({
+        const record = await appendRun({
           projectPath: state.projectPath,
           savePath: path,
           componentCount: state.generatedAcceptedCount || state.generatedCount,
@@ -1406,6 +1410,7 @@ export function WizardApp({
           extractSessionId: state.extractSessionId ?? '',
           generateSessionId: state.generateSessionId,
         });
+        setState((prev) => ({ ...prev, lastRunId: record.id }));
       } catch (err) {
         process.stderr.write(`Warning: failed to record run: ${err instanceof Error ? err.message : String(err)}\n`);
       }
@@ -1914,7 +1919,8 @@ export function WizardApp({
           />
         );
 
-      case 'print-gate':
+      case 'print-gate': {
+        const teaser = buildRunTeaserLine(state.lastRunId);
         return (
           <GateStep
             successMessage="Files saved"
@@ -1924,16 +1930,22 @@ export function WizardApp({
             ]
               .filter(Boolean)
               .join('\n')}
-            context="Your files are saved to disk. Run `experiences import` again when you're ready to push to Contentful."
+            context={
+              teaser
+                ? `Your files are saved to disk. ${teaser}`
+                : "Your files are saved to disk. Run `experiences import` again when you're ready to push to Contentful."
+            }
             continueLabel="Exit"
             showSkip={false}
             onContinue={() => process.exit(0)}
             onQuit={() => process.exit(0)}
           />
         );
+      }
 
       case 'done': {
         const totalFailed = state.pushResult.componentTypes.failed + state.pushResult.designTokens.failed;
+        const teaser = buildRunTeaserLine(state.lastRunId);
         return (
           <DoneStep
             componentTypes={state.pushResult.componentTypes}
@@ -1941,6 +1953,7 @@ export function WizardApp({
             summary={state.pushResult.summary}
             spaceId={state.spaceId}
             environmentId={state.environmentId}
+            {...(teaser ? { runTeaser: teaser } : {})}
             onExit={() => process.exit(totalFailed > 0 ? 1 : 0)}
           />
         );

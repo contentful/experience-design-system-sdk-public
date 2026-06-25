@@ -15,6 +15,8 @@ type DoneStepProps = {
   summary?: { total: number; succeeded: number; failed: number };
   spaceId: string;
   environmentId: string;
+  /** Task 8 — pre-formatted run teaser; rendered dim below the space link. */
+  runTeaser?: string;
   onExit: () => void;
 };
 
@@ -24,6 +26,7 @@ export function DoneStep({
   summary,
   spaceId,
   environmentId,
+  runTeaser,
   onExit,
 }: DoneStepProps): React.ReactElement {
   useImmediateInput((input, key) => {
@@ -131,6 +134,12 @@ export function DoneStep({
             <Text dimColor>View it here:</Text>
             <Text color="cyan">{`https://app.contentful.com/spaces/${spaceId}/environments/${environmentId}/views/components`}</Text>
           </Box>
+        </Box>
+      )}
+
+      {runTeaser && (
+        <Box marginTop={1}>
+          <Text dimColor>{runTeaser}</Text>
         </Box>
       )}
 
