@@ -26,6 +26,7 @@ import { chooseGateAction } from './push-decision-gate-helpers.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
 import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
+import { spawnGenerateChild } from './spawn-generate.js';
 import { readTokensFromPath, hasBreakingChangesWithImpact } from '../../apply/manifest.js';
 import { buildManifest } from '@contentful/experience-design-system-types';
 import type { ServerPreviewResponse, ManifestPayload } from '@contentful/experience-design-system-types';
@@ -687,39 +688,29 @@ export function WizardApp({
   };
 
   const runGenerate = async (extractSessionId: string, tokensPath: string, acceptedCount: number) => {
-    const result = await new Promise<{
-      exitCode: number;
-      stdout: string;
-      stderr: string;
-    }>((res) => {
-      const args = [
-        findCliPath(),
-        ...buildGenerateComponentsArgs({
-          sessionId: extractSessionId,
-          tokensPath,
-          agent: state.agent,
-          noCache,
-          generatePromptPath,
-        }),
-      ];
-      const child = spawn('node', args);
-      let stdout = '';
-      let stderr = '';
-      let progressCursor: GenerateProgressState = state.generateProgress;
-      child.stdout.on('data', (d: Buffer) => {
-        stdout += String(d);
-      });
-      child.stderr.on('data', (d: Buffer) => {
-        const chunk = String(d);
-        stderr += chunk;
+    const args = [
+      findCliPath(),
+      ...buildGenerateComponentsArgs({
+        sessionId: extractSessionId,
+        tokensPath,
+        agent: state.agent,
+        noCache,
+        generatePromptPath,
+      }),
+    ];
+    let progressCursor: GenerateProgressState = state.generateProgress;
+    const { donePromise } = spawnGenerateChild({
+      command: 'node',
+      args,
+      onStderr: (chunk) => {
         const nextProgress = parseGenerateStderrChunk(chunk, progressCursor);
         if (nextProgress !== progressCursor) {
           progressCursor = nextProgress;
           update({ generateProgress: nextProgress });
         }
-      });
-      child.on('exit', (code) => res({ exitCode: code ?? 0, stdout, stderr }));
+      },
     });
+    const result = await donePromise;
 
     if (result.exitCode !== 0) {
       update({
