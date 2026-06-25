@@ -57,6 +57,14 @@ export function registerImportCommand(program: Command): void {
       '--no-save',
       'Push without writing components.json / tokens.json to disk (default: save AND push)',
     )
+    .option(
+      '--select-prompt-path <path>',
+      'Path to a custom .md skill prompt for analyze select-agent (bypasses bundled invariants)',
+    )
+    .option(
+      '--generate-prompt-path <path>',
+      'Path to a custom .md skill prompt for generate components (bypasses bundled invariants)',
+    )
     .action(
       async (opts: {
         spaceId?: string;
@@ -86,6 +94,8 @@ export function registerImportCommand(program: Command): void {
         livePreview?: boolean;
         push?: boolean;
         save?: boolean;
+        selectPromptPath?: string;
+        generatePromptPath?: string;
       }) => {
         if (opts.save === false && opts.push === false) {
           process.stderr.write(
@@ -137,6 +147,8 @@ export function registerImportCommand(program: Command): void {
             livePreview?: boolean;
             noPush?: boolean;
             noSave?: boolean;
+            selectPromptPath?: string;
+            generatePromptPath?: string;
           };
           const creds = await readExperiencesCredentials();
           const { waitUntilExit } = render(
@@ -154,6 +166,8 @@ export function registerImportCommand(program: Command): void {
               livePreview: opts.livePreview !== false,
               noPush: opts.push === false,
               noSave: opts.save === false,
+              selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
+              generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
             }),
           );
           await waitUntilExit();
