@@ -317,6 +317,27 @@ function applyDbMigrations(db: DatabaseSync): void {
     `);
   }
 
+  // Fine-grained cache: select_cache stores accept/reject decisions per
+  // (component_hash, prompt_hash, cli_version). On hit, the wizard replays the
+  // decision without an LLM call.
+  const hasSelectCache = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='select_cache'`)
+    .all() as Array<{ name: string }>;
+  if (hasSelectCache.length === 0) {
+    db.exec(`
+      CREATE TABLE select_cache (
+        component_hash TEXT NOT NULL,
+        prompt_hash    TEXT NOT NULL,
+        cli_version    TEXT NOT NULL,
+        decision       TEXT NOT NULL CHECK (decision IN ('accepted','rejected')),
+        reason         TEXT,
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL,
+        PRIMARY KEY (component_hash, prompt_hash, cli_version)
+      );
+    `);
+  }
+
   // Add generation_cache table if it doesn't exist yet.
   const tables = db
     .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='generation_cache'`)
@@ -2279,5 +2300,75 @@ export function lookupExtractCache(
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     components,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Fine-grained cache: select_cache helpers
+// ---------------------------------------------------------------------------
+
+export type SelectDecision = 'accepted' | 'rejected';
+
+export interface SelectCacheEntry {
+  componentHash: string;
+  promptHash: string;
+  cliVersion: string;
+  decision: SelectDecision;
+  reason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function storeSelectCache(
+  db: DatabaseSync,
+  componentHash: string,
+  promptHash: string,
+  cliVersion: string,
+  decision: SelectDecision,
+  reason: string | null,
+): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO select_cache (component_hash, prompt_hash, cli_version, decision, reason, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(component_hash, prompt_hash, cli_version) DO UPDATE SET
+       decision = excluded.decision,
+       reason = excluded.reason,
+       updated_at = excluded.updated_at`,
+  ).run(componentHash, promptHash, cliVersion, decision, reason, now, now);
+}
+
+export function lookupSelectCache(
+  db: DatabaseSync,
+  componentHash: string,
+  promptHash: string,
+  cliVersion: string,
+): SelectCacheEntry | null {
+  const row = db
+    .prepare(
+      `SELECT component_hash, prompt_hash, cli_version, decision, reason, created_at, updated_at
+       FROM select_cache
+       WHERE component_hash = ? AND prompt_hash = ? AND cli_version = ?`,
+    )
+    .get(componentHash, promptHash, cliVersion) as
+    | {
+        component_hash: string;
+        prompt_hash: string;
+        cli_version: string;
+        decision: string;
+        reason: string | null;
+        created_at: string;
+        updated_at: string;
+      }
+    | undefined;
+  if (!row) return null;
+  return {
+    componentHash: row.component_hash,
+    promptHash: row.prompt_hash,
+    cliVersion: row.cli_version,
+    decision: row.decision as SelectDecision,
+    reason: row.reason,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
