@@ -27,7 +27,7 @@ import type {
 } from '../../../analyze/select/types.js';
 import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
 import { useLivePreview } from '../useLivePreview.js';
-import { computeNextJsonOffset } from './json-scroll.js';
+import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -354,7 +354,7 @@ export function GenerateReviewStep({
         return;
       }
 
-      const next = computeNextJsonOffset(jsonScrollOffset, input, key, totalLines, PANEL_HEIGHT);
+      const next = computeNextScrollOffset(jsonScrollOffset, input, key, totalLines, PANEL_HEIGHT);
       if (next !== null) {
         pendingGRef.current = false;
         // Functional setState mirrors the cursor-stutter fix (commit 5d11e60).

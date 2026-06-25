@@ -1,8 +1,8 @@
 /**
- * Pure helper for computing the next `jsonScrollOffset` when the operator
- * presses a navigation key with the JSON view focused. Extracted from
- * GenerateReviewStep so the scroll logic can be unit-tested without
- * standing up an Ink integration fixture.
+ * Pure helper for computing the next scroll offset when the operator presses
+ * a navigation key inside a scrollable TUI panel (JSON view, rationale view,
+ * etc.). Extracted as a shared module so multiple panels can reuse the same
+ * scroll bindings without duplicating logic.
  *
  * Returns the new offset, or `null` if the input doesn't match any scroll
  * binding (caller should NOT update state in that case).
@@ -27,7 +27,7 @@ export type ScrollKeyState = {
   ctrl?: boolean;
 };
 
-export function computeNextJsonOffset(
+export function computeNextScrollOffset(
   current: number,
   input: string,
   key: ScrollKeyState,
