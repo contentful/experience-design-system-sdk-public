@@ -10,7 +10,9 @@ import {
 import { loadReviewInput } from '../select/parser.js';
 import type { ReviewSessionSnapshot } from '../select/types.js';
 import { buildPrompt } from '../../generate/prompt-builder.js';
+import { formatCustomPromptBanner } from '../../generate/command.js';
 import { parseSelectToolCallLines, runAgent } from '../../generate/agent-runner.js';
+import { access } from 'node:fs/promises';
 import type { AgentName, SelectToolCall } from '../../generate/agent-runner.js';
 import type { RawComponentDefinition } from '../../types.js';
 import { readExperiencesCredentials } from '../../credentials-store.js';
@@ -144,12 +146,14 @@ async function selectBatch(
   batch: BatchItem[],
   total: number,
   verbose: boolean,
+  skillPathOverride: string | undefined,
 ): Promise<SelectOneResult[]> {
   const prompt = await buildPrompt({
     skill: 'select',
     mode: 'autonomous',
     rawComponentsInline: JSON.stringify(batch.map((b) => buildComponentData(b.candidate)), null, 2),
     outDir: process.cwd(),
+    skillPathOverride,
   });
 
   let outputBuf = '';
@@ -264,6 +268,7 @@ async function selectAllComponents(
   model: string | undefined,
   components: SelectionCandidate[],
   verbose: boolean,
+  skillPathOverride: string | undefined,
 ): Promise<SelectOneResult[]> {
   const concurrency = Number(process.env.EDS_GENERATE_CONCURRENCY ?? DEFAULT_CONCURRENCY);
   const batchSize = resolveBatchSize();
@@ -289,7 +294,7 @@ async function selectAllComponents(
     while (nextBatch < batches.length) {
       const b = nextBatch++;
       const batch = batches[b]!;
-      const batchResults = await selectBatch(agent, model, batch, components.length, verbose);
+      const batchResults = await selectBatch(agent, model, batch, components.length, verbose, skillPathOverride);
       for (let k = 0; k < batch.length; k++) {
         results[batch[k]!.index] = batchResults[k]!;
       }
@@ -317,6 +322,10 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
       '--exclude-invalid',
       'Auto-reject components with validation errors instead of failing loud (LLM cannot fix structural issues)',
     )
+    .option(
+      '--select-prompt-path <path>',
+      'Path to a custom .md skill prompt for select-agent (bypasses bundled prompt invariants)',
+    )
     .action(
       async (opts: {
         session?: string;
@@ -326,6 +335,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         verbose?: boolean;
         dryRun?: boolean;
         excludeInvalid?: boolean;
+        selectPromptPath?: string;
       }) => {
         const savedCreds = await readExperiencesCredentials();
         const agentName = opts.agent ?? savedCreds.agent;
@@ -339,6 +349,27 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         }
 
         const agent = agentName as AgentName;
+
+        // Feature 8: validate + announce custom prompt path before any heavy work.
+        const selectPromptPath = opts.selectPromptPath;
+        if (selectPromptPath) {
+          const resolvedPath = resolve(selectPromptPath);
+          const exists = await access(resolvedPath)
+            .then(() => true)
+            .catch(() => false);
+          if (!exists) {
+            process.stderr.write(`Error: custom prompt path not found: ${resolvedPath}\n`);
+            process.exit(1);
+            return;
+          }
+          if (!selectPromptPath.toLowerCase().endsWith('.md')) {
+            process.stderr.write(
+              `WARNING: custom prompt path does not end in .md (${selectPromptPath}) — proceeding anyway.\n`,
+            );
+          }
+          process.stderr.write(formatCustomPromptBanner('select', resolvedPath));
+        }
+
         const sessionId = resolveSessionId(opts.session);
         const selectionRoot = resolveProjectRoot(sessionId, opts.projectRoot);
 
@@ -427,13 +458,20 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
             mode: 'autonomous',
             rawComponentsInline: JSON.stringify([buildComponentData(first)], null, 2),
             outDir: process.cwd(),
+            skillPathOverride: selectPromptPath ? resolve(selectPromptPath) : undefined,
           });
           process.stdout.write(prompt + '\n');
           process.exit(0);
           return;
         }
 
-        const selectResults = await selectAllComponents(agent, model, selectionCandidates, opts.verbose ?? false);
+        const selectResults = await selectAllComponents(
+          agent,
+          model,
+          selectionCandidates,
+          opts.verbose ?? false,
+          selectPromptPath ? resolve(selectPromptPath) : undefined,
+        );
 
         // Build decision map from results. Seed auto-rejections from validation exclusions first.
         const decisions = new Map<string, 'accepted' | 'rejected' | null>();
