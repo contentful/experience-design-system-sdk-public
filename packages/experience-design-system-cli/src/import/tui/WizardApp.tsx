@@ -18,6 +18,8 @@ import { ErrorStep } from './steps/ErrorStep.js';
 import { TokenInputStep } from './steps/TokenInputStep.js';
 import { PreviewValidationErrorStep } from './steps/PreviewValidationErrorStep.js';
 import { nextStateAfterPrint } from './run-print-files-helpers.js';
+import { PushDecisionGateStep } from './steps/PushDecisionGateStep.js';
+import { chooseGateAction } from './push-decision-gate-helpers.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
 import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
@@ -1120,6 +1122,20 @@ export function WizardApp({
     return { ok: true };
   };
 
+  const runSaveAndPush = async (): Promise<void> => {
+    const { extractSessionId, tokensPath } = sessionRef.current;
+    const result = await runPrintFiles(extractSessionId, state.outDir, { skipGate: true });
+    if (!result.ok) return; // runPrintFiles already transitioned to error
+    void runPreview(
+      extractSessionId,
+      tokensPath,
+      state.spaceId,
+      state.environmentId,
+      state.cmaToken,
+      state.host,
+    );
+  };
+
   // ── Effect: kick off automatic steps ───────────────────────────────────────────────
 
   const tokenReuseChecked = useRef(false);
@@ -1403,26 +1419,29 @@ export function WizardApp({
             ? 'Design tokens ready.'
             : 'Ready to continue.';
         return (
-          <GateStep
-            successMessage="Generation complete"
+          <PushDecisionGateStep
             summary={summary}
-            context={`Push directly to your Contentful space now, or save ${files || 'the output files'} to disk first.`}
-            continueLabel="Push to Contentful"
-            skipLabel={`Save ${files || 'files'} to disk`}
-            onContinue={() => {
-              // Creds were validated upfront (or skipped via the credential-test-gate
-              // skip path). Run the diff preview directly.
-              const { extractSessionId, tokensPath } = sessionRef.current;
-              void runPreview(
-                extractSessionId,
-                tokensPath,
-                state.spaceId,
-                state.environmentId,
-                state.cmaToken,
-                state.host,
-              );
-            }}
-            onSkip={() => {
+            context={`Save ${files || 'output files'} to disk, push to your Contentful space, or both.`}
+            fileList={files || 'files'}
+            onChoice={(choice) => {
+              const action = chooseGateAction(choice);
+              if (action === 'save-and-push') {
+                void runSaveAndPush();
+                return;
+              }
+              if (action === 'push-only') {
+                const { extractSessionId, tokensPath } = sessionRef.current;
+                void runPreview(
+                  extractSessionId,
+                  tokensPath,
+                  state.spaceId,
+                  state.environmentId,
+                  state.cmaToken,
+                  state.host,
+                );
+                return;
+              }
+              // save-only
               void runPrintFiles(state.extractSessionId, state.outDir);
             }}
             onQuit={() => process.exit(0)}
