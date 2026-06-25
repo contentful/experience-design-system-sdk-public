@@ -758,7 +758,12 @@ function addAgentFlags(cmd: Command): Command {
     .option('--model <name>', 'Model to use (defaults to a small/fast model per agent)')
     .option('--verbose', 'Show full agent output including reasoning text')
     .option('--dry-run', 'Print the prompt without invoking the agent')
-    .option('--no-cache', 'Bypass generation cache and force AI re-generation');
+    .option(
+      '--no-cache',
+      'Bypass ALL fine-grained caches (extract, select, generate) and force AI re-run. ' +
+        'Cache keys now factor in prompt content — changing the prompt file via --generate-prompt-path or ' +
+        '--select-prompt-path will already bust the corresponding stage. Use --no-cache to force a full re-run.',
+    );
 }
 
 export function registerGenerateCommand(program: Command): void {
