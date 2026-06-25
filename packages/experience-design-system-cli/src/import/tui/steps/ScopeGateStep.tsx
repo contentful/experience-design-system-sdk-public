@@ -22,7 +22,6 @@ export type ScopeGateStepProps = {
 };
 
 const VISIBLE_COUNT = 10;
-const EXCLUDED_VISIBLE_CAP = 8;
 const REASON_DISPLAY_MAX = 60;
 
 function truncateReason(reason: string | null | undefined): string {
@@ -40,69 +39,81 @@ export function ScopeGateStep({
   aiFilterError = null,
   onCancelAutoFilter,
 }: ScopeGateStepProps): React.ReactElement {
-  // Pilot-2026-06-23 R1: treat operator decisions as a DELTA on top of the
-  // streaming `components` prop. The auto-filter writes decisions async,
-  // re-rendering with updated aiDecision values; the AI-excluded section must
-  // re-derive from the current prop. Operator overrides via `r` and `a` are
-  // tracked in two disjoint sets so they survive prop updates:
-  //   - userExcluded: names the operator explicitly excluded via `r`
-  //   - userUnExcluded: names the operator explicitly un-excluded via `a`
-  // Effective excluded = (aiDecision === 'rejected' ∪ userExcluded) \ userUnExcluded.
+  // Pilot-2026-06-25: scope-gate UX overhaul — single unified list.
+  //
+  // Inverted mental model: we now track which rows are INCLUDED rather than
+  // which are EXCLUDED. The underlying delta-on-prop pattern survives so
+  // operator decisions stay sticky across streaming AI updates:
+  //   - userExcluded: rows the operator explicitly toggled OFF
+  //   - userUnExcluded: rows the operator explicitly toggled ON
+  // Effective INCLUDED for a row:
+  //   if userExcluded.has(name): false
+  //   else if userUnExcluded.has(name): true
+  //   else: row.aiDecision !== 'rejected'   // default: follow AI, default true if AI silent
   const [userExcluded, setUserExcluded] = useState<Set<string>>(new Set());
   const [userUnExcluded, setUserUnExcluded] = useState<Set<string>>(new Set());
-  // mainList preserves prop order minus currently-excluded names. excludedList
-  // preserves prop order of currently-excluded names. Both re-derive reactively
-  // from the streaming prop AND the operator delta sets.
-  const { mainList, excludedList } = useMemo(() => {
-    const main: ScopeComponent[] = [];
-    const excluded: ScopeComponent[] = [];
-    for (const c of components) {
-      const aiRejected = c.aiDecision === 'rejected';
-      const isExcluded = (aiRejected || userExcluded.has(c.name)) && !userUnExcluded.has(c.name);
-      if (isExcluded) excluded.push(c);
-      else main.push(c);
-    }
-    return { mainList: main, excludedList: excluded };
-  }, [components, userExcluded, userUnExcluded]);
 
-  const [included, setIncluded] = useState<Set<string>>(
-    () => new Set(components.filter((c) => c.aiDecision !== 'rejected').map((c) => c.name)),
-  );
-  // Cursor indexes into the unified order [...mainList, ...excludedList].
-  // Initial cursor on first non-excluded row (mainList[0]) — mainList comes
-  // first in the unified order, so index 0 is correct unless mainList is
-  // empty (all-rejected fallthrough banner handles that case).
   const [cursor, setCursor] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
-  // Feature 3 Task 6: collapse the AI-excluded section. Default expanded so
-  // operators see what was filtered on first render.
-  const [excludedCollapsed, setExcludedCollapsed] = useState(false);
   // Pilot-2026-06-23: `s` opens a side panel showing the full reject_reason
-  // (untruncated) for the AI-excluded row under the cursor.
+  // (untruncated) for an AI-flagged row under the cursor. With the focused-row
+  // wrap landed, the panel is mostly redundant — kept for screen-reader /
+  // overflow cases per spec.
   const [reasonPanelOpen, setReasonPanelOpen] = useState(false);
 
-  // Unified flat list cursor walks. Excluded section contributes only when
-  // expanded — collapsing it must NOT let j/k walk into hidden rows.
-  const flatList: ScopeComponent[] = excludedCollapsed ? mainList : [...mainList, ...excludedList];
-  const cursorOnExcluded = (idx: number): boolean =>
-    !excludedCollapsed && idx >= mainList.length && idx < mainList.length + excludedList.length;
+  // Unified flat list — preserves prop (extraction) order. No reordering on
+  // AI rejection.
+  const flatList: ScopeComponent[] = components;
+
+  const isIncluded = (row: ScopeComponent): boolean => {
+    if (userExcluded.has(row.name)) return false;
+    if (userUnExcluded.has(row.name)) return true;
+    return row.aiDecision !== 'rejected';
+  };
 
   const partition = (): { accepted: string[]; rejected: string[] } => {
     const accepted: string[] = [];
     const rejected: string[] = [];
-    for (const c of mainList) {
-      if (included.has(c.name)) accepted.push(c.name);
+    for (const c of flatList) {
+      if (isIncluded(c)) accepted.push(c.name);
       else rejected.push(c.name);
     }
-    // Everything in excludedList is rejected on confirm. With the delta-on-
-    // prop model, `included` may still contain a name that later became AI-
-    // rejected after streaming — the excludedList membership is the source
-    // of truth here. This preserves the dual-write (status + snapshot) for
-    // every excluded row.
-    for (const c of excludedList) {
-      rejected.push(c.name);
-    }
     return { accepted, rejected };
+  };
+
+  const toggleFocused = (): void => {
+    const target = flatList[cursor];
+    if (!target) return;
+    const currentlyIn = isIncluded(target);
+    if (currentlyIn) {
+      // Flip to EXCLUDED.
+      setUserExcluded((prev) => {
+        if (prev.has(target.name)) return prev;
+        const next = new Set(prev);
+        next.add(target.name);
+        return next;
+      });
+      setUserUnExcluded((prev) => {
+        if (!prev.has(target.name)) return prev;
+        const next = new Set(prev);
+        next.delete(target.name);
+        return next;
+      });
+    } else {
+      // Flip to INCLUDED.
+      setUserUnExcluded((prev) => {
+        if (prev.has(target.name)) return prev;
+        const next = new Set(prev);
+        next.add(target.name);
+        return next;
+      });
+      setUserExcluded((prev) => {
+        if (!prev.has(target.name)) return prev;
+        const next = new Set(prev);
+        next.delete(target.name);
+        return next;
+      });
+    }
   };
 
   useImmediateInput((input, key) => {
@@ -127,124 +138,44 @@ export function ScopeGateStep({
       return;
     }
     if (input === 's') {
-      // Toggle the full-reason panel. Only meaningful when the cursor is on
-      // an AI-excluded row, but accepting the keystroke unconditionally keeps
-      // the binding predictable — the panel renderer no-ops when there is no
-      // reason to show.
       setReasonPanelOpen((prev) => !prev);
       return;
     }
-    if (input === 'a') {
-      // On an AI-excluded row: un-exclude (move back to main list, default
-      // included). On a main row: toggle inclusion (existing behavior).
-      const onExcluded = cursorOnExcluded(cursor);
-      const target = flatList[cursor];
-      if (!target) return;
-      if (onExcluded) {
-        // Record the operator's un-exclude in the delta. Also clear any prior
-        // user-exclude so the two sets stay disjoint.
-        setUserUnExcluded((prev) => {
-          if (prev.has(target.name)) return prev;
-          const next = new Set(prev);
-          next.add(target.name);
-          return next;
-        });
-        setUserExcluded((prev) => {
-          if (!prev.has(target.name)) return prev;
-          const next = new Set(prev);
-          next.delete(target.name);
-          return next;
-        });
-        setIncluded((prev) => {
-          if (prev.has(target.name)) return prev;
-          const next = new Set(prev);
-          next.add(target.name);
-          return next;
-        });
-        return;
-      }
-      setIncluded((prev) => {
-        const next = new Set(prev);
-        if (next.has(target.name)) next.delete(target.name);
-        else next.add(target.name);
-        return next;
-      });
+    // `a`, space, and `r` are all aliases for "toggle focused row INCLUDED ↔ EXCLUDED".
+    // `r` kept for muscle-memory; it no longer means "reject".
+    if (input === 'a' || input === ' ' || input === 'r') {
+      toggleFocused();
       return;
     }
     if (input === 'A') {
-      const allIncluded = mainList.every((c) => included.has(c.name));
-      if (allIncluded) setIncluded(new Set());
-      else setIncluded(new Set(mainList.map((c) => c.name)));
-      return;
-    }
-    if (input === 'r') {
-      // r on a main-list row excludes (moves to AI-excluded). On an AI-
-      // excluded row r is a no-op — the row is already excluded.
-      const onExcluded = cursorOnExcluded(cursor);
-      const target = flatList[cursor];
-      if (!target) return;
-      if (onExcluded) return;
-      // Record operator-exclude in the delta. Clear any prior un-exclude so
-      // the two sets stay disjoint.
-      setUserExcluded((prev) => {
-        if (prev.has(target.name)) return prev;
-        const next = new Set(prev);
-        next.add(target.name);
-        return next;
-      });
-      setUserUnExcluded((prev) => {
-        if (!prev.has(target.name)) return prev;
-        const next = new Set(prev);
-        next.delete(target.name);
-        return next;
-      });
-      setIncluded((prev) => {
-        if (!prev.has(target.name)) return prev;
-        const next = new Set(prev);
-        next.delete(target.name);
-        return next;
-      });
-      return;
-    }
-    if (input === 'c') {
-      // Toggle AI-excluded section collapse. No-op when nothing is excluded.
-      if (excludedList.length === 0) return;
-      setExcludedCollapsed((prev) => {
-        const nextCollapsed = !prev;
-        // If collapsing while cursor is in the excluded section, snap cursor
-        // back to the last main-list row so the user doesn't end up on an
-        // invisible cursor.
-        if (nextCollapsed) {
-          setCursor((c) => (c >= mainList.length ? Math.max(0, mainList.length - 1) : c));
-        }
-        return nextCollapsed;
-      });
+      // Toggle all: if any row is excluded, include everything; otherwise exclude everything.
+      const anyExcluded = flatList.some((c) => !isIncluded(c));
+      if (anyExcluded) {
+        // INCLUDE all → put every name in userUnExcluded and clear userExcluded.
+        setUserUnExcluded(new Set(flatList.map((c) => c.name)));
+        setUserExcluded(new Set());
+      } else {
+        // EXCLUDE all.
+        setUserExcluded(new Set(flatList.map((c) => c.name)));
+        setUserUnExcluded(new Set());
+      }
       return;
     }
     if (key.upArrow || input === 'k') {
-      const hasExcluded = !excludedCollapsed && excludedList.length > 0;
-      const len = hasExcluded ? mainList.length + excludedList.length : mainList.length;
+      const len = flatList.length;
       if (len === 0) return;
       setCursor((c) => {
-        // When the AI-excluded section is visible, k wraps cyclically so
-        // that pressing k from the top main-list row enters the excluded
-        // section (bottom). When it's collapsed (or absent), k clamps at 0.
-        const next = c <= 0 ? (hasExcluded ? len - 1 : 0) : c - 1;
+        const next = c <= 0 ? 0 : c - 1;
         setScrollOffset((prev) => Math.min(prev, next));
         return next;
       });
       return;
     }
     if (key.downArrow || input === 'j') {
-      const hasExcluded = !excludedCollapsed && excludedList.length > 0;
-      const len = hasExcluded ? mainList.length + excludedList.length : mainList.length;
+      const len = flatList.length;
       if (len === 0) return;
       setCursor((c) => {
-        // When the excluded section is visible, j wraps cyclically: from
-        // last excluded row back to first main-list row. (Stepping from
-        // last main-list row into first excluded row falls out of normal
-        // increment.) When collapsed (or absent), j clamps at len-1.
-        const next = c >= len - 1 ? (hasExcluded ? 0 : len - 1) : c + 1;
+        const next = c >= len - 1 ? len - 1 : c + 1;
         setScrollOffset((prev) => (next >= prev + VISIBLE_COUNT ? next - VISIBLE_COUNT + 1 : prev));
         return next;
       });
@@ -252,31 +183,32 @@ export function ScopeGateStep({
     }
   });
 
-  const includedCount = included.size;
-  const totalMain = mainList.length;
-  const totalAll = components.length;
+  const total = flatList.length;
+  const includedCount = useMemo(
+    () => flatList.filter((c) => isIncluded(c)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [components, userExcluded, userUnExcluded],
+  );
+  const hasAnyAi = flatList.some((c) => c.aiDecision === 'rejected');
 
-  const visibleEnd = Math.min(scrollOffset + VISIBLE_COUNT, totalMain);
-  const visible = mainList.slice(scrollOffset, visibleEnd);
+  const visibleEnd = Math.min(scrollOffset + VISIBLE_COUNT, total);
+  const visible = flatList.slice(scrollOffset, visibleEnd);
   const above = scrollOffset;
-  const below = Math.max(0, totalMain - visibleEnd);
+  const below = Math.max(0, total - visibleEnd);
 
   // ── Banner / status helpers ───────────────────────────────────────────────
   const showRunningHeader =
     aiFilterStatus === 'running' && aiFilterProgress !== null && aiFilterProgress.total > 0;
-  const showExcludedSection = excludedList.length > 0 && aiFilterStatus !== 'cancelled';
   const showCancelledBanner = aiFilterStatus === 'cancelled';
   const showFailedBanner = aiFilterStatus === 'failed';
-  const allRejected = aiFilterStatus === 'complete' && totalMain === 0 && excludedList.length > 0;
-
-  const visibleExcluded = excludedList.slice(0, EXCLUDED_VISIBLE_CAP);
-  const moreExcluded = Math.max(0, excludedList.length - visibleExcluded.length);
+  const allRejected =
+    aiFilterStatus === 'complete' && total > 0 && flatList.every((c) => !isIncluded(c));
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       <Text color="green">✓ Extraction complete</Text>
       <Text dimColor>
-        Found {totalAll} component{totalAll === 1 ? '' : 's'}. Pick which ones to import. Generation runs only on the
+        Found {total} component{total === 1 ? '' : 's'}. Pick which ones to import. Generation runs only on the
         included set.
       </Text>
 
@@ -304,53 +236,15 @@ export function ScopeGateStep({
         </Box>
       )}
 
-      {/* Feature 3: AI-excluded section */}
-      {showExcludedSection && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color="cyan">
-            [AI excluded ({excludedList.length})] <Text dimColor>[c]{excludedCollapsed ? 'expand' : 'collapse'}</Text>
-          </Text>
-          {!excludedCollapsed && (
-            <>
-              {visibleExcluded.map((c, ei) => {
-                // Cursor index in the unified flat list:
-                // mainList.length + ei (only the first EXCLUDED_VISIBLE_CAP
-                // are walkable on screen — the cursor logic itself uses the
-                // full excludedList length, but visually we cap rendering).
-                const isCursor = cursor === mainList.length + ei;
-                const prefix = isCursor ? '›' : ' ';
-                if (isCursor) {
-                  return (
-                    <Text key={c.componentId} color="cyan">
-                      {prefix} [✓] {c.name} <Text dimColor>{truncateReason(c.aiReason)}</Text>
-                    </Text>
-                  );
-                }
-                return (
-                  <Text key={c.componentId} dimColor>
-                    {prefix} [✓] {c.name} <Text dimColor>{truncateReason(c.aiReason)}</Text>
-                  </Text>
-                );
-              })}
-              {moreExcluded > 0 && <Text dimColor>{'  '}↓ {moreExcluded} more</Text>}
-            </>
-          )}
+      {/* Pilot-2026-06-23: full reject_reason side panel. Opens on `s` when
+          cursor is on an AI-flagged row. Closes on `s` again or Esc. */}
+      {reasonPanelOpen && flatList[cursor]?.aiDecision === 'rejected' && (
+        <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1} marginTop={1}>
+          <Text dimColor bold>{`AI rejection reason: ${flatList[cursor].name}`}</Text>
+          <Text>{flatList[cursor].aiReason ?? '<no reason given>'}</Text>
+          <Text dimColor>[s] close · [Esc] close</Text>
         </Box>
       )}
-
-      {/* Pilot-2026-06-23: full reject_reason side panel. Opens on `s` when
-          cursor is on an AI-excluded row. Closes on `s` again or Esc. */}
-      {reasonPanelOpen && cursorOnExcluded(cursor) && (() => {
-        const target = flatList[cursor];
-        if (!target) return null;
-        return (
-          <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1} marginTop={1}>
-            <Text dimColor bold>{`AI rejection reason: ${target.name}`}</Text>
-            <Text>{target.aiReason ?? '<no reason given>'}</Text>
-            <Text dimColor>[s] close · [Esc] close</Text>
-          </Box>
-        );
-      })()}
 
       {allRejected ? (
         <Box marginTop={1}>
@@ -362,26 +256,30 @@ export function ScopeGateStep({
           {visible.map((c, vi) => {
             const i = vi + scrollOffset;
             const isCursor = i === cursor;
-            const isIn = included.has(c.name);
-            const marker = isIn ? '[✓]' : '[ ]';
+            const included = isIncluded(c);
+            const aiFlagged = c.aiDecision === 'rejected';
+            const label = included ? '[✓ INCLUDED]' : '[  EXCLUDED]';
             const prefix = isCursor ? '›' : ' ';
+            const aiBadge = aiFlagged ? '[AI] ' : '';
+            const rowLine = `${prefix} ${aiBadge}${label} ${c.name}`;
+            const inlineReason = !isCursor && aiFlagged ? ` ${truncateReason(c.aiReason)}` : '';
             if (isCursor) {
+              const wrapReason = aiFlagged && c.aiReason !== null && c.aiReason !== undefined && c.aiReason.length > 0;
               return (
-                <Text key={c.componentId} color="cyan">
-                  {prefix} {marker} {c.name}
-                </Text>
+                <React.Fragment key={c.componentId}>
+                  <Text color="cyan">{rowLine}</Text>
+                  {wrapReason && (
+                    <Text dimColor>{`      ${c.aiReason}`}</Text>
+                  )}
+                </React.Fragment>
               );
             }
-            if (!isIn) {
-              return (
-                <Text key={c.componentId} dimColor>
-                  {prefix} {marker} {c.name}
-                </Text>
-              );
-            }
+            // Non-focused rows: full color (no dimColor) so EXCLUDED rows still
+            // read as legitimate options. Reason tail keeps dimColor.
             return (
               <Text key={c.componentId}>
-                {prefix} <Text color="green">{marker}</Text> {c.name}
+                {rowLine}
+                {inlineReason !== '' && <Text dimColor>{inlineReason}</Text>}
               </Text>
             );
           })}
@@ -394,7 +292,7 @@ export function ScopeGateStep({
           <Text>
             <Text color="green">{includedCount}</Text>
             <Text dimColor>
-              /{totalMain} included
+              /{total} included
             </Text>
           </Text>
         ) : (
@@ -404,13 +302,10 @@ export function ScopeGateStep({
           <Text color="cyan">[j/k]</Text> <Text dimColor>move</Text>
         </Text>
         <Text>
-          <Text color="cyan">[a]</Text> <Text dimColor>toggle</Text>
+          <Text color="cyan">[a/space]</Text> <Text dimColor>toggle</Text>
         </Text>
         <Text>
           <Text color="cyan">[A]</Text> <Text dimColor>toggle all</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[r]</Text> <Text dimColor>reject</Text>
         </Text>
         <Text>
           <Text color="cyan">[f]</Text> <Text dimColor>continue</Text>
@@ -418,6 +313,11 @@ export function ScopeGateStep({
         <Text>
           <Text color="cyan">[q]</Text> <Text dimColor>quit</Text>
         </Text>
+        {hasAnyAi && (
+          <Text>
+            <Text color="cyan">[s]</Text> <Text dimColor>AI reason</Text>
+          </Text>
+        )}
       </Box>
     </Box>
   );
