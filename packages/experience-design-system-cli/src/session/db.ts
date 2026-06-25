@@ -296,6 +296,27 @@ function applyDbMigrations(db: DatabaseSync): void {
     db.exec('ALTER TABLE raw_slots ADD COLUMN rationale TEXT');
   }
 
+  // Fine-grained cache: extract_cache holds per-file extracted components keyed
+  // on (file_hash, cli_version). cli_version is a content hash of bundled skill
+  // files so cache busts on a prompt change (not on every npm patch bump).
+  const hasExtractCache = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='extract_cache'`)
+    .all() as Array<{ name: string }>;
+  if (hasExtractCache.length === 0) {
+    db.exec(`
+      CREATE TABLE extract_cache (
+        file_path        TEXT NOT NULL,
+        file_hash        TEXT NOT NULL,
+        cli_version      TEXT NOT NULL,
+        created_at       TEXT NOT NULL,
+        updated_at       TEXT NOT NULL,
+        components_json  TEXT NOT NULL,
+        PRIMARY KEY (file_hash, cli_version)
+      );
+      CREATE INDEX idx_extract_cache_file ON extract_cache(file_path);
+    `);
+  }
+
   // Add generation_cache table if it doesn't exist yet.
   const tables = db
     .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='generation_cache'`)
@@ -2156,4 +2177,107 @@ export function copyTokensFromCache(db: DatabaseSync, sourceSessionId: string, t
     db.exec('ROLLBACK');
     throw e;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Fine-grained cache: extract_cache helpers
+// ---------------------------------------------------------------------------
+
+let _cliCacheVersionCache: string | null = null;
+
+/**
+ * Returns the CLI cache version used to namespace cache rows. To avoid busting
+ * the cache on every npm patch bump, this hashes the content of the bundled
+ * skill prompts. When the prompts change, cache invalidates; when only library
+ * code or test fixtures change, the cache stays warm.
+ *
+ * Memoized per-process. Falls back to package version on any I/O error.
+ */
+export async function getCliCacheVersion(): Promise<string> {
+  if (_cliCacheVersionCache) return _cliCacheVersionCache;
+  try {
+    const { hashContent } = await import('./cache-keys.js');
+    const { resolveSkillPath } = await import('../generate/prompt-builder.js');
+    const skills: Array<'components' | 'tokens' | 'select'> = ['components', 'tokens', 'select'];
+    const parts: string[] = [];
+    for (const s of skills) {
+      try {
+        const p = resolveSkillPath(s);
+        parts.push(readFileSync(p, 'utf8'));
+      } catch {
+        parts.push(`<missing:${s}>`);
+      }
+    }
+    _cliCacheVersionCache = hashContent(parts.join('\n---\n'));
+    return _cliCacheVersionCache;
+  } catch {
+    _cliCacheVersionCache = 'fallback';
+    return _cliCacheVersionCache;
+  }
+}
+
+export interface ExtractCacheEntry {
+  filePath: string;
+  fileHash: string;
+  cliVersion: string;
+  createdAt: string;
+  updatedAt: string;
+  components: RawComponentDefinition[];
+}
+
+export function storeExtractCache(
+  db: DatabaseSync,
+  filePath: string,
+  fileHash: string,
+  cliVersion: string,
+  components: RawComponentDefinition[],
+): void {
+  const now = new Date().toISOString();
+  const componentsJson = JSON.stringify(components);
+  db.prepare(
+    `INSERT INTO extract_cache (file_path, file_hash, cli_version, created_at, updated_at, components_json)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(file_hash, cli_version) DO UPDATE SET
+       file_path = excluded.file_path,
+       updated_at = excluded.updated_at,
+       components_json = excluded.components_json`,
+  ).run(filePath, fileHash, cliVersion, now, now, componentsJson);
+}
+
+export function lookupExtractCache(
+  db: DatabaseSync,
+  fileHash: string,
+  cliVersion: string,
+): ExtractCacheEntry | null {
+  const row = db
+    .prepare(
+      `SELECT file_path, file_hash, cli_version, created_at, updated_at, components_json
+       FROM extract_cache
+       WHERE file_hash = ? AND cli_version = ?`,
+    )
+    .get(fileHash, cliVersion) as
+    | {
+        file_path: string;
+        file_hash: string;
+        cli_version: string;
+        created_at: string;
+        updated_at: string;
+        components_json: string;
+      }
+    | undefined;
+  if (!row) return null;
+  let components: RawComponentDefinition[] = [];
+  try {
+    components = JSON.parse(row.components_json) as RawComponentDefinition[];
+  } catch {
+    return null;
+  }
+  return {
+    filePath: row.file_path,
+    fileHash: row.file_hash,
+    cliVersion: row.cli_version,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    components,
+  };
 }
