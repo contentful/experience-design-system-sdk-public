@@ -600,6 +600,156 @@ describe('storeRawComponents + loadRawComponents', () => {
     });
   });
 
+  it('adds component-level rationale columns to raw_components (component-rationale)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const cols = db.prepare('PRAGMA table_info(raw_components)').all() as Array<{
+        name: string;
+        notnull: number;
+      }>;
+      const byName = new Map(cols.map((c) => [c.name, c]));
+      expect(byName.has('component_description_rationale')).toBe(true);
+      expect(byName.has('props_rationale')).toBe(true);
+      expect(byName.has('slots_rationale')).toBe(true);
+      expect(byName.get('component_description_rationale')!.notnull).toBe(0);
+      expect(byName.get('props_rationale')!.notnull).toBe(0);
+      expect(byName.get('slots_rationale')!.notnull).toBe(0);
+      db.close();
+    });
+  });
+
+  it('adds rationale column to raw_slots (component-rationale)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const cols = db.prepare('PRAGMA table_info(raw_slots)').all() as Array<{
+        name: string;
+        notnull: number;
+      }>;
+      const byName = new Map(cols.map((c) => [c.name, c]));
+      expect(byName.has('rationale')).toBe(true);
+      expect(byName.get('rationale')!.notnull).toBe(0);
+      db.close();
+    });
+  });
+
+  it('component-rationale migrations are idempotent across opens', async () => {
+    await withTempDb((dbPath) => {
+      const db1 = openPipelineDb(dbPath);
+      db1.close();
+      const db2 = openPipelineDb(dbPath);
+      const compCols = db2.prepare('PRAGMA table_info(raw_components)').all() as Array<{ name: string }>;
+      const compNames = compCols.map((c) => c.name);
+      expect(compNames.filter((n) => n === 'component_description_rationale').length).toBe(1);
+      expect(compNames.filter((n) => n === 'props_rationale').length).toBe(1);
+      expect(compNames.filter((n) => n === 'slots_rationale').length).toBe(1);
+      const slotCols = db2.prepare('PRAGMA table_info(raw_slots)').all() as Array<{ name: string }>;
+      expect(slotCols.map((c) => c.name).filter((n) => n === 'rationale').length).toBe(1);
+      db2.close();
+    });
+  });
+
+  it('loadComponentRationale returns expected shape for a populated component', async () => {
+    const { loadComponentRationale } = await import('../../src/session/db.js');
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const components: RawComponentDefinition[] = [
+        {
+          name: 'Hero',
+          source: 'src',
+          framework: 'react',
+          props: [
+            { name: 'title', type: 'string', required: true, category: 'content', description: 'Headline' },
+          ],
+          slots: [
+            { name: 'media', isDefault: false, description: 'Background media' },
+          ],
+        },
+      ];
+      storeRawComponents(db, sessionId, components);
+      const compId = (
+        db
+          .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?`)
+          .get(sessionId, 'Hero') as { component_id: string }
+      ).component_id;
+      db.prepare(
+        `UPDATE raw_components SET description = ?, component_description_rationale = ?, props_rationale = ?, slots_rationale = ? WHERE session_id = ? AND component_id = ?`,
+      ).run('A hero block.', 'why-desc', 'why-props', 'why-slots', sessionId, compId);
+      db.prepare(
+        `UPDATE raw_props SET rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
+      ).run('content-text', sessionId, compId, 'title');
+      db.prepare(
+        `UPDATE raw_slots SET rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
+      ).run('keep-this-slot', sessionId, compId, 'media');
+
+      const r = loadComponentRationale(db, sessionId, 'Hero');
+      expect(r).not.toBeNull();
+      expect(r!.name).toBe('Hero');
+      expect(r!.description).toBe('A hero block.');
+      expect(r!.descriptionRationale).toBe('why-desc');
+      expect(r!.propsRationale).toBe('why-props');
+      expect(r!.slotsRationale).toBe('why-slots');
+      expect(r!.props).toHaveLength(1);
+      expect(r!.props[0]).toMatchObject({
+        name: 'title',
+        category: 'content',
+        description: 'Headline',
+        rationale: 'content-text',
+      });
+      expect(r!.slots).toHaveLength(1);
+      expect(r!.slots[0]).toMatchObject({
+        name: 'media',
+        description: 'Background media',
+        rationale: 'keep-this-slot',
+      });
+      db.close();
+    });
+  });
+
+  it('loadComponentRationale returns null rationale fields when columns are NULL', async () => {
+    const { loadComponentRationale } = await import('../../src/session/db.js');
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const components: RawComponentDefinition[] = [
+        {
+          name: 'Bare',
+          source: 'src',
+          framework: 'react',
+          props: [{ name: 'a', type: 'string', required: false }],
+          slots: [{ name: 's', isDefault: false }],
+        },
+      ];
+      storeRawComponents(db, sessionId, components);
+      const r = loadComponentRationale(db, sessionId, 'Bare');
+      expect(r).not.toBeNull();
+      expect(r!.descriptionRationale).toBeNull();
+      expect(r!.propsRationale).toBeNull();
+      expect(r!.slotsRationale).toBeNull();
+      expect(r!.description).toBeNull();
+      expect(r!.props[0]?.rationale).toBeNull();
+      expect(r!.slots[0]?.rationale).toBeNull();
+      db.close();
+    });
+  });
+
+  it('loadComponentRationale returns null when component is missing', async () => {
+    const { loadComponentRationale } = await import('../../src/session/db.js');
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const r = loadComponentRationale(db, sessionId, 'Nope');
+      expect(r).toBeNull();
+      db.close();
+    });
+  });
+
   it('loadComponentReviewMetadata returns null when component is missing (Feature 1)', async () => {
     const { loadComponentReviewMetadata } = await import('../../src/session/db.js');
     await withTempDb((dbPath) => {
