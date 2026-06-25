@@ -113,7 +113,7 @@ export function DoneStep({
           <Text dimColor>Your design system is now in Contentful ExO.</Text>
           <Box flexDirection="column" gap={0}>
             <Text dimColor>View it here:</Text>
-            <Text color="cyan">{`https://app.contentful.com/spaces/${spaceId}/environments/${environmentId}/exo/components`}</Text>
+            <Text color="cyan">{`https://app.contentful.com/spaces/${spaceId}/environments/${environmentId}/views/components`}</Text>
           </Box>
         </Box>
       )}
