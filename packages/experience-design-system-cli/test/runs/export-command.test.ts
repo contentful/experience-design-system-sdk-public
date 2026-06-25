@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockGetRun, mockUpdateRun, mockRunPrintComponents, mockRunPrintTokens } = vi.hoisted(() => ({
+const {
+  mockGetRun,
+  mockFindAllBySavePath,
+  mockUpdateRun,
+  mockRunPrintComponents,
+  mockRunPrintTokens,
+} = vi.hoisted(() => ({
   mockGetRun: vi.fn(),
+  mockFindAllBySavePath: vi.fn(),
   mockUpdateRun: vi.fn(),
   mockRunPrintComponents: vi.fn(),
   mockRunPrintTokens: vi.fn(),
@@ -9,6 +16,7 @@ const { mockGetRun, mockUpdateRun, mockRunPrintComponents, mockRunPrintTokens } 
 
 vi.mock('../../src/runs/store.js', () => ({
   getRun: mockGetRun,
+  findAllRunsBySavePath: mockFindAllBySavePath,
   updateRun: mockUpdateRun,
 }));
 
@@ -44,7 +52,7 @@ beforeEach(() => {
 describe('runExportCommand', () => {
   it('loads from pipeline.db using the recorded generateSessionId', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
-    await runExportCommand({ runId: '01HXYZABCDEFGHJKMNPQRSTVWXY' });
+    await runExportCommand({ runIdOrPath: '01HXYZABCDEFGHJKMNPQRSTVWXY' });
     expect(mockRunPrintComponents).toHaveBeenCalledWith({
       sessionId: 'g1',
       outPath: '/p/dist/components.json',
@@ -53,7 +61,7 @@ describe('runExportCommand', () => {
 
   it('falls back to extractSessionId when generateSessionId is null', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun({ generateSessionId: null }));
-    await runExportCommand({ runId: '01HXYZ' });
+    await runExportCommand({ runIdOrPath: '01HXYZ' });
     expect(mockRunPrintComponents).toHaveBeenCalledWith({
       sessionId: 'e1',
       outPath: '/p/dist/components.json',
@@ -62,7 +70,7 @@ describe('runExportCommand', () => {
 
   it('writes to --out-dir when provided', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
-    await runExportCommand({ runId: '01HXYZ', outDir: '/elsewhere' });
+    await runExportCommand({ runIdOrPath: '01HXYZ', outDir: '/elsewhere' });
     expect(mockRunPrintComponents).toHaveBeenCalledWith({
       sessionId: 'g1',
       outPath: '/elsewhere/components.json',
@@ -71,9 +79,9 @@ describe('runExportCommand', () => {
 
   it('updates the run record after successful export', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
-    await runExportCommand({ runId: '01HXYZ' });
+    await runExportCommand({ runIdOrPath: '01HXYZ' });
     expect(mockUpdateRun).toHaveBeenCalledWith(
-      '01HXYZ',
+      '01HXYZABCDEFGHJKMNPQRSTVWXY',
       expect.objectContaining({ savePath: '/p/dist' }),
     );
   });
@@ -84,6 +92,17 @@ describe('runExportCommand', () => {
       ok: false,
       error: "no generated components in session 'g1'",
     });
-    await expect(runExportCommand({ runId: '01HXYZ' })).rejects.toThrow(/no longer available/);
+    await expect(runExportCommand({ runIdOrPath: '01HXYZ' })).rejects.toThrow(/no longer available/);
+  });
+
+  it('accepts an absolute filesystem path that matches a recorded savePath', async () => {
+    mockFindAllBySavePath.mockResolvedValueOnce([sampleRun({ savePath: '/p/dist' })]);
+    await runExportCommand({ runIdOrPath: '/p/dist' });
+    expect(mockFindAllBySavePath).toHaveBeenCalledWith('/p/dist');
+    expect(mockGetRun).not.toHaveBeenCalled();
+    expect(mockRunPrintComponents).toHaveBeenCalledWith({
+      sessionId: 'g1',
+      outPath: '/p/dist/components.json',
+    });
   });
 });

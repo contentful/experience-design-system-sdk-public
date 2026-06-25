@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockGetRun, mockLaunchWizard } = vi.hoisted(() => ({
+const { mockGetRun, mockFindAllBySavePath, mockLaunchWizard } = vi.hoisted(() => ({
   mockGetRun: vi.fn(),
+  mockFindAllBySavePath: vi.fn(),
   mockLaunchWizard: vi.fn(),
 }));
 
 vi.mock('../../src/runs/store.js', () => ({
   getRun: mockGetRun,
+  findAllRunsBySavePath: mockFindAllBySavePath,
 }));
 
 vi.mock('../../src/runs/modify-launcher.js', () => ({
@@ -38,7 +40,7 @@ beforeEach(() => {
 describe('runModifyCommand', () => {
   it('loads the wizard pre-populated with the run session', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
-    await runModifyCommand({ runId: '01HXYZ' });
+    await runModifyCommand({ runIdOrPath: '01HXYZ' });
     expect(mockLaunchWizard).toHaveBeenCalledWith(
       expect.objectContaining({
         extractSessionId: 'e1',
@@ -51,13 +53,13 @@ describe('runModifyCommand', () => {
 
   it('defaults the entry point to final-review', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
-    await runModifyCommand({ runId: '01HXYZ' });
+    await runModifyCommand({ runIdOrPath: '01HXYZ' });
     expect(mockLaunchWizard.mock.calls[0]![0]!.entryStep).toBe('final-review');
   });
 
   it('--overwrite reuses the existing savePath', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
-    await runModifyCommand({ runId: '01HXYZ', overwrite: true });
+    await runModifyCommand({ runIdOrPath: '01HXYZ', overwrite: true });
     expect(mockLaunchWizard).toHaveBeenCalledWith(
       expect.objectContaining({ savePath: '/p/dist', saveMode: 'overwrite' }),
     );
@@ -65,9 +67,19 @@ describe('runModifyCommand', () => {
 
   it('--save-as-new forces a new save path (no override)', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
-    await runModifyCommand({ runId: '01HXYZ', saveAsNew: true });
+    await runModifyCommand({ runIdOrPath: '01HXYZ', saveAsNew: true });
     expect(mockLaunchWizard).toHaveBeenCalledWith(
       expect.objectContaining({ saveMode: 'new' }),
+    );
+  });
+
+  it('accepts an absolute filesystem path that matches a recorded savePath', async () => {
+    mockFindAllBySavePath.mockResolvedValueOnce([sampleRun({ savePath: '/p/dist' })]);
+    await runModifyCommand({ runIdOrPath: '/p/dist' });
+    expect(mockFindAllBySavePath).toHaveBeenCalledWith('/p/dist');
+    expect(mockGetRun).not.toHaveBeenCalled();
+    expect(mockLaunchWizard).toHaveBeenCalledWith(
+      expect.objectContaining({ extractSessionId: 'e1', generateSessionId: 'g1' }),
     );
   });
 });
