@@ -267,6 +267,60 @@ describe('ScopeGateStep — manual decision wins over streaming AI (Task 3)', ()
   });
 });
 
+describe('ScopeGateStep — two-section stickiness regressions (R2 Task 4)', () => {
+  it('manual reject on a Components-section row keeps it visible (red) in Components, not moved to AI section', () => {
+    const initial = [
+      { name: 'Button', componentId: 'c0' },
+      { name: 'Card', componentId: 'c1' },
+      { name: 'DebugPanel', componentId: 'c2', aiDecision: 'rejected' as const, aiReason: 'r' },
+    ];
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={initial} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    // Cursor at DebugPanel (first AI row). j → Button (first Components row).
+    stdin.write('j');
+    stdin.write('a'); // Manually exclude Button.
+    const out = lastFrame() ?? '';
+    const lines = out.split('\n');
+    const aiHeaderIdx = lines.findIndex((l) => l.includes('AI recommended exclusions'));
+    const compHeaderIdx = lines.findIndex((l) => l.includes('Components ('));
+    const buttonIdx = lines.findIndex((l) => l.includes('Button'));
+    // Button stays in Components section despite being EXCLUDED now.
+    expect(buttonIdx).toBeGreaterThan(compHeaderIdx);
+    expect(aiHeaderIdx).toBeLessThan(compHeaderIdx);
+    // Button row carries the red [✗] glyph.
+    expect(out).toMatch(/\[✗\][^\n]*Button/);
+    // Button does NOT carry the `*` AI marker (it's manual, not AI-driven).
+    expect(out).not.toMatch(/\*[^\n]*Button/);
+  });
+
+  it('operator delta survives a streaming AI prop update with new rejections (sticky across re-render)', () => {
+    const initial = [
+      { name: 'Button', componentId: 'c0' },
+      { name: 'Card', componentId: 'c1' },
+      { name: 'BadgeIcon', componentId: 'c2', aiDecision: 'rejected' as const, aiReason: 'r1' },
+    ];
+    const onConfirm = vi.fn();
+    const { stdin, rerender } = render(
+      <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="running" />,
+    );
+    // Cursor at BadgeIcon (first AI row). Toggle INCLUDED.
+    stdin.write('a');
+    const updated = [
+      ...initial,
+      { name: 'DivWrapper', componentId: 'c3', aiDecision: 'rejected' as const, aiReason: 'r2' },
+    ];
+    rerender(
+      <ScopeGateStep components={updated} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toContain('BadgeIcon');
+    expect(arg.rejected).not.toContain('BadgeIcon');
+    expect(arg.rejected).toContain('DivWrapper');
+  });
+});
+
 describe('ScopeGateStep — focused-row reason wrap + brighter colors (Task 4)', () => {
   it('renders the full reason on a separate line below the focused AI row', () => {
     const longReason =
