@@ -17,6 +17,8 @@ import { DoneStep } from './steps/DoneStep.js';
 import { ErrorStep } from './steps/ErrorStep.js';
 import { TokenInputStep } from './steps/TokenInputStep.js';
 import { PreviewValidationErrorStep } from './steps/PreviewValidationErrorStep.js';
+import { PushingStep } from './steps/PushingStep.js';
+import { computePushExpected, type PushExpected, type PushProgress } from './push-progress.js';
 import { nextStateAfterPrint } from './run-print-files-helpers.js';
 import { PushDecisionGateStep } from './steps/PushDecisionGateStep.js';
 import { chooseGateAction } from './push-decision-gate-helpers.js';
@@ -110,7 +112,8 @@ type WizardState = {
   credentialsError: string;
   serverPreview: ServerPreviewResponse | null;
   manifest: ManifestPayload | null;
-  pushProgress: string | null;
+  pushProgress: PushProgress;
+  pushExpected: PushExpected | null;
   pushResult: PushResult;
   errorStep: string;
   errorMessage: string;
@@ -327,6 +330,7 @@ export function WizardApp({
     serverPreview: null,
     manifest: null,
     pushProgress: null,
+    pushExpected: null,
     pushResult: {
       componentTypes: { created: 0, updated: 0, failed: 0 },
       designTokens: { created: 0, updated: 0, failed: 0 },
@@ -992,7 +996,8 @@ export function WizardApp({
         return;
       }
     }
-    update({ step: 'pushing' });
+    const pushExpected = preview ? computePushExpected(preview) : null;
+    update({ step: 'pushing', pushExpected, pushProgress: null });
     try {
       const resolvedHost = resolveWizardHost(host);
       const client = new ImportApiClient({
@@ -1014,7 +1019,7 @@ export function WizardApp({
         process.stderr.write(`[eds] log write failed: ${err instanceof Error ? err.message : String(err)}\n`);
       }
       update({
-        pushProgress: `Queued (operation ${operation.sys.id.slice(0, 8)}...)`,
+        pushProgress: { kind: 'queued', operationId: operation.sys.id },
       });
 
       let pollCount = 0;
@@ -1024,7 +1029,15 @@ export function WizardApp({
           const s = op.summary;
           if (s) {
             const done = s.total - s.pending;
-            update({ pushProgress: `${done}/${s.total} entities processed` });
+            const items = op.items ?? [];
+            // Best-effort fresh signal: pick the most recently succeeded item
+            // (the API does not surface an in-progress status today). Falls
+            // back to null and the PushingStep hides the line.
+            const lastDone = items.length > 0 ? items[items.length - 1] : null;
+            const current = lastDone && lastDone.status === 'succeeded' ? lastDone.id : null;
+            update({
+              pushProgress: { kind: 'progress', processed: done, total: s.total, current },
+            });
           }
           try {
             logStep({
@@ -1562,12 +1575,11 @@ export function WizardApp({
 
       case 'pushing':
         return (
-          <RunningStep
+          <PushingStep
             stepNumber={totalSteps}
             totalSteps={totalSteps}
-            title="Push to Contentful"
-            description="Writing component types and design tokens to your Contentful space..."
-            detail={state.pushProgress ?? undefined}
+            expected={state.pushExpected}
+            progress={state.pushProgress}
           />
         );
 
