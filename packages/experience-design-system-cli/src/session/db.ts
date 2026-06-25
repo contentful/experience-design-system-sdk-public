@@ -358,6 +358,54 @@ function applyDbMigrations(db: DatabaseSync): void {
       CREATE INDEX idx_generation_cache_session ON generation_cache(source_session_id);
     `);
   }
+
+  // Fine-grained cache: add prompt_hash to generation_cache so cache busts when
+  // the operator switches prompt files. Existing rows get '' (matches the
+  // historical "default bundled prompt" — note that lookups using a non-empty
+  // hash for the bundled prompt won't match, so first run after upgrade busts
+  // the cache. Documented as acceptable.
+  //
+  // The primary key also needs to expand to include prompt_hash so multiple
+  // prompt variants can coexist per (input_hash, entity_type, entity_id).
+  // SQLite doesn't allow ALTERing a PK, so when promoting the schema we rebuild
+  // the table in-place.
+  const genCacheCols = db.prepare(`PRAGMA table_info(generation_cache)`).all() as Array<{ name: string; pk: number }>;
+  const hasPromptHash = genCacheCols.some((c) => c.name === 'prompt_hash');
+  const oldPkCols = genCacheCols.filter((c) => c.pk > 0).map((c) => c.name);
+  const promptHashInPk = oldPkCols.includes('prompt_hash');
+  if (!hasPromptHash) {
+    db.exec(`ALTER TABLE generation_cache ADD COLUMN prompt_hash TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!promptHashInPk) {
+    db.exec('BEGIN');
+    try {
+      db.exec(`
+        CREATE TABLE generation_cache__new (
+          input_hash        TEXT NOT NULL,
+          entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set')),
+          entity_id         TEXT NOT NULL,
+          source_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          human_edited      INTEGER NOT NULL DEFAULT 0 CHECK (human_edited IN (0, 1)),
+          created_at        TEXT NOT NULL,
+          updated_at        TEXT NOT NULL,
+          prompt_hash       TEXT NOT NULL DEFAULT '',
+          PRIMARY KEY (input_hash, prompt_hash, entity_type, entity_id)
+        );
+        INSERT INTO generation_cache__new
+          (input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash)
+          SELECT input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash
+          FROM generation_cache;
+        DROP TABLE generation_cache;
+        ALTER TABLE generation_cache__new RENAME TO generation_cache;
+        CREATE INDEX IF NOT EXISTS idx_generation_cache_entity  ON generation_cache(entity_type, entity_id);
+        CREATE INDEX IF NOT EXISTS idx_generation_cache_session ON generation_cache(source_session_id);
+      `);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  }
 }
 
 export interface ApplyToolCallsResult {
@@ -1913,6 +1961,8 @@ export interface CacheEntry {
   entityId: string;
   sourceSessionId: string;
   humanEdited: boolean;
+  /** sha256 of the prompt content. '' for pre-upgrade rows that predate the fine-grained cache. */
+  promptHash: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -1950,14 +2000,15 @@ export function lookupCache(
   inputHash: string,
   entityType: 'component' | 'token_set',
   entityId: string,
+  promptHash: string = '',
 ): CacheEntry | null {
   const row = db
     .prepare(
-      `SELECT input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at
+      `SELECT input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash
        FROM generation_cache
-       WHERE input_hash = ? AND entity_type = ? AND entity_id = ?`,
+       WHERE input_hash = ? AND entity_type = ? AND entity_id = ? AND prompt_hash = ?`,
     )
-    .get(inputHash, entityType, entityId) as
+    .get(inputHash, entityType, entityId, promptHash) as
     | {
         input_hash: string;
         entity_type: string;
@@ -1966,6 +2017,7 @@ export function lookupCache(
         human_edited: number;
         created_at: string;
         updated_at: string;
+        prompt_hash: string;
       }
     | undefined;
   if (!row) return null;
@@ -1975,6 +2027,7 @@ export function lookupCache(
     entityId: row.entity_id,
     sourceSessionId: row.source_session_id,
     humanEdited: row.human_edited === 1,
+    promptHash: row.prompt_hash,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1987,7 +2040,7 @@ export function lookupCacheByEntity(
 ): CacheEntry | null {
   const row = db
     .prepare(
-      `SELECT input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at
+      `SELECT input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash
        FROM generation_cache
        WHERE entity_type = ? AND entity_id = ?
        ORDER BY updated_at DESC LIMIT 1`,
@@ -2001,6 +2054,7 @@ export function lookupCacheByEntity(
         human_edited: number;
         created_at: string;
         updated_at: string;
+        prompt_hash: string;
       }
     | undefined;
   if (!row) return null;
@@ -2010,6 +2064,7 @@ export function lookupCacheByEntity(
     entityId: row.entity_id,
     sourceSessionId: row.source_session_id,
     humanEdited: row.human_edited === 1,
+    promptHash: row.prompt_hash,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -2022,16 +2077,17 @@ export function storeCache(
   entityId: string,
   sourceSessionId: string,
   humanEdited: boolean,
+  promptHash: string = '',
 ): void {
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO generation_cache (input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(input_hash, entity_type, entity_id) DO UPDATE SET
+    `INSERT INTO generation_cache (input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(input_hash, prompt_hash, entity_type, entity_id) DO UPDATE SET
        source_session_id = excluded.source_session_id,
        human_edited = CASE WHEN generation_cache.human_edited = 1 THEN 1 ELSE excluded.human_edited END,
        updated_at = excluded.updated_at`,
-  ).run(inputHash, entityType, entityId, sourceSessionId, humanEdited ? 1 : 0, now, now);
+  ).run(inputHash, entityType, entityId, sourceSessionId, humanEdited ? 1 : 0, now, now, promptHash);
 }
 
 export function storeScannedFiles(db: DatabaseSync, sessionId: string, filePaths: string[]): void {
