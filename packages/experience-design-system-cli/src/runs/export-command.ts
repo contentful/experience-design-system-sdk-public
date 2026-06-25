@@ -24,7 +24,7 @@ export async function runExportCommand(opts: ExportCommandOptions): Promise<void
   });
   if (!componentsResult.ok) {
     throw new Error(
-      `Run ${opts.runId} no longer available in pipeline.db (${componentsResult.error}). Use 'experiences import' to start fresh.`,
+      `Failed to re-emit components for run ${opts.runId}: ${componentsResult.error}`,
     );
   }
   // Tokens are optional — silently skip if the session has none.

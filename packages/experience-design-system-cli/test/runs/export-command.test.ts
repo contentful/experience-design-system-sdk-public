@@ -78,12 +78,32 @@ describe('runExportCommand', () => {
     );
   });
 
-  it('errors when the session is no longer in pipeline.db', async () => {
+  it('errors when the session is no longer in pipeline.db, surfacing the underlying reason', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
     mockRunPrintComponents.mockResolvedValueOnce({
       ok: false,
       error: "no generated components in session 'g1'",
     });
-    await expect(runExportCommand({ runId: '01HXYZ' })).rejects.toThrow(/no longer available/);
+    await expect(runExportCommand({ runId: '01HXYZ' })).rejects.toThrow(
+      /Failed to re-emit components for run 01HXYZ: no generated components in session 'g1'/,
+    );
+  });
+
+  it('does not blame a missing pipeline.db session when the underlying error is unrelated', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun());
+    mockRunPrintComponents.mockResolvedValueOnce({
+      ok: false,
+      error:
+        "Cannot find module '/repo/packages/experience-design-system-cli/dist/bin/cli.js'",
+    });
+    let caught: unknown;
+    try {
+      await runExportCommand({ runId: '01HXYZ' });
+    } catch (e) {
+      caught = e;
+    }
+    const message = caught instanceof Error ? caught.message : String(caught);
+    expect(message).toMatch(/Failed to re-emit components for run 01HXYZ: Cannot find module/);
+    expect(message).not.toMatch(/no longer available in pipeline\.db/);
   });
 });
