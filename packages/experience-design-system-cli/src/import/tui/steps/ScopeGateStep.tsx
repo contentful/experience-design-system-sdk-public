@@ -74,6 +74,11 @@ export function ScopeGateStep({
   const flatList: ScopeComponent[] = components;
 
   const isIncluded = (row: ScopeComponent): boolean => {
+    // Pilot-2026-06-25 invariant: operator decisions are ALWAYS sticky over
+    // streaming AI updates. If the operator explicitly toggled this row
+    // (userExcluded or userUnExcluded), that wins regardless of any later
+    // aiDecision the auto-filter writes via prop updates. The [AI] badge
+    // still appears on the row — it's informational, not authoritative.
     if (userExcluded.has(row.name)) return false;
     if (userUnExcluded.has(row.name)) return true;
     return row.aiDecision !== 'rejected';
