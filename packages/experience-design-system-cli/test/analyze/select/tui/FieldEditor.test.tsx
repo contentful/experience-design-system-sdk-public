@@ -1605,3 +1605,211 @@ describe('FieldEditor — keybindings overlay (`?`)', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe('FieldEditor — Feature 11 (rationale panel via `i`)', () => {
+  const META = {
+    sourcePath: '/proj/Hero.tsx',
+    componentSource: 'L1\nL2\nL3',
+    props: {
+      title: { rationale: 'inferred string from JSX literal', sourceStartLine: 1, sourceEndLine: 1 },
+    },
+  } as const;
+
+  it('pressing `i` opens the rationale panel for the current component', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={24}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={META}
+      />,
+    );
+    stdin.write('i');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/RATIONALE/);
+    expect(frame).toContain('Hero');
+    expect(frame).toContain('inferred string from JSX literal');
+  });
+
+  it('a second `i` closes the rationale panel', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={24}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={META}
+      />,
+    );
+    stdin.write('i');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/RATIONALE/);
+    stdin.write('i');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/RATIONALE/);
+  });
+
+  it('Esc while rationale panel is open closes panel and does not bubble to onExit', async () => {
+    const onExit = vi.fn();
+    const onDiscard = vi.fn();
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={24}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={onDiscard}
+        onExit={onExit}
+        metadata={META}
+      />,
+    );
+    stdin.write('i');
+    await tick();
+    stdin.write('\x1b'); // Esc
+    await tick();
+    expect(onExit).not.toHaveBeenCalled();
+    expect(onDiscard).not.toHaveBeenCalled();
+    expect(lastFrame() ?? '').not.toMatch(/RATIONALE/);
+  });
+
+  it('pressing `s` while rationale panel is open closes rationale and opens source (mutual exclusion)', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={24}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={META}
+      />,
+    );
+    stdin.write('i');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/RATIONALE/);
+    stdin.write('s');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/RATIONALE/);
+    expect(frame).toContain('/proj/Hero.tsx');
+  });
+
+  it('pressing `i` while source panel is open closes source and opens rationale', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={24}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={META}
+      />,
+    );
+    stdin.write('s');
+    await tick();
+    expect(lastFrame() ?? '').toContain('/proj/Hero.tsx');
+    stdin.write('i');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/RATIONALE/);
+    // Source-panel header (lines N-M) should be gone.
+    expect(frame).not.toMatch(/lines 1/);
+  });
+
+  it('j scrolls the rationale panel when content overflows', async () => {
+    // Build a metadata with many props so panel content overflows.
+    const longProps: Record<string, { rationale: string }> = {};
+    for (let i = 0; i < 30; i++) {
+      longProps[`p${i}`] = { rationale: `rationale-text-${i} aaaaaaaaaaaaaaaa bbbbbbbbbbbb` };
+    }
+    // Build a big component with many props matching longProps keys
+    const big = JSON.stringify(
+      {
+        Hero: {
+          $type: 'component',
+          $properties: Object.fromEntries(
+            Object.keys(longProps).map((n) => [n, { $type: 'string', $category: 'content', $description: '' }]),
+          ),
+        },
+      },
+      null,
+      2,
+    );
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={big}
+        width={60}
+        height={12}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={{ props: longProps }}
+      />,
+    );
+    stdin.write('i');
+    await tick();
+    const before = lastFrame() ?? '';
+    expect(before).toMatch(/↕ 1-/);
+    stdin.write('j');
+    await tick();
+    const after = lastFrame() ?? '';
+    // Scroll indicator advanced.
+    expect(after).toMatch(/↕ 2-/);
+  });
+
+  it('legend shows `[i] rationale` cue when at row-level', () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={META}
+      />,
+    );
+    expect(lastFrame() ?? '').toMatch(/i\s+rationale|rationale/);
+  });
+
+  it('does NOT toggle the panel when operator is typing in a description field (literal `i`)', async () => {
+    const onChange = vi.fn();
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={24}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={META}
+      />,
+    );
+    // Land on prop row (Hero has one prop: title). Return enters field-edit
+    // mode at the first field. We need to navigate to description specifically.
+    // STRING_COMPONENT's title prop: type, category, required, default, description
+    stdin.write('\r'); // type
+    await tick();
+    stdin.write('j'); // category
+    await tick();
+    stdin.write('j'); // required
+    await tick();
+    stdin.write('j'); // default
+    await tick();
+    stdin.write('j'); // description
+    await tick();
+    stdin.write('i');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Panel must NOT open while typing description.
+    expect(frame).not.toMatch(/RATIONALE\s+—/);
+  });
+});

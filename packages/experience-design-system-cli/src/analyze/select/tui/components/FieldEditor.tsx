@@ -11,6 +11,8 @@ import type {
   CDFSlotDefinition,
 } from '@contentful/experience-design-system-types';
 import { useImmediateInput } from '../hooks/useImmediateInput.js';
+import { computeNextScrollOffset } from '../hooks/scroll-offset.js';
+import { RationalePanel, renderRationaleLines, type RationaleRow } from './RationalePanel.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -725,6 +727,11 @@ export function FieldEditor({
   // When open, Esc closes the panel only (does not bubble to onExit).
   const [sourceOpen, setSourceOpen] = useState(false);
 
+  // Feature 11: rationale panel toggle (`i`). Mutually exclusive with the
+  // source panel — opening one closes the other.
+  const [rationaleOpen, setRationaleOpen] = useState(false);
+  const [rationaleScrollOffset, setRationaleScrollOffset] = useState(0);
+
   // Discoverability overlay. `?` toggles a modal listing every wired
   // keybinding grouped by context. While open, every other handler is inert
   // — only `?` and Esc respond. Esc here closes the overlay and does NOT
@@ -733,6 +740,43 @@ export function FieldEditor({
 
   const props = editorState.props;
   const slots = editorState.slots;
+
+  // Feature 11: derive a human-readable component name for the rationale
+  // panel header. Prefer the JSON wrapper key (e.g. "Hero" in `{ Hero: {...} }`);
+  // fall back to "Component" when the value is a bare entry or unparseable.
+  const componentName = (() => {
+    try {
+      const parsed = JSON.parse(value) as Record<string, unknown>;
+      const keys = Object.keys(parsed);
+      if (
+        keys.length === 1 &&
+        parsed[keys[0]] !== null &&
+        typeof parsed[keys[0]] === 'object'
+      ) {
+        return keys[0];
+      }
+    } catch {
+      // fall through
+    }
+    return 'Component';
+  })();
+
+  // Feature 11: assemble rationale rows from metadata. Props first (in
+  // editor order), then slots. Slots don't carry rationale today, but we
+  // surface them as rows with an empty rationale so the panel still gives
+  // the operator a complete map of the component's surface.
+  const rationaleRows: RationaleRow[] = [
+    ...props.map<RationaleRow>((p) => ({
+      name: p.name,
+      kind: 'prop',
+      rationale: metadata?.props?.[p.name]?.rationale ?? '',
+    })),
+    ...slots.map<RationaleRow>((s) => ({
+      name: s.name,
+      kind: 'slot',
+      rationale: '',
+    })),
+  ];
 
   const currentProp = props[propIdx] ?? null;
   const currentSlot = slots[slotIdx] ?? null;
@@ -850,7 +894,60 @@ export function FieldEditor({
       !inDescriptionTextEntry &&
       !inComponentDescTextEntry
     ) {
+      // Mutual exclusion with the rationale panel (Feature 11).
+      setRationaleOpen(false);
+      setRationaleScrollOffset(() => 0);
       setSourceOpen((o) => !o);
+      return;
+    }
+
+    // ── Feature 11: rationale panel scroll while open ───────────────────────
+    // Reuses the shared scroll-offset helper so j/k/Ctrl+u/d/PageUp/Down/G
+    // work in the panel exactly like the JSON view (spec #4).
+    if (rationaleOpen) {
+      const PANEL_HEIGHT = 12;
+      const innerWidth = Math.max(1, width - 2);
+      const totalLines = renderRationaleLines(rationaleRows, innerWidth).length;
+      const next = computeNextScrollOffset(rationaleScrollOffset, input, key, totalLines, PANEL_HEIGHT);
+      if (next !== null) {
+        // Functional setState mirrors the cursor-stutter fix (commit 5d11e60).
+        setRationaleScrollOffset(() => next);
+        return;
+      }
+      if (input === 'i' || key.escape) {
+        setRationaleOpen(false);
+        setRationaleScrollOffset(() => 0);
+        return;
+      }
+      // Swallow other input while the panel is open.
+      return;
+    }
+
+    // ── Feature 11: rationale panel toggle (`i`) ────────────────────────────
+    // `i` is literal in every text-entry context: description editor,
+    // component-description editor, string/token default editor, and the
+    // values/allowedComponents add/edit text-entry. The first three are
+    // covered by `inDescriptionTextEntry` / `inComponentDescTextEntry`; for
+    // the string-default and value-list cases we apply the same gating used
+    // by the `?` overlay (Spec #1 + #11).
+    const inStringDefaultTextEntry =
+      focusLevel === 'field' &&
+      activeField === 'default' &&
+      currentProp != null &&
+      (currentProp.type === 'string' || currentProp.type === 'token');
+    if (
+      input === 'i' &&
+      !key.ctrl &&
+      !key.meta &&
+      !inDescriptionTextEntry &&
+      !inComponentDescTextEntry &&
+      !inStringDefaultTextEntry &&
+      !inValueListTextEntry
+    ) {
+      // Mutual exclusion with the source panel.
+      setSourceOpen(false);
+      setRationaleScrollOffset(() => 0);
+      setRationaleOpen((o) => !o);
       return;
     }
 
@@ -1363,7 +1460,10 @@ export function FieldEditor({
     if (focusLevel === 'field' && (activeField === 'values' || activeField === 'allowedComponents')) {
       return '[a]dd  [e]dit  [r]emove  ↑↓/jk navigate  [K/J] reorder  Esc row';
     }
-    return '↑↓/jk navigate rows  Enter edit fields  s source  ? help  Ctrl+S save  Esc exit panel';
+    if (rationaleOpen) {
+      return 'jk/Ctrl+u/d scroll  i/Esc close  rationale panel';
+    }
+    return '↑↓/jk navigate rows  Enter edit fields  s source  i rationale  ? help  Ctrl+S save  Esc exit panel';
   })();
 
   // Build visible rows
@@ -1526,6 +1626,20 @@ export function FieldEditor({
           );
         })()}
 
+      {/* Feature 11: rationale panel — toggled by `i`. Mutually exclusive
+          with the source-view panel above. Reuses the shared scroll-offset
+          helper for j/k/Ctrl+u/d/PageUp/Down/G navigation. */}
+      {rationaleOpen && (
+        <RationalePanel
+          componentName={componentName}
+          rows={rationaleRows}
+          scrollOffset={rationaleScrollOffset}
+          width={Math.max(20, width)}
+          height={12}
+          active={true}
+        />
+      )}
+
       {showHelp && (
         <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
           <Text bold color="cyan">Keybindings</Text>
@@ -1550,6 +1664,7 @@ export function FieldEditor({
           <Text> </Text>
           <Text bold>Panels</Text>
           <Text>{'  s                toggle source-view for the current prop'}</Text>
+          <Text>{'  i                toggle rationale panel for the current component'}</Text>
           <Text>{'  d                toggle removed-components panel (wizard final-review)'}</Text>
           <Text>{'  ?                toggle this overlay'}</Text>
           <Text> </Text>
