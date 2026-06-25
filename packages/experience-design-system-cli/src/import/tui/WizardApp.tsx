@@ -883,14 +883,12 @@ export function WizardApp({
   const advanceWithCredentials = (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
     const resolvedHost = resolveWizardHost(host);
     credentialsRef.current = { spaceId, environmentId, cmaToken };
-    update({
-      spaceId,
-      environmentId,
-      cmaToken,
-      host: resolvedHost,
-      credentialsError: '',
-      step: 'credential-test-gate',
-    });
+    // The dedicated `credential-test-gate` screen was dropped — credentials are
+    // now always validated immediately after they're persisted. The inline
+    // `credentialsValidating` status (PR #54) handles the visual feedback while
+    // the API ping is in flight. The literal `'credential-test-gate'` is kept
+    // in the WizardStep union for back-compat, but is never set as a step.
+    void validateCredentials(spaceId, environmentId, cmaToken, resolvedHost);
   };
 
   const confirmCredentials = async (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
@@ -1711,25 +1709,12 @@ export function WizardApp({
           />
         );
 
-      case 'credential-test-gate':
-        return (
-          <GateStep
-            successMessage="Credentials entered"
-            summary={`Space: ${state.spaceId}  ·  Environment: ${state.environmentId}`}
-            context="Verify your credentials work before running the import, or skip and find out during the push step."
-            continueLabel="Test credentials"
-            skipLabel="Skip and continue"
-            showSkip={true}
-            onContinue={() => {
-              void validateCredentials(state.spaceId, state.environmentId, state.cmaToken, state.host);
-            }}
-            onSkip={() => {
-              void advanceAfterCredentialsValidated();
-            }}
-            onQuit={() => process.exit(0)}
-          />
-        );
-
+      // 'credential-test-gate' is intentionally NOT rendered as a dedicated
+      // screen any more (the post-#54 inline credentials-validating status made
+      // the gate redundant). The step value is kept in the union for back-compat
+      // with existing imports/tests but is never actually set as a step —
+      // `advanceWithCredentials` calls `validateCredentials` directly.
+      //
       // 'validating-credentials' is intentionally NOT rendered as a dedicated
       // screen any more (see CredentialsStep `validating` prop). The step
       // value is kept in the union for back-compat with existing imports/tests

@@ -10,7 +10,7 @@
  *
  * New order:
  *   welcome → token-input → path-validation → extracting → scope-gate
- *          → credentials → credential-test-gate → validating-credentials
+ *          → credentials (validates inline) → generating
  *          → generating → final-review → push-decision-gate → previewing
  *          → preview-gate → pushing → done
  *
@@ -50,7 +50,7 @@ export function nextStepAfterScopeGate(opts: {
 
 /**
  * Transition target after credentials are validated (or skipped via the
- * credential-test-gate skip path). Drives the post-credentials branch:
+ * inline validation pings the API). Drives the post-credentials branch:
  *   - acceptedCount > 0 → `generating` (run the generator now that creds are good)
  *   - acceptedCount === 0 → `push-decision-gate` (no components to generate;
  *     skip straight to push-decision and preview)
