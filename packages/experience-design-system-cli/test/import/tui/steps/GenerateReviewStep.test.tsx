@@ -24,6 +24,18 @@ vi.mock('../../../../src/session/db.js', () => ({
   }),
   loadCDFComponents: vi.fn().mockReturnValue([{ key: 'Button', entry: SAMPLE_ENTRY }]),
   storeCDFComponents: vi.fn(),
+  loadComponentReviewMetadata: vi.fn().mockReturnValue(null),
+  loadComponentRationale: vi.fn().mockReturnValue({
+    name: 'Button',
+    description: 'A button component',
+    descriptionRationale: 'why-desc',
+    propsRationale: 'why-props',
+    slotsRationale: 'why-slots',
+    props: [
+      { name: 'variant', category: 'content', description: 'Visual style', rationale: 'enum visual variant' },
+    ],
+    slots: [],
+  }),
 }));
 
 // Capture useLivePreview hook calls so Task 4 tests can assert when trigger
@@ -990,5 +1002,94 @@ describe('GenerateReviewStep — strict opt-in finalize semantics', () => {
 
     expect(runSpy).not.toHaveBeenCalled();
     expect(onFinalize).toHaveBeenCalledWith(3, 0, 0);
+  });
+});
+
+
+describe('GenerateReviewStep - component rationale panels (lifted)', () => {
+  it('pressing I from sidebar focus opens the component rationale panel and replaces the right pane', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/FIELDS/);
+    stdin.write('I');
+    await tick();
+    const out = lastFrame() ?? '';
+    expect(out).toContain('Component rationale');
+    expect(out).toContain('Button');
+    // FieldEditor must NOT be rendered when the panel is open.
+    expect(out).not.toMatch(/FIELDS \[Ctrl\+S/);
+  });
+
+  it('pressing i from sidebar focus opens the prop rationale panel and replaces the right pane', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('i');
+    await tick();
+    const out = lastFrame() ?? '';
+    expect(out).toContain('RATIONALE');
+    expect(out).not.toMatch(/FIELDS \[Ctrl\+S/);
+  });
+
+  it('pressing I again closes the panel and restores the right pane', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('I');
+    await tick();
+    expect(lastFrame() ?? '').toContain('Component rationale');
+    stdin.write('I');
+    await tick();
+    const out = lastFrame() ?? '';
+    expect(out).not.toContain('Component rationale');
+    expect(out).toMatch(/FIELDS/);
+  });
+
+  it('Esc closes an open rationale panel without quitting the step', async () => {
+    const onQuit = vi.fn();
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={onQuit} />,
+    );
+    await tick();
+    stdin.write('I');
+    await tick();
+    expect(lastFrame() ?? '').toContain('Component rationale');
+    stdin.write('\u001b'); // Esc
+    await tick();
+    expect(lastFrame() ?? '').not.toContain('Component rationale');
+    expect(onQuit).not.toHaveBeenCalled();
+  });
+
+  it('opening component-rationale closes prop-rationale (mutual exclusion)', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('i');
+    await tick();
+    expect(lastFrame() ?? '').toContain('RATIONALE');
+    stdin.write('I');
+    await tick();
+    const out = lastFrame() ?? '';
+    expect(out).toContain('Component rationale');
+    // The lowercase-i panel header is "RATIONALE - <name>"; with the
+    // uppercase panel open, the small-r prop panel should not render.
+    expect(out).not.toMatch(/^RATIONALE/m);
+  });
+
+  it('rationale keys are gated when the finalize dialog is open', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('F'); // open finalize dialog
+    await tick();
+    stdin.write('I');
+    await tick();
+    expect(lastFrame() ?? '').not.toContain('Component rationale');
   });
 });

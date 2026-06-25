@@ -12,7 +12,6 @@ import type {
 } from '@contentful/experience-design-system-types';
 import { useImmediateInput } from '../hooks/useImmediateInput.js';
 import { computeNextScrollOffset } from '../hooks/scroll-offset.js';
-import { RationalePanel, renderRationaleLines, type RationaleRow } from './RationalePanel.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -58,6 +57,30 @@ type FieldEditorProps = {
   onExit?: () => void;
   /** Feature 1: source code + LLM rationale metadata. Optional. */
   metadata?: FieldEditorMetadata;
+  /**
+   * When provided, the parent owns the prop-rationale panel: pressing `i`
+   * inside FieldEditor calls this callback (subject to text-entry gating)
+   * instead of toggling internal state. The panel is rendered by the parent
+   * in place of FieldEditor — FieldEditor no longer renders its own panel.
+   */
+  onTogglePropRationale?: () => void;
+  /**
+   * When provided, the parent owns the component-rationale panel: pressing
+   * `I` (uppercase) calls this callback (subject to text-entry gating).
+   */
+  onToggleComponentRationale?: () => void;
+  /**
+   * When provided, the parent owns the source-view panel: pressing `s`
+   * calls this callback (subject to text-entry gating). FieldEditor will not
+   * render its own source panel in that case.
+   */
+  onToggleSourceExternal?: () => void;
+  /**
+   * Reports text-entry-active state changes to the parent so the parent can
+   * gate top-level keybinds (i/I/s) against literal keystrokes inside
+   * description editors, string default editors, and value-list text entry.
+   */
+  onTextEntryActiveChange?: (active: boolean) => void;
 };
 
 /**
@@ -664,6 +687,10 @@ export function FieldEditor({
   onDiscard,
   onExit,
   metadata,
+  onTogglePropRationale,
+  onToggleComponentRationale,
+  onToggleSourceExternal,
+  onTextEntryActiveChange,
 }: FieldEditorProps): React.ReactElement {
   const { state: initialState, error: parseError } = parseToState(value);
 
@@ -741,42 +768,17 @@ export function FieldEditor({
   const props = editorState.props;
   const slots = editorState.slots;
 
-  // Feature 11: derive a human-readable component name for the rationale
-  // panel header. Prefer the JSON wrapper key (e.g. "Hero" in `{ Hero: {...} }`);
-  // fall back to "Component" when the value is a bare entry or unparseable.
-  const componentName = (() => {
-    try {
-      const parsed = JSON.parse(value) as Record<string, unknown>;
-      const keys = Object.keys(parsed);
-      if (
-        keys.length === 1 &&
-        parsed[keys[0]] !== null &&
-        typeof parsed[keys[0]] === 'object'
-      ) {
-        return keys[0];
-      }
-    } catch {
-      // fall through
-    }
-    return 'Component';
-  })();
-
-  // Feature 11: assemble rationale rows from metadata. Props first (in
-  // editor order), then slots. Slots don't carry rationale today, but we
-  // surface them as rows with an empty rationale so the panel still gives
-  // the operator a complete map of the component's surface.
-  const rationaleRows: RationaleRow[] = [
-    ...props.map<RationaleRow>((p) => ({
-      name: p.name,
-      kind: 'prop',
-      rationale: metadata?.props?.[p.name]?.rationale ?? '',
-    })),
-    ...slots.map<RationaleRow>((s) => ({
-      name: s.name,
-      kind: 'slot',
-      rationale: '',
-    })),
-  ];
+  // Report text-entry-active state to parent so it can gate top-level `i`/`I`/`s`
+  // keybinds against literal keystrokes inside any text-entry surface.
+  const textEntryActive =
+    (focusLevel === 'field' && activeField === 'description') ||
+    (focusLevel === 'field' &&
+      activeField === 'default' &&
+      ((editorState.props[propIdx]?.type === 'string') || (editorState.props[propIdx]?.type === 'token'))) ||
+    editingValue != null;
+  React.useEffect(() => {
+    onTextEntryActiveChange?.(textEntryActive);
+  }, [textEntryActive, onTextEntryActiveChange]);
 
   const currentProp = props[propIdx] ?? null;
   const currentSlot = slots[slotIdx] ?? null;
@@ -894,23 +896,28 @@ export function FieldEditor({
       !inDescriptionTextEntry &&
       !inComponentDescTextEntry
     ) {
-      // Mutual exclusion with the rationale panel (Feature 11).
+      // When the parent owns the source panel, delegate; otherwise fall
+      // back to the internal toggle for backward compat.
+      if (onToggleSourceExternal) {
+        onToggleSourceExternal();
+        return;
+      }
+      // Mutual exclusion with the rationale panel (Feature 11) — only when
+      // internally managed.
       setRationaleOpen(false);
       setRationaleScrollOffset(() => 0);
       setSourceOpen((o) => !o);
       return;
     }
 
-    // ── Feature 11: rationale panel scroll while open ───────────────────────
-    // Reuses the shared scroll-offset helper so j/k/Ctrl+u/d/PageUp/Down/G
-    // work in the panel exactly like the JSON view (spec #4).
-    if (rationaleOpen) {
+    // ── Rationale-panel scroll while internally open (legacy path) ─────────
+    // When the parent does not own the panel (no onTogglePropRationale prop),
+    // FieldEditor preserves its legacy in-place panel for backward compat
+    // with mounts that pre-date the lifted-panel refactor.
+    if (rationaleOpen && !onTogglePropRationale) {
       const PANEL_HEIGHT = 12;
-      const innerWidth = Math.max(1, width - 2);
-      const totalLines = renderRationaleLines(rationaleRows, innerWidth).length;
-      const next = computeNextScrollOffset(rationaleScrollOffset, input, key, totalLines, PANEL_HEIGHT);
+      const next = computeNextScrollOffset(rationaleScrollOffset, input, key, 9999, PANEL_HEIGHT);
       if (next !== null) {
-        // Functional setState mirrors the cursor-stutter fix (commit 5d11e60).
         setRationaleScrollOffset(() => next);
         return;
       }
@@ -919,35 +926,38 @@ export function FieldEditor({
         setRationaleScrollOffset(() => 0);
         return;
       }
-      // Swallow other input while the panel is open.
       return;
     }
 
-    // ── Feature 11: rationale panel toggle (`i`) ────────────────────────────
-    // `i` is literal in every text-entry context: description editor,
+    // ── Rationale + component-rationale keybinds (`i` / `I`) ────────────────
+    // `i`/`I` are literal in every text-entry context: description editor,
     // component-description editor, string/token default editor, and the
-    // values/allowedComponents add/edit text-entry. The first three are
-    // covered by `inDescriptionTextEntry` / `inComponentDescTextEntry`; for
-    // the string-default and value-list cases we apply the same gating used
-    // by the `?` overlay (Spec #1 + #11).
+    // values/allowedComponents add/edit text-entry.
     const inStringDefaultTextEntry =
       focusLevel === 'field' &&
       activeField === 'default' &&
       currentProp != null &&
       (currentProp.type === 'string' || currentProp.type === 'token');
-    if (
-      input === 'i' &&
+    const rationaleKeyAllowed =
       !key.ctrl &&
       !key.meta &&
       !inDescriptionTextEntry &&
       !inComponentDescTextEntry &&
       !inStringDefaultTextEntry &&
-      !inValueListTextEntry
-    ) {
-      // Mutual exclusion with the source panel.
+      !inValueListTextEntry;
+    if (input === 'i' && rationaleKeyAllowed) {
+      if (onTogglePropRationale) {
+        onTogglePropRationale();
+        return;
+      }
+      // Legacy in-place toggle (no parent callback wired).
       setSourceOpen(false);
       setRationaleScrollOffset(() => 0);
       setRationaleOpen((o) => !o);
+      return;
+    }
+    if (input === 'I' && rationaleKeyAllowed && onToggleComponentRationale) {
+      onToggleComponentRationale();
       return;
     }
 
@@ -1595,7 +1605,7 @@ export function FieldEditor({
       {/* Feature 1: source-view panel — toggled by `s`. Slices componentSource
           to the captured per-prop line range; falls back to a friendly notice
           when source location is missing. */}
-      {sourceOpen &&
+      {sourceOpen && !onToggleSourceExternal &&
         (() => {
           const propMeta = !inSlots && !inComponentDesc && currentProp ? metadata?.props?.[currentProp.name] : undefined;
           const start = propMeta?.sourceStartLine ?? null;
@@ -1626,19 +1636,10 @@ export function FieldEditor({
           );
         })()}
 
-      {/* Feature 11: rationale panel — toggled by `i`. Mutually exclusive
-          with the source-view panel above. Reuses the shared scroll-offset
-          helper for j/k/Ctrl+u/d/PageUp/Down/G navigation. */}
-      {rationaleOpen && (
-        <RationalePanel
-          componentName={componentName}
-          rows={rationaleRows}
-          scrollOffset={rationaleScrollOffset}
-          width={Math.max(20, width)}
-          height={12}
-          active={true}
-        />
-      )}
+      {/* Rationale panel is lifted to the parent (see GenerateReviewStep);
+          FieldEditor no longer renders it inline. The legacy in-place toggle
+          is preserved only for tests that mount FieldEditor without the
+          lifted-panel callbacks. */}
 
       {showHelp && (
         <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
