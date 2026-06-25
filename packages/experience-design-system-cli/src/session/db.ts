@@ -523,6 +523,25 @@ export function applyToolCalls(
             componentId,
           );
         }
+        // Component-level rationale: sparse-update each field only when present
+        // so missing keys don't overwrite previously-stored values.
+        if (call.rationale) {
+          if (call.rationale.description !== undefined) {
+            db.prepare(
+              'UPDATE raw_components SET component_description_rationale = ? WHERE session_id = ? AND component_id = ?',
+            ).run(call.rationale.description, sessionId, componentId);
+          }
+          if (call.rationale.props !== undefined) {
+            db.prepare(
+              'UPDATE raw_components SET props_rationale = ? WHERE session_id = ? AND component_id = ?',
+            ).run(call.rationale.props, sessionId, componentId);
+          }
+          if (call.rationale.slots !== undefined) {
+            db.prepare(
+              'UPDATE raw_components SET slots_rationale = ? WHERE session_id = ? AND component_id = ?',
+            ).run(call.rationale.slots, sessionId, componentId);
+          }
+        }
       } else if (call.tool === 'classify_prop') {
         const changes = updateProp.run(
           call.cdf_type,
@@ -565,6 +584,13 @@ export function applyToolCalls(
         if (slotChanges.changes === 0) {
           warnings.push(`${componentName}: classify_slot '${call.slot}' — slot not found, skipped`);
           continue;
+        }
+        // Per-slot rationale: sparse-update only when present so omitting it
+        // doesn't blank existing values.
+        if (call.rationale !== undefined) {
+          db.prepare(
+            'UPDATE raw_slots SET rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?',
+          ).run(call.rationale, sessionId, componentId, call.slot);
         }
         if (call.allowed_components !== undefined) {
           deleteAllowedComponents.run(sessionId, componentId, call.slot);
