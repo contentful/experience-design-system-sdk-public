@@ -5,6 +5,7 @@ import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediat
 type EntityResult = {
   created: number;
   updated: number;
+  removed: number;
   failed: number;
 };
 
@@ -32,7 +33,13 @@ export function DoneStep({
   });
 
   const totalFailed = componentTypes.failed + designTokens.failed;
-  const totalPushed = componentTypes.created + componentTypes.updated + designTokens.created + designTokens.updated;
+  const totalPushed =
+    componentTypes.created +
+    componentTypes.updated +
+    componentTypes.removed +
+    designTokens.created +
+    designTokens.updated +
+    designTokens.removed;
   const success = totalFailed === 0;
 
   function EntityRows({ entity, label }: { entity: EntityResult; label: string }) {
@@ -53,6 +60,15 @@ export function DoneStep({
             <Text>
               {entity.updated} {label}
               {entity.updated !== 1 ? 's' : ''} updated
+            </Text>
+          </Box>
+        )}
+        {entity.removed > 0 && (
+          <Box gap={1}>
+            <Text color="green">✓</Text>
+            <Text>
+              {entity.removed} {label}
+              {entity.removed !== 1 ? 's' : ''} removed
             </Text>
           </Box>
         )}

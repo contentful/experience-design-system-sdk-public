@@ -74,8 +74,8 @@ type WizardStep =
   | 'preview-validation-error';
 
 type PushResult = {
-  componentTypes: { created: number; updated: number; failed: number };
-  designTokens: { created: number; updated: number; failed: number };
+  componentTypes: { created: number; updated: number; removed: number; failed: number };
+  designTokens: { created: number; updated: number; removed: number; failed: number };
   summary?: { total: number; succeeded: number; failed: number };
 };
 
@@ -332,8 +332,8 @@ export function WizardApp({
     pushProgress: null,
     pushExpected: null,
     pushResult: {
-      componentTypes: { created: 0, updated: 0, failed: 0 },
-      designTokens: { created: 0, updated: 0, failed: 0 },
+      componentTypes: { created: 0, updated: 0, removed: 0, failed: 0 },
+      designTokens: { created: 0, updated: 0, removed: 0, failed: 0 },
     },
     errorStep: '',
     errorMessage: '',
@@ -989,8 +989,8 @@ export function WizardApp({
         update({
           step: 'done',
           pushResult: {
-            componentTypes: { created: 0, updated: 0, failed: 0 },
-            designTokens: { created: 0, updated: 0, failed: 0 },
+            componentTypes: { created: 0, updated: 0, removed: 0, failed: 0 },
+            designTokens: { created: 0, updated: 0, removed: 0, failed: 0 },
           },
         });
         return;
@@ -1076,6 +1076,9 @@ export function WizardApp({
             updated: items.filter(
               (i) => i.entityType === 'ComponentType' && i.action === 'update' && i.status === 'succeeded',
             ).length,
+            removed: items.filter(
+              (i) => i.entityType === 'ComponentType' && i.action === 'delete' && i.status === 'succeeded',
+            ).length,
             failed: items.filter((i) => i.entityType === 'ComponentType' && i.status === 'failed').length,
           },
           designTokens: {
@@ -1084,6 +1087,9 @@ export function WizardApp({
             ).length,
             updated: items.filter(
               (i) => i.entityType === 'DesignToken' && i.action === 'update' && i.status === 'succeeded',
+            ).length,
+            removed: items.filter(
+              (i) => i.entityType === 'DesignToken' && i.action === 'delete' && i.status === 'succeeded',
             ).length,
             failed: items.filter((i) => i.entityType === 'DesignToken' && i.status === 'failed').length,
           },
@@ -1095,11 +1101,13 @@ export function WizardApp({
           componentTypes: {
             created: preview?.components.new.length ?? 0,
             updated: preview?.components.changed.length ?? 0,
+            removed: preview?.components.removed.length ?? 0,
             failed: 0,
           },
           designTokens: {
             created: preview?.tokens.new.length ?? 0,
             updated: preview?.tokens.changed.length ?? 0,
+            removed: preview?.tokens.removed.length ?? 0,
             failed: 0,
           },
           summary: operation.summary,
