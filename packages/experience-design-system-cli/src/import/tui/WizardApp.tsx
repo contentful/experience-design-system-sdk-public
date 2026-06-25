@@ -34,6 +34,7 @@ import {
 import { ScopeGateHost, type ScopeComponent } from './scope-gate-host.js';
 import { FinalReviewHost } from './final-review-host.js';
 import { runScopeGate } from './runScopeGate.js';
+import { buildAutoFilterErrorTail } from './auto-filter-error.js';
 import { checkAgentAuth, type AgentName } from '../../generate/agent-runner.js';
 import { normalizePath } from '../path-utils.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
@@ -591,7 +592,7 @@ export function WizardApp({
         if (signal === 'SIGTERM') {
           setState((prev) => ({ ...prev, aiFilterStatus: 'cancelled' }));
         } else if ((code ?? 0) !== 0) {
-          const tail = stderr.split('\n').filter(Boolean).slice(-3).join(' / ');
+          const tail = buildAutoFilterErrorTail(stderr);
           setState((prev) => ({
             ...prev,
             aiFilterStatus: 'failed',
