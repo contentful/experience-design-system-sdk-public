@@ -303,6 +303,12 @@ export function ScopeGateStep({
         </Box>
       )}
 
+      {/* Pilot-2026-06-25: bottom legend.
+          - `[c]` is gone (no collapsible AI section to toggle).
+          - `[r]` is gone from the legend (kept as a muscle-memory alias for
+            `[a/space]` but not advertised).
+          - `[s] AI reason` only shows when the list contains an AI-flagged
+            row, since the side panel is a no-op otherwise. */}
       <Box gap={3} marginTop={1}>
         {includedCount > 0 ? (
           <Text>
