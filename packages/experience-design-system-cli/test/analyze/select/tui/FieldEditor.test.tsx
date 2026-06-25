@@ -1606,7 +1606,7 @@ describe('FieldEditor — keybindings overlay (`?`)', () => {
   });
 });
 
-describe('FieldEditor — Feature 11 (rationale panel via `i`)', () => {
+describe('FieldEditor - rationale panels are lifted to the parent', () => {
   const META = {
     sourcePath: '/proj/Hero.tsx',
     componentSource: 'L1\nL2\nL3',
@@ -1615,7 +1615,7 @@ describe('FieldEditor — Feature 11 (rationale panel via `i`)', () => {
     },
   } as const;
 
-  it('pressing `i` opens the rationale panel for the current component', async () => {
+  it('does NOT render the rationale panel inline anymore', async () => {
     const { stdin, lastFrame } = render(
       <FieldEditor
         value={STRING_COMPONENT}
@@ -1625,18 +1625,20 @@ describe('FieldEditor — Feature 11 (rationale panel via `i`)', () => {
         onSave={vi.fn()}
         onDiscard={vi.fn()}
         metadata={META}
+        onTogglePropRationale={vi.fn()}
       />,
     );
     stdin.write('i');
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/RATIONALE/);
-    expect(frame).toContain('Hero');
-    expect(frame).toContain('inferred string from JSX literal');
+    // The lifted-panel callback handler short-circuits before any internal
+    // panel state would be set, so the inline RATIONALE header must NOT appear.
+    expect(frame).not.toMatch(/^RATIONALE/m);
   });
 
-  it('a second `i` closes the rationale panel', async () => {
-    const { stdin, lastFrame } = render(
+  it('emits onTogglePropRationale when `i` is pressed at row-level', async () => {
+    const onTogglePropRationale = vi.fn();
+    const { stdin } = render(
       <FieldEditor
         value={STRING_COMPONENT}
         width={80}
@@ -1645,42 +1647,17 @@ describe('FieldEditor — Feature 11 (rationale panel via `i`)', () => {
         onSave={vi.fn()}
         onDiscard={vi.fn()}
         metadata={META}
+        onTogglePropRationale={onTogglePropRationale}
       />,
     );
     stdin.write('i');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/RATIONALE/);
-    stdin.write('i');
-    await tick();
-    expect(lastFrame() ?? '').not.toMatch(/RATIONALE/);
+    expect(onTogglePropRationale).toHaveBeenCalledTimes(1);
   });
 
-  it('Esc while rationale panel is open closes panel and does not bubble to onExit', async () => {
-    const onExit = vi.fn();
-    const onDiscard = vi.fn();
-    const { stdin, lastFrame } = render(
-      <FieldEditor
-        value={STRING_COMPONENT}
-        width={80}
-        height={24}
-        onChange={vi.fn()}
-        onSave={vi.fn()}
-        onDiscard={onDiscard}
-        onExit={onExit}
-        metadata={META}
-      />,
-    );
-    stdin.write('i');
-    await tick();
-    stdin.write('\x1b'); // Esc
-    await tick();
-    expect(onExit).not.toHaveBeenCalled();
-    expect(onDiscard).not.toHaveBeenCalled();
-    expect(lastFrame() ?? '').not.toMatch(/RATIONALE/);
-  });
-
-  it('pressing `s` while rationale panel is open closes rationale and opens source (mutual exclusion)', async () => {
-    const { stdin, lastFrame } = render(
+  it('emits onToggleComponentRationale when `I` is pressed at row-level', async () => {
+    const onToggleComponentRationale = vi.fn();
+    const { stdin } = render(
       <FieldEditor
         value={STRING_COMPONENT}
         width={80}
@@ -1689,20 +1666,18 @@ describe('FieldEditor — Feature 11 (rationale panel via `i`)', () => {
         onSave={vi.fn()}
         onDiscard={vi.fn()}
         metadata={META}
+        onTogglePropRationale={vi.fn()}
+        onToggleComponentRationale={onToggleComponentRationale}
       />,
     );
-    stdin.write('i');
+    stdin.write('I');
     await tick();
-    expect(lastFrame() ?? '').toMatch(/RATIONALE/);
-    stdin.write('s');
-    await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).not.toMatch(/RATIONALE/);
-    expect(frame).toContain('/proj/Hero.tsx');
+    expect(onToggleComponentRationale).toHaveBeenCalledTimes(1);
   });
 
-  it('pressing `i` while source panel is open closes source and opens rationale', async () => {
-    const { stdin, lastFrame } = render(
+  it('emits onToggleSourceExternal when `s` is pressed at row-level', async () => {
+    const onToggleSourceExternal = vi.fn();
+    const { stdin } = render(
       <FieldEditor
         value={STRING_COMPONENT}
         width={80}
@@ -1711,61 +1686,76 @@ describe('FieldEditor — Feature 11 (rationale panel via `i`)', () => {
         onSave={vi.fn()}
         onDiscard={vi.fn()}
         metadata={META}
+        onToggleSourceExternal={onToggleSourceExternal}
       />,
     );
     stdin.write('s');
     await tick();
-    expect(lastFrame() ?? '').toContain('/proj/Hero.tsx');
-    stdin.write('i');
-    await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/RATIONALE/);
-    // Source-panel header (lines N-M) should be gone.
-    expect(frame).not.toMatch(/lines 1/);
+    expect(onToggleSourceExternal).toHaveBeenCalledTimes(1);
   });
 
-  it('j scrolls the rationale panel when content overflows', async () => {
-    // Build a metadata with many props so panel content overflows.
-    const longProps: Record<string, { rationale: string }> = {};
-    for (let i = 0; i < 30; i++) {
-      longProps[`p${i}`] = { rationale: `rationale-text-${i} aaaaaaaaaaaaaaaa bbbbbbbbbbbb` };
-    }
-    // Build a big component with many props matching longProps keys
-    const big = JSON.stringify(
-      {
-        Hero: {
-          $type: 'component',
-          $properties: Object.fromEntries(
-            Object.keys(longProps).map((n) => [n, { $type: 'string', $category: 'content', $description: '' }]),
-          ),
-        },
-      },
-      null,
-      2,
-    );
-    const { stdin, lastFrame } = render(
+  it('does NOT emit onTogglePropRationale while operator is typing in a description field', async () => {
+    const onTogglePropRationale = vi.fn();
+    const { stdin } = render(
       <FieldEditor
-        value={big}
-        width={60}
-        height={12}
+        value={STRING_COMPONENT}
+        width={80}
+        height={24}
         onChange={vi.fn()}
         onSave={vi.fn()}
         onDiscard={vi.fn()}
-        metadata={{ props: longProps }}
+        metadata={META}
+        onTogglePropRationale={onTogglePropRationale}
       />,
     );
-    stdin.write('i');
+    // Navigate into description text-entry.
+    stdin.write('\r'); // enter prop field-edit at first field
     await tick();
-    const before = lastFrame() ?? '';
-    expect(before).toMatch(/↕ 1-/);
     stdin.write('j');
     await tick();
-    const after = lastFrame() ?? '';
-    // Scroll indicator advanced.
-    expect(after).toMatch(/↕ 2-/);
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('i');
+    await tick();
+    expect(onTogglePropRationale).not.toHaveBeenCalled();
   });
 
-  it('legend shows `[i] rationale` cue when at row-level', () => {
+  it('reports text-entry-active state to the parent via onTextEntryActiveChange', async () => {
+    const onTextEntryActiveChange = vi.fn();
+    const { stdin } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={24}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={META}
+        onTextEntryActiveChange={onTextEntryActiveChange}
+      />,
+    );
+    // The effect fires at mount: should be false initially.
+    await tick();
+    expect(onTextEntryActiveChange).toHaveBeenCalledWith(false);
+    // Enter description text-entry. Now true.
+    stdin.write('\r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    expect(onTextEntryActiveChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it('legend shows `[i] rationale` cue when at row-level (unchanged from prior spec)', () => {
     const { lastFrame } = render(
       <FieldEditor
         value={STRING_COMPONENT}
@@ -1778,38 +1768,5 @@ describe('FieldEditor — Feature 11 (rationale panel via `i`)', () => {
       />,
     );
     expect(lastFrame() ?? '').toMatch(/i\s+rationale|rationale/);
-  });
-
-  it('does NOT toggle the panel when operator is typing in a description field (literal `i`)', async () => {
-    const onChange = vi.fn();
-    const { stdin, lastFrame } = render(
-      <FieldEditor
-        value={STRING_COMPONENT}
-        width={80}
-        height={24}
-        onChange={onChange}
-        onSave={vi.fn()}
-        onDiscard={vi.fn()}
-        metadata={META}
-      />,
-    );
-    // Land on prop row (Hero has one prop: title). Return enters field-edit
-    // mode at the first field. We need to navigate to description specifically.
-    // STRING_COMPONENT's title prop: type, category, required, default, description
-    stdin.write('\r'); // type
-    await tick();
-    stdin.write('j'); // category
-    await tick();
-    stdin.write('j'); // required
-    await tick();
-    stdin.write('j'); // default
-    await tick();
-    stdin.write('j'); // description
-    await tick();
-    stdin.write('i');
-    await tick();
-    const frame = lastFrame() ?? '';
-    // Panel must NOT open while typing description.
-    expect(frame).not.toMatch(/RATIONALE\s+—/);
   });
 });
