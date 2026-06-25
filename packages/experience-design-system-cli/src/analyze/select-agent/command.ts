@@ -1,5 +1,17 @@
 import type { Command } from 'commander';
-import { openPipelineDb, loadRawComponents, loadScannedFiles, createStep, updateStep } from '../../session/db.js';
+import {
+  openPipelineDb,
+  loadRawComponents,
+  loadScannedFiles,
+  createStep,
+  updateStep,
+  computeComponentInputHash,
+  lookupSelectCache,
+  storeSelectCache,
+  getCliCacheVersion,
+  type RawComponentWithId,
+} from '../../session/db.js';
+import { hashPromptForSkill } from '../../session/cache-keys.js';
 import {
   appendReviewEvent,
   getRefineArtifactsRoot,
@@ -269,32 +281,95 @@ async function selectAllComponents(
   components: SelectionCandidate[],
   verbose: boolean,
   skillPathOverride: string | undefined,
+  cacheConfig: { noCache: boolean; dbPath?: string } = { noCache: true },
 ): Promise<SelectOneResult[]> {
   const concurrency = Number(process.env.EDS_GENERATE_CONCURRENCY ?? DEFAULT_CONCURRENCY);
   const batchSize = resolveBatchSize();
+  const total = components.length;
+
+  // ── Fine-grained select cache: replay decisions for components whose
+  // (component_hash, prompt_hash, cli_version) triple already has a row. Only
+  // uncached components are forwarded to the LLM batches.
+  const cachedResults = new Map<number, SelectOneResult>();
+  let promptHash = '';
+  let cliVersion = '';
+  if (!cacheConfig.noCache) {
+    try {
+      promptHash = await hashPromptForSkill('select', skillPathOverride);
+      cliVersion = await getCliCacheVersion();
+      const db = openPipelineDb(cacheConfig.dbPath);
+      try {
+        for (let i = 0; i < components.length; i++) {
+          const candidate = components[i]!;
+          const compHash = computeComponentInputHash(candidate.component as RawComponentWithId);
+          const hit = lookupSelectCache(db, compHash, promptHash, cliVersion);
+          if (hit) {
+            const finalColor = hit.decision === 'accepted' ? c.green : c.red;
+            process.stderr.write(
+              `  ${c.dim(`[${i + 1}/${total}]`)}  ${c.bold(candidate.component.name)}  ${finalColor(hit.decision)} ${c.dim('(cached)')}` +
+                (hit.reason ? `  ${c.dim(hit.reason)}` : '') +
+                '\n',
+            );
+            // Mirror the progress= line that selectBatch emits for live LLM
+            // calls so the wizard's parser sees a uniform stream.
+            const reasonEncoded = hit.reason ? encodeURIComponent(hit.reason) : '';
+            process.stderr.write(
+              `progress=select-agent:${i + 1}/${total}:${hit.decision}:${candidate.component.name}:${reasonEncoded}\n`,
+            );
+            cachedResults.set(i, {
+              componentKey: componentKey(candidate.component),
+              componentName: candidate.component.name,
+              decision: hit.decision,
+              reason: hit.reason ?? undefined,
+              failed: false,
+            });
+          }
+        }
+      } finally {
+        db.close();
+      }
+    } catch {
+      // Cache prefill is best-effort. On any error, fall through and run the
+      // full LLM batch path.
+    }
+  }
+
+  // Build the work-set of components we still need to ask the LLM about.
+  const uncached: SelectionCandidate[] = [];
+  const uncachedIndices: number[] = [];
+  for (let i = 0; i < components.length; i++) {
+    if (!cachedResults.has(i)) {
+      uncached.push(components[i]!);
+      uncachedIndices.push(i);
+    }
+  }
 
   // Chunk into batches of `batchSize`, preserving original indices for the
   // per-component progress=select-agent: lines.
   const batches: BatchItem[][] = [];
-  for (let i = 0; i < components.length; i += batchSize) {
-    const slice = components.slice(i, i + batchSize);
-    batches.push(slice.map((candidate, j) => ({ candidate, index: i + j })));
+  for (let i = 0; i < uncached.length; i += batchSize) {
+    const slice = uncached.slice(i, i + batchSize);
+    batches.push(
+      slice.map((candidate, j) => ({ candidate, index: uncachedIndices[i + j]! })),
+    );
   }
 
   process.stderr.write(
-    `Validating ${c.bold(String(components.length))} component${components.length === 1 ? '' : 's'}` +
+    `Validating ${c.bold(String(uncached.length))} component${uncached.length === 1 ? '' : 's'}` +
+      (cachedResults.size > 0 ? c.dim(`  (${cachedResults.size} cached)`) : '') +
       c.dim(`  (concurrency: ${concurrency}, batch: ${batchSize}, batches: ${batches.length})`) +
       '\n',
   );
 
-  const results: SelectOneResult[] = new Array(components.length);
+  const results: SelectOneResult[] = new Array(total);
+  for (const [i, r] of cachedResults) results[i] = r;
   let nextBatch = 0;
 
   async function worker(): Promise<void> {
     while (nextBatch < batches.length) {
       const b = nextBatch++;
       const batch = batches[b]!;
-      const batchResults = await selectBatch(agent, model, batch, components.length, verbose, skillPathOverride);
+      const batchResults = await selectBatch(agent, model, batch, total, verbose, skillPathOverride);
       for (let k = 0; k < batch.length; k++) {
         results[batch[k]!.index] = batchResults[k]!;
       }
@@ -302,6 +377,28 @@ async function selectAllComponents(
   }
 
   await Promise.all(Array.from({ length: Math.min(concurrency, batches.length) }, worker));
+
+  // Persist fresh decisions (skip cached + failed ones).
+  if (!cacheConfig.noCache && promptHash) {
+    try {
+      const db = openPipelineDb(cacheConfig.dbPath);
+      try {
+        for (let i = 0; i < results.length; i++) {
+          if (cachedResults.has(i)) continue;
+          const r = results[i];
+          if (!r || r.failed || !r.decision) continue;
+          const candidate = components[i]!;
+          const compHash = computeComponentInputHash(candidate.component as RawComponentWithId);
+          storeSelectCache(db, compHash, promptHash, cliVersion, r.decision, r.reason ?? null);
+        }
+      } finally {
+        db.close();
+      }
+    } catch {
+      // Best-effort.
+    }
+  }
+
   return results;
 }
 
@@ -326,6 +423,8 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
       '--select-prompt-path <path>',
       'Path to a custom .md skill prompt for select-agent (bypasses bundled prompt invariants)',
     )
+    .option('--no-select-cache', 'Skip the per-component select cache and re-LLM every component')
+    .option('--no-cache', 'Skip ALL fine-grained caches (extract, select, generate)')
     .action(
       async (opts: {
         session?: string;
@@ -336,6 +435,8 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         dryRun?: boolean;
         excludeInvalid?: boolean;
         selectPromptPath?: string;
+        selectCache?: boolean;
+        cache?: boolean;
       }) => {
         const savedCreds = await readExperiencesCredentials();
         const agentName = opts.agent ?? savedCreds.agent;
@@ -466,12 +567,20 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           return;
         }
 
+        // --no-cache is the global kill-switch; --no-select-cache is the stage-
+        // specific opt-out. Both Commander negation flags arrive as `false` when
+        // the user passed --no-*; default (undefined) means cache stays on.
+        const noCache =
+          opts.cache === false ||
+          opts.selectCache === false ||
+          process.env.EDS_NO_CACHE === '1';
         const selectResults = await selectAllComponents(
           agent,
           model,
           selectionCandidates,
           opts.verbose ?? false,
           selectPromptPath ? resolve(selectPromptPath) : undefined,
+          { noCache },
         );
 
         // Build decision map from results. Seed auto-rejections from validation exclusions first.

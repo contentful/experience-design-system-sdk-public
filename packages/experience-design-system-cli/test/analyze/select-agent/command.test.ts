@@ -682,6 +682,8 @@ describe('select-agent command — reject_reason persistence (Feature 3)', () =>
       '{"tool":"select_component","name":"Button","reason":"primary UI","confidence":5}',
     ]);
     cleanupItems.push(acceptAgent.cleanup);
+    // --no-cache so the second LLM run is not short-circuited by the select cache
+    // from the first run (which would replay the prior "rejected" decision).
     await runCliWithEnv(
       [
         'analyze',
@@ -692,6 +694,7 @@ describe('select-agent command — reject_reason persistence (Feature 3)', () =>
         fixture.sessionId,
         '--project-root',
         fixture.projectDir,
+        '--no-cache',
       ],
       baseEnv(fixture, artifactsDir, acceptAgent.env()),
     );
