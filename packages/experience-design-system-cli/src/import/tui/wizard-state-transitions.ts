@@ -60,3 +60,25 @@ export function nextStepAfterCredentialsValidated(opts: {
 }): WizardStepAfterCredentials {
   return opts.acceptedCount > 0 ? 'generating' : 'push-decision-gate';
 }
+
+/**
+ * Skip-credentials spec — Task 2. When the operator pressed `s` on the
+ * credentials screen, the wizard advanced without validating creds. That
+ * makes `previewImport` impossible (no working token) and undesirable (the
+ * whole point is to inspect locally without touching the server). Callers
+ * check this before issuing the API call and route to
+ * `buildSkippedPreviewTransition()` instead.
+ */
+export function shouldBypassPreview(state: { credentialsSkipped: boolean }): boolean {
+  return state.credentialsSkipped === true;
+}
+
+/**
+ * State patch applied when `shouldBypassPreview` is true: skip the preview
+ * step entirely, surface no server preview to downstream consumers, and
+ * hand control to the push-decision-gate (which will render with push
+ * disabled — see Task 3).
+ */
+export function buildSkippedPreviewTransition(): { step: 'push-decision-gate'; serverPreview: null } {
+  return { step: 'push-decision-gate', serverPreview: null };
+}

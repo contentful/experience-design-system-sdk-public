@@ -49,6 +49,8 @@ import { writeExperiencesCredentials } from '../../credentials-store.js';
 import {
   nextStepAfterScopeGate,
   nextStepAfterCredentialsValidated,
+  shouldBypassPreview,
+  buildSkippedPreviewTransition,
 } from './wizard-state-transitions.js';
 
 type WizardStep =
@@ -1016,6 +1018,15 @@ export function WizardApp({
     cmaToken: string,
     host: string,
   ) => {
+    // Skip-credentials short-circuit. When the operator pressed `s` on the
+    // credentials screen, we never got a working token — calling
+    // previewImport would 401/403 (or worse, send a half-formed manifest
+    // somewhere). Jump straight to the push-decision-gate; Task 3 disables
+    // the push options downstream.
+    if (shouldBypassPreview(state)) {
+      update(buildSkippedPreviewTransition());
+      return;
+    }
     update({ step: 'previewing' });
     const resolvedHost = resolveWizardHost(host);
     try {
