@@ -23,11 +23,19 @@ export type ScopeGateStepProps = {
 
 const VISIBLE_COUNT = 10;
 const REASON_DISPLAY_MAX = 60;
+// Pilot-2026-06-25: the [AI] badge persists for any row the AI flagged,
+// regardless of whether the operator later toggles it back to INCLUDED.
+// The badge is informational only — manual decision wins.
+const AI_BADGE = '[AI] ';
 
 function truncateReason(reason: string | null | undefined): string {
   if (reason === null || reason === undefined || reason === '') return '<no reason given>';
   if (reason.length <= REASON_DISPLAY_MAX) return reason;
   return reason.slice(0, REASON_DISPLAY_MAX - 1).trimEnd() + '…';
+}
+
+function isAiFlagged(row: ScopeComponent): boolean {
+  return row.aiDecision === 'rejected';
 }
 
 export function ScopeGateStep({
@@ -189,7 +197,7 @@ export function ScopeGateStep({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [components, userExcluded, userUnExcluded],
   );
-  const hasAnyAi = flatList.some((c) => c.aiDecision === 'rejected');
+  const hasAnyAi = flatList.some(isAiFlagged);
 
   const visibleEnd = Math.min(scrollOffset + VISIBLE_COUNT, total);
   const visible = flatList.slice(scrollOffset, visibleEnd);
@@ -257,10 +265,10 @@ export function ScopeGateStep({
             const i = vi + scrollOffset;
             const isCursor = i === cursor;
             const included = isIncluded(c);
-            const aiFlagged = c.aiDecision === 'rejected';
+            const aiFlagged = isAiFlagged(c);
             const label = included ? '[✓ INCLUDED]' : '[  EXCLUDED]';
             const prefix = isCursor ? '›' : ' ';
-            const aiBadge = aiFlagged ? '[AI] ' : '';
+            const aiBadge = aiFlagged ? AI_BADGE : '';
             const rowLine = `${prefix} ${aiBadge}${label} ${c.name}`;
             const inlineReason = !isCursor && aiFlagged ? ` ${truncateReason(c.aiReason)}` : '';
             if (isCursor) {
