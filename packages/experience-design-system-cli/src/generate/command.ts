@@ -33,6 +33,7 @@ import {
   renameEmptySlots,
   type RawComponentWithId,
 } from '../session/db.js';
+import { hashPromptForSkill } from '../session/cache-keys.js';
 import { getRefineArtifactsRoot, getRefineSessionPaths } from '../analyze/select/persistence.js';
 import type { ReviewSessionSnapshot } from '../analyze/select/types.js';
 import type { RawComponentDefinition } from '../types.js';
@@ -184,12 +185,13 @@ async function runOneComponent(
   verbose: boolean,
   noCache: boolean,
   skillPathOverride: string | undefined,
+  promptHash: string,
 ): Promise<ComponentRunResult> {
   const pos = c.dim(`[${index + 1}/${total}]`);
 
   if (!noCache) {
     const inputHash = computeComponentInputHash(component as RawComponentWithId);
-    const cached = lookupCache(db, inputHash, 'component', component.component_id);
+    const cached = lookupCache(db, inputHash, 'component', component.component_id, promptHash);
     if (cached) {
       copyComponentFromCache(db, cached.sourceSessionId, sessionId, component.component_id);
       process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.green('cached')}\n`);
@@ -315,7 +317,7 @@ async function runOneComponent(
     const applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings);
     if (!noCache) {
       const inputHash = computeComponentInputHash(component as RawComponentWithId);
-      storeCache(db, inputHash, 'component', component.component_id, sessionId, false);
+      storeCache(db, inputHash, 'component', component.component_id, sessionId, false, promptHash);
     }
     return {
       componentName: component.name,
@@ -351,6 +353,7 @@ async function runAllComponents(
   verbose: boolean,
   noCache: boolean,
   skillPathOverride: string | undefined,
+  promptHash: string,
 ): Promise<ComponentRunResult[]> {
   const concurrency = Number(process.env.EDS_GENERATE_CONCURRENCY ?? DEFAULT_COMPONENT_CONCURRENCY);
   process.stderr.write(
@@ -379,6 +382,7 @@ async function runAllComponents(
         verbose,
         noCache,
         skillPathOverride,
+        promptHash,
       );
       completed += 1;
       process.stderr.write(
@@ -560,6 +564,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     const db = openPipelineDb();
     let componentResults: ComponentRunResult[];
     try {
+      const promptHash = await hashPromptForSkill('components', generatePromptPath);
       componentResults = await runAllComponents(
         agent,
         model,
@@ -571,6 +576,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         verbose,
         opts.cache === false || process.env.EDS_NO_CACHE === '1',
         generatePromptPath,
+        promptHash,
       );
     } finally {
       db.close();
@@ -641,9 +647,10 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         }
       }
 
+      const tokenPromptHash = await hashPromptForSkill('tokens');
       // Check cache before invoking agent
       if (!noCache) {
-        const tokenCached = lookupCache(db, tokenInputHash, 'token_set', '__tokens__');
+        const tokenCached = lookupCache(db, tokenInputHash, 'token_set', '__tokens__', tokenPromptHash);
         if (tokenCached) {
           copyTokensFromCache(db, tokenCached.sourceSessionId, resolvedSessionId);
           sessionId = resolvedSessionId;
@@ -711,7 +718,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
 
       applyTokenToolCalls(db, resolvedSessionId, tokenCalls, []);
       if (!noCache) {
-        storeCache(db, tokenInputHash, 'token_set', '__tokens__', resolvedSessionId, false);
+        storeCache(db, tokenInputHash, 'token_set', '__tokens__', resolvedSessionId, false, tokenPromptHash);
       }
       sessionId = resolvedSessionId;
 
