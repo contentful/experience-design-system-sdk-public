@@ -23,10 +23,11 @@ export type ScopeGateStepProps = {
 
 const VISIBLE_COUNT = 10;
 const REASON_DISPLAY_MAX = 60;
-// Pilot-2026-06-25: the [AI] badge persists for any row the AI flagged,
-// regardless of whether the operator later toggles it back to INCLUDED.
-// The badge is informational only — manual decision wins.
-const AI_BADGE = '[AI] ';
+// Pilot-2026-06-25 R2: AI-flagged rows render a subtle cyan `*` glyph before
+// the name (in place of the Round-1 `[AI]` text badge). The marker persists
+// regardless of whether the operator later toggles the row INCLUDED — manual
+// decision wins; the marker is informational only.
+const AI_MARKER = '*';
 // Indentation prefix for the wrapped reason on the focused AI row. Aligns
 // the reason under the row label so the eye reads it as a continuation.
 const REASON_WRAP_INDENT = '      ';
@@ -297,13 +298,16 @@ export function ScopeGateStep({
             const included = isIncluded(c);
             const aiFlagged = isAiFlagged(c);
             const prefix = isCursor ? '›' : ' ';
-            const aiBadge = aiFlagged ? AI_BADGE : '';
             // R2: color-glyphs replace word labels. Green [✓] for included,
             // red [✗] for excluded. The component name follows the same
             // color UNLESS the row is the cursor row, in which case the
             // name flips to cyan (state glyph keeps its red/green).
             const stateGlyph = included ? '[✓]' : '[✗]';
             const stateColor: 'green' | 'red' = included ? 'green' : 'red';
+            // R2: cyan `*` glyph replaces the verbose `[AI]` badge.
+            const aiMarkerNode = aiFlagged ? (
+              <Text color="cyan">{`${AI_MARKER} `}</Text>
+            ) : null;
             const inlineReason = !isCursor && aiFlagged ? ` ${truncateReason(c.aiReason)}` : '';
             const showAiHeader = aiList.length > 0 && i === 0;
             const showComponentsHeader =
@@ -319,7 +323,8 @@ export function ScopeGateStep({
                 <React.Fragment key={c.componentId}>
                   {header}
                   <Text>
-                    <Text color="cyan">{`${prefix} ${aiBadge}`}</Text>
+                    <Text color="cyan">{`${prefix} `}</Text>
+                    {aiMarkerNode}
                     <Text color={stateColor}>{stateGlyph}</Text>
                     <Text color="cyan">{` ${c.name}`}</Text>
                   </Text>
@@ -333,7 +338,8 @@ export function ScopeGateStep({
               <React.Fragment key={c.componentId}>
                 {header}
                 <Text>
-                  <Text>{`${prefix} ${aiBadge}`}</Text>
+                  <Text>{`${prefix} `}</Text>
+                  {aiMarkerNode}
                   <Text color={stateColor}>{stateGlyph}</Text>
                   <Text color={stateColor}>{` ${c.name}`}</Text>
                   {inlineReason !== '' && <Text dimColor>{inlineReason}</Text>}
@@ -380,6 +386,11 @@ export function ScopeGateStep({
         {hasAnyAi && (
           <Text>
             <Text color="cyan">[s]</Text> <Text dimColor>AI reason</Text>
+          </Text>
+        )}
+        {hasAnyAi && (
+          <Text>
+            <Text color="cyan">*</Text> <Text dimColor>originally excluded by AI</Text>
           </Text>
         )}
       </Box>

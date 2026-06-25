@@ -127,30 +127,82 @@ describe('ScopeGateStep — color glyphs (R2 Task 2)', () => {
   });
 });
 
-describe('ScopeGateStep — persistent [AI] badge (Task 2)', () => {
-  it('renders an [AI] badge on rows where aiDecision === "rejected"', () => {
+describe('ScopeGateStep — subtle AI marker + legend key (R2 Task 3)', () => {
+  it('renders a `*` prefix on AI-rejected rows (no [AI] literal)', () => {
     const { lastFrame } = render(
       <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const out = lastFrame() ?? '';
-    // DebugPanel was AI-rejected, must show [AI] badge.
-    expect(out).toMatch(/\[AI\][^\n]*DebugPanel/);
+    expect(out).not.toContain('[AI]');
+    // DebugPanel (AI-rejected) carries a `*` glyph before its name.
+    expect(out).toMatch(/\*[^\n]*DebugPanel/);
   });
 
-  it('keeps the [AI] badge after operator toggles the row to INCLUDED', () => {
+  it('does NOT render `*` on rows the AI did not reject', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep
+        components={[
+          { name: 'Button', componentId: 'c0' },
+          { name: 'Card', componentId: 'c1' },
+        ]}
+        onConfirm={() => {}}
+        onQuit={() => {}}
+      />,
+    );
+    const out = lastFrame() ?? '';
+    // No row should have a `*` marker before its name when no AI rejection.
+    expect(out).not.toMatch(/\*[^\n]*Button/);
+    expect(out).not.toMatch(/\*[^\n]*Card/);
+  });
+
+  it('legend shows `* originally excluded by AI` when at least one AI row exists', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    const out = lastFrame() ?? '';
+    // Narrow terminal may wrap mid-phrase ("originally" → next line); check
+    // the keywords appear so the legend hint is present in some order.
+    expect(out).toContain('originally');
+    expect(out).toContain('excluded by AI');
+  });
+
+  it('legend omits the `* originally excluded by AI` key when no AI rows exist', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep
+        components={[{ name: 'Button', componentId: 'c0' }]}
+        onConfirm={() => {}}
+        onQuit={() => {}}
+      />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).not.toContain('originally excluded by AI');
+  });
+});
+
+describe('ScopeGateStep — persistent AI marker (R2)', () => {
+  it('renders the `*` marker on rows where aiDecision === "rejected"', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    const out = lastFrame() ?? '';
+    // DebugPanel was AI-rejected; cyan `*` glyph in front of its name.
+    expect(out).toMatch(/\*[^\n]*DebugPanel/);
+    expect(out).not.toContain('[AI]');
+  });
+
+  it('keeps the `*` marker after operator toggles the row to INCLUDED', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
-    // Move cursor to DebugPanel and toggle to INCLUDED.
-    stdin.write('j');
+    // Cursor is on DebugPanel (first AI row). Toggle INCLUDED.
     stdin.write('a');
     const out = lastFrame() ?? '';
-    // Badge still visible on DebugPanel even though it's now INCLUDED.
-    expect(out).toMatch(/\[AI\][^\n]*DebugPanel/);
+    // Marker still visible on DebugPanel even though it's now INCLUDED.
+    expect(out).toMatch(/\*[^\n]*DebugPanel/);
     expect(out).toMatch(/DebugPanel/);
   });
 
-  it('does NOT render [AI] on rows the AI did not reject', () => {
+  it('does NOT render `*` on rows the AI did not reject', () => {
     const { lastFrame } = render(
       <ScopeGateStep
         components={[{ name: 'Button', componentId: 'c0' }]}
@@ -160,6 +212,7 @@ describe('ScopeGateStep — persistent [AI] badge (Task 2)', () => {
     );
     const out = lastFrame() ?? '';
     expect(out).not.toContain('[AI]');
+    expect(out).not.toMatch(/\*[^\n]*Button/);
   });
 });
 
@@ -188,8 +241,8 @@ describe('ScopeGateStep — manual decision wins over streaming AI (Task 3)', ()
     const cardIdx = out.indexOf('Card');
     expect(buttonIdx).toBeGreaterThan(-1);
     expect(cardIdx).toBeGreaterThan(buttonIdx);
-    // [AI] badge appears on Button now.
-    expect(out).toMatch(/\[AI\][^\n]*Button/);
+    // `*` marker appears on Button now.
+    expect(out).toMatch(/\*[^\n]*Button/);
     // f confirms Button is still in accepted.
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];

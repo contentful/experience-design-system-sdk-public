@@ -338,8 +338,8 @@ describe('ScopeGateStep — unified AI behavior', () => {
       // Cursor is on BadgeIcon (first AI row) at mount.
       stdin.write('a');
       const out = lastFrame() ?? '';
-      // R2: BadgeIcon now INCLUDED (green [✓]) and still wears [AI] badge.
-      expect(out).toMatch(/\[AI\][^\n]*\[✓\][^\n]*BadgeIcon/);
+      // R2: BadgeIcon now INCLUDED (green [✓]) and still wears the `*` AI marker.
+      expect(out).toMatch(/\*[^\n]*\[✓\][^\n]*BadgeIcon/);
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.accepted).toContain('BadgeIcon');
@@ -420,7 +420,8 @@ describe('ScopeGateStep — unified AI behavior', () => {
           aiFilterProgress={{ done: 0, total: 3 }}
         />,
       );
-      // No [AI] badges on mount.
+      // R2: no `*` AI markers on mount (no rejections yet).
+      expect(lastFrame() ?? '').not.toMatch(/\*[^\n]*BadgeIcon/);
       expect(lastFrame() ?? '').not.toContain('[AI]');
 
       const updated = [
@@ -437,7 +438,7 @@ describe('ScopeGateStep — unified AI behavior', () => {
         />,
       );
       const frame = lastFrame() ?? '';
-      expect(frame).toMatch(/\[AI\][^\n]*BadgeIcon/);
+      expect(frame).toMatch(/\*[^\n]*BadgeIcon/);
       expect(frame).toContain('low semantic value');
     });
 

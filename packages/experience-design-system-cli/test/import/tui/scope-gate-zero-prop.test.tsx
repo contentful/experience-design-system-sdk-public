@@ -32,8 +32,9 @@ describe('zero-prop component preserved through auto-filter (Feature 3 regressio
     // Component must surface — never silently dropped.
     expect(out).toContain('OpaqueWidget');
     // R2: row surfaces in the "AI recommended exclusions" section with the
-    // [AI] badge (replaced with `*` in Task 3) and a red [✗] glyph.
-    expect(out).toContain('[AI]');
+    // cyan `*` marker and a red [✗] glyph.
+    expect(out).not.toContain('[AI]');
+    expect(out).toMatch(/\*[^\n]*OpaqueWidget/);
     expect(out).toContain('[✗]');
     expect(out).toMatch(/AI recommended exclusions/);
   });
