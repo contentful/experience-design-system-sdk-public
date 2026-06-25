@@ -55,6 +55,21 @@ interface GenerateSubcommandOptions {
   dryRun?: boolean;
   verbose?: boolean;
   cache?: boolean;
+  /** Feature 8: custom skill prompt path for `generate components`. */
+  generatePromptPath?: string;
+}
+
+/**
+ * Feature 8: render the warning banner shown when a custom skill prompt is
+ * active. Always cites the bundled invariants that the override bypasses so
+ * the operator cannot miss it.
+ */
+export function formatCustomPromptBanner(skill: 'components' | 'select', path: string): string {
+  return (
+    `WARNING: Custom prompt active for ${skill}: ${path}\n` +
+    `  Bundled invariants (utility-wrapper rejection, description content rules) do NOT apply.\n` +
+    `  You are responsible for the prompt's correctness.\n`
+  );
 }
 
 function die(message: string): never {
@@ -168,6 +183,7 @@ async function runOneComponent(
   total: number,
   verbose: boolean,
   noCache: boolean,
+  skillPathOverride: string | undefined,
 ): Promise<ComponentRunResult> {
   const pos = c.dim(`[${index + 1}/${total}]`);
 
@@ -244,6 +260,7 @@ async function runOneComponent(
     tokenMapInline,
     outDir: process.cwd(),
     componentName: component.name,
+    skillPathOverride,
   });
 
   const maxAttempts = 2;
@@ -333,6 +350,7 @@ async function runAllComponents(
   tokenMapInline: string | undefined,
   verbose: boolean,
   noCache: boolean,
+  skillPathOverride: string | undefined,
 ): Promise<ComponentRunResult[]> {
   const concurrency = Number(process.env.EDS_GENERATE_CONCURRENCY ?? DEFAULT_COMPONENT_CONCURRENCY);
   process.stderr.write(
@@ -360,6 +378,7 @@ async function runAllComponents(
         components.length,
         verbose,
         noCache,
+        skillPathOverride,
       );
       completed += 1;
       process.stderr.write(
@@ -424,6 +443,22 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     );
   }
   const agent = agentName as AgentName;
+
+  // Feature 8: resolve custom-prompt path for `components` (flag wins over saved
+  // credentials; config-fallback is wired in via credentials-store in Task 4),
+  // validate, and emit the warning banner once at action entry.
+  const generatePromptPath = skill === 'components' ? opts.generatePromptPath : undefined;
+  if (generatePromptPath) {
+    if (!(await pathExists(resolve(generatePromptPath)))) {
+      die(`Error: custom prompt path not found: ${resolve(generatePromptPath)}`);
+    }
+    if (!generatePromptPath.toLowerCase().endsWith('.md')) {
+      process.stderr.write(
+        `WARNING: custom prompt path does not end in .md (${generatePromptPath}) — proceeding anyway.\n`,
+      );
+    }
+    process.stderr.write(formatCustomPromptBanner('components', resolve(generatePromptPath)));
+  }
 
   if (skill === 'tokens' && !opts.rawTokens) {
     die('Error: --raw-tokens is required when using generate tokens');
@@ -504,6 +539,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       tokensInline,
       tokenMapInline,
       outDir: process.cwd(),
+      skillPathOverride: generatePromptPath,
     });
     process.stdout.write(prompt + '\n');
     process.exit(0);
@@ -533,6 +569,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         tokenMapInline,
         verbose,
         opts.cache === false || process.env.EDS_NO_CACHE === '1',
+        generatePromptPath,
       );
     } finally {
       db.close();
@@ -725,7 +762,11 @@ export function registerGenerateCommand(program: Command): void {
     .description('Invoke a coding agent to produce components.json from raw analysis output')
     .option('--session <id>', 'Session ID from analyze extract (defaults to most recent)')
     .option('--tokens <path>', 'Path to tokens.json for token-linked prop resolution')
-    .option('--token-map <path>', 'Path to token-name-map.json sidecar');
+    .option('--token-map <path>', 'Path to token-name-map.json sidecar')
+    .option(
+      '--generate-prompt-path <path>',
+      'Path to a custom .md skill prompt for components generation (bypasses bundled prompt invariants)',
+    );
   addAgentFlags(componentsCmd).action(async (opts: GenerateSubcommandOptions) => {
     await runGenerateSkill('components', opts, opts.verbose ?? false);
   });
