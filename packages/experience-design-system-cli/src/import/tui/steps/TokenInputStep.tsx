@@ -15,6 +15,7 @@ export function TokenInputStep({ onConfirm, onSkip, onQuit }: TokenInputStepProp
   const [cursorVisible, setCursorVisible] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [resolvedPath, setResolvedPath] = useState<string | null>(null);
+  const [typingMode, setTypingMode] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setCursorVisible((v) => !v), 500);
@@ -52,11 +53,26 @@ export function TokenInputStep({ onConfirm, onSkip, onQuit }: TokenInputStepProp
       onConfirm(normalized);
       return;
     }
-    if (input === 's') {
+    if (key.tab) {
+      setTypingMode(false);
+      return;
+    }
+    if (key.escape) {
+      if (typingMode) {
+        setTypingMode(false);
+        setInputValue('');
+        setError(null);
+        setResolvedPath(null);
+        return;
+      }
+      onQuit();
+      return;
+    }
+    if (!typingMode && input === 's') {
       onSkip();
       return;
     }
-    if (key.escape || input === 'q') {
+    if (!typingMode && input === 'q') {
       onQuit();
       return;
     }
@@ -67,6 +83,7 @@ export function TokenInputStep({ onConfirm, onSkip, onQuit }: TokenInputStepProp
       return;
     }
     if (input && !key.ctrl && !key.meta) {
+      setTypingMode(true);
       setInputValue((v) => v + input);
       setError(null);
       setResolvedPath(null);
@@ -103,8 +120,10 @@ export function TokenInputStep({ onConfirm, onSkip, onQuit }: TokenInputStepProp
       </Box>
 
       <Box gap={3} marginTop={1}>
-        <Text dimColor>[Enter] Confirm path</Text>
-        <Text dimColor>[s] Skip tokens</Text>
+        <Text dimColor>[Enter] Submit / Skip if empty</Text>
+        <Text dimColor>[Tab] Exit typing</Text>
+        <Text dimColor>[Esc] Clear &amp; exit</Text>
+        <Text dimColor>[s] Skip</Text>
         <Text dimColor>[q] Quit</Text>
       </Box>
     </Box>
