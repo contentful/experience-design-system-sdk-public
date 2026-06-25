@@ -1473,7 +1473,7 @@ export function FieldEditor({
     if (rationaleOpen) {
       return 'jk/Ctrl+u/d scroll  i/Esc close  rationale panel';
     }
-    return '↑↓/jk navigate rows  Enter edit fields  s source  i rationale  ? help  Ctrl+S save  Esc exit panel';
+    return '↑↓/jk navigate rows  Enter edit fields  s source  i prop rationale  I component rationale  ? help  Ctrl+S save  Esc exit panel';
   })();
 
   // Build visible rows
@@ -1665,7 +1665,8 @@ export function FieldEditor({
           <Text> </Text>
           <Text bold>Panels</Text>
           <Text>{'  s                toggle source-view for the current prop'}</Text>
-          <Text>{'  i                toggle rationale panel for the current component'}</Text>
+          <Text>{'  i                toggle prop rationale panel'}</Text>
+          <Text>{'  I                toggle component rationale panel'}</Text>
           <Text>{'  d                toggle removed-components panel (wizard final-review)'}</Text>
           <Text>{'  ?                toggle this overlay'}</Text>
           <Text> </Text>

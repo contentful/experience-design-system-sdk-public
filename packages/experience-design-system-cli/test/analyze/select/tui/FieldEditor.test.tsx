@@ -1770,3 +1770,50 @@ describe('FieldEditor - rationale panels are lifted to the parent', () => {
     expect(lastFrame() ?? '').toMatch(/i\s+rationale|rationale/);
   });
 });
+
+
+describe('FieldEditor - legend documents i and I keys', () => {
+  const META = {
+    sourcePath: '/proj/Hero.tsx',
+    componentSource: 'L1',
+    props: {
+      title: { rationale: 'why title', sourceStartLine: 1, sourceEndLine: 1 },
+    },
+  } as const;
+
+  it('legend mentions both i (prop) and I (component) rationale keys', () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={120}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={META}
+      />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).toMatch(/i\s+prop rationale|i prop rationale/);
+    expect(out).toMatch(/I\s+component rationale|I component rationale/);
+  });
+
+  it('help overlay documents I for component rationale and clarifies i for prop rationale', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={120}
+        height={28}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        metadata={META}
+      />,
+    );
+    stdin.write('?');
+    await tick();
+    const out = lastFrame() ?? '';
+    expect(out).toContain('toggle prop rationale panel');
+    expect(out).toContain('toggle component rationale panel');
+  });
+});
