@@ -137,6 +137,12 @@ type WizardState = {
   // operator's credential-entry time overlaps with the LLM call).
   generatePrefetchStatus: 'idle' | 'running' | 'complete' | 'failed';
   generatePrefetchError: string | null;
+  // Skip-credentials escape hatch (see dsi-tui-skip-credentials spec).
+  // When true, the wizard advanced past the credentials step without
+  // validating creds. Downstream effects: previewImport is bypassed,
+  // push is disabled at the push-decision-gate, and runPush refuses to
+  // execute if it's somehow reached.
+  credentialsSkipped: boolean;
 };
 
 function findCliPath(): string {
@@ -389,6 +395,7 @@ export function WizardApp({
     credentialsValidating: false,
     generatePrefetchStatus: 'idle',
     generatePrefetchError: null,
+    credentialsSkipped: false,
   });
 
   useEffect(() => {
@@ -1705,6 +1712,15 @@ export function WizardApp({
                   }
                 : undefined
             }
+            onSkip={() => {
+              // Skip-credentials: mark the wizard as skipped, clear any
+              // stale credentialsError banner, and advance through the
+              // normal post-credentials branch. The in-flight generate
+              // prefetch (PR #54) is intentionally NOT cancelled here —
+              // the operator still wants to see classifications.
+              update({ credentialsSkipped: true, credentialsError: '' });
+              void advanceAfterCredentialsValidated();
+            }}
             onQuit={() => {
               cancelGeneratePrefetch();
               process.exit(0);

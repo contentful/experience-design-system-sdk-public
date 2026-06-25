@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../../host-utils.js';
@@ -34,6 +34,13 @@ type CredentialsStepProps = {
    * failed mid-credentials-entry. The operator presses R to re-trigger.
    */
   onRetryPrefetch?: () => void;
+  /**
+   * Skip-credentials escape hatch. When pressed (via `s` keybind, gated
+   * against text-entry mode), the wizard advances without validating
+   * credentials and disables push downstream. See dsi-tui-skip-credentials
+   * spec.
+   */
+  onSkip?: () => void;
 };
 
 export function CredentialsStep({
@@ -50,6 +57,7 @@ export function CredentialsStep({
   onContinue,
   onQuit,
   onRetryPrefetch,
+  onSkip,
 }: CredentialsStepProps): React.ReactElement {
   const normalizedInitialHost = toConfiguredHost(initialHost) ?? DEFAULT_CONFIGURED_HOST;
   const [spaceId, setSpaceId] = useState(initialSpaceId);
@@ -59,6 +67,12 @@ export function CredentialsStep({
   const [activeField, setActiveField] = useState<Field>('spaceId');
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [cursorVisible, setCursorVisible] = useState(true);
+  // Tracks whether the operator has typed any printable character into a
+  // form field since mount. While false, the `s` keybind is interpreted as
+  // the skip-credentials shortcut. Once the operator has begun typing, `s`
+  // is routed into the active field as input (we don't want to swallow a
+  // legitimate letter in a space ID / token / host).
+  const hasTypedRef = useRef(false);
 
   useEffect(() => {
     const interval = setInterval(() => setCursorVisible((v) => !v), 500);
@@ -123,6 +137,14 @@ export function CredentialsStep({
       onQuit();
       return;
     }
+    // Skip-credentials shortcut. Gated against text-entry mode so the letter
+    // 's' can still be typed into a form field once the operator has begun
+    // editing. The legend hint is always rendered (see below) so operators
+    // know the escape hatch exists from the moment the screen mounts.
+    if ((input === 's' || input === 'S') && onSkip && !hasTypedRef.current) {
+      onSkip();
+      return;
+    }
     if (key.backspace || key.delete) {
       if (activeField === 'spaceId') setSpaceId((v) => v.slice(0, -1));
       else if (activeField === 'environmentId') setEnvironmentId((v) => v.slice(0, -1));
@@ -131,6 +153,7 @@ export function CredentialsStep({
       return;
     }
     if (input && !key.ctrl && !key.meta) {
+      hasTypedRef.current = true;
       if (activeField === 'spaceId') setSpaceId((v) => v + input);
       else if (activeField === 'environmentId') setEnvironmentId((v) => v + input);
       else if (activeField === 'cmaToken') setCmaToken((v) => v + input);
@@ -210,6 +233,11 @@ export function CredentialsStep({
         <Text dimColor>[Tab] Switch field</Text>
         <Text dimColor>[q] Quit</Text>
       </Box>
+      {onSkip && (
+        <Box marginTop={0}>
+          <Text dimColor>[s] Skip — review locally only (no push, no live preview)</Text>
+        </Box>
+      )}
     </Box>
   );
 }
