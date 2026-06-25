@@ -10,6 +10,10 @@ export type ExperiencesCredentials = {
   host?: string;
   agent?: string;
   agentModel?: string;
+  /** Feature 8: persisted custom prompt path for `analyze select-agent`. */
+  selectPromptPath?: string;
+  /** Feature 8: persisted custom prompt path for `generate components`. */
+  generatePromptPath?: string;
 };
 
 const CREDENTIALS_DIR = join(homedir(), '.config', 'experiences');
@@ -27,6 +31,8 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
       ...(host ? { host } : {}),
       ...(parsed.agent ? { agent: parsed.agent } : {}),
       ...(parsed.agentModel ? { agentModel: parsed.agentModel } : {}),
+      ...(parsed.selectPromptPath ? { selectPromptPath: parsed.selectPromptPath } : {}),
+      ...(parsed.generatePromptPath ? { generatePromptPath: parsed.generatePromptPath } : {}),
     };
   } catch {
     const host = toConfiguredHost(process.env['EDS_HOST']);
@@ -40,7 +46,7 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
 }
 
 export async function writeExperiencesCredentials(creds: ExperiencesCredentials): Promise<void> {
-  const { host: _host, agent, agentModel, ...rest } = creds;
+  const { host: _host, agent, agentModel, selectPromptPath, generatePromptPath, ...rest } = creds;
   const host = toConfiguredHost(creds.host);
   await mkdir(CREDENTIALS_DIR, { recursive: true });
   await writeFile(
@@ -51,6 +57,8 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
         ...(host ? { host } : {}),
         ...(agent ? { agent } : {}),
         ...(agentModel ? { agentModel } : {}),
+        ...(selectPromptPath ? { selectPromptPath } : {}),
+        ...(generatePromptPath ? { generatePromptPath } : {}),
       },
       null,
       2,

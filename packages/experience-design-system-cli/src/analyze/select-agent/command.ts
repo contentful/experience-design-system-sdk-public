@@ -350,8 +350,9 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
 
         const agent = agentName as AgentName;
 
-        // Feature 8: validate + announce custom prompt path before any heavy work.
-        const selectPromptPath = opts.selectPromptPath;
+        // Feature 8: validate + announce custom prompt path before any heavy
+        // work. Flag wins over saved credentials.
+        const selectPromptPath = opts.selectPromptPath ?? savedCreds.selectPromptPath;
         if (selectPromptPath) {
           const resolvedPath = resolve(selectPromptPath);
           const exists = await access(resolvedPath)

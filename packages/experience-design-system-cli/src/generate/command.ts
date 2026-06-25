@@ -444,10 +444,11 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
   }
   const agent = agentName as AgentName;
 
-  // Feature 8: resolve custom-prompt path for `components` (flag wins over saved
-  // credentials; config-fallback is wired in via credentials-store in Task 4),
-  // validate, and emit the warning banner once at action entry.
-  const generatePromptPath = skill === 'components' ? opts.generatePromptPath : undefined;
+  // Feature 8: resolve custom-prompt path for `components` (flag wins over
+  // saved credentials), validate, and emit the warning banner once at action
+  // entry.
+  const generatePromptPath =
+    skill === 'components' ? (opts.generatePromptPath ?? savedCreds.generatePromptPath) : undefined;
   if (generatePromptPath) {
     if (!(await pathExists(resolve(generatePromptPath)))) {
       die(`Error: custom prompt path not found: ${resolve(generatePromptPath)}`);
