@@ -82,3 +82,19 @@ export function shouldBypassPreview(state: { credentialsSkipped: boolean }): boo
 export function buildSkippedPreviewTransition(): { step: 'push-decision-gate'; serverPreview: null } {
   return { step: 'push-decision-gate', serverPreview: null };
 }
+
+/**
+ * Skip-credentials spec — Task 4 (defensive guard). The push-decision-gate
+ * disables "Save AND push" and "Push only" when credentialsSkipped is true,
+ * so `runPush` should never be reached. If a state-machine regression ever
+ * routed an operator past that guard, `runPush` checks this helper and
+ * refuses to issue the API call — instead it routes back to the print-files
+ * local-save path via `buildSkippedPushTransition`.
+ */
+export function shouldRefusePush(state: { credentialsSkipped: boolean }): boolean {
+  return state.credentialsSkipped === true;
+}
+
+export function buildSkippedPushTransition(): { step: 'print-gate' } {
+  return { step: 'print-gate' };
+}

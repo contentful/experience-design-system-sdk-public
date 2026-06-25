@@ -51,6 +51,8 @@ import {
   nextStepAfterCredentialsValidated,
   shouldBypassPreview,
   buildSkippedPreviewTransition,
+  shouldRefusePush,
+  buildSkippedPushTransition,
 } from './wizard-state-transitions.js';
 
 type WizardStep =
@@ -1172,6 +1174,16 @@ export function WizardApp({
     acknowledgeBreakingChanges: boolean,
     preview?: ServerPreviewResponse | null,
   ) => {
+    // Skip-credentials defensive guard. The push-decision-gate disables
+    // push-emitting choices when `credentialsSkipped` is true, so we
+    // should never get here in practice. But if a state-machine bug or
+    // future regression ever did, refuse to issue the API call — there
+    // is no validated token and the operator explicitly opted out of
+    // push. Route back to the local-save (print-gate) path instead.
+    if (shouldRefusePush(state)) {
+      update(buildSkippedPushTransition());
+      return;
+    }
     if (preview) {
       const hasComponentChanges =
         preview.components.new.length > 0 ||
