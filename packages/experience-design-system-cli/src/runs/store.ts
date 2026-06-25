@@ -148,3 +148,8 @@ export async function findRunBySavePath(savePath: string): Promise<RunRecord | n
   const file = await readFileMaybe();
   return file?.runs.find((r) => r.savePath === savePath) ?? null;
 }
+
+export async function findAllRunsBySavePath(savePath: string): Promise<RunRecord[]> {
+  const file = await readFileMaybe();
+  return file?.runs.filter((r) => r.savePath === savePath) ?? [];
+}
