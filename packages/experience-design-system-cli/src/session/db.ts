@@ -208,8 +208,13 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
     //   immediately throwing 'database is locked'. Critical when the wizard
     //   main process and select-agent subprocesses contend on writes.
     // - synchronous=NORMAL: safe under WAL, faster than FULL.
-    db.exec('PRAGMA journal_mode = WAL');
+    // busy_timeout MUST come first. PRAGMA journal_mode = WAL needs a
+    // RESERVED lock briefly even when the DB is already WAL; if the
+    // select-agent child is mid-write at that moment, the wizard's open
+    // fails instantly without retry. Setting busy_timeout first makes
+    // SQLite wait up to 5s for the lock.
     db.exec('PRAGMA busy_timeout = 5000');
+    db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA synchronous = NORMAL');
     db.exec(SCHEMA);
     applyDbMigrations(db);
