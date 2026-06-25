@@ -2,11 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'ink-testing-library';
 import { ScopeGateStep } from '../../../src/import/tui/steps/ScopeGateStep.js';
 
-// Pilot-2026-06-25: scope-gate UX overhaul tests. Pins the new single-list
-// model where every component renders with an INCLUDED/EXCLUDED word label,
-// AI-flagged rows carry a persistent [AI] badge, focused AI rows wrap their
-// reason on a new line, and manual operator decisions win over streaming AI
-// updates without reordering.
+// Pilot-2026-06-25 R2: scope-gate UX overhaul Round 2 tests. Pins the
+// two-section render (AI recommended exclusions on top, Components below),
+// color glyphs replacing word labels, subtle cyan `*` marker replacing the
+// [AI] badge, and manual-decision-wins behavior preserved from Round 1.
 
 const MIXED = [
   { name: 'Button', componentId: 'c0' },
@@ -14,8 +13,8 @@ const MIXED = [
   { name: 'Card', componentId: 'c2' },
 ];
 
-describe('ScopeGateStep — unified single-list model (Task 1)', () => {
-  it('renders all components in one list with no separate "AI excluded" section', () => {
+describe('ScopeGateStep — two-section render (R2 Task 1)', () => {
+  it('renders all components across the two sections', () => {
     const { lastFrame } = render(
       <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
@@ -23,17 +22,52 @@ describe('ScopeGateStep — unified single-list model (Task 1)', () => {
     expect(out).toContain('Button');
     expect(out).toContain('DebugPanel');
     expect(out).toContain('Card');
-    // No more "AI excluded (N)" section header.
-    expect(out).not.toMatch(/AI excluded \(\d+\)/);
   });
 
-  it('renders INCLUDED / EXCLUDED word labels on every row', () => {
+  it('AI-flagged rows render in a top "AI recommended exclusions (N)" section', () => {
     const { lastFrame } = render(
       <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toContain('INCLUDED');
-    expect(out).toContain('EXCLUDED');
+    expect(out).toMatch(/AI recommended exclusions \(1\)/);
+    expect(out).toMatch(/Components \(2\)/);
+    const lines = out.split('\n');
+    const aiHeaderIdx = lines.findIndex((l) => l.includes('AI recommended exclusions'));
+    const compHeaderIdx = lines.findIndex((l) => l.includes('Components ('));
+    const debugIdx = lines.findIndex((l) => l.includes('DebugPanel'));
+    const buttonIdx = lines.findIndex((l) => l.includes('Button'));
+    expect(aiHeaderIdx).toBeGreaterThan(-1);
+    expect(compHeaderIdx).toBeGreaterThan(aiHeaderIdx);
+    expect(debugIdx).toBeGreaterThan(aiHeaderIdx);
+    expect(debugIdx).toBeLessThan(compHeaderIdx);
+    expect(buttonIdx).toBeGreaterThan(compHeaderIdx);
+  });
+
+  it('toggling an AI-flagged row INCLUDED leaves it in the AI section', () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    // Cursor starts on DebugPanel (first AI row). Toggle it.
+    stdin.write('a');
+    const out = lastFrame() ?? '';
+    const lines = out.split('\n');
+    const aiHeaderIdx = lines.findIndex((l) => l.includes('AI recommended exclusions'));
+    const compHeaderIdx = lines.findIndex((l) => l.includes('Components ('));
+    const debugIdx = lines.findIndex((l) => l.includes('DebugPanel'));
+    expect(debugIdx).toBeGreaterThan(aiHeaderIdx);
+    expect(debugIdx).toBeLessThan(compHeaderIdx);
+  });
+
+  it('cursor j moves from the last AI row to the first Components row', () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    // Cursor starts at first AI row (DebugPanel). One j → first Components row (Button).
+    stdin.write('j');
+    const out = lastFrame() ?? '';
+    const cursorLine = out.split('\n').find((l) => l.includes('›'));
+    expect(cursorLine).toBeTruthy();
+    expect(cursorLine!).toContain('Button');
   });
 
   it('AI-rejected rows start as EXCLUDED, AI-accepted/undecided rows start as INCLUDED', () => {
@@ -52,7 +86,8 @@ describe('ScopeGateStep — unified single-list model (Task 1)', () => {
     const { stdin } = render(
       <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
     );
-    // Cursor starts on Button (INCLUDED). Press `a` to exclude it.
+    // Cursor starts on DebugPanel (AI section, EXCLUDED). One j → Button. `a` excludes.
+    stdin.write('j');
     stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -152,30 +187,6 @@ describe('ScopeGateStep — focused-row reason wrap + brighter colors (Task 4)',
   it('renders the full reason on a separate line below the focused AI row', () => {
     const longReason =
       'this widget is internal-only and would not make sense as a public design-system primitive because it depends on private context that we do not want to leak into the public API surface';
-    const { lastFrame, stdin } = render(
-      <ScopeGateStep
-        components={[
-          { name: 'Button', componentId: 'c0' },
-          { name: 'DebugPanel', componentId: 'c1', aiDecision: 'rejected', aiReason: longReason },
-        ]}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
-    );
-    // Move cursor onto DebugPanel.
-    stdin.write('j');
-    const out = lastFrame() ?? '';
-    // Full reason must appear (untruncated).
-    expect(out).toContain('depends on private context');
-    // And on a different line from the row label.
-    const debugLineIdx = out.split('\n').findIndex((line) => line.includes('DebugPanel'));
-    const reasonLineIdx = out.split('\n').findIndex((line) => line.includes('depends on private context'));
-    expect(reasonLineIdx).toBeGreaterThan(debugLineIdx);
-  });
-
-  it('renders truncated inline reason on non-focused AI rows', () => {
-    const longReason = 'a'.repeat(120);
     const { lastFrame } = render(
       <ScopeGateStep
         components={[
@@ -187,10 +198,36 @@ describe('ScopeGateStep — focused-row reason wrap + brighter colors (Task 4)',
         aiFilterStatus="complete"
       />,
     );
+    // DebugPanel is in the AI section (top); cursor starts there at i=0.
     const out = lastFrame() ?? '';
-    // Truncation marker present (ellipsis from truncateReason).
+    // Full reason must appear (untruncated).
+    expect(out).toContain('depends on private context');
+    // And on a different line from the row label.
+    const debugLineIdx = out.split('\n').findIndex((line) => line.includes('DebugPanel'));
+    const reasonLineIdx = out.split('\n').findIndex((line) => line.includes('depends on private context'));
+    expect(reasonLineIdx).toBeGreaterThan(debugLineIdx);
+  });
+
+  it('renders truncated inline reason on non-focused AI rows', () => {
+    const longReason = 'a'.repeat(120);
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep
+        components={[
+          { name: 'Other', componentId: 'c0', aiDecision: 'rejected', aiReason: 'short' },
+          { name: 'Button', componentId: 'c1' },
+          { name: 'DebugPanel', componentId: 'c2', aiDecision: 'rejected', aiReason: longReason },
+        ]}
+        onConfirm={() => {}}
+        onQuit={() => {}}
+        aiFilterStatus="complete"
+      />,
+    );
+    // Cursor starts at Other (first AI row). Move down once to put cursor
+    // on DebugPanel? No — we want DebugPanel to be NON-focused so its long
+    // reason is truncated inline. Stay on Other; DebugPanel is second AI row.
+    void stdin;
+    const out = lastFrame() ?? '';
     expect(out).toContain('…');
-    // Full long reason NOT rendered.
     expect(out).not.toContain('a'.repeat(120));
   });
 });

@@ -72,9 +72,13 @@ export function ScopeGateStep({
   // overflow cases per spec.
   const [reasonPanelOpen, setReasonPanelOpen] = useState(false);
 
-  // Unified flat list — preserves prop (extraction) order. No reordering on
-  // AI rejection.
-  const flatList: ScopeComponent[] = components;
+  // Pilot-2026-06-25 R2: two-section render. AI-flagged rows go to a top
+  // section ("AI recommended exclusions"); the rest fall into "Components".
+  // Within each section we preserve prop (extraction) order. Cursor walks
+  // the unified flat list [...aiList, ...componentsList].
+  const aiList: ScopeComponent[] = components.filter(isAiFlagged);
+  const componentsList: ScopeComponent[] = components.filter((c) => !isAiFlagged(c));
+  const flatList: ScopeComponent[] = [...aiList, ...componentsList];
 
   const isIncluded = (row: ScopeComponent): boolean => {
     // Pilot-2026-06-25 invariant: operator decisions are ALWAYS sticky over
@@ -164,16 +168,34 @@ export function ScopeGateStep({
       return;
     }
     if (input === 'A') {
-      // Toggle all: if any row is excluded, include everything; otherwise exclude everything.
-      const anyExcluded = flatList.some((c) => !isIncluded(c));
-      if (anyExcluded) {
-        // INCLUDE all → put every name in userUnExcluded and clear userExcluded.
-        setUserUnExcluded(new Set(flatList.map((c) => c.name)));
-        setUserExcluded(new Set());
+      // Pilot-2026-06-25 R2: toggle-all operates ONLY on the Components
+      // section. The AI section's defaults stay put — operators rarely want
+      // a mass-include of AI-flagged rows via one keystroke. Toggle behavior:
+      // if any Components row is excluded, include them all; else exclude all.
+      const compNames = componentsList.map((c) => c.name);
+      const anyCompExcluded = componentsList.some((c) => !isIncluded(c));
+      if (anyCompExcluded) {
+        setUserUnExcluded((prev) => {
+          const next = new Set(prev);
+          for (const n of compNames) next.add(n);
+          return next;
+        });
+        setUserExcluded((prev) => {
+          const next = new Set(prev);
+          for (const n of compNames) next.delete(n);
+          return next;
+        });
       } else {
-        // EXCLUDE all.
-        setUserExcluded(new Set(flatList.map((c) => c.name)));
-        setUserUnExcluded(new Set());
+        setUserExcluded((prev) => {
+          const next = new Set(prev);
+          for (const n of compNames) next.add(n);
+          return next;
+        });
+        setUserUnExcluded((prev) => {
+          const next = new Set(prev);
+          for (const n of compNames) next.delete(n);
+          return next;
+        });
       }
       return;
     }
@@ -279,10 +301,23 @@ export function ScopeGateStep({
             const aiBadge = aiFlagged ? AI_BADGE : '';
             const rowLine = `${prefix} ${aiBadge}${label} ${c.name}`;
             const inlineReason = !isCursor && aiFlagged ? ` ${truncateReason(c.aiReason)}` : '';
+            // Pilot-2026-06-25 R2: insert section headers right before the
+            // first visible row of each section. The flatList is laid out as
+            // [...aiList, ...componentsList], so header conditions key off
+            // the row index.
+            const showAiHeader = aiList.length > 0 && i === 0;
+            const showComponentsHeader =
+              componentsList.length > 0 && i === aiList.length;
+            const header = showAiHeader ? (
+              <Text key={`hdr-ai-${i}`} bold>{`AI recommended exclusions (${aiList.length})`}</Text>
+            ) : showComponentsHeader ? (
+              <Text key={`hdr-comp-${i}`} bold>{`Components (${componentsList.length})`}</Text>
+            ) : null;
             if (isCursor) {
               const wrapReason = aiFlagged && c.aiReason !== null && c.aiReason !== undefined && c.aiReason.length > 0;
               return (
                 <React.Fragment key={c.componentId}>
+                  {header}
                   <Text color="cyan">{rowLine}</Text>
                   {wrapReason && (
                     <Text dimColor>{`${REASON_WRAP_INDENT}${c.aiReason}`}</Text>
@@ -290,13 +325,14 @@ export function ScopeGateStep({
                 </React.Fragment>
               );
             }
-            // Non-focused rows: full color (no dimColor) so EXCLUDED rows still
-            // read as legitimate options. Reason tail keeps dimColor.
             return (
-              <Text key={c.componentId}>
-                {rowLine}
-                {inlineReason !== '' && <Text dimColor>{inlineReason}</Text>}
-              </Text>
+              <React.Fragment key={c.componentId}>
+                {header}
+                <Text>
+                  {rowLine}
+                  {inlineReason !== '' && <Text dimColor>{inlineReason}</Text>}
+                </Text>
+              </React.Fragment>
             );
           })}
           {below > 0 && <Text dimColor>↓ {below} below</Text>}
