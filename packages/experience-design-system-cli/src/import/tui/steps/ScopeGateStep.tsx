@@ -27,6 +27,9 @@ const REASON_DISPLAY_MAX = 60;
 // regardless of whether the operator later toggles it back to INCLUDED.
 // The badge is informational only — manual decision wins.
 const AI_BADGE = '[AI] ';
+// Indentation prefix for the wrapped reason on the focused AI row. Aligns
+// the reason under the row label so the eye reads it as a continuation.
+const REASON_WRAP_INDENT = '      ';
 
 function truncateReason(reason: string | null | undefined): string {
   if (reason === null || reason === undefined || reason === '') return '<no reason given>';
@@ -282,7 +285,7 @@ export function ScopeGateStep({
                 <React.Fragment key={c.componentId}>
                   <Text color="cyan">{rowLine}</Text>
                   {wrapReason && (
-                    <Text dimColor>{`      ${c.aiReason}`}</Text>
+                    <Text dimColor>{`${REASON_WRAP_INDENT}${c.aiReason}`}</Text>
                   )}
                 </React.Fragment>
               );
