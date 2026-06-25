@@ -31,3 +31,26 @@ describe('nextStepAfterCredentialsValidated', () => {
     expect(nextStepAfterCredentialsValidated({ acceptedCount: 0 })).toBe('push-decision-gate');
   });
 });
+
+describe('inline-validation flow — no transition targets "validating-credentials"', () => {
+  // Pin: after the wizard prefetch refactor, `validating-credentials` is no
+  // longer a render target — the credentials screen owns its own inline
+  // loading state via the `validating` prop. The state-machine helpers must
+  // never return that string (any future regression that re-introduces it
+  // would silently restore the dropped dedicated render screen).
+  it('nextStepAfterScopeGate never returns "validating-credentials"', () => {
+    for (const acceptedCount of [0, 1, 5]) {
+      for (const noPush of [false, true]) {
+        const next = nextStepAfterScopeGate({ acceptedCount, noPush });
+        expect(next).not.toBe('validating-credentials');
+      }
+    }
+  });
+
+  it('nextStepAfterCredentialsValidated never returns "validating-credentials"', () => {
+    for (const acceptedCount of [0, 1, 5]) {
+      const next = nextStepAfterCredentialsValidated({ acceptedCount });
+      expect(next).not.toBe('validating-credentials');
+    }
+  });
+});
