@@ -1674,6 +1674,7 @@ export function WizardApp({
             summary={summary}
             context={`Save ${files || 'output files'} to disk, push to your Contentful space, or both.`}
             fileList={files || 'files'}
+            pushDisabled={state.credentialsSkipped}
             onChoice={(choice) => {
               const action = chooseGateAction(choice);
               if (action === 'save-and-push') {

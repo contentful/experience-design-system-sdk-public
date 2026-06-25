@@ -10,6 +10,14 @@ type PushDecisionGateStepProps = {
   fileList: string;
   onChoice: (choice: PushDecisionChoice) => void;
   onQuit: () => void;
+  /**
+   * Skip-credentials spec — Task 3. When the operator advanced past the
+   * credentials screen via the skip path, push options are not actually
+   * usable (we never validated a token). Render all three rows for visual
+   * continuity but disable "Save AND push" and "Push only", with the
+   * `(unavailable — credentials skipped)` suffix.
+   */
+  pushDisabled?: boolean;
 };
 
 const OPTIONS: ReadonlyArray<{ value: PushDecisionChoice; label: string; shortcut: string }> = [
@@ -18,24 +26,38 @@ const OPTIONS: ReadonlyArray<{ value: PushDecisionChoice; label: string; shortcu
   { value: 'save-only', label: 'Save only', shortcut: 's' },
 ];
 
+const SAVE_ONLY_INDEX = OPTIONS.findIndex((o) => o.value === 'save-only');
+
 export function PushDecisionGateStep({
   summary,
   context,
   onChoice,
   onQuit,
+  pushDisabled = false,
 }: PushDecisionGateStepProps): React.ReactElement {
-  const [cursor, setCursor] = useState(0);
+  // When push is disabled, the cursor defaults to "Save only" (the only
+  // selectable row). When push is enabled, "Save AND push" is the default —
+  // matches the existing scope-gate UX.
+  const [cursor, setCursor] = useState(pushDisabled ? SAVE_ONLY_INDEX : 0);
+
+  function isSelectable(index: number): boolean {
+    if (!pushDisabled) return true;
+    return OPTIONS[index]!.value === 'save-only';
+  }
 
   useImmediateInput((input, key) => {
     if (key.return) {
+      if (!isSelectable(cursor)) return;
       onChoice(OPTIONS[cursor]!.value);
       return;
     }
     if (input === 'b') {
+      if (pushDisabled) return;
       onChoice('both');
       return;
     }
     if (input === 'p') {
+      if (pushDisabled) return;
       onChoice('push-only');
       return;
     }
@@ -44,11 +66,22 @@ export function PushDecisionGateStep({
       return;
     }
     if (input === 'j' || key.downArrow) {
-      setCursor((c) => Math.min(OPTIONS.length - 1, c + 1));
+      setCursor((c) => {
+        // Walk forward to the next selectable row. If none, stay put.
+        for (let i = c + 1; i < OPTIONS.length; i++) {
+          if (isSelectable(i)) return i;
+        }
+        return c;
+      });
       return;
     }
     if (input === 'k' || key.upArrow) {
-      setCursor((c) => Math.max(0, c - 1));
+      setCursor((c) => {
+        for (let i = c - 1; i >= 0; i--) {
+          if (isSelectable(i)) return i;
+        }
+        return c;
+      });
       return;
     }
     if (input === 'q' || key.escape) {
@@ -69,9 +102,12 @@ export function PushDecisionGateStep({
       <Box flexDirection="column" marginTop={1}>
         {OPTIONS.map((opt, i) => {
           const selected = i === cursor;
+          const disabled = pushDisabled && opt.value !== 'save-only';
+          const suffix = disabled ? ' (unavailable — credentials skipped)' : '';
           return (
-            <Text key={opt.value} color={selected ? 'cyan' : undefined}>
+            <Text key={opt.value} color={selected ? 'cyan' : undefined} dimColor={disabled}>
               {selected ? '›' : ' '} [{opt.shortcut}] {opt.label}
+              {suffix}
             </Text>
           );
         })}
