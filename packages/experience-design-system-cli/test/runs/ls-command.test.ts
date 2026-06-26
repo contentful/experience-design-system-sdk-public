@@ -124,4 +124,62 @@ describe('runLsCommand', () => {
       ).rejects.toThrow(/not found/);
     });
   });
+
+  describe('--json output', () => {
+    it('emits RunRecord[] as JSON when no positional', async () => {
+      const runs = [sampleRun(), sampleRun({ id: 'R2', pushedTo: null })];
+      mockListRuns.mockResolvedValueOnce(runs);
+      const out: string[] = [];
+      await runLsCommand({ write: (s) => out.push(s), json: true });
+      const parsed = JSON.parse(out.join(''));
+      expect(Array.isArray(parsed)).toBe(true);
+      expect(parsed).toHaveLength(2);
+      expect(parsed[0].id).toBe('01HXYZABCDEFGHJKMNPQRSTVWXY');
+    });
+
+    it('emits a single object when positional + --json', async () => {
+      mockResolveRunTarget.mockResolvedValueOnce(sampleRun());
+      const out: string[] = [];
+      await runLsCommand({ write: (s) => out.push(s), json: true, target: '01HXYZABCDEFGHJKMNPQRSTVWXY' });
+      const parsed = JSON.parse(out.join(''));
+      expect(Array.isArray(parsed)).toBe(false);
+      expect(parsed.id).toBe('01HXYZABCDEFGHJKMNPQRSTVWXY');
+    });
+  });
+
+  describe('--pushed / --not-pushed filters', () => {
+    it('filters to pushed runs only', async () => {
+      mockListRuns.mockResolvedValueOnce([
+        sampleRun({ id: 'A' }),
+        sampleRun({ id: 'B', pushedTo: null }),
+        sampleRun({ id: 'C' }),
+      ]);
+      const out: string[] = [];
+      await runLsCommand({ write: (s) => out.push(s), pushed: true });
+      const text = out.join('');
+      expect(text).toContain('A');
+      expect(text).toContain('C');
+      expect(text).not.toMatch(/\bB\b/);
+    });
+
+    it('filters to unpushed runs only', async () => {
+      mockListRuns.mockResolvedValueOnce([
+        sampleRun({ id: 'A' }),
+        sampleRun({ id: 'B', pushedTo: null }),
+        sampleRun({ id: 'C', pushedTo: null }),
+      ]);
+      const out: string[] = [];
+      await runLsCommand({ write: (s) => out.push(s), notPushed: true });
+      const text = out.join('');
+      expect(text).toContain('B');
+      expect(text).toContain('C');
+      expect(text).not.toMatch(/\bA\b/);
+    });
+
+    it('rejects --pushed and --not-pushed together', async () => {
+      await expect(
+        runLsCommand({ write: () => undefined, pushed: true, notPushed: true }),
+      ).rejects.toThrow(/mutually exclusive|cannot.*both/i);
+    });
+  });
 });

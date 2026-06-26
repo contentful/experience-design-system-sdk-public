@@ -7,6 +7,9 @@ export type RunLsOptions = {
   projectPath?: string;
   limit?: number;
   target?: string;
+  json?: boolean;
+  pushed?: boolean;
+  notPushed?: boolean;
 };
 
 function pad(value: string, width: number): string {
@@ -55,16 +58,33 @@ function renderDetail(run: RunRecord, write: (s: string) => void): void {
 export async function runLsCommand(opts: RunLsOptions = {}): Promise<void> {
   const write = opts.write ?? ((s: string) => process.stdout.write(s));
 
+  if (opts.pushed && opts.notPushed) {
+    throw new Error('--pushed and --not-pushed are mutually exclusive');
+  }
+
   if (opts.target) {
     const run = await resolveRunTarget(opts.target);
+    if (opts.json) {
+      write(JSON.stringify(run, null, 2) + '\n');
+      return;
+    }
     renderDetail(run, write);
     return;
   }
 
-  const runs = await listRuns({
+  let runs = await listRuns({
     ...(opts.projectPath ? { projectPath: opts.projectPath } : {}),
     ...(typeof opts.limit === 'number' ? { limit: opts.limit } : {}),
   });
+
+  if (opts.pushed) runs = runs.filter((r) => r.pushedTo !== null);
+  if (opts.notPushed) runs = runs.filter((r) => r.pushedTo === null);
+
+  if (opts.json) {
+    write(JSON.stringify(runs, null, 2) + '\n');
+    return;
+  }
+
   if (runs.length === 0) {
     write('No runs recorded yet. Run `experiences import` to create one.\n');
     return;
@@ -91,10 +111,19 @@ export function registerRunsCommand(program: Command): void {
     )
     .option('--project <path>', 'Filter by source project path (absolute)')
     .option('--limit <n>', 'Limit the number of rows', (v) => parseInt(v, 10))
+    .option('--json', 'Emit RunRecord JSON to stdout (array, or single object with [target])')
+    .option('--pushed', 'Only show runs that have been pushed to Contentful')
+    .option('--not-pushed', 'Only show runs that have not been pushed')
     .action(
       async (
         target: string | undefined,
-        options: { project?: string; limit?: number },
+        options: {
+          project?: string;
+          limit?: number;
+          json?: boolean;
+          pushed?: boolean;
+          notPushed?: boolean;
+        },
       ) => {
         await runLsCommand({
           ...(target ? { target } : {}),
@@ -102,6 +131,9 @@ export function registerRunsCommand(program: Command): void {
           ...(typeof options.limit === 'number' && !Number.isNaN(options.limit)
             ? { limit: options.limit }
             : {}),
+          ...(options.json ? { json: true } : {}),
+          ...(options.pushed ? { pushed: true } : {}),
+          ...(options.notPushed ? { notPushed: true } : {}),
         });
       },
     );
