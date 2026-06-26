@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import { resolve, join } from 'node:path';
 import { runPipeline } from './orchestrator.js';
+import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 
@@ -42,8 +43,12 @@ export function registerImportCommand(program: Command): void {
     .option('--dry-run', 'Print generate components prompt without invoking the agent')
     .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)')
     .option(
+      '--auto-filter',
+      'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)',
+    )
+    .option(
       '--no-auto-filter',
-      'Skip the automatic AI pre-filter; jump straight to manual scope-gate (no-op when paired with --auto-accept-scope)',
+      'Skip the automatic AI pre-filter; jump straight to manual scope-gate (overrides the credentials.json autoFilter preference; no-op when paired with --auto-accept-scope)',
     )
     .option(
       '--no-live-preview',
@@ -162,7 +167,7 @@ export function registerImportCommand(program: Command): void {
               host: opts.host,
               autoAcceptScope,
               noCache: opts.cache === false,
-              autoFilter: opts.autoFilter !== false,
+              autoFilter: resolveAutoFilter({ autoFilter: opts.autoFilter }, creds.autoFilter),
               livePreview: opts.livePreview !== false,
               noPush: opts.push === false,
               noSave: opts.save === false,

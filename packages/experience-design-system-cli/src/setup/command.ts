@@ -12,6 +12,7 @@ import {
   experiencesCredentialsPath,
   type ExperiencesCredentials,
 } from '../credentials-store.js';
+import { promptAutoFilterPreference } from './auto-filter-prompt.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 
 const execFileAsync = promisify(execFile);
@@ -630,7 +631,23 @@ async function setupQoL(profilePath: string): Promise<void> {
   info('These are not required for experiences import but improve the experience.');
   info('');
 
-  // 6a: EDS_EXTRACT_CONCURRENCY
+  // 6a: AI auto-filter default
+  const existingCreds = await readExperiencesCredentials();
+  info('AI auto-filter — runs an agent pass before the manual scope-gate to prefilter components.');
+  info('Operators who prefer to review every component can default this OFF and override per run with --auto-filter.');
+  const autoFilter = await promptAutoFilterPreference(
+    (q) => prompt(q),
+    existingCreds.autoFilter,
+  );
+  if (autoFilter !== (existingCreds.autoFilter ?? true)) {
+    await writeExperiencesCredentials({ ...existingCreds, autoFilter });
+    ok(`AI auto-filter default set to ${autoFilter ? 'ON' : 'OFF'}`);
+  } else {
+    dim('     unchanged');
+  }
+  info('');
+
+  // 6b: EDS_EXTRACT_CONCURRENCY
   const hasConcurrency = await profileContains(profilePath, 'EDS_EXTRACT_CONCURRENCY');
   if (!hasConcurrency) {
     info('EDS_EXTRACT_CONCURRENCY — controls how many components are analyzed in parallel.');
@@ -666,7 +683,7 @@ async function setupQoL(profilePath: string): Promise<void> {
     dim('     skipped');
   }
 
-  // 6b: NO_COLOR
+  // 6d: NO_COLOR
   info('');
   info('NO_COLOR — set to 1 to disable ANSI color output (useful in CI or plain terminals).');
   const setNoColor = await confirm('Add NO_COLOR=1 (disable colors) to your profile?', false);

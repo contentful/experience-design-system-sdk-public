@@ -14,6 +14,7 @@ export type ExperiencesCredentials = {
   selectPromptPath?: string;
   /** Feature 8: persisted custom prompt path for `generate components`. */
   generatePromptPath?: string;
+  autoFilter?: boolean;
 };
 
 const CREDENTIALS_DIR = join(homedir(), '.config', 'experiences');
@@ -33,6 +34,7 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
       ...(parsed.agentModel ? { agentModel: parsed.agentModel } : {}),
       ...(parsed.selectPromptPath ? { selectPromptPath: parsed.selectPromptPath } : {}),
       ...(parsed.generatePromptPath ? { generatePromptPath: parsed.generatePromptPath } : {}),
+      ...(typeof parsed.autoFilter === 'boolean' ? { autoFilter: parsed.autoFilter } : {}),
     };
   } catch {
     const host = toConfiguredHost(process.env['EDS_HOST']);
@@ -46,7 +48,7 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
 }
 
 export async function writeExperiencesCredentials(creds: ExperiencesCredentials): Promise<void> {
-  const { host: _host, agent, agentModel, selectPromptPath, generatePromptPath, ...rest } = creds;
+  const { host: _host, agent, agentModel, selectPromptPath, generatePromptPath, autoFilter, ...rest } = creds;
   const host = toConfiguredHost(creds.host);
   await mkdir(CREDENTIALS_DIR, { recursive: true });
   await writeFile(
@@ -59,6 +61,7 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
         ...(agentModel ? { agentModel } : {}),
         ...(selectPromptPath ? { selectPromptPath } : {}),
         ...(generatePromptPath ? { generatePromptPath } : {}),
+        ...(typeof autoFilter === 'boolean' ? { autoFilter } : {}),
       },
       null,
       2,
