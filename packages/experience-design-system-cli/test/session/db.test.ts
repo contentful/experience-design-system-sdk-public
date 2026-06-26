@@ -27,6 +27,7 @@ import {
   copyComponentFromCache,
   copyTokensFromCache,
   renameEmptySlots,
+  loadScopeComponents,
 } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 import type {
@@ -76,6 +77,195 @@ describe('openPipelineDb', () => {
       db1.close();
       const db2 = openPipelineDb(dbPath);
       db2.close();
+    });
+  });
+
+  it('enables WAL journal mode on every open', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const row = db.prepare('PRAGMA journal_mode').get() as { journal_mode: string };
+      expect(row.journal_mode.toLowerCase()).toBe('wal');
+      db.close();
+    });
+  });
+
+  it('sets a non-zero busy_timeout on every open', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const row = db.prepare('PRAGMA busy_timeout').get() as { timeout: number };
+      expect(row.timeout).toBeGreaterThan(0);
+      db.close();
+    });
+  });
+
+  it('allows two concurrent handles against the same DB to write without raising "database is locked"', async () => {
+    await withTempDb((dbPath) => {
+      const db1 = openPipelineDb(dbPath);
+      const db2 = openPipelineDb(dbPath);
+      const now = new Date().toISOString();
+      // Two interleaved writes from separate connections — under rollback
+      // journal + no busy_timeout this would frequently throw "database is
+      // locked". With WAL + busy_timeout it should always succeed.
+      db1.prepare('INSERT INTO sessions (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(
+        's1',
+        null,
+        now,
+        now,
+      );
+      db2.prepare('INSERT INTO sessions (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(
+        's2',
+        null,
+        now,
+        now,
+      );
+      db1.close();
+      db2.close();
+    });
+  });
+
+  it('adds rationale and source-location columns to raw_props (Feature 1)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const cols = db.prepare('PRAGMA table_info(raw_props)').all() as Array<{
+        name: string;
+        type: string;
+        notnull: number;
+        dflt_value: unknown;
+      }>;
+      const byName = new Map(cols.map((c) => [c.name, c]));
+      expect(byName.has('rationale')).toBe(true);
+      expect(byName.has('source_start_line')).toBe(true);
+      expect(byName.has('source_end_line')).toBe(true);
+      // All three nullable.
+      expect(byName.get('rationale')!.notnull).toBe(0);
+      expect(byName.get('source_start_line')!.notnull).toBe(0);
+      expect(byName.get('source_end_line')!.notnull).toBe(0);
+      db.close();
+    });
+  });
+
+  it('adds source_path column to raw_components (Feature 1)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const cols = db.prepare('PRAGMA table_info(raw_components)').all() as Array<{
+        name: string;
+        notnull: number;
+      }>;
+      const byName = new Map(cols.map((c) => [c.name, c]));
+      expect(byName.has('source_path')).toBe(true);
+      expect(byName.get('source_path')!.notnull).toBe(0);
+      db.close();
+    });
+  });
+
+  it('Feature 1 migrations are idempotent across opens', async () => {
+    await withTempDb((dbPath) => {
+      const db1 = openPipelineDb(dbPath);
+      db1.close();
+      // Reopen — should not double-add columns or error.
+      const db2 = openPipelineDb(dbPath);
+      const propCols = db2.prepare('PRAGMA table_info(raw_props)').all() as Array<{ name: string }>;
+      const propNames = propCols.map((c) => c.name);
+      expect(propNames.filter((n) => n === 'rationale').length).toBe(1);
+      expect(propNames.filter((n) => n === 'source_start_line').length).toBe(1);
+      expect(propNames.filter((n) => n === 'source_end_line').length).toBe(1);
+      const compCols = db2.prepare('PRAGMA table_info(raw_components)').all() as Array<{ name: string }>;
+      expect(compCols.map((c) => c.name).filter((n) => n === 'source_path').length).toBe(1);
+      db2.close();
+    });
+  });
+
+  it('adds reject_reason column to raw_components (Feature 3)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const cols = db.prepare('PRAGMA table_info(raw_components)').all() as Array<{
+        name: string;
+        type: string;
+        notnull: number;
+      }>;
+      const byName = new Map(cols.map((c) => [c.name, c]));
+      expect(byName.has('reject_reason')).toBe(true);
+      expect(byName.get('reject_reason')!.type).toBe('TEXT');
+      expect(byName.get('reject_reason')!.notnull).toBe(0);
+      db.close();
+    });
+  });
+
+  it('Feature 3 reject_reason migration is idempotent across opens', async () => {
+    await withTempDb((dbPath) => {
+      const db1 = openPipelineDb(dbPath);
+      db1.close();
+      const db2 = openPipelineDb(dbPath);
+      const compCols = db2.prepare('PRAGMA table_info(raw_components)').all() as Array<{ name: string }>;
+      expect(compCols.map((c) => c.name).filter((n) => n === 'reject_reason').length).toBe(1);
+      db2.close();
+    });
+  });
+
+  it('preserves existing rows with reject_reason = NULL after migration', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      // Seed a session and a raw_component with the pre-Feature-3 columns only.
+      db.prepare(
+        `INSERT INTO sessions (id, created_at, updated_at)
+         VALUES ('s1', '2026-06-23T00:00:00Z', '2026-06-23T00:00:00Z')`
+      ).run();
+      db.prepare(
+        `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at)
+         VALUES ('s1', 'c1', 'Foo', 'src/Foo.tsx', 'react', '2026-06-23T00:00:00Z')`
+      ).run();
+      db.close();
+      const db2 = openPipelineDb(dbPath);
+      const row = db2
+        .prepare('SELECT reject_reason FROM raw_components WHERE session_id = ? AND component_id = ?')
+        .get('s1', 'c1') as { reject_reason: string | null };
+      expect(row.reject_reason).toBeNull();
+      db2.close();
+    });
+  });
+});
+
+describe('loadScopeComponents (Feature 3)', () => {
+  it('returns components with aiDecision/aiReason derived from status + reject_reason', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const baseComp = (overrides: Partial<RawComponentDefinition>): RawComponentDefinition => ({
+        name: 'X',
+        source: 'src/X.tsx',
+        framework: 'react',
+        props: [],
+        slots: [],
+        ...overrides,
+      });
+      storeRawComponents(db, sessionId, [
+        baseComp({ name: 'Accepted', source: 'src/Accepted.tsx' }),
+        baseComp({ name: 'Rejected', source: 'src/Rejected.tsx' }),
+        baseComp({ name: 'Untouched', source: 'src/Untouched.tsx' }),
+      ]);
+      // Simulate Feature 3 select-agent persistence:
+      db.prepare(
+        `UPDATE raw_components SET status = 'accepted', reject_reason = NULL WHERE session_id = ? AND name = 'Accepted'`,
+      ).run(sessionId);
+      db.prepare(
+        `UPDATE raw_components SET status = 'rejected', reject_reason = 'low semantic value' WHERE session_id = ? AND name = 'Rejected'`,
+      ).run(sessionId);
+      // 'Untouched' keeps default status='extracted', reject_reason=NULL.
+
+      const loaded = loadScopeComponents(db, sessionId);
+      db.close();
+
+      // Should return all three (not just status='extracted').
+      expect(loaded).toHaveLength(3);
+      const byName = new Map(loaded.map((c) => [c.name, c]));
+      expect(byName.get('Accepted')?.aiDecision).toBe('accepted');
+      expect(byName.get('Accepted')?.aiReason).toBeNull();
+      expect(byName.get('Rejected')?.aiDecision).toBe('rejected');
+      expect(byName.get('Rejected')?.aiReason).toBe('low semantic value');
+      expect(byName.get('Untouched')?.aiDecision).toBeNull();
+      expect(byName.get('Untouched')?.aiReason).toBeNull();
     });
   });
 });
@@ -277,6 +467,181 @@ describe('storeRawComponents + loadRawComponents', () => {
       }>;
       const names = tables.map((t) => t.name);
       expect(names).toContain('raw_components');
+      db.close();
+    });
+  });
+
+  it('round-trips sourcePath and per-prop source location (Feature 1)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const components: RawComponentDefinition[] = [
+        {
+          name: 'Button',
+          source: 'export interface ButtonProps { label: string }',
+          framework: 'react',
+          sourcePath: '/proj/Button.tsx',
+          props: [
+            {
+              name: 'label',
+              type: 'string',
+              required: true,
+              sourceStartLine: 12,
+              sourceEndLine: 15,
+            },
+          ],
+          slots: [],
+        },
+      ];
+      storeRawComponents(db, sessionId, components);
+
+      const propRow = db
+        .prepare(
+          `SELECT rationale, source_start_line, source_end_line FROM raw_props WHERE session_id = ? AND name = ?`,
+        )
+        .get(sessionId, 'label') as { rationale: string | null; source_start_line: number; source_end_line: number };
+      expect(propRow.source_start_line).toBe(12);
+      expect(propRow.source_end_line).toBe(15);
+      // rationale is set later by the generate phase, not by storeRawComponents.
+      expect(propRow.rationale).toBeNull();
+
+      const compRow = db
+        .prepare(`SELECT source_path FROM raw_components WHERE session_id = ?`)
+        .get(sessionId) as { source_path: string | null };
+      expect(compRow.source_path).toBe('/proj/Button.tsx');
+      db.close();
+    });
+  });
+
+  it('stores NULL when sourcePath/source lines are undefined (Feature 1)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const components: RawComponentDefinition[] = [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [{ name: 'title', type: 'string', required: false }],
+          slots: [],
+        },
+      ];
+      storeRawComponents(db, sessionId, components);
+
+      const propRow = db
+        .prepare(`SELECT source_start_line, source_end_line FROM raw_props WHERE session_id = ?`)
+        .get(sessionId) as { source_start_line: number | null; source_end_line: number | null };
+      expect(propRow.source_start_line).toBeNull();
+      expect(propRow.source_end_line).toBeNull();
+
+      const compRow = db
+        .prepare(`SELECT source_path FROM raw_components WHERE session_id = ?`)
+        .get(sessionId) as { source_path: string | null };
+      expect(compRow.source_path).toBeNull();
+      db.close();
+    });
+  });
+
+  it('loadComponentReviewMetadata returns rationale and source location (Feature 1)', async () => {
+    const { loadComponentReviewMetadata, applyToolCalls } = await import('../../src/session/db.js');
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const components: RawComponentDefinition[] = [
+        {
+          name: 'Hero',
+          // intentionally not a real path — loader falls back to this text
+          source: 'L1\nL2\nL3\nL4',
+          framework: 'react',
+          props: [
+            { name: 'title', type: 'string', required: true, sourceStartLine: 2, sourceEndLine: 3 },
+          ],
+          slots: [],
+        },
+      ];
+      storeRawComponents(db, sessionId, components);
+      const compId = (
+        db
+          .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?`)
+          .get(sessionId, 'Hero') as { component_id: string }
+      ).component_id;
+
+      applyToolCalls(
+        db,
+        sessionId,
+        compId,
+        'Hero',
+        [
+          {
+            tool: 'classify_prop',
+            prop: 'title',
+            cdf_type: 'string',
+            cdf_category: 'content',
+            reason: 'inferred from PropertySignature',
+          },
+        ],
+        [],
+      );
+
+      const meta = loadComponentReviewMetadata(db, sessionId, 'Hero');
+      expect(meta).not.toBeNull();
+      expect(meta!.componentSource).toBe('L1\nL2\nL3\nL4');
+      expect(meta!.sourcePath).toBeNull();
+      expect(meta!.props.title?.rationale).toBe('inferred from PropertySignature');
+      expect(meta!.props.title?.sourceStartLine).toBe(2);
+      expect(meta!.props.title?.sourceEndLine).toBe(3);
+      db.close();
+    });
+  });
+
+  it('loadComponentReviewMetadata returns null when component is missing (Feature 1)', async () => {
+    const { loadComponentReviewMetadata } = await import('../../src/session/db.js');
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const meta = loadComponentReviewMetadata(db, sessionId, 'Nonexistent');
+      expect(meta).toBeNull();
+      db.close();
+    });
+  });
+
+  it('loadRawComponents surfaces sourcePath and per-prop source lines (Feature 1)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+      });
+      const components: RawComponentDefinition[] = [
+        {
+          name: 'Button',
+          source: 'src',
+          framework: 'react',
+          sourcePath: '/proj/Button.tsx',
+          props: [
+            {
+              name: 'label',
+              type: 'string',
+              required: true,
+              sourceStartLine: 3,
+              sourceEndLine: 3,
+            },
+          ],
+          slots: [],
+        },
+      ];
+      storeRawComponents(db, sessionId, components);
+      const loaded = loadRawComponents(db, sessionId);
+      expect(loaded[0]?.sourcePath).toBe('/proj/Button.tsx');
+      expect(loaded[0]?.props[0]?.sourceStartLine).toBe(3);
+      expect(loaded[0]?.props[0]?.sourceEndLine).toBe(3);
       db.close();
     });
   });

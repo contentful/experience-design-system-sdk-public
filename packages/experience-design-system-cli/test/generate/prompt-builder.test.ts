@@ -85,6 +85,34 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('classify_slot');
   });
 
+  it('lists "reason" as a required field on classify_prop with description orthogonality (Feature 1)', async () => {
+    const prompt = await buildPrompt({
+      skill: 'components',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      outDir: '/fake/out',
+    });
+    // The classify_prop example line should include both "description" and "reason".
+    expect(prompt).toMatch(/classify_prop[^\n]*"description"[^\n]*"reason"|classify_prop[^\n]*"reason"[^\n]*"description"/);
+    // Reason is REQUIRED on classify_prop and is internal (not customer-facing).
+    expect(prompt).toMatch(/"reason"\s+is\s+REQUIRED/i);
+    expect(prompt).toMatch(/customer-facing/i);
+  });
+
+  it('preserves the "Description content rules (CRITICAL)" guardrail in skill prompt (Feature 1)', async () => {
+    const prompt = await buildPrompt({
+      skill: 'components',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      outDir: '/fake/out',
+    });
+    // The skill file content is inlined into the prompt; the CRITICAL block must remain.
+    expect(prompt).toContain('Description content rules');
+    expect(prompt).toContain('CRITICAL');
+    expect(prompt).toContain('Never');
+    expect(prompt).toContain('customer-facing');
+  });
+
   it('includes skill file content', async () => {
     const prompt = await buildPrompt({
       skill: 'components',
@@ -95,6 +123,45 @@ describe('buildPrompt', () => {
     // Skill file contains these headings
     expect(prompt).toContain('## Purpose');
     expect(prompt).toContain('Generate Components');
+  });
+
+  it('select skill prompt includes utility-wrapper rejection rule (no authorable content surface)', async () => {
+    const prompt = await buildPrompt({
+      skill: 'select',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      outDir: '/fake/out',
+    });
+    // Distinctive phrase from the new rejection rule.
+    expect(prompt).toContain('Utility wrapper — no authorable content surface');
+    // The rule should call out structural-only props as a rejection signal.
+    expect(prompt).toMatch(/structural[- ]only/i);
+    // Concrete examples authors expect to be rejected.
+    expect(prompt).toMatch(/Portal/);
+    expect(prompt).toMatch(/SrOnly|screen[- ]reader[- ]only/i);
+  });
+
+  it('select skill prompt advertises batch input (1–N components per message)', async () => {
+    const prompt = await buildPrompt({
+      skill: 'select',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      outDir: '/fake/out',
+    });
+    expect(prompt).toMatch(/1[-–]N components/);
+    expect(prompt).toMatch(/one tool call per input component/i);
+  });
+
+  it('select skill prompt preserves the renderer-vs-wrapper guardrail (data-fetch wrapper rule)', async () => {
+    // Pin the existing rejection-criteria so the new rule is additive, not a replacement.
+    const prompt = await buildPrompt({
+      skill: 'select',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      outDir: '/fake/out',
+    });
+    expect(prompt).toContain('Data-fetch wrapper rule');
+    expect(prompt).toContain('React hooks');
   });
 
   it('tokens autonomous preamble includes tool-call protocol instructions', async () => {

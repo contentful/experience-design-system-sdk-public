@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
-import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
+import type {
+  CDFComponentEntry,
+  ComponentTypeSummary,
+  ServerPreviewResponse,
+} from '@contentful/experience-design-system-types';
 import { Sidebar } from '../../../analyze/select/tui/components/Sidebar.js';
 import { JsonPanel } from '../../../analyze/select/tui/components/JsonPanel.js';
 import { FieldEditor } from '../../../analyze/select/tui/components/FieldEditor.js';
@@ -8,8 +12,21 @@ import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
 import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
 import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
-import { openPipelineDb, loadCDFComponents, storeCDFComponents } from '../../../session/db.js';
-import type { ReviewComponentStatus, ReviewComponentSummary } from '../../../analyze/select/types.js';
+import {
+  openPipelineDb,
+  loadCDFComponents,
+  storeCDFComponents,
+  loadComponentReviewMetadata,
+  type ComponentReviewMetadata,
+} from '../../../session/db.js';
+import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
+import type {
+  PreviewAnnotation,
+  ReviewComponentStatus,
+  ReviewComponentSummary,
+} from '../../../analyze/select/types.js';
+import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
+import { useLivePreview } from '../useLivePreview.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -19,8 +36,23 @@ type CdfReviewEntry = {
 
 type GenerateReviewStepProps = {
   extractSessionId: string;
-  onFinalize: (accepted: number, rejected: number) => void;
+  onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
+  /**
+   * Feature 2 (live preview after every save). When `true` (default), the
+   * wizard re-runs `previewImport` after each successful FieldEditor Ctrl+S
+   * (debounced 500ms) and refreshes the sidebar's previewAnnotation badges.
+   * Operator opts out via `experiences import --no-live-preview`.
+   */
+  livePreview?: boolean;
+  // Creds + tokens path threaded from the wizard so the live-preview hook
+  // can call previewImport without re-prompting. Missing creds → silent
+  // no-op inside the hook.
+  spaceId?: string;
+  environmentId?: string;
+  cmaToken?: string;
+  host?: string;
+  tokensPath?: string;
 };
 
 /**
@@ -51,6 +83,12 @@ export function GenerateReviewStep({
   extractSessionId,
   onFinalize,
   onQuit,
+  livePreview = true,
+  spaceId = '',
+  environmentId = '',
+  cmaToken = '',
+  host = '',
+  tokensPath = '',
 }: GenerateReviewStepProps): React.ReactElement {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
@@ -68,6 +106,46 @@ export function GenerateReviewStep({
   const [showJson, setShowJson] = useState(false);
   const [draftValue, setDraftValue] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Feature 1: per-component review metadata (rationale + source location)
+  // for the currently-selected component. Reloaded when selection changes.
+  const [reviewMetadata, setReviewMetadata] = useState<ComponentReviewMetadata | null>(null);
+  // Feature 2: per-component preview annotations refreshed after every
+  // FieldEditor save via the useLivePreview hook below. Empty when live
+  // preview is disabled, when creds are missing, or before the first response.
+  const [previewAnnotations, setPreviewAnnotations] = useState<Map<string, PreviewAnnotation>>(new Map());
+  // Pilot-2026-06-24: raw removed list for the `d` detail panel. The
+  // annotation map only carries kind, not the rich summaries we need to list
+  // names/ids when the operator asks "which ones?".
+  const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
+  const [showRemovedPanel, setShowRemovedPanel] = useState(false);
+
+  const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
+    if (!response) return;
+    setPreviewAnnotations(applyPreviewAnnotations(response, components.map((c) => c.key)));
+    setRemovedComponents(response.components.removed ?? []);
+  };
+
+  const livePreviewHook = useLivePreview({
+    enabled: livePreview,
+    sessionId: extractSessionId,
+    tokensPath,
+    spaceId,
+    environmentId,
+    cmaToken,
+    host,
+    onResult: handleLivePreviewResult,
+  });
+
+  // Manual spinner cycling (no extra dep) for the sidebar status-row
+  // indicator. Runs only while the live-preview hook reports `running`.
+  const SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
+  const [spinnerTick, setSpinnerTick] = useState(0);
+  useEffect(() => {
+    if (livePreviewHook.status !== 'running') return;
+    const id = setInterval(() => setSpinnerTick((t) => t + 1), 80);
+    return () => clearInterval(id);
+  }, [livePreviewHook.status]);
+  const livePreviewSpinner = SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length];
 
   useEffect(() => {
     async function load() {
@@ -97,13 +175,54 @@ export function GenerateReviewStep({
     });
   }, []);
 
+  // Pilot-2026-06-23 R2: fire the live preview once on entry to final-review
+  // so diff badges populate before the operator's first save. We gate on the
+  // livePreview prop to honor --no-live-preview without depending on the
+  // hook's internal short-circuit. Cred-missing is still handled by the
+  // hook's own no-op path.
+  useEffect(() => {
+    if (loading) return;
+    if (!livePreview) return;
+    if (components.length === 0) return;
+    livePreviewHook.trigger();
+    // Intentionally only on load completion — subsequent fires happen via
+    // handleEditSave. Adding livePreviewHook to deps would re-fire on every
+    // hook re-creation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // Feature 1: load review metadata (rationale + source location) for the
+  // selected component when selection changes.
+  useEffect(() => {
+    const current = components[selectedIdx];
+    if (!current) {
+      setReviewMetadata(null);
+      return;
+    }
+    const db = openPipelineDb();
+    try {
+      setReviewMetadata(loadComponentReviewMetadata(db, extractSessionId, current.key));
+    } catch {
+      setReviewMetadata(null);
+    } finally {
+      db.close();
+    }
+  }, [selectedIdx, components, extractSessionId]);
+
   const updateStatus = (idx: number, status: ReviewComponentStatus) => {
     setComponents((prev) => prev.map((c, i) => (i === idx ? { ...c, status } : c)));
   };
 
   const handleFinalizeConfirm = () => {
-    const rejected = components.filter((c) => c.status === 'rejected').map((c) => c.key);
-    if (rejected.length > 0) {
+    // Strict opt-in: only EXPLICITLY ACCEPTED components ship. Anything left
+    // in 'needs-review' OR explicitly 'rejected' is downgraded to
+    // 'generate-rejected' so loadCDFComponents excludes it from the manifest.
+    // The operator told us they want accept-to-ship semantics — leaving a
+    // component unresolved should NOT silently push it (Pilot-2026-06-24 R2).
+    const explicitlyRejected = components.filter((c) => c.status === 'rejected').map((c) => c.key);
+    const unresolved = components.filter((c) => c.status === 'needs-review').map((c) => c.key);
+    const toReject = [...explicitlyRejected, ...unresolved];
+    if (toReject.length > 0) {
       const db = openPipelineDb();
       try {
         const stmt = db.prepare(
@@ -111,7 +230,7 @@ export function GenerateReviewStep({
         );
         db.exec('BEGIN');
         try {
-          for (const name of rejected) {
+          for (const name of toReject) {
             stmt.run(extractSessionId, name);
           }
           db.exec('COMMIT');
@@ -123,8 +242,8 @@ export function GenerateReviewStep({
         db.close();
       }
     }
-    const accepted = components.filter((c) => c.status !== 'rejected').length;
-    onFinalize(accepted, rejected.length);
+    const acceptedCount = components.filter((c) => c.status === 'accepted').length;
+    onFinalize(acceptedCount, explicitlyRejected.length, unresolved.length);
   };
 
   const handleEditSave = () => {
@@ -155,6 +274,9 @@ export function GenerateReviewStep({
       } finally {
         db.close();
       }
+      // Feature 2: re-fire the live preview now that pipeline.db reflects
+      // the new state. The hook owns debounce + cred-missing short-circuit.
+      livePreviewHook.trigger();
     } catch (e) {
       setSaveError(String(e));
     }
@@ -170,6 +292,29 @@ export function GenerateReviewStep({
   useImmediateInput((input, key) => {
     if (loading || loadError) return;
     if (dialogOpen) return;
+
+    // Pilot-2026-06-24: removed-detail panel. When open, only `d` (toggle)
+    // and Esc (close) respond — all other input is swallowed so j/k/Enter/
+    // Ctrl+S can't move state behind the modal. Mirrors the `?` overlay
+    // pattern from 8f0c62e in FieldEditor.
+    if (showRemovedPanel) {
+      if (input === 'd' || key.escape) {
+        setShowRemovedPanel(false);
+      }
+      return;
+    }
+    // `d` opens the panel only when live-preview is enabled and there is at
+    // least one removed component to display. Sidebar-focused only so it
+    // doesn't collide with FieldEditor input.
+    if (
+      input === 'd' &&
+      sidebarFocused &&
+      livePreview &&
+      removedComponents.length > 0
+    ) {
+      setShowRemovedPanel(true);
+      return;
+    }
 
     // Tab toggles focus bidirectionally between sidebar and panel. `e` is a
     // sidebar-only alias for crossing INTO the panel — gating it to the
@@ -218,19 +363,32 @@ export function GenerateReviewStep({
     }
 
     if (key.upArrow || input === 'k') {
-      const newIdx = Math.max(0, selectedIdx - 1);
-      setSelectedIdx(newIdx);
+      // Pilot-2026-06-23 bug: rapid k/j bursts could lose cursor position
+      // because the previous implementation read `selectedIdx` from the
+      // handler's closure. Under high keyboard-repeat rate multiple key
+      // events fire between Ink render flushes, so every invocation saw the
+      // same stale value and recomputed the same `newIdx`. Using functional
+      // setState chains the updates correctly: each pending update sees the
+      // post-update value of the previous one. The viewport offset update is
+      // nested inside the cursor updater so it always reflects the same
+      // newIdx that selectedIdx is being set to.
+      setSelectedIdx((prev) => {
+        const newIdx = Math.max(0, prev - 1);
+        setSidebarScrollOffset((off) => Math.min(off, newIdx));
+        return newIdx;
+      });
       setJsonScrollOffset(0);
       setDraftValue('');
       setSaveError(null);
-      setSidebarScrollOffset((prev) => Math.min(prev, newIdx));
     } else if (key.downArrow || input === 'j') {
-      const newIdx = Math.min(components.length - 1, selectedIdx + 1);
-      setSelectedIdx(newIdx);
+      setSelectedIdx((prev) => {
+        const newIdx = Math.min(components.length - 1, prev + 1);
+        setSidebarScrollOffset((off) => (newIdx >= off + VISIBLE_COUNT ? newIdx - VISIBLE_COUNT + 1 : off));
+        return newIdx;
+      });
       setJsonScrollOffset(0);
       setDraftValue('');
       setSaveError(null);
-      setSidebarScrollOffset((prev) => (newIdx >= prev + VISIBLE_COUNT ? newIdx - VISIBLE_COUNT + 1 : prev));
     }
   });
 
@@ -265,6 +423,7 @@ export function GenerateReviewStep({
     id: c.key,
     name: isEmpty(c) ? `${c.key} (empty)` : c.key,
     status: c.status,
+    previewAnnotation: previewAnnotations.get(c.key),
     extractionConfidence: null,
     needsReview: false,
     validationErrorCount: 0,
@@ -277,7 +436,10 @@ export function GenerateReviewStep({
     (m, c) => Math.max(m, c.key.length + (isEmpty(c) ? ' (empty)'.length : 0)),
     0,
   );
-  const sidebarWidth = Math.min(Math.max(longestName + 4, 14), 30);
+  // +5 = border (1) + status icon (1) + badge column (1) + space (1) + border (1).
+  // The badge column is reserved even when no annotation is present so the
+  // sidebar width doesn't jitter as live-preview annotations flip in/out.
+  const sidebarWidth = Math.min(Math.max(longestName + 5, 14), 30);
   const panelWidth = Math.max(10, terminalWidth - sidebarWidth - 4);
 
   const accepted = components.filter((c) => c.status === 'accepted').length;
@@ -298,6 +460,55 @@ export function GenerateReviewStep({
         />
       )}
       {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
+      {showRemovedPanel && !dialogOpen && (
+        <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
+          <Text bold color="cyan">{`Removed components (${removedComponents.length})`}</Text>
+          <Text dimColor>these will be DELETED from the target space</Text>
+          <Text> </Text>
+          {removedComponents.map((rc) => (
+            <Text key={rc.id}>{`- ${rc.name}${rc.id ? `  (${rc.id})` : ''}`}</Text>
+          ))}
+          <Text> </Text>
+          <Text dimColor>press d or Esc to close</Text>
+        </Box>
+      )}
+      {!dialogOpen && livePreview && (() => {
+        // Pilot-2026-06-23 R2: at-a-glance diff summary at the top of the
+        // step. Mutually exclusive states:
+        //   - hook running (and we don't yet have annotations) → spinner.
+        //   - hook disabled (creds rejected) → static disabled hint.
+        //   - annotations populated → counts.
+        //   - idle, no annotations, not disabled → render nothing.
+        const counts = { new: 0, changed: 0, removed: 0, breaking: 0 };
+        for (const v of previewAnnotations.values()) {
+          counts[v] = (counts[v] ?? 0) + 1;
+        }
+        const hasCounts = counts.new + counts.changed + counts.removed + counts.breaking > 0;
+        if (livePreviewHook.disabled) {
+          return <Text dimColor>{'Preview: disabled (creds rejected)'}</Text>;
+        }
+        if (livePreviewHook.status === 'running' && !hasCounts) {
+          return <Text dimColor>{`Preview: ${livePreviewSpinner} running...`}</Text>;
+        }
+        if (!hasCounts) return null;
+        return (
+          <Box>
+            <Text>{'Preview: '}</Text>
+            <Text color="green">{`${counts.new} new`}</Text>
+            <Text>{' · '}</Text>
+            <Text color="yellow">{`${counts.changed} changed`}</Text>
+            <Text>{' · '}</Text>
+            <Text dimColor>{`${counts.removed} removed`}</Text>
+            {removedComponents.length > 0 && (
+              <Text dimColor>{' (d for details)'}</Text>
+            )}
+            <Text>{' · '}</Text>
+            <Text color="red" bold>
+              {`${counts.breaking} breaking`}
+            </Text>
+          </Box>
+        );
+      })()}
       {!dialogOpen && emptyCount > 0 && (
         <Text color="yellow">
           {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
@@ -354,6 +565,15 @@ export function GenerateReviewStep({
                     onSave={handleEditSave}
                     onDiscard={handleEditDiscard}
                     onExit={() => setSidebarFocused(true)}
+                    metadata={
+                      reviewMetadata
+                        ? ({
+                            sourcePath: reviewMetadata.sourcePath,
+                            componentSource: reviewMetadata.componentSource,
+                            props: reviewMetadata.props,
+                          } as FieldEditorMetadata)
+                        : undefined
+                    }
                   />
                 )}
                 {saveError && <Text color="red">{'✗ ' + saveError}</Text>}
@@ -361,8 +581,14 @@ export function GenerateReviewStep({
                   {sidebarFocused
                     ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
-                      '  [F] finalize  [e/Tab] focus panel  [q] quit'
+                      '  [F] finalize  [e/Tab] focus panel' +
+                      (livePreview && removedComponents.length > 0 ? '  [d] removed' : '') +
+                      '  [q] quit'
                     : '  [Tab] focus list  ' + (showJson ? '(JSON view)' : '(edit fields)')}
+                  {livePreviewHook.status === 'running' && (
+                    <Text>{`  ${livePreviewSpinner} live preview`}</Text>
+                  )}
+                  {livePreviewHook.disabled && <Text>{'  · live preview disabled'}</Text>}
                 </Text>
               </>
             ) : (

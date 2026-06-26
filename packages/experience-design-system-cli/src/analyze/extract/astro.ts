@@ -131,6 +131,8 @@ function extractPropsFromFrontmatter(frontmatter: string): RawPropDefinition[] {
         type: typeText,
         required,
         ...(allowedValues && { allowedValues }),
+        sourceStartLine: member.getStartLineNumber(),
+        sourceEndLine: member.getEndLineNumber(),
       });
     }
   } else if (propsTypeAlias) {
@@ -150,6 +152,12 @@ function extractPropsFromFrontmatter(frontmatter: string): RawPropDefinition[] {
         type: typeText,
         required,
         ...(allowedValues && { allowedValues }),
+        ...(typeof (decl as { getStartLineNumber?: () => number }).getStartLineNumber === 'function'
+          ? {
+              sourceStartLine: (decl as { getStartLineNumber: () => number }).getStartLineNumber(),
+              sourceEndLine: (decl as { getEndLineNumber: () => number }).getEndLineNumber(),
+            }
+          : {}),
       });
     }
   }
@@ -280,6 +288,7 @@ function extractFromAstroFile(filePath: string, source: string): RawComponentDef
   return {
     name,
     source: filePath,
+    sourcePath: filePath,
     framework: 'astro',
     props: propsWithDefaults,
     slots,

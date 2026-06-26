@@ -41,6 +41,18 @@ export function registerImportCommand(program: Command): void {
     .option('--host <url>', 'Override API base URL (passed to apply push)')
     .option('--dry-run', 'Print generate components prompt without invoking the agent')
     .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)')
+    .option(
+      '--no-auto-filter',
+      'Skip the automatic AI pre-filter; jump straight to manual scope-gate (no-op when paired with --auto-accept-scope)',
+    )
+    .option(
+      '--no-live-preview',
+      "Skip the automatic preview re-run after each FieldEditor save (no-op when paired with --auto-accept-scope)",
+    )
+    .option(
+      '--no-push',
+      'Run extract → scope-gate → generate → final-review and exit without pushing to Contentful (no credentials prompt; live preview disabled)',
+    )
     .action(
       async (opts: {
         spaceId?: string;
@@ -66,6 +78,9 @@ export function registerImportCommand(program: Command): void {
         host?: string;
         dryRun?: boolean;
         autoAcceptScope?: boolean;
+        autoFilter?: boolean;
+        livePreview?: boolean;
+        push?: boolean;
       }) => {
         const isHeadless =
           opts.skipAnalyze ||
@@ -104,6 +119,10 @@ export function registerImportCommand(program: Command): void {
             initialProjectPath?: string;
             host?: string;
             autoAcceptScope?: boolean;
+            noCache?: boolean;
+            autoFilter?: boolean;
+            livePreview?: boolean;
+            noPush?: boolean;
           };
           const creds = await readExperiencesCredentials();
           const { waitUntilExit } = render(
@@ -116,6 +135,10 @@ export function registerImportCommand(program: Command): void {
               initialProjectPath: opts.project !== '.' ? resolve(opts.project) : undefined,
               host: opts.host,
               autoAcceptScope,
+              noCache: opts.cache === false,
+              autoFilter: opts.autoFilter !== false,
+              livePreview: opts.livePreview !== false,
+              noPush: opts.push === false,
             }),
           );
           await waitUntilExit();

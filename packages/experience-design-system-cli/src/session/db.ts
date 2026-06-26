@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
@@ -85,23 +85,28 @@ CREATE TABLE IF NOT EXISTS raw_components (
   extraction_confidence  INTEGER,
   review_reasons         TEXT NOT NULL DEFAULT '[]',
   needs_review           INTEGER NOT NULL DEFAULT 0,
+  source_path            TEXT,
+  reject_reason          TEXT,
   PRIMARY KEY (session_id, component_id)
 );
 
 CREATE TABLE IF NOT EXISTS raw_props (
-  session_id      TEXT NOT NULL,
-  component_id    TEXT NOT NULL,
-  name            TEXT NOT NULL,
-  type            TEXT NOT NULL,
-  required        INTEGER NOT NULL CHECK (required IN (0, 1)),
-  category        TEXT CHECK (category IN ('content', 'design', 'state')),
-  default_value   TEXT,
-  description     TEXT,
-  token_reference TEXT,
-  position        INTEGER NOT NULL,
-  cdf_type        TEXT,
-  cdf_category    TEXT CHECK (cdf_category IN ('content', 'design', 'state')),
-  cdf_token_kind  TEXT,
+  session_id        TEXT NOT NULL,
+  component_id      TEXT NOT NULL,
+  name              TEXT NOT NULL,
+  type              TEXT NOT NULL,
+  required          INTEGER NOT NULL CHECK (required IN (0, 1)),
+  category          TEXT CHECK (category IN ('content', 'design', 'state')),
+  default_value     TEXT,
+  description       TEXT,
+  token_reference   TEXT,
+  position          INTEGER NOT NULL,
+  cdf_type          TEXT,
+  cdf_category      TEXT CHECK (cdf_category IN ('content', 'design', 'state')),
+  cdf_token_kind    TEXT,
+  rationale         TEXT,
+  source_start_line INTEGER,
+  source_end_line   INTEGER,
   PRIMARY KEY (session_id, component_id, name),
   FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
 );
@@ -196,14 +201,28 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
   mkdirSync(dirname(path), { recursive: true });
   try {
     const db = new DatabaseSync(path);
+    // Configure connection-level pragmas BEFORE running schema/migrations.
+    // - journal_mode=WAL: persistent on the DB file; readers don't block writers
+    //   and vice versa. (Also set in SCHEMA, but harmless to assert per-open.)
+    // - busy_timeout: per-connection; SQLite waits for a lock instead of
+    //   immediately throwing 'database is locked'. Critical when the wizard
+    //   main process and select-agent subprocesses contend on writes.
+    // - synchronous=NORMAL: safe under WAL, faster than FULL.
+    db.exec('PRAGMA journal_mode = WAL');
+    db.exec('PRAGMA busy_timeout = 5000');
+    db.exec('PRAGMA synchronous = NORMAL');
     db.exec(SCHEMA);
     applyDbMigrations(db);
     return db;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('database is locked')) {
-      process.stderr.write('Error: another CLI process is already running. Wait for it to finish and retry.\n');
-      process.exit(1);
+      // Throw a typed-ish error rather than process.exit(1). Calling exit
+      // from inside Ink's render reconciler crashes the TUI mid-frame and
+      // emits a noisy 'setState during render' warning. The CLI entry
+      // point (src/index.ts) catches and exits cleanly for non-TUI
+      // contexts; the wizard catches and transitions to its error step.
+      throw new Error('database is locked: another CLI process may be running. Retry once it exits.');
     }
     throw e;
   }
@@ -229,6 +248,30 @@ function applyDbMigrations(db: DatabaseSync): void {
   }
   if (!rawCompColNames.has('needs_review')) {
     db.exec('ALTER TABLE raw_components ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0');
+  }
+
+  // Feature 1: per-component source path on raw_components, rationale + per-prop
+  // source location on raw_props. All nullable, no DEFAULT — existing rows survive.
+  if (!rawCompColNames.has('source_path')) {
+    db.exec('ALTER TABLE raw_components ADD COLUMN source_path TEXT');
+  }
+  const rawPropCols = db.prepare('PRAGMA table_info(raw_props)').all() as Array<{ name: string }>;
+  const rawPropColNames = new Set(rawPropCols.map((c) => c.name));
+  if (!rawPropColNames.has('rationale')) {
+    db.exec('ALTER TABLE raw_props ADD COLUMN rationale TEXT');
+  }
+  if (!rawPropColNames.has('source_start_line')) {
+    db.exec('ALTER TABLE raw_props ADD COLUMN source_start_line INTEGER');
+  }
+  if (!rawPropColNames.has('source_end_line')) {
+    db.exec('ALTER TABLE raw_props ADD COLUMN source_end_line INTEGER');
+  }
+
+  // Feature 3: persist select-agent's reject reason on raw_components. Nullable,
+  // no DEFAULT — accepted components keep NULL, rejected ones store the LLM's
+  // reason (or `validation error: <codes>` for validation auto-rejections).
+  if (!rawCompColNames.has('reject_reason')) {
+    db.exec('ALTER TABLE raw_components ADD COLUMN reject_reason TEXT');
   }
 
   // Add generation_cache table if it doesn't exist yet.
@@ -260,6 +303,70 @@ export interface ApplyToolCallsResult {
   warnings: string[];
 }
 
+/**
+ * Feature 1: load per-component metadata for surfacing in the review UI —
+ * source path, full source text, and per-prop rationale + source-location.
+ * Returns null when no row matches. Decoupled from loadCDFComponents so
+ * the CDF projection stays unaffected.
+ */
+export interface ComponentReviewMetadata {
+  sourcePath: string | null;
+  componentSource: string | null;
+  props: Record<string, { rationale: string | null; sourceStartLine: number | null; sourceEndLine: number | null }>;
+}
+
+export function loadComponentReviewMetadata(
+  db: DatabaseSync,
+  sessionId: string,
+  componentName: string,
+): ComponentReviewMetadata | null {
+  const compRow = db
+    .prepare(
+      `SELECT component_id, source, source_path FROM raw_components WHERE session_id = ? AND name = ?`,
+    )
+    .get(sessionId, componentName) as { component_id: string; source: string; source_path: string | null } | undefined;
+  if (!compRow) return null;
+
+  const propRows = db
+    .prepare(
+      `SELECT name, rationale, source_start_line, source_end_line FROM raw_props WHERE session_id = ? AND component_id = ?`,
+    )
+    .all(sessionId, compRow.component_id) as Array<{
+    name: string;
+    rationale: string | null;
+    source_start_line: number | null;
+    source_end_line: number | null;
+  }>;
+
+  const props: ComponentReviewMetadata['props'] = {};
+  for (const r of propRows) {
+    props[r.name] = {
+      rationale: r.rationale,
+      sourceStartLine: r.source_start_line,
+      sourceEndLine: r.source_end_line,
+    };
+  }
+
+  // raw_components.source historically stores the file path, not the file
+  // text. For the source-view panel to render real lines, prefer reading
+  // the file from disk via source_path. Fall back to whatever's in `source`
+  // (handles in-memory fixtures and tests).
+  let componentSource: string | null = compRow.source ?? null;
+  if (compRow.source_path) {
+    try {
+      componentSource = readFileSync(compRow.source_path, 'utf8');
+    } catch {
+      // File no longer exists or unreadable — leave fallback.
+    }
+  }
+
+  return {
+    sourcePath: compRow.source_path,
+    componentSource,
+    props,
+  };
+}
+
 export function applyToolCalls(
   db: DatabaseSync,
   sessionId: string,
@@ -275,11 +382,11 @@ export function applyToolCalls(
   let slots = 0;
 
   const updateProp = db.prepare(
-    `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?
+    `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?, rationale = ?
      WHERE session_id = ? AND component_id = ? AND name = ?`,
   );
   const clearProp = db.prepare(
-    `UPDATE raw_props SET cdf_type = 'excluded', cdf_category = NULL, cdf_token_kind = NULL
+    `UPDATE raw_props SET cdf_type = 'excluded', cdf_category = NULL, cdf_token_kind = NULL, rationale = ?
      WHERE session_id = ? AND component_id = ? AND name = ?`,
   );
   const deleteAllowedValues = db.prepare(
@@ -318,6 +425,7 @@ export function applyToolCalls(
           call.token_kind ?? null,
           call.required !== undefined ? (call.required ? 1 : 0) : 0,
           call.description ?? null,
+          call.reason ?? null,
           sessionId,
           componentId,
           call.prop,
@@ -338,7 +446,7 @@ export function applyToolCalls(
         }
         classified++;
       } else if (call.tool === 'exclude_prop') {
-        clearProp.run(sessionId, componentId, call.prop);
+        clearProp.run(call.reason || null, sessionId, componentId, call.prop);
         excluded++;
       } else if (call.tool === 'classify_slot') {
         const slotRequired = call.required !== undefined ? (call.required ? 1 : 0) : 1;
@@ -544,13 +652,13 @@ export function storeRawComponents(
   const now = new Date().toISOString();
 
   const insertComp = db.prepare(
-    `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, extraction_confidence, review_reasons, needs_review)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, extraction_confidence, review_reasons, needs_review, source_path)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertProp = db.prepare(
     `INSERT INTO raw_props
-       (session_id, component_id, name, type, required, category, default_value, description, token_reference, position)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (session_id, component_id, name, type, required, category, default_value, description, token_reference, position, source_start_line, source_end_line)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertAllowedValue = db.prepare(
     `INSERT INTO raw_prop_allowed_values (session_id, component_id, prop_name, position, value)
@@ -622,6 +730,7 @@ export function storeRawComponents(
         comp.extractionConfidence ?? null,
         JSON.stringify(comp.reviewReasons ?? []),
         comp.needsReview ? 1 : 0,
+        comp.sourcePath ?? null,
       );
 
       for (let i = 0; i < comp.props.length; i++) {
@@ -637,6 +746,8 @@ export function storeRawComponents(
           prop.description ?? null,
           prop.tokenReference ?? null,
           i,
+          prop.sourceStartLine ?? null,
+          prop.sourceEndLine ?? null,
         );
         if (prop.allowedValues) {
           prop.allowedValues.forEach((v, j) => insertAllowedValue.run(sessionId, componentId, prop.name, j, v));
@@ -753,7 +864,7 @@ export function loadRawComponents(
 ): RawComponentWithId[] {
   const all = db
     .prepare(
-      'SELECT component_id, name, source, framework, extraction_confidence, review_reasons, needs_review FROM raw_components WHERE session_id = ? ORDER BY rowid',
+      'SELECT component_id, name, source, framework, extraction_confidence, review_reasons, needs_review, source_path FROM raw_components WHERE session_id = ? ORDER BY rowid',
     )
     .all(sessionId) as Array<{
     component_id: string;
@@ -763,6 +874,7 @@ export function loadRawComponents(
     extraction_confidence: number | null;
     review_reasons: string;
     needs_review: number;
+    source_path: string | null;
   }>;
 
   const components = allowedNames ? all.filter((c) => allowedNames.has(c.name)) : all;
@@ -771,7 +883,8 @@ export function loadRawComponents(
 
   const props = db
     .prepare(
-      `SELECT component_id, name, type, required, category, default_value, description, token_reference, position
+      `SELECT component_id, name, type, required, category, default_value, description, token_reference, position,
+              rationale, source_start_line, source_end_line
        FROM raw_props WHERE session_id = ? ORDER BY component_id, position`,
     )
     .all(sessionId) as Array<{
@@ -784,6 +897,9 @@ export function loadRawComponents(
     description: string | null;
     token_reference: string | null;
     position: number;
+    rationale: string | null;
+    source_start_line: number | null;
+    source_end_line: number | null;
   }>;
 
   const allowedValues = db
@@ -844,6 +960,7 @@ export function loadRawComponents(
         }
       })(),
       needsReview: Boolean(c.needs_review),
+      sourcePath: c.source_path ?? undefined,
       props: (propsByComponent.get(c.component_id) ?? []).map((p): RawPropDefinition => {
         const av = allowedValuesByProp.get(`${c.component_id}::${p.name}`);
         const prop: RawPropDefinition = {
@@ -856,6 +973,8 @@ export function loadRawComponents(
         if (p.description !== null) prop.description = p.description;
         if (p.token_reference !== null) prop.tokenReference = p.token_reference;
         if (av && av.length > 0) prop.allowedValues = av.map((v) => v.value);
+        if (p.source_start_line !== null) prop.sourceStartLine = p.source_start_line;
+        if (p.source_end_line !== null) prop.sourceEndLine = p.source_end_line;
         return prop;
       }),
       slots: (slotsByComponent.get(c.component_id) ?? []).map((s): RawSlotDefinition => {
@@ -1184,18 +1303,36 @@ export function loadCDFComponents(
     });
 }
 
-export function loadScopeComponents(
-  db: DatabaseSync,
-  sessionId: string,
-): Array<{ name: string; componentId: string }> {
+export type ScopeComponentRow = {
+  name: string;
+  componentId: string;
+  aiDecision: 'accepted' | 'rejected' | null;
+  aiReason: string | null;
+};
+
+export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeComponentRow[] {
+  // Loads extract-stage components: those still pending operator review (`extracted`)
+  // plus those the Feature 3 auto-filter has already classified (`accepted` /
+  // `rejected`). Excludes `generated` (already past scope-gate) so re-runs of the
+  // wizard don't show already-confirmed components.
   const rows = db
     .prepare(
-      `SELECT name, component_id FROM raw_components
-       WHERE session_id = ? AND status = 'extracted'
+      `SELECT name, component_id, status, reject_reason FROM raw_components
+       WHERE session_id = ? AND status IN ('extracted', 'accepted', 'rejected')
        ORDER BY name`,
     )
-    .all(sessionId) as Array<{ name: string; component_id: string }>;
-  return rows.map((r) => ({ name: r.name, componentId: r.component_id }));
+    .all(sessionId) as Array<{
+    name: string;
+    component_id: string;
+    status: string;
+    reject_reason: string | null;
+  }>;
+  return rows.map((r) => ({
+    name: r.name,
+    componentId: r.component_id,
+    aiDecision: r.status === 'accepted' ? 'accepted' : r.status === 'rejected' ? 'rejected' : null,
+    aiReason: r.reject_reason,
+  }));
 }
 
 export function applyScopeDecisions(
@@ -1204,16 +1341,24 @@ export function applyScopeDecisions(
   decisions: { accepted: string[]; rejected: string[] },
 ): void {
   const now = new Date().toISOString();
-  const accepted = [...new Set(decisions.accepted)];
+  const acceptedSet = new Set(decisions.accepted);
+  const accepted = [...acceptedSet];
+  // Conflict precedence: accepted wins over rejected.
+  const rejected = [...new Set(decisions.rejected)].filter((n) => !acceptedSet.has(n));
+  // Rejected first so accepted writes can flip back to 'generated' afterwards
+  // if a name appears in both lists.
+  if (rejected.length > 0) {
+    const placeholders = rejected.map(() => '?').join(',');
+    db.prepare(
+      `UPDATE raw_components SET status = 'rejected' WHERE session_id = ? AND name IN (${placeholders})`,
+    ).run(sessionId, ...rejected);
+  }
   if (accepted.length > 0) {
     const placeholders = accepted.map(() => '?').join(',');
     db.prepare(
       `UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name IN (${placeholders})`,
     ).run(sessionId, ...accepted);
   }
-  // Rejected components are intentionally left at status='extracted'.
-  // loadCDFComponents only picks up status='generated', so this is sufficient
-  // to exclude them from generate / push without a destructive write.
   db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 }
 

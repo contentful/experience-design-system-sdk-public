@@ -630,3 +630,66 @@ describe('applyTokenToolCalls', () => {
     });
   });
 });
+
+describe('applyToolCalls — rationale persistence (Feature 1)', () => {
+  it('persists classify_prop reason to raw_props.rationale', async () => {
+    await withTempDb((dbPath) => {
+      const { db, sessionId, componentId } = setupSession(dbPath);
+      const calls: ToolCall[] = [
+        {
+          tool: 'classify_prop',
+          prop: 'label',
+          cdf_type: 'string',
+          cdf_category: 'content',
+          required: true,
+          description: 'Button label',
+          reason: 'inferred from PropertySignature with literal string type',
+        },
+      ];
+      applyToolCalls(db, sessionId, componentId, 'Button', calls, []);
+
+      const row = db
+        .prepare(`SELECT rationale FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?`)
+        .get(sessionId, componentId, 'label') as { rationale: string | null };
+      expect(row.rationale).toBe('inferred from PropertySignature with literal string type');
+      db.close();
+    });
+  });
+
+  it('persists exclude_prop reason to raw_props.rationale', async () => {
+    await withTempDb((dbPath) => {
+      const { db, sessionId, componentId } = setupSession(dbPath);
+      const calls: ToolCall[] = [
+        { tool: 'exclude_prop', prop: 'className', reason: 'framework internal — not authorable' },
+      ];
+      applyToolCalls(db, sessionId, componentId, 'Button', calls, []);
+
+      const row = db
+        .prepare(`SELECT rationale FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?`)
+        .get(sessionId, componentId, 'className') as { rationale: string | null };
+      expect(row.rationale).toBe('framework internal — not authorable');
+      db.close();
+    });
+  });
+
+  it('writes rationale = NULL when reason is missing (backward compat)', async () => {
+    await withTempDb((dbPath) => {
+      const { db, sessionId, componentId } = setupSession(dbPath);
+      const calls: ToolCall[] = [
+        {
+          tool: 'classify_prop',
+          prop: 'label',
+          cdf_type: 'string',
+          cdf_category: 'content',
+        },
+      ];
+      applyToolCalls(db, sessionId, componentId, 'Button', calls, []);
+
+      const row = db
+        .prepare(`SELECT rationale FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?`)
+        .get(sessionId, componentId, 'label') as { rationale: string | null };
+      expect(row.rationale).toBeNull();
+      db.close();
+    });
+  });
+});

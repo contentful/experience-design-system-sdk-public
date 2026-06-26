@@ -57,7 +57,7 @@ describe('ScopeGateStep + applyScopeDecisions integration', () => {
         .all(sessionId) as Array<{ name: string; status: string }>;
       expect(rows).toEqual([
         { name: 'Button', status: 'generated' },
-        { name: 'Junk', status: 'extracted' },
+        { name: 'Junk', status: 'rejected' },
       ]);
       db.close();
     });

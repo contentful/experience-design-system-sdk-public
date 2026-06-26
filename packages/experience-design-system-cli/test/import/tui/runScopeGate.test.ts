@@ -74,7 +74,7 @@ describe('runScopeGate', () => {
           .all(sessionId) as Array<{ name: string; status: string }>;
         expect(rows).toEqual([
           { name: 'Button', status: 'generated' },
-          { name: 'Junk', status: 'extracted' },
+          { name: 'Junk', status: 'rejected' },
         ]);
       } finally {
         db.close();
@@ -86,6 +86,83 @@ describe('runScopeGate', () => {
       const byName = Object.fromEntries(snapshot.components.map((c) => [c.name, c]));
       expect(byName['Button']?.status).toBe('accepted');
       expect(byName['Junk']?.status).toBe('rejected');
+    });
+  });
+
+  it('awaits cancelAutoFilter before writing the snapshot when auto-filter is running', async () => {
+    await withTempDb(async ({ dbPath, artifactsDir }) => {
+      const sessionId = seed(dbPath);
+      const order: string[] = [];
+      let cancelResolve: (() => void) | null = null;
+      const cancelAutoFilter = vi.fn().mockImplementation(() => {
+        order.push('cancel:start');
+        return new Promise<void>((resolve) => {
+          cancelResolve = () => {
+            order.push('cancel:resolve');
+            resolve();
+          };
+        });
+      });
+      const onAdvanceToGenerate = vi.fn().mockImplementation(async () => {
+        order.push('advance');
+      });
+      const onAdvanceToPushFlow = vi.fn();
+
+      const promise = runScopeGate({
+        sessionId,
+        decisions: { accepted: ['Button'], rejected: ['Junk'] },
+        cancelAutoFilter,
+        onAdvanceToGenerate,
+        onAdvanceToPushFlow,
+      });
+
+      // Give the runScopeGate a tick to enter cancel.
+      await new Promise((r) => setImmediate(r));
+      expect(cancelAutoFilter).toHaveBeenCalledTimes(1);
+      expect(order).toEqual(['cancel:start']);
+
+      // Snapshot must NOT exist yet — write must wait for cancel.
+      let snapshotExists = false;
+      try {
+        await readFile(join(artifactsDir, sessionId, 'current-review-state.json'), 'utf8');
+        snapshotExists = true;
+      } catch {
+        snapshotExists = false;
+      }
+      expect(snapshotExists).toBe(false);
+
+      // Resolve cancel; runScopeGate should now write the snapshot.
+      cancelResolve!();
+      await promise;
+
+      expect(order).toEqual(['cancel:start', 'cancel:resolve', 'advance']);
+
+      // Snapshot must contain the FULL operator decision set (every component
+      // in the input list), not a partial select-agent view.
+      const snapshotRaw = await readFile(join(artifactsDir, sessionId, 'current-review-state.json'), 'utf8');
+      const snapshot = JSON.parse(snapshotRaw) as ReviewSessionSnapshot;
+      const byName = Object.fromEntries(snapshot.components.map((c) => [c.name, c]));
+      expect(Object.keys(byName).sort()).toEqual(['Button', 'Junk']);
+      expect(byName['Button']?.status).toBe('accepted');
+      expect(byName['Junk']?.status).toBe('rejected');
+    });
+  });
+
+  it('skips cancelAutoFilter when not provided (idle path)', async () => {
+    await withTempDb(async ({ dbPath }) => {
+      const sessionId = seed(dbPath);
+      const onAdvanceToGenerate = vi.fn().mockResolvedValue(undefined);
+      const onAdvanceToPushFlow = vi.fn();
+
+      // No cancelAutoFilter supplied — runScopeGate should still complete.
+      await runScopeGate({
+        sessionId,
+        decisions: { accepted: ['Button'], rejected: ['Junk'] },
+        onAdvanceToGenerate,
+        onAdvanceToPushFlow,
+      });
+
+      expect(onAdvanceToGenerate).toHaveBeenCalledOnce();
     });
   });
 
@@ -111,8 +188,8 @@ describe('runScopeGate', () => {
           .prepare('SELECT name, status FROM raw_components WHERE session_id = ? ORDER BY name')
           .all(sessionId) as Array<{ name: string; status: string }>;
         expect(rows).toEqual([
-          { name: 'Button', status: 'extracted' },
-          { name: 'Junk', status: 'extracted' },
+          { name: 'Button', status: 'rejected' },
+          { name: 'Junk', status: 'rejected' },
         ]);
       } finally {
         db.close();

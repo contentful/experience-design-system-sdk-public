@@ -6,8 +6,15 @@ export type FinalReviewHostProps = {
   extractSessionId: string | null;
   generatedCount: number;
   autoAccept: boolean;
-  onFinalize: (accepted: number, rejected: number) => void;
+  onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
+  // Feature 2 plumbing — passed straight through to GenerateReviewStep.
+  livePreview?: boolean;
+  spaceId?: string;
+  environmentId?: string;
+  cmaToken?: string;
+  host?: string;
+  tokensPath?: string;
 };
 
 export function FinalReviewHost({
@@ -16,6 +23,12 @@ export function FinalReviewHost({
   autoAccept,
   onFinalize,
   onQuit,
+  livePreview,
+  spaceId,
+  environmentId,
+  cmaToken,
+  host,
+  tokensPath,
 }: FinalReviewHostProps): React.ReactElement {
   if (!extractSessionId) {
     return (
@@ -34,6 +47,12 @@ export function FinalReviewHost({
       extractSessionId={extractSessionId}
       onFinalize={onFinalize}
       onQuit={onQuit}
+      livePreview={livePreview}
+      spaceId={spaceId}
+      environmentId={environmentId}
+      cmaToken={cmaToken}
+      host={host}
+      tokensPath={tokensPath}
     />
   );
 }
@@ -43,10 +62,10 @@ function FinalReviewAutoAccept({
   onFinalize,
 }: {
   generatedCount: number;
-  onFinalize: (accepted: number, rejected: number) => void;
+  onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
 }): React.ReactElement {
   React.useEffect(() => {
-    onFinalize(generatedCount, 0);
+    onFinalize(generatedCount, 0, 0);
     // fire once on mount; deps intentionally empty so a re-render with new generatedCount doesn't double-finalize
   }, []);
   return (

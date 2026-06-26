@@ -2426,4 +2426,36 @@ describe('ReactComponentExtractor', () => {
     expect(accordion.props.find((p) => p.name === 'defaultValue')).toBeDefined();
     expect(accordion.props.find((p) => p.name === 'onValueChange')).toBeDefined();
   });
+
+  it('captures sourcePath and per-prop source line ranges (Feature 1)', async () => {
+    // Lines 1 (blank), 2: import, 3: blank, 4: interface open, 5: label, 6: variant, 7: }
+    const filePath = await writeFixture(
+      'Button.tsx',
+      [
+        '',
+        "import React from 'react';",
+        '',
+        'export interface ButtonProps {',
+        '  label: string;',
+        "  variant?: 'primary' | 'secondary';",
+        '}',
+        '',
+        'export function Button({ label, variant }: ButtonProps) {',
+        '  return <button>{label}</button>;',
+        '}',
+        '',
+      ].join('\n'),
+    );
+
+    const result = await extractReactComponents([filePath]);
+    const button = result.components[0];
+    expect(button.sourcePath).toBe(filePath);
+
+    const labelProp = button.props.find((p) => p.name === 'label');
+    expect(labelProp?.sourceStartLine).toBeGreaterThan(0);
+    expect(labelProp?.sourceEndLine).toBeGreaterThanOrEqual(labelProp!.sourceStartLine!);
+
+    const variantProp = button.props.find((p) => p.name === 'variant');
+    expect(variantProp?.sourceStartLine).toBeGreaterThan(labelProp!.sourceStartLine!);
+  });
 });

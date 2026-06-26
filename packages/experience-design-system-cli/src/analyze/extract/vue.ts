@@ -122,6 +122,7 @@ async function extractFromVueSFC(
     component: {
       name,
       source: filePath,
+      sourcePath: filePath,
       framework: 'vue',
       props,
       slots,
@@ -159,6 +160,7 @@ async function extractOptionsComponent(
     component: {
       name,
       source: filePath,
+      sourcePath: filePath,
       framework: 'vue',
       props,
       slots,
@@ -667,6 +669,8 @@ function parseObjectProps(obj: import('ts-morph').ObjectLiteralExpression): RawP
         name,
         type: VUE_TYPE_MAP[initText] ?? 'any',
         required: false,
+        sourceStartLine: prop.getStartLineNumber(),
+        sourceEndLine: prop.getEndLineNumber(),
       });
       continue;
     }
@@ -705,6 +709,8 @@ function parseObjectProps(obj: import('ts-morph').ObjectLiteralExpression): RawP
       type,
       required,
       ...(defaultValue !== undefined && { defaultValue }),
+      sourceStartLine: prop.getStartLineNumber(),
+      sourceEndLine: prop.getEndLineNumber(),
     });
   }
 

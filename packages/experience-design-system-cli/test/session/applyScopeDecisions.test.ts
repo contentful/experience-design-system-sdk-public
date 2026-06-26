@@ -39,7 +39,7 @@ function readStatuses(dbPath: string, sessionId: string): Record<string, string>
 }
 
 describe('applyScopeDecisions', () => {
-  it('marks accepted components as generated and leaves the rest as extracted', async () => {
+  it("marks accepted components as 'generated' and rejected as 'rejected'", async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, {
@@ -56,12 +56,12 @@ describe('applyScopeDecisions', () => {
       expect(readStatuses(dbPath, sessionId)).toEqual({
         Button: 'generated',
         Card: 'generated',
-        Junk: 'extracted',
+        Junk: 'rejected',
       });
     });
   });
 
-  it('is a no-op when accepted is empty', async () => {
+  it("marks all rejected components as 'rejected' when accepted is empty", async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, {
@@ -73,7 +73,7 @@ describe('applyScopeDecisions', () => {
       applyScopeDecisions(db, sessionId, { accepted: [], rejected: ['A', 'B'] });
 
       db.close();
-      expect(readStatuses(dbPath, sessionId)).toEqual({ A: 'extracted', B: 'extracted' });
+      expect(readStatuses(dbPath, sessionId)).toEqual({ A: 'rejected', B: 'rejected' });
     });
   });
 

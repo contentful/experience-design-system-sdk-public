@@ -5,6 +5,16 @@ import { tmpdir } from 'node:os';
 import { runCliWithEnv } from '../../helpers/cli-runner.js';
 import { createTestFixture, type TestFixture } from '../../helpers/fixtures.js';
 import { HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON } from '../../../src/analyze/extract/source-inspection.js';
+import { DEFAULT_CONCURRENCY, DEFAULT_BATCH_SIZE } from '../../../src/analyze/select-agent/command.js';
+
+describe('select-agent constants', () => {
+  it('DEFAULT_CONCURRENCY is 10', () => {
+    expect(DEFAULT_CONCURRENCY).toBe(10);
+  });
+  it('DEFAULT_BATCH_SIZE is 5', () => {
+    expect(DEFAULT_BATCH_SIZE).toBe(5);
+  });
+});
 
 type ScriptedAgent = {
   countFile: string;
@@ -178,12 +188,15 @@ describe('select-agent command — decision persistence', () => {
     expect(state.components[0]?.status).toBe('rejected');
   });
 
-  it('makes exactly one agent call per component (single-pass)', async () => {
+  it('batches multiple components into a single agent invocation', async () => {
     const { fixture, artifactsDir } = await setup();
 
+    // Two-component default fixture; one batch (size 5) emits both tool calls.
     const agent = await createScriptedAgent('claude', [
-      '{"tool":"select_component","name":"Button","reason":"ui","confidence":5}',
-      '{"tool":"select_component","name":"Card","reason":"ui","confidence":5}',
+      [
+        '{"tool":"select_component","name":"Button","reason":"ui","confidence":5}',
+        '{"tool":"select_component","name":"Card","reason":"ui","confidence":5}',
+      ].join('\n'),
     ]);
     cleanupItems.push(agent.cleanup);
 
@@ -205,7 +218,213 @@ describe('select-agent command — decision persistence', () => {
     );
 
     const count = await readFile(agent.countFile, 'utf8');
-    expect(Number(count)).toBe(2);
+    expect(Number(count)).toBe(1);
+  });
+
+  it('respects EDS_SELECT_BATCH_SIZE: 7 components with batch=3 → 3 invocations', async () => {
+    const components = Array.from({ length: 7 }, (_, i) => ({
+      name: `Comp${i}`,
+      source: `src/Comp${i}.tsx`,
+      framework: 'react' as const,
+      props: [{ name: 'label', type: 'string', required: true }],
+      slots: [],
+    }));
+    const { fixture, artifactsDir } = await setup(components);
+
+    // Three batches: [0,1,2], [3,4,5], [6]. Pre-stage tool calls for each batch.
+    const agent = await createScriptedAgent('claude', [
+      ['Comp0', 'Comp1', 'Comp2']
+        .map((n) => `{"tool":"select_component","name":"${n}","reason":"ui","confidence":5}`)
+        .join('\n'),
+      ['Comp3', 'Comp4', 'Comp5']
+        .map((n) => `{"tool":"select_component","name":"${n}","reason":"ui","confidence":5}`)
+        .join('\n'),
+      '{"tool":"select_component","name":"Comp6","reason":"ui","confidence":5}',
+    ]);
+    cleanupItems.push(agent.cleanup);
+
+    await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      {
+        ...baseEnv(fixture, artifactsDir, agent.env()),
+        EDS_GENERATE_CONCURRENCY: '1',
+        EDS_SELECT_BATCH_SIZE: '3',
+      },
+    );
+
+    const count = await readFile(agent.countFile, 'utf8');
+    expect(Number(count)).toBe(3);
+  });
+
+  it('default batch size of 5: 12 components → 3 invocations', async () => {
+    const components = Array.from({ length: 12 }, (_, i) => ({
+      name: `Comp${i}`,
+      source: `src/Comp${i}.tsx`,
+      framework: 'react' as const,
+      props: [{ name: 'label', type: 'string', required: true }],
+      slots: [],
+    }));
+    const { fixture, artifactsDir } = await setup(components);
+
+    const batch1 = Array.from({ length: 5 }, (_, i) => `Comp${i}`);
+    const batch2 = Array.from({ length: 5 }, (_, i) => `Comp${i + 5}`);
+    const batch3 = ['Comp10', 'Comp11'];
+    const agent = await createScriptedAgent('claude', [
+      batch1.map((n) => `{"tool":"select_component","name":"${n}","reason":"ui","confidence":5}`).join('\n'),
+      batch2.map((n) => `{"tool":"select_component","name":"${n}","reason":"ui","confidence":5}`).join('\n'),
+      batch3.map((n) => `{"tool":"select_component","name":"${n}","reason":"ui","confidence":5}`).join('\n'),
+    ]);
+    cleanupItems.push(agent.cleanup);
+
+    await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      {
+        ...baseEnv(fixture, artifactsDir, agent.env()),
+        EDS_GENERATE_CONCURRENCY: '1',
+      },
+    );
+
+    const count = await readFile(agent.countFile, 'utf8');
+    expect(Number(count)).toBe(3);
+  });
+
+  it('emits one progress=select-agent line per component in a batched run', async () => {
+    const components = Array.from({ length: 5 }, (_, i) => ({
+      name: `Comp${i}`,
+      source: `src/Comp${i}.tsx`,
+      framework: 'react' as const,
+      props: [{ name: 'label', type: 'string', required: true }],
+      slots: [],
+    }));
+    const { fixture, artifactsDir } = await setup(components);
+
+    // Single batch — all 5 in one invocation, tool calls in REVERSE order to
+    // verify the progress lines emit in input order, not response order.
+    const agent = await createScriptedAgent('claude', [
+      ['Comp4', 'Comp3', 'Comp2', 'Comp1', 'Comp0']
+        .map((n) => `{"tool":"select_component","name":"${n}","reason":"ui","confidence":5}`)
+        .join('\n'),
+    ]);
+    cleanupItems.push(agent.cleanup);
+
+    const { stderr } = await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      baseEnv(fixture, artifactsDir, agent.env()),
+    );
+
+    const progressLines = stderr.split('\n').filter((l) => l.startsWith('progress=select-agent:'));
+    expect(progressLines).toHaveLength(5);
+    // Input-order N/M and component-name pairing.
+    for (let i = 0; i < 5; i++) {
+      expect(progressLines[i]).toContain(`:${i + 1}/5:accepted:Comp${i}:`);
+    }
+  });
+
+  it('out-of-order tool calls map to components by name', async () => {
+    const components = Array.from({ length: 3 }, (_, i) => ({
+      name: `Comp${i}`,
+      source: `src/Comp${i}.tsx`,
+      framework: 'react' as const,
+      props: [{ name: 'label', type: 'string', required: true }],
+      slots: [],
+    }));
+    const { fixture, artifactsDir } = await setup(components);
+
+    const agent = await createScriptedAgent('claude', [
+      [
+        '{"tool":"reject_component","name":"Comp2","reason":"r2","confidence":5}',
+        '{"tool":"select_component","name":"Comp0","reason":"r0","confidence":5}',
+        '{"tool":"reject_component","name":"Comp1","reason":"r1","confidence":5}',
+      ].join('\n'),
+    ]);
+    cleanupItems.push(agent.cleanup);
+
+    const { code } = await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      baseEnv(fixture, artifactsDir, agent.env()),
+    );
+    expect(code).toBe(0);
+
+    const state = JSON.parse(
+      await readFile(join(artifactsDir, fixture.sessionId, 'current-review-state.json'), 'utf8'),
+    ) as ReviewState;
+    const byName = Object.fromEntries(state.components.map((c) => [c.name, c.status]));
+    expect(byName['Comp0']).toBe('accepted');
+    expect(byName['Comp1']).toBe('rejected');
+    expect(byName['Comp2']).toBe('rejected');
+  });
+
+  it('missing tool call in batch marks only that component failed', async () => {
+    const components = Array.from({ length: 3 }, (_, i) => ({
+      name: `Comp${i}`,
+      source: `src/Comp${i}.tsx`,
+      framework: 'react' as const,
+      props: [{ name: 'label', type: 'string', required: true }],
+      slots: [],
+    }));
+    const { fixture, artifactsDir } = await setup(components);
+
+    // Agent omits Comp1 from its response.
+    const agent = await createScriptedAgent('claude', [
+      [
+        '{"tool":"select_component","name":"Comp0","reason":"ok","confidence":5}',
+        '{"tool":"select_component","name":"Comp2","reason":"ok","confidence":5}',
+      ].join('\n'),
+    ]);
+    cleanupItems.push(agent.cleanup);
+
+    const { code, stderr } = await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      baseEnv(fixture, artifactsDir, agent.env()),
+    );
+    expect(code).toBe(0);
+    expect(stderr).toContain('Failed (1/3)');
+    expect(stderr).toContain('Comp1');
   });
 
   it('emits select_agent_decision events for decided components', async () => {
@@ -323,6 +542,170 @@ describe('select-agent command — agent failure modes', () => {
     );
 
     expect(code).toBe(0);
+  });
+});
+
+// ── Feature 3: reject_reason persistence ─────────────────────────────────────
+
+describe('select-agent command — reject_reason persistence (Feature 3)', () => {
+  it('persists LLM reason to raw_components.reject_reason on rejection', async () => {
+    const { fixture, artifactsDir } = await setup([
+      {
+        name: 'BadgeIcon',
+        source: 'src/BadgeIcon.tsx',
+        framework: 'react',
+        props: [{ name: 'icon', type: 'string', required: true }],
+        slots: [],
+      },
+    ]);
+
+    const agent = await createScriptedAgent('claude', [
+      '{"tool":"reject_component","name":"BadgeIcon","reason":"low semantic value","confidence":5}',
+    ]);
+    cleanupItems.push(agent.cleanup);
+
+    const { code } = await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      baseEnv(fixture, artifactsDir, agent.env()),
+    );
+    expect(code).toBe(0);
+
+    const { openPipelineDb } = await import('../../../src/session/db.js');
+    const db = openPipelineDb(fixture.dbPath);
+    try {
+      const row = db
+        .prepare('SELECT name, status, reject_reason FROM raw_components WHERE session_id = ? AND name = ?')
+        .get(fixture.sessionId, 'BadgeIcon') as { name: string; status: string; reject_reason: string | null };
+      expect(row.status).toBe('rejected');
+      expect(row.reject_reason).toBe('low semantic value');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('clears reject_reason to NULL on accepted components', async () => {
+    const { fixture, artifactsDir } = await setup([
+      {
+        name: 'Button',
+        source: 'src/Button.tsx',
+        framework: 'react',
+        props: [{ name: 'label', type: 'string', required: true }],
+        slots: [],
+      },
+    ]);
+
+    const agent = await createScriptedAgent('claude', [
+      '{"tool":"select_component","name":"Button","reason":"primary UI","confidence":5}',
+    ]);
+    cleanupItems.push(agent.cleanup);
+
+    const { code } = await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      baseEnv(fixture, artifactsDir, agent.env()),
+    );
+    expect(code).toBe(0);
+
+    const { openPipelineDb } = await import('../../../src/session/db.js');
+    const db = openPipelineDb(fixture.dbPath);
+    try {
+      const row = db
+        .prepare('SELECT status, reject_reason FROM raw_components WHERE session_id = ? AND name = ?')
+        .get(fixture.sessionId, 'Button') as { status: string; reject_reason: string | null };
+      expect(row.status).toBe('accepted');
+      expect(row.reject_reason).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('flips reject_reason to NULL when re-running flips a rejected component to accepted', async () => {
+    const { fixture, artifactsDir } = await setup([
+      {
+        name: 'Button',
+        source: 'src/Button.tsx',
+        framework: 'react',
+        props: [{ name: 'label', type: 'string', required: true }],
+        slots: [],
+      },
+    ]);
+
+    const rejectAgent = await createScriptedAgent('claude', [
+      '{"tool":"reject_component","name":"Button","reason":"too generic","confidence":5}',
+    ]);
+    cleanupItems.push(rejectAgent.cleanup);
+    await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      baseEnv(fixture, artifactsDir, rejectAgent.env()),
+    );
+
+    const { openPipelineDb } = await import('../../../src/session/db.js');
+    {
+      const db = openPipelineDb(fixture.dbPath);
+      try {
+        const row = db
+          .prepare('SELECT reject_reason FROM raw_components WHERE session_id = ? AND name = ?')
+          .get(fixture.sessionId, 'Button') as { reject_reason: string | null };
+        expect(row.reject_reason).toBe('too generic');
+      } finally {
+        db.close();
+      }
+    }
+
+    const acceptAgent = await createScriptedAgent('claude', [
+      '{"tool":"select_component","name":"Button","reason":"primary UI","confidence":5}',
+    ]);
+    cleanupItems.push(acceptAgent.cleanup);
+    await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      baseEnv(fixture, artifactsDir, acceptAgent.env()),
+    );
+
+    const db = openPipelineDb(fixture.dbPath);
+    try {
+      const row = db
+        .prepare('SELECT status, reject_reason FROM raw_components WHERE session_id = ? AND name = ?')
+        .get(fixture.sessionId, 'Button') as { status: string; reject_reason: string | null };
+      expect(row.status).toBe('accepted');
+      expect(row.reject_reason).toBeNull();
+    } finally {
+      db.close();
+    }
   });
 });
 
