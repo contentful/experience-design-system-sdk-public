@@ -6,6 +6,8 @@ import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { replayRun, modifyRun } from '../runs/replay-helpers.js';
 import { resolvePromptFlags } from './print-prompt.js';
+import { shouldShowRunPicker } from '../runs/run-picker-mount.js';
+import type { RunPickerSelection } from '../runs/run-picker.js';
 
 export function registerImportCommand(program: Command): void {
   program
@@ -314,8 +316,36 @@ export function registerImportCommand(program: Command): void {
             onConflictMode?: 'overwrite' | 'skip' | 'fail';
             selectPromptPath?: string;
             generatePromptPath?: string;
+            initialRuns?: typeof pickerDecision.runs;
+            onRunPicked?: (selection: RunPickerSelection) => void;
           };
           const creds = await readExperiencesCredentials();
+
+          // ── Run picker decision ─────────────────────────────────────────
+          // When runs.json has prior entries and the operator didn't ask for
+          // a specific entry point, open the wizard with the run picker. The
+          // helper enforces every gate (TTY, conflicting flags, file state).
+          const pickerDecision = await shouldShowRunPicker({
+            flags: {
+              ...(opts.pushFromRun !== undefined ? { pushFromRun: opts.pushFromRun } : {}),
+              ...(opts.modify !== undefined ? { modify: opts.modify } : {}),
+              ...(opts.project !== '.' ? { project: opts.project } : {}),
+              ...(opts.autoAcceptScope ? { autoAcceptScope: true } : {}),
+              ...(opts.dryRun ? { dryRun: true } : {}),
+            },
+            isTTY: !!process.stdin.isTTY,
+          });
+
+          let pickerSelection: RunPickerSelection | null = null;
+          const pickerProps: { initialRuns?: typeof pickerDecision.runs; onRunPicked?: (s: RunPickerSelection) => void } = {};
+          if (pickerDecision.shouldShow) {
+            pickerProps.initialRuns = pickerDecision.runs;
+            pickerProps.onRunPicked = (selection) => {
+              pickerSelection = selection;
+              setImmediate(() => process.exit(0));
+            };
+          }
+
           const { waitUntilExit } = render(
             createElement<WizardProps>(WizardApp, {
               initialSpaceId: creds.spaceId,
@@ -335,9 +365,44 @@ export function registerImportCommand(program: Command): void {
               ...(opts.onConflict ? { onConflictMode: opts.onConflict } : {}),
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
+              ...pickerProps,
             }),
           );
-          await waitUntilExit();
+          try {
+            await waitUntilExit();
+          } catch {
+            /* Ink throws on process.exit; swallow so picker dispatch can run. */
+          }
+          // ── Picker dispatch ─────────────────────────────────────────────
+          // If the operator picked a run, route into the existing entry
+          // points so credential resolution and mutex checks stay in one
+          // place. The --modify path resolves the run record via
+          // resolveRunTarget and threads its session IDs through
+          // launchModifyWizard (see runs/replay-helpers.ts).
+          if (pickerSelection) {
+            const sel = pickerSelection as RunPickerSelection;
+            if (sel.action === 'push' && sel.runId) {
+              await replayRun({
+                runIdOrPath: sel.runId,
+                ...(opts.spaceId ? { spaceId: opts.spaceId } : {}),
+                ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
+                ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
+                ...(opts.host ? { host: opts.host } : {}),
+                interactive: !!process.stdout.isTTY,
+              });
+              return;
+            }
+            if (sel.action === 'modify' && sel.runId) {
+              await modifyRun({
+                runIdOrPath: sel.runId,
+                ...(opts.outDir ? { outDir: opts.outDir } : {}),
+                ...(opts.overwrite ? { overwrite: true } : {}),
+                ...(opts.saveAsNew ? { saveAsNew: true } : {}),
+              });
+              return;
+            }
+            // action === 'new' falls through — the wizard already advanced.
+          }
           return;
         }
 
