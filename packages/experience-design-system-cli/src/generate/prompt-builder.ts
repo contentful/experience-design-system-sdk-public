@@ -19,6 +19,14 @@ export interface PromptOptions {
   outDir: string;
   /** For components skill only: the single component's name (used in error messages). */
   componentName?: string;
+  /**
+   * Feature 8: custom prompt path override. When set, this absolute or relative
+   * `.md` path is read in place of the bundled skill file. The bundled-prompt
+   * invariants (utility-wrapper rejection, description content rules, etc.) do
+   * NOT apply under an override — callers are responsible for showing the
+   * appropriate warning banner.
+   */
+  skillPathOverride?: string;
 }
 
 const SKILL_FILES: Record<Skill, string> = {
@@ -34,7 +42,7 @@ const OUTPUT_FILES: Record<Skill, string> = {
 };
 
 export async function buildPrompt(options: PromptOptions): Promise<string> {
-  const skillContent = await readSkillFile(options.skill);
+  const skillContent = await readSkillFile(options.skill, options.skillPathOverride);
   const preamble = buildPreamble(options);
   return `${preamble}\n\nSkill instructions follow:\n---\n${skillContent}`;
 }
@@ -55,7 +63,15 @@ export function resolveSkillPath(skill: Skill): string {
   }
 }
 
-async function readSkillFile(skill: Skill): Promise<string> {
+async function readSkillFile(skill: Skill, override?: string): Promise<string> {
+  if (override) {
+    const skillPath = resolve(override);
+    try {
+      return await readFile(skillPath, 'utf8');
+    } catch {
+      throw new Error(`custom prompt file not found (skill: ${skill}, path: ${skillPath})`);
+    }
+  }
   const skillPath = resolveSkillPath(skill);
   try {
     return await readFile(skillPath, 'utf8');

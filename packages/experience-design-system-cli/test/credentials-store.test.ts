@@ -160,4 +160,42 @@ describe('writeExperiencesCredentials', () => {
     const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
     expect(written).not.toHaveProperty('host');
   });
+
+  it('round-trips selectPromptPath and generatePromptPath (Feature 8)', async () => {
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+
+    await writeExperiencesCredentials({
+      spaceId: 'space1',
+      environmentId: 'master',
+      cmaToken: 'token',
+      selectPromptPath: '/custom/select.md',
+      generatePromptPath: '/custom/generate.md',
+    });
+
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
+    expect(written.selectPromptPath).toBe('/custom/select.md');
+    expect(written.generatePromptPath).toBe('/custom/generate.md');
+
+    // Read back
+    mockReadFile.mockResolvedValue(JSON.stringify(written));
+    const creds = await readExperiencesCredentials();
+    expect(creds.selectPromptPath).toBe('/custom/select.md');
+    expect(creds.generatePromptPath).toBe('/custom/generate.md');
+  });
+
+  it('omits selectPromptPath / generatePromptPath when undefined (Feature 8)', async () => {
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+
+    await writeExperiencesCredentials({
+      spaceId: 'space1',
+      environmentId: 'master',
+      cmaToken: 'token',
+    });
+
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
+    expect(written).not.toHaveProperty('selectPromptPath');
+    expect(written).not.toHaveProperty('generatePromptPath');
+  });
 });

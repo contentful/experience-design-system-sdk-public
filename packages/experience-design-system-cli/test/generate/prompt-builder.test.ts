@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { buildPrompt } from '../../src/generate/prompt-builder.js';
 
 const INLINE_COMPONENTS = JSON.stringify([
@@ -162,6 +165,51 @@ describe('buildPrompt', () => {
     });
     expect(prompt).toContain('Data-fetch wrapper rule');
     expect(prompt).toContain('React hooks');
+  });
+
+  describe('skillPathOverride (Feature 8)', () => {
+    it('reads from override path when provided', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'eds-skill-override-'));
+      try {
+        const customPath = join(dir, 'custom-select.md');
+        const marker = 'CUSTOM_SKILL_MARKER_8d3f7a1c';
+        await writeFile(customPath, `# Custom\n\n${marker}\n`, 'utf8');
+        const prompt = await buildPrompt({
+          skill: 'select',
+          mode: 'autonomous',
+          rawComponentsInline: INLINE_COMPONENTS,
+          outDir: '/fake/out',
+          skillPathOverride: customPath,
+        });
+        expect(prompt).toContain(marker);
+        // Bundled-prompt distinctive phrase should NOT appear.
+        expect(prompt).not.toContain('Utility wrapper — no authorable content surface');
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('throws a clear error citing the custom path when the override file is missing', async () => {
+      await expect(
+        buildPrompt({
+          skill: 'select',
+          mode: 'autonomous',
+          rawComponentsInline: INLINE_COMPONENTS,
+          outDir: '/fake/out',
+          skillPathOverride: '/nonexistent/path/to/custom-prompt.md',
+        }),
+      ).rejects.toThrow(/custom prompt/i);
+    });
+
+    it('falls back to bundled path when override is undefined (behavior unchanged)', async () => {
+      const prompt = await buildPrompt({
+        skill: 'select',
+        mode: 'autonomous',
+        rawComponentsInline: INLINE_COMPONENTS,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('Utility wrapper — no authorable content surface');
+    });
   });
 
   it('tokens autonomous preamble includes tool-call protocol instructions', async () => {

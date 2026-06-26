@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFile, spawn } from 'node:child_process';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
+import { CustomPromptBanner } from './CustomPromptBanner.js';
 import { WelcomeStep } from './steps/WelcomeStep.js';
 import { PathValidationStep } from './steps/PathValidationStep.js';
 import { RunningStep } from './steps/RunningStep.js';
@@ -134,11 +135,16 @@ function findCliPath(): string {
   return join(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..', 'bin', 'cli.js');
 }
 
-export function buildSelectAgentArgs(opts: { sessionId: string; agent: string }): string[] {
+export function buildSelectAgentArgs(opts: {
+  sessionId: string;
+  agent: string;
+  /** Feature 8: forward to the spawned select-agent subprocess. */
+  selectPromptPath?: string;
+}): string[] {
   // Feature 3: the wizard auto-filter run should never fail-loud on validation
   // errors — those components surface in the AI-excluded section with a
   // synthesized reason, not an exit-1 abort. So we always pass --exclude-invalid.
-  return [
+  const args = [
     'analyze',
     'select-agent',
     '--agent',
@@ -147,6 +153,8 @@ export function buildSelectAgentArgs(opts: { sessionId: string; agent: string })
     opts.sessionId,
     '--exclude-invalid',
   ];
+  if (opts.selectPromptPath) args.push('--select-prompt-path', opts.selectPromptPath);
+  return args;
 }
 
 export type AutoFilterProgress = {
@@ -195,6 +203,8 @@ export function buildGenerateComponentsArgs(opts: {
   tokensPath?: string;
   agent: string;
   noCache?: boolean;
+  /** Feature 8: forward to the spawned generate components subprocess. */
+  generatePromptPath?: string;
 }): string[] {
   // Default behavior preserves the SHA cache (re-runs only re-classify
   // changed components). The operator opts into a full re-classify pass via
@@ -203,6 +213,7 @@ export function buildGenerateComponentsArgs(opts: {
   const args = ['generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
   if (opts.tokensPath) args.push('--tokens', opts.tokensPath);
   if (opts.noCache) args.push('--no-cache');
+  if (opts.generatePromptPath) args.push('--generate-prompt-path', opts.generatePromptPath);
   return args;
 }
 
@@ -253,6 +264,14 @@ export type WizardAppProps = {
   // Mutually exclusive with `noPush` (validated at the CLI surface).
   // Plumbed from `experiences import` via `--no-save`. Default false.
   noSave?: boolean;
+  /**
+   * Feature 8: custom prompt path overrides forwarded to the spawned
+   * `analyze select-agent` and `generate components` subprocesses. When set,
+   * the wizard also renders a persistent top-of-screen banner so the operator
+   * cannot miss that bundled invariants are bypassed.
+   */
+  selectPromptPath?: string;
+  generatePromptPath?: string;
 };
 
 export function WizardApp({
@@ -269,6 +288,8 @@ export function WizardApp({
   livePreview = true,
   noPush = false,
   noSave = false,
+  selectPromptPath,
+  generatePromptPath,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -577,7 +598,7 @@ export function WizardApp({
   // render — but we also keep a memory-side `aiDecisions` map for streaming UX.
   const runAutoFilter = (sessionId: string): Promise<void> => {
     return new Promise((res) => {
-      const args = buildSelectAgentArgs({ sessionId, agent: state.agent });
+      const args = buildSelectAgentArgs({ sessionId, agent: state.agent, selectPromptPath });
       const child = spawn('node', [findCliPath(), ...args]);
       autoFilterChildRef.current = child;
       let stderr = '';
@@ -678,6 +699,7 @@ export function WizardApp({
           tokensPath,
           agent: state.agent,
           noCache,
+          generatePromptPath,
         }),
       ];
       const child = spawn('node', args);
@@ -1672,6 +1694,10 @@ export function WizardApp({
   return (
     <Box flexDirection="column" width={terminalWidth}>
       <TopBar subcommand="import" hints={hints} />
+      <CustomPromptBanner
+        selectPromptPath={selectPromptPath}
+        generatePromptPath={generatePromptPath}
+      />
       {stepContent}
     </Box>
   );

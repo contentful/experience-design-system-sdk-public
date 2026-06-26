@@ -10,6 +10,7 @@ import {
   readExperiencesCredentials,
   writeExperiencesCredentials,
   experiencesCredentialsPath,
+  type ExperiencesCredentials,
 } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 
@@ -597,6 +598,31 @@ async function setupContentfulCredentials(): Promise<boolean> {
   return true;
 }
 
+// ── Feature 8: custom-skill-prompt helper (injectable for tests) ──────────────
+
+export type SkillPromptKind = 'select' | 'generate';
+
+/**
+ * Prompt the operator for a custom skill prompt path. Returns the resolved
+ * trimmed value, or `undefined` to leave the current value unchanged, or `null`
+ * to clear it. `ask` is injectable so tests can stub stdin.
+ */
+export async function promptCustomSkillPath(
+  kind: SkillPromptKind,
+  current: string | undefined,
+  ask: (q: string) => Promise<string> = prompt,
+): Promise<string | undefined | null> {
+  const flagName = kind === 'select' ? '--select-prompt-path' : '--generate-prompt-path';
+  void flagName;
+  const label = kind === 'select' ? 'select (analyze select-agent)' : 'generate (generate components)';
+  const currentLabel = current ? ` [${current}]` : ' [none]';
+  const answer = await ask(`  Custom ${label} prompt path${currentLabel} (empty=keep, "-"=clear): `);
+  const trimmed = answer.trim();
+  if (trimmed === '') return undefined;
+  if (trimmed === '-') return null;
+  return trimmed;
+}
+
 // ── Step 6: Optional quality-of-life ─────────────────────────────────────────
 
 async function setupQoL(profilePath: string): Promise<void> {
@@ -618,6 +644,26 @@ async function setupQoL(profilePath: string): Promise<void> {
     }
   } else {
     ok('EDS_EXTRACT_CONCURRENCY — already set');
+  }
+
+  // 6c (Feature 8): custom skill prompt paths
+  info('');
+  info('Custom skill prompt paths — point select-agent and/or generate components at your own .md prompts.');
+  info('When set, the bundled invariants (utility-wrapper rejection, description rules) do NOT apply.');
+  const offerCustomPrompts = await confirm('Configure custom skill prompt paths?', false);
+  if (offerCustomPrompts) {
+    const stored = await readExperiencesCredentials();
+    const selectAnswer = await promptCustomSkillPath('select', stored.selectPromptPath);
+    const generateAnswer = await promptCustomSkillPath('generate', stored.generatePromptPath);
+    const updated: ExperiencesCredentials = { ...stored };
+    if (selectAnswer === null) delete updated.selectPromptPath;
+    else if (selectAnswer !== undefined) updated.selectPromptPath = selectAnswer;
+    if (generateAnswer === null) delete updated.generatePromptPath;
+    else if (generateAnswer !== undefined) updated.generatePromptPath = generateAnswer;
+    await writeExperiencesCredentials(updated);
+    ok(`Custom prompt paths saved to ${experiencesCredentialsPath()}`);
+  } else {
+    dim('     skipped');
   }
 
   // 6b: NO_COLOR
