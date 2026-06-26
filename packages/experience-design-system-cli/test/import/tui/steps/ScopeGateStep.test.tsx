@@ -128,7 +128,7 @@ describe('ScopeGateStep — unified AI behavior', () => {
     { name: 'Hero', componentId: 'c4' },
   ];
 
-  it('renders AI-flagged rows inline with [AI] badge and EXCLUDED label', () => {
+  it('renders AI-flagged rows in the top AI-recommended-exclusions section', () => {
     const { lastFrame } = render(
       <ScopeGateStep
         components={MIXED}
@@ -138,20 +138,19 @@ describe('ScopeGateStep — unified AI behavior', () => {
       />,
     );
     const out = lastFrame() ?? '';
-    // No separate "AI excluded (N)" section.
-    expect(out).not.toMatch(/AI excluded \(\d+\)/);
-    // Both AI-flagged components present with badge + reason (inline truncated).
+    expect(out).toMatch(/AI recommended exclusions \(2\)/);
+    expect(out).toMatch(/Components \(3\)/);
     expect(out).toContain('BadgeIcon');
     expect(out).toContain('low semantic value');
     expect(out).toContain('DivWrapper');
     expect(out).toContain('no semantic content');
-    // Rows preserve extraction order: Button, Card, BadgeIcon, DivWrapper, Hero.
     const lines = out.split('\n');
     const idx = (name: string) => lines.findIndex((l) => l.includes(name));
-    expect(idx('Button')).toBeLessThan(idx('Card'));
-    expect(idx('Card')).toBeLessThan(idx('BadgeIcon'));
+    // R2: AI section first, then components, each in prop order.
     expect(idx('BadgeIcon')).toBeLessThan(idx('DivWrapper'));
-    expect(idx('DivWrapper')).toBeLessThan(idx('Hero'));
+    expect(idx('DivWrapper')).toBeLessThan(idx('Button'));
+    expect(idx('Button')).toBeLessThan(idx('Card'));
+    expect(idx('Card')).toBeLessThan(idx('Hero'));
   });
 
   it('omits the [AI] / [s] legend entry when zero AI-rejected components', () => {
@@ -298,25 +297,26 @@ describe('ScopeGateStep — unified AI behavior', () => {
       return r ?? null;
     }
 
-    it('initial cursor is on the first row (Button)', () => {
+    it('initial cursor is on the first row (BadgeIcon — AI section)', () => {
       const { lastFrame } = render(
         <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
       const row = cursorRow(lastFrame() ?? '');
       expect(row).not.toBeNull();
-      expect(row!).toContain('Button');
+      // R2: AI section is first; BadgeIcon is the first AI-flagged row.
+      expect(row!).toContain('BadgeIcon');
     });
 
-    it('j walks through AI-flagged rows inline', () => {
+    it('j walks across the section boundary', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
+      // Cursor: BadgeIcon → DivWrapper → Button (Components section).
       stdin.write('j');
       stdin.write('j');
       const row = cursorRow(lastFrame() ?? '');
       expect(row).not.toBeNull();
-      // Third row = BadgeIcon (AI-flagged).
-      expect(row!).toContain('BadgeIcon');
+      expect(row!).toContain('Button');
     });
 
     it('k from the top row clamps at 0 (no wrap)', () => {
@@ -326,7 +326,8 @@ describe('ScopeGateStep — unified AI behavior', () => {
       stdin.write('k');
       const row = cursorRow(lastFrame() ?? '');
       expect(row).not.toBeNull();
-      expect(row!).toContain('Button');
+      // Top row is BadgeIcon in R2.
+      expect(row!).toContain('BadgeIcon');
     });
 
     it('a on AI-flagged row toggles it INCLUDED (badge stays)', () => {
@@ -334,13 +335,11 @@ describe('ScopeGateStep — unified AI behavior', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
       );
-      // Walk to BadgeIcon: Button → Card → BadgeIcon.
-      stdin.write('j');
-      stdin.write('j');
+      // Cursor is on BadgeIcon (first AI row) at mount.
       stdin.write('a');
       const out = lastFrame() ?? '';
-      // BadgeIcon now INCLUDED but still wears [AI] badge.
-      expect(out).toMatch(/\[AI\][^\n]*INCLUDED[^\n]*BadgeIcon/);
+      // R2: BadgeIcon now INCLUDED (green [✓]) and still wears the `*` AI marker.
+      expect(out).toMatch(/\*[^\n]*\[✓\][^\n]*BadgeIcon/);
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.accepted).toContain('BadgeIcon');
@@ -354,6 +353,9 @@ describe('ScopeGateStep — unified AI behavior', () => {
       const { stdin } = render(
         <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
       );
+      // Cursor on BadgeIcon (AI row 0). Skip past AI section (2 rows) to Button.
+      stdin.write('j');
+      stdin.write('j');
       stdin.write('r'); // Toggle Button OFF.
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
@@ -373,9 +375,7 @@ describe('ScopeGateStep — unified AI behavior', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={FIXTURE} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
-      // Walk to BadgeIcon: Button → Card → BadgeIcon.
-      stdin.write('j');
-      stdin.write('j');
+      // R2: BadgeIcon is first row (AI section). Cursor already on it.
       stdin.write('s');
       let frame = lastFrame() ?? '';
       expect(frame).toContain('AI rejection reason');
@@ -420,7 +420,8 @@ describe('ScopeGateStep — unified AI behavior', () => {
           aiFilterProgress={{ done: 0, total: 3 }}
         />,
       );
-      // No [AI] badges on mount.
+      // R2: no `*` AI markers on mount (no rejections yet).
+      expect(lastFrame() ?? '').not.toMatch(/\*[^\n]*BadgeIcon/);
       expect(lastFrame() ?? '').not.toContain('[AI]');
 
       const updated = [
@@ -437,7 +438,7 @@ describe('ScopeGateStep — unified AI behavior', () => {
         />,
       );
       const frame = lastFrame() ?? '';
-      expect(frame).toMatch(/\[AI\][^\n]*BadgeIcon/);
+      expect(frame).toMatch(/\*[^\n]*BadgeIcon/);
       expect(frame).toContain('low semantic value');
     });
 
@@ -471,9 +472,7 @@ describe('ScopeGateStep — unified AI behavior', () => {
       const { stdin, rerender } = render(
         <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="running" />,
       );
-      // Walk to BadgeIcon: Button → Card → BadgeIcon.
-      stdin.write('j');
-      stdin.write('j');
+      // R2: BadgeIcon is first row (AI section). Cursor starts on it.
       stdin.write('a'); // toggle BadgeIcon ON
       const updated = [
         ...initial,
