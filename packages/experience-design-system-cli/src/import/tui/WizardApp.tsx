@@ -1983,6 +1983,7 @@ export function WizardApp({
             summary={state.pushResult.summary}
             spaceId={state.spaceId}
             environmentId={state.environmentId}
+            host={state.host}
             {...(teaser ? { runTeaser: teaser } : {})}
             onExit={() => process.exit(totalFailed > 0 ? 1 : 0)}
           />
