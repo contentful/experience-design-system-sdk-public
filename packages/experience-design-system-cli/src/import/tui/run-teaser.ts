@@ -4,5 +4,5 @@
  */
 export function buildRunTeaserLine(runId: string | null | undefined): string {
   if (!runId) return '';
-  return `Run saved as ${runId} — re-export with 'experiences export ${runId}' or modify with 'experiences modify ${runId}'.`;
+  return `Run saved as ${runId} — replay with 'experiences import --from-run ${runId}' or modify with 'experiences import --from-run ${runId} --modify'.`;
 }
