@@ -247,4 +247,27 @@ describe('modifyRun', () => {
       expect.objectContaining({ extractSessionId: 'e1', generateSessionId: 'g1' }),
     );
   });
+
+  it('threads pushedTo from the run record into the launcher cred inputs', async () => {
+    mockGetRun.mockResolvedValueOnce(
+      sampleRun({ pushedTo: { spaceId: 'rec-sp', environmentId: 'rec-env', host: 'api.flinkly.com' } }),
+    );
+    await modifyRun({ runIdOrPath: '01HXYZ' });
+    expect(mockLaunchWizard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialSpaceId: 'rec-sp',
+        initialEnvironmentId: 'rec-env',
+        initialHost: 'api.flinkly.com',
+      }),
+    );
+  });
+
+  it('omits cred inputs when pushedTo is null', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun({ pushedTo: null }));
+    await modifyRun({ runIdOrPath: '01HXYZ' });
+    const call = mockLaunchWizard.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(call['initialSpaceId']).toBeUndefined();
+    expect(call['initialEnvironmentId']).toBeUndefined();
+    expect(call['initialHost']).toBeUndefined();
+  });
 });
