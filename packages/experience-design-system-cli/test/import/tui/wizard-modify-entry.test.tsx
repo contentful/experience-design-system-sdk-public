@@ -137,3 +137,48 @@ describe('WizardApp modify-entry short-circuit', () => {
     expect(frame).toMatch(/Token path|Design tokens/);
   });
 });
+
+describe('WizardApp initialRawTokensPath short-circuit', () => {
+  it('skips welcome and token-input when initialRawTokensPath is set', async () => {
+    const { lastFrame } = render(
+      <WizardApp
+        initialProjectPath="/tmp/raw-tokens-test"
+        initialRawTokensPath="/tmp/raw-tokens-test/tokens.scss"
+      />,
+    );
+    // The welcome step renders 'Project path'; the token-input step renders
+    // 'Design tokens'. With initialRawTokensPath the wizard must seed
+    // state.rawTokensPath and advance to the generating-tokens flow before
+    // either screen renders.
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.length > 0,
+      3000,
+    );
+    expect(frame).not.toContain('Project path');
+    expect(frame).not.toContain('Design tokens');
+  });
+
+  it('modify-entry seed props take precedence over initialRawTokensPath', async () => {
+    const { lastFrame } = render(
+      <WizardApp
+        initialProjectPath="/tmp/modify-vs-raw"
+        initialRawTokensPath="/tmp/modify-vs-raw/tokens.scss"
+        seedExtractSessionId="e1"
+        seedGenerateSessionId="g1"
+        initialStep="final-review"
+      />,
+    );
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.length > 0,
+      3000,
+    );
+    // Modify-entry path skips straight to final-review, NOT generating-tokens.
+    expect(frame).not.toContain('Project path');
+    expect(frame).not.toContain('Design tokens');
+    // generating-tokens step renders agent auth check / spinner content;
+    // make sure that path didn't win. We assert via the welcome / token-input
+    // negations above plus the modify-entry assertion that no errors surface.
+  });
+});

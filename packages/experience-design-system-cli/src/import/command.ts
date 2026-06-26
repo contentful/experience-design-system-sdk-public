@@ -25,6 +25,10 @@ export function registerImportCommand(program: Command): void {
     )
     .option('--model <name>', 'Model to use for generate components (defaults to a small/fast model per agent)')
     .option('--tokens <path>', 'Path to a DTCG tokens.json file to push alongside generated components')
+    .option(
+      '--raw-tokens <path>',
+      'Path to a raw token source file (SCSS, CSS variables, JS/TS, Style Dictionary, etc.) to classify and import alongside components. Bypasses the interactive token prompt.',
+    )
     .option('--select-all', 'Select all extracted components for generation (default)')
     .option(
       '--select <pattern>',
@@ -123,6 +127,7 @@ export function registerImportCommand(program: Command): void {
         agent?: string;
         model?: string;
         tokens?: string;
+        rawTokens?: string;
         selectAll?: boolean;
         select: string[];
         deselect: string[];
@@ -272,6 +277,28 @@ export function registerImportCommand(program: Command): void {
           return;
         }
 
+        // ── --raw-tokens validation ─────────────────────────────────────────
+        // The raw-tokens path is a source file the wizard hands to
+        // `generate tokens --raw-tokens <path>`. Validate at parse time so
+        // operators get an immediate error before the wizard renders.
+        if (opts.rawTokens !== undefined) {
+          if (opts.tokens !== undefined) {
+            process.stderr.write(
+              'Error: --raw-tokens and --tokens are mutually exclusive: --raw-tokens is the source file to classify, --tokens is a pre-classified DTCG sidecar.\n',
+            );
+            process.exit(1);
+            return;
+          }
+          const { access } = await import('node:fs/promises');
+          try {
+            await access(opts.rawTokens);
+          } catch {
+            process.stderr.write(`Error: --raw-tokens: file not found: ${opts.rawTokens}\n`);
+            process.exit(1);
+            return;
+          }
+        }
+
         const promptFlags = resolvePromptFlags({
           ...(opts.dryRun !== undefined ? { dryRun: opts.dryRun } : {}),
           ...(opts.printPrompt !== undefined ? { printPrompt: opts.printPrompt } : {}),
@@ -325,6 +352,7 @@ export function registerImportCommand(program: Command): void {
             onConflictMode?: 'overwrite' | 'skip' | 'fail';
             selectPromptPath?: string;
             generatePromptPath?: string;
+            initialRawTokensPath?: string;
             initialRuns?: typeof pickerDecision.runs;
             onRunPicked?: (selection: RunPickerSelection) => void;
           };
@@ -380,6 +408,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.onConflict ? { onConflictMode: opts.onConflict } : {}),
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
+              ...(opts.rawTokens ? { initialRawTokensPath: resolve(opts.rawTokens) } : {}),
               ...pickerProps,
             }),
           );

@@ -379,6 +379,15 @@ export type WizardAppProps = {
    */
   initialStep?: 'scope-gate' | 'final-review';
   /**
+   * Headless raw-token source path. When set (and the modify-entry props
+   * are not), the wizard seeds `state.rawTokensPath` and lands directly on
+   * the `generating-tokens` step, skipping welcome + token-input. The
+   * existing `generating-tokens` effect then drives token classification
+   * via `generate tokens --raw-tokens <path>` just as if the operator had
+   * submitted the interactive `TokenInputStep`.
+   */
+  initialRawTokensPath?: string;
+  /**
    * When set with a non-empty array, the wizard opens with the run picker
    * instead of the welcome step. The picker invokes `onRunPicked` with the
    * operator's selection so the CLI surface can route into
@@ -412,6 +421,7 @@ export function WizardApp({
   seedGenerateSessionId,
   seedTokenSessionId,
   initialStep,
+  initialRawTokensPath,
   initialRuns,
   onRunPicked,
 }: WizardAppProps = {}): React.ReactElement {
@@ -465,11 +475,18 @@ export function WizardApp({
   // we need to do here is seed the IDs and the step.
   const modifyEntryReady =
     !!seedExtractSessionId && initialStep === 'final-review';
+  // Headless raw-tokens entry: when the operator passed `--raw-tokens <path>`
+  // the CLI seeds this prop. Skip welcome + token-input and land on the
+  // `generating-tokens` step which already drives the token-classification
+  // subprocess off `state.rawTokensPath`. Modify-entry wins if both are set.
+  const rawTokensEntryReady = !modifyEntryReady && !!initialRawTokensPath;
   const initialStepResolved: WizardStep = modifyEntryReady
     ? 'final-review'
-    : initialProjectPath
-      ? 'token-input'
-      : 'welcome';
+    : rawTokensEntryReady
+      ? 'generating-tokens'
+      : initialProjectPath
+        ? 'token-input'
+        : 'welcome';
   const initialOutDir = initialProjectPath
     ? join(resolve(initialProjectPath), '.contentful')
     : '';
@@ -478,7 +495,7 @@ export function WizardApp({
     : '';
 
   const [state, setState] = useState<WizardState>({
-    step: modifyEntryReady
+    step: modifyEntryReady || rawTokensEntryReady
       ? initialStepResolved
       : initialRuns && initialRuns.length > 0
         ? 'run-picker'
@@ -487,7 +504,7 @@ export function WizardApp({
     ...(initialModel ? { agentModel: initialModel } : {}),
     projectPath: initialProjectPath ?? '',
     outDir: initialOutDir,
-    rawTokensPath: '',
+    rawTokensPath: rawTokensEntryReady ? initialRawTokensPath! : '',
     tokensPath: initialTokensPath,
     tokenSourceChanged: null,
     skipComponents: false,
