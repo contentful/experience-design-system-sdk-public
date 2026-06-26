@@ -11,6 +11,8 @@ import { registerPrintCommand } from './print/command.js';
 import { registerImportCommand } from './import/command.js';
 import { registerSetupCommand } from './setup/command.js';
 import { registerRunsCommand } from './runs/ls-command.js';
+import { registerExportCommand } from './runs/export-command.js';
+import { registerModifyCommand } from './runs/modify-command.js';
 
 const require = createRequire(import.meta.url);
 
@@ -77,6 +79,8 @@ export function createProgram(): Command {
   registerImportCommand(program);
   registerSetupCommand(program);
   registerRunsCommand(program);
+  registerExportCommand(program);
+  registerModifyCommand(program);
   registerBuildCommand(program);
 
   return program;

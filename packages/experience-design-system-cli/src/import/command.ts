@@ -63,6 +63,10 @@ export function registerImportCommand(program: Command): void {
       'Push without writing components.json / tokens.json to disk (default: save AND push)',
     )
     .option(
+      '--out-dir <path>',
+      'Save components.json / tokens.json to this directory; bypasses the inline save-path prompt',
+    )
+    .option(
       '--select-prompt-path <path>',
       'Path to a custom .md skill prompt for analyze select-agent (bypasses bundled invariants)',
     )
@@ -99,12 +103,20 @@ export function registerImportCommand(program: Command): void {
         livePreview?: boolean;
         push?: boolean;
         save?: boolean;
+        outDir?: string;
         selectPromptPath?: string;
         generatePromptPath?: string;
       }) => {
         if (opts.save === false && opts.push === false) {
           process.stderr.write(
             'Error: --no-save and --no-push together would do nothing. Pick one or neither.\n',
+          );
+          process.exit(1);
+          return;
+        }
+        if (opts.save === false && opts.outDir) {
+          process.stderr.write(
+            'Error: --no-save and --out-dir are mutually exclusive. --no-save disables disk writes; --out-dir picks a directory for them.\n',
           );
           process.exit(1);
           return;
@@ -152,6 +164,7 @@ export function registerImportCommand(program: Command): void {
             livePreview?: boolean;
             noPush?: boolean;
             noSave?: boolean;
+            outDirOverride?: string;
             selectPromptPath?: string;
             generatePromptPath?: string;
           };
@@ -171,6 +184,7 @@ export function registerImportCommand(program: Command): void {
               livePreview: opts.livePreview !== false,
               noPush: opts.push === false,
               noSave: opts.save === false,
+              ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
             }),

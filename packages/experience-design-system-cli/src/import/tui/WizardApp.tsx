@@ -6,6 +6,12 @@ import { access, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFile, spawn } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
+import { buildRunTeaserLine } from './run-teaser.js';
+import { PathPrompt } from '../../runs/path-prompt.js';
+import { SaveConflictGate } from '../../runs/save-conflict.js';
+import { detectSaveConflict, buildTimestampedSubdir } from '../../runs/save-path-resolver.js';
+import { appendRun } from '../../runs/store.js';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
 import { CustomPromptBanner } from './CustomPromptBanner.js';
 import { WelcomeStep } from './steps/WelcomeStep.js';
@@ -73,6 +79,8 @@ type WizardStep =
   | 'previewing'
   | 'preview-gate'
   | 'pushing'
+  | 'path-prompt'
+  | 'save-conflict-gate'
   | 'printing'
   | 'print-gate'
   | 'done'
@@ -147,6 +155,8 @@ type WizardState = {
   // push is disabled at the push-decision-gate, and runPush refuses to
   // execute if it's somehow reached.
   credentialsSkipped: boolean;
+  /** Task 8 — id of the most recent run record written to runs.json. */
+  lastRunId: string | null;
 };
 
 function findCliPath(): string {
@@ -282,6 +292,8 @@ export type WizardAppProps = {
   // Mutually exclusive with `noPush` (validated at the CLI surface).
   // Plumbed from `experiences import` via `--no-save`. Default false.
   noSave?: boolean;
+  /** Task 4 — `--out-dir <path>` flag. Bypasses the inline save-path prompt. */
+  outDirOverride?: string;
   /**
    * Feature 8: custom prompt path overrides forwarded to the spawned
    * `analyze select-agent` and `generate components` subprocesses. When set,
@@ -306,6 +318,7 @@ export function WizardApp({
   livePreview = true,
   noPush = false,
   noSave = false,
+  outDirOverride,
   selectPromptPath,
   generatePromptPath,
 }: WizardAppProps = {}): React.ReactElement {
@@ -400,6 +413,7 @@ export function WizardApp({
     generatePrefetchStatus: 'idle',
     generatePrefetchError: null,
     credentialsSkipped: false,
+    lastRunId: null,
   });
 
   useEffect(() => {
@@ -1355,17 +1369,62 @@ export function WizardApp({
   };
 
   const runSaveAndPush = async (): Promise<void> => {
+    await startSaveFlow({ skipGate: true, andPush: true });
+  };
+
+  // ── Task 4: save-path orchestration ────────────────────────────────────────
+  // Wraps every `runPrintFiles` site. When `--out-dir` is set we skip the
+  // inline prompt and conflict gate entirely. Otherwise the wizard transitions
+  // to the path-prompt step; the operator's submit handler calls back into
+  // `proceedToWrite` (which may surface the conflict gate).
+
+  const pendingSaveOptionsRef = useRef<{ skipGate?: boolean; andPush?: boolean }>({});
+
+  const startSaveFlow = async (opts: { skipGate?: boolean; andPush?: boolean } = {}): Promise<void> => {
+    pendingSaveOptionsRef.current = opts;
+    if (outDirOverride) {
+      await mkdir(outDirOverride, { recursive: true });
+      await proceedToWrite(outDirOverride);
+      return;
+    }
+    setState((prev) => ({ ...prev, step: 'path-prompt' }));
+  };
+
+  const proceedToWrite = async (path: string): Promise<void> => {
+    setState((prev) => ({ ...prev, outDir: path }));
     const { extractSessionId, tokensPath } = sessionRef.current;
-    const result = await runPrintFiles(extractSessionId, state.outDir, { skipGate: true });
-    if (!result.ok) return; // runPrintFiles already transitioned to error
-    void runPreview(
-      extractSessionId,
-      tokensPath,
-      state.spaceId,
-      state.environmentId,
-      state.cmaToken,
-      state.host,
-    );
+    const { skipGate, andPush } = pendingSaveOptionsRef.current;
+    const result = await runPrintFiles(extractSessionId, path, skipGate ? { skipGate: true } : {});
+    if (!result.ok) return;
+    if (result.ok) {
+      // Append a run record on every successful write. Best-effort: append
+      // failures must not break the wizard flow (they surface on stderr).
+      try {
+        const record = await appendRun({
+          projectPath: state.projectPath,
+          savePath: path,
+          componentCount: state.generatedAcceptedCount || state.generatedCount,
+          tokenCount: 0,
+          agent: state.agent,
+          pushedTo: null,
+          extractSessionId: state.extractSessionId ?? '',
+          generateSessionId: state.generateSessionId,
+        });
+        setState((prev) => ({ ...prev, lastRunId: record.id }));
+      } catch (err) {
+        process.stderr.write(`Warning: failed to record run: ${err instanceof Error ? err.message : String(err)}\n`);
+      }
+    }
+    if (andPush) {
+      void runPreview(
+        extractSessionId,
+        tokensPath,
+        state.spaceId,
+        state.environmentId,
+        state.cmaToken,
+        state.host,
+      );
+    }
   };
 
   // ── Effect: kick off automatic steps ───────────────────────────────────────────────
@@ -1504,7 +1563,7 @@ export function WizardApp({
               // and we save files instead).
               if (noPush) {
                 update({ skipComponents: true, acceptedCount: 0 });
-                void runPrintFiles(state.extractSessionId, state.outDir);
+                void startSaveFlow();
                 return;
               }
               update({ step: 'credentials', skipComponents: true, acceptedCount: 0 });
@@ -1591,7 +1650,7 @@ export function WizardApp({
                   update({ acceptedCount: count, autoRejectedCount: 0 });
                   const next = nextStepAfterScopeGate({ acceptedCount: count, noPush });
                   if (next === 'print-gate') {
-                    void runPrintFiles(state.extractSessionId, state.outDir);
+                    void startSaveFlow();
                     return;
                   }
                   // 'credentials' — still need creds for tokens/removals push.
@@ -1639,7 +1698,7 @@ export function WizardApp({
               );
               if (noPush) {
                 update({ generatedAcceptedCount: accepted });
-                void runPrintFiles(state.extractSessionId, state.outDir);
+                void startSaveFlow();
                 return;
               }
               if (noSave) {
@@ -1706,7 +1765,7 @@ export function WizardApp({
                 return;
               }
               // save-only
-              void runPrintFiles(state.extractSessionId, state.outDir);
+              void startSaveFlow();
             }}
             onQuit={() => process.exit(0)}
           />
@@ -1797,7 +1856,7 @@ export function WizardApp({
               void runEditFromPreview();
             }}
             onSaveFiles={() => {
-              void runPrintFiles(state.extractSessionId, state.outDir);
+              void startSaveFlow();
             }}
             onQuit={() => process.exit(0)}
           />
@@ -1813,6 +1872,43 @@ export function WizardApp({
           />
         );
 
+      case 'path-prompt':
+        return (
+          <PathPrompt
+            defaultPath={state.outDir}
+            onSubmit={(submitted) => {
+              void (async () => {
+                await mkdir(submitted, { recursive: true });
+                const hasConflict = await detectSaveConflict(submitted);
+                if (hasConflict) {
+                  setState((prev) => ({ ...prev, step: 'save-conflict-gate', outDir: submitted }));
+                  return;
+                }
+                await proceedToWrite(submitted);
+              })();
+            }}
+            onCancel={() => process.exit(0)}
+          />
+        );
+
+      case 'save-conflict-gate':
+        return (
+          <SaveConflictGate
+            path={state.outDir}
+            onOverwrite={() => {
+              void proceedToWrite(state.outDir);
+            }}
+            onNew={() => {
+              const subdir = buildTimestampedSubdir(state.outDir);
+              void (async () => {
+                await mkdir(subdir, { recursive: true });
+                await proceedToWrite(subdir);
+              })();
+            }}
+            onCancel={() => setState((prev) => ({ ...prev, step: 'path-prompt' }))}
+          />
+        );
+
       case 'printing':
         return (
           <RunningStep
@@ -1823,7 +1919,8 @@ export function WizardApp({
           />
         );
 
-      case 'print-gate':
+      case 'print-gate': {
+        const teaser = buildRunTeaserLine(state.lastRunId);
         return (
           <GateStep
             successMessage="Files saved"
@@ -1833,16 +1930,22 @@ export function WizardApp({
             ]
               .filter(Boolean)
               .join('\n')}
-            context="Your files are saved to disk. Run `experiences import` again when you're ready to push to Contentful."
+            context={
+              teaser
+                ? `Your files are saved to disk. ${teaser}`
+                : "Your files are saved to disk. Run `experiences import` again when you're ready to push to Contentful."
+            }
             continueLabel="Exit"
             showSkip={false}
             onContinue={() => process.exit(0)}
             onQuit={() => process.exit(0)}
           />
         );
+      }
 
       case 'done': {
         const totalFailed = state.pushResult.componentTypes.failed + state.pushResult.designTokens.failed;
+        const teaser = buildRunTeaserLine(state.lastRunId);
         return (
           <DoneStep
             componentTypes={state.pushResult.componentTypes}
@@ -1850,6 +1953,7 @@ export function WizardApp({
             summary={state.pushResult.summary}
             spaceId={state.spaceId}
             environmentId={state.environmentId}
+            {...(teaser ? { runTeaser: teaser } : {})}
             onExit={() => process.exit(totalFailed > 0 ? 1 : 0)}
           />
         );
