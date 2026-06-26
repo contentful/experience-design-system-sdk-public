@@ -30,6 +30,7 @@ import type { RawComponentDefinition } from '../../types.js';
 import { readExperiencesCredentials } from '../../credentials-store.js';
 import { OutputFormatter, c } from '../../output/format.js';
 import { buildRepoContextIndex, buildSelectionContext, type SelectionContext } from './context-builder.js';
+import { runShowRationale } from './show-rationale.js';
 import { isAbsolute, resolve } from 'node:path';
 import {
   validateExtractedComponents,
@@ -425,6 +426,12 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
     )
     .option('--no-select-cache', 'Skip the per-component select cache and re-LLM every component')
     .option('--no-cache', 'Skip ALL fine-grained caches (extract, select, generate)')
+    .option(
+      '--show-rationale',
+      'Read-only: print the AI rejection rationale persisted by a prior select-agent run and exit. ' +
+        'No LLM call. Combine with --json for machine-readable output.',
+    )
+    .option('--json', 'When used with --show-rationale, emit a JSON array instead of a human-readable table')
     .action(
       async (opts: {
         session?: string;
@@ -437,7 +444,25 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         selectPromptPath?: string;
         selectCache?: boolean;
         cache?: boolean;
+        showRationale?: boolean;
+        json?: boolean;
       }) => {
+        // --show-rationale is a read-only branch that short-circuits the normal
+        // select-agent flow. It re-reads the rationale columns persisted by a
+        // prior run (raw_components.status + reject_reason) and prints them.
+        // No LLM call, no agent resolution, no validation gates.
+        if (opts.showRationale) {
+          try {
+            runShowRationale({ session: opts.session, json: opts.json });
+            return;
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            process.stderr.write(`Error: ${message}\n`);
+            process.exit(1);
+            return;
+          }
+        }
+
         const savedCreds = await readExperiencesCredentials();
         const agentName = opts.agent ?? savedCreds.agent;
         const model = opts.model ?? savedCreds.agentModel;
