@@ -8,7 +8,7 @@ export const RUNS_FILE_CAP = 200;
 
 /** Versions this CLI can read. v1 files are auto-migrated in memory; new
  *  writes always use the latest version. */
-const READABLE_VERSIONS = new Set<number>([1, 2]);
+export const READABLE_VERSIONS = new Set<number>([1, 2]);
 
 export type RunRecord = {
   id: string;
