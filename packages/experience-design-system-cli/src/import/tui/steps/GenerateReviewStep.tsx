@@ -23,6 +23,27 @@ type GenerateReviewStepProps = {
   onQuit: () => void;
 };
 
+/**
+ * Sort components for the final-review sidebar so the underlying data array
+ * matches the visual order. Empty components (zero classified $properties)
+ * surface at the top via the warning-tier path in Sidebar.tsx; we mirror that
+ * here so `selectedIdx` indexes into the same order the user sees. Without
+ * this, j/k navigation lands on different rows than the visually-selected
+ * one (INTEG-4259).
+ *
+ * Within each tier (empty / non-empty) we tie-break alphabetically by `key`.
+ */
+export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
+  components: T[],
+): T[] {
+  return [...components].sort((a, b) => {
+    const aEmpty = Object.keys(a.entry.$properties ?? {}).length === 0;
+    const bEmpty = Object.keys(b.entry.$properties ?? {}).length === 0;
+    if (aEmpty !== bEmpty) return aEmpty ? -1 : 1;
+    return a.key.localeCompare(b.key);
+  });
+}
+
 const VISIBLE_COUNT = 20;
 const PANEL_HEIGHT = 22;
 
@@ -43,7 +64,8 @@ export function GenerateReviewStep({
   const [sidebarFocused, setSidebarFocused] = useState(true);
   const [showFinalize, setShowFinalize] = useState(false);
   const [showQuit, setShowQuit] = useState(false);
-  const [editMode, setEditMode] = useState(false);
+  // FieldEditor is the default editor. JSON view is an opt-in read-only toggle.
+  const [showJson, setShowJson] = useState(false);
   const [draftValue, setDraftValue] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -61,7 +83,12 @@ export function GenerateReviewStep({
         setLoading(false);
         return;
       }
-      setComponents(cdfComponents.map(({ key, entry }) => ({ key, entry, status: 'needs-review' })));
+      const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
+        key,
+        entry,
+        status: 'needs-review',
+      }));
+      setComponents(sortComponentsForSidebar(reviewEntries));
       setLoading(false);
     }
     load().catch((e: unknown) => {
@@ -120,7 +147,6 @@ export function GenerateReviewStep({
           i === selectedIdx ? { ...c, entry, status: c.status === 'needs-review' ? 'accepted' : c.status } : c,
         ),
       );
-      setEditMode(false);
       setDraftValue('');
       setSaveError(null);
       const db = openPipelineDb();
@@ -135,7 +161,6 @@ export function GenerateReviewStep({
   };
 
   const handleEditDiscard = () => {
-    setEditMode(false);
     setDraftValue('');
     setSaveError(null);
   };
@@ -145,18 +170,32 @@ export function GenerateReviewStep({
   useImmediateInput((input, key) => {
     if (loading || loadError) return;
     if (dialogOpen) return;
-    if (editMode) return;
 
+    // Tab toggles focus bidirectionally between sidebar and panel. `e` is a
+    // sidebar-only alias for crossing INTO the panel — gating it to the
+    // sidebar-focused state prevents collision with FieldEditor's enum-values
+    // `e` binding (INTEG-4254) when the panel is focused. Crossing back from
+    // panel to sidebar is Tab-only.
+    if (key.tab) {
+      setSidebarFocused((prev) => !prev);
+      return;
+    }
+    if (input === 'e' && sidebarFocused) {
+      setSidebarFocused(false);
+      return;
+    }
+
+    // When the panel is focused, FieldEditor (or JsonPanel) owns the keys.
+    // Only Tab (handled above) should escape from the panel-focused state.
+    if (!sidebarFocused) return;
+
+    // Sidebar-focused keymap.
     if (input === 'q') {
       setShowQuit(true);
       return;
     }
     if (input === 'F') {
       setShowFinalize(true);
-      return;
-    }
-    if (key.tab) {
-      setSidebarFocused((prev) => !prev);
       return;
     }
     if (input === 'a') {
@@ -171,30 +210,27 @@ export function GenerateReviewStep({
       setComponents((prev) => prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c)));
       return;
     }
-    if (input === 'e' && selected) {
-      setDraftValue(JSON.stringify({ [selected.key]: selected.entry }, null, 2));
-      setEditMode(true);
+    if (input === 'J') {
+      // Toggle read-only JSON view.
+      setShowJson((prev) => !prev);
+      setJsonScrollOffset(0);
       return;
     }
 
-    if (sidebarFocused) {
-      if (key.upArrow || input === 'k') {
-        const newIdx = Math.max(0, selectedIdx - 1);
-        setSelectedIdx(newIdx);
-        setJsonScrollOffset(0);
-        setSidebarScrollOffset((prev) => Math.min(prev, newIdx));
-      } else if (key.downArrow || input === 'j') {
-        const newIdx = Math.min(components.length - 1, selectedIdx + 1);
-        setSelectedIdx(newIdx);
-        setJsonScrollOffset(0);
-        setSidebarScrollOffset((prev) => (newIdx >= prev + VISIBLE_COUNT ? newIdx - VISIBLE_COUNT + 1 : prev));
-      }
-    } else {
-      if (key.upArrow || input === 'k') {
-        setJsonScrollOffset((prev) => Math.max(0, prev - 1));
-      } else if (key.downArrow || input === 'j') {
-        setJsonScrollOffset((prev) => prev + 1);
-      }
+    if (key.upArrow || input === 'k') {
+      const newIdx = Math.max(0, selectedIdx - 1);
+      setSelectedIdx(newIdx);
+      setJsonScrollOffset(0);
+      setDraftValue('');
+      setSaveError(null);
+      setSidebarScrollOffset((prev) => Math.min(prev, newIdx));
+    } else if (key.downArrow || input === 'j') {
+      const newIdx = Math.min(components.length - 1, selectedIdx + 1);
+      setSelectedIdx(newIdx);
+      setJsonScrollOffset(0);
+      setDraftValue('');
+      setSaveError(null);
+      setSidebarScrollOffset((prev) => (newIdx >= prev + VISIBLE_COUNT ? newIdx - VISIBLE_COUNT + 1 : prev));
     }
   });
 
@@ -217,18 +253,31 @@ export function GenerateReviewStep({
   const selected = components[selectedIdx] ?? null;
   const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
 
+  // A component with zero classified $properties is a real defensibility issue —
+  // it can't be pushed to Contentful (no fields). Surface it in the sidebar via
+  // the existing warning-color path (yellow) and a "(empty)" suffix so the user
+  // can see what went wrong. They can manually add props in FieldEditor or
+  // explicitly reject the component.
+  const isEmpty = (c: CdfReviewEntry): boolean => Object.keys(c.entry.$properties).length === 0;
+  const emptyCount = components.filter(isEmpty).length;
+
   const sidebarItems: ReviewComponentSummary[] = components.map((c) => ({
     id: c.key,
-    name: c.key,
+    name: isEmpty(c) ? `${c.key} (empty)` : c.key,
     status: c.status,
     extractionConfidence: null,
     needsReview: false,
     validationErrorCount: 0,
-    validationWarningCount: 0,
+    validationWarningCount: isEmpty(c) ? 1 : 0,
   }));
 
-  const longestName = components.reduce((m, c) => Math.max(m, c.key.length), 0);
-  const sidebarWidth = Math.min(Math.max(longestName + 4, 14), 22);
+  // Account for the "(empty)" suffix added to zero-prop component names so the
+  // sidebar doesn't truncate it.
+  const longestName = components.reduce(
+    (m, c) => Math.max(m, c.key.length + (isEmpty(c) ? ' (empty)'.length : 0)),
+    0,
+  );
+  const sidebarWidth = Math.min(Math.max(longestName + 4, 14), 30);
   const panelWidth = Math.max(10, terminalWidth - sidebarWidth - 4);
 
   const accepted = components.filter((c) => c.status === 'accepted').length;
@@ -249,6 +298,11 @@ export function GenerateReviewStep({
         />
       )}
       {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
+      {!dialogOpen && emptyCount > 0 && (
+        <Text color="yellow">
+          {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
+        </Text>
+      )}
       {!dialogOpen && (
         <Box>
           <Sidebar
@@ -277,33 +331,38 @@ export function GenerateReviewStep({
                     {propCount} prop{propCount !== 1 ? 's' : ''}
                     {slotCount > 0 ? ` · ${slotCount} slot${slotCount !== 1 ? 's' : ''}` : ''}
                     {'  '}
-                    {sidebarFocused ? '[Tab] focus panel' : '[Tab] focus list'}
+                    {sidebarFocused ? '[e/Tab] focus panel' : '[Tab] focus list'}
                   </Text>
                 </Box>
-                {editMode ? (
-                  <FieldEditor
-                    value={draftValue || selectedJson}
-                    width={panelWidth}
-                    height={PANEL_HEIGHT}
-                    onChange={setDraftValue}
-                    onSave={handleEditSave}
-                    onDiscard={handleEditDiscard}
-                  />
-                ) : (
+                {showJson ? (
                   <JsonPanel
-                    label="GENERATED DEFINITION"
+                    label="GENERATED DEFINITION (read-only)"
                     value={selectedJson}
                     scrollOffset={jsonScrollOffset}
                     width={panelWidth}
                     height={PANEL_HEIGHT}
                     active={!sidebarFocused}
                   />
+                ) : (
+                  <FieldEditor
+                    key={selected.key}
+                    value={draftValue || selectedJson}
+                    width={panelWidth}
+                    height={PANEL_HEIGHT}
+                    active={!sidebarFocused}
+                    onChange={setDraftValue}
+                    onSave={handleEditSave}
+                    onDiscard={handleEditDiscard}
+                    onExit={() => setSidebarFocused(true)}
+                  />
                 )}
                 {saveError && <Text color="red">{'✗ ' + saveError}</Text>}
                 <Text dimColor>
-                  {editMode
-                    ? '  [Ctrl+S] save  [Esc] discard'
-                    : '  [a] accept  [r] reject  [e] edit  [A] accept all  [F] finalize  [Tab] toggle focus  [q] quit'}
+                  {sidebarFocused
+                    ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
+                      (showJson ? 'hide JSON' : 'show JSON') +
+                      '  [F] finalize  [e/Tab] focus panel  [q] quit'
+                    : '  [Tab] focus list  ' + (showJson ? '(JSON view)' : '(edit fields)')}
                 </Text>
               </>
             ) : (

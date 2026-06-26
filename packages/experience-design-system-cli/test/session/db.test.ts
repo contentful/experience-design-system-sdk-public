@@ -564,10 +564,17 @@ describe('storeRawComponents preserveCDF option', () => {
       storeRawComponents(db, sessionId, withNew, { status: 'generated', preserveCDF: true });
 
       const loaded = loadCDFComponents(db, sessionId);
-      // Only Button has CDF props; Card is excluded (no CDF = not in manifest)
-      expect(loaded).toHaveLength(1);
-      expect(loaded[0]?.key).toBe('Button');
-      expect(Object.keys(loaded[0]!.entry.$properties)).toHaveLength(3);
+      // Both Button (3 CDF props) and Card (no CDF props) are surfaced.
+      // INTEG-4257: zero-prop components used to be silently dropped — the
+      // wizard now surfaces them with empty $properties so the user can act
+      // (manually add props or reject) instead of having them disappear.
+      expect(loaded).toHaveLength(2);
+      const button = loaded.find((c) => c.key === 'Button');
+      const card = loaded.find((c) => c.key === 'Card');
+      expect(button).toBeDefined();
+      expect(Object.keys(button!.entry.$properties)).toHaveLength(3);
+      expect(card).toBeDefined();
+      expect(Object.keys(card!.entry.$properties)).toHaveLength(0);
       db.close();
     });
   });
@@ -1518,6 +1525,65 @@ describe('loadCDFComponents — empty-key sanitization (Option D / hallucination
       const propKeys = Object.keys(loaded[0]!.entry.$properties);
       expect(propKeys).toEqual(['title']);
       expect(propKeys).not.toContain('');
+    });
+  });
+});
+
+describe('loadCDFComponents — zero-classified-prop components (INTEG-4257)', () => {
+  it('surfaces components with zero classified props instead of silently filtering them', async () => {
+    // Repro of INTEG-4257: user accepts N components at scope-gate; the LLM
+    // classifies fewer than N (one component yields no classify_prop calls).
+    // Pre-fix, the unclassified component was silently dropped from
+    // loadCDFComponents and disappeared from final-review. Post-fix, it must
+    // surface with empty $properties so the wizard can warn the user.
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Button',
+          source: 'src/Button.tsx',
+          framework: 'react',
+          props: [{ name: 'label', type: 'string', required: true, category: 'content' }],
+          slots: [],
+        },
+        {
+          name: 'OpaqueWidget',
+          source: 'src/OpaqueWidget.tsx',
+          framework: 'react',
+          // Two raw props that the LLM will fail to classify (cdf_type stays NULL).
+          props: [
+            { name: 'foo', type: 'unknown', required: false },
+            { name: 'bar', type: 'unknown', required: false },
+          ],
+          slots: [],
+        },
+      ]);
+      // Mark both as accepted at scope-gate.
+      db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ?`).run(sessionId);
+      // Classify only Button; leave OpaqueWidget's props with NULL cdf_type
+      // (i.e. unclassified — the LLM produced no classify_prop tool calls).
+      db.prepare(
+        `UPDATE raw_props SET cdf_type = 'string', cdf_category = 'content'
+         WHERE session_id = ? AND component_id IN (
+           SELECT component_id FROM raw_components WHERE session_id = ? AND name = 'Button'
+         )`,
+      ).run(sessionId, sessionId);
+
+      const loaded = loadCDFComponents(db, sessionId);
+      db.close();
+
+      // Both components must be present — OpaqueWidget with empty $properties.
+      expect(loaded).toHaveLength(2);
+      const button = loaded.find((c) => c.key === 'Button');
+      const widget = loaded.find((c) => c.key === 'OpaqueWidget');
+      expect(button).toBeDefined();
+      expect(Object.keys(button!.entry.$properties)).toEqual(['label']);
+      expect(widget).toBeDefined();
+      expect(Object.keys(widget!.entry.$properties)).toHaveLength(0);
+      // Entry shape is still valid: $type set, $properties is an empty object.
+      expect(widget!.entry.$type).toBe('component');
+      expect(widget!.entry.$properties).toEqual({});
     });
   });
 });

@@ -101,7 +101,13 @@ export function Sidebar({
   const width = collapsed ? 3 : (widthProp ?? 18);
 
   return (
-    <Box flexDirection="column" width={width} borderStyle="single" borderColor={focused ? 'white' : undefined}>
+    <Box
+      flexDirection="column"
+      width={width}
+      flexShrink={0}
+      borderStyle="single"
+      borderColor={focused ? 'white' : undefined}
+    >
       {showScrollUp && !collapsed && <Text dimColor>▲</Text>}
       {visible.map((component) => {
         const isSelected = component.id === selectedId;

@@ -342,3 +342,18 @@ describe('CLI entry point', () => {
     });
   });
 });
+
+describe('experiences import flag surface', () => {
+  it('exposes --auto-accept-scope in --help', async () => {
+    const { stdout, code } = await run('import', '--help');
+    expect(code).toBe(0);
+    expect(stdout).toContain('--auto-accept-scope');
+  });
+
+  it('fails loud on non-TTY without --auto-accept-scope or other headless flags', async () => {
+    // execFile gives us a non-TTY stdin/stdout by definition.
+    const { code, stderr } = await run('import', '--project', '/tmp');
+    expect(code).not.toBe(0);
+    expect(stderr).toMatch(/auto-accept-scope|TTY/i);
+  });
+});

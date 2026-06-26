@@ -40,6 +40,7 @@ export function registerImportCommand(program: Command): void {
     .option('--viewports <path>', 'JSON file with viewport array (passed to apply push)')
     .option('--host <url>', 'Override API base URL (passed to apply push)')
     .option('--dry-run', 'Print generate components prompt without invoking the agent')
+    .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)')
     .action(
       async (opts: {
         spaceId?: string;
@@ -64,6 +65,7 @@ export function registerImportCommand(program: Command): void {
         viewports?: string;
         host?: string;
         dryRun?: boolean;
+        autoAcceptScope?: boolean;
       }) => {
         const isHeadless =
           opts.skipAnalyze ||
@@ -75,6 +77,19 @@ export function registerImportCommand(program: Command): void {
           opts.yes ||
           opts.dryRun ||
           false;
+
+        const autoAcceptScope = opts.autoAcceptScope ?? false;
+
+        // Non-TTY callers must opt into either the existing --skip-* / --yes / explicit-creds
+        // "headless" path (which never reaches the wizard) or the new --auto-accept-scope flag
+        // (which runs the wizard but skips the scope gate). Anything else would hang.
+        if (!process.stdout.isTTY && !isHeadless && !autoAcceptScope) {
+          process.stderr.write(
+            'Error: experiences import is interactive. Pass --auto-accept-scope, or use a headless mode by providing credentials (--space-id, --environment-id, --cma-token) or one of --skip-analyze, --skip-generate, --skip-apply, --yes, --dry-run.\n',
+          );
+          process.exit(1);
+          return;
+        }
 
         if (process.stdout.isTTY && !isHeadless) {
           const { render } = await import('ink');
@@ -88,6 +103,7 @@ export function registerImportCommand(program: Command): void {
             initialAgent?: string;
             initialProjectPath?: string;
             host?: string;
+            autoAcceptScope?: boolean;
           };
           const creds = await readExperiencesCredentials();
           const { waitUntilExit } = render(
@@ -99,6 +115,7 @@ export function registerImportCommand(program: Command): void {
               initialAgent: opts.agent !== 'claude' ? opts.agent : undefined,
               initialProjectPath: opts.project !== '.' ? resolve(opts.project) : undefined,
               host: opts.host,
+              autoAcceptScope,
             }),
           );
           await waitUntilExit();
