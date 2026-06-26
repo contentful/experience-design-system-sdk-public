@@ -168,6 +168,64 @@ describe('runPipeline — select-agent argv forwarding', () => {
     }
   });
 
+  it('forwards --reject-on-missing to the spawned analyze select-agent when set', async () => {
+    const dir = await makeTempDir('orch-reject-on-missing-');
+    const cleanup = useTestDb(dir);
+    try {
+      const cliPath = await makeFakeCli(dir, {
+        'analyze extract': { stdout: 'session=s-extract\n' },
+        'analyze select-agent': { stderr: 'Accepted: 1  Rejected: 0\n' },
+        'generate components': { stdout: 'session=s-gen\n' },
+        'apply push': {
+          stdout: JSON.stringify({
+            componentTypes: { created: 1, updated: 0, failed: 0 },
+            designTokens: { created: 0, updated: 0, failed: 0 },
+          }),
+        },
+      });
+
+      await runPipeline(
+        { ...baseOpts({ out: dir, rejectOnMissing: true }), project: dir },
+        () => {},
+        cliPath,
+      );
+
+      const calls = await readCalls(dir);
+      const selectAgentCall = calls.find((c) => c[0] === 'analyze' && c[1] === 'select-agent');
+      expect(selectAgentCall).toBeDefined();
+      expect(selectAgentCall).toContain('--reject-on-missing');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('omits --reject-on-missing when not set', async () => {
+    const dir = await makeTempDir('orch-no-reject-on-missing-');
+    const cleanup = useTestDb(dir);
+    try {
+      const cliPath = await makeFakeCli(dir, {
+        'analyze extract': { stdout: 'session=s-extract\n' },
+        'analyze select-agent': { stderr: 'Accepted: 1  Rejected: 0\n' },
+        'generate components': { stdout: 'session=s-gen\n' },
+        'apply push': {
+          stdout: JSON.stringify({
+            componentTypes: { created: 1, updated: 0, failed: 0 },
+            designTokens: { created: 0, updated: 0, failed: 0 },
+          }),
+        },
+      });
+
+      await runPipeline({ ...baseOpts({ out: dir }), project: dir }, () => {}, cliPath);
+
+      const calls = await readCalls(dir);
+      const selectAgentCall = calls.find((c) => c[0] === 'analyze' && c[1] === 'select-agent');
+      expect(selectAgentCall).toBeDefined();
+      expect(selectAgentCall).not.toContain('--reject-on-missing');
+    } finally {
+      cleanup();
+    }
+  });
+
   it('forwards --select-prompt-path <path> to the spawned analyze select-agent', async () => {
     const dir = await makeTempDir('orch-select-prompt-');
     const cleanup = useTestDb(dir);

@@ -37,6 +37,12 @@ export interface PipelineOptions {
   deselect?: string[];
   /** Forwarded to the spawned `analyze select-agent` subprocess. */
   selectPromptPath?: string;
+  /**
+   * Forwarded to the spawned `analyze select-agent` subprocess. When true,
+   * components with no LLM tool call become rejections rather than failed
+   * rows. See probe doc `dsi-tui-batch-skip-probe.md`.
+   */
+  rejectOnMissing?: boolean;
 }
 
 export interface StepResult {
@@ -266,6 +272,7 @@ export async function runPipeline(
       if (opts.excludeInvalid) editArgs.push('--exclude-invalid');
       if (opts.noCache) editArgs.push('--no-cache');
       if (opts.selectPromptPath) editArgs.push('--select-prompt-path', opts.selectPromptPath);
+      if (opts.rejectOnMissing) editArgs.push('--reject-on-missing');
     } else {
       editArgs = ['analyze', 'select', '--session', extractSessionId];
       if (opts.select && opts.select.length > 0) {

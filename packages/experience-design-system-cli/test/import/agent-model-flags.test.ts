@@ -81,4 +81,22 @@ describe('wizard subprocess arg builders thread --model through', () => {
     const args = buildGenerateComponentsArgs({ sessionId: 's1', agent: 'claude' });
     expect(args).not.toContain('--model');
   });
+
+  it('buildSelectAgentArgs appends --reject-on-missing when set', () => {
+    const args = buildSelectAgentArgs({
+      sessionId: 's1',
+      agent: 'claude',
+      rejectOnMissing: true,
+    });
+    expect(args).toContain('--reject-on-missing');
+  });
+
+  it('buildSelectAgentArgs omits --reject-on-missing when false/undefined', () => {
+    expect(
+      buildSelectAgentArgs({ sessionId: 's1', agent: 'claude', rejectOnMissing: false }),
+    ).not.toContain('--reject-on-missing');
+    expect(buildSelectAgentArgs({ sessionId: 's1', agent: 'claude' })).not.toContain(
+      '--reject-on-missing',
+    );
+  });
 });

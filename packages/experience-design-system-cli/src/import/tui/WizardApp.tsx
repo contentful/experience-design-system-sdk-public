@@ -186,6 +186,12 @@ export function buildSelectAgentArgs(opts: {
    * bypassed on this run. Default (omitted/false) preserves cache behavior.
    */
   noCache?: boolean;
+  /**
+   * Forward `experiences import --reject-on-missing` to the spawned
+   * select-agent so batch-skipped components become rejections rather than
+   * silently-included failed rows. See probe doc `dsi-tui-batch-skip-probe.md`.
+   */
+  rejectOnMissing?: boolean;
 }): string[] {
   // Feature 3: the wizard auto-filter run should never fail-loud on validation
   // errors — those components surface in the AI-excluded section with a
@@ -202,6 +208,7 @@ export function buildSelectAgentArgs(opts: {
   if (opts.model) args.push('--model', opts.model);
   if (opts.selectPromptPath) args.push('--select-prompt-path', opts.selectPromptPath);
   if (opts.noCache) args.push('--no-cache');
+  if (opts.rejectOnMissing) args.push('--reject-on-missing');
   return args;
 }
 
@@ -338,6 +345,11 @@ export type WizardAppProps = {
   selectPromptPath?: string;
   generatePromptPath?: string;
   /**
+   * Forward `experiences import --reject-on-missing` to the spawned
+   * select-agent subprocess. See probe doc `dsi-tui-batch-skip-probe.md`.
+   */
+  rejectOnMissing?: boolean;
+  /**
    * Modify-entry: when set, the wizard treats extract as already-run and
    * seeds `state.extractSessionId` from this value. Combined with
    * `initialStep: 'final-review'`, the wizard skips welcome → token-input →
@@ -389,6 +401,7 @@ export function WizardApp({
   onConflictMode,
   selectPromptPath,
   generatePromptPath,
+  rejectOnMissing = false,
   seedExtractSessionId,
   seedGenerateSessionId,
   initialStep,
@@ -751,6 +764,7 @@ export function WizardApp({
         ...(state.agentModel ? { model: state.agentModel } : {}),
         selectPromptPath,
         noCache,
+        rejectOnMissing,
       });
       const child = spawn('node', [findCliPath(), ...args]);
       autoFilterChildRef.current = child;

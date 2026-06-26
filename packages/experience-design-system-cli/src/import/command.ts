@@ -110,6 +110,10 @@ export function registerImportCommand(program: Command): void {
       '--modify <id-or-path>',
       "Re-open the wizard at final-review with a prior run pre-populated for field edits. Accepts a run-id or filesystem path. Pair with --overwrite or --save-as-new to pick the save mode.",
     )
+    .option(
+      '--reject-on-missing',
+      'Forward to analyze select-agent: treat components with no LLM tool call as rejected (default: mark failed and silently include via scope-gate). Use for audit prompts where the LLM is expected to omit reject targets.',
+    )
     .option('--overwrite', "Only valid with --modify: save back to the run's recorded savePath")
     .option('--save-as-new', 'Only valid with --modify: always save to a new path (prompts for one)')
     .action(
@@ -150,6 +154,7 @@ export function registerImportCommand(program: Command): void {
         modify?: string;
         overwrite?: boolean;
         saveAsNew?: boolean;
+        rejectOnMissing?: boolean;
       }) => {
         // ── --push-from-run handling ───────────────────────────────────────
         // Push-only replay of a prior run. Mutex checks happen *before* any
@@ -321,6 +326,7 @@ export function registerImportCommand(program: Command): void {
             onConflictMode?: 'overwrite' | 'skip' | 'fail';
             selectPromptPath?: string;
             generatePromptPath?: string;
+            rejectOnMissing?: boolean;
             initialRuns?: typeof pickerDecision.runs;
             onRunPicked?: (selection: RunPickerSelection) => void;
           };
@@ -376,6 +382,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.onConflict ? { onConflictMode: opts.onConflict } : {}),
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
+              rejectOnMissing: opts.rejectOnMissing ?? false,
               ...pickerProps,
             }),
           );
@@ -463,6 +470,7 @@ export function registerImportCommand(program: Command): void {
             host: opts.host,
             dryRun: dryRunForward,
             selectPromptPath: opts.selectPromptPath,
+            rejectOnMissing: opts.rejectOnMissing ?? false,
           },
           (line) => process.stderr.write(line + '\n'),
         );
