@@ -73,7 +73,11 @@ The CLI runs your component library through four stages:
 
 **4. Apply** — Shows a diff of what will change in your Contentful space, then pushes (and by default also saves `components.json` / `tokens.json` to disk for source control).
 
-The wizard saves a run record after each session. Use `experiences runs` to list prior sessions, `experiences import --modify <id-or-path>` to re-open the wizard pre-populated, or `experiences import --push-from-run <id-or-path>` to re-push without re-opening the wizard.
+The wizard saves a run record after each session. Use `experiences runs` to list prior sessions (or `experiences runs <id-or-path>` for a single-run detail view), `experiences import --modify <id-or-path>` to re-open the wizard pre-populated, or `experiences import --push-from-run <id-or-path>` to re-push without re-opening the wizard.
+
+When prior runs exist and the wizard is launched without `--push-from-run`, `--modify`, or `--project`, the TUI opens with an interactive **run picker** so the operator can pick "push", "modify", or "start a new run" up front. Pass `--project` to skip the picker and go straight into a fresh extraction.
+
+For headless operation alongside an existing checked-in `components.json`, pass `--on-conflict <overwrite|skip|fail>` to bypass the interactive save-conflict gate. Use `--print-prompt` to inspect the generate prompt without invoking the agent (replaces the deprecated `--dry-run`).
 
 ## Packages
 
@@ -91,10 +95,10 @@ Full documentation for every flag and every subcommand lives in [`packages/exper
 | `experiences setup`                | Interactive setup — installs prerequisites and saves credentials + agent           |
 | `experiences doctor`               | Health check — verify Node version, credentials, and agent binaries                |
 | `experiences import`               | Run the full wizard or a headless pipeline (extract → select → generate → push)    |
-| `experiences runs`                 | List prior wizard runs from `~/.config/experiences/runs.json`                      |
+| `experiences runs`                 | List prior wizard runs, or pass `<id-or-path>` for a single-run detail view (supports `--json`, `--pushed`, `--not-pushed`) |
 | `experiences analyze extract`      | Scan source files and extract raw component definitions                            |
 | `experiences analyze select`       | Interactively pick which components to include (standalone JsonEditor TUI)         |
-| `experiences analyze select-agent` | AI agent picks which components belong in Experiences                              |
+| `experiences analyze select-agent` | AI agent picks which components belong in Experiences; pass `--show-rationale [--json]` for read-only rationale output |
 | `experiences generate components`  | AI agent generates CDF definitions from raw analysis                               |
 | `experiences generate tokens`      | AI agent generates DTCG design tokens from raw token data                          |
 | `experiences apply preview`        | Read-only diff — what would change in Contentful                                   |

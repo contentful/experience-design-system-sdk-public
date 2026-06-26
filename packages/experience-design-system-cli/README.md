@@ -162,24 +162,56 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--exclude-invalid`               | off (fail loud)                        | Auto-reject components with validation errors instead of refusing to proceed                                 |
 | `--viewports <path>`              | catch-all viewport                     | JSON file with viewport array (passed to `apply push`)                                                       |
 | `--host <url>`                    | `https://api.contentful.com`           | Override API base URL                                                                                        |
-| `--dry-run`                       | —                                      | Print the generate prompt without invoking the agent                                                         |
+| `--on-conflict <mode>`            | _(prompt via `<SaveConflictGate>`)_    | Headless conflict resolution when a file already exists at the save path: `overwrite`, `skip`, or `fail`. Bypasses the wizard's interactive save-conflict gate. Mutex with `--no-save`. |
+| `--print-prompt`                  | —                                      | Print the generate prompt to stdout and exit. Replaces the prompt-print semantics of `--dry-run`.            |
+| `--dry-run`                       | _(deprecated)_                         | Deprecated alias for `--print-prompt`. Emits a stderr deprecation notice; prompt-print semantics will be removed in a future release. |
+
+### Run-picker at wizard start
+
+When `~/.config/experiences/runs.json` contains one or more entries, none of `--push-from-run`, `--modify`, or `--project` was passed, and stdin is a TTY, the wizard opens with an interactive **run picker** before the welcome step. The operator can:
+
+- Pick a recent run, then choose **Push** or **Modify** — equivalent to invoking `--push-from-run` or `--modify` for that run id
+- Select **Show all** to expand beyond the most-recent rows
+- Select **Start a new run** to fall through to the normal `welcome → extracting → ...` flow
+
+The mount decision is deterministic — passing any of `--push-from-run`, `--modify`, or `--project` skips the picker and lands on the existing step machine.
+
+### `--modify` end-to-end behavior
+
+`--modify <id-or-path>` is fully wired: the wizard loads the recorded session from `pipeline.db` (skipping extract and generate entirely), pre-fills credentials from the run record's `pushedTo` target, and lands directly on `final-review` — or on `scope-gate` if the run record carries an `entryStep` hint. Pair with `--overwrite` or `--save-as-new` to control the save target.
+
+### `--model` and `--agent` overrides
+
+`--model <name>` overrides the stored model for this run. The resolution order is:
+
+1. `--model <name>` flag
+2. `model` field saved in `~/.config/experiences/credentials.json`
+3. Built-in default for the chosen agent
+
+`--agent <name>` works the same way and is a fully functional wizard override — earlier releases plumbed the flag but the commander default shadowed it; the flag now wins over the saved value as expected.
 
 ---
 
 ## `experiences runs`
 
-List recorded wizard runs from `~/.config/experiences/runs.json`.
+List recorded wizard runs from `~/.config/experiences/runs.json`, or print the detail view for a single run.
 
 ```bash
-experiences runs [--project <path>] [--limit <n>]
+experiences runs [<id-or-path>] [--project <path>] [--limit <n>] [--pushed | --not-pushed] [--json]
 ```
 
-| Option              | Description                                  |
-| ------------------- | -------------------------------------------- |
-| `--project <path>`  | Filter by source project path (absolute)     |
-| `--limit <n>`       | Cap the number of rows printed               |
+| Option              | Description                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| `<id-or-path>`      | Positional. Print the detail view for a single run by id or recorded save path. Path resolution sniffs for `/`, `./`, or `~/` prefix (and the bare `.` / `~` values) via `resolveRunTarget()`. |
+| `--project <path>`  | Filter by source project path (absolute).                                                |
+| `--limit <n>`       | Cap the number of rows printed.                                                          |
+| `--pushed`          | Show only runs that were pushed to Contentful. Mutex with `--not-pushed`.                |
+| `--not-pushed`      | Show only runs that were never pushed. Mutex with `--pushed`.                            |
+| `--json`            | Emit machine-readable output: `RunRecord[]` for the list view; a single `RunRecord` object when combined with `<id-or-path>`. |
 
-Each row prints the run id, creation time, project path, save path, component count, and push target (or `(not pushed)`). Pair with `--push-from-run` or `--modify` on `experiences import` to replay a row.
+Each row prints the run id, creation time, project path, save path, component count, and push target (or `(not pushed)`). Table columns auto-expand to fit content — long project / save paths are no longer truncated. Below the table, a copy-friendly footer prints command hints (`--push-from-run`, `--modify`) for the newest run.
+
+Pair with `--push-from-run` or `--modify` on `experiences import` to replay a row.
 
 ---
 
@@ -253,8 +285,12 @@ experiences analyze select-agent [--agent <name>] [--session <id>]
 | `--select-prompt-path <path>` | saved by setup | Custom `.md` skill prompt (bypasses bundled invariants); emits a banner at invocation |
 | `--no-select-cache` | cache on | Skip the per-component select cache and re-LLM every component |
 | `--no-cache` | cache on | Skip all fine-grained caches (extract, select, generate) |
+| `--show-rationale` | — | Read-only mode. Print the recorded accept / reject rationale for every component in the session and exit. Reads `raw_components.reject_reason` from the pipeline DB — no LLM call, no schema change. |
+| `--json` | — | With `--show-rationale`: emit the rationale rows as JSON for scripting. |
 
 Decisions are written to the same review state file used by `analyze select`, so `generate components` picks them up automatically. Each `(component-hash, prompt-hash, cli-version)` triple is cached; changing the prompt file via `--select-prompt-path` already busts the corresponding cache entries.
+
+`--show-rationale` is a separate read-only mode — it does not invoke the agent and is safe to run against a completed session at any time. Pair with `--session <id>` to target a specific session; otherwise it auto-resolves to the most recent completed `analyze extract`.
 
 ---
 

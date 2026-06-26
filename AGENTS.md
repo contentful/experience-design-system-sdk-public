@@ -27,11 +27,25 @@ A single human review gate (`scope-gate`) replaces the older two-step extract-re
 
 Each successful wizard run appends a record to `~/.config/experiences/runs.json`:
 
-- `experiences runs` lists prior runs
+- `experiences runs` lists prior runs; `experiences runs <id-or-path>` prints the single-run detail view; `--json`, `--pushed` / `--not-pushed` filters apply
 - `experiences import --push-from-run <id-or-path>` re-pushes the recorded session without re-opening the wizard or writing to disk
-- `experiences import --modify <id-or-path>` re-opens the wizard at final-review with the prior run pre-populated (pair with `--overwrite` or `--save-as-new`)
+- `experiences import --modify <id-or-path>` is fully wired: loads the recorded session from `pipeline.db` (skipping extract and generate), pre-fills credentials from `pushedTo`, and lands on `final-review` (or `scope-gate` if the run record sets `entryStep`). Pair with `--overwrite` or `--save-as-new`.
 
-Replay helpers live in `src/runs/`: `replay-helpers.ts` (replayRun / modifyRun), `store.ts` (runs.json reader/writer), `resolve-run-target.ts` (id-or-path resolution), `save-path-resolver.ts`, plus the `runs ls` command (`ls-command.ts`).
+Replay helpers live in `src/runs/`: `replay-helpers.ts` (replayRun / modifyRun), `store.ts` (runs.json reader/writer), `resolve-run-target.ts` (id-or-path resolution), `save-path-resolver.ts`, plus the `runs ls` command (`ls-command.ts`). The `runs` table columns auto-expand to fit content (no truncation of long project / save paths); a copy-friendly footer prints command hints for the newest run.
+
+### Run-picker mount
+
+`src/runs/run-picker-mount.ts` decides whether the wizard opens with the interactive run-picker TUI (`src/runs/tui/RunPicker.tsx`) before `welcome`. It mounts when `runs.json` has entries, stdin is a TTY, and none of `--push-from-run`, `--modify`, or `--project` was passed. Selecting a run routes into the `--push-from-run` or `--modify` code path without re-invoking the CLI.
+
+### Read-only rationale view
+
+`experiences analyze select-agent --show-rationale [--json] [--session <id>]` prints the recorded accept / reject rationale for every component in a session. It reads `raw_components.reject_reason` from `pipeline.db` — no LLM call, no schema change, no agent subprocess. `--json` emits a machine-readable array for scripting.
+
+### `--on-conflict` and prompt-print
+
+- `experiences import --on-conflict <overwrite|skip|fail>` bypasses the wizard's interactive `<SaveConflictGate>` when a file already exists at the save path. Mutex with `--no-save`.
+- `experiences import --print-prompt` prints the generate prompt to stdout and exits. It replaces the prompt-print semantics of `--dry-run`, which is now deprecated and prints a stderr deprecation notice.
+- `experiences import --model <name>` overrides the stored model with fallback order `flag → credentials.json → built-in default`. `--agent <name>` works the same way and is now a functional wizard override.
 
 ## Build System
 

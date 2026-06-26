@@ -23,7 +23,8 @@ Design system codebase
   experience-design-system-cli  (binaries: experiences | exo | experience-design-system-cli)
     ├── import (wizard)         → interactive TUI; drives the full pipeline + scope-gate + final-review + save/push
     ├── import (headless)       → orchestrator that shells out to the subcommands below
-    ├── runs                    → list/replay prior wizard runs from ~/.config/experiences/runs.json
+    ├── runs                    → list/detail/replay prior wizard runs from ~/.config/experiences/runs.json
+    │                              (positional <id-or-path>, --json, --pushed, --not-pushed)
     ├── analyze extract         → session DB (raw components)
     ├── analyze select          → session DB (accepted/rejected decisions, standalone JsonEditor TUI)
     ├── analyze select-agent    → session DB (agentic accept/reject + per-component rationale)
@@ -487,9 +488,27 @@ Headless mode is entered when any of `--auto-accept-scope`, `--skip-analyze`, `-
 After every successful wizard session, the CLI appends a record to `~/.config/experiences/runs.json`. The replay helpers in `src/runs/replay-helpers.ts` power two `import` flags:
 
 - `--push-from-run <id-or-path>` — re-push the recorded session without re-opening the wizard. Never writes to disk. Mutually exclusive with `--modify`, `--project`, `--no-save`, `--no-push`.
-- `--modify <id-or-path>` — re-open the wizard at final-review with the prior run pre-populated. Pair with `--overwrite` (save back to recorded `savePath`) or `--save-as-new` (prompt for new path).
+- `--modify <id-or-path>` — fully wired re-open: loads the recorded session from `pipeline.db` (skipping extract and generate), pre-fills credentials from the run record's `pushedTo` target, and lands directly on `final-review` (or `scope-gate` if the run record sets `entryStep`). Pair with `--overwrite` (save back to recorded `savePath`) or `--save-as-new` (prompt for new path).
 
-`experiences runs` (alias `ls`) lists the contents of `runs.json` for use with either flag.
+`experiences runs` (alias `ls`) lists the contents of `runs.json` for use with either flag. A positional `<id-or-path>` argument switches it into single-run detail mode; `--json`, `--pushed`, and `--not-pushed` filter the output. Table columns auto-expand to fit long project / save paths; a copy-friendly footer prints command hints for the newest run.
+
+### Run-picker
+
+When `runs.json` is non-empty, stdin is a TTY, and none of `--push-from-run`, `--modify`, or `--project` was passed, the wizard mounts an interactive **run-picker** (`src/runs/tui/RunPicker.tsx`) before the `welcome` step. The picker lets the operator push or modify a recent run, expand to "show all", or start a new run; selecting an existing run routes through the `--push-from-run` or `--modify` code path. Mount-decision logic lives in `src/runs/run-picker-mount.ts`.
+
+### Headless save-conflict resolution
+
+`--on-conflict <overwrite|skip|fail>` bypasses the wizard's interactive `<SaveConflictGate>` when a file already exists at the save path — required for non-TTY runs that still write `components.json` to disk. Mutex with `--no-save`.
+
+### Prompt-print and model / agent overrides
+
+- `--print-prompt` prints the generate prompt to stdout and exits. It supersedes the prompt-print semantics of `--dry-run`, which is now deprecated and emits a stderr deprecation notice.
+- `--model <name>` overrides the stored model; resolution order is flag → `credentials.json` → built-in default.
+- `--agent <name>` is a functional wizard override (earlier releases plumbed it but the commander default shadowed it).
+
+### Read-only rationale view
+
+`experiences analyze select-agent --show-rationale [--json] [--session <id>]` reads `raw_components.reject_reason` from `pipeline.db` and prints the recorded accept / reject rationale for every component in the session. No LLM call, no schema change — it is purely a session-DB reader, safe to run against any completed session.
 
 ---
 

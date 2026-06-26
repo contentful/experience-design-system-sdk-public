@@ -121,6 +121,8 @@ TUI tests use [`ink-testing-library`](https://github.com/vadimdemedes/ink-testin
 
 CLI integration tests require a compiled `dist/` directory. The test setup script compiles if `dist/` is missing.
 
+The CLI package's `vitest.config.ts` runs with `pool: 'forks'` and `retry: 1` for worker isolation. Contributors do not need to configure this, but expect test wall-clock time to reflect per-test process forks rather than a shared worker pool — flaky individual tests retry once before failing the suite.
+
 ## Snapshot Tests
 
 When you change TUI output intentionally, update snapshots:
