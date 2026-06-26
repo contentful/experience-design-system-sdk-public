@@ -4,5 +4,5 @@
  */
 export function buildRunTeaserLine(runId: string | null | undefined): string {
   if (!runId) return '';
-  return `Run saved as ${runId} — replay with 'experiences import --from-run ${runId}' or modify with 'experiences import --from-run ${runId} --modify'.`;
+  return `Run saved as ${runId} — push to Contentful with 'experiences import --push-from-run ${runId}' or modify with 'experiences import --modify ${runId}'.`;
 }
