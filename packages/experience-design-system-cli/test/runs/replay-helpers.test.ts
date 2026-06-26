@@ -247,6 +247,51 @@ describe('replayRun (push-only)', () => {
   });
 });
 
+describe('replayRun — staleness gate', () => {
+  it('refuses to push when sourceFingerprint reports drift, and no --force', async () => {
+    mockGetRun.mockResolvedValueOnce(
+      sampleRun({
+        sourceFingerprint: {
+          files: { '/nope/missing.tsx': { mtime: '2026-01-01T00:00:00.000Z', componentName: 'Missing' } },
+          rawTokensPath: null,
+          rawTokensMtime: null,
+          rawTokensContentHash: null,
+        },
+      }),
+    );
+    await expect(
+      replayRun({
+        runIdOrPath: '01HXYZ',
+        spaceId: 'sp',
+        environmentId: 'env',
+        cmaToken: 'tok',
+      }),
+    ).rejects.toThrow(/drift|Refusing|stale/i);
+    expect(mockPushRunSession).not.toHaveBeenCalled();
+  });
+
+  it('--force bypasses the staleness gate and pushes anyway', async () => {
+    mockGetRun.mockResolvedValueOnce(
+      sampleRun({
+        sourceFingerprint: {
+          files: { '/nope/missing.tsx': { mtime: '2026-01-01T00:00:00.000Z', componentName: 'Missing' } },
+          rawTokensPath: null,
+          rawTokensMtime: null,
+          rawTokensContentHash: null,
+        },
+      }),
+    );
+    await replayRun({
+      runIdOrPath: '01HXYZ',
+      spaceId: 'sp',
+      environmentId: 'env',
+      cmaToken: 'tok',
+      force: true,
+    });
+    expect(mockPushRunSession).toHaveBeenCalled();
+  });
+});
+
 describe('modifyRun', () => {
   it('loads the wizard pre-populated with the run session', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());

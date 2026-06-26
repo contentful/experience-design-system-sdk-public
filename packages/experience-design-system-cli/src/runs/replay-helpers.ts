@@ -4,6 +4,17 @@ import { updateRun } from './store.js';
 import { pushRunSession } from './push-helpers.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { launchModifyWizard, type ModifyLauncherInput } from './modify-launcher.js';
+import { checkRunStaleness, formatStalenessDetail } from './staleness.js';
+import type { RunRecord } from './store.js';
+
+function formatStalenessRefusal(run: RunRecord, detail: string[]): string {
+  return [
+    `Refusing to replay run ${run.id} — source or saved files have drifted since the run was recorded.`,
+    ...detail,
+    '',
+    'Re-extract with `experiences import --project <path>` for a fresh run, or pass --force to bypass.',
+  ].join('\n');
+}
 
 export type ReplayRunOptions = {
   runIdOrPath: string;
@@ -21,6 +32,8 @@ export type ReplayRunOptions = {
    * pinned error string from the spec.
    */
   interactive?: boolean;
+  /** When true, bypass the source/saved-file staleness check. */
+  force?: boolean;
   /**
    * Test seam: replace the interactive prompt with a deterministic resolver.
    * The CLI surface never sets this; only used by tests.
@@ -55,6 +68,16 @@ const MISSING_CREDS_ERROR =
  */
 export async function replayRun(opts: ReplayRunOptions): Promise<void> {
   const run = await resolveRunTarget(opts.runIdOrPath);
+
+  // Staleness gate: refuse before any push side effect when source files or
+  // saved artifacts have drifted. Bypassed by --force.
+  if (!opts.force) {
+    const staleness = await checkRunStaleness(run);
+    if (staleness.stale) {
+      throw new Error(formatStalenessRefusal(run, formatStalenessDetail(staleness)));
+    }
+  }
+
   const sessionId = run.generateSessionId ?? run.extractSessionId;
 
   // Layered credentials resolution.
@@ -141,6 +164,8 @@ export type ModifyRunOptions = {
   saveAsNew?: boolean;
   overwrite?: boolean;
   outDir?: string;
+  /** When true, bypass the source/saved-file staleness check. */
+  force?: boolean;
 };
 
 /**
@@ -154,6 +179,12 @@ export async function modifyRun(opts: ModifyRunOptions): Promise<void> {
     throw new Error('--save-as-new and --overwrite are mutually exclusive.');
   }
   const run = await resolveRunTarget(opts.runIdOrPath);
+  if (!opts.force) {
+    const staleness = await checkRunStaleness(run);
+    if (staleness.stale) {
+      throw new Error(formatStalenessRefusal(run, formatStalenessDetail(staleness)));
+    }
+  }
   const saveMode: ModifyLauncherInput['saveMode'] = opts.overwrite
     ? 'overwrite'
     : opts.saveAsNew
