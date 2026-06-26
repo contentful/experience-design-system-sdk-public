@@ -315,6 +315,28 @@ export type WizardAppProps = {
    */
   selectPromptPath?: string;
   generatePromptPath?: string;
+  /**
+   * Modify-entry: when set, the wizard treats extract as already-run and
+   * seeds `state.extractSessionId` from this value. Combined with
+   * `initialStep: 'final-review'`, the wizard skips welcome → token-input →
+   * checking-claude-auth → extracting → scope-gate and lands directly on
+   * the post-generate review screen using DB-backed reads.
+   */
+  seedExtractSessionId?: string;
+  /**
+   * Modify-entry: when set, the wizard treats generate as already-run and
+   * seeds `state.generateSessionId`. Required (together with
+   * `seedExtractSessionId`) for the final-review short-circuit to render
+   * meaningful data.
+   */
+  seedGenerateSessionId?: string;
+  /**
+   * Modify-entry: overrides the wizard's initial step. When set, the wizard
+   * bypasses its normal welcome/token-input bootstrap. Currently only
+   * `'final-review'` is plumbed end-to-end; `'scope-gate'` is accepted for
+   * future use but falls through to standard behavior.
+   */
+  initialStep?: 'scope-gate' | 'final-review';
 };
 
 export function WizardApp({
@@ -335,6 +357,9 @@ export function WizardApp({
   onConflictMode,
   selectPromptPath,
   generatePromptPath,
+  seedExtractSessionId,
+  seedGenerateSessionId,
+  initialStep,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -379,18 +404,37 @@ export function WizardApp({
     stderr: string;
   }> | null>(null);
 
+  // Modify-entry short-circuit: when the launcher passes seed session IDs
+  // and `initialStep: 'final-review'`, skip the welcome/token-input bootstrap
+  // and land directly on the post-generate review screen. The DB-backed
+  // GenerateReviewStep loads its data off `state.extractSessionId`, so all
+  // we need to do here is seed the IDs and the step.
+  const modifyEntryReady =
+    !!seedExtractSessionId && initialStep === 'final-review';
+  const initialStepResolved: WizardStep = modifyEntryReady
+    ? 'final-review'
+    : initialProjectPath
+      ? 'token-input'
+      : 'welcome';
+  const initialOutDir = initialProjectPath
+    ? join(resolve(initialProjectPath), '.contentful')
+    : '';
+  const initialTokensPath = modifyEntryReady && initialOutDir
+    ? join(initialOutDir, 'tokens.json')
+    : '';
+
   const [state, setState] = useState<WizardState>({
-    step: initialProjectPath ? 'token-input' : 'welcome',
+    step: initialStepResolved,
     agent: initialAgent ?? 'claude',
     projectPath: initialProjectPath ?? '',
-    outDir: initialProjectPath ? join(resolve(initialProjectPath), '.contentful') : '',
+    outDir: initialOutDir,
     rawTokensPath: '',
-    tokensPath: '',
+    tokensPath: initialTokensPath,
     tokenSourceChanged: null,
     skipComponents: false,
     tokenSessionId: null,
-    extractSessionId: null,
-    generateSessionId: null,
+    extractSessionId: seedExtractSessionId ?? null,
+    generateSessionId: seedGenerateSessionId ?? null,
     extractedCount: 0,
     acceptedCount: 0,
     autoRejectedCount: 0,
