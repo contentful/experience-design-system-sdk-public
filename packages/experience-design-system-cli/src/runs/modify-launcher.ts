@@ -11,6 +11,12 @@ export type ModifyLauncherInput = {
   entryStep: 'scope-gate' | 'final-review';
   saveMode: 'overwrite' | 'new' | 'prompt';
   outDirOverride?: string;
+  /** Pre-fill space id (from the run record's pushedTo). */
+  initialSpaceId?: string;
+  /** Pre-fill environment id (from the run record's pushedTo). */
+  initialEnvironmentId?: string;
+  /** Pre-fill host (from the run record's pushedTo). */
+  initialHost?: string;
 };
 
 export async function launchModifyWizard(input: ModifyLauncherInput): Promise<void> {
@@ -20,15 +26,30 @@ export async function launchModifyWizard(input: ModifyLauncherInput): Promise<vo
   type WizardProps = {
     initialProjectPath?: string;
     outDirOverride?: string;
+    seedExtractSessionId?: string;
+    seedGenerateSessionId?: string;
+    initialStep?: 'scope-gate' | 'final-review';
+    initialSpaceId?: string;
+    initialEnvironmentId?: string;
+    initialHost?: string;
   };
-  // The wizard's "modify" entry hooks into the same render path as a normal
-  // import, but the session refs are seeded. The wizard itself does not yet
-  // honor `entryStep` — we only wire the override + initial project path so
-  // post-final-review save lands in the right place. Future work can extend
-  // WizardApp to short-circuit extract/generate when these props are present.
-  const props: WizardProps = { initialProjectPath: input.projectPath };
+  // Modify entry: re-open the wizard with the prior run's sessions seeded so
+  // extract + generate are skipped. The wizard short-circuits to `initialStep`
+  // (typically `final-review`) using state derived from the seed IDs. Saved
+  // credentials from the run record's `pushedTo` pre-fill the credentials
+  // step (CMA token is never persisted, so it still falls through to the
+  // env/credentials.json/prompt resolution path).
+  const props: WizardProps = {
+    initialProjectPath: input.projectPath,
+    seedExtractSessionId: input.extractSessionId,
+    initialStep: input.entryStep,
+  };
+  if (input.generateSessionId) props.seedGenerateSessionId = input.generateSessionId;
   if (input.saveMode === 'overwrite') props.outDirOverride = input.savePath;
   if (input.outDirOverride) props.outDirOverride = input.outDirOverride;
+  if (input.initialSpaceId) props.initialSpaceId = input.initialSpaceId;
+  if (input.initialEnvironmentId) props.initialEnvironmentId = input.initialEnvironmentId;
+  if (input.initialHost) props.initialHost = input.initialHost;
   const { waitUntilExit } = render(createElement<WizardProps>(WizardApp, props));
   await waitUntilExit();
 }

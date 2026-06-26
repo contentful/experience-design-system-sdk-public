@@ -150,5 +150,12 @@ export async function modifyRun(opts: ModifyRunOptions): Promise<void> {
     entryStep: 'final-review',
     saveMode,
     ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
+    // Pre-fill credentials from the run record's last push so the operator
+    // doesn't have to re-type space/environment/host on modify. The CMA
+    // token is never persisted, so it still resolves via env var /
+    // credentials.json / interactive prompt at the credentials step.
+    ...(run.pushedTo?.spaceId ? { initialSpaceId: run.pushedTo.spaceId } : {}),
+    ...(run.pushedTo?.environmentId ? { initialEnvironmentId: run.pushedTo.environmentId } : {}),
+    ...(run.pushedTo?.host ? { initialHost: run.pushedTo.host } : {}),
   });
 }
