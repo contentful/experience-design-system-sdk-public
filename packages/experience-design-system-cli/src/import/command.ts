@@ -314,6 +314,7 @@ export function registerImportCommand(program: Command): void {
             viewports: opts.viewports,
             host: opts.host,
             dryRun: opts.dryRun,
+            selectPromptPath: opts.selectPromptPath,
           },
           (line) => process.stderr.write(line + '\n'),
         );
