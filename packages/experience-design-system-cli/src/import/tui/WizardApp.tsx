@@ -10,7 +10,7 @@ import { mkdir } from 'node:fs/promises';
 import { buildRunTeaserLine } from './run-teaser.js';
 import { PathPrompt } from '../../runs/path-prompt.js';
 import { SaveConflictGate } from '../../runs/save-conflict.js';
-import { detectSaveConflict, buildTimestampedSubdir } from '../../runs/save-path-resolver.js';
+import { detectSaveConflict, buildTimestampedSubdir, resolveSavePath, type OnConflictMode } from '../../runs/save-path-resolver.js';
 import { appendRun } from '../../runs/store.js';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
 import { CustomPromptBanner } from './CustomPromptBanner.js';
@@ -302,6 +302,12 @@ export type WizardAppProps = {
   /** Task 4 — `--out-dir <path>` flag. Bypasses the inline save-path prompt. */
   outDirOverride?: string;
   /**
+   * Task 5 — `--on-conflict <overwrite|skip|fail>` flag. When supplied along
+   * with `outDirOverride`, the wizard skips the SaveConflictGate and applies
+   * the chosen mode automatically via `resolveSavePath`.
+   */
+  onConflictMode?: OnConflictMode;
+  /**
    * Feature 8: custom prompt path overrides forwarded to the spawned
    * `analyze select-agent` and `generate components` subprocesses. When set,
    * the wizard also renders a persistent top-of-screen banner so the operator
@@ -326,6 +332,7 @@ export function WizardApp({
   noPush = false,
   noSave = false,
   outDirOverride,
+  onConflictMode,
   selectPromptPath,
   generatePromptPath,
 }: WizardAppProps = {}): React.ReactElement {
@@ -1391,6 +1398,22 @@ export function WizardApp({
     pendingSaveOptionsRef.current = opts;
     if (outDirOverride) {
       await mkdir(outDirOverride, { recursive: true });
+      if (onConflictMode) {
+        const resolved = await resolveSavePath(outDirOverride, { onConflict: onConflictMode });
+        if (resolved.kind === 'fail') {
+          const files = resolved.conflict.files.join(', ');
+          process.stderr.write(
+            `Error: --on-conflict fail — refusing to overwrite ${files} at ${resolved.conflict.path}.\n`,
+          );
+          process.exit(1);
+          return;
+        }
+        if (resolved.kind === 'write') {
+          await mkdir(resolved.path, { recursive: true });
+          await proceedToWrite(resolved.path);
+          return;
+        }
+      }
       await proceedToWrite(outDirOverride);
       return;
     }
