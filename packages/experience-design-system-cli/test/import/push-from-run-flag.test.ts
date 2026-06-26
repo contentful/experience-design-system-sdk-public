@@ -155,6 +155,36 @@ describe('experiences import --push-from-run — delegation', () => {
   });
 });
 
+describe('experiences import --force — forwarding', () => {
+  it('forwards --force to replayRun under --push-from-run', async () => {
+    const program = buildProgram();
+    await program.parseAsync(
+      ['import', '--push-from-run', '01HXYZ', '--force'],
+      { from: 'user' },
+    );
+    expect(mockReplayRun).toHaveBeenCalledWith(expect.objectContaining({ force: true }));
+  });
+
+  it('forwards --force to modifyRun under --modify', async () => {
+    const program = buildProgram();
+    await program.parseAsync(
+      ['import', '--modify', '01HXYZ', '--force'],
+      { from: 'user' },
+    );
+    expect(mockModifyRun).toHaveBeenCalledWith(expect.objectContaining({ force: true }));
+  });
+
+  it('omits force when the flag is absent', async () => {
+    const program = buildProgram();
+    await program.parseAsync(
+      ['import', '--push-from-run', '01HXYZ'],
+      { from: 'user' },
+    );
+    const call = mockReplayRun.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(call['force']).toBeUndefined();
+  });
+});
+
 describe('experiences import --modify — delegation', () => {
   it('calls modifyRun with the positional', async () => {
     const program = buildProgram();
