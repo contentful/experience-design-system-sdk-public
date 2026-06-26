@@ -1,10 +1,12 @@
 import type { Command } from 'commander';
 import { listRuns, type RunRecord } from './store.js';
+import { resolveRunTarget } from './resolve-run-target.js';
 
 export type RunLsOptions = {
   write?: (chunk: string) => void;
   projectPath?: string;
   limit?: number;
+  target?: string;
 };
 
 function pad(value: string, width: number): string {
@@ -32,8 +34,33 @@ const COLUMNS: { header: string; get: (r: RunRecord) => string }[] = [
   { header: 'PUSHED', get: formatPushed },
 ];
 
+function renderDetail(run: RunRecord, write: (s: string) => void): void {
+  const lines = [
+    `Run ${run.id}`,
+    `Created: ${formatCreated(run.createdAt)}`,
+    `Project: ${run.projectPath}`,
+    `Saved:   ${run.savePath}`,
+    `Components: ${run.componentCount}`,
+    `Tokens:     ${run.tokenCount}`,
+    `Agent:      ${run.agent}`,
+    `Pushed:     ${formatPushed(run)}`,
+    '',
+    `Push to Contentful:   experiences import --push-from-run ${run.id}`,
+    `Modify in wizard:     experiences import --modify ${run.id}`,
+    '',
+  ];
+  write(lines.join('\n'));
+}
+
 export async function runLsCommand(opts: RunLsOptions = {}): Promise<void> {
   const write = opts.write ?? ((s: string) => process.stdout.write(s));
+
+  if (opts.target) {
+    const run = await resolveRunTarget(opts.target);
+    renderDetail(run, write);
+    return;
+  }
+
   const runs = await listRuns({
     ...(opts.projectPath ? { projectPath: opts.projectPath } : {}),
     ...(typeof opts.limit === 'number' ? { limit: opts.limit } : {}),
@@ -57,15 +84,25 @@ export async function runLsCommand(opts: RunLsOptions = {}): Promise<void> {
 
 export function registerRunsCommand(program: Command): void {
   program
-    .command('runs')
+    .command('runs [target]')
     .alias('ls')
-    .description('List recorded import runs from ~/.config/experiences/runs.json')
+    .description(
+      'List recorded import runs from ~/.config/experiences/runs.json, or show one run when [target] (id or path) is given',
+    )
     .option('--project <path>', 'Filter by source project path (absolute)')
     .option('--limit <n>', 'Limit the number of rows', (v) => parseInt(v, 10))
-    .action(async (options: { project?: string; limit?: number }) => {
-      await runLsCommand({
-        ...(options.project ? { projectPath: options.project } : {}),
-        ...(typeof options.limit === 'number' && !Number.isNaN(options.limit) ? { limit: options.limit } : {}),
-      });
-    });
+    .action(
+      async (
+        target: string | undefined,
+        options: { project?: string; limit?: number },
+      ) => {
+        await runLsCommand({
+          ...(target ? { target } : {}),
+          ...(options.project ? { projectPath: options.project } : {}),
+          ...(typeof options.limit === 'number' && !Number.isNaN(options.limit)
+            ? { limit: options.limit }
+            : {}),
+        });
+      },
+    );
 }

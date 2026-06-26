@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockListRuns } = vi.hoisted(() => ({
+const { mockListRuns, mockResolveRunTarget } = vi.hoisted(() => ({
   mockListRuns: vi.fn(),
+  mockResolveRunTarget: vi.fn(),
 }));
 
 vi.mock('../../src/runs/store.js', () => ({
   listRuns: mockListRuns,
+}));
+
+vi.mock('../../src/runs/resolve-run-target.js', () => ({
+  resolveRunTarget: mockResolveRunTarget,
 }));
 
 import { runLsCommand } from '../../src/runs/ls-command.js';
@@ -72,5 +77,51 @@ describe('runLsCommand', () => {
     const text = out.join('');
     expect(text).toContain(longProject);
     expect(text).toContain(longSave);
+  });
+
+  describe('single-run detail view', () => {
+    it('prints detail block when positional id is supplied', async () => {
+      mockResolveRunTarget.mockResolvedValueOnce(sampleRun());
+      const out: string[] = [];
+      await runLsCommand({ write: (s) => out.push(s), target: '01HXYZABCDEFGHJKMNPQRSTVWXY' });
+      const text = out.join('');
+      expect(mockResolveRunTarget).toHaveBeenCalledWith('01HXYZABCDEFGHJKMNPQRSTVWXY');
+      expect(text).toContain('Run 01HXYZABCDEFGHJKMNPQRSTVWXY');
+      expect(text).toContain('Created:');
+      expect(text).toContain('Project:');
+      expect(text).toContain('/Users/m/work/foo');
+      expect(text).toContain('Saved:');
+      expect(text).toContain('Components: 12');
+      expect(text).toContain('Tokens:');
+      expect(text).toContain('Agent:');
+      expect(text).toContain('Pushed:');
+      expect(text).toContain('fhuxdukarhrp/dsi100');
+      expect(text).toContain('experiences import --push-from-run 01HXYZABCDEFGHJKMNPQRSTVWXY');
+      expect(text).toContain('experiences import --modify 01HXYZABCDEFGHJKMNPQRSTVWXY');
+      expect(text).not.toMatch(/^ID\s+CREATED/m);
+    });
+
+    it('resolves positional path via resolveRunTarget', async () => {
+      mockResolveRunTarget.mockResolvedValueOnce(sampleRun({ id: 'RUNXYZ' }));
+      const out: string[] = [];
+      await runLsCommand({ write: (s) => out.push(s), target: '/Users/m/work/foo' });
+      expect(mockResolveRunTarget).toHaveBeenCalledWith('/Users/m/work/foo');
+      const text = out.join('');
+      expect(text).toContain('Run RUNXYZ');
+    });
+
+    it('shows "(not pushed)" in detail view when pushedTo is null', async () => {
+      mockResolveRunTarget.mockResolvedValueOnce(sampleRun({ pushedTo: null }));
+      const out: string[] = [];
+      await runLsCommand({ write: (s) => out.push(s), target: '01HXYZABCDEFGHJKMNPQRSTVWXY' });
+      expect(out.join('')).toContain('(not pushed)');
+    });
+
+    it('surfaces resolveRunTarget errors', async () => {
+      mockResolveRunTarget.mockRejectedValueOnce(new Error('Run nope not found in ~/.config/experiences/runs.json'));
+      await expect(
+        runLsCommand({ write: () => undefined, target: 'nope' }),
+      ).rejects.toThrow(/not found/);
+    });
   });
 });
