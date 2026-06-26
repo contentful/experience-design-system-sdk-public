@@ -148,6 +148,7 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--overwrite`                     | —                                      | With `--modify`: save back to recorded `savePath`                                                            |
 | `--save-as-new`                   | —                                      | With `--modify`: always save to a new path                                                                   |
 | `--select-prompt-path <path>`     | saved by setup                         | Custom `.md` skill prompt for `analyze select-agent`                                                         |
+| `--reject-on-missing`             | off                                    | Forward to `analyze select-agent`: treat components with no LLM tool call as rejected. See [Batching gotcha](#batching-gotcha). |
 | `--generate-prompt-path <path>`   | saved by setup                         | Custom `.md` skill prompt for `generate components`                                                          |
 | `--select-all`                    | —                                      | Headless: accept all extracted components (bypasses agentic select)                                          |
 | `--select <pattern>`              | —                                      | Headless: accept components matching pattern (repeatable; bypasses agentic select)                           |
@@ -282,6 +283,7 @@ experiences analyze select-agent [--agent <name>] [--session <id>]
 | `--verbose` | — | Show full agent output including reasoning text |
 | `--dry-run` | — | Print the prompt for the first component without invoking the agent |
 | `--exclude-invalid` | — | Auto-reject components with validation errors instead of failing loud |
+| `--reject-on-missing` | — | Treat components with no LLM tool call as rejected. See [Batching gotcha](#batching-gotcha) below. |
 | `--select-prompt-path <path>` | saved by setup | Custom `.md` skill prompt (bypasses bundled invariants); emits a banner at invocation |
 | `--no-select-cache` | cache on | Skip the per-component select cache and re-LLM every component |
 | `--no-cache` | cache on | Skip all fine-grained caches (extract, select, generate) |
@@ -291,6 +293,17 @@ experiences analyze select-agent [--agent <name>] [--session <id>]
 Decisions are written to the same review state file used by `analyze select`, so `generate components` picks them up automatically. Each `(component-hash, prompt-hash, cli-version)` triple is cached; changing the prompt file via `--select-prompt-path` already busts the corresponding cache entries.
 
 `--show-rationale` is a separate read-only mode — it does not invoke the agent and is safe to run against a completed session at any time. Pair with `--session <id>` to target a specific session; otherwise it auto-resolves to the most recent completed `analyze extract`.
+
+#### Batching gotcha
+
+`select-agent` batches LLM calls — default batch size 5, configurable via `EDS_SELECT_BATCH_SIZE`. The batch is a single prompt asking the agent to emit one tool call per component. If the agent's response **omits** a tool call for some components (truncation, low-confidence drop-through, or an audit prompt that asks the agent to only emit names it disagrees with), those components are marked `failed`.
+
+In the default mode, `failed` rows surface in the stderr summary (`Failed (N/M)`) and emit a `progress=select-agent:N/M:failed:<name>:no-tool-call-from-agent` line. Downstream consumers vary:
+
+- The wizard's scope-gate currently treats anything **not explicitly rejected** as included, so failed rows reach the operator's manual review as "included" rather than being dropped.
+- The headless orchestrator path counts `Failed` separately but does not include them in `Accepted` / `Rejected`.
+
+Pass `--reject-on-missing` when the operator's prompt is structured so that omission means "no" (typical for audit prompts: "reject any component matching X"). The flag flips the no-tool-call branch from `failed` to `rejected` with reason `no-tool-call-from-agent`, and emits a matching `progress=...:rejected:...` line so the wizard's scope-gate excludes them.
 
 ---
 
