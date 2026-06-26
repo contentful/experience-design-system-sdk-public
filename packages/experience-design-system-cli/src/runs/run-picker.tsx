@@ -13,6 +13,9 @@ export type RunPickerSelection = {
 
 export type RunPickerProps = {
   runs: RunRecord[];
+  /** Optional set of run ids that have been classified stale by the
+   *  invalidation check. Rows in this set render with a dim "(stale)" tag. */
+  staleRunIds?: ReadonlySet<string>;
   onSelect: (selection: RunPickerSelection) => void;
   onCancel: () => void;
 };
@@ -133,7 +136,7 @@ function buildRows(runs: RunRecord[], expanded: boolean): Row[] {
   return rows;
 }
 
-export function RunPicker({ runs, onSelect, onCancel }: RunPickerProps): React.ReactElement {
+export function RunPicker({ runs, staleRunIds, onSelect, onCancel }: RunPickerProps): React.ReactElement {
   const [expanded, setExpanded] = useState(false);
   const [focusIdx, setFocusIdx] = useState(0);
   // When non-null, render the Push/Modify/Cancel sub-screen for this run.
@@ -206,10 +209,12 @@ export function RunPicker({ runs, onSelect, onCancel }: RunPickerProps): React.R
           const color = focused ? 'cyan' : undefined;
           const cursor = focused ? '>' : ' ';
           if (row.kind === 'run') {
+            const isStale = staleRunIds?.has(row.run.id) ?? false;
             return (
               <Box key={`run-${row.run.id}`} gap={1}>
                 <Text color={color}>{cursor}</Text>
                 <Text color={color}>{runLine(row.run)}</Text>
+                {isStale ? <Text dimColor> (stale)</Text> : null}
               </Box>
             );
           }

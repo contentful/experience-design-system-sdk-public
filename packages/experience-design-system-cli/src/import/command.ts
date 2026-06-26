@@ -112,6 +112,7 @@ export function registerImportCommand(program: Command): void {
     )
     .option('--overwrite', "Only valid with --modify: save back to the run's recorded savePath")
     .option('--save-as-new', 'Only valid with --modify: always save to a new path (prompts for one)')
+    .option('--force', 'Bypass staleness checks when paired with --push-from-run or --modify.')
     .action(
       async (opts: {
         spaceId?: string;
@@ -150,6 +151,7 @@ export function registerImportCommand(program: Command): void {
         modify?: string;
         overwrite?: boolean;
         saveAsNew?: boolean;
+        force?: boolean;
       }) => {
         // ── --push-from-run handling ───────────────────────────────────────
         // Push-only replay of a prior run. Mutex checks happen *before* any
@@ -198,6 +200,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
               ...(opts.host ? { host: opts.host } : {}),
               interactive: !!process.stdout.isTTY,
+              ...(opts.force ? { force: true } : {}),
             });
             return;
           } catch (err) {
@@ -229,6 +232,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.overwrite ? { overwrite: true } : {}),
               ...(opts.saveAsNew ? { saveAsNew: true } : {}),
               ...(opts.outDir ? { outDir: opts.outDir } : {}),
+              ...(opts.force ? { force: true } : {}),
             });
             return;
           } catch (err) {
@@ -400,6 +404,7 @@ export function registerImportCommand(program: Command): void {
                 ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
                 ...(opts.host ? { host: opts.host } : {}),
                 interactive: !!process.stdout.isTTY,
+                ...(opts.force ? { force: true } : {}),
               });
               return;
             }
@@ -409,6 +414,7 @@ export function registerImportCommand(program: Command): void {
                 ...(opts.outDir ? { outDir: opts.outDir } : {}),
                 ...(opts.overwrite ? { overwrite: true } : {}),
                 ...(opts.saveAsNew ? { saveAsNew: true } : {}),
+                ...(opts.force ? { force: true } : {}),
               });
               return;
             }

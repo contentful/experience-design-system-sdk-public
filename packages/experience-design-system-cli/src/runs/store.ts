@@ -3,12 +3,31 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 
-export const RUNS_FILE_VERSION = 2 as const;
+export const RUNS_FILE_VERSION = 3 as const;
 export const RUNS_FILE_CAP = 200;
 
-/** Versions this CLI can read. v1 files are auto-migrated in memory; new
- *  writes always use the latest version. */
-export const READABLE_VERSIONS = new Set<number>([1, 2]);
+/** Versions this CLI can read. v1 / v2 files are auto-migrated in memory;
+ *  new writes always use the latest version. */
+export const READABLE_VERSIONS = new Set<number>([1, 2, 3]);
+
+/** Per-file source fingerprint captured at save time. `files` is keyed by
+ *  absolute (path.resolve'd) source path; each entry records the file's
+ *  mtime (ISO 8601) at the moment the run record was written and, when
+ *  known, the component name extracted from it (first-seen wins on
+ *  collisions). */
+export type SourceFingerprint = {
+  files: Record<string, { mtime: string; componentName?: string }>;
+  rawTokensPath: string | null;
+  rawTokensMtime: string | null;
+  rawTokensContentHash: string | null;
+};
+
+/** SHA-256 hashes of the JSON artifacts the wizard wrote to disk. Used on
+ *  replay to detect manual edits to components.json / tokens.json. */
+export type SavedFingerprint = {
+  componentsJsonHash: string | null;
+  tokensJsonHash: string | null;
+};
 
 export type RunRecord = {
   id: string;
@@ -28,6 +47,16 @@ export type RunRecord = {
   pushedTo: { spaceId: string; environmentId: string; host: string } | null;
   extractSessionId: string;
   generateSessionId: string | null;
+  /** Per-file source fingerprint. Null on v1/v2 records read from disk; v3
+   *  writers always populate. Added in runs.json v3. Optional in the type
+   *  so callers that don't compute it (e.g. older test fixtures) still
+   *  satisfy `RunRecord`; `appendRun` always normalizes a missing value to
+   *  null on the way to disk. */
+  sourceFingerprint?: SourceFingerprint | null;
+  /** Saved-artifact fingerprint. Null on v1/v2 records read from disk; v3
+   *  writers always populate. Added in runs.json v3. Optional for the same
+   *  reason as `sourceFingerprint`. */
+  savedFingerprint?: SavedFingerprint | null;
   notes?: string;
 };
 
@@ -75,21 +104,25 @@ export function generateUlid(now: number = Date.now()): string {
   return (ts + rand).toUpperCase();
 }
 
-type RunRecordV1 = Omit<RunRecord, 'tokensPath' | 'tokenSessionId'>;
+type RunRecordV1 = Omit<RunRecord, 'tokensPath' | 'tokenSessionId' | 'sourceFingerprint' | 'savedFingerprint'>;
+type RunRecordV2 = Omit<RunRecord, 'sourceFingerprint' | 'savedFingerprint'>;
 type RunsFileV1 = { version: 1; runs: RunRecordV1[] };
+type RunsFileV2 = { version: 2; runs: RunRecordV2[] };
 
-function migrateRecord(rec: RunRecord | RunRecordV1): RunRecord {
+function migrateRecord(rec: RunRecord | RunRecordV1 | RunRecordV2): RunRecord {
   return {
     ...rec,
     tokensPath: (rec as RunRecord).tokensPath ?? null,
     tokenSessionId: (rec as RunRecord).tokenSessionId ?? null,
+    sourceFingerprint: (rec as RunRecord).sourceFingerprint ?? null,
+    savedFingerprint: (rec as RunRecord).savedFingerprint ?? null,
   };
 }
 
 async function readFileMaybe(): Promise<RunsFile | null> {
   try {
     const raw = await readFile(RUNS_PATH, 'utf8');
-    const parsed = JSON.parse(raw) as RunsFile | RunsFileV1;
+    const parsed = JSON.parse(raw) as RunsFile | RunsFileV1 | RunsFileV2;
     if (!READABLE_VERSIONS.has(parsed.version)) {
       throw new Error(
         `runs.json version mismatch: file is v${parsed.version}, this CLI expects v${RUNS_FILE_VERSION} (also reads: ${[...READABLE_VERSIONS].join(', ')}). Back up and remove the file to start fresh.`,
@@ -121,6 +154,8 @@ export async function appendRun(input: AppendInput): Promise<RunRecord> {
     ...input,
     id: input.id ?? generateUlid(),
     createdAt: input.createdAt ?? new Date().toISOString(),
+    sourceFingerprint: input.sourceFingerprint ?? null,
+    savedFingerprint: input.savedFingerprint ?? null,
   };
   const runs = existing ? [record, ...existing.runs] : [record];
   if (runs.length > RUNS_FILE_CAP) {

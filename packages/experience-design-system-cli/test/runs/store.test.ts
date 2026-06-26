@@ -126,7 +126,7 @@ describe('appendRun', () => {
     expect(rec.tokenCount).toBe(7);
     const body = mockWriteFile.mock.calls[0]![1];
     const parsed = JSON.parse(String(body));
-    expect(parsed.version).toBe(2);
+    expect(parsed.version).toBe(3);
     expect(parsed.runs[0].tokensPath).toBe('/work/foo/dist/tokens.json');
     expect(parsed.runs[0].tokenSessionId).toBe('tokens-xyz');
   });
@@ -177,7 +177,7 @@ describe('runs.json v1 -> v2 migration', () => {
     await appendRun(makeRecord({ savePath: '/work/foo/dist2' }));
     const body = mockWriteFile.mock.calls[0]![1];
     const parsed = JSON.parse(String(body));
-    expect(parsed.version).toBe(2);
+    expect(parsed.version).toBe(3);
     // Old record carried forward with the new fields populated as null.
     expect(parsed.runs.find((r: { id: string }) => r.id === 'R1').tokensPath).toBeNull();
     expect(parsed.runs.find((r: { id: string }) => r.id === 'R1').tokenSessionId).toBeNull();
@@ -209,6 +209,62 @@ describe('listRuns', () => {
     mockReadFile.mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     const result = await listRuns();
     expect(result).toEqual([]);
+  });
+});
+
+describe('runs.json v2 -> v3 migration', () => {
+  it('loads v2 records and treats fingerprint fields as null', async () => {
+    const v2Record = {
+      id: 'R2',
+      createdAt: '2026-06-22T00:00:00.000Z',
+      projectPath: '/work/foo',
+      savePath: '/work/foo/dist',
+      componentCount: 3,
+      tokenCount: 0,
+      tokensPath: null,
+      tokenSessionId: null,
+      agent: 'claude',
+      pushedTo: null,
+      extractSessionId: 'e',
+      generateSessionId: null,
+    };
+    mockReadFile.mockResolvedValueOnce(JSON.stringify({ version: 2, runs: [v2Record] }));
+    const got = await getRun('R2');
+    expect(got.sourceFingerprint ?? null).toBeNull();
+    expect(got.savedFingerprint ?? null).toBeNull();
+  });
+
+  it('writes v3 records with the new fingerprint fields populated', async () => {
+    mockReadFile.mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    const rec = await appendRun(
+      makeRecord({
+        sourceFingerprint: {
+          files: { '/p/Button.tsx': { mtime: '2026-06-25T00:00:00.000Z', componentName: 'Button' } },
+          rawTokensPath: null,
+          rawTokensMtime: null,
+          rawTokensContentHash: null,
+        },
+        savedFingerprint: {
+          componentsJsonHash: 'a'.repeat(64),
+          tokensJsonHash: null,
+        },
+      }),
+    );
+    expect(rec.sourceFingerprint?.files['/p/Button.tsx']?.componentName).toBe('Button');
+    const body = mockWriteFile.mock.calls[0]![1];
+    const parsed = JSON.parse(String(body));
+    expect(parsed.version).toBe(3);
+    expect(parsed.runs[0].sourceFingerprint.files['/p/Button.tsx'].componentName).toBe('Button');
+    expect(parsed.runs[0].savedFingerprint.componentsJsonHash).toBe('a'.repeat(64));
+  });
+
+  it('normalizes missing fingerprint fields to null on write', async () => {
+    mockReadFile.mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    await appendRun(makeRecord());
+    const body = mockWriteFile.mock.calls[0]![1];
+    const parsed = JSON.parse(String(body));
+    expect(parsed.runs[0].sourceFingerprint).toBeNull();
+    expect(parsed.runs[0].savedFingerprint).toBeNull();
   });
 });
 

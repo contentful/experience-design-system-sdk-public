@@ -1,6 +1,12 @@
 import type { Command } from 'commander';
 import { listRuns, type RunRecord } from './store.js';
 import { resolveRunTarget } from './resolve-run-target.js';
+import {
+  checkRunStaleness,
+  shortStalenessSummary,
+  formatStalenessDetail,
+  type Staleness,
+} from './staleness.js';
 
 export type RunLsOptions = {
   write?: (chunk: string) => void;
@@ -28,14 +34,19 @@ function formatPushed(record: RunRecord): string {
   return `${record.pushedTo.spaceId}/${record.pushedTo.environmentId}`;
 }
 
-const COLUMNS: { header: string; get: (r: RunRecord) => string }[] = [
-  { header: 'ID', get: (r) => r.id },
-  { header: 'CREATED', get: (r) => formatCreated(r.createdAt) },
-  { header: 'PROJECT', get: (r) => r.projectPath },
-  { header: 'SAVED TO', get: (r) => r.savePath },
-  { header: 'COMPONENTS', get: (r) => String(r.componentCount) },
-  { header: 'PUSHED', get: formatPushed },
-];
+type Column = { header: string; get: (r: RunRecord, idx: number) => string };
+
+function makeColumns(staleness: Staleness[]): Column[] {
+  return [
+    { header: 'ID', get: (r) => r.id },
+    { header: 'CREATED', get: (r) => formatCreated(r.createdAt) },
+    { header: 'PROJECT', get: (r) => r.projectPath },
+    { header: 'SAVED TO', get: (r) => r.savePath },
+    { header: 'COMPONENTS', get: (r) => String(r.componentCount) },
+    { header: 'PUSHED', get: formatPushed },
+    { header: 'STALE', get: (_r, i) => shortStalenessSummary(staleness[i]!) },
+  ];
+}
 
 function renderFooter(runs: RunRecord[], write: (s: string) => void): void {
   if (runs.length === 0) return;
@@ -45,7 +56,7 @@ function renderFooter(runs: RunRecord[], write: (s: string) => void): void {
   write(`Modify run ${id}:  experiences import --modify ${id}\n`);
 }
 
-function renderDetail(run: RunRecord, write: (s: string) => void): void {
+async function renderDetail(run: RunRecord, write: (s: string) => void): Promise<void> {
   const lines = [
     `Run ${run.id}`,
     `Created: ${formatCreated(run.createdAt)}`,
@@ -57,9 +68,16 @@ function renderDetail(run: RunRecord, write: (s: string) => void): void {
   if (run.tokensPath) {
     lines.push(`Tokens saved: ${run.tokensPath}`);
   }
+  lines.push(`Agent:      ${run.agent}`, `Pushed:     ${formatPushed(run)}`, '');
+  // Staleness status block. v2/v1 records (no sourceFingerprint) render as
+  // UNKNOWN — the operator can re-extract for a fresh run.
+  if (!run.sourceFingerprint) {
+    lines.push('Status: UNKNOWN (run pre-dates the staleness fingerprint).');
+  } else {
+    const staleness = await checkRunStaleness(run);
+    lines.push(...formatStalenessDetail(staleness));
+  }
   lines.push(
-    `Agent:      ${run.agent}`,
-    `Pushed:     ${formatPushed(run)}`,
     '',
     `Push to Contentful:   experiences import --push-from-run ${run.id}`,
     `Modify in wizard:     experiences import --modify ${run.id}`,
@@ -81,7 +99,7 @@ export async function runLsCommand(opts: RunLsOptions = {}): Promise<void> {
       write(JSON.stringify(run, null, 2) + '\n');
       return;
     }
-    renderDetail(run, write);
+    await renderDetail(run, write);
     return;
   }
 
@@ -102,15 +120,33 @@ export async function runLsCommand(opts: RunLsOptions = {}): Promise<void> {
     write('No runs recorded yet. Run `experiences import` to create one.\n');
     return;
   }
+  // Compute staleness once per row so the table is consistent across the
+  // STALE column and any future detail-equivalent surfaces.
+  const stalenessByIdx = await Promise.all(
+    runs.map(async (r) => (r.sourceFingerprint ? checkRunStaleness(r) : null)),
+  );
+  const stalenessForCol: Staleness[] = stalenessByIdx.map(
+    (s) =>
+      s ?? {
+        stale: false,
+        staleComponents: [],
+        staleTokens: false,
+        savedComponentsEdited: false,
+        savedTokensEdited: false,
+        missingSourceFiles: [],
+      },
+  );
+  const columns = makeColumns(stalenessForCol);
   // Auto-expand each column to max(header, max(row value)) so long paths
   // aren't silently truncated.
-  const widths = COLUMNS.map((c) =>
-    Math.max(c.header.length, ...runs.map((r) => c.get(r).length)),
+  const widths = columns.map((c) =>
+    Math.max(c.header.length, ...runs.map((r, i) => c.get(r, i).length)),
   );
-  const headerRow = COLUMNS.map((c, i) => pad(c.header, widths[i]!)).join('  ');
+  const headerRow = columns.map((c, i) => pad(c.header, widths[i]!)).join('  ');
   write(headerRow + '\n');
-  for (const r of runs) {
-    const row = COLUMNS.map((c, i) => pad(c.get(r), widths[i]!)).join('  ');
+  for (let i = 0; i < runs.length; i++) {
+    const r = runs[i]!;
+    const row = columns.map((c, ci) => pad(c.get(r, i), widths[ci]!)).join('  ');
     write(row + '\n');
   }
   renderFooter(runs, write);

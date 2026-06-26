@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { join, resolve } from 'node:path';
 import { appendFileSync, writeFileSync } from 'node:fs';
-import { access, stat } from 'node:fs/promises';
+import { access, readFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFile, spawn } from 'node:child_process';
@@ -14,6 +14,7 @@ import type { RunRecord } from '../../runs/store.js';
 import { SaveConflictGate } from '../../runs/save-conflict.js';
 import { detectSaveConflict, buildTimestampedSubdir, resolveSavePath, type OnConflictMode } from '../../runs/save-path-resolver.js';
 import { appendRun } from '../../runs/store.js';
+import { buildSourceFingerprint, buildSavedFingerprint } from '../../runs/fingerprint.js';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
 import { CustomPromptBanner } from './CustomPromptBanner.js';
 import { WelcomeStep } from './steps/WelcomeStep.js';
@@ -1574,6 +1575,43 @@ export function WizardApp({
       // Append a run record on every successful write. Best-effort: append
       // failures must not break the wizard flow (they surface on stderr).
       try {
+        // Build the v3 fingerprints. Both are best-effort: if any step
+        // throws (missing source file, hash failure, db lookup error) we
+        // fall back to null fingerprints rather than aborting the save.
+        let sourceFingerprint: Awaited<ReturnType<typeof buildSourceFingerprint>> | null = null;
+        let savedFingerprint: ReturnType<typeof buildSavedFingerprint> | null = null;
+        try {
+          if (state.extractSessionId) {
+            const db = openPipelineDb();
+            try {
+              sourceFingerprint = await buildSourceFingerprint({
+                db,
+                extractSessionId: state.extractSessionId,
+                rawTokensPath: state.rawTokensPath || null,
+              });
+            } finally {
+              db.close();
+            }
+          }
+        } catch (err) {
+          process.stderr.write(
+            `Warning: failed to compute source fingerprint: ${err instanceof Error ? err.message : String(err)}\n`,
+          );
+        }
+        try {
+          const componentsBuf = await readFile(join(path, 'components.json')).catch(() => null);
+          const tokensBuf = recordedTokensPath
+            ? await readFile(recordedTokensPath).catch(() => null)
+            : null;
+          savedFingerprint = buildSavedFingerprint({
+            componentsJson: componentsBuf,
+            tokensJson: tokensBuf,
+          });
+        } catch (err) {
+          process.stderr.write(
+            `Warning: failed to compute saved fingerprint: ${err instanceof Error ? err.message : String(err)}\n`,
+          );
+        }
         const record = await appendRun({
           projectPath: state.projectPath,
           savePath: path,
@@ -1585,6 +1623,8 @@ export function WizardApp({
           pushedTo: null,
           extractSessionId: state.extractSessionId ?? '',
           generateSessionId: state.generateSessionId,
+          sourceFingerprint,
+          savedFingerprint,
         });
         setState((prev) => ({ ...prev, lastRunId: record.id }));
       } catch (err) {
