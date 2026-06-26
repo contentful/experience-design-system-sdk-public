@@ -80,7 +80,7 @@ experience-design-system-cli analyze extract \
   --dir src
 ```
 
-Extracted components are stored in the session database. Run `analyze edit` to review and accept proposals, or pass `--accept-all` when calling `import` for a fully non-interactive run.
+Extracted components are stored in the session database. Run `analyze select` (alias `analyze edit`) to review and accept proposals via the standalone JsonEditor TUI, or pass `--auto-accept-scope --yes` along with credentials when calling `experiences import` for a fully non-interactive run.
 
 ## Commit Convention
 
