@@ -37,6 +37,14 @@ const COLUMNS: { header: string; get: (r: RunRecord) => string }[] = [
   { header: 'PUSHED', get: formatPushed },
 ];
 
+function renderFooter(runs: RunRecord[], write: (s: string) => void): void {
+  if (runs.length === 0) return;
+  const id = runs[0]!.id;
+  write('\n');
+  write(`Push run ${id}:    experiences import --push-from-run ${id}\n`);
+  write(`Modify run ${id}:  experiences import --modify ${id}\n`);
+}
+
 function renderDetail(run: RunRecord, write: (s: string) => void): void {
   const lines = [
     `Run ${run.id}`,
@@ -100,6 +108,7 @@ export async function runLsCommand(opts: RunLsOptions = {}): Promise<void> {
     const row = COLUMNS.map((c, i) => pad(c.get(r), widths[i]!)).join('  ');
     write(row + '\n');
   }
+  renderFooter(runs, write);
 }
 
 export function registerRunsCommand(program: Command): void {
