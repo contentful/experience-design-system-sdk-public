@@ -1913,25 +1913,24 @@ export interface CacheEntry {
 }
 
 export function computeComponentInputHash(component: RawComponentWithId): string {
+  // Narrow the hashed payload to extractor-only fields. Any field that
+  // `applyToolCalls` may overwrite (prop description/required/default/allowed
+  // values, slot description/allowed components) is excluded so that the cache
+  // key does not depend on its own output — otherwise re-reading raw props
+  // after a generation pass would drift the hash even when the underlying
+  // source has not changed.
   const payload = {
     framework: component.framework,
     name: component.name,
+    source: component.source,
     props: component.props.map((p) => ({
-      allowedValues: p.allowedValues ?? [],
-      defaultValue: p.defaultValue ?? null,
-      description: p.description ?? null,
       name: p.name,
-      required: p.required,
-      tokenReference: p.tokenReference ?? null,
       type: p.type,
     })),
     slots: component.slots.map((s) => ({
-      allowedComponents: s.allowedComponents ?? [],
-      description: s.description ?? null,
-      isDefault: s.isDefault,
       name: s.name,
+      isDefault: s.isDefault,
     })),
-    source: component.source,
   };
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
