@@ -252,10 +252,14 @@ describe('Sidebar', () => {
         />,
       );
       const frame = lastFrame() ?? '';
-      // ink-testing-library strips ANSI color codes, so we assert structural
-      // prefix: row format is "<status-icon><badge> <name>". needs-review
-      // status icon is "·" and the "new" badge glyph is "+".
-      expect(frame).toMatch(/·\+ NewC/);
+      // Row format is "<status-icon><badge> <name>". needs-review status
+      // icon is "·" and the "new" badge glyph is "+". ink-testing-library
+      // preserves ANSI CSI color sequences between glyphs, and the exact
+      // sequences vary by environment/suite ordering — so allow any run of
+      // CSI escapes (ESC [ ... m) between the characters we care about.
+      const csi = '(?:\\x1b\\[[0-9;]*m)*';
+      const pattern = new RegExp(`·${csi}\\+${csi} ${csi}NewC`);
+      expect(frame).toMatch(pattern);
     });
   });
 
