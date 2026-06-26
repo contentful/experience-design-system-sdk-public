@@ -65,4 +65,61 @@ describe('resolveSavePath', () => {
     const r = await resolveSavePath('/tmp/foo');
     expect(r).toEqual({ kind: 'conflict', path: '/tmp/foo' });
   });
+
+  describe('with onConflict mode', () => {
+    it('overwrite returns write at original path even when files exist', async () => {
+      mockAccess.mockImplementation(async (p: string) => {
+        if (p.endsWith('components.json')) return undefined;
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      });
+      const r = await resolveSavePath('/tmp/foo', { onConflict: 'overwrite' });
+      expect(r).toEqual({ kind: 'write', path: '/tmp/foo' });
+    });
+
+    it('overwrite returns write at original path when no files exist', async () => {
+      mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+      const r = await resolveSavePath('/tmp/empty', { onConflict: 'overwrite' });
+      expect(r).toEqual({ kind: 'write', path: '/tmp/empty' });
+    });
+
+    it('skip returns write at timestamped subdir when files exist', async () => {
+      mockAccess.mockImplementation(async (p: string) => {
+        if (p.endsWith('components.json')) return undefined;
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      });
+      const fixed = new Date('2026-06-25T14:31:07.000Z');
+      const r = await resolveSavePath('/tmp/foo', { onConflict: 'skip', now: fixed });
+      expect(r.kind).toBe('write');
+      if (r.kind === 'write') {
+        expect(r.path).toMatch(/^\/tmp\/foo\/dsi-\d{8}-\d{6}$/);
+      }
+    });
+
+    it('skip returns write at original path when no files exist', async () => {
+      mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+      const r = await resolveSavePath('/tmp/empty', { onConflict: 'skip' });
+      expect(r).toEqual({ kind: 'write', path: '/tmp/empty' });
+    });
+
+    it('fail returns fail result listing conflicting filenames when files exist', async () => {
+      mockAccess.mockImplementation(async (p: string) => {
+        if (p.endsWith('components.json') || p.endsWith('tokens.json')) return undefined;
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      });
+      const r = await resolveSavePath('/tmp/foo', { onConflict: 'fail' });
+      expect(r.kind).toBe('fail');
+      if (r.kind === 'fail') {
+        expect(r.conflict.path).toBe('/tmp/foo');
+        expect(r.conflict.files).toEqual(
+          expect.arrayContaining(['components.json', 'tokens.json']),
+        );
+      }
+    });
+
+    it('fail returns write at original path when no files exist', async () => {
+      mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+      const r = await resolveSavePath('/tmp/empty', { onConflict: 'fail' });
+      expect(r).toEqual({ kind: 'write', path: '/tmp/empty' });
+    });
+  });
 });
