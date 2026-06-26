@@ -23,6 +23,8 @@ const sampleRun = (overrides: Partial<RunRecord> = {}): RunRecord => ({
   savePath: '/Users/m/dist',
   componentCount: 12,
   tokenCount: 24,
+  tokensPath: '/Users/m/dist/tokens.json',
+  tokenSessionId: 'tokens-abc',
   agent: 'claude',
   pushedTo: { spaceId: 'fhuxdukarhrp', environmentId: 'dsi100', host: 'https://api.contentful.com' },
   extractSessionId: 'e1',
@@ -99,6 +101,23 @@ describe('runLsCommand', () => {
       expect(text).toContain('experiences import --push-from-run 01HXYZABCDEFGHJKMNPQRSTVWXY');
       expect(text).toContain('experiences import --modify 01HXYZABCDEFGHJKMNPQRSTVWXY');
       expect(text).not.toMatch(/^ID\s+CREATED/m);
+    });
+
+    it('renders the tokens-saved path when tokensPath is set', async () => {
+      mockResolveRunTarget.mockResolvedValueOnce(
+        sampleRun({ tokensPath: '/Users/m/custom-out/tokens.json' }),
+      );
+      const out: string[] = [];
+      await runLsCommand({ write: (s) => out.push(s), target: '01HXYZABCDEFGHJKMNPQRSTVWXY' });
+      const text = out.join('');
+      expect(text).toContain('Tokens saved: /Users/m/custom-out/tokens.json');
+    });
+
+    it('omits the tokens-saved line when tokensPath is null', async () => {
+      mockResolveRunTarget.mockResolvedValueOnce(sampleRun({ tokensPath: null }));
+      const out: string[] = [];
+      await runLsCommand({ write: (s) => out.push(s), target: '01HXYZABCDEFGHJKMNPQRSTVWXY' });
+      expect(out.join('')).not.toContain('Tokens saved');
     });
 
     it('resolves positional path via resolveRunTarget', async () => {
