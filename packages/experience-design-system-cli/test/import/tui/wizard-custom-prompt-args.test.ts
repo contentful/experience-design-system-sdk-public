@@ -22,6 +22,28 @@ describe('buildSelectAgentArgs — custom prompt path (Feature 8)', () => {
   });
 });
 
+describe('buildSelectAgentArgs — --no-cache forwarding', () => {
+  it('appends --no-cache when noCache is true', () => {
+    const args = buildSelectAgentArgs({
+      sessionId: 's1',
+      agent: 'claude',
+      noCache: true,
+    });
+    expect(args).toContain('--no-cache');
+  });
+
+  it('omits --no-cache when noCache is false or undefined', () => {
+    const explicit = buildSelectAgentArgs({
+      sessionId: 's1',
+      agent: 'claude',
+      noCache: false,
+    });
+    const omitted = buildSelectAgentArgs({ sessionId: 's1', agent: 'claude' });
+    expect(explicit).not.toContain('--no-cache');
+    expect(omitted).not.toContain('--no-cache');
+  });
+});
+
 describe('buildGenerateComponentsArgs — custom prompt path (Feature 8)', () => {
   it('appends --generate-prompt-path when generatePromptPath is set', () => {
     const args = buildGenerateComponentsArgs({

@@ -34,6 +34,8 @@ export interface PipelineOptions {
   selectAll?: boolean;
   select?: string[];
   deselect?: string[];
+  /** Forwarded to the spawned `analyze select-agent` subprocess. */
+  selectPromptPath?: string;
 }
 
 export interface StepResult {
@@ -261,6 +263,8 @@ export async function runPipeline(
       editArgs = ['analyze', 'select-agent', '--session', extractSessionId, '--agent', opts.agent];
       if (opts.model) editArgs.push('--model', opts.model);
       if (opts.excludeInvalid) editArgs.push('--exclude-invalid');
+      if (opts.noCache) editArgs.push('--no-cache');
+      if (opts.selectPromptPath) editArgs.push('--select-prompt-path', opts.selectPromptPath);
     } else {
       editArgs = ['analyze', 'select', '--session', extractSessionId];
       if (opts.select && opts.select.length > 0) {

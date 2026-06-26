@@ -168,6 +168,12 @@ export function buildSelectAgentArgs(opts: {
   agent: string;
   /** Feature 8: forward to the spawned select-agent subprocess. */
   selectPromptPath?: string;
+  /**
+   * Forward the operator's `experiences import --no-cache` through to the
+   * spawned `analyze select-agent` so PR #59's per-component select-cache is
+   * bypassed on this run. Default (omitted/false) preserves cache behavior.
+   */
+  noCache?: boolean;
 }): string[] {
   // Feature 3: the wizard auto-filter run should never fail-loud on validation
   // errors — those components surface in the AI-excluded section with a
@@ -182,6 +188,7 @@ export function buildSelectAgentArgs(opts: {
     '--exclude-invalid',
   ];
   if (opts.selectPromptPath) args.push('--select-prompt-path', opts.selectPromptPath);
+  if (opts.noCache) args.push('--no-cache');
   return args;
 }
 
@@ -646,7 +653,7 @@ export function WizardApp({
   // render — but we also keep a memory-side `aiDecisions` map for streaming UX.
   const runAutoFilter = (sessionId: string): Promise<void> => {
     return new Promise((res) => {
-      const args = buildSelectAgentArgs({ sessionId, agent: state.agent, selectPromptPath });
+      const args = buildSelectAgentArgs({ sessionId, agent: state.agent, selectPromptPath, noCache });
       const child = spawn('node', [findCliPath(), ...args]);
       autoFilterChildRef.current = child;
       let stderr = '';
