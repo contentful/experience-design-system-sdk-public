@@ -17,31 +17,48 @@ function run(args: string[]): Promise<{ stdout: string; stderr: string; code: nu
   });
 }
 
-describe('experiences import --from-run — parse-time mutex errors', () => {
-  it('errors when --from-run is combined with --project', async () => {
+describe('experiences import --push-from-run — parse-time mutex errors', () => {
+  it('errors when --push-from-run is combined with --project', async () => {
     const { stderr, code } = await run([
       'import',
-      '--from-run',
+      '--push-from-run',
       '01HXYZ',
       '--project',
       '/tmp/whatever',
     ]);
     expect(code).not.toBe(0);
-    expect(stderr).toMatch(/--from-run.*--project|--project.*--from-run/);
+    expect(stderr).toMatch(/--push-from-run.*--project|--project.*--push-from-run/);
   });
 
-  it('errors when --from-run is combined with --no-save', async () => {
-    const { stderr, code } = await run(['import', '--from-run', '01HXYZ', '--no-save']);
+  it('errors when --push-from-run is combined with --no-save', async () => {
+    const { stderr, code } = await run(['import', '--push-from-run', '01HXYZ', '--no-save']);
     expect(code).not.toBe(0);
-    expect(stderr).toMatch(/--from-run.*--no-save|--no-save.*--from-run/);
+    expect(stderr).toMatch(/--push-from-run.*--no-save|--no-save.*--push-from-run/);
   });
 
-  it('errors when --overwrite and --save-as-new are combined', async () => {
+  it('errors when --push-from-run is combined with --no-push', async () => {
+    const { stderr, code } = await run(['import', '--push-from-run', '01HXYZ', '--no-push']);
+    expect(code).not.toBe(0);
+    expect(stderr).toMatch(/--push-from-run.*--no-push|--no-push.*--push-from-run/);
+  });
+
+  it('errors when --push-from-run is combined with --modify', async () => {
     const { stderr, code } = await run([
       'import',
-      '--from-run',
+      '--push-from-run',
       '01HXYZ',
       '--modify',
+      '01HXYZ',
+    ]);
+    expect(code).not.toBe(0);
+    expect(stderr).toMatch(/--push-from-run.*--modify|--modify.*--push-from-run/);
+  });
+
+  it('errors when --overwrite and --save-as-new are combined under --modify', async () => {
+    const { stderr, code } = await run([
+      'import',
+      '--modify',
+      '01HXYZ',
       '--overwrite',
       '--save-as-new',
     ]);
@@ -49,9 +66,14 @@ describe('experiences import --from-run — parse-time mutex errors', () => {
     expect(stderr).toMatch(/--overwrite.*--save-as-new|--save-as-new.*--overwrite|mutually exclusive/);
   });
 
+  it('errors when --overwrite is passed without --modify', async () => {
+    const { stderr, code } = await run(['import', '--overwrite']);
+    expect(code).not.toBe(0);
+    expect(stderr).toMatch(/--overwrite.*--modify|require --modify/);
+  });
 });
 
-// ── Unit: --from-run delegates to replayRun / modifyRun helpers ────────────
+// ── Unit: delegation to replayRun / modifyRun helpers ───────────────────────
 
 const { mockReplayRun, mockModifyRun } = vi.hoisted(() => ({
   mockReplayRun: vi.fn(),
@@ -79,11 +101,11 @@ beforeEach(() => {
   mockModifyRun.mockResolvedValue(undefined);
 });
 
-describe('experiences import --from-run — delegation', () => {
-  it('calls replayRun when --from-run is set with a ulid (no --modify)', async () => {
+describe('experiences import --push-from-run — delegation', () => {
+  it('calls replayRun with the runIdOrPath positional', async () => {
     const program = buildProgram();
     await program.parseAsync(
-      ['import', '--from-run', '01HXYZABCDEFGHJKMNPQRSTVWXY'],
+      ['import', '--push-from-run', '01HXYZABCDEFGHJKMNPQRSTVWXY'],
       { from: 'user' },
     );
     expect(mockReplayRun).toHaveBeenCalledWith(
@@ -92,10 +114,10 @@ describe('experiences import --from-run — delegation', () => {
     expect(mockModifyRun).not.toHaveBeenCalled();
   });
 
-  it('calls replayRun when --from-run resolves a path', async () => {
+  it('calls replayRun when --push-from-run resolves a path', async () => {
     const program = buildProgram();
     await program.parseAsync(
-      ['import', '--from-run', '/tmp/some/savepath'],
+      ['import', '--push-from-run', '/tmp/some/savepath'],
       { from: 'user' },
     );
     expect(mockReplayRun).toHaveBeenCalledWith(
@@ -103,23 +125,40 @@ describe('experiences import --from-run — delegation', () => {
     );
   });
 
-  it('forwards --out-dir to replayRun', async () => {
+  it('forwards --space-id / --environment-id / --cma-token / --host to replayRun', async () => {
     const program = buildProgram();
     await program.parseAsync(
-      ['import', '--from-run', '01HXYZ', '--out-dir', '/elsewhere'],
+      [
+        'import',
+        '--push-from-run',
+        '01HXYZ',
+        '--space-id',
+        'sp-1',
+        '--environment-id',
+        'env-1',
+        '--cma-token',
+        'tok-1',
+        '--host',
+        'api.flinkly.com',
+      ],
       { from: 'user' },
     );
     expect(mockReplayRun).toHaveBeenCalledWith(
-      expect.objectContaining({ runIdOrPath: '01HXYZ', outDir: '/elsewhere' }),
+      expect.objectContaining({
+        runIdOrPath: '01HXYZ',
+        spaceId: 'sp-1',
+        environmentId: 'env-1',
+        cmaToken: 'tok-1',
+        host: 'api.flinkly.com',
+      }),
     );
   });
+});
 
-  it('calls modifyRun when --from-run --modify is set', async () => {
+describe('experiences import --modify — delegation', () => {
+  it('calls modifyRun with the positional', async () => {
     const program = buildProgram();
-    await program.parseAsync(
-      ['import', '--from-run', '01HXYZ', '--modify'],
-      { from: 'user' },
-    );
+    await program.parseAsync(['import', '--modify', '01HXYZ'], { from: 'user' });
     expect(mockModifyRun).toHaveBeenCalledWith(
       expect.objectContaining({ runIdOrPath: '01HXYZ' }),
     );
@@ -129,7 +168,7 @@ describe('experiences import --from-run — delegation', () => {
   it('forwards --overwrite to modifyRun', async () => {
     const program = buildProgram();
     await program.parseAsync(
-      ['import', '--from-run', '01HXYZ', '--modify', '--overwrite'],
+      ['import', '--modify', '01HXYZ', '--overwrite'],
       { from: 'user' },
     );
     expect(mockModifyRun).toHaveBeenCalledWith(
@@ -140,7 +179,7 @@ describe('experiences import --from-run — delegation', () => {
   it('forwards --save-as-new to modifyRun', async () => {
     const program = buildProgram();
     await program.parseAsync(
-      ['import', '--from-run', '01HXYZ', '--modify', '--save-as-new'],
+      ['import', '--modify', '01HXYZ', '--save-as-new'],
       { from: 'user' },
     );
     expect(mockModifyRun).toHaveBeenCalledWith(
