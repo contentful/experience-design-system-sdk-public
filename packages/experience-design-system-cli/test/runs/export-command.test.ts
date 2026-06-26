@@ -86,7 +86,7 @@ describe('runExportCommand', () => {
     );
   });
 
-  it('errors when the session is no longer in pipeline.db', async () => {
+  it('errors when the session is no longer in pipeline.db, surfacing the underlying reason', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
     mockRunPrintComponents.mockResolvedValueOnce({
       ok: false,
