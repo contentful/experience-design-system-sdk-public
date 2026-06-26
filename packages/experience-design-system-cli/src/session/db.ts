@@ -721,17 +721,14 @@ export function getOrCreateSession(
   db: DatabaseSync,
   sessionFlag: string | undefined,
   sessionName: string | undefined,
-  hints: MatchHints,
+  // `_hints` is retained for call-site compatibility but no longer drives an
+  // implicit auto-match by inputPath/outDir — operators who want to resume must
+  // pass an explicit --session <id>.
+  _hints: MatchHints,
 ): SessionResolution {
   const now = new Date().toISOString();
 
   if (sessionFlag === 'new' || sessionFlag === undefined) {
-    if (sessionFlag !== 'new') {
-      const match = findMatchingSession(db, hints);
-      if (match) {
-        return { sessionId: match, isNew: false, isResumed: true };
-      }
-    }
     const id = generateSessionId();
     db.prepare('INSERT INTO sessions (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(
       id,
@@ -747,58 +744,6 @@ export function getOrCreateSession(
     throw new Error(`session '${sessionFlag}' not found. Run 'session list' to see active sessions.`);
   }
   return { sessionId: sessionFlag, isNew: false, isResumed: false };
-}
-
-function findMatchingSession(db: DatabaseSync, hints: MatchHints): string | null {
-  if (!hints.inputPath && !hints.outDir) return null;
-
-  const rows = db
-    .prepare(
-      `SELECT s.id, st.inputs, st.outputs, st.status
-       FROM sessions s
-       JOIN steps st ON st.session_id = s.id
-       WHERE st.command = ?
-         AND st.status IN ('pending', 'interrupted')
-       ORDER BY st.started_at DESC
-       LIMIT 20`,
-    )
-    .all(hints.command) as Array<{
-    id: string;
-    inputs: string;
-    outputs: string;
-    status: string;
-  }>;
-
-  for (const row of rows) {
-    let inputs: Record<string, string> = {};
-    try {
-      inputs = JSON.parse(row.inputs) as Record<string, string>;
-    } catch {
-      continue;
-    }
-
-    if (hints.inputPath) {
-      const inputValues = Object.values(inputs);
-      if (inputValues.some((v) => v === hints.inputPath)) {
-        return row.id;
-      }
-    }
-
-    if (hints.outDir) {
-      let outputs: Record<string, string> = {};
-      try {
-        outputs = JSON.parse(row.outputs) as Record<string, string>;
-      } catch {
-        // ignore
-      }
-      const allValues = [...Object.values(inputs), ...Object.values(outputs)];
-      if (allValues.some((v) => v === hints.outDir)) {
-        return row.id;
-      }
-    }
-  }
-
-  return null;
 }
 
 export function createStep(

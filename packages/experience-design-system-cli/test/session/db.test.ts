@@ -325,7 +325,7 @@ describe('getOrCreateSession', () => {
     });
   });
 
-  it('with no flag and matching pending step: returns existing session', async () => {
+  it('with no flag and matching pending step: still creates a fresh session (no implicit resume)', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const created = getOrCreateSession(db, 'new', undefined, {
@@ -336,12 +336,32 @@ describe('getOrCreateSession', () => {
         rawComponents: inputPath,
       });
 
-      const found = getOrCreateSession(db, undefined, undefined, {
+      const next = getOrCreateSession(db, undefined, undefined, {
         command: 'analyze select',
         inputPath,
       });
-      expect(found.sessionId).toBe(created.sessionId);
-      expect(found.isResumed).toBe(true);
+      expect(next.sessionId).not.toBe(created.sessionId);
+      expect(next.isNew).toBe(true);
+      expect(next.isResumed).toBe(false);
+      db.close();
+    });
+  });
+
+  it('with no flag: two successive calls create two distinct sessions', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const hints = {
+        command: 'analyze extract' as const,
+        inputPath: '/tmp/project',
+        outDir: '/tmp/out',
+      };
+      const r1 = getOrCreateSession(db, undefined, undefined, hints);
+      const r2 = getOrCreateSession(db, undefined, undefined, hints);
+      expect(r1.isNew).toBe(true);
+      expect(r2.isNew).toBe(true);
+      expect(r1.isResumed).toBe(false);
+      expect(r2.isResumed).toBe(false);
+      expect(r1.sessionId).not.toBe(r2.sessionId);
       db.close();
     });
   });
