@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { resolve, join } from 'node:path';
 import { runPipeline } from './orchestrator.js';
 import { resolveAutoFilter } from './auto-filter-resolve.js';
+import { resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { replayRun, modifyRun } from '../runs/replay-helpers.js';
@@ -18,7 +19,10 @@ export function registerImportCommand(program: Command): void {
     .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--project <path>', 'Path to the project root to analyze', '.')
     .option('--out <path>', 'Output directory for pipeline artifacts')
-    .option('--agent <name>', 'Agent to use for generate components', 'claude')
+    .option(
+      '--agent <name>',
+      'Agent to use for generate components (overrides credentials.json; falls back to "claude")',
+    )
     .option('--model <name>', 'Model to use for generate components (defaults to a small/fast model per agent)')
     .option('--tokens <path>', 'Path to a DTCG tokens.json file to push alongside generated components')
     .option('--select-all', 'Select all extracted components for generation (default)')
@@ -115,7 +119,7 @@ export function registerImportCommand(program: Command): void {
         cmaToken?: string;
         project: string;
         out?: string;
-        agent: string;
+        agent?: string;
         model?: string;
         tokens?: string;
         selectAll?: boolean;
@@ -304,6 +308,7 @@ export function registerImportCommand(program: Command): void {
             initialCmaToken?: string;
             initialHost?: string;
             initialAgent?: string;
+            initialModel?: string;
             initialProjectPath?: string;
             host?: string;
             autoAcceptScope?: boolean;
@@ -320,6 +325,11 @@ export function registerImportCommand(program: Command): void {
             onRunPicked?: (selection: RunPickerSelection) => void;
           };
           const creds = await readExperiencesCredentials();
+          // Parity-audit Q4: resolve --agent / --model overrides against the
+          // stored credentials.json so both flags are functional for the
+          // wizard path. Flag wins, then stored value, then default.
+          const resolvedAgent = resolveAgent(opts.agent, creds.agent);
+          const resolvedModel = resolveModel(opts.model, creds.agentModel);
 
           // ── Run picker decision ─────────────────────────────────────────
           // When runs.json has prior entries and the operator didn't ask for
@@ -352,7 +362,8 @@ export function registerImportCommand(program: Command): void {
               initialEnvironmentId: creds.environmentId || 'master',
               initialCmaToken: creds.cmaToken,
               initialHost: toConfiguredHost(opts.host ?? creds.host) ?? DEFAULT_CONFIGURED_HOST,
-              initialAgent: opts.agent !== 'claude' ? opts.agent : undefined,
+              initialAgent: resolvedAgent,
+              ...(resolvedModel ? { initialModel: resolvedModel } : {}),
               initialProjectPath: opts.project !== '.' ? resolve(opts.project) : undefined,
               host: opts.host,
               autoAcceptScope,
@@ -422,6 +433,11 @@ export function registerImportCommand(program: Command): void {
         const projectRoot = resolve(opts.project);
         const outDir = opts.out ? resolve(opts.out) : join(projectRoot, '.contentful');
 
+        // Parity-audit Q4: also honor stored agent/model in headless mode.
+        const headlessCreds = await readExperiencesCredentials();
+        const headlessAgent = resolveAgent(opts.agent, headlessCreds.agent);
+        const headlessModel = resolveModel(opts.model, headlessCreds.agentModel);
+
         const result = await runPipeline(
           {
             project: projectRoot,
@@ -429,8 +445,8 @@ export function registerImportCommand(program: Command): void {
             spaceId,
             environmentId,
             cmaToken,
-            agent: opts.agent,
-            model: opts.model,
+            agent: headlessAgent,
+            model: headlessModel,
             tokens: opts.tokens,
             selectAll: opts.selectAll,
             select: opts.select.length > 0 ? opts.select : undefined,

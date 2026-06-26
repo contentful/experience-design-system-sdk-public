@@ -99,6 +99,13 @@ type PushResult = {
 type WizardState = {
   step: WizardStep;
   agent: string;
+  /**
+   * Parity-audit Q4: resolved LLM model override forwarded to spawned
+   * `analyze select-agent` and `generate components` subprocesses. Resolution
+   * chain: `--model` flag > `credentials.json#agentModel` > undefined (each
+   * agent runner picks its own fast default).
+   */
+  agentModel?: string;
   projectPath: string;
   outDir: string;
   rawTokensPath: string;
@@ -169,6 +176,8 @@ function findCliPath(): string {
 export function buildSelectAgentArgs(opts: {
   sessionId: string;
   agent: string;
+  /** Parity-audit Q4: forward `--model` override from `experiences import`. */
+  model?: string;
   /** Feature 8: forward to the spawned select-agent subprocess. */
   selectPromptPath?: string;
   /**
@@ -190,6 +199,7 @@ export function buildSelectAgentArgs(opts: {
     opts.sessionId,
     '--exclude-invalid',
   ];
+  if (opts.model) args.push('--model', opts.model);
   if (opts.selectPromptPath) args.push('--select-prompt-path', opts.selectPromptPath);
   if (opts.noCache) args.push('--no-cache');
   return args;
@@ -240,6 +250,8 @@ export function buildGenerateComponentsArgs(opts: {
   sessionId: string;
   tokensPath?: string;
   agent: string;
+  /** Parity-audit Q4: forward `--model` override from `experiences import`. */
+  model?: string;
   noCache?: boolean;
   /** Feature 8: forward to the spawned generate components subprocess. */
   generatePromptPath?: string;
@@ -250,6 +262,7 @@ export function buildGenerateComponentsArgs(opts: {
   // `generate components` subprocess. See wizard-cache.test.ts.
   const args = ['generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
   if (opts.tokensPath) args.push('--tokens', opts.tokensPath);
+  if (opts.model) args.push('--model', opts.model);
   if (opts.noCache) args.push('--no-cache');
   if (opts.generatePromptPath) args.push('--generate-prompt-path', opts.generatePromptPath);
   return args;
@@ -282,6 +295,8 @@ export type WizardAppProps = {
   initialCmaToken?: string;
   initialHost?: string;
   initialAgent?: string;
+  /** Parity-audit Q4: resolved model override (flag || stored value). */
+  initialModel?: string;
   initialProjectPath?: string;
   host?: string;
   autoAcceptScope?: boolean;
@@ -357,6 +372,7 @@ export function WizardApp({
   initialCmaToken = '',
   initialHost,
   initialAgent,
+  initialModel,
   initialProjectPath,
   host,
   autoAcceptScope = false,
@@ -444,6 +460,7 @@ export function WizardApp({
         ? 'run-picker'
         : initialStepResolved,
     agent: initialAgent ?? 'claude',
+    ...(initialModel ? { agentModel: initialModel } : {}),
     projectPath: initialProjectPath ?? '',
     outDir: initialOutDir,
     rawTokensPath: '',
@@ -585,7 +602,7 @@ export function WizardApp({
       stdout: string;
       stderr: string;
     }>((res) => {
-      const child = spawn('node', [
+      const tokenArgs = [
         findCliPath(),
         'generate',
         'tokens',
@@ -593,7 +610,9 @@ export function WizardApp({
         state.agent,
         '--raw-tokens',
         rawTokensPath,
-      ]);
+      ];
+      if (state.agentModel) tokenArgs.push('--model', state.agentModel);
+      const child = spawn('node', tokenArgs);
       let stdout = '';
       let stderr = '';
       child.stdout.on('data', (d: Buffer) => {
@@ -722,7 +741,13 @@ export function WizardApp({
   // render — but we also keep a memory-side `aiDecisions` map for streaming UX.
   const runAutoFilter = (sessionId: string): Promise<void> => {
     return new Promise((res) => {
-      const args = buildSelectAgentArgs({ sessionId, agent: state.agent, selectPromptPath, noCache });
+      const args = buildSelectAgentArgs({
+        sessionId,
+        agent: state.agent,
+        ...(state.agentModel ? { model: state.agentModel } : {}),
+        selectPromptPath,
+        noCache,
+      });
       const child = spawn('node', [findCliPath(), ...args]);
       autoFilterChildRef.current = child;
       let stderr = '';
@@ -850,6 +875,7 @@ export function WizardApp({
         sessionId: extractSessionId,
         tokensPath,
         agent: state.agent,
+        ...(state.agentModel ? { model: state.agentModel } : {}),
         noCache,
       }),
     ];
@@ -925,6 +951,7 @@ export function WizardApp({
         sessionId: extractSessionId,
         tokensPath,
         agent: state.agent,
+        ...(state.agentModel ? { model: state.agentModel } : {}),
         noCache,
         generatePromptPath,
       }),
