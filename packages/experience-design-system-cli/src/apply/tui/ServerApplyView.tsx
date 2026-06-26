@@ -6,6 +6,7 @@ import type {
   ApplyOperationItem,
 } from '@contentful/experience-design-system-types';
 import { ServerPreviewView } from './ServerPreviewView.js';
+import { buildPostPushUrl } from '../../lib/contentful-urls.js';
 
 interface ServerPreviewConfirmProps {
   preview: ServerPreviewResponse;
@@ -104,9 +105,11 @@ interface ServerApplyDoneProps {
   operation: ApplyOperationResponse;
   spaceId: string;
   environmentId: string;
+  /** Configured API host (e.g. `api.contentful.com`). Used to derive the post-push webapp URL. */
+  host?: string;
 }
 
-export function ServerApplyDone({ operation, spaceId, environmentId }: ServerApplyDoneProps): React.ReactElement {
+export function ServerApplyDone({ operation, spaceId, environmentId, host }: ServerApplyDoneProps): React.ReactElement {
   useInput((input, key) => {
     if (key.escape || input === 'q') {
       process.exit(operation.sys.status === 'succeeded' ? 0 : 1);
@@ -137,6 +140,16 @@ export function ServerApplyDone({ operation, spaceId, environmentId }: ServerApp
               {item.error && <Text dimColor> {formatItemError(item.error)}</Text>}
             </Box>
           ))}
+        </Box>
+      )}
+      {operation.sys.status === 'succeeded' && operation.summary.succeeded > 0 && (
+        <Box flexDirection="column">
+          <Text> </Text>
+          <Text dimColor> View your design system:</Text>
+          <Text color="cyan">
+            {' '}
+            {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId })}
+          </Text>
         </Box>
       )}
       <Text> </Text>
