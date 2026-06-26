@@ -279,6 +279,23 @@ function applyDbMigrations(db: DatabaseSync): void {
     db.exec('ALTER TABLE raw_components ADD COLUMN reject_reason TEXT');
   }
 
+  // Component rationale: WHY a component was classified, why these props,
+  // why these slots — surfaced via the `I` panel. All nullable, no DEFAULT
+  // so existing rows survive. Plus per-slot rationale on raw_slots.
+  if (!rawCompColNames.has('component_description_rationale')) {
+    db.exec('ALTER TABLE raw_components ADD COLUMN component_description_rationale TEXT');
+  }
+  if (!rawCompColNames.has('props_rationale')) {
+    db.exec('ALTER TABLE raw_components ADD COLUMN props_rationale TEXT');
+  }
+  if (!rawCompColNames.has('slots_rationale')) {
+    db.exec('ALTER TABLE raw_components ADD COLUMN slots_rationale TEXT');
+  }
+  const rawSlotColsForRationale = db.prepare('PRAGMA table_info(raw_slots)').all() as Array<{ name: string }>;
+  if (!rawSlotColsForRationale.some((c) => c.name === 'rationale')) {
+    db.exec('ALTER TABLE raw_slots ADD COLUMN rationale TEXT');
+  }
+
   // Add generation_cache table if it doesn't exist yet.
   const tables = db
     .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='generation_cache'`)
@@ -372,6 +389,89 @@ export function loadComponentReviewMetadata(
   };
 }
 
+export interface ComponentRationale {
+  name: string;
+  description: string | null;
+  descriptionRationale: string | null;
+  propsRationale: string | null;
+  slotsRationale: string | null;
+  props: Array<{ name: string; category: string | null; description: string | null; rationale: string | null }>;
+  slots: Array<{ name: string; description: string | null; rationale: string | null }>;
+}
+
+/**
+ * Component-rationale loader: data contract for the `I` ComponentRationalePanel.
+ * Returns the component's description + the three component-level rationale
+ * strings (why-description / why-props / why-slots), plus per-prop and per-slot
+ * rationale rows for the operator-facing panel. Returns null when no component
+ * matches.
+ */
+export function loadComponentRationale(
+  db: DatabaseSync,
+  sessionId: string,
+  componentName: string,
+): ComponentRationale | null {
+  const compRow = db
+    .prepare(
+      `SELECT component_id, name, description, component_description_rationale, props_rationale, slots_rationale
+       FROM raw_components WHERE session_id = ? AND name = ?`,
+    )
+    .get(sessionId, componentName) as
+    | {
+        component_id: string;
+        name: string;
+        description: string | null;
+        component_description_rationale: string | null;
+        props_rationale: string | null;
+        slots_rationale: string | null;
+      }
+    | undefined;
+  if (!compRow) return null;
+
+  const propRows = db
+    .prepare(
+      `SELECT name, cdf_category, category, description, rationale FROM raw_props
+       WHERE session_id = ? AND component_id = ? ORDER BY position`,
+    )
+    .all(sessionId, compRow.component_id) as Array<{
+    name: string;
+    cdf_category: string | null;
+    category: string | null;
+    description: string | null;
+    rationale: string | null;
+  }>;
+
+  const slotRows = db
+    .prepare(
+      `SELECT name, description, rationale FROM raw_slots
+       WHERE session_id = ? AND component_id = ? ORDER BY position`,
+    )
+    .all(sessionId, compRow.component_id) as Array<{
+    name: string;
+    description: string | null;
+    rationale: string | null;
+  }>;
+
+  return {
+    name: compRow.name,
+    description: compRow.description,
+    descriptionRationale: compRow.component_description_rationale,
+    propsRationale: compRow.props_rationale,
+    slotsRationale: compRow.slots_rationale,
+    props: propRows.map((p) => ({
+      name: p.name,
+      category: p.cdf_category ?? p.category ?? null,
+      description: p.description,
+      rationale: p.rationale,
+    })),
+    slots: slotRows.map((s) => ({
+      name: s.name,
+      description: s.description,
+      rationale: s.rationale,
+    })),
+  };
+}
+
 export function applyToolCalls(
   db: DatabaseSync,
   sessionId: string,
@@ -423,6 +523,25 @@ export function applyToolCalls(
             componentId,
           );
         }
+        // Component-level rationale: sparse-update each field only when present
+        // so missing keys don't overwrite previously-stored values.
+        if (call.rationale) {
+          if (call.rationale.description !== undefined) {
+            db.prepare(
+              'UPDATE raw_components SET component_description_rationale = ? WHERE session_id = ? AND component_id = ?',
+            ).run(call.rationale.description, sessionId, componentId);
+          }
+          if (call.rationale.props !== undefined) {
+            db.prepare(
+              'UPDATE raw_components SET props_rationale = ? WHERE session_id = ? AND component_id = ?',
+            ).run(call.rationale.props, sessionId, componentId);
+          }
+          if (call.rationale.slots !== undefined) {
+            db.prepare(
+              'UPDATE raw_components SET slots_rationale = ? WHERE session_id = ? AND component_id = ?',
+            ).run(call.rationale.slots, sessionId, componentId);
+          }
+        }
       } else if (call.tool === 'classify_prop') {
         const changes = updateProp.run(
           call.cdf_type,
@@ -465,6 +584,13 @@ export function applyToolCalls(
         if (slotChanges.changes === 0) {
           warnings.push(`${componentName}: classify_slot '${call.slot}' — slot not found, skipped`);
           continue;
+        }
+        // Per-slot rationale: sparse-update only when present so omitting it
+        // doesn't blank existing values.
+        if (call.rationale !== undefined) {
+          db.prepare(
+            'UPDATE raw_slots SET rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?',
+          ).run(call.rationale, sessionId, componentId, call.slot);
         }
         if (call.allowed_components !== undefined) {
           deleteAllowedComponents.run(sessionId, componentId, call.slot);

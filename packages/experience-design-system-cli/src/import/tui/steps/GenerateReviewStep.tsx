@@ -17,8 +17,12 @@ import {
   loadCDFComponents,
   storeCDFComponents,
   loadComponentReviewMetadata,
+  loadComponentRationale,
   type ComponentReviewMetadata,
+  type ComponentRationale,
 } from '../../../session/db.js';
+import { RationalePanel, type RationaleRow } from '../../../analyze/select/tui/components/RationalePanel.js';
+import { ComponentRationalePanel } from '../../../analyze/select/tui/components/ComponentRationalePanel.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
 import type {
   PreviewAnnotation,
@@ -27,7 +31,7 @@ import type {
 } from '../../../analyze/select/types.js';
 import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
 import { useLivePreview } from '../useLivePreview.js';
-import { computeNextJsonOffset } from './json-scroll.js';
+import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -119,6 +123,14 @@ export function GenerateReviewStep({
   // names/ids when the operator asks "which ones?".
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
   const [showRemovedPanel, setShowRemovedPanel] = useState(false);
+  // Lifted rationale + source panels (replaces FieldEditor's right pane).
+  // Mutually exclusive states.
+  const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>(
+    'none',
+  );
+  const [panelScrollOffset, setPanelScrollOffset] = useState(0);
+  const [textEntryActive, setTextEntryActive] = useState(false);
+  const [componentRationale, setComponentRationale] = useState<ComponentRationale | null>(null);
   // Tracks the first `g` of a potential `gg` double-tap (jumps to top in
   // JSON-view + panel-focused state). Reset on any non-`g` key.
   const pendingGRef = useRef(false);
@@ -208,6 +220,25 @@ export function GenerateReviewStep({
       setReviewMetadata(loadComponentReviewMetadata(db, extractSessionId, current.key));
     } catch {
       setReviewMetadata(null);
+    } finally {
+      db.close();
+    }
+  }, [selectedIdx, components, extractSessionId]);
+
+  // Load component-level rationale for the selected component (drives the
+  // `I` ComponentRationalePanel). Decoupled from review metadata so the data
+  // contracts can evolve independently.
+  useEffect(() => {
+    const current = components[selectedIdx];
+    if (!current) {
+      setComponentRationale(null);
+      return;
+    }
+    const db = openPipelineDb();
+    try {
+      setComponentRationale(loadComponentRationale(db, extractSessionId, current.key));
+    } catch {
+      setComponentRationale(null);
     } finally {
       db.close();
     }
@@ -320,6 +351,73 @@ export function GenerateReviewStep({
       return;
     }
 
+    // Lifted rationale + source panels: i/I/s fire from anywhere (sidebar OR
+    // panel focus). Gated against text-entry surfaces inside FieldEditor
+    // (description editors, string-default editor, value-list text entry)
+    // via the `onTextEntryActiveChange` callback, plus the help/finalize/quit
+    // overlays and the JSON view.
+    if (panelOpen !== 'none') {
+      const PANEL_HEIGHT_LOCAL = 12;
+      const next = computeNextScrollOffset(panelScrollOffset, input, key, 9999, PANEL_HEIGHT_LOCAL);
+      if (next !== null) {
+        setPanelScrollOffset(() => next);
+        return;
+      }
+      if (key.escape) {
+        setPanelOpen('none');
+        setPanelScrollOffset(() => 0);
+        return;
+      }
+      // Guard against Ctrl-letter aliases (Tab is Ctrl+I in ASCII, Ctrl+S would
+      // collide with save in nested editors). Only react to bare keystrokes.
+      const togglable = !key.ctrl && !key.tab && !key.meta && !key.return;
+      if (togglable && input === 'i' && panelOpen === 'prop-rationale') {
+        setPanelOpen('none');
+        setPanelScrollOffset(() => 0);
+        return;
+      }
+      if (togglable && input === 'I' && panelOpen === 'component-rationale') {
+        setPanelOpen('none');
+        setPanelScrollOffset(() => 0);
+        return;
+      }
+      if (togglable && input === 's' && panelOpen === 'source') {
+        setPanelOpen('none');
+        setPanelScrollOffset(() => 0);
+        return;
+      }
+      // Cross-panel toggles while one is open.
+      if (togglable && input === 'i') {
+        setPanelOpen('prop-rationale');
+        setPanelScrollOffset(() => 0);
+        return;
+      }
+      if (togglable && input === 'I') {
+        setPanelOpen('component-rationale');
+        setPanelScrollOffset(() => 0);
+        return;
+      }
+      if (togglable && input === 's') {
+        setPanelOpen('source');
+        setPanelScrollOffset(() => 0);
+        return;
+      }
+      return;
+    }
+    const rationaleKeyOk = !textEntryActive && !showJson && !key.ctrl && !key.tab && !key.meta && !key.return;
+    if (rationaleKeyOk) {
+      if (input === 'i') {
+        setPanelOpen('prop-rationale');
+        setPanelScrollOffset(() => 0);
+        return;
+      }
+      if (input === 'I') {
+        setPanelOpen('component-rationale');
+        setPanelScrollOffset(() => 0);
+        return;
+      }
+    }
+
     // Tab toggles focus bidirectionally between sidebar and panel. `e` is a
     // sidebar-only alias for crossing INTO the panel — gating it to the
     // sidebar-focused state prevents collision with FieldEditor's enum-values
@@ -354,7 +452,7 @@ export function GenerateReviewStep({
         return;
       }
 
-      const next = computeNextJsonOffset(jsonScrollOffset, input, key, totalLines, PANEL_HEIGHT);
+      const next = computeNextScrollOffset(jsonScrollOffset, input, key, totalLines, PANEL_HEIGHT);
       if (next !== null) {
         pendingGRef.current = false;
         // Functional setState mirrors the cursor-stutter fix (commit 5d11e60).
@@ -586,7 +684,70 @@ export function GenerateReviewStep({
                     {sidebarFocused ? '[e/Tab] focus panel' : '[Tab] focus list'}
                   </Text>
                 </Box>
-                {showJson ? (
+                {panelOpen === 'prop-rationale' ? (
+                  (() => {
+                    const rows: RationaleRow[] = [
+                      ...(componentRationale?.props ?? []).map<RationaleRow>((p) => ({
+                        name: p.name,
+                        kind: 'prop',
+                        rationale: p.rationale ?? '',
+                      })),
+                      ...(componentRationale?.slots ?? []).map<RationaleRow>((s) => ({
+                        name: s.name,
+                        kind: 'slot',
+                        rationale: s.rationale ?? '',
+                      })),
+                    ];
+                    return (
+                      <RationalePanel
+                        componentName={componentRationale?.name ?? selected.key}
+                        rows={rows}
+                        scrollOffset={panelScrollOffset}
+                        width={panelWidth}
+                        height={PANEL_HEIGHT}
+                        active={true}
+                      />
+                    );
+                  })()
+                ) : panelOpen === 'component-rationale' ? (
+                  <ComponentRationalePanel
+                    data={
+                      componentRationale ?? {
+                        name: selected.key,
+                        description: null,
+                        descriptionRationale: null,
+                        propsRationale: null,
+                        slotsRationale: null,
+                        props: [],
+                        slots: [],
+                      }
+                    }
+                    scrollOffset={panelScrollOffset}
+                    width={panelWidth}
+                    height={PANEL_HEIGHT}
+                    active={true}
+                  />
+                ) : panelOpen === 'source' ? (
+                  (() => {
+                    const path = reviewMetadata?.sourcePath ?? null;
+                    const src = reviewMetadata?.componentSource ?? null;
+                    const headerPath = path ?? '<unknown source path>';
+                    const lines = src ? src.split('\n').slice(panelScrollOffset, panelScrollOffset + PANEL_HEIGHT) : [];
+                    return (
+                      <Box flexDirection="column" width={panelWidth} borderStyle="single" borderColor="gray" paddingX={1}>
+                        <Text dimColor bold>{`source: ${headerPath}`}</Text>
+                        {src
+                          ? lines.map((ln, i) => (
+                              <Text key={`source-line-${i}`} dimColor>
+                                {ln}
+                              </Text>
+                            ))
+                          : <Text dimColor>{'(no source captured)'}</Text>}
+                        <Text dimColor>{'[s/Esc] close'}</Text>
+                      </Box>
+                    );
+                  })()
+                ) : showJson ? (
                   <JsonPanel
                     label="GENERATED DEFINITION (read-only)"
                     value={selectedJson}
@@ -615,6 +776,19 @@ export function GenerateReviewStep({
                           } as FieldEditorMetadata)
                         : undefined
                     }
+                    onTogglePropRationale={() => {
+                      setPanelOpen('prop-rationale');
+                      setPanelScrollOffset(() => 0);
+                    }}
+                    onToggleComponentRationale={() => {
+                      setPanelOpen('component-rationale');
+                      setPanelScrollOffset(() => 0);
+                    }}
+                    onToggleSourceExternal={() => {
+                      setPanelOpen('source');
+                      setPanelScrollOffset(() => 0);
+                    }}
+                    onTextEntryActiveChange={setTextEntryActive}
                   />
                 )}
                 {saveError && <Text color="red">{'✗ ' + saveError}</Text>}
