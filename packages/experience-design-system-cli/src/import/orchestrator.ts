@@ -10,6 +10,7 @@ import {
   findLatestSessionForCommand,
 } from '../session/db.js';
 import { PREVIEW_ERROR_PREFIX, VALIDATION_FAILED_CODE, parsePreviewValidationErrors } from '../apply/api-client.js';
+import { buildPostPushUrl } from '../lib/contentful-urls.js';
 
 export interface PipelineOptions {
   project: string;
@@ -566,12 +567,13 @@ export async function runPipeline(
   progressWriter(`Pipeline complete. Session: ${sessionId}`);
 
   if (opts.spaceId && opts.environmentId && !opts.skipApply) {
-    const apiHost = opts.host ?? 'api.contentful.com';
-    const appHost = apiHost.replace(/^api\./, 'app.');
+    const viewUrl = buildPostPushUrl({
+      host: opts.host ?? 'api.contentful.com',
+      spaceId: opts.spaceId,
+      environmentId: opts.environmentId,
+    });
     progressWriter('');
-    progressWriter(
-      `View your design system:  https://${appHost}/spaces/${opts.spaceId}/environments/${opts.environmentId}/components`,
-    );
+    progressWriter(`View your design system:  ${viewUrl}`);
   }
 
   db.close();

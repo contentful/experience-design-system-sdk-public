@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import { buildPostPushUrl } from '../../../lib/contentful-urls.js';
 
 type EntityResult = {
   created: number;
@@ -15,6 +16,8 @@ type DoneStepProps = {
   summary?: { total: number; succeeded: number; failed: number };
   spaceId: string;
   environmentId: string;
+  /** Configured API host (e.g. `api.contentful.com`). Used to derive the webapp URL. */
+  host?: string;
   /** Task 8 — pre-formatted run teaser; rendered dim below the space link. */
   runTeaser?: string;
   onExit: () => void;
@@ -26,6 +29,7 @@ export function DoneStep({
   summary,
   spaceId,
   environmentId,
+  host,
   runTeaser,
   onExit,
 }: DoneStepProps): React.ReactElement {
@@ -132,7 +136,9 @@ export function DoneStep({
           <Text dimColor>Your design system is now in Contentful ExO.</Text>
           <Box flexDirection="column" gap={0}>
             <Text dimColor>View it here:</Text>
-            <Text color="cyan">{`https://app.contentful.com/spaces/${spaceId}/environments/${environmentId}/views/components`}</Text>
+            <Text color="cyan">
+              {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId })}
+            </Text>
           </Box>
         </Box>
       )}
