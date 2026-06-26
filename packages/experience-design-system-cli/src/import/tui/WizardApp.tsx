@@ -17,6 +17,9 @@ import { DoneStep } from './steps/DoneStep.js';
 import { ErrorStep } from './steps/ErrorStep.js';
 import { TokenInputStep } from './steps/TokenInputStep.js';
 import { PreviewValidationErrorStep } from './steps/PreviewValidationErrorStep.js';
+import { nextStateAfterPrint } from './run-print-files-helpers.js';
+import { PushDecisionGateStep } from './steps/PushDecisionGateStep.js';
+import { chooseGateAction } from './push-decision-gate-helpers.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
 import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
@@ -243,6 +246,10 @@ export type WizardAppProps = {
   // runs extract → scope-gate → generate → final-review and exits via
   // print-gate. Plumbed from `experiences import` via `--no-push`.
   noPush?: boolean;
+  // When true, push without writing components.json / tokens.json to disk.
+  // Mutually exclusive with `noPush` (validated at the CLI surface).
+  // Plumbed from `experiences import` via `--no-save`. Default false.
+  noSave?: boolean;
 };
 
 export function WizardApp({
@@ -258,6 +265,7 @@ export function WizardApp({
   autoFilter = true,
   livePreview = true,
   noPush = false,
+  noSave = false,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -1096,7 +1104,11 @@ export function WizardApp({
     }
   };
 
-  const runPrintFiles = async (extractSessionId: string | null, outDir: string) => {
+  const runPrintFiles = async (
+    extractSessionId: string | null,
+    outDir: string,
+    opts: { skipGate?: boolean } = {},
+  ): Promise<{ ok: boolean }> => {
     update({ step: 'printing' });
     const componentsPath = join(outDir, 'components.json');
     const printArgs = ['print', 'components', '--out', componentsPath];
@@ -1108,10 +1120,25 @@ export function WizardApp({
         errorStep: 'print components',
         errorMessage: r.stderr.trim() || 'Unknown error',
       });
-      return;
+      return { ok: false };
     }
     // tokensPath is already on disk from generate-tokens step; just record it
-    update({ step: 'print-gate', componentsPath });
+    update(nextStateAfterPrint({ skipGate: opts.skipGate, componentsPath }));
+    return { ok: true };
+  };
+
+  const runSaveAndPush = async (): Promise<void> => {
+    const { extractSessionId, tokensPath } = sessionRef.current;
+    const result = await runPrintFiles(extractSessionId, state.outDir, { skipGate: true });
+    if (!result.ok) return; // runPrintFiles already transitioned to error
+    void runPreview(
+      extractSessionId,
+      tokensPath,
+      state.spaceId,
+      state.environmentId,
+      state.cmaToken,
+      state.host,
+    );
   };
 
   // ── Effect: kick off automatic steps ───────────────────────────────────────────────
@@ -1379,6 +1406,28 @@ export function WizardApp({
                 void runPrintFiles(state.extractSessionId, state.outDir);
                 return;
               }
+              if (noSave) {
+                update({ generatedAcceptedCount: accepted });
+                const { extractSessionId, tokensPath } = sessionRef.current;
+                void runPreview(
+                  extractSessionId,
+                  tokensPath,
+                  state.spaceId,
+                  state.environmentId,
+                  state.cmaToken,
+                  state.host,
+                );
+                return;
+              }
+              if (autoAcceptScope) {
+                // Headless run with neither --no-save nor --no-push: pick the
+                // default "both" path automatically to preserve scripted
+                // (auto-accept-scope) UX from before the gate gained a third
+                // option. Operators who want push-only must pass --no-save.
+                update({ generatedAcceptedCount: accepted });
+                void runSaveAndPush();
+                return;
+              }
               update({ generatedAcceptedCount: accepted, step: 'push-decision-gate' });
             }}
             onQuit={() => process.exit(0)}
@@ -1397,26 +1446,29 @@ export function WizardApp({
             ? 'Design tokens ready.'
             : 'Ready to continue.';
         return (
-          <GateStep
-            successMessage="Generation complete"
+          <PushDecisionGateStep
             summary={summary}
-            context={`Push directly to your Contentful space now, or save ${files || 'the output files'} to disk first.`}
-            continueLabel="Push to Contentful"
-            skipLabel={`Save ${files || 'files'} to disk`}
-            onContinue={() => {
-              // Creds were validated upfront (or skipped via the credential-test-gate
-              // skip path). Run the diff preview directly.
-              const { extractSessionId, tokensPath } = sessionRef.current;
-              void runPreview(
-                extractSessionId,
-                tokensPath,
-                state.spaceId,
-                state.environmentId,
-                state.cmaToken,
-                state.host,
-              );
-            }}
-            onSkip={() => {
+            context={`Save ${files || 'output files'} to disk, push to your Contentful space, or both.`}
+            fileList={files || 'files'}
+            onChoice={(choice) => {
+              const action = chooseGateAction(choice);
+              if (action === 'save-and-push') {
+                void runSaveAndPush();
+                return;
+              }
+              if (action === 'push-only') {
+                const { extractSessionId, tokensPath } = sessionRef.current;
+                void runPreview(
+                  extractSessionId,
+                  tokensPath,
+                  state.spaceId,
+                  state.environmentId,
+                  state.cmaToken,
+                  state.host,
+                );
+                return;
+              }
+              // save-only
               void runPrintFiles(state.extractSessionId, state.outDir);
             }}
             onQuit={() => process.exit(0)}

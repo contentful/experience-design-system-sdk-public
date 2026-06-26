@@ -53,6 +53,10 @@ export function registerImportCommand(program: Command): void {
       '--no-push',
       'Run extract → scope-gate → generate → final-review and exit without pushing to Contentful (no credentials prompt; live preview disabled)',
     )
+    .option(
+      '--no-save',
+      'Push without writing components.json / tokens.json to disk (default: save AND push)',
+    )
     .action(
       async (opts: {
         spaceId?: string;
@@ -81,7 +85,16 @@ export function registerImportCommand(program: Command): void {
         autoFilter?: boolean;
         livePreview?: boolean;
         push?: boolean;
+        save?: boolean;
       }) => {
+        if (opts.save === false && opts.push === false) {
+          process.stderr.write(
+            'Error: --no-save and --no-push together would do nothing. Pick one or neither.\n',
+          );
+          process.exit(1);
+          return;
+        }
+
         const isHeadless =
           opts.skipAnalyze ||
           opts.skipGenerate ||
@@ -123,6 +136,7 @@ export function registerImportCommand(program: Command): void {
             autoFilter?: boolean;
             livePreview?: boolean;
             noPush?: boolean;
+            noSave?: boolean;
           };
           const creds = await readExperiencesCredentials();
           const { waitUntilExit } = render(
@@ -139,6 +153,7 @@ export function registerImportCommand(program: Command): void {
               autoFilter: opts.autoFilter !== false,
               livePreview: opts.livePreview !== false,
               noPush: opts.push === false,
+              noSave: opts.save === false,
             }),
           );
           await waitUntilExit();
