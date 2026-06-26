@@ -9,6 +9,8 @@ import { execFile, spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { buildRunTeaserLine } from './run-teaser.js';
 import { PathPrompt } from '../../runs/path-prompt.js';
+import { RunPicker, type RunPickerSelection } from '../../runs/run-picker.js';
+import type { RunRecord } from '../../runs/store.js';
 import { SaveConflictGate } from '../../runs/save-conflict.js';
 import { detectSaveConflict, buildTimestampedSubdir, resolveSavePath, type OnConflictMode } from '../../runs/save-path-resolver.js';
 import { appendRun } from '../../runs/store.js';
@@ -62,6 +64,7 @@ import {
 } from './wizard-state-transitions.js';
 
 type WizardStep =
+  | 'run-picker'
   | 'welcome'
   | 'token-input'
   | 'token-reuse-gate'
@@ -337,6 +340,15 @@ export type WizardAppProps = {
    * future use but falls through to standard behavior.
    */
   initialStep?: 'scope-gate' | 'final-review';
+  /**
+   * When set with a non-empty array, the wizard opens with the run picker
+   * instead of the welcome step. The picker invokes `onRunPicked` with the
+   * operator's selection so the CLI surface can route into
+   * `--push-from-run` / `--modify` entry points (or fall through to the
+   * normal welcome step on 'new').
+   */
+  initialRuns?: RunRecord[];
+  onRunPicked?: (selection: RunPickerSelection) => void;
 };
 
 export function WizardApp({
@@ -360,6 +372,8 @@ export function WizardApp({
   seedExtractSessionId,
   seedGenerateSessionId,
   initialStep,
+  initialRuns,
+  onRunPicked,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -424,7 +438,11 @@ export function WizardApp({
     : '';
 
   const [state, setState] = useState<WizardState>({
-    step: initialStepResolved,
+    step: modifyEntryReady
+      ? initialStepResolved
+      : initialRuns && initialRuns.length > 0
+        ? 'run-picker'
+        : initialStepResolved,
     agent: initialAgent ?? 'claude',
     projectPath: initialProjectPath ?? '',
     outDir: initialOutDir,
@@ -1535,6 +1553,7 @@ export function WizardApp({
   // ── Render ────────────────────────────────────────────────────────────────────────────
 
   const noQuitSteps: WizardStep[] = [
+    'run-picker',
     'checking-claude-auth',
     'validating-credentials',
     'generating-tokens',
@@ -1553,6 +1572,25 @@ export function WizardApp({
 
   const stepContent = (() => {
     switch (state.step) {
+      case 'run-picker':
+        return (
+          <RunPicker
+            runs={initialRuns ?? []}
+            onSelect={(selection) => {
+              if (selection.action === 'new') {
+                update({ step: 'welcome' });
+                return;
+              }
+              // Push / modify routing exits the wizard back into the CLI
+              // surface so `replayRun` / `modifyRun` (which spin their own
+              // UI / spawn their own Ink trees) can take over. The CLI
+              // entry point in `command.ts` provides `onRunPicked`.
+              onRunPicked?.(selection);
+            }}
+            onCancel={() => process.exit(0)}
+          />
+        );
+
       case 'welcome':
         return (
           <WelcomeStep
