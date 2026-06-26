@@ -599,7 +599,13 @@ export function WizardApp({
           }));
         }
       });
-      child.on('exit', (code, signal) => {
+      // Use 'close' (not 'exit') so the status flip happens after the child's
+      // stdio AND its inherited SQLite WAL/SHM file handles have been fully
+      // released by the OS. 'exit' fires the instant the process terminates;
+      // setting state then triggers a wizard re-render that re-opens
+      // pipeline.db from the scope-gate step, and the lock from the dead
+      // child's still-mapped WAL handle surfaces as "database is locked".
+      child.on('close', (code, signal) => {
         autoFilterChildRef.current = null;
         if (signal === 'SIGTERM') {
           setState((prev) => ({ ...prev, aiFilterStatus: 'cancelled' }));
