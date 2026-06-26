@@ -26,6 +26,8 @@ function makeRecord(overrides: Partial<RunRecord> = {}): Omit<RunRecord, 'id' | 
     savePath: '/work/foo/dist',
     componentCount: 3,
     tokenCount: 12,
+    tokensPath: '/work/foo/dist/tokens.json',
+    tokenSessionId: 'tokens-abc',
     agent: 'claude',
     pushedTo: null,
     extractSessionId: 'extract-abc',
@@ -67,6 +69,8 @@ describe('appendRun', () => {
       savePath: '/work/foo/dist',
       componentCount: 1,
       tokenCount: 1,
+      tokensPath: null,
+      tokenSessionId: null,
       agent: 'claude',
       pushedTo: null,
       extractSessionId: 'e0',
@@ -89,6 +93,8 @@ describe('appendRun', () => {
       savePath: '/work/foo/dist',
       componentCount: 1,
       tokenCount: 1,
+      tokensPath: null,
+      tokenSessionId: null,
       agent: 'claude',
       pushedTo: null,
       extractSessionId: 'e',
@@ -109,15 +115,82 @@ describe('appendRun', () => {
     mockReadFile.mockResolvedValueOnce(JSON.stringify({ version: 999, runs: [] }));
     await expect(appendRun(makeRecord())).rejects.toThrow(/version/);
   });
+
+  it('records the new tokensPath and tokenSessionId fields', async () => {
+    mockReadFile.mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    const rec = await appendRun(
+      makeRecord({ tokensPath: '/work/foo/dist/tokens.json', tokenSessionId: 'tokens-xyz', tokenCount: 7 }),
+    );
+    expect(rec.tokensPath).toBe('/work/foo/dist/tokens.json');
+    expect(rec.tokenSessionId).toBe('tokens-xyz');
+    expect(rec.tokenCount).toBe(7);
+    const body = mockWriteFile.mock.calls[0]![1];
+    const parsed = JSON.parse(String(body));
+    expect(parsed.version).toBe(2);
+    expect(parsed.runs[0].tokensPath).toBe('/work/foo/dist/tokens.json');
+    expect(parsed.runs[0].tokenSessionId).toBe('tokens-xyz');
+  });
+});
+
+describe('runs.json v1 -> v2 migration', () => {
+  it('loads v1 files and treats new fields as null without erroring', async () => {
+    const v1Record = {
+      id: 'R1',
+      createdAt: '2026-06-20T00:00:00.000Z',
+      projectPath: '/work/foo',
+      savePath: '/work/foo/dist',
+      componentCount: 2,
+      tokenCount: 0,
+      agent: 'claude',
+      pushedTo: null,
+      extractSessionId: 'e',
+      generateSessionId: null,
+      // intentionally no tokensPath / tokenSessionId — v1 shape
+    };
+    mockReadFile.mockResolvedValueOnce(JSON.stringify({ version: 1, runs: [v1Record] }));
+    const got = await getRun('R1');
+    expect(got.tokensPath).toBeNull();
+    expect(got.tokenSessionId).toBeNull();
+    expect(got.componentCount).toBe(2);
+  });
+
+  it('persists future writes as v2 even when the on-disk file is v1', async () => {
+    mockReadFile.mockResolvedValueOnce(
+      JSON.stringify({
+        version: 1,
+        runs: [
+          {
+            id: 'R1',
+            createdAt: '2026-06-20T00:00:00.000Z',
+            projectPath: '/work/foo',
+            savePath: '/work/foo/dist',
+            componentCount: 1,
+            tokenCount: 0,
+            agent: 'claude',
+            pushedTo: null,
+            extractSessionId: 'e',
+            generateSessionId: null,
+          },
+        ],
+      }),
+    );
+    await appendRun(makeRecord({ savePath: '/work/foo/dist2' }));
+    const body = mockWriteFile.mock.calls[0]![1];
+    const parsed = JSON.parse(String(body));
+    expect(parsed.version).toBe(2);
+    // Old record carried forward with the new fields populated as null.
+    expect(parsed.runs.find((r: { id: string }) => r.id === 'R1').tokensPath).toBeNull();
+    expect(parsed.runs.find((r: { id: string }) => r.id === 'R1').tokenSessionId).toBeNull();
+  });
 });
 
 describe('listRuns', () => {
   const sample: RunRecord[] = [
-    { id: 'r5', createdAt: '2026-06-25', projectPath: '/a', savePath: '/a/x', componentCount: 1, tokenCount: 1, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
-    { id: 'r4', createdAt: '2026-06-24', projectPath: '/b', savePath: '/b/x', componentCount: 1, tokenCount: 1, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
-    { id: 'r3', createdAt: '2026-06-23', projectPath: '/a', savePath: '/a/y', componentCount: 1, tokenCount: 1, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
-    { id: 'r2', createdAt: '2026-06-22', projectPath: '/a', savePath: '/a/z', componentCount: 1, tokenCount: 1, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
-    { id: 'r1', createdAt: '2026-06-21', projectPath: '/b', savePath: '/b/y', componentCount: 1, tokenCount: 1, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
+    { id: 'r5', createdAt: '2026-06-25', projectPath: '/a', savePath: '/a/x', componentCount: 1, tokenCount: 1, tokensPath: null, tokenSessionId: null, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
+    { id: 'r4', createdAt: '2026-06-24', projectPath: '/b', savePath: '/b/x', componentCount: 1, tokenCount: 1, tokensPath: null, tokenSessionId: null, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
+    { id: 'r3', createdAt: '2026-06-23', projectPath: '/a', savePath: '/a/y', componentCount: 1, tokenCount: 1, tokensPath: null, tokenSessionId: null, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
+    { id: 'r2', createdAt: '2026-06-22', projectPath: '/a', savePath: '/a/z', componentCount: 1, tokenCount: 1, tokensPath: null, tokenSessionId: null, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
+    { id: 'r1', createdAt: '2026-06-21', projectPath: '/b', savePath: '/b/y', componentCount: 1, tokenCount: 1, tokensPath: null, tokenSessionId: null, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
   ];
 
   it('returns the newest N entries with --limit', async () => {
@@ -145,7 +218,7 @@ describe('getRun', () => {
       JSON.stringify({
         version: RUNS_FILE_VERSION,
         runs: [
-          { id: 'abc', createdAt: '2026-06-25', projectPath: '/a', savePath: '/a/x', componentCount: 0, tokenCount: 0, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
+          { id: 'abc', createdAt: '2026-06-25', projectPath: '/a', savePath: '/a/x', componentCount: 0, tokenCount: 0, tokensPath: null, tokenSessionId: null, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
         ],
       }),
     );

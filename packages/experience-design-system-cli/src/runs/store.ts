@@ -3,8 +3,12 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 
-export const RUNS_FILE_VERSION = 1 as const;
+export const RUNS_FILE_VERSION = 2 as const;
 export const RUNS_FILE_CAP = 200;
+
+/** Versions this CLI can read. v1 files are auto-migrated in memory; new
+ *  writes always use the latest version. */
+const READABLE_VERSIONS = new Set<number>([1, 2]);
 
 export type RunRecord = {
   id: string;
@@ -13,6 +17,13 @@ export type RunRecord = {
   savePath: string;
   componentCount: number;
   tokenCount: number;
+  /** Filesystem path of the saved tokens.json. Null when no tokens were
+   *  generated for the run. Added in runs.json v2. */
+  tokensPath: string | null;
+  /** Pipeline.db session id for the generated tokens. Null when no tokens
+   *  step ran. Added in runs.json v2 so replay/push and modify can re-emit
+   *  or re-push tokens. */
+  tokenSessionId: string | null;
   agent: string;
   pushedTo: { spaceId: string; environmentId: string; host: string } | null;
   extractSessionId: string;
@@ -64,16 +75,29 @@ export function generateUlid(now: number = Date.now()): string {
   return (ts + rand).toUpperCase();
 }
 
+type RunRecordV1 = Omit<RunRecord, 'tokensPath' | 'tokenSessionId'>;
+type RunsFileV1 = { version: 1; runs: RunRecordV1[] };
+
+function migrateRecord(rec: RunRecord | RunRecordV1): RunRecord {
+  return {
+    ...rec,
+    tokensPath: (rec as RunRecord).tokensPath ?? null,
+    tokenSessionId: (rec as RunRecord).tokenSessionId ?? null,
+  };
+}
+
 async function readFileMaybe(): Promise<RunsFile | null> {
   try {
     const raw = await readFile(RUNS_PATH, 'utf8');
-    const parsed = JSON.parse(raw) as RunsFile;
-    if (parsed.version !== RUNS_FILE_VERSION) {
+    const parsed = JSON.parse(raw) as RunsFile | RunsFileV1;
+    if (!READABLE_VERSIONS.has(parsed.version)) {
       throw new Error(
-        `runs.json version mismatch: file is v${parsed.version}, this CLI expects v${RUNS_FILE_VERSION}. Migration not yet supported; back up and remove the file to start fresh.`,
+        `runs.json version mismatch: file is v${parsed.version}, this CLI expects v${RUNS_FILE_VERSION} (also reads: ${[...READABLE_VERSIONS].join(', ')}). Back up and remove the file to start fresh.`,
       );
     }
-    return parsed;
+    // Always migrate to current schema in memory; new writes will persist v2.
+    const runs = parsed.runs.map(migrateRecord);
+    return { version: RUNS_FILE_VERSION, runs };
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === 'ENOENT') return null;
