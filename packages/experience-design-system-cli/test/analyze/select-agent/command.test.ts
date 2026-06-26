@@ -431,6 +431,91 @@ describe('select-agent command — decision persistence', () => {
     expect(failedLine).toContain(encodeURIComponent('no-tool-call-from-agent'));
   });
 
+  it('--reject-on-missing synthesizes rejections for batch-skipped components', async () => {
+    const components = Array.from({ length: 3 }, (_, i) => ({
+      name: `Comp${i}`,
+      source: `src/Comp${i}.tsx`,
+      framework: 'react' as const,
+      props: [{ name: 'label', type: 'string', required: true }],
+      slots: [],
+    }));
+    const { fixture, artifactsDir } = await setup(components);
+
+    // Agent omits Comp1 and Comp2 entirely (operator's audit prompt rejected
+    // those by leaving them out). --reject-on-missing flips the no-tool-call
+    // branch from "failed" to "rejected".
+    const agent = await createScriptedAgent('claude', [
+      '{"tool":"select_component","name":"Comp0","reason":"ok","confidence":5}',
+    ]);
+    cleanupItems.push(agent.cleanup);
+
+    const { code, stderr } = await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+        '--reject-on-missing',
+      ],
+      baseEnv(fixture, artifactsDir, agent.env()),
+    );
+    expect(code).toBe(0);
+    expect(stderr).toContain('Accepted: 1');
+    expect(stderr).toContain('Rejected: 2');
+    expect(stderr).not.toContain('Failed (');
+
+    const state = JSON.parse(
+      await readFile(join(artifactsDir, fixture.sessionId, 'current-review-state.json'), 'utf8'),
+    ) as ReviewState;
+    const byName = Object.fromEntries(state.components.map((cmp) => [cmp.name, cmp.status]));
+    expect(byName['Comp0']).toBe('accepted');
+    expect(byName['Comp1']).toBe('rejected');
+    expect(byName['Comp2']).toBe('rejected');
+  });
+
+  it('--reject-on-missing emits progress=rejected lines (not failed) for omitted components', async () => {
+    const components = Array.from({ length: 3 }, (_, i) => ({
+      name: `Comp${i}`,
+      source: `src/Comp${i}.tsx`,
+      framework: 'react' as const,
+      props: [{ name: 'label', type: 'string', required: true }],
+      slots: [],
+    }));
+    const { fixture, artifactsDir } = await setup(components);
+
+    const agent = await createScriptedAgent('claude', [
+      '{"tool":"select_component","name":"Comp0","reason":"ok","confidence":5}',
+    ]);
+    cleanupItems.push(agent.cleanup);
+
+    const { stderr } = await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+        '--reject-on-missing',
+      ],
+      baseEnv(fixture, artifactsDir, agent.env()),
+    );
+
+    const progressLines = stderr.split('\n').filter((l) => l.startsWith('progress=select-agent:'));
+    const rejectedNoToolCallLines = progressLines.filter(
+      (l) => l.includes(':rejected:') && l.includes(encodeURIComponent('no-tool-call-from-agent')),
+    );
+    expect(rejectedNoToolCallLines).toHaveLength(2);
+    const failedLines = progressLines.filter((l) => l.includes(':failed:'));
+    expect(failedLines).toHaveLength(0);
+  });
+
   it('missing tool call in batch marks only that component failed', async () => {
     const components = Array.from({ length: 3 }, (_, i) => ({
       name: `Comp${i}`,

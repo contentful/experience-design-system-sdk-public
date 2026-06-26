@@ -160,6 +160,7 @@ async function selectBatch(
   total: number,
   verbose: boolean,
   skillPathOverride: string | undefined,
+  rejectOnMissing: boolean,
 ): Promise<SelectOneResult[]> {
   const prompt = await buildPrompt({
     skill: 'select',
@@ -247,6 +248,27 @@ async function selectBatch(
     const call = calls.find((toolCall): toolCall is SelectToolCall => toolCall.name === component.name);
 
     if (!call) {
+      // When --reject-on-missing is set, synthesize a rejection so the
+      // caller's intent (treat omission as "no" rather than "skip") wins
+      // over the silent-failure default. This is the safe choice for audit
+      // prompts where the LLM omits names it disagrees with.
+      if (rejectOnMissing) {
+        process.stderr.write(
+          `  ${pos}  ${c.bold(component.name)}  ${c.red('rejected')}  ${c.dim('no-tool-call-from-agent')}\n`,
+        );
+        const reasonEncoded = encodeURIComponent('no-tool-call-from-agent');
+        process.stderr.write(
+          `progress=select-agent:${item.index + 1}/${total}:rejected:${component.name}:${reasonEncoded}\n`,
+        );
+        results.push({
+          componentKey: componentKey(component),
+          componentName: component.name,
+          decision: 'rejected',
+          reason: 'no-tool-call-from-agent',
+          failed: false,
+        });
+        continue;
+      }
       process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.yellow('no tool call')}\n`);
       // Emit a structured `failed` progress line so callers (notably the
       // wizard's auto-filter stream parser) can see this gap. The wizard
@@ -292,6 +314,7 @@ async function selectAllComponents(
   verbose: boolean,
   skillPathOverride: string | undefined,
   cacheConfig: { noCache: boolean; dbPath?: string } = { noCache: true },
+  rejectOnMissing = false,
 ): Promise<SelectOneResult[]> {
   const concurrency = Number(process.env.EDS_GENERATE_CONCURRENCY ?? DEFAULT_CONCURRENCY);
   const batchSize = resolveBatchSize();
@@ -379,7 +402,15 @@ async function selectAllComponents(
     while (nextBatch < batches.length) {
       const b = nextBatch++;
       const batch = batches[b]!;
-      const batchResults = await selectBatch(agent, model, batch, total, verbose, skillPathOverride);
+      const batchResults = await selectBatch(
+        agent,
+        model,
+        batch,
+        total,
+        verbose,
+        skillPathOverride,
+        rejectOnMissing,
+      );
       for (let k = 0; k < batch.length; k++) {
         results[batch[k]!.index] = batchResults[k]!;
       }
@@ -433,6 +464,10 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
       '--select-prompt-path <path>',
       'Path to a custom .md skill prompt for select-agent (bypasses bundled prompt invariants)',
     )
+    .option(
+      '--reject-on-missing',
+      'Treat components with no LLM tool call as rejected (default: marks failed and silently includes via scope-gate)',
+    )
     .option('--no-select-cache', 'Skip the per-component select cache and re-LLM every component')
     .option('--no-cache', 'Skip ALL fine-grained caches (extract, select, generate)')
     .option(
@@ -453,6 +488,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         selectPromptPath?: string;
         selectCache?: boolean;
         cache?: boolean;
+        rejectOnMissing?: boolean;
         showRationale?: boolean;
         json?: boolean;
       }) => {
@@ -615,6 +651,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           opts.verbose ?? false,
           selectPromptPath ? resolve(selectPromptPath) : undefined,
           { noCache },
+          opts.rejectOnMissing ?? false,
         );
 
         // Build decision map from results. Seed auto-rejections from validation exclusions first.
