@@ -19,6 +19,7 @@ import { TokenInputStep } from './steps/TokenInputStep.js';
 import { PreviewValidationErrorStep } from './steps/PreviewValidationErrorStep.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
+import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
 import { readTokensFromPath, hasBreakingChangesWithImpact } from '../../apply/manifest.js';
 import { buildManifest } from '@contentful/experience-design-system-types';
 import type { ServerPreviewResponse, ManifestPayload } from '@contentful/experience-design-system-types';
@@ -33,6 +34,7 @@ import {
 import { ScopeGateHost, type ScopeComponent } from './scope-gate-host.js';
 import { FinalReviewHost } from './final-review-host.js';
 import { runScopeGate } from './runScopeGate.js';
+import { buildAutoFilterErrorTail } from './auto-filter-error.js';
 import { checkAgentAuth, type AgentName } from '../../generate/agent-runner.js';
 import { normalizePath } from '../path-utils.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
@@ -590,7 +592,7 @@ export function WizardApp({
         if (signal === 'SIGTERM') {
           setState((prev) => ({ ...prev, aiFilterStatus: 'cancelled' }));
         } else if ((code ?? 0) !== 0) {
-          const tail = stderr.split('\n').filter(Boolean).slice(-3).join(' / ');
+          const tail = buildAutoFilterErrorTail(stderr);
           setState((prev) => ({
             ...prev,
             aiFilterStatus: 'failed',
@@ -663,22 +665,17 @@ export function WizardApp({
       const child = spawn('node', args);
       let stdout = '';
       let stderr = '';
+      let progressCursor: GenerateProgressState = state.generateProgress;
       child.stdout.on('data', (d: Buffer) => {
         stdout += String(d);
       });
       child.stderr.on('data', (d: Buffer) => {
         const chunk = String(d);
         stderr += chunk;
-        for (const line of chunk.split('\n')) {
-          const m = /\[(\d+)\/(\d+)\]\s+(.+)/.exec(line);
-          if (m)
-            update({
-              generateProgress: {
-                done: Number(m[1]),
-                total: Number(m[2]),
-                current: m[3]!.trim(),
-              },
-            });
+        const nextProgress = parseGenerateStderrChunk(chunk, progressCursor);
+        if (nextProgress !== progressCursor) {
+          progressCursor = nextProgress;
+          update({ generateProgress: nextProgress });
         }
       });
       child.on('exit', (code) => res({ exitCode: code ?? 0, stdout, stderr }));

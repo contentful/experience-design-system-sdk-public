@@ -13,6 +13,7 @@ import {
   runAgent,
 } from './agent-runner.js';
 import { OutputFormatter, c } from '../output/format.js';
+import { formatGenerateProgressLine } from './progress.js';
 import { type Skill, buildPrompt, resolveSkillPath } from './prompt-builder.js';
 import { GenerateView } from './tui/GenerateView.js';
 import type { GenerateViewResult } from './tui/GenerateView.js';
@@ -342,6 +343,7 @@ async function runAllComponents(
 
   const results: ComponentRunResult[] = new Array(components.length);
   let next = 0;
+  let completed = 0;
 
   async function worker(): Promise<void> {
     while (next < components.length) {
@@ -358,6 +360,10 @@ async function runAllComponents(
         components.length,
         verbose,
         noCache,
+      );
+      completed += 1;
+      process.stderr.write(
+        `${formatGenerateProgressLine(completed, components.length, results[i]!.componentName)}\n`,
       );
     }
   }

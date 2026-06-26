@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import type {
   CDFComponentEntry,
@@ -27,6 +27,7 @@ import type {
 } from '../../../analyze/select/types.js';
 import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
 import { useLivePreview } from '../useLivePreview.js';
+import { computeNextJsonOffset } from './json-scroll.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -118,6 +119,9 @@ export function GenerateReviewStep({
   // names/ids when the operator asks "which ones?".
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
   const [showRemovedPanel, setShowRemovedPanel] = useState(false);
+  // Tracks the first `g` of a potential `gg` double-tap (jumps to top in
+  // JSON-view + panel-focused state). Reset on any non-`g` key.
+  const pendingGRef = useRef(false);
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
@@ -330,6 +334,42 @@ export function GenerateReviewStep({
       return;
     }
 
+    // JSON view + panel focused: own j/k/arrows/PageUp/PageDown/Ctrl+u/d/gg/G
+    // for scrolling. Computed against the live `selectedJson` so the
+    // viewport math matches what JsonPanel renders.
+    if (!sidebarFocused && showJson) {
+      const current = components[selectedIdx];
+      const currentJson = current ? JSON.stringify({ [current.key]: current.entry }, null, 2) : '';
+      const totalLines = currentJson.split('\n').length;
+      const maxOffset = Math.max(0, totalLines - PANEL_HEIGHT);
+
+      // `gg` double-tap to jump to top; single `g` arms the pending flag.
+      if (input === 'g' && !key.ctrl) {
+        if (pendingGRef.current) {
+          pendingGRef.current = false;
+          setJsonScrollOffset(() => 0);
+          return;
+        }
+        pendingGRef.current = true;
+        return;
+      }
+
+      const next = computeNextJsonOffset(jsonScrollOffset, input, key, totalLines, PANEL_HEIGHT);
+      if (next !== null) {
+        pendingGRef.current = false;
+        // Functional setState mirrors the cursor-stutter fix (commit 5d11e60).
+        // Clamp against maxOffset re-computed at apply time in case totalLines
+        // shifted between events (defensive — helper already clamps).
+        const clamped = Math.min(maxOffset, Math.max(0, next));
+        setJsonScrollOffset(() => clamped);
+        return;
+      }
+      // Any other key in this slice resets the gg-pending flag, then falls
+      // through to the early-return below so the panel-focused state still
+      // swallows non-scroll input.
+      pendingGRef.current = false;
+    }
+
     // When the panel is focused, FieldEditor (or JsonPanel) owns the keys.
     // Only Tab (handled above) should escape from the panel-focused state.
     if (!sidebarFocused) return;
@@ -359,6 +399,7 @@ export function GenerateReviewStep({
       // Toggle read-only JSON view.
       setShowJson((prev) => !prev);
       setJsonScrollOffset(0);
+      pendingGRef.current = false;
       return;
     }
 
@@ -500,7 +541,7 @@ export function GenerateReviewStep({
             <Text>{' · '}</Text>
             <Text dimColor>{`${counts.removed} removed`}</Text>
             {removedComponents.length > 0 && (
-              <Text dimColor>{' (d for details)'}</Text>
+              <Text dimColor>{' ([d] removed list)'}</Text>
             )}
             <Text>{' · '}</Text>
             <Text color="red" bold>
@@ -582,9 +623,11 @@ export function GenerateReviewStep({
                     ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel' +
-                      (livePreview && removedComponents.length > 0 ? '  [d] removed' : '') +
+                      (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       '  [q] quit'
-                    : '  [Tab] focus list  ' + (showJson ? '(JSON view)' : '(edit fields)')}
+                    : showJson
+                      ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
+                      : '  [Tab] focus list  (edit fields)'}
                   {livePreviewHook.status === 'running' && (
                     <Text>{`  ${livePreviewSpinner} live preview`}</Text>
                   )}

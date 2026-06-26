@@ -81,6 +81,10 @@ export function JsonPanel({ label, value, scrollOffset, width, height, active }:
   const allLines = value.split('\n');
   const visibleLines = allLines.slice(scrollOffset, scrollOffset + height);
   const innerWidth = Math.max(1, width - 2); // subtract border
+  const totalLines = allLines.length;
+  const truncated = totalLines > height;
+  const visibleStart = totalLines === 0 ? 0 : scrollOffset + 1;
+  const visibleEnd = Math.min(totalLines, scrollOffset + height);
 
   return (
     <Box
@@ -90,9 +94,17 @@ export function JsonPanel({ label, value, scrollOffset, width, height, active }:
       borderStyle="single"
       borderColor={active ? 'white' : undefined}
     >
-      <Text bold dimColor={!active}>
-        {label}
-      </Text>
+      <Box>
+        <Text bold dimColor={!active}>
+          {label}
+        </Text>
+        {truncated && (
+          <>
+            <Box flexGrow={1} />
+            <Text dimColor={!active}>{`↕ ${visibleStart}-${visibleEnd}/${totalLines}`}</Text>
+          </>
+        )}
+      </Box>
       {visibleLines.map((line, i) => {
         const truncated = truncateLine(line, innerWidth);
         return <Box key={i}>{highlightJson(truncated)}</Box>;

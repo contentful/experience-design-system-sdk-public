@@ -683,10 +683,11 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
     } as never);
     await tick();
     const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/\(\[d\] removed list\)/);
     expect(frame).not.toMatch(/d for details/);
   });
 
-  it('summary includes "(d for details)" when removed.length > 0', async () => {
+  it('summary includes "([d] removed list)" when removed.length > 0', async () => {
     const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
@@ -694,7 +695,8 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
     lastOnResult!(previewWithRemoved(['Gone1', 'Gone2']));
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/d for details/);
+    expect(frame).toContain('([d] removed list)');
+    expect(frame).not.toContain('(d for details)');
     expect(frame).toMatch(/2 removed/);
   });
 
@@ -771,7 +773,7 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
     expect(titleLine).toContain('Aaa');
   });
 
-  it('legend includes "d removed" when removed > 0', async () => {
+  it('legend includes "[d] removed list" when removed > 0', async () => {
     const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
@@ -779,10 +781,10 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
     lastOnResult!(previewWithRemoved(['GoneAlpha']));
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/\[d\] removed/);
+    expect(frame).toContain('[d] removed list');
   });
 
-  it('renders no "(d for details)" hint when livePreview=false', async () => {
+  it('renders no "([d] removed list)" hint when livePreview=false', async () => {
     const { lastFrame } = render(
       <GenerateReviewStep
         extractSessionId="sess-1"
@@ -793,6 +795,7 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
     );
     await tick();
     const frame = lastFrame() ?? '';
+    expect(frame).not.toContain('([d] removed list)');
     expect(frame).not.toMatch(/d for details/);
   });
 
