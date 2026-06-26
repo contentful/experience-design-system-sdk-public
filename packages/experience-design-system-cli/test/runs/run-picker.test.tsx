@@ -16,6 +16,8 @@ function makeRun(id: string, overrides: Partial<RunRecord> = {}): RunRecord {
     savePath: '/work/foo/dist',
     componentCount: 12,
     tokenCount: 0,
+    tokensPath: null,
+    tokenSessionId: null,
     agent: 'claude',
     pushedTo: { spaceId: 's', environmentId: 'master', host: 'api.contentful.com' },
     extractSessionId: 'extract',

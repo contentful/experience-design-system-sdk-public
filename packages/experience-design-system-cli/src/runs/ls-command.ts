@@ -53,13 +53,18 @@ function renderDetail(run: RunRecord, write: (s: string) => void): void {
     `Saved:   ${run.savePath}`,
     `Components: ${run.componentCount}`,
     `Tokens:     ${run.tokenCount}`,
+  ];
+  if (run.tokensPath) {
+    lines.push(`Tokens saved: ${run.tokensPath}`);
+  }
+  lines.push(
     `Agent:      ${run.agent}`,
     `Pushed:     ${formatPushed(run)}`,
     '',
     `Push to Contentful:   experiences import --push-from-run ${run.id}`,
     `Modify in wizard:     experiences import --modify ${run.id}`,
     '',
-  ];
+  );
   write(lines.join('\n'));
 }
 

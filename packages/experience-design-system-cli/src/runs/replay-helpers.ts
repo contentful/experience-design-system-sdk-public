@@ -107,6 +107,23 @@ export async function replayRun(opts: ReplayRunOptions): Promise<void> {
     throw new Error(result.error);
   }
 
+  // Push the tokens session too when the run has one. Tokens live in their
+  // own pipeline.db session (separate from extract/generate), so a single
+  // `apply push --session <id>` only covers components. Without this second
+  // push, design tokens recorded by the run never reach Contentful on replay.
+  if (run.tokenSessionId) {
+    const tokenResult = await pushRunSession({
+      sessionId: run.tokenSessionId,
+      spaceId,
+      environmentId,
+      cmaToken,
+      ...(host ? { host } : {}),
+    });
+    if (!tokenResult.ok) {
+      throw new Error(tokenResult.error);
+    }
+  }
+
   await updateRun(run.id, {
     pushedTo: { spaceId, environmentId, host: host || '' },
   });
@@ -145,6 +162,7 @@ export async function modifyRun(opts: ModifyRunOptions): Promise<void> {
   await launchModifyWizard({
     extractSessionId: run.extractSessionId,
     generateSessionId: run.generateSessionId,
+    tokenSessionId: run.tokenSessionId,
     projectPath: run.projectPath,
     savePath: run.savePath,
     entryStep: 'final-review',

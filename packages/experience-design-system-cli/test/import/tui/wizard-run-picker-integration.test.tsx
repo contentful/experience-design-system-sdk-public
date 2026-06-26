@@ -21,6 +21,8 @@ function makeRun(id: string, overrides: Partial<RunRecord> = {}): RunRecord {
     savePath: '/work/foo/dist',
     componentCount: 3,
     tokenCount: 12,
+    tokensPath: null,
+    tokenSessionId: null,
     agent: 'claude',
     pushedTo: null,
     extractSessionId: 'ex',

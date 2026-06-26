@@ -6,6 +6,10 @@
 export type ModifyLauncherInput = {
   extractSessionId: string;
   generateSessionId: string | null;
+  /** Token session id from the run record; null when no tokens were
+   *  generated. Forwarded to the wizard so the modify entry pre-loads
+   *  tokens alongside the extract/generate sessions. */
+  tokenSessionId?: string | null;
   projectPath: string;
   savePath: string;
   entryStep: 'scope-gate' | 'final-review';
@@ -28,6 +32,7 @@ export async function launchModifyWizard(input: ModifyLauncherInput): Promise<vo
     outDirOverride?: string;
     seedExtractSessionId?: string;
     seedGenerateSessionId?: string;
+    seedTokenSessionId?: string;
     initialStep?: 'scope-gate' | 'final-review';
     initialSpaceId?: string;
     initialEnvironmentId?: string;
@@ -45,6 +50,7 @@ export async function launchModifyWizard(input: ModifyLauncherInput): Promise<vo
     initialStep: input.entryStep,
   };
   if (input.generateSessionId) props.seedGenerateSessionId = input.generateSessionId;
+  if (input.tokenSessionId) props.seedTokenSessionId = input.tokenSessionId;
   if (input.saveMode === 'overwrite') props.outDirOverride = input.savePath;
   if (input.outDirOverride) props.outDirOverride = input.outDirOverride;
   if (input.initialSpaceId) props.initialSpaceId = input.initialSpaceId;
