@@ -81,6 +81,35 @@ describe('runLsCommand', () => {
     expect(text).toContain(longSave);
   });
 
+  describe('STALE column and status block', () => {
+    it('adds a STALE header to the table and renders empty cells for fresh / UNKNOWN runs', async () => {
+      mockListRuns.mockResolvedValueOnce([sampleRun()]);
+      const out: string[] = [];
+      await runLsCommand({ write: (s) => out.push(s) });
+      const text = out.join('');
+      expect(text).toContain('STALE');
+    });
+
+    it('detail view prints Status: UNKNOWN for v2 records without a sourceFingerprint', async () => {
+      mockResolveRunTarget.mockResolvedValueOnce(sampleRun({ sourceFingerprint: null }));
+      const out: string[] = [];
+      await runLsCommand({ write: (s) => out.push(s), target: '01HXYZABCDEFGHJKMNPQRSTVWXY' });
+      expect(out.join('')).toContain('Status: UNKNOWN');
+    });
+
+    it('detail view prints Status: FRESH when the fingerprint matches an empty source set', async () => {
+      mockResolveRunTarget.mockResolvedValueOnce(
+        sampleRun({
+          sourceFingerprint: { files: {}, rawTokensPath: null, rawTokensMtime: null, rawTokensContentHash: null },
+          savedFingerprint: { componentsJsonHash: null, tokensJsonHash: null },
+        }),
+      );
+      const out: string[] = [];
+      await runLsCommand({ write: (s) => out.push(s), target: '01HXYZABCDEFGHJKMNPQRSTVWXY' });
+      expect(out.join('')).toContain('Status: FRESH');
+    });
+  });
+
   describe('single-run detail view', () => {
     it('prints detail block when positional id is supplied', async () => {
       mockResolveRunTarget.mockResolvedValueOnce(sampleRun());
