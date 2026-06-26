@@ -83,6 +83,32 @@ describe('launchModifyWizard prop wiring', () => {
     expect(captured.props?.['initialStep']).toBe('final-review');
   });
 
+  it('threads tokenSessionId as seedTokenSessionId when set', async () => {
+    await launchModifyWizard({
+      extractSessionId: 'e1',
+      generateSessionId: 'g1',
+      tokenSessionId: 't1',
+      projectPath: '/p',
+      savePath: '/p/dist',
+      entryStep: 'final-review',
+      saveMode: 'prompt',
+    });
+    expect(captured.props?.['seedTokenSessionId']).toBe('t1');
+  });
+
+  it('omits seedTokenSessionId when tokenSessionId is null', async () => {
+    await launchModifyWizard({
+      extractSessionId: 'e1',
+      generateSessionId: 'g1',
+      tokenSessionId: null,
+      projectPath: '/p',
+      savePath: '/p/dist',
+      entryStep: 'final-review',
+      saveMode: 'prompt',
+    });
+    expect(captured.props?.['seedTokenSessionId']).toBeUndefined();
+  });
+
   it('threads creds from initialSpaceId / initialEnvironmentId / initialHost when provided', async () => {
     await launchModifyWizard({
       extractSessionId: 'e1',
