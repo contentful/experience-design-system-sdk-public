@@ -49,6 +49,10 @@ import { writeExperiencesCredentials } from '../../credentials-store.js';
 import {
   nextStepAfterScopeGate,
   nextStepAfterCredentialsValidated,
+  shouldBypassPreview,
+  buildSkippedPreviewTransition,
+  shouldRefusePush,
+  buildSkippedPushTransition,
 } from './wizard-state-transitions.js';
 
 type WizardStep =
@@ -137,6 +141,12 @@ type WizardState = {
   // operator's credential-entry time overlaps with the LLM call).
   generatePrefetchStatus: 'idle' | 'running' | 'complete' | 'failed';
   generatePrefetchError: string | null;
+  // Skip-credentials escape hatch (see dsi-tui-skip-credentials spec).
+  // When true, the wizard advanced past the credentials step without
+  // validating creds. Downstream effects: previewImport is bypassed,
+  // push is disabled at the push-decision-gate, and runPush refuses to
+  // execute if it's somehow reached.
+  credentialsSkipped: boolean;
 };
 
 function findCliPath(): string {
@@ -389,6 +399,7 @@ export function WizardApp({
     credentialsValidating: false,
     generatePrefetchStatus: 'idle',
     generatePrefetchError: null,
+    credentialsSkipped: false,
   });
 
   useEffect(() => {
@@ -1009,6 +1020,15 @@ export function WizardApp({
     cmaToken: string,
     host: string,
   ) => {
+    // Skip-credentials short-circuit. When the operator pressed `s` on the
+    // credentials screen, we never got a working token — calling
+    // previewImport would 401/403 (or worse, send a half-formed manifest
+    // somewhere). Jump straight to the push-decision-gate; Task 3 disables
+    // the push options downstream.
+    if (shouldBypassPreview(state)) {
+      update(buildSkippedPreviewTransition());
+      return;
+    }
     update({ step: 'previewing' });
     const resolvedHost = resolveWizardHost(host);
     try {
@@ -1154,6 +1174,16 @@ export function WizardApp({
     acknowledgeBreakingChanges: boolean,
     preview?: ServerPreviewResponse | null,
   ) => {
+    // Skip-credentials defensive guard. The push-decision-gate disables
+    // push-emitting choices when `credentialsSkipped` is true, so we
+    // should never get here in practice. But if a state-machine bug or
+    // future regression ever did, refuse to issue the API call — there
+    // is no validated token and the operator explicitly opted out of
+    // push. Route back to the local-save (print-gate) path instead.
+    if (shouldRefusePush(state)) {
+      update(buildSkippedPushTransition());
+      return;
+    }
     if (preview) {
       const hasComponentChanges =
         preview.components.new.length > 0 ||
@@ -1656,6 +1686,7 @@ export function WizardApp({
             summary={summary}
             context={`Save ${files || 'output files'} to disk, push to your Contentful space, or both.`}
             fileList={files || 'files'}
+            pushDisabled={state.credentialsSkipped}
             onChoice={(choice) => {
               const action = chooseGateAction(choice);
               if (action === 'save-and-push') {
@@ -1705,6 +1736,15 @@ export function WizardApp({
                   }
                 : undefined
             }
+            onSkip={() => {
+              // Skip-credentials: mark the wizard as skipped, clear any
+              // stale credentialsError banner, and advance through the
+              // normal post-credentials branch. The in-flight generate
+              // prefetch (PR #54) is intentionally NOT cancelled here —
+              // the operator still wants to see classifications.
+              update({ credentialsSkipped: true, credentialsError: '' });
+              void advanceAfterCredentialsValidated();
+            }}
             onQuit={() => {
               cancelGeneratePrefetch();
               process.exit(0);
