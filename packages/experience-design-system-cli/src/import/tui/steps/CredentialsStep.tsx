@@ -12,11 +12,28 @@ type CredentialsStepProps = {
   initialEnvironmentId?: string;
   initialCmaToken?: string;
   initialHost?: string;
+  /**
+   * When true, the credentials screen stays mounted but locks input and shows
+   * an inline "Validating credentials..." status. Replaces the previous
+   * dedicated `validating-credentials` render screen so the operator sees a
+   * continuous credentials surface instead of a transient loading screen
+   * (Change 1 of the wizard prefetch refactor).
+   */
+  validating?: boolean;
+  /** Inline status describing in-flight background generation prefetch. */
+  generatePrefetchStatus?: 'idle' | 'running' | 'complete' | 'failed';
+  /** Error message from a failed generation prefetch (rendered as a banner). */
+  generatePrefetchError?: string | null;
   /** Called when the user submits with any field changed from its initial value */
   onConfirm: (spaceId: string, environmentId: string, cmaToken: string, host: string) => void;
   /** Called when the user submits without changing any field (use existing creds as-is) */
   onContinue?: (spaceId: string, environmentId: string, cmaToken: string, host: string) => void;
   onQuit: () => void;
+  /**
+   * Optional retry callback wired up when a background generation prefetch
+   * failed mid-credentials-entry. The operator presses R to re-trigger.
+   */
+  onRetryPrefetch?: () => void;
 };
 
 export function CredentialsStep({
@@ -26,9 +43,13 @@ export function CredentialsStep({
   initialEnvironmentId = 'master',
   initialCmaToken = '',
   initialHost,
+  validating = false,
+  generatePrefetchStatus = 'idle',
+  generatePrefetchError = null,
   onConfirm,
   onContinue,
   onQuit,
+  onRetryPrefetch,
 }: CredentialsStepProps): React.ReactElement {
   const normalizedInitialHost = toConfiguredHost(initialHost) ?? DEFAULT_CONFIGURED_HOST;
   const [spaceId, setSpaceId] = useState(initialSpaceId);
@@ -45,6 +66,21 @@ export function CredentialsStep({
   }, []);
 
   useImmediateInput((input, key) => {
+    // While we are validating credentials, the screen stays mounted but the
+    // form is locked — any input is dropped. The exception is `R` when a
+    // prefetch failed and we expose a retry hook (so the operator can recover
+    // without backing out of the wizard).
+    if (validating) {
+      return;
+    }
+    if (
+      (input === 'r' || input === 'R') &&
+      generatePrefetchStatus === 'failed' &&
+      onRetryPrefetch
+    ) {
+      onRetryPrefetch();
+      return;
+    }
     if (key.return) {
       if (activeField === 'spaceId') {
         setActiveField('environmentId');
@@ -146,6 +182,28 @@ export function CredentialsStep({
       {activeField === 'host' && <Text dimColor>Default: api.contentful.com · EU spaces: api.eu.contentful.com</Text>}
 
       {displayError && <Text color="red">✗ {displayError}</Text>}
+
+      {validating && (
+        <Text color="cyan">
+          {generatePrefetchStatus === 'running'
+            ? 'Validating credentials & finishing component generation...'
+            : 'Validating credentials...'}
+        </Text>
+      )}
+
+      {!validating && generatePrefetchStatus === 'running' && (
+        <Text dimColor>Component generation in progress...</Text>
+      )}
+      {!validating && generatePrefetchStatus === 'complete' && (
+        <Text color="green">Component generation complete.</Text>
+      )}
+      {!validating && generatePrefetchStatus === 'failed' && (
+        <Text color="yellow">
+          Component generation failed
+          {generatePrefetchError ? `: ${generatePrefetchError}` : ''}. Will retry after credential validation.
+          {onRetryPrefetch ? ' Press R to retry now.' : ''}
+        </Text>
+      )}
 
       <Box gap={3} marginTop={1}>
         <Text dimColor>[Enter] Next field / Submit</Text>

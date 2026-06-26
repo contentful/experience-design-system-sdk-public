@@ -26,6 +26,7 @@ import { chooseGateAction } from './push-decision-gate-helpers.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
 import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
+import { spawnGenerateChild } from './spawn-generate.js';
 import { readTokensFromPath, hasBreakingChangesWithImpact } from '../../apply/manifest.js';
 import { buildManifest } from '@contentful/experience-design-system-types';
 import type { ServerPreviewResponse, ManifestPayload } from '@contentful/experience-design-system-types';
@@ -129,6 +130,13 @@ type WizardState = {
   aiFilterProgress: { done: number; total: number } | null;
   aiDecisions: Record<string, { decision: 'accepted' | 'rejected'; reason: string }>;
   aiFilterError: string | null;
+  // Wizard prefetch refactor: tracked as inline state on the credentials screen
+  // rather than a dedicated `validating-credentials` step.
+  credentialsValidating: boolean;
+  // Background generation prefetch (kicked off from scope-gate confirm so the
+  // operator's credential-entry time overlaps with the LLM call).
+  generatePrefetchStatus: 'idle' | 'running' | 'complete' | 'failed';
+  generatePrefetchError: string | null;
 };
 
 function findCliPath(): string {
@@ -322,6 +330,18 @@ export function WizardApp({
   // snapshot write goes AFTER the subprocess's last write.
   const autoFilterDonePromiseRef = useRef<Promise<void> | null>(null);
 
+  // Background `generate components` subprocess spawned from scope-gate
+  // confirm so its LLM call overlaps with the operator's credential entry.
+  // Held in refs so we can SIGTERM on credential failure / quit, and await
+  // the promise from inside `validateCredentials` once creds come back OK.
+  const generateChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
+  const generatePromiseRef = useRef<Promise<{
+    exitCode: number;
+    signal: NodeJS.Signals | null;
+    stdout: string;
+    stderr: string;
+  }> | null>(null);
+
   const [state, setState] = useState<WizardState>({
     step: initialProjectPath ? 'token-input' : 'welcome',
     agent: initialAgent ?? 'claude',
@@ -366,6 +386,9 @@ export function WizardApp({
     aiFilterProgress: null,
     aiDecisions: {},
     aiFilterError: null,
+    credentialsValidating: false,
+    generatePrefetchStatus: 'idle',
+    generatePrefetchError: null,
   });
 
   useEffect(() => {
@@ -686,40 +709,138 @@ export function WizardApp({
     if (donePromise) await donePromise;
   };
 
-  const runGenerate = async (extractSessionId: string, tokensPath: string, acceptedCount: number) => {
-    const result = await new Promise<{
-      exitCode: number;
-      stdout: string;
-      stderr: string;
-    }>((res) => {
-      const args = [
-        findCliPath(),
-        ...buildGenerateComponentsArgs({
-          sessionId: extractSessionId,
-          tokensPath,
-          agent: state.agent,
-          noCache,
-          generatePromptPath,
-        }),
-      ];
-      const child = spawn('node', args);
-      let stdout = '';
-      let stderr = '';
-      let progressCursor: GenerateProgressState = state.generateProgress;
-      child.stdout.on('data', (d: Buffer) => {
-        stdout += String(d);
+  // Cancel a running generation prefetch (SIGTERM the child + clear refs +
+  // reset state). Best-effort — if the child has already exited, this is a
+  // no-op aside from clearing the prefetch status.
+  const cancelGeneratePrefetch = (): void => {
+    const child = generateChildRef.current;
+    if (child && !child.killed) {
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        // best-effort
+      }
+    }
+    generateChildRef.current = null;
+    generatePromiseRef.current = null;
+    setState((prev) => ({
+      ...prev,
+      generatePrefetchStatus: 'idle',
+      generatePrefetchError: null,
+      generateProgress: null,
+    }));
+  };
+
+  // Spawn `generate components` in the background. Wires up the same
+  // stderr-progress streaming as `runGenerate` but stores the in-flight
+  // promise in a ref so the post-credentials path can await it.
+  const startGeneratePrefetch = (
+    extractSessionId: string,
+    tokensPath: string,
+  ): Promise<{
+    exitCode: number;
+    signal: NodeJS.Signals | null;
+    stdout: string;
+    stderr: string;
+  }> => {
+    const args = [
+      findCliPath(),
+      ...buildGenerateComponentsArgs({
+        sessionId: extractSessionId,
+        tokensPath,
+        agent: state.agent,
+        noCache,
+      }),
+    ];
+    let progressCursor: GenerateProgressState = null;
+    const { child, donePromise } = spawnGenerateChild({
+      command: 'node',
+      args,
+      onStderr: (chunk) => {
+        const nextProgress = parseGenerateStderrChunk(chunk, progressCursor);
+        if (nextProgress !== progressCursor) {
+          progressCursor = nextProgress;
+          setState((prev) => ({ ...prev, generateProgress: nextProgress }));
+        }
+      },
+    });
+    generateChildRef.current = child;
+    generatePromiseRef.current = donePromise;
+    setState((prev) => ({
+      ...prev,
+      generatePrefetchStatus: 'running',
+      generatePrefetchError: null,
+    }));
+    donePromise
+      .then((result) => {
+        // Clear the child ref regardless of how it ended.
+        generateChildRef.current = null;
+        if (result.signal === 'SIGTERM') {
+          // Caller already reset state via cancelGeneratePrefetch.
+          return;
+        }
+        if (result.exitCode !== 0) {
+          const tail = result.stderr.trim().split('\n').slice(-3).join('\n') || `exit ${result.exitCode}`;
+          setState((prev) => ({
+            ...prev,
+            generatePrefetchStatus: 'failed',
+            generatePrefetchError: tail,
+            generateProgress: null,
+          }));
+          return;
+        }
+        const sessionMatch = /^session=(.+)$/m.exec(result.stdout);
+        const generateSessionId = sessionMatch ? sessionMatch[1]!.trim() : null;
+        const countMatch = /(\d+) components?/.exec(result.stderr);
+        const generatedCount = countMatch ? Number(countMatch[1]) : 0;
+        const renamedMatch = /^renamed-slots:\s*(\d+)$/m.exec(result.stdout);
+        const renamedSlotsCount = renamedMatch ? Number(renamedMatch[1]) : 0;
+        // Persist generated state but DO NOT auto-advance — the credentials
+        // path will pick this up via `advanceAfterCredentialsValidated`.
+        setState((prev) => ({
+          ...prev,
+          generateSessionId,
+          generatedCount,
+          renamedSlotsCount,
+          generateProgress: null,
+          generatePrefetchStatus: 'complete',
+        }));
+      })
+      .catch(() => {
+        generateChildRef.current = null;
+        setState((prev) => ({
+          ...prev,
+          generatePrefetchStatus: 'failed',
+          generatePrefetchError: 'subprocess error',
+        }));
       });
-      child.stderr.on('data', (d: Buffer) => {
-        const chunk = String(d);
-        stderr += chunk;
+    return donePromise;
+  };
+
+  const runGenerate = async (extractSessionId: string, tokensPath: string, acceptedCount: number) => {
+    const args = [
+      findCliPath(),
+      ...buildGenerateComponentsArgs({
+        sessionId: extractSessionId,
+        tokensPath,
+        agent: state.agent,
+        noCache,
+        generatePromptPath,
+      }),
+    ];
+    let progressCursor: GenerateProgressState = state.generateProgress;
+    const { donePromise } = spawnGenerateChild({
+      command: 'node',
+      args,
+      onStderr: (chunk) => {
         const nextProgress = parseGenerateStderrChunk(chunk, progressCursor);
         if (nextProgress !== progressCursor) {
           progressCursor = nextProgress;
           update({ generateProgress: nextProgress });
         }
-      });
-      child.on('exit', (code) => res({ exitCode: code ?? 0, stdout, stderr }));
+      },
     });
+    const result = await donePromise;
 
     if (result.exitCode !== 0) {
       update({
@@ -796,7 +917,9 @@ export function WizardApp({
   };
 
   const validateCredentials = async (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
-    update({ step: 'validating-credentials' });
+    // Inline validation: stay on the credentials step, flip the validating
+    // boolean so CredentialsStep locks input + renders an inline status.
+    update({ step: 'credentials', credentialsValidating: true, credentialsError: '' });
     try {
       const resolvedHost = resolveWizardHost(host);
       const client = new ImportApiClient({
@@ -806,18 +929,25 @@ export function WizardApp({
         host: resolvedHost,
       });
       await client.validateToken();
+      update({ credentialsValidating: false });
       await advanceAfterCredentialsValidated();
     } catch (e) {
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
-        update({ step: 'credentials', credentialsError: e.message });
+        // Validation failure: cancel any in-flight generate prefetch so we
+        // don't leave an orphaned subprocess running after the operator backs
+        // out (Risk #1 in the spec).
+        cancelGeneratePrefetch();
+        update({ step: 'credentials', credentialsValidating: false, credentialsError: e.message });
         return;
       }
       const msg = e instanceof Error ? e.message : 'Credential check failed';
+      cancelGeneratePrefetch();
       update({
         step: 'error',
         errorStep: 'validating-credentials',
         errorMessage: msg,
         errorAllowCredentialRetry: false,
+        credentialsValidating: false,
       });
     }
   };
@@ -844,6 +974,23 @@ export function WizardApp({
           errorMessage: 'Internal error: extract session ID missing after credential validation.',
         });
         return;
+      }
+      // Prefetch path: if a background generate is already running or has
+      // already completed, await it (or use its result) instead of spawning
+      // a second LLM call.
+      const inflight = generatePromiseRef.current;
+      if (inflight) {
+        const result = await inflight;
+        generatePromiseRef.current = null;
+        if (result.exitCode === 0 && result.signal !== 'SIGTERM') {
+          // The donePromise.then() handler already populated
+          // generateSessionId / generatedCount in state. Advance to
+          // final-review using the latest values via functional setState so
+          // we read whichever update landed last.
+          setState((prev) => ({ ...prev, step: 'final-review' }));
+          return;
+        }
+        // Prefetch failed — fall through to retry via a fresh runGenerate.
       }
       if (await runAgentAuthCheck('generating')) {
         void runGenerate(sid, state.tokensPath, state.acceptedCount);
@@ -1396,8 +1543,17 @@ export function WizardApp({
                     }
                     return;
                   }
-                  // next === 'credentials' (push enabled, gather + validate
-                  // creds upfront before we pay the LLM cost of generating).
+                  // next === 'credentials' (push enabled). Kick off the
+                  // generate child in the background so the LLM call overlaps
+                  // with the operator's credential entry. We only prefetch
+                  // when we have accepted components to classify AND push is
+                  // enabled (noPush path is already excluded — the scope-gate
+                  // helper would have returned 'generating' there).
+                  if (acceptedCount > 0 && !noPush) {
+                    if (await runAgentAuthCheck('credentials')) {
+                      startGeneratePrefetch(sid, state.tokensPath);
+                    }
+                  }
                   update({ step: 'credentials' });
                 },
                 onAdvanceToPushFlow: (count) => {
@@ -1533,11 +1689,25 @@ export function WizardApp({
             initialCmaToken={state.cmaToken}
             initialHost={state.host}
             error={state.credentialsError || undefined}
+            validating={state.credentialsValidating}
+            generatePrefetchStatus={state.generatePrefetchStatus}
+            generatePrefetchError={state.generatePrefetchError}
             onConfirm={(spaceId, environmentId, cmaToken, host) => {
               void confirmCredentials(spaceId, environmentId, cmaToken, host);
             }}
             onContinue={advanceWithCredentials}
-            onQuit={() => process.exit(0)}
+            onRetryPrefetch={
+              state.generatePrefetchStatus === 'failed' && sessionRef.current.extractSessionId
+                ? () => {
+                    const sid = sessionRef.current.extractSessionId!;
+                    void startGeneratePrefetch(sid, state.tokensPath);
+                  }
+                : undefined
+            }
+            onQuit={() => {
+              cancelGeneratePrefetch();
+              process.exit(0);
+            }}
           />
         );
 
@@ -1560,15 +1730,11 @@ export function WizardApp({
           />
         );
 
-      case 'validating-credentials':
-        return (
-          <RunningStep
-            stepNumber={totalSteps - 1}
-            totalSteps={totalSteps}
-            title="Validating credentials"
-            description="Checking that your space ID and CMA token are valid..."
-          />
-        );
+      // 'validating-credentials' is intentionally NOT rendered as a dedicated
+      // screen any more (see CredentialsStep `validating` prop). The step
+      // value is kept in the union for back-compat with existing imports/tests
+      // but should never actually be set — `validateCredentials` keeps the
+      // step on 'credentials' and toggles `credentialsValidating` instead.
 
       case 'previewing':
         return (
@@ -1688,6 +1854,13 @@ export function WizardApp({
             }
           />
         );
+
+      // 'validating-credentials' kept in the WizardStep union for back-compat
+      // but is no longer reachable as a step (validateCredentials toggles the
+      // `credentialsValidating` boolean while leaving step on 'credentials').
+      // Default-return null so the switch is exhaustive.
+      default:
+        return null;
     }
   })();
 
