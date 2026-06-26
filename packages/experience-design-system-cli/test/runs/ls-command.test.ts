@@ -60,4 +60,17 @@ describe('runLsCommand', () => {
     await runLsCommand({ write: () => undefined, projectPath: '/Users/m/work/foo' });
     expect(mockListRuns).toHaveBeenCalledWith(expect.objectContaining({ projectPath: '/Users/m/work/foo' }));
   });
+
+  it('renders long project and save paths without truncation', async () => {
+    const longProject = '/Users/michael.pineiro/BossOS/scratch/dsi-mock-library/components';
+    const longSave = '/Users/michael.pineiro/BossOS/scratch/dsi-mock-library/components/.contentful';
+    mockListRuns.mockResolvedValueOnce([
+      sampleRun({ projectPath: longProject, savePath: longSave }),
+    ]);
+    const out: string[] = [];
+    await runLsCommand({ write: (s) => out.push(s) });
+    const text = out.join('');
+    expect(text).toContain(longProject);
+    expect(text).toContain(longSave);
+  });
 });

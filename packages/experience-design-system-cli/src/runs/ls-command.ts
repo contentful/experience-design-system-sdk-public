@@ -8,7 +8,7 @@ export type RunLsOptions = {
 };
 
 function pad(value: string, width: number): string {
-  if (value.length >= width) return value.slice(0, width);
+  if (value.length >= width) return value;
   return value + ' '.repeat(width - value.length);
 }
 
@@ -23,13 +23,13 @@ function formatPushed(record: RunRecord): string {
   return `${record.pushedTo.spaceId}/${record.pushedTo.environmentId}`;
 }
 
-const COLUMNS: { header: string; width: number; get: (r: RunRecord) => string }[] = [
-  { header: 'ID', width: 28, get: (r) => r.id },
-  { header: 'CREATED', width: 18, get: (r) => formatCreated(r.createdAt) },
-  { header: 'PROJECT', width: 32, get: (r) => r.projectPath },
-  { header: 'SAVED TO', width: 32, get: (r) => r.savePath },
-  { header: 'COMPONENTS', width: 11, get: (r) => String(r.componentCount) },
-  { header: 'PUSHED', width: 30, get: formatPushed },
+const COLUMNS: { header: string; get: (r: RunRecord) => string }[] = [
+  { header: 'ID', get: (r) => r.id },
+  { header: 'CREATED', get: (r) => formatCreated(r.createdAt) },
+  { header: 'PROJECT', get: (r) => r.projectPath },
+  { header: 'SAVED TO', get: (r) => r.savePath },
+  { header: 'COMPONENTS', get: (r) => String(r.componentCount) },
+  { header: 'PUSHED', get: formatPushed },
 ];
 
 export async function runLsCommand(opts: RunLsOptions = {}): Promise<void> {
@@ -42,10 +42,15 @@ export async function runLsCommand(opts: RunLsOptions = {}): Promise<void> {
     write('No runs recorded yet. Run `experiences import` to create one.\n');
     return;
   }
-  const headerRow = COLUMNS.map((c) => pad(c.header, c.width)).join('  ');
+  // Auto-expand each column to max(header, max(row value)) so long paths
+  // aren't silently truncated.
+  const widths = COLUMNS.map((c) =>
+    Math.max(c.header.length, ...runs.map((r) => c.get(r).length)),
+  );
+  const headerRow = COLUMNS.map((c, i) => pad(c.header, widths[i]!)).join('  ');
   write(headerRow + '\n');
   for (const r of runs) {
-    const row = COLUMNS.map((c) => pad(c.get(r), c.width)).join('  ');
+    const row = COLUMNS.map((c, i) => pad(c.get(r), widths[i]!)).join('  ');
     write(row + '\n');
   }
 }
