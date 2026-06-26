@@ -44,6 +44,8 @@ const sampleRun = (overrides: Partial<RunRecord> = {}): RunRecord => ({
   savePath: '/p/dist',
   componentCount: 3,
   tokenCount: 4,
+  tokensPath: '/p/dist/tokens.json',
+  tokenSessionId: 't1',
   agent: 'claude',
   pushedTo: null,
   extractSessionId: 'e1',
@@ -187,7 +189,7 @@ describe('replayRun (push-only)', () => {
   });
 
   it('does NOT write components.json / tokens.json locally', async () => {
-    mockGetRun.mockResolvedValueOnce(sampleRun());
+    mockGetRun.mockResolvedValueOnce(sampleRun({ tokenSessionId: null }));
     await replayRun({
       runIdOrPath: '01HXYZ',
       spaceId: 'sp',
@@ -199,6 +201,49 @@ describe('replayRun (push-only)', () => {
     // and the helper has no save-side branch. This assertion guards against
     // a regression that would re-introduce printComponentsFromSession.
     expect(mockPushRunSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('pushes the tokens session in addition to the components session when present', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun({ tokenSessionId: 't1' }));
+    await replayRun({
+      runIdOrPath: '01HXYZ',
+      spaceId: 'sp',
+      environmentId: 'env',
+      cmaToken: 'tok',
+    });
+    expect(mockPushRunSession).toHaveBeenCalledTimes(2);
+    const sessionIds = mockPushRunSession.mock.calls.map(
+      (c) => (c[0] as { sessionId: string }).sessionId,
+    );
+    expect(sessionIds).toContain('g1');
+    expect(sessionIds).toContain('t1');
+  });
+
+  it('skips the tokens push when the run has no tokenSessionId', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun({ tokenSessionId: null }));
+    await replayRun({
+      runIdOrPath: '01HXYZ',
+      spaceId: 'sp',
+      environmentId: 'env',
+      cmaToken: 'tok',
+    });
+    expect(mockPushRunSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces the tokens-push error and does not update the run record', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun({ tokenSessionId: 't1' }));
+    mockPushRunSession
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: false, error: 'tokens push 500' });
+    await expect(
+      replayRun({
+        runIdOrPath: '01HXYZ',
+        spaceId: 'sp',
+        environmentId: 'env',
+        cmaToken: 'tok',
+      }),
+    ).rejects.toThrow(/tokens push 500/);
+    expect(mockUpdateRun).not.toHaveBeenCalled();
   });
 });
 
@@ -259,6 +304,22 @@ describe('modifyRun', () => {
         initialEnvironmentId: 'rec-env',
         initialHost: 'api.flinkly.com',
       }),
+    );
+  });
+
+  it('threads tokenSessionId from the run record into the launcher input', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun({ tokenSessionId: 't1' }));
+    await modifyRun({ runIdOrPath: '01HXYZ' });
+    expect(mockLaunchWizard).toHaveBeenCalledWith(
+      expect.objectContaining({ tokenSessionId: 't1' }),
+    );
+  });
+
+  it('passes a null tokenSessionId through unchanged', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun({ tokenSessionId: null }));
+    await modifyRun({ runIdOrPath: '01HXYZ' });
+    expect(mockLaunchWizard).toHaveBeenCalledWith(
+      expect.objectContaining({ tokenSessionId: null }),
     );
   });
 
