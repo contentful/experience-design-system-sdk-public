@@ -4,7 +4,7 @@ import { buildRunTeaserLine } from '../../../src/import/tui/run-teaser.js';
 describe('buildRunTeaserLine', () => {
   it('renders the teaser with the run id', () => {
     expect(buildRunTeaserLine('01HXYZ')).toBe(
-      "Run saved as 01HXYZ — re-export with 'experiences export 01HXYZ' or modify with 'experiences modify 01HXYZ'.",
+      "Run saved as 01HXYZ — replay with 'experiences import --from-run 01HXYZ' or modify with 'experiences import --from-run 01HXYZ --modify'.",
     );
   });
 

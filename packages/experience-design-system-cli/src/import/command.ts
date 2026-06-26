@@ -4,6 +4,7 @@ import { runPipeline } from './orchestrator.js';
 import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
+import { replayRun, modifyRun } from '../runs/replay-helpers.js';
 
 export function registerImportCommand(program: Command): void {
   program
@@ -74,6 +75,16 @@ export function registerImportCommand(program: Command): void {
       '--generate-prompt-path <path>',
       'Path to a custom .md skill prompt for generate components (bypasses bundled invariants)',
     )
+    .option(
+      '--from-run <id-or-path>',
+      "Replay a prior run by re-emitting components.json / tokens.json from its pipeline.db session. Accepts a run-id or filesystem path that matches a recorded savePath. Pair with --modify to re-open the wizard for field edits.",
+    )
+    .option(
+      '--modify',
+      'Only valid with --from-run: re-open the wizard at final-review with the prior run pre-populated for field edits',
+    )
+    .option('--overwrite', "Only valid with --from-run --modify: save back to the run's recorded savePath")
+    .option('--save-as-new', 'Only valid with --from-run --modify: always save to a new path (prompts for one)')
     .action(
       async (opts: {
         spaceId?: string;
@@ -106,7 +117,77 @@ export function registerImportCommand(program: Command): void {
         outDir?: string;
         selectPromptPath?: string;
         generatePromptPath?: string;
+        fromRun?: string;
+        modify?: boolean;
+        overwrite?: boolean;
+        saveAsNew?: boolean;
       }) => {
+        // ── --from-run handling ────────────────────────────────────────────
+        // --from-run replays a prior run from pipeline.db. Mutex checks below
+        // happen *before* any side effects (no DB reads, no wizard render).
+        if (opts.fromRun !== undefined) {
+          // --project defaults to '.' so we cannot detect "set" by truthiness;
+          // commander.getOptionValueSource would help, but here we mirror the
+          // simpler convention used elsewhere: a non-default value indicates
+          // the user passed it explicitly.
+          if (opts.project !== '.') {
+            process.stderr.write(
+              'Error: --from-run and --project are mutually exclusive. --from-run replays a prior run from pipeline.db; the project path is read from the recorded run.\n',
+            );
+            process.exit(1);
+            return;
+          }
+          if (opts.save === false) {
+            process.stderr.write(
+              'Error: --from-run and --no-save are mutually exclusive. --from-run always writes the replayed artifacts to disk.\n',
+            );
+            process.exit(1);
+            return;
+          }
+          if (!opts.modify && (opts.overwrite || opts.saveAsNew)) {
+            process.stderr.write(
+              'Error: --overwrite and --save-as-new only apply with --modify.\n',
+            );
+            process.exit(1);
+            return;
+          }
+          if (opts.overwrite && opts.saveAsNew) {
+            process.stderr.write(
+              'Error: --overwrite and --save-as-new are mutually exclusive.\n',
+            );
+            process.exit(1);
+            return;
+          }
+          try {
+            if (opts.modify) {
+              await modifyRun({
+                runIdOrPath: opts.fromRun,
+                ...(opts.overwrite ? { overwrite: true } : {}),
+                ...(opts.saveAsNew ? { saveAsNew: true } : {}),
+                ...(opts.outDir ? { outDir: opts.outDir } : {}),
+              });
+            } else {
+              await replayRun({
+                runIdOrPath: opts.fromRun,
+                ...(opts.outDir ? { outDir: opts.outDir } : {}),
+                ...(opts.push !== undefined ? { push: opts.push } : {}),
+              });
+            }
+            return;
+          } catch (err) {
+            process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+            process.exit(1);
+            return;
+          }
+        }
+        if (opts.modify || opts.overwrite || opts.saveAsNew) {
+          process.stderr.write(
+            'Error: --modify, --overwrite, and --save-as-new require --from-run.\n',
+          );
+          process.exit(1);
+          return;
+        }
+
         if (opts.save === false && opts.push === false) {
           process.stderr.write(
             'Error: --no-save and --no-push together would do nothing. Pick one or neither.\n',
