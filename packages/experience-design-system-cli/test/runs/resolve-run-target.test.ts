@@ -22,6 +22,8 @@ const sampleRun = (overrides: Partial<RunRecord> = {}): RunRecord => ({
   savePath: '/p/dist',
   componentCount: 3,
   tokenCount: 4,
+  tokensPath: null,
+  tokenSessionId: null,
   agent: 'claude',
   pushedTo: null,
   extractSessionId: 'e1',

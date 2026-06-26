@@ -113,6 +113,10 @@ type WizardState = {
   tokenSourceChanged: boolean | null;
   skipComponents: boolean;
   tokenSessionId: string | null;
+  /** Number of tokens in the most recent `print tokens` invocation. Parsed
+   *  from the `wrote tokens.json (N tokens)` confirmation line. Used to
+   *  populate the `tokenCount` field on the run record. */
+  tokenCount: number;
   extractSessionId: string | null;
   generateSessionId: string | null;
   extractedCount: number;
@@ -282,6 +286,17 @@ function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; std
   });
 }
 
+/**
+ * Parse the `wrote tokens.json (N tokens)` confirmation line emitted by
+ * `experiences print tokens`. Returns 0 when the line cannot be parsed —
+ * the wizard still records the run; downstream consumers should treat 0 as
+ * "unknown" rather than "no tokens".
+ */
+export function parsePrintTokensCount(stdout: string): number {
+  const m = /\((\d+)\s+token/.exec(stdout);
+  return m ? Number(m[1]) : 0;
+}
+
 const WIZARD_LOG = join(tmpdir(), 'experiences-import-wizard.log');
 
 function logStep(entry: Record<string, unknown>): void {
@@ -349,6 +364,13 @@ export type WizardAppProps = {
    */
   seedGenerateSessionId?: string;
   /**
+   * Modify-entry: when set, the wizard treats the tokens step as already-run
+   * and seeds `state.tokenSessionId`. Without this, the modify entry would
+   * leave tokens unaddressable — push would skip them and `runPrintFiles`
+   * would never re-emit `tokens.json` for the modified save path.
+   */
+  seedTokenSessionId?: string;
+  /**
    * Modify-entry: overrides the wizard's initial step. When set, the wizard
    * bypasses its normal welcome/token-input bootstrap. Currently only
    * `'final-review'` is plumbed end-to-end; `'scope-gate'` is accepted for
@@ -387,6 +409,7 @@ export function WizardApp({
   generatePromptPath,
   seedExtractSessionId,
   seedGenerateSessionId,
+  seedTokenSessionId,
   initialStep,
   initialRuns,
   onRunPicked,
@@ -467,7 +490,8 @@ export function WizardApp({
     tokensPath: initialTokensPath,
     tokenSourceChanged: null,
     skipComponents: false,
-    tokenSessionId: null,
+    tokenSessionId: seedTokenSessionId ?? null,
+    tokenCount: 0,
     extractSessionId: seedExtractSessionId ?? null,
     generateSessionId: seedGenerateSessionId ?? null,
     extractedCount: 0,
@@ -646,7 +670,8 @@ export function WizardApp({
       });
       return;
     }
-    update({ step: 'path-validation', tokensPath, tokenSessionId });
+    const tokenCount = parsePrintTokensCount(r.stdout);
+    update({ step: 'path-validation', tokensPath, tokenSessionId, tokenCount });
   };
 
   const runExtract = async (projectPath: string) => {
@@ -1451,8 +1476,8 @@ export function WizardApp({
   const runPrintFiles = async (
     extractSessionId: string | null,
     outDir: string,
-    opts: { skipGate?: boolean } = {},
-  ): Promise<{ ok: boolean }> => {
+    opts: { skipGate?: boolean; tokenSessionId?: string | null } = {},
+  ): Promise<{ ok: boolean; tokensPath?: string; tokenCount?: number }> => {
     update({ step: 'printing' });
     const componentsPath = join(outDir, 'components.json');
     const printArgs = ['print', 'components', '--out', componentsPath];
@@ -1466,9 +1491,32 @@ export function WizardApp({
       });
       return { ok: false };
     }
-    // tokensPath is already on disk from generate-tokens step; just record it
+    // Co-locate tokens.json with components.json. Without this, `--out-dir`
+    // would move components.json to the operator's chosen path while leaving
+    // tokens.json behind at <projectPath>/.contentful/tokens.json.
+    let emittedTokensPath: string | undefined;
+    let emittedTokenCount: number | undefined;
+    if (opts.tokenSessionId) {
+      const tokensOut = join(outDir, 'tokens.json');
+      const tokenArgs = ['print', 'tokens', '--out', tokensOut, '--session', opts.tokenSessionId];
+      const tr = await runCli(tokenArgs);
+      if (tr.exitCode !== 0) {
+        update({
+          step: 'error',
+          errorStep: 'print tokens',
+          errorMessage: tr.stderr.trim() || 'Unknown error',
+        });
+        return { ok: false };
+      }
+      emittedTokensPath = tokensOut;
+      emittedTokenCount = parsePrintTokensCount(tr.stdout);
+    }
     update(nextStateAfterPrint({ skipGate: opts.skipGate, componentsPath }));
-    return { ok: true };
+    return {
+      ok: true,
+      ...(emittedTokensPath ? { tokensPath: emittedTokensPath } : {}),
+      ...(typeof emittedTokenCount === 'number' ? { tokenCount: emittedTokenCount } : {}),
+    };
   };
 
   const runSaveAndPush = async (): Promise<void> => {
@@ -1513,8 +1561,15 @@ export function WizardApp({
     setState((prev) => ({ ...prev, outDir: path }));
     const { extractSessionId, tokensPath } = sessionRef.current;
     const { skipGate, andPush } = pendingSaveOptionsRef.current;
-    const result = await runPrintFiles(extractSessionId, path, skipGate ? { skipGate: true } : {});
+    const result = await runPrintFiles(extractSessionId, path, {
+      ...(skipGate ? { skipGate: true } : {}),
+      ...(state.tokenSessionId ? { tokenSessionId: state.tokenSessionId } : {}),
+    });
     if (!result.ok) return;
+    // Prefer the freshly emitted path/count (covers --out-dir); fall back to
+    // the values captured during the original generate-tokens step.
+    const recordedTokensPath = result.tokensPath ?? (state.tokenSessionId ? tokensPath || null : null);
+    const recordedTokenCount = result.tokenCount ?? state.tokenCount;
     if (result.ok) {
       // Append a run record on every successful write. Best-effort: append
       // failures must not break the wizard flow (they surface on stderr).
@@ -1523,7 +1578,9 @@ export function WizardApp({
           projectPath: state.projectPath,
           savePath: path,
           componentCount: state.generatedAcceptedCount || state.generatedCount,
-          tokenCount: 0,
+          tokenCount: recordedTokenCount,
+          tokensPath: recordedTokensPath || null,
+          tokenSessionId: state.tokenSessionId,
           agent: state.agent,
           pushedTo: null,
           extractSessionId: state.extractSessionId ?? '',
