@@ -98,6 +98,49 @@ describe('shouldShowRunPicker', () => {
     expect(result.shouldShow).toBe(false);
   });
 
+  it('returns shouldShow=true for a v1 runs.json (pre-tokens schema)', async () => {
+    // v1 record shape: lacks tokensPath and tokenSessionId. The picker should
+    // still surface these runs — store.ts migrates v1 -> v2 in memory, so this
+    // helper must use READABLE_VERSIONS rather than a strict equality check.
+    const v1Run = {
+      id: 'V1A',
+      createdAt: '2026-05-01T10:00:00.000Z',
+      projectPath: '/work/foo',
+      savePath: '/work/foo/dist',
+      componentCount: 2,
+      tokenCount: 0,
+      agent: 'claude',
+      pushedTo: null,
+      extractSessionId: 'extract-v1',
+      generateSessionId: null,
+    };
+    mockReadFile.mockResolvedValue(JSON.stringify({ version: 1, runs: [v1Run] }));
+    const result = await shouldShowRunPicker({
+      flags: NO_FLAGS,
+      isTTY: true,
+      runsJsonPath: '/fake/runs.json',
+    });
+    expect(result.shouldShow).toBe(true);
+    expect(result.runs).toHaveLength(1);
+    expect(result.runs[0]?.id).toBe('V1A');
+    // Migrated fields default to null so downstream consumers see RunRecord shape.
+    expect(result.runs[0]?.tokensPath).toBeNull();
+    expect(result.runs[0]?.tokenSessionId).toBeNull();
+  });
+
+  it('returns shouldShow=false for a future runs.json version this CLI cannot read', async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({ version: 999, runs: [makeRun('A')] }),
+    );
+    const result = await shouldShowRunPicker({
+      flags: NO_FLAGS,
+      isTTY: true,
+      runsJsonPath: '/fake/runs.json',
+    });
+    expect(result.shouldShow).toBe(false);
+    expect(result.runs).toEqual([]);
+  });
+
   it('returns shouldShow=false when stdin is not a TTY', async () => {
     mockReadFile.mockResolvedValue(
       JSON.stringify({ version: RUNS_FILE_VERSION, runs: [makeRun('A')] }),

@@ -1,5 +1,16 @@
 import { readFile } from 'node:fs/promises';
-import { RUNS_FILE_VERSION, runsFilePath, type RunRecord, type RunsFile } from './store.js';
+import { READABLE_VERSIONS, runsFilePath, type RunRecord, type RunsFile } from './store.js';
+
+type MaybeV1Record = Omit<RunRecord, 'tokensPath' | 'tokenSessionId'> &
+  Partial<Pick<RunRecord, 'tokensPath' | 'tokenSessionId'>>;
+
+function migrateRecord(rec: MaybeV1Record): RunRecord {
+  return {
+    ...rec,
+    tokensPath: rec.tokensPath ?? null,
+    tokenSessionId: rec.tokenSessionId ?? null,
+  };
+}
 
 /**
  * Flags whose presence suppresses the run-picker. The picker is meant for the
@@ -71,16 +82,20 @@ export async function shouldShowRunPicker(
   } catch {
     return { shouldShow: false, runs: [] };
   }
-  let parsed: RunsFile;
+  let parsed: RunsFile & { runs: MaybeV1Record[] };
   try {
-    parsed = JSON.parse(raw) as RunsFile;
+    parsed = JSON.parse(raw) as RunsFile & { runs: MaybeV1Record[] };
   } catch {
     return { shouldShow: false, runs: [] };
   }
-  if (parsed.version !== RUNS_FILE_VERSION) {
+  // Accept any version this CLI can read (see store.ts READABLE_VERSIONS).
+  // Pre-PR-#78 v1 files are migrated to v2 in memory below; gating on strict
+  // equality with RUNS_FILE_VERSION would silently hide every v1 run.
+  if (!READABLE_VERSIONS.has(parsed.version)) {
     return { shouldShow: false, runs: [] };
   }
-  const runs = Array.isArray(parsed.runs) ? parsed.runs : [];
-  if (runs.length === 0) return { shouldShow: false, runs: [] };
+  const rawRuns = Array.isArray(parsed.runs) ? parsed.runs : [];
+  if (rawRuns.length === 0) return { shouldShow: false, runs: [] };
+  const runs = rawRuns.map(migrateRecord);
   return { shouldShow: true, runs };
 }
