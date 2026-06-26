@@ -74,12 +74,12 @@ describe('ScopeGateStep', () => {
     });
   });
 
-  it('r explicitly rejects the cursor component', () => {
+  it('r toggles the cursor component (alias for `a` in the unified model)', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Cursor starts at Button. Move down once to land on Card, then reject it.
+    // Cursor starts at Button. Move down once to land on Card, then toggle.
     stdin.write('j');
     stdin.write('r');
     stdin.write('f');
@@ -112,9 +112,14 @@ describe('ScopeGateStep', () => {
   });
 });
 
-// ── Feature 3: AI-excluded section ────────────────────────────────────────────
+// ── Pilot-2026-06-25: scope-gate UX overhaul — unified single-list model ─────
+//
+// The Feature 3 separate "AI excluded" section was removed. Every component
+// renders in one ordered list with an INCLUDED/EXCLUDED word label and a
+// persistent [AI] badge on rows the AI flagged. The cross-section navigation
+// behavior, `c` collapse keybind, and r-as-reject semantics are gone.
 
-describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
+describe('ScopeGateStep — unified AI behavior', () => {
   const MIXED = [
     { name: 'Button', componentId: 'c0' },
     { name: 'Card', componentId: 'c1' },
@@ -123,7 +128,7 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
     { name: 'Hero', componentId: 'c4' },
   ];
 
-  it('renders the AI-excluded header with count when there are rejected components', () => {
+  it('renders AI-flagged rows inline with [AI] badge and EXCLUDED label', () => {
     const { lastFrame } = render(
       <ScopeGateStep
         components={MIXED}
@@ -133,15 +138,23 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
       />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toContain('AI excluded (2)');
-    // Both excluded names + reasons appear (expanded by default).
+    // No separate "AI excluded (N)" section.
+    expect(out).not.toMatch(/AI excluded \(\d+\)/);
+    // Both AI-flagged components present with badge + reason (inline truncated).
     expect(out).toContain('BadgeIcon');
     expect(out).toContain('low semantic value');
     expect(out).toContain('DivWrapper');
     expect(out).toContain('no semantic content');
+    // Rows preserve extraction order: Button, Card, BadgeIcon, DivWrapper, Hero.
+    const lines = out.split('\n');
+    const idx = (name: string) => lines.findIndex((l) => l.includes(name));
+    expect(idx('Button')).toBeLessThan(idx('Card'));
+    expect(idx('Card')).toBeLessThan(idx('BadgeIcon'));
+    expect(idx('BadgeIcon')).toBeLessThan(idx('DivWrapper'));
+    expect(idx('DivWrapper')).toBeLessThan(idx('Hero'));
   });
 
-  it('omits the section entirely when zero AI-rejected components', () => {
+  it('omits the [AI] / [s] legend entry when zero AI-rejected components', () => {
     const allAccepted = [
       { name: 'Button', componentId: 'c0' },
       { name: 'Card', componentId: 'c1' },
@@ -155,7 +168,7 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
       />,
     );
     const out = lastFrame() ?? '';
-    expect(out).not.toContain('AI excluded');
+    expect(out).not.toContain('[AI]');
     expect(out).not.toContain('AI filtering');
   });
 
@@ -203,8 +216,8 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
     expect(out).toContain('agent crashed');
   });
 
-  it('renders <no reason given> for AI-rejected component without a reason', () => {
-    const { lastFrame } = render(
+  it('renders <no reason given> in the side panel for AI-rejected component without a reason', () => {
+    const { lastFrame, stdin } = render(
       <ScopeGateStep
         components={[
           { name: 'Foo', componentId: 'c0' },
@@ -215,50 +228,12 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
         aiFilterStatus="complete"
       />,
     );
+    // Walk cursor to NoReason then open the side panel.
+    stdin.write('j');
+    stdin.write('s');
     const out = lastFrame() ?? '';
     expect(out).toContain('NoReason');
     expect(out).toContain('no reason given');
-  });
-
-  it('collapses the AI-excluded section on c and re-expands on c again', () => {
-    const { lastFrame, stdin } = render(
-      <ScopeGateStep
-        components={MIXED}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
-    );
-    // Initially expanded — both reasons visible.
-    expect(lastFrame() ?? '').toContain('low semantic value');
-    stdin.write('c');
-    // Collapsed: header still present, but reasons hidden.
-    let out = lastFrame() ?? '';
-    expect(out).toContain('AI excluded (2)');
-    expect(out).not.toContain('low semantic value');
-    stdin.write('c');
-    out = lastFrame() ?? '';
-    expect(out).toContain('low semantic value');
-  });
-
-  it('c is a no-op when there are no AI-excluded components', () => {
-    const allAccepted = [
-      { name: 'Button', componentId: 'c0' },
-      { name: 'Card', componentId: 'c1' },
-    ];
-    const onConfirm = vi.fn();
-    const { stdin } = render(
-      <ScopeGateStep
-        components={allAccepted}
-        onConfirm={onConfirm}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
-    );
-    stdin.write('c');
-    stdin.write('f');
-    // f still works — the c keypress did not break anything.
-    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
   it('f confirms with AI-rejected components in the rejected list (dual-write contract)', () => {
@@ -274,11 +249,9 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
     stdin.write('f');
     expect(onConfirm).toHaveBeenCalledTimes(1);
     const arg = onConfirm.mock.calls[0][0];
-    // Main list (Button, Card, Hero) → accepted.
+    // Non-AI rows → accepted.
     expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Card', 'Hero']));
-    // AI-rejected (BadgeIcon, DivWrapper) → rejected, so they flow through
-    // applyScopeDecisions / writeScopeDecisionsSnapshot. This pins the dual-
-    // write invariant from commit 4b4a1ac.
+    // AI-rejected (BadgeIcon, DivWrapper) → rejected (dual-write invariant).
     expect(arg.rejected).toEqual(expect.arrayContaining(['BadgeIcon', 'DivWrapper']));
   });
 
@@ -317,35 +290,15 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
     expect(onCancelAutoFilter).not.toHaveBeenCalled();
   });
 
-  // ── Pilot-2026-06-23: cross-section navigation ──────────────────────────────
-  // F3 originally simplified Task 6 to "cursor stays in main list, c toggles
-  // collapse." Pilot testing surfaced that operators couldn't walk into the
-  // AI-excluded section to read rejection reasons. These tests pin the new
-  // cross-section behavior:
-  //   - cursor logical order is [...mainList, ...excludedList]
-  //   - initial cursor on first non-excluded row (mainList[0])
-  //   - j past last main-list row enters excluded section top (e0)
-  //   - k past first main-list row enters excluded section bottom (e_last)
-  //   - a on excluded row un-excludes (moves to main list)
-  //   - r on main row excludes (moves to AI-excluded)
-  //   - collapsed section: j/k cannot enter it
-  //   - s opens / closes the full reject_reason panel for the cursor row
-  describe('cross-section navigation', () => {
-    const MIXED = [
-      { name: 'Button', componentId: 'c0' },
-      { name: 'Card', componentId: 'c1' },
-      { name: 'BadgeIcon', componentId: 'c2', aiDecision: 'rejected' as const, aiReason: 'low semantic value' },
-      { name: 'DivWrapper', componentId: 'c3', aiDecision: 'rejected' as const, aiReason: 'no semantic content' },
-      { name: 'Hero', componentId: 'c4' },
-    ];
-
+  // ── Pilot-2026-06-25: unified cursor navigation ──────────────────────────
+  describe('cursor walks the unified flat list in extraction order', () => {
     function cursorRow(frame: string): string | null {
       const lines = frame.split('\n');
       const r = lines.find((l) => l.includes('›'));
       return r ?? null;
     }
 
-    it('initial cursor is on the first non-excluded row (Button)', () => {
+    it('initial cursor is on the first row (Button)', () => {
       const { lastFrame } = render(
         <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
@@ -354,92 +307,63 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
       expect(row!).toContain('Button');
     });
 
-    it('j past the last main-list row enters the AI-excluded section (top)', () => {
+    it('j walks through AI-flagged rows inline', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
-      // Main list (in order): Button, Card, Hero. Press j 3 times: B→C→H→excluded[0]=BadgeIcon.
-      stdin.write('j');
       stdin.write('j');
       stdin.write('j');
       const row = cursorRow(lastFrame() ?? '');
       expect(row).not.toBeNull();
+      // Third row = BadgeIcon (AI-flagged).
       expect(row!).toContain('BadgeIcon');
     });
 
-    it('k past the first main-list row enters the AI-excluded section (bottom)', () => {
+    it('k from the top row clamps at 0 (no wrap)', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
-      // Cursor at Button (index 0). One k → DivWrapper (last excluded).
       stdin.write('k');
       const row = cursorRow(lastFrame() ?? '');
       expect(row).not.toBeNull();
-      expect(row!).toContain('DivWrapper');
-    });
-
-    it('collapsed AI-excluded section: j/k stay inside main list', () => {
-      const { lastFrame, stdin } = render(
-        <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
-      );
-      // Collapse the excluded section.
-      stdin.write('c');
-      // Now press k from Button — should stay on Button (no wrap into excluded).
-      stdin.write('k');
-      let row = cursorRow(lastFrame() ?? '');
-      expect(row).not.toBeNull();
       expect(row!).toContain('Button');
-      // Press j 3 times from Button — should land on Hero (last main-list row),
-      // not enter the (collapsed) excluded section.
-      stdin.write('j');
-      stdin.write('j');
-      stdin.write('j');
-      row = cursorRow(lastFrame() ?? '');
-      expect(row).not.toBeNull();
-      expect(row!).toContain('Hero');
     });
 
-    it('a on AI-excluded row un-excludes it (moves to main list, included by default)', () => {
+    it('a on AI-flagged row toggles it INCLUDED (badge stays)', () => {
       const onConfirm = vi.fn();
-      const { stdin } = render(
+      const { lastFrame, stdin } = render(
         <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
       );
-      // Walk to BadgeIcon: j j j (Button → Card → Hero → BadgeIcon).
+      // Walk to BadgeIcon: Button → Card → BadgeIcon.
       stdin.write('j');
       stdin.write('j');
-      stdin.write('j');
-      // Un-exclude.
       stdin.write('a');
+      const out = lastFrame() ?? '';
+      // BadgeIcon now INCLUDED but still wears [AI] badge.
+      expect(out).toMatch(/\[AI\][^\n]*INCLUDED[^\n]*BadgeIcon/);
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
-      // BadgeIcon moved to main list AND defaulted to included.
       expect(arg.accepted).toContain('BadgeIcon');
       expect(arg.rejected).not.toContain('BadgeIcon');
-      // DivWrapper was untouched and remains rejected.
+      // DivWrapper untouched → still rejected.
       expect(arg.rejected).toContain('DivWrapper');
     });
 
-    it('r on main-list row excludes it (moves to AI-excluded)', () => {
+    it('r on a non-AI row toggles it EXCLUDED', () => {
       const onConfirm = vi.fn();
       const { stdin } = render(
         <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
       );
-      // Cursor on Button. r excludes Button.
-      stdin.write('r');
+      stdin.write('r'); // Toggle Button OFF.
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.rejected).toContain('Button');
-      // Card and Hero remain included.
       expect(arg.accepted).toContain('Card');
       expect(arg.accepted).toContain('Hero');
     });
 
-    it('s on AI-excluded row toggles the full reject_reason panel', () => {
-      // Reason is >60 chars so it gets truncated inline, but short enough
-      // that the panel renderer doesn't wrap it across lines.
+    it('s on AI-flagged row toggles the full reject_reason panel', () => {
       const longReason = 'low semantic value AND layout-only primitive — full reason text';
-      // Sanity: longer than the inline truncation cap so the inline form
-      // ends in an ellipsis, not the full string.
       expect(longReason.length).toBeGreaterThan(60);
       const FIXTURE = [
         { name: 'Button', componentId: 'c0' },
@@ -449,18 +373,15 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={FIXTURE} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
-      // Walk to BadgeIcon: j j (Button → Card → BadgeIcon).
+      // Walk to BadgeIcon: Button → Card → BadgeIcon.
       stdin.write('j');
       stdin.write('j');
-      // Open source panel with full reason.
       stdin.write('s');
       let frame = lastFrame() ?? '';
-      // Full reason visible (not truncated by …).
+      expect(frame).toContain('AI rejection reason');
       expect(frame).toContain(longReason);
-      // Press s again to close.
       stdin.write('s');
       frame = lastFrame() ?? '';
-      // Panel header gone after toggle-off.
       expect(frame).not.toContain('AI rejection reason');
     });
   });
@@ -482,13 +403,9 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
     expect(out).toContain('AI excluded all components');
   });
 
-  // ── Pilot-2026-06-23 R1 + R3a: streaming AI-decision prop sync ──────────────
-  // The auto-filter writes decisions asynchronously, then re-renders with the
-  // updated `components` prop. The AI-excluded set MUST re-derive from the
-  // streaming prop, but operator overrides (a/r) must survive prop updates.
-  // Tracked as the delta-on-prop fix.
+  // ── Pilot-2026-06-23 R1 + R3a: streaming AI-decision prop sync ─────────────
   describe('streaming AI-decision sync (delta on prop)', () => {
-    it('AI-excluded section populates when components prop arrives with new aiDecision rejections after mount', () => {
+    it('AI-flagged rows surface inline when components prop arrives with new rejections after mount', () => {
       const initial = [
         { name: 'Button', componentId: 'c0' },
         { name: 'Card', componentId: 'c1' },
@@ -503,10 +420,9 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
           aiFilterProgress={{ done: 0, total: 3 }}
         />,
       );
-      // Nothing is rejected yet on mount.
-      expect(lastFrame() ?? '').not.toContain('AI excluded');
+      // No [AI] badges on mount.
+      expect(lastFrame() ?? '').not.toContain('[AI]');
 
-      // Auto-filter completes; prop is replaced with rejected decisions.
       const updated = [
         { name: 'Button', componentId: 'c0' },
         { name: 'Card', componentId: 'c1' },
@@ -521,12 +437,11 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
         />,
       );
       const frame = lastFrame() ?? '';
-      expect(frame).toContain('AI excluded (1)');
-      expect(frame).toContain('BadgeIcon');
+      expect(frame).toMatch(/\[AI\][^\n]*BadgeIcon/);
       expect(frame).toContain('low semantic value');
     });
 
-    it('operator r-exclude on a main row survives a streaming prop re-render', () => {
+    it('operator r-exclude on a row survives a streaming prop re-render', () => {
       const initial = [
         { name: 'Button', componentId: 'c0' },
         { name: 'Card', componentId: 'c1' },
@@ -535,9 +450,7 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
       const { stdin, rerender } = render(
         <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="running" />,
       );
-      // r excludes Button.
-      stdin.write('r');
-      // Prop streams in with no AI rejections, but operator's exclude must persist.
+      stdin.write('r'); // toggle Button OFF
       rerender(
         <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
       );
@@ -548,7 +461,7 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
       expect(arg.accepted).toContain('Card');
     });
 
-    it('operator a-unexclude on AI-rejected row survives a subsequent prop re-render adding new rejections', () => {
+    it('operator a-include on AI-rejected row survives a subsequent prop re-render adding new rejections', () => {
       const initial = [
         { name: 'Button', componentId: 'c0' },
         { name: 'Card', componentId: 'c1' },
@@ -558,13 +471,10 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
       const { stdin, rerender } = render(
         <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="running" />,
       );
-      // Walk to BadgeIcon: j j (Button → Card → BadgeIcon).
+      // Walk to BadgeIcon: Button → Card → BadgeIcon.
       stdin.write('j');
       stdin.write('j');
-      // Un-exclude.
-      stdin.write('a');
-      // A new rejection streams in (DivWrapper rejected). Operator's un-exclude
-      // of BadgeIcon must persist.
+      stdin.write('a'); // toggle BadgeIcon ON
       const updated = [
         ...initial,
         { name: 'DivWrapper', componentId: 'c3', aiDecision: 'rejected' as const, aiReason: 'r2' },
@@ -574,10 +484,8 @@ describe('ScopeGateStep — AI-excluded section (Feature 3)', () => {
       );
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
-      // BadgeIcon: operator un-excluded → accepted.
       expect(arg.accepted).toContain('BadgeIcon');
       expect(arg.rejected).not.toContain('BadgeIcon');
-      // DivWrapper: streaming AI rejection → rejected.
       expect(arg.rejected).toContain('DivWrapper');
     });
   });
