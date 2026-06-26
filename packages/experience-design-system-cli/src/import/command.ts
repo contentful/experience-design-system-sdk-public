@@ -97,15 +97,15 @@ export function registerImportCommand(program: Command): void {
       'Path to a custom .md skill prompt for generate components (bypasses bundled invariants)',
     )
     .option(
-      '--from-run <id-or-path>',
-      "Replay a prior run by re-emitting components.json / tokens.json from its pipeline.db session. Accepts a run-id or filesystem path that matches a recorded savePath. Pair with --modify to re-open the wizard for field edits.",
+      '--push-from-run <id-or-path>',
+      "Push a prior run's recorded pipeline.db session to Contentful WITHOUT writing components.json / tokens.json to disk. Accepts a run-id or filesystem path that matches a recorded savePath. Credentials are resolved from flags, then the run record, then 'experiences setup', then (in a TTY) an interactive prompt.",
     )
     .option(
-      '--modify',
-      'Only valid with --from-run: re-open the wizard at final-review with the prior run pre-populated for field edits',
+      '--modify <id-or-path>',
+      "Re-open the wizard at final-review with a prior run pre-populated for field edits. Accepts a run-id or filesystem path. Pair with --overwrite or --save-as-new to pick the save mode.",
     )
-    .option('--overwrite', "Only valid with --from-run --modify: save back to the run's recorded savePath")
-    .option('--save-as-new', 'Only valid with --from-run --modify: always save to a new path (prompts for one)')
+    .option('--overwrite', "Only valid with --modify: save back to the run's recorded savePath")
+    .option('--save-as-new', 'Only valid with --modify: always save to a new path (prompts for one)')
     .action(
       async (opts: {
         spaceId?: string;
@@ -140,36 +140,72 @@ export function registerImportCommand(program: Command): void {
         onConflict?: 'overwrite' | 'skip' | 'fail';
         selectPromptPath?: string;
         generatePromptPath?: string;
-        fromRun?: string;
-        modify?: boolean;
+        pushFromRun?: string;
+        modify?: string;
         overwrite?: boolean;
         saveAsNew?: boolean;
       }) => {
-        // ── --from-run handling ────────────────────────────────────────────
-        // --from-run replays a prior run from pipeline.db. Mutex checks below
-        // happen *before* any side effects (no DB reads, no wizard render).
-        if (opts.fromRun !== undefined) {
-          // --project defaults to '.' so we cannot detect "set" by truthiness;
-          // commander.getOptionValueSource would help, but here we mirror the
-          // simpler convention used elsewhere: a non-default value indicates
-          // the user passed it explicitly.
+        // ── --push-from-run handling ───────────────────────────────────────
+        // Push-only replay of a prior run. Mutex checks happen *before* any
+        // side effects (no DB reads, no wizard render).
+        if (opts.pushFromRun !== undefined) {
+          if (opts.modify !== undefined) {
+            process.stderr.write(
+              'Error: --push-from-run and --modify are mutually exclusive. --push-from-run pushes the recorded session; --modify re-opens the wizard for edits.\n',
+            );
+            process.exit(1);
+            return;
+          }
           if (opts.project !== '.') {
             process.stderr.write(
-              'Error: --from-run and --project are mutually exclusive. --from-run replays a prior run from pipeline.db; the project path is read from the recorded run.\n',
+              'Error: --push-from-run and --project are mutually exclusive. The project path is read from the recorded run.\n',
             );
             process.exit(1);
             return;
           }
           if (opts.save === false) {
             process.stderr.write(
-              'Error: --from-run and --no-save are mutually exclusive. --from-run always writes the replayed artifacts to disk.\n',
+              'Error: --push-from-run and --no-save are mutually exclusive. --push-from-run never writes to disk.\n',
             );
             process.exit(1);
             return;
           }
-          if (!opts.modify && (opts.overwrite || opts.saveAsNew)) {
+          if (opts.push === false) {
+            process.stderr.write(
+              'Error: --push-from-run and --no-push are mutually exclusive. Pushing is the whole point of --push-from-run.\n',
+            );
+            process.exit(1);
+            return;
+          }
+          if (opts.overwrite || opts.saveAsNew) {
             process.stderr.write(
               'Error: --overwrite and --save-as-new only apply with --modify.\n',
+            );
+            process.exit(1);
+            return;
+          }
+          try {
+            await replayRun({
+              runIdOrPath: opts.pushFromRun,
+              ...(opts.spaceId ? { spaceId: opts.spaceId } : {}),
+              ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
+              ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
+              ...(opts.host ? { host: opts.host } : {}),
+              interactive: !!process.stdout.isTTY,
+            });
+            return;
+          } catch (err) {
+            process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+            process.exit(1);
+            return;
+          }
+        }
+
+        // ── --modify handling ──────────────────────────────────────────────
+        if (opts.modify !== undefined) {
+          if (opts.project !== '.') {
+            process.stderr.write(
+              'Error: --modify and --project are mutually exclusive. The project path is read from the recorded run.\n',
             );
             process.exit(1);
             return;
@@ -182,20 +218,12 @@ export function registerImportCommand(program: Command): void {
             return;
           }
           try {
-            if (opts.modify) {
-              await modifyRun({
-                runIdOrPath: opts.fromRun,
-                ...(opts.overwrite ? { overwrite: true } : {}),
-                ...(opts.saveAsNew ? { saveAsNew: true } : {}),
-                ...(opts.outDir ? { outDir: opts.outDir } : {}),
-              });
-            } else {
-              await replayRun({
-                runIdOrPath: opts.fromRun,
-                ...(opts.outDir ? { outDir: opts.outDir } : {}),
-                ...(opts.push !== undefined ? { push: opts.push } : {}),
-              });
-            }
+            await modifyRun({
+              runIdOrPath: opts.modify,
+              ...(opts.overwrite ? { overwrite: true } : {}),
+              ...(opts.saveAsNew ? { saveAsNew: true } : {}),
+              ...(opts.outDir ? { outDir: opts.outDir } : {}),
+            });
             return;
           } catch (err) {
             process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
@@ -203,9 +231,10 @@ export function registerImportCommand(program: Command): void {
             return;
           }
         }
-        if (opts.modify || opts.overwrite || opts.saveAsNew) {
+
+        if (opts.overwrite || opts.saveAsNew) {
           process.stderr.write(
-            'Error: --modify, --overwrite, and --save-as-new require --from-run.\n',
+            'Error: --overwrite and --save-as-new require --modify.\n',
           );
           process.exit(1);
           return;
@@ -255,9 +284,6 @@ export function registerImportCommand(program: Command): void {
 
         const autoAcceptScope = opts.autoAcceptScope ?? false;
 
-        // Non-TTY callers must opt into either the existing --skip-* / --yes / explicit-creds
-        // "headless" path (which never reaches the wizard) or the new --auto-accept-scope flag
-        // (which runs the wizard but skips the scope gate). Anything else would hang.
         if (!process.stdout.isTTY && !isHeadless && !autoAcceptScope) {
           process.stderr.write(
             'Error: experiences import is interactive. Pass --auto-accept-scope, or use a headless mode by providing credentials (--space-id, --environment-id, --cma-token) or one of --skip-analyze, --skip-generate, --skip-apply, --yes, --dry-run, --print-prompt.\n',

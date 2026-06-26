@@ -4,15 +4,15 @@ const {
   mockGetRun,
   mockFindAllBySavePath,
   mockUpdateRun,
-  mockRunPrintComponents,
-  mockRunPrintTokens,
+  mockPushRunSession,
+  mockReadCreds,
   mockLaunchWizard,
 } = vi.hoisted(() => ({
   mockGetRun: vi.fn(),
   mockFindAllBySavePath: vi.fn(),
   mockUpdateRun: vi.fn(),
-  mockRunPrintComponents: vi.fn(),
-  mockRunPrintTokens: vi.fn(),
+  mockPushRunSession: vi.fn(),
+  mockReadCreds: vi.fn(),
   mockLaunchWizard: vi.fn(),
 }));
 
@@ -22,9 +22,12 @@ vi.mock('../../src/runs/store.js', () => ({
   updateRun: mockUpdateRun,
 }));
 
-vi.mock('../../src/runs/export-helpers.js', () => ({
-  printComponentsFromSession: mockRunPrintComponents,
-  printTokensFromSession: mockRunPrintTokens,
+vi.mock('../../src/runs/push-helpers.js', () => ({
+  pushRunSession: mockPushRunSession,
+}));
+
+vi.mock('../../src/credentials-store.js', () => ({
+  readExperiencesCredentials: mockReadCreds,
 }));
 
 vi.mock('../../src/runs/modify-launcher.js', () => ({
@@ -48,69 +51,154 @@ const sampleRun = (overrides: Partial<RunRecord> = {}): RunRecord => ({
   ...overrides,
 });
 
+const emptyCreds = { spaceId: '', environmentId: '', cmaToken: '' };
+
 beforeEach(() => {
   vi.resetAllMocks();
-  mockRunPrintComponents.mockResolvedValue({ ok: true });
-  mockRunPrintTokens.mockResolvedValue({ ok: true });
+  mockPushRunSession.mockResolvedValue({ ok: true });
   mockUpdateRun.mockResolvedValue(undefined);
+  mockReadCreds.mockResolvedValue(emptyCreds);
   mockLaunchWizard.mockResolvedValue(undefined);
 });
 
-describe('replayRun', () => {
-  it('loads from pipeline.db using the recorded generateSessionId', async () => {
+describe('replayRun (push-only)', () => {
+  it('pushes using the recorded generateSessionId when flag creds are supplied', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
-    await replayRun({ runIdOrPath: '01HXYZABCDEFGHJKMNPQRSTVWXY' });
-    expect(mockRunPrintComponents).toHaveBeenCalledWith({
-      sessionId: 'g1',
-      outPath: '/p/dist/components.json',
-    });
+    const writes: string[] = [];
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string) => { writes.push(String(chunk)); return true; }) as never;
+    try {
+      await replayRun({
+        runIdOrPath: '01HXYZ',
+        spaceId: 'sp',
+        environmentId: 'env',
+        cmaToken: 'tok',
+      });
+    } finally {
+      process.stdout.write = origWrite;
+    }
+    expect(mockPushRunSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'g1', spaceId: 'sp', environmentId: 'env', cmaToken: 'tok' }),
+    );
+    expect(writes.join('')).toContain('Pushed 3 components to sp/env');
+    expect(writes.join('')).toContain('(also: 4 tokens)');
   });
 
   it('falls back to extractSessionId when generateSessionId is null', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun({ generateSessionId: null }));
-    await replayRun({ runIdOrPath: '01HXYZ' });
-    expect(mockRunPrintComponents).toHaveBeenCalledWith({
-      sessionId: 'e1',
-      outPath: '/p/dist/components.json',
+    await replayRun({
+      runIdOrPath: '01HXYZ',
+      spaceId: 'sp',
+      environmentId: 'env',
+      cmaToken: 'tok',
     });
-  });
-
-  it('writes to outDir when provided', async () => {
-    mockGetRun.mockResolvedValueOnce(sampleRun());
-    await replayRun({ runIdOrPath: '01HXYZ', outDir: '/elsewhere' });
-    expect(mockRunPrintComponents).toHaveBeenCalledWith({
-      sessionId: 'g1',
-      outPath: '/elsewhere/components.json',
-    });
-  });
-
-  it('updates the run record after successful replay', async () => {
-    mockGetRun.mockResolvedValueOnce(sampleRun());
-    await replayRun({ runIdOrPath: '01HXYZ' });
-    expect(mockUpdateRun).toHaveBeenCalledWith(
-      '01HXYZABCDEFGHJKMNPQRSTVWXY',
-      expect.objectContaining({ savePath: '/p/dist' }),
+    expect(mockPushRunSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'e1' }),
     );
   });
 
-  it('errors when the session is no longer in pipeline.db', async () => {
-    mockGetRun.mockResolvedValueOnce(sampleRun());
-    mockRunPrintComponents.mockResolvedValueOnce({
-      ok: false,
-      error: "no generated components in session 'g1'",
+  it('resolves credentials from the run record when flags are absent', async () => {
+    mockGetRun.mockResolvedValueOnce(
+      sampleRun({ pushedTo: { spaceId: 'rec-sp', environmentId: 'rec-env', host: 'api.flinkly.com' } }),
+    );
+    mockReadCreds.mockResolvedValueOnce({
+      spaceId: '',
+      environmentId: '',
+      cmaToken: 'tok-from-store',
     });
-    await expect(replayRun({ runIdOrPath: '01HXYZ' })).rejects.toThrow(/no longer available/);
+    await replayRun({ runIdOrPath: '01HXYZ' });
+    expect(mockPushRunSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        spaceId: 'rec-sp',
+        environmentId: 'rec-env',
+        cmaToken: 'tok-from-store',
+        host: 'api.flinkly.com',
+      }),
+    );
+  });
+
+  it('errors at parse/setup time when creds are missing and not interactive', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun());
+    mockReadCreds.mockResolvedValueOnce(emptyCreds);
+    await expect(
+      replayRun({ runIdOrPath: '01HXYZ', interactive: false }),
+    ).rejects.toThrow(/requires credentials/);
+    expect(mockPushRunSession).not.toHaveBeenCalled();
+  });
+
+  it('prompts for missing credentials when interactive', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun());
+    mockReadCreds.mockResolvedValueOnce(emptyCreds);
+    const prompt = vi.fn().mockResolvedValue({
+      spaceId: 'sp-p',
+      environmentId: 'env-p',
+      cmaToken: 'tok-p',
+      host: 'api.contentful.com',
+    });
+    await replayRun({ runIdOrPath: '01HXYZ', interactive: true, promptForCredentials: prompt });
+    expect(prompt).toHaveBeenCalled();
+    expect(mockPushRunSession).toHaveBeenCalledWith(
+      expect.objectContaining({ spaceId: 'sp-p', environmentId: 'env-p', cmaToken: 'tok-p' }),
+    );
+  });
+
+  it('updates the run record pushedTo after a successful push', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun());
+    await replayRun({
+      runIdOrPath: '01HXYZ',
+      spaceId: 'sp',
+      environmentId: 'env',
+      cmaToken: 'tok',
+      host: 'api.flinkly.com',
+    });
+    expect(mockUpdateRun).toHaveBeenCalledWith(
+      '01HXYZABCDEFGHJKMNPQRSTVWXY',
+      expect.objectContaining({ pushedTo: { spaceId: 'sp', environmentId: 'env', host: 'api.flinkly.com' } }),
+    );
+  });
+
+  it('surfaces the underlying error when push fails', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun());
+    mockPushRunSession.mockResolvedValueOnce({ ok: false, error: 'CMA 401: invalid token' });
+    await expect(
+      replayRun({
+        runIdOrPath: '01HXYZ',
+        spaceId: 'sp',
+        environmentId: 'env',
+        cmaToken: 'tok',
+      }),
+    ).rejects.toThrow(/CMA 401/);
+    expect(mockUpdateRun).not.toHaveBeenCalled();
   });
 
   it('accepts an absolute filesystem path that matches a recorded savePath', async () => {
     mockFindAllBySavePath.mockResolvedValueOnce([sampleRun({ savePath: '/p/dist' })]);
-    await replayRun({ runIdOrPath: '/p/dist' });
+    await replayRun({
+      runIdOrPath: '/p/dist',
+      spaceId: 'sp',
+      environmentId: 'env',
+      cmaToken: 'tok',
+    });
     expect(mockFindAllBySavePath).toHaveBeenCalledWith('/p/dist');
     expect(mockGetRun).not.toHaveBeenCalled();
-    expect(mockRunPrintComponents).toHaveBeenCalledWith({
-      sessionId: 'g1',
-      outPath: '/p/dist/components.json',
+    expect(mockPushRunSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'g1' }),
+    );
+  });
+
+  it('does NOT write components.json / tokens.json locally', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun());
+    await replayRun({
+      runIdOrPath: '01HXYZ',
+      spaceId: 'sp',
+      environmentId: 'env',
+      cmaToken: 'tok',
     });
+    // The push-only path delegates to pushRunSession (which shells out to
+    // `apply push --session`). It never imports node:fs/promises writeFile,
+    // and the helper has no save-side branch. This assertion guards against
+    // a regression that would re-introduce printComponentsFromSession.
+    expect(mockPushRunSession).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -136,7 +224,7 @@ describe('modifyRun', () => {
     );
   });
 
-  it('--save-as-new forces a new save path (no override)', async () => {
+  it('--save-as-new forces a new save path', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
     await modifyRun({ runIdOrPath: '01HXYZ', saveAsNew: true });
     expect(mockLaunchWizard).toHaveBeenCalledWith(
