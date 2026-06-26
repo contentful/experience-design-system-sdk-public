@@ -1649,6 +1649,71 @@ describe('generation cache', () => {
     expect(computeComponentInputHash(base)).not.toBe(computeComponentInputHash(modified));
   });
 
+  it('computeComponentInputHash ignores LLM-mutated fields (description, required, defaultValue, allowedValues, tokenReference)', () => {
+    // The hash must depend only on extractor-stable fields. Any field that
+    // `applyToolCalls` may rewrite must be excluded — otherwise re-reading
+    // raw_props after a generation pass would drift the hash even when the
+    // underlying source code is unchanged (cross-session cache misses).
+    const base = {
+      component_id: 'abc123',
+      name: 'Button',
+      source: 'src/Button.tsx',
+      framework: 'react' as const,
+      props: [{ name: 'label', type: 'string', required: false }],
+      slots: [{ name: 'icon', isDefault: false }],
+    };
+    const enrichedByLLM = {
+      ...base,
+      props: [
+        {
+          name: 'label',
+          type: 'string',
+          // Fields below are all `applyToolCalls`-writable.
+          required: true,
+          description: 'LLM-written description',
+          defaultValue: 'Submit',
+          allowedValues: ['Submit', 'Cancel'],
+          tokenReference: 'tokens.label',
+        },
+      ],
+      slots: [
+        {
+          name: 'icon',
+          isDefault: false,
+          description: 'LLM-written slot description',
+          allowedComponents: ['Icon'],
+        },
+      ],
+    };
+    expect(computeComponentInputHash(base)).toBe(computeComponentInputHash(enrichedByLLM));
+  });
+
+  it('computeComponentInputHash changes when extractor-stable fields change', () => {
+    const base = {
+      component_id: 'abc123',
+      name: 'Button',
+      source: 'src/Button.tsx',
+      framework: 'react' as const,
+      props: [{ name: 'label', type: 'string', required: true }],
+      slots: [{ name: 'icon', isDefault: false }],
+    };
+    // Different prop type → different hash
+    const propTypeChanged = { ...base, props: [{ name: 'label', type: 'number', required: true }] };
+    expect(computeComponentInputHash(base)).not.toBe(computeComponentInputHash(propTypeChanged));
+
+    // Different slot name → different hash
+    const slotNameChanged = { ...base, slots: [{ name: 'header', isDefault: false }] };
+    expect(computeComponentInputHash(base)).not.toBe(computeComponentInputHash(slotNameChanged));
+
+    // Different slot isDefault → different hash
+    const slotIsDefaultChanged = { ...base, slots: [{ name: 'icon', isDefault: true }] };
+    expect(computeComponentInputHash(base)).not.toBe(computeComponentInputHash(slotIsDefaultChanged));
+
+    // Different source path → different hash
+    const sourceChanged = { ...base, source: 'src/Other.tsx' };
+    expect(computeComponentInputHash(base)).not.toBe(computeComponentInputHash(sourceChanged));
+  });
+
   it('computeTokenInputHash is stable and trims whitespace', () => {
     const hash1 = computeTokenInputHash('{ "color": "red" }');
     const hash2 = computeTokenInputHash('{ "color": "red" }  \n');
