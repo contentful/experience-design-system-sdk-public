@@ -18,6 +18,7 @@ import {
   storeCache,
   computeComponentInputHash,
 } from '../../src/session/db.js';
+import { hashPromptForSkill } from '../../src/session/cache-keys.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 
 // ---------------------------------------------------------------------------
@@ -176,7 +177,9 @@ describe('--no-cache bypasses cached component results', () => {
     const loadedComponents = loadRawComponents(db, extractSession);
     const component = loadedComponents[0]!;
     const inputHash = computeComponentInputHash(component);
-    storeCache(db, inputHash, 'component', component.component_id, priorSession, false);
+    // Seed with the actual bundled-prompt hash so the cache lookup in the CLI matches.
+    const seedPromptHash = await hashPromptForSkill('components');
+    storeCache(db, inputHash, 'component', component.component_id, priorSession, false, seedPromptHash);
     db.close();
 
     // Fake agent: emits valid tool calls so the run succeeds when cache is bypassed
@@ -239,7 +242,9 @@ describe('--no-cache bypasses cached component results', () => {
     const loadedComponents = loadRawComponents(db, extractSession);
     const component = loadedComponents[0]!;
     const inputHash = computeComponentInputHash(component);
-    storeCache(db, inputHash, 'component', component.component_id, priorSession, false);
+    // Seed with the actual bundled-prompt hash so the cache lookup in the CLI matches.
+    const seedPromptHash = await hashPromptForSkill('components');
+    storeCache(db, inputHash, 'component', component.component_id, priorSession, false, seedPromptHash);
     db.close();
 
     const { envPatch } = await makeFakeAgent();
