@@ -449,7 +449,10 @@ The select step uses `analyze select-agent` by default, letting the agent decide
 | `--yes` | — | Skip interactive confirmation in `apply push` |
 | `--viewports <path>` | — | JSON file with viewport array (passed to `apply push`) |
 | `--host <url>` | — | Override API base URL (passed to `apply push`) |
-| `--dry-run` | — | Print the generate prompt without invoking the agent |
+| `--out-dir <path>` | — | Save `components.json` / `tokens.json` to this directory; bypasses the inline save-path prompt |
+| `--on-conflict <mode>` | — | Headless conflict resolution when files exist at the save path. `overwrite` writes through; `skip` writes to a timestamped subdirectory; `fail` exits non-zero. Skips the wizard's interactive conflict gate. Mutually exclusive with `--no-save`. |
+| `--print-prompt` | — | Print the generate prompt without invoking the agent (replaces the legacy `--dry-run` prompt-print behaviour) |
+| `--dry-run` | — | _(deprecated, will change semantics)_ Print the generate prompt without invoking the agent. Use `--print-prompt` instead; `--dry-run` will mean "manifest preview, no push" in a future release. |
 
 ---
 

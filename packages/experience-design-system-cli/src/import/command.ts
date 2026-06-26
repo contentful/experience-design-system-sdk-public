@@ -5,6 +5,7 @@ import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { replayRun, modifyRun } from '../runs/replay-helpers.js';
+import { resolvePromptFlags } from './print-prompt.js';
 
 export function registerImportCommand(program: Command): void {
   program
@@ -41,7 +42,14 @@ export function registerImportCommand(program: Command): void {
     .option('--exclude-invalid', 'Automatically reject components with validation errors (empty names, collisions)')
     .option('--viewports <path>', 'JSON file with viewport array (passed to apply push)')
     .option('--host <url>', 'Override API base URL (passed to apply push)')
-    .option('--dry-run', 'Print generate components prompt without invoking the agent')
+    .option(
+      '--dry-run',
+      "(deprecated, will change semantics in a future release) Print generate components prompt without invoking the agent. Use --print-prompt for the same behaviour explicitly, or '--dry-run --no-push' for the upcoming manifest-preview semantics.",
+    )
+    .option(
+      '--print-prompt',
+      'Print the generate components prompt without invoking the agent. Replaces the legacy --dry-run prompt-print behaviour on this command.',
+    )
     .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)')
     .option(
       '--auto-filter',
@@ -122,6 +130,7 @@ export function registerImportCommand(program: Command): void {
         viewports?: string;
         host?: string;
         dryRun?: boolean;
+        printPrompt?: boolean;
         autoAcceptScope?: boolean;
         autoFilter?: boolean;
         livePreview?: boolean;
@@ -224,6 +233,15 @@ export function registerImportCommand(program: Command): void {
           return;
         }
 
+        const promptFlags = resolvePromptFlags({
+          ...(opts.dryRun !== undefined ? { dryRun: opts.dryRun } : {}),
+          ...(opts.printPrompt !== undefined ? { printPrompt: opts.printPrompt } : {}),
+        });
+        if (promptFlags.deprecationNotice) {
+          process.stderr.write(promptFlags.deprecationNotice);
+        }
+        const dryRunForward = promptFlags.forwardDryRun;
+
         const isHeadless =
           opts.skipAnalyze ||
           opts.skipGenerate ||
@@ -232,7 +250,7 @@ export function registerImportCommand(program: Command): void {
           !!opts.environmentId ||
           !!opts.cmaToken ||
           opts.yes ||
-          opts.dryRun ||
+          dryRunForward ||
           false;
 
         const autoAcceptScope = opts.autoAcceptScope ?? false;
@@ -242,7 +260,7 @@ export function registerImportCommand(program: Command): void {
         // (which runs the wizard but skips the scope gate). Anything else would hang.
         if (!process.stdout.isTTY && !isHeadless && !autoAcceptScope) {
           process.stderr.write(
-            'Error: experiences import is interactive. Pass --auto-accept-scope, or use a headless mode by providing credentials (--space-id, --environment-id, --cma-token) or one of --skip-analyze, --skip-generate, --skip-apply, --yes, --dry-run.\n',
+            'Error: experiences import is interactive. Pass --auto-accept-scope, or use a headless mode by providing credentials (--space-id, --environment-id, --cma-token) or one of --skip-analyze, --skip-generate, --skip-apply, --yes, --dry-run, --print-prompt.\n',
           );
           process.exit(1);
           return;
@@ -336,7 +354,7 @@ export function registerImportCommand(program: Command): void {
             excludeInvalid: opts.excludeInvalid ?? false,
             viewports: opts.viewports,
             host: opts.host,
-            dryRun: opts.dryRun,
+            dryRun: dryRunForward,
             selectPromptPath: opts.selectPromptPath,
           },
           (line) => process.stderr.write(line + '\n'),
