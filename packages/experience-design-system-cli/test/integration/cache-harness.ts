@@ -67,11 +67,16 @@ export async function createScriptedAgent(responderSource: string): Promise<Scri
 const { writeFileSync, appendFileSync, readFileSync, existsSync } = require('node:fs');
 const args = process.argv.slice(2);
 const prompt = args[args.length - 1] ?? '';
-// Heuristic name extraction from the inline rawComponents JSON block.
+// Restrict name extraction to the fenced raw-components JSON block so example
+// JSON fragments elsewhere in the prompt don't pollute the responder.
 const componentNames = [];
-const re = /"name"\\s*:\\s*"([^"]+)"/g;
-let m;
-while ((m = re.exec(prompt)) !== null) componentNames.push(m[1]);
+const block = prompt.match(/Raw component data \\(JSON\\):\\s*\\n\\\`\\\`\\\`json\\n([\\s\\S]*?)\\n\\\`\\\`\\\`/);
+if (block) {
+  try {
+    const parsed = JSON.parse(block[1]);
+    if (Array.isArray(parsed)) for (const c of parsed) if (c && typeof c.name === 'string') componentNames.push(c.name);
+  } catch {}
+}
 const inv = { prompt, componentNames };
 appendFileSync(${JSON.stringify(logFile)}, JSON.stringify(inv) + '\\n');
 const prev = existsSync(${JSON.stringify(countFile)}) ? Number(readFileSync(${JSON.stringify(countFile)}, 'utf8').trim() || '0') : 0;
@@ -135,14 +140,13 @@ export function selectAllResponderSource(
 export function generateComponentsResponderSource(): string {
   return `function(inv) {
     const lines = [];
-    // Parse out props and slots per component from the inline JSON block.
-    // The prompt has a single inlined JSON array containing component objects.
-    // Extract each {...} component object by bracket-matching.
-    const start = inv.prompt.indexOf('[');
-    const end = inv.prompt.lastIndexOf(']');
+    // The prompt embeds the raw components as a fenced \`\`\`json block. Pull
+    // that block specifically — the rest of the prompt is full of JSON-shaped
+    // example fragments, so a naive [..] scan would not parse.
     let comps = [];
-    if (start >= 0 && end > start) {
-      try { comps = JSON.parse(inv.prompt.slice(start, end + 1)); } catch {}
+    const m = inv.prompt.match(/Raw component data \\(JSON\\):\\s*\\n\\\`\\\`\\\`json\\n([\\s\\S]*?)\\n\\\`\\\`\\\`/);
+    if (m) {
+      try { comps = JSON.parse(m[1]); } catch {}
     }
     for (const c of comps) {
       if (!c || typeof c !== 'object' || !c.name) continue;
@@ -368,6 +372,7 @@ export function baseEnv(
     ...process.env,
     EDS_PIPELINE_DB_PATH: fix.dbPath,
     EDS_REVIEW_ARTIFACTS_DIR: fix.artifactsDir,
+    EDS_RETRY_BACKOFF_MS: '0',
     NODE_NO_WARNINGS: '1',
     ...agent.env(),
     ...extra,
