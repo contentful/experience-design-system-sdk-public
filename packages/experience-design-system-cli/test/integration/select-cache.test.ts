@@ -10,7 +10,7 @@
  *   - PR #77: fresh sessions must reuse rows when component bytes match (test 2).
  *   - PR #80: prompt-content changes invalidate rows (tests 6, 7).
  */
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
