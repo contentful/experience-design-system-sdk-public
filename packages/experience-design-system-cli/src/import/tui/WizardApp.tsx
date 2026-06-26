@@ -208,7 +208,7 @@ export function buildSelectAgentArgs(opts: {
 export type AutoFilterProgress = {
   n: number;
   total: number;
-  decision: 'accepted' | 'rejected';
+  decision: 'accepted' | 'rejected' | 'failed';
   name: string;
   reason: string;
 };
@@ -219,6 +219,10 @@ export function parseAutoFilterProgressLine(line: string): AutoFilterProgress | 
   // which forbids colons; reason is URL-encoded). We split with a limit so any
   // stray colon inside the URL-encoded reason wouldn't matter — but the encoder
   // also handles `:` as `%3A` so this is defensive.
+  //
+  // `failed` is the batch-skip signal emitted by select-agent when the LLM
+  // response omits a tool call for a component (default behavior; the
+  // `--reject-on-missing` flag converts these to `rejected` instead).
   const prefix = 'progress=select-agent:';
   if (!line.startsWith(prefix)) return null;
   const rest = line.slice(prefix.length);
@@ -228,7 +232,7 @@ export function parseAutoFilterProgressLine(line: string): AutoFilterProgress | 
   if (!counter) return null;
   const counterMatch = /^(\d+)\/(\d+)$/.exec(counter);
   if (!counterMatch) return null;
-  if (decision !== 'accepted' && decision !== 'rejected') return null;
+  if (decision !== 'accepted' && decision !== 'rejected' && decision !== 'failed') return null;
   if (!name) return null;
   const encodedReason = reasonParts.join(':');
   let reason = '';
@@ -759,14 +763,24 @@ export function WizardApp({
           if (!trimmed) continue;
           const parsed = parseAutoFilterProgressLine(trimmed);
           if (!parsed) continue;
-          setState((prev) => ({
-            ...prev,
-            aiFilterProgress: { done: parsed.n, total: parsed.total },
-            aiDecisions: {
-              ...prev.aiDecisions,
-              [parsed.name]: { decision: parsed.decision, reason: parsed.reason },
-            },
-          }));
+          setState((prev) => {
+            const next = {
+              ...prev,
+              aiFilterProgress: { done: parsed.n, total: parsed.total },
+            };
+            // `failed` rows reflect a batch-skip (LLM omitted a tool call for
+            // this component). They are visible to the operator via the
+            // counter increment, but the scope-gate decision map still keys
+            // off explicit accepted/rejected — failed rows fall through to
+            // the default (included) so the operator can decide manually.
+            if (parsed.decision === 'accepted' || parsed.decision === 'rejected') {
+              next.aiDecisions = {
+                ...prev.aiDecisions,
+                [parsed.name]: { decision: parsed.decision, reason: parsed.reason },
+              };
+            }
+            return next;
+          });
         }
       });
       // Use 'close' (not 'exit') so the status flip happens after the child's

@@ -248,6 +248,15 @@ async function selectBatch(
 
     if (!call) {
       process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.yellow('no tool call')}\n`);
+      // Emit a structured `failed` progress line so callers (notably the
+      // wizard's auto-filter stream parser) can see this gap. The wizard
+      // previously had no visibility into batch-skipped components and the
+      // scope-gate silently treated them as included. See probe doc
+      // `dsi-tui-batch-skip-probe.md`.
+      const reasonEncoded = encodeURIComponent('no-tool-call-from-agent');
+      process.stderr.write(
+        `progress=select-agent:${item.index + 1}/${total}:failed:${component.name}:${reasonEncoded}\n`,
+      );
       results.push({
         componentKey: componentKey(component),
         componentName: component.name,

@@ -58,10 +58,23 @@ describe('wizard auto-filter — parseAutoFilterProgressLine (Feature 3)', () =>
     expect(parseAutoFilterProgressLine('')).toBeNull();
   });
 
-  it('returns null when the decision is not accepted/rejected', () => {
+  it('returns null when the decision is not accepted/rejected/failed', () => {
     expect(
       parseAutoFilterProgressLine('progress=select-agent:1/3:weird:Foo:bar'),
     ).toBeNull();
+  });
+
+  it('parses a failed decision line (batch-skipped component)', () => {
+    const r = parseAutoFilterProgressLine(
+      'progress=select-agent:2/5:failed:Comp1:no-tool-call-from-agent',
+    );
+    expect(r).toEqual({
+      n: 2,
+      total: 5,
+      decision: 'failed',
+      name: 'Comp1',
+      reason: 'no-tool-call-from-agent',
+    });
   });
 
   it('handles a line with no reason (empty trailing field)', () => {
