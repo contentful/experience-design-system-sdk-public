@@ -68,6 +68,19 @@ export function registerImportCommand(program: Command): void {
       'Save components.json / tokens.json to this directory; bypasses the inline save-path prompt',
     )
     .option(
+      '--on-conflict <mode>',
+      "How to handle existing components.json / tokens.json at the save path: 'overwrite' replaces files, 'skip' writes to a timestamped subdirectory, 'fail' exits non-zero. Skips the wizard's interactive conflict gate when set.",
+      (value: string): string => {
+        if (value !== 'overwrite' && value !== 'skip' && value !== 'fail') {
+          process.stderr.write(
+            `Error: invalid --on-conflict value '${value}'. Use one of: overwrite, skip, fail.\n`,
+          );
+          process.exit(1);
+        }
+        return value;
+      },
+    )
+    .option(
       '--select-prompt-path <path>',
       'Path to a custom .md skill prompt for analyze select-agent (bypasses bundled invariants)',
     )
@@ -115,6 +128,7 @@ export function registerImportCommand(program: Command): void {
         push?: boolean;
         save?: boolean;
         outDir?: string;
+        onConflict?: 'overwrite' | 'skip' | 'fail';
         selectPromptPath?: string;
         generatePromptPath?: string;
         fromRun?: string;
@@ -202,6 +216,13 @@ export function registerImportCommand(program: Command): void {
           process.exit(1);
           return;
         }
+        if (opts.save === false && opts.onConflict) {
+          process.stderr.write(
+            'Error: --no-save and --on-conflict are mutually exclusive. --no-save disables disk writes; --on-conflict only applies when files are being written.\n',
+          );
+          process.exit(1);
+          return;
+        }
 
         const isHeadless =
           opts.skipAnalyze ||
@@ -246,6 +267,7 @@ export function registerImportCommand(program: Command): void {
             noPush?: boolean;
             noSave?: boolean;
             outDirOverride?: string;
+            onConflictMode?: 'overwrite' | 'skip' | 'fail';
             selectPromptPath?: string;
             generatePromptPath?: string;
           };
@@ -266,6 +288,7 @@ export function registerImportCommand(program: Command): void {
               noPush: opts.push === false,
               noSave: opts.save === false,
               ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
+              ...(opts.onConflict ? { onConflictMode: opts.onConflict } : {}),
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
             }),
