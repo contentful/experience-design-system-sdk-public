@@ -975,9 +975,12 @@ export function WizardApp({
       }
       // Prefetch path: if a background generate is already running or has
       // already completed, await it (or use its result) instead of spawning
-      // a second LLM call.
+      // a second LLM call. Transition to 'generating' first so the operator
+      // sees the familiar RunningStep progress screen while we wait —
+      // matching the no-prefetch flow's visual.
       const inflight = generatePromiseRef.current;
       if (inflight) {
+        update({ step: 'generating' });
         const result = await inflight;
         generatePromiseRef.current = null;
         if (result.exitCode === 0 && result.signal !== 'SIGTERM') {
