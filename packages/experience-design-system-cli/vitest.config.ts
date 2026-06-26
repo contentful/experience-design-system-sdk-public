@@ -8,5 +8,7 @@ export default defineConfig({
     exclude: ['test/review/ui.test.tsx'],
     globalSetup: ['test/setup/build.ts'],
     testTimeout: 30000,
+    pool: 'forks',
+    retry: 1,
   },
 });
