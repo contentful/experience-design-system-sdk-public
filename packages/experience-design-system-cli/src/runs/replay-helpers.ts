@@ -83,8 +83,7 @@ export async function replayRun(opts: ReplayRunOptions): Promise<void> {
   // Layered credentials resolution.
   const stored = await readExperiencesCredentials();
   let spaceId = opts.spaceId || run.pushedTo?.spaceId || stored.spaceId || '';
-  let environmentId =
-    opts.environmentId || run.pushedTo?.environmentId || stored.environmentId || '';
+  let environmentId = opts.environmentId || run.pushedTo?.environmentId || stored.environmentId || '';
   let cmaToken = opts.cmaToken || stored.cmaToken || '';
   let host = opts.host || run.pushedTo?.host || stored.host || '';
 
@@ -152,10 +151,7 @@ export async function replayRun(opts: ReplayRunOptions): Promise<void> {
   });
 
   const componentLine = `Pushed ${run.componentCount} component${run.componentCount === 1 ? '' : 's'} to ${spaceId}/${environmentId}`;
-  const tokensLine =
-    run.tokenCount > 0
-      ? ` (also: ${run.tokenCount} token${run.tokenCount === 1 ? '' : 's'})`
-      : '';
+  const tokensLine = run.tokenCount > 0 ? ` (also: ${run.tokenCount} token${run.tokenCount === 1 ? '' : 's'})` : '';
   process.stdout.write(`${componentLine}${tokensLine}\n`);
 }
 
@@ -185,11 +181,7 @@ export async function modifyRun(opts: ModifyRunOptions): Promise<void> {
       throw new Error(formatStalenessRefusal(run, formatStalenessDetail(staleness)));
     }
   }
-  const saveMode: ModifyLauncherInput['saveMode'] = opts.overwrite
-    ? 'overwrite'
-    : opts.saveAsNew
-      ? 'new'
-      : 'prompt';
+  const saveMode: ModifyLauncherInput['saveMode'] = opts.overwrite ? 'overwrite' : opts.saveAsNew ? 'new' : 'prompt';
   await launchModifyWizard({
     extractSessionId: run.extractSessionId,
     generateSessionId: run.generateSessionId,

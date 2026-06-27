@@ -43,7 +43,6 @@ export function resolvePromptFlags(flags: PromptFlags): PromptFlagsResolution {
   // Only the bare `--dry-run` path emits the deprecation notice; pairing it
   // with `--print-prompt` (or using `--print-prompt` alone) opts the operator
   // into the new explicit name, so we stay quiet.
-  const deprecationNotice =
-    flags.dryRun && !flags.printPrompt ? DRY_RUN_DEPRECATION_NOTICE : null;
+  const deprecationNotice = flags.dryRun && !flags.printPrompt ? DRY_RUN_DEPRECATION_NOTICE : null;
   return { forwardDryRun, deprecationNotice };
 }

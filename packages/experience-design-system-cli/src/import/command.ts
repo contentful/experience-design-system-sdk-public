@@ -61,26 +61,20 @@ export function registerImportCommand(program: Command): void {
       'Print the generate components prompt without invoking the agent. Replaces the legacy --dry-run prompt-print behaviour on this command.',
     )
     .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)')
-    .option(
-      '--auto-filter',
-      'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)',
-    )
+    .option('--auto-filter', 'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)')
     .option(
       '--no-auto-filter',
       'Skip the automatic AI pre-filter; jump straight to manual scope-gate (overrides the credentials.json autoFilter preference; no-op when paired with --auto-accept-scope)',
     )
     .option(
       '--no-live-preview',
-      "Skip the automatic preview re-run after each FieldEditor save (no-op when paired with --auto-accept-scope)",
+      'Skip the automatic preview re-run after each FieldEditor save (no-op when paired with --auto-accept-scope)',
     )
     .option(
       '--no-push',
       'Run extract → scope-gate → generate → final-review and exit without pushing to Contentful (no credentials prompt; live preview disabled)',
     )
-    .option(
-      '--no-save',
-      'Push without writing components.json / tokens.json to disk (default: save AND push)',
-    )
+    .option('--no-save', 'Push without writing components.json / tokens.json to disk (default: save AND push)')
     .option(
       '--out-dir <path>',
       'Save components.json / tokens.json to this directory; bypasses the inline save-path prompt',
@@ -90,9 +84,7 @@ export function registerImportCommand(program: Command): void {
       "How to handle existing components.json / tokens.json at the save path: 'overwrite' replaces files, 'skip' writes to a timestamped subdirectory, 'fail' exits non-zero. Skips the wizard's interactive conflict gate when set.",
       (value: string): string => {
         if (value !== 'overwrite' && value !== 'skip' && value !== 'fail') {
-          process.stderr.write(
-            `Error: invalid --on-conflict value '${value}'. Use one of: overwrite, skip, fail.\n`,
-          );
+          process.stderr.write(`Error: invalid --on-conflict value '${value}'. Use one of: overwrite, skip, fail.\n`);
           process.exit(1);
         }
         return value;
@@ -112,7 +104,7 @@ export function registerImportCommand(program: Command): void {
     )
     .option(
       '--modify <id-or-path>',
-      "Re-open the wizard at final-review with a prior run pre-populated for field edits. Accepts a run-id or filesystem path. Pair with --overwrite or --save-as-new to pick the save mode.",
+      'Re-open the wizard at final-review with a prior run pre-populated for field edits. Accepts a run-id or filesystem path. Pair with --overwrite or --save-as-new to pick the save mode.',
     )
     .option('--overwrite', "Only valid with --modify: save back to the run's recorded savePath")
     .option('--save-as-new', 'Only valid with --modify: always save to a new path (prompts for one)')
@@ -191,9 +183,7 @@ export function registerImportCommand(program: Command): void {
             return;
           }
           if (opts.overwrite || opts.saveAsNew) {
-            process.stderr.write(
-              'Error: --overwrite and --save-as-new only apply with --modify.\n',
-            );
+            process.stderr.write('Error: --overwrite and --save-as-new only apply with --modify.\n');
             process.exit(1);
             return;
           }
@@ -225,9 +215,7 @@ export function registerImportCommand(program: Command): void {
             return;
           }
           if (opts.overwrite && opts.saveAsNew) {
-            process.stderr.write(
-              'Error: --overwrite and --save-as-new are mutually exclusive.\n',
-            );
+            process.stderr.write('Error: --overwrite and --save-as-new are mutually exclusive.\n');
             process.exit(1);
             return;
           }
@@ -248,17 +236,13 @@ export function registerImportCommand(program: Command): void {
         }
 
         if (opts.overwrite || opts.saveAsNew) {
-          process.stderr.write(
-            'Error: --overwrite and --save-as-new require --modify.\n',
-          );
+          process.stderr.write('Error: --overwrite and --save-as-new require --modify.\n');
           process.exit(1);
           return;
         }
 
         if (opts.save === false && opts.push === false) {
-          process.stderr.write(
-            'Error: --no-save and --no-push together would do nothing. Pick one or neither.\n',
-          );
+          process.stderr.write('Error: --no-save and --no-push together would do nothing. Pick one or neither.\n');
           process.exit(1);
           return;
         }
@@ -379,7 +363,10 @@ export function registerImportCommand(program: Command): void {
           });
 
           let pickerSelection: RunPickerSelection | null = null;
-          const pickerProps: { initialRuns?: typeof pickerDecision.runs; onRunPicked?: (s: RunPickerSelection) => void } = {};
+          const pickerProps: {
+            initialRuns?: typeof pickerDecision.runs;
+            onRunPicked?: (s: RunPickerSelection) => void;
+          } = {};
           if (pickerDecision.shouldShow) {
             pickerProps.initialRuns = pickerDecision.runs;
             pickerProps.onRunPicked = (selection) => {

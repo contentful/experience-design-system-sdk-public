@@ -26,9 +26,7 @@ export type PromptForCredentialsOptions = {
   summary?: string;
 };
 
-export async function promptForPushCredentials(
-  opts: PromptForCredentialsOptions = {},
-): Promise<CollectedCredentials> {
+export async function promptForPushCredentials(opts: PromptForCredentialsOptions = {}): Promise<CollectedCredentials> {
   const { render, Box, Text } = await import('ink');
   const { useState } = await import('react');
   const { CredentialsStep } = await import('../import/tui/steps/CredentialsStep.js');
@@ -38,12 +36,7 @@ export async function promptForPushCredentials(
 
     function App(): React.ReactElement {
       const [done, setDone] = useState(false);
-      const handle = (
-        spaceId: string,
-        environmentId: string,
-        cmaToken: string,
-        host: string,
-      ) => {
+      const handle = (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
         if (done) return;
         setDone(true);
         // Defer unmount so Ink flushes the final render.
@@ -56,13 +49,9 @@ export async function promptForPushCredentials(
         return React.createElement(Box, null, React.createElement(Text, null, ''));
       }
       return React.createElement(CredentialsStep, {
-        summary:
-          opts.summary ??
-          'Enter Contentful credentials to push this run. Press Enter on each field to advance.',
+        summary: opts.summary ?? 'Enter Contentful credentials to push this run. Press Enter on each field to advance.',
         ...(opts.initialSpaceId !== undefined ? { initialSpaceId: opts.initialSpaceId } : {}),
-        ...(opts.initialEnvironmentId !== undefined
-          ? { initialEnvironmentId: opts.initialEnvironmentId }
-          : {}),
+        ...(opts.initialEnvironmentId !== undefined ? { initialEnvironmentId: opts.initialEnvironmentId } : {}),
         ...(opts.initialCmaToken !== undefined ? { initialCmaToken: opts.initialCmaToken } : {}),
         ...(opts.initialHost !== undefined ? { initialHost: opts.initialHost } : {}),
         onConfirm: handle,

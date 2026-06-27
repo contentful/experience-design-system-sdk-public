@@ -21,19 +21,13 @@
 /** Built-in fallback agent when neither a flag nor a stored preference is set. */
 export const DEFAULT_AGENT = 'claude';
 
-export function resolveAgent(
-  flagValue: string | undefined,
-  storedValue: string | undefined,
-): string {
+export function resolveAgent(flagValue: string | undefined, storedValue: string | undefined): string {
   if (flagValue && flagValue.length > 0) return flagValue;
   if (storedValue && storedValue.length > 0) return storedValue;
   return DEFAULT_AGENT;
 }
 
-export function resolveModel(
-  flagValue: string | undefined,
-  storedValue: string | undefined,
-): string | undefined {
+export function resolveModel(flagValue: string | undefined, storedValue: string | undefined): string | undefined {
   if (flagValue && flagValue.length > 0) return flagValue;
   if (storedValue && storedValue.length > 0) return storedValue;
   return undefined;

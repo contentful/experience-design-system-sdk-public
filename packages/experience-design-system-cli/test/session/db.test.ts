@@ -106,18 +106,12 @@ describe('openPipelineDb', () => {
       // Two interleaved writes from separate connections — under rollback
       // journal + no busy_timeout this would frequently throw "database is
       // locked". With WAL + busy_timeout it should always succeed.
-      db1.prepare('INSERT INTO sessions (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(
-        's1',
-        null,
-        now,
-        now,
-      );
-      db2.prepare('INSERT INTO sessions (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(
-        's2',
-        null,
-        now,
-        now,
-      );
+      db1
+        .prepare('INSERT INTO sessions (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)')
+        .run('s1', null, now, now);
+      db2
+        .prepare('INSERT INTO sessions (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)')
+        .run('s2', null, now, now);
       db1.close();
       db2.close();
     });
@@ -208,11 +202,11 @@ describe('openPipelineDb', () => {
       // Seed a session and a raw_component with the pre-Feature-3 columns only.
       db.prepare(
         `INSERT INTO sessions (id, created_at, updated_at)
-         VALUES ('s1', '2026-06-23T00:00:00Z', '2026-06-23T00:00:00Z')`
+         VALUES ('s1', '2026-06-23T00:00:00Z', '2026-06-23T00:00:00Z')`,
       ).run();
       db.prepare(
         `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at)
-         VALUES ('s1', 'c1', 'Foo', 'src/Foo.tsx', 'react', '2026-06-23T00:00:00Z')`
+         VALUES ('s1', 'c1', 'Foo', 'src/Foo.tsx', 'react', '2026-06-23T00:00:00Z')`,
       ).run();
       db.close();
       const db2 = openPipelineDb(dbPath);
@@ -527,9 +521,9 @@ describe('storeRawComponents + loadRawComponents', () => {
       // rationale is set later by the generate phase, not by storeRawComponents.
       expect(propRow.rationale).toBeNull();
 
-      const compRow = db
-        .prepare(`SELECT source_path FROM raw_components WHERE session_id = ?`)
-        .get(sessionId) as { source_path: string | null };
+      const compRow = db.prepare(`SELECT source_path FROM raw_components WHERE session_id = ?`).get(sessionId) as {
+        source_path: string | null;
+      };
       expect(compRow.source_path).toBe('/proj/Button.tsx');
       db.close();
     });
@@ -558,9 +552,9 @@ describe('storeRawComponents + loadRawComponents', () => {
       expect(propRow.source_start_line).toBeNull();
       expect(propRow.source_end_line).toBeNull();
 
-      const compRow = db
-        .prepare(`SELECT source_path FROM raw_components WHERE session_id = ?`)
-        .get(sessionId) as { source_path: string | null };
+      const compRow = db.prepare(`SELECT source_path FROM raw_components WHERE session_id = ?`).get(sessionId) as {
+        source_path: string | null;
+      };
       expect(compRow.source_path).toBeNull();
       db.close();
     });
@@ -579,9 +573,7 @@ describe('storeRawComponents + loadRawComponents', () => {
           // intentionally not a real path — loader falls back to this text
           source: 'L1\nL2\nL3\nL4',
           framework: 'react',
-          props: [
-            { name: 'title', type: 'string', required: true, sourceStartLine: 2, sourceEndLine: 3 },
-          ],
+          props: [{ name: 'title', type: 'string', required: true, sourceStartLine: 2, sourceEndLine: 3 }],
           slots: [],
         },
       ];
@@ -680,12 +672,8 @@ describe('storeRawComponents + loadRawComponents', () => {
           name: 'Hero',
           source: 'src',
           framework: 'react',
-          props: [
-            { name: 'title', type: 'string', required: true, category: 'content', description: 'Headline' },
-          ],
-          slots: [
-            { name: 'media', isDefault: false, description: 'Background media' },
-          ],
+          props: [{ name: 'title', type: 'string', required: true, category: 'content', description: 'Headline' }],
+          slots: [{ name: 'media', isDefault: false, description: 'Background media' }],
         },
       ];
       storeRawComponents(db, sessionId, components);
@@ -697,12 +685,18 @@ describe('storeRawComponents + loadRawComponents', () => {
       db.prepare(
         `UPDATE raw_components SET description = ?, component_description_rationale = ?, props_rationale = ?, slots_rationale = ? WHERE session_id = ? AND component_id = ?`,
       ).run('A hero block.', 'why-desc', 'why-props', 'why-slots', sessionId, compId);
-      db.prepare(
-        `UPDATE raw_props SET rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
-      ).run('content-text', sessionId, compId, 'title');
-      db.prepare(
-        `UPDATE raw_slots SET rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
-      ).run('keep-this-slot', sessionId, compId, 'media');
+      db.prepare(`UPDATE raw_props SET rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?`).run(
+        'content-text',
+        sessionId,
+        compId,
+        'title',
+      );
+      db.prepare(`UPDATE raw_slots SET rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?`).run(
+        'keep-this-slot',
+        sessionId,
+        compId,
+        'media',
+      );
 
       const r = loadComponentRationale(db, sessionId, 'Hero');
       expect(r).not.toBeNull();

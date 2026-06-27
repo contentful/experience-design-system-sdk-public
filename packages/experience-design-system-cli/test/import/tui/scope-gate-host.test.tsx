@@ -36,9 +36,7 @@ describe('ScopeGateHost', () => {
 
   it('shows the empty error even when autoAccept is true', () => {
     const onConfirm = vi.fn();
-    const { lastFrame } = render(
-      <ScopeGateHost components={[]} autoAccept onConfirm={onConfirm} onQuit={() => {}} />,
-    );
+    const { lastFrame } = render(<ScopeGateHost components={[]} autoAccept onConfirm={onConfirm} onQuit={() => {}} />);
     expect(lastFrame() ?? '').toMatch(/no components/i);
     expect(onConfirm).not.toHaveBeenCalled();
   });

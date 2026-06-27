@@ -33,9 +33,7 @@ function makeRun(id: string, overrides: Partial<RunRecord> = {}): RunRecord {
 
 describe('WizardApp run-picker integration', () => {
   it('renders the run picker before welcome when initialRuns is provided', async () => {
-    const { lastFrame } = render(
-      <WizardApp initialRuns={[makeRun('AAA'), makeRun('BBB')]} onRunPicked={vi.fn()} />,
-    );
+    const { lastFrame } = render(<WizardApp initialRuns={[makeRun('AAA'), makeRun('BBB')]} onRunPicked={vi.fn()} />);
     const frame = await waitForFrame(
       () => lastFrame(),
       (f) => f.includes('AAA') && /Continue from one/i.test(f),
@@ -68,22 +66,30 @@ describe('WizardApp run-picker integration', () => {
 
   it('calls onRunPicked when a run is selected with push', async () => {
     const onRunPicked = vi.fn();
-    const { lastFrame, stdin } = render(
-      <WizardApp initialRuns={[makeRun('AAA')]} onRunPicked={onRunPicked} />,
+    const { lastFrame, stdin } = render(<WizardApp initialRuns={[makeRun('AAA')]} onRunPicked={onRunPicked} />);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('AAA'),
+      3000,
     );
-    await waitForFrame(() => lastFrame(), (f) => f.includes('AAA'), 3000);
     stdin.write('\r');
-    await waitForFrame(() => lastFrame(), (f) => /Push or modify/i.test(f), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => /Push or modify/i.test(f),
+      3000,
+    );
     stdin.write('\r');
     expect(onRunPicked).toHaveBeenCalledWith({ runId: 'AAA', action: 'push' });
   });
 
   it("advances to welcome when the operator picks 'Start a new run'", async () => {
     const onRunPicked = vi.fn();
-    const { lastFrame, stdin } = render(
-      <WizardApp initialRuns={[makeRun('AAA')]} onRunPicked={onRunPicked} />,
+    const { lastFrame, stdin } = render(<WizardApp initialRuns={[makeRun('AAA')]} onRunPicked={onRunPicked} />);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('AAA'),
+      3000,
     );
-    await waitForFrame(() => lastFrame(), (f) => f.includes('AAA'), 3000);
     stdin.write('n');
     const welcome = await waitForFrame(
       () => lastFrame(),

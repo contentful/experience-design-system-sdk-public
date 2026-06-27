@@ -70,9 +70,7 @@ type GenerateReviewStepProps = {
  *
  * Within each tier (empty / non-empty) we tie-break alphabetically by `key`.
  */
-export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
-  components: T[],
-): T[] {
+export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(components: T[]): T[] {
   return [...components].sort((a, b) => {
     const aEmpty = Object.keys(a.entry.$properties ?? {}).length === 0;
     const bEmpty = Object.keys(b.entry.$properties ?? {}).length === 0;
@@ -125,9 +123,7 @@ export function GenerateReviewStep({
   const [showRemovedPanel, setShowRemovedPanel] = useState(false);
   // Lifted rationale + source panels (replaces FieldEditor's right pane).
   // Mutually exclusive states.
-  const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>(
-    'none',
-  );
+  const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>('none');
   const [panelScrollOffset, setPanelScrollOffset] = useState(0);
   const [textEntryActive, setTextEntryActive] = useState(false);
   const [componentRationale, setComponentRationale] = useState<ComponentRationale | null>(null);
@@ -137,7 +133,12 @@ export function GenerateReviewStep({
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
-    setPreviewAnnotations(applyPreviewAnnotations(response, components.map((c) => c.key)));
+    setPreviewAnnotations(
+      applyPreviewAnnotations(
+        response,
+        components.map((c) => c.key),
+      ),
+    );
     setRemovedComponents(response.components.removed ?? []);
   };
 
@@ -204,7 +205,6 @@ export function GenerateReviewStep({
     // Intentionally only on load completion — subsequent fires happen via
     // handleEditSave. Adding livePreviewHook to deps would re-fire on every
     // hook re-creation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
   // Feature 1: load review metadata (rationale + source location) for the
@@ -341,12 +341,7 @@ export function GenerateReviewStep({
     // `d` opens the panel only when live-preview is enabled and there is at
     // least one removed component to display. Sidebar-focused only so it
     // doesn't collide with FieldEditor input.
-    if (
-      input === 'd' &&
-      sidebarFocused &&
-      livePreview &&
-      removedComponents.length > 0
-    ) {
+    if (input === 'd' && sidebarFocused && livePreview && removedComponents.length > 0) {
       setShowRemovedPanel(true);
       return;
     }
@@ -571,10 +566,7 @@ export function GenerateReviewStep({
 
   // Account for the "(empty)" suffix added to zero-prop component names so the
   // sidebar doesn't truncate it.
-  const longestName = components.reduce(
-    (m, c) => Math.max(m, c.key.length + (isEmpty(c) ? ' (empty)'.length : 0)),
-    0,
-  );
+  const longestName = components.reduce((m, c) => Math.max(m, c.key.length + (isEmpty(c) ? ' (empty)'.length : 0)), 0);
   // +5 = border (1) + status icon (1) + badge column (1) + space (1) + border (1).
   // The badge column is reserved even when no annotation is present so the
   // sidebar width doesn't jitter as live-preview annotations flip in/out.
@@ -611,43 +603,43 @@ export function GenerateReviewStep({
           <Text dimColor>press d or Esc to close</Text>
         </Box>
       )}
-      {!dialogOpen && livePreview && (() => {
-        // Pilot-2026-06-23 R2: at-a-glance diff summary at the top of the
-        // step. Mutually exclusive states:
-        //   - hook running (and we don't yet have annotations) → spinner.
-        //   - hook disabled (creds rejected) → static disabled hint.
-        //   - annotations populated → counts.
-        //   - idle, no annotations, not disabled → render nothing.
-        const counts = { new: 0, changed: 0, removed: 0, breaking: 0 };
-        for (const v of previewAnnotations.values()) {
-          counts[v] = (counts[v] ?? 0) + 1;
-        }
-        const hasCounts = counts.new + counts.changed + counts.removed + counts.breaking > 0;
-        if (livePreviewHook.disabled) {
-          return <Text dimColor>{'Preview: disabled (creds rejected)'}</Text>;
-        }
-        if (livePreviewHook.status === 'running' && !hasCounts) {
-          return <Text dimColor>{`Preview: ${livePreviewSpinner} running...`}</Text>;
-        }
-        if (!hasCounts) return null;
-        return (
-          <Box>
-            <Text>{'Preview: '}</Text>
-            <Text color="green">{`${counts.new} new`}</Text>
-            <Text>{' · '}</Text>
-            <Text color="yellow">{`${counts.changed} changed`}</Text>
-            <Text>{' · '}</Text>
-            <Text dimColor>{`${counts.removed} removed`}</Text>
-            {removedComponents.length > 0 && (
-              <Text dimColor>{' ([d] removed list)'}</Text>
-            )}
-            <Text>{' · '}</Text>
-            <Text color="red" bold>
-              {`${counts.breaking} breaking`}
-            </Text>
-          </Box>
-        );
-      })()}
+      {!dialogOpen &&
+        livePreview &&
+        (() => {
+          // Pilot-2026-06-23 R2: at-a-glance diff summary at the top of the
+          // step. Mutually exclusive states:
+          //   - hook running (and we don't yet have annotations) → spinner.
+          //   - hook disabled (creds rejected) → static disabled hint.
+          //   - annotations populated → counts.
+          //   - idle, no annotations, not disabled → render nothing.
+          const counts = { new: 0, changed: 0, removed: 0, breaking: 0 };
+          for (const v of previewAnnotations.values()) {
+            counts[v] = (counts[v] ?? 0) + 1;
+          }
+          const hasCounts = counts.new + counts.changed + counts.removed + counts.breaking > 0;
+          if (livePreviewHook.disabled) {
+            return <Text dimColor>{'Preview: disabled (creds rejected)'}</Text>;
+          }
+          if (livePreviewHook.status === 'running' && !hasCounts) {
+            return <Text dimColor>{`Preview: ${livePreviewSpinner} running...`}</Text>;
+          }
+          if (!hasCounts) return null;
+          return (
+            <Box>
+              <Text>{'Preview: '}</Text>
+              <Text color="green">{`${counts.new} new`}</Text>
+              <Text>{' · '}</Text>
+              <Text color="yellow">{`${counts.changed} changed`}</Text>
+              <Text>{' · '}</Text>
+              <Text dimColor>{`${counts.removed} removed`}</Text>
+              {removedComponents.length > 0 && <Text dimColor>{' ([d] removed list)'}</Text>}
+              <Text>{' · '}</Text>
+              <Text color="red" bold>
+                {`${counts.breaking} breaking`}
+              </Text>
+            </Box>
+          );
+        })()}
       {!dialogOpen && emptyCount > 0 && (
         <Text color="yellow">
           {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
@@ -734,15 +726,23 @@ export function GenerateReviewStep({
                     const headerPath = path ?? '<unknown source path>';
                     const lines = src ? src.split('\n').slice(panelScrollOffset, panelScrollOffset + PANEL_HEIGHT) : [];
                     return (
-                      <Box flexDirection="column" width={panelWidth} borderStyle="single" borderColor="gray" paddingX={1}>
+                      <Box
+                        flexDirection="column"
+                        width={panelWidth}
+                        borderStyle="single"
+                        borderColor="gray"
+                        paddingX={1}
+                      >
                         <Text dimColor bold>{`source: ${headerPath}`}</Text>
-                        {src
-                          ? lines.map((ln, i) => (
-                              <Text key={`source-line-${i}`} dimColor>
-                                {ln}
-                              </Text>
-                            ))
-                          : <Text dimColor>{'(no source captured)'}</Text>}
+                        {src ? (
+                          lines.map((ln, i) => (
+                            <Text key={`source-line-${i}`} dimColor>
+                              {ln}
+                            </Text>
+                          ))
+                        ) : (
+                          <Text dimColor>{'(no source captured)'}</Text>
+                        )}
                         <Text dimColor>{'[s/Esc] close'}</Text>
                       </Box>
                     );
@@ -802,9 +802,7 @@ export function GenerateReviewStep({
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
                       : '  [Tab] focus list  (edit fields)'}
-                  {livePreviewHook.status === 'running' && (
-                    <Text>{`  ${livePreviewSpinner} live preview`}</Text>
-                  )}
+                  {livePreviewHook.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
                   {livePreviewHook.disabled && <Text>{'  · live preview disabled'}</Text>}
                 </Text>
               </>

@@ -16,12 +16,7 @@ function run(args: string[]): Promise<{ stdout: string; stderr: string; code: nu
 
 describe('experiences import --on-conflict — parse-time mutex errors', () => {
   it('errors when --no-save and --on-conflict are combined', async () => {
-    const { stderr, code } = await run([
-      'import',
-      '--no-save',
-      '--on-conflict',
-      'overwrite',
-    ]);
+    const { stderr, code } = await run(['import', '--no-save', '--on-conflict', 'overwrite']);
     expect(code).not.toBe(0);
     expect(stderr).toMatch(/--no-save.*--on-conflict|--on-conflict.*--no-save/);
   });

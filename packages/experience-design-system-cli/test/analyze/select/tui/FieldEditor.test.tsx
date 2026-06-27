@@ -828,7 +828,14 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
   it('enum prop: right arrow cycles default through declared values plus (unset)', async () => {
     const onChange = vi.fn();
     const { stdin } = render(
-      <FieldEditor value={ENUM_COMPONENT} width={80} height={25} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
+      <FieldEditor
+        value={ENUM_COMPONENT}
+        width={80}
+        height={25}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
     );
     // Cycle for enum: type → category → required → values → default → description.
     // Inside values, j/k navigate values not fields, so cycle backwards from
@@ -1032,7 +1039,14 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
 
   it('renders the component-description row above $properties', () => {
     const { lastFrame } = render(
-      <FieldEditor value={HERO_WITH_DESC} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+      <FieldEditor
+        value={HERO_WITH_DESC}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
     );
     const frame = lastFrame() ?? '';
     // Row label and description value visible.
@@ -1046,7 +1060,14 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
 
   it('k from the first prop row enters the component-description row', async () => {
     const { stdin, lastFrame } = render(
-      <FieldEditor value={HERO_WITH_DESC} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+      <FieldEditor
+        value={HERO_WITH_DESC}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
     );
     // Mount lands on prop[0]. Press k → component-description row.
     stdin.write('k');
@@ -1060,7 +1081,14 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
   it('typing on the component-description row updates the component-level $description', async () => {
     const onChange = vi.fn();
     const { stdin } = render(
-      <FieldEditor value={HERO_WITH_DESC} width={80} height={20} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
+      <FieldEditor
+        value={HERO_WITH_DESC}
+        width={80}
+        height={20}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
     );
     stdin.write('k'); // → component-description row
     await tick();
@@ -1075,7 +1103,14 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
 
   it('j from the component-description row enters the first prop row', async () => {
     const { stdin } = render(
-      <FieldEditor value={HERO_WITH_DESC} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+      <FieldEditor
+        value={HERO_WITH_DESC}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
     );
     // Mount on prop[0]. k → component-description. j → back to prop[0].
     stdin.write('k');
@@ -1132,14 +1167,7 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
     const onChange = vi.fn();
     const onSave = vi.fn();
     const { stdin } = render(
-      <FieldEditor
-        value={FIXTURE}
-        width={80}
-        height={30}
-        onChange={onChange}
-        onSave={onSave}
-        onDiscard={vi.fn()}
-      />,
+      <FieldEditor value={FIXTURE} width={80} height={30} onChange={onChange} onSave={onSave} onDiscard={vi.fn()} />,
     );
     // Force a serialize by toggling required on first prop, then toggling back.
     stdin.write('\r'); // enter field-edit at type
@@ -1180,14 +1208,7 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
 
     const onChange = vi.fn();
     const { stdin } = render(
-      <FieldEditor
-        value={FIXTURE}
-        width={80}
-        height={30}
-        onChange={onChange}
-        onSave={vi.fn()}
-        onDiscard={vi.fn()}
-      />,
+      <FieldEditor value={FIXTURE} width={80} height={30} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
     // Toggle required on title to force a serialize.
     stdin.write('\r');
@@ -1224,14 +1245,7 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
 
     const onChange = vi.fn();
     const { stdin } = render(
-      <FieldEditor
-        value={FIXTURE}
-        width={80}
-        height={30}
-        onChange={onChange}
-        onSave={vi.fn()}
-        onDiscard={vi.fn()}
-      />,
+      <FieldEditor value={FIXTURE} width={80} height={30} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
     stdin.write('\r');
     await tick();
@@ -1770,7 +1784,6 @@ describe('FieldEditor - rationale panels are lifted to the parent', () => {
     expect(lastFrame() ?? '').toMatch(/i\s+rationale|rationale/);
   });
 });
-
 
 describe('FieldEditor - legend documents i and I keys', () => {
   const META = {

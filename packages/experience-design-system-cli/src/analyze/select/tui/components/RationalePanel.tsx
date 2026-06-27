@@ -138,9 +138,7 @@ export function RationalePanel({
               <Text bold color="cyan" dimColor={!active}>
                 {line.text}
               </Text>
-              {line.isSlot && (
-                <Text dimColor> (slot)</Text>
-              )}
+              {line.isSlot && <Text dimColor> (slot)</Text>}
             </Box>
           );
         }

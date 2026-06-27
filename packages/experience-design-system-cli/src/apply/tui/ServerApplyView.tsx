@@ -146,10 +146,7 @@ export function ServerApplyDone({ operation, spaceId, environmentId, host }: Ser
         <Box flexDirection="column">
           <Text> </Text>
           <Text dimColor> View your design system:</Text>
-          <Text color="cyan">
-            {' '}
-            {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId })}
-          </Text>
+          <Text color="cyan"> {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId })}</Text>
         </Box>
       )}
       <Text> </Text>

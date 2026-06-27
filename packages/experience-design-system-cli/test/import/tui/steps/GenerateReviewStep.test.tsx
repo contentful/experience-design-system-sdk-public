@@ -31,9 +31,7 @@ vi.mock('../../../../src/session/db.js', () => ({
     descriptionRationale: 'why-desc',
     propsRationale: 'why-props',
     slotsRationale: 'why-slots',
-    props: [
-      { name: 'variant', category: 'content', description: 'Visual style', rationale: 'enum visual variant' },
-    ],
+    props: [{ name: 'variant', category: 'content', description: 'Visual style', rationale: 'enum visual variant' }],
     slots: [],
   }),
 }));
@@ -42,8 +40,9 @@ vi.mock('../../../../src/session/db.js', () => ({
 // fires and how the hook is configured (enabled flag, onResult callback).
 const triggerSpy = vi.fn();
 let lastUseLivePreviewArgs: unknown = null;
-let lastOnResult: ((r: import('@contentful/experience-design-system-types').ServerPreviewResponse | null) => void) | null =
-  null;
+let lastOnResult:
+  | ((r: import('@contentful/experience-design-system-types').ServerPreviewResponse | null) => void)
+  | null = null;
 // Mutable hook-return state used by Task 5 tests (declared up here so the
 // hoisted vi.mock factory below can reference it without TDZ at call time).
 let hookReturnOverride: { trigger: () => void; status: 'idle' | 'running'; disabled: boolean } | null = null;
@@ -56,7 +55,7 @@ vi.mock('../../../../src/import/tui/useLivePreview.js', () => ({
     lastOnResult = args.onResult;
     // hookReturnOverride is mutated by Task 5 tests via the shared state above;
     // when null, the default idle/non-disabled return is used.
-    // eslint-disable-next-line @typescript-eslint/no-use-before-define
+
     return hookReturnOverride ?? { trigger: triggerSpy, status: 'idle' as const, disabled: false };
   },
 }));
@@ -311,27 +310,14 @@ describe('GenerateReviewStep — Feature 2 live-preview wiring', () => {
   });
 
   it('mounts useLivePreview with enabled=true by default', async () => {
-    render(
-      <GenerateReviewStep
-        extractSessionId="sess-1"
-        onFinalize={vi.fn()}
-        onQuit={vi.fn()}
-      />,
-    );
+    render(<GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />);
     await tick();
     expect(lastUseLivePreviewArgs).not.toBeNull();
     expect((lastUseLivePreviewArgs as { enabled: boolean }).enabled).toBe(true);
   });
 
   it('with livePreview=false prop: useLivePreview is mounted with enabled=false', async () => {
-    render(
-      <GenerateReviewStep
-        extractSessionId="sess-1"
-        onFinalize={vi.fn()}
-        onQuit={vi.fn()}
-        livePreview={false}
-      />,
-    );
+    render(<GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />);
     await tick();
     expect((lastUseLivePreviewArgs as { enabled: boolean }).enabled).toBe(false);
   });
@@ -380,13 +366,7 @@ describe('GenerateReviewStep — Feature 2 live-preview wiring', () => {
     // so this test pins the contract by counting trigger calls. After
     // pilot-2026-06-23 R2, the on-entry effect fires trigger exactly once
     // on load; no save = no additional trigger calls.
-    render(
-      <GenerateReviewStep
-        extractSessionId="sess-1"
-        onFinalize={vi.fn()}
-        onQuit={vi.fn()}
-      />,
-    );
+    render(<GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />);
     await tick();
     // Exactly one call — the on-entry fire — and no further trigger from a
     // malformed save (because no save happens).
@@ -395,11 +375,7 @@ describe('GenerateReviewStep — Feature 2 live-preview wiring', () => {
 
   it('onResult populates per-component previewAnnotation visible in sidebar', async () => {
     const { lastFrame } = render(
-      <GenerateReviewStep
-        extractSessionId="sess-1"
-        onFinalize={vi.fn()}
-        onQuit={vi.fn()}
-      />,
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
     // Simulate a successful live-preview response coming back through onResult.
@@ -484,13 +460,7 @@ describe('GenerateReviewStep — initial live-preview trigger on entry (R2)', ()
     // The cred-missing graceful no-op lives inside useLivePreview.trigger
     // (F2's 18be9c0). The step component still calls trigger; the hook
     // decides whether to fire the underlying API call.
-    render(
-      <GenerateReviewStep
-        extractSessionId="sess-1"
-        onFinalize={vi.fn()}
-        onQuit={vi.fn()}
-      />,
-    );
+    render(<GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />);
     await tick();
     expect(triggerSpy).toHaveBeenCalledTimes(1);
   });
@@ -577,9 +547,7 @@ describe('GenerateReviewStep — diff summary panel (R2)', () => {
             changeClassification: { classification: 'breaking', breakingChanges: [] },
           },
         ],
-        removed: [
-          { id: 'e', name: 'E', contentProperties: [], designProperties: [], slots: [] } as never,
-        ],
+        removed: [{ id: 'e', name: 'E', contentProperties: [], designProperties: [], slots: [] } as never],
         unchanged: [],
       },
       tokens: { new: [], changed: [], removed: [], unchanged: [] },
@@ -616,12 +584,7 @@ describe('GenerateReviewStep — diff summary panel (R2)', () => {
 
   it('renders no summary when livePreview=false (--no-live-preview)', async () => {
     const { lastFrame } = render(
-      <GenerateReviewStep
-        extractSessionId="sess-1"
-        onFinalize={vi.fn()}
-        onQuit={vi.fn()}
-        livePreview={false}
-      />,
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
     const frame = lastFrame() ?? '';
@@ -764,9 +727,7 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
       $type: 'component' as const,
       $properties: { foo: { $type: 'string' as const, $category: 'content' as const } },
     };
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(
-      KEYS.map((k) => ({ key: k, entry: POPULATED })),
-    );
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: POPULATED })));
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
@@ -798,12 +759,7 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
 
   it('renders no "([d] removed list)" hint when livePreview=false', async () => {
     const { lastFrame } = render(
-      <GenerateReviewStep
-        extractSessionId="sess-1"
-        onFinalize={vi.fn()}
-        onQuit={vi.fn()}
-        livePreview={false}
-      />,
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
     const frame = lastFrame() ?? '';
@@ -813,12 +769,7 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
 
   it('d key is inert when livePreview=false', async () => {
     const { lastFrame, stdin } = render(
-      <GenerateReviewStep
-        extractSessionId="sess-1"
-        onFinalize={vi.fn()}
-        onQuit={vi.fn()}
-        livePreview={false}
-      />,
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
     stdin.write('d');
@@ -846,9 +797,7 @@ describe('GenerateReviewStep — rapid j/k navigation (no stutter)', () => {
     // Names chosen so they sort alphabetically into a known order; all
     // populated so none are sorted to the empty tier.
     const KEYS = ['Aaa', 'Bbb', 'Ccc', 'Ddd', 'Eee'];
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(
-      KEYS.map((k) => ({ key: k, entry: makeEntry(k) })),
-    );
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: makeEntry(k) })));
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
@@ -871,9 +820,7 @@ describe('GenerateReviewStep — rapid j/k navigation (no stutter)', () => {
   it('rapid k burst from middle position decrements cursor exactly N rows', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     const KEYS = ['Aaa', 'Bbb', 'Ccc', 'Ddd', 'Eee'];
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(
-      KEYS.map((k) => ({ key: k, entry: makeEntry(k) })),
-    );
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: makeEntry(k) })));
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
@@ -909,9 +856,7 @@ describe('GenerateReviewStep — strict opt-in finalize semantics', () => {
   it('downgrades unresolved (needs-review) components to generate-rejected at finalize', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     const KEYS = ['Aaa', 'Bbb', 'Ccc'];
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(
-      KEYS.map((k) => ({ key: k, entry: makeEntry(k) })),
-    );
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: makeEntry(k) })));
     // Capture the stmt.run calls on the prepared statement so we can assert
     // which component names were marked rejected at finalize time.
     const runSpy = vi.fn();
@@ -922,9 +867,7 @@ describe('GenerateReviewStep — strict opt-in finalize semantics', () => {
     } as unknown as ReturnType<typeof dbMod.openPipelineDb>);
 
     const onFinalize = vi.fn();
-    const { stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />,
-    );
+    const { stdin } = render(<GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />);
     await tick();
     // Accept Aaa only. Bbb + Ccc remain needs-review.
     stdin.write('a');
@@ -942,9 +885,7 @@ describe('GenerateReviewStep — strict opt-in finalize semantics', () => {
   it('still writes generate-rejected for explicitly rejected components', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     const KEYS = ['Aaa', 'Bbb'];
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(
-      KEYS.map((k) => ({ key: k, entry: makeEntry(k) })),
-    );
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: makeEntry(k) })));
     const runSpy = vi.fn();
     vi.mocked(dbMod.openPipelineDb).mockReturnValue({
       prepare: vi.fn().mockReturnValue({ run: runSpy }),
@@ -953,9 +894,7 @@ describe('GenerateReviewStep — strict opt-in finalize semantics', () => {
     } as unknown as ReturnType<typeof dbMod.openPipelineDb>);
 
     const onFinalize = vi.fn();
-    const { stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />,
-    );
+    const { stdin } = render(<GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />);
     await tick();
     // Accept Aaa, explicitly reject Bbb.
     stdin.write('a');
@@ -977,9 +916,7 @@ describe('GenerateReviewStep — strict opt-in finalize semantics', () => {
   it('writes no rejected rows when every component is explicitly accepted', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     const KEYS = ['Aaa', 'Bbb', 'Ccc'];
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(
-      KEYS.map((k) => ({ key: k, entry: makeEntry(k) })),
-    );
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: makeEntry(k) })));
     const runSpy = vi.fn();
     vi.mocked(dbMod.openPipelineDb).mockReturnValue({
       prepare: vi.fn().mockReturnValue({ run: runSpy }),
@@ -988,9 +925,7 @@ describe('GenerateReviewStep — strict opt-in finalize semantics', () => {
     } as unknown as ReturnType<typeof dbMod.openPipelineDb>);
 
     const onFinalize = vi.fn();
-    const { stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />,
-    );
+    const { stdin } = render(<GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />);
     await tick();
     // Accept all via 'A'.
     stdin.write('A');
@@ -1004,7 +939,6 @@ describe('GenerateReviewStep — strict opt-in finalize semantics', () => {
     expect(onFinalize).toHaveBeenCalledWith(3, 0, 0);
   });
 });
-
 
 describe('GenerateReviewStep - component rationale panels (lifted)', () => {
   it('pressing I from sidebar focus opens the component rationale panel and replaces the right pane', async () => {

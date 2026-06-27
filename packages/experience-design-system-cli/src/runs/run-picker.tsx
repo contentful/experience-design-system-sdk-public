@@ -122,10 +122,7 @@ function ActionScreen({
 
 // ── Main picker ────────────────────────────────────────────────────────────
 
-type Row =
-  | { kind: 'run'; run: RunRecord }
-  | { kind: 'show-all' }
-  | { kind: 'new' };
+type Row = { kind: 'run'; run: RunRecord } | { kind: 'show-all' } | { kind: 'new' };
 
 function buildRows(runs: RunRecord[], expanded: boolean): Row[] {
   const showAll = expanded || runs.length < COLLAPSE_THRESHOLD;
@@ -202,7 +199,9 @@ export function RunPicker({ runs, staleRunIds, onSelect, onCancel }: RunPickerPr
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Text bold>Found {runs.length} prior run{runs.length === 1 ? '' : 's'}. Continue from one?</Text>
+      <Text bold>
+        Found {runs.length} prior run{runs.length === 1 ? '' : 's'}. Continue from one?
+      </Text>
       <Box flexDirection="column" marginTop={1}>
         {rows.map((row, i) => {
           const focused = i === clampedFocus;

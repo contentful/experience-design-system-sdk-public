@@ -60,7 +60,9 @@ export function SaveConflictGate({ path, onOverwrite, onNew, onCancel }: SaveCon
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Text bold color="yellow">A prior export exists at:</Text>
+      <Text bold color="yellow">
+        A prior export exists at:
+      </Text>
       <Text>{path}</Text>
       <Box flexDirection="column" marginTop={1}>
         {OPTIONS.map((opt, i) => {

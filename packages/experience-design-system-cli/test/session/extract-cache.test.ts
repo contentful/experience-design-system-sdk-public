@@ -2,12 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import {
-  openPipelineDb,
-  storeExtractCache,
-  lookupExtractCache,
-  getCliCacheVersion,
-} from '../../src/session/db.js';
+import { openPipelineDb, storeExtractCache, lookupExtractCache, getCliCacheVersion } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 
 const tempDirs: string[] = [];

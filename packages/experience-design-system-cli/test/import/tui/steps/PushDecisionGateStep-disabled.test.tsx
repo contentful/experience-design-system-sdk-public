@@ -18,12 +18,7 @@ const DEFAULT_PROPS = {
 describe('PushDecisionGateStep — pushDisabled', () => {
   it('renders disabled rows with the "unavailable — credentials skipped" suffix', () => {
     const { lastFrame } = render(
-      <PushDecisionGateStep
-        {...DEFAULT_PROPS}
-        pushDisabled
-        onChoice={() => {}}
-        onQuit={() => {}}
-      />,
+      <PushDecisionGateStep {...DEFAULT_PROPS} pushDisabled onChoice={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
     expect(out).toContain('Save AND push');
@@ -35,12 +30,7 @@ describe('PushDecisionGateStep — pushDisabled', () => {
 
   it('defaults the cursor to "Save only" when pushDisabled is true', () => {
     const { lastFrame } = render(
-      <PushDecisionGateStep
-        {...DEFAULT_PROPS}
-        pushDisabled
-        onChoice={() => {}}
-        onQuit={() => {}}
-      />,
+      <PushDecisionGateStep {...DEFAULT_PROPS} pushDisabled onChoice={() => {}} onQuit={() => {}} />,
     );
     const cursorLine = (lastFrame() ?? '').split('\n').find((l) => l.includes('›')) ?? '';
     expect(cursorLine).toContain('Save only');
@@ -48,12 +38,7 @@ describe('PushDecisionGateStep — pushDisabled', () => {
 
   it('cursor cannot land on disabled rows via j or k', () => {
     const { lastFrame, stdin } = render(
-      <PushDecisionGateStep
-        {...DEFAULT_PROPS}
-        pushDisabled
-        onChoice={() => {}}
-        onQuit={() => {}}
-      />,
+      <PushDecisionGateStep {...DEFAULT_PROPS} pushDisabled onChoice={() => {}} onQuit={() => {}} />,
     );
     // Cursor starts at save-only (index 2). k should be a no-op (or land on
     // a disabled row, in which case "›" must still be on Save only).
@@ -72,12 +57,7 @@ describe('PushDecisionGateStep — pushDisabled', () => {
   it('b shortcut is a no-op when pushDisabled is true', () => {
     const onChoice = vi.fn();
     const { stdin } = render(
-      <PushDecisionGateStep
-        {...DEFAULT_PROPS}
-        pushDisabled
-        onChoice={onChoice}
-        onQuit={() => {}}
-      />,
+      <PushDecisionGateStep {...DEFAULT_PROPS} pushDisabled onChoice={onChoice} onQuit={() => {}} />,
     );
     stdin.write('b');
     expect(onChoice).not.toHaveBeenCalled();
@@ -86,12 +66,7 @@ describe('PushDecisionGateStep — pushDisabled', () => {
   it('p shortcut is a no-op when pushDisabled is true', () => {
     const onChoice = vi.fn();
     const { stdin } = render(
-      <PushDecisionGateStep
-        {...DEFAULT_PROPS}
-        pushDisabled
-        onChoice={onChoice}
-        onQuit={() => {}}
-      />,
+      <PushDecisionGateStep {...DEFAULT_PROPS} pushDisabled onChoice={onChoice} onQuit={() => {}} />,
     );
     stdin.write('p');
     expect(onChoice).not.toHaveBeenCalled();
@@ -100,12 +75,7 @@ describe('PushDecisionGateStep — pushDisabled', () => {
   it('s shortcut still selects "save-only" when pushDisabled is true', () => {
     const onChoice = vi.fn();
     const { stdin } = render(
-      <PushDecisionGateStep
-        {...DEFAULT_PROPS}
-        pushDisabled
-        onChoice={onChoice}
-        onQuit={() => {}}
-      />,
+      <PushDecisionGateStep {...DEFAULT_PROPS} pushDisabled onChoice={onChoice} onQuit={() => {}} />,
     );
     stdin.write('s');
     expect(onChoice).toHaveBeenCalledWith('save-only');
@@ -114,12 +84,7 @@ describe('PushDecisionGateStep — pushDisabled', () => {
   it('Enter selects save-only (the default cursor) when pushDisabled is true', () => {
     const onChoice = vi.fn();
     const { stdin } = render(
-      <PushDecisionGateStep
-        {...DEFAULT_PROPS}
-        pushDisabled
-        onChoice={onChoice}
-        onQuit={() => {}}
-      />,
+      <PushDecisionGateStep {...DEFAULT_PROPS} pushDisabled onChoice={onChoice} onQuit={() => {}} />,
     );
     stdin.write('\r');
     expect(onChoice).toHaveBeenCalledWith('save-only');

@@ -10,13 +10,7 @@ const FIXTURE = [
 
 describe('ScopeGateStep', () => {
   it('renders all component names', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep
-        components={FIXTURE}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-      />,
-    );
+    const { lastFrame } = render(<ScopeGateStep components={FIXTURE} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).toContain('Button');
     expect(out).toContain('Card');
@@ -25,9 +19,7 @@ describe('ScopeGateStep', () => {
 
   it('calls onConfirm with all-accepted on f when no toggles happened', () => {
     const onConfirm = vi.fn();
-    const { stdin } = render(
-      <ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />,
-    );
+    const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
     stdin.write('f');
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onConfirm.mock.calls[0][0]).toEqual({
@@ -38,9 +30,7 @@ describe('ScopeGateStep', () => {
 
   it('toggles selection with a and confirms with f', () => {
     const onConfirm = vi.fn();
-    const { stdin } = render(
-      <ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />,
-    );
+    const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
     // Move down twice (j) to land on 'Junk' then 'a' to toggle off
     stdin.write('j');
     stdin.write('j');
@@ -54,9 +44,7 @@ describe('ScopeGateStep', () => {
 
   it('A toggles all', () => {
     const onConfirm = vi.fn();
-    const { stdin } = render(
-      <ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />,
-    );
+    const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
     // First A: all currently included → flip to all rejected
     stdin.write('A');
     stdin.write('f');
@@ -76,9 +64,7 @@ describe('ScopeGateStep', () => {
 
   it('r toggles the cursor component (alias for `a` in the unified model)', () => {
     const onConfirm = vi.fn();
-    const { stdin } = render(
-      <ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />,
-    );
+    const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
     // Cursor starts at Button. Move down once to land on Card, then toggle.
     stdin.write('j');
     stdin.write('r');
@@ -91,9 +77,7 @@ describe('ScopeGateStep', () => {
 
   it('F (capital) also confirms', () => {
     const onConfirm = vi.fn();
-    const { stdin } = render(
-      <ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />,
-    );
+    const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
     stdin.write('F');
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onConfirm.mock.calls[0][0]).toEqual({
@@ -104,9 +88,7 @@ describe('ScopeGateStep', () => {
 
   it('calls onQuit on q', () => {
     const onQuit = vi.fn();
-    const { stdin } = render(
-      <ScopeGateStep components={FIXTURE} onConfirm={() => {}} onQuit={onQuit} />,
-    );
+    const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={() => {}} onQuit={onQuit} />);
     stdin.write('q');
     expect(onQuit).toHaveBeenCalledTimes(1);
   });
@@ -130,12 +112,7 @@ describe('ScopeGateStep — unified AI behavior', () => {
 
   it('renders AI-flagged rows in the top AI-recommended-exclusions section', () => {
     const { lastFrame } = render(
-      <ScopeGateStep
-        components={MIXED}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
+      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const out = lastFrame() ?? '';
     expect(out).toMatch(/AI recommended exclusions \(2\)/);
@@ -159,12 +136,7 @@ describe('ScopeGateStep — unified AI behavior', () => {
       { name: 'Card', componentId: 'c1' },
     ];
     const { lastFrame } = render(
-      <ScopeGateStep
-        components={allAccepted}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
+      <ScopeGateStep components={allAccepted} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const out = lastFrame() ?? '';
     expect(out).not.toContain('[AI]');
@@ -238,12 +210,7 @@ describe('ScopeGateStep — unified AI behavior', () => {
   it('f confirms with AI-rejected components in the rejected list (dual-write contract)', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
-      <ScopeGateStep
-        components={MIXED}
-        onConfirm={onConfirm}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
+      <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     stdin.write('f');
     expect(onConfirm).toHaveBeenCalledTimes(1);
@@ -392,12 +359,7 @@ describe('ScopeGateStep — unified AI behavior', () => {
       { name: 'B', componentId: 'c1', aiDecision: 'rejected' as const, aiReason: 'r2' },
     ];
     const { lastFrame } = render(
-      <ScopeGateStep
-        components={allRejected}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
+      <ScopeGateStep components={allRejected} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const out = lastFrame() ?? '';
     expect(out).toContain('AI excluded all components');
@@ -429,14 +391,7 @@ describe('ScopeGateStep — unified AI behavior', () => {
         { name: 'Card', componentId: 'c1' },
         { name: 'BadgeIcon', componentId: 'c2', aiDecision: 'rejected' as const, aiReason: 'low semantic value' },
       ];
-      rerender(
-        <ScopeGateStep
-          components={updated}
-          onConfirm={() => {}}
-          onQuit={() => {}}
-          aiFilterStatus="complete"
-        />,
-      );
+      rerender(<ScopeGateStep components={updated} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />);
       const frame = lastFrame() ?? '';
       expect(frame).toMatch(/\*[^\n]*BadgeIcon/);
       expect(frame).toContain('low semantic value');

@@ -8,9 +8,7 @@ describe('buildAutoFilterErrorTail', () => {
       '  [10/12]  Portal  rejected  utility wrapper',
       'Error: database is locked: another CLI process may be running.',
     ].join('\n');
-    expect(buildAutoFilterErrorTail(raw)).toBe(
-      'Error: database is locked: another CLI process may be running.',
-    );
+    expect(buildAutoFilterErrorTail(raw)).toBe('Error: database is locked: another CLI process may be running.');
   });
 
   it('drops per-component [N/total] status lines', () => {
@@ -30,9 +28,7 @@ describe('buildAutoFilterErrorTail', () => {
       'context line 3',
       'context line 4',
     ].join('\n');
-    expect(buildAutoFilterErrorTail(raw)).toBe(
-      'context line 2 / context line 3 / context line 4',
-    );
+    expect(buildAutoFilterErrorTail(raw)).toBe('context line 2 / context line 3 / context line 4');
   });
 
   it('strips ANSI color codes from the tail', () => {
@@ -41,10 +37,7 @@ describe('buildAutoFilterErrorTail', () => {
   });
 
   it('returns empty string when only structured lines are present', () => {
-    const raw = [
-      'progress=select-agent:1/1:accepted:Foo:',
-      '  [1/1]  Foo  accepted',
-    ].join('\n');
+    const raw = ['progress=select-agent:1/1:accepted:Foo:', '  [1/1]  Foo  accepted'].join('\n');
     expect(buildAutoFilterErrorTail(raw)).toBe('');
   });
 });

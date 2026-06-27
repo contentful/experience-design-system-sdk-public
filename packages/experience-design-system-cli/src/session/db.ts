@@ -433,9 +433,7 @@ export function loadComponentReviewMetadata(
   componentName: string,
 ): ComponentReviewMetadata | null {
   const compRow = db
-    .prepare(
-      `SELECT component_id, source, source_path FROM raw_components WHERE session_id = ? AND name = ?`,
-    )
+    .prepare(`SELECT component_id, source, source_path FROM raw_components WHERE session_id = ? AND name = ?`)
     .get(sessionId, componentName) as { component_id: string; source: string; source_path: string | null } | undefined;
   if (!compRow) return null;
 
@@ -622,14 +620,18 @@ export function applyToolCalls(
             ).run(call.rationale.description, sessionId, componentId);
           }
           if (call.rationale.props !== undefined) {
-            db.prepare(
-              'UPDATE raw_components SET props_rationale = ? WHERE session_id = ? AND component_id = ?',
-            ).run(call.rationale.props, sessionId, componentId);
+            db.prepare('UPDATE raw_components SET props_rationale = ? WHERE session_id = ? AND component_id = ?').run(
+              call.rationale.props,
+              sessionId,
+              componentId,
+            );
           }
           if (call.rationale.slots !== undefined) {
-            db.prepare(
-              'UPDATE raw_components SET slots_rationale = ? WHERE session_id = ? AND component_id = ?',
-            ).run(call.rationale.slots, sessionId, componentId);
+            db.prepare('UPDATE raw_components SET slots_rationale = ? WHERE session_id = ? AND component_id = ?').run(
+              call.rationale.slots,
+              sessionId,
+              componentId,
+            );
           }
         }
       } else if (call.tool === 'classify_prop') {
@@ -678,9 +680,12 @@ export function applyToolCalls(
         // Per-slot rationale: sparse-update only when present so omitting it
         // doesn't blank existing values.
         if (call.rationale !== undefined) {
-          db.prepare(
-            'UPDATE raw_slots SET rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?',
-          ).run(call.rationale, sessionId, componentId, call.slot);
+          db.prepare('UPDATE raw_slots SET rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?').run(
+            call.rationale,
+            sessionId,
+            componentId,
+            call.slot,
+          );
         }
         if (call.allowed_components !== undefined) {
           deleteAllowedComponents.run(sessionId, componentId, call.slot);
@@ -1409,64 +1414,63 @@ export function loadCDFComponents(
   const slotsByComponent = groupBy(slots, (s) => s.component_id);
   const allowedComponentsBySlot = groupBy(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
 
-  return components
-    .map(({ component_id, name, description }) => {
-      const compProps = propsByComponent.get(component_id) ?? [];
-      // NOTE: Components with zero CDF-classified props are intentionally
-      // returned with an empty `$properties` object. Filtering them out here
-      // silently dropped them from the wizard's final-review (INTEG-4257),
-      // so the user couldn't see that the LLM had failed to classify anything
-      // and couldn't reject the empty component. Surface them instead — the
-      // wizard tags them with a ⚠ badge and an in-panel banner so the user
-      // can manually add props in FieldEditor or reject the component.
-      // Downstream consumers (buildManifest, push) tolerate empty $properties.
+  return components.map(({ component_id, name, description }) => {
+    const compProps = propsByComponent.get(component_id) ?? [];
+    // NOTE: Components with zero CDF-classified props are intentionally
+    // returned with an empty `$properties` object. Filtering them out here
+    // silently dropped them from the wizard's final-review (INTEG-4257),
+    // so the user couldn't see that the LLM had failed to classify anything
+    // and couldn't reject the empty component. Surface them instead — the
+    // wizard tags them with a ⚠ badge and an in-panel banner so the user
+    // can manually add props in FieldEditor or reject the component.
+    // Downstream consumers (buildManifest, push) tolerate empty $properties.
 
-      const $properties: CDFComponentEntry['$properties'] = {};
-      for (const p of compProps) {
-        // Hallucination insurance: drop any prop whose name didn't survive trim.
-        // The pre-generate rename guard catches empty-named slots, but if the LLM
-        // hallucinated a classify_prop with an empty name into the DB, surface
-        // nothing to the manifest builder rather than emitting "$properties: { '': ... }".
-        if (!p.name.trim()) continue;
-        const av = allowedValuesByProp.get(`${component_id}::${p.name}`);
-        const propDef: CDFComponentEntry['$properties'][string] = {
-          $type: p.cdf_type as CDFComponentEntry['$properties'][string]['$type'],
-          $category: p.cdf_category as CDFComponentEntry['$properties'][string]['$category'],
-        };
-        if (p.required) propDef.$required = true;
-        if (p.default_value !== null) {
-          if (p.cdf_type === 'boolean') {
-            propDef.$default = p.default_value === 'true';
-          } else {
-            propDef.$default = p.default_value;
-          }
+    const $properties: CDFComponentEntry['$properties'] = {};
+    for (const p of compProps) {
+      // Hallucination insurance: drop any prop whose name didn't survive trim.
+      // The pre-generate rename guard catches empty-named slots, but if the LLM
+      // hallucinated a classify_prop with an empty name into the DB, surface
+      // nothing to the manifest builder rather than emitting "$properties: { '': ... }".
+      if (!p.name.trim()) continue;
+      const av = allowedValuesByProp.get(`${component_id}::${p.name}`);
+      const propDef: CDFComponentEntry['$properties'][string] = {
+        $type: p.cdf_type as CDFComponentEntry['$properties'][string]['$type'],
+        $category: p.cdf_category as CDFComponentEntry['$properties'][string]['$category'],
+      };
+      if (p.required) propDef.$required = true;
+      if (p.default_value !== null) {
+        if (p.cdf_type === 'boolean') {
+          propDef.$default = p.default_value === 'true';
+        } else {
+          propDef.$default = p.default_value;
         }
-        if (p.description !== null) propDef.$description = p.description;
-        if (av && av.length > 0) propDef.$values = av.map((v) => v.value);
-        if (p.cdf_token_kind !== null) propDef['$token.kind'] = p.cdf_token_kind;
-        $properties[p.name] = propDef;
       }
+      if (p.description !== null) propDef.$description = p.description;
+      if (av && av.length > 0) propDef.$values = av.map((v) => v.value);
+      if (p.cdf_token_kind !== null) propDef['$token.kind'] = p.cdf_token_kind;
+      $properties[p.name] = propDef;
+    }
 
-      const compSlots = slotsByComponent.get(component_id) ?? [];
-      const $slots: CDFComponentEntry['$slots'] = {};
-      for (const s of compSlots) {
-        // Hallucination insurance: same as $properties — drop empty-named slots
-        // before they reach buildManifest, which faithfully passes empty keys
-        // through and triggers a 422 from the preview API.
-        if (!s.name.trim()) continue;
-        const ac = allowedComponentsBySlot.get(`${component_id}::${s.name}`);
-        const slotDef: NonNullable<CDFComponentEntry['$slots']>[string] = {};
-        if (s.description !== null) slotDef.$description = s.description;
-        if (s.required) slotDef.$required = true;
-        if (ac && ac.length > 0) slotDef.$allowedComponents = ac.map((v) => v.allowed_component);
-        $slots[s.name] = slotDef;
-      }
+    const compSlots = slotsByComponent.get(component_id) ?? [];
+    const $slots: CDFComponentEntry['$slots'] = {};
+    for (const s of compSlots) {
+      // Hallucination insurance: same as $properties — drop empty-named slots
+      // before they reach buildManifest, which faithfully passes empty keys
+      // through and triggers a 422 from the preview API.
+      if (!s.name.trim()) continue;
+      const ac = allowedComponentsBySlot.get(`${component_id}::${s.name}`);
+      const slotDef: NonNullable<CDFComponentEntry['$slots']>[string] = {};
+      if (s.description !== null) slotDef.$description = s.description;
+      if (s.required) slotDef.$required = true;
+      if (ac && ac.length > 0) slotDef.$allowedComponents = ac.map((v) => v.allowed_component);
+      $slots[s.name] = slotDef;
+    }
 
-      const entry: CDFComponentEntry = { $type: 'component', $properties };
-      if (description !== null) entry.$description = description;
-      if (Object.keys($slots).length > 0) entry.$slots = $slots;
-      return { key: name, entry };
-    });
+    const entry: CDFComponentEntry = { $type: 'component', $properties };
+    if (description !== null) entry.$description = description;
+    if (Object.keys($slots).length > 0) entry.$slots = $slots;
+    return { key: name, entry };
+  });
 }
 
 export type ScopeComponentRow = {
@@ -1515,15 +1519,17 @@ export function applyScopeDecisions(
   // if a name appears in both lists.
   if (rejected.length > 0) {
     const placeholders = rejected.map(() => '?').join(',');
-    db.prepare(
-      `UPDATE raw_components SET status = 'rejected' WHERE session_id = ? AND name IN (${placeholders})`,
-    ).run(sessionId, ...rejected);
+    db.prepare(`UPDATE raw_components SET status = 'rejected' WHERE session_id = ? AND name IN (${placeholders})`).run(
+      sessionId,
+      ...rejected,
+    );
   }
   if (accepted.length > 0) {
     const placeholders = accepted.map(() => '?').join(',');
-    db.prepare(
-      `UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name IN (${placeholders})`,
-    ).run(sessionId, ...accepted);
+    db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name IN (${placeholders})`).run(
+      sessionId,
+      ...accepted,
+    );
   }
   db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 }
@@ -2265,11 +2271,7 @@ export function storeExtractCache(
   ).run(filePath, fileHash, cliVersion, now, now, componentsJson);
 }
 
-export function lookupExtractCache(
-  db: DatabaseSync,
-  fileHash: string,
-  cliVersion: string,
-): ExtractCacheEntry | null {
+export function lookupExtractCache(db: DatabaseSync, fileHash: string, cliVersion: string): ExtractCacheEntry | null {
   const row = db
     .prepare(
       `SELECT file_path, file_hash, cli_version, created_at, updated_at, components_json

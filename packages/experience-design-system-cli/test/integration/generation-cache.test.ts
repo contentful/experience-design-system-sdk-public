@@ -43,9 +43,7 @@ afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!().catch(() => {});
 });
 
-async function setup(
-  components = SAMPLE_TWO_COMPONENTS,
-): Promise<{ fix: CacheFixture; agent: ScriptedAgent }> {
+async function setup(components = SAMPLE_TWO_COMPONENTS): Promise<{ fix: CacheFixture; agent: ScriptedAgent }> {
   const fix = await createCacheFixture(components);
   cleanups.push(fix.cleanup);
   const agent = await createScriptedAgent(generateComponentsResponderSource());
@@ -139,10 +137,7 @@ describe('cache integration: generation_cache', () => {
     const rowsBefore = readGenerationCache(fix.dbPath);
     expect(rowsBefore.length).toBe(SAMPLE_TWO_COMPONENTS.length);
 
-    const renamed = [
-      { ...SAMPLE_TWO_COMPONENTS[0]!, name: 'PrimaryButton' },
-      SAMPLE_TWO_COMPONENTS[1]!,
-    ];
+    const renamed = [{ ...SAMPLE_TWO_COMPONENTS[0]!, name: 'PrimaryButton' }, SAMPLE_TWO_COMPONENTS[1]!];
     const { sessionId: s2 } = await fix.extractAgain(renamed);
     await runCliWithEnv(GEN_ARGS({ ...fix, sessionId: s2 } as CacheFixture), baseEnv(fix, agent));
     expect(await agent.callCount()).toBe(after1 + 1);

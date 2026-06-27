@@ -10,8 +10,18 @@ const FULL: ComponentRationale = {
   propsRationale: 'Captured visual variants and exposed an optional disabled state.',
   slotsRationale: 'No slots; Button is leaf content.',
   props: [
-    { name: 'label', category: 'content', description: 'Visible button label.', rationale: 'Required because a button with no label has no purpose.' },
-    { name: 'variant', category: 'design', description: 'Visual style.', rationale: 'Renders primary or secondary style.' },
+    {
+      name: 'label',
+      category: 'content',
+      description: 'Visible button label.',
+      rationale: 'Required because a button with no label has no purpose.',
+    },
+    {
+      name: 'variant',
+      category: 'design',
+      description: 'Visual style.',
+      rationale: 'Renders primary or secondary style.',
+    },
   ],
   slots: [],
 };
@@ -55,7 +65,11 @@ describe('ComponentRationalePanel', () => {
     const data: ComponentRationale = {
       ...FULL,
       slots: [
-        { name: 'icon', description: 'Optional icon.', rationale: 'Kept because callers commonly render a leading icon.' },
+        {
+          name: 'icon',
+          description: 'Optional icon.',
+          rationale: 'Kept because callers commonly render a leading icon.',
+        },
       ],
     };
     const { lastFrame } = render(

@@ -164,7 +164,11 @@ async function selectBatch(
   const prompt = await buildPrompt({
     skill: 'select',
     mode: 'autonomous',
-    rawComponentsInline: JSON.stringify(batch.map((b) => buildComponentData(b.candidate)), null, 2),
+    rawComponentsInline: JSON.stringify(
+      batch.map((b) => buildComponentData(b.candidate)),
+      null,
+      2,
+    ),
     outDir: process.cwd(),
     skillPathOverride,
   });
@@ -191,11 +195,7 @@ async function selectBatch(
 
   // Feature 3: emit one progress= line per component (in input order) regardless
   // of batch outcome. The wizard's runAutoFilter parser depends on this contract.
-  const emitProgress = (
-    item: BatchItem,
-    decision: 'accepted' | 'rejected',
-    reason: string | undefined,
-  ): void => {
+  const emitProgress = (item: BatchItem, decision: 'accepted' | 'rejected', reason: string | undefined): void => {
     const reasonEncoded = reason ? encodeURIComponent(reason) : '';
     process.stderr.write(
       `progress=select-agent:${item.index + 1}/${total}:${decision}:${item.candidate.component.name}:${reasonEncoded}\n`,
@@ -350,9 +350,7 @@ async function selectAllComponents(
   const batches: BatchItem[][] = [];
   for (let i = 0; i < uncached.length; i += batchSize) {
     const slice = uncached.slice(i, i + batchSize);
-    batches.push(
-      slice.map((candidate, j) => ({ candidate, index: uncachedIndices[i + j]! })),
-    );
+    batches.push(slice.map((candidate, j) => ({ candidate, index: uncachedIndices[i + j]! })));
   }
 
   process.stderr.write(
@@ -595,10 +593,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         // --no-cache is the global kill-switch; --no-select-cache is the stage-
         // specific opt-out. Both Commander negation flags arrive as `false` when
         // the user passed --no-*; default (undefined) means cache stays on.
-        const noCache =
-          opts.cache === false ||
-          opts.selectCache === false ||
-          process.env.EDS_NO_CACHE === '1';
+        const noCache = opts.cache === false || opts.selectCache === false || process.env.EDS_NO_CACHE === '1';
         const selectResults = await selectAllComponents(
           agent,
           model,

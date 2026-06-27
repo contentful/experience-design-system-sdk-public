@@ -20,7 +20,9 @@ vi.mock('node:fs/promises', () => ({
 
 import { appendRun, listRuns, getRun, RUNS_FILE_VERSION, type RunRecord } from '../../src/runs/store.js';
 
-function makeRecord(overrides: Partial<RunRecord> = {}): Omit<RunRecord, 'id' | 'createdAt'> & Partial<Pick<RunRecord, 'id' | 'createdAt'>> {
+function makeRecord(
+  overrides: Partial<RunRecord> = {},
+): Omit<RunRecord, 'id' | 'createdAt'> & Partial<Pick<RunRecord, 'id' | 'createdAt'>> {
   return {
     projectPath: '/work/foo',
     savePath: '/work/foo/dist',
@@ -186,11 +188,76 @@ describe('runs.json v1 -> v2 migration', () => {
 
 describe('listRuns', () => {
   const sample: RunRecord[] = [
-    { id: 'r5', createdAt: '2026-06-25', projectPath: '/a', savePath: '/a/x', componentCount: 1, tokenCount: 1, tokensPath: null, tokenSessionId: null, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
-    { id: 'r4', createdAt: '2026-06-24', projectPath: '/b', savePath: '/b/x', componentCount: 1, tokenCount: 1, tokensPath: null, tokenSessionId: null, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
-    { id: 'r3', createdAt: '2026-06-23', projectPath: '/a', savePath: '/a/y', componentCount: 1, tokenCount: 1, tokensPath: null, tokenSessionId: null, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
-    { id: 'r2', createdAt: '2026-06-22', projectPath: '/a', savePath: '/a/z', componentCount: 1, tokenCount: 1, tokensPath: null, tokenSessionId: null, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
-    { id: 'r1', createdAt: '2026-06-21', projectPath: '/b', savePath: '/b/y', componentCount: 1, tokenCount: 1, tokensPath: null, tokenSessionId: null, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
+    {
+      id: 'r5',
+      createdAt: '2026-06-25',
+      projectPath: '/a',
+      savePath: '/a/x',
+      componentCount: 1,
+      tokenCount: 1,
+      tokensPath: null,
+      tokenSessionId: null,
+      agent: 'claude',
+      pushedTo: null,
+      extractSessionId: 'e',
+      generateSessionId: null,
+    },
+    {
+      id: 'r4',
+      createdAt: '2026-06-24',
+      projectPath: '/b',
+      savePath: '/b/x',
+      componentCount: 1,
+      tokenCount: 1,
+      tokensPath: null,
+      tokenSessionId: null,
+      agent: 'claude',
+      pushedTo: null,
+      extractSessionId: 'e',
+      generateSessionId: null,
+    },
+    {
+      id: 'r3',
+      createdAt: '2026-06-23',
+      projectPath: '/a',
+      savePath: '/a/y',
+      componentCount: 1,
+      tokenCount: 1,
+      tokensPath: null,
+      tokenSessionId: null,
+      agent: 'claude',
+      pushedTo: null,
+      extractSessionId: 'e',
+      generateSessionId: null,
+    },
+    {
+      id: 'r2',
+      createdAt: '2026-06-22',
+      projectPath: '/a',
+      savePath: '/a/z',
+      componentCount: 1,
+      tokenCount: 1,
+      tokensPath: null,
+      tokenSessionId: null,
+      agent: 'claude',
+      pushedTo: null,
+      extractSessionId: 'e',
+      generateSessionId: null,
+    },
+    {
+      id: 'r1',
+      createdAt: '2026-06-21',
+      projectPath: '/b',
+      savePath: '/b/y',
+      componentCount: 1,
+      tokenCount: 1,
+      tokensPath: null,
+      tokenSessionId: null,
+      agent: 'claude',
+      pushedTo: null,
+      extractSessionId: 'e',
+      generateSessionId: null,
+    },
   ];
 
   it('returns the newest N entries with --limit', async () => {
@@ -274,7 +341,20 @@ describe('getRun', () => {
       JSON.stringify({
         version: RUNS_FILE_VERSION,
         runs: [
-          { id: 'abc', createdAt: '2026-06-25', projectPath: '/a', savePath: '/a/x', componentCount: 0, tokenCount: 0, tokensPath: null, tokenSessionId: null, agent: 'claude', pushedTo: null, extractSessionId: 'e', generateSessionId: null },
+          {
+            id: 'abc',
+            createdAt: '2026-06-25',
+            projectPath: '/a',
+            savePath: '/a/x',
+            componentCount: 0,
+            tokenCount: 0,
+            tokensPath: null,
+            tokenSessionId: null,
+            agent: 'claude',
+            pushedTo: null,
+            extractSessionId: 'e',
+            generateSessionId: null,
+          },
         ],
       }),
     );

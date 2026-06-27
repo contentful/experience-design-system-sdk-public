@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  buildSelectAgentArgs,
-  buildGenerateComponentsArgs,
-} from '../../../src/import/tui/WizardApp.js';
+import { buildSelectAgentArgs, buildGenerateComponentsArgs } from '../../../src/import/tui/WizardApp.js';
 
 describe('buildSelectAgentArgs — custom prompt path (Feature 8)', () => {
   it('appends --select-prompt-path when selectPromptPath is set', () => {

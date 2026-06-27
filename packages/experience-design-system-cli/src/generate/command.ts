@@ -385,9 +385,7 @@ async function runAllComponents(
         promptHash,
       );
       completed += 1;
-      process.stderr.write(
-        `${formatGenerateProgressLine(completed, components.length, results[i]!.componentName)}\n`,
-      );
+      process.stderr.write(`${formatGenerateProgressLine(completed, components.length, results[i]!.componentName)}\n`);
     }
   }
 

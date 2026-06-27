@@ -333,10 +333,7 @@ describe('import — push-related flags', () => {
   });
 
   it('--raw-tokens errors at parse time when the file does not exist', async () => {
-    const { stderr, code } = await run(
-      [...skipAll(), '--raw-tokens', '/nonexistent/raw-tokens.scss'],
-      baseEnv(),
-    );
+    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/nonexistent/raw-tokens.scss'], baseEnv());
     expect(stderr).toContain('--raw-tokens');
     expect(stderr).toContain('file not found');
     expect(stderr).toContain('/nonexistent/raw-tokens.scss');
@@ -344,10 +341,7 @@ describe('import — push-related flags', () => {
   });
 
   it('--raw-tokens and --tokens together error as mutually exclusive', async () => {
-    const { stderr, code } = await run(
-      [...skipAll(), '--raw-tokens', '/dev/null', '--tokens', '/dev/null'],
-      baseEnv(),
-    );
+    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/dev/null', '--tokens', '/dev/null'], baseEnv());
     expect(stderr).toContain('mutually exclusive');
     expect(stderr).toContain('--raw-tokens');
     expect(stderr).toContain('--tokens');
@@ -355,10 +349,7 @@ describe('import — push-related flags', () => {
   });
 
   it('--raw-tokens coexists with --auto-accept-scope', async () => {
-    const { stderr, code } = await run(
-      [...skipAll(), '--raw-tokens', '/dev/null', '--auto-accept-scope'],
-      baseEnv(),
-    );
+    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/dev/null', '--auto-accept-scope'], baseEnv());
     expect(stderr).not.toContain('unknown option');
     expect(stderr).not.toContain('mutually exclusive');
     expect(stderr).not.toContain('file not found');

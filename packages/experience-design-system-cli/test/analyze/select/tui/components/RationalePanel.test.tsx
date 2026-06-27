@@ -11,14 +11,7 @@ const rows = [
 describe('RationalePanel', () => {
   it('renders header with component name', () => {
     const { lastFrame } = render(
-      <RationalePanel
-        componentName="HeroCard"
-        rows={rows}
-        scrollOffset={0}
-        width={60}
-        height={20}
-        active={true}
-      />,
+      <RationalePanel componentName="HeroCard" rows={rows} scrollOffset={0} width={60} height={20} active={true} />,
     );
     expect(lastFrame() ?? '').toContain('RATIONALE');
     expect(lastFrame() ?? '').toContain('HeroCard');
@@ -26,14 +19,7 @@ describe('RationalePanel', () => {
 
   it('renders one row per prop/slot with name and rationale text', () => {
     const { lastFrame } = render(
-      <RationalePanel
-        componentName="HeroCard"
-        rows={rows}
-        scrollOffset={0}
-        width={80}
-        height={40}
-        active={true}
-      />,
+      <RationalePanel componentName="HeroCard" rows={rows} scrollOffset={0} width={80} height={40} active={true} />,
     );
     const out = lastFrame() ?? '';
     expect(out).toContain('title');
@@ -52,14 +38,7 @@ describe('RationalePanel', () => {
       rationale: `rationale-text-${i}`,
     }));
     const { lastFrame } = render(
-      <RationalePanel
-        componentName="HeroCard"
-        rows={many}
-        scrollOffset={6}
-        width={60}
-        height={5}
-        active={true}
-      />,
+      <RationalePanel componentName="HeroCard" rows={many} scrollOffset={6} width={60} height={5} active={true} />,
     );
     const out = lastFrame() ?? '';
     // First few rationales should be scrolled off
@@ -74,14 +53,7 @@ describe('RationalePanel', () => {
       rationale: `rationale-${i}`,
     }));
     const { lastFrame } = render(
-      <RationalePanel
-        componentName="HeroCard"
-        rows={many}
-        scrollOffset={0}
-        width={60}
-        height={5}
-        active={true}
-      />,
+      <RationalePanel componentName="HeroCard" rows={many} scrollOffset={0} width={60} height={5} active={true} />,
     );
     expect(lastFrame() ?? '').toMatch(/↕\s*1-\d+\/\d+/);
   });

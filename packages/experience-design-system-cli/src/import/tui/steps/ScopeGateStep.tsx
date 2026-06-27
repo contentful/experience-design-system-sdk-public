@@ -225,7 +225,6 @@ export function ScopeGateStep({
   const total = flatList.length;
   const includedCount = useMemo(
     () => flatList.filter((c) => isIncluded(c)).length,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [components, userExcluded, userUnExcluded],
   );
   const hasAnyAi = flatList.some(isAiFlagged);
@@ -236,19 +235,17 @@ export function ScopeGateStep({
   const below = Math.max(0, total - visibleEnd);
 
   // ── Banner / status helpers ───────────────────────────────────────────────
-  const showRunningHeader =
-    aiFilterStatus === 'running' && aiFilterProgress !== null && aiFilterProgress.total > 0;
+  const showRunningHeader = aiFilterStatus === 'running' && aiFilterProgress !== null && aiFilterProgress.total > 0;
   const showCancelledBanner = aiFilterStatus === 'cancelled';
   const showFailedBanner = aiFilterStatus === 'failed';
-  const allRejected =
-    aiFilterStatus === 'complete' && total > 0 && flatList.every((c) => !isIncluded(c));
+  const allRejected = aiFilterStatus === 'complete' && total > 0 && flatList.every((c) => !isIncluded(c));
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       <Text color="green">✓ Extraction complete</Text>
       <Text dimColor>
-        Found {total} component{total === 1 ? '' : 's'}. Pick which ones to import. Generation runs only on the
-        included set.
+        Found {total} component{total === 1 ? '' : 's'}. Pick which ones to import. Generation runs only on the included
+        set.
       </Text>
 
       {/* Feature 3: auto-filter status banners */}
@@ -263,7 +260,8 @@ export function ScopeGateStep({
         <Box marginTop={1}>
           <Text color="yellow">
             AI auto-filter cancelled
-            {aiFilterProgress ? ` at ${aiFilterProgress.done}/${aiFilterProgress.total}` : ''}. Review remaining manually.
+            {aiFilterProgress ? ` at ${aiFilterProgress.done}/${aiFilterProgress.total}` : ''}. Review remaining
+            manually.
           </Text>
         </Box>
       )}
@@ -305,13 +303,10 @@ export function ScopeGateStep({
             const stateGlyph = included ? '[✓]' : '[✗]';
             const stateColor: 'green' | 'red' = included ? 'green' : 'red';
             // R2: cyan `*` glyph replaces the verbose `[AI]` badge.
-            const aiMarkerNode = aiFlagged ? (
-              <Text color="cyan">{`${AI_MARKER} `}</Text>
-            ) : null;
+            const aiMarkerNode = aiFlagged ? <Text color="cyan">{`${AI_MARKER} `}</Text> : null;
             const inlineReason = !isCursor && aiFlagged ? ` ${truncateReason(c.aiReason)}` : '';
             const showAiHeader = aiList.length > 0 && i === 0;
-            const showComponentsHeader =
-              componentsList.length > 0 && i === aiList.length;
+            const showComponentsHeader = componentsList.length > 0 && i === aiList.length;
             const header = showAiHeader ? (
               <Text key={`hdr-ai-${i}`} bold>{`AI recommended exclusions (${aiList.length})`}</Text>
             ) : showComponentsHeader ? (
@@ -328,9 +323,7 @@ export function ScopeGateStep({
                     <Text color={stateColor}>{stateGlyph}</Text>
                     <Text color="cyan">{` ${c.name}`}</Text>
                   </Text>
-                  {wrapReason && (
-                    <Text dimColor>{`${REASON_WRAP_INDENT}${c.aiReason}`}</Text>
-                  )}
+                  {wrapReason && <Text dimColor>{`${REASON_WRAP_INDENT}${c.aiReason}`}</Text>}
                 </React.Fragment>
               );
             }
@@ -361,9 +354,7 @@ export function ScopeGateStep({
         {includedCount > 0 ? (
           <Text>
             <Text color="green">{includedCount}</Text>
-            <Text dimColor>
-              /{total} included
-            </Text>
+            <Text dimColor>/{total} included</Text>
           </Text>
         ) : (
           <Text color="yellow">none included</Text>

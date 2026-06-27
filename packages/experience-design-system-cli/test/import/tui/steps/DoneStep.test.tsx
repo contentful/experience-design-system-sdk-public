@@ -16,9 +16,7 @@ describe('DoneStep', () => {
       />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toContain(
-      'https://app.contentful.com/spaces/my-space/environments/master/views/components',
-    );
+    expect(out).toContain('https://app.contentful.com/spaces/my-space/environments/master/views/components');
     expect(out).not.toContain('/exo/components');
   });
 

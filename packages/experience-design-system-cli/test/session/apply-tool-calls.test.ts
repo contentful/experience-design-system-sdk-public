@@ -694,7 +694,6 @@ describe('applyToolCalls — rationale persistence (Feature 1)', () => {
   });
 });
 
-
 describe('applyToolCalls - component-level rationale', () => {
   it('persists classify_component.rationale (description, props, slots) to raw_components', async () => {
     await withTempDb((dbPath) => {

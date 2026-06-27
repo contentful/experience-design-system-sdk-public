@@ -5,7 +5,9 @@ import { computeNextScrollOffset } from '../../../../../src/analyze/select/tui/h
 const TOTAL = 20;
 const HEIGHT = 5;
 
-function k(overrides: Partial<{ upArrow: boolean; downArrow: boolean; pageUp: boolean; pageDown: boolean; ctrl: boolean }> = {}) {
+function k(
+  overrides: Partial<{ upArrow: boolean; downArrow: boolean; pageUp: boolean; pageDown: boolean; ctrl: boolean }> = {},
+) {
   return {
     upArrow: false,
     downArrow: false,

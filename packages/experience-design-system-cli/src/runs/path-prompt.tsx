@@ -35,7 +35,12 @@ function autocomplete(partial: string): string | null {
   return prefix.length > base.length ? join(dir, prefix) : null;
 }
 
-export function PathPrompt({ defaultPath, onSubmit, onCancel, label = 'Save to' }: PathPromptProps): React.ReactElement {
+export function PathPrompt({
+  defaultPath,
+  onSubmit,
+  onCancel,
+  label = 'Save to',
+}: PathPromptProps): React.ReactElement {
   const [input, setInput] = useState('');
   const [cursorVisible, setCursorVisible] = useState(true);
 

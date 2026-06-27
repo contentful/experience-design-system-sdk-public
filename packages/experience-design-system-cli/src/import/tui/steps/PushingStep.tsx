@@ -33,7 +33,7 @@ function ActionRow({
   const left = progress && progress.kind === 'progress' ? '?' : '?';
   return (
     <Box gap={1}>
-      <Text>  {label}</Text>
+      <Text> {label}</Text>
       <Text dimColor>
         {left}/{expectedCount}
       </Text>
@@ -50,31 +50,19 @@ function EntitySection({
   counts: { create: number; update: number; remove: number };
   progress: PushProgress;
 }): React.ReactElement | null {
-  const visibleActions = (['create', 'update', 'remove'] as ActionKey[]).filter(
-    (k) => counts[k] > 0,
-  );
+  const visibleActions = (['create', 'update', 'remove'] as ActionKey[]).filter((k) => counts[k] > 0);
   if (visibleActions.length === 0) return null;
   return (
     <Box flexDirection="column" gap={0}>
       <Text bold>{title}</Text>
       {visibleActions.map((k) => (
-        <ActionRow
-          key={k}
-          label={ACTION_LABELS[k]}
-          expectedCount={counts[k]}
-          progress={progress}
-        />
+        <ActionRow key={k} label={ACTION_LABELS[k]} expectedCount={counts[k]} progress={progress} />
       ))}
     </Box>
   );
 }
 
-export function PushingStep({
-  stepNumber,
-  totalSteps,
-  expected,
-  progress,
-}: PushingStepProps): React.ReactElement {
+export function PushingStep({ stepNumber, totalSteps, expected, progress }: PushingStepProps): React.ReactElement {
   const [frame, setFrame] = useState(0);
   const [elapsed, setElapsed] = useState(0);
 
@@ -91,16 +79,10 @@ export function PushingStep({
   const secs = elapsed % 60;
   const elapsedStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 
-  const operationId =
-    progress && progress.kind === 'queued'
-      ? progress.operationId
-      : null;
+  const operationId = progress && progress.kind === 'queued' ? progress.operationId : null;
 
   const showGlobal = progress && progress.kind === 'progress';
-  const showCurrent =
-    progress && progress.kind === 'progress' && progress.current
-      ? progress.current
-      : null;
+  const showCurrent = progress && progress.kind === 'progress' && progress.current ? progress.current : null;
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
@@ -127,16 +109,8 @@ export function PushingStep({
 
       {expected && (
         <Box flexDirection="column" gap={1}>
-          <EntitySection
-            title="Component types"
-            counts={expected.componentTypes}
-            progress={progress}
-          />
-          <EntitySection
-            title="Design tokens"
-            counts={expected.designTokens}
-            progress={progress}
-          />
+          <EntitySection title="Component types" counts={expected.componentTypes} progress={progress} />
+          <EntitySection title="Design tokens" counts={expected.designTokens} progress={progress} />
         </Box>
       )}
 

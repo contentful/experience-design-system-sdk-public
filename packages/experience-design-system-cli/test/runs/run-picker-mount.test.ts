@@ -87,9 +87,7 @@ describe('shouldShowRunPicker', () => {
     ['printPrompt', { printPrompt: true } as RunPickerFlags],
     ['dryRun', { dryRun: true } as RunPickerFlags],
   ])('returns shouldShow=false when --%s is set', async (_label, flags) => {
-    mockReadFile.mockResolvedValue(
-      JSON.stringify({ version: RUNS_FILE_VERSION, runs: [makeRun('A')] }),
-    );
+    mockReadFile.mockResolvedValue(JSON.stringify({ version: RUNS_FILE_VERSION, runs: [makeRun('A')] }));
     const result = await shouldShowRunPicker({
       flags,
       isTTY: true,
@@ -129,9 +127,7 @@ describe('shouldShowRunPicker', () => {
   });
 
   it('returns shouldShow=false for a future runs.json version this CLI cannot read', async () => {
-    mockReadFile.mockResolvedValue(
-      JSON.stringify({ version: 999, runs: [makeRun('A')] }),
-    );
+    mockReadFile.mockResolvedValue(JSON.stringify({ version: 999, runs: [makeRun('A')] }));
     const result = await shouldShowRunPicker({
       flags: NO_FLAGS,
       isTTY: true,
@@ -142,9 +138,7 @@ describe('shouldShowRunPicker', () => {
   });
 
   it('returns shouldShow=false when stdin is not a TTY', async () => {
-    mockReadFile.mockResolvedValue(
-      JSON.stringify({ version: RUNS_FILE_VERSION, runs: [makeRun('A')] }),
-    );
+    mockReadFile.mockResolvedValue(JSON.stringify({ version: RUNS_FILE_VERSION, runs: [makeRun('A')] }));
     const result = await shouldShowRunPicker({
       flags: NO_FLAGS,
       isTTY: false,

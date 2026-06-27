@@ -2,12 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  applyScopeDecisions,
-  getOrCreateSession,
-  openPipelineDb,
-  storeRawComponents,
-} from '../../src/session/db.js';
+import { applyScopeDecisions, getOrCreateSession, openPipelineDb, storeRawComponents } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 
 const tempDirs: string[] = [];

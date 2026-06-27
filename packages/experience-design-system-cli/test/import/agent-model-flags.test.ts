@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  DEFAULT_AGENT,
-  resolveAgent,
-  resolveModel,
-} from '../../src/import/agent-model-resolve.js';
-import {
-  buildGenerateComponentsArgs,
-  buildSelectAgentArgs,
-} from '../../src/import/tui/WizardApp.js';
+import { DEFAULT_AGENT, resolveAgent, resolveModel } from '../../src/import/agent-model-resolve.js';
+import { buildGenerateComponentsArgs, buildSelectAgentArgs } from '../../src/import/tui/WizardApp.js';
 
 /**
  * Parity-audit Q4: `experiences import --agent <name>` and `--model <name>`

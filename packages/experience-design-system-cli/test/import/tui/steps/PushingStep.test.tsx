@@ -9,7 +9,6 @@ const FULL_EXPECTED: PushExpected = {
 };
 
 function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
   return s.replace(/\u001b\[[0-9;]*m/g, '');
 }
 
@@ -75,12 +74,7 @@ describe('PushingStep', () => {
       current: null,
     };
     const { lastFrame } = render(
-      <PushingStep
-        stepNumber={5}
-        totalSteps={5}
-        expected={FULL_EXPECTED}
-        progress={progress}
-      />,
+      <PushingStep stepNumber={5} totalSteps={5} expected={FULL_EXPECTED} progress={progress} />,
     );
     const out = lastFrame() ?? '';
     expect(out).toContain('4/22 entities');

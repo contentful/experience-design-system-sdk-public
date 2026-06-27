@@ -67,10 +67,7 @@ type RenderedLine =
  * Flatten the component rationale into a list of rendered lines so scrollOffset
  * slicing matches what the operator sees.
  */
-export function renderComponentRationaleLines(
-  data: ComponentRationale,
-  innerWidth: number,
-): RenderedLine[] {
+export function renderComponentRationaleLines(data: ComponentRationale, innerWidth: number): RenderedLine[] {
   const out: RenderedLine[] = [];
 
   const pushSection = (heading: string, body: string | null) => {

@@ -24,7 +24,15 @@ describe('select_cache', () => {
     const db = openPipelineDb(await tmpDbPath());
     const cols = db.prepare('PRAGMA table_info(select_cache)').all() as Array<{ name: string }>;
     const names = new Set(cols.map((c) => c.name));
-    for (const n of ['component_hash', 'prompt_hash', 'cli_version', 'decision', 'reason', 'created_at', 'updated_at']) {
+    for (const n of [
+      'component_hash',
+      'prompt_hash',
+      'cli_version',
+      'decision',
+      'reason',
+      'created_at',
+      'updated_at',
+    ]) {
       expect(names.has(n)).toBe(true);
     }
     db.close();

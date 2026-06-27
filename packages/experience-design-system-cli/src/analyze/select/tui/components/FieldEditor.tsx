@@ -320,8 +320,7 @@ function DefaultSubRow({
 
   // boolean — tri-state picker: true | false | (unset).
   if (prop.type === 'boolean') {
-    const display =
-      prop.default === true ? 'true' : prop.default === false ? 'false' : '(unset)';
+    const display = prop.default === true ? 'true' : prop.default === false ? 'false' : '(unset)';
     return (
       <Box paddingLeft={2} gap={1}>
         <Text dimColor>default:</Text>
@@ -774,7 +773,7 @@ export function FieldEditor({
     (focusLevel === 'field' && activeField === 'description') ||
     (focusLevel === 'field' &&
       activeField === 'default' &&
-      ((editorState.props[propIdx]?.type === 'string') || (editorState.props[propIdx]?.type === 'token'))) ||
+      (editorState.props[propIdx]?.type === 'string' || editorState.props[propIdx]?.type === 'token')) ||
     editingValue != null;
   React.useEffect(() => {
     onTextEntryActiveChange?.(textEntryActive);
@@ -804,8 +803,7 @@ export function FieldEditor({
     // Open the overlay. Skip when in any inline text-entry context to keep
     // `?` literal there: description text-entry, string-typed default
     // text-entry, and the values/allowedComponents add/edit text-entry.
-    const inDescriptionTextEntryForHelp =
-      focusLevel === 'field' && activeField === 'description';
+    const inDescriptionTextEntryForHelp = focusLevel === 'field' && activeField === 'description';
     const inStringDefaultTextEntryForHelp =
       focusLevel === 'field' &&
       activeField === 'default' &&
@@ -885,17 +883,9 @@ export function FieldEditor({
     // inline text-entry contexts (description text-entry, value-list edit).
     // Description text-entry is gated by focusLevel === 'field' && activeField
     // === 'description' — we guard against typing 's' as a literal there.
-    const inDescriptionTextEntry =
-      focusLevel === 'field' && (activeField === 'description');
-    const inComponentDescTextEntry =
-      focusLevel === 'field' && inComponentDesc && (activeField === 'description');
-    if (
-      input === 's' &&
-      !key.ctrl &&
-      !key.meta &&
-      !inDescriptionTextEntry &&
-      !inComponentDescTextEntry
-    ) {
+    const inDescriptionTextEntry = focusLevel === 'field' && activeField === 'description';
+    const inComponentDescTextEntry = focusLevel === 'field' && inComponentDesc && activeField === 'description';
+    if (input === 's' && !key.ctrl && !key.meta && !inDescriptionTextEntry && !inComponentDescTextEntry) {
       // When the parent owns the source panel, delegate; otherwise fall
       // back to the internal toggle for backward compat.
       if (onToggleSourceExternal) {
@@ -1213,9 +1203,7 @@ export function FieldEditor({
           const cycle: (boolean | null)[] = [null, true, false];
           const curIdx = cycle.findIndex((v) => v === currentProp.default);
           const idx = curIdx < 0 ? 0 : curIdx;
-          const nextIdx = key.rightArrow
-            ? (idx + 1) % cycle.length
-            : (idx - 1 + cycle.length) % cycle.length;
+          const nextIdx = key.rightArrow ? (idx + 1) % cycle.length : (idx - 1 + cycle.length) % cycle.length;
           setProp({ ...currentProp, default: cycle[nextIdx]! });
           return;
         }
@@ -1226,9 +1214,7 @@ export function FieldEditor({
           const cur = typeof currentProp.default === 'string' ? currentProp.default : null;
           const curIdx = opts.findIndex((v) => v === cur);
           const idx = curIdx < 0 ? 0 : curIdx;
-          const nextIdx = key.rightArrow
-            ? (idx + 1) % opts.length
-            : (idx - 1 + opts.length) % opts.length;
+          const nextIdx = key.rightArrow ? (idx + 1) % opts.length : (idx - 1 + opts.length) % opts.length;
           setProp({ ...currentProp, default: opts[nextIdx] });
           return;
         }
@@ -1436,9 +1422,11 @@ export function FieldEditor({
   if (props.length === 0 && slots.length === 0) {
     return (
       <Box flexDirection="column" width={width} borderStyle="single" borderColor="yellow">
-        <Text bold color="yellow">FIELD EDITOR — no fields</Text>
+        <Text bold color="yellow">
+          FIELD EDITOR — no fields
+        </Text>
         <Text color="yellow">
-          {'⚠ No properties classified for this component. The LLM didn\'t find anything to classify.'}
+          {"⚠ No properties classified for this component. The LLM didn't find anything to classify."}
         </Text>
         <Text dimColor>You can add fields manually below or reject this component.</Text>
         <Text dimColor>Ctrl+S to save · Esc to discard</Text>
@@ -1515,7 +1503,9 @@ export function FieldEditor({
 
       {hasEmptyProperties && (
         <Text color="yellow">
-          {'⚠ No properties classified for this component. The LLM didn\'t find anything to classify. Reject this component or add fields manually.'}
+          {
+            "⚠ No properties classified for this component. The LLM didn't find anything to classify. Reject this component or add fields manually."
+          }
         </Text>
       )}
 
@@ -1605,9 +1595,11 @@ export function FieldEditor({
       {/* Feature 1: source-view panel — toggled by `s`. Slices componentSource
           to the captured per-prop line range; falls back to a friendly notice
           when source location is missing. */}
-      {sourceOpen && !onToggleSourceExternal &&
+      {sourceOpen &&
+        !onToggleSourceExternal &&
         (() => {
-          const propMeta = !inSlots && !inComponentDesc && currentProp ? metadata?.props?.[currentProp.name] : undefined;
+          const propMeta =
+            !inSlots && !inComponentDesc && currentProp ? metadata?.props?.[currentProp.name] : undefined;
           const start = propMeta?.sourceStartLine ?? null;
           const end = propMeta?.sourceEndLine ?? null;
           const path = metadata?.sourcePath ?? null;
@@ -1643,7 +1635,9 @@ export function FieldEditor({
 
       {showHelp && (
         <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
-          <Text bold color="cyan">Keybindings</Text>
+          <Text bold color="cyan">
+            Keybindings
+          </Text>
           <Text> </Text>
           <Text bold>Row navigation</Text>
           <Text>{'  ↑/↓ or j/k       move between rows'}</Text>

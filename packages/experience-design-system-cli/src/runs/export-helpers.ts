@@ -46,19 +46,13 @@ function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; std
   });
 }
 
-export async function printComponentsFromSession(opts: {
-  sessionId: string;
-  outPath: string;
-}): Promise<PrintResult> {
+export async function printComponentsFromSession(opts: { sessionId: string; outPath: string }): Promise<PrintResult> {
   const r = await runCli(['print', 'components', '--session', opts.sessionId, '--out', opts.outPath]);
   if (r.exitCode === 0) return { ok: true };
   return { ok: false, error: r.stderr.trim() || `exit ${r.exitCode}` };
 }
 
-export async function printTokensFromSession(opts: {
-  sessionId: string;
-  outPath: string;
-}): Promise<PrintResult> {
+export async function printTokensFromSession(opts: { sessionId: string; outPath: string }): Promise<PrintResult> {
   const r = await runCli(['print', 'tokens', '--session', opts.sessionId, '--out', opts.outPath]);
   if (r.exitCode === 0) return { ok: true };
   return { ok: false, error: r.stderr.trim() || `exit ${r.exitCode}` };

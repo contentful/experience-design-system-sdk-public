@@ -31,13 +31,7 @@ describe('CredentialsStep — inline validation status', () => {
   it('shows "Validating credentials..." inline when validating prop is true', async () => {
     const handlers = makeHandlers();
     const { lastFrame } = render(
-      <CredentialsStep
-        initialSpaceId="s"
-        initialEnvironmentId="master"
-        initialCmaToken="t"
-        validating
-        {...handlers}
-      />,
+      <CredentialsStep initialSpaceId="s" initialEnvironmentId="master" initialCmaToken="t" validating {...handlers} />,
     );
     const frame = await waitForFrame(
       () => lastFrame(),
@@ -50,13 +44,7 @@ describe('CredentialsStep — inline validation status', () => {
   it('locks form submission and field edits while validating', async () => {
     const handlers = makeHandlers();
     const { lastFrame, stdin } = render(
-      <CredentialsStep
-        initialSpaceId="s"
-        initialEnvironmentId="master"
-        initialCmaToken="t"
-        validating
-        {...handlers}
-      />,
+      <CredentialsStep initialSpaceId="s" initialEnvironmentId="master" initialCmaToken="t" validating {...handlers} />,
     );
     await waitForFrame(
       () => lastFrame(),

@@ -1230,7 +1230,8 @@ function extractDestructuredBindingFallbackProps(
         name: propName,
         type: propertyType === 'unknown' ? 'any' : propertyType,
         required: property ? !property.isOptional() : false,
-        ...(declaration && typeof (declaration as { getStartLineNumber?: () => number }).getStartLineNumber === 'function'
+        ...(declaration &&
+        typeof (declaration as { getStartLineNumber?: () => number }).getStartLineNumber === 'function'
           ? {
               sourceStartLine: (declaration as { getStartLineNumber: () => number }).getStartLineNumber(),
               sourceEndLine: (declaration as { getEndLineNumber: () => number }).getEndLineNumber(),

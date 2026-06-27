@@ -43,9 +43,7 @@ describe('ScopeGateStep + applyScopeDecisions integration', () => {
       const onConfirm = vi.fn((decisions: { accepted: string[]; rejected: string[] }) => {
         applyScopeDecisions(db, sessionId, decisions);
       });
-      const { stdin } = render(
-        <ScopeGateStep components={[...components]} onConfirm={onConfirm} onQuit={() => {}} />,
-      );
+      const { stdin } = render(<ScopeGateStep components={[...components]} onConfirm={onConfirm} onQuit={() => {}} />);
       // Cursor starts on 'Button' (alphabetical). Move down to 'Junk' and deselect.
       stdin.write('j');
       stdin.write('a');

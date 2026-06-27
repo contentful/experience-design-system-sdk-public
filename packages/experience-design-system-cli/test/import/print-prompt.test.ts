@@ -73,7 +73,7 @@ describe('experiences import — --print-prompt', () => {
 
   it('bare --dry-run emits the deprecation notice to stderr', async () => {
     const { stderr, code } = await run(args(['--dry-run']));
-    expect(stderr).toContain("--dry-run");
+    expect(stderr).toContain('--dry-run');
     expect(stderr).toMatch(/will change semantics/);
     expect(stderr).toContain('--print-prompt');
     expect(code).toBe(0);

@@ -21,7 +21,9 @@ export type NextStateAfterPrintOutput =
   | { step: 'print-gate'; componentsPath: string; outDir?: string };
 
 export function nextStateAfterPrint(opts: NextStateAfterPrintInput): NextStateAfterPrintOutput {
-  const base = opts.outDir ? { componentsPath: opts.componentsPath, outDir: opts.outDir } : { componentsPath: opts.componentsPath };
+  const base = opts.outDir
+    ? { componentsPath: opts.componentsPath, outDir: opts.outDir }
+    : { componentsPath: opts.componentsPath };
   if (opts.skipGate) return base;
   return { step: 'print-gate', ...base };
 }

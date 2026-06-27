@@ -1,20 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const {
-  mockGetRun,
-  mockFindAllBySavePath,
-  mockUpdateRun,
-  mockPushRunSession,
-  mockReadCreds,
-  mockLaunchWizard,
-} = vi.hoisted(() => ({
-  mockGetRun: vi.fn(),
-  mockFindAllBySavePath: vi.fn(),
-  mockUpdateRun: vi.fn(),
-  mockPushRunSession: vi.fn(),
-  mockReadCreds: vi.fn(),
-  mockLaunchWizard: vi.fn(),
-}));
+const { mockGetRun, mockFindAllBySavePath, mockUpdateRun, mockPushRunSession, mockReadCreds, mockLaunchWizard } =
+  vi.hoisted(() => ({
+    mockGetRun: vi.fn(),
+    mockFindAllBySavePath: vi.fn(),
+    mockUpdateRun: vi.fn(),
+    mockPushRunSession: vi.fn(),
+    mockReadCreds: vi.fn(),
+    mockLaunchWizard: vi.fn(),
+  }));
 
 vi.mock('../../src/runs/store.js', () => ({
   getRun: mockGetRun,
@@ -68,7 +62,10 @@ describe('replayRun (push-only)', () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
     const writes: string[] = [];
     const origWrite = process.stdout.write.bind(process.stdout);
-    process.stdout.write = ((chunk: string) => { writes.push(String(chunk)); return true; }) as never;
+    process.stdout.write = ((chunk: string) => {
+      writes.push(String(chunk));
+      return true;
+    }) as never;
     try {
       await replayRun({
         runIdOrPath: '01HXYZ',
@@ -94,9 +91,7 @@ describe('replayRun (push-only)', () => {
       environmentId: 'env',
       cmaToken: 'tok',
     });
-    expect(mockPushRunSession).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: 'e1' }),
-    );
+    expect(mockPushRunSession).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'e1' }));
   });
 
   it('resolves credentials from the run record when flags are absent', async () => {
@@ -122,9 +117,7 @@ describe('replayRun (push-only)', () => {
   it('errors at parse/setup time when creds are missing and not interactive', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
     mockReadCreds.mockResolvedValueOnce(emptyCreds);
-    await expect(
-      replayRun({ runIdOrPath: '01HXYZ', interactive: false }),
-    ).rejects.toThrow(/requires credentials/);
+    await expect(replayRun({ runIdOrPath: '01HXYZ', interactive: false })).rejects.toThrow(/requires credentials/);
     expect(mockPushRunSession).not.toHaveBeenCalled();
   });
 
@@ -183,9 +176,7 @@ describe('replayRun (push-only)', () => {
     });
     expect(mockFindAllBySavePath).toHaveBeenCalledWith('/p/dist');
     expect(mockGetRun).not.toHaveBeenCalled();
-    expect(mockPushRunSession).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: 'g1' }),
-    );
+    expect(mockPushRunSession).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'g1' }));
   });
 
   it('does NOT write components.json / tokens.json locally', async () => {
@@ -212,9 +203,7 @@ describe('replayRun (push-only)', () => {
       cmaToken: 'tok',
     });
     expect(mockPushRunSession).toHaveBeenCalledTimes(2);
-    const sessionIds = mockPushRunSession.mock.calls.map(
-      (c) => (c[0] as { sessionId: string }).sessionId,
-    );
+    const sessionIds = mockPushRunSession.mock.calls.map((c) => (c[0] as { sessionId: string }).sessionId);
     expect(sessionIds).toContain('g1');
     expect(sessionIds).toContain('t1');
   });
@@ -317,15 +306,13 @@ describe('modifyRun', () => {
   it('--save-as-new forces a new save path', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
     await modifyRun({ runIdOrPath: '01HXYZ', saveAsNew: true });
-    expect(mockLaunchWizard).toHaveBeenCalledWith(
-      expect.objectContaining({ saveMode: 'new' }),
-    );
+    expect(mockLaunchWizard).toHaveBeenCalledWith(expect.objectContaining({ saveMode: 'new' }));
   });
 
   it('rejects --overwrite + --save-as-new at the helper level', async () => {
-    await expect(
-      modifyRun({ runIdOrPath: '01HXYZ', overwrite: true, saveAsNew: true }),
-    ).rejects.toThrow(/mutually exclusive/);
+    await expect(modifyRun({ runIdOrPath: '01HXYZ', overwrite: true, saveAsNew: true })).rejects.toThrow(
+      /mutually exclusive/,
+    );
   });
 
   it('accepts an absolute filesystem path that matches a recorded savePath', async () => {
@@ -355,17 +342,13 @@ describe('modifyRun', () => {
   it('threads tokenSessionId from the run record into the launcher input', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun({ tokenSessionId: 't1' }));
     await modifyRun({ runIdOrPath: '01HXYZ' });
-    expect(mockLaunchWizard).toHaveBeenCalledWith(
-      expect.objectContaining({ tokenSessionId: 't1' }),
-    );
+    expect(mockLaunchWizard).toHaveBeenCalledWith(expect.objectContaining({ tokenSessionId: 't1' }));
   });
 
   it('passes a null tokenSessionId through unchanged', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun({ tokenSessionId: null }));
     await modifyRun({ runIdOrPath: '01HXYZ' });
-    expect(mockLaunchWizard).toHaveBeenCalledWith(
-      expect.objectContaining({ tokenSessionId: null }),
-    );
+    expect(mockLaunchWizard).toHaveBeenCalledWith(expect.objectContaining({ tokenSessionId: null }));
   });
 
   it('omits cred inputs when pushedTo is null', async () => {

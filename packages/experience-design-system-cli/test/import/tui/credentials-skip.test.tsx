@@ -106,13 +106,7 @@ describe('CredentialsStep — skip option', () => {
   it('does NOT fire onSkip while validating prop is true (input locked)', async () => {
     const handlers = makeHandlers();
     const { stdin, lastFrame } = render(
-      <CredentialsStep
-        initialSpaceId="s"
-        initialEnvironmentId="master"
-        initialCmaToken="t"
-        validating
-        {...handlers}
-      />,
+      <CredentialsStep initialSpaceId="s" initialEnvironmentId="master" initialCmaToken="t" validating {...handlers} />,
     );
     await waitForFrame(
       () => lastFrame(),

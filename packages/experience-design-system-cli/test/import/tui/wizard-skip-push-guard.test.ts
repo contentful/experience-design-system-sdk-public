@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  shouldRefusePush,
-  buildSkippedPushTransition,
-} from '../../../src/import/tui/wizard-state-transitions.js';
+import { shouldRefusePush, buildSkippedPushTransition } from '../../../src/import/tui/wizard-state-transitions.js';
 
 /**
  * Skip-credentials spec — Task 4. Defensive guard: even if the wizard's

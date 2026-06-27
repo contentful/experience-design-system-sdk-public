@@ -96,7 +96,9 @@ describe('buildPrompt', () => {
       outDir: '/fake/out',
     });
     // The classify_prop example line should include both "description" and "reason".
-    expect(prompt).toMatch(/classify_prop[^\n]*"description"[^\n]*"reason"|classify_prop[^\n]*"reason"[^\n]*"description"/);
+    expect(prompt).toMatch(
+      /classify_prop[^\n]*"description"[^\n]*"reason"|classify_prop[^\n]*"reason"[^\n]*"description"/,
+    );
     // Reason is REQUIRED on classify_prop and is internal (not customer-facing).
     expect(prompt).toMatch(/"reason"\s+is\s+REQUIRED/i);
     expect(prompt).toMatch(/customer-facing/i);

@@ -40,7 +40,12 @@ describe('runLsCommand', () => {
   it('renders a table of recent runs', async () => {
     mockListRuns.mockResolvedValueOnce([
       sampleRun(),
-      sampleRun({ id: '01HXYZBBBBBBBBBBBBBBBBBBBB', componentCount: 8, pushedTo: null, createdAt: '2026-06-23T09:18:00.000Z' }),
+      sampleRun({
+        id: '01HXYZBBBBBBBBBBBBBBBBBBBB',
+        componentCount: 8,
+        pushedTo: null,
+        createdAt: '2026-06-23T09:18:00.000Z',
+      }),
     ]);
     const out: string[] = [];
     await runLsCommand({ write: (s) => out.push(s) });
@@ -71,9 +76,7 @@ describe('runLsCommand', () => {
   it('renders long project and save paths without truncation', async () => {
     const longProject = '/Users/michael.pineiro/BossOS/scratch/dsi-mock-library/components';
     const longSave = '/Users/michael.pineiro/BossOS/scratch/dsi-mock-library/components/.contentful';
-    mockListRuns.mockResolvedValueOnce([
-      sampleRun({ projectPath: longProject, savePath: longSave }),
-    ]);
+    mockListRuns.mockResolvedValueOnce([sampleRun({ projectPath: longProject, savePath: longSave })]);
     const out: string[] = [];
     await runLsCommand({ write: (s) => out.push(s) });
     const text = out.join('');
@@ -133,9 +136,7 @@ describe('runLsCommand', () => {
     });
 
     it('renders the tokens-saved path when tokensPath is set', async () => {
-      mockResolveRunTarget.mockResolvedValueOnce(
-        sampleRun({ tokensPath: '/Users/m/custom-out/tokens.json' }),
-      );
+      mockResolveRunTarget.mockResolvedValueOnce(sampleRun({ tokensPath: '/Users/m/custom-out/tokens.json' }));
       const out: string[] = [];
       await runLsCommand({ write: (s) => out.push(s), target: '01HXYZABCDEFGHJKMNPQRSTVWXY' });
       const text = out.join('');
@@ -167,9 +168,7 @@ describe('runLsCommand', () => {
 
     it('surfaces resolveRunTarget errors', async () => {
       mockResolveRunTarget.mockRejectedValueOnce(new Error('Run nope not found in ~/.config/experiences/runs.json'));
-      await expect(
-        runLsCommand({ write: () => undefined, target: 'nope' }),
-      ).rejects.toThrow(/not found/);
+      await expect(runLsCommand({ write: () => undefined, target: 'nope' })).rejects.toThrow(/not found/);
     });
   });
 
@@ -225,18 +224,15 @@ describe('runLsCommand', () => {
     });
 
     it('rejects --pushed and --not-pushed together', async () => {
-      await expect(
-        runLsCommand({ write: () => undefined, pushed: true, notPushed: true }),
-      ).rejects.toThrow(/mutually exclusive|cannot.*both/i);
+      await expect(runLsCommand({ write: () => undefined, pushed: true, notPushed: true })).rejects.toThrow(
+        /mutually exclusive|cannot.*both/i,
+      );
     });
   });
 
   describe('footer hints', () => {
     it('renders next-command hints after the table using the newest run id', async () => {
-      mockListRuns.mockResolvedValueOnce([
-        sampleRun({ id: 'NEWEST' }),
-        sampleRun({ id: 'OLDER' }),
-      ]);
+      mockListRuns.mockResolvedValueOnce([sampleRun({ id: 'NEWEST' }), sampleRun({ id: 'OLDER' })]);
       const out: string[] = [];
       await runLsCommand({ write: (s) => out.push(s) });
       const text = out.join('');

@@ -18,15 +18,9 @@
  * just wants extract + classify + final-review without ever touching Contentful.
  */
 
-export type WizardStepAfterScope =
-  | 'credentials'
-  | 'generating'
-  | 'push-decision-gate'
-  | 'print-gate';
+export type WizardStepAfterScope = 'credentials' | 'generating' | 'push-decision-gate' | 'print-gate';
 
-export type WizardStepAfterCredentials =
-  | 'generating'
-  | 'push-decision-gate';
+export type WizardStepAfterCredentials = 'generating' | 'push-decision-gate';
 
 /**
  * Transition target after the scope-gate confirms.
@@ -38,10 +32,7 @@ export type WizardStepAfterCredentials =
  *   - !noPush → `credentials` (still need creds to push tokens / removals)
  *   - noPush  → `print-gate` (nothing to do; let the operator save files and exit)
  */
-export function nextStepAfterScopeGate(opts: {
-  acceptedCount: number;
-  noPush: boolean;
-}): WizardStepAfterScope {
+export function nextStepAfterScopeGate(opts: { acceptedCount: number; noPush: boolean }): WizardStepAfterScope {
   if (opts.acceptedCount > 0) {
     return opts.noPush ? 'generating' : 'credentials';
   }
@@ -55,9 +46,7 @@ export function nextStepAfterScopeGate(opts: {
  *   - acceptedCount === 0 → `push-decision-gate` (no components to generate;
  *     skip straight to push-decision and preview)
  */
-export function nextStepAfterCredentialsValidated(opts: {
-  acceptedCount: number;
-}): WizardStepAfterCredentials {
+export function nextStepAfterCredentialsValidated(opts: { acceptedCount: number }): WizardStepAfterCredentials {
   return opts.acceptedCount > 0 ? 'generating' : 'push-decision-gate';
 }
 

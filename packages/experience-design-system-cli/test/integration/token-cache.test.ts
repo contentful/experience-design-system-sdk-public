@@ -71,14 +71,18 @@ describe('cache integration: token cache (generation_cache token_set entries)', 
     await runCliWithEnv(TOKEN_ARGS(fix, tokensPath), baseEnv(fix, agent));
     const after1 = await agent.callCount();
     const beforeHashes = new Set(
-      readGenerationCache(fix.dbPath).filter((r) => r.entity_type === 'token_set').map((r) => r.input_hash),
+      readGenerationCache(fix.dbPath)
+        .filter((r) => r.entity_type === 'token_set')
+        .map((r) => r.input_hash),
     );
 
     await writeFile(tokensPath, '$brand: #ffffff;\n$secondary: #000000;\n', 'utf8');
     await runCliWithEnv(TOKEN_ARGS(fix, tokensPath), baseEnv(fix, agent));
     expect(await agent.callCount()).toBe(after1 + 1);
     const afterHashes = new Set(
-      readGenerationCache(fix.dbPath).filter((r) => r.entity_type === 'token_set').map((r) => r.input_hash),
+      readGenerationCache(fix.dbPath)
+        .filter((r) => r.entity_type === 'token_set')
+        .map((r) => r.input_hash),
     );
     expect(afterHashes.size).toBeGreaterThan(beforeHashes.size);
   });

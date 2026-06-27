@@ -1,12 +1,7 @@
 import type { Command } from 'commander';
 import { listRuns, type RunRecord } from './store.js';
 import { resolveRunTarget } from './resolve-run-target.js';
-import {
-  checkRunStaleness,
-  shortStalenessSummary,
-  formatStalenessDetail,
-  type Staleness,
-} from './staleness.js';
+import { checkRunStaleness, shortStalenessSummary, formatStalenessDetail, type Staleness } from './staleness.js';
 
 export type RunLsOptions = {
   write?: (chunk: string) => void;
@@ -122,9 +117,7 @@ export async function runLsCommand(opts: RunLsOptions = {}): Promise<void> {
   }
   // Compute staleness once per row so the table is consistent across the
   // STALE column and any future detail-equivalent surfaces.
-  const stalenessByIdx = await Promise.all(
-    runs.map(async (r) => (r.sourceFingerprint ? checkRunStaleness(r) : null)),
-  );
+  const stalenessByIdx = await Promise.all(runs.map(async (r) => (r.sourceFingerprint ? checkRunStaleness(r) : null)));
   const stalenessForCol: Staleness[] = stalenessByIdx.map(
     (s) =>
       s ?? {
@@ -139,9 +132,7 @@ export async function runLsCommand(opts: RunLsOptions = {}): Promise<void> {
   const columns = makeColumns(stalenessForCol);
   // Auto-expand each column to max(header, max(row value)) so long paths
   // aren't silently truncated.
-  const widths = columns.map((c) =>
-    Math.max(c.header.length, ...runs.map((r, i) => c.get(r, i).length)),
-  );
+  const widths = columns.map((c) => Math.max(c.header.length, ...runs.map((r, i) => c.get(r, i).length)));
   const headerRow = columns.map((c, i) => pad(c.header, widths[i]!)).join('  ');
   write(headerRow + '\n');
   for (let i = 0; i < runs.length; i++) {
@@ -178,9 +169,7 @@ export function registerRunsCommand(program: Command): void {
         await runLsCommand({
           ...(target ? { target } : {}),
           ...(options.project ? { projectPath: options.project } : {}),
-          ...(typeof options.limit === 'number' && !Number.isNaN(options.limit)
-            ? { limit: options.limit }
-            : {}),
+          ...(typeof options.limit === 'number' && !Number.isNaN(options.limit) ? { limit: options.limit } : {}),
           ...(options.json ? { json: true } : {}),
           ...(options.pushed ? { pushed: true } : {}),
           ...(options.notPushed ? { notPushed: true } : {}),

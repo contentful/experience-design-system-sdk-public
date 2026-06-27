@@ -9,11 +9,7 @@ vi.mock('node:fs/promises', async () => {
   return { ...actual, access: mockAccess };
 });
 
-import {
-  detectSaveConflict,
-  buildTimestampedSubdir,
-  resolveSavePath,
-} from '../../src/runs/save-path-resolver.js';
+import { detectSaveConflict, buildTimestampedSubdir, resolveSavePath } from '../../src/runs/save-path-resolver.js';
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -110,9 +106,7 @@ describe('resolveSavePath', () => {
       expect(r.kind).toBe('fail');
       if (r.kind === 'fail') {
         expect(r.conflict.path).toBe('/tmp/foo');
-        expect(r.conflict.files).toEqual(
-          expect.arrayContaining(['components.json', 'tokens.json']),
-        );
+        expect(r.conflict.files).toEqual(expect.arrayContaining(['components.json', 'tokens.json']));
       }
     });
 

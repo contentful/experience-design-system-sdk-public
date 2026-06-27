@@ -168,11 +168,7 @@ describe('ScopeGateStep — subtle AI marker + legend key (R2 Task 3)', () => {
 
   it('legend omits the `* originally excluded by AI` key when no AI rows exist', () => {
     const { lastFrame } = render(
-      <ScopeGateStep
-        components={[{ name: 'Button', componentId: 'c0' }]}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-      />,
+      <ScopeGateStep components={[{ name: 'Button', componentId: 'c0' }]} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
     expect(out).not.toContain('originally excluded by AI');
@@ -204,11 +200,7 @@ describe('ScopeGateStep — persistent AI marker (R2)', () => {
 
   it('does NOT render `*` on rows the AI did not reject', () => {
     const { lastFrame } = render(
-      <ScopeGateStep
-        components={[{ name: 'Button', componentId: 'c0' }]}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-      />,
+      <ScopeGateStep components={[{ name: 'Button', componentId: 'c0' }]} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
     expect(out).not.toContain('[AI]');
@@ -256,9 +248,7 @@ describe('ScopeGateStep — manual decision wins over streaming AI (Task 3)', ()
       { name: 'Button', componentId: 'c0', aiDecision: 'accepted' as const },
       { name: 'Card', componentId: 'c1' },
     ];
-    const { rerender, stdin } = render(
-      <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} />,
-    );
+    const { rerender, stdin } = render(<ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} />);
     stdin.write('a'); // Exclude Button.
     rerender(<ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />);
     stdin.write('f');
@@ -310,9 +300,7 @@ describe('ScopeGateStep — two-section stickiness regressions (R2 Task 4)', () 
       ...initial,
       { name: 'DivWrapper', componentId: 'c3', aiDecision: 'rejected' as const, aiReason: 'r2' },
     ];
-    rerender(
-      <ScopeGateStep components={updated} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
-    );
+    rerender(<ScopeGateStep components={updated} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />);
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
     expect(arg.accepted).toContain('BadgeIcon');
@@ -373,11 +361,7 @@ describe('ScopeGateStep — focused-row reason wrap + brighter colors (Task 4)',
 describe('ScopeGateStep — legend update (Task 5)', () => {
   it('legend shows toggle (not reject), continue, quit, toggle-all', () => {
     const { lastFrame } = render(
-      <ScopeGateStep
-        components={[{ name: 'Button', componentId: 'c0' }]}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-      />,
+      <ScopeGateStep components={[{ name: 'Button', componentId: 'c0' }]} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
     expect(out).toContain('toggle');
@@ -392,11 +376,7 @@ describe('ScopeGateStep — legend update (Task 5)', () => {
 
   it('shows [s] AI reason only when at least one AI-flagged row exists', () => {
     const { lastFrame: framePlain } = render(
-      <ScopeGateStep
-        components={[{ name: 'Button', componentId: 'c0' }]}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-      />,
+      <ScopeGateStep components={[{ name: 'Button', componentId: 'c0' }]} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const plainOut = framePlain() ?? '';
     expect(plainOut).not.toContain('AI reason');

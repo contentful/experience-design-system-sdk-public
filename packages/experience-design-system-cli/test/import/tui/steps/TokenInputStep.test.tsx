@@ -23,9 +23,7 @@ describe('TokenInputStep — typing-mode escape', () => {
     const onSkip = vi.fn();
     const onConfirm = vi.fn();
     const onQuit = vi.fn();
-    const { stdin, lastFrame } = render(
-      <TokenInputStep onConfirm={onConfirm} onSkip={onSkip} onQuit={onQuit} />,
-    );
+    const { stdin, lastFrame } = render(<TokenInputStep onConfirm={onConfirm} onSkip={onSkip} onQuit={onQuit} />);
     const path = '~/styles/tokens.json';
     for (const ch of path) stdin.write(ch);
     expect(onSkip).not.toHaveBeenCalled();
@@ -36,27 +34,21 @@ describe('TokenInputStep — typing-mode escape', () => {
 
   it('`s` as first keystroke triggers skip (ambient mode)', () => {
     const onSkip = vi.fn();
-    const { stdin } = render(
-      <TokenInputStep onConfirm={() => {}} onSkip={onSkip} onQuit={() => {}} />,
-    );
+    const { stdin } = render(<TokenInputStep onConfirm={() => {}} onSkip={onSkip} onQuit={() => {}} />);
     stdin.write('s');
     expect(onSkip).toHaveBeenCalledTimes(1);
   });
 
   it('`q` as first keystroke triggers quit (ambient mode)', () => {
     const onQuit = vi.fn();
-    const { stdin } = render(
-      <TokenInputStep onConfirm={() => {}} onSkip={() => {}} onQuit={onQuit} />,
-    );
+    const { stdin } = render(<TokenInputStep onConfirm={() => {}} onSkip={() => {}} onQuit={onQuit} />);
     stdin.write('q');
     expect(onQuit).toHaveBeenCalledTimes(1);
   });
 
   it('Tab exits typing mode without clearing the buffer', () => {
     const onSkip = vi.fn();
-    const { stdin, lastFrame } = render(
-      <TokenInputStep onConfirm={() => {}} onSkip={onSkip} onQuit={() => {}} />,
-    );
+    const { stdin, lastFrame } = render(<TokenInputStep onConfirm={() => {}} onSkip={onSkip} onQuit={() => {}} />);
     stdin.write('a');
     stdin.write('b');
     stdin.write('c');
@@ -69,9 +61,7 @@ describe('TokenInputStep — typing-mode escape', () => {
   it('Esc exits typing mode AND clears the buffer', () => {
     const onSkip = vi.fn();
     const onQuit = vi.fn();
-    const { stdin, lastFrame } = render(
-      <TokenInputStep onConfirm={() => {}} onSkip={onSkip} onQuit={onQuit} />,
-    );
+    const { stdin, lastFrame } = render(<TokenInputStep onConfirm={() => {}} onSkip={onSkip} onQuit={onQuit} />);
     stdin.write('a');
     stdin.write('b');
     stdin.write('c');
@@ -86,18 +76,14 @@ describe('TokenInputStep — typing-mode escape', () => {
 
   it('Enter on empty buffer fires onSkip (existing behavior pinned)', () => {
     const onSkip = vi.fn();
-    const { stdin } = render(
-      <TokenInputStep onConfirm={() => {}} onSkip={onSkip} onQuit={() => {}} />,
-    );
+    const { stdin } = render(<TokenInputStep onConfirm={() => {}} onSkip={onSkip} onQuit={() => {}} />);
     stdin.write('\r');
     expect(onSkip).toHaveBeenCalledTimes(1);
   });
 
   it('Backspace-to-empty stays in typing mode (does NOT re-arm `s` as skip)', () => {
     const onSkip = vi.fn();
-    const { stdin, lastFrame } = render(
-      <TokenInputStep onConfirm={() => {}} onSkip={onSkip} onQuit={() => {}} />,
-    );
+    const { stdin, lastFrame } = render(<TokenInputStep onConfirm={() => {}} onSkip={onSkip} onQuit={() => {}} />);
     stdin.write('a');
     stdin.write('\x7f'); // backspace
     stdin.write('s');

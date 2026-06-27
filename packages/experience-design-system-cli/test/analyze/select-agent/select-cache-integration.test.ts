@@ -13,9 +13,7 @@ async function createScriptedAgent(agentName: string, outputs: string[]): Promis
   const countFile = join(dir, 'count.txt');
   const script = join(dir, agentName);
   const fallbackOutput = outputs.at(-1) ?? '{"tool":"reject_component","name":"X","reason":"none"}';
-  const cases = outputs
-    .map((output, i) => `  ${i + 1})\n    cat <<'EOF'\n${output}\nEOF\n    ;;`)
-    .join('\n');
+  const cases = outputs.map((output, i) => `  ${i + 1})\n    cat <<'EOF'\n${output}\nEOF\n    ;;`).join('\n');
   const content = `#!/usr/bin/env bash
 COUNT_FILE='${countFile}'
 n=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)

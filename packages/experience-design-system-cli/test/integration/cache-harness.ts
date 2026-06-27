@@ -216,7 +216,11 @@ export async function createCacheFixture(
   const db = openPipelineDb(dbPath);
   const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
   storeRawComponents(db, sessionId, components);
-  storeScannedFiles(db, sessionId, components.map((c) => c.source));
+  storeScannedFiles(
+    db,
+    sessionId,
+    components.map((c) => c.source),
+  );
   // Mark the extract step complete so resolveSessionId() defaults work if
   // tests omit --session.
   const stepId = createStep(db, sessionId, 'analyze extract', { project: projectDir });
@@ -240,7 +244,11 @@ export async function createCacheFixture(
       const db2 = openPipelineDb(dbPath);
       const { sessionId: newSessionId } = getOrCreateSession(db2, 'new', undefined, { command: 'analyze extract' });
       storeRawComponents(db2, newSessionId, newComponents);
-      storeScannedFiles(db2, newSessionId, newComponents.map((c) => c.source));
+      storeScannedFiles(
+        db2,
+        newSessionId,
+        newComponents.map((c) => c.source),
+      );
       const sid = createStep(db2, newSessionId, 'analyze extract', { project: projectDir });
       updateStep(db2, sid, 'complete', { sessionId: newSessionId });
       db2.close();
@@ -326,9 +334,11 @@ export function readExtractCache(dbPath: string): Array<{
 }> {
   const db = new DatabaseSync(dbPath);
   try {
-    return db
-      .prepare('SELECT file_path, file_hash, cli_version FROM extract_cache ORDER BY file_path')
-      .all() as Array<{ file_path: string; file_hash: string; cli_version: string }>;
+    return db.prepare('SELECT file_path, file_hash, cli_version FROM extract_cache ORDER BY file_path').all() as Array<{
+      file_path: string;
+      file_hash: string;
+      cli_version: string;
+    }>;
   } finally {
     db.close();
   }

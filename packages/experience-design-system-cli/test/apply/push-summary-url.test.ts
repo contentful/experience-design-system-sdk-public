@@ -95,9 +95,7 @@ describe('apply push / select — viewUrl emission (Gap 4)', () => {
     expect(code).toBe(0);
     const payload = JSON.parse(stdout);
     expect(typeof payload.viewUrl).toBe('string');
-    expect(payload.viewUrl).toMatch(
-      /^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/components$/,
-    );
+    expect(payload.viewUrl).toMatch(/^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/components$/);
   });
 
   it('non-TTY apply select JSON summary includes viewUrl', async () => {
@@ -120,9 +118,7 @@ describe('apply push / select — viewUrl emission (Gap 4)', () => {
     expect(code).toBe(0);
     const payload = JSON.parse(stdout);
     expect(typeof payload.viewUrl).toBe('string');
-    expect(payload.viewUrl).toMatch(
-      /^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/components$/,
-    );
+    expect(payload.viewUrl).toMatch(/^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/components$/);
   });
 
   it('non-TTY apply preview JSON output does NOT include viewUrl', async () => {
@@ -166,8 +162,6 @@ describe('apply push / select — viewUrl emission (Gap 4)', () => {
       }),
     );
     const frame = lastFrame() ?? '';
-    expect(frame).toContain(
-      'https://app.contentful.com/spaces/test-space/environments/master/views/components',
-    );
+    expect(frame).toContain('https://app.contentful.com/spaces/test-space/environments/master/views/components');
   });
 });

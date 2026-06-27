@@ -161,8 +161,10 @@ export async function appendRun(input: AppendInput): Promise<RunRecord> {
   if (runs.length > RUNS_FILE_CAP) {
     const dropped = runs.length - RUNS_FILE_CAP;
     runs.length = RUNS_FILE_CAP;
-    // eslint-disable-next-line no-console
-    console.warn(`runs.json reached cap of ${RUNS_FILE_CAP}; dropped ${dropped} oldest entr${dropped === 1 ? 'y' : 'ies'}.`);
+
+    console.warn(
+      `runs.json reached cap of ${RUNS_FILE_CAP}; dropped ${dropped} oldest entr${dropped === 1 ? 'y' : 'ies'}.`,
+    );
   }
   await writeAtomic({ version: RUNS_FILE_VERSION, runs });
   return record;

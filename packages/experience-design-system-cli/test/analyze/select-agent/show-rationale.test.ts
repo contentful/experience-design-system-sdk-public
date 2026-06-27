@@ -4,11 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCliWithEnv } from '../../helpers/cli-runner.js';
 import { createTestFixture, type TestFixture } from '../../helpers/fixtures.js';
-import {
-  openPipelineDb,
-  createStep,
-  updateStep,
-} from '../../../src/session/db.js';
+import { openPipelineDb, createStep, updateStep } from '../../../src/session/db.js';
 
 const cleanupItems: Array<() => Promise<void>> = [];
 
@@ -137,9 +133,7 @@ describe('analyze select-agent --show-rationale', () => {
     //   2. None of the agent-spawn telltales surface in stderr:
     //      "Validating", "no agent configured", or any progress= line.
     const { fixture, artifactsDir } = await setup();
-    seedDecisions(fixture.dbPath, fixture.sessionId, [
-      { name: 'Button', status: 'accepted', rejectReason: null },
-    ]);
+    seedDecisions(fixture.dbPath, fixture.sessionId, [{ name: 'Button', status: 'accepted', rejectReason: null }]);
 
     const { code, stdout, stderr } = await runCliWithEnv(
       ['analyze', 'select-agent', '--show-rationale', '--session', fixture.sessionId],

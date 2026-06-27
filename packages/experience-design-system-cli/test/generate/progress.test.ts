@@ -25,10 +25,6 @@ describe('formatGenerateProgressLine', () => {
       completed += 1;
       lines.push(formatGenerateProgressLine(completed, c.total, c.name));
     }
-    expect(lines).toEqual([
-      'progress=generate:1/3:C',
-      'progress=generate:2/3:A',
-      'progress=generate:3/3:B',
-    ]);
+    expect(lines).toEqual(['progress=generate:1/3:C', 'progress=generate:2/3:A', 'progress=generate:3/3:B']);
   });
 });

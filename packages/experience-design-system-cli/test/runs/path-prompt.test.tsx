@@ -9,9 +9,7 @@ afterEach(() => {
 
 describe('PathPrompt', () => {
   it('renders prompt with default path pre-filled', async () => {
-    const { lastFrame } = render(
-      <PathPrompt defaultPath="/work/foo/dist" onSubmit={vi.fn()} onCancel={vi.fn()} />,
-    );
+    const { lastFrame } = render(<PathPrompt defaultPath="/work/foo/dist" onSubmit={vi.fn()} onCancel={vi.fn()} />);
     const frame = await waitForFrame(
       () => lastFrame(),
       (f) => f.includes('/work/foo/dist'),
@@ -26,7 +24,11 @@ describe('PathPrompt', () => {
     const { stdin, lastFrame } = render(
       <PathPrompt defaultPath="/work/foo/dist" onSubmit={onSubmit} onCancel={vi.fn()} />,
     );
-    await waitForFrame(() => lastFrame(), (f) => f.includes('/work/foo/dist'), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('/work/foo/dist'),
+      3000,
+    );
     stdin.write('\r');
     await new Promise((r) => setTimeout(r, 50));
     expect(onSubmit).toHaveBeenCalledWith('/work/foo/dist');
@@ -37,7 +39,11 @@ describe('PathPrompt', () => {
     const { stdin, lastFrame } = render(
       <PathPrompt defaultPath="/work/foo/dist" onSubmit={onSubmit} onCancel={vi.fn()} />,
     );
-    await waitForFrame(() => lastFrame(), (f) => f.includes('/work/foo/dist'), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('/work/foo/dist'),
+      3000,
+    );
     stdin.write('/tmp/other');
     await new Promise((r) => setTimeout(r, 30));
     stdin.write('\r');
@@ -50,7 +56,11 @@ describe('PathPrompt', () => {
     const { stdin, lastFrame } = render(
       <PathPrompt defaultPath="/work/foo/dist" onSubmit={vi.fn()} onCancel={onCancel} />,
     );
-    await waitForFrame(() => lastFrame(), (f) => f.includes('/work/foo/dist'), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('/work/foo/dist'),
+      3000,
+    );
     stdin.write('');
     await new Promise((r) => setTimeout(r, 50));
     expect(onCancel).toHaveBeenCalled();

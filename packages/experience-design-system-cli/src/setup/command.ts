@@ -635,10 +635,7 @@ async function setupQoL(profilePath: string): Promise<void> {
   const existingCreds = await readExperiencesCredentials();
   info('AI auto-filter — runs an agent pass before the manual scope-gate to prefilter components.');
   info('Operators who prefer to review every component can default this OFF and override per run with --auto-filter.');
-  const autoFilter = await promptAutoFilterPreference(
-    (q) => prompt(q),
-    existingCreds.autoFilter,
-  );
+  const autoFilter = await promptAutoFilterPreference((q) => prompt(q), existingCreds.autoFilter);
   if (autoFilter !== (existingCreds.autoFilter ?? true)) {
     await writeExperiencesCredentials({ ...existingCreds, autoFilter });
     ok(`AI auto-filter default set to ${autoFilter ? 'ON' : 'OFF'}`);

@@ -69,9 +69,7 @@ function hasBlockingFlag(flags: RunPickerFlags): boolean {
  * malformed runs.json — the operator can still use `experiences runs ls` to
  * diagnose later.
  */
-export async function shouldShowRunPicker(
-  input: ShouldShowRunPickerInput,
-): Promise<ShouldShowRunPickerResult> {
+export async function shouldShowRunPicker(input: ShouldShowRunPickerInput): Promise<ShouldShowRunPickerResult> {
   if (!input.isTTY) return { shouldShow: false, runs: [] };
   if (hasBlockingFlag(input.flags)) return { shouldShow: false, runs: [] };
 

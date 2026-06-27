@@ -87,11 +87,7 @@ export function CredentialsStep({
     if (validating) {
       return;
     }
-    if (
-      (input === 'r' || input === 'R') &&
-      generatePrefetchStatus === 'failed' &&
-      onRetryPrefetch
-    ) {
+    if ((input === 'r' || input === 'R') && generatePrefetchStatus === 'failed' && onRetryPrefetch) {
       onRetryPrefetch();
       return;
     }
@@ -214,9 +210,7 @@ export function CredentialsStep({
         </Text>
       )}
 
-      {!validating && generatePrefetchStatus === 'running' && (
-        <Text dimColor>Component generation in progress...</Text>
-      )}
+      {!validating && generatePrefetchStatus === 'running' && <Text dimColor>Component generation in progress...</Text>}
       {!validating && generatePrefetchStatus === 'complete' && (
         <Text color="green">Component generation complete.</Text>
       )}

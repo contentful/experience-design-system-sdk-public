@@ -47,9 +47,9 @@ export function resolveRationaleSession(sessionFlag: string | undefined, dbPath?
   const db = openPipelineDb(dbPath);
   try {
     if (sessionFlag) {
-      const row = db
-        .prepare('SELECT 1 AS ok FROM raw_components WHERE session_id = ? LIMIT 1')
-        .get(sessionFlag) as { ok: number } | undefined;
+      const row = db.prepare('SELECT 1 AS ok FROM raw_components WHERE session_id = ? LIMIT 1').get(sessionFlag) as
+        | { ok: number }
+        | undefined;
       if (!row) {
         throw new Error(
           `Session not found or has no components: '${sessionFlag}'. ` +
@@ -103,8 +103,7 @@ export function formatRationaleTable(rows: RationaleRow[]): string {
   const decisionWidth = Math.max(...all.map((r) => r.decision.length));
 
   const lines: string[] = [];
-  const fmt = (n: string, d: string, r: string): string =>
-    `${n.padEnd(nameWidth)}  ${d.padEnd(decisionWidth)}  ${r}`;
+  const fmt = (n: string, d: string, r: string): string => `${n.padEnd(nameWidth)}  ${d.padEnd(decisionWidth)}  ${r}`;
 
   lines.push(fmt(header.name, header.decision, header.reason));
   lines.push(fmt('-'.repeat(nameWidth), '-'.repeat(decisionWidth), '-'.repeat(Math.max(6, header.reason.length))));

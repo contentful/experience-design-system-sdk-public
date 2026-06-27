@@ -36,7 +36,11 @@ describe('SaveConflictGate', () => {
   it('fires onOverwrite when o is pressed', async () => {
     const handlers = makeHandlers();
     const { stdin, lastFrame } = render(<SaveConflictGate path="/work/foo/dist" {...handlers} />);
-    await waitForFrame(() => lastFrame(), (f) => f.includes('verwrite'), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('verwrite'),
+      3000,
+    );
     stdin.write('o');
     await new Promise((r) => setTimeout(r, 50));
     expect(handlers.onOverwrite).toHaveBeenCalled();
@@ -45,7 +49,11 @@ describe('SaveConflictGate', () => {
   it('fires onNew when n is pressed', async () => {
     const handlers = makeHandlers();
     const { stdin, lastFrame } = render(<SaveConflictGate path="/work/foo/dist" {...handlers} />);
-    await waitForFrame(() => lastFrame(), (f) => f.includes('verwrite'), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('verwrite'),
+      3000,
+    );
     stdin.write('n');
     await new Promise((r) => setTimeout(r, 50));
     expect(handlers.onNew).toHaveBeenCalled();
@@ -54,7 +62,11 @@ describe('SaveConflictGate', () => {
   it('fires onCancel when c is pressed', async () => {
     const handlers = makeHandlers();
     const { stdin, lastFrame } = render(<SaveConflictGate path="/work/foo/dist" {...handlers} />);
-    await waitForFrame(() => lastFrame(), (f) => f.includes('verwrite'), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('verwrite'),
+      3000,
+    );
     stdin.write('c');
     await new Promise((r) => setTimeout(r, 50));
     expect(handlers.onCancel).toHaveBeenCalled();
@@ -63,7 +75,11 @@ describe('SaveConflictGate', () => {
   it('navigates with arrows and Enter triggers focused option', async () => {
     const handlers = makeHandlers();
     const { stdin, lastFrame } = render(<SaveConflictGate path="/work/foo/dist" {...handlers} />);
-    await waitForFrame(() => lastFrame(), (f) => f.includes('verwrite'), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('verwrite'),
+      3000,
+    );
     // Default focus is "new" — move up to "overwrite"
     stdin.write('\x1b[A');
     await new Promise((r) => setTimeout(r, 30));

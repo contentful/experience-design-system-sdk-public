@@ -200,7 +200,6 @@ describe('writeExperiencesCredentials', () => {
   });
 });
 
-
 describe('ExperiencesCredentials.autoFilter round-trip', () => {
   it('returns autoFilter undefined when the field is absent from the file', async () => {
     mockReadFile.mockResolvedValue(

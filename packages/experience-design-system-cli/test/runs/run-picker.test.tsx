@@ -52,13 +52,7 @@ describe('RunPicker', () => {
   });
 
   it('renders top 3 + Show all when there are 5+', async () => {
-    const runs = [
-      makeRun('AAA'),
-      makeRun('BBB'),
-      makeRun('CCC'),
-      makeRun('DDD'),
-      makeRun('EEE'),
-    ];
+    const runs = [makeRun('AAA'), makeRun('BBB'), makeRun('CCC'), makeRun('DDD'), makeRun('EEE')];
     const handlers = makeHandlers();
     const { lastFrame } = render(<RunPicker runs={runs} {...handlers} />);
     const frame = await waitForFrame(
@@ -75,16 +69,14 @@ describe('RunPicker', () => {
   });
 
   it('expands to show all entries after pressing Enter on Show all', async () => {
-    const runs = [
-      makeRun('AAA'),
-      makeRun('BBB'),
-      makeRun('CCC'),
-      makeRun('DDD'),
-      makeRun('EEE'),
-    ];
+    const runs = [makeRun('AAA'), makeRun('BBB'), makeRun('CCC'), makeRun('DDD'), makeRun('EEE')];
     const handlers = makeHandlers();
     const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
-    await waitForFrame(() => lastFrame(), (f) => f.includes('Show all'), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Show all'),
+      3000,
+    );
     // Navigate down to the Show all row (after 3 runs) then press Enter.
     // Default cursor is at index 0; press j 3 times to reach index 3 (Show all).
     stdin.write('j');
@@ -106,7 +98,11 @@ describe('RunPicker', () => {
     const runs = [makeRun('AAA'), makeRun('BBB'), makeRun('CCC')];
     const handlers = makeHandlers();
     const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
-    await waitForFrame(() => lastFrame(), (f) => f.includes('AAA'), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('AAA'),
+      3000,
+    );
     stdin.write('j');
     stdin.write('\r');
     // After selecting a run we move to the "Push or modify?" screen.
@@ -126,9 +122,17 @@ describe('RunPicker', () => {
     const runs = [makeRun('AAA')];
     const handlers = makeHandlers();
     const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
-    await waitForFrame(() => lastFrame(), (f) => f.includes('AAA'), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('AAA'),
+      3000,
+    );
     stdin.write('\r'); // pick AAA
-    await waitForFrame(() => lastFrame(), (f) => /Push or modify/i.test(f), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => /Push or modify/i.test(f),
+      3000,
+    );
     stdin.write('j'); // move to Modify
     stdin.write('\r');
     expect(handlers.onSelect).toHaveBeenCalledWith({ runId: 'AAA', action: 'modify' });
@@ -138,9 +142,17 @@ describe('RunPicker', () => {
     const runs = [makeRun('AAA'), makeRun('BBB')];
     const handlers = makeHandlers();
     const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
-    await waitForFrame(() => lastFrame(), (f) => f.includes('AAA'), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('AAA'),
+      3000,
+    );
     stdin.write('\r'); // pick AAA
-    await waitForFrame(() => lastFrame(), (f) => /Push or modify/i.test(f), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => /Push or modify/i.test(f),
+      3000,
+    );
     stdin.write('j');
     stdin.write('j'); // navigate to Cancel
     stdin.write('\r');
@@ -157,7 +169,11 @@ describe('RunPicker', () => {
     const runs = [makeRun('AAA')];
     const handlers = makeHandlers();
     const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
-    await waitForFrame(() => lastFrame(), (f) => f.includes('AAA'), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('AAA'),
+      3000,
+    );
     stdin.write('n');
     expect(handlers.onSelect).toHaveBeenCalledWith({ runId: null, action: 'new' });
   });
@@ -166,7 +182,11 @@ describe('RunPicker', () => {
     const runs = [makeRun('AAA')];
     const handlers = makeHandlers();
     const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
-    await waitForFrame(() => lastFrame(), (f) => f.includes('AAA'), 3000);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('AAA'),
+      3000,
+    );
     stdin.write('q');
     expect(handlers.onCancel).toHaveBeenCalled();
   });

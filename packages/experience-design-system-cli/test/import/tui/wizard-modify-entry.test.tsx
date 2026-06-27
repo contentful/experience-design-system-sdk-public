@@ -121,11 +121,7 @@ describe('WizardApp modify-entry short-circuit', () => {
 
   it('does NOT short-circuit when initialStep is omitted even if seed IDs are present', async () => {
     const { lastFrame } = render(
-      <WizardApp
-        initialProjectPath="/tmp/modify-test"
-        seedExtractSessionId="e1"
-        seedGenerateSessionId="g1"
-      />,
+      <WizardApp initialProjectPath="/tmp/modify-test" seedExtractSessionId="e1" seedGenerateSessionId="g1" />,
     );
     // Without initialStep:'final-review', the wizard falls back to its
     // standard `initialProjectPath ? 'token-input' : 'welcome'` rule.
@@ -141,10 +137,7 @@ describe('WizardApp modify-entry short-circuit', () => {
 describe('WizardApp initialRawTokensPath short-circuit', () => {
   it('skips welcome and token-input when initialRawTokensPath is set', async () => {
     const { lastFrame } = render(
-      <WizardApp
-        initialProjectPath="/tmp/raw-tokens-test"
-        initialRawTokensPath="/tmp/raw-tokens-test/tokens.scss"
-      />,
+      <WizardApp initialProjectPath="/tmp/raw-tokens-test" initialRawTokensPath="/tmp/raw-tokens-test/tokens.scss" />,
     );
     // The welcome step renders 'Project path'; the token-input step renders
     // 'Design tokens'. With initialRawTokensPath the wizard must seed

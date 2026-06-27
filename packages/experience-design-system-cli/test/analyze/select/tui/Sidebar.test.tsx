@@ -208,9 +208,7 @@ describe('Sidebar', () => {
     });
 
     it('renders no annotation glyph when previewAnnotation is undefined', () => {
-      const rows: ReviewComponentSummary[] = [
-        { id: '1', name: 'PlainC', status: 'needs-review', ...baseRow },
-      ];
+      const rows: ReviewComponentSummary[] = [{ id: '1', name: 'PlainC', status: 'needs-review', ...baseRow }];
       const { lastFrame } = render(
         <Sidebar
           components={rows}

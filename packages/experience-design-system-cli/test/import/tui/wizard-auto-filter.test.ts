@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildSelectAgentArgs,
-  parseAutoFilterProgressLine,
-} from '../../../src/import/tui/WizardApp.js';
+import { buildSelectAgentArgs, parseAutoFilterProgressLine } from '../../../src/import/tui/WizardApp.js';
 
 // `--no-auto-filter` flag plumbing: Commander turns `--no-auto-filter` into
 // `opts.autoFilter = false`; the import command threads
@@ -27,9 +24,7 @@ describe('wizard auto-filter — buildSelectAgentArgs (Feature 3)', () => {
 
 describe('wizard auto-filter — parseAutoFilterProgressLine (Feature 3)', () => {
   it('parses an accepted decision line', () => {
-    const r = parseAutoFilterProgressLine(
-      'progress=select-agent:3/10:accepted:Button:primary%20UI%20component',
-    );
+    const r = parseAutoFilterProgressLine('progress=select-agent:3/10:accepted:Button:primary%20UI%20component');
     expect(r).toEqual({
       n: 3,
       total: 10,
@@ -59,9 +54,7 @@ describe('wizard auto-filter — parseAutoFilterProgressLine (Feature 3)', () =>
   });
 
   it('returns null when the decision is not accepted/rejected', () => {
-    expect(
-      parseAutoFilterProgressLine('progress=select-agent:1/3:weird:Foo:bar'),
-    ).toBeNull();
+    expect(parseAutoFilterProgressLine('progress=select-agent:1/3:weird:Foo:bar')).toBeNull();
   });
 
   it('handles a line with no reason (empty trailing field)', () => {

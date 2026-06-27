@@ -122,11 +122,7 @@ describe('runPipeline — select-agent argv forwarding', () => {
         },
       });
 
-      await runPipeline(
-        { ...baseOpts({ out: dir, noCache: true }), project: dir },
-        () => {},
-        cliPath,
-      );
+      await runPipeline({ ...baseOpts({ out: dir, noCache: true }), project: dir }, () => {}, cliPath);
 
       const calls = await readCalls(dir);
       const selectAgentCall = calls.find((c) => c[0] === 'analyze' && c[1] === 'select-agent');
@@ -153,11 +149,7 @@ describe('runPipeline — select-agent argv forwarding', () => {
         },
       });
 
-      await runPipeline(
-        { ...baseOpts({ out: dir, noCache: false }), project: dir },
-        () => {},
-        cliPath,
-      );
+      await runPipeline({ ...baseOpts({ out: dir, noCache: false }), project: dir }, () => {}, cliPath);
 
       const calls = await readCalls(dir);
       const selectAgentCall = calls.find((c) => c[0] === 'analyze' && c[1] === 'select-agent');

@@ -17,9 +17,7 @@ export async function resolveRunTarget(arg: string): Promise<RunRecord> {
     const absolute = resolvePath(expandHome(arg));
     const matches = await findAllRunsBySavePath(absolute);
     if (matches.length === 0) {
-      throw new Error(
-        `No run recorded for path ${absolute}. Run 'experiences runs' to list known runs.`,
-      );
+      throw new Error(`No run recorded for path ${absolute}. Run 'experiences runs' to list known runs.`);
     }
     if (matches.length === 1) {
       return matches[0]!;
@@ -39,12 +37,7 @@ export async function resolveRunTarget(arg: string): Promise<RunRecord> {
 
 function looksLikePath(arg: string): boolean {
   if (arg === '.' || arg === '~') return true;
-  return (
-    arg.startsWith('/') ||
-    arg.startsWith('./') ||
-    arg.startsWith('../') ||
-    arg.startsWith('~/')
-  );
+  return arg.startsWith('/') || arg.startsWith('./') || arg.startsWith('../') || arg.startsWith('~/');
 }
 
 function expandHome(arg: string): string {

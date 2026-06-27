@@ -12,7 +12,12 @@ import { PathPrompt } from '../../runs/path-prompt.js';
 import { RunPicker, type RunPickerSelection } from '../../runs/run-picker.js';
 import type { RunRecord } from '../../runs/store.js';
 import { SaveConflictGate } from '../../runs/save-conflict.js';
-import { detectSaveConflict, buildTimestampedSubdir, resolveSavePath, type OnConflictMode } from '../../runs/save-path-resolver.js';
+import {
+  detectSaveConflict,
+  buildTimestampedSubdir,
+  resolveSavePath,
+  type OnConflictMode,
+} from '../../runs/save-path-resolver.js';
 import { appendRun } from '../../runs/store.js';
 import { buildSourceFingerprint, buildSavedFingerprint } from '../../runs/fingerprint.js';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
@@ -195,15 +200,7 @@ export function buildSelectAgentArgs(opts: {
   // Feature 3: the wizard auto-filter run should never fail-loud on validation
   // errors — those components surface in the AI-excluded section with a
   // synthesized reason, not an exit-1 abort. So we always pass --exclude-invalid.
-  const args = [
-    'analyze',
-    'select-agent',
-    '--agent',
-    opts.agent,
-    '--session',
-    opts.sessionId,
-    '--exclude-invalid',
-  ];
+  const args = ['analyze', 'select-agent', '--agent', opts.agent, '--session', opts.sessionId, '--exclude-invalid'];
   if (opts.model) args.push('--model', opts.model);
   if (opts.selectPromptPath) args.push('--select-prompt-path', opts.selectPromptPath);
   if (opts.noCache) args.push('--no-cache');
@@ -473,8 +470,7 @@ export function WizardApp({
   // and land directly on the post-generate review screen. The DB-backed
   // GenerateReviewStep loads its data off `state.extractSessionId`, so all
   // we need to do here is seed the IDs and the step.
-  const modifyEntryReady =
-    !!seedExtractSessionId && initialStep === 'final-review';
+  const modifyEntryReady = !!seedExtractSessionId && initialStep === 'final-review';
   // Headless raw-tokens entry: when the operator passed `--raw-tokens <path>`
   // the CLI seeds this prop. Skip welcome + token-input and land on the
   // `generating-tokens` step which already drives the token-classification
@@ -487,19 +483,16 @@ export function WizardApp({
       : initialProjectPath
         ? 'token-input'
         : 'welcome';
-  const initialOutDir = initialProjectPath
-    ? join(resolve(initialProjectPath), '.contentful')
-    : '';
-  const initialTokensPath = modifyEntryReady && initialOutDir
-    ? join(initialOutDir, 'tokens.json')
-    : '';
+  const initialOutDir = initialProjectPath ? join(resolve(initialProjectPath), '.contentful') : '';
+  const initialTokensPath = modifyEntryReady && initialOutDir ? join(initialOutDir, 'tokens.json') : '';
 
   const [state, setState] = useState<WizardState>({
-    step: modifyEntryReady || rawTokensEntryReady
-      ? initialStepResolved
-      : initialRuns && initialRuns.length > 0
-        ? 'run-picker'
-        : initialStepResolved,
+    step:
+      modifyEntryReady || rawTokensEntryReady
+        ? initialStepResolved
+        : initialRuns && initialRuns.length > 0
+          ? 'run-picker'
+          : initialStepResolved,
     agent: initialAgent ?? 'claude',
     ...(initialModel ? { agentModel: initialModel } : {}),
     projectPath: initialProjectPath ?? '',
@@ -644,15 +637,7 @@ export function WizardApp({
       stdout: string;
       stderr: string;
     }>((res) => {
-      const tokenArgs = [
-        findCliPath(),
-        'generate',
-        'tokens',
-        '--agent',
-        state.agent,
-        '--raw-tokens',
-        rawTokensPath,
-      ];
+      const tokenArgs = [findCliPath(), 'generate', 'tokens', '--agent', state.agent, '--raw-tokens', rawTokensPath];
       if (state.agentModel) tokenArgs.push('--model', state.agentModel);
       const child = spawn('node', tokenArgs);
       let stdout = '';
@@ -1617,9 +1602,7 @@ export function WizardApp({
         }
         try {
           const componentsBuf = await readFile(join(path, 'components.json')).catch(() => null);
-          const tokensBuf = recordedTokensPath
-            ? await readFile(recordedTokensPath).catch(() => null)
-            : null;
+          const tokensBuf = recordedTokensPath ? await readFile(recordedTokensPath).catch(() => null) : null;
           savedFingerprint = buildSavedFingerprint({
             componentsJson: componentsBuf,
             tokensJson: tokensBuf,
@@ -1649,14 +1632,7 @@ export function WizardApp({
       }
     }
     if (andPush) {
-      void runPreview(
-        extractSessionId,
-        tokensPath,
-        state.spaceId,
-        state.environmentId,
-        state.cmaToken,
-        state.host,
-      );
+      void runPreview(extractSessionId, tokensPath, state.spaceId, state.environmentId, state.cmaToken, state.host);
     }
   };
 
@@ -1875,8 +1851,7 @@ export function WizardApp({
               void runScopeGate({
                 sessionId,
                 decisions,
-                cancelAutoFilter:
-                  state.aiFilterStatus === 'running' ? cancelAutoFilterAndWait : undefined,
+                cancelAutoFilter: state.aiFilterStatus === 'running' ? cancelAutoFilterAndWait : undefined,
                 onAdvanceToGenerate: async ({ sessionId: sid, acceptedCount }) => {
                   update({ acceptedCount, autoRejectedCount: 0 });
                   const next = nextStepAfterScopeGate({ acceptedCount, noPush });
@@ -1946,9 +1921,7 @@ export function WizardApp({
             host={state.host}
             tokensPath={state.tokensPath}
             onFinalize={(accepted, rejected, unresolved) => {
-              process.stderr.write(
-                `Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`,
-              );
+              process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`);
               if (noPush) {
                 update({ generatedAcceptedCount: accepted });
                 void startSaveFlow();
@@ -2253,12 +2226,8 @@ export function WizardApp({
   return (
     <Box flexDirection="column" width={terminalWidth}>
       <TopBar subcommand="import" hints={hints} />
-      <CustomPromptBanner
-        selectPromptPath={selectPromptPath}
-        generatePromptPath={generatePromptPath}
-      />
+      <CustomPromptBanner selectPromptPath={selectPromptPath} generatePromptPath={generatePromptPath} />
       {stepContent}
     </Box>
   );
 }
-
