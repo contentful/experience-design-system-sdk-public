@@ -10,6 +10,7 @@ import { registerSessionCommand } from './session/command.js';
 import { registerPrintCommand } from './print/command.js';
 import { registerImportCommand } from './import/command.js';
 import { registerSetupCommand } from './setup/command.js';
+import { registerRunsCommand } from './runs/ls-command.js';
 
 const require = createRequire(import.meta.url);
 
@@ -75,6 +76,7 @@ export function createProgram(): Command {
   registerSessionCommand(program);
   registerImportCommand(program);
   registerSetupCommand(program);
+  registerRunsCommand(program);
   registerBuildCommand(program);
 
   return program;

@@ -812,4 +812,24 @@ describe('WebComponentExtractor', () => {
     expect(themeProps).toHaveLength(1);
     expect(themeProps[0].defaultValue).toBe('dark');
   });
+
+  it('captures sourcePath and per-prop source line ranges (Feature 1)', async () => {
+    const filePath = await writeFixture(
+      'my-card-loc.ts',
+      `
+      class MyCardLoc extends HTMLElement {
+        title: string = '';
+        subtitle: string = '';
+      }
+      customElements.define('my-card-loc', MyCardLoc);
+    `,
+    );
+    const result = await extractWebComponentDefinitions([filePath]);
+    const card = result.components[0];
+    expect(card.sourcePath).toBe(filePath);
+    const titleProp = card.props.find((p) => p.name === 'title');
+    const subtitleProp = card.props.find((p) => p.name === 'subtitle');
+    expect(titleProp?.sourceStartLine).toBeGreaterThan(0);
+    expect(subtitleProp?.sourceStartLine).toBeGreaterThan(titleProp!.sourceStartLine!);
+  });
 });

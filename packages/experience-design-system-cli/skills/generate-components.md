@@ -75,13 +75,13 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 **Four tool calls:**
 
 ```
-{"tool":"classify_component","description":"<required: one-sentence description of the component>"}
+{"tool":"classify_component","description":"<required: one-sentence description of the component>","rationale":{"description":"<why this component is classified this way>","props":"<why these props were chosen / excluded>","slots":"<why these slots were chosen / excluded>"}}
 
-{"tool":"classify_prop","prop":"<propName>","cdf_type":"<type>","cdf_category":"<category>","required":<bool>,"description":"<reason>","values":["a","b"],"token_kind":"color","default":"<value>"}
+{"tool":"classify_prop","prop":"<propName>","cdf_type":"<type>","cdf_category":"<category>","required":<bool>,"description":"<short customer-facing description>","reason":"<full internal rationale; not customer-facing>","values":["a","b"],"token_kind":"color","default":"<value>"}
 
 {"tool":"exclude_prop","prop":"<propName>","reason":"<why excluded>"}
 
-{"tool":"classify_slot","slot":"<slotName>","required":<bool>,"allowed_components":["ComponentName"],"description":"<reason>"}
+{"tool":"classify_slot","slot":"<slotName>","required":<bool>,"allowed_components":["ComponentName"],"description":"<short customer-facing description>","rationale":"<why this slot was kept / its role>"}
 ```
 
 **Rules:**
@@ -92,7 +92,21 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 - `values` is required for `cdf_type: "enum"` — must be a non-empty string array.
 - `token_kind` is required for `cdf_type: "token"` — must be a DTCG `$type` string, e.g. `"color"`.
 - `required` must be a JSON boolean (`true`/`false`), not a string.
-- `description` on `classify_prop` documents your reasoning — always include it.
+- `description` on `classify_prop` is customer-facing — keep it short and subject to the description content rules below.
+- `reason` on `classify_prop` is **required** and is your internal rationale — shown to the developer reviewing the import, never to end-users. Use it to explain your reasoning in detail. The customer-facing description content rules below apply to `description` only, not to `reason`.
+- `rationale` on `classify_component` is **REQUIRED**. It is an object with three REQUIRED string sub-fields:
+  - `rationale.description` — why this component is classified the way it is (its purpose, where it fits in the design system, atom/molecule/organism reasoning). **Subject to the same "Description content rules" as the `description` field — no internal initiative names, no `INTEG-*`, no `EDSI`/`DSI`/`M1`/`M2`/wave/phase references.**
+  - `rationale.props` — operator-facing explanation of which props you accepted vs excluded and why. Audience is the developer reviewing the import (not the customer), so you may discuss types, framework internals, and category corrections in technical terms. Do not include internal initiative names.
+  - `rationale.slots` — operator-facing explanation of which slots you kept vs collapsed and why. Same audience and rules as `rationale.props`.
+  - All three sub-fields are required strings, minimum one sentence each. Never emit an empty string. If the component has zero slots, `rationale.slots` should state that explicitly (e.g. `"No slots — the component renders no injectable regions."`).
+- `rationale` on `classify_slot` is **REQUIRED**. It is a single string explaining why this slot exists and what role it plays in the component (operator-facing; minimum one sentence). Same audience and rules as `rationale.props` / `rationale.slots` above.
+
+**Description content rules (CRITICAL — applies to every `description` field on `classify_component`, `classify_prop`, and `classify_slot`, AND to `rationale.description` on `classify_component`):**
+
+- Write **customer-facing technical descriptions**. The audience is a third-party developer or content editor configuring this component in Contentful — not a Contentful engineer.
+- **Never** reference internal Contentful initiatives, project code names, sprint or roadmap labels, product development phases, or implementation milestones. This includes (non-exhaustive) terms like `P1`, `P2`, `P3`, `M1`, `M2`, `EXT-*`, `INTEG-*`, `DSI`, `EDSI`, `CDF compliance`, `wave 1`, `wave 2`, `phase 1`, `phase 2`, "for compliance with…", "to support the … initiative", or any internal-sounding rationale.
+- Do not invent rationale. If you do not know **why** a prop exists, describe **what** it does (its observable effect on the component) — never guess at organizational context.
+- Descriptions should explain WHAT the prop/component does in terms a developer reading the public component catalog would understand. Stick to behavior, appearance, and configuration semantics.
 
 ---
 
@@ -292,7 +306,7 @@ Input:
 Output:
 ```
 Starting Button classification — 5 props, 1 slot
-{"tool":"classify_component","description":"Primary action button with variant and state support"}
+{"tool":"classify_component","description":"Primary action button with variant and state support","rationale":{"description":"Button is an atom — a single interactive control that triggers an action. It carries a label, a small set of visual variants, and a disabled flag, which is the minimal surface a marketer needs to configure a call-to-action.","props":"Kept label (content), variant (enum, design), disabled (boolean, state), and className (string, design escape hatch). Excluded onClick because it is an event handler — framework-internal and not configurable in Contentful.","slots":"Kept the icon slot as optional because the button renders correctly without it and the icon is purely decorative."}}
 label is a required string content prop
 {"tool":"classify_prop","prop":"label","cdf_type":"string","cdf_category":"content","required":true,"description":"Button label text"}
 variant is a string union — enum type, category design
@@ -304,7 +318,38 @@ onClick is an event handler — framework internal
 className is a DOM pass-through — developers wire CSS, marketers never set this
 {"tool":"exclude_prop","prop":"className","reason":"DOM pass-through — not a marketer-configurable surface"}
 icon slot is clearly optional (decorative leading icon)
-{"tool":"classify_slot","slot":"icon","required":false,"description":"Optional leading icon"}
+{"tool":"classify_slot","slot":"icon","required":false,"description":"Optional leading icon","rationale":"Icon is a decorative leading glyph — optional because the button reads cleanly without it, but kept as a slot so marketers can inject a brand-specific icon component when desired."}
+```
+
+### Component with multiple slots (Card)
+
+Input:
+```json
+{
+  "name": "Card",
+  "props": [
+    {"name":"title","type":"string","category":"content","required":true},
+    {"name":"elevation","type":"'flat'|'raised'|'floating'","category":"design","defaultValue":"'raised'"}
+  ],
+  "slots": [
+    {"name":"body","description":"Main card body"},
+    {"name":"footer","description":"Optional footer area"}
+  ]
+}
+```
+
+Output:
+```
+Starting Card classification — 2 props, 2 slots
+{"tool":"classify_component","description":"Container that groups related content with a title, body, and optional footer","rationale":{"description":"Card is a molecule — it composes a title with body and footer slots into a single visual container. Useful as a building block for lists and grids of related content.","props":"Kept title (string, content) as the customer-facing label and elevation (enum, design) for the three visual depth variants. Nothing was excluded — both raw props map cleanly to CDF.","slots":"Kept both body (required, primary content area) and footer (optional, supplementary area). Body is required because a card with no body renders empty; footer is optional because many cards do not need one."}}
+title is a required content string
+{"tool":"classify_prop","prop":"title","cdf_type":"string","cdf_category":"content","required":true,"description":"Card title text"}
+elevation is a finite visual variant — enum, design
+{"tool":"classify_prop","prop":"elevation","cdf_type":"enum","cdf_category":"design","required":false,"values":["flat","raised","floating"],"default":"raised","description":"Visual depth variant"}
+body is the primary content region — required
+{"tool":"classify_slot","slot":"body","required":true,"description":"Main card body content","rationale":"Body is the primary content region of the card. Required because a card with no body renders an empty container, which is never a useful editor state."}
+footer is supplementary and optional
+{"tool":"classify_slot","slot":"footer","required":false,"description":"Optional footer area for actions or metadata","rationale":"Footer is a supplementary region typically used for actions or metadata. Optional because most cards do not need one and the card renders correctly without it."}
 ```
 
 ### Named type (HeadingSize, ButtonVariant, etc.)
@@ -355,6 +400,9 @@ Before emitting any tool calls, verify:
 8. Framework, DOM, accessibility, and data-* pass-through props are excluded — `className`/`classes`/`classNames`/`rootClassName`/`prefixCls`, `style`, `id`, `role`, `tabIndex`, `name` (bare HTML form attribute), `aria-*` (and bare `aria`), `data-*`, polymorphic `as`/`element`/`component`, framework theming `dt`/`pt`/`ptOptions`/`unstyled`/`sx`. Discrete positional/geometric props (`top`, `bottom`, `left`, `right`, `rotation`, etc.) ARE classified as `string` design props. Common semantic props (`icon`, `items`, `actions`, `options`, `value`, `form`, `inputId`, `componentId`) are NOT excluded — classify them per their content/design/state nature.
 9. No `cdf_type: "link"` used — `link` is reserved and rejected by the CLI parser
 10. No `cdf_type: "number"` used — this is not a supported type; use `"string"` with numeric defaults. `cdf_type: "boolean"` IS valid — use it for boolean toggle props.
+11. `classify_component` includes a `rationale` object with all three sub-fields (`rationale.description`, `rationale.props`, `rationale.slots`) populated as non-empty strings.
+12. Every `classify_slot` includes a non-empty `rationale` string.
+13. `rationale.description` follows the same "Description content rules" as `description` — no internal initiative names (`INTEG-*`, `EDSI`, `DSI`, `M1`, `M2`, wave/phase references, etc.).
 
 After the run completes, the developer can validate the pipeline output with:
 

@@ -449,6 +449,8 @@ function extractClassProperties(classDecl: ClassDeclaration, applyRuntimeFieldDe
       type,
       required: false,
       ...(defaultValue !== undefined && { defaultValue }),
+      sourceStartLine: property.getStartLineNumber(),
+      sourceEndLine: property.getEndLineNumber(),
     });
   }
 
@@ -521,10 +523,17 @@ function extractAccessorProperties(
     const type =
       getter?.getReturnTypeNode()?.getText() ?? setter?.getParameters()[0]?.getTypeNode()?.getText() ?? 'any';
 
+    const accessorNode = getter ?? setter;
     props.push({
       name,
       type,
       required: false,
+      ...(accessorNode
+        ? {
+            sourceStartLine: accessorNode.getStartLineNumber(),
+            sourceEndLine: accessorNode.getEndLineNumber(),
+          }
+        : {}),
     });
   }
 
@@ -1021,6 +1030,7 @@ function extractFromSourceFile(sourceFile: SourceFile, project: Project): RawCom
     components.push({
       name,
       source: sourceFile.getFilePath(),
+      sourcePath: sourceFile.getFilePath(),
       framework: 'web-component',
       props,
       slots,

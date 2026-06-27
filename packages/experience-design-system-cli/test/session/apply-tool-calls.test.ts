@@ -630,3 +630,189 @@ describe('applyTokenToolCalls', () => {
     });
   });
 });
+
+describe('applyToolCalls — rationale persistence (Feature 1)', () => {
+  it('persists classify_prop reason to raw_props.rationale', async () => {
+    await withTempDb((dbPath) => {
+      const { db, sessionId, componentId } = setupSession(dbPath);
+      const calls: ToolCall[] = [
+        {
+          tool: 'classify_prop',
+          prop: 'label',
+          cdf_type: 'string',
+          cdf_category: 'content',
+          required: true,
+          description: 'Button label',
+          reason: 'inferred from PropertySignature with literal string type',
+        },
+      ];
+      applyToolCalls(db, sessionId, componentId, 'Button', calls, []);
+
+      const row = db
+        .prepare(`SELECT rationale FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?`)
+        .get(sessionId, componentId, 'label') as { rationale: string | null };
+      expect(row.rationale).toBe('inferred from PropertySignature with literal string type');
+      db.close();
+    });
+  });
+
+  it('persists exclude_prop reason to raw_props.rationale', async () => {
+    await withTempDb((dbPath) => {
+      const { db, sessionId, componentId } = setupSession(dbPath);
+      const calls: ToolCall[] = [
+        { tool: 'exclude_prop', prop: 'className', reason: 'framework internal — not authorable' },
+      ];
+      applyToolCalls(db, sessionId, componentId, 'Button', calls, []);
+
+      const row = db
+        .prepare(`SELECT rationale FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?`)
+        .get(sessionId, componentId, 'className') as { rationale: string | null };
+      expect(row.rationale).toBe('framework internal — not authorable');
+      db.close();
+    });
+  });
+
+  it('writes rationale = NULL when reason is missing (backward compat)', async () => {
+    await withTempDb((dbPath) => {
+      const { db, sessionId, componentId } = setupSession(dbPath);
+      const calls: ToolCall[] = [
+        {
+          tool: 'classify_prop',
+          prop: 'label',
+          cdf_type: 'string',
+          cdf_category: 'content',
+        },
+      ];
+      applyToolCalls(db, sessionId, componentId, 'Button', calls, []);
+
+      const row = db
+        .prepare(`SELECT rationale FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?`)
+        .get(sessionId, componentId, 'label') as { rationale: string | null };
+      expect(row.rationale).toBeNull();
+      db.close();
+    });
+  });
+});
+
+describe('applyToolCalls - component-level rationale', () => {
+  it('persists classify_component.rationale (description, props, slots) to raw_components', async () => {
+    await withTempDb((dbPath) => {
+      const { db, sessionId, componentId } = setupSession(dbPath);
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Button',
+        [
+          {
+            tool: 'classify_component',
+            description: 'Primary action button',
+            rationale: {
+              description: 'A CTA element',
+              props: 'captured visual variants only',
+              slots: 'no slots; leaf content',
+            },
+          },
+        ],
+        [],
+      );
+      const row = db
+        .prepare(
+          `SELECT description, component_description_rationale, props_rationale, slots_rationale
+           FROM raw_components WHERE session_id = ? AND component_id = ?`,
+        )
+        .get(sessionId, componentId) as {
+        description: string | null;
+        component_description_rationale: string | null;
+        props_rationale: string | null;
+        slots_rationale: string | null;
+      };
+      expect(row.description).toBe('Primary action button');
+      expect(row.component_description_rationale).toBe('A CTA element');
+      expect(row.props_rationale).toBe('captured visual variants only');
+      expect(row.slots_rationale).toBe('no slots; leaf content');
+      db.close();
+    });
+  });
+
+  it('persists classify_slot.rationale to raw_slots', async () => {
+    await withTempDb((dbPath) => {
+      const { db, sessionId, componentId } = setupSession(dbPath);
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Button',
+        [
+          { tool: 'classify_component' },
+          {
+            tool: 'classify_slot',
+            slot: 'icon',
+            required: false,
+            description: 'Optional icon',
+            rationale: 'kept because consumers commonly render a leading icon',
+          },
+        ],
+        [],
+      );
+      const row = db
+        .prepare(`SELECT rationale FROM raw_slots WHERE session_id = ? AND component_id = ? AND name = ?`)
+        .get(sessionId, componentId, 'icon') as { rationale: string | null };
+      expect(row.rationale).toBe('kept because consumers commonly render a leading icon');
+      db.close();
+    });
+  });
+
+  it('leaves rationale fields untouched when call omits them (sparse update)', async () => {
+    await withTempDb((dbPath) => {
+      const { db, sessionId, componentId } = setupSession(dbPath);
+      // First call sets rationale.
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Button',
+        [
+          {
+            tool: 'classify_component',
+            rationale: { description: 'D', props: 'P', slots: 'S' },
+          },
+          { tool: 'classify_slot', slot: 'icon', rationale: 'slot-why' },
+        ],
+        [],
+      );
+      // Second call omits rationale entirely — must not blank existing values.
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Button',
+        [
+          { tool: 'classify_component', description: 'Updated desc' },
+          { tool: 'classify_slot', slot: 'icon', required: true },
+        ],
+        [],
+      );
+      const compRow = db
+        .prepare(
+          `SELECT description, component_description_rationale, props_rationale, slots_rationale
+           FROM raw_components WHERE session_id = ? AND component_id = ?`,
+        )
+        .get(sessionId, componentId) as {
+        description: string | null;
+        component_description_rationale: string | null;
+        props_rationale: string | null;
+        slots_rationale: string | null;
+      };
+      expect(compRow.description).toBe('Updated desc');
+      expect(compRow.component_description_rationale).toBe('D');
+      expect(compRow.props_rationale).toBe('P');
+      expect(compRow.slots_rationale).toBe('S');
+      const slotRow = db
+        .prepare(`SELECT rationale FROM raw_slots WHERE session_id = ? AND component_id = ? AND name = ?`)
+        .get(sessionId, componentId, 'icon') as { rationale: string | null };
+      expect(slotRow.rationale).toBe('slot-why');
+      db.close();
+    });
+  });
+});

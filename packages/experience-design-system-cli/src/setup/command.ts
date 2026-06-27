@@ -10,7 +10,9 @@ import {
   readExperiencesCredentials,
   writeExperiencesCredentials,
   experiencesCredentialsPath,
+  type ExperiencesCredentials,
 } from '../credentials-store.js';
+import { promptAutoFilterPreference } from './auto-filter-prompt.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 
 const execFileAsync = promisify(execFile);
@@ -597,6 +599,31 @@ async function setupContentfulCredentials(): Promise<boolean> {
   return true;
 }
 
+// ── Feature 8: custom-skill-prompt helper (injectable for tests) ──────────────
+
+export type SkillPromptKind = 'select' | 'generate';
+
+/**
+ * Prompt the operator for a custom skill prompt path. Returns the resolved
+ * trimmed value, or `undefined` to leave the current value unchanged, or `null`
+ * to clear it. `ask` is injectable so tests can stub stdin.
+ */
+export async function promptCustomSkillPath(
+  kind: SkillPromptKind,
+  current: string | undefined,
+  ask: (q: string) => Promise<string> = prompt,
+): Promise<string | undefined | null> {
+  const flagName = kind === 'select' ? '--select-prompt-path' : '--generate-prompt-path';
+  void flagName;
+  const label = kind === 'select' ? 'select (analyze select-agent)' : 'generate (generate components)';
+  const currentLabel = current ? ` [${current}]` : ' [none]';
+  const answer = await ask(`  Custom ${label} prompt path${currentLabel} (empty=keep, "-"=clear): `);
+  const trimmed = answer.trim();
+  if (trimmed === '') return undefined;
+  if (trimmed === '-') return null;
+  return trimmed;
+}
+
 // ── Step 6: Optional quality-of-life ─────────────────────────────────────────
 
 async function setupQoL(profilePath: string): Promise<void> {
@@ -604,7 +631,20 @@ async function setupQoL(profilePath: string): Promise<void> {
   info('These are not required for experiences import but improve the experience.');
   info('');
 
-  // 6a: EDS_EXTRACT_CONCURRENCY
+  // 6a: AI auto-filter default
+  const existingCreds = await readExperiencesCredentials();
+  info('AI auto-filter — runs an agent pass before the manual scope-gate to prefilter components.');
+  info('Operators who prefer to review every component can default this OFF and override per run with --auto-filter.');
+  const autoFilter = await promptAutoFilterPreference((q) => prompt(q), existingCreds.autoFilter);
+  if (autoFilter !== (existingCreds.autoFilter ?? true)) {
+    await writeExperiencesCredentials({ ...existingCreds, autoFilter });
+    ok(`AI auto-filter default set to ${autoFilter ? 'ON' : 'OFF'}`);
+  } else {
+    dim('     unchanged');
+  }
+  info('');
+
+  // 6b: EDS_EXTRACT_CONCURRENCY
   const hasConcurrency = await profileContains(profilePath, 'EDS_EXTRACT_CONCURRENCY');
   if (!hasConcurrency) {
     info('EDS_EXTRACT_CONCURRENCY — controls how many components are analyzed in parallel.');
@@ -620,7 +660,27 @@ async function setupQoL(profilePath: string): Promise<void> {
     ok('EDS_EXTRACT_CONCURRENCY — already set');
   }
 
-  // 6b: NO_COLOR
+  // 6c (Feature 8): custom skill prompt paths
+  info('');
+  info('Custom skill prompt paths — point select-agent and/or generate components at your own .md prompts.');
+  info('When set, the bundled invariants (utility-wrapper rejection, description rules) do NOT apply.');
+  const offerCustomPrompts = await confirm('Configure custom skill prompt paths?', false);
+  if (offerCustomPrompts) {
+    const stored = await readExperiencesCredentials();
+    const selectAnswer = await promptCustomSkillPath('select', stored.selectPromptPath);
+    const generateAnswer = await promptCustomSkillPath('generate', stored.generatePromptPath);
+    const updated: ExperiencesCredentials = { ...stored };
+    if (selectAnswer === null) delete updated.selectPromptPath;
+    else if (selectAnswer !== undefined) updated.selectPromptPath = selectAnswer;
+    if (generateAnswer === null) delete updated.generatePromptPath;
+    else if (generateAnswer !== undefined) updated.generatePromptPath = generateAnswer;
+    await writeExperiencesCredentials(updated);
+    ok(`Custom prompt paths saved to ${experiencesCredentialsPath()}`);
+  } else {
+    dim('     skipped');
+  }
+
+  // 6d: NO_COLOR
   info('');
   info('NO_COLOR — set to 1 to disable ANSI color output (useful in CI or plain terminals).');
   const setNoColor = await confirm('Add NO_COLOR=1 (disable colors) to your profile?', false);

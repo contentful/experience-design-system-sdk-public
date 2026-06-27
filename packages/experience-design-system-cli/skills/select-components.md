@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Review the single extracted React/Next.js component provided below and decide whether it belongs in **Contentful Experience Orchestration** as a Component Type. Output one JSON tool call to stdout.
+Review the extracted React/Next.js component(s) provided below and decide whether each belongs in **Contentful Experience Orchestration** as a Component Type. The input is a JSON array — you may receive 1–N components in a single message. Output one JSON tool call per input component to stdout, named after the component. Tool calls may appear in any order.
 
 ---
 
@@ -66,6 +66,14 @@ These are **not** valid reasons to reject a component:
 
 > **Data-fetch wrapper rule**: Reject a component if it imports or calls a generated query hook, loads data, and then forwards that data into a sibling renderer. The sibling renderer is the Component Type; the data-loader wrapper is not.
 
+> **Utility-wrapper rule**: Reject a component if **all three** of the following are true:
+>
+> 1. It has no props that meaningfully shape user-facing content (no text strings, headings, image URLs, links, body content, rich text, or media references).
+> 2. The props it does have are purely structural or behavioral — e.g., `container`, `target`, `as`, `asChild`, render-prop callbacks, internal `ref` forwarding, focus/portal targets, debug toggles, or `children` only.
+> 3. It is a utility wrapper rather than a composable content surface. Concrete examples to reject under this rule: `Portal`, `SrOnly` (screen-reader-only wrappers), `FocusTrap`, `ErrorBoundary`, `Suspense` fallbacks, debug-only wrappers, and provider-shaped components whose only job is to forward children.
+>
+> Use `reject_component` with a reason like `"Utility wrapper — no authorable content surface"` or `"Structural-only component — no user-shaping props"`. This rule is additive to the categories above; do **not** use it to reject a component that has even one author-shaping prop (e.g., a `label`, `title`, `text`, `href`, `src`, or `richText` prop) — those still belong as Component Types per the "one rule" above.
+
 ## Using `selectionContext`
 
 If the input includes `selectionContext`, treat it as the only repo-level context you may use. It is already bounded to the customer-provided project files and may include:
@@ -89,7 +97,7 @@ Use that bounded context to distinguish the author-facing renderer from infrastr
 
 Emit one JSON object on a single line. Lines not starting with `{` are ignored by the parser — use them freely for reasoning.
 
-**Two tool calls — emit exactly one:**
+**Two tool calls — emit exactly one per input component:**
 
 ```
 {"tool":"select_component","name":"<ComponentName>","reason":"<brief reason>","confidence":<1-5>}
@@ -99,8 +107,9 @@ Emit one JSON object on a single line. Lines not starting with `{` are ignored b
 
 **Rules:**
 
-- Emit exactly one JSON object, on one line. No multi-line JSON. No markdown fences.
-- The `name` must match the component name in the input.
+- Emit exactly one JSON object per line. No multi-line JSON. No markdown fences.
+- Emit exactly one tool call per input component. Tool calls may appear in any order.
+- The `name` must match a component name from the input array exactly.
 - `reason` is a brief phrase documenting your decision.
 - `confidence` is your certainty (1–5) that the decision is correct:
   - **5** — obvious case, no doubt (clear UI atom, or clear infrastructure with no visual output)

@@ -21,6 +21,8 @@ export interface ClassifyPropCall {
   required?: boolean;
   description?: string;
   default?: string | boolean;
+  /** Internal LLM rationale; not customer-facing. Persisted to raw_props.rationale. */
+  reason?: string;
 }
 
 export interface ExcludePropCall {
@@ -32,6 +34,16 @@ export interface ExcludePropCall {
 export interface ClassifyComponentCall {
   tool: 'classify_component';
   description?: string;
+  /**
+   * Component-level rationale strings. Surfaced by the `I` ComponentRationalePanel.
+   * Each field is optional; missing fields leave existing DB values untouched
+   * (sparse update semantics in applyToolCalls).
+   */
+  rationale?: {
+    description?: string;
+    props?: string;
+    slots?: string;
+  };
 }
 
 export interface ClassifySlotCall {
@@ -40,6 +52,8 @@ export interface ClassifySlotCall {
   required?: boolean;
   allowed_components?: string[];
   description?: string;
+  /** Per-slot rationale; persisted to raw_slots.rationale. */
+  rationale?: string;
 }
 
 export type ToolCall = ClassifyPropCall | ExcludePropCall | ClassifyComponentCall | ClassifySlotCall;
@@ -198,6 +212,7 @@ export function parseToolCallLines(stdout: string): ParsedToolCalls {
       if (typeof rec.required === 'boolean') call.required = rec.required;
       if (typeof rec.description === 'string') call.description = rec.description;
       if (typeof rec.default === 'string' || typeof rec.default === 'boolean') call.default = rec.default;
+      if (typeof rec.reason === 'string') call.reason = rec.reason;
       calls.push(call);
     } else if (tool === 'exclude_prop') {
       if (typeof rec.prop !== 'string' || !rec.prop) {
@@ -212,6 +227,14 @@ export function parseToolCallLines(stdout: string): ParsedToolCalls {
     } else if (tool === 'classify_component') {
       const call: ClassifyComponentCall = { tool: 'classify_component' };
       if (typeof rec.description === 'string') call.description = rec.description;
+      if (typeof rec.rationale === 'object' && rec.rationale !== null) {
+        const r = rec.rationale as Record<string, unknown>;
+        const rationale: NonNullable<ClassifyComponentCall['rationale']> = {};
+        if (typeof r.description === 'string') rationale.description = r.description;
+        if (typeof r.props === 'string') rationale.props = r.props;
+        if (typeof r.slots === 'string') rationale.slots = r.slots;
+        if (Object.keys(rationale).length > 0) call.rationale = rationale;
+      }
       calls.push(call);
     } else if (tool === 'classify_slot') {
       if (typeof rec.slot !== 'string' || !rec.slot) {
@@ -224,6 +247,7 @@ export function parseToolCallLines(stdout: string): ParsedToolCalls {
         call.allowed_components = rec.allowed_components as string[];
       }
       if (typeof rec.description === 'string') call.description = rec.description;
+      if (typeof rec.rationale === 'string') call.rationale = rec.rationale;
       calls.push(call);
     }
   }

@@ -176,6 +176,49 @@ describe('parseToolCallLines', () => {
       const { calls } = parseToolCallLines(line);
       expect((calls[0] as { required?: unknown }).required).toBeUndefined();
     });
+
+    it('parses reason as the LLM internal rationale (Feature 1)', () => {
+      const line = JSON.stringify({
+        tool: 'classify_prop',
+        prop: 'label',
+        cdf_type: 'string',
+        cdf_category: 'content',
+        required: true,
+        description: 'Button label',
+        reason: 'inferred from prop name and PropertySignature; no enum context',
+      });
+      const { calls, warnings } = parseToolCallLines(line);
+      expect(warnings).toHaveLength(0);
+      expect(calls[0]).toMatchObject({
+        tool: 'classify_prop',
+        prop: 'label',
+        description: 'Button label',
+        reason: 'inferred from prop name and PropertySignature; no enum context',
+      });
+    });
+
+    it('omits reason when missing (Feature 1, backward compat)', () => {
+      const line = JSON.stringify({
+        tool: 'classify_prop',
+        prop: 'label',
+        cdf_type: 'string',
+        cdf_category: 'content',
+      });
+      const { calls } = parseToolCallLines(line);
+      expect((calls[0] as { reason?: unknown }).reason).toBeUndefined();
+    });
+
+    it('ignores reason if not a string (Feature 1)', () => {
+      const line = JSON.stringify({
+        tool: 'classify_prop',
+        prop: 'label',
+        cdf_type: 'string',
+        cdf_category: 'content',
+        reason: 42,
+      });
+      const { calls } = parseToolCallLines(line);
+      expect((calls[0] as { reason?: unknown }).reason).toBeUndefined();
+    });
   });
 
   describe('exclude_prop', () => {

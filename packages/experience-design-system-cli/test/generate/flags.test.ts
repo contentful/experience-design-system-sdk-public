@@ -132,6 +132,65 @@ describe('generate components — flag variations', () => {
     expect(code).toBe(0);
   });
 
+  describe('--generate-prompt-path (Feature 8)', () => {
+    it('lists the flag in --help', async () => {
+      const { stdout, code } = await runCli(['generate', 'components', '--help']);
+      expect(code).toBe(0);
+      expect(stdout).toContain('--generate-prompt-path');
+    });
+
+    it('exits 1 with a clear not-found error when the path does not exist', async () => {
+      const { stderr, code } = await runCliWithEnv(
+        [
+          'generate',
+          'components',
+          '--agent',
+          'claude',
+          '--session',
+          fixture.sessionId,
+          '--generate-prompt-path',
+          '/nonexistent/custom-prompt.md',
+          '--dry-run',
+        ],
+        baseEnv(),
+      );
+      expect(code).not.toBe(0);
+      expect(stderr).toMatch(/custom prompt path not found/i);
+      expect(stderr).toContain('/nonexistent/custom-prompt.md');
+    });
+
+    it('accepts a valid path and emits the warning banner on stderr', async () => {
+      const fs = await import('node:fs/promises');
+      const os = await import('node:os');
+      const path = await import('node:path');
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'eds-cli-custom-'));
+      try {
+        const customPath = path.join(dir, 'custom-generate.md');
+        await fs.writeFile(customPath, '# Custom generate prompt\n', 'utf8');
+        const { stderr, code } = await runCliWithEnv(
+          [
+            'generate',
+            'components',
+            '--agent',
+            'claude',
+            '--session',
+            fixture.sessionId,
+            '--generate-prompt-path',
+            customPath,
+            '--dry-run',
+          ],
+          baseEnv(),
+        );
+        expect(code).toBe(0);
+        expect(stderr).toMatch(/Custom prompt active for components/i);
+        expect(stderr).toContain(customPath);
+        expect(stderr).toMatch(/bundled invariants.*do NOT apply/i);
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe('generate tokens', () => {
     it('prints help with --help', async () => {
       const { stdout, code } = await runCli(['generate', 'tokens', '--help']);

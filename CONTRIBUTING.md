@@ -80,7 +80,7 @@ experience-design-system-cli analyze extract \
   --dir src
 ```
 
-Extracted components are stored in the session database. Run `analyze edit` to review and accept proposals, or pass `--accept-all` when calling `import` for a fully non-interactive run.
+Extracted components are stored in the session database. Run `analyze select` (alias `analyze edit`) to review and accept proposals via the standalone JsonEditor TUI, or pass `--auto-accept-scope --yes` along with credentials when calling `experiences import` for a fully non-interactive run.
 
 ## Commit Convention
 
@@ -120,6 +120,8 @@ pnpm -F @contentful/experience-design-system-cli test -- --coverage
 TUI tests use [`ink-testing-library`](https://github.com/vadimdemedes/ink-testing-library). Set `NO_COLOR=1` in the environment before running tests to suppress ANSI codes in snapshot output. Tests that assert on raw strings should strip ANSI codes before comparing.
 
 CLI integration tests require a compiled `dist/` directory. The test setup script compiles if `dist/` is missing.
+
+The CLI package's `vitest.config.ts` runs with `pool: 'forks'` and `retry: 1` for worker isolation. Contributors do not need to configure this, but expect test wall-clock time to reflect per-test process forks rather than a shared worker pool — flaky individual tests retry once before failing the suite.
 
 ## Snapshot Tests
 

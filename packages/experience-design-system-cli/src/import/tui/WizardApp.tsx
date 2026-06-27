@@ -3,11 +3,25 @@ import { Box, Text, useStdout } from 'ink';
 import { join, resolve } from 'node:path';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { access, readFile, stat } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFile, spawn } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
+import { buildRunTeaserLine } from './run-teaser.js';
+import { PathPrompt } from '../../runs/path-prompt.js';
+import { RunPicker, type RunPickerSelection } from '../../runs/run-picker.js';
+import type { RunRecord } from '../../runs/store.js';
+import { SaveConflictGate } from '../../runs/save-conflict.js';
+import {
+  detectSaveConflict,
+  buildTimestampedSubdir,
+  resolveSavePath,
+  type OnConflictMode,
+} from '../../runs/save-path-resolver.js';
+import { appendRun } from '../../runs/store.js';
+import { buildSourceFingerprint, buildSavedFingerprint } from '../../runs/fingerprint.js';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
-import type { ReviewSessionSnapshot } from '../../analyze/select/types.js';
+import { CustomPromptBanner } from './CustomPromptBanner.js';
 import { WelcomeStep } from './steps/WelcomeStep.js';
 import { PathValidationStep } from './steps/PathValidationStep.js';
 import { RunningStep } from './steps/RunningStep.js';
@@ -17,26 +31,46 @@ import { WizardPreviewStep } from './steps/WizardPreviewStep.js';
 import { DoneStep } from './steps/DoneStep.js';
 import { ErrorStep } from './steps/ErrorStep.js';
 import { TokenInputStep } from './steps/TokenInputStep.js';
-import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
 import { PreviewValidationErrorStep } from './steps/PreviewValidationErrorStep.js';
+import { PushingStep } from './steps/PushingStep.js';
+import { computePushExpected, type PushExpected, type PushProgress } from './push-progress.js';
+import { nextStateAfterPrint } from './run-print-files-helpers.js';
+import { PushDecisionGateStep } from './steps/PushDecisionGateStep.js';
+import { chooseGateAction } from './push-decision-gate-helpers.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
+import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
+import { spawnGenerateChild } from './spawn-generate.js';
 import { readTokensFromPath, hasBreakingChangesWithImpact } from '../../apply/manifest.js';
 import { buildManifest } from '@contentful/experience-design-system-types';
 import type { ServerPreviewResponse, ManifestPayload } from '@contentful/experience-design-system-types';
 import {
   openPipelineDb,
   loadCDFComponents,
+  loadScopeComponents,
   seedCDFFromPreviewResponse,
   seedDefaultsFromChangedItems,
   backfillUnclassifiedProps,
 } from '../../session/db.js';
+import { ScopeGateHost, type ScopeComponent } from './scope-gate-host.js';
+import { FinalReviewHost } from './final-review-host.js';
+import { runScopeGate } from './runScopeGate.js';
+import { buildAutoFilterErrorTail } from './auto-filter-error.js';
 import { checkAgentAuth, type AgentName } from '../../generate/agent-runner.js';
 import { normalizePath } from '../path-utils.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
 import { writeExperiencesCredentials } from '../../credentials-store.js';
+import {
+  nextStepAfterScopeGate,
+  nextStepAfterCredentialsValidated,
+  shouldBypassPreview,
+  buildSkippedPreviewTransition,
+  shouldRefusePush,
+  buildSkippedPushTransition,
+} from './wizard-state-transitions.js';
 
 type WizardStep =
+  | 'run-picker'
   | 'welcome'
   | 'token-input'
   | 'token-reuse-gate'
@@ -46,17 +80,16 @@ type WizardStep =
   | 'generating-tokens'
   | 'path-validation'
   | 'extracting'
-  | 'review-extraction-gate'
-  | 'analyze-select'
+  | 'scope-gate'
   | 'generating'
-  | 'review-generated-gate'
-  | 'generate-edit'
-  | 'generate-review'
+  | 'final-review'
   | 'push-decision-gate'
   | 'credentials'
   | 'previewing'
   | 'preview-gate'
   | 'pushing'
+  | 'path-prompt'
+  | 'save-conflict-gate'
   | 'printing'
   | 'print-gate'
   | 'done'
@@ -64,14 +97,21 @@ type WizardStep =
   | 'preview-validation-error';
 
 type PushResult = {
-  componentTypes: { created: number; updated: number; failed: number };
-  designTokens: { created: number; updated: number; failed: number };
+  componentTypes: { created: number; updated: number; removed: number; failed: number };
+  designTokens: { created: number; updated: number; removed: number; failed: number };
   summary?: { total: number; succeeded: number; failed: number };
 };
 
 type WizardState = {
   step: WizardStep;
   agent: string;
+  /**
+   * Parity-audit Q4: resolved LLM model override forwarded to spawned
+   * `analyze select-agent` and `generate components` subprocesses. Resolution
+   * chain: `--model` flag > `credentials.json#agentModel` > undefined (each
+   * agent runner picks its own fast default).
+   */
+  agentModel?: string;
   projectPath: string;
   outDir: string;
   rawTokensPath: string;
@@ -79,6 +119,10 @@ type WizardState = {
   tokenSourceChanged: boolean | null;
   skipComponents: boolean;
   tokenSessionId: string | null;
+  /** Number of tokens in the most recent `print tokens` invocation. Parsed
+   *  from the `wrote tokens.json (N tokens)` confirmation line. Used to
+   *  populate the `tokenCount` field on the run record. */
+  tokenCount: number;
   extractSessionId: string | null;
   generateSessionId: string | null;
   extractedCount: number;
@@ -102,7 +146,8 @@ type WizardState = {
   credentialsError: string;
   serverPreview: ServerPreviewResponse | null;
   manifest: ManifestPayload | null;
-  pushProgress: string | null;
+  pushProgress: PushProgress;
+  pushExpected: PushExpected | null;
   pushResult: PushResult;
   errorStep: string;
   errorMessage: string;
@@ -110,22 +155,118 @@ type WizardState = {
   authCheckStepNumber: number;
   previewValidationErrors: PreviewValidationError[];
   previewValidationMissingNames: string[];
+  // Feature 3: AI auto-filter state. `aiDecisions` keys by component name and
+  // is updated incrementally as the select-agent subprocess emits stderr
+  // progress lines. `aiFilterStatus` drives the scope-gate's running banner.
+  aiFilterStatus: 'idle' | 'running' | 'complete' | 'cancelled' | 'failed';
+  aiFilterProgress: { done: number; total: number } | null;
+  aiDecisions: Record<string, { decision: 'accepted' | 'rejected'; reason: string }>;
+  aiFilterError: string | null;
+  // Wizard prefetch refactor: tracked as inline state on the credentials screen
+  // rather than a dedicated `validating-credentials` step.
+  credentialsValidating: boolean;
+  // Background generation prefetch (kicked off from scope-gate confirm so the
+  // operator's credential-entry time overlaps with the LLM call).
+  generatePrefetchStatus: 'idle' | 'running' | 'complete' | 'failed';
+  generatePrefetchError: string | null;
+  // Skip-credentials escape hatch (see dsi-tui-skip-credentials spec).
+  // When true, the wizard advanced past the credentials step without
+  // validating creds. Downstream effects: previewImport is bypassed,
+  // push is disabled at the push-decision-gate, and runPush refuses to
+  // execute if it's somehow reached.
+  credentialsSkipped: boolean;
+  /** Task 8 — id of the most recent run record written to runs.json. */
+  lastRunId: string | null;
 };
 
 function findCliPath(): string {
   return join(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..', 'bin', 'cli.js');
 }
 
-export function buildAnalyzeSelectArgs(opts: { sessionId: string; acceptAll: boolean }): string[] {
-  const args = ['analyze', 'select', '--session', opts.sessionId];
-  if (opts.acceptAll) {
-    // The wizard pre-shows validation errors in the analyze-extract TUI before
-    // reaching this gate, so the user has already seen what will be excluded.
-    // Pass --exclude-invalid to bypass the headless fail-loud gate (which is
-    // for CI / scripted callers that need to fail loud) — the wizard surfaces
-    // the auto-rejection via formatAcceptanceSummary on the next screen.
-    args.push('--select-all', '--exclude-invalid');
+export function buildSelectAgentArgs(opts: {
+  sessionId: string;
+  agent: string;
+  /** Parity-audit Q4: forward `--model` override from `experiences import`. */
+  model?: string;
+  /** Feature 8: forward to the spawned select-agent subprocess. */
+  selectPromptPath?: string;
+  /**
+   * Forward the operator's `experiences import --no-cache` through to the
+   * spawned `analyze select-agent` so PR #59's per-component select-cache is
+   * bypassed on this run. Default (omitted/false) preserves cache behavior.
+   */
+  noCache?: boolean;
+}): string[] {
+  // Feature 3: the wizard auto-filter run should never fail-loud on validation
+  // errors — those components surface in the AI-excluded section with a
+  // synthesized reason, not an exit-1 abort. So we always pass --exclude-invalid.
+  const args = ['analyze', 'select-agent', '--agent', opts.agent, '--session', opts.sessionId, '--exclude-invalid'];
+  if (opts.model) args.push('--model', opts.model);
+  if (opts.selectPromptPath) args.push('--select-prompt-path', opts.selectPromptPath);
+  if (opts.noCache) args.push('--no-cache');
+  return args;
+}
+
+export type AutoFilterProgress = {
+  n: number;
+  total: number;
+  decision: 'accepted' | 'rejected';
+  name: string;
+  reason: string;
+};
+
+export function parseAutoFilterProgressLine(line: string): AutoFilterProgress | null {
+  // Format: progress=select-agent:N/M:<decision>:<name>:<url-encoded-reason>
+  // Name and reason CANNOT contain `:` raw (name comes from component identifier
+  // which forbids colons; reason is URL-encoded). We split with a limit so any
+  // stray colon inside the URL-encoded reason wouldn't matter — but the encoder
+  // also handles `:` as `%3A` so this is defensive.
+  const prefix = 'progress=select-agent:';
+  if (!line.startsWith(prefix)) return null;
+  const rest = line.slice(prefix.length);
+  const parts = rest.split(':');
+  if (parts.length < 4) return null;
+  const [counter, decision, name, ...reasonParts] = parts;
+  if (!counter) return null;
+  const counterMatch = /^(\d+)\/(\d+)$/.exec(counter);
+  if (!counterMatch) return null;
+  if (decision !== 'accepted' && decision !== 'rejected') return null;
+  if (!name) return null;
+  const encodedReason = reasonParts.join(':');
+  let reason = '';
+  try {
+    reason = decodeURIComponent(encodedReason);
+  } catch {
+    reason = encodedReason;
   }
+  return {
+    n: Number(counterMatch[1]),
+    total: Number(counterMatch[2]),
+    decision,
+    name,
+    reason,
+  };
+}
+
+export function buildGenerateComponentsArgs(opts: {
+  sessionId: string;
+  tokensPath?: string;
+  agent: string;
+  /** Parity-audit Q4: forward `--model` override from `experiences import`. */
+  model?: string;
+  noCache?: boolean;
+  /** Feature 8: forward to the spawned generate components subprocess. */
+  generatePromptPath?: string;
+}): string[] {
+  // Default behavior preserves the SHA cache (re-runs only re-classify
+  // changed components). The operator opts into a full re-classify pass via
+  // `experiences import --no-cache`, which forwards through to the spawned
+  // `generate components` subprocess. See wizard-cache.test.ts.
+  const args = ['generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
+  if (opts.tokensPath) args.push('--tokens', opts.tokensPath);
+  if (opts.model) args.push('--model', opts.model);
+  if (opts.noCache) args.push('--no-cache');
+  if (opts.generatePromptPath) args.push('--generate-prompt-path', opts.generatePromptPath);
   return args;
 }
 
@@ -135,29 +276,23 @@ export function formatAcceptanceSummary(opts: { accepted: number; autoRejected: 
   return `${acceptedClause}, ${opts.autoRejected} excluded due to validation errors.`;
 }
 
-export function formatGeneratedSummary(opts: {
-  generated: number;
-  renamedSlots: number;
-  autoRejected: number;
-}): string {
-  const generatedClause = `Generated definitions for ${opts.generated} component${opts.generated === 1 ? '' : 's'}.`;
-  const renamedClause =
-    opts.renamedSlots > 0
-      ? ` ${opts.renamedSlots} unnamed slot${opts.renamedSlots === 1 ? '' : 's'} renamed (children / slot_<n>) so the LLM could classify them.`
-      : '';
-  const exclusionClause =
-    opts.autoRejected > 0
-      ? ` ${opts.autoRejected} component${opts.autoRejected === 1 ? '' : 's'} excluded earlier due to validation errors.`
-      : '';
-  return `${generatedClause}${renamedClause}${exclusionClause}`;
-}
-
 function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   return new Promise((res) => {
     execFile('node', [findCliPath(), ...args], (error, stdout, stderr) => {
       res({ exitCode: error?.code ? Number(error.code) : 0, stdout, stderr });
     });
   });
+}
+
+/**
+ * Parse the `wrote tokens.json (N tokens)` confirmation line emitted by
+ * `experiences print tokens`. Returns 0 when the line cannot be parsed —
+ * the wizard still records the run; downstream consumers should treat 0 as
+ * "unknown" rather than "no tokens".
+ */
+export function parsePrintTokensCount(stdout: string): number {
+  const m = /\((\d+)\s+token/.exec(stdout);
+  return m ? Number(m[1]) : 0;
 }
 
 const WIZARD_LOG = join(tmpdir(), 'experiences-import-wizard.log');
@@ -173,8 +308,91 @@ export type WizardAppProps = {
   initialCmaToken?: string;
   initialHost?: string;
   initialAgent?: string;
+  /** Parity-audit Q4: resolved model override (flag || stored value). */
+  initialModel?: string;
   initialProjectPath?: string;
   host?: string;
+  autoAcceptScope?: boolean;
+  noCache?: boolean;
+  // Feature 3: when false, skip the auto-AI-filter subprocess after extract.
+  // Default true (auto-filter ON). Plumbed from `experiences import` via
+  // `--no-auto-filter`.
+  autoFilter?: boolean;
+  // Feature 2: when false, skip the post-FieldEditor-save live preview
+  // re-run. Default true (live-preview ON). Plumbed from
+  // `experiences import` via `--no-live-preview`.
+  livePreview?: boolean;
+  // When true, skip the credentials/preview/push branch entirely. The wizard
+  // runs extract → scope-gate → generate → final-review and exits via
+  // print-gate. Plumbed from `experiences import` via `--no-push`.
+  noPush?: boolean;
+  // When true, push without writing components.json / tokens.json to disk.
+  // Mutually exclusive with `noPush` (validated at the CLI surface).
+  // Plumbed from `experiences import` via `--no-save`. Default false.
+  noSave?: boolean;
+  /** Task 4 — `--out-dir <path>` flag. Bypasses the inline save-path prompt. */
+  outDirOverride?: string;
+  /**
+   * Task 5 — `--on-conflict <overwrite|skip|fail>` flag. When supplied along
+   * with `outDirOverride`, the wizard skips the SaveConflictGate and applies
+   * the chosen mode automatically via `resolveSavePath`.
+   */
+  onConflictMode?: OnConflictMode;
+  /**
+   * Feature 8: custom prompt path overrides forwarded to the spawned
+   * `analyze select-agent` and `generate components` subprocesses. When set,
+   * the wizard also renders a persistent top-of-screen banner so the operator
+   * cannot miss that bundled invariants are bypassed.
+   */
+  selectPromptPath?: string;
+  generatePromptPath?: string;
+  /**
+   * Modify-entry: when set, the wizard treats extract as already-run and
+   * seeds `state.extractSessionId` from this value. Combined with
+   * `initialStep: 'final-review'`, the wizard skips welcome → token-input →
+   * checking-claude-auth → extracting → scope-gate and lands directly on
+   * the post-generate review screen using DB-backed reads.
+   */
+  seedExtractSessionId?: string;
+  /**
+   * Modify-entry: when set, the wizard treats generate as already-run and
+   * seeds `state.generateSessionId`. Required (together with
+   * `seedExtractSessionId`) for the final-review short-circuit to render
+   * meaningful data.
+   */
+  seedGenerateSessionId?: string;
+  /**
+   * Modify-entry: when set, the wizard treats the tokens step as already-run
+   * and seeds `state.tokenSessionId`. Without this, the modify entry would
+   * leave tokens unaddressable — push would skip them and `runPrintFiles`
+   * would never re-emit `tokens.json` for the modified save path.
+   */
+  seedTokenSessionId?: string;
+  /**
+   * Modify-entry: overrides the wizard's initial step. When set, the wizard
+   * bypasses its normal welcome/token-input bootstrap. Currently only
+   * `'final-review'` is plumbed end-to-end; `'scope-gate'` is accepted for
+   * future use but falls through to standard behavior.
+   */
+  initialStep?: 'scope-gate' | 'final-review';
+  /**
+   * Headless raw-token source path. When set (and the modify-entry props
+   * are not), the wizard seeds `state.rawTokensPath` and lands directly on
+   * the `generating-tokens` step, skipping welcome + token-input. The
+   * existing `generating-tokens` effect then drives token classification
+   * via `generate tokens --raw-tokens <path>` just as if the operator had
+   * submitted the interactive `TokenInputStep`.
+   */
+  initialRawTokensPath?: string;
+  /**
+   * When set with a non-empty array, the wizard opens with the run picker
+   * instead of the welcome step. The picker invokes `onRunPicked` with the
+   * operator's selection so the CLI surface can route into
+   * `--push-from-run` / `--modify` entry points (or fall through to the
+   * normal welcome step on 'new').
+   */
+  initialRuns?: RunRecord[];
+  onRunPicked?: (selection: RunPickerSelection) => void;
 };
 
 export function WizardApp({
@@ -183,8 +401,26 @@ export function WizardApp({
   initialCmaToken = '',
   initialHost,
   initialAgent,
+  initialModel,
   initialProjectPath,
   host,
+  autoAcceptScope = false,
+  noCache = false,
+  autoFilter = true,
+  livePreview = true,
+  noPush = false,
+  noSave = false,
+  outDirOverride,
+  onConflictMode,
+  selectPromptPath,
+  generatePromptPath,
+  seedExtractSessionId,
+  seedGenerateSessionId,
+  seedTokenSessionId,
+  initialStep,
+  initialRawTokensPath,
+  initialRuns,
+  onRunPicked,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -209,18 +445,66 @@ export function WizardApp({
     tokensPath: '',
   });
 
+  // Feature 3: holds the spawned `analyze select-agent` subprocess so the
+  // scope-gate's `q` (during running) can SIGTERM it for cancellation.
+  const autoFilterChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
+  // Promise that resolves when the auto-filter subprocess fully exits. Used
+  // by `cancelAutoFilterAndWait` so scope-gate confirm can guarantee its
+  // snapshot write goes AFTER the subprocess's last write.
+  const autoFilterDonePromiseRef = useRef<Promise<void> | null>(null);
+
+  // Background `generate components` subprocess spawned from scope-gate
+  // confirm so its LLM call overlaps with the operator's credential entry.
+  // Held in refs so we can SIGTERM on credential failure / quit, and await
+  // the promise from inside `validateCredentials` once creds come back OK.
+  const generateChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
+  const generatePromiseRef = useRef<Promise<{
+    exitCode: number;
+    signal: NodeJS.Signals | null;
+    stdout: string;
+    stderr: string;
+  }> | null>(null);
+
+  // Modify-entry short-circuit: when the launcher passes seed session IDs
+  // and `initialStep: 'final-review'`, skip the welcome/token-input bootstrap
+  // and land directly on the post-generate review screen. The DB-backed
+  // GenerateReviewStep loads its data off `state.extractSessionId`, so all
+  // we need to do here is seed the IDs and the step.
+  const modifyEntryReady = !!seedExtractSessionId && initialStep === 'final-review';
+  // Headless raw-tokens entry: when the operator passed `--raw-tokens <path>`
+  // the CLI seeds this prop. Skip welcome + token-input and land on the
+  // `generating-tokens` step which already drives the token-classification
+  // subprocess off `state.rawTokensPath`. Modify-entry wins if both are set.
+  const rawTokensEntryReady = !modifyEntryReady && !!initialRawTokensPath;
+  const initialStepResolved: WizardStep = modifyEntryReady
+    ? 'final-review'
+    : rawTokensEntryReady
+      ? 'generating-tokens'
+      : initialProjectPath
+        ? 'token-input'
+        : 'welcome';
+  const initialOutDir = initialProjectPath ? join(resolve(initialProjectPath), '.contentful') : '';
+  const initialTokensPath = modifyEntryReady && initialOutDir ? join(initialOutDir, 'tokens.json') : '';
+
   const [state, setState] = useState<WizardState>({
-    step: initialProjectPath ? 'token-input' : 'welcome',
+    step:
+      modifyEntryReady || rawTokensEntryReady
+        ? initialStepResolved
+        : initialRuns && initialRuns.length > 0
+          ? 'run-picker'
+          : initialStepResolved,
     agent: initialAgent ?? 'claude',
+    ...(initialModel ? { agentModel: initialModel } : {}),
     projectPath: initialProjectPath ?? '',
-    outDir: initialProjectPath ? join(resolve(initialProjectPath), '.contentful') : '',
-    rawTokensPath: '',
-    tokensPath: '',
+    outDir: initialOutDir,
+    rawTokensPath: rawTokensEntryReady ? initialRawTokensPath! : '',
+    tokensPath: initialTokensPath,
     tokenSourceChanged: null,
     skipComponents: false,
-    tokenSessionId: null,
-    extractSessionId: null,
-    generateSessionId: null,
+    tokenSessionId: seedTokenSessionId ?? null,
+    tokenCount: 0,
+    extractSessionId: seedExtractSessionId ?? null,
+    generateSessionId: seedGenerateSessionId ?? null,
     extractedCount: 0,
     acceptedCount: 0,
     autoRejectedCount: 0,
@@ -238,9 +522,10 @@ export function WizardApp({
     serverPreview: null,
     manifest: null,
     pushProgress: null,
+    pushExpected: null,
     pushResult: {
-      componentTypes: { created: 0, updated: 0, failed: 0 },
-      designTokens: { created: 0, updated: 0, failed: 0 },
+      componentTypes: { created: 0, updated: 0, removed: 0, failed: 0 },
+      designTokens: { created: 0, updated: 0, removed: 0, failed: 0 },
     },
     errorStep: '',
     errorMessage: '',
@@ -248,6 +533,15 @@ export function WizardApp({
     authCheckStepNumber: 1,
     previewValidationErrors: [],
     previewValidationMissingNames: [],
+    aiFilterStatus: 'idle',
+    aiFilterProgress: null,
+    aiDecisions: {},
+    aiFilterError: null,
+    credentialsValidating: false,
+    generatePrefetchStatus: 'idle',
+    generatePrefetchError: null,
+    credentialsSkipped: false,
+    lastRunId: null,
   });
 
   useEffect(() => {
@@ -343,15 +637,9 @@ export function WizardApp({
       stdout: string;
       stderr: string;
     }>((res) => {
-      const child = spawn('node', [
-        findCliPath(),
-        'generate',
-        'tokens',
-        '--agent',
-        state.agent,
-        '--raw-tokens',
-        rawTokensPath,
-      ]);
+      const tokenArgs = [findCliPath(), 'generate', 'tokens', '--agent', state.agent, '--raw-tokens', rawTokensPath];
+      if (state.agentModel) tokenArgs.push('--model', state.agentModel);
+      const child = spawn('node', tokenArgs);
       let stdout = '';
       let stderr = '';
       child.stdout.on('data', (d: Buffer) => {
@@ -385,7 +673,8 @@ export function WizardApp({
       });
       return;
     }
-    update({ step: 'path-validation', tokensPath, tokenSessionId });
+    const tokenCount = parsePrintTokensCount(r.stdout);
+    update({ step: 'path-validation', tokensPath, tokenSessionId, tokenCount });
   };
 
   const runExtract = async (projectPath: string) => {
@@ -460,107 +749,254 @@ export function WizardApp({
       return;
     }
     update({
-      step: 'review-extraction-gate',
+      step: 'scope-gate',
       extractSessionId,
       extractedCount,
+      aiFilterStatus: autoFilter ? 'running' : 'idle',
+      aiFilterProgress: autoFilter ? { done: 0, total: extractedCount } : null,
+      aiDecisions: {},
+      aiFilterError: null,
     });
+    if (autoFilter && extractSessionId) {
+      autoFilterDonePromiseRef.current = runAutoFilter(extractSessionId);
+    }
   };
 
-  const runAnalyzeSelect = async (
-    sessionId: string,
-    extractedCount: number,
-    tokensPath: string,
-    acceptAll: boolean,
-  ) => {
-    logStep({
-      fn: 'runAnalyzeSelect:enter',
-      sessionId,
-      extractedCount,
-      acceptAll,
-    });
-    let acceptedCount: number;
-
-    if (!acceptAll && state.serverPreview && !process.env['EDS_PREVIEW_ANNOTATIONS']) {
-      process.env['EDS_PREVIEW_ANNOTATIONS'] = JSON.stringify(buildPreviewAnnotations(state.serverPreview));
-    }
-
-    if (!acceptAll) {
-      update({ step: 'analyze-select' });
-    }
-    const args = buildAnalyzeSelectArgs({ sessionId, acceptAll });
-    const r = acceptAll ? await runCli(args) : await runCliInteractive(args);
-
-    logStep({ fn: 'runAnalyzeSelect:post-spawn', exitCode: r.exitCode, args });
-    if (!acceptAll) clearPreviewEnvVars();
-
-    if (r.exitCode !== 0) {
-      update({
-        step: 'error',
-        errorStep: 'analyze select',
-        errorMessage: r.stderr.trim() || 'Unknown error',
+  // Feature 3: spawn `analyze select-agent` after extract and stream decisions
+  // into wizard state via stderr progress lines. The subprocess writes
+  // `raw_components.status` + `reject_reason` itself (see Task 2), so the
+  // scope-gate UI re-loads via `loadScopeComponents` to get fresh data on every
+  // render — but we also keep a memory-side `aiDecisions` map for streaming UX.
+  const runAutoFilter = (sessionId: string): Promise<void> => {
+    return new Promise((res) => {
+      const args = buildSelectAgentArgs({
+        sessionId,
+        agent: state.agent,
+        ...(state.agentModel ? { model: state.agentModel } : {}),
+        selectPromptPath,
+        noCache,
       });
-      return;
-    }
-    // Read accepted count from the review state file (since TUI subprocess inherits stdio
-    // in the manual review path; in the bulk path we also persist to the same file).
-    // Also extract auto-rejected count (components with error-severity validation issues
-    // dropped by the gate) so the user sees what was excluded on the next step.
-    const artifactsRoot = process.env['EDS_REVIEW_ARTIFACTS_DIR']
-      ? resolve(process.env['EDS_REVIEW_ARTIFACTS_DIR'])
-      : resolve(homedir(), '.contentful', 'experience-design-system-cli', 'reviews');
-    const reviewStatePath = resolve(artifactsRoot, sessionId, 'current-review-state.json');
-    let autoRejectedCount = 0;
-    try {
-      const reviewState = JSON.parse(await readFile(reviewStatePath, 'utf8')) as ReviewSessionSnapshot;
-      acceptedCount = reviewState.components.filter((c) => c.status === 'accepted').length;
-      autoRejectedCount = reviewState.components.filter(
-        (c) =>
-          c.status === 'rejected' && (c.originalProposal.validationIssues ?? []).some((i) => i.severity === 'error'),
-      ).length;
-    } catch {
-      acceptedCount = extractedCount;
-    }
-    update({ acceptedCount, autoRejectedCount });
-    if (acceptedCount > 0) {
-      if (await runAgentAuthCheck('generating')) {
-        void runGenerate(sessionId, tokensPath, acceptedCount);
-      }
-    } else {
-      advanceToPushFlow(0);
-    }
-  };
-
-  const runGenerate = async (extractSessionId: string, tokensPath: string, acceptedCount: number) => {
-    const result = await new Promise<{
-      exitCode: number;
-      stdout: string;
-      stderr: string;
-    }>((res) => {
-      const args = [findCliPath(), 'generate', 'components', '--agent', state.agent, '--session', extractSessionId];
-      if (tokensPath) args.push('--tokens', tokensPath);
-      const child = spawn('node', args);
-      let stdout = '';
+      const child = spawn('node', [findCliPath(), ...args]);
+      autoFilterChildRef.current = child;
       let stderr = '';
-      child.stdout.on('data', (d: Buffer) => {
-        stdout += String(d);
-      });
       child.stderr.on('data', (d: Buffer) => {
         const chunk = String(d);
         stderr += chunk;
         for (const line of chunk.split('\n')) {
-          const m = /\[(\d+)\/(\d+)\]\s+(.+)/.exec(line);
-          if (m)
-            update({
-              generateProgress: {
-                done: Number(m[1]),
-                total: Number(m[2]),
-                current: m[3]!.trim(),
-              },
-            });
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          const parsed = parseAutoFilterProgressLine(trimmed);
+          if (!parsed) continue;
+          setState((prev) => ({
+            ...prev,
+            aiFilterProgress: { done: parsed.n, total: parsed.total },
+            aiDecisions: {
+              ...prev.aiDecisions,
+              [parsed.name]: { decision: parsed.decision, reason: parsed.reason },
+            },
+          }));
         }
       });
-      child.on('exit', (code) => res({ exitCode: code ?? 0, stdout, stderr }));
+      // Use 'close' (not 'exit') so the status flip happens after the child's
+      // stdio AND its inherited SQLite WAL/SHM file handles have been fully
+      // released by the OS. 'exit' fires the instant the process terminates;
+      // setting state then triggers a wizard re-render that re-opens
+      // pipeline.db from the scope-gate step, and the lock from the dead
+      // child's still-mapped WAL handle surfaces as "database is locked".
+      child.on('close', (code, signal) => {
+        autoFilterChildRef.current = null;
+        if (signal === 'SIGTERM') {
+          setState((prev) => ({ ...prev, aiFilterStatus: 'cancelled' }));
+        } else if ((code ?? 0) !== 0) {
+          const tail = buildAutoFilterErrorTail(stderr);
+          setState((prev) => ({
+            ...prev,
+            aiFilterStatus: 'failed',
+            aiFilterError: tail || `exit ${code}`,
+          }));
+        } else {
+          setState((prev) => ({ ...prev, aiFilterStatus: 'complete' }));
+        }
+        res();
+      });
+      child.on('error', (err) => {
+        autoFilterChildRef.current = null;
+        setState((prev) => ({
+          ...prev,
+          aiFilterStatus: 'failed',
+          aiFilterError: err.message,
+        }));
+        res();
+      });
     });
+  };
+
+  const cancelAutoFilter = (): void => {
+    const child = autoFilterChildRef.current;
+    if (child && !child.killed) {
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        // best-effort
+      }
+    }
+  };
+
+  // Variant that returns a Promise resolving when the subprocess has fully
+  // exited. Used by scope-gate confirm to guarantee operator-write-last
+  // ordering on the review-state snapshot (PR #43 race fix).
+  const cancelAutoFilterAndWait = async (): Promise<void> => {
+    const child = autoFilterChildRef.current;
+    const donePromise = autoFilterDonePromiseRef.current;
+    if (!child || child.killed) {
+      // Subprocess already gone (or never started). If the Promise is still
+      // pending — e.g. exit handler hasn't fired yet — await it; otherwise
+      // resolve immediately.
+      if (donePromise) await donePromise;
+      return;
+    }
+    try {
+      child.kill('SIGTERM');
+    } catch {
+      // best-effort
+    }
+    if (donePromise) await donePromise;
+  };
+
+  // Cancel a running generation prefetch (SIGTERM the child + clear refs +
+  // reset state). Best-effort — if the child has already exited, this is a
+  // no-op aside from clearing the prefetch status.
+  const cancelGeneratePrefetch = (): void => {
+    const child = generateChildRef.current;
+    if (child && !child.killed) {
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        // best-effort
+      }
+    }
+    generateChildRef.current = null;
+    generatePromiseRef.current = null;
+    setState((prev) => ({
+      ...prev,
+      generatePrefetchStatus: 'idle',
+      generatePrefetchError: null,
+      generateProgress: null,
+    }));
+  };
+
+  // Spawn `generate components` in the background. Wires up the same
+  // stderr-progress streaming as `runGenerate` but stores the in-flight
+  // promise in a ref so the post-credentials path can await it.
+  const startGeneratePrefetch = (
+    extractSessionId: string,
+    tokensPath: string,
+  ): Promise<{
+    exitCode: number;
+    signal: NodeJS.Signals | null;
+    stdout: string;
+    stderr: string;
+  }> => {
+    const args = [
+      findCliPath(),
+      ...buildGenerateComponentsArgs({
+        sessionId: extractSessionId,
+        tokensPath,
+        agent: state.agent,
+        ...(state.agentModel ? { model: state.agentModel } : {}),
+        noCache,
+      }),
+    ];
+    let progressCursor: GenerateProgressState = null;
+    const { child, donePromise } = spawnGenerateChild({
+      command: 'node',
+      args,
+      onStderr: (chunk) => {
+        const nextProgress = parseGenerateStderrChunk(chunk, progressCursor);
+        if (nextProgress !== progressCursor) {
+          progressCursor = nextProgress;
+          setState((prev) => ({ ...prev, generateProgress: nextProgress }));
+        }
+      },
+    });
+    generateChildRef.current = child;
+    generatePromiseRef.current = donePromise;
+    setState((prev) => ({
+      ...prev,
+      generatePrefetchStatus: 'running',
+      generatePrefetchError: null,
+    }));
+    donePromise
+      .then((result) => {
+        // Clear the child ref regardless of how it ended.
+        generateChildRef.current = null;
+        if (result.signal === 'SIGTERM') {
+          // Caller already reset state via cancelGeneratePrefetch.
+          return;
+        }
+        if (result.exitCode !== 0) {
+          const tail = result.stderr.trim().split('\n').slice(-3).join('\n') || `exit ${result.exitCode}`;
+          setState((prev) => ({
+            ...prev,
+            generatePrefetchStatus: 'failed',
+            generatePrefetchError: tail,
+            generateProgress: null,
+          }));
+          return;
+        }
+        const sessionMatch = /^session=(.+)$/m.exec(result.stdout);
+        const generateSessionId = sessionMatch ? sessionMatch[1]!.trim() : null;
+        const countMatch = /(\d+) components?/.exec(result.stderr);
+        const generatedCount = countMatch ? Number(countMatch[1]) : 0;
+        const renamedMatch = /^renamed-slots:\s*(\d+)$/m.exec(result.stdout);
+        const renamedSlotsCount = renamedMatch ? Number(renamedMatch[1]) : 0;
+        // Persist generated state but DO NOT auto-advance — the credentials
+        // path will pick this up via `advanceAfterCredentialsValidated`.
+        setState((prev) => ({
+          ...prev,
+          generateSessionId,
+          generatedCount,
+          renamedSlotsCount,
+          generateProgress: null,
+          generatePrefetchStatus: 'complete',
+        }));
+      })
+      .catch(() => {
+        generateChildRef.current = null;
+        setState((prev) => ({
+          ...prev,
+          generatePrefetchStatus: 'failed',
+          generatePrefetchError: 'subprocess error',
+        }));
+      });
+    return donePromise;
+  };
+
+  const runGenerate = async (extractSessionId: string, tokensPath: string, acceptedCount: number) => {
+    const args = [
+      findCliPath(),
+      ...buildGenerateComponentsArgs({
+        sessionId: extractSessionId,
+        tokensPath,
+        agent: state.agent,
+        ...(state.agentModel ? { model: state.agentModel } : {}),
+        noCache,
+        generatePromptPath,
+      }),
+    ];
+    let progressCursor: GenerateProgressState = state.generateProgress;
+    const { donePromise } = spawnGenerateChild({
+      command: 'node',
+      args,
+      onStderr: (chunk) => {
+        const nextProgress = parseGenerateStderrChunk(chunk, progressCursor);
+        if (nextProgress !== progressCursor) {
+          progressCursor = nextProgress;
+          update({ generateProgress: nextProgress });
+        }
+      },
+    });
+    const result = await donePromise;
 
     if (result.exitCode !== 0) {
       update({
@@ -577,7 +1013,7 @@ export function WizardApp({
     const renamedMatch = /^renamed-slots:\s*(\d+)$/m.exec(result.stdout);
     const renamedSlotsCount = renamedMatch ? Number(renamedMatch[1]) : 0;
     update({
-      step: 'review-generated-gate',
+      step: 'final-review',
       generateSessionId,
       generatedCount,
       renamedSlotsCount,
@@ -589,104 +1025,9 @@ export function WizardApp({
     update({ generatedAcceptedCount, step: 'credentials' });
   };
 
-  const runGenerateEdit = async (
-    sessionId: string | null,
-    generatedCount: number,
-    acceptAll: boolean,
-    returnToPreview = false,
-  ) => {
-    let generatedAcceptedCount: number;
-    if (acceptAll) {
-      generatedAcceptedCount = generatedCount;
-    } else {
-      update({ step: 'generate-edit' });
-      if (sessionId) {
-        const r = await runCliInteractive(['generate', 'components', 'edit', '--session', sessionId]);
-        if (r.exitCode !== 0) {
-          update({
-            step: 'error',
-            errorStep: 'generate edit',
-            errorMessage: r.stderr.trim() || 'Unknown error',
-          });
-          return;
-        }
-        const acceptedMatch = /Accepted: (\d+)/.exec(r.stderr);
-        generatedAcceptedCount = acceptedMatch ? Number(acceptedMatch[1]) : generatedCount;
-      } else {
-        generatedAcceptedCount = generatedCount;
-      }
-    }
-    if (returnToPreview) {
-      const { extractSessionId, tokensPath } = sessionRef.current;
-      void runPreview(extractSessionId, tokensPath, state.spaceId, state.environmentId, state.cmaToken, state.host);
-    } else {
-      advanceToPushFlow(generatedAcceptedCount);
-    }
-  };
-
-  const setPreviewEnvVars = () => {
-    const creds = credentialsRef.current;
-    const cmaToken = creds?.cmaToken || state.cmaToken;
-    const spaceId = creds?.spaceId || state.spaceId;
-    const environmentId = creds?.environmentId || state.environmentId;
-    if (cmaToken) process.env['EDS_CMA_TOKEN'] = cmaToken;
-    if (spaceId) process.env['EDS_SPACE_ID'] = spaceId;
-    if (environmentId) process.env['EDS_ENVIRONMENT_ID'] = environmentId;
-    process.env['EDS_TOKENS_PATH'] = state.tokensPath || '';
-  };
-
-  const clearPreviewEnvVars = () => {
-    delete process.env['EDS_PREVIEW_ANNOTATIONS'];
-    delete process.env['EDS_PREVIEW_COUNTS'];
-    delete process.env['EDS_CMA_TOKEN'];
-    delete process.env['EDS_SPACE_ID'];
-    delete process.env['EDS_ENVIRONMENT_ID'];
-    delete process.env['EDS_TOKENS_PATH'];
-  };
-
-  const runEditFromPreview = async (preview: ServerPreviewResponse | null) => {
-    const sessionId = state.extractSessionId;
-    if (!sessionId) {
-      update({
-        step: 'error',
-        errorStep: 'edit definitions',
-        errorMessage: 'No session available for editing',
-      });
-      return;
-    }
-
-    process.env['EDS_PREVIEW_ANNOTATIONS'] = JSON.stringify(buildPreviewAnnotations(preview));
-    if (preview) {
-      process.env['EDS_PREVIEW_COUNTS'] = JSON.stringify({
-        compNew: preview.components.new.length,
-        compChanged: preview.components.changed.length,
-        compRemoved: preview.components.removed.length,
-        compUnchanged: preview.components.unchanged.length,
-        tokNew: preview.tokens.new.length,
-        tokChanged: preview.tokens.changed.length,
-        tokRemoved: preview.tokens.removed.length,
-        tokUnchanged: preview.tokens.unchanged.length,
-      });
-    }
-    setPreviewEnvVars();
-
-    update({ step: 'analyze-select' });
-    const r = await runCliInteractive(['analyze', 'select', '--session', sessionId]);
-
-    clearPreviewEnvVars();
-
-    if (r.exitCode !== 0) {
-      update({
-        step: 'error',
-        errorStep: 'edit definitions',
-        errorMessage: 'Editor exited with an error',
-      });
-      return;
-    }
-
-    // Re-preview with updated definitions
-    const { extractSessionId: sid, tokensPath: tp } = sessionRef.current;
-    void runPreview(sid, tp, state.spaceId, state.environmentId, state.cmaToken, state.host);
+  const runEditFromPreview = async () => {
+    // Post-preview edits land in the unified final-review screen.
+    update({ step: 'final-review' });
   };
 
   const runSkipValidationErrorsAndRetry = async (errors: PreviewValidationError[]) => {
@@ -698,14 +1039,12 @@ export function WizardApp({
   const advanceWithCredentials = (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
     const resolvedHost = resolveWizardHost(host);
     credentialsRef.current = { spaceId, environmentId, cmaToken };
-    update({
-      spaceId,
-      environmentId,
-      cmaToken,
-      host: resolvedHost,
-      credentialsError: '',
-      step: 'credential-test-gate',
-    });
+    // The dedicated `credential-test-gate` screen was dropped — credentials are
+    // now always validated immediately after they're persisted. The inline
+    // `credentialsValidating` status (PR #54) handles the visual feedback while
+    // the API ping is in flight. The literal `'credential-test-gate'` is kept
+    // in the WizardStep union for back-compat, but is never set as a step.
+    void validateCredentials(spaceId, environmentId, cmaToken, resolvedHost);
   };
 
   const confirmCredentials = async (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
@@ -732,7 +1071,9 @@ export function WizardApp({
   };
 
   const validateCredentials = async (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
-    update({ step: 'validating-credentials' });
+    // Inline validation: stay on the credentials step, flip the validating
+    // boolean so CredentialsStep locks input + renders an inline status.
+    update({ step: 'credentials', credentialsValidating: true, credentialsError: '' });
     try {
       const resolvedHost = resolveWizardHost(host);
       const client = new ImportApiClient({
@@ -742,21 +1083,78 @@ export function WizardApp({
         host: resolvedHost,
       });
       await client.validateToken();
-      const { extractSessionId, tokensPath } = sessionRef.current;
-      void runPreview(extractSessionId, tokensPath, spaceId, environmentId, cmaToken, resolvedHost);
+      update({ credentialsValidating: false });
+      await advanceAfterCredentialsValidated();
     } catch (e) {
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
-        update({ step: 'credentials', credentialsError: e.message });
+        // Validation failure: cancel any in-flight generate prefetch so we
+        // don't leave an orphaned subprocess running after the operator backs
+        // out (Risk #1 in the spec).
+        cancelGeneratePrefetch();
+        update({ step: 'credentials', credentialsValidating: false, credentialsError: e.message });
         return;
       }
       const msg = e instanceof Error ? e.message : 'Credential check failed';
+      cancelGeneratePrefetch();
       update({
         step: 'error',
         errorStep: 'validating-credentials',
         errorMessage: msg,
         errorAllowCredentialRetry: false,
+        credentialsValidating: false,
       });
     }
+  };
+
+  // Branch after credentials are known good (validated, or skipped via the
+  // credential-test-gate skip path). Either runs the generator (if there are
+  // accepted components) or jumps straight to push-decision-gate (if scope
+  // rejected everything but tokens/removals still need to be pushed).
+  const advanceAfterCredentialsValidated = async () => {
+    // If we already ran the generator (re-entering credentials from a late
+    // 401/403 raised by runPreview), skip back to push-decision-gate rather
+    // than re-running the LLM.
+    if (state.generateSessionId) {
+      update({ step: 'push-decision-gate' });
+      return;
+    }
+    const next = nextStepAfterCredentialsValidated({ acceptedCount: state.acceptedCount });
+    if (next === 'generating') {
+      const sid = sessionRef.current.extractSessionId;
+      if (!sid) {
+        update({
+          step: 'error',
+          errorStep: 'post-credentials',
+          errorMessage: 'Internal error: extract session ID missing after credential validation.',
+        });
+        return;
+      }
+      // Prefetch path: if a background generate is already running or has
+      // already completed, await it (or use its result) instead of spawning
+      // a second LLM call. Transition to 'generating' first so the operator
+      // sees the familiar RunningStep progress screen while we wait —
+      // matching the no-prefetch flow's visual.
+      const inflight = generatePromiseRef.current;
+      if (inflight) {
+        update({ step: 'generating' });
+        const result = await inflight;
+        generatePromiseRef.current = null;
+        if (result.exitCode === 0 && result.signal !== 'SIGTERM') {
+          // The donePromise.then() handler already populated
+          // generateSessionId / generatedCount in state. Advance to
+          // final-review using the latest values via functional setState so
+          // we read whichever update landed last.
+          setState((prev) => ({ ...prev, step: 'final-review' }));
+          return;
+        }
+        // Prefetch failed — fall through to retry via a fresh runGenerate.
+      }
+      if (await runAgentAuthCheck('generating')) {
+        void runGenerate(sid, state.tokensPath, state.acceptedCount);
+      }
+      return;
+    }
+    update({ step: 'push-decision-gate' });
   };
 
   const runPreview = async (
@@ -767,6 +1165,15 @@ export function WizardApp({
     cmaToken: string,
     host: string,
   ) => {
+    // Skip-credentials short-circuit. When the operator pressed `s` on the
+    // credentials screen, we never got a working token — calling
+    // previewImport would 401/403 (or worse, send a half-formed manifest
+    // somewhere). Jump straight to the push-decision-gate; Task 3 disables
+    // the push options downstream.
+    if (shouldBypassPreview(state)) {
+      update(buildSkippedPreviewTransition());
+      return;
+    }
     update({ step: 'previewing' });
     const resolvedHost = resolveWizardHost(host);
     try {
@@ -912,6 +1319,16 @@ export function WizardApp({
     acknowledgeBreakingChanges: boolean,
     preview?: ServerPreviewResponse | null,
   ) => {
+    // Skip-credentials defensive guard. The push-decision-gate disables
+    // push-emitting choices when `credentialsSkipped` is true, so we
+    // should never get here in practice. But if a state-machine bug or
+    // future regression ever did, refuse to issue the API call — there
+    // is no validated token and the operator explicitly opted out of
+    // push. Route back to the local-save (print-gate) path instead.
+    if (shouldRefusePush(state)) {
+      update(buildSkippedPushTransition());
+      return;
+    }
     if (preview) {
       const hasComponentChanges =
         preview.components.new.length > 0 ||
@@ -923,14 +1340,15 @@ export function WizardApp({
         update({
           step: 'done',
           pushResult: {
-            componentTypes: { created: 0, updated: 0, failed: 0 },
-            designTokens: { created: 0, updated: 0, failed: 0 },
+            componentTypes: { created: 0, updated: 0, removed: 0, failed: 0 },
+            designTokens: { created: 0, updated: 0, removed: 0, failed: 0 },
           },
         });
         return;
       }
     }
-    update({ step: 'pushing' });
+    const pushExpected = preview ? computePushExpected(preview) : null;
+    update({ step: 'pushing', pushExpected, pushProgress: null });
     try {
       const resolvedHost = resolveWizardHost(host);
       const client = new ImportApiClient({
@@ -952,7 +1370,7 @@ export function WizardApp({
         process.stderr.write(`[eds] log write failed: ${err instanceof Error ? err.message : String(err)}\n`);
       }
       update({
-        pushProgress: `Queued (operation ${operation.sys.id.slice(0, 8)}...)`,
+        pushProgress: { kind: 'queued', operationId: operation.sys.id },
       });
 
       let pollCount = 0;
@@ -962,7 +1380,15 @@ export function WizardApp({
           const s = op.summary;
           if (s) {
             const done = s.total - s.pending;
-            update({ pushProgress: `${done}/${s.total} entities processed` });
+            const items = op.items ?? [];
+            // Best-effort fresh signal: pick the most recently succeeded item
+            // (the API does not surface an in-progress status today). Falls
+            // back to null and the PushingStep hides the line.
+            const lastDone = items.length > 0 ? items[items.length - 1] : null;
+            const current = lastDone && lastDone.status === 'succeeded' ? lastDone.id : null;
+            update({
+              pushProgress: { kind: 'progress', processed: done, total: s.total, current },
+            });
           }
           try {
             logStep({
@@ -1001,6 +1427,9 @@ export function WizardApp({
             updated: items.filter(
               (i) => i.entityType === 'ComponentType' && i.action === 'update' && i.status === 'succeeded',
             ).length,
+            removed: items.filter(
+              (i) => i.entityType === 'ComponentType' && i.action === 'delete' && i.status === 'succeeded',
+            ).length,
             failed: items.filter((i) => i.entityType === 'ComponentType' && i.status === 'failed').length,
           },
           designTokens: {
@@ -1009,6 +1438,9 @@ export function WizardApp({
             ).length,
             updated: items.filter(
               (i) => i.entityType === 'DesignToken' && i.action === 'update' && i.status === 'succeeded',
+            ).length,
+            removed: items.filter(
+              (i) => i.entityType === 'DesignToken' && i.action === 'delete' && i.status === 'succeeded',
             ).length,
             failed: items.filter((i) => i.entityType === 'DesignToken' && i.status === 'failed').length,
           },
@@ -1020,11 +1452,13 @@ export function WizardApp({
           componentTypes: {
             created: preview?.components.new.length ?? 0,
             updated: preview?.components.changed.length ?? 0,
+            removed: preview?.components.removed.length ?? 0,
             failed: 0,
           },
           designTokens: {
             created: preview?.tokens.new.length ?? 0,
             updated: preview?.tokens.changed.length ?? 0,
+            removed: preview?.tokens.removed.length ?? 0,
             failed: 0,
           },
           summary: operation.summary,
@@ -1042,7 +1476,11 @@ export function WizardApp({
     }
   };
 
-  const runPrintFiles = async (extractSessionId: string | null, outDir: string) => {
+  const runPrintFiles = async (
+    extractSessionId: string | null,
+    outDir: string,
+    opts: { skipGate?: boolean; tokenSessionId?: string | null } = {},
+  ): Promise<{ ok: boolean; tokensPath?: string; tokenCount?: number }> => {
     update({ step: 'printing' });
     const componentsPath = join(outDir, 'components.json');
     const printArgs = ['print', 'components', '--out', componentsPath];
@@ -1054,10 +1492,148 @@ export function WizardApp({
         errorStep: 'print components',
         errorMessage: r.stderr.trim() || 'Unknown error',
       });
+      return { ok: false };
+    }
+    // Co-locate tokens.json with components.json. Without this, `--out-dir`
+    // would move components.json to the operator's chosen path while leaving
+    // tokens.json behind at <projectPath>/.contentful/tokens.json.
+    let emittedTokensPath: string | undefined;
+    let emittedTokenCount: number | undefined;
+    if (opts.tokenSessionId) {
+      const tokensOut = join(outDir, 'tokens.json');
+      const tokenArgs = ['print', 'tokens', '--out', tokensOut, '--session', opts.tokenSessionId];
+      const tr = await runCli(tokenArgs);
+      if (tr.exitCode !== 0) {
+        update({
+          step: 'error',
+          errorStep: 'print tokens',
+          errorMessage: tr.stderr.trim() || 'Unknown error',
+        });
+        return { ok: false };
+      }
+      emittedTokensPath = tokensOut;
+      emittedTokenCount = parsePrintTokensCount(tr.stdout);
+    }
+    update(nextStateAfterPrint({ skipGate: opts.skipGate, componentsPath }));
+    return {
+      ok: true,
+      ...(emittedTokensPath ? { tokensPath: emittedTokensPath } : {}),
+      ...(typeof emittedTokenCount === 'number' ? { tokenCount: emittedTokenCount } : {}),
+    };
+  };
+
+  const runSaveAndPush = async (): Promise<void> => {
+    await startSaveFlow({ skipGate: true, andPush: true });
+  };
+
+  // ── Task 4: save-path orchestration ────────────────────────────────────────
+  // Wraps every `runPrintFiles` site. When `--out-dir` is set we skip the
+  // inline prompt and conflict gate entirely. Otherwise the wizard transitions
+  // to the path-prompt step; the operator's submit handler calls back into
+  // `proceedToWrite` (which may surface the conflict gate).
+
+  const pendingSaveOptionsRef = useRef<{ skipGate?: boolean; andPush?: boolean }>({});
+
+  const startSaveFlow = async (opts: { skipGate?: boolean; andPush?: boolean } = {}): Promise<void> => {
+    pendingSaveOptionsRef.current = opts;
+    if (outDirOverride) {
+      await mkdir(outDirOverride, { recursive: true });
+      if (onConflictMode) {
+        const resolved = await resolveSavePath(outDirOverride, { onConflict: onConflictMode });
+        if (resolved.kind === 'fail') {
+          const files = resolved.conflict.files.join(', ');
+          process.stderr.write(
+            `Error: --on-conflict fail — refusing to overwrite ${files} at ${resolved.conflict.path}.\n`,
+          );
+          process.exit(1);
+          return;
+        }
+        if (resolved.kind === 'write') {
+          await mkdir(resolved.path, { recursive: true });
+          await proceedToWrite(resolved.path);
+          return;
+        }
+      }
+      await proceedToWrite(outDirOverride);
       return;
     }
-    // tokensPath is already on disk from generate-tokens step; just record it
-    update({ step: 'print-gate', componentsPath });
+    setState((prev) => ({ ...prev, step: 'path-prompt' }));
+  };
+
+  const proceedToWrite = async (path: string): Promise<void> => {
+    setState((prev) => ({ ...prev, outDir: path }));
+    const { extractSessionId, tokensPath } = sessionRef.current;
+    const { skipGate, andPush } = pendingSaveOptionsRef.current;
+    const result = await runPrintFiles(extractSessionId, path, {
+      ...(skipGate ? { skipGate: true } : {}),
+      ...(state.tokenSessionId ? { tokenSessionId: state.tokenSessionId } : {}),
+    });
+    if (!result.ok) return;
+    // Prefer the freshly emitted path/count (covers --out-dir); fall back to
+    // the values captured during the original generate-tokens step.
+    const recordedTokensPath = result.tokensPath ?? (state.tokenSessionId ? tokensPath || null : null);
+    const recordedTokenCount = result.tokenCount ?? state.tokenCount;
+    if (result.ok) {
+      // Append a run record on every successful write. Best-effort: append
+      // failures must not break the wizard flow (they surface on stderr).
+      try {
+        // Build the v3 fingerprints. Both are best-effort: if any step
+        // throws (missing source file, hash failure, db lookup error) we
+        // fall back to null fingerprints rather than aborting the save.
+        let sourceFingerprint: Awaited<ReturnType<typeof buildSourceFingerprint>> | null = null;
+        let savedFingerprint: ReturnType<typeof buildSavedFingerprint> | null = null;
+        try {
+          if (state.extractSessionId) {
+            const db = openPipelineDb();
+            try {
+              sourceFingerprint = await buildSourceFingerprint({
+                db,
+                extractSessionId: state.extractSessionId,
+                rawTokensPath: state.rawTokensPath || null,
+              });
+            } finally {
+              db.close();
+            }
+          }
+        } catch (err) {
+          process.stderr.write(
+            `Warning: failed to compute source fingerprint: ${err instanceof Error ? err.message : String(err)}\n`,
+          );
+        }
+        try {
+          const componentsBuf = await readFile(join(path, 'components.json')).catch(() => null);
+          const tokensBuf = recordedTokensPath ? await readFile(recordedTokensPath).catch(() => null) : null;
+          savedFingerprint = buildSavedFingerprint({
+            componentsJson: componentsBuf,
+            tokensJson: tokensBuf,
+          });
+        } catch (err) {
+          process.stderr.write(
+            `Warning: failed to compute saved fingerprint: ${err instanceof Error ? err.message : String(err)}\n`,
+          );
+        }
+        const record = await appendRun({
+          projectPath: state.projectPath,
+          savePath: path,
+          componentCount: state.generatedAcceptedCount || state.generatedCount,
+          tokenCount: recordedTokenCount,
+          tokensPath: recordedTokensPath || null,
+          tokenSessionId: state.tokenSessionId,
+          agent: state.agent,
+          pushedTo: null,
+          extractSessionId: state.extractSessionId ?? '',
+          generateSessionId: state.generateSessionId,
+          sourceFingerprint,
+          savedFingerprint,
+        });
+        setState((prev) => ({ ...prev, lastRunId: record.id }));
+      } catch (err) {
+        process.stderr.write(`Warning: failed to record run: ${err instanceof Error ? err.message : String(err)}\n`);
+      }
+    }
+    if (andPush) {
+      void runPreview(extractSessionId, tokensPath, state.spaceId, state.environmentId, state.cmaToken, state.host);
+    }
   };
 
   // ── Effect: kick off automatic steps ───────────────────────────────────────────────
@@ -1094,6 +1670,7 @@ export function WizardApp({
   // ── Render ────────────────────────────────────────────────────────────────────────────
 
   const noQuitSteps: WizardStep[] = [
+    'run-picker',
     'checking-claude-auth',
     'validating-credentials',
     'generating-tokens',
@@ -1112,6 +1689,25 @@ export function WizardApp({
 
   const stepContent = (() => {
     switch (state.step) {
+      case 'run-picker':
+        return (
+          <RunPicker
+            runs={initialRuns ?? []}
+            onSelect={(selection) => {
+              if (selection.action === 'new') {
+                update({ step: 'welcome' });
+                return;
+              }
+              // Push / modify routing exits the wizard back into the CLI
+              // surface so `replayRun` / `modifyRun` (which spin their own
+              // UI / spawn their own Ink trees) can take over. The CLI
+              // entry point in `command.ts` provides `onRunPicked`.
+              onRunPicked?.(selection);
+            }}
+            onCancel={() => process.exit(0)}
+          />
+        );
+
       case 'welcome':
         return (
           <WelcomeStep
@@ -1190,7 +1786,17 @@ export function WizardApp({
             onConfirm={(path) => {
               void runExtract(path);
             }}
-            onSkipComponents={() => update({ step: 'push-decision-gate', skipComponents: true })}
+            onSkipComponents={() => {
+              // No components — only design tokens to push. Still gather creds
+              // first (unless --no-push, in which case there is nothing to do
+              // and we save files instead).
+              if (noPush) {
+                update({ skipComponents: true, acceptedCount: 0 });
+                void startSaveFlow();
+                return;
+              }
+              update({ step: 'credentials', skipComponents: true, acceptedCount: 0 });
+            }}
             onChangePath={() => update({ step: 'welcome' })}
             onQuit={() => process.exit(0)}
           />
@@ -1217,48 +1823,73 @@ export function WizardApp({
         );
       }
 
-      case 'review-extraction-gate': {
-        const stepNum = hasTokens ? 2 : 1;
+      case 'scope-gate': {
+        if (!state.extractSessionId) {
+          return (
+            <Box paddingX={2} paddingY={1}>
+              <Text color="red">Error: extract session ID missing — please re-run.</Text>
+            </Box>
+          );
+        }
+        const sessionId = state.extractSessionId;
+        const db = openPipelineDb();
+        let components: ScopeComponent[];
+        try {
+          components = loadScopeComponents(db, sessionId);
+        } finally {
+          db.close();
+        }
         return (
-          <GateStep
-            successMessage={`Step ${stepNum} complete`}
-            summary={`Found ${state.extractedCount} component${state.extractedCount === 1 ? '' : 's'}.`}
-            context="Ready to review what was extracted? You can correct any props the extractor got wrong, or approve everything and move on."
-            continueLabel="Review components"
-            skipLabel="Approve all and skip"
-            onContinue={() => {
-              if (!state.extractSessionId) {
-                update({
-                  step: 'error',
-                  errorStep: 'analyze extract',
-                  errorMessage: 'Extract session ID missing — please re-run.',
-                });
-                return;
-              }
-              void runAnalyzeSelect(state.extractSessionId, state.extractedCount, state.tokensPath, false);
-            }}
-            onSkip={() => {
-              if (!state.extractSessionId) {
-                update({
-                  step: 'error',
-                  errorStep: 'analyze extract',
-                  errorMessage: 'Extract session ID missing — please re-run.',
-                });
-                return;
-              }
-              void runAnalyzeSelect(state.extractSessionId, state.extractedCount, state.tokensPath, true);
+          <ScopeGateHost
+            components={components}
+            autoAccept={autoAcceptScope}
+            aiFilterStatus={state.aiFilterStatus}
+            aiFilterProgress={state.aiFilterProgress}
+            aiFilterError={state.aiFilterError}
+            onCancelAutoFilter={cancelAutoFilter}
+            onConfirm={(decisions) => {
+              void runScopeGate({
+                sessionId,
+                decisions,
+                cancelAutoFilter: state.aiFilterStatus === 'running' ? cancelAutoFilterAndWait : undefined,
+                onAdvanceToGenerate: async ({ sessionId: sid, acceptedCount }) => {
+                  update({ acceptedCount, autoRejectedCount: 0 });
+                  const next = nextStepAfterScopeGate({ acceptedCount, noPush });
+                  if (next === 'generating') {
+                    if (await runAgentAuthCheck('generating')) {
+                      void runGenerate(sid, state.tokensPath, acceptedCount);
+                    }
+                    return;
+                  }
+                  // next === 'credentials' (push enabled). Kick off the
+                  // generate child in the background so the LLM call overlaps
+                  // with the operator's credential entry. We only prefetch
+                  // when we have accepted components to classify AND push is
+                  // enabled (noPush path is already excluded — the scope-gate
+                  // helper would have returned 'generating' there).
+                  if (acceptedCount > 0 && !noPush) {
+                    if (await runAgentAuthCheck('credentials')) {
+                      startGeneratePrefetch(sid, state.tokensPath);
+                    }
+                  }
+                  update({ step: 'credentials' });
+                },
+                onAdvanceToPushFlow: (count) => {
+                  update({ acceptedCount: count, autoRejectedCount: 0 });
+                  const next = nextStepAfterScopeGate({ acceptedCount: count, noPush });
+                  if (next === 'print-gate') {
+                    void startSaveFlow();
+                    return;
+                  }
+                  // 'credentials' — still need creds for tokens/removals push.
+                  advanceToPushFlow(count);
+                },
+              });
             }}
             onQuit={() => process.exit(0)}
           />
         );
       }
-
-      case 'analyze-select':
-        return (
-          <Box paddingX={2} paddingY={1}>
-            <Text dimColor>Launching component review... (the TUI will appear shortly)</Text>
-          </Box>
-        );
 
       case 'generating': {
         const p = state.generateProgress;
@@ -1277,61 +1908,53 @@ export function WizardApp({
         );
       }
 
-      case 'review-generated-gate': {
-        const stepNum = hasTokens ? 4 : 3;
+      case 'final-review': {
         return (
-          <GateStep
-            successMessage={`Step ${stepNum} complete — definitions generated`}
-            summary={formatGeneratedSummary({
-              generated: state.generatedCount,
-              renamedSlots: state.renamedSlotsCount,
-              autoRejected: state.autoRejectedCount,
-            })}
-            context="Take a final look before pushing to Contentful. You can accept, reject, or inspect each component's generated definition."
-            continueLabel="Review definitions"
-            skipLabel="Approve all and skip"
-            onContinue={() => {
-              update({ step: 'generate-review' });
-            }}
-            onSkip={() => {
-              void runGenerateEdit(state.generateSessionId, state.generatedCount, true);
-            }}
-            onQuit={() => process.exit(0)}
-          />
-        );
-      }
-
-      case 'generate-review': {
-        if (!state.extractSessionId) {
-          return (
-            <Box paddingX={2} paddingY={1}>
-              <Text color="red">Error: no session ID — cannot load generated definitions.</Text>
-            </Box>
-          );
-        }
-        return (
-          <GenerateReviewStep
+          <FinalReviewHost
             extractSessionId={state.extractSessionId}
-            onFinalize={(accepted, rejected) => {
-              update({
-                generatedAcceptedCount: accepted,
-                step: 'push-decision-gate',
-              });
-              void Promise.resolve();
-              // log so orchestrator can read it
-              process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}\n`);
+            generatedCount={state.generatedCount}
+            autoAccept={autoAcceptScope}
+            livePreview={livePreview}
+            spaceId={state.spaceId}
+            environmentId={state.environmentId}
+            cmaToken={state.cmaToken}
+            host={state.host}
+            tokensPath={state.tokensPath}
+            onFinalize={(accepted, rejected, unresolved) => {
+              process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`);
+              if (noPush) {
+                update({ generatedAcceptedCount: accepted });
+                void startSaveFlow();
+                return;
+              }
+              if (noSave) {
+                update({ generatedAcceptedCount: accepted });
+                const { extractSessionId, tokensPath } = sessionRef.current;
+                void runPreview(
+                  extractSessionId,
+                  tokensPath,
+                  state.spaceId,
+                  state.environmentId,
+                  state.cmaToken,
+                  state.host,
+                );
+                return;
+              }
+              if (autoAcceptScope) {
+                // Headless run with neither --no-save nor --no-push: pick the
+                // default "both" path automatically to preserve scripted
+                // (auto-accept-scope) UX from before the gate gained a third
+                // option. Operators who want push-only must pass --no-save.
+                update({ generatedAcceptedCount: accepted });
+                void runSaveAndPush();
+                return;
+              }
+              update({ generatedAcceptedCount: accepted, step: 'push-decision-gate' });
             }}
             onQuit={() => process.exit(0)}
           />
         );
       }
-
-      case 'generate-edit':
-        return (
-          <Box paddingX={2} paddingY={1}>
-            <Text dimColor>Launching definition review... (the TUI will appear shortly)</Text>
-          </Box>
-        );
 
       case 'push-decision-gate': {
         const tokenDesc = hasTokens ? 'tokens.json' : null;
@@ -1344,17 +1967,31 @@ export function WizardApp({
             ? 'Design tokens ready.'
             : 'Ready to continue.';
         return (
-          <GateStep
-            successMessage="Generation complete"
+          <PushDecisionGateStep
             summary={summary}
-            context={`Push directly to your Contentful space now, or save ${files || 'the output files'} to disk first.`}
-            continueLabel="Push to Contentful"
-            skipLabel={`Save ${files || 'files'} to disk`}
-            onContinue={() => {
-              update({ step: 'credentials' });
-            }}
-            onSkip={() => {
-              void runPrintFiles(state.extractSessionId, state.outDir);
+            context={`Save ${files || 'output files'} to disk, push to your Contentful space, or both.`}
+            fileList={files || 'files'}
+            pushDisabled={state.credentialsSkipped}
+            onChoice={(choice) => {
+              const action = chooseGateAction(choice);
+              if (action === 'save-and-push') {
+                void runSaveAndPush();
+                return;
+              }
+              if (action === 'push-only') {
+                const { extractSessionId, tokensPath } = sessionRef.current;
+                void runPreview(
+                  extractSessionId,
+                  tokensPath,
+                  state.spaceId,
+                  state.environmentId,
+                  state.cmaToken,
+                  state.host,
+                );
+                return;
+              }
+              // save-only
+              void startSaveFlow();
             }}
             onQuit={() => process.exit(0)}
           />
@@ -1369,50 +2006,48 @@ export function WizardApp({
             initialCmaToken={state.cmaToken}
             initialHost={state.host}
             error={state.credentialsError || undefined}
+            validating={state.credentialsValidating}
+            generatePrefetchStatus={state.generatePrefetchStatus}
+            generatePrefetchError={state.generatePrefetchError}
             onConfirm={(spaceId, environmentId, cmaToken, host) => {
               void confirmCredentials(spaceId, environmentId, cmaToken, host);
             }}
             onContinue={advanceWithCredentials}
-            onQuit={() => process.exit(0)}
-          />
-        );
-
-      case 'credential-test-gate':
-        return (
-          <GateStep
-            successMessage="Credentials entered"
-            summary={`Space: ${state.spaceId}  ·  Environment: ${state.environmentId}`}
-            context="Verify your credentials work before running the import, or skip and find out during the push step."
-            continueLabel="Test credentials"
-            skipLabel="Skip and continue"
-            showSkip={true}
-            onContinue={() => {
-              void validateCredentials(state.spaceId, state.environmentId, state.cmaToken, state.host);
-            }}
+            onRetryPrefetch={
+              state.generatePrefetchStatus === 'failed' && sessionRef.current.extractSessionId
+                ? () => {
+                    const sid = sessionRef.current.extractSessionId!;
+                    void startGeneratePrefetch(sid, state.tokensPath);
+                  }
+                : undefined
+            }
             onSkip={() => {
-              const { extractSessionId, tokensPath } = sessionRef.current;
-              void runPreview(
-                extractSessionId,
-                tokensPath,
-                state.spaceId,
-                state.environmentId,
-                state.cmaToken,
-                state.host,
-              );
+              // Skip-credentials: mark the wizard as skipped, clear any
+              // stale credentialsError banner, and advance through the
+              // normal post-credentials branch. The in-flight generate
+              // prefetch (PR #54) is intentionally NOT cancelled here —
+              // the operator still wants to see classifications.
+              update({ credentialsSkipped: true, credentialsError: '' });
+              void advanceAfterCredentialsValidated();
             }}
-            onQuit={() => process.exit(0)}
+            onQuit={() => {
+              cancelGeneratePrefetch();
+              process.exit(0);
+            }}
           />
         );
 
-      case 'validating-credentials':
-        return (
-          <RunningStep
-            stepNumber={totalSteps - 1}
-            totalSteps={totalSteps}
-            title="Validating credentials"
-            description="Checking that your space ID and CMA token are valid..."
-          />
-        );
+      // 'credential-test-gate' is intentionally NOT rendered as a dedicated
+      // screen any more (the post-#54 inline credentials-validating status made
+      // the gate redundant). The step value is kept in the union for back-compat
+      // with existing imports/tests but is never actually set as a step —
+      // `advanceWithCredentials` calls `validateCredentials` directly.
+      //
+      // 'validating-credentials' is intentionally NOT rendered as a dedicated
+      // screen any more (see CredentialsStep `validating` prop). The step
+      // value is kept in the union for back-compat with existing imports/tests
+      // but should never actually be set — `validateCredentials` keeps the
+      // step on 'credentials' and toggles `credentialsValidating` instead.
 
       case 'previewing':
         return (
@@ -1444,10 +2079,10 @@ export function WizardApp({
               );
             }}
             onEdit={() => {
-              void runEditFromPreview(state.serverPreview);
+              void runEditFromPreview();
             }}
             onSaveFiles={() => {
-              void runPrintFiles(state.extractSessionId, state.outDir);
+              void startSaveFlow();
             }}
             onQuit={() => process.exit(0)}
           />
@@ -1455,12 +2090,48 @@ export function WizardApp({
 
       case 'pushing':
         return (
-          <RunningStep
+          <PushingStep
             stepNumber={totalSteps}
             totalSteps={totalSteps}
-            title="Push to Contentful"
-            description="Writing component types and design tokens to your Contentful space..."
-            detail={state.pushProgress ?? undefined}
+            expected={state.pushExpected}
+            progress={state.pushProgress}
+          />
+        );
+
+      case 'path-prompt':
+        return (
+          <PathPrompt
+            defaultPath={state.outDir}
+            onSubmit={(submitted) => {
+              void (async () => {
+                await mkdir(submitted, { recursive: true });
+                const hasConflict = await detectSaveConflict(submitted);
+                if (hasConflict) {
+                  setState((prev) => ({ ...prev, step: 'save-conflict-gate', outDir: submitted }));
+                  return;
+                }
+                await proceedToWrite(submitted);
+              })();
+            }}
+            onCancel={() => process.exit(0)}
+          />
+        );
+
+      case 'save-conflict-gate':
+        return (
+          <SaveConflictGate
+            path={state.outDir}
+            onOverwrite={() => {
+              void proceedToWrite(state.outDir);
+            }}
+            onNew={() => {
+              const subdir = buildTimestampedSubdir(state.outDir);
+              void (async () => {
+                await mkdir(subdir, { recursive: true });
+                await proceedToWrite(subdir);
+              })();
+            }}
+            onCancel={() => setState((prev) => ({ ...prev, step: 'path-prompt' }))}
           />
         );
 
@@ -1474,7 +2145,8 @@ export function WizardApp({
           />
         );
 
-      case 'print-gate':
+      case 'print-gate': {
+        const teaser = buildRunTeaserLine(state.lastRunId);
         return (
           <GateStep
             successMessage="Files saved"
@@ -1484,16 +2156,22 @@ export function WizardApp({
             ]
               .filter(Boolean)
               .join('\n')}
-            context="Your files are saved to disk. Run `experiences import` again when you're ready to push to Contentful."
+            context={
+              teaser
+                ? `Your files are saved to disk. ${teaser}`
+                : "Your files are saved to disk. Run `experiences import` again when you're ready to push to Contentful."
+            }
             continueLabel="Exit"
             showSkip={false}
             onContinue={() => process.exit(0)}
             onQuit={() => process.exit(0)}
           />
         );
+      }
 
       case 'done': {
         const totalFailed = state.pushResult.componentTypes.failed + state.pushResult.designTokens.failed;
+        const teaser = buildRunTeaserLine(state.lastRunId);
         return (
           <DoneStep
             componentTypes={state.pushResult.componentTypes}
@@ -1501,6 +2179,8 @@ export function WizardApp({
             summary={state.pushResult.summary}
             spaceId={state.spaceId}
             environmentId={state.environmentId}
+            host={state.host}
+            {...(teaser ? { runTeaser: teaser } : {})}
             onExit={() => process.exit(totalFailed > 0 ? 1 : 0)}
           />
         );
@@ -1512,7 +2192,7 @@ export function WizardApp({
             errors={state.previewValidationErrors}
             missingNames={state.previewValidationMissingNames}
             onEdit={() => {
-              void runEditFromPreview(null);
+              void runEditFromPreview();
             }}
             onSkip={() => {
               void runSkipValidationErrorsAndRetry(state.previewValidationErrors);
@@ -1533,48 +2213,21 @@ export function WizardApp({
             }
           />
         );
+
+      // 'validating-credentials' kept in the WizardStep union for back-compat
+      // but is no longer reachable as a step (validateCredentials toggles the
+      // `credentialsValidating` boolean while leaving step on 'credentials').
+      // Default-return null so the switch is exhaustive.
+      default:
+        return null;
     }
   })();
 
   return (
     <Box flexDirection="column" width={terminalWidth}>
       <TopBar subcommand="import" hints={hints} />
+      <CustomPromptBanner selectPromptPath={selectPromptPath} generatePromptPath={generatePromptPath} />
       {stepContent}
     </Box>
   );
-}
-
-function buildPreviewAnnotations(preview: ServerPreviewResponse | null): Record<string, string> {
-  const annotations: Record<string, string> = {};
-  if (!preview) return annotations;
-  for (const item of preview.components.new) {
-    const key = ((item as unknown as Record<string, unknown>).key as string) ?? '';
-    if (key) annotations[key] = 'new';
-  }
-  for (const item of preview.components.removed) {
-    annotations[item.name] = 'removed';
-  }
-  for (const item of preview.components.changed) {
-    if (item.changeClassification?.classification === 'breaking') {
-      annotations[item.current.name] = 'breaking';
-    } else {
-      annotations[item.current.name] = 'changed';
-    }
-  }
-  return annotations;
-}
-
-// Interactive subprocess helper — uses spawn with inherited stdio so child isTTY is true
-function runCliInteractive(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  logStep({
-    fn: 'runCliInteractive:spawn',
-    args,
-  });
-  return new Promise((res) => {
-    const child = spawn('node', [findCliPath(), ...args], { stdio: 'inherit' });
-    child.on('exit', (code) => {
-      logStep({ fn: 'runCliInteractive:exit', args, exitCode: code ?? 0 });
-      res({ exitCode: code ?? 0, stdout: '', stderr: '' });
-    });
-  });
 }

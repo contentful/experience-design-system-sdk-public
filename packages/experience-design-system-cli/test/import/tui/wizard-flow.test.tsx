@@ -220,8 +220,9 @@ describe('WizardApp TUI — EU host support', () => {
   });
 
   it('ImportApiClient mock is in place and receives the right host when validateCredentials fires', async () => {
-    // ImportApiClient is only constructed when the user reaches the credential-test-gate
-    // step and chooses "Test credentials" — driving the full TUI to that point is
+    // ImportApiClient is only constructed when the wizard kicks off credential
+    // validation (immediately after `confirmCredentials` writes the creds file) —
+    // driving the full TUI to that point is
     // out of scope for this unit test. Instead we verify the module-level mock is
     // correctly wired so that any construction during a future integration test
     // would be intercepted.

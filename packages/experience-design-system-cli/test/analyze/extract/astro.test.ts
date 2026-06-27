@@ -149,4 +149,26 @@ const {
     expect(divider.slots).toContainEqual({ name: 'before', isDefault: false });
     expect(divider.slots).toContainEqual({ name: 'after', isDefault: false });
   });
+
+  it('captures sourcePath and per-prop source line ranges (Feature 1)', async () => {
+    // Note: line numbers are relative to the parsed frontmatter chunk, not the full .astro file.
+    const filePath = await writeFixture(
+      'HeroLoc.astro',
+      `---
+interface Props {
+  title: string;
+  subtitle?: string;
+}
+---
+<section />
+`,
+    );
+    const result = await extractAstroComponents([filePath]);
+    const hero = result.components[0];
+    expect(hero.sourcePath).toBe(filePath);
+    const titleProp = hero.props.find((p) => p.name === 'title');
+    const subtitleProp = hero.props.find((p) => p.name === 'subtitle');
+    expect(titleProp?.sourceStartLine).toBeGreaterThan(0);
+    expect(subtitleProp?.sourceStartLine).toBeGreaterThan(titleProp!.sourceStartLine!);
+  });
 });
