@@ -1,6 +1,29 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { ReviewComponentSummary, ReviewComponentStatus } from '../../types.js';
+import type { PreviewAnnotation, ReviewComponentSummary, ReviewComponentStatus } from '../../types.js';
+
+/**
+ * Pilot-2026-06-23 R2: render a single-character preview-diff badge directly
+ * before each component name in the sidebar so operators can scan the diff
+ * shape at a glance without opening each row. Returns null for unannotated
+ * rows so the row falls back to its existing single-space layout.
+ */
+export function previewBadge(
+  annotation: PreviewAnnotation | undefined,
+): { char: string; color: string; bold?: boolean; dim?: boolean } | null {
+  switch (annotation) {
+    case 'new':
+      return { char: '+', color: 'green' };
+    case 'changed':
+      return { char: '~', color: 'yellow' };
+    case 'removed':
+      return { char: '-', color: 'red', dim: true };
+    case 'breaking':
+      return { char: '!', color: 'red', bold: true };
+    default:
+      return null;
+  }
+}
 
 type SidebarProps = {
   components: ReviewComponentSummary[];
@@ -101,13 +124,23 @@ export function Sidebar({
   const width = collapsed ? 3 : (widthProp ?? 18);
 
   return (
-    <Box flexDirection="column" width={width} borderStyle="single" borderColor={focused ? 'white' : undefined}>
+    <Box
+      flexDirection="column"
+      width={width}
+      flexShrink={0}
+      borderStyle="single"
+      borderColor={focused ? 'white' : undefined}
+    >
       {showScrollUp && !collapsed && <Text dimColor>▲</Text>}
       {visible.map((component) => {
         const isSelected = component.id === selectedId;
         const icon = statusIcon(component.status, component.validationErrorCount, component.validationWarningCount);
         const color = statusColor(component.status, component.validationErrorCount, component.validationWarningCount);
-        const maxNameLen = Math.max(1, width - 4);
+        const badge = previewBadge(component.previewAnnotation);
+        // Reserve one column for the preview badge regardless of whether this
+        // row has one — keeps name truncation stable across rows so the column
+        // width doesn't jitter as annotations flip in/out.
+        const maxNameLen = Math.max(1, width - 5);
         const name = truncateName(component.name, maxNameLen);
 
         if (collapsed) {
@@ -122,8 +155,18 @@ export function Sidebar({
 
         return (
           <Box key={component.id}>
+            <Text color={color} inverse={isSelected && focused} underline={isSelected && !focused}>
+              {icon}
+            </Text>
+            {badge ? (
+              <Text color={badge.color} bold={badge.bold} dimColor={badge.dim}>
+                {badge.char}
+              </Text>
+            ) : (
+              <Text> </Text>
+            )}
             <Text color={color} inverse={isSelected && focused} underline={isSelected && !focused} wrap="truncate">
-              {icon + ' ' + name}
+              {' ' + name}
             </Text>
           </Box>
         );

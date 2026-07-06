@@ -325,6 +325,37 @@ describe('import — push-related flags', () => {
     expect(code).toBe(0);
   });
 
+  it('--raw-tokens <path> is accepted when the file exists', async () => {
+    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/dev/null'], baseEnv());
+    expect(stderr).not.toContain("unknown option '--raw-tokens'");
+    expect(stderr).not.toContain('file not found');
+    expect(code).toBe(0);
+  });
+
+  it('--raw-tokens errors at parse time when the file does not exist', async () => {
+    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/nonexistent/raw-tokens.scss'], baseEnv());
+    expect(stderr).toContain('--raw-tokens');
+    expect(stderr).toContain('file not found');
+    expect(stderr).toContain('/nonexistent/raw-tokens.scss');
+    expect(code).not.toBe(0);
+  });
+
+  it('--raw-tokens and --tokens together error as mutually exclusive', async () => {
+    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/dev/null', '--tokens', '/dev/null'], baseEnv());
+    expect(stderr).toContain('mutually exclusive');
+    expect(stderr).toContain('--raw-tokens');
+    expect(stderr).toContain('--tokens');
+    expect(code).not.toBe(0);
+  });
+
+  it('--raw-tokens coexists with --auto-accept-scope', async () => {
+    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/dev/null', '--auto-accept-scope'], baseEnv());
+    expect(stderr).not.toContain('unknown option');
+    expect(stderr).not.toContain('mutually exclusive');
+    expect(stderr).not.toContain('file not found');
+    expect(code).toBe(0);
+  });
+
   it('--viewports <path> is accepted without error', async () => {
     const { stderr, code } = await run([...skipAll(), '--viewports', '/dev/null'], baseEnv());
     expect(stderr).not.toContain("unknown option '--viewports'");

@@ -20,23 +20,33 @@ Design system codebase
   (React / Vue / Astro / Stencil / Web Components)
         │
         ▼
-  experience-design-system-cli
-    ├── analyze extract   → session DB (raw components)
-    ├── analyze edit      → session DB (accepted/rejected decisions)
-    ├── generate components → components.json  (CDF artifact via coding agent)
-    ├── generate tokens   → tokens.json  (DTCG artifact via coding agent)
-    ├── validate          → validates CDF / DTCG files, exits 0/1
-    ├── apply preview     → diff output (no writes)
-    ├── apply select      → interactive entity picker → PUT /component_types/:id, PUT /design_tokens/:id
-    ├── apply push        → PUT /component_types/:id, PUT /design_tokens/:id
-    └── import            → orchestrates: analyze extract → analyze edit → generate components → apply push
+  experience-design-system-cli  (binaries: experiences | exo | experience-design-system-cli)
+    ├── import (wizard)         → interactive TUI; drives the full pipeline + scope-gate + final-review + save/push
+    ├── import (headless)       → orchestrator that shells out to the subcommands below
+    ├── runs                    → list/detail/replay prior wizard runs from ~/.config/experiences/runs.json
+    │                              (positional <id-or-path>, --json, --pushed, --not-pushed)
+    ├── analyze extract         → session DB (raw components)
+    ├── analyze select          → session DB (accepted/rejected decisions, standalone JsonEditor TUI)
+    ├── analyze select-agent    → session DB (agentic accept/reject + per-component rationale)
+    ├── generate components     → session DB (CDF artifact via coding agent)
+    ├── generate tokens         → session DB (DTCG artifact via coding agent)
+    ├── print components|tokens → write components.json / tokens.json from session DB
+    ├── print validate          → validates CDF / DTCG files, exits 0/1
+    ├── apply preview           → diff output (no writes)
+    ├── apply select            → interactive entity picker → PUT /component_types/:id, PUT /design_tokens/:id
+    ├── apply push              → PUT /component_types/:id, PUT /design_tokens/:id; emits viewUrl
+    ├── session list|show|...   → lower-level pipeline-session management
+    ├── setup                   → interactive prereq + credentials wizard
+    └── doctor                  → prereq health check
                               │
                               ▼
                       Contentful ExO
                 (component types + design tokens)
 ```
 
-All intermediary data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). Only `generate components` and `generate tokens` write output files to disk (`components.json`, `tokens.json`). The `apply` subcommands read those files directly.
+All intermediary data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). `print components` / `print tokens` write `components.json` / `tokens.json` on demand. The `apply` subcommands read those files (or read directly from the session DB via `--session`).
+
+A separate JSON file at `~/.config/experiences/runs.json` records each successful wizard session (id, project path, save path, push target, component count) so it can be replayed with `experiences import --push-from-run` or `experiences import --modify`.
 
 ---
 
@@ -442,17 +452,63 @@ Do not use agent SDKs or APIs — the generate command invokes agents as subproc
 
 ---
 
-## The Import Orchestrator
+## The Import Command — Wizard and Orchestrator
 
-`import` is a thin orchestrator that shells out to the individual CLI commands in sequence via `child_process.execFile`. It does not re-implement any step logic — it composes the same binaries a developer would run manually.
+`experiences import` has two modes:
 
-Steps:
-1. `analyze extract --project <path> --out <outDir>` → captures `session=<id>` from stdout
-2. Optionally `analyze edit --session <id>` (with `--accept-all`, `--reject`, or `--patch` as applicable)
-3. `generate components --agent <name> --session <id> --out <outDir>`
+### Interactive wizard (TTY default)
+
+`src/import/tui/WizardApp.tsx` renders a full-screen Ink TUI driven by an explicit step machine:
+
+```
+welcome → extracting → [auto-filter (select-agent)] → scope-gate
+        → credentials (generate runs in parallel) → final-review
+        → preview → push-decision-gate → pushing → done
+```
+
+A single human review gate (`scope-gate`) replaces the older two-step extract + generate-edit gates. The final-review step is a minimum-viable port of the standalone `JsonEditor` with lifted rationale + source panels, inline `$default` and `$allowedComponents` editing, and live preview re-runs after each save (`--no-live-preview` to disable). Generate runs in parallel with the credentials step (`spawn-generate.ts`) so the operator does not wait on the agent. The push-decision-gate defaults to save AND push; `--no-save` and `--no-push` carve out the alternatives. `--out-dir <path>` short-circuits the save-path prompt.
+
+The wizard's AI auto-filter (auto-invocation of `analyze select-agent` before scope-gate) is configurable per run via `--auto-filter` / `--no-auto-filter` and persisted to `~/.config/experiences/credentials.json`.
+
+### Headless orchestrator
+
+`src/import/orchestrator.ts` is the non-interactive sibling. It shells out to the individual CLI subcommands in sequence via `child_process.execFile`:
+
+1. `analyze extract --project <path>` → captures `session=<id>` from stdout
+2. Optionally `analyze select --session <id>` (with `--select-all`, `--select`, `--deselect`, or `--reject`) — or `analyze select-agent` by default
+3. `generate components --agent <name> --session <id>`
 4. `apply push --components <components.json> --space-id ... --environment-id ... --yes`
 
-`--skip-analyze` and `--skip-generate` skip the respective steps. `--no-cache` forces all steps to re-run.
+Headless mode is entered when any of `--auto-accept-scope`, `--skip-analyze`, `--skip-generate`, `--skip-apply`, `--yes`, `--dry-run`, or a credential flag is set. In non-TTY without one of those flags, the command exits 1 with a fail-loud message.
+
+`--skip-analyze` and `--skip-generate` reuse the most recent session for the respective step. `--no-cache` bypasses extract/select/generate fine-grained caches and is forwarded to `analyze select-agent` and `generate components`.
+
+### Replay
+
+After every successful wizard session, the CLI appends a record to `~/.config/experiences/runs.json`. The replay helpers in `src/runs/replay-helpers.ts` power two `import` flags:
+
+- `--push-from-run <id-or-path>` — re-push the recorded session without re-opening the wizard. Never writes to disk. Mutually exclusive with `--modify`, `--project`, `--no-save`, `--no-push`.
+- `--modify <id-or-path>` — fully wired re-open: loads the recorded session from `pipeline.db` (skipping extract and generate), pre-fills credentials from the run record's `pushedTo` target, and lands directly on `final-review` (or `scope-gate` if the run record sets `entryStep`). Pair with `--overwrite` (save back to recorded `savePath`) or `--save-as-new` (prompt for new path).
+
+`experiences runs` (alias `ls`) lists the contents of `runs.json` for use with either flag. A positional `<id-or-path>` argument switches it into single-run detail mode; `--json`, `--pushed`, and `--not-pushed` filter the output. Table columns auto-expand to fit long project / save paths; a copy-friendly footer prints command hints for the newest run.
+
+### Run-picker
+
+When `runs.json` is non-empty, stdin is a TTY, and none of `--push-from-run`, `--modify`, or `--project` was passed, the wizard mounts an interactive **run-picker** (`src/runs/tui/RunPicker.tsx`) before the `welcome` step. The picker lets the operator push or modify a recent run, expand to "show all", or start a new run; selecting an existing run routes through the `--push-from-run` or `--modify` code path. Mount-decision logic lives in `src/runs/run-picker-mount.ts`.
+
+### Headless save-conflict resolution
+
+`--on-conflict <overwrite|skip|fail>` bypasses the wizard's interactive `<SaveConflictGate>` when a file already exists at the save path — required for non-TTY runs that still write `components.json` to disk. Mutex with `--no-save`.
+
+### Prompt-print and model / agent overrides
+
+- `--print-prompt` prints the generate prompt to stdout and exits. It supersedes the prompt-print semantics of `--dry-run`, which is now deprecated and emits a stderr deprecation notice.
+- `--model <name>` overrides the stored model; resolution order is flag → `credentials.json` → built-in default.
+- `--agent <name>` is a functional wizard override (earlier releases plumbed it but the commander default shadowed it).
+
+### Read-only rationale view
+
+`experiences analyze select-agent --show-rationale [--json] [--session <id>]` reads `raw_components.reject_reason` from `pipeline.db` and prints the recorded accept / reject rationale for every component in the session. No LLM call, no schema change — it is purely a session-DB reader, safe to run against any completed session.
 
 ---
 
@@ -468,16 +524,17 @@ All commands have two output modes:
 | Command | TUI components |
 |---|---|
 | `analyze extract` | `AnalyzeView` |
-| `analyze edit` | Full editor: `App`, `Sidebar`, `ComponentDetail`, `JsonEditor`, `SourcePanel`, dialogs |
+| `analyze select` (alias `analyze edit`) | Standalone JsonEditor: `App`, `Sidebar`, `ComponentDetail`, `JsonEditor`, `SourcePanel`, dialogs (untouched by wizard rebuild; pinned by snapshot test) |
 | `generate components/tokens` | `GenerateView` |
-| `validate` | `ValidateView` |
+| `print validate` | `ValidateView` |
 | `apply preview` | `SummaryView` + `EntityDiffView` |
 | `apply select` | `SelectView` (checkbox picker) + `ApplyView` (progress + result) |
 | `apply push` | `ApplyView` (confirmation + progress + result), `SummaryView`, `EntityDiffView` |
+| `import` (wizard) | `WizardApp` + step components in `src/import/tui/steps/` (`WelcomeStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PushDecisionGateStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `PreviewValidationErrorStep`), plus hosts (`scope-gate-host`, `final-review-host`) |
 
 The TUI uses React hooks for state (`useState`, `useReducer`), Ink's `useInput` for keyboard, and a custom `useUndo` hook for the JSON editor.
 
 Terminal width thresholds:
-- 60 columns — minimum for `analyze edit` TUI
+- 60 columns — minimum for the wizard and `analyze select` TUI
 - 80 columns — sidebar + detail view
-- 120 columns — source panel in `analyze edit`
+- 120 columns — source panel in `analyze select`

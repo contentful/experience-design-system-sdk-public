@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
@@ -85,23 +85,28 @@ CREATE TABLE IF NOT EXISTS raw_components (
   extraction_confidence  INTEGER,
   review_reasons         TEXT NOT NULL DEFAULT '[]',
   needs_review           INTEGER NOT NULL DEFAULT 0,
+  source_path            TEXT,
+  reject_reason          TEXT,
   PRIMARY KEY (session_id, component_id)
 );
 
 CREATE TABLE IF NOT EXISTS raw_props (
-  session_id      TEXT NOT NULL,
-  component_id    TEXT NOT NULL,
-  name            TEXT NOT NULL,
-  type            TEXT NOT NULL,
-  required        INTEGER NOT NULL CHECK (required IN (0, 1)),
-  category        TEXT CHECK (category IN ('content', 'design', 'state')),
-  default_value   TEXT,
-  description     TEXT,
-  token_reference TEXT,
-  position        INTEGER NOT NULL,
-  cdf_type        TEXT,
-  cdf_category    TEXT CHECK (cdf_category IN ('content', 'design', 'state')),
-  cdf_token_kind  TEXT,
+  session_id        TEXT NOT NULL,
+  component_id      TEXT NOT NULL,
+  name              TEXT NOT NULL,
+  type              TEXT NOT NULL,
+  required          INTEGER NOT NULL CHECK (required IN (0, 1)),
+  category          TEXT CHECK (category IN ('content', 'design', 'state')),
+  default_value     TEXT,
+  description       TEXT,
+  token_reference   TEXT,
+  position          INTEGER NOT NULL,
+  cdf_type          TEXT,
+  cdf_category      TEXT CHECK (cdf_category IN ('content', 'design', 'state')),
+  cdf_token_kind    TEXT,
+  rationale         TEXT,
+  source_start_line INTEGER,
+  source_end_line   INTEGER,
   PRIMARY KEY (session_id, component_id, name),
   FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
 );
@@ -196,14 +201,33 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
   mkdirSync(dirname(path), { recursive: true });
   try {
     const db = new DatabaseSync(path);
+    // Configure connection-level pragmas BEFORE running schema/migrations.
+    // - journal_mode=WAL: persistent on the DB file; readers don't block writers
+    //   and vice versa. (Also set in SCHEMA, but harmless to assert per-open.)
+    // - busy_timeout: per-connection; SQLite waits for a lock instead of
+    //   immediately throwing 'database is locked'. Critical when the wizard
+    //   main process and select-agent subprocesses contend on writes.
+    // - synchronous=NORMAL: safe under WAL, faster than FULL.
+    // busy_timeout MUST come first. PRAGMA journal_mode = WAL needs a
+    // RESERVED lock briefly even when the DB is already WAL; if the
+    // select-agent child is mid-write at that moment, the wizard's open
+    // fails instantly without retry. Setting busy_timeout first makes
+    // SQLite wait up to 5s for the lock.
+    db.exec('PRAGMA busy_timeout = 5000');
+    db.exec('PRAGMA journal_mode = WAL');
+    db.exec('PRAGMA synchronous = NORMAL');
     db.exec(SCHEMA);
     applyDbMigrations(db);
     return db;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('database is locked')) {
-      process.stderr.write('Error: another CLI process is already running. Wait for it to finish and retry.\n');
-      process.exit(1);
+      // Throw a typed-ish error rather than process.exit(1). Calling exit
+      // from inside Ink's render reconciler crashes the TUI mid-frame and
+      // emits a noisy 'setState during render' warning. The CLI entry
+      // point (src/index.ts) catches and exits cleanly for non-TUI
+      // contexts; the wizard catches and transitions to its error step.
+      throw new Error('database is locked: another CLI process may be running. Retry once it exits.');
     }
     throw e;
   }
@@ -231,6 +255,89 @@ function applyDbMigrations(db: DatabaseSync): void {
     db.exec('ALTER TABLE raw_components ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0');
   }
 
+  // Feature 1: per-component source path on raw_components, rationale + per-prop
+  // source location on raw_props. All nullable, no DEFAULT — existing rows survive.
+  if (!rawCompColNames.has('source_path')) {
+    db.exec('ALTER TABLE raw_components ADD COLUMN source_path TEXT');
+  }
+  const rawPropCols = db.prepare('PRAGMA table_info(raw_props)').all() as Array<{ name: string }>;
+  const rawPropColNames = new Set(rawPropCols.map((c) => c.name));
+  if (!rawPropColNames.has('rationale')) {
+    db.exec('ALTER TABLE raw_props ADD COLUMN rationale TEXT');
+  }
+  if (!rawPropColNames.has('source_start_line')) {
+    db.exec('ALTER TABLE raw_props ADD COLUMN source_start_line INTEGER');
+  }
+  if (!rawPropColNames.has('source_end_line')) {
+    db.exec('ALTER TABLE raw_props ADD COLUMN source_end_line INTEGER');
+  }
+
+  // Feature 3: persist select-agent's reject reason on raw_components. Nullable,
+  // no DEFAULT — accepted components keep NULL, rejected ones store the LLM's
+  // reason (or `validation error: <codes>` for validation auto-rejections).
+  if (!rawCompColNames.has('reject_reason')) {
+    db.exec('ALTER TABLE raw_components ADD COLUMN reject_reason TEXT');
+  }
+
+  // Component rationale: WHY a component was classified, why these props,
+  // why these slots — surfaced via the `I` panel. All nullable, no DEFAULT
+  // so existing rows survive. Plus per-slot rationale on raw_slots.
+  if (!rawCompColNames.has('component_description_rationale')) {
+    db.exec('ALTER TABLE raw_components ADD COLUMN component_description_rationale TEXT');
+  }
+  if (!rawCompColNames.has('props_rationale')) {
+    db.exec('ALTER TABLE raw_components ADD COLUMN props_rationale TEXT');
+  }
+  if (!rawCompColNames.has('slots_rationale')) {
+    db.exec('ALTER TABLE raw_components ADD COLUMN slots_rationale TEXT');
+  }
+  const rawSlotColsForRationale = db.prepare('PRAGMA table_info(raw_slots)').all() as Array<{ name: string }>;
+  if (!rawSlotColsForRationale.some((c) => c.name === 'rationale')) {
+    db.exec('ALTER TABLE raw_slots ADD COLUMN rationale TEXT');
+  }
+
+  // Fine-grained cache: extract_cache holds per-file extracted components keyed
+  // on (file_hash, cli_version). cli_version is a content hash of bundled skill
+  // files so cache busts on a prompt change (not on every npm patch bump).
+  const hasExtractCache = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='extract_cache'`)
+    .all() as Array<{ name: string }>;
+  if (hasExtractCache.length === 0) {
+    db.exec(`
+      CREATE TABLE extract_cache (
+        file_path        TEXT NOT NULL,
+        file_hash        TEXT NOT NULL,
+        cli_version      TEXT NOT NULL,
+        created_at       TEXT NOT NULL,
+        updated_at       TEXT NOT NULL,
+        components_json  TEXT NOT NULL,
+        PRIMARY KEY (file_hash, cli_version)
+      );
+      CREATE INDEX idx_extract_cache_file ON extract_cache(file_path);
+    `);
+  }
+
+  // Fine-grained cache: select_cache stores accept/reject decisions per
+  // (component_hash, prompt_hash, cli_version). On hit, the wizard replays the
+  // decision without an LLM call.
+  const hasSelectCache = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='select_cache'`)
+    .all() as Array<{ name: string }>;
+  if (hasSelectCache.length === 0) {
+    db.exec(`
+      CREATE TABLE select_cache (
+        component_hash TEXT NOT NULL,
+        prompt_hash    TEXT NOT NULL,
+        cli_version    TEXT NOT NULL,
+        decision       TEXT NOT NULL CHECK (decision IN ('accepted','rejected')),
+        reason         TEXT,
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL,
+        PRIMARY KEY (component_hash, prompt_hash, cli_version)
+      );
+    `);
+  }
+
   // Add generation_cache table if it doesn't exist yet.
   const tables = db
     .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='generation_cache'`)
@@ -251,6 +358,54 @@ function applyDbMigrations(db: DatabaseSync): void {
       CREATE INDEX idx_generation_cache_session ON generation_cache(source_session_id);
     `);
   }
+
+  // Fine-grained cache: add prompt_hash to generation_cache so cache busts when
+  // the operator switches prompt files. Existing rows get '' (matches the
+  // historical "default bundled prompt" — note that lookups using a non-empty
+  // hash for the bundled prompt won't match, so first run after upgrade busts
+  // the cache. Documented as acceptable.
+  //
+  // The primary key also needs to expand to include prompt_hash so multiple
+  // prompt variants can coexist per (input_hash, entity_type, entity_id).
+  // SQLite doesn't allow ALTERing a PK, so when promoting the schema we rebuild
+  // the table in-place.
+  const genCacheCols = db.prepare(`PRAGMA table_info(generation_cache)`).all() as Array<{ name: string; pk: number }>;
+  const hasPromptHash = genCacheCols.some((c) => c.name === 'prompt_hash');
+  const oldPkCols = genCacheCols.filter((c) => c.pk > 0).map((c) => c.name);
+  const promptHashInPk = oldPkCols.includes('prompt_hash');
+  if (!hasPromptHash) {
+    db.exec(`ALTER TABLE generation_cache ADD COLUMN prompt_hash TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!promptHashInPk) {
+    db.exec('BEGIN');
+    try {
+      db.exec(`
+        CREATE TABLE generation_cache__new (
+          input_hash        TEXT NOT NULL,
+          entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set')),
+          entity_id         TEXT NOT NULL,
+          source_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          human_edited      INTEGER NOT NULL DEFAULT 0 CHECK (human_edited IN (0, 1)),
+          created_at        TEXT NOT NULL,
+          updated_at        TEXT NOT NULL,
+          prompt_hash       TEXT NOT NULL DEFAULT '',
+          PRIMARY KEY (input_hash, prompt_hash, entity_type, entity_id)
+        );
+        INSERT INTO generation_cache__new
+          (input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash)
+          SELECT input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash
+          FROM generation_cache;
+        DROP TABLE generation_cache;
+        ALTER TABLE generation_cache__new RENAME TO generation_cache;
+        CREATE INDEX IF NOT EXISTS idx_generation_cache_entity  ON generation_cache(entity_type, entity_id);
+        CREATE INDEX IF NOT EXISTS idx_generation_cache_session ON generation_cache(source_session_id);
+      `);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  }
 }
 
 export interface ApplyToolCallsResult {
@@ -258,6 +413,151 @@ export interface ApplyToolCallsResult {
   excluded: number;
   slots: number;
   warnings: string[];
+}
+
+/**
+ * Feature 1: load per-component metadata for surfacing in the review UI —
+ * source path, full source text, and per-prop rationale + source-location.
+ * Returns null when no row matches. Decoupled from loadCDFComponents so
+ * the CDF projection stays unaffected.
+ */
+export interface ComponentReviewMetadata {
+  sourcePath: string | null;
+  componentSource: string | null;
+  props: Record<string, { rationale: string | null; sourceStartLine: number | null; sourceEndLine: number | null }>;
+}
+
+export function loadComponentReviewMetadata(
+  db: DatabaseSync,
+  sessionId: string,
+  componentName: string,
+): ComponentReviewMetadata | null {
+  const compRow = db
+    .prepare(`SELECT component_id, source, source_path FROM raw_components WHERE session_id = ? AND name = ?`)
+    .get(sessionId, componentName) as { component_id: string; source: string; source_path: string | null } | undefined;
+  if (!compRow) return null;
+
+  const propRows = db
+    .prepare(
+      `SELECT name, rationale, source_start_line, source_end_line FROM raw_props WHERE session_id = ? AND component_id = ?`,
+    )
+    .all(sessionId, compRow.component_id) as Array<{
+    name: string;
+    rationale: string | null;
+    source_start_line: number | null;
+    source_end_line: number | null;
+  }>;
+
+  const props: ComponentReviewMetadata['props'] = {};
+  for (const r of propRows) {
+    props[r.name] = {
+      rationale: r.rationale,
+      sourceStartLine: r.source_start_line,
+      sourceEndLine: r.source_end_line,
+    };
+  }
+
+  // raw_components.source historically stores the file path, not the file
+  // text. For the source-view panel to render real lines, prefer reading
+  // the file from disk via source_path. Fall back to whatever's in `source`
+  // (handles in-memory fixtures and tests).
+  let componentSource: string | null = compRow.source ?? null;
+  if (compRow.source_path) {
+    try {
+      componentSource = readFileSync(compRow.source_path, 'utf8');
+    } catch {
+      // File no longer exists or unreadable — leave fallback.
+    }
+  }
+
+  return {
+    sourcePath: compRow.source_path,
+    componentSource,
+    props,
+  };
+}
+
+export interface ComponentRationale {
+  name: string;
+  description: string | null;
+  descriptionRationale: string | null;
+  propsRationale: string | null;
+  slotsRationale: string | null;
+  props: Array<{ name: string; category: string | null; description: string | null; rationale: string | null }>;
+  slots: Array<{ name: string; description: string | null; rationale: string | null }>;
+}
+
+/**
+ * Component-rationale loader: data contract for the `I` ComponentRationalePanel.
+ * Returns the component's description + the three component-level rationale
+ * strings (why-description / why-props / why-slots), plus per-prop and per-slot
+ * rationale rows for the operator-facing panel. Returns null when no component
+ * matches.
+ */
+export function loadComponentRationale(
+  db: DatabaseSync,
+  sessionId: string,
+  componentName: string,
+): ComponentRationale | null {
+  const compRow = db
+    .prepare(
+      `SELECT component_id, name, description, component_description_rationale, props_rationale, slots_rationale
+       FROM raw_components WHERE session_id = ? AND name = ?`,
+    )
+    .get(sessionId, componentName) as
+    | {
+        component_id: string;
+        name: string;
+        description: string | null;
+        component_description_rationale: string | null;
+        props_rationale: string | null;
+        slots_rationale: string | null;
+      }
+    | undefined;
+  if (!compRow) return null;
+
+  const propRows = db
+    .prepare(
+      `SELECT name, cdf_category, category, description, rationale FROM raw_props
+       WHERE session_id = ? AND component_id = ? ORDER BY position`,
+    )
+    .all(sessionId, compRow.component_id) as Array<{
+    name: string;
+    cdf_category: string | null;
+    category: string | null;
+    description: string | null;
+    rationale: string | null;
+  }>;
+
+  const slotRows = db
+    .prepare(
+      `SELECT name, description, rationale FROM raw_slots
+       WHERE session_id = ? AND component_id = ? ORDER BY position`,
+    )
+    .all(sessionId, compRow.component_id) as Array<{
+    name: string;
+    description: string | null;
+    rationale: string | null;
+  }>;
+
+  return {
+    name: compRow.name,
+    description: compRow.description,
+    descriptionRationale: compRow.component_description_rationale,
+    propsRationale: compRow.props_rationale,
+    slotsRationale: compRow.slots_rationale,
+    props: propRows.map((p) => ({
+      name: p.name,
+      category: p.cdf_category ?? p.category ?? null,
+      description: p.description,
+      rationale: p.rationale,
+    })),
+    slots: slotRows.map((s) => ({
+      name: s.name,
+      description: s.description,
+      rationale: s.rationale,
+    })),
+  };
 }
 
 export function applyToolCalls(
@@ -275,11 +575,11 @@ export function applyToolCalls(
   let slots = 0;
 
   const updateProp = db.prepare(
-    `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?
+    `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?, rationale = ?
      WHERE session_id = ? AND component_id = ? AND name = ?`,
   );
   const clearProp = db.prepare(
-    `UPDATE raw_props SET cdf_type = 'excluded', cdf_category = NULL, cdf_token_kind = NULL
+    `UPDATE raw_props SET cdf_type = 'excluded', cdf_category = NULL, cdf_token_kind = NULL, rationale = ?
      WHERE session_id = ? AND component_id = ? AND name = ?`,
   );
   const deleteAllowedValues = db.prepare(
@@ -311,6 +611,29 @@ export function applyToolCalls(
             componentId,
           );
         }
+        // Component-level rationale: sparse-update each field only when present
+        // so missing keys don't overwrite previously-stored values.
+        if (call.rationale) {
+          if (call.rationale.description !== undefined) {
+            db.prepare(
+              'UPDATE raw_components SET component_description_rationale = ? WHERE session_id = ? AND component_id = ?',
+            ).run(call.rationale.description, sessionId, componentId);
+          }
+          if (call.rationale.props !== undefined) {
+            db.prepare('UPDATE raw_components SET props_rationale = ? WHERE session_id = ? AND component_id = ?').run(
+              call.rationale.props,
+              sessionId,
+              componentId,
+            );
+          }
+          if (call.rationale.slots !== undefined) {
+            db.prepare('UPDATE raw_components SET slots_rationale = ? WHERE session_id = ? AND component_id = ?').run(
+              call.rationale.slots,
+              sessionId,
+              componentId,
+            );
+          }
+        }
       } else if (call.tool === 'classify_prop') {
         const changes = updateProp.run(
           call.cdf_type,
@@ -318,6 +641,7 @@ export function applyToolCalls(
           call.token_kind ?? null,
           call.required !== undefined ? (call.required ? 1 : 0) : 0,
           call.description ?? null,
+          call.reason ?? null,
           sessionId,
           componentId,
           call.prop,
@@ -338,7 +662,7 @@ export function applyToolCalls(
         }
         classified++;
       } else if (call.tool === 'exclude_prop') {
-        clearProp.run(sessionId, componentId, call.prop);
+        clearProp.run(call.reason || null, sessionId, componentId, call.prop);
         excluded++;
       } else if (call.tool === 'classify_slot') {
         const slotRequired = call.required !== undefined ? (call.required ? 1 : 0) : 1;
@@ -352,6 +676,16 @@ export function applyToolCalls(
         if (slotChanges.changes === 0) {
           warnings.push(`${componentName}: classify_slot '${call.slot}' — slot not found, skipped`);
           continue;
+        }
+        // Per-slot rationale: sparse-update only when present so omitting it
+        // doesn't blank existing values.
+        if (call.rationale !== undefined) {
+          db.prepare('UPDATE raw_slots SET rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?').run(
+            call.rationale,
+            sessionId,
+            componentId,
+            call.slot,
+          );
         }
         if (call.allowed_components !== undefined) {
           deleteAllowedComponents.run(sessionId, componentId, call.slot);
@@ -392,17 +726,14 @@ export function getOrCreateSession(
   db: DatabaseSync,
   sessionFlag: string | undefined,
   sessionName: string | undefined,
-  hints: MatchHints,
+  // `_hints` is retained for call-site compatibility but no longer drives an
+  // implicit auto-match by inputPath/outDir — operators who want to resume must
+  // pass an explicit --session <id>.
+  _hints: MatchHints,
 ): SessionResolution {
   const now = new Date().toISOString();
 
   if (sessionFlag === 'new' || sessionFlag === undefined) {
-    if (sessionFlag !== 'new') {
-      const match = findMatchingSession(db, hints);
-      if (match) {
-        return { sessionId: match, isNew: false, isResumed: true };
-      }
-    }
     const id = generateSessionId();
     db.prepare('INSERT INTO sessions (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(
       id,
@@ -418,58 +749,6 @@ export function getOrCreateSession(
     throw new Error(`session '${sessionFlag}' not found. Run 'session list' to see active sessions.`);
   }
   return { sessionId: sessionFlag, isNew: false, isResumed: false };
-}
-
-function findMatchingSession(db: DatabaseSync, hints: MatchHints): string | null {
-  if (!hints.inputPath && !hints.outDir) return null;
-
-  const rows = db
-    .prepare(
-      `SELECT s.id, st.inputs, st.outputs, st.status
-       FROM sessions s
-       JOIN steps st ON st.session_id = s.id
-       WHERE st.command = ?
-         AND st.status IN ('pending', 'interrupted')
-       ORDER BY st.started_at DESC
-       LIMIT 20`,
-    )
-    .all(hints.command) as Array<{
-    id: string;
-    inputs: string;
-    outputs: string;
-    status: string;
-  }>;
-
-  for (const row of rows) {
-    let inputs: Record<string, string> = {};
-    try {
-      inputs = JSON.parse(row.inputs) as Record<string, string>;
-    } catch {
-      continue;
-    }
-
-    if (hints.inputPath) {
-      const inputValues = Object.values(inputs);
-      if (inputValues.some((v) => v === hints.inputPath)) {
-        return row.id;
-      }
-    }
-
-    if (hints.outDir) {
-      let outputs: Record<string, string> = {};
-      try {
-        outputs = JSON.parse(row.outputs) as Record<string, string>;
-      } catch {
-        // ignore
-      }
-      const allValues = [...Object.values(inputs), ...Object.values(outputs)];
-      if (allValues.some((v) => v === hints.outDir)) {
-        return row.id;
-      }
-    }
-  }
-
-  return null;
 }
 
 export function createStep(
@@ -544,13 +823,13 @@ export function storeRawComponents(
   const now = new Date().toISOString();
 
   const insertComp = db.prepare(
-    `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, extraction_confidence, review_reasons, needs_review)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, extraction_confidence, review_reasons, needs_review, source_path)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertProp = db.prepare(
     `INSERT INTO raw_props
-       (session_id, component_id, name, type, required, category, default_value, description, token_reference, position)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (session_id, component_id, name, type, required, category, default_value, description, token_reference, position, source_start_line, source_end_line)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertAllowedValue = db.prepare(
     `INSERT INTO raw_prop_allowed_values (session_id, component_id, prop_name, position, value)
@@ -622,6 +901,7 @@ export function storeRawComponents(
         comp.extractionConfidence ?? null,
         JSON.stringify(comp.reviewReasons ?? []),
         comp.needsReview ? 1 : 0,
+        comp.sourcePath ?? null,
       );
 
       for (let i = 0; i < comp.props.length; i++) {
@@ -637,6 +917,8 @@ export function storeRawComponents(
           prop.description ?? null,
           prop.tokenReference ?? null,
           i,
+          prop.sourceStartLine ?? null,
+          prop.sourceEndLine ?? null,
         );
         if (prop.allowedValues) {
           prop.allowedValues.forEach((v, j) => insertAllowedValue.run(sessionId, componentId, prop.name, j, v));
@@ -753,7 +1035,7 @@ export function loadRawComponents(
 ): RawComponentWithId[] {
   const all = db
     .prepare(
-      'SELECT component_id, name, source, framework, extraction_confidence, review_reasons, needs_review FROM raw_components WHERE session_id = ? ORDER BY rowid',
+      'SELECT component_id, name, source, framework, extraction_confidence, review_reasons, needs_review, source_path FROM raw_components WHERE session_id = ? ORDER BY rowid',
     )
     .all(sessionId) as Array<{
     component_id: string;
@@ -763,6 +1045,7 @@ export function loadRawComponents(
     extraction_confidence: number | null;
     review_reasons: string;
     needs_review: number;
+    source_path: string | null;
   }>;
 
   const components = allowedNames ? all.filter((c) => allowedNames.has(c.name)) : all;
@@ -771,7 +1054,8 @@ export function loadRawComponents(
 
   const props = db
     .prepare(
-      `SELECT component_id, name, type, required, category, default_value, description, token_reference, position
+      `SELECT component_id, name, type, required, category, default_value, description, token_reference, position,
+              rationale, source_start_line, source_end_line
        FROM raw_props WHERE session_id = ? ORDER BY component_id, position`,
     )
     .all(sessionId) as Array<{
@@ -784,6 +1068,9 @@ export function loadRawComponents(
     description: string | null;
     token_reference: string | null;
     position: number;
+    rationale: string | null;
+    source_start_line: number | null;
+    source_end_line: number | null;
   }>;
 
   const allowedValues = db
@@ -844,6 +1131,7 @@ export function loadRawComponents(
         }
       })(),
       needsReview: Boolean(c.needs_review),
+      sourcePath: c.source_path ?? undefined,
       props: (propsByComponent.get(c.component_id) ?? []).map((p): RawPropDefinition => {
         const av = allowedValuesByProp.get(`${c.component_id}::${p.name}`);
         const prop: RawPropDefinition = {
@@ -856,6 +1144,8 @@ export function loadRawComponents(
         if (p.description !== null) prop.description = p.description;
         if (p.token_reference !== null) prop.tokenReference = p.token_reference;
         if (av && av.length > 0) prop.allowedValues = av.map((v) => v.value);
+        if (p.source_start_line !== null) prop.sourceStartLine = p.source_start_line;
+        if (p.source_end_line !== null) prop.sourceEndLine = p.source_end_line;
         return prop;
       }),
       slots: (slotsByComponent.get(c.component_id) ?? []).map((s): RawSlotDefinition => {
@@ -1124,60 +1414,124 @@ export function loadCDFComponents(
   const slotsByComponent = groupBy(slots, (s) => s.component_id);
   const allowedComponentsBySlot = groupBy(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
 
-  return components
-    .map(({ component_id, name, description }) => {
-      const compProps = propsByComponent.get(component_id) ?? [];
-      // Skip components with no CDF-classified props — sending them with empty
-      // $properties causes the server to flag all stored props as "removed" (breaking).
-      if (compProps.length === 0) return null;
+  return components.map(({ component_id, name, description }) => {
+    const compProps = propsByComponent.get(component_id) ?? [];
+    // NOTE: Components with zero CDF-classified props are intentionally
+    // returned with an empty `$properties` object. Filtering them out here
+    // silently dropped them from the wizard's final-review (INTEG-4257),
+    // so the user couldn't see that the LLM had failed to classify anything
+    // and couldn't reject the empty component. Surface them instead — the
+    // wizard tags them with a ⚠ badge and an in-panel banner so the user
+    // can manually add props in FieldEditor or reject the component.
+    // Downstream consumers (buildManifest, push) tolerate empty $properties.
 
-      const $properties: CDFComponentEntry['$properties'] = {};
-      for (const p of compProps) {
-        // Hallucination insurance: drop any prop whose name didn't survive trim.
-        // The pre-generate rename guard catches empty-named slots, but if the LLM
-        // hallucinated a classify_prop with an empty name into the DB, surface
-        // nothing to the manifest builder rather than emitting "$properties: { '': ... }".
-        if (!p.name.trim()) continue;
-        const av = allowedValuesByProp.get(`${component_id}::${p.name}`);
-        const propDef: CDFComponentEntry['$properties'][string] = {
-          $type: p.cdf_type as CDFComponentEntry['$properties'][string]['$type'],
-          $category: p.cdf_category as CDFComponentEntry['$properties'][string]['$category'],
-        };
-        if (p.required) propDef.$required = true;
-        if (p.default_value !== null) {
-          if (p.cdf_type === 'boolean') {
-            propDef.$default = p.default_value === 'true';
-          } else {
-            propDef.$default = p.default_value;
-          }
+    const $properties: CDFComponentEntry['$properties'] = {};
+    for (const p of compProps) {
+      // Hallucination insurance: drop any prop whose name didn't survive trim.
+      // The pre-generate rename guard catches empty-named slots, but if the LLM
+      // hallucinated a classify_prop with an empty name into the DB, surface
+      // nothing to the manifest builder rather than emitting "$properties: { '': ... }".
+      if (!p.name.trim()) continue;
+      const av = allowedValuesByProp.get(`${component_id}::${p.name}`);
+      const propDef: CDFComponentEntry['$properties'][string] = {
+        $type: p.cdf_type as CDFComponentEntry['$properties'][string]['$type'],
+        $category: p.cdf_category as CDFComponentEntry['$properties'][string]['$category'],
+      };
+      if (p.required) propDef.$required = true;
+      if (p.default_value !== null) {
+        if (p.cdf_type === 'boolean') {
+          propDef.$default = p.default_value === 'true';
+        } else {
+          propDef.$default = p.default_value;
         }
-        if (p.description !== null) propDef.$description = p.description;
-        if (av && av.length > 0) propDef.$values = av.map((v) => v.value);
-        if (p.cdf_token_kind !== null) propDef['$token.kind'] = p.cdf_token_kind;
-        $properties[p.name] = propDef;
       }
+      if (p.description !== null) propDef.$description = p.description;
+      if (av && av.length > 0) propDef.$values = av.map((v) => v.value);
+      if (p.cdf_token_kind !== null) propDef['$token.kind'] = p.cdf_token_kind;
+      $properties[p.name] = propDef;
+    }
 
-      const compSlots = slotsByComponent.get(component_id) ?? [];
-      const $slots: CDFComponentEntry['$slots'] = {};
-      for (const s of compSlots) {
-        // Hallucination insurance: same as $properties — drop empty-named slots
-        // before they reach buildManifest, which faithfully passes empty keys
-        // through and triggers a 422 from the preview API.
-        if (!s.name.trim()) continue;
-        const ac = allowedComponentsBySlot.get(`${component_id}::${s.name}`);
-        const slotDef: NonNullable<CDFComponentEntry['$slots']>[string] = {};
-        if (s.description !== null) slotDef.$description = s.description;
-        if (s.required) slotDef.$required = true;
-        if (ac && ac.length > 0) slotDef.$allowedComponents = ac.map((v) => v.allowed_component);
-        $slots[s.name] = slotDef;
-      }
+    const compSlots = slotsByComponent.get(component_id) ?? [];
+    const $slots: CDFComponentEntry['$slots'] = {};
+    for (const s of compSlots) {
+      // Hallucination insurance: same as $properties — drop empty-named slots
+      // before they reach buildManifest, which faithfully passes empty keys
+      // through and triggers a 422 from the preview API.
+      if (!s.name.trim()) continue;
+      const ac = allowedComponentsBySlot.get(`${component_id}::${s.name}`);
+      const slotDef: NonNullable<CDFComponentEntry['$slots']>[string] = {};
+      if (s.description !== null) slotDef.$description = s.description;
+      if (s.required) slotDef.$required = true;
+      if (ac && ac.length > 0) slotDef.$allowedComponents = ac.map((v) => v.allowed_component);
+      $slots[s.name] = slotDef;
+    }
 
-      const entry: CDFComponentEntry = { $type: 'component', $properties };
-      if (description !== null) entry.$description = description;
-      if (Object.keys($slots).length > 0) entry.$slots = $slots;
-      return { key: name, entry };
-    })
-    .filter((c): c is { key: string; entry: CDFComponentEntry } => c !== null);
+    const entry: CDFComponentEntry = { $type: 'component', $properties };
+    if (description !== null) entry.$description = description;
+    if (Object.keys($slots).length > 0) entry.$slots = $slots;
+    return { key: name, entry };
+  });
+}
+
+export type ScopeComponentRow = {
+  name: string;
+  componentId: string;
+  aiDecision: 'accepted' | 'rejected' | null;
+  aiReason: string | null;
+};
+
+export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeComponentRow[] {
+  // Loads extract-stage components: those still pending operator review (`extracted`)
+  // plus those the Feature 3 auto-filter has already classified (`accepted` /
+  // `rejected`). Excludes `generated` (already past scope-gate) so re-runs of the
+  // wizard don't show already-confirmed components.
+  const rows = db
+    .prepare(
+      `SELECT name, component_id, status, reject_reason FROM raw_components
+       WHERE session_id = ? AND status IN ('extracted', 'accepted', 'rejected')
+       ORDER BY name`,
+    )
+    .all(sessionId) as Array<{
+    name: string;
+    component_id: string;
+    status: string;
+    reject_reason: string | null;
+  }>;
+  return rows.map((r) => ({
+    name: r.name,
+    componentId: r.component_id,
+    aiDecision: r.status === 'accepted' ? 'accepted' : r.status === 'rejected' ? 'rejected' : null,
+    aiReason: r.reject_reason,
+  }));
+}
+
+export function applyScopeDecisions(
+  db: DatabaseSync,
+  sessionId: string,
+  decisions: { accepted: string[]; rejected: string[] },
+): void {
+  const now = new Date().toISOString();
+  const acceptedSet = new Set(decisions.accepted);
+  const accepted = [...acceptedSet];
+  // Conflict precedence: accepted wins over rejected.
+  const rejected = [...new Set(decisions.rejected)].filter((n) => !acceptedSet.has(n));
+  // Rejected first so accepted writes can flip back to 'generated' afterwards
+  // if a name appears in both lists.
+  if (rejected.length > 0) {
+    const placeholders = rejected.map(() => '?').join(',');
+    db.prepare(`UPDATE raw_components SET status = 'rejected' WHERE session_id = ? AND name IN (${placeholders})`).run(
+      sessionId,
+      ...rejected,
+    );
+  }
+  if (accepted.length > 0) {
+    const placeholders = accepted.map(() => '?').join(',');
+    db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name IN (${placeholders})`).run(
+      sessionId,
+      ...accepted,
+    );
+  }
+  db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 }
 
 export function storeDTCGTokens(
@@ -1558,30 +1912,31 @@ export interface CacheEntry {
   entityId: string;
   sourceSessionId: string;
   humanEdited: boolean;
+  /** sha256 of the prompt content. '' for pre-upgrade rows that predate the fine-grained cache. */
+  promptHash: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export function computeComponentInputHash(component: RawComponentWithId): string {
+  // Narrow the hashed payload to extractor-only fields. Any field that
+  // `applyToolCalls` may overwrite (prop description/required/default/allowed
+  // values, slot description/allowed components) is excluded so that the cache
+  // key does not depend on its own output — otherwise re-reading raw props
+  // after a generation pass would drift the hash even when the underlying
+  // source has not changed.
   const payload = {
     framework: component.framework,
     name: component.name,
+    source: component.source,
     props: component.props.map((p) => ({
-      allowedValues: p.allowedValues ?? [],
-      defaultValue: p.defaultValue ?? null,
-      description: p.description ?? null,
       name: p.name,
-      required: p.required,
-      tokenReference: p.tokenReference ?? null,
       type: p.type,
     })),
     slots: component.slots.map((s) => ({
-      allowedComponents: s.allowedComponents ?? [],
-      description: s.description ?? null,
-      isDefault: s.isDefault,
       name: s.name,
+      isDefault: s.isDefault,
     })),
-    source: component.source,
   };
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
@@ -1595,14 +1950,15 @@ export function lookupCache(
   inputHash: string,
   entityType: 'component' | 'token_set',
   entityId: string,
+  promptHash: string = '',
 ): CacheEntry | null {
   const row = db
     .prepare(
-      `SELECT input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at
+      `SELECT input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash
        FROM generation_cache
-       WHERE input_hash = ? AND entity_type = ? AND entity_id = ?`,
+       WHERE input_hash = ? AND entity_type = ? AND entity_id = ? AND prompt_hash = ?`,
     )
-    .get(inputHash, entityType, entityId) as
+    .get(inputHash, entityType, entityId, promptHash) as
     | {
         input_hash: string;
         entity_type: string;
@@ -1611,6 +1967,7 @@ export function lookupCache(
         human_edited: number;
         created_at: string;
         updated_at: string;
+        prompt_hash: string;
       }
     | undefined;
   if (!row) return null;
@@ -1620,6 +1977,7 @@ export function lookupCache(
     entityId: row.entity_id,
     sourceSessionId: row.source_session_id,
     humanEdited: row.human_edited === 1,
+    promptHash: row.prompt_hash,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1632,7 +1990,7 @@ export function lookupCacheByEntity(
 ): CacheEntry | null {
   const row = db
     .prepare(
-      `SELECT input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at
+      `SELECT input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash
        FROM generation_cache
        WHERE entity_type = ? AND entity_id = ?
        ORDER BY updated_at DESC LIMIT 1`,
@@ -1646,6 +2004,7 @@ export function lookupCacheByEntity(
         human_edited: number;
         created_at: string;
         updated_at: string;
+        prompt_hash: string;
       }
     | undefined;
   if (!row) return null;
@@ -1655,6 +2014,7 @@ export function lookupCacheByEntity(
     entityId: row.entity_id,
     sourceSessionId: row.source_session_id,
     humanEdited: row.human_edited === 1,
+    promptHash: row.prompt_hash,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1667,16 +2027,17 @@ export function storeCache(
   entityId: string,
   sourceSessionId: string,
   humanEdited: boolean,
+  promptHash: string = '',
 ): void {
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO generation_cache (input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(input_hash, entity_type, entity_id) DO UPDATE SET
+    `INSERT INTO generation_cache (input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(input_hash, prompt_hash, entity_type, entity_id) DO UPDATE SET
        source_session_id = excluded.source_session_id,
        human_edited = CASE WHEN generation_cache.human_edited = 1 THEN 1 ELSE excluded.human_edited END,
        updated_at = excluded.updated_at`,
-  ).run(inputHash, entityType, entityId, sourceSessionId, humanEdited ? 1 : 0, now, now);
+  ).run(inputHash, entityType, entityId, sourceSessionId, humanEdited ? 1 : 0, now, now, promptHash);
 }
 
 export function storeScannedFiles(db: DatabaseSync, sessionId: string, filePaths: string[]): void {
@@ -1843,4 +2204,173 @@ export function copyTokensFromCache(db: DatabaseSync, sourceSessionId: string, t
     db.exec('ROLLBACK');
     throw e;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Fine-grained cache: extract_cache helpers
+// ---------------------------------------------------------------------------
+
+let _cliCacheVersionCache: string | null = null;
+
+/**
+ * Returns the CLI cache version used to namespace cache rows. To avoid busting
+ * the cache on every npm patch bump, this hashes the content of the bundled
+ * skill prompts. When the prompts change, cache invalidates; when only library
+ * code or test fixtures change, the cache stays warm.
+ *
+ * Memoized per-process. Falls back to package version on any I/O error.
+ */
+export async function getCliCacheVersion(): Promise<string> {
+  if (_cliCacheVersionCache) return _cliCacheVersionCache;
+  try {
+    const { hashContent } = await import('./cache-keys.js');
+    const { resolveSkillPath } = await import('../generate/prompt-builder.js');
+    const skills: Array<'components' | 'tokens' | 'select'> = ['components', 'tokens', 'select'];
+    const parts: string[] = [];
+    for (const s of skills) {
+      try {
+        const p = resolveSkillPath(s);
+        parts.push(readFileSync(p, 'utf8'));
+      } catch {
+        parts.push(`<missing:${s}>`);
+      }
+    }
+    _cliCacheVersionCache = hashContent(parts.join('\n---\n'));
+    return _cliCacheVersionCache;
+  } catch {
+    _cliCacheVersionCache = 'fallback';
+    return _cliCacheVersionCache;
+  }
+}
+
+export interface ExtractCacheEntry {
+  filePath: string;
+  fileHash: string;
+  cliVersion: string;
+  createdAt: string;
+  updatedAt: string;
+  components: RawComponentDefinition[];
+}
+
+export function storeExtractCache(
+  db: DatabaseSync,
+  filePath: string,
+  fileHash: string,
+  cliVersion: string,
+  components: RawComponentDefinition[],
+): void {
+  const now = new Date().toISOString();
+  const componentsJson = JSON.stringify(components);
+  db.prepare(
+    `INSERT INTO extract_cache (file_path, file_hash, cli_version, created_at, updated_at, components_json)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(file_hash, cli_version) DO UPDATE SET
+       file_path = excluded.file_path,
+       updated_at = excluded.updated_at,
+       components_json = excluded.components_json`,
+  ).run(filePath, fileHash, cliVersion, now, now, componentsJson);
+}
+
+export function lookupExtractCache(db: DatabaseSync, fileHash: string, cliVersion: string): ExtractCacheEntry | null {
+  const row = db
+    .prepare(
+      `SELECT file_path, file_hash, cli_version, created_at, updated_at, components_json
+       FROM extract_cache
+       WHERE file_hash = ? AND cli_version = ?`,
+    )
+    .get(fileHash, cliVersion) as
+    | {
+        file_path: string;
+        file_hash: string;
+        cli_version: string;
+        created_at: string;
+        updated_at: string;
+        components_json: string;
+      }
+    | undefined;
+  if (!row) return null;
+  let components: RawComponentDefinition[] = [];
+  try {
+    components = JSON.parse(row.components_json) as RawComponentDefinition[];
+  } catch {
+    return null;
+  }
+  return {
+    filePath: row.file_path,
+    fileHash: row.file_hash,
+    cliVersion: row.cli_version,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    components,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Fine-grained cache: select_cache helpers
+// ---------------------------------------------------------------------------
+
+export type SelectDecision = 'accepted' | 'rejected';
+
+export interface SelectCacheEntry {
+  componentHash: string;
+  promptHash: string;
+  cliVersion: string;
+  decision: SelectDecision;
+  reason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function storeSelectCache(
+  db: DatabaseSync,
+  componentHash: string,
+  promptHash: string,
+  cliVersion: string,
+  decision: SelectDecision,
+  reason: string | null,
+): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO select_cache (component_hash, prompt_hash, cli_version, decision, reason, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(component_hash, prompt_hash, cli_version) DO UPDATE SET
+       decision = excluded.decision,
+       reason = excluded.reason,
+       updated_at = excluded.updated_at`,
+  ).run(componentHash, promptHash, cliVersion, decision, reason, now, now);
+}
+
+export function lookupSelectCache(
+  db: DatabaseSync,
+  componentHash: string,
+  promptHash: string,
+  cliVersion: string,
+): SelectCacheEntry | null {
+  const row = db
+    .prepare(
+      `SELECT component_hash, prompt_hash, cli_version, decision, reason, created_at, updated_at
+       FROM select_cache
+       WHERE component_hash = ? AND prompt_hash = ? AND cli_version = ?`,
+    )
+    .get(componentHash, promptHash, cliVersion) as
+    | {
+        component_hash: string;
+        prompt_hash: string;
+        cli_version: string;
+        decision: string;
+        reason: string | null;
+        created_at: string;
+        updated_at: string;
+      }
+    | undefined;
+  if (!row) return null;
+  return {
+    componentHash: row.component_hash,
+    promptHash: row.prompt_hash,
+    cliVersion: row.cli_version,
+    decision: row.decision as SelectDecision,
+    reason: row.reason,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }

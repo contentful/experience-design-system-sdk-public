@@ -19,6 +19,14 @@ export interface PromptOptions {
   outDir: string;
   /** For components skill only: the single component's name (used in error messages). */
   componentName?: string;
+  /**
+   * Feature 8: custom prompt path override. When set, this absolute or relative
+   * `.md` path is read in place of the bundled skill file. The bundled-prompt
+   * invariants (utility-wrapper rejection, description content rules, etc.) do
+   * NOT apply under an override — callers are responsible for showing the
+   * appropriate warning banner.
+   */
+  skillPathOverride?: string;
 }
 
 const SKILL_FILES: Record<Skill, string> = {
@@ -34,7 +42,7 @@ const OUTPUT_FILES: Record<Skill, string> = {
 };
 
 export async function buildPrompt(options: PromptOptions): Promise<string> {
-  const skillContent = await readSkillFile(options.skill);
+  const skillContent = await readSkillFile(options.skill, options.skillPathOverride);
   const preamble = buildPreamble(options);
   return `${preamble}\n\nSkill instructions follow:\n---\n${skillContent}`;
 }
@@ -55,7 +63,15 @@ export function resolveSkillPath(skill: Skill): string {
   }
 }
 
-async function readSkillFile(skill: Skill): Promise<string> {
+async function readSkillFile(skill: Skill, override?: string): Promise<string> {
+  if (override) {
+    const skillPath = resolve(override);
+    try {
+      return await readFile(skillPath, 'utf8');
+    } catch {
+      throw new Error(`custom prompt file not found (skill: ${skill}, path: ${skillPath})`);
+    }
+  }
   const skillPath = resolveSkillPath(skill);
   try {
     return await readFile(skillPath, 'utf8');
@@ -149,13 +165,13 @@ Do NOT write any files or emit any JSON blobs. Instead, emit one JSON object per
 The four tool calls you may emit are:
 
 \`\`\`
-{"tool":"classify_component","description":"<optional component-level description>"}
+{"tool":"classify_component","description":"<optional component-level description>","rationale":{"description":"<why this component is classified the way it is>","props":"<why these props were chosen>","slots":"<why these slots were chosen>"}}
 
-{"tool":"classify_prop","prop":"<propName>","cdf_type":"<type>","cdf_category":"<category>","required":<bool>,"description":"<reason>","values":["a","b"],"token_kind":"color","default":"<value>"}
+{"tool":"classify_prop","prop":"<propName>","cdf_type":"<type>","cdf_category":"<category>","required":<bool>,"description":"<short customer-facing description>","reason":"<full internal rationale; not customer-facing>","values":["a","b"],"token_kind":"color","default":"<value>"}
 
 {"tool":"exclude_prop","prop":"<propName>","reason":"<why excluded>"}
 
-{"tool":"classify_slot","slot":"<slotName>","required":<bool>,"allowed_components":["ComponentName"],"description":"<reason>"}
+{"tool":"classify_slot","slot":"<slotName>","required":<bool>,"allowed_components":["ComponentName"],"description":"<reason>","rationale":"<why this slot was kept in the catalog>"}
 \`\`\`
 
 Rules:
@@ -169,13 +185,15 @@ Rules:
 - href and URL props → cdf_type "string", cdf_category "content". Do NOT use cdf_type "link" — it is not valid.
 - Framework internals (ref, event handlers, test IDs) → exclude_prop.
 - CSS design props (className, style, styles, positional/geometric props: top, bottom, left, right, rotation, offset, etc.) → classify_prop, cdf_type: "string", cdf_category: "design".
+- On classify_component, "rationale" fields are operator-facing (read-only) but may surface in customer-facing exports. The "rationale.description" field is subject to the description content rules in the skill prompt (no internal initiative names). "rationale.props" and "rationale.slots" describe your reasoning about scope; "classify_slot.rationale" explains why each slot was kept.
+- On classify_prop, "reason" is REQUIRED and is the LLM's internal rationale — shown to the developer reviewing the import, never to end-users. "description" is the customer-facing copy and is subject to the description content rules in the skill prompt. Keep them distinct: "description" is short and customer-facing; "reason" explains your reasoning in detail.
 - You may emit prose lines (not starting with {) anywhere — they are ignored by the parser and serve as your reasoning log.`;
 }
 
 function buildSelectAutonomousPreamble(inputBlock: string): string {
   return `You are running as part of the experience-design-system-cli import pipeline in AUTONOMOUS mode. The developer is not present to answer questions.
 
-Your task: review the single component provided below and decide whether it belongs in Contentful Experience Orchestration as a Component Type. Apply all judgment calls yourself — do not pause to ask for confirmation. Include a brief "reason" to document your reasoning.
+Your task: review the components provided below and decide whether each belongs in Contentful Experience Orchestration as a Component Type. The input is a JSON array — you may receive 1–N components in a single message. Emit one tool call per input component, named after the component. Apply all judgment calls yourself — do not pause to ask for confirmation. Include a brief "reason" to document your reasoning for each decision.
 
 Key rule: accept any component that renders visible UI — atoms, molecules, and organisms are all valid Component Types in Contentful Experience Orchestration. Reject only components that produce zero visual output: React hooks, pure context providers, A/B testing or variant-routing wrappers, analytics trackers, and security utilities. Do NOT reject a component because it has few props, is low-level, or has some A/B testing or personalization-related props mixed in — those props are handled in the generate step.
 
@@ -183,9 +201,9 @@ All input data is provided inline below — do not read any additional files.${i
 
 ## Output protocol
 
-Do NOT write any files or emit any JSON blobs. Instead, emit one JSON object on a single line to stdout. The CLI reads your stdout line by line.
+Do NOT write any files or emit any JSON blobs. Instead, emit JSON tool calls one per line to stdout. The CLI reads your stdout line by line.
 
-The two tool calls — emit exactly one:
+The two tool calls — emit exactly one per input component:
 
 \`\`\`
 {"tool":"select_component","name":"<ComponentName>","reason":"<brief reason>"}
@@ -194,9 +212,9 @@ The two tool calls — emit exactly one:
 \`\`\`
 
 Rules:
-- Emit exactly one JSON object, on one line. No multi-line JSON. No markdown fences.
-- The name must match the component name in the input exactly.
-- You may emit prose lines (not starting with {) to reason before the final tool call — they are ignored by the parser.`;
+- Emit exactly one JSON object per line. No multi-line JSON. No markdown fences.
+- Emit exactly one tool call per input component. The "name" field must match a component name from the input array exactly. Tool calls may appear in any order.
+- You may emit prose lines (not starting with {) to reason before each tool call — they are ignored by the parser.`;
 }
 
 function buildTokensAutonomousPreamble(inputBlock: string): string {

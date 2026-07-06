@@ -422,8 +422,11 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
   const visibleCount = 20;
 
   const longestName = session.components.reduce((max, c) => Math.max(max, c.name.length), 0);
-  // icon + space + name + 2 border chars; min 14, max 22
-  const sidebarWidth = collapsed ? 3 : Math.min(Math.max(longestName + 4, 14), 22);
+  // icon + badge + space + name + 2 border chars; min 14, max 22.
+  // The badge column is reserved (pilot R2) even when no annotation is set —
+  // see Sidebar.previewBadge — so the column width is stable as live-preview
+  // annotations flip in/out.
+  const sidebarWidth = collapsed ? 3 : Math.min(Math.max(longestName + 5, 14), 22);
 
   const handleDraftSave = async (draft: string) => {
     if (!selectedId || !session || !paths) return;

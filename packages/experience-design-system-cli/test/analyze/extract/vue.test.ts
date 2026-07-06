@@ -311,4 +311,30 @@ defineProps<{ modern: string }>();
     expect(hybrid.props.find((p) => p.name === 'modern')).toBeDefined();
     expect(hybrid.props.find((p) => p.name === 'legacy')).toBeUndefined();
   });
+
+  it('captures sourcePath and per-prop source line ranges (Feature 1)', async () => {
+    // Options API path uses parseObjectProps which carries ts-morph line numbers.
+    // Note: line numbers are relative to the parsed <script> chunk, not the full .vue file.
+    const filePath = await writeFixture(
+      'OptCard.vue',
+      `<script>
+export default {
+  props: {
+    label: { type: String, required: true },
+    count: { type: Number, required: false }
+  }
+}
+</script>
+<template><div /></template>
+`,
+    );
+
+    const result = await extractVueComponents([filePath]);
+    const card = result.components[0];
+    expect(card.sourcePath).toBe(filePath);
+    const labelProp = card.props.find((p) => p.name === 'label');
+    const countProp = card.props.find((p) => p.name === 'count');
+    expect(labelProp?.sourceStartLine).toBeGreaterThan(0);
+    expect(countProp?.sourceStartLine).toBeGreaterThan(labelProp!.sourceStartLine!);
+  });
 });
