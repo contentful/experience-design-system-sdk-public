@@ -10,10 +10,7 @@ export interface AllowedComponentsContext {
 // Only the first generic argument (the props type name) is captured.
 const REACT_ELEMENT_GENERIC = /(?:React\.)?ReactElement\s*<\s*([A-Za-z_$][\w$.]*)(?![\w$.])/g;
 
-export function extractAllowedComponentsFromTypeText(
-  typeText: string,
-  ctx: AllowedComponentsContext
-): string[] {
+export function extractAllowedComponentsFromTypeText(typeText: string, ctx: AllowedComponentsContext): string[] {
   const found = new Set<string>();
   let m: RegExpExecArray | null;
   REACT_ELEMENT_GENERIC.lastIndex = 0;
@@ -29,10 +26,7 @@ export function extractAllowedComponentsFromTypeText(
 
 const JSDOC_TAG = /@allowedComponents\s+([^\n*]+)/;
 
-export function extractAllowedComponentsFromJsdoc(
-  jsdocText: string,
-  componentNames: ReadonlySet<string>
-): string[] {
+export function extractAllowedComponentsFromJsdoc(jsdocText: string, componentNames: ReadonlySet<string>): string[] {
   const m = JSDOC_TAG.exec(jsdocText);
   if (!m) return [];
   const found = new Set<string>();

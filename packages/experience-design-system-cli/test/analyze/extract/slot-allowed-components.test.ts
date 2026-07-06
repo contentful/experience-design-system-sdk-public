@@ -14,22 +14,22 @@ describe('extractAllowedComponentsFromTypeText', () => {
 
   it('extracts a single ReactElement<XProps>', () => {
     expect(
-      extractAllowedComponentsFromTypeText('ReactElement<HeadingProps>', { propsToComponent, componentNames })
+      extractAllowedComponentsFromTypeText('ReactElement<HeadingProps>', { propsToComponent, componentNames }),
     ).toEqual(['Heading']);
   });
 
   it('extracts React.ReactElement<XProps>', () => {
     expect(
-      extractAllowedComponentsFromTypeText('React.ReactElement<HeadingProps>', { propsToComponent, componentNames })
+      extractAllowedComponentsFromTypeText('React.ReactElement<HeadingProps>', { propsToComponent, componentNames }),
     ).toEqual(['Heading']);
   });
 
   it('extracts a union of ReactElement<XProps>', () => {
     expect(
-      extractAllowedComponentsFromTypeText(
-        'ReactElement<AProps> | ReactElement<BProps>',
-        { propsToComponent, componentNames }
-      )
+      extractAllowedComponentsFromTypeText('ReactElement<AProps> | ReactElement<BProps>', {
+        propsToComponent,
+        componentNames,
+      }),
     ).toEqual(['A', 'B']);
   });
 
@@ -43,22 +43,22 @@ describe('extractAllowedComponentsFromTypeText', () => {
       extractAllowedComponentsFromTypeText('ReactElement<HeadingProps> | null | undefined', {
         propsToComponent,
         componentNames,
-      })
+      }),
     ).toEqual(['Heading']);
   });
 
   it('deduplicates and sorts', () => {
     expect(
-      extractAllowedComponentsFromTypeText(
-        'ReactElement<AProps> | ReactElement<AProps> | ReactElement<BProps>',
-        { propsToComponent, componentNames }
-      )
+      extractAllowedComponentsFromTypeText('ReactElement<AProps> | ReactElement<AProps> | ReactElement<BProps>', {
+        propsToComponent,
+        componentNames,
+      }),
     ).toEqual(['A', 'B']);
   });
 
   it('drops unknown props types', () => {
     expect(
-      extractAllowedComponentsFromTypeText('ReactElement<ZzzProps>', { propsToComponent, componentNames })
+      extractAllowedComponentsFromTypeText('ReactElement<ZzzProps>', { propsToComponent, componentNames }),
     ).toEqual([]);
   });
 });

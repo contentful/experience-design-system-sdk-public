@@ -14,10 +14,7 @@ import type { CDFComponentEntry } from '@contentful/experience-design-system-typ
  */
 describe('nested-component CDF manifest', () => {
   it('emits populated $allowedComponents for each typed slot', async () => {
-    const fixture = join(
-      process.cwd(),
-      'test/analyze/extract/fixtures/nested-layout.tsx',
-    );
+    const fixture = join(process.cwd(), 'test/analyze/extract/fixtures/nested-layout.tsx');
     const result = await extractReactComponents([fixture]);
 
     const layout = result.components.find((c) => c.name === 'Layout');

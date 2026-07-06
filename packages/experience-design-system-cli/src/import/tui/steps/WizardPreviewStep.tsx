@@ -148,7 +148,11 @@ export function WizardPreviewStep({
     if (!diffExpanded) return [];
     return buildPreviewDiffLines(preview).map((line) => ({
       key: line.key,
-      element: <Text color={line.color === 'gray' ? undefined : line.color} dimColor={line.color === 'gray'}>{line.text}</Text>,
+      element: (
+        <Text color={line.color === 'gray' ? undefined : line.color} dimColor={line.color === 'gray'}>
+          {line.text}
+        </Text>
+      ),
     }));
   }, [diffExpanded, preview]);
 

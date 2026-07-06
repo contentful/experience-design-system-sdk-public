@@ -29,9 +29,7 @@ describe('buildPreviewDiffLines', () => {
     const lines = buildPreviewDiffLines(preview);
     const texts = lines.map((l) => l.text);
     expect(texts).toEqual(expect.arrayContaining([expect.stringContaining('slot: header')]));
-    expect(texts).toEqual(
-      expect.arrayContaining([expect.stringContaining('allowedComponents: [Heading]')]),
-    );
+    expect(texts).toEqual(expect.arrayContaining([expect.stringContaining('allowedComponents: [Heading]')]));
   });
 
   it('does not render an allowedComponents line when the list is empty', () => {
