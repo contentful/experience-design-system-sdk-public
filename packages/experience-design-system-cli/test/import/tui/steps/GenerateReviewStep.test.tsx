@@ -1028,25 +1028,29 @@ describe('GenerateReviewStep - component rationale panels (lifted)', () => {
   });
 });
 
-// ── INTEG-4411: zero-accepted finalize guard ────────────────────────────────
-// If the operator rejects every component (or leaves everything unresolved)
-// and then finalizes, the wizard used to advance to push-decision-gate →
-// runPreview → EDSI with an empty manifest → error. The fix blocks the
-// finalize path in that state and surfaces an inline banner.
-describe('GenerateReviewStep — zero-accepted finalize guard (INTEG-4411)', () => {
+// ── INTEG-4411 refined: preview-aware finalize guard ────────────────────────
+// PR #90 shipped a strict `acceptedCount === 0` block up-front in the step.
+// That was too strict — rejecting a component that exists server-side still
+// produces a valid push (a REMOVAL). The refined rule moves the no-op check
+// downstream into WizardApp.runPreview, which consults the preview response.
+// At the step level we now assert that finalize is NEVER blocked based on
+// accept counts alone — the wizard decides. The step still renders an inline
+// banner when the wizard passes `initialFinalizeError` (routed back after
+// the preview API returned an empty diff).
+describe('GenerateReviewStep — preview-aware finalize guard (INTEG-4411 refined)', () => {
   type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
   const makeEntry = (label: string): Entry => ({
     $type: 'component',
     $properties: { [label]: { $type: 'string', $category: 'content' } },
   });
 
-  it('blocks finalize when every component is rejected — no onFinalize call and inline banner shown', async () => {
+  it('calls onFinalize even when every component is rejected — wizard-side check consults preview', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     const KEYS = ['Aaa', 'Bbb', 'Ccc'];
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: makeEntry(k) })));
 
     const onFinalize = vi.fn();
-    const { stdin, lastFrame } = render(
+    const { stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />,
     );
     await tick();
@@ -1065,18 +1069,17 @@ describe('GenerateReviewStep — zero-accepted finalize guard (INTEG-4411)', () 
     stdin.write('y');
     await tick();
 
-    expect(onFinalize).not.toHaveBeenCalled();
-    const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/Accept at least one component to continue/);
+    expect(onFinalize).toHaveBeenCalledTimes(1);
+    expect(onFinalize).toHaveBeenCalledWith(0, 3, 0);
   });
 
-  it('blocks finalize when every component is still needs-review — no onFinalize and banner shown', async () => {
+  it('calls onFinalize even when every component is still needs-review', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     const KEYS = ['Aaa', 'Bbb', 'Ccc'];
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: makeEntry(k) })));
 
     const onFinalize = vi.fn();
-    const { stdin, lastFrame } = render(
+    const { stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />,
     );
     await tick();
@@ -1085,9 +1088,38 @@ describe('GenerateReviewStep — zero-accepted finalize guard (INTEG-4411)', () 
     stdin.write('y');
     await tick();
 
-    expect(onFinalize).not.toHaveBeenCalled();
+    expect(onFinalize).toHaveBeenCalledTimes(1);
+    expect(onFinalize).toHaveBeenCalledWith(0, 0, 3);
+  });
+
+  it('surfaces an inline banner when the wizard passes initialFinalizeError (routed back after empty preview)', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+        initialFinalizeError="Nothing to push — accept a component, reject a component that exists in Contentful, or quit."
+      />,
+    );
+    await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/Accept at least one component to continue/);
+    expect(frame).toMatch(/Nothing to push/);
+  });
+
+  it('pressing `a` clears the initial finalize banner', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+        initialFinalizeError="Nothing to push — accept a component, reject a component that exists in Contentful, or quit."
+      />,
+    );
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Nothing to push/);
+    stdin.write('a');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Nothing to push/);
   });
 
   it('allows finalize when at least one component is accepted (regression guard)', async () => {
@@ -1123,6 +1155,6 @@ describe('GenerateReviewStep — zero-accepted finalize guard (INTEG-4411)', () 
     const [accepted] = onFinalize.mock.calls[0];
     expect(accepted).toBe(1);
     const frame = lastFrame() ?? '';
-    expect(frame).not.toMatch(/Accept at least one component to continue/);
+    expect(frame).not.toMatch(/Nothing to push/);
   });
 });
