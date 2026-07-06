@@ -9,6 +9,7 @@ import { replayRun, modifyRun } from '../runs/replay-helpers.js';
 import { resolvePromptFlags } from './print-prompt.js';
 import { shouldShowRunPicker } from '../runs/run-picker-mount.js';
 import type { RunPickerSelection } from '../runs/run-picker.js';
+import { dispatchPickerSelection } from './picker-dispatch.js';
 
 export function registerImportCommand(program: Command): void {
   program
@@ -363,6 +364,11 @@ export function registerImportCommand(program: Command): void {
           });
 
           let pickerSelection: RunPickerSelection | null = null;
+          // Ink `unmount` handle captured after `render(...)` below so the
+          // picker callback can tear down the wizard cleanly. Prior to this
+          // fix the callback did `setImmediate(() => process.exit(0))`, which
+          // killed the process before `dispatchPickerSelection` could run.
+          let unmountInk: (() => void) | null = null;
           const pickerProps: {
             initialRuns?: typeof pickerDecision.runs;
             onRunPicked?: (s: RunPickerSelection) => void;
@@ -371,11 +377,11 @@ export function registerImportCommand(program: Command): void {
             pickerProps.initialRuns = pickerDecision.runs;
             pickerProps.onRunPicked = (selection) => {
               pickerSelection = selection;
-              setImmediate(() => process.exit(0));
+              unmountInk?.();
             };
           }
 
-          const { waitUntilExit } = render(
+          const { waitUntilExit, unmount } = render(
             createElement<WizardProps>(WizardApp, {
               initialSpaceId: creds.spaceId,
               initialEnvironmentId: creds.environmentId || 'master',
@@ -399,42 +405,28 @@ export function registerImportCommand(program: Command): void {
               ...pickerProps,
             }),
           );
-          try {
-            await waitUntilExit();
-          } catch {
-            /* Ink throws on process.exit; swallow so picker dispatch can run. */
-          }
+          unmountInk = unmount;
+          await waitUntilExit();
           // ── Picker dispatch ─────────────────────────────────────────────
-          // If the operator picked a run, route into the existing entry
-          // points so credential resolution and mutex checks stay in one
-          // place. The --modify path resolves the run record via
-          // resolveRunTarget and threads its session IDs through
-          // launchModifyWizard (see runs/replay-helpers.ts).
+          // If the operator picked a run, route into replayRun / modifyRun.
+          // dispatchPickerSelection lives in ./picker-dispatch.ts so this
+          // decision is testable without an Ink runtime.
           if (pickerSelection) {
-            const sel = pickerSelection as RunPickerSelection;
-            if (sel.action === 'push' && sel.runId) {
-              await replayRun({
-                runIdOrPath: sel.runId,
+            await dispatchPickerSelection(
+              pickerSelection,
+              {
                 ...(opts.spaceId ? { spaceId: opts.spaceId } : {}),
                 ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
                 ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
                 ...(opts.host ? { host: opts.host } : {}),
                 interactive: !!process.stdout.isTTY,
-                ...(opts.force ? { force: true } : {}),
-              });
-              return;
-            }
-            if (sel.action === 'modify' && sel.runId) {
-              await modifyRun({
-                runIdOrPath: sel.runId,
                 ...(opts.outDir ? { outDir: opts.outDir } : {}),
                 ...(opts.overwrite ? { overwrite: true } : {}),
                 ...(opts.saveAsNew ? { saveAsNew: true } : {}),
                 ...(opts.force ? { force: true } : {}),
-              });
-              return;
-            }
-            // action === 'new' falls through — the wizard already advanced.
+              },
+              { replayRun, modifyRun },
+            );
           }
           return;
         }
