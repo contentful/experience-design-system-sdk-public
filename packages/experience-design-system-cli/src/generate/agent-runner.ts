@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { getDebugLogger } from '../lib/debug-logger.js';
 
 export type AgentName = 'claude' | 'codex' | 'opencode' | 'cursor';
 
@@ -324,6 +325,9 @@ const DEFAULT_MODELS: Record<AgentName, string> = {
 };
 
 export function resolveBinary(agent: AgentName): string {
+  const envKey = `EDS_AGENT_BINARY_${agent.toUpperCase()}`;
+  const override = process.env[envKey];
+  if (override && override.trim()) return override.trim();
   return AGENT_BINARIES[agent];
 }
 
@@ -356,6 +360,18 @@ export async function runAgent(options: {
   const binary = resolveBinary(agent);
   const args = buildArgs(agent, prompt, model);
 
+  const debug = getDebugLogger();
+  const startedAt = Date.now();
+  debug.event('agent', 'run.start', {
+    agent,
+    binary,
+    model,
+    interactive,
+    timeoutMs,
+    promptLen: prompt.length,
+    promptHead: prompt.slice(0, 500),
+  });
+
   return new Promise((resolve) => {
     const child = spawn(binary, args, {
       stdio: interactive ? 'inherit' : ['pipe', 'pipe', 'pipe'],
@@ -386,12 +402,24 @@ export async function runAgent(options: {
 
     child.on('close', (code, signal) => {
       clearTimeout(timer);
-      resolve({
+      const result = {
         exitCode: signal ? 1 : (code ?? 1),
         stdout,
         stderr,
         timedOut,
+      };
+      debug.event('agent', 'run.end', {
+        agent,
+        model,
+        durationMs: Date.now() - startedAt,
+        exitCode: result.exitCode,
+        signal,
+        timedOut,
+        stdoutLen: stdout.length,
+        stderrLen: stderr.length,
+        stderrTail: stderr.slice(-1000),
       });
+      resolve(result);
     });
   });
 }
@@ -403,12 +431,24 @@ export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus>
 
   const binary = resolveBinary(agent);
 
-  // Verify the binary exists first
-  const whichResult = await new Promise<number>((resolve) => {
+  // Verify the binary exists first. When `binary` is an absolute path (e.g.
+  // set via EDS_AGENT_BINARY_CLAUDE=/opt/custom/claude), `which` on some
+  // shells doesn't resolve it — check the filesystem directly for absolute
+  // paths, and fall back to `which` for bare names on $PATH.
+  const binaryExists = await new Promise<boolean>((resolve) => {
+    if (binary.startsWith('/')) {
+      import('node:fs/promises').then((fs) =>
+        fs.access(binary).then(
+          () => resolve(true),
+          () => resolve(false),
+        ),
+      );
+      return;
+    }
     const child = spawn('which', [binary], { stdio: 'ignore' });
-    child.on('close', (code) => resolve(code ?? 1));
+    child.on('close', (code) => resolve(code === 0));
   });
-  if (whichResult !== 0) return 'not-found';
+  if (!binaryExists) return 'not-found';
 
   // Use `claude auth status` — fast, no API call, works regardless of which
   // auth provider (direct, Bedrock, Vertex) or whether AWS_PROFILE is set.
