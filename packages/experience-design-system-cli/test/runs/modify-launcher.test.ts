@@ -126,6 +126,31 @@ describe('launchModifyWizard prop wiring', () => {
     expect(captured.props?.['initialHost']).toBe('api.flinkly.com');
   });
 
+  it('threads initialCmaToken when provided', async () => {
+    await launchModifyWizard({
+      extractSessionId: 'e1',
+      generateSessionId: 'g1',
+      projectPath: '/p',
+      savePath: '/p/dist',
+      entryStep: 'final-review',
+      saveMode: 'prompt',
+      initialCmaToken: 'tok',
+    });
+    expect(captured.props?.['initialCmaToken']).toBe('tok');
+  });
+
+  it('omits initialCmaToken when not provided', async () => {
+    await launchModifyWizard({
+      extractSessionId: 'e1',
+      generateSessionId: 'g1',
+      projectPath: '/p',
+      savePath: '/p/dist',
+      entryStep: 'final-review',
+      saveMode: 'prompt',
+    });
+    expect(captured.props?.['initialCmaToken']).toBeUndefined();
+  });
+
   it('omits cred props when run record has no pushedTo', async () => {
     await launchModifyWizard({
       extractSessionId: 'e1',
