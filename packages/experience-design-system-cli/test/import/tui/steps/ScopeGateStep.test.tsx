@@ -207,6 +207,34 @@ describe('ScopeGateStep — unified AI behavior', () => {
     expect(out).toContain('no reason given');
   });
 
+  it('f confirms with aiDecision=failed components in the rejected list (batch-skip safety)', () => {
+    // INTEG-4318: when the LLM omits a tool call for a component in a batch,
+    // selectBatch emits progress=...:failed:<name>:no-tool-call-from-agent.
+    // The scope-gate must treat 'failed' the same as 'rejected' for inclusion,
+    // otherwise components silently flip to included whenever the batch response
+    // under-emits.
+    const withFailed = [
+      { name: 'Button', componentId: 'c0', aiDecision: 'accepted' as const },
+      { name: 'Card', componentId: 'c1', aiDecision: 'accepted' as const },
+      {
+        name: 'DroppedByLLM',
+        componentId: 'c2',
+        aiDecision: 'failed' as const,
+        aiReason: 'no-tool-call-from-agent',
+      },
+    ];
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={withFailed} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    stdin.write('f');
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Card']));
+    expect(arg.accepted).not.toContain('DroppedByLLM');
+    expect(arg.rejected).toEqual(['DroppedByLLM']);
+  });
+
   it('f confirms with AI-rejected components in the rejected list (dual-write contract)', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(

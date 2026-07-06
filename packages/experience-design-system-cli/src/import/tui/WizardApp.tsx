@@ -53,6 +53,7 @@ import {
   backfillUnclassifiedProps,
 } from '../../session/db.js';
 import { ScopeGateHost, type ScopeComponent } from './scope-gate-host.js';
+import { mergeAiDecisions } from './merge-ai-decisions.js';
 import { FinalReviewHost } from './final-review-host.js';
 import { runScopeGate } from './runScopeGate.js';
 import { buildAutoFilterErrorTail } from './auto-filter-error.js';
@@ -160,7 +161,7 @@ type WizardState = {
   // progress lines. `aiFilterStatus` drives the scope-gate's running banner.
   aiFilterStatus: 'idle' | 'running' | 'complete' | 'cancelled' | 'failed';
   aiFilterProgress: { done: number; total: number } | null;
-  aiDecisions: Record<string, { decision: 'accepted' | 'rejected'; reason: string }>;
+  aiDecisions: Record<string, { decision: 'accepted' | 'rejected' | 'failed'; reason: string }>;
   aiFilterError: string | null;
   // Wizard prefetch refactor: tracked as inline state on the credentials screen
   // rather than a dedicated `validating-credentials` step.
@@ -210,7 +211,7 @@ export function buildSelectAgentArgs(opts: {
 export type AutoFilterProgress = {
   n: number;
   total: number;
-  decision: 'accepted' | 'rejected';
+  decision: 'accepted' | 'rejected' | 'failed';
   name: string;
   reason: string;
 };
@@ -230,7 +231,7 @@ export function parseAutoFilterProgressLine(line: string): AutoFilterProgress | 
   if (!counter) return null;
   const counterMatch = /^(\d+)\/(\d+)$/.exec(counter);
   if (!counterMatch) return null;
-  if (decision !== 'accepted' && decision !== 'rejected') return null;
+  if (decision !== 'accepted' && decision !== 'rejected' && decision !== 'failed') return null;
   if (!name) return null;
   const encodedReason = reasonParts.join(':');
   let reason = '';
@@ -1839,6 +1840,11 @@ export function WizardApp({
         } finally {
           db.close();
         }
+        // INTEG-4318: overlay the streamed auto-filter decisions (from
+        // stderr progress lines) onto DB-loaded rows so 'failed' components
+        // (LLM omitted a tool call in a batch) surface in the scope-gate
+        // instead of silently defaulting to included.
+        components = mergeAiDecisions(components, state.aiDecisions);
         return (
           <ScopeGateHost
             components={components}
