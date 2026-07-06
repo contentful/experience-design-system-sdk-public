@@ -109,6 +109,9 @@ export function GenerateReviewStep({
   const [showJson, setShowJson] = useState(false);
   const [draftValue, setDraftValue] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
+  // INTEG-4411: inline banner shown when the operator tries to finalize
+  // with zero accepted components. Cleared on the next 'a' or 'A' press.
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
   // Feature 1: per-component review metadata (rationale + source location)
   // for the currently-selected component. Reloaded when selection changes.
   const [reviewMetadata, setReviewMetadata] = useState<ComponentReviewMetadata | null>(null);
@@ -254,6 +257,16 @@ export function GenerateReviewStep({
     // 'generate-rejected' so loadCDFComponents excludes it from the manifest.
     // The operator told us they want accept-to-ship semantics — leaving a
     // component unresolved should NOT silently push it (Pilot-2026-06-24 R2).
+    const acceptedCount = components.filter((c) => c.status === 'accepted').length;
+    // INTEG-4411: block finalize when nothing has been accepted. Advancing
+    // in this state ships an empty manifest to EDSI which errors out; instead
+    // surface an inline banner so the operator can accept at least one
+    // component. Preserve current statuses — don't lose the operator's work.
+    if (acceptedCount === 0) {
+      setFinalizeError('Accept at least one component to continue.');
+      setShowFinalize(false);
+      return;
+    }
     const explicitlyRejected = components.filter((c) => c.status === 'rejected').map((c) => c.key);
     const unresolved = components.filter((c) => c.status === 'needs-review').map((c) => c.key);
     const toReject = [...explicitlyRejected, ...unresolved];
@@ -277,7 +290,6 @@ export function GenerateReviewStep({
         db.close();
       }
     }
-    const acceptedCount = components.filter((c) => c.status === 'accepted').length;
     onFinalize(acceptedCount, explicitlyRejected.length, unresolved.length);
   };
 
@@ -478,6 +490,7 @@ export function GenerateReviewStep({
     }
     if (input === 'a') {
       updateStatus(selectedIdx, 'accepted');
+      setFinalizeError(null);
       return;
     }
     if (input === 'r') {
@@ -486,6 +499,7 @@ export function GenerateReviewStep({
     }
     if (input === 'A') {
       setComponents((prev) => prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c)));
+      setFinalizeError(null);
       return;
     }
     if (input === 'J') {
@@ -645,6 +659,7 @@ export function GenerateReviewStep({
           {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
         </Text>
       )}
+      {!dialogOpen && finalizeError && <Text color="red">{`⚠ ${finalizeError}`}</Text>}
       {!dialogOpen && (
         <Box>
           <Sidebar

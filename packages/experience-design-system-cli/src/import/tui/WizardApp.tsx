@@ -1928,6 +1928,16 @@ export function WizardApp({
             tokensPath={state.tokensPath}
             onFinalize={(accepted, rejected, unresolved) => {
               process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`);
+              // INTEG-4411 belt-and-braces: if the review step somehow lets a
+              // zero-accepted finalize through, refuse to advance. Advancing
+              // in this state ships an empty manifest to EDSI which errors
+              // out. Stay on final-review so the operator can accept at
+              // least one component. The primary guard lives in
+              // GenerateReviewStep.handleFinalizeConfirm.
+              if (accepted === 0) {
+                update({ step: 'final-review' });
+                return;
+              }
               if (noPush) {
                 update({ generatedAcceptedCount: accepted });
                 void startSaveFlow();
