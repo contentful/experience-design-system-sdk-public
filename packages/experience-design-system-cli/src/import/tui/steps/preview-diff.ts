@@ -74,8 +74,9 @@ export function computeComponentDiffLines(
 
   // Slot diffs
   const currentSlots = new Set(current.slots);
-  const proposedSlots = (proposed['$slots'] ?? {}) as Record<string, unknown>;
+  const proposedSlots = (proposed['$slots'] ?? {}) as Record<string, Record<string, unknown>>;
   const proposedSlotNames = new Set(Object.keys(proposedSlots));
+  const currentSlotAllowed = current.currentSlotAllowed ?? {};
   for (const name of [...proposedSlotNames].sort()) {
     if (!currentSlots.has(name)) {
       lines.push({ key: `slot-${name}-add`, color: 'green', text: `+ slot: ${name}` });
@@ -87,7 +88,54 @@ export function computeComponentDiffLines(
     }
   }
 
+  // $allowedComponents diffs — for each slot present in both sides, or newly-added
+  // with a non-empty allowedComponents list.
+  for (const name of [...proposedSlotNames].sort()) {
+    const nextAllowed = normalizeAllowedComponents(proposedSlots[name]?.['$allowedComponents']);
+    const prevAllowed = normalizeAllowedComponents(currentSlotAllowed[name]);
+    const prevExists = currentSlots.has(name);
+
+    if (!prevExists) {
+      if (nextAllowed.length > 0) {
+        lines.push({
+          key: `slot-${name}-allow-new`,
+          color: 'green',
+          text: `+ slot ${name} allowedComponents: [${nextAllowed.join(', ')}]`,
+        });
+      }
+      continue;
+    }
+
+    if (arraysEqual(prevAllowed, nextAllowed)) continue;
+
+    lines.push({
+      key: `slot-${name}-allow-old`,
+      color: 'red',
+      text: `- slot ${name} allowedComponents: [${prevAllowed.join(', ')}]`,
+    });
+    lines.push({
+      key: `slot-${name}-allow-new`,
+      color: 'green',
+      text: `+ slot ${name} allowedComponents: [${nextAllowed.join(', ')}]`,
+    });
+  }
+
   return lines;
+}
+
+function normalizeAllowedComponents(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item === 'string' && item.length > 0) out.push(item);
+  }
+  return out.sort();
+}
+
+function arraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 function normalizeType(type: string): string {
