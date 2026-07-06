@@ -1,68 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
-import type { PushExpected, PushProgress } from '../push-progress.js';
+import type { PushProgress } from '../push-progress.js';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 type PushingStepProps = {
   stepNumber: number;
   totalSteps: number;
-  expected: PushExpected | null;
   progress: PushProgress;
 };
 
-type ActionKey = 'create' | 'update' | 'remove';
-
-const ACTION_LABELS: Record<ActionKey, string> = {
-  create: 'Creating',
-  update: 'Updating',
-  remove: 'Deleting',
-};
-
-function ActionRow({
-  label,
-  expectedCount,
-  progress,
-}: {
-  label: string;
-  expectedCount: number;
-  progress: PushProgress;
-}): React.ReactElement {
-  // Per spec: do NOT fake proportional tallies. Left side stays "?/N" until
-  // terminal status surfaces real per-action counts.
-  const left = progress && progress.kind === 'progress' ? '?' : '?';
-  return (
-    <Box gap={1}>
-      <Text> {label}</Text>
-      <Text dimColor>
-        {left}/{expectedCount}
-      </Text>
-    </Box>
-  );
-}
-
-function EntitySection({
-  title,
-  counts,
-  progress,
-}: {
-  title: string;
-  counts: { create: number; update: number; remove: number };
-  progress: PushProgress;
-}): React.ReactElement | null {
-  const visibleActions = (['create', 'update', 'remove'] as ActionKey[]).filter((k) => counts[k] > 0);
-  if (visibleActions.length === 0) return null;
-  return (
-    <Box flexDirection="column" gap={0}>
-      <Text bold>{title}</Text>
-      {visibleActions.map((k) => (
-        <ActionRow key={k} label={ACTION_LABELS[k]} expectedCount={counts[k]} progress={progress} />
-      ))}
-    </Box>
-  );
-}
-
-export function PushingStep({ stepNumber, totalSteps, expected, progress }: PushingStepProps): React.ReactElement {
+export function PushingStep({ stepNumber, totalSteps, progress }: PushingStepProps): React.ReactElement {
   const [frame, setFrame] = useState(0);
   const [elapsed, setElapsed] = useState(0);
 
@@ -104,13 +52,6 @@ export function PushingStep({ stepNumber, totalSteps, expected, progress }: Push
         <Box gap={1}>
           <Text dimColor>Operation:</Text>
           <Text>{operationId}</Text>
-        </Box>
-      )}
-
-      {expected && (
-        <Box flexDirection="column" gap={1}>
-          <EntitySection title="Component types" counts={expected.componentTypes} progress={progress} />
-          <EntitySection title="Design tokens" counts={expected.designTokens} progress={progress} />
         </Box>
       )}
 
