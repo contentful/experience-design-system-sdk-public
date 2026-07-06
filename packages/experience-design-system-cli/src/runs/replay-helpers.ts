@@ -182,6 +182,21 @@ export async function modifyRun(opts: ModifyRunOptions): Promise<void> {
     }
   }
   const saveMode: ModifyLauncherInput['saveMode'] = opts.overwrite ? 'overwrite' : opts.saveAsNew ? 'new' : 'prompt';
+  // Credentials pre-fill precedence: run.pushedTo field-by-field, then
+  // credentials.json (which itself falls back to env vars). The modify entry
+  // step goes straight to final-review and does not surface the credentials
+  // step, so if `pushedTo` is null (last push failed or never happened) we
+  // must consult the on-disk store here — otherwise the wizard mounts with
+  // built-in defaults (environmentId='master', host='api.contentful.com')
+  // and preview fires against the wrong endpoint. CMA token is now included
+  // in the fallback because credentials-store.ts persists it (INTEG-4410);
+  // if it's still empty after the merge, the wizard's final-review preview
+  // will 401 and the operator sees a real gap — out of scope for this fix.
+  const stored = await readExperiencesCredentials();
+  const mergedSpaceId = run.pushedTo?.spaceId || stored.spaceId || '';
+  const mergedEnvironmentId = run.pushedTo?.environmentId || stored.environmentId || '';
+  const mergedHost = run.pushedTo?.host || stored.host || '';
+  const mergedCmaToken = stored.cmaToken || '';
   await launchModifyWizard({
     extractSessionId: run.extractSessionId,
     generateSessionId: run.generateSessionId,
@@ -191,12 +206,9 @@ export async function modifyRun(opts: ModifyRunOptions): Promise<void> {
     entryStep: 'final-review',
     saveMode,
     ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
-    // Pre-fill credentials from the run record's last push so the operator
-    // doesn't have to re-type space/environment/host on modify. The CMA
-    // token is never persisted, so it still resolves via env var /
-    // credentials.json / interactive prompt at the credentials step.
-    ...(run.pushedTo?.spaceId ? { initialSpaceId: run.pushedTo.spaceId } : {}),
-    ...(run.pushedTo?.environmentId ? { initialEnvironmentId: run.pushedTo.environmentId } : {}),
-    ...(run.pushedTo?.host ? { initialHost: run.pushedTo.host } : {}),
+    ...(mergedSpaceId ? { initialSpaceId: mergedSpaceId } : {}),
+    ...(mergedEnvironmentId ? { initialEnvironmentId: mergedEnvironmentId } : {}),
+    ...(mergedHost ? { initialHost: mergedHost } : {}),
+    ...(mergedCmaToken ? { initialCmaToken: mergedCmaToken } : {}),
   });
 }

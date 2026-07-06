@@ -359,4 +359,91 @@ describe('modifyRun', () => {
     expect(call['initialEnvironmentId']).toBeUndefined();
     expect(call['initialHost']).toBeUndefined();
   });
+
+  it('falls back to credentials.json when pushedTo is null', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun({ pushedTo: null }));
+    mockReadCreds.mockResolvedValueOnce({
+      spaceId: 'S',
+      environmentId: 'E',
+      cmaToken: 'T',
+      host: 'api.flinkly.com',
+    });
+    await modifyRun({ runIdOrPath: '01HXYZ' });
+    expect(mockLaunchWizard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialSpaceId: 'S',
+        initialEnvironmentId: 'E',
+        initialHost: 'api.flinkly.com',
+        initialCmaToken: 'T',
+      }),
+    );
+  });
+
+  it('per-field precedence: pushedTo.spaceId wins, disk fills env/host', async () => {
+    mockGetRun.mockResolvedValueOnce(
+      sampleRun({ pushedTo: { spaceId: 'rec-sp', environmentId: '', host: '' } }),
+    );
+    mockReadCreds.mockResolvedValueOnce({
+      spaceId: 'disk-sp',
+      environmentId: 'disk-env',
+      cmaToken: 'disk-tok',
+      host: 'api.flinkly.com',
+    });
+    await modifyRun({ runIdOrPath: '01HXYZ' });
+    expect(mockLaunchWizard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialSpaceId: 'rec-sp',
+        initialEnvironmentId: 'disk-env',
+        initialHost: 'api.flinkly.com',
+        initialCmaToken: 'disk-tok',
+      }),
+    );
+  });
+
+  it('omits cred inputs when both pushedTo and disk are empty', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun({ pushedTo: null }));
+    mockReadCreds.mockResolvedValueOnce(emptyCreds);
+    await modifyRun({ runIdOrPath: '01HXYZ' });
+    const call = mockLaunchWizard.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(call['initialSpaceId']).toBeUndefined();
+    expect(call['initialEnvironmentId']).toBeUndefined();
+    expect(call['initialHost']).toBeUndefined();
+    expect(call['initialCmaToken']).toBeUndefined();
+  });
+
+  it('pushedTo.host wins over disk host when both are set', async () => {
+    mockGetRun.mockResolvedValueOnce(
+      sampleRun({ pushedTo: { spaceId: 'rec-sp', environmentId: 'rec-env', host: 'api.contentful.com' } }),
+    );
+    mockReadCreds.mockResolvedValueOnce({
+      spaceId: 'disk-sp',
+      environmentId: 'disk-env',
+      cmaToken: 'disk-tok',
+      host: 'api.flinkly.com',
+    });
+    await modifyRun({ runIdOrPath: '01HXYZ' });
+    expect(mockLaunchWizard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialSpaceId: 'rec-sp',
+        initialEnvironmentId: 'rec-env',
+        initialHost: 'api.contentful.com',
+        initialCmaToken: 'disk-tok',
+      }),
+    );
+  });
+
+  it('forwards initialCmaToken from disk on modify entry', async () => {
+    mockGetRun.mockResolvedValueOnce(
+      sampleRun({ pushedTo: { spaceId: 'rec-sp', environmentId: 'rec-env', host: 'api.flinkly.com' } }),
+    );
+    mockReadCreds.mockResolvedValueOnce({
+      spaceId: '',
+      environmentId: '',
+      cmaToken: 'stored-token',
+    });
+    await modifyRun({ runIdOrPath: '01HXYZ' });
+    expect(mockLaunchWizard).toHaveBeenCalledWith(
+      expect.objectContaining({ initialCmaToken: 'stored-token' }),
+    );
+  });
 });

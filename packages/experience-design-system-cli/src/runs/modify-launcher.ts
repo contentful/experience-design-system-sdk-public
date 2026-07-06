@@ -21,6 +21,8 @@ export type ModifyLauncherInput = {
   initialEnvironmentId?: string;
   /** Pre-fill host (from the run record's pushedTo). */
   initialHost?: string;
+  /** Pre-fill CMA token (from credentials.json / env). */
+  initialCmaToken?: string;
 };
 
 export async function launchModifyWizard(input: ModifyLauncherInput): Promise<void> {
@@ -37,6 +39,7 @@ export async function launchModifyWizard(input: ModifyLauncherInput): Promise<vo
     initialSpaceId?: string;
     initialEnvironmentId?: string;
     initialHost?: string;
+    initialCmaToken?: string;
   };
   // Modify entry: re-open the wizard with the prior run's sessions seeded so
   // extract + generate are skipped. The wizard short-circuits to `initialStep`
@@ -56,6 +59,7 @@ export async function launchModifyWizard(input: ModifyLauncherInput): Promise<vo
   if (input.initialSpaceId) props.initialSpaceId = input.initialSpaceId;
   if (input.initialEnvironmentId) props.initialEnvironmentId = input.initialEnvironmentId;
   if (input.initialHost) props.initialHost = input.initialHost;
+  if (input.initialCmaToken) props.initialCmaToken = input.initialCmaToken;
   const { waitUntilExit } = render(createElement<WizardProps>(WizardApp, props));
   await waitUntilExit();
 }
