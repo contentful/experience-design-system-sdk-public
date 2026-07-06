@@ -1027,3 +1027,102 @@ describe('GenerateReviewStep - component rationale panels (lifted)', () => {
     expect(lastFrame() ?? '').not.toContain('Component rationale');
   });
 });
+
+// ── INTEG-4411: zero-accepted finalize guard ────────────────────────────────
+// If the operator rejects every component (or leaves everything unresolved)
+// and then finalizes, the wizard used to advance to push-decision-gate →
+// runPreview → EDSI with an empty manifest → error. The fix blocks the
+// finalize path in that state and surfaces an inline banner.
+describe('GenerateReviewStep — zero-accepted finalize guard (INTEG-4411)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const makeEntry = (label: string): Entry => ({
+    $type: 'component',
+    $properties: { [label]: { $type: 'string', $category: 'content' } },
+  });
+
+  it('blocks finalize when every component is rejected — no onFinalize call and inline banner shown', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const KEYS = ['Aaa', 'Bbb', 'Ccc'];
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: makeEntry(k) })));
+
+    const onFinalize = vi.fn();
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('r');
+    await tick();
+    stdin.write('F');
+    await tick();
+    stdin.write('y');
+    await tick();
+
+    expect(onFinalize).not.toHaveBeenCalled();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Accept at least one component to continue/);
+  });
+
+  it('blocks finalize when every component is still needs-review — no onFinalize and banner shown', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const KEYS = ['Aaa', 'Bbb', 'Ccc'];
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: makeEntry(k) })));
+
+    const onFinalize = vi.fn();
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('F');
+    await tick();
+    stdin.write('y');
+    await tick();
+
+    expect(onFinalize).not.toHaveBeenCalled();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Accept at least one component to continue/);
+  });
+
+  it('allows finalize when at least one component is accepted (regression guard)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const KEYS = ['Aaa', 'Bbb', 'Ccc', 'Ddd'];
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: makeEntry(k) })));
+
+    const onFinalize = vi.fn();
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('a');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('r');
+    await tick();
+    stdin.write('F');
+    await tick();
+    stdin.write('y');
+    await tick();
+
+    expect(onFinalize).toHaveBeenCalledTimes(1);
+    const [accepted] = onFinalize.mock.calls[0];
+    expect(accepted).toBe(1);
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/Accept at least one component to continue/);
+  });
+});
