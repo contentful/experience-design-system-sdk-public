@@ -81,23 +81,13 @@ type GenerateReviewStepProps = {
  *
  * Within each tier (empty / non-empty) we tie-break alphabetically by `key`.
  */
-export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
-  components: T[],
-  cycleParticipants?: Set<string>,
-): T[] {
+export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(components: T[]): T[] {
   const isEmpty = (entry: CDFComponentEntry): boolean =>
     Object.keys(entry.$properties ?? {}).length === 0 && Object.keys(entry.$slots ?? {}).length === 0;
-  // Tier order: cycle members first (they block push — surface loudest),
-  // then empty (soft warning), then everything else. Ties broken alpha.
-  const tier = (c: T): number => {
-    if (cycleParticipants?.has(c.key)) return 0;
-    if (isEmpty(c.entry)) return 1;
-    return 2;
-  };
   return [...components].sort((a, b) => {
-    const at = tier(a);
-    const bt = tier(b);
-    if (at !== bt) return at - bt;
+    const aEmpty = isEmpty(a.entry);
+    const bEmpty = isEmpty(b.entry);
+    if (aEmpty !== bEmpty) return aEmpty ? -1 : 1;
     return a.key.localeCompare(b.key);
   });
 }
