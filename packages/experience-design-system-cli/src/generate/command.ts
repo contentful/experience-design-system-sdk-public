@@ -664,7 +664,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
             );
             await waitUntilExit();
           } else {
-            process.stdout.write(`generate complete\nskill: ${skill}\nagent: ${agent}\nsession: ${sessionId ?? ''}\n`);
+            process.stdout.write(`generate complete\nskill: ${skill}\nagent: ${agent}\nsession=${sessionId ?? ''}\n`);
             process.exit(0);
           }
           return;
@@ -742,7 +742,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     );
     await waitUntilExit();
   } else {
-    process.stdout.write(`generate complete\nskill: ${skill}\nagent: ${agent}\nsession: ${sessionId ?? ''}\n`);
+    process.stdout.write(`generate complete\nskill: ${skill}\nagent: ${agent}\nsession=${sessionId ?? ''}\n`);
     process.exit(0);
   }
 }

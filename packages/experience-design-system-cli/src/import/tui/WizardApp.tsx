@@ -659,7 +659,7 @@ export function WizardApp({
       });
       return;
     }
-    const sessionMatch = /^session:\s*(.+)$/m.exec(result.stdout);
+    const sessionMatch = /^session=(.+)$/m.exec(result.stdout);
     const tokenSessionId = sessionMatch ? sessionMatch[1]!.trim() : null;
 
     const tokensPath = join(outDir, 'tokens.json');
