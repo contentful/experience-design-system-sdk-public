@@ -5,22 +5,19 @@ export interface AllowedComponentsContext {
   componentNames: ReadonlySet<string>;
 }
 
-const REACT_ELEMENT_GENERIC = /(?:React\.)?ReactElement\s*<\s*([A-Za-z_$][\w$.]*)\s*>/g;
+// Matches ReactElement<XProps> and ReactElement<XProps, ...> (TS often
+// expands the second generic argument to string | JSXElementConstructor<any>).
+// Only the first generic argument (the props type name) is captured.
+const REACT_ELEMENT_GENERIC = /(?:React\.)?ReactElement\s*<\s*([A-Za-z_$][\w$.]*)(?![\w$.])/g;
 
 export function extractAllowedComponentsFromTypeText(
   typeText: string,
   ctx: AllowedComponentsContext
 ): string[] {
-  const stripped = typeText
-    .split('|')
-    .map((s) => s.trim())
-    .filter((s) => s !== 'null' && s !== 'undefined')
-    .join(' | ');
-
   const found = new Set<string>();
   let m: RegExpExecArray | null;
   REACT_ELEMENT_GENERIC.lastIndex = 0;
-  while ((m = REACT_ELEMENT_GENERIC.exec(stripped)) !== null) {
+  while ((m = REACT_ELEMENT_GENERIC.exec(typeText)) !== null) {
     const propsTypeName = m[1];
     const componentName = ctx.propsToComponent.get(propsTypeName);
     if (componentName && ctx.componentNames.has(componentName)) {
