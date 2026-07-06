@@ -2018,7 +2018,16 @@ export function WizardApp({
             onConfirm={(spaceId, environmentId, cmaToken, host) => {
               void confirmCredentials(spaceId, environmentId, cmaToken, host);
             }}
-            onContinue={advanceWithCredentials}
+            // INTEG-4410: unify the unchanged-form path with the changed-form
+            // path so credentials are ALWAYS persisted to disk on submit.
+            // The pre-fix wiring routed `onContinue` at
+            // `advanceWithCredentials`, which only mutated state — so on
+            // `--modify` (where the wizard seeds `run.pushedTo` into the
+            // form, not disk) an operator pressing Enter never wrote to
+            // ~/.config/experiences/credentials.json and disk stayed stale.
+            onContinue={(spaceId, environmentId, cmaToken, host) => {
+              void confirmCredentials(spaceId, environmentId, cmaToken, host);
+            }}
             onRetryPrefetch={
               state.generatePrefetchStatus === 'failed' && sessionRef.current.extractSessionId
                 ? () => {

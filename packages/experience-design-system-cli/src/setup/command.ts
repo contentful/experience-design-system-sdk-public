@@ -527,6 +527,21 @@ async function setupContentfulCredentials(): Promise<boolean> {
   info(`Saved to ${experiencesCredentialsPath()} — loaded automatically by experiences import.`);
   info('');
 
+  // INTEG-4410: as of the precedence flip, disk wins over env — but env vars
+  // still act as a fallback when disk is empty, so operators who have any
+  // CONTENTFUL_* / EDS_HOST env set should know the ambient value would take
+  // effect if they skip this step. Warn regardless of the choice.
+  const envShadowing = [
+    process.env['CONTENTFUL_SPACE_ID'] ? 'CONTENTFUL_SPACE_ID' : null,
+    process.env['CONTENTFUL_ENVIRONMENT_ID'] ? 'CONTENTFUL_ENVIRONMENT_ID' : null,
+    process.env['CONTENTFUL_MANAGEMENT_TOKEN'] ? 'CONTENTFUL_MANAGEMENT_TOKEN' : null,
+    process.env['EDS_HOST'] ? 'EDS_HOST' : null,
+  ].filter((v): v is string => !!v);
+  if (envShadowing.length > 0) {
+    warn(`Env vars set: ${envShadowing.join(', ')}. Values saved here take precedence; env vars only apply where disk is empty.`);
+    info('');
+  }
+
   const stored = await readExperiencesCredentials();
   const currentSpace = stored.spaceId;
   const currentEnv = stored.environmentId;
