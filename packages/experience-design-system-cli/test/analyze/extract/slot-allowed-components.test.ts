@@ -61,6 +61,45 @@ describe('extractAllowedComponentsFromTypeText', () => {
       extractAllowedComponentsFromTypeText('ReactElement<ZzzProps>', { propsToComponent, componentNames }),
     ).toEqual([]);
   });
+
+  // Svelte 5 typed snippets: Snippet<[XProps]> is the runes idiom for a
+  // snippet whose single render argument is a component-shaped props object.
+  it('extracts a single Snippet<[XProps]>', () => {
+    expect(
+      extractAllowedComponentsFromTypeText('Snippet<[HeadingProps]>', { propsToComponent, componentNames }),
+    ).toEqual(['Heading']);
+  });
+
+  it('extracts a Snippet<[XProps]> with whitespace', () => {
+    expect(
+      extractAllowedComponentsFromTypeText('Snippet<  [  HeadingProps  ]  >', { propsToComponent, componentNames }),
+    ).toEqual(['Heading']);
+  });
+
+  it('extracts a union of Snippet<[XProps]>', () => {
+    expect(
+      extractAllowedComponentsFromTypeText('Snippet<[AProps]> | Snippet<[BProps]>', {
+        propsToComponent,
+        componentNames,
+      }),
+    ).toEqual(['A', 'B']);
+  });
+
+  it('ignores plain Snippet without a tuple type arg', () => {
+    expect(extractAllowedComponentsFromTypeText('Snippet', { propsToComponent, componentNames })).toEqual([]);
+    expect(
+      extractAllowedComponentsFromTypeText('Snippet<[year: number]>', { propsToComponent, componentNames }),
+    ).toEqual([]);
+  });
+
+  it('mixes Snippet and ReactElement forms in the same type text', () => {
+    expect(
+      extractAllowedComponentsFromTypeText('ReactElement<AProps> | Snippet<[BProps]>', {
+        propsToComponent,
+        componentNames,
+      }),
+    ).toEqual(['A', 'B']);
+  });
 });
 
 describe('extractAllowedComponentsFromJsdoc', () => {
