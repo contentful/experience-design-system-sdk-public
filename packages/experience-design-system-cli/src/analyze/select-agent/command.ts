@@ -195,7 +195,11 @@ async function selectBatch(
 
   // Feature 3: emit one progress= line per component (in input order) regardless
   // of batch outcome. The wizard's runAutoFilter parser depends on this contract.
-  const emitProgress = (item: BatchItem, decision: 'accepted' | 'rejected', reason: string | undefined): void => {
+  const emitProgress = (
+    item: BatchItem,
+    decision: 'accepted' | 'rejected' | 'failed',
+    reason: string | undefined,
+  ): void => {
     const reasonEncoded = reason ? encodeURIComponent(reason) : '';
     process.stderr.write(
       `progress=select-agent:${item.index + 1}/${total}:${decision}:${item.candidate.component.name}:${reasonEncoded}\n`,
@@ -248,6 +252,7 @@ async function selectBatch(
 
     if (!call) {
       process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.yellow('no tool call')}\n`);
+      emitProgress(item, 'failed', 'no-tool-call-from-agent');
       results.push({
         componentKey: componentKey(component),
         componentName: component.name,

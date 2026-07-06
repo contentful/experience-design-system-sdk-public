@@ -5,7 +5,7 @@ import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediat
 export type ScopeComponent = {
   name: string;
   componentId: string;
-  aiDecision?: 'accepted' | 'rejected' | null;
+  aiDecision?: 'accepted' | 'rejected' | 'failed' | null;
   aiReason?: string | null;
 };
 
@@ -39,7 +39,11 @@ function truncateReason(reason: string | null | undefined): string {
 }
 
 function isAiFlagged(row: ScopeComponent): boolean {
-  return row.aiDecision === 'rejected';
+  // INTEG-4318: `failed` means the LLM omitted a decision for this component
+  // (e.g. batch under-emit). Surface these in the AI-recommended-exclusions
+  // section so the operator sees them and can override — silent inclusion was
+  // the bug.
+  return row.aiDecision === 'rejected' || row.aiDecision === 'failed';
 }
 
 export function ScopeGateStep({
@@ -89,7 +93,10 @@ export function ScopeGateStep({
     // still appears on the row — it's informational, not authoritative.
     if (userExcluded.has(row.name)) return false;
     if (userUnExcluded.has(row.name)) return true;
-    return row.aiDecision !== 'rejected';
+    // INTEG-4318: exclude on 'rejected' AND 'failed'. Missing/null aiDecision
+    // (auto-filter not run, or component never seen) still defaults to
+    // included so --no-auto-filter and skip-credentials flows are unchanged.
+    return row.aiDecision !== 'rejected' && row.aiDecision !== 'failed';
   };
 
   const partition = (): { accepted: string[]; rejected: string[] } => {
@@ -275,9 +282,9 @@ export function ScopeGateStep({
 
       {/* Pilot-2026-06-23: full reject_reason side panel. Opens on `s` when
           cursor is on an AI-flagged row. Closes on `s` again or Esc. */}
-      {reasonPanelOpen && flatList[cursor]?.aiDecision === 'rejected' && (
+      {reasonPanelOpen && flatList[cursor] !== undefined && isAiFlagged(flatList[cursor]!) && (
         <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1} marginTop={1}>
-          <Text dimColor bold>{`AI rejection reason: ${flatList[cursor].name}`}</Text>
+          <Text dimColor bold>{`AI rejection reason: ${flatList[cursor]!.name}`}</Text>
           <Text>{flatList[cursor].aiReason ?? '<no reason given>'}</Text>
           <Text dimColor>[s] close · [Esc] close</Text>
         </Box>
