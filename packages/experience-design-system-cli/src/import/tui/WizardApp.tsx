@@ -34,7 +34,7 @@ import { ErrorStep } from './steps/ErrorStep.js';
 import { TokenInputStep } from './steps/TokenInputStep.js';
 import { PreviewValidationErrorStep } from './steps/PreviewValidationErrorStep.js';
 import { PushingStep } from './steps/PushingStep.js';
-import { computePushExpected, type PushExpected, type PushProgress } from './push-progress.js';
+import { type PushProgress } from './push-progress.js';
 import { nextStateAfterPrint } from './run-print-files-helpers.js';
 import { PushDecisionGateStep } from './steps/PushDecisionGateStep.js';
 import { chooseGateAction } from './push-decision-gate-helpers.js';
@@ -150,7 +150,6 @@ type WizardState = {
   serverPreview: ServerPreviewResponse | null;
   manifest: ManifestPayload | null;
   pushProgress: PushProgress;
-  pushExpected: PushExpected | null;
   pushResult: PushResult;
   errorStep: string;
   errorMessage: string;
@@ -534,7 +533,6 @@ export function WizardApp({
     serverPreview: null,
     manifest: null,
     pushProgress: null,
-    pushExpected: null,
     pushResult: {
       componentTypes: { created: 0, updated: 0, removed: 0, failed: 0 },
       designTokens: { created: 0, updated: 0, removed: 0, failed: 0 },
@@ -1380,8 +1378,7 @@ export function WizardApp({
         return;
       }
     }
-    const pushExpected = preview ? computePushExpected(preview) : null;
-    update({ step: 'pushing', pushExpected, pushProgress: null });
+    update({ step: 'pushing', pushProgress: null });
     try {
       const resolvedHost = resolveWizardHost(host);
       const client = new ImportApiClient({
@@ -2149,7 +2146,6 @@ export function WizardApp({
           <PushingStep
             stepNumber={totalSteps}
             totalSteps={totalSteps}
-            expected={state.pushExpected}
             progress={state.pushProgress}
           />
         );
