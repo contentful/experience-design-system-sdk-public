@@ -6,6 +6,7 @@ import { resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { replayRun, modifyRun } from '../runs/replay-helpers.js';
+import { pickerPushRun } from '../runs/push-launcher.js';
 import { resolvePromptFlags } from './print-prompt.js';
 import { shouldShowRunPicker } from '../runs/run-picker-mount.js';
 import type { RunPickerSelection } from '../runs/run-picker.js';
@@ -425,7 +426,7 @@ export function registerImportCommand(program: Command): void {
                 ...(opts.saveAsNew ? { saveAsNew: true } : {}),
                 ...(opts.force ? { force: true } : {}),
               },
-              { replayRun, modifyRun },
+              { replayRun, modifyRun, pickerPushRun },
             );
           }
           return;

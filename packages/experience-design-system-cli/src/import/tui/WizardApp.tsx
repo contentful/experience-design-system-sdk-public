@@ -88,6 +88,7 @@ type WizardStep =
   | 'final-review'
   | 'push-decision-gate'
   | 'credentials'
+  | 'push-from-picker'
   | 'previewing'
   | 'preview-gate'
   | 'pushing'
@@ -381,12 +382,18 @@ export type WizardAppProps = {
    */
   seedTokenSessionId?: string;
   /**
+   * Push-from-picker entry: overrides `state.tokensPath` so runPreview can
+   * read the run record's saved tokens.json without waiting for the wizard
+   * to re-emit it (push-from-picker skips the save flow entirely).
+   */
+  seedTokensPath?: string;
+  /**
    * Modify-entry: overrides the wizard's initial step. When set, the wizard
    * bypasses its normal welcome/token-input bootstrap. Currently only
    * `'final-review'` is plumbed end-to-end; `'scope-gate'` is accepted for
    * future use but falls through to standard behavior.
    */
-  initialStep?: 'scope-gate' | 'final-review';
+  initialStep?: 'scope-gate' | 'final-review' | 'push-from-picker';
   /**
    * Headless raw-token source path. When set (and the modify-entry props
    * are not), the wizard seeds `state.rawTokensPath` and lands directly on
@@ -429,6 +436,7 @@ export function WizardApp({
   seedExtractSessionId,
   seedGenerateSessionId,
   seedTokenSessionId,
+  seedTokensPath,
   initialStep,
   initialRawTokensPath,
   initialRuns,
@@ -483,24 +491,34 @@ export function WizardApp({
   // GenerateReviewStep loads its data off `state.extractSessionId`, so all
   // we need to do here is seed the IDs and the step.
   const modifyEntryReady = !!seedExtractSessionId && initialStep === 'final-review';
+  // Push-from-picker entry: the run-picker's Push action mounts the wizard
+  // with seeded session IDs and `initialStep: 'push-from-picker'` so the
+  // operator sees the same preview + push UX as a fresh import. Skips
+  // welcome, token-input, scope-gate, final-review, and push-decision-gate;
+  // an effect below dispatches `runPreview` on mount which drives
+  // previewing → pushing → done.
+  const pushFromPickerReady = !!seedExtractSessionId && initialStep === 'push-from-picker';
   // Headless raw-tokens entry: when the operator passed `--raw-tokens <path>`
   // the CLI seeds this prop. Skip welcome + token-input and land on the
   // `generating-tokens` step which already drives the token-classification
   // subprocess off `state.rawTokensPath`. Modify-entry wins if both are set.
-  const rawTokensEntryReady = !modifyEntryReady && !!initialRawTokensPath;
+  const rawTokensEntryReady = !modifyEntryReady && !pushFromPickerReady && !!initialRawTokensPath;
   const initialStepResolved: WizardStep = modifyEntryReady
     ? 'final-review'
-    : rawTokensEntryReady
-      ? 'generating-tokens'
-      : initialProjectPath
-        ? 'token-input'
-        : 'welcome';
+    : pushFromPickerReady
+      ? 'push-from-picker'
+      : rawTokensEntryReady
+        ? 'generating-tokens'
+        : initialProjectPath
+          ? 'token-input'
+          : 'welcome';
   const initialOutDir = initialProjectPath ? join(resolve(initialProjectPath), '.contentful') : '';
-  const initialTokensPath = modifyEntryReady && initialOutDir ? join(initialOutDir, 'tokens.json') : '';
+  const initialTokensPath =
+    (modifyEntryReady || pushFromPickerReady) && initialOutDir ? join(initialOutDir, 'tokens.json') : '';
 
   const [state, setState] = useState<WizardState>({
     step:
-      modifyEntryReady || rawTokensEntryReady
+      modifyEntryReady || rawTokensEntryReady || pushFromPickerReady
         ? initialStepResolved
         : initialRuns && initialRuns.length > 0
           ? 'run-picker'
@@ -510,7 +528,7 @@ export function WizardApp({
     projectPath: initialProjectPath ?? '',
     outDir: initialOutDir,
     rawTokensPath: rawTokensEntryReady ? initialRawTokensPath! : '',
-    tokensPath: initialTokensPath,
+    tokensPath: seedTokensPath ?? initialTokensPath,
     tokenSourceChanged: null,
     skipComponents: false,
     tokenSessionId: seedTokenSessionId ?? null,
@@ -1700,6 +1718,28 @@ export function WizardApp({
     }
   }, [state.step]); // intentional: only re-run when step changes
 
+  // Push-from-picker entry: on mount, dispatch runPreview to jump through
+  // previewing → preview-gate → pushing → done. We DON'T wait for the
+  // operator to interact with any pre-preview screen; the run-picker Push
+  // action is a "click Push and watch it happen" flow. `preview-gate` still
+  // renders after runPreview resolves — that's the diff-review screen where
+  // the operator can confirm/quit/edit. We route straight past
+  // push-decision-gate (which is for save-vs-push decisions on a fresh run).
+  const pushFromPickerDispatched = useRef(false);
+  useEffect(() => {
+    if (state.step !== 'push-from-picker') return;
+    if (pushFromPickerDispatched.current) return;
+    pushFromPickerDispatched.current = true;
+    void runPreview(
+      state.extractSessionId,
+      state.tokensPath,
+      state.spaceId,
+      state.environmentId,
+      state.cmaToken,
+      state.host,
+    );
+  }, [state.step]);
+
   // ── Render ────────────────────────────────────────────────────────────────────────────
 
   const noQuitSteps: WizardStep[] = [
@@ -1711,6 +1751,7 @@ export function WizardApp({
     'generating',
     'printing',
     'previewing',
+    'push-from-picker',
     'pushing',
   ];
   const hints = noQuitSteps.includes(state.step) ? [] : [{ key: 'q', label: 'quit' }];
@@ -2105,6 +2146,7 @@ export function WizardApp({
       // but should never actually be set — `validateCredentials` keeps the
       // step on 'credentials' and toggles `credentialsValidating` instead.
 
+      case 'push-from-picker':
       case 'previewing':
         return (
           <RunningStep

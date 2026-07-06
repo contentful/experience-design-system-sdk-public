@@ -25,7 +25,7 @@ describe('dispatchPickerSelection', () => {
     expect(replayRun).not.toHaveBeenCalled();
   });
 
-  it('calls replayRun with the picked run id on action=push', async () => {
+  it('calls replayRun with the picked run id on action=push when no pickerPushRun dep is provided', async () => {
     const modifyRun = vi.fn().mockResolvedValue(undefined);
     const replayRun = vi.fn().mockResolvedValue(undefined);
     await dispatchPickerSelection(
@@ -38,6 +38,51 @@ describe('dispatchPickerSelection', () => {
       expect.objectContaining({ runIdOrPath: '01HXYZ', host: 'api.contentful.com' }),
     );
     expect(modifyRun).not.toHaveBeenCalled();
+  });
+
+  it('routes action=push through pickerPushRun when interactive is true (default)', async () => {
+    const modifyRun = vi.fn().mockResolvedValue(undefined);
+    const replayRun = vi.fn().mockResolvedValue(undefined);
+    const pickerPushRun = vi.fn().mockResolvedValue(undefined);
+    await dispatchPickerSelection(
+      { action: 'push', runId: '01HXYZ' },
+      { host: 'api.contentful.com' },
+      { modifyRun, replayRun, pickerPushRun },
+    );
+    expect(pickerPushRun).toHaveBeenCalledTimes(1);
+    expect(pickerPushRun).toHaveBeenCalledWith(
+      expect.objectContaining({ runIdOrPath: '01HXYZ', host: 'api.contentful.com' }),
+    );
+    expect(replayRun).not.toHaveBeenCalled();
+    expect(modifyRun).not.toHaveBeenCalled();
+  });
+
+  it('routes action=push through replayRun when interactive is false (CLI flag / non-TTY)', async () => {
+    const modifyRun = vi.fn().mockResolvedValue(undefined);
+    const replayRun = vi.fn().mockResolvedValue(undefined);
+    const pickerPushRun = vi.fn().mockResolvedValue(undefined);
+    await dispatchPickerSelection(
+      { action: 'push', runId: '01HXYZ' },
+      { host: 'api.contentful.com', interactive: false },
+      { modifyRun, replayRun, pickerPushRun },
+    );
+    expect(replayRun).toHaveBeenCalledTimes(1);
+    expect(replayRun).toHaveBeenCalledWith(
+      expect.objectContaining({ runIdOrPath: '01HXYZ', interactive: false }),
+    );
+    expect(pickerPushRun).not.toHaveBeenCalled();
+  });
+
+  it('forwards force flag through pickerPushRun', async () => {
+    const modifyRun = vi.fn().mockResolvedValue(undefined);
+    const replayRun = vi.fn().mockResolvedValue(undefined);
+    const pickerPushRun = vi.fn().mockResolvedValue(undefined);
+    await dispatchPickerSelection(
+      { action: 'push', runId: '01HXYZ' },
+      { force: true },
+      { modifyRun, replayRun, pickerPushRun },
+    );
+    expect(pickerPushRun).toHaveBeenCalledWith(expect.objectContaining({ force: true }));
   });
 
   it('forwards optional modify flags when set', async () => {
