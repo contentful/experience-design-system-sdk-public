@@ -31,7 +31,10 @@ afterEach(async () => {
   await Promise.all(cleanupItems.splice(0).map((fn) => fn()));
 });
 
-async function makeAgent(agentName: string, output: string): Promise<{ cleanup: () => Promise<void>; env: Record<string, string> }> {
+async function makeAgent(
+  agentName: string,
+  output: string,
+): Promise<{ cleanup: () => Promise<void>; env: Record<string, string> }> {
   const dir = await mkdtemp(join(tmpdir(), 'agent-'));
   const script = join(dir, agentName);
   await writeFile(script, `#!/bin/sh\ncat <<'EOF'\n${output}\nEOF\n`, 'utf8');
@@ -41,32 +44,73 @@ async function makeAgent(agentName: string, output: string): Promise<{ cleanup: 
 
 describe('cache hit on new session', () => {
   it('populates raw_components.reject_reason for cached rejected result on a new session', async () => {
-    const components = [{ name: 'BadgeIcon', source: 'src/BadgeIcon.tsx', framework: 'react' as const, props: [{ name: 'icon', type: 'string', required: true }], slots: [] }];
+    const components = [
+      {
+        name: 'BadgeIcon',
+        source: 'src/BadgeIcon.tsx',
+        framework: 'react' as const,
+        props: [{ name: 'icon', type: 'string', required: true }],
+        slots: [],
+      },
+    ];
     const fixture = await createTestFixture(components);
     cleanupItems.push(fixture.cleanup);
     const artifactsDir = await mkdtemp(join(tmpdir(), 'artifacts-'));
     cleanupItems.push(() => rm(artifactsDir, { recursive: true, force: true }));
 
     // First run: session A rejects and populates the select_cache.
-    const agent1 = await makeAgent('claude', '{"tool":"reject_component","name":"BadgeIcon","reason":"low semantic value","confidence":5}');
+    const agent1 = await makeAgent(
+      'claude',
+      '{"tool":"reject_component","name":"BadgeIcon","reason":"low semantic value","confidence":5}',
+    );
     cleanupItems.push(agent1.cleanup);
 
-    const env = { EDS_PIPELINE_DB_PATH: fixture.dbPath, EDS_REVIEW_ARTIFACTS_DIR: artifactsDir, NODE_NO_WARNINGS: '1', ...agent1.env };
-    const r1 = await runCliWithEnv(['analyze', 'select-agent', '--agent', 'claude', '--session', fixture.sessionId, '--project-root', fixture.projectDir], env);
+    const env = {
+      EDS_PIPELINE_DB_PATH: fixture.dbPath,
+      EDS_REVIEW_ARTIFACTS_DIR: artifactsDir,
+      NODE_NO_WARNINGS: '1',
+      ...agent1.env,
+    };
+    const r1 = await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      env,
+    );
     expect(r1.code).toBe(0);
 
     // Create session B with the same components (simulating a fresh `experiences import`).
     const db = openPipelineDb(fixture.dbPath);
-    const { sessionId: sessionB } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract', inputPath: fixture.projectDir });
+    const { sessionId: sessionB } = getOrCreateSession(db, 'new', undefined, {
+      command: 'analyze extract',
+      inputPath: fixture.projectDir,
+    });
     storeRawComponents(db, sessionB, components);
-    storeScannedFiles(db, sessionB, components.map((c) => c.source));
+    storeScannedFiles(
+      db,
+      sessionB,
+      components.map((c) => c.source),
+    );
     db.close();
 
     // Second run on session B: cache should hit; no LLM call.
-    const agent2 = await makeAgent('claude', '{"tool":"reject_component","name":"UNUSED","reason":"unused","confidence":5}');
+    const agent2 = await makeAgent(
+      'claude',
+      '{"tool":"reject_component","name":"UNUSED","reason":"unused","confidence":5}',
+    );
     cleanupItems.push(agent2.cleanup);
     const env2 = { ...env, ...agent2.env };
-    const r2 = await runCliWithEnv(['analyze', 'select-agent', '--agent', 'claude', '--session', sessionB, '--project-root', fixture.projectDir], env2);
+    const r2 = await runCliWithEnv(
+      ['analyze', 'select-agent', '--agent', 'claude', '--session', sessionB, '--project-root', fixture.projectDir],
+      env2,
+    );
     expect(r2.code).toBe(0);
     expect(r2.stderr).toContain('cached');
 
@@ -93,8 +137,20 @@ import { parseAutoFilterProgressLine } from '../../../src/import/tui/WizardApp.j
 describe('e2e: cached select-agent → scope-gate render', () => {
   it('renders AI section from raw_components after a full cache-hit CLI run on a new session', async () => {
     const components = [
-      { name: 'BadgeIcon', source: 'src/BadgeIcon.tsx', framework: 'react' as const, props: [{ name: 'icon', type: 'string', required: true }], slots: [] },
-      { name: 'Button', source: 'src/Button.tsx', framework: 'react' as const, props: [{ name: 'label', type: 'string', required: true }], slots: [] },
+      {
+        name: 'BadgeIcon',
+        source: 'src/BadgeIcon.tsx',
+        framework: 'react' as const,
+        props: [{ name: 'icon', type: 'string', required: true }],
+        slots: [],
+      },
+      {
+        name: 'Button',
+        source: 'src/Button.tsx',
+        framework: 'react' as const,
+        props: [{ name: 'label', type: 'string', required: true }],
+        slots: [],
+      },
     ];
     const fixture = await createTestFixture(components);
     cleanupItems.push(fixture.cleanup);
@@ -107,32 +163,81 @@ describe('e2e: cached select-agent → scope-gate render', () => {
         '{"tool":"select_component","name":"Button","reason":"primary UI","confidence":5}',
     );
     cleanupItems.push(agent1.cleanup);
-    const env = { EDS_PIPELINE_DB_PATH: fixture.dbPath, EDS_REVIEW_ARTIFACTS_DIR: artifactsDir, NODE_NO_WARNINGS: '1', ...agent1.env };
-    const r1 = await runCliWithEnv(['analyze', 'select-agent', '--agent', 'claude', '--session', fixture.sessionId, '--project-root', fixture.projectDir], env);
+    const env = {
+      EDS_PIPELINE_DB_PATH: fixture.dbPath,
+      EDS_REVIEW_ARTIFACTS_DIR: artifactsDir,
+      NODE_NO_WARNINGS: '1',
+      ...agent1.env,
+    };
+    const r1 = await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--project-root',
+        fixture.projectDir,
+      ],
+      env,
+    );
     expect(r1.code).toBe(0);
 
     const db = openPipelineDb(fixture.dbPath);
-    const { sessionId: sessionB } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract', inputPath: fixture.projectDir });
+    const { sessionId: sessionB } = getOrCreateSession(db, 'new', undefined, {
+      command: 'analyze extract',
+      inputPath: fixture.projectDir,
+    });
     storeRawComponents(db, sessionB, components);
-    storeScannedFiles(db, sessionB, components.map((c) => c.source));
+    storeScannedFiles(
+      db,
+      sessionB,
+      components.map((c) => c.source),
+    );
     db.close();
 
-    const agent2 = await makeAgent('claude', '{"tool":"reject_component","name":"UNUSED","reason":"unused","confidence":5}');
+    const agent2 = await makeAgent(
+      'claude',
+      '{"tool":"reject_component","name":"UNUSED","reason":"unused","confidence":5}',
+    );
     cleanupItems.push(agent2.cleanup);
-    const r2 = await runCliWithEnv(['analyze', 'select-agent', '--agent', 'claude', '--session', sessionB, '--project-root', fixture.projectDir, '--exclude-invalid'], { ...env, ...agent2.env });
+    const r2 = await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        sessionB,
+        '--project-root',
+        fixture.projectDir,
+        '--exclude-invalid',
+      ],
+      { ...env, ...agent2.env },
+    );
     expect(r2.code).toBe(0);
     expect(r2.stderr).toContain('cached');
     expect(r2.stderr).toMatch(/progress=select-agent:\d+\/\d+:rejected:BadgeIcon:low%20semantic%20value/);
 
     const db2 = openPipelineDb(fixture.dbPath);
     let rows;
-    try { rows = loadScopeComponents(db2, sessionB); } finally { db2.close(); }
+    try {
+      rows = loadScopeComponents(db2, sessionB);
+    } finally {
+      db2.close();
+    }
     const badge = rows.find((r) => r.name === 'BadgeIcon');
     expect(badge?.aiDecision).toBe('rejected');
     expect(badge?.aiReason).toBe('low semantic value');
 
     const { lastFrame } = render(
-      React.createElement(ScopeGateStep, { components: [...rows], onConfirm: () => {}, onQuit: () => {}, aiFilterStatus: 'complete' }),
+      React.createElement(ScopeGateStep, {
+        components: [...rows],
+        onConfirm: () => {},
+        onQuit: () => {},
+        aiFilterStatus: 'complete',
+      }),
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('AI recommended exclusions');

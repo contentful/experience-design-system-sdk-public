@@ -57,7 +57,9 @@ function redactValue(value: unknown, seen: WeakSet<object>): unknown {
   if (value === null || value === undefined) return value;
   if (typeof value === 'string') {
     if (SECRET_VALUE_PATTERNS.some((r) => r.test(value))) return REDACTED;
-    return value.length > MAX_STRING_LEN ? value.slice(0, MAX_STRING_LEN) + `…«+${value.length - MAX_STRING_LEN}»` : value;
+    return value.length > MAX_STRING_LEN
+      ? value.slice(0, MAX_STRING_LEN) + `…«+${value.length - MAX_STRING_LEN}»`
+      : value;
   }
   if (typeof value !== 'object') return value;
   if (seen.has(value as object)) return '«cycle»';

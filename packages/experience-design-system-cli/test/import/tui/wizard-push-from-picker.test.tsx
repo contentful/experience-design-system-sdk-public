@@ -88,8 +88,8 @@ afterEach(() => {
   mockExit.mockClear();
 });
 
-describe("WizardApp push-from-picker entry", () => {
-  it("skips welcome / token-input / final-review and lands on previewing on mount", async () => {
+describe('WizardApp push-from-picker entry', () => {
+  it('skips welcome / token-input / final-review and lands on previewing on mount', async () => {
     const { lastFrame } = render(
       <WizardApp
         initialProjectPath="/tmp/push-from-picker"

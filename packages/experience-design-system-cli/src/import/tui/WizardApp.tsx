@@ -1278,7 +1278,8 @@ export function WizardApp({
       if (isEmptyPreview(preview)) {
         update({
           step: 'final-review',
-          finalizeErrorBanner: 'Nothing to push — accept a component, reject a component that exists in Contentful, or quit.',
+          finalizeErrorBanner:
+            'Nothing to push — accept a component, reject a component that exists in Contentful, or quit.',
           serverPreview: preview,
           ...clearedValidationErrorState(),
         });
@@ -2184,13 +2185,7 @@ export function WizardApp({
         );
 
       case 'pushing':
-        return (
-          <PushingStep
-            stepNumber={totalSteps}
-            totalSteps={totalSteps}
-            progress={state.pushProgress}
-          />
-        );
+        return <PushingStep stepNumber={totalSteps} totalSteps={totalSteps} progress={state.pushProgress} />;
 
       case 'path-prompt':
         return (

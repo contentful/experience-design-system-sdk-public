@@ -539,7 +539,9 @@ async function setupContentfulCredentials(): Promise<boolean> {
     process.env['EDS_HOST'] ? 'EDS_HOST' : null,
   ].filter((v): v is string => !!v);
   if (envShadowing.length > 0) {
-    warn(`Env vars set: ${envShadowing.join(', ')}. Values saved here take precedence; env vars only apply where disk is empty.`);
+    warn(
+      `Env vars set: ${envShadowing.join(', ')}. Values saved here take precedence; env vars only apply where disk is empty.`,
+    );
     info('');
   }
 

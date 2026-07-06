@@ -1,9 +1,4 @@
-import {
-  initDebugLogger,
-  printDebugBanner,
-  resolveDebugMode,
-  type DebugLogger,
-} from './debug-logger.js';
+import { initDebugLogger, printDebugBanner, resolveDebugMode, type DebugLogger } from './debug-logger.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 
 let endBannerRegistered = false;
@@ -18,10 +13,7 @@ let endBannerRegistered = false;
  * Returns the logger so the caller can emit events without a second import.
  * When debug is disabled, the returned logger is a no-op.
  */
-export async function beginCommand(
-  command: string,
-  opts: { debug?: boolean },
-): Promise<DebugLogger> {
+export async function beginCommand(command: string, opts: { debug?: boolean }): Promise<DebugLogger> {
   let configDebug: boolean | undefined;
   try {
     const creds = await readExperiencesCredentials();

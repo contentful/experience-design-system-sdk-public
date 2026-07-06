@@ -169,7 +169,11 @@ export class ImportApiClient {
     });
     if (!res.ok) {
       const body = await res.text();
-      debug.event('apply', 'preview.error', { status: res.status, durationMs: Date.now() - startedAt, bodyHead: body.slice(0, 2000) });
+      debug.event('apply', 'preview.error', {
+        status: res.status,
+        durationMs: Date.now() - startedAt,
+        bodyHead: body.slice(0, 2000),
+      });
       throw new ApiError(`${PREVIEW_ERROR_PREFIX} ${res.status}`, res.status, body);
     }
     const parsed = (await res.json()) as ServerPreviewResponse;
@@ -189,11 +193,19 @@ export class ImportApiClient {
     });
     if (!res.ok) {
       const body = await res.text();
-      debug.event('apply', 'apply.error', { status: res.status, durationMs: Date.now() - startedAt, bodyHead: body.slice(0, 2000) });
+      debug.event('apply', 'apply.error', {
+        status: res.status,
+        durationMs: Date.now() - startedAt,
+        bodyHead: body.slice(0, 2000),
+      });
       throw new ApiError(`${APPLY_ERROR_PREFIX} ${res.status}`, res.status, body);
     }
     const parsed = (await res.json()) as ApplyOperationResponse;
-    debug.event('apply', 'apply.accepted', { status: res.status, operationId: parsed.sys?.id, durationMs: Date.now() - startedAt });
+    debug.event('apply', 'apply.accepted', {
+      status: res.status,
+      operationId: parsed.sys?.id,
+      durationMs: Date.now() - startedAt,
+    });
     return parsed;
   }
 
