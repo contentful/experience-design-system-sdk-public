@@ -14,6 +14,7 @@ import type { CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-d
 import { ApiError, ImportApiClient } from './api-client.js';
 import { openPipelineDb, loadCDFComponents } from '../session/db.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
+import { isEmptyPreview } from './preview-utils.js';
 import { ServerPreviewApp, ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
 import { SelectView, makeSelectKey, type SelectableEntity } from './tui/SelectView.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
@@ -214,21 +215,6 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
 }
 
 // --- Output helpers ---
-
-function isEmptyPreview(preview: ServerPreviewResponse): boolean {
-  const { components, tokens, taxonomies } = preview;
-  return (
-    components.new.length === 0 &&
-    components.changed.length === 0 &&
-    components.removed.length === 0 &&
-    tokens.new.length === 0 &&
-    tokens.changed.length === 0 &&
-    tokens.removed.length === 0 &&
-    taxonomies.new.length === 0 &&
-    taxonomies.changed.length === 0 &&
-    taxonomies.removed.length === 0
-  );
-}
 
 export function hasBreakingChangesWithImpact(preview: ServerPreviewResponse): boolean {
   const allChanged = [...preview.components.changed, ...preview.tokens.changed];

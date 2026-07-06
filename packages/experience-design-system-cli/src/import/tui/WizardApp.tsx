@@ -42,6 +42,7 @@ import { handlePreview422, applySkipValidationErrors, clearedValidationErrorStat
 import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
 import { spawnGenerateChild } from './spawn-generate.js';
 import { readTokensFromPath, hasBreakingChangesWithImpact } from '../../apply/manifest.js';
+import { isEmptyPreview } from '../../apply/preview-utils.js';
 import { buildManifest } from '@contentful/experience-design-system-types';
 import type { ServerPreviewResponse, ManifestPayload } from '@contentful/experience-design-system-types';
 import {
@@ -178,6 +179,13 @@ type WizardState = {
   credentialsSkipped: boolean;
   /** Task 8 — id of the most recent run record written to runs.json. */
   lastRunId: string | null;
+  /**
+   * INTEG-4411 refined: message surfaced as an inline banner on the
+   * final-review screen when the wizard routes back after the preview API
+   * returned an empty diff (pure no-op push). Non-null routes GenerateReviewStep
+   * to render the `⚠ …` banner via the `initialFinalizeError` prop.
+   */
+  finalizeErrorBanner: string | null;
 };
 
 function findCliPath(): string {
@@ -543,6 +551,7 @@ export function WizardApp({
     generatePrefetchError: null,
     credentialsSkipped: false,
     lastRunId: null,
+    finalizeErrorBanner: null,
   });
 
   useEffect(() => {
@@ -1242,7 +1251,27 @@ export function WizardApp({
         }
       }
 
-      update({ step: 'preview-gate', serverPreview: preview, manifest, ...clearedValidationErrorState() });
+      // INTEG-4411 refined: preview-aware finalize guard. If the resulting
+      // push would be a pure no-op across every diff bucket, don't send an
+      // empty manifest to EDSI — route back to `final-review` with an inline
+      // banner. Accepted components, rejections that remove server-side
+      // components, and token-only diffs all keep this branch from firing.
+      if (isEmptyPreview(preview)) {
+        update({
+          step: 'final-review',
+          finalizeErrorBanner: 'Nothing to push — accept a component, reject a component that exists in Contentful, or quit.',
+          serverPreview: preview,
+          ...clearedValidationErrorState(),
+        });
+        return;
+      }
+      update({
+        step: 'preview-gate',
+        serverPreview: preview,
+        manifest,
+        finalizeErrorBanner: null,
+        ...clearedValidationErrorState(),
+      });
     } catch (e) {
       if (e instanceof ApiError) {
         if (e.status === 401 || e.status === 403) {
@@ -1926,18 +1955,17 @@ export function WizardApp({
             cmaToken={state.cmaToken}
             host={state.host}
             tokensPath={state.tokensPath}
+            initialFinalizeError={state.finalizeErrorBanner}
             onFinalize={(accepted, rejected, unresolved) => {
               process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`);
-              // INTEG-4411 belt-and-braces: if the review step somehow lets a
-              // zero-accepted finalize through, refuse to advance. Advancing
-              // in this state ships an empty manifest to EDSI which errors
-              // out. Stay on final-review so the operator can accept at
-              // least one component. The primary guard lives in
-              // GenerateReviewStep.handleFinalizeConfirm.
-              if (accepted === 0) {
-                update({ step: 'final-review' });
-                return;
-              }
+              // INTEG-4411 refined: no `accepted === 0` up-front block here.
+              // A zero-accepted finalize can still be a valid push when the
+              // operator explicitly rejected component(s) that exist server-
+              // side (→ REMOVALS) or when tokens carry a diff. The load-
+              // bearing no-op check consults the preview response inside
+              // `runPreview` below (see `isEmptyPreview` branch) and routes
+              // back to `final-review` with `finalizeErrorBanner` set when
+              // the diff is truly empty.
               if (noPush) {
                 update({ generatedAcceptedCount: accepted });
                 void startSaveFlow();

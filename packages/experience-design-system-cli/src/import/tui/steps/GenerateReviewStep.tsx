@@ -58,6 +58,13 @@ type GenerateReviewStepProps = {
   cmaToken?: string;
   host?: string;
   tokensPath?: string;
+  /**
+   * INTEG-4411 refined: initial value for the inline `finalizeError` banner.
+   * The wizard sets this when it routes back to `final-review` after the
+   * preview API returned an empty diff (pure no-op push). Cleared on the
+   * next `a` / `A` keystroke.
+   */
+  initialFinalizeError?: string | null;
 };
 
 /**
@@ -92,6 +99,7 @@ export function GenerateReviewStep({
   cmaToken = '',
   host = '',
   tokensPath = '',
+  initialFinalizeError = null,
 }: GenerateReviewStepProps): React.ReactElement {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
@@ -111,7 +119,7 @@ export function GenerateReviewStep({
   const [saveError, setSaveError] = useState<string | null>(null);
   // INTEG-4411: inline banner shown when the operator tries to finalize
   // with zero accepted components. Cleared on the next 'a' or 'A' press.
-  const [finalizeError, setFinalizeError] = useState<string | null>(null);
+  const [finalizeError, setFinalizeError] = useState<string | null>(initialFinalizeError);
   // Feature 1: per-component review metadata (rationale + source location)
   // for the currently-selected component. Reloaded when selection changes.
   const [reviewMetadata, setReviewMetadata] = useState<ComponentReviewMetadata | null>(null);
@@ -258,15 +266,14 @@ export function GenerateReviewStep({
     // The operator told us they want accept-to-ship semantics — leaving a
     // component unresolved should NOT silently push it (Pilot-2026-06-24 R2).
     const acceptedCount = components.filter((c) => c.status === 'accepted').length;
-    // INTEG-4411: block finalize when nothing has been accepted. Advancing
-    // in this state ships an empty manifest to EDSI which errors out; instead
-    // surface an inline banner so the operator can accept at least one
-    // component. Preserve current statuses — don't lose the operator's work.
-    if (acceptedCount === 0) {
-      setFinalizeError('Accept at least one component to continue.');
-      setShowFinalize(false);
-      return;
-    }
+    // INTEG-4411 refined: DO NOT block on `acceptedCount === 0` up-front.
+    // A push with zero accepted but one or more rejections targeting a
+    // component that exists server-side still produces REMOVALS — a valid
+    // push, not a no-op. Same for token-only diffs. The load-bearing no-op
+    // check lives downstream in WizardApp.runPreview, which consults the
+    // preview response and only blocks when every diff bucket is empty.
+    // We keep the `finalizeError` state so the wizard can route back here
+    // with an inline banner when that downstream check fires.
     const explicitlyRejected = components.filter((c) => c.status === 'rejected').map((c) => c.key);
     const unresolved = components.filter((c) => c.status === 'needs-review').map((c) => c.key);
     const toReject = [...explicitlyRejected, ...unresolved];

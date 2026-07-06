@@ -15,6 +15,13 @@ export type FinalReviewHostProps = {
   cmaToken?: string;
   host?: string;
   tokensPath?: string;
+  /**
+   * INTEG-4411 refined: message displayed as an inline banner when the wizard
+   * routes back here after the preview API returned an empty diff (pure
+   * no-op push). Cleared on the next `a` / `A` keystroke inside
+   * GenerateReviewStep.
+   */
+  initialFinalizeError?: string | null;
 };
 
 export function FinalReviewHost({
@@ -29,6 +36,7 @@ export function FinalReviewHost({
   cmaToken,
   host,
   tokensPath,
+  initialFinalizeError,
 }: FinalReviewHostProps): React.ReactElement {
   if (!extractSessionId) {
     return (
@@ -53,6 +61,7 @@ export function FinalReviewHost({
       cmaToken={cmaToken}
       host={host}
       tokensPath={tokensPath}
+      initialFinalizeError={initialFinalizeError}
     />
   );
 }
