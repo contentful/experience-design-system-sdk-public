@@ -18,11 +18,23 @@
  *   STUB_DELAY_MS    : delay before emitting result (default 50)
  *   STUB_STDOUT_FILE : if set, write this file's contents to stdout instead
  *   STUB_STDERR_FILE : if set, write this file's contents to stderr instead
+ *   STUB_ARGV_LOG    : if set, append one JSON line per invocation to this
+ *                      file with { argv, cwd, ts }. Lets tests assert what
+ *                      flags the wizard passed through (e.g. --model).
  */
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 
 const argv = process.argv.slice(2);
 const sub = argv[0];
+
+if (process.env.STUB_ARGV_LOG) {
+  try {
+    appendFileSync(
+      process.env.STUB_ARGV_LOG,
+      JSON.stringify({ argv, cwd: process.cwd() }) + '\n',
+    );
+  } catch {}
+}
 
 // --- auth probe ---------------------------------------------------------
 if (sub === 'auth' && argv[1] === 'status') {
