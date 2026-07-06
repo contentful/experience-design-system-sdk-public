@@ -67,9 +67,7 @@ describe('dispatchPickerSelection', () => {
       { modifyRun, replayRun, pickerPushRun },
     );
     expect(replayRun).toHaveBeenCalledTimes(1);
-    expect(replayRun).toHaveBeenCalledWith(
-      expect.objectContaining({ runIdOrPath: '01HXYZ', interactive: false }),
-    );
+    expect(replayRun).toHaveBeenCalledWith(expect.objectContaining({ runIdOrPath: '01HXYZ', interactive: false }));
     expect(pickerPushRun).not.toHaveBeenCalled();
   });
 

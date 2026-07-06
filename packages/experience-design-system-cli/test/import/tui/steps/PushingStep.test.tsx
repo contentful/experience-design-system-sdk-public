@@ -15,9 +15,7 @@ describe('PushingStep', () => {
       total: 22,
       current: null,
     };
-    const { lastFrame } = render(
-      <PushingStep stepNumber={5} totalSteps={5} progress={progress} />,
-    );
+    const { lastFrame } = render(<PushingStep stepNumber={5} totalSteps={5} progress={progress} />);
     const out = stripAnsi(lastFrame() ?? '');
     expect(out).toContain('Push to Contentful');
     expect(out).toContain('4/22 entities');
@@ -25,11 +23,7 @@ describe('PushingStep', () => {
 
   it('shows operation id when progress is queued', () => {
     const { lastFrame } = render(
-      <PushingStep
-        stepNumber={5}
-        totalSteps={5}
-        progress={{ kind: 'queued', operationId: 'op-1234' }}
-      />,
+      <PushingStep stepNumber={5} totalSteps={5} progress={{ kind: 'queued', operationId: 'op-1234' }} />,
     );
     const out = stripAnsi(lastFrame() ?? '');
     expect(out).toContain('op-1234');
@@ -55,11 +49,7 @@ describe('PushingStep', () => {
     expect(stripAnsi(noName.lastFrame() ?? '')).not.toContain('Now processing');
 
     const queued = render(
-      <PushingStep
-        stepNumber={5}
-        totalSteps={5}
-        progress={{ kind: 'queued', operationId: 'x' }}
-      />,
+      <PushingStep stepNumber={5} totalSteps={5} progress={{ kind: 'queued', operationId: 'x' }} />,
     );
     expect(stripAnsi(queued.lastFrame() ?? '')).not.toContain('Now processing');
   });
@@ -71,9 +61,7 @@ describe('PushingStep', () => {
       total: 22,
       current: null,
     };
-    const { lastFrame } = render(
-      <PushingStep stepNumber={5} totalSteps={5} progress={progress} />,
-    );
+    const { lastFrame } = render(<PushingStep stepNumber={5} totalSteps={5} progress={progress} />);
     const out = stripAnsi(lastFrame() ?? '');
     expect(out).not.toMatch(/Creating\s+\?/);
     expect(out).not.toMatch(/Updating\s+\?/);

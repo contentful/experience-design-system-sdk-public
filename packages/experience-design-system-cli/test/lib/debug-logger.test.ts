@@ -71,10 +71,7 @@ describe('redactForDebug', () => {
   });
 
   it('redacts token-shaped values under innocuous keys', () => {
-    const out = redactForDebug({ note: 'here is CFPAT-abcdefghijklmnopqrstuvwx and stuff' }) as Record<
-      string,
-      unknown
-    >;
+    const out = redactForDebug({ note: 'here is CFPAT-abcdefghijklmnopqrstuvwx and stuff' }) as Record<string, unknown>;
     expect(out['note']).toBe('«redacted»');
   });
 

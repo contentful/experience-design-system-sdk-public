@@ -3,7 +3,13 @@ import { chmod, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { openPipelineDb, storeRawComponents, getOrCreateSession, createStep, updateStep } from '../../src/session/db.js';
+import {
+  openPipelineDb,
+  storeRawComponents,
+  getOrCreateSession,
+  createStep,
+  updateStep,
+} from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 
 const bin = resolve(import.meta.dirname, '../../bin/cli.js');

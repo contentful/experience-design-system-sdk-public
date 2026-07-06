@@ -1050,9 +1050,7 @@ describe('GenerateReviewStep — preview-aware finalize guard (INTEG-4411 refine
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: makeEntry(k) })));
 
     const onFinalize = vi.fn();
-    const { stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />,
-    );
+    const { stdin } = render(<GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />);
     await tick();
     stdin.write('r');
     await tick();
@@ -1079,9 +1077,7 @@ describe('GenerateReviewStep — preview-aware finalize guard (INTEG-4411 refine
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: makeEntry(k) })));
 
     const onFinalize = vi.fn();
-    const { stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />,
-    );
+    const { stdin } = render(<GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} />);
     await tick();
     stdin.write('F');
     await tick();

@@ -85,7 +85,10 @@ export function createProgram(): Command {
   // ancestors. When set (or when EDSI_DEBUG / persisted config is on), the
   // process-wide DebugLogger is initialized before the subcommand action runs
   // and a bright-green "debug logs at <path>" banner is printed to stderr.
-  program.option('--debug', 'Write a JSONL trace of every decision to ~/.contentful/experience-design-system-cli/debug/');
+  program.option(
+    '--debug',
+    'Write a JSONL trace of every decision to ~/.contentful/experience-design-system-cli/debug/',
+  );
   program.option('--no-debug', 'Force debug logging off (overrides EDSI_DEBUG and persisted setup preference)');
   program.hook('preAction', async (_thisCommand, actionCommand) => {
     // Merge opts from actionCommand and all ancestors — root-level --debug

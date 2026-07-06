@@ -380,9 +380,7 @@ describe('modifyRun', () => {
   });
 
   it('per-field precedence: pushedTo.spaceId wins, disk fills env/host', async () => {
-    mockGetRun.mockResolvedValueOnce(
-      sampleRun({ pushedTo: { spaceId: 'rec-sp', environmentId: '', host: '' } }),
-    );
+    mockGetRun.mockResolvedValueOnce(sampleRun({ pushedTo: { spaceId: 'rec-sp', environmentId: '', host: '' } }));
     mockReadCreds.mockResolvedValueOnce({
       spaceId: 'disk-sp',
       environmentId: 'disk-env',
@@ -442,8 +440,6 @@ describe('modifyRun', () => {
       cmaToken: 'stored-token',
     });
     await modifyRun({ runIdOrPath: '01HXYZ' });
-    expect(mockLaunchWizard).toHaveBeenCalledWith(
-      expect.objectContaining({ initialCmaToken: 'stored-token' }),
-    );
+    expect(mockLaunchWizard).toHaveBeenCalledWith(expect.objectContaining({ initialCmaToken: 'stored-token' }));
   });
 });
