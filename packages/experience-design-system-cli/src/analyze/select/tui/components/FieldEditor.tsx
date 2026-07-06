@@ -1434,10 +1434,7 @@ export function FieldEditor({
     );
   }
 
-  // When $properties is empty but $slots exist, surface the same warning
-  // prominently in the panel so the user understands why the component looks
-  // sparse — and can act on it (manually add a prop or reject).
-  const hasEmptyProperties = props.length === 0;
+  const hasEmptyProperties = props.length === 0 && slots.length === 0;
 
   const modeLabel = (() => {
     if (editingValue) {

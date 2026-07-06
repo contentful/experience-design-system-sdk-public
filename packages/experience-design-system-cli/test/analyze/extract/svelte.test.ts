@@ -1201,3 +1201,51 @@ export interface AnchorProps {
     expect(widget.reviewReasons ?? []).not.toContain('props-type-unresolved');
   });
 });
+
+describe('extractSvelteComponents — $allowedComponents from Snippet<[XProps]>', () => {
+  it('populates slot.allowedComponents from Snippet<[HeadingProps]>', async () => {
+    // Two components in one directory: Heading (with HeadingProps) and Card
+    // (which exposes a `header` slot typed to render a Heading via a snippet).
+    const headingPath = await writeFixture(
+      'Heading.svelte',
+      `
+<script lang="ts">
+  export interface HeadingProps {
+    text: string;
+  }
+  let { text }: HeadingProps = $props();
+</script>
+<h1>{text}</h1>
+`,
+    );
+    const cardPath = await writeFixture(
+      'Card.svelte',
+      `
+<script lang="ts">
+  import type { Snippet } from 'svelte';
+  import type { HeadingProps } from './Heading.svelte';
+
+  interface Props {
+    header?: Snippet<[HeadingProps]>;
+    children: Snippet;
+  }
+
+  let { header, children }: Props = $props();
+</script>
+<section>
+  {#if header}<header>{@render header({ text: 'hi' })}</header>{/if}
+  <main>{@render children()}</main>
+</section>
+`,
+    );
+
+    const result = await extractSvelteComponents([headingPath, cardPath]);
+    const card = result.components.find((c) => c.name === 'Card')!;
+    const headerSlot = card.slots.find((s) => s.name === 'header')!;
+    expect(headerSlot.allowedComponents).toEqual(['Heading']);
+
+    // Untyped/plain snippets have no allowedComponents.
+    const defaultSlot = card.slots.find((s) => s.name === 'children')!;
+    expect(defaultSlot.allowedComponents).toBeUndefined();
+  });
+});

@@ -23,10 +23,7 @@ import {
   getTypeTargetDeclarations,
 } from './tsx-shared.js';
 import { shouldBeSlot } from './slot-detection.js';
-import {
-  extractAllowedComponentsFromTypeText,
-  extractAllowedComponentsFromJsdoc,
-} from './slot-allowed-components.js';
+import { extractAllowedComponentsFromTypeText, extractAllowedComponentsFromJsdoc } from './slot-allowed-components.js';
 
 /**
  * Matches ReactElement<XProps ...> (with optional `React.` prefix) anywhere in
@@ -1277,7 +1274,7 @@ function extractSlots(type: Type, hasChildren: boolean): RawSlotDefinition[] {
   const slots: RawSlotDefinition[] = [];
 
   if (hasChildren) {
-    slots.push({ name: 'default', isDefault: true });
+    slots.push({ name: 'children', isDefault: true });
   }
 
   for (const property of type.getProperties()) {
@@ -2338,8 +2335,7 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
     // Capture the props-type-name so the run-level post-pass can build a
     // props-type → component-name map for $allowedComponents resolution.
     const propsTypeName = firstParamTypeNode?.getText?.().trim();
-    const propsTypeNameCapture =
-      propsTypeName && /^[A-Za-z_$][\w$]*$/.test(propsTypeName) ? propsTypeName : undefined;
+    const propsTypeNameCapture = propsTypeName && /^[A-Za-z_$][\w$]*$/.test(propsTypeName) ? propsTypeName : undefined;
 
     components.push({
       name,

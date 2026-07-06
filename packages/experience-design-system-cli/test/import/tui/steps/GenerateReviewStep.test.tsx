@@ -251,6 +251,34 @@ describe('GenerateReviewStep — empty-component warning banner (Bug 2, INTEG-42
     const frame = lastFrame() ?? '';
     expect(frame).not.toMatch(/no classifiable props/i);
   });
+
+  it('does NOT flag a component with 0 properties but 1+ slots as empty', async () => {
+    const SLOT_ONLY_ENTRY = {
+      $type: 'component' as const,
+      $properties: {},
+      $slots: { header: { $allowedComponents: ['Heading'] } },
+    };
+    const POPULATED_ENTRY = {
+      $type: 'component' as const,
+      $properties: {
+        label: { $type: 'string' as const, $category: 'content' as const },
+      },
+    };
+
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Btn', entry: POPULATED_ENTRY },
+      { key: 'Card', entry: SLOT_ONLY_ENTRY },
+    ]);
+
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/no classifiable props/i);
+    expect(frame).not.toMatch(/Card \(empty\)/);
+  });
 });
 
 describe('GenerateReviewStep — sortComponentsForSidebar (Bug, INTEG-4259)', () => {
@@ -260,6 +288,11 @@ describe('GenerateReviewStep — sortComponentsForSidebar (Bug, INTEG-4259)', ()
     $properties: { foo: { $type: 'string', $category: 'content' } },
   };
   const EMPTY: Entry = { $type: 'component', $properties: {} };
+  const SLOT_ONLY: Entry = {
+    $type: 'component',
+    $properties: {},
+    $slots: { children: {} },
+  };
 
   it('sorts empty components to the top and tie-breaks alphabetically within each tier', () => {
     const input: Array<{ key: string; entry: Entry }> = [
@@ -289,6 +322,16 @@ describe('GenerateReviewStep — sortComponentsForSidebar (Bug, INTEG-4259)', ()
     ];
     const result = sortComponentsForSidebar(input);
     expect(result.map((c) => c.key)).toEqual(['Apple', 'Charlie']);
+  });
+
+  it('treats a component with 0 properties but 1+ slots as non-empty', () => {
+    const input: Array<{ key: string; entry: Entry }> = [
+      { key: 'Card', entry: SLOT_ONLY },
+      { key: 'AbsolutelyEmpty', entry: EMPTY },
+      { key: 'Btn', entry: FULL },
+    ];
+    const result = sortComponentsForSidebar(input);
+    expect(result.map((c) => c.key)).toEqual(['AbsolutelyEmpty', 'Btn', 'Card']);
   });
 });
 
