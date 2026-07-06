@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { extractAllowedComponentsFromTypeText } from '../../../src/analyze/extract/slot-allowed-components.js';
+import {
+  extractAllowedComponentsFromTypeText,
+  extractAllowedComponentsFromJsdoc,
+} from '../../../src/analyze/extract/slot-allowed-components.js';
 
 describe('extractAllowedComponentsFromTypeText', () => {
   const propsToComponent = new Map<string, string>([
@@ -57,5 +60,23 @@ describe('extractAllowedComponentsFromTypeText', () => {
     expect(
       extractAllowedComponentsFromTypeText('ReactElement<ZzzProps>', { propsToComponent, componentNames })
     ).toEqual([]);
+  });
+});
+
+describe('extractAllowedComponentsFromJsdoc', () => {
+  const componentNames = new Set(['Heading', 'Button']);
+
+  it('parses a comma-separated @allowedComponents tag', () => {
+    const jsdoc = `/** @allowedComponents Heading, Button */`;
+    expect(extractAllowedComponentsFromJsdoc(jsdoc, componentNames)).toEqual(['Button', 'Heading']);
+  });
+
+  it('drops unknown names', () => {
+    const jsdoc = `/** @allowedComponents Heading, Widget */`;
+    expect(extractAllowedComponentsFromJsdoc(jsdoc, componentNames)).toEqual(['Heading']);
+  });
+
+  it('returns [] when the tag is absent', () => {
+    expect(extractAllowedComponentsFromJsdoc('/** just docs */', componentNames)).toEqual([]);
   });
 });

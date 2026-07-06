@@ -29,3 +29,19 @@ export function extractAllowedComponentsFromTypeText(
   }
   return [...found].sort();
 }
+
+const JSDOC_TAG = /@allowedComponents\s+([^\n*]+)/;
+
+export function extractAllowedComponentsFromJsdoc(
+  jsdocText: string,
+  componentNames: ReadonlySet<string>
+): string[] {
+  const m = JSDOC_TAG.exec(jsdocText);
+  if (!m) return [];
+  const found = new Set<string>();
+  for (const raw of m[1].split(',')) {
+    const name = raw.trim();
+    if (name && componentNames.has(name)) found.add(name);
+  }
+  return [...found].sort();
+}
