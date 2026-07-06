@@ -319,4 +319,34 @@ describe('slot expansion integration', () => {
     // icon should be a slot via the new expansion
     expect(modal.slots.find((s) => s.name === 'icon')).toBeDefined();
   });
+
+  it('populates allowedComponents from ReactElement<XProps> slot type (Card)', async () => {
+    const p = join(process.cwd(), 'test/analyze/extract/fixtures/nested-card.tsx');
+    const result = await extractReactComponents([p]);
+    const card = result.components.find((c) => c.name === 'Card');
+    expect(card).toBeDefined();
+    const header = card!.slots.find((s) => s.name === 'header');
+    expect(header).toBeDefined();
+    expect(header!.allowedComponents).toEqual(['Heading']);
+  });
+
+  it('populates allowedComponents for each typed slot (Layout)', async () => {
+    const p = join(process.cwd(), 'test/analyze/extract/fixtures/nested-layout.tsx');
+    const result = await extractReactComponents([p]);
+    const layout = result.components.find((c) => c.name === 'Layout');
+    expect(layout).toBeDefined();
+    expect(layout!.slots.find((s) => s.name === 'header')?.allowedComponents).toEqual(['Header']);
+    expect(layout!.slots.find((s) => s.name === 'sidebar')?.allowedComponents).toEqual(['Sidebar']);
+    expect(layout!.slots.find((s) => s.name === 'footer')?.allowedComponents).toEqual(['Footer']);
+  });
+
+  it('populates allowedComponents from a union of ReactElement<XProps> (Wrapper)', async () => {
+    const p = join(process.cwd(), 'test/analyze/extract/fixtures/nested-union.tsx');
+    const result = await extractReactComponents([p]);
+    const wrapper = result.components.find((c) => c.name === 'Wrapper');
+    expect(wrapper).toBeDefined();
+    const content = wrapper!.slots.find((s) => s.name === 'content');
+    expect(content).toBeDefined();
+    expect(content!.allowedComponents).toEqual(['A', 'B']);
+  });
 });
