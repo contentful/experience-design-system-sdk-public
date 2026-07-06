@@ -21,7 +21,8 @@
     "affected:lint": "nx affected -t lint --parallel=3",
     "release": "node ./scripts/release.js",
     "prepare": "[ -n \"$CI\" ] || husky",
-    "postbuild": "[ -n \"$CI\" ] || node scripts/link-cli.js"
+    "postbuild": "[ -n \"$CI\" ] || node scripts/link-cli.js",
+    "postinstall": "node tools/dsi-pty-harness/scripts/fix-spawn-helper.mjs"
   },
   "commitlint": {
     "extends": [
@@ -51,5 +52,10 @@
     "lint-staged": "^16.2.7",
     "nx": "^22.3.3",
     "semver": "^7.7.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "node-pty"
+    ]
   }
 }

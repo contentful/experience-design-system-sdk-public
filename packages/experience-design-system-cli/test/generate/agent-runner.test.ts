@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   extractSentinelOutput,
   parseToolCallLines,
@@ -7,10 +7,51 @@ import {
 } from '../../src/generate/agent-runner.js';
 
 describe('resolveBinary', () => {
+  const ENV_KEYS = [
+    'EDS_AGENT_BINARY_CLAUDE',
+    'EDS_AGENT_BINARY_CODEX',
+    'EDS_AGENT_BINARY_OPENCODE',
+    'EDS_AGENT_BINARY_CURSOR',
+  ] as const;
+  const saved: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const k of ENV_KEYS) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
   it('maps claude → claude', () => expect(resolveBinary('claude')).toBe('claude'));
   it('maps codex → codex', () => expect(resolveBinary('codex')).toBe('codex'));
   it('maps opencode → opencode', () => expect(resolveBinary('opencode')).toBe('opencode'));
   it('maps cursor → cursor-agent', () => expect(resolveBinary('cursor')).toBe('cursor-agent'));
+
+  it('honors EDS_AGENT_BINARY_CLAUDE override', () => {
+    process.env.EDS_AGENT_BINARY_CLAUDE = '/opt/custom/claude';
+    expect(resolveBinary('claude')).toBe('/opt/custom/claude');
+  });
+
+  it('trims whitespace in override values', () => {
+    process.env.EDS_AGENT_BINARY_CODEX = '  /usr/local/bin/codex  ';
+    expect(resolveBinary('codex')).toBe('/usr/local/bin/codex');
+  });
+
+  it('falls through to default when override is empty/blank', () => {
+    process.env.EDS_AGENT_BINARY_OPENCODE = '   ';
+    expect(resolveBinary('opencode')).toBe('opencode');
+  });
+
+  it('override is per-agent (setting claude does not affect cursor)', () => {
+    process.env.EDS_AGENT_BINARY_CLAUDE = '/opt/x/claude';
+    expect(resolveBinary('cursor')).toBe('cursor-agent');
+  });
 });
 
 describe('extractSentinelOutput', () => {
