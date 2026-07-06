@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { execFile, spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { buildRunTeaserLine } from './run-teaser.js';
+import { getDebugLogger } from '../../lib/debug-logger.js';
 import { PathPrompt } from '../../runs/path-prompt.js';
 import { RunPicker, type RunPickerSelection } from '../../runs/run-picker.js';
 import type { RunRecord } from '../../runs/store.js';
@@ -301,6 +302,8 @@ const WIZARD_LOG = join(tmpdir(), 'experiences-import-wizard.log');
 function logStep(entry: Record<string, unknown>): void {
   const line = JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n';
   appendFileSync(WIZARD_LOG, line);
+  // Tee into the unified debug log when enabled — cheap no-op otherwise.
+  getDebugLogger().event('wizard', 'step', entry);
 }
 
 export type WizardAppProps = {

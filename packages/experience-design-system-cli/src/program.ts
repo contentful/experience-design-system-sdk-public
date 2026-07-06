@@ -11,6 +11,7 @@ import { registerPrintCommand } from './print/command.js';
 import { registerImportCommand } from './import/command.js';
 import { registerSetupCommand } from './setup/command.js';
 import { registerRunsCommand } from './runs/ls-command.js';
+import { beginCommand } from './lib/debug-preamble.js';
 
 const require = createRequire(import.meta.url);
 
@@ -78,6 +79,31 @@ export function createProgram(): Command {
   registerSetupCommand(program);
   registerRunsCommand(program);
   registerBuildCommand(program);
+
+  // Expose --debug on every subcommand. The flag is inherited automatically
+  // via `option()` at program scope + `preAction` reading merged opts from all
+  // ancestors. When set (or when EDSI_DEBUG / persisted config is on), the
+  // process-wide DebugLogger is initialized before the subcommand action runs
+  // and a bright-green "debug logs at <path>" banner is printed to stderr.
+  program.option('--debug', 'Write a JSONL trace of every decision to ~/.contentful/experience-design-system-cli/debug/');
+  program.option('--no-debug', 'Force debug logging off (overrides EDSI_DEBUG and persisted setup preference)');
+  program.hook('preAction', async (_thisCommand, actionCommand) => {
+    // Merge opts from actionCommand and all ancestors — root-level --debug
+    // set alongside a subcommand ends up on the root command's opts, not the
+    // subcommand's.
+    let debug: boolean | undefined;
+    for (let c: Command | null = actionCommand; c; c = c.parent) {
+      const opts = c.opts() as { debug?: boolean };
+      if (opts.debug !== undefined) {
+        debug = opts.debug;
+        break;
+      }
+    }
+    // Build a `command` label out of the actual subcommand chain (e.g. "apply push").
+    const chain: string[] = [];
+    for (let c: Command | null = actionCommand; c && c.parent; c = c.parent) chain.unshift(c.name());
+    await beginCommand(chain.join(' ') || actionCommand.name(), { ...(debug !== undefined ? { debug } : {}) });
+  });
 
   return program;
 }

@@ -13,6 +13,7 @@ import {
   type ExperiencesCredentials,
 } from '../credentials-store.js';
 import { promptAutoFilterPreference } from './auto-filter-prompt.js';
+import { promptDebugModePreference } from './debug-mode-prompt.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 
 const execFileAsync = promisify(execFile);
@@ -695,7 +696,22 @@ async function setupQoL(profilePath: string): Promise<void> {
     dim('     skipped');
   }
 
-  // 6d: NO_COLOR
+  // 6d: Debug-mode default
+  info('');
+  info('Debug logging — writes a JSONL trace of every command decision (agent calls, tool calls,');
+  info('apply actions, filter decisions, etc.) to ~/.contentful/experience-design-system-cli/debug/.');
+  info('Useful for developers debugging the CLI; OFF by default because traces are verbose.');
+  const debugCreds = await readExperiencesCredentials();
+  const debugChoice = await promptDebugModePreference((q) => prompt(q), debugCreds.debug);
+  if (debugChoice !== (debugCreds.debug ?? false)) {
+    await writeExperiencesCredentials({ ...debugCreds, debug: debugChoice });
+    ok(`Debug logging default set to ${debugChoice ? 'ON' : 'OFF'}`);
+  } else {
+    dim('     unchanged');
+  }
+  info('');
+
+  // 6e: NO_COLOR
   info('');
   info('NO_COLOR — set to 1 to disable ANSI color output (useful in CI or plain terminals).');
   const setNoColor = await confirm('Add NO_COLOR=1 (disable colors) to your profile?', false);

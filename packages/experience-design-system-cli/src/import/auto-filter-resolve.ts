@@ -7,8 +7,12 @@
  *   2. Config (`credentials.json` `autoFilter` field) — used when flag absent
  *   3. Default ON — when neither is set
  */
+import { getDebugLogger } from '../lib/debug-logger.js';
+
 export function resolveAutoFilter(opts: { autoFilter?: boolean }, configAutoFilter?: boolean): boolean {
-  if (opts.autoFilter !== undefined) return opts.autoFilter;
-  if (configAutoFilter !== undefined) return configAutoFilter;
-  return true;
+  const source =
+    opts.autoFilter !== undefined ? 'flag' : configAutoFilter !== undefined ? 'config' : 'default';
+  const value = opts.autoFilter ?? configAutoFilter ?? true;
+  getDebugLogger().event('filter', 'auto-filter.resolve', { source, value });
+  return value;
 }
