@@ -6,39 +6,60 @@ Living doc for what the PTY harness should exercise on the `experiences` CLI. Th
 
 ## Implementation status — pick up here
 
-Last updated: 2026-07-06 on branch `feat/integ-4406-pty-harness-mcp`, rebased on `feat/dsi-tui-wizard-mega` at `5b64783` (post-PR #91).
+Last updated: 2026-07-06 on branch `feat/integ-4406-pty-harness-mcp`, rebased on `feat/dsi-tui-wizard-mega` at `5b64783` (post-PR #91). **Pushed to origin.**
 
-**What's implemented (41 tests, all green):**
+**What's implemented (61 tests, all green):**
 
 - **Tier 1 (smoke, 3 tests):** `01-welcome.pty.test.mjs`, `02-run-picker.pty.test.mjs`, `03-ctrl-c-exits.pty.test.mjs`.
 - **Tier 2 (validation, 20 tests):** `10-import-validation.validation.test.mjs`. Every `process.exit(1)` branch in `packages/experience-design-system-cli/src/import/command.ts`.
-- **Tier 3a — headless (11 tests):** `20-import-headless.validation.test.mjs`. `--skip-apply`, `--print-prompt`, `--dry-run` (with/without deprecation notice), `--skip-analyze`, `--agent` routing, `--yes`, env-var credentials, `--verbose`, `--out`. Uses `--print-prompt` to skip actual agent invocation for pipeline tests (stub emits enough for full runs too — see below — but headless tests avoid the ~2s agent spawn per component).
-- **Tier 3b — PTY flag→state (7 tests):** `30-import-flag-to-state.pty.test.mjs`. `--project` skips welcome, tokens-step [s] advances to scanning, `--auto-accept-scope` skips scope-gate, `--no-push` reaches save-path without push confirmation, `--out-dir` bypasses save-path prompt, `--agent codex` routes via env override, and a control test that scope-gate DOES render without `--auto-accept-scope`.
-- **Fixture:** `fixtures/projects/react-minimal/` — Button, Card, Icon.
-- **Stub agent:** emits `classify_component` + one `classify_prop` per detected prop, so the wizard's generate step gets valid tool calls and never trips "agent produced no tool calls" against the fixture.
-- **Infra:** `tests/helpers/tmp-home.mjs` (per-test HOME), `run-cli.mjs` (headless spawn), `fixtures.mjs` (fixture paths), `vitest.config.ts` (`maxWorkers: 4`, matches `*.pty.test.mjs` and `*.validation.test.mjs` when `PTY_TESTS=1`).
+- **Tier 3a — headless (11 tests):** `20-import-headless.validation.test.mjs`. `--skip-apply`, `--print-prompt`, `--dry-run` (with/without deprecation notice), `--skip-analyze`, `--agent` routing, `--yes`, env-var credentials, `--verbose`, `--out`.
+- **Tier 3b — PTY flag→state (7 tests):** `30-import-flag-to-state.pty.test.mjs`. `--project`, tokens-skip, `--auto-accept-scope`, `--no-push`, `--out-dir`, `--agent codex` routing, control test that scope-gate DOES render without `--auto-accept-scope`.
+- **Tier 3b — selection & pipeline flags (6 tests):** `40-import-selection.validation.test.mjs`. `--deselect` (single + multi), `--select-all`, `--print + --out` writes real `components.json`, `--model haiku` reaches agent argv (via STUB_ARGV_LOG), `--agent codex` invokes only the codex binary.
+- **Tier 3b — custom prompt paths (3 tests):** `50-import-custom-prompts.validation.test.mjs` + `51-import-generate-prompt.pty.test.mjs`. `--select-prompt-path` warns + echoes path headlessly (with a `.md` warning variant); `--generate-prompt-path` renders the wizard's CustomPromptBanner with the resolved path.
+- **Tier 3b — runs-based flags (4 tests):** `60-import-runs.pty.test.mjs`. `--push-from-run` headless (missing-creds error), `--push-from-run` PTY (renders "Push run <id>" CredentialsStep), `--modify` PTY (reaches "Loading generated definitions"), and a run-not-found guard.
+- **Tier 3b — apply push against mock EMA (7 tests):** `70-apply-push.validation.test.mjs` + `helpers/mock-ema.mjs`. `--host + --yes` drives preview → apply, `--cma-token` becomes `Authorization: Bearer`, `--dry-run` stops after preview, `--host` routes to the mock, `--yes` requirement in non-interactive mode, 400 preview error surfaces, 401 users/me error surfaces.
+
+**Fixtures:**
+
+- `fixtures/projects/react-minimal/` — Button, Card, Icon (3-component React library).
+- `fixtures/components/react-minimal.components.json` — pre-baked CDF the wizard produced against the fixture. Used by push tests to skip pipeline.
+
+**Helpers:**
+
+- `tests/helpers/tmp-home.mjs` — per-test isolated `HOME`.
+- `tests/helpers/run-cli.mjs` — headless CLI spawn.
+- `tests/helpers/fixtures.mjs` — fixture paths (`REACT_MINIMAL`, `REACT_MINIMAL_COMPONENTS_JSON`).
+- `tests/helpers/seed-runs.mjs` — write a `RunRecord` to `<home>/.config/experiences/runs.json`.
+- `tests/helpers/mock-ema.mjs` — in-process HTTP mock of Contentful EMA push endpoints (`/users/me`, `/imports/preview`, `/imports/apply`, apply-poll). `.stub(method, urlPattern, handler)` overrides per test; `.requests` records every hit.
+- Stub agent (`src/stub-agent.mjs`) emits `classify_component` + `classify_prop` per detected prop; supports `STUB_ARGV_LOG` to record its invocation argv so tests can assert on flag pass-through (`--model`, `--agent`).
 
 **Locked-in decisions:**
 
-1. **Fixture strategy:** hand-crafted 3-component React library. Not vendored, not eval-corpus.
-2. **Push mocking:** at the HTTP layer using nock (or msw). Not an in-CLI env override. **Not implemented yet** — Tier 3b tests use `--no-push` to avoid needing this.
-3. **Parallelism:** `maxWorkers: 4`. Configured.
-4. **Real agents:** stub by default. Real-agent path exists via `stub_agents: false` on the MCP server; no dedicated real-agent CI job yet.
+1. **Fixture strategy:** hand-crafted 3-component React library.
+2. **Push mocking:** in-process HTTP server on 127.0.0.1 (not nock — CLI runs in a child process; nock can't cross the boundary).
+3. **Parallelism:** `maxWorkers: 4`.
+4. **Real agents:** stub by default; MCP server has a `stub_agents: false` opt-in.
 
-**Remaining Tier 3 flags without PTY-mode coverage (pick up here):**
+**Remaining Tier 3 flags without dedicated coverage (pick up here):**
 
-- `--auto-filter` — shows the filter banner. NB: probe showed this steers the wizard back to WelcomeStep unexpectedly on the current mega branch; investigate before writing the test.
-- `--no-auto-filter` — jumps to manual scope-gate (no filter banner).
-- `--no-live-preview` — final-review with no auto re-render.
-- `--exclude-invalid` — scope-gate auto-drops invalid entries.
-- `--select-prompt-path` / `--generate-prompt-path` — banner names the custom prompt.
-- `--modify <valid>` (needs seeded `runs.json`) — opens at final-review.
-- `--push-from-run <valid>` (needs seeded `runs.json`, and either nock or `--force`) — jumps to push directly.
-- `--on-conflict overwrite|skip|fail` — conflict gate skipped, path resolves per mode. Requires seeding a save-path with a pre-existing file.
-- `--select "Button*"` / `--deselect "Icon*"` / `--select-all` — pre-selections visible on scope-gate.
-- Push flow (`--no-save`, actual push confirmation): needs nock. Deferred.
+- `--auto-filter` — shows the AI-filter banner. NB: probe showed this steers the wizard back to WelcomeStep unexpectedly on the mega branch; investigate before writing.
+- `--no-auto-filter` — no filter banner; scope-gate has NO "AI recommended exclusions" section. Straightforward PTY test.
+- `--no-live-preview` — final-review with no auto re-render after FieldEditor save. Needs to actually reach final-review.
+- `--exclude-invalid` — scope-gate auto-drops invalid entries. Needs a fixture component with an invalid name or a validation-failing prop.
+- `--force` — bypasses staleness on `--push-from-run` / `--modify`. Needs a stale seeded run (fingerprint mismatch); test both directions (without --force errors, with --force proceeds).
+- `--modify --overwrite` / `--modify --save-as-new` — save-path semantics. Needs seeded pipeline.db so `--modify` actually loads a session.
+- `--on-conflict overwrite/skip/fail` write path — needs pre-existing file at save path AND the wizard's save-conflict gate (which needs a completed generate step in-PTY).
+- `--select "Button*"` / `--deselect "Icon*"` in PTY mode — the flags only affect headless pipeline today; if they should reach the wizard's scope-gate (as originally documented), that's a bug worth confirming/fixing.
+- `--host` on `import` (not `apply push`) — hooked into the wizard's `WizardApp` prop; assert via banner or wizard state.
+- `--viewports <path>` — passed to apply-push; needs a viewports fixture + push test.
+- Interactive `--yes` on the wizard push-confirmation path — requires driving through generate + save + push in-PTY.
+- Push confirmation (interactive) with breaking-changes gate — requires mock EMA returning `changed` with `breaking` classification.
 
-Recommended shape: one PTY test file per state cluster (`40-import-select-flags.pty.test.mjs`, `41-import-runs-picker.pty.test.mjs`, etc.). Reuse the existing `spawnWizard` API and the `spawn()` helper in `30-import-flag-to-state.pty.test.mjs` as a template.
+Recommended sequencing:
+1. `--no-auto-filter` / `--auto-filter` / `--exclude-invalid` — all PTY, no new infra.
+2. `--force` — needs a "stale run" seed helper (or seeding a fingerprint mismatch).
+3. `--modify` with seeded pipeline.db — biggest unlock; enables 4-5 more flags.
+4. Push-confirmation flows through the wizard (`--yes`, `--host` on import, breaking-changes gate) — needs both seed helpers and mock EMA.
 
 **Open questions still unanswered (only matter for Tier 3+):**
 
@@ -150,35 +171,46 @@ Status legend: ✅ = implemented (with test file), ⏭️ = deferred, blank = TO
 | 25 |  | `import --skip-generate` | apply or exits | error surface |
 | 26 | ✅ | `import --skip-apply` | terminates after generate | Tier 3a `20-import-headless…` |
 | 27 | ✅ | `import --no-push` | save-path prompt (no push) | `30-import-flag-to-state.pty.test.mjs` |
-| 28 |  | `import --no-save` | pushes without disk write | needs nock (push mock) |
+| 28 | ⏭️ | `import --no-save` | pushes without disk write | needs full push-through-wizard flow |
 | 29 | ✅ | `import --auto-accept-scope` | skips scope-gate | `30-import-flag-to-state.pty.test.mjs` |
 | 30 |  | `import --exclude-invalid` | scope-gate auto-drops invalid | fixture needs invalid rows |
-| 31 |  | `import --auto-filter` | shows filter progress | probe showed unexpected routing on mega — investigate |
+| 31 |  | `import --auto-filter` | shows filter progress | probe showed unexpected routing — investigate |
 | 32 |  | `import --no-auto-filter` | jumps to manual scope-gate | filter banner absent |
-| 33 |  | `import --no-live-preview` | final review, no auto-preview | no re-render on FieldEditor save |
-| 34 |  | `import --yes` | skips push confirmation | needs nock (push mock) |
+| 33 |  | `import --no-live-preview` | final review, no auto-preview | need to reach final-review |
+| 34 | ⏭️ | `import --yes` | skips push confirmation | needs push-through-wizard flow |
 | 35 |  | `import --force` | bypasses staleness check | needs stale seeded run |
 | 36 | ✅ | `import --verbose` | shows full progress | Tier 3a |
-| 37 |  | `import --print` | writes components.json | assert file at `--out` path |
+| 37 | ✅ | `import --print` | writes components.json | `40-import-selection.validation.test.mjs` |
 | 38 | ✅ | `import --out /tmp/xyz` | uses custom out dir | Tier 3a |
 | 39 | ✅ | `import --out-dir /tmp/xyz` | bypasses inline save prompt | `30-import-flag-to-state.pty.test.mjs` |
-| 40 |  | `import --on-conflict overwrite` | replaces existing file | needs pre-existing file at save path |
-| 41 |  | `import --on-conflict skip` | writes to timestamped subdir | needs pre-existing file at save path |
-| 42 |  | `import --on-conflict fail` | exits non-zero | needs pre-existing file at save path |
-| 43 |  | `import --select-prompt-path /path.md` | banner names custom prompt | fixture prompt file |
-| 44 |  | `import --generate-prompt-path /path.md` | banner names custom prompt | fixture prompt file |
-| 45 |  | `import --host https://api.flinkly.com` | staging routing | needs nock (push mock) |
-| 46 |  | `import --viewports /path.json` | passes viewports to push | needs nock |
-| 47 |  | `import --push-from-run <valid>` | jumps to push directly | needs seeded runs.json + nock |
-| 48 |  | `import --modify <valid>` | opens at final-review | needs seeded runs.json |
-| 49 |  | `import --modify X --overwrite` | saves to recorded savePath | needs seeded runs.json |
-| 50 |  | `import --modify X --save-as-new` | prompts for new path | needs seeded runs.json |
-| 51 | ✅ | `import --agent codex` | routes agent-runner via env override | `30-import-flag-to-state.pty.test.mjs` |
-| 52 |  | `import --model haiku` | passes model to agent | stub echoes model |
-| 53 |  | `import --select "Button*"` | pre-selects matching | scope-gate shows preselection |
-| 54 |  | `import --deselect "Icon*"` | pre-deselects matching | scope-gate shows deselection |
-| 55 |  | `import --select-all` | selects all extracted | scope-gate shows all checked |
-| 56 |  | `import --raw-tokens fixtures/tokens/raw-scss/vars.scss` | classifies raw tokens | fixture needed |
+| 40 | ⏭️ | `import --on-conflict overwrite` | replaces existing file | needs push-through-wizard flow (headless --print ignores it) |
+| 41 | ⏭️ | `import --on-conflict skip` | writes to timestamped subdir | same |
+| 42 | ⏭️ | `import --on-conflict fail` | exits non-zero | same |
+| 43 | ✅ | `import --select-prompt-path /path.md` | banner names custom prompt | `50-import-custom-prompts.validation.test.mjs` |
+| 44 | ✅ | `import --generate-prompt-path /path.md` | banner names custom prompt | `51-import-generate-prompt.pty.test.mjs` |
+| 45 | ⏭️ | `import --host https://api.flinkly.com` | staging routing | needs push-through-wizard flow (apply push covered) |
+| 46 |  | `import --viewports /path.json` | passes viewports to push | needs viewports fixture + push |
+| 47 | ✅ | `import --push-from-run <valid>` | jumps to push directly (creds prompt) | `60-import-runs.pty.test.mjs` |
+| 48 | ✅ | `import --modify <valid>` | opens at final-review (load state) | `60-import-runs.pty.test.mjs` |
+| 49 |  | `import --modify X --overwrite` | saves to recorded savePath | needs seeded pipeline.db |
+| 50 |  | `import --modify X --save-as-new` | prompts for new path | needs seeded pipeline.db |
+| 51 | ✅ | `import --agent codex` | routes agent-runner via env override | `30-…` + `40-…` |
+| 52 | ✅ | `import --model haiku` | passes model to agent | `40-import-selection.validation.test.mjs` |
+| 53 |  | `import --select "Button*"` | pre-selects matching | wizard scope-gate doesn't honor this flag today — file a bug |
+| 54 | ✅ | `import --deselect "Icon*"` | pre-deselects matching (headless) | `40-import-selection.validation.test.mjs` |
+| 55 | ✅ | `import --select-all` | selects all extracted (headless) | `40-import-selection.validation.test.mjs` |
+| 56 |  | `import --raw-tokens fixtures/tokens/raw-scss/vars.scss` | classifies raw tokens | needs raw-tokens fixture |
+
+**apply push flags** (`70-apply-push.validation.test.mjs`, all against mock EMA):
+
+| Status | Flag | Assertion |
+|---|---|---|
+| ✅ | `apply push --host <mock> --yes` | preview + apply fire against the mock |
+| ✅ | `apply push --cma-token <token>` | Authorization: Bearer <token> on every call |
+| ✅ | `apply push --dry-run` | stops after preview; no apply call |
+| ✅ | `apply push` (no --yes, non-TTY) | exits 1 with "requires --yes" |
+| ✅ | 400 on preview | error surfaces with status |
+| ✅ | 401 on users/me | error surfaces with "token is invalid" |
 | 57 | `import --tokens fixtures/tokens/valid.dtcg.json` | uses pre-classified tokens | skips classification |
 | 58 | `import --no-cache` | re-runs all steps | no `[cached]` markers |
 | 59 | `import --print-prompt` | prints prompt to stdout, exits 0 | no wizard renders |
@@ -247,10 +279,11 @@ Explicit — write it down so we don't get pulled back into it:
 
 Cross-reference with the "Implementation status" block at the top of this file.
 
-1. **✅ Done — CI regression net + real state coverage:** Tier 1 (3) + Tier 2 (20) + Tier 3a headless (11) + Tier 3b PTY flag→state (7) + fixture + working stub agent = **41 tests**.
-2. **⏭️ Next — the rest of Tier 3b:** the flags in the table above marked without ✅. Two clusters need extra infrastructure before their tests can be written: (a) runs.json-seeded flows (`--modify`, `--push-from-run`, `--force`) need a `fixtures/runs/*.json` helper; (b) push-hitting flows (`--yes`, `--no-save`, `--host`, `--viewports`, `--on-conflict *` write-path) need HTTP mocking (nock).
-3. **After Tier 3b:** Tier 4 keystroke coverage per state reached (largely folded into 3b work).
-4. **Later:** Tier 5 non-import subcommands and Tier 6 cross-cutting.
+1. **✅ Done — CI regression net + representative flag coverage:** Tier 1 (3) + Tier 2 (20) + Tier 3a headless (11) + Tier 3b PTY flag→state (7) + selection & pipeline (6) + custom prompts (3) + runs-based (4) + apply push against mock EMA (7) = **61 tests**.
+2. **⏭️ Next — remaining Tier 3 flags:** see the table row-by-row. The natural next tranche is `--no-auto-filter`, `--exclude-invalid`, and `--force` (each with a bounded infra addition). After that, pipeline.db seeding unlocks `--modify --overwrite`/`--save-as-new` and interactive push-through-wizard flows.
+3. **Tier 4** — keystroke coverage per wizard state. Largely folded into 3b (scope-gate control test, save-path prompt bypass, credentials step prompt).
+4. **Tier 5** — non-`import` subcommands: `analyze extract` / `analyze select-agent`, `generate components` / `generate tokens`, `apply diff` / `apply select` (`apply push` already covered), `print components/tokens/validate`.
+5. **Tier 6** — cross-cutting: non-TTY invocation, PTY resize, ctrl-c at every state, runs.json migration (v1/v2/v3), broken runs.json, missing credentials.json, `EDS_AGENT_BINARY_*` malformed binary.
 
 **Rough sizing** (a future agent's day-of-work budget):
 
