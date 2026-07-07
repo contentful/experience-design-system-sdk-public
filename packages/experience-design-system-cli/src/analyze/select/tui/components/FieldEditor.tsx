@@ -661,9 +661,7 @@ function SlotRow({
           {editingValue?.mode === 'add' && activeField === 'allowedComponents' && pickerCandidates !== null && (
             <Box paddingLeft={2} flexDirection="column">
               {pickerCandidates.length === 0 ? (
-                <Text dimColor>
-                  {'(no valid components to add — all remaining candidates would create cycles)'}
-                </Text>
+                <Text dimColor>{'(no valid components to add — all remaining candidates would create cycles)'}</Text>
               ) : (
                 (() => {
                   const filtered =
@@ -760,8 +758,7 @@ export function simulateGraphWithCandidate(
     name: selfName,
     slots: currentSlots.map((s) => ({
       name: s.name,
-      allowedComponents:
-        s.name === targetSlotName ? [...s.allowedComponents, candidate] : [...s.allowedComponents],
+      allowedComponents: s.name === targetSlotName ? [...s.allowedComponents, candidate] : [...s.allowedComponents],
     })),
   };
   const withoutSelf = projectSlotGraph.filter((c) => c.name !== selfName);
