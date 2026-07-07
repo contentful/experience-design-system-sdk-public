@@ -8,7 +8,7 @@ Living doc for what the PTY harness should exercise on the `experiences` CLI. Th
 
 Last updated: 2026-07-07 on branch `feat/integ-4406-pty-harness-mcp`, rebased on `feat/dsi-tui-wizard-mega` at `5b64783` (post-PR #91). **Pushed to origin.**
 
-**What's implemented (71 tests, all green):**
+**What's implemented (72 tests, all green):**
 
 - **Tier 1 (smoke, 3 tests):** `01-welcome.pty.test.mjs`, `02-run-picker.pty.test.mjs`, `03-ctrl-c-exits.pty.test.mjs`.
 - **Tier 2 (validation, 20 tests):** `10-import-validation.validation.test.mjs`. Every `process.exit(1)` branch in `packages/experience-design-system-cli/src/import/command.ts`.
@@ -22,6 +22,7 @@ Last updated: 2026-07-07 on branch `feat/integ-4406-pty-harness-mcp`, rebased on
 - **Tier 3b — `--force` staleness bypass (3 tests):** `62-import-force-staleness.pty.test.mjs`. Stale fingerprint triggers "Refusing to replay — STALE" without `--force`; `--force` proceeds to final-review.
 - **Tier 3b — apply push against mock EMA (7 tests):** `70-apply-push.validation.test.mjs` + `helpers/mock-ema.mjs`.
 - **Tier 3b — `--exclude-invalid` (2 tests):** `41-import-exclude-invalid.validation.test.mjs`. Uses the `react-invalid` fixture (two files exporting a component named `Duplicate` → DUPLICATE_COMPONENT_NAME) plus one valid component. Without the flag the select-agent gate fails; with the flag the invalid components are auto-dropped and the pipeline completes.
+- **Tier 3b — push through the wizard against mock EMA (1 test):** `71-import-push-through-wizard.pty.test.mjs`. Drives `--modify` → final-review → `[A]` accept all → `[F]` finalize → `y` confirm → `[b]` save-and-push → `Enter` push, and asserts preview + apply requests land on the mock with the seeded space/environment path and `Authorization: Bearer` header from credentials.json.
 
 **Fixtures:**
 
@@ -51,12 +52,19 @@ Last updated: 2026-07-07 on branch `feat/integ-4406-pty-harness-mcp`, rebased on
 
 - `import/orchestrator.ts` forwards `--exclude-invalid` only on the `select-agent` branch (line 279). When the caller passes `--select-all` / `--select` / `--deselect`, the orchestrator instead builds an `analyze select --select-all` invocation and does NOT forward `--exclude-invalid`. So `import --select-all --exclude-invalid --skip-apply` always fails with "refusing --select-all without --exclude-invalid" even though `analyze select` itself supports the combination. Only the select-agent path (no manual select flags) actually honors `--exclude-invalid` end-to-end via `import`.
 
+- `--select "Pattern"` is dropped by the wizard. `import/command.ts:467` threads `opts.select` into the headless `runPipeline` only; the WizardApp branch (lines 385-408) never consumes `opts.select`, so the wizard's scope-gate is not pre-populated. Same story for `--deselect` in the wizard. Headless `--select` / `--deselect` are covered in `40-import-selection.validation.test.mjs`; the wizard-side pre-selection is a wizard bug, not a testable behavior on this branch.
+
+- `--no-live-preview` is dropped by the `--modify` entry (and by `--push-from-run`). `import/command.ts:398` sets `livePreview: opts.livePreview !== false` on the WizardApp props, but the `--modify` short-circuit at line 225 calls `modifyRun` → `launchModifyWizard` (see `runs/modify-launcher.ts`), which does NOT plumb `livePreview` through. So passing `--no-live-preview --modify` still fires the preview HTTP call at final-review entry. On the fresh-import path (no `--modify`, no `--push-from-run`), the flag IS wired through — but reaching final-review from a fresh wizard invocation requires driving the scope-gate + generate steps end-to-end, which is not currently supported by the harness. Verified by probing both modes against mock EMA on the `--modify` path: preview fires in both cases (1 call each).
+
 **Remaining flags without dedicated coverage (pick up here):**
 
-- `--no-live-preview` — investigation showed the live-preview banner renders in `--modify` mode regardless of the flag; probing didn't produce mock-EMA hits either way. May be a wizard behavior issue on this branch, or my probe was missing the trigger. Needs one more investigation pass before writing.
-- Push-through-wizard flows (`--yes` on wizard push-confirm, interactive `--host` on `import`, `--on-conflict` write-path, `--no-save`) — I got the wizard to `--modify` → final-review reliably, but couldn't drive it past finalize into a real push against mock EMA in my probing time. The pieces are all there (seed helpers, mock EMA); needs someone patient enough to trace exactly which keys advance from finalize → save/push chooser → push execution against the mock. `apply push` (Tier 3b tests 70-*) already covers the API-layer behavior of these flags; the wizard's specific rendering just isn't tested end-to-end yet.
-- Breaking-changes gate — requires mock EMA returning `changed` with `breaking` classification. Extends the mock; not conceptually hard.
-- `--select "Button*"` / `--deselect "Icon*"` in PTY mode — these flags only affect the headless pipeline today (already covered in Tier 3a/40-*). If they should also reach the wizard's scope-gate as pre-selection state, that's a wizard bug — verify + file, don't just add a failing test.
+- `--no-live-preview` — **confirmed dropped on `--modify` path.** `launchModifyWizard` doesn't plumb `livePreview` through. See the wizard-bug entry below. On the fresh-import path the flag IS wired, but reaching final-review from a fresh wizard invocation requires driving scope-gate + generate end-to-end (out of harness scope today). Deferred.
+- Wizard-side `--yes` on push-confirm — `import/command.ts` never plumbs `opts.yes` into WizardApp; on the TTY branch the flag only gates `isHeadless`, so `--yes --modify` in a real terminal still shows the push-confirm screen and requires Enter. Consider this a wizard gap (see the wizard-bugs section) rather than a test target.
+- Interactive `--host` on `import` — for the `--modify` path the wizard reads host from credentials.json (via `readExperiencesCredentials` in `runs/replay-helpers.ts:198`), not from `opts.host`. The push-through-wizard test proves the wire-level routing works when the host is seeded via credentials. A dedicated test for the `--host` flag on a fresh (non-modify) import path still requires driving the full pipeline from scope-gate → generate → final-review, which is out of harness scope today.
+- `--no-save` — same reason: no way to reach the wizard's push-confirm from a fresh invocation on this branch. The `--modify` path always saves (that's its whole point), so `--no-save` isn't meaningful there. Deferred until the harness can drive a fresh import through to push.
+- `--on-conflict` write-path — only fires when the wizard's save step encounters a collision on disk. `--modify --overwrite` bypasses the conflict prompt entirely. Same blocker as `--no-save`.
+- Breaking-changes gate — the wizard renders the "⚠ Breaking changes will affect downstream entities. Press Enter to acknowledge and apply." banner when preview classifies a diff as breaking. Extending mock-ema to return `changed` with `breaking` classification and asserting the banner + acknowledge Enter flow is a straightforward extension of `71-…`. Deferred for time; the plumbing is understood.
+- `--select "Button*"` / `--deselect "Icon*"` in PTY mode — **confirmed dropped by the wizard.** `import/command.ts:467` threads `opts.select` into the headless `runPipeline` only; WizardApp props never consume it. Documented as a wizard bug; no PTY test written. Headless coverage remains in `40-import-selection.validation.test.mjs`.
 - `--viewports <path>` — passed to `apply push`; needs a viewports fixture and a push test that asserts they appear in the manifest.
 - `--host` on `import` (as opposed to `apply push`) — the flag reaches `WizardApp` via a prop; assert via banner or wizard state.
 
@@ -180,8 +188,8 @@ Status legend: ✅ = implemented (with test file), ⏭️ = deferred, blank = TO
 | 30 | ✅ | `import --exclude-invalid` | select-agent drops invalid, pipeline completes | `41-import-exclude-invalid.validation.test.mjs` (headless, select-agent path) |
 | 31 | ✅ | `import --auto-filter` | shows filter progress | `31-import-auto-filter.pty.test.mjs` |
 | 32 | ✅ | `import --no-auto-filter` | jumps to manual scope-gate | `31-import-auto-filter.pty.test.mjs` |
-| 33 | ⏭️ | `import --no-live-preview` | final review, no auto-preview | probe unclear; needs re-investigation |
-| 34 | ⏭️ | `import --yes` | skips push confirmation | needs push-through-wizard flow |
+| 33 | ⏭️ | `import --no-live-preview` | final review, no auto-preview | **wizard bug:** flag dropped on `--modify` / `--push-from-run` paths (see "Wizard bugs" below); fresh-import path can't reach final-review from harness today |
+| 34 | ⏭️ | `import --yes` | skips push confirmation | **wizard gap:** `opts.yes` never reaches WizardApp; only gates `isHeadless`. |
 | 35 | ✅ | `import --force` | bypasses staleness check | `62-import-force-staleness.pty.test.mjs` |
 | 36 | ✅ | `import --verbose` | shows full progress | Tier 3a |
 | 37 | ✅ | `import --print` | writes components.json | `40-import-selection.validation.test.mjs` |
@@ -192,7 +200,7 @@ Status legend: ✅ = implemented (with test file), ⏭️ = deferred, blank = TO
 | 42 | ⏭️ | `import --on-conflict fail` | exits non-zero | same |
 | 43 | ✅ | `import --select-prompt-path /path.md` | banner names custom prompt | `50-import-custom-prompts.validation.test.mjs` |
 | 44 | ✅ | `import --generate-prompt-path /path.md` | banner names custom prompt | `51-import-generate-prompt.pty.test.mjs` |
-| 45 | ⏭️ | `import --host https://api.flinkly.com` | staging routing | needs push-through-wizard flow (apply push covered) |
+| 45 | ✅ (partial) | `import --host https://api.flinkly.com` | staging routing | `71-import-push-through-wizard.pty.test.mjs` seeds `mock.host` via credentials.json and asserts all API calls hit that host. Direct `--host` flag on a fresh import still deferred. |
 | 46 |  | `import --viewports /path.json` | passes viewports to push | needs viewports fixture + push |
 | 47 | ✅ | `import --push-from-run <valid>` | jumps to push directly (creds prompt) | `60-import-runs.pty.test.mjs` |
 | 48 | ✅ | `import --modify <valid>` | opens at final-review (load state) | `60-import-runs.pty.test.mjs` |
@@ -200,7 +208,7 @@ Status legend: ✅ = implemented (with test file), ⏭️ = deferred, blank = TO
 | 50 | ✅ | `import --modify X --save-as-new` | prompts for new path | `61-import-modify-save-modes.pty.test.mjs` |
 | 51 | ✅ | `import --agent codex` | routes agent-runner via env override | `30-…` + `40-…` |
 | 52 | ✅ | `import --model haiku` | passes model to agent | `40-import-selection.validation.test.mjs` |
-| 53 |  | `import --select "Button*"` | pre-selects matching | wizard scope-gate doesn't honor this flag today — file a bug |
+| 53 | ⏭️ | `import --select "Button*"` | pre-selects matching | **wizard bug:** flag dropped by WizardApp (see "Wizard bugs" below). Headless coverage in `40-…`. |
 | 54 | ✅ | `import --deselect "Icon*"` | pre-deselects matching (headless) | `40-import-selection.validation.test.mjs` |
 | 55 | ✅ | `import --select-all` | selects all extracted (headless) | `40-import-selection.validation.test.mjs` |
 | 56 |  | `import --raw-tokens fixtures/tokens/raw-scss/vars.scss` | classifies raw tokens | needs raw-tokens fixture |
