@@ -310,6 +310,11 @@ export function suggestCycleBreakEdge(cycle: SlotCycle, allCycles: SlotCycle[]):
  * Truncates at `maxHops` edges (default 8), inserting `…` mid-path so the
  * beginning and end remain visible. A hop is one edge; the returned string
  * for an n-edge cycle contains n+1 component names.
+ *
+ * Kept for backend/log/error use where a single string is required (see
+ * `assertNoSlotCycles` in `apply/command.ts`). The TUI banner + detail panel
+ * use `formatCyclePathSegments` instead so slot names can be visually
+ * distinguished from component names.
  */
 export function formatCyclePath(cycle: SlotCycle, maxHops = 8): string {
   const arrow = ' → ';
@@ -334,4 +339,56 @@ export function formatCyclePath(cycle: SlotCycle, maxHops = 8): string {
   const head = parts.slice(0, keepTokens).join(arrow);
   const tail = parts[parts.length - 1];
   return `${head}${arrow}…${arrow}${tail}`;
+}
+
+/**
+ * A single token in the rendered cycle path — either a component name, a
+ * slot name (wrapped in brackets for monochrome legibility), or the arrow
+ * separator between them. The TUI colorizes each kind independently.
+ *
+ * Slots are rendered as `[slotName]` so the visual distinction survives when
+ * ANSI colors are stripped (log files, redirection, dumb terminals).
+ */
+export interface CyclePathSegment {
+  kind: 'component' | 'slot' | 'arrow';
+  text: string;
+}
+
+/**
+ * Segment-oriented counterpart to `formatCyclePath`. Preserves the same
+ * 8-hop truncation semantics but returns each token classified so the
+ * renderer can color slots (cyan) and components (default) independently.
+ * The truncation marker `…` is emitted as a bare component segment because
+ * it stands in for one or more component nodes.
+ */
+export function formatCyclePathSegments(cycle: SlotCycle, maxHops = 8): CyclePathSegment[] {
+  // Interleaved [component, slot, component, slot, ..., component] token list
+  // matching `formatCyclePath`'s parts array, but classified.
+  const raw: CyclePathSegment[] = [];
+  for (let i = 0; i < cycle.edges.length; i += 1) {
+    raw.push({ kind: 'component', text: cycle.path[i] });
+    raw.push({ kind: 'slot', text: `[${cycle.edges[i].slotName}]` });
+  }
+  raw.push({ kind: 'component', text: cycle.path[cycle.path.length - 1] });
+
+  const withArrows = (segs: CyclePathSegment[]): CyclePathSegment[] => {
+    const out: CyclePathSegment[] = [];
+    for (let i = 0; i < segs.length; i += 1) {
+      if (i > 0) out.push({ kind: 'arrow', text: ' → ' });
+      out.push(segs[i]);
+    }
+    return out;
+  };
+
+  if (cycle.edges.length <= maxHops) {
+    return withArrows(raw);
+  }
+
+  // Match `formatCyclePath` truncation: keep the first (maxHops-1)*2 tokens
+  // plus a "…" placeholder plus the trailing component.
+  const keepHops = Math.max(1, maxHops - 1);
+  const keepTokens = keepHops * 2;
+  const head = raw.slice(0, keepTokens);
+  const tail = raw[raw.length - 1];
+  return withArrows([...head, { kind: 'component', text: '…' }, tail]);
 }
