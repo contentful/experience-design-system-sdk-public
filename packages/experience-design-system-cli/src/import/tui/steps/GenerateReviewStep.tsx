@@ -799,6 +799,29 @@ export function GenerateReviewStep({
                 bold
               >{`▸ Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
             );
+            // Colorize slots (cyan, bracketed) distinctly from components so
+            // the operator can visually parse the alternating structure.
+            // Brackets on slot names ensure the distinction survives when
+            // ANSI is stripped (logs, redirected output).
+            const segs = formatCyclePathSegments(cycle, 16);
+            lines.push(
+              <Text key={`cyc-p-${idx}`}>
+                {'    '}
+                {segs.map((seg, si) =>
+                  seg.kind === 'slot' ? (
+                    <Text key={si} color="cyan">
+                      {seg.text}
+                    </Text>
+                  ) : seg.kind === 'arrow' ? (
+                    <Text key={si} dimColor>
+                      {seg.text}
+                    </Text>
+                  ) : (
+                    <Text key={si}>{seg.text}</Text>
+                  ),
+                )}
+              </Text>,
+            );
             if (cycle.suggestedBreak) {
               const b = cycle.suggestedBreak;
               lines.push(
@@ -859,11 +882,29 @@ export function GenerateReviewStep({
           <Text color="yellow">
             {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
           </Text>
-          {slotCycles.slice(0, 3).map((cycle, idx) => (
-            <Text key={`cyc-banner-${idx}`} color="yellow">
-              {`  Cycle: ${formatCyclePath(cycle)}`}
-            </Text>
-          ))}
+          {slotCycles.slice(0, 3).map((cycle, idx) => {
+            const segs = formatCyclePathSegments(cycle);
+            return (
+              <Text key={`cyc-banner-${idx}`} color="yellow">
+                {'  Cycle: '}
+                {segs.map((seg, si) =>
+                  seg.kind === 'slot' ? (
+                    <Text key={si} color="cyan">
+                      {seg.text}
+                    </Text>
+                  ) : seg.kind === 'arrow' ? (
+                    <Text key={si} dimColor>
+                      {seg.text}
+                    </Text>
+                  ) : (
+                    <Text key={si} color="yellow">
+                      {seg.text}
+                    </Text>
+                  ),
+                )}
+              </Text>
+            );
+          })}
           {slotCycles.length > 3 && <Text color="yellow">{`  …${slotCycles.length - 3} more`}</Text>}
           <Text dimColor>{'  press [c] for detail'}</Text>
         </Box>
