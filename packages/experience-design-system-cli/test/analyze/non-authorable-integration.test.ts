@@ -29,14 +29,14 @@ describe('analyze pipeline composition: pre-classify → non-authorable filter',
         framework: 'react',
         usesCreateContext: true,
         props: [{ name: 'value', type: 'AbmAccount | null', required: true }],
-        slots: [{ name: 'default', isDefault: true }],
+        slots: [{ name: 'children', isDefault: true }],
       },
       {
         name: 'Accordion',
         source: '/components/Accordion.tsx',
         framework: 'react',
         props: [{ name: 'title', type: 'string', required: true }],
-        slots: [{ name: 'default', isDefault: true }],
+        slots: [{ name: 'children', isDefault: true }],
       },
     ];
     const { kept, skippedWarnings } = runPipeline(input);

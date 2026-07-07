@@ -1274,7 +1274,7 @@ function extractSlots(type: Type, hasChildren: boolean): RawSlotDefinition[] {
   const slots: RawSlotDefinition[] = [];
 
   if (hasChildren) {
-    slots.push({ name: 'default', isDefault: true });
+    slots.push({ name: 'children', isDefault: true });
   }
 
   for (const property of type.getProperties()) {
