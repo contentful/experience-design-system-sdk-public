@@ -39,6 +39,8 @@ import { nextStateAfterPrint } from './run-print-files-helpers.js';
 import { PushDecisionGateStep } from './steps/PushDecisionGateStep.js';
 import { chooseGateAction } from './push-decision-gate-helpers.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
+import { detectSlotCycles, extractComponentsFromManifest, formatSlotCycleReport } from '../../apply/command.js';
+import { parseEdsiError, formatParsedEdsiError } from '../../apply/error-parser.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
 import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
 import { spawnGenerateChild } from './spawn-generate.js';
@@ -1400,6 +1402,25 @@ export function WizardApp({
         return;
       }
     }
+
+    // INTEG-4401 Fix A — pre-push slot-cycle hard block for the wizard's
+    // direct-API push path. The standalone `apply push` / `apply select`
+    // commands run `assertNoSlotCycles` before ever constructing an API
+    // client, but `experiences import` calls `client.applyImport` from here
+    // without shelling out — so the guard has to run again on this path.
+    // Otherwise a cyclic graph reaches EDSI and the operator sees a raw
+    // Lambda error dump (see Fix C) instead of the clear local report.
+    const cycles = detectSlotCycles(extractComponentsFromManifest(manifest));
+    if (cycles.length > 0) {
+      update({
+        step: 'error',
+        errorStep: 'apply push',
+        errorMessage: formatSlotCycleReport(cycles).join('\n'),
+        errorAllowCredentialRetry: false,
+      });
+      return;
+    }
+
     update({ step: 'pushing', pushProgress: null });
     try {
       const resolvedHost = resolveWizardHost(host);
