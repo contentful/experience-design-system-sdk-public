@@ -12,6 +12,7 @@ import type {
 } from '@contentful/experience-design-system-types';
 import { useImmediateInput } from '../hooks/useImmediateInput.js';
 import { computeNextScrollOffset } from '../hooks/scroll-offset.js';
+import { findSlotCycles, type ComponentSlotInfo } from '../../../cycle-detection.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -81,6 +82,16 @@ type FieldEditorProps = {
    * description editors, string default editors, and value-list text entry.
    */
   onTextEntryActiveChange?: (active: boolean) => void;
+  /**
+   * INTEG-4401: project-wide slot graph. When supplied, the
+   * $allowedComponents add-mode shows a cycle-filtered picker. Optional.
+   */
+  projectSlotGraph?: ComponentSlotInfo[];
+  /**
+   * INTEG-4401: name of the component being edited. Self-loop guard +
+   * self-entry replacement in the cycle simulation.
+   */
+  currentComponentName?: string;
 };
 
 /**
@@ -553,6 +564,8 @@ function SlotRow({
   editingValue,
   valueText,
   width,
+  pickerCandidates,
+  pickerCursor,
 }: {
   slot: SlotState;
   selected: boolean;
@@ -563,6 +576,9 @@ function SlotRow({
   editingValue: { mode: 'add' | 'edit'; index?: number } | null;
   valueText: string;
   width: number;
+  /** INTEG-4401: cycle-filtered picker candidates. Null → no picker rendered. */
+  pickerCandidates: string[] | null;
+  pickerCursor: number;
 }): React.ReactElement {
   const cursor = cursorVisible ? '█' : ' ';
   const bg = selected ? 'blue' : undefined;
@@ -623,6 +639,44 @@ function SlotRow({
               <Text inverse={cursorVisible}> </Text>
             </Box>
           )}
+          {/* INTEG-4401: cycle-filtered picker beneath the add-line. */}
+          {editingValue?.mode === 'add' && activeField === 'allowedComponents' && pickerCandidates !== null && (
+            <Box paddingLeft={2} flexDirection="column">
+              {pickerCandidates.length === 0 ? (
+                <Text dimColor>
+                  {'(no valid components to add — all remaining candidates would create cycles)'}
+                </Text>
+              ) : (
+                (() => {
+                  const filtered =
+                    valueText.length === 0
+                      ? pickerCandidates
+                      : pickerCandidates.filter((n) => n.toLowerCase().includes(valueText.toLowerCase()));
+                  if (filtered.length === 0) {
+                    return <Text dimColor>{'(no candidates match — Enter to add as free text)'}</Text>;
+                  }
+                  const cursor = pickerCursor % filtered.length;
+                  const MAX_VISIBLE = 5;
+                  const start = Math.max(0, Math.min(filtered.length - MAX_VISIBLE, cursor - 2));
+                  const slice = filtered.slice(start, start + MAX_VISIBLE);
+                  return (
+                    <Box flexDirection="column">
+                      <Text dimColor>{'  candidates (↑↓ cycle, Enter to add):'}</Text>
+                      {slice.map((name, i) => {
+                        const absIdx = start + i;
+                        const isCursor = absIdx === cursor;
+                        return (
+                          <Text key={name} color={isCursor ? 'cyan' : undefined} dimColor={!isCursor}>
+                            {isCursor ? `  ▶ ${name}` : `    ${name}`}
+                          </Text>
+                        );
+                      })}
+                    </Box>
+                  );
+                })()
+              )}
+            </Box>
+          )}
         </Box>
       )}
 
@@ -674,6 +728,70 @@ function propFields(prop: PropState): PropField[] {
 // — placing it before description preserves description-as-last.
 const SLOT_FIELDS: SlotField[] = ['required', 'allowedComponents', 'description'];
 
+// ── INTEG-4401: cycle-aware $allowedComponents picker helpers ─────────────
+
+/** Simulate adding a candidate to a slot; replaces self-entry with live edits. */
+export function simulateGraphWithCandidate(
+  projectSlotGraph: ComponentSlotInfo[],
+  selfName: string,
+  currentSlots: { name: string; allowedComponents: string[] }[],
+  targetSlotName: string,
+  candidate: string,
+): ComponentSlotInfo[] {
+  const selfEntry: ComponentSlotInfo = {
+    name: selfName,
+    slots: currentSlots.map((s) => ({
+      name: s.name,
+      allowedComponents:
+        s.name === targetSlotName ? [...s.allowedComponents, candidate] : [...s.allowedComponents],
+    })),
+  };
+  const withoutSelf = projectSlotGraph.filter((c) => c.name !== selfName);
+  return [...withoutSelf, selfEntry];
+}
+
+/** True iff `next` contains a cycle whose canonical edge set is absent in `before`. */
+export function introducesNewCycle(
+  before: ReturnType<typeof findSlotCycles>,
+  next: ReturnType<typeof findSlotCycles>,
+): boolean {
+  const key = (edges: { fromComponent: string; slotName: string; toComponent: string }[]): string => {
+    if (edges.length === 0) return '';
+    const encoded = edges.map((e) => `${e.fromComponent}|${e.slotName}|${e.toComponent}`);
+    let minIdx = 0;
+    for (let i = 1; i < encoded.length; i += 1) if (encoded[i] < encoded[minIdx]) minIdx = i;
+    return [...encoded.slice(minIdx), ...encoded.slice(0, minIdx)].join(';');
+  };
+  const beforeSet = new Set(before.map((c) => key(c.edges)));
+  for (const cycle of next) if (!beforeSet.has(key(cycle.edges))) return true;
+  return false;
+}
+
+/** Candidate names that can be added to a slot without creating a new cycle. */
+export function computeAllowedComponentCandidates(
+  projectSlotGraph: ComponentSlotInfo[],
+  selfName: string,
+  currentSlots: { name: string; allowedComponents: string[] }[],
+  targetSlotName: string,
+): string[] {
+  const targetSlot = currentSlots.find((s) => s.name === targetSlotName);
+  const alreadyAdded = new Set(targetSlot?.allowedComponents ?? []);
+  const universe = new Set<string>();
+  for (const c of projectSlotGraph) universe.add(c.name);
+  universe.delete(selfName);
+  for (const added of alreadyAdded) universe.delete(added);
+  const baseline = findSlotCycles(simulateGraphWithCandidate(projectSlotGraph, selfName, currentSlots, '', ''));
+  const safe: string[] = [];
+  for (const candidate of universe) {
+    const nextCycles = findSlotCycles(
+      simulateGraphWithCandidate(projectSlotGraph, selfName, currentSlots, targetSlotName, candidate),
+    );
+    if (!introducesNewCycle(baseline, nextCycles)) safe.push(candidate);
+  }
+  safe.sort((a, b) => a.localeCompare(b));
+  return safe;
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function FieldEditor({
@@ -690,6 +808,8 @@ export function FieldEditor({
   onToggleComponentRationale,
   onToggleSourceExternal,
   onTextEntryActiveChange,
+  projectSlotGraph,
+  currentComponentName,
 }: FieldEditorProps): React.ReactElement {
   const { state: initialState, error: parseError } = parseToState(value);
 
@@ -745,6 +865,8 @@ export function FieldEditor({
   // mode='add' — append on Enter; mode='edit' — replace at index on Enter.
   const [editingValue, setEditingValue] = useState<{ mode: 'add' | 'edit'; index?: number } | null>(null);
   const [valueText, setValueText] = useState('');
+  // INTEG-4401: picker cursor for the cycle-filtered $allowedComponents list.
+  const [pickerCursor, setPickerCursor] = useState(0);
 
   const [validationError, setValidationError] = useState<string | null>(null);
   const [cursorVisible] = useState(true);
@@ -827,11 +949,64 @@ export function FieldEditor({
     // same add/edit/remove/reorder list shape.
     const isPropValuesEntry = editingValue && currentProp && activeField === 'values' && !inSlots;
     const isSlotAllowedEntry = editingValue && currentSlot && activeField === 'allowedComponents' && inSlots;
+    // INTEG-4401: cycle-filtered candidates for slot-add.
+    const slotAddCandidates =
+      isSlotAllowedEntry && editingValue?.mode === 'add' && projectSlotGraph && currentSlot && currentComponentName
+        ? computeAllowedComponentCandidates(projectSlotGraph, currentComponentName, slots, currentSlot.name)
+        : null;
+    const filteredCandidates = slotAddCandidates
+      ? valueText.length === 0
+        ? slotAddCandidates
+        : slotAddCandidates.filter((n) => n.toLowerCase().includes(valueText.toLowerCase()))
+      : null;
     if (isPropValuesEntry || isSlotAllowedEntry) {
       const vals = isPropValuesEntry ? currentProp!.values : currentSlot!.allowedComponents;
+      const pickerActive = isSlotAllowedEntry && editingValue?.mode === 'add' && slotAddCandidates !== null;
+      if (pickerActive && (key.upArrow || key.downArrow)) {
+        const len = filteredCandidates!.length;
+        if (len > 0) {
+          setPickerCursor((c) => (key.upArrow ? (c - 1 + len) % len : (c + 1) % len));
+        }
+        return;
+      }
       if (key.return) {
-        const trimmed = valueText.trim();
+        let chosen: string | null = null;
+        if (pickerActive && filteredCandidates && filteredCandidates.length > 0) {
+          if (valueText.trim() === '') {
+            chosen = filteredCandidates[pickerCursor % filteredCandidates.length] ?? null;
+          } else {
+            const exact = filteredCandidates.find((n) => n === valueText.trim());
+            if (exact) chosen = exact;
+          }
+        }
+        const trimmed = chosen ?? valueText.trim();
         if (trimmed) {
+          // Cycle-aware free-text validation. Picker path is safe by construction.
+          if (
+            isSlotAllowedEntry &&
+            editingValue?.mode === 'add' &&
+            projectSlotGraph &&
+            currentSlot &&
+            currentComponentName &&
+            chosen === null
+          ) {
+            if (trimmed === currentComponentName) {
+              setValidationError(`"${trimmed}" cannot be added to its own slot (self-loop).`);
+              return;
+            }
+            const baseline = findSlotCycles(
+              simulateGraphWithCandidate(projectSlotGraph, currentComponentName, slots, '', ''),
+            );
+            const next = findSlotCycles(
+              simulateGraphWithCandidate(projectSlotGraph, currentComponentName, slots, currentSlot.name, trimmed),
+            );
+            if (introducesNewCycle(baseline, next)) {
+              setValidationError(
+                `Adding "${trimmed}" to slot "${currentSlot.name}" would create a slot-dependency cycle. Choose a different component.`,
+              );
+              return;
+            }
+          }
           let nextVals: string[];
           let cursorAfter: number;
           if (editingValue!.mode === 'add') {
@@ -850,22 +1025,28 @@ export function FieldEditor({
             commit({ ...editorState, slots: nextSlots });
           }
           setValueCursor(cursorAfter);
+          setValidationError(null);
         }
         setEditingValue(null);
         setValueText('');
+        setPickerCursor(0);
         return;
       }
       if (key.escape) {
         setEditingValue(null);
         setValueText('');
+        setPickerCursor(0);
+        setValidationError(null);
         return;
       }
       if (key.backspace) {
         setValueText((t) => t.slice(0, -1));
+        setPickerCursor(0);
         return;
       }
       if (input && input.length === 1 && !key.ctrl && !key.meta) {
         setValueText((t) => t + input);
+        setPickerCursor(0);
         return;
       }
       return;
@@ -1572,6 +1753,15 @@ export function FieldEditor({
           // slot row
           const s = slots[row.idx]!;
           const isSelected = inSlots && row.idx === slotIdx;
+          // INTEG-4401: compute picker candidates for selected slot in add-mode.
+          const slotPickerCandidates =
+            isSelected &&
+            editingValue?.mode === 'add' &&
+            activeField === 'allowedComponents' &&
+            projectSlotGraph &&
+            currentComponentName
+              ? computeAllowedComponentCandidates(projectSlotGraph, currentComponentName, slots, s.name)
+              : null;
           return (
             <SlotRow
               key={`slot-${row.idx}`}
@@ -1584,6 +1774,8 @@ export function FieldEditor({
               editingValue={isSelected ? editingValue : null}
               valueText={isSelected ? valueText : ''}
               width={innerWidth}
+              pickerCandidates={slotPickerCandidates}
+              pickerCursor={pickerCursor}
             />
           );
         })}
