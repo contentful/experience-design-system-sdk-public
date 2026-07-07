@@ -8,6 +8,7 @@ import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } fro
 import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
 import type { ToolCall, TokenToolCall } from '../generate/agent-runner.js';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
+import type { SlotCycle, SlotEdge } from '../analyze/cycle-detection.js';
 
 export type StepStatus = 'pending' | 'complete' | 'failed' | 'interrupted';
 export type CommandName =
@@ -175,6 +176,15 @@ CREATE TABLE IF NOT EXISTS scanned_files (
   session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   path        TEXT NOT NULL,
   PRIMARY KEY (session_id, path)
+);
+
+CREATE TABLE IF NOT EXISTS slot_cycles (
+  session_id             TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  cycle_index            INTEGER NOT NULL,
+  path_json              TEXT NOT NULL,
+  edges_json             TEXT NOT NULL,
+  suggested_break_json   TEXT,
+  PRIMARY KEY (session_id, cycle_index)
 );
 
 CREATE INDEX IF NOT EXISTS idx_steps_session            ON steps(session_id);
@@ -2060,6 +2070,69 @@ export function loadScannedFiles(db: DatabaseSync, sessionId: string): string[] 
     path: string;
   }>;
   return rows.map((r) => r.path);
+}
+
+// --- Slot-dependency cycle persistence (INTEG-4401) ---
+//
+// The `slot_cycles` table caches the result of running the cycle detector
+// over the extractor's slot output so the TUI can render sidebar badges,
+// a banner, and an expandable detail panel without re-running the analysis
+// on every render. Rows are session-scoped and rewritten wholesale on each
+// re-extract via `storeSlotCycles`.
+
+export function storeSlotCycles(
+  db: DatabaseSync,
+  sessionId: string,
+  cycles: Array<SlotCycle & { suggestedBreak?: SlotEdge | null }>,
+): void {
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM slot_cycles WHERE session_id = ?').run(sessionId);
+    const insert = db.prepare(
+      `INSERT INTO slot_cycles (session_id, cycle_index, path_json, edges_json, suggested_break_json)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+    for (let i = 0; i < cycles.length; i += 1) {
+      const cycle = cycles[i];
+      insert.run(
+        sessionId,
+        i,
+        JSON.stringify(cycle.path),
+        JSON.stringify(cycle.edges),
+        cycle.suggestedBreak ? JSON.stringify(cycle.suggestedBreak) : null,
+      );
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
+export interface StoredSlotCycle extends SlotCycle {
+  suggestedBreak: SlotEdge | null;
+}
+
+export function loadSlotCycles(db: DatabaseSync, sessionId: string): StoredSlotCycle[] {
+  const rows = db
+    .prepare(
+      'SELECT cycle_index, path_json, edges_json, suggested_break_json FROM slot_cycles WHERE session_id = ? ORDER BY cycle_index',
+    )
+    .all(sessionId) as Array<{
+    cycle_index: number;
+    path_json: string;
+    edges_json: string;
+    suggested_break_json: string | null;
+  }>;
+  return rows.map((r) => ({
+    path: JSON.parse(r.path_json) as string[],
+    edges: JSON.parse(r.edges_json) as SlotEdge[],
+    suggestedBreak: r.suggested_break_json ? (JSON.parse(r.suggested_break_json) as SlotEdge) : null,
+  }));
+}
+
+export function clearSlotCycles(db: DatabaseSync, sessionId: string): void {
+  db.prepare('DELETE FROM slot_cycles WHERE session_id = ?').run(sessionId);
 }
 
 export function markCacheHumanEdited(db: DatabaseSync, entityType: 'component' | 'token_set', entityId: string): void {
