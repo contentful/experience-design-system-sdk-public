@@ -624,7 +624,11 @@ function SlotRow({
           <Box>
             <Text dimColor>allowed:</Text>
             {activeField === 'allowedComponents' && (
-              <Text dimColor>{'  [a]dd  [e]dit  [r]emove  [↑↓] navigate  [K/J] reorder'}</Text>
+              <Text dimColor>
+                {slot.allowedComponents.length > 0
+                  ? '  [a]dd  [e]dit  [r]emove  [←→] cycle  [↑↓] navigate  [K/J] reorder'
+                  : '  [a]dd  [e]dit  [r]emove  [↑↓] navigate  [K/J] reorder'}
+              </Text>
             )}
           </Box>
           {slot.allowedComponents.length === 0 && !editingValue && (
@@ -800,6 +804,65 @@ export function computeAllowedComponentCandidates(
   for (const candidate of universe) {
     const nextCycles = findSlotCycles(
       simulateGraphWithCandidate(projectSlotGraph, selfName, currentSlots, targetSlotName, candidate),
+    );
+    if (!introducesNewCycle(baseline, nextCycles)) safe.push(candidate);
+  }
+  safe.sort((a, b) => a.localeCompare(b));
+  return safe;
+}
+
+/** Simulate replacing the entry at `replaceIndex` of `targetSlotName` with `candidate`. */
+export function simulateGraphWithReplacement(
+  projectSlotGraph: ComponentSlotInfo[],
+  selfName: string,
+  currentSlots: { name: string; allowedComponents: string[] }[],
+  targetSlotName: string,
+  replaceIndex: number,
+  candidate: string,
+): ComponentSlotInfo[] {
+  const selfEntry: ComponentSlotInfo = {
+    name: selfName,
+    slots: currentSlots.map((s) => {
+      if (s.name !== targetSlotName) return { name: s.name, allowedComponents: [...s.allowedComponents] };
+      const nextVals = s.allowedComponents.map((v, i) => (i === replaceIndex ? candidate : v));
+      return { name: s.name, allowedComponents: nextVals };
+    }),
+  };
+  const withoutSelf = projectSlotGraph.filter((c) => c.name !== selfName);
+  return [...withoutSelf, selfEntry];
+}
+
+/**
+ * Candidate names that can REPLACE the entry at `replaceIndex` of a slot without
+ * introducing a new cycle. The entry being replaced is treated as a free
+ * position — the current value is NOT excluded from the universe (users can
+ * cycle back to it), only *other* existing entries in the same slot and the
+ * self-name are excluded. The entry being replaced is itself a valid candidate
+ * for its own position (so cycling can "return home").
+ */
+export function computeAllowedComponentReplacementCandidates(
+  projectSlotGraph: ComponentSlotInfo[],
+  selfName: string,
+  currentSlots: { name: string; allowedComponents: string[] }[],
+  targetSlotName: string,
+  replaceIndex: number,
+): string[] {
+  const targetSlot = currentSlots.find((s) => s.name === targetSlotName);
+  const existing = targetSlot?.allowedComponents ?? [];
+  const excludeOtherEntries = new Set<string>();
+  existing.forEach((v, i) => {
+    if (i !== replaceIndex) excludeOtherEntries.add(v);
+  });
+  const universe = new Set<string>();
+  for (const c of projectSlotGraph) universe.add(c.name);
+  universe.delete(selfName);
+  for (const other of excludeOtherEntries) universe.delete(other);
+  // Baseline: graph with self-entry replaced by currentSlots (no simulated change).
+  const baseline = findSlotCycles(simulateGraphWithCandidate(projectSlotGraph, selfName, currentSlots, '', ''));
+  const safe: string[] = [];
+  for (const candidate of universe) {
+    const nextCycles = findSlotCycles(
+      simulateGraphWithReplacement(projectSlotGraph, selfName, currentSlots, targetSlotName, replaceIndex, candidate),
     );
     if (!introducesNewCycle(baseline, nextCycles)) safe.push(candidate);
   }
@@ -1513,6 +1576,44 @@ export function FieldEditor({
           const nextSlots = slots.map((s, i) => (i === slotIdx ? { ...s, allowedComponents: next } : s));
           commit({ ...editorState, slots: nextSlots });
         };
+        // INTEG-4401 (fix 2): ←/→ (h/l) cycle the entry at valueCursor
+        // in-place through the cycle-filtered candidate universe. Only fires
+        // when the caller wired projectSlotGraph + currentComponentName AND
+        // there is an entry under the cursor (add-mode is unaffected because
+        // this block only runs outside the inline text-entry branch above).
+        if (
+          (key.leftArrow || key.rightArrow || input === 'h' || input === 'l') &&
+          vals.length > 0 &&
+          projectSlotGraph &&
+          currentComponentName
+        ) {
+          const candidates = computeAllowedComponentReplacementCandidates(
+            projectSlotGraph,
+            currentComponentName,
+            slots,
+            currentSlot.name,
+            valueCursor,
+          );
+          if (candidates.length === 0) {
+            setValidationError('no other valid components for this position');
+            return;
+          }
+          const current = vals[valueCursor] ?? '';
+          const curIdx = candidates.indexOf(current);
+          const forward = key.rightArrow || input === 'l';
+          // If current isn't in candidates (e.g. an existing free-text value
+          // that would be excluded now), land on index 0 (or last for backward).
+          const baseIdx = curIdx < 0 ? (forward ? -1 : 0) : curIdx;
+          const nextIdx = forward
+            ? (baseIdx + 1) % candidates.length
+            : (baseIdx - 1 + candidates.length) % candidates.length;
+          const next = candidates[nextIdx];
+          if (next === undefined || next === current) return;
+          const nextVals = vals.map((v, i) => (i === valueCursor ? next : v));
+          setSlotVals(nextVals);
+          setValidationError(null);
+          return;
+        }
         if (input === 'a') {
           setEditingValue({ mode: 'add' });
           setValueText('');
