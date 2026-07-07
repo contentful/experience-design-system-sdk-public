@@ -5,7 +5,8 @@
  * keystrokes needed to reach the state the flag targets, and asserts
  * a distinctive string on the rendered screen.
  *
- * Uses the react-minimal fixture (3 components: Button, Card, Icon)
+ * Uses the react-minimal fixture (13 components: Button, Card, Icon, Badge,
+ * Avatar, Modal, Menu, Input, Select, Tab, Toast, Tooltip, Divider)
  * and the offline stub agent. The stub emits one classify_component +
  * classify_prop per detected prop so the generate step never trips
  * "agent produced no tool calls".
@@ -79,7 +80,7 @@ describe('experiences import — flag → wizard state (PTY)', () => {
     // Positive corroboration: at least one of the scope-gate-skip markers
     // that Ink logs at auto-accept time appears in the transcript. Any of
     // the three variants is fine.
-    expect(raw).toMatch(/Auto-accepting|components accepted|accepted 3 components/i);
+    expect(raw).toMatch(/Auto-accepting|components accepted|accepted 13 components/i);
   });
 
   // ── --no-push completes generation without pushing ──────────────────────

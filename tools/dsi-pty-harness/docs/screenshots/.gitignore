@@ -1,0 +1,8 @@
+# Screenshot artifacts are generated locally by
+# scripts/capture-screenshots.mjs (text) and scripts/render-screenshots.mjs
+# (PNG). They're not source; regenerate on demand.
+#
+# Keep this .gitignore and any README/manifest under git; everything else
+# is transient.
+*.txt
+*.png

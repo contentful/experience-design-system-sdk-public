@@ -57,7 +57,7 @@ describe('experiences import — selection & pipeline flags (headless)', () => {
   }
 
   // ── --deselect narrows the accepted set ─────────────────────────────────
-  it('--deselect Icon reduces analyze.select.accepted from 3 → 2', async () => {
+  it('--deselect Icon reduces analyze.select.accepted from 13 → 12', async () => {
     const { code, stdout } = await runCli(
       [
         'import',
@@ -73,10 +73,10 @@ describe('experiences import — selection & pipeline flags (headless)', () => {
     expect(code).toBe(0);
     const report = parseReport(stdout);
     const select = report.steps.find((s) => s.step === 'analyze select');
-    expect(select.detail.accepted).toBe(2);
+    expect(select.detail.accepted).toBe(12);
   });
 
-  it('--deselect Button --deselect Icon leaves 1 accepted', async () => {
+  it('--deselect Button --deselect Icon leaves 11 accepted', async () => {
     const { code, stdout } = await runCli(
       [
         'import',
@@ -94,11 +94,11 @@ describe('experiences import — selection & pipeline flags (headless)', () => {
     expect(code).toBe(0);
     const report = parseReport(stdout);
     const select = report.steps.find((s) => s.step === 'analyze select');
-    expect(select.detail.accepted).toBe(1);
+    expect(select.detail.accepted).toBe(11);
   });
 
-  // ── --select-all keeps all 3 accepted ───────────────────────────────────
-  it('--select-all keeps all 3 components accepted', async () => {
+  // ── --select-all keeps all extracted components accepted ────────────────
+  it('--select-all keeps all 13 components accepted', async () => {
     const { code, stdout } = await runCli(
       [
         'import',
@@ -113,7 +113,7 @@ describe('experiences import — selection & pipeline flags (headless)', () => {
     expect(code).toBe(0);
     const report = parseReport(stdout);
     const select = report.steps.find((s) => s.step === 'analyze select');
-    expect(select.detail.accepted).toBe(3);
+    expect(select.detail.accepted).toBe(13);
   });
 
   // ── --print emits components.json to --out ──────────────────────────────

@@ -64,7 +64,7 @@ describe('experiences import — headless flows', () => {
     expect(stepNames).toContain('analyze extract');
     expect(stepNames).toContain('generate components');
     const extract = report.steps.find((s) => s.step === 'analyze extract');
-    expect(extract.detail.components).toBe(3);
+    expect(extract.detail.components).toBe(13);
   });
 
   // ── --print-prompt prints and reports "prompt printed" ─────────────────

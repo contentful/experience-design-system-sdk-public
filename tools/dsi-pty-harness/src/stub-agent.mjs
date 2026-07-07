@@ -78,25 +78,95 @@ function findPropsInPrompt() {
   return [...props];
 }
 
+/**
+ * Detect which command's prompt we were handed. The select-agent skill
+ * (skills/select-components.md) uses the `select_component` / `reject_component`
+ * tool vocabulary; the generate-components skill uses `classify_prop` / etc.
+ * The prompt is passed as the last argv element for all supported agents.
+ */
+function detectPromptKind() {
+  const prompt = argv.join(' ');
+  if (/select_component\b|reject_component\b/.test(prompt)) return 'select';
+  return 'classify';
+}
+
+/**
+ * Enumerate every component the wizard's select-agent prompt is asking
+ * about. The prompt embeds each candidate as a JSON object with a
+ * `"path": "src/.../<Name>.tsx"` field. Extract those, de-duplicate,
+ * and return the derived component names in first-seen order.
+ *
+ * Falls back to a single generic name if no paths match (the skill
+ * prompt's few-shot examples reference synthetic names in string
+ * literals, but they don't have `"path"` JSON fields).
+ */
+function findSelectBatchNames() {
+  const prompt = argv.join(' ');
+  const seen = new Set();
+  const names = [];
+  for (const m of prompt.matchAll(/"path"\s*:\s*"[^"]*\/([A-Z][A-Za-z0-9_]*)\.[jt]sx?"/g)) {
+    const n = m[1];
+    if (seen.has(n)) continue;
+    seen.add(n);
+    names.push(n);
+  }
+  if (names.length === 0) {
+    const m =
+      /Component name:\s*([A-Z][A-Za-z0-9_]*)/.exec(prompt) ||
+      /component named\s+([A-Z][A-Za-z0-9_]*)/i.exec(prompt);
+    names.push(m ? m[1] : 'Component');
+  }
+  return names;
+}
+
+/** Fixture-specific reject set — makes docs images show BOTH sections. */
+const REJECT_NAMES = new Set(['Modal', 'Divider']);
+
 setTimeout(() => {
+  const kind = detectPromptKind();
   process.stderr.write('progress=starting\n');
   process.stderr.write('progress=analyzing\n');
 
-  process.stdout.write(
-    JSON.stringify({
-      tool: 'classify_component',
-      description: 'stub-generated component',
-    }) + '\n',
-  );
-  for (const prop of findPropsInPrompt()) {
+  if (kind === 'select') {
+    const names = findSelectBatchNames();
+    for (const name of names) {
+      if (REJECT_NAMES.has(name)) {
+        process.stdout.write(
+          JSON.stringify({
+            tool: 'reject_component',
+            name,
+            reason: 'structural/utility — no authorable content surface',
+            confidence: 4,
+          }) + '\n',
+        );
+      } else {
+        process.stdout.write(
+          JSON.stringify({
+            tool: 'select_component',
+            name,
+            reason: 'has authorable props (label / title / children)',
+            confidence: 5,
+          }) + '\n',
+        );
+      }
+    }
+  } else {
     process.stdout.write(
       JSON.stringify({
-        tool: 'classify_prop',
-        prop,
-        cdf_type: 'string',
-        cdf_category: 'content',
+        tool: 'classify_component',
+        description: 'stub-generated component',
       }) + '\n',
     );
+    for (const prop of findPropsInPrompt()) {
+      process.stdout.write(
+        JSON.stringify({
+          tool: 'classify_prop',
+          prop,
+          cdf_type: 'string',
+          cdf_category: 'content',
+        }) + '\n',
+      );
+    }
   }
 
   process.stderr.write('progress=done\n');

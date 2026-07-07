@@ -71,7 +71,9 @@ describe('experiences import — AI-filter flags (PTY)', () => {
     expect(stripped).not.toMatch(/originally excluded by AI/i);
     // Positive: scope-gate rendered with the three fixture components
     // all included by default.
-    expect(stripped).toMatch(/Components \(3\)/);
+    // 13-component fixture; only assert a few known names to keep the test
+    // resilient to further fixture growth.
+    expect(stripped).toMatch(/Components \(13\)/);
     expect(stripped).toMatch(/\[✓\]\s*Button/);
     expect(stripped).toMatch(/\[✓\]\s*Card/);
     expect(stripped).toMatch(/\[✓\]\s*Icon/);
