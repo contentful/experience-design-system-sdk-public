@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   nextStepAfterScopeGate,
   nextStepAfterCredentialsValidated,
+  shouldSkipFinalReviewAfterCredentials,
   resolveNoCacheForGenerate,
 } from '../../../src/import/tui/wizard-state-transitions.js';
 
@@ -33,25 +34,43 @@ describe('nextStepAfterCredentialsValidated', () => {
   });
 });
 
-describe('resolveNoCacheForGenerate — new sessions always re-run generation', () => {
-  // Regression: the generation_cache table is project-wide (keyed by content
-  // hash + component_id, no session scoping). A fresh new session on an
-  // unchanged codebase would silently hit cache entries from prior sessions
-  // and skip the LLM. That's a footgun for operators who expect a fresh
-  // `experiences import` to re-classify their components.
+describe('shouldSkipFinalReviewAfterCredentials', () => {
+  it('does NOT skip final-review when the operator has not yet finalized (prefetch completed early)', () => {
+    expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: 'gen-abc', finalReviewPassed: false })).toBe(
+      false,
+    );
+  });
+
+  it('skips final-review when the operator already passed through it once (late 401 re-entry)', () => {
+    expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: 'gen-abc', finalReviewPassed: true })).toBe(true);
+  });
+
+  it('never skips before the generate session exists', () => {
+    expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: false })).toBe(false);
+    expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: true })).toBe(false);
+  });
+
+  it('modify-entry / push-from-picker seed states short-circuit on re-entry', () => {
+    expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: 'seeded-gen', finalReviewPassed: true })).toBe(
+      true,
+    );
+  });
+});
+
+describe('resolveNoCacheForGenerate', () => {
   it('forces --no-cache on a fresh session even when the CLI did not pass --no-cache', () => {
     expect(resolveNoCacheForGenerate({ isFreshSession: true, cliNoCache: false })).toBe(true);
   });
 
-  it('forces --no-cache on a fresh session when --no-cache was also passed (no double-negative)', () => {
+  it('forces --no-cache on a fresh session when --no-cache was also passed', () => {
     expect(resolveNoCacheForGenerate({ isFreshSession: true, cliNoCache: true })).toBe(true);
   });
 
-  it('honors the CLI flag on continued sessions — cache-on by default (modify / push-from-run)', () => {
+  it('honors the CLI flag on continued sessions — cache-on by default', () => {
     expect(resolveNoCacheForGenerate({ isFreshSession: false, cliNoCache: false })).toBe(false);
   });
 
-  it('honors --no-cache on continued sessions when the operator explicitly opts in', () => {
+  it('honors --no-cache on continued sessions when explicitly opted in', () => {
     expect(resolveNoCacheForGenerate({ isFreshSession: false, cliNoCache: true })).toBe(true);
   });
 });

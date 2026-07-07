@@ -70,6 +70,7 @@ import {
   buildSkippedPreviewTransition,
   shouldRefusePush,
   buildSkippedPushTransition,
+  shouldSkipFinalReviewAfterCredentials,
   resolveNoCacheForGenerate,
 } from './wizard-state-transitions.js';
 
@@ -188,6 +189,7 @@ type WizardState = {
    * to render the `⚠ …` banner via the `initialFinalizeError` prop.
    */
   finalizeErrorBanner: string | null;
+  finalReviewPassed: boolean;
 };
 
 function findCliPath(): string {
@@ -503,11 +505,6 @@ export function WizardApp({
   // `generating-tokens` step which already drives the token-classification
   // subprocess off `state.rawTokensPath`. Modify-entry wins if both are set.
   const rawTokensEntryReady = !modifyEntryReady && !pushFromPickerReady && !!initialRawTokensPath;
-  // Fresh session = the wizard is going to create its own extract session via
-  // `analyze extract` rather than pick one up from `--modify` / `--push-from-run`.
-  // For fresh sessions we force `--no-cache` on the spawned `generate components`
-  // so operators aren't silently served classifications cached from a prior
-  // session (the generation_cache table is project-wide, not session-scoped).
   const isFreshSession = !seedExtractSessionId;
   const effectiveNoCache = resolveNoCacheForGenerate({ isFreshSession, cliNoCache: noCache });
   const initialStepResolved: WizardStep = modifyEntryReady
@@ -579,6 +576,7 @@ export function WizardApp({
     credentialsSkipped: false,
     lastRunId: null,
     finalizeErrorBanner: null,
+    finalReviewPassed: modifyEntryReady || pushFromPickerReady,
   });
 
   useEffect(() => {
@@ -1148,10 +1146,7 @@ export function WizardApp({
   // accepted components) or jumps straight to push-decision-gate (if scope
   // rejected everything but tokens/removals still need to be pushed).
   const advanceAfterCredentialsValidated = async () => {
-    // If we already ran the generator (re-entering credentials from a late
-    // 401/403 raised by runPreview), skip back to push-decision-gate rather
-    // than re-running the LLM.
-    if (state.generateSessionId) {
+    if (shouldSkipFinalReviewAfterCredentials(state)) {
       update({ step: 'push-decision-gate' });
       return;
     }
@@ -2008,6 +2003,7 @@ export function WizardApp({
             initialFinalizeError={state.finalizeErrorBanner}
             onFinalize={(accepted, rejected, unresolved) => {
               process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`);
+              update({ finalReviewPassed: true });
               // INTEG-4411 refined: no `accepted === 0` up-front block here.
               // A zero-accepted finalize can still be a valid push when the
               // operator explicitly rejected component(s) that exist server-
