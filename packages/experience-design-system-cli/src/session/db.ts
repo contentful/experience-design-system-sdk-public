@@ -1269,6 +1269,22 @@ export function storeCDFComponents(
     `INSERT INTO raw_slot_allowed_components (session_id, component_id, slot_name, allowed_component, position)
      VALUES (?, ?, ?, ?, ?)`,
   );
+  // Slot delete+insert statements for the update path (INTEG-4401). We mirror
+  // the delete-then-insert pattern already used for raw_prop_allowed_values so
+  // that removing a slot or a $allowedComponents entry (e.g. user breaking a
+  // cycle in FieldEditor) actually clears the row instead of leaving stale
+  // data behind.
+  const deleteSlots = db.prepare(`DELETE FROM raw_slots WHERE session_id = ? AND component_id = ?`);
+  const deleteSlotAllowedComponents = db.prepare(
+    `DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ?`,
+  );
+  const readExistingSlotDefaults = db.prepare(
+    `SELECT name, is_default FROM raw_slots WHERE session_id = ? AND component_id = ?`,
+  );
+  const insertSlotOnUpdate = db.prepare(
+    `INSERT INTO raw_slots (session_id, component_id, name, is_default, required, description, position)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  );
 
   db.exec('BEGIN');
   try {
@@ -1293,6 +1309,38 @@ export function storeCDFComponents(
           if (prop.$values && prop.$values.length > 0) {
             deleteAllowedValues.run(sessionId, componentId, propName);
             prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
+          }
+        }
+
+        // Persist $slots on the update path (INTEG-4401). We snapshot is_default
+        // from any pre-existing rows before deleting because the CDF entry
+        // doesn't carry that flag — the extractor sets it (e.g. `children` slots
+        // land with is_default=1) and losing it here would break downstream
+        // codegen. Delete-then-insert (not upsert) so a removed slot or a
+        // removed $allowedComponents entry actually disappears from the DB.
+        const existingDefaults = new Map<string, number>(
+          (readExistingSlotDefaults.all(sessionId, componentId) as Array<{ name: string; is_default: number }>).map(
+            (r) => [r.name, r.is_default],
+          ),
+        );
+        deleteSlotAllowedComponents.run(sessionId, componentId);
+        deleteSlots.run(sessionId, componentId);
+        let slotPos = 0;
+        for (const [slotName, slot] of Object.entries(entry.$slots ?? {})) {
+          const isDefault = existingDefaults.get(slotName) ?? 0;
+          insertSlotOnUpdate.run(
+            sessionId,
+            componentId,
+            slotName,
+            isDefault,
+            slot.$required ? 1 : 0,
+            slot.$description ?? null,
+            slotPos++,
+          );
+          if (slot.$allowedComponents && slot.$allowedComponents.length > 0) {
+            slot.$allowedComponents.forEach((ac, i) =>
+              insertAllowedComponent.run(sessionId, componentId, slotName, ac, i),
+            );
           }
         }
       } else {
