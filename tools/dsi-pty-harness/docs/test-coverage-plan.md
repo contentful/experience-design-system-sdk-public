@@ -8,7 +8,7 @@ Living doc for what the PTY harness should exercise on the `experiences` CLI. Th
 
 Last updated: 2026-07-07 on branch `feat/integ-4406-pty-harness-mcp`, rebased on `feat/dsi-tui-wizard-mega` at `5b64783` (post-PR #91). **Pushed to origin.**
 
-**What's implemented (69 tests, all green):**
+**What's implemented (71 tests, all green):**
 
 - **Tier 1 (smoke, 3 tests):** `01-welcome.pty.test.mjs`, `02-run-picker.pty.test.mjs`, `03-ctrl-c-exits.pty.test.mjs`.
 - **Tier 2 (validation, 20 tests):** `10-import-validation.validation.test.mjs`. Every `process.exit(1)` branch in `packages/experience-design-system-cli/src/import/command.ts`.
@@ -21,10 +21,12 @@ Last updated: 2026-07-07 on branch `feat/integ-4406-pty-harness-mcp`, rebased on
 - **Tier 3b — `--modify` save modes (3 tests):** `61-import-modify-save-modes.pty.test.mjs`. Uses seeded pipeline.db to reach final-review with real generated components; `--overwrite` writes to `run.savePath` without a prompt; `--save-as-new` renders the "Save to:" prompt and does not silently save.
 - **Tier 3b — `--force` staleness bypass (3 tests):** `62-import-force-staleness.pty.test.mjs`. Stale fingerprint triggers "Refusing to replay — STALE" without `--force`; `--force` proceeds to final-review.
 - **Tier 3b — apply push against mock EMA (7 tests):** `70-apply-push.validation.test.mjs` + `helpers/mock-ema.mjs`.
+- **Tier 3b — `--exclude-invalid` (2 tests):** `41-import-exclude-invalid.validation.test.mjs`. Uses the `react-invalid` fixture (two files exporting a component named `Duplicate` → DUPLICATE_COMPONENT_NAME) plus one valid component. Without the flag the select-agent gate fails; with the flag the invalid components are auto-dropped and the pipeline completes.
 
 **Fixtures:**
 
 - `fixtures/projects/react-minimal/` — Button, Card, Icon.
+- `fixtures/projects/react-invalid/` — DuplicateA, DuplicateB, Valid. Trips DUPLICATE_COMPONENT_NAME to exercise `--exclude-invalid`.
 - `fixtures/components/react-minimal.components.json` — pre-baked CDF from a real wizard run.
 - `fixtures/pipeline-state/pipeline.db` — pre-baked pipeline.db with 3 status='generated' components in session `true-creek-c44b`. Used by `--modify` tests via `EDS_PIPELINE_DB_PATH`.
 
@@ -45,10 +47,13 @@ Last updated: 2026-07-07 on branch `feat/integ-4406-pty-harness-mcp`, rebased on
 3. **Parallelism:** `maxWorkers: 4`.
 4. **Real agents:** stub by default; MCP server has a `stub_agents: false` opt-in.
 
+**Wizard bugs found during test authoring:**
+
+- `import/orchestrator.ts` forwards `--exclude-invalid` only on the `select-agent` branch (line 279). When the caller passes `--select-all` / `--select` / `--deselect`, the orchestrator instead builds an `analyze select --select-all` invocation and does NOT forward `--exclude-invalid`. So `import --select-all --exclude-invalid --skip-apply` always fails with "refusing --select-all without --exclude-invalid" even though `analyze select` itself supports the combination. Only the select-agent path (no manual select flags) actually honors `--exclude-invalid` end-to-end via `import`.
+
 **Remaining flags without dedicated coverage (pick up here):**
 
 - `--no-live-preview` — investigation showed the live-preview banner renders in `--modify` mode regardless of the flag; probing didn't produce mock-EMA hits either way. May be a wizard behavior issue on this branch, or my probe was missing the trigger. Needs one more investigation pass before writing.
-- `--exclude-invalid` — needs a fixture component that fails extraction validation. Tried a `children` prop + default slot collision with the React extractor; the extractor didn't emit a default slot for that shape, so no `PROP_SLOT_NAME_COLLISION` fired. Try Svelte or another framework, or hand-inject an invalid raw_component into a seeded pipeline.db.
 - Push-through-wizard flows (`--yes` on wizard push-confirm, interactive `--host` on `import`, `--on-conflict` write-path, `--no-save`) — I got the wizard to `--modify` → final-review reliably, but couldn't drive it past finalize into a real push against mock EMA in my probing time. The pieces are all there (seed helpers, mock EMA); needs someone patient enough to trace exactly which keys advance from finalize → save/push chooser → push execution against the mock. `apply push` (Tier 3b tests 70-*) already covers the API-layer behavior of these flags; the wizard's specific rendering just isn't tested end-to-end yet.
 - Breaking-changes gate — requires mock EMA returning `changed` with `breaking` classification. Extends the mock; not conceptually hard.
 - `--select "Button*"` / `--deselect "Icon*"` in PTY mode — these flags only affect the headless pipeline today (already covered in Tier 3a/40-*). If they should also reach the wizard's scope-gate as pre-selection state, that's a wizard bug — verify + file, don't just add a failing test.
@@ -172,7 +177,7 @@ Status legend: ✅ = implemented (with test file), ⏭️ = deferred, blank = TO
 | 27 | ✅ | `import --no-push` | save-path prompt (no push) | `30-import-flag-to-state.pty.test.mjs` |
 | 28 | ⏭️ | `import --no-save` | pushes without disk write | needs full push-through-wizard flow |
 | 29 | ✅ | `import --auto-accept-scope` | skips scope-gate | `30-import-flag-to-state.pty.test.mjs` |
-| 30 |  | `import --exclude-invalid` | scope-gate auto-drops invalid | fixture needs invalid rows |
+| 30 | ✅ | `import --exclude-invalid` | select-agent drops invalid, pipeline completes | `41-import-exclude-invalid.validation.test.mjs` (headless, select-agent path) |
 | 31 | ✅ | `import --auto-filter` | shows filter progress | `31-import-auto-filter.pty.test.mjs` |
 | 32 | ✅ | `import --no-auto-filter` | jumps to manual scope-gate | `31-import-auto-filter.pty.test.mjs` |
 | 33 | ⏭️ | `import --no-live-preview` | final review, no auto-preview | probe unclear; needs re-investigation |
