@@ -78,9 +78,11 @@ type GenerateReviewStepProps = {
  * Within each tier (empty / non-empty) we tie-break alphabetically by `key`.
  */
 export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(components: T[]): T[] {
+  const isEmpty = (entry: CDFComponentEntry): boolean =>
+    Object.keys(entry.$properties ?? {}).length === 0 && Object.keys(entry.$slots ?? {}).length === 0;
   return [...components].sort((a, b) => {
-    const aEmpty = Object.keys(a.entry.$properties ?? {}).length === 0;
-    const bEmpty = Object.keys(b.entry.$properties ?? {}).length === 0;
+    const aEmpty = isEmpty(a.entry);
+    const bEmpty = isEmpty(b.entry);
     if (aEmpty !== bEmpty) return aEmpty ? -1 : 1;
     return a.key.localeCompare(b.key);
   });
@@ -566,12 +568,8 @@ export function GenerateReviewStep({
   const selected = components[selectedIdx] ?? null;
   const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
 
-  // A component with zero classified $properties is a real defensibility issue —
-  // it can't be pushed to Contentful (no fields). Surface it in the sidebar via
-  // the existing warning-color path (yellow) and a "(empty)" suffix so the user
-  // can see what went wrong. They can manually add props in FieldEditor or
-  // explicitly reject the component.
-  const isEmpty = (c: CdfReviewEntry): boolean => Object.keys(c.entry.$properties).length === 0;
+  const isEmpty = (c: CdfReviewEntry): boolean =>
+    Object.keys(c.entry.$properties).length === 0 && Object.keys(c.entry.$slots ?? {}).length === 0;
   const emptyCount = components.filter(isEmpty).length;
 
   const sidebarItems: ReviewComponentSummary[] = components.map((c) => ({

@@ -1303,7 +1303,7 @@ describe('FieldEditor — empty-properties warning (Bug 2, INTEG-4257)', () => {
     expect(frame).toMatch(/No properties classified/i);
   });
 
-  it('shows the same warning when $properties is empty but $slots exists', () => {
+  it('does NOT warn when $properties is empty but $slots exists — slots are a valid authorable surface', () => {
     const { lastFrame } = render(
       <FieldEditor
         value={EMPTY_PROPS_WITH_SLOT}
@@ -1315,8 +1315,8 @@ describe('FieldEditor — empty-properties warning (Bug 2, INTEG-4257)', () => {
       />,
     );
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('⚠');
-    expect(frame).toMatch(/No properties classified/i);
+    expect(frame).not.toMatch(/No properties classified/i);
+    expect(frame).not.toMatch(/no fields/i);
   });
 });
 
