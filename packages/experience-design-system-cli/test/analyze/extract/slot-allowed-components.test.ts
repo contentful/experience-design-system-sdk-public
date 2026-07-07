@@ -92,6 +92,12 @@ describe('extractAllowedComponentsFromTypeText', () => {
     ).toEqual([]);
   });
 
+  it('extracts every props type from a union inside the tuple', () => {
+    expect(
+      extractAllowedComponentsFromTypeText('Snippet<[AProps | BProps]>', { propsToComponent, componentNames }),
+    ).toEqual(['A', 'B']);
+  });
+
   it('mixes Snippet and ReactElement forms in the same type text', () => {
     expect(
       extractAllowedComponentsFromTypeText('ReactElement<AProps> | Snippet<[BProps]>', {

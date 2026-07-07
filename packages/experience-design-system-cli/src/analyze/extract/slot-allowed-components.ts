@@ -10,27 +10,28 @@ export interface AllowedComponentsContext {
 // Only the first generic argument (the props type name) is captured.
 const REACT_ELEMENT_GENERIC = /(?:React\.)?ReactElement\s*<\s*([A-Za-z_$][\w$.]*)(?![\w$.])/g;
 
-// Svelte 5 typed snippets: `Snippet<[XProps]>`. The type argument is a tuple
-// listing render args; when a snippet is authored to render a nested
-// ComponentType, the single tuple element is that component's Props type.
-// We only match the single-element tuple form — non-props render args
-// (e.g. `Snippet<[year: number]>`) don't reference a ComponentType and are
-// filtered out below via propsToComponent lookup.
-const SVELTE_SNIPPET_GENERIC = /Snippet\s*<\s*\[\s*([A-Za-z_$][\w$.]*)\s*\]\s*>/g;
+const SVELTE_SNIPPET_TUPLE = /Snippet\s*<\s*\[([^\]]*)\]\s*>/g;
+const IDENTIFIER = /[A-Za-z_$][\w$.]*/g;
 
 export function extractAllowedComponentsFromTypeText(typeText: string, ctx: AllowedComponentsContext): string[] {
   const found = new Set<string>();
-  for (const re of [REACT_ELEMENT_GENERIC, SVELTE_SNIPPET_GENERIC]) {
-    re.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(typeText)) !== null) {
-      const propsTypeName = m[1];
-      const componentName = ctx.propsToComponent.get(propsTypeName);
-      if (componentName && ctx.componentNames.has(componentName)) {
-        found.add(componentName);
-      }
-    }
+  const record = (propsTypeName: string): void => {
+    const componentName = ctx.propsToComponent.get(propsTypeName);
+    if (componentName && ctx.componentNames.has(componentName)) found.add(componentName);
+  };
+
+  REACT_ELEMENT_GENERIC.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = REACT_ELEMENT_GENERIC.exec(typeText)) !== null) record(m[1]);
+
+  SVELTE_SNIPPET_TUPLE.lastIndex = 0;
+  while ((m = SVELTE_SNIPPET_TUPLE.exec(typeText)) !== null) {
+    const tupleBody = m[1];
+    IDENTIFIER.lastIndex = 0;
+    let id: RegExpExecArray | null;
+    while ((id = IDENTIFIER.exec(tupleBody)) !== null) record(id[0]);
   }
+
   return [...found].sort();
 }
 
