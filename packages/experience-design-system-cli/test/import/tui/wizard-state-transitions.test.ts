@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   nextStepAfterScopeGate,
   nextStepAfterCredentialsValidated,
+  resolveNoCacheForGenerate,
 } from '../../../src/import/tui/wizard-state-transitions.js';
 
 describe('nextStepAfterScopeGate', () => {
@@ -29,6 +30,29 @@ describe('nextStepAfterCredentialsValidated', () => {
 
   it('routes to push-decision-gate when no components were accepted (skip generating + final-review)', () => {
     expect(nextStepAfterCredentialsValidated({ acceptedCount: 0 })).toBe('push-decision-gate');
+  });
+});
+
+describe('resolveNoCacheForGenerate — new sessions always re-run generation', () => {
+  // Regression: the generation_cache table is project-wide (keyed by content
+  // hash + component_id, no session scoping). A fresh new session on an
+  // unchanged codebase would silently hit cache entries from prior sessions
+  // and skip the LLM. That's a footgun for operators who expect a fresh
+  // `experiences import` to re-classify their components.
+  it('forces --no-cache on a fresh session even when the CLI did not pass --no-cache', () => {
+    expect(resolveNoCacheForGenerate({ isFreshSession: true, cliNoCache: false })).toBe(true);
+  });
+
+  it('forces --no-cache on a fresh session when --no-cache was also passed (no double-negative)', () => {
+    expect(resolveNoCacheForGenerate({ isFreshSession: true, cliNoCache: true })).toBe(true);
+  });
+
+  it('honors the CLI flag on continued sessions — cache-on by default (modify / push-from-run)', () => {
+    expect(resolveNoCacheForGenerate({ isFreshSession: false, cliNoCache: false })).toBe(false);
+  });
+
+  it('honors --no-cache on continued sessions when the operator explicitly opts in', () => {
+    expect(resolveNoCacheForGenerate({ isFreshSession: false, cliNoCache: true })).toBe(true);
   });
 });
 
