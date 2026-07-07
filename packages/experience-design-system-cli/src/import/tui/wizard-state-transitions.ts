@@ -50,27 +50,16 @@ export function nextStepAfterCredentialsValidated(opts: { acceptedCount: number 
   return opts.acceptedCount > 0 ? 'generating' : 'push-decision-gate';
 }
 
-/**
- * Bug fix (2026-07): the "skip generator, jump to push-decision-gate" shortcut
- * on the credentials → post-credentials edge was originally guarded by
- * `state.generateSessionId != null`. That signal is ALSO set by the scope-gate
- * background prefetch as soon as the LLM finishes — so when a fast prefetch
- * completed while the operator was still typing credentials, submitting them
- * skipped `final-review` entirely and jumped straight to `push-decision-gate`.
- *
- * The real invariant the guard wants is: has the operator already been through
- * the final-review screen and finalized once? That's what `finalReviewPassed`
- * captures — it flips true in `onFinalize` on the GenerateReviewStep, not on
- * mere prefetch completion.
- *
- * Retained (and required) is `generateSessionId != null`, so we don't jump to
- * push-decision-gate before generation is even complete.
- */
 export function shouldSkipFinalReviewAfterCredentials(state: {
   generateSessionId: string | null;
   finalReviewPassed: boolean;
 }): boolean {
   return state.finalReviewPassed && state.generateSessionId != null;
+}
+
+export function resolveNoCacheForGenerate(opts: { isFreshSession: boolean; cliNoCache: boolean }): boolean {
+  if (opts.isFreshSession) return true;
+  return opts.cliNoCache;
 }
 
 /**

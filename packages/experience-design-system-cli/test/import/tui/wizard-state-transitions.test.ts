@@ -3,6 +3,7 @@ import {
   nextStepAfterScopeGate,
   nextStepAfterCredentialsValidated,
   shouldSkipFinalReviewAfterCredentials,
+  resolveNoCacheForGenerate,
 } from '../../../src/import/tui/wizard-state-transitions.js';
 
 describe('nextStepAfterScopeGate', () => {
@@ -33,20 +34,14 @@ describe('nextStepAfterCredentialsValidated', () => {
   });
 });
 
-describe('shouldSkipFinalReviewAfterCredentials — prefetch cache bug', () => {
-  // Regression: the scope-gate spawns `generate components` in the background
-  // so its LLM cost overlaps with the operator typing credentials. When that
-  // prefetch finishes fast, `generateSessionId` lands in wizard state BEFORE
-  // the operator submits credentials — the bug was that the post-credentials
-  // guard treated a non-null generateSessionId as "operator has already
-  // finalized" and skipped the GenerateReviewStep entirely.
+describe('shouldSkipFinalReviewAfterCredentials', () => {
   it('does NOT skip final-review when the operator has not yet finalized (prefetch completed early)', () => {
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: 'gen-abc', finalReviewPassed: false })).toBe(
       false,
     );
   });
 
-  it('skips final-review only when the operator already passed through it once (late 401 re-entry)', () => {
+  it('skips final-review when the operator already passed through it once (late 401 re-entry)', () => {
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: 'gen-abc', finalReviewPassed: true })).toBe(true);
   });
 
@@ -55,19 +50,28 @@ describe('shouldSkipFinalReviewAfterCredentials — prefetch cache bug', () => {
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: true })).toBe(false);
   });
 
-  // Modify-entry invariant: the launcher seeds the wizard directly onto
-  // `final-review` (see WizardApp `modifyEntryReady`), so state initialization
-  // sets `finalReviewPassed: true` — that operator has effectively already
-  // been through the review screen for THIS session. Simulating that state,
-  // a late 401 from `runPreview` sending them back to credentials must
-  // short-circuit to `push-decision-gate` rather than re-render `final-review`.
-  // Same invariant applies to push-from-picker (enters at `push-from-picker`,
-  // skips `final-review` entirely).
-  it('modify-entry / push-from-picker seed states short-circuit on re-entry (finalReviewPassed pre-seeded true)', () => {
-    // Represents the wizard's initial state under `modifyEntryReady = true`.
+  it('modify-entry / push-from-picker seed states short-circuit on re-entry', () => {
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: 'seeded-gen', finalReviewPassed: true })).toBe(
       true,
     );
+  });
+});
+
+describe('resolveNoCacheForGenerate', () => {
+  it('forces --no-cache on a fresh session even when the CLI did not pass --no-cache', () => {
+    expect(resolveNoCacheForGenerate({ isFreshSession: true, cliNoCache: false })).toBe(true);
+  });
+
+  it('forces --no-cache on a fresh session when --no-cache was also passed', () => {
+    expect(resolveNoCacheForGenerate({ isFreshSession: true, cliNoCache: true })).toBe(true);
+  });
+
+  it('honors the CLI flag on continued sessions — cache-on by default', () => {
+    expect(resolveNoCacheForGenerate({ isFreshSession: false, cliNoCache: false })).toBe(false);
+  });
+
+  it('honors --no-cache on continued sessions when explicitly opted in', () => {
+    expect(resolveNoCacheForGenerate({ isFreshSession: false, cliNoCache: true })).toBe(true);
   });
 });
 
