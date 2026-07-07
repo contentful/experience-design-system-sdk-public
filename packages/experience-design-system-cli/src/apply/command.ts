@@ -224,9 +224,7 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
 // side-effects. Called from the `apply push` and `apply select` flows only;
 // `apply preview` is read-only and still runs (its diff is used to warn but
 // not to block).
-export function assertNoSlotCycles(
-  components: Array<{ key: string; entry: CDFComponentEntry }>,
-): void {
+export function assertNoSlotCycles(components: Array<{ key: string; entry: CDFComponentEntry }>): void {
   const cycleInput = components.map(({ key, entry }) => ({
     name: key,
     slots: Object.entries(entry.$slots ?? {}).map(([slotName, slotDef]) => ({
@@ -238,7 +236,9 @@ export function assertNoSlotCycles(
   if (cycles.length === 0) return;
 
   const lines: string[] = [];
-  lines.push(`Error: manifest:components/slot-cycles — ${cycles.length} slot dependency cycle(s) detected. Push refused.`);
+  lines.push(
+    `Error: manifest:components/slot-cycles — ${cycles.length} slot dependency cycle(s) detected. Push refused.`,
+  );
   for (let i = 0; i < cycles.length; i += 1) {
     const cycle = cycles[i];
     lines.push(`  Cycle ${i + 1}: ${formatCyclePath(cycle)}`);
