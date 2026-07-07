@@ -665,7 +665,9 @@ function SlotRow({
           {editingValue?.mode === 'add' && activeField === 'allowedComponents' && pickerCandidates !== null && (
             <Box paddingLeft={2} flexDirection="column">
               {pickerCandidates.length === 0 ? (
-                <Text dimColor>{'(no valid components to add — all remaining candidates would create cycles)'}</Text>
+                <Text dimColor>
+                  {'(no valid components to add — all remaining candidates would create cycles)'}
+                </Text>
               ) : (
                 (() => {
                   const filtered =
@@ -762,7 +764,8 @@ export function simulateGraphWithCandidate(
     name: selfName,
     slots: currentSlots.map((s) => ({
       name: s.name,
-      allowedComponents: s.name === targetSlotName ? [...s.allowedComponents, candidate] : [...s.allowedComponents],
+      allowedComponents:
+        s.name === targetSlotName ? [...s.allowedComponents, candidate] : [...s.allowedComponents],
     })),
   };
   const withoutSelf = projectSlotGraph.filter((c) => c.name !== selfName);
@@ -804,65 +807,6 @@ export function computeAllowedComponentCandidates(
   for (const candidate of universe) {
     const nextCycles = findSlotCycles(
       simulateGraphWithCandidate(projectSlotGraph, selfName, currentSlots, targetSlotName, candidate),
-    );
-    if (!introducesNewCycle(baseline, nextCycles)) safe.push(candidate);
-  }
-  safe.sort((a, b) => a.localeCompare(b));
-  return safe;
-}
-
-/** Simulate replacing the entry at `replaceIndex` of `targetSlotName` with `candidate`. */
-export function simulateGraphWithReplacement(
-  projectSlotGraph: ComponentSlotInfo[],
-  selfName: string,
-  currentSlots: { name: string; allowedComponents: string[] }[],
-  targetSlotName: string,
-  replaceIndex: number,
-  candidate: string,
-): ComponentSlotInfo[] {
-  const selfEntry: ComponentSlotInfo = {
-    name: selfName,
-    slots: currentSlots.map((s) => {
-      if (s.name !== targetSlotName) return { name: s.name, allowedComponents: [...s.allowedComponents] };
-      const nextVals = s.allowedComponents.map((v, i) => (i === replaceIndex ? candidate : v));
-      return { name: s.name, allowedComponents: nextVals };
-    }),
-  };
-  const withoutSelf = projectSlotGraph.filter((c) => c.name !== selfName);
-  return [...withoutSelf, selfEntry];
-}
-
-/**
- * Candidate names that can REPLACE the entry at `replaceIndex` of a slot without
- * introducing a new cycle. The entry being replaced is treated as a free
- * position — the current value is NOT excluded from the universe (users can
- * cycle back to it), only *other* existing entries in the same slot and the
- * self-name are excluded. The entry being replaced is itself a valid candidate
- * for its own position (so cycling can "return home").
- */
-export function computeAllowedComponentReplacementCandidates(
-  projectSlotGraph: ComponentSlotInfo[],
-  selfName: string,
-  currentSlots: { name: string; allowedComponents: string[] }[],
-  targetSlotName: string,
-  replaceIndex: number,
-): string[] {
-  const targetSlot = currentSlots.find((s) => s.name === targetSlotName);
-  const existing = targetSlot?.allowedComponents ?? [];
-  const excludeOtherEntries = new Set<string>();
-  existing.forEach((v, i) => {
-    if (i !== replaceIndex) excludeOtherEntries.add(v);
-  });
-  const universe = new Set<string>();
-  for (const c of projectSlotGraph) universe.add(c.name);
-  universe.delete(selfName);
-  for (const other of excludeOtherEntries) universe.delete(other);
-  // Baseline: graph with self-entry replaced by currentSlots (no simulated change).
-  const baseline = findSlotCycles(simulateGraphWithCandidate(projectSlotGraph, selfName, currentSlots, '', ''));
-  const safe: string[] = [];
-  for (const candidate of universe) {
-    const nextCycles = findSlotCycles(
-      simulateGraphWithReplacement(projectSlotGraph, selfName, currentSlots, targetSlotName, replaceIndex, candidate),
     );
     if (!introducesNewCycle(baseline, nextCycles)) safe.push(candidate);
   }
