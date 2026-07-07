@@ -1551,7 +1551,23 @@ export function WizardApp({
       }
       update({ step: 'done', pushResult });
     } catch (e) {
-      const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Push failed';
+      // INTEG-4401 Fix C — parse EDSI error bodies into a `[CODE] message`
+      // block before handing off to ErrorStep, so cycle rejections and other
+      // structured failures don't render as raw Lambda log lines
+      // (timestamp / request-id / dd.trace_id / etc.).
+      let msg: string;
+      if (e instanceof ApiError) {
+        const parsed = parseEdsiError(e.body || e.message);
+        msg = formatParsedEdsiError(parsed, {
+          verbose: process.env['EDSI_VERBOSE_ERRORS'] === '1',
+          raw: e.body,
+        });
+        if (!msg) msg = e.message;
+      } else if (e instanceof Error) {
+        msg = e.message;
+      } else {
+        msg = 'Push failed';
+      }
       update({
         step: 'error',
         errorStep: 'apply push',
