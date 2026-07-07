@@ -1520,21 +1520,33 @@ export function WizardApp({
           summary: operation.summary,
         };
       } else {
-        // API didn't return items — fall back to summary + preview counts
+        // API didn't return items. INTEG-4401 Fix B — do NOT report preview
+        // counts as "created": if the server said something failed, echo it
+        // truthfully so the summary can't lie. Historically this branch used
+        // preview.new/changed/removed as success counts and only surfaced
+        // failed:0, which meant a cycle rejection (summary: 0 succeeded /
+        // 11 failed, empty items) rendered as "Done ✓ 2 Component Types
+        // created" — the exact regression this fix guards against.
+        const summary = operation.summary ?? { total: 0, pending: 0, succeeded: 0, failed: 0 };
+        const anyFailure =
+          summary.failed > 0 || operation.sys.status === 'failed' || operation.sys.status === 'partial';
         pushResult = {
           componentTypes: {
-            created: preview?.components.new.length ?? 0,
-            updated: preview?.components.changed.length ?? 0,
-            removed: preview?.components.removed.length ?? 0,
-            failed: 0,
+            created: anyFailure ? 0 : (preview?.components.new.length ?? 0),
+            updated: anyFailure ? 0 : (preview?.components.changed.length ?? 0),
+            removed: anyFailure ? 0 : (preview?.components.removed.length ?? 0),
+            // Attribute failures to component types by default — without a
+            // per-item breakdown we can't split components vs tokens, and
+            // components are the dominant entity in an import.
+            failed: summary.failed,
           },
           designTokens: {
-            created: preview?.tokens.new.length ?? 0,
-            updated: preview?.tokens.changed.length ?? 0,
-            removed: preview?.tokens.removed.length ?? 0,
+            created: anyFailure ? 0 : (preview?.tokens.new.length ?? 0),
+            updated: anyFailure ? 0 : (preview?.tokens.changed.length ?? 0),
+            removed: anyFailure ? 0 : (preview?.tokens.removed.length ?? 0),
             failed: 0,
           },
-          summary: operation.summary,
+          summary,
         };
       }
       update({ step: 'done', pushResult });
