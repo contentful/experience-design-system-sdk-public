@@ -652,6 +652,22 @@ export function GenerateReviewStep({
   const sidebarWidth = Math.min(Math.max(longestName + 5, 14), 30);
   const panelWidth = Math.max(10, terminalWidth - sidebarWidth - 4);
 
+  // INTEG-4401: project-wide slot graph passed to FieldEditor so its
+  // $allowedComponents picker can filter out cycle-forming candidates. Built
+  // from every review entry's $slots — includes accepted, rejected, and
+  // needs-review components so the graph reflects what will actually be
+  // pushed. The FieldEditor replaces its own entry in-simulation with its
+  // live editor state, so pending edits are always reflected.
+  const projectSlotGraph = components.map((c) => ({
+    name: c.key,
+    slots: Object.entries(c.entry.$slots ?? {}).map(([slotName, slotDef]) => ({
+      name: slotName,
+      allowedComponents: Array.isArray(slotDef?.$allowedComponents)
+        ? (slotDef.$allowedComponents as string[]).filter((v): v is string => typeof v === 'string')
+        : [],
+    })),
+  }));
+
   const accepted = components.filter((c) => c.status === 'accepted').length;
   const rejected = components.filter((c) => c.status === 'rejected').length;
   const needsReview = components.filter((c) => c.status === 'needs-review').length;
@@ -930,6 +946,8 @@ export function GenerateReviewStep({
                       setPanelScrollOffset(() => 0);
                     }}
                     onTextEntryActiveChange={setTextEntryActive}
+                    projectSlotGraph={projectSlotGraph}
+                    currentComponentName={selected.key}
                   />
                 )}
                 {saveError && <Text color="red">{'✗ ' + saveError}</Text>}
