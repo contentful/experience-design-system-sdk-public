@@ -581,7 +581,12 @@ export function WizardApp({
     credentialsSkipped: false,
     lastRunId: null,
     finalizeErrorBanner: null,
-    finalReviewPassed: false,
+    // Modify-entry seeds the wizard directly onto `final-review`, so treat it
+    // as "already reviewed" — a late 401 from `runPreview` should short-circuit
+    // back to `push-decision-gate`, not re-render `final-review`. Push-from-
+    // picker also skips past `final-review` (it enters at `push-from-picker`
+    // → `previewing`), so its late-401 path should behave the same way.
+    finalReviewPassed: modifyEntryReady || pushFromPickerReady,
   });
 
   useEffect(() => {

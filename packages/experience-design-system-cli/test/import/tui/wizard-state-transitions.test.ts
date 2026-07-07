@@ -54,6 +54,21 @@ describe('shouldSkipFinalReviewAfterCredentials — prefetch cache bug', () => {
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: false })).toBe(false);
     expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: true })).toBe(false);
   });
+
+  // Modify-entry invariant: the launcher seeds the wizard directly onto
+  // `final-review` (see WizardApp `modifyEntryReady`), so state initialization
+  // sets `finalReviewPassed: true` — that operator has effectively already
+  // been through the review screen for THIS session. Simulating that state,
+  // a late 401 from `runPreview` sending them back to credentials must
+  // short-circuit to `push-decision-gate` rather than re-render `final-review`.
+  // Same invariant applies to push-from-picker (enters at `push-from-picker`,
+  // skips `final-review` entirely).
+  it('modify-entry / push-from-picker seed states short-circuit on re-entry (finalReviewPassed pre-seeded true)', () => {
+    // Represents the wizard's initial state under `modifyEntryReady = true`.
+    expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: 'seeded-gen', finalReviewPassed: true })).toBe(
+      true,
+    );
+  });
 });
 
 describe('inline-validation flow — no transition targets "validating-credentials"', () => {
