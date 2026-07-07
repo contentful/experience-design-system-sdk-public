@@ -4,6 +4,7 @@ import type {
   ApplyOperationResponse,
 } from '@contentful/experience-design-system-types';
 import { DEFAULT_API_HOST, toApiHost } from '../host-utils.js';
+import { getDebugLogger } from '../lib/debug-logger.js';
 
 export const DEFAULT_HOST = DEFAULT_API_HOST;
 
@@ -154,28 +155,58 @@ export class ImportApiClient {
 
   async previewImport(manifest: ManifestPayload): Promise<ServerPreviewResponse> {
     const url = `${this.base()}/design_systems/imports/preview`;
+    const debug = getDebugLogger();
+    const startedAt = Date.now();
+    debug.event('apply', 'preview.request', {
+      url,
+      componentCount: (manifest as { components?: unknown[] }).components?.length ?? 0,
+      tokenCount: (manifest as { designTokens?: unknown[] }).designTokens?.length ?? 0,
+    });
     const res = await fetch(url, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify(manifest),
     });
     if (!res.ok) {
-      throw new ApiError(`${PREVIEW_ERROR_PREFIX} ${res.status}`, res.status, await res.text());
+      const body = await res.text();
+      debug.event('apply', 'preview.error', {
+        status: res.status,
+        durationMs: Date.now() - startedAt,
+        bodyHead: body.slice(0, 2000),
+      });
+      throw new ApiError(`${PREVIEW_ERROR_PREFIX} ${res.status}`, res.status, body);
     }
-    return (await res.json()) as ServerPreviewResponse;
+    const parsed = (await res.json()) as ServerPreviewResponse;
+    debug.event('apply', 'preview.ok', { status: res.status, durationMs: Date.now() - startedAt });
+    return parsed;
   }
 
   async applyImport(manifest: ManifestPayload, acknowledgeBreakingChanges: boolean): Promise<ApplyOperationResponse> {
     const url = `${this.base()}/design_systems/imports/apply`;
+    const debug = getDebugLogger();
+    const startedAt = Date.now();
+    debug.event('apply', 'apply.request', { url, acknowledgeBreakingChanges });
     const res = await fetch(url, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify({ ...manifest, acknowledgeBreakingChanges }),
     });
     if (!res.ok) {
-      throw new ApiError(`${APPLY_ERROR_PREFIX} ${res.status}`, res.status, await res.text());
+      const body = await res.text();
+      debug.event('apply', 'apply.error', {
+        status: res.status,
+        durationMs: Date.now() - startedAt,
+        bodyHead: body.slice(0, 2000),
+      });
+      throw new ApiError(`${APPLY_ERROR_PREFIX} ${res.status}`, res.status, body);
     }
-    return (await res.json()) as ApplyOperationResponse;
+    const parsed = (await res.json()) as ApplyOperationResponse;
+    debug.event('apply', 'apply.accepted', {
+      status: res.status,
+      operationId: parsed.sys?.id,
+      durationMs: Date.now() - startedAt,
+    });
+    return parsed;
   }
 
   async pollOperation(
@@ -203,7 +234,17 @@ export class ImportApiClient {
       }
       const op = (await res.json()) as ApplyOperationResponse;
       opts.onProgress?.(op);
+      getDebugLogger().event('apply', 'poll.tick', {
+        operationId,
+        attempt,
+        status: op.sys.status,
+      });
       if (terminalStatuses.has(op.sys.status)) {
+        getDebugLogger().event('apply', 'poll.terminal', {
+          operationId,
+          attempt,
+          status: op.sys.status,
+        });
         return op;
       }
       if (attempt < maxAttempts - 1) {

@@ -1,10 +1,12 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import { buildPostPushUrl } from '../../../lib/contentful-urls.js';
 
 type EntityResult = {
   created: number;
   updated: number;
+  removed: number;
   failed: number;
 };
 
@@ -14,6 +16,10 @@ type DoneStepProps = {
   summary?: { total: number; succeeded: number; failed: number };
   spaceId: string;
   environmentId: string;
+  /** Configured API host (e.g. `api.contentful.com`). Used to derive the webapp URL. */
+  host?: string;
+  /** Task 8 — pre-formatted run teaser; rendered dim below the space link. */
+  runTeaser?: string;
   onExit: () => void;
 };
 
@@ -23,6 +29,8 @@ export function DoneStep({
   summary,
   spaceId,
   environmentId,
+  host,
+  runTeaser,
   onExit,
 }: DoneStepProps): React.ReactElement {
   useImmediateInput((input, key) => {
@@ -32,7 +40,13 @@ export function DoneStep({
   });
 
   const totalFailed = componentTypes.failed + designTokens.failed;
-  const totalPushed = componentTypes.created + componentTypes.updated + designTokens.created + designTokens.updated;
+  const totalPushed =
+    componentTypes.created +
+    componentTypes.updated +
+    componentTypes.removed +
+    designTokens.created +
+    designTokens.updated +
+    designTokens.removed;
   const success = totalFailed === 0;
 
   function EntityRows({ entity, label }: { entity: EntityResult; label: string }) {
@@ -53,6 +67,15 @@ export function DoneStep({
             <Text>
               {entity.updated} {label}
               {entity.updated !== 1 ? 's' : ''} updated
+            </Text>
+          </Box>
+        )}
+        {entity.removed > 0 && (
+          <Box gap={1}>
+            <Text color="green">✓</Text>
+            <Text>
+              {entity.removed} {label}
+              {entity.removed !== 1 ? 's' : ''} removed
             </Text>
           </Box>
         )}
@@ -113,8 +136,14 @@ export function DoneStep({
           <Text dimColor>Your design system is now in Contentful ExO.</Text>
           <Box flexDirection="column" gap={0}>
             <Text dimColor>View it here:</Text>
-            <Text color="cyan">{`https://app.contentful.com/spaces/${spaceId}/environments/${environmentId}/views/components`}</Text>
+            <Text color="cyan">{buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId })}</Text>
           </Box>
+        </Box>
+      )}
+
+      {runTeaser && (
+        <Box marginTop={1}>
+          <Text dimColor>{runTeaser}</Text>
         </Box>
       )}
 

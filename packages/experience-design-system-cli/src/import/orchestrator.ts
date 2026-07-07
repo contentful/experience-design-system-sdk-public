@@ -10,6 +10,8 @@ import {
   findLatestSessionForCommand,
 } from '../session/db.js';
 import { PREVIEW_ERROR_PREFIX, VALIDATION_FAILED_CODE, parsePreviewValidationErrors } from '../apply/api-client.js';
+import { buildPostPushUrl } from '../lib/contentful-urls.js';
+import { getDebugLogger, debugEnvForSubprocess } from '../lib/debug-logger.js';
 
 export interface PipelineOptions {
   project: string;
@@ -34,6 +36,8 @@ export interface PipelineOptions {
   selectAll?: boolean;
   select?: string[];
   deselect?: string[];
+  /** Forwarded to the spawned `analyze select-agent` subprocess. */
+  selectPromptPath?: string;
 }
 
 export interface StepResult {
@@ -61,9 +65,12 @@ async function runStep(
   env: NodeJS.ProcessEnv = {},
   streamStderr = false,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const debug = getDebugLogger();
+  const startedAt = Date.now();
+  debug.event('import', 'subprocess.spawn', { cliPath, args });
   return new Promise((res) => {
     const child = execFile('node', [cliPath, ...args], {
-      env: { ...process.env, ...env },
+      env: debugEnvForSubprocess({ ...process.env, ...env }),
     });
 
     let stdout = '';
@@ -80,7 +87,16 @@ async function runStep(
     });
 
     child.on('close', (code) => {
-      res({ exitCode: code ?? 0, stdout, stderr });
+      const exitCode = code ?? 0;
+      debug.event('import', 'subprocess.exit', {
+        args,
+        exitCode,
+        durationMs: Date.now() - startedAt,
+        stdoutLen: stdout.length,
+        stderrLen: stderr.length,
+        stderrTail: stderr.slice(-1000),
+      });
+      res({ exitCode, stdout, stderr });
     });
   });
 }
@@ -261,6 +277,8 @@ export async function runPipeline(
       editArgs = ['analyze', 'select-agent', '--session', extractSessionId, '--agent', opts.agent];
       if (opts.model) editArgs.push('--model', opts.model);
       if (opts.excludeInvalid) editArgs.push('--exclude-invalid');
+      if (opts.noCache) editArgs.push('--no-cache');
+      if (opts.selectPromptPath) editArgs.push('--select-prompt-path', opts.selectPromptPath);
     } else {
       editArgs = ['analyze', 'select', '--session', extractSessionId];
       if (opts.select && opts.select.length > 0) {
@@ -562,12 +580,13 @@ export async function runPipeline(
   progressWriter(`Pipeline complete. Session: ${sessionId}`);
 
   if (opts.spaceId && opts.environmentId && !opts.skipApply) {
-    const apiHost = opts.host ?? 'api.contentful.com';
-    const appHost = apiHost.replace(/^api\./, 'app.');
+    const viewUrl = buildPostPushUrl({
+      host: opts.host ?? 'api.contentful.com',
+      spaceId: opts.spaceId,
+      environmentId: opts.environmentId,
+    });
     progressWriter('');
-    progressWriter(
-      `View your design system:  https://${appHost}/spaces/${opts.spaceId}/environments/${opts.environmentId}/components`,
-    );
+    progressWriter(`View your design system:  ${viewUrl}`);
   }
 
   db.close();

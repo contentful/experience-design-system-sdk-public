@@ -9,7 +9,7 @@ describe('FinalizeDialog', () => {
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('unresolved');
-    expect(frame).toContain('excluded from the output');
+    expect(frame).toMatch(/will not be pushed|only accepted/i);
   });
 
   it('omits warning when needsReview === 0', () => {
@@ -18,7 +18,7 @@ describe('FinalizeDialog', () => {
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('All components');
-    expect(frame).not.toContain('excluded from the output');
+    expect(frame).not.toMatch(/will not be pushed/i);
   });
 
   it('calls onConfirm when y is pressed', async () => {
@@ -39,6 +39,25 @@ describe('FinalizeDialog', () => {
     stdin.write('n');
     await new Promise((r) => setTimeout(r, 30));
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  it('renders accepted, rejected, and unresolved categories separately', () => {
+    const { lastFrame } = render(
+      <FinalizeDialog accepted={10} rejected={1} needsReview={2} onConfirm={vi.fn()} onCancel={vi.fn()} />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('10 accepted');
+    expect(frame).toContain('1 rejected');
+    expect(frame).toContain('2 unresolved');
+  });
+
+  it('warns that unresolved components will not be pushed', () => {
+    const { lastFrame } = render(
+      <FinalizeDialog accepted={10} rejected={0} needsReview={2} onConfirm={vi.fn()} onCancel={vi.fn()} />,
+    );
+    const frame = lastFrame() ?? '';
+    // Make the strict opt-in semantics explicit to the operator.
+    expect(frame).toMatch(/will not be pushed|only accepted/i);
   });
 
   it('calls onCancel when Esc is pressed', async () => {

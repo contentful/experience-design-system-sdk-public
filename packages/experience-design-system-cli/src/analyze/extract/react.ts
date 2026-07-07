@@ -585,6 +585,12 @@ function extractPropsFromTypeSymbols(
       type: typeText,
       required,
       ...(allowedValues && { allowedValues }),
+      ...(typeof (declaration as { getStartLineNumber?: () => number }).getStartLineNumber === 'function'
+        ? {
+            sourceStartLine: (declaration as { getStartLineNumber: () => number }).getStartLineNumber(),
+            sourceEndLine: (declaration as { getEndLineNumber: () => number }).getEndLineNumber(),
+          }
+        : {}),
     });
   }
 
@@ -652,6 +658,12 @@ function extractPropsFromInterfaceDeclaration(
               type: typeText,
               required,
               ...(allowedValues && { allowedValues }),
+              ...(typeof (decl as { getStartLineNumber?: () => number }).getStartLineNumber === 'function'
+                ? {
+                    sourceStartLine: (decl as { getStartLineNumber: () => number }).getStartLineNumber(),
+                    sourceEndLine: (decl as { getEndLineNumber: () => number }).getEndLineNumber(),
+                  }
+                : {}),
             });
             return acc;
           },
@@ -1218,6 +1230,13 @@ function extractDestructuredBindingFallbackProps(
         name: propName,
         type: propertyType === 'unknown' ? 'any' : propertyType,
         required: property ? !property.isOptional() : false,
+        ...(declaration &&
+        typeof (declaration as { getStartLineNumber?: () => number }).getStartLineNumber === 'function'
+          ? {
+              sourceStartLine: (declaration as { getStartLineNumber: () => number }).getStartLineNumber(),
+              sourceEndLine: (declaration as { getEndLineNumber: () => number }).getEndLineNumber(),
+            }
+          : {}),
       });
     }
   }
@@ -2148,6 +2167,7 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
       components.push({
         name,
         source: sourceFile.getFilePath(),
+        sourcePath: sourceFile.getFilePath(),
         framework: isNext ? 'next' : 'react',
         props: [],
         slots: [],
@@ -2249,6 +2269,7 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
     components.push({
       name,
       source: sourceFile.getFilePath(),
+      sourcePath: sourceFile.getFilePath(),
       framework: isNext ? 'next' : 'react',
       props: propsAfterSlotExpansion,
       slots: finalSlots,
@@ -2321,6 +2342,8 @@ function extractPropTypes(sourceFile: SourceFile, componentName: string): RawPro
         type,
         required,
         ...(allowedValues && { allowedValues }),
+        sourceStartLine: property.getStartLineNumber(),
+        sourceEndLine: property.getEndLineNumber(),
       });
     }
 

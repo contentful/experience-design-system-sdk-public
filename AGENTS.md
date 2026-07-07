@@ -11,7 +11,41 @@ Nx monorepo with two packages:
 
 The CLI extracts React/Vue/Astro/Stencil/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
 
-The commands form a pipeline: **analyze extract → analyze select-agent → generate components → apply push.** The `import` command orchestrates all four steps at once. `analyze select-agent` runs one agent invocation per component to decide which components belong in Contentful ExO; `analyze select` (TUI) is the manual alternative.
+The commands form a pipeline: **analyze extract → analyze select-agent → generate components → apply push.** The `import` command — exposed as the `experiences import` binary — is the primary entry point and runs the full pipeline behind an interactive **wizard** (Ink TUI) in a real terminal, or a non-interactive headless pipeline when given the right flags. `analyze select-agent` runs one agent invocation per component to decide which components belong in Contentful ExO; `analyze select` (the standalone JsonEditor TUI) is the manual alternative.
+
+### Wizard step machine (`src/import/tui/`)
+
+```
+welcome → extracting → [auto-filter (analyze select-agent)] → scope-gate
+        → credentials (generate runs in parallel, prefetched) → final-review
+        → preview → push-decision-gate → pushing → done
+```
+
+A single human review gate (`scope-gate`) replaces the older two-step extract-review + generate-edit gates. The final-review step is a minimum-viable port of the standalone JsonEditor (lifted rationale + source panels, `$default` and `$allowedComponents` editing inline). The push-decision-gate defaults to save AND push.
+
+### Replay system
+
+Each successful wizard run appends a record to `~/.config/experiences/runs.json`:
+
+- `experiences runs` lists prior runs; `experiences runs <id-or-path>` prints the single-run detail view; `--json`, `--pushed` / `--not-pushed` filters apply
+- `experiences import --push-from-run <id-or-path>` re-pushes the recorded session without re-opening the wizard or writing to disk
+- `experiences import --modify <id-or-path>` is fully wired: loads the recorded session from `pipeline.db` (skipping extract and generate), pre-fills credentials from `pushedTo`, and lands on `final-review` (or `scope-gate` if the run record sets `entryStep`). Pair with `--overwrite` or `--save-as-new`.
+
+Replay helpers live in `src/runs/`: `replay-helpers.ts` (replayRun / modifyRun), `store.ts` (runs.json reader/writer), `resolve-run-target.ts` (id-or-path resolution), `save-path-resolver.ts`, plus the `runs ls` command (`ls-command.ts`). The `runs` table columns auto-expand to fit content (no truncation of long project / save paths); a copy-friendly footer prints command hints for the newest run.
+
+### Run-picker mount
+
+`src/runs/run-picker-mount.ts` decides whether the wizard opens with the interactive run-picker TUI (`src/runs/tui/RunPicker.tsx`) before `welcome`. It mounts when `runs.json` has entries, stdin is a TTY, and none of `--push-from-run`, `--modify`, or `--project` was passed. Selecting a run routes into the `--push-from-run` or `--modify` code path without re-invoking the CLI.
+
+### Read-only rationale view
+
+`experiences analyze select-agent --show-rationale [--json] [--session <id>]` prints the recorded accept / reject rationale for every component in a session. It reads `raw_components.reject_reason` from `pipeline.db` — no LLM call, no schema change, no agent subprocess. `--json` emits a machine-readable array for scripting.
+
+### `--on-conflict` and prompt-print
+
+- `experiences import --on-conflict <overwrite|skip|fail>` bypasses the wizard's interactive `<SaveConflictGate>` when a file already exists at the save path. Mutex with `--no-save`.
+- `experiences import --print-prompt` prints the generate prompt to stdout and exits. It replaces the prompt-print semantics of `--dry-run`, which is now deprecated and prints a stderr deprecation notice.
+- `experiences import --model <name>` overrides the stored model with fallback order `flag → credentials.json → built-in default`. `--agent <name>` works the same way and is now a functional wizard override.
 
 ## Build System
 
@@ -125,23 +159,32 @@ The skill file `skills/select-components.md` provides detailed instructions and 
 
 **`apply select` non-interactive flags:** `--select-all`, `--select <pattern>` (repeatable), `--deselect <pattern>` (repeatable). These skip the TUI.
 
-## The Import Orchestrator
+## The Import Orchestrator (headless)
 
-`src/import/orchestrator.ts` runs the full pipeline by shelling out to the CLI binary — it does not re-implement step logic. It captures `session=<id>` from `analyze extract` stdout via `/^session=(.+)$/m` and passes it as `--session` to downstream commands.
+`src/import/orchestrator.ts` runs the full pipeline in non-interactive mode by shelling out to the CLI binary — it does not re-implement step logic. It captures `session=<id>` from `analyze extract` stdout via `/^session=(.+)$/m` and passes it as `--session` to downstream commands.
 
-By default, `import` runs `analyze select-agent` to select components automatically. If `--select-all`, `--select`, or `--deselect` flags are provided, the orchestrator bypasses the agent and uses `analyze select` with those flags instead.
+By default, headless `import` runs `analyze select-agent` to select components automatically. If `--select-all`, `--select`, or `--deselect` flags are provided, the orchestrator bypasses the agent and uses `analyze select` with those flags instead.
+
+Headless mode is entered when any of these flags are set: `--auto-accept-scope`, `--skip-analyze`, `--skip-generate`, `--skip-apply`, `--yes`, `--dry-run`, or any credential flag. In a non-TTY without one of these flags the command exits 1 with a fail-loud message rather than hanging.
 
 Keep the orchestrator thin. Logic belongs in the individual command implementations.
+
+## The Wizard (interactive)
+
+`src/import/tui/WizardApp.tsx` is the TTY counterpart to the headless orchestrator. State transitions live in `wizard-state-transitions.ts`; the step components are in `src/import/tui/steps/`. Hosts (`scope-gate-host.tsx`, `final-review-host.tsx`) bridge step UIs to underlying pipeline DB reads/writes. `spawn-generate.ts` runs `generate components` in parallel with the credentials step so the operator does not wait on the agent. `runLivePreview.ts` re-runs the diff after each FieldEditor save (disable with `--no-live-preview`).
+
+Auto-filter resolution lives in `src/import/auto-filter-resolve.ts`: `--auto-filter` / `--no-auto-filter` flag wins over the `autoFilter` value persisted in `credentials.json`. The wizard writes the operator's last choice back to `credentials.json` so subsequent runs default to it.
 
 ## TUI Components
 
 All TUI components are standard React functional components rendered by Ink. They live in:
 
 - `src/analyze/tui/` — single `AnalyzeView` component
-- `src/analyze/edit/tui/` — full editor (`App`, hooks, 10+ components); shared by `validate` and other commands that need `TopBar`/`useImmediateInput`
+- `src/analyze/select/tui/` — full standalone JsonEditor (`App`, hooks, 10+ components); shared by `validate` and other commands that need `TopBar`/`useImmediateInput`. **Untouched by the wizard rebuild** — pinned by `test/analyze/select-flags.test.ts` snapshot for backwards-compat.
 - `src/generate/tui/` — single `GenerateView` component
-- `src/validate/tui/` — single `ValidateView` component
+- `src/print/tui/` — `ValidateView` for `print validate`
 - `src/apply/tui/` — `SummaryView`, `EntityDiffView`, `SelectView`, `ApplyView`
+- `src/import/tui/` — the wizard: `WizardApp`, hosts (`scope-gate-host`, `final-review-host`), and step components in `steps/` (`WelcomeStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushDecisionGateStep`, `PushingStep`, `DoneStep`, `ErrorStep`, etc.)
 
 When writing TUI tests, use `ink-testing-library`. Set `NO_COLOR=1` in the environment before running tests to suppress ANSI escape codes. Strip ANSI before snapshot assertions if the test renders raw strings.
 

@@ -276,4 +276,31 @@ export function Home() {
     expect(code).not.toBe(0);
     expect(stderr.length).toBeGreaterThan(0);
   });
+
+  // ── --select-prompt-path (Feature 8) ──────────────────────────────────────
+
+  it('lists --select-prompt-path in --help', async () => {
+    const { stdout, code } = await runCli(['analyze', 'select-agent', '--help']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('--select-prompt-path');
+  });
+
+  it('exits 1 with a clear not-found error when --select-prompt-path is missing', async () => {
+    const { code, stderr } = await runCliWithEnv(
+      [
+        'analyze',
+        'select-agent',
+        '--agent',
+        'claude',
+        '--session',
+        fixture.sessionId,
+        '--select-prompt-path',
+        '/nonexistent/custom-select.md',
+      ],
+      baseEnv(),
+    );
+    expect(code).not.toBe(0);
+    expect(stderr).toMatch(/custom prompt path not found/i);
+    expect(stderr).toContain('/nonexistent/custom-select.md');
+  });
 });

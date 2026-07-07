@@ -42,9 +42,9 @@ export function FinalizeDialog({
       {!allResolved && (
         <>
           <Text color="yellow">
-            {'⚠ ' + needsReview + ' component' + (needsReview === 1 ? ' is' : 's are') + ' unresolved and will be'}
+            {'⚠ ' + needsReview + ' unresolved component' + (needsReview === 1 ? '' : 's') + ' will not be pushed.'}
           </Text>
-          <Text color="yellow">{'  excluded from the output.'}</Text>
+          <Text color="yellow">{'  Only explicitly accepted components ship.'}</Text>
           <Text> </Text>
         </>
       )}

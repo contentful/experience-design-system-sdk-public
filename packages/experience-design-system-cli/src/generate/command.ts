@@ -13,6 +13,7 @@ import {
   runAgent,
 } from './agent-runner.js';
 import { OutputFormatter, c } from '../output/format.js';
+import { formatGenerateProgressLine } from './progress.js';
 import { type Skill, buildPrompt, resolveSkillPath } from './prompt-builder.js';
 import { GenerateView } from './tui/GenerateView.js';
 import type { GenerateViewResult } from './tui/GenerateView.js';
@@ -32,6 +33,7 @@ import {
   renameEmptySlots,
   type RawComponentWithId,
 } from '../session/db.js';
+import { hashPromptForSkill } from '../session/cache-keys.js';
 import { getRefineArtifactsRoot, getRefineSessionPaths } from '../analyze/select/persistence.js';
 import type { ReviewSessionSnapshot } from '../analyze/select/types.js';
 import type { RawComponentDefinition } from '../types.js';
@@ -54,6 +56,21 @@ interface GenerateSubcommandOptions {
   dryRun?: boolean;
   verbose?: boolean;
   cache?: boolean;
+  /** Feature 8: custom skill prompt path for `generate components`. */
+  generatePromptPath?: string;
+}
+
+/**
+ * Feature 8: render the warning banner shown when a custom skill prompt is
+ * active. Always cites the bundled invariants that the override bypasses so
+ * the operator cannot miss it.
+ */
+export function formatCustomPromptBanner(skill: 'components' | 'select', path: string): string {
+  return (
+    `WARNING: Custom prompt active for ${skill}: ${path}\n` +
+    `  Bundled invariants (utility-wrapper rejection, description content rules) do NOT apply.\n` +
+    `  You are responsible for the prompt's correctness.\n`
+  );
 }
 
 function die(message: string): never {
@@ -167,12 +184,14 @@ async function runOneComponent(
   total: number,
   verbose: boolean,
   noCache: boolean,
+  skillPathOverride: string | undefined,
+  promptHash: string,
 ): Promise<ComponentRunResult> {
   const pos = c.dim(`[${index + 1}/${total}]`);
 
   if (!noCache) {
     const inputHash = computeComponentInputHash(component as RawComponentWithId);
-    const cached = lookupCache(db, inputHash, 'component', component.component_id);
+    const cached = lookupCache(db, inputHash, 'component', component.component_id, promptHash);
     if (cached) {
       copyComponentFromCache(db, cached.sourceSessionId, sessionId, component.component_id);
       process.stderr.write(`  ${pos}  ${c.bold(component.name)}  ${c.green('cached')}\n`);
@@ -243,6 +262,7 @@ async function runOneComponent(
     tokenMapInline,
     outDir: process.cwd(),
     componentName: component.name,
+    skillPathOverride,
   });
 
   const maxAttempts = 2;
@@ -297,7 +317,7 @@ async function runOneComponent(
     const applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings);
     if (!noCache) {
       const inputHash = computeComponentInputHash(component as RawComponentWithId);
-      storeCache(db, inputHash, 'component', component.component_id, sessionId, false);
+      storeCache(db, inputHash, 'component', component.component_id, sessionId, false, promptHash);
     }
     return {
       componentName: component.name,
@@ -332,6 +352,8 @@ async function runAllComponents(
   tokenMapInline: string | undefined,
   verbose: boolean,
   noCache: boolean,
+  skillPathOverride: string | undefined,
+  promptHash: string,
 ): Promise<ComponentRunResult[]> {
   const concurrency = Number(process.env.EDS_GENERATE_CONCURRENCY ?? DEFAULT_COMPONENT_CONCURRENCY);
   process.stderr.write(
@@ -342,6 +364,7 @@ async function runAllComponents(
 
   const results: ComponentRunResult[] = new Array(components.length);
   let next = 0;
+  let completed = 0;
 
   async function worker(): Promise<void> {
     while (next < components.length) {
@@ -358,7 +381,11 @@ async function runAllComponents(
         components.length,
         verbose,
         noCache,
+        skillPathOverride,
+        promptHash,
       );
+      completed += 1;
+      process.stderr.write(`${formatGenerateProgressLine(completed, components.length, results[i]!.componentName)}\n`);
     }
   }
 
@@ -418,6 +445,23 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     );
   }
   const agent = agentName as AgentName;
+
+  // Feature 8: resolve custom-prompt path for `components` (flag wins over
+  // saved credentials), validate, and emit the warning banner once at action
+  // entry.
+  const generatePromptPath =
+    skill === 'components' ? (opts.generatePromptPath ?? savedCreds.generatePromptPath) : undefined;
+  if (generatePromptPath) {
+    if (!(await pathExists(resolve(generatePromptPath)))) {
+      die(`Error: custom prompt path not found: ${resolve(generatePromptPath)}`);
+    }
+    if (!generatePromptPath.toLowerCase().endsWith('.md')) {
+      process.stderr.write(
+        `WARNING: custom prompt path does not end in .md (${generatePromptPath}) — proceeding anyway.\n`,
+      );
+    }
+    process.stderr.write(formatCustomPromptBanner('components', resolve(generatePromptPath)));
+  }
 
   if (skill === 'tokens' && !opts.rawTokens) {
     die('Error: --raw-tokens is required when using generate tokens');
@@ -498,6 +542,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       tokensInline,
       tokenMapInline,
       outDir: process.cwd(),
+      skillPathOverride: generatePromptPath,
     });
     process.stdout.write(prompt + '\n');
     process.exit(0);
@@ -517,6 +562,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     const db = openPipelineDb();
     let componentResults: ComponentRunResult[];
     try {
+      const promptHash = await hashPromptForSkill('components', generatePromptPath);
       componentResults = await runAllComponents(
         agent,
         model,
@@ -527,6 +573,8 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         tokenMapInline,
         verbose,
         opts.cache === false || process.env.EDS_NO_CACHE === '1',
+        generatePromptPath,
+        promptHash,
       );
     } finally {
       db.close();
@@ -597,9 +645,10 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         }
       }
 
+      const tokenPromptHash = await hashPromptForSkill('tokens');
       // Check cache before invoking agent
       if (!noCache) {
-        const tokenCached = lookupCache(db, tokenInputHash, 'token_set', '__tokens__');
+        const tokenCached = lookupCache(db, tokenInputHash, 'token_set', '__tokens__', tokenPromptHash);
         if (tokenCached) {
           copyTokensFromCache(db, tokenCached.sourceSessionId, resolvedSessionId);
           sessionId = resolvedSessionId;
@@ -615,7 +664,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
             );
             await waitUntilExit();
           } else {
-            process.stdout.write(`generate complete\nskill: ${skill}\nagent: ${agent}\nsession: ${sessionId ?? ''}\n`);
+            process.stdout.write(`generate complete\nskill: ${skill}\nagent: ${agent}\nsession=${sessionId ?? ''}\n`);
             process.exit(0);
           }
           return;
@@ -667,7 +716,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
 
       applyTokenToolCalls(db, resolvedSessionId, tokenCalls, []);
       if (!noCache) {
-        storeCache(db, tokenInputHash, 'token_set', '__tokens__', resolvedSessionId, false);
+        storeCache(db, tokenInputHash, 'token_set', '__tokens__', resolvedSessionId, false, tokenPromptHash);
       }
       sessionId = resolvedSessionId;
 
@@ -693,7 +742,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     );
     await waitUntilExit();
   } else {
-    process.stdout.write(`generate complete\nskill: ${skill}\nagent: ${agent}\nsession: ${sessionId ?? ''}\n`);
+    process.stdout.write(`generate complete\nskill: ${skill}\nagent: ${agent}\nsession=${sessionId ?? ''}\n`);
     process.exit(0);
   }
 }
@@ -707,7 +756,12 @@ function addAgentFlags(cmd: Command): Command {
     .option('--model <name>', 'Model to use (defaults to a small/fast model per agent)')
     .option('--verbose', 'Show full agent output including reasoning text')
     .option('--dry-run', 'Print the prompt without invoking the agent')
-    .option('--no-cache', 'Bypass generation cache and force AI re-generation');
+    .option(
+      '--no-cache',
+      'Bypass ALL fine-grained caches (extract, select, generate) and force AI re-run. ' +
+        'Cache keys now factor in prompt content — changing the prompt file via --generate-prompt-path or ' +
+        '--select-prompt-path will already bust the corresponding stage. Use --no-cache to force a full re-run.',
+    );
 }
 
 export function registerGenerateCommand(program: Command): void {
@@ -719,7 +773,11 @@ export function registerGenerateCommand(program: Command): void {
     .description('Invoke a coding agent to produce components.json from raw analysis output')
     .option('--session <id>', 'Session ID from analyze extract (defaults to most recent)')
     .option('--tokens <path>', 'Path to tokens.json for token-linked prop resolution')
-    .option('--token-map <path>', 'Path to token-name-map.json sidecar');
+    .option('--token-map <path>', 'Path to token-name-map.json sidecar')
+    .option(
+      '--generate-prompt-path <path>',
+      'Path to a custom .md skill prompt for components generation (bypasses bundled prompt invariants)',
+    );
   addAgentFlags(componentsCmd).action(async (opts: GenerateSubcommandOptions) => {
     await runGenerateSkill('components', opts, opts.verbose ?? false);
   });

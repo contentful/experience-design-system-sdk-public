@@ -1,20 +1,36 @@
 # @contentful/experience-design-system-cli
 
-CLI for extracting, reviewing, generating, validating, and pushing Contentful Experience Design System component definitions into Experiences
+CLI for extracting, reviewing, generating, validating, and pushing Contentful Experience Design System component definitions into Experiences.
+
+## Binaries
+
+The package installs three equivalent binaries:
+
+| Binary                          | Notes                                                                |
+| ------------------------------- | -------------------------------------------------------------------- |
+| `experiences`                   | Preferred entry point — short and operator-facing                    |
+| `exo`                           | Shorthand for Experience Orchestration                               |
+| `experience-design-system-cli`  | Full name; used in CI / scripts where clarity matters                |
+
+The rest of this README uses `experiences`.
 
 ## CLI Overview
 
-The commands form a pipeline. Run them in order, or use `import` to orchestrate the whole thing at once:
+There are two ways to use the CLI:
 
-```
-analyze extract   →   analyze select-agent   →   generate components   →   apply push
-```
+1. **`experiences import`** — the wizard. Drives the full pipeline (extract → AI select → scope-gate → generate → final-review → save/push) from a single command. Works in two modes: a full-screen interactive TUI in a real terminal, and a non-interactive headless mode when you pass `--auto-accept-scope` plus credentials. **This is the recommended path for almost everyone.**
 
-`analyze select-agent` uses an AI agent to decide which extracted components belong in Contentful Experience Orchestration. You can substitute it with `analyze select` for manual/pattern-based selection.
+2. **Standalone subcommands** — for piping into other tools, CI parity with the wizard, or for debugging individual steps:
 
-**Determinism boundary.** `analyze extract` is fully deterministic: ts-morph AST parsing produces the same component list and prop shape on every run, then a deterministic pre-classifier and a structural non-authorable filter (see below) shape the output. AI enters the pipeline at `analyze select-agent` and `generate components`, where coding agents make per-component decisions. This split keeps the extracted artifact reproducible and inspectable — if an extracted component looks wrong, the cause is in the rules, not in agent variability.
+   ```
+   analyze extract   →   analyze select-agent   →   generate components   →   apply push
+   ```
 
-All intermediate data flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). No JSON files are written between steps — each command reads its inputs from the session and writes its outputs back to it. Use `print` to export session data to JSON files on demand (e.g. for inspection or manual validation).
+   `analyze select-agent` is the agent-driven selection step the wizard uses. You can replace it with `analyze select` for the older manual JsonEditor TUI.
+
+**Determinism boundary.** `analyze extract` is fully deterministic: ts-morph AST parsing produces the same component list and prop shape on every run, then a deterministic pre-classifier and a structural non-authorable filter shape the output. AI enters the pipeline at `analyze select-agent` and `generate components`, where coding agents make per-component decisions. This split keeps the extracted artifact reproducible — if an extracted component looks wrong, the cause is in the rules, not in agent variability.
+
+All intermediate data flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). No JSON files are written between steps — each command reads its inputs from the session and writes its outputs back to it. Use `print` to export session data to JSON files on demand. The wizard additionally maintains a separate **runs.json** file (`~/.config/experiences/runs.json`) that records each successful wizard session so it can be replayed later with `--push-from-run` or `--modify`.
 
 ---
 
@@ -33,9 +49,11 @@ All intermediate data flows through a local SQLite session database (`~/.content
 
 The CLI invokes the agent non-interactively in a subprocess. If the binary is not found in `$PATH`, the command exits 1 and prints manual fallback instructions.
 
+`experiences setup` persists your chosen agent (and optional model + custom prompt paths) to `~/.config/experiences/credentials.json`; later commands pick them up automatically.
+
 ### Contentful credentials
 
-`apply preview`, `apply select`, `apply push`, and `import` require access to a Contentful space. Set these environment variables (or pass the equivalent flags):
+`apply preview`, `apply select`, `apply push`, and `import` (when pushing) require access to a Contentful space. Set these environment variables or pass the equivalent flags:
 
 ```bash
 export CONTENTFUL_MANAGEMENT_TOKEN=<your-cma-token>   # required
@@ -43,45 +61,170 @@ export CONTENTFUL_SPACE_ID=<your-space-id>             # required
 export CONTENTFUL_ENVIRONMENT_ID=master                # required
 ```
 
-**Option A — Contentful CLI:**
+Or run `experiences setup` once and they get saved to `credentials.json` and pre-filled in the wizard.
 
-```bash
-npm install -g contentful-cli
-contentful login   # opens browser OAuth flow; token is stored in ~/.contentfulrc.json
-```
-
-After logging in, retrieve the token:
-
-```bash
-# Prints the stored token
-contentful login
-
-# Or read it directly
-cat ~/.contentfulrc.json
-```
-
-**Option B — Contentful web app:**
-
-Settings → API keys → Content management tokens → Generate personal token.
-
-Once you have the token, export it:
-
-```bash
-export CONTENTFUL_MANAGEMENT_TOKEN=<your-cma-token>
-```
-
-Alternatively, pass `--cma-token`, `--space-id`, and `--environment-id` directly on each command.
+In the wizard's credentials step you can press `[s] Skip` to save-only without pushing — useful when you want a checked-in `components.json` without a live push.
 
 ---
 
-## Commands
+## The `import` wizard
+
+```bash
+experiences import [flags]
+```
+
+`experiences import` is the primary entry point. In a TTY it launches a full-screen wizard. In headless mode (any of `--auto-accept-scope`, `--skip-apply`, `--skip-analyze`, `--skip-generate`, `--yes`, `--dry-run`, or credential flags) it runs non-interactively. Without either, it fails loud rather than hanging.
+
+### Wizard step machine
+
+```
+welcome
+  ↓
+extracting             — runs analyze extract; spawns generate in parallel (prefetch)
+  ↓
+[auto-filter]          — analyze select-agent runs automatically (skip with --no-auto-filter)
+  ↓
+scope-gate             — single human review gate: confirm AI selection, toggle components
+  ↓
+credentials            — operator types space-id / env / token (generate is already running)
+                         press [s] Skip to save-only without pushing
+  ↓
+final-review           — minimum-viable port of the JsonEditor; edit names, $description,
+                         $default, $allowedComponents per slot, $values, source/rationale panels
+  ↓
+preview                — diff vs. live Contentful
+  ↓
+push-decision-gate     — choose Save AND push (default) or one of the alternatives
+  ↓
+pushing → done         — push emits a Contentful webapp view URL for the imported components
+```
+
+There is now a single human review gate (`scope-gate`) before generation; the legacy two-step extract-review + select-review flow has been collapsed.
+
+### Configurable AI auto-filter
+
+The auto-filter (`analyze select-agent` invoked before scope-gate) is on by default. Override per-run with `--auto-filter` / `--no-auto-filter`; the value last selected in the wizard is persisted to `credentials.json` so subsequent runs default to your last choice.
+
+### Save-and-push default
+
+The push-decision-gate defaults to **save AND push**: it writes `components.json` and `tokens.json` to disk *and* pushes to Contentful in one step. Use `--no-save` to push-only or `--no-push` to save-only. `--out-dir <path>` picks the save directory non-interactively (otherwise the wizard prompts).
+
+### Replaying prior runs
+
+After every successful wizard session, the CLI appends a record to `~/.config/experiences/runs.json` and prints a teaser pointing at the run-id. Subsequent invocations can reuse that record:
+
+| Flag                              | What it does                                                                                                            |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `--push-from-run <id-or-path>`    | Re-push the recorded session to Contentful without re-opening the wizard or writing to disk. Mutually exclusive with `--modify`, `--project`, `--no-save`, `--no-push`. |
+| `--modify <id-or-path>`           | Re-open the wizard at final-review with the prior run pre-populated. Pair with `--overwrite` (save back to recorded `savePath`) or `--save-as-new` (prompt for new path). |
+| `--overwrite` / `--save-as-new`   | Save-mode selector for `--modify`; mutually exclusive with each other.                                                  |
+
+Both flags accept either a run id or a filesystem path that matches a recorded `savePath`.
+
+### Custom skill prompts
+
+Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swap in a custom `.md` skill prompt instead of the bundled one. The CLI emits a banner at agent invocation noting the override. Paths can also be saved via `experiences setup`.
+
+### Flag reference — `experiences import`
+
+| Flag                              | Default                                | Description                                                                                                  |
+| --------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `--space-id <id>`                 | `CONTENTFUL_SPACE_ID` env / saved      | Contentful space ID (required unless `--skip-apply` / `--no-push`)                                           |
+| `--environment-id <id>`           | `CONTENTFUL_ENVIRONMENT_ID` env        | Contentful environment ID                                                                                    |
+| `--cma-token <token>`             | `CONTENTFUL_MANAGEMENT_TOKEN` env      | CMA personal access token                                                                                    |
+| `--project <path>`                | `.`                                    | Project root to analyze                                                                                      |
+| `--out <path>`                    | `<project>/.contentful`                | Headless-mode output directory                                                                               |
+| `--out-dir <path>`                | _(prompt)_                             | Save directory for `components.json` / `tokens.json`; bypasses inline save-path prompt                       |
+| `--agent <name>`                  | saved by setup / `claude`              | Agent for `analyze select-agent` and `generate components`                                                   |
+| `--model <name>`                  | agent default                          | Model name                                                                                                   |
+| `--tokens <path>`                 | —                                      | DTCG `tokens.json` to push alongside generated components                                                    |
+| `--auto-accept-scope`             | off                                    | Accept all extracted components without prompting (required for non-TTY without other headless flags)        |
+| `--auto-filter` / `--no-auto-filter` | persisted in `credentials.json`     | Force AI auto-filter on or off; overrides saved preference                                                   |
+| `--no-live-preview`               | live preview on                        | Skip the automatic preview re-run after each FieldEditor save                                                |
+| `--no-push`                       | push on                                | Run extract → scope-gate → generate → final-review and exit without pushing                                  |
+| `--no-save`                       | save on                                | Push without writing `components.json` / `tokens.json` to disk                                               |
+| `--push-from-run <id-or-path>`    | —                                      | Re-push a prior run; never writes to disk                                                                    |
+| `--modify <id-or-path>`           | —                                      | Re-open the wizard at final-review with a prior run loaded                                                   |
+| `--overwrite`                     | —                                      | With `--modify`: save back to recorded `savePath`                                                            |
+| `--save-as-new`                   | —                                      | With `--modify`: always save to a new path                                                                   |
+| `--select-prompt-path <path>`     | saved by setup                         | Custom `.md` skill prompt for `analyze select-agent`                                                         |
+| `--generate-prompt-path <path>`   | saved by setup                         | Custom `.md` skill prompt for `generate components`                                                          |
+| `--select-all`                    | —                                      | Headless: accept all extracted components (bypasses agentic select)                                          |
+| `--select <pattern>`              | —                                      | Headless: accept components matching pattern (repeatable; bypasses agentic select)                           |
+| `--deselect <pattern>`            | —                                      | Headless: reject components matching pattern (repeatable; bypasses agentic select)                           |
+| `--skip-analyze`                  | —                                      | Reuse most recent `analyze extract` session                                                                  |
+| `--skip-generate`                 | —                                      | Reuse most recent `generate components` session                                                              |
+| `--print`                         | —                                      | Headless: write `components.json` to `--out` after generation                                                |
+| `--skip-apply`                    | —                                      | Stop after generate; do not push                                                                             |
+| `--no-cache`                      | cache on                               | Bypass extract/select/generate fine-grained caches and force re-run; forwarded to `analyze select-agent` and `generate components` |
+| `--yes`                           | —                                      | Skip interactive confirmation in `apply push`                                                                |
+| `--verbose`                       | —                                      | Show full agent output and all entity progress                                                               |
+| `--exclude-invalid`               | off (fail loud)                        | Auto-reject components with validation errors instead of refusing to proceed                                 |
+| `--viewports <path>`              | catch-all viewport                     | JSON file with viewport array (passed to `apply push`)                                                       |
+| `--host <url>`                    | `https://api.contentful.com`           | Override API base URL                                                                                        |
+| `--on-conflict <mode>`            | _(prompt via `<SaveConflictGate>`)_    | Headless conflict resolution when a file already exists at the save path: `overwrite`, `skip`, or `fail`. Bypasses the wizard's interactive save-conflict gate. Mutex with `--no-save`. |
+| `--print-prompt`                  | —                                      | Print the generate prompt to stdout and exit. Replaces the prompt-print semantics of `--dry-run`.            |
+| `--dry-run`                       | _(deprecated)_                         | Deprecated alias for `--print-prompt`. Emits a stderr deprecation notice; prompt-print semantics will be removed in a future release. |
+
+### Run-picker at wizard start
+
+When `~/.config/experiences/runs.json` contains one or more entries, none of `--push-from-run`, `--modify`, or `--project` was passed, and stdin is a TTY, the wizard opens with an interactive **run picker** before the welcome step. The operator can:
+
+- Pick a recent run, then choose **Push** or **Modify** — equivalent to invoking `--push-from-run` or `--modify` for that run id
+- Select **Show all** to expand beyond the most-recent rows
+- Select **Start a new run** to fall through to the normal `welcome → extracting → ...` flow
+
+The mount decision is deterministic — passing any of `--push-from-run`, `--modify`, or `--project` skips the picker and lands on the existing step machine.
+
+### `--modify` end-to-end behavior
+
+`--modify <id-or-path>` is fully wired: the wizard loads the recorded session from `pipeline.db` (skipping extract and generate entirely), pre-fills credentials from the run record's `pushedTo` target, and lands directly on `final-review` — or on `scope-gate` if the run record carries an `entryStep` hint. Pair with `--overwrite` or `--save-as-new` to control the save target.
+
+### `--model` and `--agent` overrides
+
+`--model <name>` overrides the stored model for this run. The resolution order is:
+
+1. `--model <name>` flag
+2. `model` field saved in `~/.config/experiences/credentials.json`
+3. Built-in default for the chosen agent
+
+`--agent <name>` works the same way and is a fully functional wizard override — earlier releases plumbed the flag but the commander default shadowed it; the flag now wins over the saved value as expected.
+
+---
+
+## `experiences runs`
+
+List recorded wizard runs from `~/.config/experiences/runs.json`, or print the detail view for a single run.
+
+```bash
+experiences runs [<id-or-path>] [--project <path>] [--limit <n>] [--pushed | --not-pushed] [--json]
+```
+
+| Option              | Description                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| `<id-or-path>`      | Positional. Print the detail view for a single run by id or recorded save path. Path resolution sniffs for `/`, `./`, or `~/` prefix (and the bare `.` / `~` values) via `resolveRunTarget()`. |
+| `--project <path>`  | Filter by source project path (absolute).                                                |
+| `--limit <n>`       | Cap the number of rows printed.                                                          |
+| `--pushed`          | Show only runs that were pushed to Contentful. Mutex with `--not-pushed`.                |
+| `--not-pushed`      | Show only runs that were never pushed. Mutex with `--pushed`.                            |
+| `--json`            | Emit machine-readable output: `RunRecord[]` for the list view; a single `RunRecord` object when combined with `<id-or-path>`. |
+
+Each row prints the run id, creation time, project path, save path, component count, and push target (or `(not pushed)`). Table columns auto-expand to fit content — long project / save paths are no longer truncated. Below the table, a copy-friendly footer prints command hints (`--push-from-run`, `--modify`) for the newest run.
+
+Pair with `--push-from-run` or `--modify` on `experiences import` to replay a row.
+
+---
+
+## Standalone subcommands
+
+The standalone subcommands below are pinned by snapshot test (`test/analyze/select-flags.test.ts` and friends) and remain backwards-compatible. The wizard internally calls these same commands.
 
 ### `analyze extract`
 
 Extract component definitions from a project source tree.
 
 ```bash
-experience-design-system-cli analyze extract --project <path> [--dir <src-dir>]
+experiences analyze extract --project <path> [--dir <src-dir>]
 ```
 
 | Option | Default | Description |
@@ -89,30 +232,20 @@ experience-design-system-cli analyze extract --project <path> [--dir <src-dir>]
 | `--project <path>` | _(required)_ | Path to the project root |
 | `--dir <path>` | `src` (falls back to project root) | Source directory relative to project root |
 
-Scans `.tsx`, `.ts`, `.jsx`, `.js`, `.vue`, and `.astro` files. Ignores `node_modules`, `dist`, `build`, `.next`, `.nuxt`, `coverage`, `storybook-static`, and `out` directories. Also ignores `*.stories.*`, `*.story.*`, `*.spec.*`, and `*.test.*` files.
+Scans `.tsx`, `.ts`, `.jsx`, `.js`, `.vue`, and `.astro` files. Ignores `node_modules`, `dist`, `build`, `.next`, `.nuxt`, `coverage`, `storybook-static`, `out`, `demo(s)`, and `example(s)` directories. Also ignores `*.stories.*`, `*.story.*`, `*.spec.*`, and `*.test.*` files.
 
-Writes extracted components to the session database and prints `session=<id>` to stdout. In an interactive terminal, a scrollable TUI displays the extraction summary (including a warning for any components with 0 props and 0 slots); press `q` or `Enter` to exit.
+Writes extracted components to the session database and prints `session=<id>` to stdout. In an interactive terminal, a scrollable TUI displays the extraction summary; press `q` or `Enter` to exit.
 
-#### Non-authorable component filter
-
-Before storing components, `analyze extract` runs a deterministic filter that drops infrastructure components which have no authoring surface (Context providers, analytics shims, security utilities, layout helpers). The filter uses prop-shape signals only — no component-name or source-path patterns — so it works regardless of how a host repo organizes its design system. A component is dropped if **any** of:
-
-1. Zero props and zero slots.
-2. Source calls `createContext()` and the component has a prop literally named `value`.
-3. Source calls `createContext()` and the component has zero props.
-4. Source calls `createContext()` and the component has exactly one non-handler prop.
-5. Every prop is a handler or ref (function-typed, `EventHandler`, `Dispatch`, `SetStateAction`, `Ref<>`, name starts with `on`/`set`, or named `ref`/`innerRef`).
-
-Each dropped component is reported as a warning (`Skipped non-authorable component: <Name> (<reason>)`) so the operator can audit. The rule set was selected via Monte-Carlo evaluation against a hand-labelled corpus to maximize precision (zero false positives) over recall — components that look like normal authoring surface but are actually infrastructure are deferred to the AI selection stage rather than dropped here.
+The deterministic non-authorable filter drops infrastructure components with no authoring surface (Context providers, refs-only wrappers, etc.); each drop is reported as a warning so the operator can audit.
 
 ---
 
 ### `analyze select`
 
-Interactively select components for generation and optionally patch their definitions. Alias: `analyze edit`.
+Standalone JsonEditor TUI for picking which components to include. Alias: `analyze edit`. **Untouched by the wizard rebuild** — the rich full-screen editor remains the way to operate outside the wizard.
 
 ```bash
-experience-design-system-cli analyze select [--session <id>] [--project-root <path>]
+experiences analyze select [--session <id>] [--project-root <path>]
 ```
 
 | Option | Default | Description |
@@ -125,404 +258,129 @@ experience-design-system-cli analyze select [--session <id>] [--project-root <pa
 | `--accept-all` | — | Alias for `--select-all` |
 | `--reject <pattern>` | — | Alias for `--deselect <pattern>` (repeatable) |
 | `--patch <path>` | — | Path to a JSON patch file for structured overrides |
+| `--exclude-invalid` | — | With `--select-all`: auto-reject components with validation errors |
+| `--exclude-components <names>` | — | Comma-separated names to force-reject regardless of other flags |
 
-Without `--select-all`, `--select`, `--deselect`, or `--patch`, launches a full-screen TUI (requires 60+ columns). With any non-interactive flag, exits immediately after applying decisions.
-
-#### Keyboard Reference
-
-| Key | Action |
-|---|---|
-| `↑` / `k` | Navigate up |
-| `↓` / `j` | Navigate down |
-| `Tab` | Toggle focus between sidebar and main panel |
-| `a` | Accept selected component |
-| `r` | Reject selected component |
-| `e` | Enter edit mode for selected component |
-| `s` | Toggle source code panel (requires 120+ cols) |
-| `A` | Approve all unreviewed components |
-| `F` | Open finalize dialog |
-| `q` | Quit (prompts if unsaved edits) |
-| `?` | Toggle help overlay |
-
-**In edit mode:**
-
-| Key | Action |
-|---|---|
-| Arrow keys | Move cursor |
-| `Ctrl+S` | Save edits (validates JSON) |
-| `Ctrl+Z` | Undo |
-| `Esc` | Discard changes |
-
-#### Patch file format
-
-`--patch` accepts a JSON array of operations. Each operation targets a component by name:
-
-```json
-[
-  { "component": "Button", "status": "accepted" },
-  { "component": "Input", "status": "rejected" },
-  { "component": "Card", "set": { "props[name=variant].type": "string" } }
-]
-```
-
-`set` paths support dot notation and array item matching with `[name=value]` predicates.
-
-#### Session resume
-
-The review session is persisted in `~/.contentful/experience-design-system-cli/`. If the TUI is interrupted, re-running with the same `--session` resumes where you left off.
+Without any non-interactive flag, launches a full-screen TUI requiring 60+ columns. Keyboard reference and patch-file format are unchanged from prior releases.
 
 ---
 
 ### `analyze select-agent`
 
-Use an AI agent to decide which extracted components belong in Contentful Experience Orchestration as Component Types. Accepts any component that renders visible UI (atoms, molecules, and organisms are all valid) and rejects non-visual infrastructure: React hooks, context providers, A/B testing or variant-routing wrappers, analytics trackers, and security utilities. Runs one agent invocation per component at configurable concurrency, mirroring how `generate components` works.
+Use an AI agent to decide which extracted components belong in Contentful Experience Orchestration. Runs one agent invocation per component at configurable concurrency.
 
 ```bash
-experience-design-system-cli analyze select-agent --agent claude [--session <id>]
+experiences analyze select-agent [--agent <name>] [--session <id>]
 ```
 
 | Option | Default | Description |
 |---|---|---|
-| `--agent <name>` | _(required)_ | Agent to use: `claude`, `codex`, `opencode`, or `cursor` |
+| `--agent <name>` | saved by `experiences setup` | Agent: `claude`, `codex`, `opencode`, or `cursor` |
 | `--session <id>` | most recent completed `analyze extract` | Session ID from `analyze extract` |
 | `--project-root <path>` | `cwd` | Project root for resolving component source files |
-| `--model <name>` | agent default | Model to use (defaults to a small/fast model per agent) |
+| `--model <name>` | agent default | Model to use |
 | `--verbose` | — | Show full agent output including reasoning text |
 | `--dry-run` | — | Print the prompt for the first component without invoking the agent |
+| `--exclude-invalid` | — | Auto-reject components with validation errors instead of failing loud |
+| `--select-prompt-path <path>` | saved by setup | Custom `.md` skill prompt (bypasses bundled invariants); emits a banner at invocation |
+| `--no-select-cache` | cache on | Skip the per-component select cache and re-LLM every component |
+| `--no-cache` | cache on | Skip all fine-grained caches (extract, select, generate) |
+| `--show-rationale` | — | Read-only mode. Print the recorded accept / reject rationale for every component in the session and exit. Reads `raw_components.reject_reason` from the pipeline DB — no LLM call, no schema change. |
+| `--json` | — | With `--show-rationale`: emit the rationale rows as JSON for scripting. |
 
-Results are written to the same session state file used by `analyze select`, so `generate components` will pick up the decisions automatically. If you want to review or override the agent's selections, run `analyze select --session <id>` after `select-agent` completes.
+Decisions are written to the same review state file used by `analyze select`, so `generate components` picks them up automatically. Each `(component-hash, prompt-hash, cli-version)` triple is cached; changing the prompt file via `--select-prompt-path` already busts the corresponding cache entries.
+
+`--show-rationale` is a separate read-only mode — it does not invoke the agent and is safe to run against a completed session at any time. Pair with `--session <id>` to target a specific session; otherwise it auto-resolves to the most recent completed `analyze extract`.
 
 ---
 
 ### `generate components`
 
-Invoke a coding agent to generate CDF component definitions from raw analysis output. Results are stored in the session database and passed directly to `apply` commands via `--session`. Use `print components` to export them to a JSON file on demand.
+Invoke a coding agent to generate CDF component definitions. Results are stored in the session database.
 
 ```bash
-experience-design-system-cli generate components --agent claude [--session <id>]
+experiences generate components [--agent <name>] [--session <id>]
 ```
 
 | Option | Default | Description |
 |---|---|---|
-| `--agent <name>` | _(required)_ | Agent to use: `claude`, `codex`, `opencode`, or `cursor` |
+| `--agent <name>` | saved by setup | Agent: `claude`, `codex`, `opencode`, or `cursor` |
 | `--session <id>` | most recent completed `analyze extract` | Session ID from `analyze extract` |
-| `--tokens <path>` | — | Path to `tokens.json` for token-linked prop resolution (optional) |
-| `--token-map <path>` | — | Path to `token-name-map.json` sidecar (optional) |
-| `--model <name>` | agent default | Model to use (defaults to a small/fast model per agent) |
+| `--tokens <path>` | — | Path to `tokens.json` for token-linked prop resolution |
+| `--token-map <path>` | — | Path to `token-name-map.json` sidecar |
+| `--model <name>` | agent default | Model to use |
+| `--verbose` | — | Show full agent output |
 | `--dry-run` | — | Print the prompt without invoking the agent |
+| `--generate-prompt-path <path>` | saved by setup | Custom `.md` skill prompt; emits a banner at invocation |
+| `--no-cache` | cache on | Bypass all fine-grained caches and force re-run |
 
-Raw components are loaded from the session database and embedded directly in the prompt — no intermediate file is read. On success, generated CDF components are written back to the session database and `session=<id>` is printed to stdout.
-
-**Autonomous mode** (default): the agent runs non-interactively, prints its result between `<<<EDS_OUTPUT_START>>>` / `<<<EDS_OUTPUT_END>>>` sentinel markers, and the CLI stores the validated CDF in the session database.
-
-If the agent binary is not found in `$PATH`, the command exits 1 and prints manual fallback instructions including the skill file path.
+Raw components are loaded from the session database and embedded directly in the prompt — no intermediate file is read. The agent emits one JSON tool-call object per line; per-component results (CDF body + LLM rationale + source location) are persisted to the session DB.
 
 ---
 
-### `generate components edit`
+### `generate components edit` / `generate tokens edit`
 
-Review and correct the output of `generate components` before pushing.
-
-```bash
-experience-design-system-cli generate components edit [--session <id>]
-```
-
-| Option | Default | Description |
-|---|---|---|
-| `--session <id>` | most recent active session | Session ID to operate on |
-| `--accept-all` | — | Accept all definitions without launching the TUI |
-| `--reject <pattern>` | — | Reject definitions whose name contains pattern (repeatable) |
-| `--patch <path>` | — | Path to a JSON patch file for structured overrides |
-
----
+Non-interactive correction of generated output via `--accept-all`, `--reject`, or `--patch`. The interactive TUI variant is not currently shipped.
 
 ---
 
 ### `generate tokens`
 
-Invoke a coding agent to generate DTCG design tokens from raw token data. Results are stored in the session database and passed directly to `apply` commands via `--session`. Use `print tokens` to export them to a JSON file on demand.
-
-```bash
-experience-design-system-cli generate tokens --agent claude [--raw-tokens <path>]
-```
-
-| Option | Default | Description |
-|---|---|---|
-| `--agent <name>` | _(required)_ | Agent to use: `claude`, `codex`, `opencode`, or `cursor` |
-| `--raw-tokens <path>` | — | Path to raw token input file |
-| `--model <name>` | agent default | Model to use (defaults to a small/fast model per agent) |
-| `--dry-run` | — | Print the prompt without invoking the agent |
+Same shape as `generate components`, plus `--raw-tokens <path>`.
 
 ---
 
-### `generate tokens edit`
+### `print components` / `print tokens` / `print validate`
 
-Review and correct the output of `generate tokens` before pushing.
+Unchanged from prior releases.
 
 ```bash
-experience-design-system-cli generate tokens edit [--session <id>]
+experiences print components [--session <id>] [--out <path>]
+experiences print tokens     [--session <id>] [--out <path>]
+experiences print validate   [--components <path>] [--tokens <path>]
 ```
 
-Accepts the same flags as `generate components edit`.
+`print validate` exits `0` on success, `1` on validation errors.
 
 ---
 
-### `print components`
+### `apply preview` / `apply select` / `apply push`
 
-Write generated CDF component definitions from the session database to a JSON file.
+These subcommands are the non-wizard route to the same diff and push logic. Flag surfaces are unchanged.
+
+`apply push` and `apply select` now emit a Contentful webapp view URL for the imported components in their JSON summary (`viewUrl`) so callers can deep-link into the management UI after a successful push.
 
 ```bash
-experience-design-system-cli print components [--session <id>] [--out <path>]
+experiences apply preview --space-id <id> --environment-id <env> --session <id>
+experiences apply select  --space-id <id> --environment-id <env> --session <id>
+experiences apply push    --space-id <id> --environment-id <env> --session <id> [--yes]
 ```
 
-| Option | Default | Description |
-|---|---|---|
-| `--session <id>` | most recent completed `generate components` session | Session ID to read from |
-| `--out <path>` | `components.json` | Output file path |
+Shared flags: `--components`, `--tokens`, `--session`, `--space-id`, `--environment-id`, `--cma-token`, `--host`, `--viewports`. `apply preview` adds `--include-unchanged`. `apply select` adds `--select-all`, `--select`, `--deselect`, `--force`. `apply push` adds `--yes`, `--verbose`, `--force`, `--dry-run`.
 
-Exits 1 if no generated components exist for the session.
+Design tokens are written first (component types may reference token kinds). Each entity write is recorded in the session database atomically — interrupted pushes resume from where they left off.
 
 ---
 
-### `print tokens`
+### `session list` / `session show` / `session stats` / `session prune`
 
-Write generated DTCG design tokens from the session database to a JSON file.
-
-```bash
-experience-design-system-cli print tokens [--session <id>] [--out <path>]
-```
-
-| Option | Default | Description |
-|---|---|---|
-| `--session <id>` | most recent completed `generate tokens` session | Session ID to read from |
-| `--out <path>` | `tokens.json` | Output file path |
-
-Reconstructs the full DTCG nested tree (groups + leaf tokens) from the normalized session storage. Exits 1 if no generated tokens exist for the session.
-
----
-
-### `print validate`
-
-Validate CDF component definitions and/or DTCG token files against their schemas.
-
-```bash
-experience-design-system-cli print validate [--components <path>] [--tokens <path>]
-```
-
-| Option | Description |
-|---|---|
-| `--components <path>` | Path to a CDF component JSON file |
-| `--tokens <path>` | Path to a DTCG token JSON file |
-
-At least one flag is required. In an interactive terminal, a scrollable TUI displays validation results. Exit code: `0` if all files are valid, `1` if any errors are found.
-
----
-
-### `apply preview`
-
-Show a read-only diff of what `apply push` would do.
-
-```bash
-experience-design-system-cli apply preview \
-  --space-id $CONTENTFUL_SPACE_ID \
-  --environment-id master \
-  --session <id>
-```
-
-At least one of `--session`, `--components`, or `--tokens` is required. `--session` and `--components` are mutually exclusive.
-
-| Option | Default | Description |
-|---|---|---|
-| `--session <id>` | — | Session ID from `generate components` (reads components from session DB) |
-| `--components <path>` | — | Path to a CDF `components.json` file (alternative to `--session`) |
-| `--tokens <path>` | — | Path to a DTCG `tokens.json` file |
-| `--space-id <id>` | _(required)_ | Contentful space ID |
-| `--environment-id <id>` | _(required)_ | Contentful environment ID |
-| `--cma-token <token>` | `CONTENTFUL_MANAGEMENT_TOKEN` env | CMA personal access token or app token |
-| `--viewports <path>` | single catch-all viewport | JSON file with a viewport array applied to every imported component type |
-| `--host <url>` | `https://api.contentful.com` | Override API base URL |
-| `--include-unchanged` | — | Include unchanged entities in non-interactive JSON output |
-
-In interactive mode, renders a two-level TUI: a summary view listing entities by status (new / changed / unchanged / conflict), with `Enter` to expand into a property-level diff view. In non-interactive mode, writes a structured JSON diff to stdout. Exit code: `0` if the diff is clean, `1` if there are kind conflicts that would block the push.
-
----
-
-### `apply select`
-
-Choose a subset of entities to push. Opens a checkbox TUI after computing the diff, or use non-interactive flags.
-
-```bash
-experience-design-system-cli apply select \
-  --space-id $CONTENTFUL_SPACE_ID \
-  --environment-id master \
-  --session <id>
-```
-
-Accepts the same flags as `apply preview` (except `--include-unchanged`), plus:
-
-| Option | Default | Description |
-|---|---|---|
-| `--select-all` | — | Select all entities without launching TUI |
-| `--select <pattern>` | — | Select entities by ID pattern (repeatable) |
-| `--deselect <pattern>` | — | Deselect entities by ID pattern (repeatable) |
-
-**Default TUI selection:** entities with status `new` or `changed` are pre-selected; `unchanged` and `kindConflict` start unchecked.
-
-**Keyboard map (TUI):**
-
-| Key | Action |
-|---|---|
-| `↑` / `↓` | Move cursor |
-| `Space` | Toggle entity |
-| `A` | Select all |
-| `N` | Deselect all |
-| `I` | Push selected entities |
-| `Q` | Quit without pushing |
-
----
-
-### `apply push`
-
-Write component types and design tokens to Contentful ExO.
-
-```bash
-experience-design-system-cli apply push \
-  --space-id $CONTENTFUL_SPACE_ID \
-  --environment-id master \
-  --session <id>
-```
-
-Accepts the same flags as `apply preview` (except `--include-unchanged`), plus:
-
-| Option | Default | Description |
-|---|---|---|
-| `--yes` | — | Skip interactive confirmation (required in non-TTY mode) |
-
-Design tokens are written first (component types may reference token kinds). Each entity write is recorded in the session database atomically — if the push is interrupted, re-running with the same flags resumes from where it left off, skipping already-succeeded entities.
-
-#### Viewport configuration
-
-By default every imported component type gets a single catch-all viewport:
-
-```json
-[{ "id": "all", "query": "*", "displayName": "All Sizes", "previewSize": "100%" }]
-```
-
-To apply a custom set, pass `--viewports <path>` with a JSON array of objects containing `id`, `query`, `displayName`, and `previewSize`.
-
----
-
-### `import`
-
-Run the full pipeline in one command: analyze → select-agent → generate → push.
-
-```bash
-experience-design-system-cli import \
-  --space-id $CONTENTFUL_SPACE_ID \
-  --environment-id master \
-  --cma-token $CONTENTFUL_MANAGEMENT_TOKEN \
-  --project <path> \
-  --agent claude
-```
-
-Contentful credentials (`--space-id`, `--environment-id`, `--cma-token`) are only required when the apply step runs. Pass `--skip-apply` to run the pipeline without pushing to Contentful.
-
-The select step uses `analyze select-agent` by default, letting the agent decide which components belong in Experience Orchestration. Pass `--select-all`, `--select`, or `--deselect` to override with pattern-based selection instead. To review and select components interactively, run the steps manually rather than using `import`.
-
-| Option | Default | Description |
-|---|---|---|
-| `--space-id <id>` | _(required unless `--skip-apply`)_ | Contentful space ID |
-| `--environment-id <id>` | _(required unless `--skip-apply`)_ | Contentful environment ID |
-| `--cma-token <token>` | `CONTENTFUL_MANAGEMENT_TOKEN` env | CMA personal access token or app token |
-| `--project <path>` | `.` | Path to the project root to analyze |
-| `--out <path>` | `<project>/.contentful` | Directory where `components.json` is written when `--print` is set |
-| `--agent <name>` | `claude` | Agent to use for `analyze select-agent` and `generate components` |
-| `--model <name>` | agent default | Model to use for agent steps |
-| `--select-all` | — | Skip agentic select; accept all extracted components |
-| `--select <pattern>` | — | Skip agentic select; accept components matching pattern (repeatable) |
-| `--deselect <pattern>` | — | Skip agentic select; deselect components matching pattern (repeatable) |
-| `--skip-analyze` | — | Skip analyze; use most recent `analyze extract` session |
-| `--skip-generate` | — | Skip generate; use most recent `generate components` session |
-| `--print` | — | Write `components.json` to `--out` after generation |
-| `--skip-apply` | — | Skip pushing to Contentful (stops after generate) |
-| `--no-cache` | — | Re-run all steps even if output already exists |
-| `--yes` | — | Skip interactive confirmation in `apply push` |
-| `--viewports <path>` | — | JSON file with viewport array (passed to `apply push`) |
-| `--host <url>` | — | Override API base URL (passed to `apply push`) |
-| `--dry-run` | — | Print the generate prompt without invoking the agent |
-
----
-
-### `session list`
-
-List all pipeline sessions.
-
-```bash
-experience-design-system-cli session list [--status <status>] [--limit <n>] [--json]
-```
-
-| Option | Default | Description |
-|---|---|---|
-| `--status <status>` | — | Filter by `in-progress`, `complete`, `failed`, or `interrupted` |
-| `--all` | — | Include interrupted sessions (hidden by default) |
-| `--limit <n>` | `20` | Max rows to return |
-| `--json` | — | Force JSON output |
-
----
-
-### `session show <id>`
-
-Show all steps for a session.
-
-```bash
-experience-design-system-cli session show <id> [--json]
-```
-
----
-
-### `session stats`
-
-Show aggregate storage and record counts for the pipeline database.
-
-```bash
-experience-design-system-cli session stats [--json]
-```
-
----
-
-### `session prune`
-
-Delete sessions matching criteria.
-
-```bash
-experience-design-system-cli session prune --older-than 30d [--dry-run] [--yes]
-```
-
-| Option | Description |
-|---|---|
-| `--id <id>` | Delete a specific session by ID |
-| `--older-than <duration>` | Delete sessions older than this age (e.g. `30d`, `2w`, `1y`) |
-| `--status <status>` | Delete sessions by last step status: `complete`, `failed`, `interrupted` |
-| `--yes` | Skip confirmation prompt |
-| `--dry-run` | Print what would be deleted without deleting |
-
-At least one of `--id`, `--older-than`, or `--status` is required.
+Lower-level pipeline-session management. Unchanged from prior releases; see `experiences session --help` for the full flag surface. Most operators should use `experiences runs` instead.
 
 ---
 
 ## Session Database
 
-All pipeline state is stored in `~/.contentful/experience-design-system-cli/pipeline.db` (SQLite). The path can be overridden with the `EDS_PIPELINE_DB_PATH` environment variable.
+All pipeline state is stored in `~/.contentful/experience-design-system-cli/pipeline.db` (SQLite). The path can be overridden with the `EDS_PIPELINE_DB_PATH` environment variable. The push-resumption database is at `~/.contentful/experience-design-system-cli/import.db` (override with `EDS_IMPORT_DB_PATH`).
 
-Sessions are created by `analyze extract` and shared across all downstream commands. Use `session list` to see active sessions and `session prune` to clean up old ones.
+Wizard run history is separate: `~/.config/experiences/runs.json`.
 
 ---
 
 ## Terminal Compatibility
 
-- Minimum 60 columns required for `analyze edit` interactive mode
+- Minimum 60 columns required for the wizard and the `analyze select` TUI
 - 80+ columns recommended for full sidebar + detail view
-- 120+ columns required to show the source code panel
+- 120+ columns required to show the source code panel in `analyze select`
 - `NO_COLOR=1` suppresses all ANSI color output
 - Windows: supported via Ink v4; known limitations with older ConEmu and cmd.exe
 
@@ -543,4 +401,3 @@ pnpm -F @contentful/experience-design-system-cli test
 # Typecheck
 pnpm -F @contentful/experience-design-system-cli typecheck
 ```
-

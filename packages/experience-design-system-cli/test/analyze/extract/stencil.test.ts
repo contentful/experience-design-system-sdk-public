@@ -368,4 +368,27 @@ describe('StencilComponentExtractor', () => {
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0]).toContain('Stencil FunctionalComponent detected but not extracted: LoadingMessage');
   });
+
+  it('captures sourcePath and per-prop source line ranges (Feature 1)', async () => {
+    const filePath = await writeFixture(
+      'card-loc.tsx',
+      `
+      import { Component, Prop, h } from '@stencil/core';
+
+      @Component({ tag: 'p-card-loc', shadow: true })
+      export class CardLoc {
+        @Prop() public title!: string;
+        @Prop() public subtitle?: string;
+        render() { return <section />; }
+      }
+    `,
+    );
+    const result = await extractStencilComponents([filePath]);
+    const card = result.components[0];
+    expect(card.sourcePath).toBe(filePath);
+    const titleProp = card.props.find((p) => p.name === 'title');
+    const subtitleProp = card.props.find((p) => p.name === 'subtitle');
+    expect(titleProp?.sourceStartLine).toBeGreaterThan(0);
+    expect(subtitleProp?.sourceStartLine).toBeGreaterThan(titleProp!.sourceStartLine!);
+  });
 });

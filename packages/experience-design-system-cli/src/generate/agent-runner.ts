@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { getDebugLogger } from '../lib/debug-logger.js';
 
 export type AgentName = 'claude' | 'codex' | 'opencode' | 'cursor';
 
@@ -21,6 +22,8 @@ export interface ClassifyPropCall {
   required?: boolean;
   description?: string;
   default?: string | boolean;
+  /** Internal LLM rationale; not customer-facing. Persisted to raw_props.rationale. */
+  reason?: string;
 }
 
 export interface ExcludePropCall {
@@ -32,6 +35,16 @@ export interface ExcludePropCall {
 export interface ClassifyComponentCall {
   tool: 'classify_component';
   description?: string;
+  /**
+   * Component-level rationale strings. Surfaced by the `I` ComponentRationalePanel.
+   * Each field is optional; missing fields leave existing DB values untouched
+   * (sparse update semantics in applyToolCalls).
+   */
+  rationale?: {
+    description?: string;
+    props?: string;
+    slots?: string;
+  };
 }
 
 export interface ClassifySlotCall {
@@ -40,6 +53,8 @@ export interface ClassifySlotCall {
   required?: boolean;
   allowed_components?: string[];
   description?: string;
+  /** Per-slot rationale; persisted to raw_slots.rationale. */
+  rationale?: string;
 }
 
 export type ToolCall = ClassifyPropCall | ExcludePropCall | ClassifyComponentCall | ClassifySlotCall;
@@ -198,6 +213,7 @@ export function parseToolCallLines(stdout: string): ParsedToolCalls {
       if (typeof rec.required === 'boolean') call.required = rec.required;
       if (typeof rec.description === 'string') call.description = rec.description;
       if (typeof rec.default === 'string' || typeof rec.default === 'boolean') call.default = rec.default;
+      if (typeof rec.reason === 'string') call.reason = rec.reason;
       calls.push(call);
     } else if (tool === 'exclude_prop') {
       if (typeof rec.prop !== 'string' || !rec.prop) {
@@ -212,6 +228,14 @@ export function parseToolCallLines(stdout: string): ParsedToolCalls {
     } else if (tool === 'classify_component') {
       const call: ClassifyComponentCall = { tool: 'classify_component' };
       if (typeof rec.description === 'string') call.description = rec.description;
+      if (typeof rec.rationale === 'object' && rec.rationale !== null) {
+        const r = rec.rationale as Record<string, unknown>;
+        const rationale: NonNullable<ClassifyComponentCall['rationale']> = {};
+        if (typeof r.description === 'string') rationale.description = r.description;
+        if (typeof r.props === 'string') rationale.props = r.props;
+        if (typeof r.slots === 'string') rationale.slots = r.slots;
+        if (Object.keys(rationale).length > 0) call.rationale = rationale;
+      }
       calls.push(call);
     } else if (tool === 'classify_slot') {
       if (typeof rec.slot !== 'string' || !rec.slot) {
@@ -224,6 +248,7 @@ export function parseToolCallLines(stdout: string): ParsedToolCalls {
         call.allowed_components = rec.allowed_components as string[];
       }
       if (typeof rec.description === 'string') call.description = rec.description;
+      if (typeof rec.rationale === 'string') call.rationale = rec.rationale;
       calls.push(call);
     }
   }
@@ -300,6 +325,9 @@ const DEFAULT_MODELS: Record<AgentName, string> = {
 };
 
 export function resolveBinary(agent: AgentName): string {
+  const envKey = `EDS_AGENT_BINARY_${agent.toUpperCase()}`;
+  const override = process.env[envKey];
+  if (override && override.trim()) return override.trim();
   return AGENT_BINARIES[agent];
 }
 
@@ -332,6 +360,18 @@ export async function runAgent(options: {
   const binary = resolveBinary(agent);
   const args = buildArgs(agent, prompt, model);
 
+  const debug = getDebugLogger();
+  const startedAt = Date.now();
+  debug.event('agent', 'run.start', {
+    agent,
+    binary,
+    model,
+    interactive,
+    timeoutMs,
+    promptLen: prompt.length,
+    promptHead: prompt.slice(0, 500),
+  });
+
   return new Promise((resolve) => {
     const child = spawn(binary, args, {
       stdio: interactive ? 'inherit' : ['pipe', 'pipe', 'pipe'],
@@ -362,12 +402,24 @@ export async function runAgent(options: {
 
     child.on('close', (code, signal) => {
       clearTimeout(timer);
-      resolve({
+      const result = {
         exitCode: signal ? 1 : (code ?? 1),
         stdout,
         stderr,
         timedOut,
+      };
+      debug.event('agent', 'run.end', {
+        agent,
+        model,
+        durationMs: Date.now() - startedAt,
+        exitCode: result.exitCode,
+        signal,
+        timedOut,
+        stdoutLen: stdout.length,
+        stderrLen: stderr.length,
+        stderrTail: stderr.slice(-1000),
       });
+      resolve(result);
     });
   });
 }
@@ -379,12 +431,24 @@ export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus>
 
   const binary = resolveBinary(agent);
 
-  // Verify the binary exists first
-  const whichResult = await new Promise<number>((resolve) => {
+  // Verify the binary exists first. When `binary` is an absolute path (e.g.
+  // set via EDS_AGENT_BINARY_CLAUDE=/opt/custom/claude), `which` on some
+  // shells doesn't resolve it — check the filesystem directly for absolute
+  // paths, and fall back to `which` for bare names on $PATH.
+  const binaryExists = await new Promise<boolean>((resolve) => {
+    if (binary.startsWith('/')) {
+      import('node:fs/promises').then((fs) =>
+        fs.access(binary).then(
+          () => resolve(true),
+          () => resolve(false),
+        ),
+      );
+      return;
+    }
     const child = spawn('which', [binary], { stdio: 'ignore' });
-    child.on('close', (code) => resolve(code ?? 1));
+    child.on('close', (code) => resolve(code === 0));
   });
-  if (whichResult !== 0) return 'not-found';
+  if (!binaryExists) return 'not-found';
 
   // Use `claude auth status` — fast, no API call, works regardless of which
   // auth provider (direct, Bedrock, Vertex) or whether AWS_PROFILE is set.
