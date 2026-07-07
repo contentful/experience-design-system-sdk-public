@@ -599,6 +599,24 @@ function SlotRow({
         )}
       </Box>
 
+      {/* $allowedComponents summary for the UNSELECTED slot row. The
+          expanded editor below (gated on `selected`) owns the full list
+          + picker; here we show only a compact comma-joined summary so the
+          operator can see each slot's allow-list without navigating into it.
+          Empty list renders as `(any)` to match the selected-empty rendering.
+          INTEG-4401 Fix 5: previously we rendered nothing at all for
+          unselected slots, so the operator had no way to see which
+          components a slot allowed without jumping the cursor to it. */}
+      {!selected && (
+        <Box paddingLeft={2} gap={1}>
+          <Text dimColor>allowed:</Text>
+          {slot.allowedComponents.length === 0 ? (
+            <Text dimColor>(any)</Text>
+          ) : (
+            <Text color="cyan">{slot.allowedComponents.join(', ')}</Text>
+          )}
+        </Box>
+      )}
       {/* $allowedComponents sub-list — mirrors enum $values UX. Empty list
           renders as `(any)` in dim text. */}
       {selected && (

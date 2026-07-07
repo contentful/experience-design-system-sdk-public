@@ -985,6 +985,35 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
     }
   });
 
+  it('renders the allowedComponents summary on unselected slot rows (INTEG-4401 Fix 5)', () => {
+    // Multiple slots: on mount the first is not yet slot-focused (entry-level
+    // focus), so all SlotRow instances render with `selected=false`. We
+    // assert the non-selected summary path shows the actual list (`Heading`)
+    // rather than the previous `(any)` fallback.
+    const TWO_SLOTS = JSON.stringify(
+      {
+        Container: {
+          $type: 'component',
+          $properties: {},
+          $slots: {
+            header: { $allowedComponents: ['Heading'] },
+            body: { $allowedComponents: [] },
+          },
+        },
+      },
+      null,
+      2,
+    );
+    const { lastFrame } = render(
+      <FieldEditor value={TWO_SLOTS} width={80} height={25} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    const frame = lastFrame() ?? '';
+    // The non-empty slot shows its allow-list, even without focus.
+    expect(frame).toContain('Heading');
+    // The empty slot still surfaces `(any)`.
+    expect(frame).toContain('(any)');
+  });
+
   it('renders (any) when allowedComponents is empty', () => {
     const EMPTY = JSON.stringify(
       {
@@ -1844,7 +1873,7 @@ describe('FieldEditor - legend documents i and I keys', () => {
 // the pure helper (unit) and the input flow (render).
 
 describe('FieldEditor — INTEG-4401: computeAllowedComponentCandidates (unit)', () => {
-  it("excludes candidates whose addition would create a new cycle (Card.header ← X, X.body ← Card ⇒ Card→X)", () => {
+  it('excludes candidates whose addition would create a new cycle (Card.header ← X, X.body ← Card ⇒ Card→X)', () => {
     // Card has a header slot with no allowed components yet. X.body points at
     // Card. Adding Card→header→X would form Card → X → Card (via X.body).
     const graph = [
@@ -2057,9 +2086,7 @@ describe('FieldEditor — INTEG-4401: picker render + input (render)', () => {
     stdin.write('\r');
     await new Promise((r) => setTimeout(r, 30));
     // onChange should NOT have been called with a Bad-containing value.
-    const anyBad = onChange.mock.calls.some((call) =>
-      typeof call[0] === 'string' && call[0].includes('"Bad"'),
-    );
+    const anyBad = onChange.mock.calls.some((call) => typeof call[0] === 'string' && call[0].includes('"Bad"'));
     expect(anyBad).toBe(false);
     // The inline error banner is shown.
     expect(lastFrame() ?? '').toMatch(/slot-dependency cycle/);
@@ -2086,22 +2113,15 @@ describe('FieldEditor — INTEG-4401: picker render + input (render)', () => {
     stdin.write('\r');
     await new Promise((r) => setTimeout(r, 30));
     expect(lastFrame() ?? '').toMatch(/self-loop/);
-    const anySelf = onChange.mock.calls.some((call) =>
-      typeof call[0] === 'string' && call[0].includes('"$allowedComponents": [\n          "Container"'),
+    const anySelf = onChange.mock.calls.some(
+      (call) => typeof call[0] === 'string' && call[0].includes('"$allowedComponents": [\n          "Container"'),
     );
     expect(anySelf).toBe(false);
   });
 
   it('regression: no picker rendered when projectSlotGraph is omitted (free-text-only)', async () => {
     const { stdin, lastFrame } = render(
-      <FieldEditor
-        value={CONTAINER}
-        width={80}
-        height={25}
-        onChange={vi.fn()}
-        onSave={vi.fn()}
-        onDiscard={vi.fn()}
-      />,
+      <FieldEditor value={CONTAINER} width={80} height={25} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
     await navigateAndPressAdd(stdin);
     const frame = lastFrame() ?? '';
