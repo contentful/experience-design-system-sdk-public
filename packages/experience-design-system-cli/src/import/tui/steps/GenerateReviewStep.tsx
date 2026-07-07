@@ -18,9 +18,12 @@ import {
   storeCDFComponents,
   loadComponentReviewMetadata,
   loadComponentRationale,
+  loadSlotCycles,
   type ComponentReviewMetadata,
   type ComponentRationale,
+  type StoredSlotCycle,
 } from '../../../session/db.js';
+import { formatCyclePath } from '../../../analyze/cycle-detection.js';
 import { RationalePanel, type RationaleRow } from '../../../analyze/select/tui/components/RationalePanel.js';
 import { ComponentRationalePanel } from '../../../analyze/select/tui/components/ComponentRationalePanel.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
@@ -77,13 +80,23 @@ type GenerateReviewStepProps = {
  *
  * Within each tier (empty / non-empty) we tie-break alphabetically by `key`.
  */
-export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(components: T[]): T[] {
+export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
+  components: T[],
+  cycleParticipants?: Set<string>,
+): T[] {
   const isEmpty = (entry: CDFComponentEntry): boolean =>
     Object.keys(entry.$properties ?? {}).length === 0 && Object.keys(entry.$slots ?? {}).length === 0;
+  // Tier order: cycle members first (they block push — surface loudest),
+  // then empty (soft warning), then everything else. Ties broken alpha.
+  const tier = (c: T): number => {
+    if (cycleParticipants?.has(c.key)) return 0;
+    if (isEmpty(c.entry)) return 1;
+    return 2;
+  };
   return [...components].sort((a, b) => {
-    const aEmpty = isEmpty(a.entry);
-    const bEmpty = isEmpty(b.entry);
-    if (aEmpty !== bEmpty) return aEmpty ? -1 : 1;
+    const at = tier(a);
+    const bt = tier(b);
+    if (at !== bt) return at - bt;
     return a.key.localeCompare(b.key);
   });
 }
@@ -143,6 +156,12 @@ export function GenerateReviewStep({
   // Tracks the first `g` of a potential `gg` double-tap (jumps to top in
   // JSON-view + panel-focused state). Reset on any non-`g` key.
   const pendingGRef = useRef(false);
+  // INTEG-4401: slot-dependency cycles loaded from the session DB. Non-empty
+  // triggers sidebar (cycle) badges, banner + [c] detail-panel affordance,
+  // and (at push time) a hard block.
+  const [slotCycles, setSlotCycles] = useState<StoredSlotCycle[]>([]);
+  const [showCyclePanel, setShowCyclePanel] = useState(false);
+  const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
@@ -181,8 +200,10 @@ export function GenerateReviewStep({
     async function load() {
       const db = openPipelineDb();
       let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }>;
+      let cycles: StoredSlotCycle[] = [];
       try {
         cdfComponents = loadCDFComponents(db, extractSessionId);
+        cycles = loadSlotCycles(db, extractSessionId);
       } finally {
         db.close();
       }
@@ -196,7 +217,10 @@ export function GenerateReviewStep({
         entry,
         status: 'needs-review',
       }));
-      setComponents(sortComponentsForSidebar(reviewEntries));
+      const cycleParticipants = new Set<string>();
+      for (const c of cycles) for (const p of c.path) cycleParticipants.add(p);
+      setSlotCycles(cycles);
+      setComponents(sortComponentsForSidebar(reviewEntries, cycleParticipants));
       setLoading(false);
     }
     load().catch((e: unknown) => {
@@ -357,6 +381,31 @@ export function GenerateReviewStep({
       if (input === 'd' || key.escape) {
         setShowRemovedPanel(false);
       }
+      return;
+    }
+    // INTEG-4401: slot-cycle detail panel. Same modal-swallow rules as
+    // showRemovedPanel; q/Esc close, ↑↓ scroll.
+    if (showCyclePanel) {
+      if (input === 'c' || input === 'q' || key.escape) {
+        setShowCyclePanel(false);
+        setCyclePanelScroll(0);
+        return;
+      }
+      if (key.upArrow || input === 'k') {
+        setCyclePanelScroll((v) => Math.max(0, v - 1));
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        setCyclePanelScroll((v) => v + 1);
+        return;
+      }
+      return;
+    }
+    // Open the cycle panel from sidebar-focused state when there is at
+    // least one cycle to display.
+    if (input === 'c' && sidebarFocused && slotCycles.length > 0) {
+      setShowCyclePanel(true);
+      setCyclePanelScroll(0);
       return;
     }
     // `d` opens the panel only when live-preview is enabled and there is at
@@ -572,20 +621,31 @@ export function GenerateReviewStep({
     Object.keys(c.entry.$properties).length === 0 && Object.keys(c.entry.$slots ?? {}).length === 0;
   const emptyCount = components.filter(isEmpty).length;
 
+  // INTEG-4401: cycle-participant set drives sidebar `(cycle)` badges plus
+  // the banner counts. Recomputed on every render — cheap for typical N.
+  const cycleParticipantSet = new Set<string>();
+  for (const cycle of slotCycles) for (const p of cycle.path) cycleParticipantSet.add(p);
+
+  const sidebarSuffix = (c: CdfReviewEntry): string => {
+    if (cycleParticipantSet.has(c.key)) return ' (cycle)';
+    if (isEmpty(c)) return ' (empty)';
+    return '';
+  };
+
   const sidebarItems: ReviewComponentSummary[] = components.map((c) => ({
     id: c.key,
-    name: isEmpty(c) ? `${c.key} (empty)` : c.key,
+    name: `${c.key}${sidebarSuffix(c)}`,
     status: c.status,
     previewAnnotation: previewAnnotations.get(c.key),
     extractionConfidence: null,
     needsReview: false,
     validationErrorCount: 0,
-    validationWarningCount: isEmpty(c) ? 1 : 0,
+    validationWarningCount: sidebarSuffix(c) !== '' ? 1 : 0,
   }));
 
-  // Account for the "(empty)" suffix added to zero-prop component names so the
-  // sidebar doesn't truncate it.
-  const longestName = components.reduce((m, c) => Math.max(m, c.key.length + (isEmpty(c) ? ' (empty)'.length : 0)), 0);
+  // Account for the "(cycle)" / "(empty)" suffix added to badged component
+  // names so the sidebar doesn't truncate them.
+  const longestName = components.reduce((m, c) => Math.max(m, c.key.length + sidebarSuffix(c).length), 0);
   // +5 = border (1) + status icon (1) + badge column (1) + space (1) + border (1).
   // The badge column is reserved even when no annotation is present so the
   // sidebar width doesn't jitter as live-preview annotations flip in/out.
@@ -622,6 +682,46 @@ export function GenerateReviewStep({
           <Text dimColor>press d or Esc to close</Text>
         </Box>
       )}
+      {showCyclePanel &&
+        !dialogOpen &&
+        (() => {
+          // Materialize the full panel body as a flat list of Text lines,
+          // then slice by cyclePanelScroll so ↑↓ can walk arbitrarily long
+          // content. Each cycle contributes 3-4 lines: heading, path,
+          // suggested fix (if any), and a blank separator.
+          const PANEL_H = 20;
+          const lines: React.ReactElement[] = [];
+          lines.push(
+            <Text key="cyc-title" bold color="yellow">
+              {`SLOT DEPENDENCY CYCLES (${slotCycles.length})`}
+            </Text>,
+          );
+          lines.push(<Text key="cyc-sub" dimColor>{'push will fail until these are resolved'}</Text>);
+          lines.push(<Text key="cyc-space"> </Text>);
+          slotCycles.forEach((cycle, idx) => {
+            const nodeCount = new Set(cycle.path).size;
+            lines.push(
+              <Text key={`cyc-h-${idx}`} bold>{`▸ Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
+            );
+            lines.push(<Text key={`cyc-p-${idx}`}>{`    ${formatCyclePath(cycle, 16)}`}</Text>);
+            if (cycle.suggestedBreak) {
+              const b = cycle.suggestedBreak;
+              lines.push(
+                <Text key={`cyc-f-${idx}`} dimColor>
+                  {`    Suggested fix: remove '${b.toComponent}' from ${b.fromComponent}.$slots.${b.slotName}.$allowedComponents`}
+                </Text>,
+              );
+            }
+            lines.push(<Text key={`cyc-s-${idx}`}> </Text>);
+          });
+          const visible = lines.slice(cyclePanelScroll, cyclePanelScroll + PANEL_H);
+          return (
+            <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
+              {visible}
+              <Text dimColor>{'[↑↓/j/k] scroll  [c/q/Esc] close'}</Text>
+            </Box>
+          );
+        })()}
       {!dialogOpen &&
         livePreview &&
         (() => {
@@ -659,6 +759,22 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
+      {!dialogOpen && slotCycles.length > 0 && !showCyclePanel && (
+        <Box flexDirection="column">
+          <Text color="yellow">
+            {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
+          </Text>
+          {slotCycles.slice(0, 3).map((cycle, idx) => (
+            <Text key={`cyc-banner-${idx}`} color="yellow">
+              {`  Cycle: ${formatCyclePath(cycle)}`}
+            </Text>
+          ))}
+          {slotCycles.length > 3 && (
+            <Text color="yellow">{`  …${slotCycles.length - 3} more`}</Text>
+          )}
+          <Text dimColor>{'  press [c] for detail'}</Text>
+        </Box>
+      )}
       {!dialogOpen && emptyCount > 0 && (
         <Text color="yellow">
           {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
@@ -818,6 +934,7 @@ export function GenerateReviewStep({
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel' +
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
+                      (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       '  [q] quit'
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'

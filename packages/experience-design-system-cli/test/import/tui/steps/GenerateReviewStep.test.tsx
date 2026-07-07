@@ -24,6 +24,7 @@ vi.mock('../../../../src/session/db.js', () => ({
   }),
   loadCDFComponents: vi.fn().mockReturnValue([{ key: 'Button', entry: SAMPLE_ENTRY }]),
   storeCDFComponents: vi.fn(),
+  loadSlotCycles: vi.fn().mockReturnValue([]),
   loadComponentReviewMetadata: vi.fn().mockReturnValue(null),
   loadComponentRationale: vi.fn().mockReturnValue({
     name: 'Button',
@@ -1195,5 +1196,104 @@ describe('GenerateReviewStep — preview-aware finalize guard (INTEG-4411 refine
     expect(accepted).toBe(1);
     const frame = lastFrame() ?? '';
     expect(frame).not.toMatch(/Nothing to push/);
+  });
+});
+
+describe('GenerateReviewStep — slot-cycle warning surface (INTEG-4401)', () => {
+  const CYCLE_A = {
+    $type: 'component' as const,
+    $properties: {},
+    $slots: { header: { $allowedComponents: ['CycleB'] } },
+  };
+  const CYCLE_B = {
+    $type: 'component' as const,
+    $properties: {},
+    $slots: { footer: { $allowedComponents: ['CycleA'] } },
+  };
+
+  it('renders a banner and (cycle) sidebar badges when cycles exist', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+      },
+    ]);
+
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/slot dependency cycle/);
+    expect(frame).toMatch(/CycleA \(cycle\)/);
+    expect(frame).toMatch(/CycleB \(cycle\)/);
+  });
+
+  it('opens the cycle detail panel on [c] with suggested fix visible', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+      },
+    ]);
+
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('c');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/SLOT DEPENDENCY CYCLES/);
+    expect(frame).toMatch(/Suggested fix/);
+    expect(frame).toMatch(/CycleA.*header.*CycleB/);
+  });
+
+  it('does not render the banner or [c] affordance when there are no cycles', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/slot dependency cycle/);
+    expect(frame).not.toMatch(/\[c\] cycles/);
+  });
+});
+
+describe('sortComponentsForSidebar — 3-tier ordering (INTEG-4401)', () => {
+  const empty = { $type: 'component' as const, $properties: {} };
+  const populated = {
+    $type: 'component' as const,
+    $properties: { x: { $type: 'string' as const, $category: 'content' as const } },
+  };
+  it('places cycle members before empty and populated', async () => {
+    const mod = await import('../../../../src/import/tui/steps/GenerateReviewStep.js');
+    const sorted = mod.sortComponentsForSidebar(
+      [
+        { key: 'Populated', entry: populated },
+        { key: 'Empty', entry: empty },
+        { key: 'CycleA', entry: populated },
+      ],
+      new Set(['CycleA']),
+    );
+    expect(sorted.map((c) => c.key)).toEqual(['CycleA', 'Empty', 'Populated']);
   });
 });
