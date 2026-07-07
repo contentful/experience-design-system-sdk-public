@@ -1,6 +1,12 @@
 import { render } from 'ink-testing-library';
 import { describe, it, expect, vi } from 'vitest';
-import { FieldEditor } from '../../../../src/analyze/select/tui/components/FieldEditor.js';
+import {
+  FieldEditor,
+  computeAllowedComponentCandidates,
+  simulateGraphWithCandidate,
+  introducesNewCycle,
+} from '../../../../src/analyze/select/tui/components/FieldEditor.js';
+import { findSlotCycles } from '../../../../src/analyze/cycle-detection.js';
 
 const ENUM_COMPONENT = JSON.stringify(
   {
@@ -1828,5 +1834,306 @@ describe('FieldEditor - legend documents i and I keys', () => {
     const out = lastFrame() ?? '';
     expect(out).toContain('toggle prop rationale panel');
     expect(out).toContain('toggle component rationale panel');
+  });
+});
+
+// INTEG-4401 — cycle-aware $allowedComponents picker
+// ─────────────────────────────────────────────────────────────────────
+// The FieldEditor exposes a cycle-filtered candidate list when the caller
+// plumbs in `projectSlotGraph` + `currentComponentName`. These tests cover
+// the pure helper (unit) and the input flow (render).
+
+describe('FieldEditor — INTEG-4401: computeAllowedComponentCandidates (unit)', () => {
+  it("excludes candidates whose addition would create a new cycle (Card.header ← X, X.body ← Card ⇒ Card→X)", () => {
+    // Card has a header slot with no allowed components yet. X.body points at
+    // Card. Adding Card→header→X would form Card → X → Card (via X.body).
+    const graph = [
+      { name: 'Card', slots: [{ name: 'header', allowedComponents: [] }] },
+      { name: 'X', slots: [{ name: 'body', allowedComponents: ['Card'] }] },
+      { name: 'Safe', slots: [] },
+    ];
+    // simulate FieldEditor state for Card: same as graph entry, no pending edits.
+    const currentSlots = [{ name: 'header', allowedComponents: [] as string[] }];
+    const cands = computeAllowedComponentCandidates(graph, 'Card', currentSlots, 'header');
+    // Self is excluded, X is excluded (would form cycle), Safe is included.
+    expect(cands).not.toContain('Card');
+    expect(cands).not.toContain('X');
+    expect(cands).toContain('Safe');
+  });
+
+  it('excludes names already present in the slot', () => {
+    const graph = [
+      { name: 'Card', slots: [{ name: 'header', allowedComponents: ['A'] }] },
+      { name: 'A', slots: [] },
+      { name: 'B', slots: [] },
+    ];
+    const currentSlots = [{ name: 'header', allowedComponents: ['A'] }];
+    const cands = computeAllowedComponentCandidates(graph, 'Card', currentSlots, 'header');
+    expect(cands).not.toContain('A');
+    expect(cands).toContain('B');
+  });
+
+  it('returns the empty list when every candidate would cycle', () => {
+    // A tight A↔B cycle already exists via B.slot=A. Adding anything to A's
+    // slot that eventually reaches A creates a new cycle. But we test the
+    // simpler: A has one slot, B is the only other component and B→A already.
+    // Adding B to A.slot forms A→B→A (new elementary cycle).
+    const graph = [
+      { name: 'A', slots: [{ name: 's', allowedComponents: [] }] },
+      { name: 'B', slots: [{ name: 't', allowedComponents: ['A'] }] },
+    ];
+    const currentSlots = [{ name: 's', allowedComponents: [] as string[] }];
+    const cands = computeAllowedComponentCandidates(graph, 'A', currentSlots, 's');
+    expect(cands).toEqual([]);
+  });
+
+  it('reflects pending unsaved edits — self entry is replaced by currentSlots', () => {
+    // Baseline graph has Card.header = [] (no cycle). But the FieldEditor is
+    // showing pending currentSlots where Card.other = [B]. Adding X to
+    // Card.header should still be safe (B is a dead-end).
+    const graph = [
+      { name: 'Card', slots: [{ name: 'header', allowedComponents: [] }] },
+      { name: 'B', slots: [] },
+      { name: 'X', slots: [] },
+    ];
+    const pending = [
+      { name: 'header', allowedComponents: [] as string[] },
+      { name: 'other', allowedComponents: ['B'] },
+    ];
+    const cands = computeAllowedComponentCandidates(graph, 'Card', pending, 'header');
+    expect(cands).toContain('B');
+    expect(cands).toContain('X');
+  });
+
+  it('simulateGraphWithCandidate + findSlotCycles surfaces the new elementary cycle', () => {
+    // Card→X via header AND X→Card via body ⇒ Card→X→Card cycle after the sim.
+    const graph = [
+      { name: 'Card', slots: [{ name: 'header', allowedComponents: [] }] },
+      { name: 'X', slots: [{ name: 'body', allowedComponents: ['Card'] }] },
+    ];
+    const currentSlots = [{ name: 'header', allowedComponents: [] as string[] }];
+    const before = findSlotCycles(simulateGraphWithCandidate(graph, 'Card', currentSlots, '', ''));
+    const after = findSlotCycles(simulateGraphWithCandidate(graph, 'Card', currentSlots, 'header', 'X'));
+    expect(before.length).toBe(0);
+    expect(after.length).toBeGreaterThan(0);
+    expect(introducesNewCycle(before, after)).toBe(true);
+  });
+
+  it('sorts candidates alphabetically for a stable picker order', () => {
+    const graph = [
+      { name: 'Root', slots: [{ name: 's', allowedComponents: [] }] },
+      { name: 'Zed', slots: [] },
+      { name: 'Alpha', slots: [] },
+      { name: 'Mango', slots: [] },
+    ];
+    const currentSlots = [{ name: 's', allowedComponents: [] as string[] }];
+    const cands = computeAllowedComponentCandidates(graph, 'Root', currentSlots, 's');
+    expect(cands).toEqual(['Alpha', 'Mango', 'Zed']);
+  });
+});
+
+describe('FieldEditor — INTEG-4401: picker render + input (render)', () => {
+  // Container is the component under edit; children.$allowedComponents is
+  // empty. Alpha and Beta are candidates; Bad would create a cycle
+  // (Bad→ref→Container) so it must be excluded from the picker.
+  const CONTAINER = JSON.stringify(
+    {
+      Container: {
+        $type: 'component',
+        $properties: {},
+        $slots: { children: {} },
+      },
+    },
+    null,
+    2,
+  );
+  const PROJECT_GRAPH = [
+    { name: 'Container', slots: [{ name: 'children', allowedComponents: [] }] },
+    { name: 'Alpha', slots: [] },
+    { name: 'Beta', slots: [] },
+    { name: 'Bad', slots: [{ name: 'ref', allowedComponents: ['Container'] }] },
+  ];
+
+  async function navigateAndPressAdd(stdin: { write: (data: string) => void }): Promise<void> {
+    // Return → first field (required). j → allowedComponents. a → add-mode.
+    stdin.write('\r');
+    await new Promise((r) => setTimeout(r, 30));
+    stdin.write('j');
+    await new Promise((r) => setTimeout(r, 30));
+    stdin.write('a');
+    await new Promise((r) => setTimeout(r, 30));
+  }
+
+  it('renders the cycle-filtered candidate list; Bad is excluded', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={CONTAINER}
+        width={80}
+        height={25}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        projectSlotGraph={PROJECT_GRAPH}
+        currentComponentName="Container"
+      />,
+    );
+    await navigateAndPressAdd(stdin);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('candidates (↑↓ cycle, Enter to add):');
+    expect(frame).toContain('Alpha');
+    expect(frame).toContain('Beta');
+    expect(frame).not.toContain('Bad');
+  });
+
+  it('↓ moves the picker cursor and Enter commits the highlighted candidate', async () => {
+    const onChange = vi.fn();
+    const { stdin } = render(
+      <FieldEditor
+        value={CONTAINER}
+        width={80}
+        height={25}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        projectSlotGraph={PROJECT_GRAPH}
+        currentComponentName="Container"
+      />,
+    );
+    await navigateAndPressAdd(stdin);
+    onChange.mockClear();
+    // Cursor lands on the first candidate (Alpha). ↓ moves to Beta.
+    stdin.write('\x1b[B');
+    await new Promise((r) => setTimeout(r, 30));
+    stdin.write('\r');
+    await new Promise((r) => setTimeout(r, 30));
+    expect(onChange).toHaveBeenCalled();
+    const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(last).toContain('"Beta"');
+    expect(last).not.toContain('"Alpha"');
+  });
+
+  it('renders "no valid components" line when every candidate would cycle', async () => {
+    // Every other component in the graph points at Container ⇒ every add-cycle.
+    const ALL_CYCLE = [
+      { name: 'Container', slots: [{ name: 'children', allowedComponents: [] }] },
+      { name: 'X', slots: [{ name: 'r', allowedComponents: ['Container'] }] },
+      { name: 'Y', slots: [{ name: 'r', allowedComponents: ['Container'] }] },
+    ];
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={CONTAINER}
+        width={80}
+        height={25}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        projectSlotGraph={ALL_CYCLE}
+        currentComponentName="Container"
+      />,
+    );
+    await navigateAndPressAdd(stdin);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('no valid components to add');
+  });
+
+  it('free-text add of a cycle-forming name is rejected with an inline error', async () => {
+    const onChange = vi.fn();
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={CONTAINER}
+        width={80}
+        height={25}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        projectSlotGraph={PROJECT_GRAPH}
+        currentComponentName="Container"
+      />,
+    );
+    await navigateAndPressAdd(stdin);
+    onChange.mockClear();
+    'Bad'.split('').forEach((c) => stdin.write(c));
+    await new Promise((r) => setTimeout(r, 30));
+    stdin.write('\r');
+    await new Promise((r) => setTimeout(r, 30));
+    // onChange should NOT have been called with a Bad-containing value.
+    const anyBad = onChange.mock.calls.some((call) =>
+      typeof call[0] === 'string' && call[0].includes('"Bad"'),
+    );
+    expect(anyBad).toBe(false);
+    // The inline error banner is shown.
+    expect(lastFrame() ?? '').toMatch(/slot-dependency cycle/);
+  });
+
+  it('free-text add of the self-name is rejected with a self-loop error', async () => {
+    const onChange = vi.fn();
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={CONTAINER}
+        width={80}
+        height={25}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        projectSlotGraph={PROJECT_GRAPH}
+        currentComponentName="Container"
+      />,
+    );
+    await navigateAndPressAdd(stdin);
+    onChange.mockClear();
+    'Container'.split('').forEach((c) => stdin.write(c));
+    await new Promise((r) => setTimeout(r, 30));
+    stdin.write('\r');
+    await new Promise((r) => setTimeout(r, 30));
+    expect(lastFrame() ?? '').toMatch(/self-loop/);
+    const anySelf = onChange.mock.calls.some((call) =>
+      typeof call[0] === 'string' && call[0].includes('"$allowedComponents": [\n          "Container"'),
+    );
+    expect(anySelf).toBe(false);
+  });
+
+  it('regression: no picker rendered when projectSlotGraph is omitted (free-text-only)', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={CONTAINER}
+        width={80}
+        height={25}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    await navigateAndPressAdd(stdin);
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toContain('candidates (↑↓');
+    expect(frame).not.toContain('no valid components');
+    // The `+` add-line is still visible.
+    expect(frame).toContain('+ ');
+  });
+
+  it('regression: free-text add of a non-cycling name still works when picker is active', async () => {
+    const onChange = vi.fn();
+    const { stdin } = render(
+      <FieldEditor
+        value={CONTAINER}
+        width={80}
+        height={25}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        projectSlotGraph={PROJECT_GRAPH}
+        currentComponentName="Container"
+      />,
+    );
+    await navigateAndPressAdd(stdin);
+    onChange.mockClear();
+    // NewComp is not in the project graph — cycle simulation drops unknown
+    // edges, so adding it can't form a cycle. Should succeed as free-text.
+    'NewComp'.split('').forEach((c) => stdin.write(c));
+    await new Promise((r) => setTimeout(r, 30));
+    stdin.write('\r');
+    await new Promise((r) => setTimeout(r, 30));
+    const last = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0] as string | undefined;
+    expect(last).toContain('"NewComp"');
   });
 });
