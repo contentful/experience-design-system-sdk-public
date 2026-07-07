@@ -15,7 +15,9 @@ import {
   updateStep,
   storeRawComponents,
   storeScannedFiles,
+  storeSlotCycles,
 } from '../session/db.js';
+import { findSlotCycles, suggestCycleBreakEdge } from './cycle-detection.js';
 import { preClassifyComponent } from './pre-classify.js';
 import { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
 import { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
@@ -247,6 +249,22 @@ export function registerAnalyzeCommand(program: Command): void {
       }
       const validatedComponents = validateExtractedComponents(filteredComponents);
       storeRawComponents(db, sessionId, validatedComponents);
+
+      // INTEG-4401: post-extract slot-dependency cycle detection. The apply
+      // worker rejects cyclic slot graphs at push time, so we surface the
+      // same violation locally as a soft warning here (TUI reads
+      // slot_cycles) and as a hard block at manifest finalization.
+      const cycleInput = validatedComponents.map((c) => ({
+        name: c.name,
+        slots: c.slots.map((s) => ({ name: s.name, allowedComponents: s.allowedComponents })),
+      }));
+      const cycles = findSlotCycles(cycleInput);
+      const withBreaks = cycles.map((cycle) => ({
+        ...cycle,
+        suggestedBreak: suggestCycleBreakEdge(cycle, cycles),
+      }));
+      storeSlotCycles(db, sessionId, withBreaks);
+
       storeScannedFiles(
         db,
         sessionId,
