@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   nextStepAfterScopeGate,
   nextStepAfterCredentialsValidated,
+  shouldSkipFinalReviewAfterCredentials,
 } from '../../../src/import/tui/wizard-state-transitions.js';
 
 describe('nextStepAfterScopeGate', () => {
@@ -29,6 +30,29 @@ describe('nextStepAfterCredentialsValidated', () => {
 
   it('routes to push-decision-gate when no components were accepted (skip generating + final-review)', () => {
     expect(nextStepAfterCredentialsValidated({ acceptedCount: 0 })).toBe('push-decision-gate');
+  });
+});
+
+describe('shouldSkipFinalReviewAfterCredentials — prefetch cache bug', () => {
+  // Regression: the scope-gate spawns `generate components` in the background
+  // so its LLM cost overlaps with the operator typing credentials. When that
+  // prefetch finishes fast, `generateSessionId` lands in wizard state BEFORE
+  // the operator submits credentials — the bug was that the post-credentials
+  // guard treated a non-null generateSessionId as "operator has already
+  // finalized" and skipped the GenerateReviewStep entirely.
+  it('does NOT skip final-review when the operator has not yet finalized (prefetch completed early)', () => {
+    expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: 'gen-abc', finalReviewPassed: false })).toBe(
+      false,
+    );
+  });
+
+  it('skips final-review only when the operator already passed through it once (late 401 re-entry)', () => {
+    expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: 'gen-abc', finalReviewPassed: true })).toBe(true);
+  });
+
+  it('never skips before the generate session exists', () => {
+    expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: false })).toBe(false);
+    expect(shouldSkipFinalReviewAfterCredentials({ generateSessionId: null, finalReviewPassed: true })).toBe(false);
   });
 });
 

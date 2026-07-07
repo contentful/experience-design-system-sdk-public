@@ -70,6 +70,7 @@ import {
   buildSkippedPreviewTransition,
   shouldRefusePush,
   buildSkippedPushTransition,
+  shouldSkipFinalReviewAfterCredentials,
 } from './wizard-state-transitions.js';
 
 type WizardStep =
@@ -187,6 +188,15 @@ type WizardState = {
    * to render the `⚠ …` banner via the `initialFinalizeError` prop.
    */
   finalizeErrorBanner: string | null;
+  /**
+   * Flips true when the operator finalizes on GenerateReviewStep (or when a
+   * modify-entry seeds us directly onto `final-review` — we treat that as
+   * "already reviewed"). Guards the post-credentials shortcut in
+   * `advanceAfterCredentialsValidated` so a fast background prefetch that
+   * populates `generateSessionId` before the operator submits credentials
+   * doesn't cause the wizard to skip past `final-review`.
+   */
+  finalReviewPassed: boolean;
 };
 
 function findCliPath(): string {
@@ -571,6 +581,7 @@ export function WizardApp({
     credentialsSkipped: false,
     lastRunId: null,
     finalizeErrorBanner: null,
+    finalReviewPassed: false,
   });
 
   useEffect(() => {
@@ -1140,10 +1151,15 @@ export function WizardApp({
   // accepted components) or jumps straight to push-decision-gate (if scope
   // rejected everything but tokens/removals still need to be pushed).
   const advanceAfterCredentialsValidated = async () => {
-    // If we already ran the generator (re-entering credentials from a late
-    // 401/403 raised by runPreview), skip back to push-decision-gate rather
-    // than re-running the LLM.
-    if (state.generateSessionId) {
+    // If the operator already went through final-review once (re-entering
+    // credentials from a late 401/403 raised by runPreview), skip back to
+    // push-decision-gate rather than making them review again. We gate on
+    // `finalReviewPassed` specifically — NOT `generateSessionId` alone —
+    // because the scope-gate background prefetch also populates
+    // `generateSessionId` as soon as its LLM finishes, and if that lands
+    // while the operator is still typing credentials it would otherwise
+    // trip this shortcut and skip past `final-review` entirely.
+    if (shouldSkipFinalReviewAfterCredentials(state)) {
       update({ step: 'push-decision-gate' });
       return;
     }
@@ -2000,6 +2016,10 @@ export function WizardApp({
             initialFinalizeError={state.finalizeErrorBanner}
             onFinalize={(accepted, rejected, unresolved) => {
               process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`);
+              // Mark the review as passed so a later re-entry to credentials
+              // (e.g. late 401 raised by runPreview) short-circuits back to
+              // push-decision-gate instead of re-rendering final-review.
+              update({ finalReviewPassed: true });
               // INTEG-4411 refined: no `accepted === 0` up-front block here.
               // A zero-accepted finalize can still be a valid push when the
               // operator explicitly rejected component(s) that exist server-
