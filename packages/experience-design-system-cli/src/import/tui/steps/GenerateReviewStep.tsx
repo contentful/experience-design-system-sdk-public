@@ -19,11 +19,12 @@ import {
   loadComponentReviewMetadata,
   loadComponentRationale,
   loadSlotCycles,
+  storeSlotCycles,
   type ComponentReviewMetadata,
   type ComponentRationale,
   type StoredSlotCycle,
 } from '../../../session/db.js';
-import { formatCyclePath } from '../../../analyze/cycle-detection.js';
+import { formatCyclePathSegments, findSlotCycles, suggestCycleBreakEdge } from '../../../analyze/cycle-detection.js';
 import { RationalePanel, type RationaleRow } from '../../../analyze/select/tui/components/RationalePanel.js';
 import { ComponentRationalePanel } from '../../../analyze/select/tui/components/ComponentRationalePanel.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
@@ -326,6 +327,63 @@ export function GenerateReviewStep({
     onFinalize(acceptedCount, explicitlyRejected.length, unresolved.length);
   };
 
+  /**
+   * INTEG-4401 (Fix 3/4): re-run cycle detection against the current in-memory
+   * component state and, if the result differs from the persisted `slotCycles`
+   * state, update both React state and the session DB. Called from:
+   *  - `handleEditSave` after a FieldEditor save mutates a slot's
+   *    `$allowedComponents`, so the banner / sidebar badges / [c] panel reflect
+   *    reality instead of the stale extract-time snapshot.
+   *  - The `r` reject keystroke, since dropping a component from the manifest
+   *    can collapse cycles that routed through it.
+   *
+   * Rejected components are excluded from the graph — they will never ship, so
+   * they cannot contribute to a real push-time cycle even if their slot config
+   * still references other components locally.
+   *
+   * Cheap for typical N: findSlotCycles is O((V+E)(C+1)) and most manifests
+   * have zero or a handful of cycles. Wrapped in try/catch so a malformed
+   * $slots shape can't crash the render pipeline.
+   */
+  const recomputeCycles = (currentComponents: CdfReviewEntry[]): void => {
+    try {
+      const graph = currentComponents
+        .filter((c) => c.status !== 'rejected')
+        .map((c) => ({
+          name: c.key,
+          slots: Object.entries(c.entry.$slots ?? {}).map(([slotName, slotDef]) => ({
+            name: slotName,
+            allowedComponents: Array.isArray(slotDef?.$allowedComponents)
+              ? (slotDef.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
+              : [],
+          })),
+        }));
+      const rawCycles = findSlotCycles(graph);
+      const next: StoredSlotCycle[] = rawCycles.map((cycle) => ({
+        path: cycle.path,
+        edges: cycle.edges,
+        suggestedBreak: cycle.edges.length > 0 ? suggestCycleBreakEdge(cycle, rawCycles) : null,
+      }));
+      // Cheap structural equality via JSON.stringify — cycle count is tiny and
+      // this only fires on user actions, not on every render.
+      const prevSerialized = JSON.stringify(slotCycles);
+      const nextSerialized = JSON.stringify(next);
+      if (prevSerialized === nextSerialized) return;
+      setSlotCycles(next);
+      const db = openPipelineDb();
+      try {
+        storeSlotCycles(db, extractSessionId, next);
+      } finally {
+        db.close();
+      }
+      // If the new cycle set is empty, clear any lingering finalize error the
+      // [F] guard may have surfaced. Otherwise leave it alone.
+      if (next.length === 0) setFinalizeError(null);
+    } catch {
+      // Defensive: swallow — never let cycle detection crash the review UI.
+    }
+  };
+
   const handleEditSave = () => {
     const current = components[selectedIdx];
     if (!current) return;
@@ -341,11 +399,13 @@ export function GenerateReviewStep({
         setSaveError('Invalid CDF entry: must have $type: "component" and $properties object');
         return;
       }
-      setComponents((prev) =>
-        prev.map((c, i) =>
+      let updatedComponents: CdfReviewEntry[] = [];
+      setComponents((prev) => {
+        updatedComponents = prev.map((c, i) =>
           i === selectedIdx ? { ...c, entry, status: c.status === 'needs-review' ? 'accepted' : c.status } : c,
-        ),
-      );
+        );
+        return updatedComponents;
+      });
       setDraftValue('');
       setSaveError(null);
       const db = openPipelineDb();
@@ -354,6 +414,12 @@ export function GenerateReviewStep({
       } finally {
         db.close();
       }
+      // INTEG-4401 (Fix 3/4): recompute cycles against the freshly-edited
+      // component set so banner/badges/[c]-panel stay in sync. The FieldEditor
+      // picker filters cycle-forming candidates, but free-text edits + JSON
+      // pastes still slip through, and edits that BREAK an existing cycle
+      // won't propagate without this call.
+      recomputeCycles(updatedComponents);
       // Feature 2: re-fire the live preview now that pipeline.db reflects
       // the new state. The hook owns debounce + cred-missing short-circuit.
       livePreviewHook.trigger();
@@ -543,6 +609,14 @@ export function GenerateReviewStep({
       return;
     }
     if (input === 'F') {
+      // INTEG-4401: refuse to open the finalize dialog while any slot cycle
+      // is unresolved. The push-time hard block (`assertNoSlotCycles`) would
+      // catch this downstream, but showing an inline banner here saves the
+      // operator from confirming the dialog only to hit a stderr crash.
+      if (slotCycles.length > 0) {
+        setFinalizeError('Cannot finalize — resolve slot dependency cycle(s) first (press [c] for detail)');
+        return;
+      }
       setShowFinalize(true);
       return;
     }
@@ -552,7 +626,16 @@ export function GenerateReviewStep({
       return;
     }
     if (input === 'r') {
-      updateStatus(selectedIdx, 'rejected');
+      // INTEG-4401 (Fix 4): rejecting removes the component from the effective
+      // manifest, so recompute cycles across the reduced graph — any cycle
+      // that routed through this component collapses. We build the "next"
+      // components array inline (mirroring updateStatus) so recomputeCycles
+      // sees the post-update graph without waiting for a render tick.
+      const next = components.map((c, i) =>
+        i === selectedIdx ? { ...c, status: 'rejected' as ReviewComponentStatus } : c,
+      );
+      setComponents(next);
+      recomputeCycles(next);
       return;
     }
     if (input === 'A') {
@@ -726,7 +809,29 @@ export function GenerateReviewStep({
                 bold
               >{`▸ Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
             );
-            lines.push(<Text key={`cyc-p-${idx}`}>{`    ${formatCyclePath(cycle, 16)}`}</Text>);
+            // Colorize slots (cyan, bracketed) distinctly from components so
+            // the operator can visually parse the alternating structure.
+            // Brackets on slot names ensure the distinction survives when
+            // ANSI is stripped (logs, redirected output).
+            const segs = formatCyclePathSegments(cycle, 16);
+            lines.push(
+              <Text key={`cyc-p-${idx}`}>
+                {'    '}
+                {segs.map((seg, si) =>
+                  seg.kind === 'slot' ? (
+                    <Text key={si} color="cyan">
+                      {seg.text}
+                    </Text>
+                  ) : seg.kind === 'arrow' ? (
+                    <Text key={si} dimColor>
+                      {seg.text}
+                    </Text>
+                  ) : (
+                    <Text key={si}>{seg.text}</Text>
+                  ),
+                )}
+              </Text>,
+            );
             if (cycle.suggestedBreak) {
               const b = cycle.suggestedBreak;
               lines.push(
@@ -787,11 +892,29 @@ export function GenerateReviewStep({
           <Text color="yellow">
             {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
           </Text>
-          {slotCycles.slice(0, 3).map((cycle, idx) => (
-            <Text key={`cyc-banner-${idx}`} color="yellow">
-              {`  Cycle: ${formatCyclePath(cycle)}`}
-            </Text>
-          ))}
+          {slotCycles.slice(0, 3).map((cycle, idx) => {
+            const segs = formatCyclePathSegments(cycle);
+            return (
+              <Text key={`cyc-banner-${idx}`} color="yellow">
+                {'  Cycle: '}
+                {segs.map((seg, si) =>
+                  seg.kind === 'slot' ? (
+                    <Text key={si} color="cyan">
+                      {seg.text}
+                    </Text>
+                  ) : seg.kind === 'arrow' ? (
+                    <Text key={si} dimColor>
+                      {seg.text}
+                    </Text>
+                  ) : (
+                    <Text key={si} color="yellow">
+                      {seg.text}
+                    </Text>
+                  ),
+                )}
+              </Text>
+            );
+          })}
           {slotCycles.length > 3 && <Text color="yellow">{`  …${slotCycles.length - 3} more`}</Text>}
           <Text dimColor>{'  press [c] for detail'}</Text>
         </Box>
