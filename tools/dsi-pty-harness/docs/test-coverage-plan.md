@@ -8,7 +8,7 @@ Living doc for what the PTY harness should exercise on the `experiences` CLI. Th
 
 Last updated: 2026-07-07 on branch `feat/integ-4406-pty-harness-mcp`, rebased on `feat/dsi-tui-wizard-mega` at `5b64783` (post-PR #91). **Pushed to origin.**
 
-**What's implemented (72 tests, all green):**
+**What's implemented (73 tests, all green):**
 
 - **Tier 1 (smoke, 3 tests):** `01-welcome.pty.test.mjs`, `02-run-picker.pty.test.mjs`, `03-ctrl-c-exits.pty.test.mjs`.
 - **Tier 2 (validation, 20 tests):** `10-import-validation.validation.test.mjs`. Every `process.exit(1)` branch in `packages/experience-design-system-cli/src/import/command.ts`.
@@ -22,7 +22,7 @@ Last updated: 2026-07-07 on branch `feat/integ-4406-pty-harness-mcp`, rebased on
 - **Tier 3b — `--force` staleness bypass (3 tests):** `62-import-force-staleness.pty.test.mjs`. Stale fingerprint triggers "Refusing to replay — STALE" without `--force`; `--force` proceeds to final-review.
 - **Tier 3b — apply push against mock EMA (7 tests):** `70-apply-push.validation.test.mjs` + `helpers/mock-ema.mjs`.
 - **Tier 3b — `--exclude-invalid` (2 tests):** `41-import-exclude-invalid.validation.test.mjs`. Uses the `react-invalid` fixture (two files exporting a component named `Duplicate` → DUPLICATE_COMPONENT_NAME) plus one valid component. Without the flag the select-agent gate fails; with the flag the invalid components are auto-dropped and the pipeline completes.
-- **Tier 3b — push through the wizard against mock EMA (1 test):** `71-import-push-through-wizard.pty.test.mjs`. Drives `--modify` → final-review → `[A]` accept all → `[F]` finalize → `y` confirm → `[b]` save-and-push → `Enter` push, and asserts preview + apply requests land on the mock with the seeded space/environment path and `Authorization: Bearer` header from credentials.json.
+- **Tier 3b — push through the wizard against mock EMA (2 tests):** `71-import-push-through-wizard.pty.test.mjs`. Drives `--modify` → final-review → `[A]` accept all → `[F]` finalize → `y` confirm → `[b]` save-and-push → `Enter` push, and asserts preview + apply requests land on the mock with the seeded space/environment path and `Authorization: Bearer` header from credentials.json. Also covers the breaking-changes gate: mock returns a `changed` component classified as `breaking` with non-zero impact; the wizard renders "Breaking changes will affect downstream entities. Press Enter to acknowledge and apply." and `apply` receives `acknowledgeBreakingChanges: true`.
 
 **Fixtures:**
 
@@ -63,7 +63,6 @@ Last updated: 2026-07-07 on branch `feat/integ-4406-pty-harness-mcp`, rebased on
 - Interactive `--host` on `import` — for the `--modify` path the wizard reads host from credentials.json (via `readExperiencesCredentials` in `runs/replay-helpers.ts:198`), not from `opts.host`. The push-through-wizard test proves the wire-level routing works when the host is seeded via credentials. A dedicated test for the `--host` flag on a fresh (non-modify) import path still requires driving the full pipeline from scope-gate → generate → final-review, which is out of harness scope today.
 - `--no-save` — same reason: no way to reach the wizard's push-confirm from a fresh invocation on this branch. The `--modify` path always saves (that's its whole point), so `--no-save` isn't meaningful there. Deferred until the harness can drive a fresh import through to push.
 - `--on-conflict` write-path — only fires when the wizard's save step encounters a collision on disk. `--modify --overwrite` bypasses the conflict prompt entirely. Same blocker as `--no-save`.
-- Breaking-changes gate — the wizard renders the "⚠ Breaking changes will affect downstream entities. Press Enter to acknowledge and apply." banner when preview classifies a diff as breaking. Extending mock-ema to return `changed` with `breaking` classification and asserting the banner + acknowledge Enter flow is a straightforward extension of `71-…`. Deferred for time; the plumbing is understood.
 - `--select "Button*"` / `--deselect "Icon*"` in PTY mode — **confirmed dropped by the wizard.** `import/command.ts:467` threads `opts.select` into the headless `runPipeline` only; WizardApp props never consume it. Documented as a wizard bug; no PTY test written. Headless coverage remains in `40-import-selection.validation.test.mjs`.
 - `--viewports <path>` — passed to `apply push`; needs a viewports fixture and a push test that asserts they appear in the manifest.
 - `--host` on `import` (as opposed to `apply push`) — the flag reaches `WizardApp` via a prop; assert via banner or wizard state.

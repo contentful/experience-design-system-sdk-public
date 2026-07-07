@@ -36,7 +36,7 @@ describe('experiences import → wizard push against mock EMA', () => {
     while (cleanups.length) await cleanups.pop()();
   });
 
-  async function setup() {
+  async function setup({ breaking = false } = {}) {
     const mock = await startMockEma();
     cleanups.push(() => mock.close());
 
@@ -81,21 +81,49 @@ describe('experiences import → wizard push against mock EMA', () => {
 
     // Preview response must report at least one non-empty diff bucket
     // or the wizard short-circuits with a "no-op push" banner before
-    // reaching the confirm screen. Return one "new" component.
+    // reaching the confirm screen. Two shapes:
+    //
+    //   default:  one "new" component (non-breaking happy path).
+    //   breaking: one "changed" component classified as breaking with
+    //             non-zero impact so `hasBreakingChangesWithImpact`
+    //             returns true and the wizard renders the acknowledge
+    //             banner.
     mock.stub('POST', /imports\/preview$/, (req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          components: {
-            new: [{ id: 'Button', name: 'Button' }],
-            changed: [],
-            unchanged: [],
-            removed: [],
-          },
-          tokens: { new: [], changed: [], unchanged: [], removed: [] },
-          taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
-        }),
-      );
+      const body = breaking
+        ? {
+            components: {
+              new: [],
+              changed: [
+                {
+                  current: { name: 'Button', $id: 'button-id' },
+                  proposed: { name: 'Button' },
+                  changeClassification: {
+                    classification: 'breaking',
+                    breakingChanges: [
+                      { propertyId: 'label', reason: 'type changed from string to number' },
+                    ],
+                  },
+                  impact: { affectedFragments: 2, affectedExperiences: 1 },
+                },
+              ],
+              unchanged: [],
+              removed: [],
+            },
+            tokens: { new: [], changed: [], unchanged: [], removed: [] },
+            taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+          }
+        : {
+            components: {
+              new: [{ id: 'Button', name: 'Button' }],
+              changed: [],
+              unchanged: [],
+              removed: [],
+            },
+            tokens: { new: [], changed: [], unchanged: [], removed: [] },
+            taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+          };
+      res.end(JSON.stringify(body));
     });
 
     return { t, dbPath, mock };
@@ -145,5 +173,40 @@ describe('experiences import → wizard push against mock EMA', () => {
     // bearer we seeded in credentials.json.
     const applyReq = mock.requests.find((r) => r.path.endsWith('/imports/apply'));
     expect(applyReq?.headers.authorization).toBe('Bearer fake-token');
+  });
+
+  it('breaking-changes gate: banner renders and Enter acknowledges (acknowledgeBreakingChanges: true in apply body)', async () => {
+    const { t, dbPath, mock } = await setup({ breaking: true });
+
+    const w = await spawnWizard(['import', '--modify', 'run-push', '--overwrite'], {
+      env: { HOME: t.home, EDS_PIPELINE_DB_PATH: dbPath },
+      cols: 200,
+      rows: 60,
+    });
+    cleanups.push(() => w.close());
+
+    await w.waitFor(/Button/, { timeout: 15000 });
+    w.writeKey('A');
+    await new Promise((r) => setTimeout(r, 1500));
+    w.writeKey('F');
+    await w.waitFor(/Save decisions and exit\?/, { timeout: 8000 });
+    w.writeKey('y');
+    await w.waitFor(/Save AND push/, { timeout: 8000 });
+    w.writeKey('b');
+    // The push-confirm screen must include the breaking-changes
+    // acknowledge banner (WizardPreviewStep.tsx line 304).
+    await w.waitFor(/Breaking changes will affect downstream entities/, {
+      timeout: 15000,
+    });
+    const screen = w.getScreen();
+    expect(screen).toMatch(/Press Enter to acknowledge and apply/);
+    // Enter passes `acknowledgeBreakingChanges: true` to applyImport.
+    w.writeKey('enter');
+    await w.waitFor(/design system is now in Contentful/, { timeout: 15000 });
+
+    const applyReq = mock.requests.find((r) => r.path.endsWith('/imports/apply'));
+    expect(applyReq).toBeDefined();
+    const body = JSON.parse(applyReq.body);
+    expect(body.acknowledgeBreakingChanges).toBe(true);
   });
 });
