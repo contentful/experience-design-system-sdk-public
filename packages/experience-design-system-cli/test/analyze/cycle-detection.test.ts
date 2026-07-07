@@ -45,10 +45,7 @@ describe('findSlotCycles', () => {
   });
 
   it('detects a simple 2-cycle', () => {
-    const components = [
-      comp('CardA', [['header', ['CardB']]]),
-      comp('CardB', [['footer', ['CardA']]]),
-    ];
+    const components = [comp('CardA', [['header', ['CardB']]]), comp('CardB', [['footer', ['CardA']]])];
     const cycles = findSlotCycles(components);
     expect(cycles).toHaveLength(1);
     expect(normalizeCyclePath(cycles[0])).toBe('CardA>CardB');
@@ -103,9 +100,7 @@ describe('findSlotCycles', () => {
     const cycles = findSlotCycles(components);
     expect(cycles).toHaveLength(1);
     expect(cycles[0].path).toEqual(['Self', 'Self']);
-    expect(cycles[0].edges).toEqual([
-      { fromComponent: 'Self', slotName: 'inner', toComponent: 'Self' },
-    ]);
+    expect(cycles[0].edges).toEqual([{ fromComponent: 'Self', slotName: 'inner', toComponent: 'Self' }]);
   });
 
   it('ignores edges to unknown (external) components', () => {
@@ -121,9 +116,7 @@ describe('findSlotCycles', () => {
 
   it('handles a large cycle (>8 hops) — truncates only in format, not in detection', () => {
     const names = Array.from({ length: 12 }, (_, i) => `N${i}`);
-    const components = names.map((name, i) =>
-      comp(name, [['s', [names[(i + 1) % names.length]]]]),
-    );
+    const components = names.map((name, i) => comp(name, [['s', [names[(i + 1) % names.length]]]]));
     const cycles = findSlotCycles(components);
     expect(cycles).toHaveLength(1);
     expect(cycles[0].edges).toHaveLength(12);
@@ -132,10 +125,7 @@ describe('findSlotCycles', () => {
 
 describe('formatCyclePath', () => {
   it('formats a 2-cycle inline', () => {
-    const components = [
-      comp('CardA', [['header', ['CardB']]]),
-      comp('CardB', [['footer', ['CardA']]]),
-    ];
+    const components = [comp('CardA', [['header', ['CardB']]]), comp('CardB', [['footer', ['CardA']]])];
     const [cycle] = findSlotCycles(components);
     // The path starts at whichever node Johnson's found first; regardless,
     // it must be a rotation of A→header→B→footer→A.
@@ -148,9 +138,7 @@ describe('formatCyclePath', () => {
 
   it('truncates when cycle exceeds maxHops', () => {
     const names = Array.from({ length: 12 }, (_, i) => `N${i}`);
-    const components = names.map((name, i) =>
-      comp(name, [['s', [names[(i + 1) % names.length]]]]),
-    );
+    const components = names.map((name, i) => comp(name, [['s', [names[(i + 1) % names.length]]]]));
     const [cycle] = findSlotCycles(components);
     const s = formatCyclePath(cycle, 8);
     expect(s).toContain('…');
@@ -160,10 +148,7 @@ describe('formatCyclePath', () => {
   });
 
   it('does not truncate when cycle is exactly maxHops', () => {
-    const components = [
-      comp('A', [['s', ['B']]]),
-      comp('B', [['s', ['A']]]),
-    ];
+    const components = [comp('A', [['s', ['B']]]), comp('B', [['s', ['A']]])];
     const [cycle] = findSlotCycles(components);
     const s = formatCyclePath(cycle, 8);
     expect(s).not.toContain('…');
@@ -190,10 +175,7 @@ describe('suggestCycleBreakEdge', () => {
   });
 
   it('returns a deterministic edge for a simple 2-cycle', () => {
-    const components = [
-      comp('A', [['s', ['B']]]),
-      comp('B', [['s', ['A']]]),
-    ];
+    const components = [comp('A', [['s', ['B']]]), comp('B', [['s', ['A']]])];
     const [cycle] = findSlotCycles(components);
     const edge = suggestCycleBreakEdge(cycle, [cycle]);
     expect(cycle.edges).toContainEqual(edge);

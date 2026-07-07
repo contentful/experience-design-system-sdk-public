@@ -696,12 +696,19 @@ export function GenerateReviewStep({
               {`SLOT DEPENDENCY CYCLES (${slotCycles.length})`}
             </Text>,
           );
-          lines.push(<Text key="cyc-sub" dimColor>{'push will fail until these are resolved'}</Text>);
+          lines.push(
+            <Text key="cyc-sub" dimColor>
+              {'push will fail until these are resolved'}
+            </Text>,
+          );
           lines.push(<Text key="cyc-space"> </Text>);
           slotCycles.forEach((cycle, idx) => {
             const nodeCount = new Set(cycle.path).size;
             lines.push(
-              <Text key={`cyc-h-${idx}`} bold>{`▸ Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
+              <Text
+                key={`cyc-h-${idx}`}
+                bold
+              >{`▸ Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
             );
             lines.push(<Text key={`cyc-p-${idx}`}>{`    ${formatCyclePath(cycle, 16)}`}</Text>);
             if (cycle.suggestedBreak) {
@@ -769,9 +776,7 @@ export function GenerateReviewStep({
               {`  Cycle: ${formatCyclePath(cycle)}`}
             </Text>
           ))}
-          {slotCycles.length > 3 && (
-            <Text color="yellow">{`  …${slotCycles.length - 3} more`}</Text>
-          )}
+          {slotCycles.length > 3 && <Text color="yellow">{`  …${slotCycles.length - 3} more`}</Text>}
           <Text dimColor>{'  press [c] for detail'}</Text>
         </Box>
       )}

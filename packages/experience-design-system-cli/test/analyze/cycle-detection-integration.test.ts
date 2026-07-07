@@ -75,10 +75,7 @@ describe('extract-time cycle detection integration', () => {
     await withTempDb(async (dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', 'test', { command: 'analyze extract' });
-      const components: RawComponentDefinition[] = [
-        raw('Card', [['header', ['Heading']]]),
-        raw('Heading', []),
-      ];
+      const components: RawComponentDefinition[] = [raw('Card', [['header', ['Heading']]]), raw('Heading', [])];
       const cycleInput = components.map((c) => ({
         name: c.name,
         slots: c.slots.map((s) => ({ name: s.name, allowedComponents: s.allowedComponents })),

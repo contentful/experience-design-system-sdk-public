@@ -92,10 +92,7 @@ function buildGraph(components: ComponentSlotInfo[]): {
  * algorithm to constrain cycle search to one SCC at a time. Returns SCCs in
  * reverse-topological order.
  */
-function stronglyConnectedComponents(
-  nodes: string[],
-  adjacency: Map<string, AdjEntry[]>,
-): string[][] {
+function stronglyConnectedComponents(nodes: string[], adjacency: Map<string, AdjEntry[]>): string[][] {
   const index = new Map<string, number>();
   const lowlink = new Map<string, number>();
   const onStack = new Set<string>();

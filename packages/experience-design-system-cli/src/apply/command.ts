@@ -13,6 +13,7 @@ import {
 import type { CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
 import { ApiError, ImportApiClient } from './api-client.js';
 import { openPipelineDb, loadCDFComponents } from '../session/db.js';
+import { findSlotCycles, suggestCycleBreakEdge, formatCyclePath } from '../analyze/cycle-detection.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
 import { isEmptyPreview } from './preview-utils.js';
 import { ServerPreviewApp, ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
@@ -212,6 +213,42 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   });
 
   return { components, tokens, client };
+}
+
+// --- INTEG-4401: pre-push slot-cycle hard block ---
+//
+// The backend apply worker rejects cyclic slot graphs at topo-sort time, but
+// by then the request has already been serialized, transported, and partially
+// applied — leading to confusing partial-failure states. Detecting the same
+// violation locally lets us fail fast with a clear message and zero
+// side-effects. Called from the `apply push` and `apply select` flows only;
+// `apply preview` is read-only and still runs (its diff is used to warn but
+// not to block).
+export function assertNoSlotCycles(components: Array<{ key: string; entry: CDFComponentEntry }>): void {
+  const cycleInput = components.map(({ key, entry }) => ({
+    name: key,
+    slots: Object.entries(entry.$slots ?? {}).map(([slotName, slotDef]) => ({
+      name: slotName,
+      allowedComponents: slotDef.$allowedComponents ?? [],
+    })),
+  }));
+  const cycles = findSlotCycles(cycleInput);
+  if (cycles.length === 0) return;
+
+  const lines: string[] = [];
+  lines.push(
+    `Error: manifest:components/slot-cycles — ${cycles.length} slot dependency cycle(s) detected. Push refused.`,
+  );
+  for (let i = 0; i < cycles.length; i += 1) {
+    const cycle = cycles[i];
+    lines.push(`  Cycle ${i + 1}: ${formatCyclePath(cycle)}`);
+    const suggested = suggestCycleBreakEdge(cycle, cycles);
+    lines.push(
+      `    Fix: remove '${suggested.toComponent}' from ${suggested.fromComponent}.$slots.${suggested.slotName}.$allowedComponents`,
+    );
+  }
+  process.stderr.write(lines.join('\n') + '\n');
+  process.exit(1);
 }
 
 // --- Output helpers ---
@@ -531,6 +568,13 @@ export function registerApplyCommand(program: Command): void {
 
       const { components, tokens, client } = inputs;
 
+      // INTEG-4401: refuse before spending any credentials or bytes on a
+      // manifest the backend will reject. Cycle detection is deterministic
+      // and cheap so we run it here (not just at extract time) — this also
+      // guards `apply push --components` where extract-time cycles are not
+      // in the session DB.
+      assertNoSlotCycles(components);
+
       try {
         await client.validateToken();
       } catch (e) {
@@ -736,6 +780,12 @@ export function registerApplyCommand(program: Command): void {
       }
 
       const { components, tokens, client } = inputs;
+
+      // INTEG-4401: same pre-push cycle block as `apply push`. Running the
+      // check on the FULL component set (not the filtered selection) is
+      // deliberate: partial selection cannot resolve a cycle whose
+      // participants are all still present in the target space.
+      assertNoSlotCycles(components);
 
       try {
         await client.validateToken();
