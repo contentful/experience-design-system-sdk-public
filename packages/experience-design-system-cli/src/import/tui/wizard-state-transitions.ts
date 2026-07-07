@@ -51,6 +51,26 @@ export function nextStepAfterCredentialsValidated(opts: { acceptedCount: number 
 }
 
 /**
+ * Bug fix (2026-07): the `generation_cache` table in pipeline.db is keyed by
+ * `(input_hash, prompt_hash, entity_type, component_id)` — with no session
+ * scoping. `component_id` is a deterministic hash of `(name, source)`, so a
+ * fresh new session on an unchanged codebase always hits the cache and
+ * silently skips the LLM. That's the intended behavior for continued sessions
+ * (modify / push-from-run) but is surprising for a fresh `experiences import`
+ * run: the operator expects a re-classify pass, not cached output from a
+ * prior session.
+ *
+ * Resolution: for a fresh session (no `seedExtractSessionId`), force
+ * `--no-cache` on the spawned `generate components` subprocess. For a
+ * continued session (modify / push-from-run / picker-seeded), honor the
+ * operator's `--no-cache` flag as before.
+ */
+export function resolveNoCacheForGenerate(opts: { isFreshSession: boolean; cliNoCache: boolean }): boolean {
+  if (opts.isFreshSession) return true;
+  return opts.cliNoCache;
+}
+
+/**
  * Skip-credentials spec — Task 2. When the operator pressed `s` on the
  * credentials screen, the wizard advanced without validating creds. That
  * makes `previewImport` impossible (no working token) and undesirable (the

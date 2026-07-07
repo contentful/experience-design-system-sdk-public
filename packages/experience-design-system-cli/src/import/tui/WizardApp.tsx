@@ -70,6 +70,7 @@ import {
   buildSkippedPreviewTransition,
   shouldRefusePush,
   buildSkippedPushTransition,
+  resolveNoCacheForGenerate,
 } from './wizard-state-transitions.js';
 
 type WizardStep =
@@ -502,6 +503,13 @@ export function WizardApp({
   // `generating-tokens` step which already drives the token-classification
   // subprocess off `state.rawTokensPath`. Modify-entry wins if both are set.
   const rawTokensEntryReady = !modifyEntryReady && !pushFromPickerReady && !!initialRawTokensPath;
+  // Fresh session = the wizard is going to create its own extract session via
+  // `analyze extract` rather than pick one up from `--modify` / `--push-from-run`.
+  // For fresh sessions we force `--no-cache` on the spawned `generate components`
+  // so operators aren't silently served classifications cached from a prior
+  // session (the generation_cache table is project-wide, not session-scoped).
+  const isFreshSession = !seedExtractSessionId;
+  const effectiveNoCache = resolveNoCacheForGenerate({ isFreshSession, cliNoCache: noCache });
   const initialStepResolved: WizardStep = modifyEntryReady
     ? 'final-review'
     : pushFromPickerReady
@@ -933,7 +941,7 @@ export function WizardApp({
         tokensPath,
         agent: state.agent,
         ...(state.agentModel ? { model: state.agentModel } : {}),
-        noCache,
+        noCache: effectiveNoCache,
       }),
     ];
     let progressCursor: GenerateProgressState = null;
@@ -1009,7 +1017,7 @@ export function WizardApp({
         tokensPath,
         agent: state.agent,
         ...(state.agentModel ? { model: state.agentModel } : {}),
-        noCache,
+        noCache: effectiveNoCache,
         generatePromptPath,
       }),
     ];
