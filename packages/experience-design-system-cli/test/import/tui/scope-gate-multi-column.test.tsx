@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { render } from 'ink-testing-library';
 import React from 'react';
-import { ScopeGateStep } from '../../../src/import/tui/steps/ScopeGateStep.js';
+import {
+  ScopeGateStep,
+  sideColumnLabelStyle,
+} from '../../../src/import/tui/steps/ScopeGateStep.js';
 
 /**
  * Multi-column scope-gate layout tests. The three-column layout only renders
@@ -55,6 +58,65 @@ const AI_FLAGGED_GRAPH = [
     aiReason: 'internal-only debugging widget',
   },
 ];
+
+describe('sideColumnLabelStyle', () => {
+  it('cursor row (selected + focused) forces bold white + inverse and overrides green/red/dim', () => {
+    const nonCycle = sideColumnLabelStyle({ isCycle: false, isSelected: true, focused: true });
+    expect(nonCycle.nameColor).toBe('white');
+    expect(nonCycle.nameBold).toBe(true);
+    expect(nonCycle.nameInverse).toBe(true);
+    expect(nonCycle.nameUnderline).toBe(false);
+    expect(nonCycle.suffixColor).toBe('white');
+    expect(nonCycle.suffixDim).toBe(false);
+    expect(nonCycle.suffixInverse).toBe(true);
+
+    // Cycle rows also collapse to bold white on the cursor line.
+    const cycle = sideColumnLabelStyle({ isCycle: true, isSelected: true, focused: true });
+    expect(cycle.nameColor).toBe('white');
+    expect(cycle.nameBold).toBe(true);
+    expect(cycle.nameInverse).toBe(true);
+  });
+
+  it('selected but not focused: underline is on, retains base coloring', () => {
+    const nonCycle = sideColumnLabelStyle({ isCycle: false, isSelected: true, focused: false });
+    expect(nonCycle.nameColor).toBe('green');
+    expect(nonCycle.nameInverse).toBe(false);
+    expect(nonCycle.nameUnderline).toBe(true);
+    expect(nonCycle.suffixColor).toBe('cyan');
+    expect(nonCycle.suffixDim).toBe(true);
+    expect(nonCycle.suffixUnderline).toBe(true);
+
+    const cycle = sideColumnLabelStyle({ isCycle: true, isSelected: true, focused: false });
+    expect(cycle.nameColor).toBe('red');
+    expect(cycle.nameUnderline).toBe(true);
+    expect(cycle.suffixColor).toBe('red');
+  });
+
+  it('non-selected non-cycle row: green name, dim cyan suffix, no underline', () => {
+    const s = sideColumnLabelStyle({ isCycle: false, isSelected: false, focused: false });
+    expect(s.nameColor).toBe('green');
+    expect(s.nameBold).toBe(false);
+    expect(s.nameInverse).toBe(false);
+    expect(s.nameUnderline).toBe(false);
+    expect(s.suffixColor).toBe('cyan');
+    expect(s.suffixDim).toBe(true);
+    expect(s.suffixInverse).toBe(false);
+  });
+
+  it('non-selected cycle row: red name AND red suffix (cycle color applies to whole label)', () => {
+    const s = sideColumnLabelStyle({ isCycle: true, isSelected: false, focused: false });
+    expect(s.nameColor).toBe('red');
+    expect(s.suffixColor).toBe('red');
+    expect(s.suffixDim).toBe(false);
+  });
+
+  it('focused but not selected: green (or red) is preserved', () => {
+    const s = sideColumnLabelStyle({ isCycle: false, isSelected: false, focused: true });
+    expect(s.nameColor).toBe('green');
+    expect(s.nameInverse).toBe(false);
+    expect(s.nameUnderline).toBe(false);
+  });
+});
 
 describe('ScopeGateStep — counter strip', () => {
   it('always renders the counter strip with Accepted / Groups / Rejected / Undecided labels', () => {

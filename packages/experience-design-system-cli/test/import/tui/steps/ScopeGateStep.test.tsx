@@ -486,6 +486,107 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     });
   });
 
+  describe('cycles-detail panel', () => {
+    const FIXTURE_2CYCLE = [
+      {
+        name: 'NodeA',
+        componentId: 'a',
+        slots: [{ name: 'slotA', allowedComponents: ['NodeB'] }],
+      },
+      {
+        name: 'NodeB',
+        componentId: 'b',
+        slots: [{ name: 'slotB', allowedComponents: ['NodeA'] }],
+      },
+    ];
+
+    it('[c] opens cycles panel with interleaved cycle path', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE_2CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('c');
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('Cycles detected');
+      expect(frame).toMatch(/Cycle 1:.*NodeA.*\[slotA\].*NodeB.*\[slotB\].*NodeA/);
+    });
+
+    it('legend advertises [c] when cycles exist', () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={FIXTURE_2CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      expect(lastFrame() ?? '').toContain('[c]');
+    });
+
+    it('[c] is a no-op when no cycles exist and legend omits it', () => {
+      const noCycles = [
+        { name: 'Solo', componentId: 's' },
+      ];
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={noCycles} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      const before = lastFrame() ?? '';
+      expect(before).not.toContain('[c]');
+      stdin.write('c');
+      const after = lastFrame() ?? '';
+      expect(after).not.toContain('Cycles detected');
+    });
+
+    it('Esc closes cycles panel', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE_2CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('c');
+      expect(lastFrame() ?? '').toContain('Cycles detected');
+      stdin.write('\x1b');
+      expect(lastFrame() ?? '').not.toContain('Cycles detected');
+    });
+
+    it('[c] again closes the cycles panel', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE_2CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('c');
+      expect(lastFrame() ?? '').toContain('Cycles detected');
+      stdin.write('c');
+      expect(lastFrame() ?? '').not.toContain('Cycles detected');
+    });
+
+    it('opening [c] while [l] is open closes lineage panel', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE_2CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('l');
+      expect(lastFrame() ?? '').toContain('Lineage:');
+      stdin.write('c');
+      const frame = lastFrame() ?? '';
+      expect(frame).not.toContain('Lineage:');
+      expect(frame).toContain('Cycles detected');
+    });
+
+    it('Enter on a cycle entry jumps main cursor and closes panel', () => {
+      const onConfirm = vi.fn();
+      // Include a third non-cycle component so the cursor can be moved off
+      // NodeA first, letting us prove Enter actually jumps.
+      const withStandalone = [
+        ...FIXTURE_2CYCLE,
+        { name: 'Zonk', componentId: 'z' },
+      ];
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={withStandalone} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      // Move cursor to Zonk (last row).
+      stdin.write('j');
+      stdin.write('j');
+      stdin.write('c');
+      stdin.write('\r');
+      // Panel closed.
+      expect(lastFrame() ?? '').not.toContain('Cycles detected');
+      // Now [l] should open lineage rooted at the jump target (NodeA), not Zonk.
+      stdin.write('l');
+      expect(lastFrame() ?? '').toContain('Lineage: NodeA');
+    });
+  });
+
   describe('D7 — fuzzy search', () => {
     const FIXTURE_S = [
       { name: 'AlphaCard', componentId: 'c0' },

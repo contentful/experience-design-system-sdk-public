@@ -12,7 +12,7 @@ import {
   type ComponentGraphNode,
   type NodeStatus,
 } from '../../../analyze/composite-closure.js';
-import { findSlotCycles } from '../../../analyze/cycle-detection.js';
+import { findSlotCycles, type SlotCycle } from '../../../analyze/cycle-detection.js';
 import {
   buildAncestorTree,
   renderAncestorTree,
@@ -109,6 +109,8 @@ export function ScopeGateStep({
   const [reasonPanelOpen, setReasonPanelOpen] = useState(false);
   const [lineagePanelOpen, setLineagePanelOpen] = useState(false);
   const [lineageCursor, setLineageCursor] = useState(0);
+  const [cyclesPanelOpen, setCyclesPanelOpen] = useState(false);
+  const [cyclesCursor, setCyclesCursor] = useState(0);
   const [pendingRejectCascade, setPendingRejectCascade] =
     useState<{ target: string; ancestors: string[]; descendants: string[] } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -154,16 +156,33 @@ export function ScopeGateStep({
     [components],
   );
 
+  const slotCycles = useMemo<SlotCycle[]>(() => {
+    try {
+      return findSlotCycles(graph);
+    } catch {
+      return [];
+    }
+  }, [graph]);
+
   const cycleParticipants = useMemo<Set<string>>(() => {
     const set = new Set<string>();
-    try {
-      const cycles = findSlotCycles(graph);
-      for (const c of cycles) for (const n of c.path) set.add(n);
-    } catch {
-      // Defensive.
-    }
+    for (const c of slotCycles) for (const n of c.path) set.add(n);
     return set;
-  }, [graph]);
+  }, [slotCycles]);
+
+  // Flat, walkable list of cycle-participant jump targets. One entry per
+  // cycle — Enter jumps the main cursor to the first component in the
+  // cycle's path (its canonical "root" per Johnson's least-vertex ordering).
+  const cyclesJumpables = useMemo(
+    () =>
+      slotCycles.map((c, i) => ({
+        cycleIndex: i,
+        jumpTarget: c.path[0],
+      })),
+    [slotCycles],
+  );
+
+  const hasCycles = slotCycles.length > 0;
 
   const closures = useMemo(() => computeAllClosures(graph), [graph]);
 
@@ -419,10 +438,39 @@ export function ScopeGateStep({
       return;
     }
 
+    // Cycles panel owns most keystrokes when open.
+    if (cyclesPanelOpen) {
+      if (key.escape || input === 'c') {
+        setCyclesPanelOpen(false);
+        return;
+      }
+      if (key.upArrow || input === 'k') {
+        setCyclesCursor((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        setCyclesCursor((c) => Math.min(Math.max(0, cyclesJumpables.length - 1), c + 1));
+        return;
+      }
+      if (key.return) {
+        const target = cyclesJumpables[cyclesCursor];
+        if (target) jumpCursorTo(target.jumpTarget);
+        setCyclesPanelOpen(false);
+        return;
+      }
+      return;
+    }
+
     // Lineage panel owns most keystrokes when open.
     if (lineagePanelOpen) {
       if (key.escape || input === 'l') {
         setLineagePanelOpen(false);
+        return;
+      }
+      if (input === 'c' && hasCycles) {
+        setLineagePanelOpen(false);
+        setCyclesPanelOpen(true);
+        setCyclesCursor(0);
         return;
       }
       if (key.upArrow || input === 'k') {
@@ -481,6 +529,14 @@ export function ScopeGateStep({
       }
       setLineagePanelOpen(true);
       setLineageCursor(0);
+      setCyclesPanelOpen(false);
+      return;
+    }
+    if (input === 'c') {
+      if (!hasCycles) return;
+      setCyclesPanelOpen(true);
+      setCyclesCursor(0);
+      setLineagePanelOpen(false);
       return;
     }
     if (input === '/') {
@@ -769,6 +825,37 @@ export function ScopeGateStep({
         </Box>
       )}
 
+      {cyclesPanelOpen && (
+        <Box flexDirection="column" borderStyle="single" borderColor="red" paddingX={1} marginTop={1}>
+          <Text bold color="red">{`Cycles detected (${slotCycles.length}):`}</Text>
+          <Text> </Text>
+          {slotCycles.map((cycle, i) => {
+            const isCursor = i === cyclesCursor;
+            const parts: string[] = [];
+            // Interleave component / slot / component / ... ending with
+            // the repeated start component. cycle.edges[i] connects
+            // path[i] → path[i+1]; slotName lives on path[i].
+            for (let idx = 0; idx < cycle.edges.length; idx++) {
+              parts.push(cycle.path[idx]);
+              parts.push(`[${cycle.edges[idx].slotName}]`);
+            }
+            parts.push(cycle.path[cycle.path.length - 1]);
+            const label = `Cycle ${i + 1}: ${parts.join(' → ')}`;
+            return (
+              <Text key={i}>
+                {isCursor ? (
+                  <Text color="cyan" bold>{'▶'}</Text>
+                ) : (
+                  <Text> </Text>
+                )}
+                <Text color="red" inverse={isCursor}>{' ' + label}</Text>
+              </Text>
+            );
+          })}
+          <Text dimColor>[↑/↓] move · [Enter] jump · [c/Esc] close</Text>
+        </Box>
+      )}
+
       {lineagePanelOpen && focusedComponent && (
         <Box flexDirection="column" borderStyle="single" borderColor="cyan" paddingX={1} marginTop={1}>
           <Text bold>{`Lineage: ${focusedComponent.name}`}</Text>
@@ -862,6 +949,11 @@ export function ScopeGateStep({
         <Text>
           <Text color="cyan">[l]</Text> <Text dimColor>lineage</Text>
         </Text>
+        {hasCycles && (
+          <Text>
+            <Text color="cyan">[c]</Text> <Text dimColor>cycles</Text>
+          </Text>
+        )}
         <Text>
           <Text color="cyan">[/]</Text> <Text dimColor>search</Text>
         </Text>
@@ -939,12 +1031,82 @@ function ColumnHeader(props: { title: string; width: number; focused: boolean })
   const sep = '─'.repeat(Math.max(0, width - 2));
   return (
     <Box flexDirection="column">
-      <Text bold color={focused ? 'white' : undefined} inverse={focused}>
+      <Text bold color={focused ? 'white' : 'cyan'} inverse={focused}>
         {title}
       </Text>
       <Text dimColor>{sep}</Text>
     </Box>
   );
+}
+
+/**
+ * Compute style tokens for a side-column row. Pure so unit tests can pin the
+ * cursor-override behavior directly (ink-testing-library strips ANSI, so
+ * asserting colors on rendered frames isn't feasible).
+ *
+ * Rules:
+ *   - Cursor row (selected + focused): bold white on inverse — overrides
+ *     green/red/dim regardless of row kind. `▶` glyph is drawn separately.
+ *   - Selected row when NOT focused: underline, retain non-cursor coloring —
+ *     signals "cursor is here but column doesn't own input" (mirrors
+ *     GroupedSidebar's `underline={isSelected && !focused}` pattern).
+ *   - Non-cursor cycle rows: name renders red; the `⚠` glyph is drawn
+ *     separately in bold yellow. Group `(N deps)` suffix stays red (spec:
+ *     "keep red for the whole label" on cycle rows).
+ *   - Non-cursor accepted rows: name renders green (matches the `[✓]` glyph
+ *     in Column 1). Group `(N deps)` suffix renders dim cyan.
+ */
+export function sideColumnLabelStyle(input: {
+  isCycle: boolean;
+  isSelected: boolean;
+  focused: boolean;
+}): {
+  nameColor: string | undefined;
+  nameBold: boolean;
+  nameInverse: boolean;
+  nameUnderline: boolean;
+  suffixColor: string | undefined;
+  suffixDim: boolean;
+  suffixInverse: boolean;
+  suffixUnderline: boolean;
+} {
+  const { isCycle, isSelected, focused } = input;
+  const isCursor = isSelected && focused;
+  if (isCursor) {
+    return {
+      nameColor: 'white',
+      nameBold: true,
+      nameInverse: true,
+      nameUnderline: false,
+      suffixColor: 'white',
+      suffixDim: false,
+      suffixInverse: true,
+      suffixUnderline: false,
+    };
+  }
+  const underline = isSelected && !focused;
+  if (isCycle) {
+    return {
+      nameColor: 'red',
+      nameBold: false,
+      nameInverse: false,
+      nameUnderline: underline,
+      suffixColor: 'red',
+      suffixDim: false,
+      suffixInverse: false,
+      suffixUnderline: underline,
+    };
+  }
+  return {
+    nameColor: 'green',
+    nameBold: false,
+    nameInverse: false,
+    nameUnderline: underline,
+    suffixColor: 'cyan',
+    suffixDim: true,
+    suffixInverse: false,
+    suffixUnderline: underline,
+  };
 }
 
 function AddedComponentsColumn(props: {
@@ -967,11 +1129,15 @@ function AddedComponentsColumn(props: {
         <Text dimColor>(none)</Text>
       ) : (
         entries.map((entry, i) => {
-          const isCursor = focused && i === cursor;
+          const isSelected = i === cursor;
+          const isCursor = focused && isSelected;
           const aiFlagged = aiFlaggedByKey?.get(entry.name) === true;
           const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
-          const rowLabel = entry.isCycle ? `⚠ ${entry.name}` : entry.name;
-          const labelColor = entry.isCycle ? 'red' : isCursor ? 'white' : undefined;
+          const style = sideColumnLabelStyle({
+            isCycle: entry.isCycle,
+            isSelected,
+            focused,
+          });
           return (
             <React.Fragment key={entry.name}>
               {showSeparator && (
@@ -994,13 +1160,24 @@ function AddedComponentsColumn(props: {
                     <Text>{'    '}</Text>
                   )
                 )}
+                {entry.isCycle && (
+                  <Text
+                    color={isCursor ? 'white' : 'yellow'}
+                    bold
+                    inverse={isCursor}
+                    underline={style.nameUnderline}
+                  >
+                    {' ⚠'}
+                  </Text>
+                )}
                 <Text
-                  color={labelColor}
-                  bold={isCursor}
-                  inverse={isCursor}
+                  color={style.nameColor}
+                  bold={style.nameBold}
+                  inverse={style.nameInverse}
+                  underline={style.nameUnderline}
                   wrap="truncate"
                 >
-                  {' ' + rowLabel}
+                  {' ' + entry.name}
                 </Text>
               </Box>
             </React.Fragment>
@@ -1030,12 +1207,16 @@ function AddedGroupsColumn(props: {
         <Text dimColor>(none)</Text>
       ) : (
         entries.map((g, i) => {
-          const isCursor = focused && i === cursor;
-          const baseLabel = `${g.name} (${g.depCount} dep${g.depCount === 1 ? '' : 's'})`;
-          const label = g.isCycle ? `⚠ ${baseLabel}` : baseLabel;
+          const isSelected = i === cursor;
+          const isCursor = focused && isSelected;
+          const suffix = ` (${g.depCount} dep${g.depCount === 1 ? '' : 's'})`;
           const aiFlagged = aiFlaggedByKey?.get(g.name) === true;
           const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
-          const labelColor = g.isCycle ? 'red' : isCursor ? 'white' : undefined;
+          const style = sideColumnLabelStyle({
+            isCycle: g.isCycle,
+            isSelected,
+            focused,
+          });
           return (
             <React.Fragment key={g.name}>
               {showSeparator && (
@@ -1058,13 +1239,34 @@ function AddedGroupsColumn(props: {
                     <Text>{'    '}</Text>
                   )
                 )}
+                {g.isCycle && (
+                  <Text
+                    color={isCursor ? 'white' : 'yellow'}
+                    bold
+                    inverse={isCursor}
+                    underline={style.nameUnderline}
+                  >
+                    {' ⚠'}
+                  </Text>
+                )}
                 <Text
-                  color={labelColor}
-                  bold={isCursor}
-                  inverse={isCursor}
+                  color={style.nameColor}
+                  bold={style.nameBold}
+                  inverse={style.nameInverse}
+                  underline={style.nameUnderline}
                   wrap="truncate"
                 >
-                  {' ' + label}
+                  {' ' + g.name}
+                </Text>
+                <Text
+                  color={style.suffixColor}
+                  dimColor={style.suffixDim}
+                  inverse={style.suffixInverse}
+                  underline={style.suffixUnderline}
+                  bold={style.nameBold}
+                  wrap="truncate"
+                >
+                  {suffix}
                 </Text>
               </Box>
             </React.Fragment>
