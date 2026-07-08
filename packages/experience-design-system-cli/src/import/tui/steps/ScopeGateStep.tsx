@@ -1,12 +1,33 @@
 import { Box, Text } from 'ink';
 import React, { useMemo, useState } from 'react';
+import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import {
+  GroupedSidebar,
+  buildVisibleRows,
+  type GroupedSidebarItem,
+} from '../../../analyze/select/tui/components/GroupedSidebar.js';
+import {
+  computeAllClosures,
+  type ComponentGraphNode,
+  type NodeStatus,
+} from '../../../analyze/composite-closure.js';
+import { findSlotCycles } from '../../../analyze/cycle-detection.js';
 
 export type ScopeComponent = {
   name: string;
   componentId: string;
   aiDecision?: 'accepted' | 'rejected' | 'failed' | null;
   aiReason?: string | null;
+  /**
+   * Composite-components grouping: extraction-time slot metadata for this
+   * component. When present on every scope component, ScopeGateStep renders
+   * through GroupedSidebar so composite closures (root + deps) are visible
+   * at selection time — matching the same tiering used in GenerateReviewStep.
+   * When omitted (older callers, tests without slot data), every component
+   * falls into the standalone tier and Space toggles just that row.
+   */
+  slots?: Array<{ name: string; allowedComponents: string[] }>;
 };
 
 export type ScopeGateStepProps = {
@@ -21,16 +42,9 @@ export type ScopeGateStepProps = {
   onCancelAutoFilter?: () => void;
 };
 
-const VISIBLE_COUNT = 10;
+const VISIBLE_COUNT = 20;
+const SIDEBAR_WIDTH = 36;
 const REASON_DISPLAY_MAX = 60;
-// Pilot-2026-06-25 R2: AI-flagged rows render a subtle cyan `*` glyph before
-// the name (in place of the Round-1 `[AI]` text badge). The marker persists
-// regardless of whether the operator later toggles the row INCLUDED — manual
-// decision wins; the marker is informational only.
-const AI_MARKER = '*';
-// Indentation prefix for the wrapped reason on the focused AI row. Aligns
-// the reason under the row label so the eye reads it as a continuation.
-const REASON_WRAP_INDENT = '      ';
 
 function truncateReason(reason: string | null | undefined): string {
   if (reason === null || reason === undefined || reason === '') return '<no reason given>';
@@ -40,10 +54,34 @@ function truncateReason(reason: string | null | undefined): string {
 
 function isAiFlagged(row: ScopeComponent): boolean {
   // INTEG-4318: `failed` means the LLM omitted a decision for this component
-  // (e.g. batch under-emit). Surface these in the AI-recommended-exclusions
-  // section so the operator sees them and can override — silent inclusion was
-  // the bug.
+  // (e.g. batch under-emit). Treat as rejected for the default-inclusion
+  // computation so silent inclusion regressions never resurface.
   return row.aiDecision === 'rejected' || row.aiDecision === 'failed';
+}
+
+/**
+ * Build a synthetic CDFComponentEntry from a scope-gate component so the
+ * shared `GroupedSidebar` (which was designed to consume the review-stage
+ * entry shape) can render our data. The stub `$properties` prevents the
+ * empty-tier fallback in GroupedSidebar — extraction-stage components with
+ * zero slots would otherwise be surfaced as yellow `(empty)` rows.
+ */
+function toSidebarEntry(c: ScopeComponent): CDFComponentEntry {
+  const $slots: NonNullable<CDFComponentEntry['$slots']> = {};
+  if (c.slots) {
+    for (const s of c.slots) {
+      $slots[s.name] = { $allowedComponents: s.allowedComponents };
+    }
+  }
+  const entry: CDFComponentEntry = {
+    $type: 'component',
+    // The scope-gate sidebar only needs $slots for closure detection; but
+    // GroupedSidebar's empty-tier heuristic also inspects $properties. Give
+    // every row a placeholder so nothing lands in the yellow empty tier.
+    $properties: { __scopeGate: { $type: 'string', $category: 'content' } },
+  };
+  if (Object.keys($slots).length > 0) entry.$slots = $slots;
+  return entry;
 }
 
 export function ScopeGateStep({
@@ -55,105 +93,176 @@ export function ScopeGateStep({
   aiFilterError = null,
   onCancelAutoFilter,
 }: ScopeGateStepProps): React.ReactElement {
-  // Pilot-2026-06-25: scope-gate UX overhaul — single unified list.
-  //
-  // Inverted mental model: we now track which rows are INCLUDED rather than
-  // which are EXCLUDED. The underlying delta-on-prop pattern survives so
-  // operator decisions stay sticky across streaming AI updates:
-  //   - userExcluded: rows the operator explicitly toggled OFF
-  //   - userUnExcluded: rows the operator explicitly toggled ON
-  // Effective INCLUDED for a row:
-  //   if userExcluded.has(name): false
-  //   else if userUnExcluded.has(name): true
-  //   else: row.aiDecision !== 'rejected'   // default: follow AI, default true if AI silent
+  // Inclusion delta over the AI default. Operator toggles are always sticky
+  // even when AI streaming updates arrive later (Pilot-2026-06-25 R2 invariant
+  // preserved from the flat-sidebar rewrite).
   const [userExcluded, setUserExcluded] = useState<Set<string>>(new Set());
   const [userUnExcluded, setUserUnExcluded] = useState<Set<string>>(new Set());
-
   const [cursor, setCursor] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
-  // Pilot-2026-06-23: `s` opens a side panel showing the full reject_reason
-  // (untruncated) for an AI-flagged row under the cursor. With the focused-row
-  // wrap landed, the panel is mostly redundant — kept for screen-reader /
-  // overflow cases per spec.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  // Reason side panel — kept for narrow-terminal / screen-reader overflow.
   const [reasonPanelOpen, setReasonPanelOpen] = useState(false);
 
-  // Pilot-2026-06-25 R2: two-section render. AI-flagged rows go to a top
-  // section ("AI recommended exclusions"); the rest fall into "Components".
-  // Within each section we preserve prop (extraction) order. Cursor walks
-  // the unified flat list [...aiList, ...componentsList].
-  const aiList: ScopeComponent[] = components.filter(isAiFlagged);
-  const componentsList: ScopeComponent[] = components.filter((c) => !isAiFlagged(c));
-  const flatList: ScopeComponent[] = [...aiList, ...componentsList];
+  const isIncluded = (name: string): boolean => {
+    if (userExcluded.has(name)) return false;
+    if (userUnExcluded.has(name)) return true;
+    const c = components.find((x) => x.name === name);
+    if (!c) return true;
+    return !isAiFlagged(c);
+  };
 
-  const isIncluded = (row: ScopeComponent): boolean => {
-    // Pilot-2026-06-25 invariant: operator decisions are ALWAYS sticky over
-    // streaming AI updates. If the operator explicitly toggled this row
-    // (userExcluded or userUnExcluded), that wins regardless of any later
-    // aiDecision the auto-filter writes via prop updates. The [AI] badge
-    // still appears on the row — it's informational, not authoritative.
-    if (userExcluded.has(row.name)) return false;
-    if (userUnExcluded.has(row.name)) return true;
-    // INTEG-4318: exclude on 'rejected' AND 'failed'. Missing/null aiDecision
-    // (auto-filter not run, or component never seen) still defaults to
-    // included so --no-auto-filter and skip-credentials flows are unchanged.
-    return row.aiDecision !== 'rejected' && row.aiDecision !== 'failed';
+  const flipToExcluded = (names: string[]): void => {
+    setUserExcluded((prev) => {
+      const next = new Set(prev);
+      for (const n of names) next.add(n);
+      return next;
+    });
+    setUserUnExcluded((prev) => {
+      const next = new Set(prev);
+      for (const n of names) next.delete(n);
+      return next;
+    });
+  };
+
+  const flipToIncluded = (names: string[]): void => {
+    setUserUnExcluded((prev) => {
+      const next = new Set(prev);
+      for (const n of names) next.add(n);
+      return next;
+    });
+    setUserExcluded((prev) => {
+      const next = new Set(prev);
+      for (const n of names) next.delete(n);
+      return next;
+    });
+  };
+
+  // Build the GroupedSidebar item list. Sorted so the underlying `items`
+  // array's `selectedIdx` isn't strictly needed by our keyboard model — we
+  // drive selection off the visible-rows list directly.
+  const groupedItems: GroupedSidebarItem[] = useMemo(
+    () =>
+      components.map((c) => ({
+        key: c.name,
+        entry: toSidebarEntry(c),
+        status: isAiFlagged(c) ? ('warning' as NodeStatus) : ('ok' as NodeStatus),
+      })),
+    [components],
+  );
+
+  const graph: ComponentGraphNode[] = useMemo(
+    () =>
+      components.map((c) => ({
+        name: c.name,
+        slots: (c.slots ?? []).map((s) => ({ name: s.name, allowedComponents: s.allowedComponents })),
+      })),
+    [components],
+  );
+
+  // Cycle-participant set drives GroupedSidebar's cycle tier.
+  const cycleParticipants = useMemo<Set<string>>(() => {
+    const set = new Set<string>();
+    try {
+      const cycles = findSlotCycles(graph);
+      for (const c of cycles) for (const n of c.path) set.add(n);
+    } catch {
+      // Defensive — cycle detection must never crash the scope-gate UI.
+    }
+    return set;
+  }, [graph]);
+
+  const closures = useMemo(() => computeAllClosures(graph), [graph]);
+
+  // Flat list of visible rows GroupedSidebar renders, in the exact order it
+  // will render them. We drive cursor / space-toggle semantics against this
+  // list so our behavior stays in lockstep with the visual layout — including
+  // when a group collapses or expands.
+  const visibleRows = useMemo(
+    () => buildVisibleRows({ items: groupedItems, cycleParticipants, expandedGroups }),
+    [groupedItems, cycleParticipants, expandedGroups],
+  );
+
+  const total = visibleRows.length;
+
+  // Clamp cursor if the row set shrinks (e.g. after collapse).
+  const safeCursor = Math.min(cursor, Math.max(0, total - 1));
+
+  const currentRow = visibleRows[safeCursor];
+  const currentRowKey = currentRow && currentRow.itemIdx >= 0 ? groupedItems[currentRow.itemIdx]?.key : undefined;
+  const focusedComponent = currentRowKey ? components.find((c) => c.name === currentRowKey) : undefined;
+
+  // Toggle the closure anchored at `rootName`. If every node is currently
+  // included → exclude them all; otherwise → include them all. This matches
+  // the "selecting a root auto-selects its full closure" spec while still
+  // giving the operator a way to drop the whole subtree.
+  const toggleClosure = (rootName: string): void => {
+    const closure = closures.get(rootName);
+    const names = closure ? closure.nodes.map((n) => n.name) : [rootName];
+    const allIncluded = names.every((n) => isIncluded(n));
+    if (allIncluded) flipToExcluded(names);
+    else flipToIncluded(names);
+  };
+
+  const toggleSingle = (name: string): void => {
+    if (isIncluded(name)) flipToExcluded([name]);
+    else flipToIncluded([name]);
   };
 
   const partition = (): { accepted: string[]; rejected: string[] } => {
     const accepted: string[] = [];
     const rejected: string[] = [];
-    for (const c of flatList) {
-      if (isIncluded(c)) accepted.push(c.name);
+    for (const c of components) {
+      if (isIncluded(c.name)) accepted.push(c.name);
       else rejected.push(c.name);
     }
     return { accepted, rejected };
   };
 
-  const toggleFocused = (): void => {
-    const target = flatList[cursor];
-    if (!target) return;
-    const currentlyIn = isIncluded(target);
-    if (currentlyIn) {
-      // Flip to EXCLUDED.
-      setUserExcluded((prev) => {
-        if (prev.has(target.name)) return prev;
-        const next = new Set(prev);
-        next.add(target.name);
-        return next;
-      });
-      setUserUnExcluded((prev) => {
-        if (!prev.has(target.name)) return prev;
-        const next = new Set(prev);
-        next.delete(target.name);
-        return next;
-      });
-    } else {
-      // Flip to INCLUDED.
-      setUserUnExcluded((prev) => {
-        if (prev.has(target.name)) return prev;
-        const next = new Set(prev);
-        next.add(target.name);
-        return next;
-      });
-      setUserExcluded((prev) => {
-        if (!prev.has(target.name)) return prev;
-        const next = new Set(prev);
-        next.delete(target.name);
-        return next;
-      });
+  const handleToggleFocused = (): void => {
+    const row = visibleRows[safeCursor];
+    if (!row) return;
+    // Standalones + empty rows toggle a single component. Group-root rows
+    // toggle the whole closure. Group-child + cycle + synthetic rows are
+    // no-ops per spec (child selection follows its root; cycle rows are
+    // advisory-only; `+N more` has no component).
+    switch (row.kind) {
+      case 'standalone':
+      case 'empty': {
+        const key = row.itemIdx >= 0 ? groupedItems[row.itemIdx]?.key : undefined;
+        if (key) toggleSingle(key);
+        return;
+      }
+      case 'group-root': {
+        if (row.rootName) toggleClosure(row.rootName);
+        return;
+      }
+      case 'group-child':
+      case 'cycle':
+      case 'group-more':
+      default:
+        return;
     }
+  };
+
+  const handleToggleExpand = (): void => {
+    const row = visibleRows[safeCursor];
+    if (!row || row.kind !== 'group-root' || !row.rootName) return;
+    const name = row.rootName;
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
   };
 
   useImmediateInput((input, key) => {
     if (input === 'q' || key.escape) {
-      // Feature 3: while auto-filter is running, q cancels the LLM run instead
-      // of quitting the wizard. After completion (or if no auto-filter ran), q
-      // falls back to the existing wizard-quit behavior.
       if (aiFilterStatus === 'running' && onCancelAutoFilter) {
         onCancelAutoFilter();
         return;
       }
-      // Esc also closes the reason panel without quitting.
       if (key.escape && reasonPanelOpen) {
         setReasonPanelOpen(false);
         return;
@@ -169,47 +278,28 @@ export function ScopeGateStep({
       setReasonPanelOpen((prev) => !prev);
       return;
     }
-    // `a`, space, and `r` are all aliases for "toggle focused row INCLUDED ↔ EXCLUDED".
-    // `r` kept for muscle-memory; it no longer means "reject".
+    if (key.return) {
+      handleToggleExpand();
+      return;
+    }
+    // `a`, space, and `r` all toggle. `r` kept as muscle-memory alias.
     if (input === 'a' || input === ' ' || input === 'r') {
-      toggleFocused();
+      handleToggleFocused();
       return;
     }
     if (input === 'A') {
-      // Pilot-2026-06-25 R2: toggle-all operates ONLY on the Components
-      // section. The AI section's defaults stay put — operators rarely want
-      // a mass-include of AI-flagged rows via one keystroke. Toggle behavior:
-      // if any Components row is excluded, include them all; else exclude all.
-      const compNames = componentsList.map((c) => c.name);
-      const anyCompExcluded = componentsList.some((c) => !isIncluded(c));
-      if (anyCompExcluded) {
-        setUserUnExcluded((prev) => {
-          const next = new Set(prev);
-          for (const n of compNames) next.add(n);
-          return next;
-        });
-        setUserExcluded((prev) => {
-          const next = new Set(prev);
-          for (const n of compNames) next.delete(n);
-          return next;
-        });
-      } else {
-        setUserExcluded((prev) => {
-          const next = new Set(prev);
-          for (const n of compNames) next.add(n);
-          return next;
-        });
-        setUserUnExcluded((prev) => {
-          const next = new Set(prev);
-          for (const n of compNames) next.delete(n);
-          return next;
-        });
-      }
+      // Toggle-all across every selectable component (skipping cycle rows so
+      // we don't silently ship components that can't be pushed anyway). If
+      // any selectable is excluded, include everything; otherwise exclude
+      // everything.
+      const selectable = components.filter((c) => !cycleParticipants.has(c.name)).map((c) => c.name);
+      const anyExcluded = selectable.some((n) => !isIncluded(n));
+      if (anyExcluded) flipToIncluded(selectable);
+      else flipToExcluded(selectable);
       return;
     }
     if (key.upArrow || input === 'k') {
-      const len = flatList.length;
-      if (len === 0) return;
+      if (total === 0) return;
       setCursor((c) => {
         const next = c <= 0 ? 0 : c - 1;
         setScrollOffset((prev) => Math.min(prev, next));
@@ -218,10 +308,9 @@ export function ScopeGateStep({
       return;
     }
     if (key.downArrow || input === 'j') {
-      const len = flatList.length;
-      if (len === 0) return;
+      if (total === 0) return;
       setCursor((c) => {
-        const next = c >= len - 1 ? len - 1 : c + 1;
+        const next = c >= total - 1 ? total - 1 : c + 1;
         setScrollOffset((prev) => (next >= prev + VISIBLE_COUNT ? next - VISIBLE_COUNT + 1 : prev));
         return next;
       });
@@ -229,33 +318,35 @@ export function ScopeGateStep({
     }
   });
 
-  const total = flatList.length;
   const includedCount = useMemo(
-    () => flatList.filter((c) => isIncluded(c)).length,
+    () => components.filter((c) => isIncluded(c.name)).length,
     [components, userExcluded, userUnExcluded],
   );
-  const hasAnyAi = flatList.some(isAiFlagged);
+  const hasAnyAi = components.some(isAiFlagged);
+  const aiExcludedCount = components.filter(isAiFlagged).length;
 
-  const visibleEnd = Math.min(scrollOffset + VISIBLE_COUNT, total);
-  const visible = flatList.slice(scrollOffset, visibleEnd);
-  const above = scrollOffset;
-  const below = Math.max(0, total - visibleEnd);
+  // GroupedSidebar's `selectedIdx` is an index into `items` (not visibleRows),
+  // so translate the cursor via the current row's `itemIdx`. Synthetic rows
+  // (`+N more`) don't map back to an item — leave `selectedIdx` on the last
+  // real selection so nothing else in the sidebar loses its inverse-color.
+  const selectedItemIdx = currentRow && currentRow.itemIdx >= 0 ? currentRow.itemIdx : -1;
 
-  // ── Banner / status helpers ───────────────────────────────────────────────
-  const showRunningHeader = aiFilterStatus === 'running' && aiFilterProgress !== null && aiFilterProgress.total > 0;
+  const showRunningHeader =
+    aiFilterStatus === 'running' && aiFilterProgress !== null && aiFilterProgress.total > 0;
   const showCancelledBanner = aiFilterStatus === 'cancelled';
   const showFailedBanner = aiFilterStatus === 'failed';
-  const allRejected = aiFilterStatus === 'complete' && total > 0 && flatList.every((c) => !isIncluded(c));
+  const allRejected = aiFilterStatus === 'complete' && components.length > 0 && components.every((c) => !isIncluded(c.name));
+
+  const totalComponents = components.length;
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       <Text color="green">✓ Extraction complete</Text>
       <Text dimColor>
-        Found {total} component{total === 1 ? '' : 's'}. Pick which ones to import. Generation runs only on the included
-        set.
+        Found {totalComponents} component{totalComponents === 1 ? '' : 's'}. Pick which ones to import. Generation runs
+        only on the included set.
       </Text>
 
-      {/* Feature 3: auto-filter status banners */}
       {showRunningHeader && (
         <Box flexDirection="column" marginTop={1}>
           <Text color="cyan">
@@ -280,14 +371,8 @@ export function ScopeGateStep({
         </Box>
       )}
 
-      {/* Pilot-2026-06-23: full reject_reason side panel. Opens on `s` when
-          cursor is on an AI-flagged row. Closes on `s` again or Esc. */}
-      {reasonPanelOpen && flatList[cursor] !== undefined && isAiFlagged(flatList[cursor]!) && (
-        <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1} marginTop={1}>
-          <Text dimColor bold>{`AI rejection reason: ${flatList[cursor]!.name}`}</Text>
-          <Text>{flatList[cursor].aiReason ?? '<no reason given>'}</Text>
-          <Text dimColor>[s] close · [Esc] close</Text>
-        </Box>
+      {hasAnyAi && (
+        <Text dimColor>{`AI recommended exclusions: ${aiExcludedCount}`}</Text>
       )}
 
       {allRejected ? (
@@ -295,73 +380,65 @@ export function ScopeGateStep({
           <Text color="yellow">AI excluded all components — press [a] to override or [q] to quit</Text>
         </Box>
       ) : (
+        <GroupedSidebar
+          items={groupedItems}
+          cycleParticipants={cycleParticipants}
+          selectedIdx={selectedItemIdx}
+          onSelect={() => {}}
+          expandedGroups={expandedGroups}
+          onToggleExpanded={(rootName) => {
+            setExpandedGroups((prev) => {
+              const next = new Set(prev);
+              if (next.has(rootName)) next.delete(rootName);
+              else next.add(rootName);
+              return next;
+            });
+          }}
+          width={SIDEBAR_WIDTH}
+          focused={true}
+          scrollOffset={scrollOffset}
+          visibleCount={VISIBLE_COUNT}
+        />
+      )}
+
+      {/* Focused-row detail: inclusion state + AI reason (if any). The
+          in-row `[✓]`/`[✗]` glyphs and `*` marker from the flat sidebar are
+          replaced by GroupedSidebar's tier rendering; we surface the same
+          signal here for the focused row instead. */}
+      {focusedComponent && !allRejected && (
         <Box flexDirection="column" marginTop={1}>
-          {above > 0 && <Text dimColor>↑ {above} above</Text>}
-          {visible.map((c, vi) => {
-            const i = vi + scrollOffset;
-            const isCursor = i === cursor;
-            const included = isIncluded(c);
-            const aiFlagged = isAiFlagged(c);
-            const prefix = isCursor ? '›' : ' ';
-            // R2: color-glyphs replace word labels. Green [✓] for included,
-            // red [✗] for excluded. The component name follows the same
-            // color UNLESS the row is the cursor row, in which case the
-            // name flips to cyan (state glyph keeps its red/green).
-            const stateGlyph = included ? '[✓]' : '[✗]';
-            const stateColor: 'green' | 'red' = included ? 'green' : 'red';
-            // R2: cyan `*` glyph replaces the verbose `[AI]` badge.
-            const aiMarkerNode = aiFlagged ? <Text color="cyan">{`${AI_MARKER} `}</Text> : null;
-            const inlineReason = !isCursor && aiFlagged ? ` ${truncateReason(c.aiReason)}` : '';
-            const showAiHeader = aiList.length > 0 && i === 0;
-            const showComponentsHeader = componentsList.length > 0 && i === aiList.length;
-            const header = showAiHeader ? (
-              <Text key={`hdr-ai-${i}`} bold>{`AI recommended exclusions (${aiList.length})`}</Text>
-            ) : showComponentsHeader ? (
-              <Text key={`hdr-comp-${i}`} bold>{`Components (${componentsList.length})`}</Text>
-            ) : null;
-            if (isCursor) {
-              const wrapReason = aiFlagged && c.aiReason !== null && c.aiReason !== undefined && c.aiReason.length > 0;
-              return (
-                <React.Fragment key={c.componentId}>
-                  {header}
-                  <Text>
-                    <Text color="cyan">{`${prefix} `}</Text>
-                    {aiMarkerNode}
-                    <Text color={stateColor}>{stateGlyph}</Text>
-                    <Text color="cyan">{` ${c.name}`}</Text>
-                  </Text>
-                  {wrapReason && <Text dimColor>{`${REASON_WRAP_INDENT}${c.aiReason}`}</Text>}
-                </React.Fragment>
-              );
-            }
-            return (
-              <React.Fragment key={c.componentId}>
-                {header}
-                <Text>
-                  <Text>{`${prefix} `}</Text>
-                  {aiMarkerNode}
-                  <Text color={stateColor}>{stateGlyph}</Text>
-                  <Text color={stateColor}>{` ${c.name}`}</Text>
-                  {inlineReason !== '' && <Text dimColor>{inlineReason}</Text>}
-                </Text>
-              </React.Fragment>
-            );
-          })}
-          {below > 0 && <Text dimColor>↓ {below} below</Text>}
+          <Text>
+            <Text color="cyan">{focusedComponent.name}</Text>
+            <Text dimColor>{' — '}</Text>
+            {isIncluded(focusedComponent.name) ? (
+              <Text color="green">included</Text>
+            ) : (
+              <Text color="red">excluded</Text>
+            )}
+            {isAiFlagged(focusedComponent) && <Text color="cyan">{' *'}</Text>}
+          </Text>
+          {isAiFlagged(focusedComponent) &&
+            focusedComponent.aiReason !== null &&
+            focusedComponent.aiReason !== undefined &&
+            focusedComponent.aiReason !== '' && (
+              <Text dimColor>{truncateReason(focusedComponent.aiReason)}</Text>
+            )}
         </Box>
       )}
 
-      {/* Pilot-2026-06-25: bottom legend.
-          - `[c]` is gone (no collapsible AI section to toggle).
-          - `[r]` is gone from the legend (kept as a muscle-memory alias for
-            `[a/space]` but not advertised).
-          - `[s] AI reason` only shows when the list contains an AI-flagged
-            row, since the side panel is a no-op otherwise. */}
+      {reasonPanelOpen && focusedComponent && isAiFlagged(focusedComponent) && (
+        <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1} marginTop={1}>
+          <Text dimColor bold>{`AI rejection reason: ${focusedComponent.name}`}</Text>
+          <Text>{focusedComponent.aiReason ?? '<no reason given>'}</Text>
+          <Text dimColor>[s] close · [Esc] close</Text>
+        </Box>
+      )}
+
       <Box gap={3} marginTop={1}>
         {includedCount > 0 ? (
           <Text>
             <Text color="green">{includedCount}</Text>
-            <Text dimColor>/{total} included</Text>
+            <Text dimColor>/{totalComponents} included</Text>
           </Text>
         ) : (
           <Text color="yellow">none included</Text>
@@ -371,6 +448,9 @@ export function ScopeGateStep({
         </Text>
         <Text>
           <Text color="cyan">[a/space]</Text> <Text dimColor>toggle</Text>
+        </Text>
+        <Text>
+          <Text color="cyan">[Enter]</Text> <Text dimColor>expand/collapse</Text>
         </Text>
         <Text>
           <Text color="cyan">[A]</Text> <Text dimColor>toggle all</Text>
