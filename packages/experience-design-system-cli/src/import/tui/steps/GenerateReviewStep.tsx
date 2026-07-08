@@ -161,9 +161,8 @@ export function GenerateReviewStep({
   const [slotCycles, setSlotCycles] = useState<StoredSlotCycle[]>([]);
   const [showCyclePanel, setShowCyclePanel] = useState(false);
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
-  // Composite-components grouping: set of root component names whose subtree
-  // is expanded in the GroupedSidebar. Collapsed by default (empty set).
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const seededGroupsRef = useRef(false);
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
@@ -404,6 +403,12 @@ export function GenerateReviewStep({
     [components],
   );
   const closures = useMemo(() => computeAllClosures(componentGraph), [componentGraph]);
+  useEffect(() => {
+    if (seededGroupsRef.current) return;
+    if (closures.size === 0) return;
+    seededGroupsRef.current = true;
+    setExpandedGroups(new Set(closures.keys()));
+  }, [closures]);
   // Direct issues per component. Wired signals:
   //   - status === 'rejected'   → error (dropping a leaf breaks its ancestors)
   // Cycle- and empty-tier components live in their own tiers in
@@ -610,6 +615,21 @@ export function GenerateReviewStep({
     }
     if (input === 'e' && sidebarFocused) {
       setSidebarFocused(false);
+      return;
+    }
+    if (input === ' ' && sidebarFocused && !showJson) {
+      const current = components[selectedIdx];
+      if (!current) return;
+      const rootName = closures.has(current.key)
+        ? current.key
+        : [...closures.entries()].find(([, c]) => c.nodes.some((n) => n.name === current.key))?.[0];
+      if (!rootName) return;
+      setExpandedGroups((prev) => {
+        const next = new Set(prev);
+        if (next.has(rootName)) next.delete(rootName);
+        else next.add(rootName);
+        return next;
+      });
       return;
     }
 
@@ -1166,6 +1186,7 @@ export function GenerateReviewStep({
                     ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel' +
+                      (closures.size > 0 ? '  [Space] expand/collapse' : '') +
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       '  [q] quit'

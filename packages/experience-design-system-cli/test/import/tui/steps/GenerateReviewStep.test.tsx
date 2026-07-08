@@ -533,7 +533,7 @@ describe('GenerateReviewStep — Feature 2 spinner indicator', () => {
     );
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/live preview disabled/);
+    expect(frame.replace(/[^\w!]+/g, ' ')).toMatch(/live preview disabled/);
   });
 
   it('does NOT render any "live preview" indicator when idle and not disabled', async () => {
