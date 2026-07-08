@@ -1570,6 +1570,39 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     expect(frame).toMatch(/Card/);
   });
 
+  it('legend advertises [Space] and [E/C] group-toggle bindings when at least one group root exists', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Card', entry: withSlot('Card', ['Heading']) },
+      { key: 'Heading', entry: leaf('Heading') },
+    ]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Ink can wrap the legend across lines on narrow test terminals and
+    // insert ANSI dim codes between characters. Strip both before asserting.
+    // eslint-disable-next-line no-control-regex
+    const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
+    expect(frame).toMatch(/\[Space\][^\n]*expand\/collapse group/);
+    expect(frame).toMatch(/\[E\/C\][^\n]*expand\/collapse/);
+  });
+
+  it('legend omits group-toggle bindings when the manifest is flat (no group roots)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Loner1', entry: leaf('Loner1') },
+      { key: 'Loner2', entry: leaf('Loner2') },
+    ]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toContain('[Space] expand/collapse');
+    expect(frame).not.toContain('[E/C] expand/collapse');
+  });
+
   it('[C] collapses every group root; [E] expands every group root; both idempotent', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     // Two independent groups so we can prove the bindings hit every root, not
