@@ -1,11 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import type {
   CDFComponentEntry,
   ComponentTypeSummary,
   ServerPreviewResponse,
 } from '@contentful/experience-design-system-types';
-import { Sidebar } from '../../../analyze/select/tui/components/Sidebar.js';
+import { GroupedSidebar } from '../../../analyze/select/tui/components/GroupedSidebar.js';
+import { computeAllClosures, type ComponentGraphNode, type NodeStatus } from '../../../analyze/composite-closure.js';
+import { computeRenderStatuses, pickDrillTarget, type RenderStatus } from '../../../analyze/issue-inheritance.js';
 import { JsonPanel } from '../../../analyze/select/tui/components/JsonPanel.js';
 import { FieldEditor } from '../../../analyze/select/tui/components/FieldEditor.js';
 import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
@@ -28,11 +30,7 @@ import { formatCyclePathSegments, findSlotCycles, suggestCycleBreakEdge } from '
 import { RationalePanel, type RationaleRow } from '../../../analyze/select/tui/components/RationalePanel.js';
 import { ComponentRationalePanel } from '../../../analyze/select/tui/components/ComponentRationalePanel.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
-import type {
-  PreviewAnnotation,
-  ReviewComponentStatus,
-  ReviewComponentSummary,
-} from '../../../analyze/select/types.js';
+import type { PreviewAnnotation, ReviewComponentStatus } from '../../../analyze/select/types.js';
 import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
 import { useLivePreview } from '../useLivePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
@@ -163,6 +161,8 @@ export function GenerateReviewStep({
   const [slotCycles, setSlotCycles] = useState<StoredSlotCycle[]>([]);
   const [showCyclePanel, setShowCyclePanel] = useState(false);
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const seededGroupsRef = useRef(false);
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
@@ -384,6 +384,61 @@ export function GenerateReviewStep({
     }
   };
 
+  // Composite-components grouping wiring. Hooks must live above every early
+  // return so React's hook-count stays constant across the loading↔loaded
+  // transition. Derives the closure set from the in-memory `components`
+  // state's `$slots` shape so edits + rejections propagate on the next
+  // render tick without a DB round-trip.
+  const componentGraph = useMemo<ComponentGraphNode[]>(
+    () =>
+      components.map((c) => ({
+        name: c.key,
+        slots: Object.entries(c.entry.$slots ?? {}).map(([slotName, slotDef]) => ({
+          name: slotName,
+          allowedComponents: Array.isArray(slotDef?.$allowedComponents)
+            ? (slotDef.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
+            : [],
+        })),
+      })),
+    [components],
+  );
+  const closures = useMemo(() => computeAllClosures(componentGraph), [componentGraph]);
+  useEffect(() => {
+    if (seededGroupsRef.current) return;
+    if (closures.size === 0) return;
+    seededGroupsRef.current = true;
+    setExpandedGroups(new Set(closures.keys()));
+  }, [closures]);
+  // Direct issues per component. Wired signals:
+  //   - status === 'rejected'   → error (dropping a leaf breaks its ancestors)
+  // Cycle- and empty-tier components live in their own tiers in
+  // GroupedSidebar and deliberately do NOT feed the inheritance layer (they
+  // aren't part of any group closure anyway).
+  const directIssues = useMemo<Map<string, NodeStatus>>(() => {
+    const m = new Map<string, NodeStatus>();
+    for (const c of components) {
+      if (c.status === 'rejected') m.set(c.key, 'error');
+    }
+    return m;
+  }, [components]);
+  // Merge per-closure render statuses into one map. When the same node
+  // appears in multiple closures (shared dep), an entry with `isOwn: true`
+  // wins over an `isOwn: false` — a real issue on a shared node beats the
+  // inherited marker on its ancestor.
+  const renderStatusByKey = useMemo<Map<string, RenderStatus>>(() => {
+    const merged = new Map<string, RenderStatus>();
+    for (const closure of closures.values()) {
+      const per = computeRenderStatuses(closure, directIssues);
+      for (const [name, rs] of per.entries()) {
+        const existing = merged.get(name);
+        if (!existing || (!existing.isOwn && rs.isOwn)) {
+          merged.set(name, rs);
+        }
+      }
+    }
+    return merged;
+  }, [closures, directIssues]);
+
   const handleEditSave = () => {
     const current = components[selectedIdx];
     if (!current) return;
@@ -562,6 +617,21 @@ export function GenerateReviewStep({
       setSidebarFocused(false);
       return;
     }
+    if (input === ' ' && sidebarFocused && !showJson) {
+      const current = components[selectedIdx];
+      if (!current) return;
+      const rootName = closures.has(current.key)
+        ? current.key
+        : [...closures.entries()].find(([, c]) => c.nodes.some((n) => n.name === current.key))?.[0];
+      if (!rootName) return;
+      setExpandedGroups((prev) => {
+        const next = new Set(prev);
+        if (next.has(rootName)) next.delete(rootName);
+        else next.add(rootName);
+        return next;
+      });
+      return;
+    }
 
     // JSON view + panel focused: own j/k/arrows/PageUp/PageDown/Ctrl+u/d/gg/G
     // for scrolling. Computed against the live `selectedJson` so the
@@ -651,6 +721,31 @@ export function GenerateReviewStep({
       return;
     }
 
+    // Composite-components drill-to-source. When the selected sidebar row is
+    // an ancestor showing an inherited-issue marker (isOwn: false), Enter
+    // jumps selection to the descendant that actually owns the issue. Rows
+    // that own their issue (isOwn: true) or have no marker are no-ops.
+    if (key.return) {
+      const current = components[selectedIdx];
+      if (!current) return;
+      const rs = renderStatusByKey.get(current.key);
+      if (!rs || rs.isOwn) return;
+      // Find the closure that contains this ancestor and drill within it.
+      for (const closure of closures.values()) {
+        if (!closure.nodes.some((n) => n.name === current.key)) continue;
+        const target = pickDrillTarget(current.key, closure, directIssues);
+        if (target && target !== current.key) {
+          const idx = components.findIndex((c) => c.key === target);
+          if (idx >= 0) {
+            setSelectedIdx(idx);
+            setJsonScrollOffset(0);
+          }
+        }
+        break;
+      }
+      return;
+    }
+
     if (key.upArrow || input === 'k') {
       // Pilot-2026-06-23 bug: rapid k/j bursts could lose cursor position
       // because the previous implementation read `selectedIdx` from the
@@ -715,24 +810,28 @@ export function GenerateReviewStep({
     return '';
   };
 
-  const sidebarItems: ReviewComponentSummary[] = components.map((c) => ({
-    id: c.key,
-    name: `${c.key}${sidebarSuffix(c)}`,
-    status: c.status,
-    previewAnnotation: previewAnnotations.get(c.key),
-    extractionConfidence: null,
-    needsReview: false,
-    validationErrorCount: 0,
-    validationWarningCount: sidebarSuffix(c) !== '' ? 1 : 0,
+  const groupedItems = components.map((c) => ({
+    key: c.key,
+    entry: c.entry,
+    status: (directIssues.get(c.key) ?? 'ok') as NodeStatus,
   }));
 
-  // Account for the "(cycle)" / "(empty)" suffix added to badged component
-  // names so the sidebar doesn't truncate them.
-  const longestName = components.reduce((m, c) => Math.max(m, c.key.length + sidebarSuffix(c).length), 0);
-  // +5 = border (1) + status icon (1) + badge column (1) + space (1) + border (1).
+  const previewAnnotationByKey = previewAnnotations;
+
+  // Account for the "(cycle)" / "(empty)" suffix and the grouped-sidebar
+  // "(N deps)" / expand-arrow overhead so the sidebar doesn't truncate
+  // aggregate glyphs or dep counts. Widest possible row per name:
+  //   `▸ Name (NN deps) ✗` → keylen + 12
+  //   `Name (empty|cycle)` → keylen + suffixlen
+  const longestName = components.reduce((m, c) => {
+    const suffixLen = sidebarSuffix(c).length;
+    const groupOverhead = 12; // "▸  (99 deps) ✗"
+    return Math.max(m, c.key.length + Math.max(suffixLen, groupOverhead));
+  }, 0);
+  // +5 = border (1) + badge column (1) + leading space (1) + trailing pad (1) + border (1).
   // The badge column is reserved even when no annotation is present so the
   // sidebar width doesn't jitter as live-preview annotations flip in/out.
-  const sidebarWidth = Math.min(Math.max(longestName + 5, 14), 30);
+  const sidebarWidth = Math.min(Math.max(longestName + 5, 14), 34);
   const panelWidth = Math.max(10, terminalWidth - sidebarWidth - 4);
 
   // INTEG-4401: project-wide slot graph passed to FieldEditor so its
@@ -927,21 +1026,29 @@ export function GenerateReviewStep({
       {!dialogOpen && finalizeError && <Text color="red">{`⚠ ${finalizeError}`}</Text>}
       {!dialogOpen && (
         <Box>
-          <Sidebar
-            components={sidebarItems}
-            selectedId={selected?.key ?? null}
+          <GroupedSidebar
+            items={groupedItems}
+            cycleParticipants={cycleParticipantSet}
+            selectedIdx={selectedIdx}
+            onSelect={(idx) => {
+              setSelectedIdx(idx);
+              setJsonScrollOffset(0);
+            }}
+            expandedGroups={expandedGroups}
+            onToggleExpanded={(rootName) => {
+              setExpandedGroups((prev) => {
+                const next = new Set(prev);
+                if (next.has(rootName)) next.delete(rootName);
+                else next.add(rootName);
+                return next;
+              });
+            }}
+            width={sidebarWidth}
             focused={sidebarFocused}
+            renderStatusByKey={renderStatusByKey}
+            previewAnnotationByKey={previewAnnotationByKey}
             scrollOffset={sidebarScrollOffset}
             visibleCount={VISIBLE_COUNT}
-            onSelect={(id) => {
-              const idx = components.findIndex((c) => c.key === id);
-              if (idx >= 0) {
-                setSelectedIdx(idx);
-                setJsonScrollOffset(0);
-              }
-            }}
-            onScrollChange={setSidebarScrollOffset}
-            width={sidebarWidth}
           />
           <Box flexGrow={1} paddingLeft={1} flexDirection="column">
             {selected ? (
@@ -1079,6 +1186,7 @@ export function GenerateReviewStep({
                     ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel' +
+                      (closures.size > 0 ? '  [Space] expand/collapse' : '') +
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       '  [q] quit'

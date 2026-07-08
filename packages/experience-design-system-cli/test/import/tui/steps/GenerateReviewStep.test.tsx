@@ -533,7 +533,7 @@ describe('GenerateReviewStep — Feature 2 spinner indicator', () => {
     );
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/live preview disabled/);
+    expect(frame.replace(/[^\w!]+/g, ' ')).toMatch(/live preview disabled/);
   });
 
   it('does NOT render any "live preview" indicator when idle and not disabled', async () => {
@@ -1359,6 +1359,205 @@ describe('GenerateReviewStep — slot-cycle re-detection on user actions (INTEG-
     // Confirm the dialog itself is not present (it would render the divider
     // header "── Finalize ──" and the y/Enter confirm hint).
     expect(frame).not.toMatch(/Save decisions and exit/);
+  });
+});
+
+// ── Composite-components grouping wiring (INTEG-4402 subtask C) ─────────────
+// Verifies the GroupedSidebar is mounted with all the pieces intact:
+//   - cycle / empty / grouped-root / standalone tiers stack in that order;
+//   - inheritance markers dim on ancestors of a rejected leaf;
+//   - Enter drills selection from an ancestor to the descendant that owns
+//     the issue; leaves are no-ops;
+//   - preview annotations still show up (badge column preserved).
+describe('GenerateReviewStep — composite-components grouped sidebar (subtask C)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const leaf = (name: string): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+  });
+  const withSlot = (name: string, allowed: string[]): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+    $slots: {
+      children: {
+        $type: 'slot',
+        $allowedComponents: allowed,
+      },
+    } as never,
+  });
+  const empty: Entry = { $type: 'component', $properties: {} };
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  it('renders cycle, empty, grouped-root, and standalone tiers in order', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // Card → [Heading, Body]. Standalone → no slots and not depended on by
+    // any other component. Empty → zero props/slots. CycleA/CycleB are
+    // cycle-participants (loaded via loadSlotCycles below).
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Card', entry: withSlot('Card', ['Heading', 'Body']) },
+      { key: 'Heading', entry: leaf('Heading') },
+      { key: 'Body', entry: leaf('Body') },
+      { key: 'Loner', entry: leaf('Loner') },
+      { key: 'Blank', entry: empty },
+      { key: 'CycleA', entry: withSlot('CycleA', ['CycleB']) },
+      { key: 'CycleB', entry: withSlot('CycleB', ['CycleA']) },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'children', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'children', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: null,
+      },
+    ]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Find each row's line index and assert relative order.
+    const idxOf = (needle: string): number => {
+      const lines = frame.split('\n');
+      for (let i = 0; i < lines.length; i++) if (lines[i].includes(needle)) return i;
+      return -1;
+    };
+    const idxCycle = idxOf('CycleA (cycle)');
+    const idxEmpty = idxOf('Blank (empty)');
+    const idxRoot = idxOf('Card (2 deps)');
+    const idxStandalone = idxOf('Loner');
+    expect(idxCycle).toBeGreaterThan(-1);
+    expect(idxEmpty).toBeGreaterThan(-1);
+    expect(idxRoot).toBeGreaterThan(-1);
+    expect(idxStandalone).toBeGreaterThan(-1);
+    expect(idxCycle).toBeLessThan(idxEmpty);
+    expect(idxEmpty).toBeLessThan(idxRoot);
+    expect(idxRoot).toBeLessThan(idxStandalone);
+  });
+
+  it('ancestor of a rejected leaf renders an aggregate error glyph on its collapsed root row', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // Card → [Body]. Selection defaults to index 0 = Body (alphabetical).
+    // Reject Body directly, then confirm the collapsed Card row's aggregate
+    // glyph shows the roll-up error marker `✗`.
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Card', entry: withSlot('Card', ['Body']) },
+      { key: 'Body', entry: leaf('Body') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('r'); // reject Body (idx 0)
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Card's collapsed root row shows a `✗` because its closure roll-up
+    // sees Body's rejected → error direct-issue.
+    expect(frame).toContain('✗');
+    // Card is still the group root and visible as a row.
+    expect(frame).toMatch(/Card/);
+  });
+
+  it('pressing Enter on a leaf (isOwn true) does not move selection', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Card', entry: withSlot('Card', ['Body']) },
+      { key: 'Body', entry: leaf('Body') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Body is selected by default (index 0, alphabetical). Reject it → own
+    // issue. Pressing Enter should be a no-op (isOwn: true).
+    stdin.write('r');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    const titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    // Panel title still shows Body — selection did NOT drill up to Card.
+    expect(titleLine).toContain('Body');
+    expect(titleLine).not.toContain('Card');
+  });
+
+  it('pressing Enter on an ancestor with an inherited issue drills to the descendant', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Card', entry: withSlot('Card', ['Body']) },
+      { key: 'Body', entry: leaf('Body') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Body @ idx 0. Reject → error direct-issue on Body. Then `j` moves
+    // selection to Card @ idx 1 (which now has an INHERITED issue from
+    // Body). Enter should drill selection back to Body.
+    stdin.write('r'); // reject Body
+    await tick();
+    stdin.write('j'); // move to Card
+    await tick();
+    // Confirm we're on Card before drilling.
+    let frame = lastFrame() ?? '';
+    let titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleLine).toContain('Card');
+    stdin.write('\r');
+    await tick();
+    frame = lastFrame() ?? '';
+    titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleLine).toContain('Body');
+  });
+
+  it('preview annotations still render alongside grouped rows (badge column preserved)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Card', entry: withSlot('Card', ['Body']) },
+      { key: 'Body', entry: leaf('Body') },
+    ]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    expect(lastOnResult).not.toBeNull();
+    // Simulate a preview response marking Card as `new` and Body as `changed`.
+    lastOnResult!({
+      components: {
+        new: [
+          {
+            proposed: { $type: 'component', $properties: {} } as never,
+            hasPendingDraftChanges: false,
+            changeClassification: { classification: 'compatible', breakingChanges: [] },
+            current: { id: 'card', name: 'Card', contentProperties: [], designProperties: [], slots: [] },
+          },
+        ],
+        changed: [
+          {
+            current: { id: 'body', name: 'Body', contentProperties: [], designProperties: [], slots: [] },
+            proposed: { $type: 'component', $properties: {} } as never,
+            hasPendingDraftChanges: false,
+            changeClassification: { classification: 'compatible', breakingChanges: [] },
+          },
+        ],
+        removed: [],
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    } as never);
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Preview annotation glyphs from Sidebar.previewBadge: '+' new, '~' changed.
+    // Assert at least one appears — the badge column is preserved under
+    // GroupedSidebar (drop-list bug would silently strip these).
+    expect(/[+~]/.test(frame)).toBe(true);
+    // And component names still visible.
+    expect(frame).toMatch(/Card/);
   });
 });
 

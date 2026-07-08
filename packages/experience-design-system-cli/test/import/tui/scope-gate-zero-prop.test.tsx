@@ -31,11 +31,11 @@ describe('zero-prop component preserved through auto-filter (Feature 3 regressio
     const out = lastFrame() ?? '';
     // Component must surface — never silently dropped.
     expect(out).toContain('OpaqueWidget');
-    // R2: row surfaces in the "AI recommended exclusions" section with the
-    // cyan `*` marker and a red [✗] glyph.
+    // Grouped-sidebar wiring: the "[AI]" literal is gone (replaced by a
+    // dim summary line + focused-row detail); the AI-recommended-exclusions
+    // signal still surfaces as a dim counter above the sidebar so operators
+    // can see something was flagged.
     expect(out).not.toContain('[AI]');
-    expect(out).toMatch(/\*[^\n]*OpaqueWidget/);
-    expect(out).toContain('[✗]');
     expect(out).toMatch(/AI recommended exclusions/);
   });
 
