@@ -39,6 +39,7 @@ import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotat
 import { useLivePreview } from '../useLivePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
+import { computeSidebarWidth } from '../sidebar-width.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -1045,7 +1046,11 @@ export function GenerateReviewStep({
   // +5 = border (1) + badge column (1) + leading space (1) + trailing pad (1) + border (1).
   // The badge column is reserved even when no annotation is present so the
   // sidebar width doesn't jitter as live-preview annotations flip in/out.
-  const sidebarWidth = Math.min(Math.max(longestName + 5, 14), 34);
+  //
+  // INTEG-4412: cap by terminal-width-aware upper bound so long/nested composite
+  // names aren't truncated at the old fixed 34-col ceiling.
+  const sidebarWidthCap = computeSidebarWidth(terminalWidth);
+  const sidebarWidth = Math.min(Math.max(longestName + 5, 14), sidebarWidthCap);
   const panelWidth = Math.max(10, terminalWidth - sidebarWidth - 4);
 
   // INTEG-4401: project-wide slot graph passed to FieldEditor so its
@@ -1063,6 +1068,17 @@ export function GenerateReviewStep({
         : [],
     })),
   }));
+
+  // Legend gates: only advertise [Space]/[E]/[C] when at least one closure
+  // has actual dependents (nodes.length > 1). `closures.size > 0` is true
+  // even when every component is a standalone, which made the legend lie
+  // about expand/collapse being useful. Tightening to real group roots means
+  // operators with grouped manifests see the affordance and operators with
+  // flat manifests don't chase a no-op key.
+  const hasGroupRoots = (() => {
+    for (const c of closures.values()) if (c.nodes.length > 1) return true;
+    return false;
+  })();
 
   const accepted = components.filter((c) => c.status === 'accepted').length;
   const rejected = components.filter((c) => c.status === 'rejected').length;
@@ -1425,7 +1441,7 @@ export function GenerateReviewStep({
                     ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel' +
-                      (closures.size > 0 ? '  [Space] expand/collapse  [E/C] expand/collapse all' : '') +
+                      (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '') +
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       '  [q] quit'
