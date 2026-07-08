@@ -514,7 +514,10 @@ export function ScopeGateStep({
       if (columnPlan.layout !== 'three-column') return;
       const forward: FocusedColumn[] = ['main', 'added-components', 'added-groups'];
       const curIdx = forward.indexOf(focusedColumn);
-      const delta = 1; // shift-tab is not distinguishable via useImmediateInput; forward-only.
+      // useImmediateInput surfaces Shift-Tab (CSI Z, \x1b[Z) as key.shiftTab;
+      // forward cycles main → added-components → added-groups, reverse walks
+      // the same cycle backwards.
+      const delta = key.shiftTab ? -1 : 1;
       setFocusedColumn(forward[(curIdx + delta + forward.length) % forward.length]);
       return;
     }
@@ -602,12 +605,12 @@ export function ScopeGateStep({
     [components, selectionStateByKey],
   );
   const addedGroups = useMemo(
-    () => buildAddedGroupsList(graph, selectionStateByKey),
-    [graph, selectionStateByKey],
+    () => buildAddedGroupsList(closures, selectionStateByKey),
+    [closures, selectionStateByKey],
   );
   const counters = useMemo(
-    () => computeCounters(components, graph, selectionStateByKey),
-    [components, graph, selectionStateByKey],
+    () => computeCounters(components, closures, selectionStateByKey),
+    [components, closures, selectionStateByKey],
   );
 
   // Clamp column cursors when their lists shrink under decisions changes.
@@ -853,7 +856,7 @@ export function ScopeGateStep({
         </Text>
         {columnPlan.layout === 'three-column' && (
           <Text>
-            <Text color="cyan">[Tab]</Text> <Text dimColor>switch column</Text>
+            <Text color="cyan">[Tab/Shift-Tab]</Text> <Text dimColor>switch column</Text>
           </Text>
         )}
         {hasAnyAi && (

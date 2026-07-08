@@ -1,5 +1,4 @@
-import type { ComponentGraphNode } from '../../analyze/composite-closure.js';
-import { computeAllClosures } from '../../analyze/composite-closure.js';
+import type { Closure } from '../../analyze/composite-closure.js';
 import { computeSidebarWidth } from './sidebar-width.js';
 /** Structural subset of ScopeComponent needed by these helpers. */
 export interface ScopeComponentLike {
@@ -48,10 +47,9 @@ export function buildAddedComponentsList(
 }
 
 export function buildAddedGroupsList(
-  graph: ComponentGraphNode[],
+  closures: Map<string, Closure>,
   stateByKey: Map<string, Decision>,
 ): Array<{ name: string; depCount: number }> {
-  const closures = computeAllClosures(graph);
   const out: Array<{ name: string; depCount: number }> = [];
   for (const [root, closure] of closures.entries()) {
     if (closure.nodes.length <= 1) continue;
@@ -64,7 +62,7 @@ export function buildAddedGroupsList(
 
 export function computeCounters(
   components: ScopeComponentLike[],
-  graph: ComponentGraphNode[],
+  closures: Map<string, Closure>,
   stateByKey: Map<string, Decision>,
 ): { accepted: number; rejected: number; undecided: number; groups: number; total: number } {
   let accepted = 0;
@@ -76,7 +74,6 @@ export function computeCounters(
     else if (s === 'rejected') rejected++;
     else undecided++;
   }
-  const closures = computeAllClosures(graph);
   let groups = 0;
   for (const [root, closure] of closures.entries()) {
     if (closure.nodes.length <= 1) continue;

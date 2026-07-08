@@ -94,6 +94,54 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     expect(out).not.toContain('switch column');
   });
 
+  it('Shift-Tab reverse-cycles focus: main → added-groups → added-components → main', () => {
+    setWide(160);
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    // Baseline: main column focused (its header is inverse). The three column
+    // headers ("Components", "Added components", "Added groups") each render
+    // via ColumnHeader; the focused one is the only one wrapped with inverse.
+    // We assert focus indirectly via the "▶" cursor glyph which only renders
+    // in the side columns when they are focused.
+    const initial = lastFrame() ?? '';
+    // "▶" doesn't render in side columns at rest (main is focused).
+    // Confirm at least neither side-column cursor is drawn.
+    // (added-components list is non-empty since all 4 components are accepted.)
+    // Fire Shift-Tab: main → added-groups.
+    stdin.write('\x1b[Z');
+    const afterShift1 = lastFrame() ?? '';
+    // added-groups focused → cursor glyph beside "Card (2 deps)" in the
+    // added-groups column (single space between ▶ and label — distinguishes
+    // from the main-sidebar row which has "▶  [✓]     ▾ Card").
+    expect(afterShift1).toMatch(/▶ Card \(2 deps\)/);
+    // Fire Shift-Tab again: added-groups → added-components.
+    stdin.write('\x1b[Z');
+    const afterShift2 = lastFrame() ?? '';
+    // added-components focused → cursor glyph beside the first added component
+    // (Card sorts first alphabetically among Card/Icon/Standalone/Text).
+    expect(afterShift2).toMatch(/▶ Card\b/);
+    // Fire Shift-Tab a third time: added-components → main.
+    stdin.write('\x1b[Z');
+    const afterShift3 = lastFrame() ?? '';
+    // No side-column cursor glyph any more.
+    expect(afterShift3).not.toMatch(/▶ Card \(2 deps\)/);
+    expect(afterShift3).not.toMatch(/▶ Card\b/);
+    // Sanity: nothing crashed and the multi-column layout still renders.
+    expect(afterShift3).toContain('Added components');
+    expect(afterShift3).toContain('Added groups');
+    void initial;
+  });
+
+  it('legend advertises both Tab and Shift-Tab', () => {
+    setWide(160);
+    const { lastFrame } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).toContain('Tab/Shift-Tab');
+  });
+
   it('Enter in the Added-components column jumps main cursor', () => {
     setWide(160);
     const { lastFrame, stdin } = render(

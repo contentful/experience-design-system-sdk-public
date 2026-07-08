@@ -13,6 +13,7 @@ type Key = {
   ctrl: boolean;
   shift: boolean;
   tab: boolean;
+  shiftTab: boolean;
   backspace: boolean;
   delete: boolean;
   meta: boolean;
@@ -21,6 +22,10 @@ type Key = {
 type InputHandler = (input: string, key: Key) => void;
 
 function parseInput(data: string): { input: string; key: Key } {
+  // Shift-Tab in most terminals emits CSI Z (\x1b[Z). We surface it as both
+  // `tab` and `shiftTab` so callers that already branch on `tab` still fire,
+  // and new callers can distinguish direction via `shiftTab`.
+  const isShiftTab = data === '\x1b[Z';
   const key: Key = {
     upArrow: data === '\x1b[A',
     downArrow: data === '\x1b[B',
@@ -31,8 +36,9 @@ function parseInput(data: string): { input: string; key: Key } {
     return: data === '\r' || data === '\n',
     escape: data === '\x1b',
     ctrl: false,
-    shift: false,
-    tab: data === '\t',
+    shift: isShiftTab,
+    tab: data === '\t' || isShiftTab,
+    shiftTab: isShiftTab,
     backspace: data === '\x7f' || data === '\b',
     delete: data === '\x1b[3~',
     meta: data === '\x1b',

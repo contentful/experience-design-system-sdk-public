@@ -7,6 +7,7 @@ import {
   type Decision,
 } from '../../../src/import/tui/scope-gate-columns.js';
 import type { ComponentGraphNode } from '../../../src/analyze/composite-closure.js';
+import { computeAllClosures } from '../../../src/analyze/composite-closure.js';
 
 const state = (
   entries: Array<[string, Decision]>,
@@ -96,7 +97,7 @@ describe('buildAddedGroupsList', () => {
       ['Icon', 'accepted'],
       ['Standalone', 'accepted'],
     ]);
-    const groups = buildAddedGroupsList(graph, s);
+    const groups = buildAddedGroupsList(computeAllClosures(graph), s);
     expect(groups).toEqual([{ name: 'Card', depCount: 2 }]);
   });
 
@@ -106,12 +107,12 @@ describe('buildAddedGroupsList', () => {
       ['Text', 'accepted'],
       ['Icon', 'accepted'],
     ]);
-    expect(buildAddedGroupsList(graph, s)).toEqual([]);
+    expect(buildAddedGroupsList(computeAllClosures(graph), s)).toEqual([]);
   });
 
   it('excludes standalones (closure of 1 node)', () => {
     const s = state([['Standalone', 'accepted']]);
-    expect(buildAddedGroupsList(graph, s)).toEqual([]);
+    expect(buildAddedGroupsList(computeAllClosures(graph), s)).toEqual([]);
   });
 });
 
@@ -125,7 +126,7 @@ describe('computeCounters', () => {
       ['C', 'undecided'],
       ['D', 'accepted'],
     ]);
-    expect(computeCounters(comps, g, s)).toEqual({
+    expect(computeCounters(comps, computeAllClosures(g), s)).toEqual({
       accepted: 2,
       rejected: 1,
       undecided: 1,
@@ -143,7 +144,7 @@ describe('computeCounters', () => {
     ]);
     const c = computeCounters(
       [{ name: 'Card' }, { name: 'Text' }, { name: 'Icon' }, { name: 'Standalone' }],
-      graph,
+      computeAllClosures(graph),
       s,
     );
     expect(c.groups).toBe(1);
