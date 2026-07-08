@@ -381,10 +381,12 @@ export function GenerateReviewStep({
   const closures = useMemo(() => computeAllClosures(componentGraph), [componentGraph]);
   useEffect(() => {
     if (seededGroupsRef.current) return;
-    if (closures.size === 0) return;
+    if (closures.size === 0 && slotCycles.length === 0) return;
     seededGroupsRef.current = true;
-    setExpandedGroups(new Set(closures.keys()));
-  }, [closures]);
+    const seed = new Set<string>(closures.keys());
+    for (const cyc of slotCycles) for (const p of cyc.path) seed.add(p);
+    setExpandedGroups(seed);
+  }, [closures, slotCycles]);
   // Direct issues per component. Wired signals:
   //   - status === 'rejected'   → error (dropping a leaf breaks its ancestors)
   // Cycle- and empty-tier components live in their own tiers in
@@ -786,9 +788,11 @@ export function GenerateReviewStep({
     if (input === ' ' && sidebarFocused && !showJson) {
       const current = components[selectedIdx];
       if (!current) return;
-      const rootName = closures.has(current.key)
+      const rootName = cycleParticipantsMemo.has(current.key)
         ? current.key
-        : [...closures.entries()].find(([, c]) => c.nodes.some((n) => n.name === current.key))?.[0];
+        : closures.has(current.key)
+          ? current.key
+          : [...closures.entries()].find(([, c]) => c.nodes.some((n) => n.name === current.key))?.[0];
       if (!rootName) return;
       setExpandedGroups((prev) => {
         const next = new Set(prev);

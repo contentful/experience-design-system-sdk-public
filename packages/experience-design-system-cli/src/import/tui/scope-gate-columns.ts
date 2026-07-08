@@ -1,5 +1,4 @@
-import type { ComponentGraphNode } from '../../analyze/composite-closure.js';
-import { computeAllClosures } from '../../analyze/composite-closure.js';
+import type { Closure } from '../../analyze/composite-closure.js';
 import { computeSidebarWidth } from './sidebar-width.js';
 /** Structural subset of ScopeComponent needed by these helpers. */
 export interface ScopeComponentLike {
@@ -37,34 +36,60 @@ export function computeColumnWidths(totalWidth: number): {
   return { layout: 'three-column', main, added, groups };
 }
 
+export interface AddedComponentEntry {
+  name: string;
+  isCycle: boolean;
+}
+
+export interface AddedGroupEntry {
+  name: string;
+  depCount: number;
+  isCycle: boolean;
+}
+
 export function buildAddedComponentsList(
   components: ScopeComponentLike[],
   stateByKey: Map<string, Decision>,
-): string[] {
-  return components
-    .filter((c) => stateByKey.get(c.name) === 'accepted')
-    .map((c) => c.name)
-    .sort((a, b) => a.localeCompare(b));
+  cycleParticipants: Set<string> = new Set<string>(),
+): AddedComponentEntry[] {
+  const cycleTier: AddedComponentEntry[] = [];
+  const restTier: AddedComponentEntry[] = [];
+  for (const c of components) {
+    if (stateByKey.get(c.name) !== 'accepted') continue;
+    if (cycleParticipants.has(c.name)) cycleTier.push({ name: c.name, isCycle: true });
+    else restTier.push({ name: c.name, isCycle: false });
+  }
+  cycleTier.sort((a, b) => a.name.localeCompare(b.name));
+  restTier.sort((a, b) => a.name.localeCompare(b.name));
+  return [...cycleTier, ...restTier];
 }
 
 export function buildAddedGroupsList(
-  graph: ComponentGraphNode[],
+  closures: Map<string, Closure>,
   stateByKey: Map<string, Decision>,
-): Array<{ name: string; depCount: number }> {
-  const closures = computeAllClosures(graph);
-  const out: Array<{ name: string; depCount: number }> = [];
+  cycleParticipants: Set<string> = new Set<string>(),
+): AddedGroupEntry[] {
+  const cycleTier: AddedGroupEntry[] = [];
+  const restTier: AddedGroupEntry[] = [];
   for (const [root, closure] of closures.entries()) {
     if (closure.nodes.length <= 1) continue;
     if (stateByKey.get(root) !== 'accepted') continue;
-    out.push({ name: root, depCount: closure.nodes.length - 1 });
+    const entry: AddedGroupEntry = {
+      name: root,
+      depCount: closure.nodes.length - 1,
+      isCycle: cycleParticipants.has(root),
+    };
+    if (entry.isCycle) cycleTier.push(entry);
+    else restTier.push(entry);
   }
-  out.sort((a, b) => a.name.localeCompare(b.name));
-  return out;
+  cycleTier.sort((a, b) => a.name.localeCompare(b.name));
+  restTier.sort((a, b) => a.name.localeCompare(b.name));
+  return [...cycleTier, ...restTier];
 }
 
 export function computeCounters(
   components: ScopeComponentLike[],
-  graph: ComponentGraphNode[],
+  closures: Map<string, Closure>,
   stateByKey: Map<string, Decision>,
 ): { accepted: number; rejected: number; undecided: number; groups: number; total: number } {
   let accepted = 0;
@@ -76,7 +101,6 @@ export function computeCounters(
     else if (s === 'rejected') rejected++;
     else undecided++;
   }
-  const closures = computeAllClosures(graph);
   let groups = 0;
   for (const [root, closure] of closures.entries()) {
     if (closure.nodes.length <= 1) continue;
