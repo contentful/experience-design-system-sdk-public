@@ -57,12 +57,24 @@ describe('ScopeGateStep — rendering', () => {
   });
 });
 
-describe('ScopeGateStep — default inclusion (AI decisions honored)', () => {
-  it('AI-rejected rows start EXCLUDED, AI-accepted/undecided rows start INCLUDED', () => {
+describe('ScopeGateStep — default inclusion (everything undecided)', () => {
+  it('every row starts undecided; f without any interaction partitions everything into rejected', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
     );
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual([]);
+    expect(arg.rejected).toEqual(expect.arrayContaining(['Button', 'Card', 'DebugPanel']));
+  });
+
+  it('[Y] accepts only non-AI-flagged rows; AI-rejects stay undecided → rejected on [f]', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    stdin.write('Y');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
     expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Card']));
@@ -70,38 +82,35 @@ describe('ScopeGateStep — default inclusion (AI decisions honored)', () => {
   });
 });
 
-describe('ScopeGateStep — toggle semantics', () => {
-  it('Space/a toggles the focused standalone row INCLUDED ↔ EXCLUDED', () => {
+describe('ScopeGateStep — accept semantics', () => {
+  it('[a] on the focused row marks it INCLUDED; [f] partitions accordingly', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
     );
-    // With no slot data every row falls into the standalone tier. Cursor
-    // starts on the first sidebar row. Toggle it, then partition on `f`.
+    // Standalone tier alphabetical: BadgeDebug... Actually MIXED sorts as
+    // Button, Card, DebugPanel. Cursor on Button → accept it.
     stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    // Whichever row was under the cursor flipped state. The exact row order
-    // is alphabetical (standalones tier) — Button first, so Button is now
-    // EXCLUDED.
-    expect(arg.rejected).toContain('Button');
-    expect(arg.accepted).not.toContain('Button');
+    expect(arg.accepted).toContain('Button');
+    expect(arg.rejected).not.toContain('Button');
   });
 
-  it('focused-row detail line shows `included` / `excluded` state', () => {
+  it('focused-row detail line shows `included` after [a]', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
-    // Cursor starts on the first standalone (Button, alphabetical). Toggle it OFF.
+    // Cursor on Button (alphabetical). Accept it → detail line reads "included".
     stdin.write('a');
     const out = lastFrame() ?? '';
     expect(out).toContain('Button');
-    expect(out).toContain('excluded');
+    expect(out).toContain('included');
   });
 });
 
 describe('ScopeGateStep — manual decision wins over streaming AI', () => {
-  it('operator-included AI-rejected row survives a later AI stream update', () => {
+  it('operator-accepted row survives a later AI stream update that flags it rejected', () => {
     const onConfirm = vi.fn();
     const initial = [
       { name: 'Button', componentId: 'c0' },
@@ -110,9 +119,8 @@ describe('ScopeGateStep — manual decision wins over streaming AI', () => {
     const { rerender, stdin } = render(
       <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Toggle Button OFF then ON so it lands in userUnExcluded.
-    stdin.write('a'); // exclude Button
-    stdin.write('a'); // re-include Button (now sticky-included)
+    // Explicitly accept Button.
+    stdin.write('a');
     const streamed = [
       { name: 'Button', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: 'AI thinks no' },
       { name: 'Card', componentId: 'c1' },
@@ -124,14 +132,14 @@ describe('ScopeGateStep — manual decision wins over streaming AI', () => {
     expect(arg.rejected).not.toContain('Button');
   });
 
-  it('operator-excluded AI-accepted row stays EXCLUDED across re-renders', () => {
+  it('operator-rejected AI-accepted row stays REJECTED across re-renders', () => {
     const onConfirm = vi.fn();
     const initial = [
       { name: 'Button', componentId: 'c0', aiDecision: 'accepted' as const },
       { name: 'Card', componentId: 'c1' },
     ];
     const { rerender, stdin } = render(<ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} />);
-    stdin.write('a'); // exclude Button
+    stdin.write('r'); // explicitly reject Button
     rerender(<ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />);
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -200,13 +208,15 @@ describe('ScopeGateStep — AI reason surfacing on focused row', () => {
 });
 
 describe('ScopeGateStep — legend', () => {
-  it('legend advertises toggle, lineage, search, continue, quit, toggle-all', () => {
+  it('legend advertises accept, reject, lineage, search, continue, quit, toggle-all, accept-non-flagged', () => {
     const { lastFrame } = render(
       <ScopeGateStep components={[{ name: 'Button', componentId: 'c0' }]} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toContain('toggle');
-    expect(out).toContain('all');
+    expect(out).toContain('accept');
+    expect(out).toContain('reject');
+    expect(out).toContain('toggle all');
+    expect(out).toContain('accept non-flagged');
     expect(out).toContain('continue');
     expect(out).toContain('quit');
     expect(out).toContain('lineage');

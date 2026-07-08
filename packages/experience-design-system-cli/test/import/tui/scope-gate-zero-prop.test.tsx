@@ -57,7 +57,9 @@ describe('zero-prop component preserved through auto-filter (Feature 3 regressio
     expect(out).not.toContain('AI excluded');
     // OpaqueWidget renders in the main list.
     expect(out).toContain('OpaqueWidget');
-    // f confirms with OpaqueWidget in accepted.
+    // Under the everything-undecided default, the operator opts the AI-accepted
+    // rows in via [Y]. OpaqueWidget lands in accepted then.
+    stdin.write('Y');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
     expect(arg.accepted).toContain('OpaqueWidget');

@@ -12,7 +12,7 @@ import {
   type ComponentGraphNode,
   type NodeStatus,
 } from '../../../analyze/composite-closure.js';
-import { findSlotCycles } from '../../../analyze/cycle-detection.js';
+import { findSlotCycles, type SlotCycle } from '../../../analyze/cycle-detection.js';
 import {
   buildAncestorTree,
   renderAncestorTree,
@@ -27,6 +27,8 @@ import {
   buildAddedGroupsList,
   computeColumnWidths,
   computeCounters,
+  type AddedComponentEntry,
+  type AddedGroupEntry,
 } from '../scope-gate-columns.js';
 
 export type ScopeComponent = {
@@ -107,20 +109,21 @@ export function ScopeGateStep({
   const [reasonPanelOpen, setReasonPanelOpen] = useState(false);
   const [lineagePanelOpen, setLineagePanelOpen] = useState(false);
   const [lineageCursor, setLineageCursor] = useState(0);
+  const [cyclesPanelOpen, setCyclesPanelOpen] = useState(false);
+  const [cyclesCursor, setCyclesCursor] = useState(0);
   const [pendingRejectCascade, setPendingRejectCascade] =
     useState<{ target: string; ancestors: string[]; descendants: string[] } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [columnOneView, setColumnOneView] = useState<'grouped' | 'large-list'>('grouped');
 
-  const baselineState = (name: string): Decision => {
-    const c = components.find((x) => x.name === name);
-    if (!c) return 'accepted';
-    return isAiFlagged(c) ? 'rejected' : 'accepted';
-  };
-
+  // Everything defaults to undecided. AI decisions are advisory only —
+  // surfaced via the [×] badge and the recommends-exclusions banner, never
+  // auto-applied. The operator explicitly opts each component in via
+  // [a]/[space] or [Y]/[A] bulk-accept.
   const getState = (name: string): Decision => {
     const v = userDecisions.get(name);
-    return v ?? baselineState(name);
+    return v ?? 'undecided';
   };
 
   const isIncluded = (name: string): boolean => getState(name) === 'accepted';
@@ -152,16 +155,33 @@ export function ScopeGateStep({
     [components],
   );
 
+  const slotCycles = useMemo<SlotCycle[]>(() => {
+    try {
+      return findSlotCycles(graph);
+    } catch {
+      return [];
+    }
+  }, [graph]);
+
   const cycleParticipants = useMemo<Set<string>>(() => {
     const set = new Set<string>();
-    try {
-      const cycles = findSlotCycles(graph);
-      for (const c of cycles) for (const n of c.path) set.add(n);
-    } catch {
-      // Defensive.
-    }
+    for (const c of slotCycles) for (const n of c.path) set.add(n);
     return set;
-  }, [graph]);
+  }, [slotCycles]);
+
+  // Flat, walkable list of cycle-participant jump targets. One entry per
+  // cycle — Enter jumps the main cursor to the first component in the
+  // cycle's path (its canonical "root" per Johnson's least-vertex ordering).
+  const cyclesJumpables = useMemo(
+    () =>
+      slotCycles.map((c, i) => ({
+        cycleIndex: i,
+        jumpTarget: c.path[0],
+      })),
+    [slotCycles],
+  );
+
+  const hasCycles = slotCycles.length > 0;
 
   const closures = useMemo(() => computeAllClosures(graph), [graph]);
 
@@ -172,9 +192,10 @@ export function ScopeGateStep({
         cycleParticipants,
         expandedGroups: new Set(),
         alwaysExpanded: true,
-        showFlatTier: true,
+        showFlatTier: false,
+        viewMode: columnOneView,
       }),
-    [groupedItems, cycleParticipants],
+    [groupedItems, cycleParticipants, columnOneView],
   );
 
   const total = visibleRows.length;
@@ -225,42 +246,39 @@ export function ScopeGateStep({
     applyDecisions([...cascade].map((n) => [n, 'accepted'] as [string, Decision]));
   };
 
-  const requestToggle = (name: string): void => {
-    if (isIncluded(name)) {
-      // Reject path — may require confirm.
-      const rejectCascade = computeRejectCascade(name, graph);
-      const acceptCascade = computeAcceptCascade(name, graph);
-      const ancestors = [...rejectCascade].filter((n) => n !== name).sort();
-      const descendants = [...acceptCascade].filter((n) => n !== name).sort();
-      // Blast radius = ancestors flipping to rejected + descendants flipping
-      // to undecided. Prompt when total ≥ 2.
-      if (ancestors.length + descendants.length >= 2) {
-        setPendingRejectCascade({ target: name, ancestors, descendants });
-        return;
-      }
-      applyReject(name);
-    } else {
-      applyAccept(name);
-    }
+  const requestAccept = (name: string): void => {
+    if (getState(name) === 'accepted') return;
+    applyAccept(name);
   };
 
-  const handleToggleFocused = (): void => {
+  const requestReject = (name: string): void => {
+    if (getState(name) === 'rejected') return;
+    const rejectCascade = computeRejectCascade(name, graph);
+    const acceptCascade = computeAcceptCascade(name, graph);
+    const ancestors = [...rejectCascade].filter((n) => n !== name).sort();
+    const descendants = [...acceptCascade].filter((n) => n !== name).sort();
+    // Blast radius = ancestors flipping to rejected + descendants flipping
+    // to undecided. Prompt when total ≥ 2.
+    if (ancestors.length + descendants.length >= 2) {
+      setPendingRejectCascade({ target: name, ancestors, descendants });
+      return;
+    }
+    applyReject(name);
+  };
+
+  const focusedRowKey = (): string | undefined => {
     const row = visibleRows[safeCursor];
-    if (!row) return;
+    if (!row) return undefined;
     switch (row.kind) {
       case 'standalone':
       case 'empty':
       case 'group-root':
       case 'group-child':
-      case 'flat': {
-        const key = row.itemIdx >= 0 ? groupedItems[row.itemIdx]?.key : undefined;
-        if (key) requestToggle(key);
-        return;
-      }
+      case 'flat':
       case 'cycle':
-      case 'flat-header':
+        return row.itemIdx >= 0 ? groupedItems[row.itemIdx]?.key : undefined;
       default:
-        return;
+        return undefined;
     }
   };
 
@@ -417,10 +435,39 @@ export function ScopeGateStep({
       return;
     }
 
+    // Cycles panel owns most keystrokes when open.
+    if (cyclesPanelOpen) {
+      if (key.escape || input === 'c') {
+        setCyclesPanelOpen(false);
+        return;
+      }
+      if (key.upArrow || input === 'k') {
+        setCyclesCursor((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        setCyclesCursor((c) => Math.min(Math.max(0, cyclesJumpables.length - 1), c + 1));
+        return;
+      }
+      if (key.return) {
+        const target = cyclesJumpables[cyclesCursor];
+        if (target) jumpCursorTo(target.jumpTarget);
+        setCyclesPanelOpen(false);
+        return;
+      }
+      return;
+    }
+
     // Lineage panel owns most keystrokes when open.
     if (lineagePanelOpen) {
       if (key.escape || input === 'l') {
         setLineagePanelOpen(false);
+        return;
+      }
+      if (input === 'c' && hasCycles) {
+        setLineagePanelOpen(false);
+        setCyclesPanelOpen(true);
+        setCyclesCursor(0);
         return;
       }
       if (key.upArrow || input === 'k') {
@@ -471,14 +518,22 @@ export function ScopeGateStep({
       // so the existing lineage-panel machinery (which reads focusedComponent
       // off the main cursor) targets the intended component.
       if (focusedColumn === 'added-components') {
-        const name = addedComponents[safeAddedComponentsCursor];
-        if (name) jumpCursorTo(name);
+        const entry = addedComponents[safeAddedComponentsCursor];
+        if (entry) jumpCursorTo(entry.name);
       } else if (focusedColumn === 'added-groups') {
         const g = addedGroups[safeAddedGroupsCursor];
         if (g) jumpCursorTo(g.name);
       }
       setLineagePanelOpen(true);
       setLineageCursor(0);
+      setCyclesPanelOpen(false);
+      return;
+    }
+    if (input === 'c') {
+      if (!hasCycles) return;
+      setCyclesPanelOpen(true);
+      setCyclesCursor(0);
+      setLineagePanelOpen(false);
       return;
     }
     if (input === '/') {
@@ -486,7 +541,62 @@ export function ScopeGateStep({
       return;
     }
     if (input === 'a' || input === ' ' || input === 'r') {
-      handleToggleFocused();
+      const isReject = input === 'r';
+      // Side columns only show accepted items — [a]/Space are no-ops there
+      // (re-accepting is meaningless). [r] rejects the highlighted row via
+      // requestReject (which fires the cascade confirm-prompt when the blast
+      // radius warrants it).
+      if (focusedColumn === 'added-components') {
+        if (!isReject) return;
+        const entry = addedComponents[safeAddedComponentsCursor];
+        if (entry) requestReject(entry.name);
+        return;
+      }
+      if (focusedColumn === 'added-groups') {
+        if (!isReject) return;
+        const g = addedGroups[safeAddedGroupsCursor];
+        if (g) requestReject(g.name);
+        return;
+      }
+      const key = focusedRowKey();
+      if (!key) return;
+      if (isReject) requestReject(key);
+      else requestAccept(key);
+      return;
+    }
+    if (input === 'L') {
+      // Toggle Column-1 view between grouped and large-list. Preserve cursor
+      // on the same underlying component when possible; otherwise reset to 0.
+      const currentKey = currentRowKey;
+      const nextView: 'grouped' | 'large-list' =
+        columnOneView === 'grouped' ? 'large-list' : 'grouped';
+      const nextRows = buildVisibleRows({
+        items: groupedItems,
+        cycleParticipants,
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+        showFlatTier: false,
+        viewMode: nextView,
+      });
+      let nextCursor = 0;
+      if (currentKey) {
+        for (let i = 0; i < nextRows.length; i++) {
+          const r = nextRows[i];
+          if (r.itemIdx < 0) continue;
+          if (groupedItems[r.itemIdx]?.key === currentKey) {
+            nextCursor = i;
+            break;
+          }
+        }
+      }
+      const nextScroll =
+        nextCursor < scrollOffset
+          ? nextCursor
+          : nextCursor >= scrollOffset + VISIBLE_COUNT
+            ? nextCursor - VISIBLE_COUNT + 1
+            : scrollOffset;
+      setColumnOneView(nextView);
+      setNav({ cursor: nextCursor, scrollOffset: nextScroll });
       return;
     }
     if (input === 'A') {
@@ -494,6 +604,17 @@ export function ScopeGateStep({
       const anyNotAccepted = selectable.some((n) => getState(n) !== 'accepted');
       const target: Decision = anyNotAccepted ? 'accepted' : 'rejected';
       applyDecisions(selectable.map((n) => [n, target] as [string, Decision]));
+      return;
+    }
+    if (input === 'Y') {
+      // Accept every non-cycle-participant that the AI did NOT flag as
+      // rejected/failed. Cycle participants and AI-rejects still require
+      // an explicit [a] to opt in. Meant as a fast opt-in-to-defaults
+      // now that everything starts undecided.
+      const targets = components
+        .filter((c) => !cycleParticipants.has(c.name) && !isAiFlagged(c))
+        .map((c) => c.name);
+      applyDecisions(targets.map((n) => [n, 'accepted'] as [string, Decision]));
       return;
     }
     if (key.tab) {
@@ -514,15 +635,18 @@ export function ScopeGateStep({
       if (columnPlan.layout !== 'three-column') return;
       const forward: FocusedColumn[] = ['main', 'added-components', 'added-groups'];
       const curIdx = forward.indexOf(focusedColumn);
-      const delta = 1; // shift-tab is not distinguishable via useImmediateInput; forward-only.
+      // useImmediateInput surfaces Shift-Tab (CSI Z, \x1b[Z) as key.shiftTab;
+      // forward cycles main → added-components → added-groups, reverse walks
+      // the same cycle backwards.
+      const delta = key.shiftTab ? -1 : 1;
       setFocusedColumn(forward[(curIdx + delta + forward.length) % forward.length]);
       return;
     }
     // Enter in side columns jumps main cursor and returns focus to main.
     if (key.return) {
       if (focusedColumn === 'added-components') {
-        const name = addedComponents[safeAddedComponentsCursor];
-        if (name) jumpCursorTo(name);
+        const entry = addedComponents[safeAddedComponentsCursor];
+        if (entry) jumpCursorTo(entry.name);
         setFocusedColumn('main');
         return;
       }
@@ -591,23 +715,22 @@ export function ScopeGateStep({
     aiFilterStatus === 'running' && aiFilterProgress !== null && aiFilterProgress.total > 0;
   const showCancelledBanner = aiFilterStatus === 'cancelled';
   const showFailedBanner = aiFilterStatus === 'failed';
-  const allRejected =
-    aiFilterStatus === 'complete' && components.length > 0 && components.every((c) => !isIncluded(c.name));
+  const nothingIncluded = components.length > 0 && components.every((c) => !isIncluded(c.name));
 
   const totalComponents = components.length;
   const totalMatches = searchQuery ? searchMatches.length : 0;
 
   const addedComponents = useMemo(
-    () => buildAddedComponentsList(components, selectionStateByKey),
-    [components, selectionStateByKey],
+    () => buildAddedComponentsList(components, selectionStateByKey, cycleParticipants),
+    [components, selectionStateByKey, cycleParticipants],
   );
   const addedGroups = useMemo(
-    () => buildAddedGroupsList(graph, selectionStateByKey),
-    [graph, selectionStateByKey],
+    () => buildAddedGroupsList(closures, selectionStateByKey, cycleParticipants),
+    [closures, selectionStateByKey, cycleParticipants],
   );
   const counters = useMemo(
-    () => computeCounters(components, graph, selectionStateByKey),
-    [components, graph, selectionStateByKey],
+    () => computeCounters(components, closures, selectionStateByKey),
+    [components, closures, selectionStateByKey],
   );
 
   // Clamp column cursors when their lists shrink under decisions changes.
@@ -667,57 +790,63 @@ export function ScopeGateStep({
         </Box>
       )}
 
-      {!allRejected && (
-        <CounterStrip counters={counters} totalWidth={totalWidth} />
-      )}
+      <CounterStrip counters={counters} totalWidth={totalWidth} />
 
-      {allRejected ? (
+      {nothingIncluded && (
         <Box marginTop={1}>
-          <Text color="yellow">AI excluded all components — press [a] to override or [q] to quit</Text>
-        </Box>
-      ) : (
-        <Box flexDirection="row">
-          <GroupedSidebar
-            items={groupedItems}
-            cycleParticipants={cycleParticipants}
-            selectedIdx={selectedItemIdx}
-            selectedRowIdx={safeCursor}
-            onSelect={() => {}}
-            expandedGroups={new Set()}
-            onToggleExpanded={() => {}}
-            width={sidebarWidth}
-            focused={focusedColumn === 'main'}
-            scrollOffset={scrollOffset}
-            visibleCount={VISIBLE_COUNT}
-            alwaysExpanded={true}
-            showFlatTier={true}
-            selectionStateByKey={selectionStateByKey}
-            aiFlaggedByKey={aiFlaggedByKey}
-            dimPredicate={dimPredicate}
-            visibleRows={visibleRows}
-          />
-          {columnPlan.layout === 'three-column' && (
-            <>
-              <Box width={2} flexShrink={0} />
-              <AddedComponentsColumn
-                width={columnPlan.added}
-                names={addedComponents}
-                cursor={safeAddedComponentsCursor}
-                focused={focusedColumn === 'added-components'}
-              />
-              <Box width={2} flexShrink={0} />
-              <AddedGroupsColumn
-                width={columnPlan.groups}
-                groups={addedGroups}
-                cursor={safeAddedGroupsCursor}
-                focused={focusedColumn === 'added-groups'}
-              />
-            </>
-          )}
+          <Text color="yellow">
+            nothing selected — press{' '}
+            <Text color="cyan">[Y]</Text> to accept all non-flagged,{' '}
+            <Text color="cyan">[A]</Text> to toggle all, or{' '}
+            <Text color="cyan">[a]</Text> to accept the highlighted row
+          </Text>
         </Box>
       )}
 
-      {focusedComponent && !allRejected && (
+      <Box flexDirection="row">
+        <GroupedSidebar
+          items={groupedItems}
+          cycleParticipants={cycleParticipants}
+          selectedIdx={selectedItemIdx}
+          selectedRowIdx={safeCursor}
+          onSelect={() => {}}
+          expandedGroups={new Set()}
+          onToggleExpanded={() => {}}
+          width={sidebarWidth}
+          focused={focusedColumn === 'main'}
+          scrollOffset={scrollOffset}
+          visibleCount={VISIBLE_COUNT}
+          alwaysExpanded={true}
+          showFlatTier={false}
+          selectionStateByKey={selectionStateByKey}
+          aiFlaggedByKey={aiFlaggedByKey}
+          dimPredicate={dimPredicate}
+          visibleRows={visibleRows}
+          viewMode={columnOneView}
+        />
+        {columnPlan.layout === 'three-column' && (
+          <>
+            <Box width={2} flexShrink={0} />
+            <AddedComponentsColumn
+              width={columnPlan.added}
+              entries={addedComponents}
+              cursor={safeAddedComponentsCursor}
+              focused={focusedColumn === 'added-components'}
+              aiFlaggedByKey={aiFlaggedByKey}
+            />
+            <Box width={2} flexShrink={0} />
+            <AddedGroupsColumn
+              width={columnPlan.groups}
+              entries={addedGroups}
+              cursor={safeAddedGroupsCursor}
+              focused={focusedColumn === 'added-groups'}
+              aiFlaggedByKey={aiFlaggedByKey}
+            />
+          </>
+        )}
+      </Box>
+
+      {focusedComponent && (
         <Box flexDirection="column" marginTop={1}>
           <Text>
             <Text color="cyan">{focusedComponent.name}</Text>
@@ -743,6 +872,37 @@ export function ScopeGateStep({
           <Text dimColor bold>{`AI rejection reason: ${focusedComponent.name}`}</Text>
           <Text>{focusedComponent.aiReason ?? '<no reason given>'}</Text>
           <Text dimColor>[s] close · [Esc] close</Text>
+        </Box>
+      )}
+
+      {cyclesPanelOpen && (
+        <Box flexDirection="column" borderStyle="single" borderColor="red" paddingX={1} marginTop={1}>
+          <Text bold color="red">{`Cycles detected (${slotCycles.length}):`}</Text>
+          <Text> </Text>
+          {slotCycles.map((cycle, i) => {
+            const isCursor = i === cyclesCursor;
+            const parts: string[] = [];
+            // Interleave component / slot / component / ... ending with
+            // the repeated start component. cycle.edges[i] connects
+            // path[i] → path[i+1]; slotName lives on path[i].
+            for (let idx = 0; idx < cycle.edges.length; idx++) {
+              parts.push(cycle.path[idx]);
+              parts.push(`[${cycle.edges[idx].slotName}]`);
+            }
+            parts.push(cycle.path[cycle.path.length - 1]);
+            const label = `Cycle ${i + 1}: ${parts.join(' → ')}`;
+            return (
+              <Text key={i}>
+                {isCursor ? (
+                  <Text color="cyan" bold>{'▶'}</Text>
+                ) : (
+                  <Text> </Text>
+                )}
+                <Text color="red" inverse={isCursor}>{' ' + label}</Text>
+              </Text>
+            );
+          })}
+          <Text dimColor>[↑/↓] move · [Enter] jump · [c/Esc] close</Text>
         </Box>
       )}
 
@@ -821,7 +981,7 @@ export function ScopeGateStep({
         </Box>
       )}
 
-      <Box gap={3} marginTop={1}>
+      <Box gap={3} marginTop={1} flexWrap="wrap">
         {includedCount > 0 ? (
           <Text>
             <Text color="green">{includedCount}</Text>
@@ -834,16 +994,30 @@ export function ScopeGateStep({
           <Text color="cyan">[j/k]</Text> <Text dimColor>move</Text>
         </Text>
         <Text>
-          <Text color="cyan">[a/space]</Text> <Text dimColor>toggle</Text>
+          <Text color="cyan">[a/space]</Text> <Text dimColor>accept</Text>
+        </Text>
+        <Text>
+          <Text color="cyan">[r]</Text> <Text dimColor>reject</Text>
         </Text>
         <Text>
           <Text color="cyan">[l]</Text> <Text dimColor>lineage</Text>
         </Text>
+        {hasCycles && (
+          <Text>
+            <Text color="cyan">[c]</Text> <Text dimColor>cycles</Text>
+          </Text>
+        )}
         <Text>
           <Text color="cyan">[/]</Text> <Text dimColor>search</Text>
         </Text>
         <Text>
           <Text color="cyan">[A]</Text> <Text dimColor>toggle all</Text>
+        </Text>
+        <Text>
+          <Text color="cyan">[Y]</Text> <Text dimColor>accept non-flagged</Text>
+        </Text>
+        <Text>
+          <Text color="cyan">[L]</Text> <Text dimColor>large list</Text>
         </Text>
         <Text>
           <Text color="cyan">[f]</Text> <Text dimColor>continue</Text>
@@ -853,7 +1027,12 @@ export function ScopeGateStep({
         </Text>
         {columnPlan.layout === 'three-column' && (
           <Text>
-            <Text color="cyan">[Tab]</Text> <Text dimColor>switch column</Text>
+            <Text color="cyan">[Tab/Shift-Tab]</Text> <Text dimColor>switch column</Text>
+          </Text>
+        )}
+        {columnPlan.layout === 'three-column' && (
+          <Text>
+            <Text color="cyan">[Enter]</Text> <Text dimColor>jump to main</Text>
           </Text>
         )}
         {hasAnyAi && (
@@ -911,7 +1090,7 @@ function ColumnHeader(props: { title: string; width: number; focused: boolean })
   const sep = '─'.repeat(Math.max(0, width - 2));
   return (
     <Box flexDirection="column">
-      <Text bold color={focused ? 'white' : undefined} inverse={focused}>
+      <Text bold color={focused ? 'white' : 'cyan'} inverse={focused}>
         {title}
       </Text>
       <Text dimColor>{sep}</Text>
@@ -919,39 +1098,148 @@ function ColumnHeader(props: { title: string; width: number; focused: boolean })
   );
 }
 
+/**
+ * Compute style tokens for a side-column row. Pure so unit tests can pin the
+ * cursor-override behavior directly (ink-testing-library strips ANSI, so
+ * asserting colors on rendered frames isn't feasible).
+ *
+ * Rules:
+ *   - Cursor row (selected + focused): bold white on inverse — overrides
+ *     green/red/dim regardless of row kind. `▶` glyph is drawn separately.
+ *   - Selected row when NOT focused: underline, retain non-cursor coloring —
+ *     signals "cursor is here but column doesn't own input" (mirrors
+ *     GroupedSidebar's `underline={isSelected && !focused}` pattern).
+ *   - Non-cursor cycle rows: name renders red; the `⚠` glyph is drawn
+ *     separately in bold yellow. Group `(N deps)` suffix stays red (spec:
+ *     "keep red for the whole label" on cycle rows).
+ *   - Non-cursor accepted rows: name renders green (matches the `[✓]` glyph
+ *     in Column 1). Group `(N deps)` suffix renders dim cyan.
+ */
+export function sideColumnLabelStyle(input: {
+  isCycle: boolean;
+  isSelected: boolean;
+  focused: boolean;
+}): {
+  nameColor: string | undefined;
+  nameBold: boolean;
+  nameInverse: boolean;
+  nameUnderline: boolean;
+  suffixColor: string | undefined;
+  suffixDim: boolean;
+  suffixInverse: boolean;
+  suffixUnderline: boolean;
+} {
+  const { isCycle, isSelected, focused } = input;
+  const isCursor = isSelected && focused;
+  if (isCursor) {
+    return {
+      nameColor: 'white',
+      nameBold: true,
+      nameInverse: true,
+      nameUnderline: false,
+      suffixColor: 'white',
+      suffixDim: false,
+      suffixInverse: true,
+      suffixUnderline: false,
+    };
+  }
+  const underline = isSelected && !focused;
+  if (isCycle) {
+    return {
+      nameColor: 'red',
+      nameBold: false,
+      nameInverse: false,
+      nameUnderline: underline,
+      suffixColor: 'red',
+      suffixDim: false,
+      suffixInverse: false,
+      suffixUnderline: underline,
+    };
+  }
+  return {
+    nameColor: 'green',
+    nameBold: false,
+    nameInverse: false,
+    nameUnderline: underline,
+    suffixColor: 'cyan',
+    suffixDim: true,
+    suffixInverse: false,
+    suffixUnderline: underline,
+  };
+}
+
 function AddedComponentsColumn(props: {
   width: number;
-  names: string[];
+  entries: AddedComponentEntry[];
   cursor: number;
   focused: boolean;
+  aiFlaggedByKey?: Map<string, boolean>;
 }): React.ReactElement {
-  const { width, names, cursor, focused } = props;
+  const { width, entries, cursor, focused, aiFlaggedByKey } = props;
+  // Only reserve the 4-char AI-badge column when at least one row in this
+  // column is actually flagged. Keeps the existing badge-free layout stable
+  // for graphs with no AI activity (and preserves existing test snapshots).
+  const reserveAiBadge = entries.some((e) => aiFlaggedByKey?.get(e.name) === true);
+  const firstNonCycleIdx = entries.findIndex((e) => !e.isCycle);
   return (
     <Box flexDirection="column" width={width} flexShrink={0}>
       <ColumnHeader title="Added components" width={width} focused={focused} />
-      {names.length === 0 ? (
+      {entries.length === 0 ? (
         <Text dimColor>(none)</Text>
       ) : (
-        names.map((name, i) => {
-          const isCursor = focused && i === cursor;
+        entries.map((entry, i) => {
+          const isSelected = i === cursor;
+          const isCursor = focused && isSelected;
+          const aiFlagged = aiFlaggedByKey?.get(entry.name) === true;
+          const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
+          const style = sideColumnLabelStyle({
+            isCycle: entry.isCycle,
+            isSelected,
+            focused,
+          });
           return (
-            <Box key={name}>
-              {isCursor ? (
-                <Text color="cyan" bold>
-                  {'▶'}
-                </Text>
-              ) : (
-                <Text> </Text>
+            <React.Fragment key={entry.name}>
+              {showSeparator && (
+                <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>
               )}
-              <Text
-                color={isCursor ? 'white' : undefined}
-                bold={isCursor}
-                inverse={isCursor}
-                wrap="truncate"
-              >
-                {' ' + name}
-              </Text>
-            </Box>
+              <Box>
+                {isCursor ? (
+                  <Text color="cyan" bold>
+                    {'▶'}
+                  </Text>
+                ) : (
+                  <Text> </Text>
+                )}
+                {reserveAiBadge && (
+                  aiFlagged ? (
+                    <Text color="yellow" bold>
+                      {' [×]'}
+                    </Text>
+                  ) : (
+                    <Text>{'    '}</Text>
+                  )
+                )}
+                {entry.isCycle && (
+                  <Text
+                    color={isCursor ? 'white' : 'yellow'}
+                    bold
+                    inverse={isCursor}
+                    underline={style.nameUnderline}
+                  >
+                    {' ⚠'}
+                  </Text>
+                )}
+                <Text
+                  color={style.nameColor}
+                  bold={style.nameBold}
+                  inverse={style.nameInverse}
+                  underline={style.nameUnderline}
+                  wrap="truncate"
+                >
+                  {' ' + entry.name}
+                </Text>
+              </Box>
+            </React.Fragment>
           );
         })
       )}
@@ -961,38 +1249,86 @@ function AddedComponentsColumn(props: {
 
 function AddedGroupsColumn(props: {
   width: number;
-  groups: Array<{ name: string; depCount: number }>;
+  entries: AddedGroupEntry[];
   cursor: number;
   focused: boolean;
+  aiFlaggedByKey?: Map<string, boolean>;
 }): React.ReactElement {
-  const { width, groups, cursor, focused } = props;
+  const { width, entries, cursor, focused, aiFlaggedByKey } = props;
+  // Match AddedComponentsColumn: reserve the AI badge column only when at
+  // least one composite root in this column is AI-flagged.
+  const reserveAiBadge = entries.some((g) => aiFlaggedByKey?.get(g.name) === true);
+  const firstNonCycleIdx = entries.findIndex((e) => !e.isCycle);
   return (
     <Box flexDirection="column" width={width} flexShrink={0}>
       <ColumnHeader title="Added groups" width={width} focused={focused} />
-      {groups.length === 0 ? (
+      {entries.length === 0 ? (
         <Text dimColor>(none)</Text>
       ) : (
-        groups.map((g, i) => {
-          const isCursor = focused && i === cursor;
-          const label = `${g.name} (${g.depCount} dep${g.depCount === 1 ? '' : 's'})`;
+        entries.map((g, i) => {
+          const isSelected = i === cursor;
+          const isCursor = focused && isSelected;
+          const suffix = ` (${g.depCount} dep${g.depCount === 1 ? '' : 's'})`;
+          const aiFlagged = aiFlaggedByKey?.get(g.name) === true;
+          const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
+          const style = sideColumnLabelStyle({
+            isCycle: g.isCycle,
+            isSelected,
+            focused,
+          });
           return (
-            <Box key={g.name}>
-              {isCursor ? (
-                <Text color="cyan" bold>
-                  {'▶'}
-                </Text>
-              ) : (
-                <Text> </Text>
+            <React.Fragment key={g.name}>
+              {showSeparator && (
+                <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>
               )}
-              <Text
-                color={isCursor ? 'white' : undefined}
-                bold={isCursor}
-                inverse={isCursor}
-                wrap="truncate"
-              >
-                {' ' + label}
-              </Text>
-            </Box>
+              <Box>
+                {isCursor ? (
+                  <Text color="cyan" bold>
+                    {'▶'}
+                  </Text>
+                ) : (
+                  <Text> </Text>
+                )}
+                {reserveAiBadge && (
+                  aiFlagged ? (
+                    <Text color="yellow" bold>
+                      {' [×]'}
+                    </Text>
+                  ) : (
+                    <Text>{'    '}</Text>
+                  )
+                )}
+                {g.isCycle && (
+                  <Text
+                    color={isCursor ? 'white' : 'yellow'}
+                    bold
+                    inverse={isCursor}
+                    underline={style.nameUnderline}
+                  >
+                    {' ⚠'}
+                  </Text>
+                )}
+                <Text
+                  color={style.nameColor}
+                  bold={style.nameBold}
+                  inverse={style.nameInverse}
+                  underline={style.nameUnderline}
+                  wrap="truncate"
+                >
+                  {' ' + g.name}
+                </Text>
+                <Text
+                  color={style.suffixColor}
+                  dimColor={style.suffixDim}
+                  inverse={style.suffixInverse}
+                  underline={style.suffixUnderline}
+                  bold={style.nameBold}
+                  wrap="truncate"
+                >
+                  {suffix}
+                </Text>
+              </Box>
+            </React.Fragment>
           );
         })
       )}

@@ -7,6 +7,7 @@ import {
   type Decision,
 } from '../../../src/import/tui/scope-gate-columns.js';
 import type { ComponentGraphNode } from '../../../src/analyze/composite-closure.js';
+import { computeAllClosures } from '../../../src/analyze/composite-closure.js';
 
 const state = (
   entries: Array<[string, Decision]>,
@@ -53,13 +54,16 @@ describe('buildAddedComponentsList', () => {
     { name: 'Mid' },
   ];
 
-  it('returns only accepted names, alphabetical', () => {
+  it('returns only accepted entries, alphabetical', () => {
     const s = state([
       ['Zed', 'accepted'],
       ['Alpha', 'accepted'],
       ['Mid', 'rejected'],
     ]);
-    expect(buildAddedComponentsList(comps, s)).toEqual(['Alpha', 'Zed']);
+    expect(buildAddedComponentsList(comps, s, new Set<string>())).toEqual([
+      { name: 'Alpha', isCycle: false },
+      { name: 'Zed', isCycle: false },
+    ]);
   });
 
   it('filters out rejected + undecided', () => {
@@ -68,7 +72,9 @@ describe('buildAddedComponentsList', () => {
       ['Alpha', 'rejected'],
       ['Mid', 'accepted'],
     ]);
-    expect(buildAddedComponentsList(comps, s)).toEqual(['Mid']);
+    expect(buildAddedComponentsList(comps, s, new Set<string>())).toEqual([
+      { name: 'Mid', isCycle: false },
+    ]);
   });
 
   it('returns empty when nothing is accepted', () => {
@@ -77,7 +83,51 @@ describe('buildAddedComponentsList', () => {
       ['Alpha', 'rejected'],
       ['Mid', 'rejected'],
     ]);
-    expect(buildAddedComponentsList(comps, s)).toEqual([]);
+    expect(buildAddedComponentsList(comps, s, new Set<string>())).toEqual([]);
+  });
+
+  it('places accepted cycle-participants at the top with isCycle:true', () => {
+    const s = state([
+      ['Zed', 'accepted'],
+      ['Alpha', 'accepted'],
+      ['Mid', 'accepted'],
+    ]);
+    const cycles = new Set(['Zed']);
+    expect(buildAddedComponentsList(comps, s, cycles)).toEqual([
+      { name: 'Zed', isCycle: true },
+      { name: 'Alpha', isCycle: false },
+      { name: 'Mid', isCycle: false },
+    ]);
+  });
+
+  it('sorts within each tier alphabetically', () => {
+    const wider = [{ name: 'B' }, { name: 'A' }, { name: 'D' }, { name: 'C' }];
+    const s = state([
+      ['A', 'accepted'],
+      ['B', 'accepted'],
+      ['C', 'accepted'],
+      ['D', 'accepted'],
+    ]);
+    const cycles = new Set(['D', 'B']);
+    expect(buildAddedComponentsList(wider, s, cycles)).toEqual([
+      { name: 'B', isCycle: true },
+      { name: 'D', isCycle: true },
+      { name: 'A', isCycle: false },
+      { name: 'C', isCycle: false },
+    ]);
+  });
+
+  it('excludes cycle-participants that are not accepted', () => {
+    const s = state([
+      ['Zed', 'rejected'],
+      ['Alpha', 'accepted'],
+      ['Mid', 'accepted'],
+    ]);
+    const cycles = new Set(['Zed']);
+    expect(buildAddedComponentsList(comps, s, cycles)).toEqual([
+      { name: 'Alpha', isCycle: false },
+      { name: 'Mid', isCycle: false },
+    ]);
   });
 });
 
@@ -96,8 +146,8 @@ describe('buildAddedGroupsList', () => {
       ['Icon', 'accepted'],
       ['Standalone', 'accepted'],
     ]);
-    const groups = buildAddedGroupsList(graph, s);
-    expect(groups).toEqual([{ name: 'Card', depCount: 2 }]);
+    const groups = buildAddedGroupsList(computeAllClosures(graph), s, new Set<string>());
+    expect(groups).toEqual([{ name: 'Card', depCount: 2, isCycle: false }]);
   });
 
   it('excludes roots that are rejected', () => {
@@ -106,12 +156,51 @@ describe('buildAddedGroupsList', () => {
       ['Text', 'accepted'],
       ['Icon', 'accepted'],
     ]);
-    expect(buildAddedGroupsList(graph, s)).toEqual([]);
+    expect(buildAddedGroupsList(computeAllClosures(graph), s, new Set<string>())).toEqual([]);
   });
 
   it('excludes standalones (closure of 1 node)', () => {
     const s = state([['Standalone', 'accepted']]);
-    expect(buildAddedGroupsList(graph, s)).toEqual([]);
+    expect(buildAddedGroupsList(computeAllClosures(graph), s, new Set<string>())).toEqual([]);
+  });
+
+  it('tags composite roots as isCycle:true when they appear in cycleParticipants', () => {
+    // Build the closure map synthetically. The composite-closure module cannot
+    // organically produce a cyclic composite root (findRoots excludes cycle
+    // participants; computeClosure collapses cyclic closures to nodes.length=1
+    // which buildAddedGroupsList then filters out). Cycle-tagging on Column 3
+    // is a rendering convention: when a root that survives the closure filter
+    // is also known to be a cycle participant, its entry must be flagged.
+    const synthetic = new Map(
+      Object.entries({
+        Card: {
+          root: 'Card',
+          nodes: [
+            { name: 'Card', depth: 0, path: ['Card'], parents: [] },
+            { name: 'Text', depth: 1, path: ['Card', 'Text'], parents: ['Card'] },
+          ],
+          containsCycle: false,
+        },
+        Loopy: {
+          root: 'Loopy',
+          nodes: [
+            { name: 'Loopy', depth: 0, path: ['Loopy'], parents: [] },
+            { name: 'Widget', depth: 1, path: ['Loopy', 'Widget'], parents: ['Loopy'] },
+          ],
+          containsCycle: false,
+        },
+      }),
+    );
+    const s = state([
+      ['Card', 'accepted'],
+      ['Loopy', 'accepted'],
+    ]);
+    const cycles = new Set(['Loopy']);
+    const out = buildAddedGroupsList(synthetic, s, cycles);
+    expect(out).toEqual([
+      { name: 'Loopy', depCount: 1, isCycle: true },
+      { name: 'Card', depCount: 1, isCycle: false },
+    ]);
   });
 });
 
@@ -125,7 +214,7 @@ describe('computeCounters', () => {
       ['C', 'undecided'],
       ['D', 'accepted'],
     ]);
-    expect(computeCounters(comps, g, s)).toEqual({
+    expect(computeCounters(comps, computeAllClosures(g), s)).toEqual({
       accepted: 2,
       rejected: 1,
       undecided: 1,
@@ -143,7 +232,7 @@ describe('computeCounters', () => {
     ]);
     const c = computeCounters(
       [{ name: 'Card' }, { name: 'Text' }, { name: 'Icon' }, { name: 'Standalone' }],
-      graph,
+      computeAllClosures(graph),
       s,
     );
     expect(c.groups).toBe(1);

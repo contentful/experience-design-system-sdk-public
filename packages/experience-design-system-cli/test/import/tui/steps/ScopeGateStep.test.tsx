@@ -23,53 +23,54 @@ describe('ScopeGateStep', () => {
     expect(out).toContain('Junk');
   });
 
-  it('calls onConfirm with all-accepted on f when no toggles happened', () => {
+  it('calls onConfirm with all-rejected on f when no toggles happened (undecided default)', () => {
+    // Everything starts undecided. Confirming without any explicit accepts
+    // partitions the whole set into rejected (undecided → rejected).
     const onConfirm = vi.fn();
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
     stdin.write('f');
     expect(onConfirm).toHaveBeenCalledTimes(1);
     const arg = onConfirm.mock.calls[0][0];
-    expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Card', 'Junk']));
-    expect(arg.rejected).toEqual([]);
+    expect(arg.accepted).toEqual([]);
+    expect(arg.rejected).toEqual(expect.arrayContaining(['Button', 'Card', 'Junk']));
   });
 
-  it('toggles selection with a and confirms with f', () => {
+  it('[a] accepts the cursor row; [f] partitions accepted vs. rejected', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
-    // Standalone tier is alphabetical: Button, Card, Junk. Move down twice
-    // to land on Junk, then toggle it off.
-    stdin.write('j');
+    // Standalone tier alphabetical: Button, Card, Junk. Accept Card only.
     stdin.write('j');
     stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Card']));
-    expect(arg.accepted).not.toContain('Junk');
-    expect(arg.rejected).toEqual(['Junk']);
+    expect(arg.accepted).toEqual(['Card']);
+    expect(arg.rejected).toEqual(expect.arrayContaining(['Button', 'Junk']));
   });
 
-  it('A toggles all', () => {
+  it('A toggles all — first press accepts all when anything is not-accepted', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
-    // First A: all currently included → flip to all rejected
+    // Fresh state: all undecided → first [A] flips to accepted.
     stdin.write('A');
     stdin.write('f');
     let arg = onConfirm.mock.calls[onConfirm.mock.calls.length - 1][0];
-    expect(arg.accepted).toEqual([]);
-    expect(arg.rejected).toEqual(expect.arrayContaining(['Button', 'Card', 'Junk']));
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Card', 'Junk']));
+    expect(arg.rejected).toEqual([]);
 
-    // Second A: all currently rejected → flip back to all accepted
+    // Second [A]: all accepted → flip to rejected.
     stdin.write('A');
     stdin.write('f');
     arg = onConfirm.mock.calls[onConfirm.mock.calls.length - 1][0];
-    expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Card', 'Junk']));
-    expect(arg.rejected).toEqual([]);
+    expect(arg.accepted).toEqual([]);
+    expect(arg.rejected).toEqual(expect.arrayContaining(['Button', 'Card', 'Junk']));
   });
 
-  it('r toggles the cursor component (alias for `a`)', () => {
+  it('[r] rejects the cursor component', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
-    // Cursor starts at Button (alphabetical). Move down once to land on Card.
+    // Accept-all first so [r] on Card exercises a real reject-from-accepted.
+    stdin.write('A');
+    // Cursor starts at Button. Move down once to Card.
     stdin.write('j');
     stdin.write('r');
     stdin.write('f');
@@ -78,14 +79,43 @@ describe('ScopeGateStep', () => {
     expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Junk']));
   });
 
-  it('F (capital) also confirms', () => {
+  it('[r] on an undecided leaf rejects it directly (blast radius 0 → no prompt)', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
+    // Cursor on Button. [r] rejects it. No ancestors/descendants → no prompt.
+    stdin.write('r');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.rejected).toEqual(expect.arrayContaining(['Button']));
+  });
+
+  it('F (capital) confirms — behavior parallels lowercase [f]', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
     stdin.write('F');
     expect(onConfirm).toHaveBeenCalledTimes(1);
     const arg = onConfirm.mock.calls[0][0];
-    expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Card', 'Junk']));
-    expect(arg.rejected).toEqual([]);
+    // Nothing was accepted → all → rejected.
+    expect(arg.accepted).toEqual([]);
+    expect(arg.rejected).toEqual(expect.arrayContaining(['Button', 'Card', 'Junk']));
+  });
+
+  it('[Y] accepts every non-cycle-participant that is not AI-flagged', () => {
+    const onConfirm = vi.fn();
+    const MIXED = [
+      { name: 'Button', componentId: 'c0' },
+      { name: 'Card', componentId: 'c1' },
+      { name: 'BadgeIcon', componentId: 'c2', aiDecision: 'rejected' as const, aiReason: 'low semantic value' },
+    ];
+    const { stdin } = render(
+      <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    stdin.write('Y');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Card']));
+    expect(arg.accepted).not.toContain('BadgeIcon');
+    expect(arg.rejected).toEqual(['BadgeIcon']);
   });
 
   it('calls onQuit on q', () => {
@@ -204,9 +234,10 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     expect(out).toContain('no reason given');
   });
 
-  it('f confirms with aiDecision=failed components in the rejected list (batch-skip safety)', () => {
-    // INTEG-4318: when the LLM omits a tool call for a component in a batch,
-    // scope-gate must treat 'failed' the same as 'rejected' for inclusion.
+  it('[Y] then [f] partitions AI-flagged (rejected/failed) into rejected, rest into accepted', () => {
+    // INTEG-4318: 'failed' behaves like 'rejected' for inclusion. Under the
+    // undecided-default model, [Y] accepts every non-AI-flagged component;
+    // the AI-flagged remainder stays undecided and lands in `rejected` on [f].
     const withFailed = [
       { name: 'Button', componentId: 'c0', aiDecision: 'accepted' as const },
       { name: 'Card', componentId: 'c1', aiDecision: 'accepted' as const },
@@ -221,6 +252,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     const { stdin } = render(
       <ScopeGateStep components={withFailed} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
     );
+    stdin.write('Y');
     stdin.write('f');
     expect(onConfirm).toHaveBeenCalledTimes(1);
     const arg = onConfirm.mock.calls[0][0];
@@ -229,11 +261,12 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     expect(arg.rejected).toEqual(['DroppedByLLM']);
   });
 
-  it('f confirms with AI-rejected components in the rejected list (dual-write contract)', () => {
+  it('[Y] skips AI-rejected components; [f] puts them in the rejected list (dual-write contract)', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
     );
+    stdin.write('Y');
     stdin.write('f');
     expect(onConfirm).toHaveBeenCalledTimes(1);
     const arg = onConfirm.mock.calls[0][0];
@@ -312,16 +345,33 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     });
   });
 
-  it('shows yellow banner when ALL components are AI-rejected', () => {
-    const allRejected = [
-      { name: 'A', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: 'r1' },
-      { name: 'B', componentId: 'c1', aiDecision: 'rejected' as const, aiReason: 'r2' },
+  it('shows a "nothing selected" hint at mount (everything defaults to undecided)', () => {
+    const anySet = [
+      { name: 'A', componentId: 'c0' },
+      { name: 'B', componentId: 'c1' },
     ];
     const { lastFrame } = render(
-      <ScopeGateStep components={allRejected} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+      <ScopeGateStep components={anySet} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toContain('AI excluded all components');
+    expect(out).toContain('nothing selected');
+    // Hint advertises the fast opt-in keys.
+    expect(out).toContain('[Y]');
+    expect(out).toContain('[A]');
+    expect(out).toContain('[a]');
+  });
+
+  it('hides the "nothing selected" hint once at least one component is accepted', () => {
+    const anySet = [
+      { name: 'A', componentId: 'c0' },
+      { name: 'B', componentId: 'c1' },
+    ];
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={anySet} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    stdin.write('a');
+    const out = lastFrame() ?? '';
+    expect(out).not.toContain('nothing selected');
   });
 
   describe('D2 — per-row cascade selection', () => {
@@ -342,9 +392,10 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin } = render(
         <ScopeGateStep components={ARTICLE_CARD} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // Cursor starts on Article (root row). Move to Card child then reject.
+      // Accept-all first so Card is accepted; then [r] on Card cascades UP.
+      stdin.write('A');
       stdin.write('j'); // Card child
-      stdin.write(' '); // reject Card — cascades to Article (single ancestor → no prompt)
+      stdin.write('r'); // reject Card — cascades to Article (single ancestor → no prompt)
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Article']));
@@ -356,9 +407,8 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin } = render(
         <ScopeGateStep components={ARTICLE_CARD} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // Reject Article first (no ancestors), then re-accept — cascade to Card.
-      stdin.write(' '); // reject Article
-      stdin.write(' '); // accept Article → cascades to Card
+      // Cursor starts on Article root (undecided). [a] accepts → cascades to Card.
+      stdin.write('a');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.accepted).toEqual(expect.arrayContaining(['Article', 'Card']));
@@ -384,10 +434,10 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin, lastFrame } = render(
         <ScopeGateStep components={TWO_PARENTS} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // Row order: Article root, Card child; Newsletter root, Card child; ...
-      // Move to Card (child of Article, row 1). Reject → blast radius 2.
+      // Accept-all first, then move to Card (child under Article) and reject.
+      stdin.write('A');
       stdin.write('j');
-      stdin.write(' ');
+      stdin.write('r');
       let frame = lastFrame() ?? '';
       expect(frame).toContain('Rejecting Card will:');
       expect(frame).toContain('Article');
@@ -416,20 +466,19 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin } = render(
         <ScopeGateStep components={TWO_PARENTS} onConfirm={onConfirm} onQuit={() => {}} />,
       );
+      stdin.write('A'); // accept-all so Card is accepted
       stdin.write('j'); // Card
-      stdin.write(' '); // reject → prompt
+      stdin.write('r'); // reject → prompt (blast radius 2)
       stdin.write('n'); // cancel
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
-      // Nothing rejected.
+      // Cancel leaves the accept-all state intact.
       expect(arg.rejected).toEqual([]);
       expect(arg.accepted).toEqual(expect.arrayContaining(['Article', 'Newsletter', 'Card']));
     });
 
-    it('group-child rows and flat-tier rows are individually selectable', () => {
+    it('group-child rows are individually selectable', () => {
       const onConfirm = vi.fn();
-      // Card + Text child; plus a standalone. Flat tier exposes every
-      // component once.
       const setup = [
         {
           name: 'Card',
@@ -442,16 +491,10 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin } = render(
         <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // Rows: Card(root), Text(child), Standalone, flat-header, Card(flat),
-      // Standalone(flat), Text(flat).
-      // Reject Text via its flat row (last). Cascades to Card.
+      // Accept-all first, then reject Text via its group-child row.
+      stdin.write('A');
       stdin.write('j'); // Text child
-      stdin.write('j'); // Standalone
-      stdin.write('j'); // flat-header (skipped by toggle)
-      stdin.write('j'); // Card flat
-      stdin.write('j'); // Standalone flat
-      stdin.write('j'); // Text flat
-      stdin.write(' '); // reject Text — cascades up to Card
+      stdin.write('r'); // reject Text — cascades up to Card
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.rejected).toEqual(expect.arrayContaining(['Text', 'Card']));
@@ -491,6 +534,182 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       expect(lastFrame() ?? '').toContain('Lineage:');
       stdin.write('l');
       expect(lastFrame() ?? '').not.toContain('Lineage:');
+    });
+  });
+
+  describe('cycles-detail panel', () => {
+    const FIXTURE_2CYCLE = [
+      {
+        name: 'NodeA',
+        componentId: 'a',
+        slots: [{ name: 'slotA', allowedComponents: ['NodeB'] }],
+      },
+      {
+        name: 'NodeB',
+        componentId: 'b',
+        slots: [{ name: 'slotB', allowedComponents: ['NodeA'] }],
+      },
+    ];
+
+    it('[c] opens cycles panel with interleaved cycle path', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE_2CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('c');
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('Cycles detected');
+      expect(frame).toMatch(/Cycle 1:.*NodeA.*\[slotA\].*NodeB.*\[slotB\].*NodeA/);
+    });
+
+    it('legend advertises [c] when cycles exist', () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={FIXTURE_2CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      expect(lastFrame() ?? '').toContain('[c]');
+    });
+
+    it('[c] is a no-op when no cycles exist and legend omits it', () => {
+      const noCycles = [
+        { name: 'Solo', componentId: 's' },
+      ];
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={noCycles} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      const before = lastFrame() ?? '';
+      expect(before).not.toContain('[c]');
+      stdin.write('c');
+      const after = lastFrame() ?? '';
+      expect(after).not.toContain('Cycles detected');
+    });
+
+    it('Esc closes cycles panel', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE_2CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('c');
+      expect(lastFrame() ?? '').toContain('Cycles detected');
+      stdin.write('\x1b');
+      expect(lastFrame() ?? '').not.toContain('Cycles detected');
+    });
+
+    it('[c] again closes the cycles panel', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE_2CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('c');
+      expect(lastFrame() ?? '').toContain('Cycles detected');
+      stdin.write('c');
+      expect(lastFrame() ?? '').not.toContain('Cycles detected');
+    });
+
+    it('opening [c] while [l] is open closes lineage panel', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE_2CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('l');
+      expect(lastFrame() ?? '').toContain('Lineage:');
+      stdin.write('c');
+      const frame = lastFrame() ?? '';
+      expect(frame).not.toContain('Lineage:');
+      expect(frame).toContain('Cycles detected');
+    });
+
+    it('Enter on a cycle entry jumps main cursor and closes panel', () => {
+      const onConfirm = vi.fn();
+      // Include a third non-cycle component so the cursor can be moved off
+      // NodeA first, letting us prove Enter actually jumps.
+      const withStandalone = [
+        ...FIXTURE_2CYCLE,
+        { name: 'Zonk', componentId: 'z' },
+      ];
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={withStandalone} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      // Move cursor to Zonk (last row).
+      stdin.write('j');
+      stdin.write('j');
+      stdin.write('c');
+      stdin.write('\r');
+      // Panel closed.
+      expect(lastFrame() ?? '').not.toContain('Cycles detected');
+      // Now [l] should open lineage rooted at the jump target (NodeA), not Zonk.
+      stdin.write('l');
+      expect(lastFrame() ?? '').toContain('Lineage: NodeA');
+    });
+  });
+
+  describe('cycle-row rejection (INTEG task #31)', () => {
+    // 2-cycle: NodeA ↔ NodeB. Both are cycle-tier rows at the top of the
+    // sidebar. Rejecting either from its cycle row must work — previously
+    // the [a]/[r]/Space handler treated 'cycle' as a no-op, blocking the
+    // user from breaking the cycle.
+    const CYCLE = [
+      {
+        name: 'NodeA',
+        componentId: 'a',
+        slots: [{ name: 'slotA', allowedComponents: ['NodeB'] }],
+      },
+      {
+        name: 'NodeB',
+        componentId: 'b',
+        slots: [{ name: 'slotB', allowedComponents: ['NodeA'] }],
+      },
+    ];
+
+    it('[r] on a cycle-tier row rejects that participant', () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={CYCLE} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      // Cursor starts on the first cycle-tier row (NodeA, alphabetical).
+      // Under undecided-default, [r] rejects NodeA (from undecided) and
+      // cascades UP to its ancestor NodeB.
+      stdin.write('r');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.rejected).toEqual(expect.arrayContaining(['NodeA', 'NodeB']));
+      expect(arg.accepted).toEqual([]);
+    });
+
+    it('Space on a cycle-tier row accepts (accept-cascade); [r] still rejects', () => {
+      // Under the split-direction model, Space aliases [a] (force-accept),
+      // NOT [r]. This test pins that behavior against future regressions.
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={CYCLE} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      stdin.write(' ');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.accepted).toContain('NodeA');
+    });
+
+    it('[a] on a cycle-tier row after a reject re-accepts the participant', () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={CYCLE} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      // Reject NodeA → both A and B flip to rejected. Then [a] on NodeA
+      // re-accepts NodeA (accept-cascade stops at cycle → just {NodeA}).
+      stdin.write('r');
+      stdin.write('a');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.accepted).toContain('NodeA');
+    });
+
+    it('cycle-row glyph still renders after a cycle participant is rejected', () => {
+      // Cycle detection runs on the extracted graph, not the pushed subset —
+      // so the ⚠ (cycle) marker stays visible even after the reject. Pins
+      // current behavior against future re-rendering changes.
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('r');
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('(cycle)');
+      expect(frame).toContain('NodeA');
+      expect(frame).toContain('NodeB');
     });
   });
 
@@ -579,8 +798,11 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin, rerender } = render(
         <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="running" />,
       );
-      // Standalone tier alphabetical: Button first. `r` toggles it OFF.
-      stdin.write('r');
+      // Accept-all first so Card lands accepted. Then move cursor to Button
+      // (index 0 after alphabetical sort) and reject it explicitly. The
+      // re-render arrives mid-flight; the operator decision must survive.
+      stdin.write('A');
+      stdin.write('r'); // reject Button (cursor is on Button at index 0)
       rerender(
         <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
       );
@@ -638,13 +860,14 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     { name: 'Icon', componentId: 'i0' },
   ];
 
-  it('rejecting a group-root deselects (not rejects) its descendants', () => {
+  it('rejecting an accepted group-root deselects (not rejects) its descendants', () => {
     const onConfirm = vi.fn();
     const { stdin, lastFrame } = render(
       <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Cursor starts on Card root. Rejecting → 2 descendants → prompt.
-    stdin.write(' ');
+    // Accept-all first so Card + descendants are accepted. Cursor on Card root.
+    stdin.write('A');
+    stdin.write('r'); // reject Card — 2 descendants → prompt
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Rejecting Card will:');
     expect(frame).toContain('Deselect descendants:');
@@ -657,15 +880,15 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     expect(after).toContain('[ ]');
   });
 
-  it('rejecting a leaf rejects the target + ancestors and touches no descendants', () => {
+  it('rejecting an accepted leaf rejects target + ancestors, leaves siblings accepted', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Rows: Card root, Icon child, Text child (children alphabetical), then
-    // flat-tier. Move to Icon child (1 down).
+    // Accept-all first. Rows: Card root, Icon child, Text child.
+    stdin.write('A');
     stdin.write('j'); // Icon child
-    stdin.write(' '); // reject Icon — 1 ancestor (Card), 0 descendants
+    stdin.write('r'); // reject Icon — 1 ancestor (Card), 0 descendants
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
     expect(arg.rejected).toEqual(expect.arrayContaining(['Icon', 'Card']));
@@ -690,22 +913,25 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     const { stdin, lastFrame } = render(
       <ScopeGateStep components={MIDDLE} onConfirm={() => {}} onQuit={() => {}} />,
     );
-    // Rows: Root root, Mid child, Leaf grandchild, flat-header, ...
+    // Accept-all first so Mid is accepted (else [r] rejects from undecided
+    // with no descendants to deselect).
+    stdin.write('A');
     stdin.write('j'); // Mid
-    stdin.write(' '); // reject Mid → 1 ancestor (Root) + 1 descendant (Leaf) = 2 → prompt
+    stdin.write('r'); // reject Mid → 1 ancestor (Root) + 1 descendant (Leaf) = 2 → prompt
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Rejecting Mid will:');
     expect(frame).toContain('Reject ancestors: Root');
     expect(frame).toContain('Deselect descendants: Leaf');
   });
 
-  it('on confirm, undecided rows go into decisions.rejected', () => {
+  it('on confirm after reject-cascade, deselected descendants land in decisions.rejected', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    stdin.write(' '); // reject Card
-    stdin.write('y'); // confirm — Text/Icon → undecided
+    stdin.write('A'); // accept-all
+    stdin.write('r'); // reject Card — Text/Icon → undecided (via prompt)
+    stdin.write('y');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
     expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Text', 'Icon']));
@@ -717,8 +943,9 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     const { stdin } = render(
       <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    stdin.write(' '); // reject Card
-    stdin.write('y'); // Text/Icon → undecided
+    stdin.write('A'); // everything accepted
+    stdin.write('r'); // reject Card → Text/Icon → undecided
+    stdin.write('y');
     stdin.write('j'); // Icon child (alphabetical)
     stdin.write('a'); // accept Icon (leaf → no descendants to cascade)
     stdin.write('f');
@@ -728,17 +955,15 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     expect(arg.rejected).toContain('Text');
   });
 
-  it('Space on an undecided row still flips it to accepted (binary via [a] dispatch)', () => {
+  it('Space on an undecided row flips it to accepted', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    stdin.write(' '); // reject Card
-    stdin.write('y'); // Text/Icon → undecided
-    stdin.write('j'); // Icon (alphabetical child)
-    stdin.write(' '); // Space → accept (since not accepted)
+    // Cursor on Card (undecided). Space accepts Card + cascades to descendants.
+    stdin.write(' ');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    expect(arg.accepted).toContain('Icon');
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Card', 'Text', 'Icon']));
   });
 });

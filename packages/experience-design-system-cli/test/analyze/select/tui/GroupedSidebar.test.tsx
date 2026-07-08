@@ -6,6 +6,7 @@ import {
   GroupedSidebar,
   visibleItemOrder,
   labelStyleFor,
+  buildVisibleRows,
   type GroupedSidebarItem,
   type VisibleRow,
 } from '../../../../src/analyze/select/tui/components/GroupedSidebar.js';
@@ -171,7 +172,7 @@ describe('GroupedSidebar', () => {
     expect(dGlyphIdx).toBeGreaterThan(cGlyphIdx);
   });
 
-  it('cycle participants render as flat rows at TOP with ⚠', () => {
+  it('cycle participants render at TOP with ⚠ and an expand glyph', () => {
     const { lastFrame } = renderSidebar({
       items: [
         item('Card', { slots: { s: ['Media'] } }),
@@ -188,10 +189,11 @@ describe('GroupedSidebar', () => {
     expect(mediaIdx).toBeGreaterThanOrEqual(0);
     expect(widgetIdx).toBeGreaterThan(Math.max(cardIdx, mediaIdx));
     expect(frame).toContain('⚠');
-    // Cycle rows are flat — no group glyphs on Card or Media rows.
+    // Cycle rows now carry a mini expand-glyph (task 35). Collapsed by default
+    // when alwaysExpanded is false.
     const cardLine = frame.split('\n').find((l) => l.includes('Card')) ?? '';
-    expect(cardLine).not.toContain('▸');
-    expect(cardLine).not.toContain('▾');
+    expect(cardLine).toContain('▸');
+    expect(cardLine).toContain('⚠');
   });
 
   it('empty components render in empty tier with (empty) suffix', () => {
@@ -623,6 +625,219 @@ describe('GroupedSidebar', () => {
     });
   });
 
+  describe('cycle-member injection under composite parents (INTEG cycle-child)', () => {
+    // A cycle member (InnerA ↔ InnerB) that's ALSO slotted by a non-cycle
+    // composite (SharedInterior) must appear as a `⚠ (cycle)` child under
+    // that composite, in addition to its own cycle-tier row at the top. The
+    // closure walker runs over the non-cycle subgraph (so it doesn't collapse
+    // to `containsCycle: true`); the sidebar post-processes each closure's
+    // nodes to inject cycle-member leaves under any parent that slots them.
+    it('renders a cycle member as ⚠ child under a composite that slots it', () => {
+      const items = [
+        item('InnerA', { slots: { s: ['InnerB'] } }),
+        item('InnerB', { slots: { s: ['InnerA'] } }),
+        item('SharedInterior', { slots: { s: ['InnerA'] } }),
+      ];
+      const rows = buildVisibleRows({
+        items,
+        cycleParticipants: new Set(['InnerA', 'InnerB']),
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+      });
+      // Cycle-tier rows at top (task 35 expands them, so cycle rows are not
+      // strictly adjacent — group-child rows may weave in between).
+      const cycleRows = rows.filter((r) => r.kind === 'cycle');
+      expect(cycleRows.length).toBe(2);
+      expect(cycleRows[0].label).toContain('InnerA');
+      expect(cycleRows[1].label).toContain('InnerB');
+      // SharedInterior is the sole grouped root (Wrapper-less scenario).
+      const rootRow = rows.find((r) => r.kind === 'group-root');
+      expect(rootRow?.label).toContain('SharedInterior');
+      // Its child row is a group-child that carries the cycleChild flag.
+      const child = rows.find((r) => r.kind === 'group-child' && r.rootName === 'SharedInterior');
+      expect(child).toBeDefined();
+      expect(child!.label).toContain('⚠');
+      expect(child!.label).toContain('InnerA');
+      expect(child!.label).toContain('(cycle)');
+      expect(child!.cycleChild).toBe(true);
+      // Row kind stays group-child (not cycle) so selection/AI decoration works.
+      expect(child!.kind).toBe('group-child');
+    });
+
+    it('deep chain: cycle member appears under transitively-reachable ancestors', () => {
+      // Wrapper1 → SharedInterior → InnerA (cycle). Expanding Wrapper1 must
+      // show SharedInterior (depth 1) AND InnerA (depth 2, cycleChild).
+      const items = [
+        item('InnerA', { slots: { s: ['InnerB'] } }),
+        item('InnerB', { slots: { s: ['InnerA'] } }),
+        item('SharedInterior', { slots: { s: ['InnerA'] } }),
+        item('Wrapper1', { slots: { s: ['SharedInterior'] } }),
+      ];
+      const rows = buildVisibleRows({
+        items,
+        cycleParticipants: new Set(['InnerA', 'InnerB']),
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+      });
+      const wrapper1ChildRows = rows.filter(
+        (r) => r.kind === 'group-child' && r.rootName === 'Wrapper1',
+      );
+      // SharedInterior (non-cycle) at depth 1, InnerA (cycleChild) at depth 2.
+      const sharedRow = wrapper1ChildRows.find((r) => r.label.includes('SharedInterior'));
+      const innerARow = wrapper1ChildRows.find((r) => r.label.includes('InnerA'));
+      expect(sharedRow).toBeDefined();
+      expect(innerARow).toBeDefined();
+      expect(innerARow!.cycleChild).toBe(true);
+      expect(innerARow!.label).toContain('⚠');
+      expect(innerARow!.indent).toBe(2);
+    });
+
+    it('cycle-member slotted by multiple composites gets (shared) on 2nd+ occurrence', () => {
+      const items = [
+        item('InnerA', { slots: { s: ['InnerB'] } }),
+        item('InnerB', { slots: { s: ['InnerA'] } }),
+        item('Wrapper1', { slots: { s: ['InnerA'] } }),
+        item('Wrapper2', { slots: { s: ['InnerA'] } }),
+      ];
+      const rows = buildVisibleRows({
+        items,
+        cycleParticipants: new Set(['InnerA', 'InnerB']),
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+      });
+      // Filter to group-child rows anchored under composite Wrapper roots
+      // (task 34). Cycle-tier subtrees (task 35) also emit InnerA under InnerB,
+      // but those live under a different `rootName` and use a separate
+      // shared-tracker.
+      const innerAChildRows = rows.filter(
+        (r) =>
+          r.kind === 'group-child' &&
+          r.label.includes('InnerA') &&
+          (r.rootName === 'Wrapper1' || r.rootName === 'Wrapper2'),
+      );
+      expect(innerAChildRows.length).toBe(2);
+      // First occurrence: no `(shared)`. Second: `(shared)`.
+      expect(innerAChildRows[0].sharedSuffix).toBeFalsy();
+      expect(innerAChildRows[1].sharedSuffix).toBe(true);
+      expect(innerAChildRows[1].label).toContain('(shared)');
+    });
+
+    it('cycle-tier row expands into a mini hierarchy under alwaysExpanded (task 35)', () => {
+      // NodeA ↔ NodeB, no other components. Every cycle row is expanded.
+      const items = [
+        item('NodeA', { slots: { s: ['NodeB'] } }),
+        item('NodeB', { slots: { s: ['NodeA'] } }),
+      ];
+      const rows = buildVisibleRows({
+        items,
+        cycleParticipants: new Set(['NodeA', 'NodeB']),
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+      });
+      const cycleRows = rows.filter((r) => r.kind === 'cycle');
+      expect(cycleRows.length).toBe(2);
+      // Both rows are expanded (▾) with a ⚠ glyph.
+      expect(cycleRows[0].label).toContain('▾');
+      expect(cycleRows[0].label).toContain('⚠');
+      expect(cycleRows[1].label).toContain('▾');
+      // Each expanded cycle row has at least one group-child.
+      const nodeAChildren = rows.filter(
+        (r) => r.kind === 'group-child' && r.rootName === 'NodeA',
+      );
+      const nodeBChildren = rows.filter(
+        (r) => r.kind === 'group-child' && r.rootName === 'NodeB',
+      );
+      expect(nodeAChildren.length).toBeGreaterThan(0);
+      expect(nodeBChildren.length).toBeGreaterThan(0);
+      // The child under NodeA is the OTHER cycle member and carries (cycle).
+      expect(nodeAChildren[0].label).toContain('NodeB');
+      expect(nodeAChildren[0].label).toContain('(cycle)');
+      expect(nodeAChildren[0].cycleChild).toBe(true);
+    });
+
+    it('cycle-tier expansion surfaces composite cycle-member slot targets (task 35)', () => {
+      // Panel ↔ Section composite cycle; Panel also slots Heading (non-cycle),
+      // Section slots Text (non-cycle). Expanding Panel should reveal Section
+      // (cycle member) AND Heading AND Text.
+      const items = [
+        item('Panel', { slots: { s: ['Section', 'Heading'] } }),
+        item('Section', { slots: { s: ['Panel', 'Text'] } }),
+        item('Heading'),
+        item('Text'),
+      ];
+      const rows = buildVisibleRows({
+        items,
+        cycleParticipants: new Set(['Panel', 'Section']),
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+      });
+      const panelChildren = rows.filter(
+        (r) => r.kind === 'group-child' && r.rootName === 'Panel',
+      );
+      const names = panelChildren.map((r) => {
+        // Extract the underlying name from the label (strip glyphs/decoration).
+        return r.label;
+      });
+      // Panel's subtree contains Section (cycle-member), Heading (leaf), Text (via Section).
+      expect(panelChildren.some((r) => r.label.includes('Section') && r.cycleChild === true)).toBe(true);
+      expect(panelChildren.some((r) => r.label.includes('Heading'))).toBe(true);
+      expect(panelChildren.some((r) => r.label.includes('Text'))).toBe(true);
+      // The Heading row must NOT carry the cycle decoration.
+      const headingRow = panelChildren.find((r) => r.label.includes('Heading'));
+      expect(headingRow?.cycleChild).toBeFalsy();
+      // Should hit at least 3 children (Section, Heading, Text). Extra void.
+      expect(names.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('cycle-tier rows are collapsed by default when alwaysExpanded is false (task 35)', () => {
+      const items = [
+        item('NodeA', { slots: { s: ['NodeB'] } }),
+        item('NodeB', { slots: { s: ['NodeA'] } }),
+      ];
+      const collapsedRows = buildVisibleRows({
+        items,
+        cycleParticipants: new Set(['NodeA', 'NodeB']),
+        expandedGroups: new Set(),
+      });
+      const cycleRows = collapsedRows.filter((r) => r.kind === 'cycle');
+      // Both rows carry the collapsed glyph ▸.
+      expect(cycleRows.every((r) => r.label.includes('▸'))).toBe(true);
+      // No group-children under either.
+      expect(collapsedRows.filter((r) => r.kind === 'group-child').length).toBe(0);
+
+      // Toggle NodeA via expandedGroups — its subtree becomes visible.
+      const partiallyExpanded = buildVisibleRows({
+        items,
+        cycleParticipants: new Set(['NodeA', 'NodeB']),
+        expandedGroups: new Set(['NodeA']),
+      });
+      const nodeARow = partiallyExpanded.find((r) => r.kind === 'cycle' && r.rootName === 'NodeA');
+      const nodeBRow = partiallyExpanded.find((r) => r.kind === 'cycle' && r.rootName === 'NodeB');
+      expect(nodeARow?.label).toContain('▾');
+      expect(nodeBRow?.label).toContain('▸');
+      const nodeAChildren = partiallyExpanded.filter(
+        (r) => r.kind === 'group-child' && r.rootName === 'NodeA',
+      );
+      expect(nodeAChildren.length).toBeGreaterThan(0);
+    });
+
+    it('cycle-participant is never promoted to a group-root', () => {
+      const items = [
+        item('InnerA', { slots: { s: ['InnerB'] } }),
+        item('InnerB', { slots: { s: ['InnerA'] } }),
+      ];
+      const rows = buildVisibleRows({
+        items,
+        cycleParticipants: new Set(['InnerA', 'InnerB']),
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+      });
+      // No group-root or standalone rows — cycle members only anchor cycle rows.
+      expect(rows.every((r) => r.kind !== 'group-root')).toBe(true);
+      expect(rows.every((r) => r.kind !== 'standalone')).toBe(true);
+    });
+  });
+
   it('showFlatTier: flat rows are selectable via itemIdx', () => {
     const items = [
       item('Card', { slots: { s: ['Heading'] } }),
@@ -759,3 +974,72 @@ describe('visibleItemOrder — navigation contract', () => {
     expect(bareIdx).toBe(-1);
   });
 });
+
+describe('buildVisibleRows — large-list view mode', () => {
+  it('emits one flat row per component, alphabetical, no group nesting', () => {
+    const items = [
+      item('Card', { slots: { body: ['Text'] } }),
+      item('Text'),
+      item('Standalone'),
+    ];
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(),
+      viewMode: 'large-list',
+    });
+    // No group-root / group-child / standalone rows; every component is a
+    // `flat` row (or `cycle` when applicable). Composite roots get a suffix.
+    const kinds = new Set(rows.map((r) => r.kind));
+    expect(kinds.has('group-root')).toBe(false);
+    expect(kinds.has('group-child')).toBe(false);
+    expect(kinds.has('standalone')).toBe(false);
+    expect(rows.length).toBe(3);
+    // Alphabetical: Card, Standalone, Text.
+    expect(rows.map((r) => r.label)).toEqual([
+      'Card (1 dep)',
+      'Standalone',
+      'Text',
+    ]);
+  });
+
+  it('pins cycle participants to the top (alphabetical), then flat rows', () => {
+    const items = [
+      item('Zeta'),
+      item('Alpha'),
+      item('Loopy', { slots: { child: ['Inner'] } }),
+      item('Inner', { slots: { back: ['Loopy'] } }),
+    ];
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(['Loopy', 'Inner']),
+      expandedGroups: new Set(),
+      viewMode: 'large-list',
+    });
+    expect(rows[0].kind).toBe('cycle');
+    expect(rows[0].label).toContain('Inner');
+    expect(rows[1].kind).toBe('cycle');
+    expect(rows[1].label).toContain('Loopy');
+    // Non-cycle rows follow alphabetical.
+    expect(rows.slice(2).map((r) => r.label)).toEqual(['Alpha', 'Zeta']);
+  });
+
+  it('renders each component exactly once — no shared-dep duplication', () => {
+    // Shared "Text" would appear twice under grouped view (once per parent);
+    // large-list must show it exactly once.
+    const items = [
+      item('Card', { slots: { body: ['Text'] } }),
+      item('Panel', { slots: { title: ['Text'] } }),
+      item('Text'),
+    ];
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(),
+      viewMode: 'large-list',
+    });
+    const textRows = rows.filter((r) => r.label.startsWith('Text'));
+    expect(textRows.length).toBe(1);
+  });
+});
+
