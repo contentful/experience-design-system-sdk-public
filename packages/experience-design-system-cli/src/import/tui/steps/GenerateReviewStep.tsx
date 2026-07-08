@@ -39,6 +39,7 @@ import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotat
 import { useLivePreview } from '../useLivePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
+import { computeSidebarWidth } from '../sidebar-width.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -1045,7 +1046,11 @@ export function GenerateReviewStep({
   // +5 = border (1) + badge column (1) + leading space (1) + trailing pad (1) + border (1).
   // The badge column is reserved even when no annotation is present so the
   // sidebar width doesn't jitter as live-preview annotations flip in/out.
-  const sidebarWidth = Math.min(Math.max(longestName + 5, 14), 34);
+  //
+  // INTEG-4412: cap by terminal-width-aware upper bound so long/nested composite
+  // names aren't truncated at the old fixed 34-col ceiling.
+  const sidebarWidthCap = computeSidebarWidth(terminalWidth);
+  const sidebarWidth = Math.min(Math.max(longestName + 5, 14), sidebarWidthCap);
   const panelWidth = Math.max(10, terminalWidth - sidebarWidth - 4);
 
   // INTEG-4401: project-wide slot graph passed to FieldEditor so its

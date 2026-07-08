@@ -1,4 +1,4 @@
-import { Box, Text } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 import React, { useMemo, useState } from 'react';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
@@ -22,6 +22,7 @@ import {
   computeRejectCascade,
 } from '../../../analyze/selection-cascade.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
+import { computeSidebarWidth } from '../sidebar-width.js';
 
 export type ScopeComponent = {
   name: string;
@@ -42,7 +43,6 @@ export type ScopeGateStepProps = {
 };
 
 const VISIBLE_COUNT = 20;
-const SIDEBAR_WIDTH = 36;
 const REASON_DISPLAY_MAX = 60;
 const AI_BANNER_MAX = 5;
 
@@ -86,6 +86,8 @@ export function ScopeGateStep({
   aiFilterError = null,
   onCancelAutoFilter,
 }: ScopeGateStepProps): React.ReactElement {
+  const { stdout } = useStdout();
+  const sidebarWidth = computeSidebarWidth(stdout?.columns ?? 80);
   type Decision = 'accepted' | 'rejected' | 'undecided';
   const [userDecisions, setUserDecisions] = useState<Map<string, Decision>>(new Map());
   const [nav, setNav] = useState<{ cursor: number; scrollOffset: number }>({ cursor: 0, scrollOffset: 0 });
@@ -590,7 +592,7 @@ export function ScopeGateStep({
           onSelect={() => {}}
           expandedGroups={new Set()}
           onToggleExpanded={() => {}}
-          width={SIDEBAR_WIDTH}
+          width={sidebarWidth}
           focused={true}
           scrollOffset={scrollOffset}
           visibleCount={VISIBLE_COUNT}
