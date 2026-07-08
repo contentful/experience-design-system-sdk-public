@@ -289,6 +289,22 @@ export function buildVisibleRows(props: {
 }
 
 /**
+ * Returns the selectable item indices in the exact order rows are rendered.
+ * Callers implementing ↑/↓/j/k navigation must step selection through this
+ * order — stepping through the raw `items[]` order will skip rows that live
+ * in a different tier or expanded group.
+ */
+export function visibleItemOrder(props: {
+  items: GroupedSidebarItem[];
+  cycleParticipants: Set<string>;
+  expandedGroups: Set<string>;
+}): number[] {
+  return buildVisibleRows(props)
+    .filter((row) => row.itemIdx >= 0)
+    .map((row) => row.itemIdx);
+}
+
+/**
  * Row color heuristic. Cycle rows are red (blocking); empty rows yellow
  * (advisory); everything else defaults to `undefined` so Ink renders the row
  * in the terminal's default fg — matches the existing flat Sidebar.tsx.

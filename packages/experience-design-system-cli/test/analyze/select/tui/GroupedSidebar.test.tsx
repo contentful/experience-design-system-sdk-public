@@ -2,7 +2,11 @@ import React from 'react';
 import { render } from 'ink-testing-library';
 import { describe, it, expect, vi } from 'vitest';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
-import { GroupedSidebar, type GroupedSidebarItem } from '../../../../src/analyze/select/tui/components/GroupedSidebar.js';
+import {
+  GroupedSidebar,
+  visibleItemOrder,
+  type GroupedSidebarItem,
+} from '../../../../src/analyze/select/tui/components/GroupedSidebar.js';
 import type { NodeStatus } from '../../../../src/analyze/composite-closure.js';
 
 /** Build a minimal review-entry-like item for the sidebar. */
@@ -232,5 +236,63 @@ describe('GroupedSidebar', () => {
     const r1Line = frame.split('\n').find((l) => l.includes('R1')) ?? '';
     expect(r1Line).toContain('⚠');
     expect(r1Line).not.toContain('✗');
+  });
+});
+
+describe('visibleItemOrder — navigation contract', () => {
+  it('returns indices in rendered row order, not source-array order', () => {
+    // items[] source order: Card(0), Heading(1), Standalone(2), Layout(3), Header(4)
+    // Expected visible order (grouped roots alphabetical, each expanded, then standalones):
+    //   Card, Heading, Layout, Header, Standalone → source idx [0, 1, 3, 4, 2]
+    const items: GroupedSidebarItem[] = [
+      item('Card', { slots: { header: ['Heading'] } }),
+      item('Heading'),
+      item('Standalone'),
+      item('Layout', { slots: { header: ['Header'] } }),
+      item('Header'),
+    ];
+    const order = visibleItemOrder({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(['Card', 'Layout']),
+    });
+    // Every source index must appear exactly once — no dropped rows, no dupes.
+    expect(order.slice().sort()).toEqual([0, 1, 2, 3, 4]);
+    // Order should follow the tier + group rendering.
+    const nameOrder = order.map((i) => items[i].key);
+    expect(nameOrder).toEqual(['Card', 'Heading', 'Layout', 'Header', 'Standalone']);
+  });
+
+  it('collapsed groups hide child indices; visible order still covers every visible row', () => {
+    const items: GroupedSidebarItem[] = [
+      item('Card', { slots: { header: ['Heading'] } }),
+      item('Heading'),
+      item('Standalone'),
+    ];
+    const order = visibleItemOrder({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(),
+    });
+    // When Card is collapsed, Heading isn't a visible row — but Heading also
+    // has no other selectable rendering, so it must NOT be reachable via ↑/↓
+    // while collapsed. Verify Heading (idx 1) is absent from the order.
+    expect(order).toEqual([0, 2]);
+  });
+
+  it('includes cycle-tier rows first in the navigation order', () => {
+    const items: GroupedSidebarItem[] = [
+      item('A'),
+      item('CycleA', { slots: { s: ['CycleB'] } }),
+      item('CycleB', { slots: { s: ['CycleA'] } }),
+    ];
+    const order = visibleItemOrder({
+      items,
+      cycleParticipants: new Set(['CycleA', 'CycleB']),
+      expandedGroups: new Set(),
+    });
+    const nameOrder = order.map((i) => items[i].key);
+    // Cycle tier first (alphabetical within tier), then the standalone.
+    expect(nameOrder).toEqual(['CycleA', 'CycleB', 'A']);
   });
 });

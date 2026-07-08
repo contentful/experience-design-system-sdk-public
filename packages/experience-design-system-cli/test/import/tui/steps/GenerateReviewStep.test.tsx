@@ -1443,9 +1443,9 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
 
   it('ancestor of a rejected leaf renders an aggregate error glyph on its collapsed root row', async () => {
     const dbMod = await import('../../../../src/session/db.js');
-    // Card → [Body]. Selection defaults to index 0 = Body (alphabetical).
-    // Reject Body directly, then confirm the collapsed Card row's aggregate
-    // glyph shows the roll-up error marker `✗`.
+    // Card → [Body]. Groups start expanded; navigate to Body (dep row),
+    // reject it, collapse the Card group with Space, then confirm the
+    // collapsed Card row's aggregate glyph shows the roll-up error marker `✗`.
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'Card', entry: withSlot('Card', ['Body']) },
       { key: 'Body', entry: leaf('Body') },
@@ -1454,13 +1454,20 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    stdin.write('r'); // reject Body (idx 0)
+    // Default selection is Card (root, first in nav order). Move down to Body.
+    stdin.write('j');
+    await tick();
+    stdin.write('r'); // reject Body
+    await tick();
+    // Move back up to Card, then collapse.
+    stdin.write('k');
+    await tick();
+    stdin.write(' '); // collapse Card
     await tick();
     const frame = lastFrame() ?? '';
     // Card's collapsed root row shows a `✗` because its closure roll-up
     // sees Body's rejected → error direct-issue.
     expect(frame).toContain('✗');
-    // Card is still the group root and visible as a row.
     expect(frame).toMatch(/Card/);
   });
 
@@ -1474,15 +1481,16 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    // Body is selected by default (index 0, alphabetical). Reject it → own
-    // issue. Pressing Enter should be a no-op (isOwn: true).
-    stdin.write('r');
+    // Default selection is Card (root, first in nav order). Move down to Body,
+    // reject it → own issue. Pressing Enter on Body should be a no-op (isOwn: true).
+    stdin.write('j'); // navigate to Body
     await tick();
-    stdin.write('\r');
+    stdin.write('r'); // reject Body
+    await tick();
+    stdin.write('\r'); // Enter — no drill because Body owns its issue
     await tick();
     const frame = lastFrame() ?? '';
     const titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    // Panel title still shows Body — selection did NOT drill up to Card.
     expect(titleLine).toContain('Body');
     expect(titleLine).not.toContain('Card');
   });
@@ -1497,12 +1505,14 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    // Body @ idx 0. Reject → error direct-issue on Body. Then `j` moves
-    // selection to Card @ idx 1 (which now has an INHERITED issue from
-    // Body). Enter should drill selection back to Body.
+    // Default selection is Card (root, first in nav order). Move down to Body,
+    // reject it → error direct-issue. Move back up to Card (which now has an
+    // INHERITED issue from Body). Enter on Card should drill back to Body.
+    stdin.write('j'); // navigate to Body
+    await tick();
     stdin.write('r'); // reject Body
     await tick();
-    stdin.write('j'); // move to Card
+    stdin.write('k'); // navigate back up to Card
     await tick();
     // Confirm we're on Card before drilling.
     let frame = lastFrame() ?? '';
