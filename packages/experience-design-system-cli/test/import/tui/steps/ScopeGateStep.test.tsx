@@ -389,7 +389,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       stdin.write('j');
       stdin.write(' ');
       let frame = lastFrame() ?? '';
-      expect(frame).toContain('Reject Card');
+      expect(frame).toContain('Rejecting Card will:');
       expect(frame).toContain('Article');
       expect(frame).toContain('Newsletter');
       stdin.write('y'); // confirm
@@ -616,5 +616,129 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       expect(arg.rejected).not.toContain('BadgeIcon');
       expect(arg.rejected).toContain('DivWrapper');
     });
+  });
+});
+
+// ── Tri-state (deselect-descendants) semantics ──────────────────────────────
+//
+// Rejecting a parent no longer cascades a *reject* to descendants. It marks
+// descendants as `undecided` (deselected) instead. Ancestors that slot the
+// target still cascade-reject (manifest integrity). Space toggle skips the
+// undecided state — [a] promotes it back to accepted; [r] pushes it to
+// rejected.
+
+describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
+  const ROOT_WITH_TWO_CHILDREN = [
+    {
+      name: 'Card',
+      componentId: 'c0',
+      slots: [{ name: 'body', allowedComponents: ['Text', 'Icon'] }],
+    },
+    { name: 'Text', componentId: 't0' },
+    { name: 'Icon', componentId: 'i0' },
+  ];
+
+  it('rejecting a group-root deselects (not rejects) its descendants', () => {
+    const onConfirm = vi.fn();
+    const { stdin, lastFrame } = render(
+      <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    // Cursor starts on Card root. Rejecting → 2 descendants → prompt.
+    stdin.write(' ');
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Rejecting Card will:');
+    expect(frame).toContain('Deselect descendants:');
+    expect(frame).toContain('Text');
+    expect(frame).toContain('Icon');
+    stdin.write('y');
+    // After apply: Card row shows [✗], descendants show [ ].
+    const after = lastFrame() ?? '';
+    expect(after).toContain('[✗]');
+    expect(after).toContain('[ ]');
+  });
+
+  it('rejecting a leaf rejects the target + ancestors and touches no descendants', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    // Rows: Card root, Icon child, Text child (children alphabetical), then
+    // flat-tier. Move to Icon child (1 down).
+    stdin.write('j'); // Icon child
+    stdin.write(' '); // reject Icon — 1 ancestor (Card), 0 descendants
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.rejected).toEqual(expect.arrayContaining(['Icon', 'Card']));
+    // Text was never touched by the deselect cascade — remains accepted.
+    expect(arg.accepted).toContain('Text');
+  });
+
+  it('confirm prompt renders BOTH ancestor and descendant lists when both non-empty', () => {
+    const MIDDLE = [
+      {
+        name: 'Root',
+        componentId: 'r0',
+        slots: [{ name: 'body', allowedComponents: ['Mid'] }],
+      },
+      {
+        name: 'Mid',
+        componentId: 'm0',
+        slots: [{ name: 'body', allowedComponents: ['Leaf'] }],
+      },
+      { name: 'Leaf', componentId: 'l0' },
+    ];
+    const { stdin, lastFrame } = render(
+      <ScopeGateStep components={MIDDLE} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    // Rows: Root root, Mid child, Leaf grandchild, flat-header, ...
+    stdin.write('j'); // Mid
+    stdin.write(' '); // reject Mid → 1 ancestor (Root) + 1 descendant (Leaf) = 2 → prompt
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Rejecting Mid will:');
+    expect(frame).toContain('Reject ancestors: Root');
+    expect(frame).toContain('Deselect descendants: Leaf');
+  });
+
+  it('on confirm, undecided rows go into decisions.rejected', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    stdin.write(' '); // reject Card
+    stdin.write('y'); // confirm — Text/Icon → undecided
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Text', 'Icon']));
+    expect(arg.accepted).toEqual([]);
+  });
+
+  it('[a] on an undecided row promotes it to accepted and cascades to descendants', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    stdin.write(' '); // reject Card
+    stdin.write('y'); // Text/Icon → undecided
+    stdin.write('j'); // Icon child (alphabetical)
+    stdin.write('a'); // accept Icon (leaf → no descendants to cascade)
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toContain('Icon');
+    expect(arg.rejected).toContain('Card');
+    expect(arg.rejected).toContain('Text');
+  });
+
+  it('Space on an undecided row still flips it to accepted (binary via [a] dispatch)', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    stdin.write(' '); // reject Card
+    stdin.write('y'); // Text/Icon → undecided
+    stdin.write('j'); // Icon (alphabetical child)
+    stdin.write(' '); // Space → accept (since not accepted)
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toContain('Icon');
   });
 });

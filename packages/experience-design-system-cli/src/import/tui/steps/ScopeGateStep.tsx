@@ -86,48 +86,35 @@ export function ScopeGateStep({
   aiFilterError = null,
   onCancelAutoFilter,
 }: ScopeGateStepProps): React.ReactElement {
-  const [userExcluded, setUserExcluded] = useState<Set<string>>(new Set());
-  const [userUnExcluded, setUserUnExcluded] = useState<Set<string>>(new Set());
+  type Decision = 'accepted' | 'rejected' | 'undecided';
+  const [userDecisions, setUserDecisions] = useState<Map<string, Decision>>(new Map());
   const [cursor, setCursor] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [reasonPanelOpen, setReasonPanelOpen] = useState(false);
   const [lineagePanelOpen, setLineagePanelOpen] = useState(false);
   const [lineageCursor, setLineageCursor] = useState(0);
   const [pendingRejectCascade, setPendingRejectCascade] =
-    useState<{ target: string; ancestors: string[] } | null>(null);
+    useState<{ target: string; ancestors: string[]; descendants: string[] } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const isIncluded = (name: string): boolean => {
-    if (userExcluded.has(name)) return false;
-    if (userUnExcluded.has(name)) return true;
+  const baselineState = (name: string): Decision => {
     const c = components.find((x) => x.name === name);
-    if (!c) return true;
-    return !isAiFlagged(c);
+    if (!c) return 'accepted';
+    return isAiFlagged(c) ? 'rejected' : 'accepted';
   };
 
-  const flipToExcluded = (names: Iterable<string>): void => {
-    setUserExcluded((prev) => {
-      const next = new Set(prev);
-      for (const n of names) next.add(n);
-      return next;
-    });
-    setUserUnExcluded((prev) => {
-      const next = new Set(prev);
-      for (const n of names) next.delete(n);
-      return next;
-    });
+  const getState = (name: string): Decision => {
+    const v = userDecisions.get(name);
+    return v ?? baselineState(name);
   };
 
-  const flipToIncluded = (names: Iterable<string>): void => {
-    setUserUnExcluded((prev) => {
-      const next = new Set(prev);
-      for (const n of names) next.add(n);
-      return next;
-    });
-    setUserExcluded((prev) => {
-      const next = new Set(prev);
-      for (const n of names) next.delete(n);
+  const isIncluded = (name: string): boolean => getState(name) === 'accepted';
+
+  const applyDecisions = (entries: Iterable<[string, Decision]>): void => {
+    setUserDecisions((prev) => {
+      const next = new Map(prev);
+      for (const [name, decision] of entries) next.set(name, decision);
       return next;
     });
   };
@@ -190,11 +177,11 @@ export function ScopeGateStep({
   const selectionStateByKey = useMemo(() => {
     const map = new Map<string, 'accepted' | 'rejected' | 'undecided'>();
     for (const c of components) {
-      map.set(c.name, isIncluded(c.name) ? 'accepted' : 'rejected');
+      map.set(c.name, getState(c.name));
     }
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [components, userExcluded, userUnExcluded]);
+  }, [components, userDecisions]);
 
   const aiFlaggedByKey = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -208,27 +195,36 @@ export function ScopeGateStep({
   }, [searchQuery]);
 
   const applyReject = (target: string): void => {
-    const cascade = computeRejectCascade(target, graph);
-    flipToExcluded(cascade);
+    const rejectCascade = computeRejectCascade(target, graph);
+    const acceptCascade = computeAcceptCascade(target, graph);
+    const entries: Array<[string, Decision]> = [];
+    // Target + ancestors → rejected.
+    for (const n of rejectCascade) entries.push([n, 'rejected']);
+    // Descendants (accept-cascade minus target) → undecided.
+    for (const n of acceptCascade) {
+      if (n !== target) entries.push([n, 'undecided']);
+    }
+    applyDecisions(entries);
   };
   const applyAccept = (target: string): void => {
     const cascade = computeAcceptCascade(target, graph);
-    flipToIncluded(cascade);
+    applyDecisions([...cascade].map((n) => [n, 'accepted'] as [string, Decision]));
   };
 
   const requestToggle = (name: string): void => {
     if (isIncluded(name)) {
       // Reject path — may require confirm.
-      const cascade = computeRejectCascade(name, graph);
-      const ancestors = [...cascade].filter((n) => n !== name).sort();
-      // Blast radius = number of ancestors that will flip to rejected.
-      // Only count those currently included (already-excluded ancestors don't
-      // add operator-visible surprise, but keep this simple: use ancestor count).
-      if (ancestors.length >= 2) {
-        setPendingRejectCascade({ target: name, ancestors });
+      const rejectCascade = computeRejectCascade(name, graph);
+      const acceptCascade = computeAcceptCascade(name, graph);
+      const ancestors = [...rejectCascade].filter((n) => n !== name).sort();
+      const descendants = [...acceptCascade].filter((n) => n !== name).sort();
+      // Blast radius = ancestors flipping to rejected + descendants flipping
+      // to undecided. Prompt when total ≥ 2.
+      if (ancestors.length + descendants.length >= 2) {
+        setPendingRejectCascade({ target: name, ancestors, descendants });
         return;
       }
-      flipToExcluded(cascade);
+      applyReject(name);
     } else {
       applyAccept(name);
     }
@@ -258,7 +254,8 @@ export function ScopeGateStep({
     const accepted: string[] = [];
     const rejected: string[] = [];
     for (const c of components) {
-      if (isIncluded(c.name)) accepted.push(c.name);
+      // Only affirmatively accepted rows are in scope; undecided → rejected.
+      if (getState(c.name) === 'accepted') accepted.push(c.name);
       else rejected.push(c.name);
     }
     return { accepted, rejected };
@@ -470,9 +467,9 @@ export function ScopeGateStep({
     }
     if (input === 'A') {
       const selectable = components.filter((c) => !cycleParticipants.has(c.name)).map((c) => c.name);
-      const anyExcluded = selectable.some((n) => !isIncluded(n));
-      if (anyExcluded) flipToIncluded(selectable);
-      else flipToExcluded(selectable);
+      const anyNotAccepted = selectable.some((n) => getState(n) !== 'accepted');
+      const target: Decision = anyNotAccepted ? 'accepted' : 'rejected';
+      applyDecisions(selectable.map((n) => [n, target] as [string, Decision]));
       return;
     }
     if (key.tab) {
@@ -512,7 +509,7 @@ export function ScopeGateStep({
   const includedCount = useMemo(
     () => components.filter((c) => isIncluded(c.name)).length,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [components, userExcluded, userUnExcluded],
+    [components, userDecisions],
   );
   const hasAnyAi = components.some(isAiFlagged);
   const aiExcludedCount = components.filter(isAiFlagged).length;
@@ -675,15 +672,18 @@ export function ScopeGateStep({
       {pendingRejectCascade && (
         <Box flexDirection="column" borderStyle="single" borderColor="yellow" paddingX={1} marginTop={1}>
           <Text bold color="yellow">
-            Reject {pendingRejectCascade.target}?
+            {`Rejecting ${pendingRejectCascade.target} will:`}
           </Text>
-          <Text dimColor>
-            This will also reject {pendingRejectCascade.ancestors.length} ancestor
-            {pendingRejectCascade.ancestors.length === 1 ? '' : 's'} that slot it:
-          </Text>
-          {pendingRejectCascade.ancestors.map((a) => (
-            <Text key={a}>{`  ${a}`}</Text>
-          ))}
+          {pendingRejectCascade.ancestors.length > 0 && (
+            <Text>
+              {`- Reject ancestors: ${pendingRejectCascade.ancestors.join(', ')}`}
+            </Text>
+          )}
+          {pendingRejectCascade.descendants.length > 0 && (
+            <Text>
+              {`- Deselect descendants: ${pendingRejectCascade.descendants.join(', ')}`}
+            </Text>
+          )}
           <Text dimColor>[y] confirm · [n]/[Esc] cancel</Text>
         </Box>
       )}
