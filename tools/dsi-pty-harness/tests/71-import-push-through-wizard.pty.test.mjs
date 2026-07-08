@@ -209,4 +209,65 @@ describe('experiences import → wizard push against mock EMA', () => {
     const body = JSON.parse(applyReq.body);
     expect(body.acknowledgeBreakingChanges).toBe(true);
   });
+
+  // ── Tier 4 — push-confirmation keystroke coverage ─────────────────────────
+  //
+  // The push-confirm screen (WizardPreviewStep) accepts:
+  //   Enter — confirm push
+  //   d     — toggle diff view
+  //   e     — edit definitions (optional, wired here via modify path)
+  //   s     — save files instead (optional)
+  //   q     — cancel / quit
+  //
+  // Note: the handoff document originally listed "y/n" for this step; the
+  // actual step uses Enter to confirm (see WizardPreviewStep.tsx L112-116).
+  // The y/n confirmation lives on the earlier "Save decisions and exit?"
+  // dialog, which is already covered by the happy-path test above.
+  async function reachPushConfirm() {
+    const { t, dbPath, mock } = await setup();
+    const w = await spawnWizard(['import', '--modify', 'run-push', '--overwrite'], {
+      env: { HOME: t.home, EDS_PIPELINE_DB_PATH: dbPath },
+      cols: 200,
+      rows: 60,
+    });
+    cleanups.push(() => w.close());
+    await w.waitFor(/Button/, { timeout: 15000 });
+    w.writeKey('A');
+    await new Promise((r) => setTimeout(r, 1500));
+    w.writeKey('F');
+    await w.waitFor(/Save decisions and exit\?/, { timeout: 8000 });
+    w.writeKey('y');
+    await w.waitFor(/Save AND push/, { timeout: 8000 });
+    w.writeKey('b');
+    await w.waitFor(/Push to Contentful/, { timeout: 15000 });
+    return { w, mock };
+  }
+
+  it('push-confirm: [d] toggles the diff view', async () => {
+    const { w } = await reachPushConfirm();
+    // Before toggle: legend says "Show diff".
+    await w.waitFor(/\[d\]\s*Show diff/, { timeout: 5000 });
+    w.writeText('d');
+    // After: legend flips to "Hide diff". waitFor polls the buffer so it
+    // doesn't race Ink's re-render under parallel load.
+    await w.waitFor(/\[d\]\s*Hide diff/, { timeout: 5000 });
+    expect(w.getScreen()).toMatch(/\[d\]\s*Hide diff/);
+  });
+
+  it('push-confirm: [q] cancels without hitting apply', async () => {
+    const { w, mock } = await reachPushConfirm();
+    // Snapshot request count before pressing q. If [q] cancels, no new
+    // /imports/apply request should be appended.
+    const applyBefore = mock.requests.filter((r) => r.path.endsWith('/imports/apply')).length;
+    w.writeText('q');
+    const start = Date.now();
+    while (Date.now() - start < 8000) {
+      if (w.isExited()) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    // The process may exit or return to an earlier state. Either way, no
+    // apply request should have been fired.
+    const applyAfter = mock.requests.filter((r) => r.path.endsWith('/imports/apply')).length;
+    expect(applyAfter).toBe(applyBefore);
+  });
 });

@@ -135,4 +135,61 @@ describe('experiences import --modify save modes', () => {
     // And it must NOT have silently written to the recorded savePath.
     expect(existsSync(join(savePath, 'components.json'))).toBe(false);
   });
+
+  // ── Tier 4 — FieldEditor keystroke coverage ───────────────────────────────
+  //
+  // Reaches the FieldEditor panel from final-review by pressing Tab to move
+  // focus from the sidebar to the panel. Uses the seeded pipeline.db so the
+  // sidebar renders Button/Card/Icon.
+  describe('FieldEditor keystrokes', () => {
+    async function reachFieldEditor() {
+      const { t, dbPath } = setup();
+      const w = await spawn(
+        ['import', '--modify', 'run-mod-1', '--no-push'],
+        t.home,
+        dbPath,
+      );
+      await w.waitFor(/Button/, { timeout: 15000 });
+      await w.waitFor(/FIELDS/, { timeout: 5000 });
+      return w;
+    }
+
+    it('the FieldEditor panel renders its default row-level mode-label', async () => {
+      const w = await reachFieldEditor();
+      // Sidebar owns focus initially; the FieldEditor renders in its
+      // row-level mode with the default mode-label at the bottom.
+      const screen = w.getScreen();
+      expect(screen).toMatch(/navigate rows/);
+      expect(screen).toMatch(/Ctrl\+S save/);
+    });
+
+    it('Enter on a row switches out of row-level mode', async () => {
+      const w = await reachFieldEditor();
+      w.writeKey('tab');
+      await new Promise((r) => setTimeout(r, 400));
+      w.writeKey('enter');
+      await new Promise((r) => setTimeout(r, 400));
+      const screen = w.getScreen();
+      const lastIdx = screen.lastIndexOf('FIELDS');
+      const lastFrame = screen.slice(lastIdx);
+      // Row-level label ("↑↓/jk navigate rows  Enter edit fields ...") must
+      // have been replaced with one of the field-level labels.
+      expect(lastFrame).not.toMatch(/Enter edit fields/);
+      expect(lastFrame).toMatch(/Type to edit|cycle field|Space\/Enter toggle|cycle value|\[a\]dd/);
+    });
+
+    it('Esc from field-edit returns to row-level mode-label', async () => {
+      const w = await reachFieldEditor();
+      w.writeKey('tab');
+      await new Promise((r) => setTimeout(r, 300));
+      w.writeKey('enter');
+      await new Promise((r) => setTimeout(r, 300));
+      w.writeKey('esc');
+      await new Promise((r) => setTimeout(r, 400));
+      const screen = w.getScreen();
+      const lastIdx = screen.lastIndexOf('FIELDS');
+      const lastFrame = screen.slice(lastIdx);
+      expect(lastFrame).toMatch(/navigate rows/);
+    });
+  });
 });

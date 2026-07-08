@@ -174,4 +174,95 @@ describe('experiences import — flag → wizard state (PTY)', () => {
     // slip through.
     expect(screen).toMatch(/\[a\]|\[space\]|\[enter\]/i);
   });
+
+  // ── Scope-gate keystroke coverage (Tier 4) ──────────────────────────────
+  //
+  // Uses `--no-auto-filter` so the AI section is empty and the "Components"
+  // section is fully populated — assertions can target that section
+  // deterministically.
+  describe('scope-gate keystrokes', () => {
+    async function reachScopeGate() {
+      const w = await spawn([
+        'import',
+        '--project',
+        REACT_MINIMAL,
+        '--no-push',
+        '--no-auto-filter',
+      ]);
+      await w.waitFor('Design tokens', { timeout: 10000 });
+      w.writeKey('s');
+      await w.waitFor(/Found \d+ files/, { timeout: 8000 });
+      w.writeKey('enter');
+      await w.waitFor(/Components \(3\)/, { timeout: 20000 });
+      return w;
+    }
+
+    it('space toggles the focused row off (2/3 included)', async () => {
+      const w = await reachScopeGate();
+      w.writeKey('space');
+      await new Promise((r) => setTimeout(r, 400));
+      const screen = w.getScreen();
+      const idx = screen.lastIndexOf('Components (3)');
+      const lastFrame = screen.slice(idx);
+      expect(lastFrame).toMatch(/2\/3 included/);
+    });
+
+    it('a toggles the focused row (same as space)', async () => {
+      const w = await reachScopeGate();
+      w.writeText('a');
+      await new Promise((r) => setTimeout(r, 400));
+      const screen = w.getScreen();
+      const idx = screen.lastIndexOf('Components (3)');
+      const lastFrame = screen.slice(idx);
+      expect(lastFrame).toMatch(/2\/3 included/);
+    });
+
+    it('A (shift-a) toggles all component rows off', async () => {
+      const w = await reachScopeGate();
+      w.writeText('A');
+      await new Promise((r) => setTimeout(r, 400));
+      const screen = w.getScreen();
+      // 3/3 → 0/3. The bottom bar renders "none included" when all excluded.
+      const idx = screen.lastIndexOf('Components (3)');
+      const lastFrame = screen.slice(idx);
+      expect(lastFrame).toMatch(/none included/);
+    });
+
+    it('j moves focus down', async () => {
+      const w = await reachScopeGate();
+      // Baseline: focus on first row (Button). Snapshot before/after so we
+      // can compare which row rendered with the cursor glyph.
+      const before = w.getScreen();
+      const beforeLast = before.slice(before.lastIndexOf('Components (3)'));
+      w.writeKey('j');
+      await new Promise((r) => setTimeout(r, 400));
+      const after = w.getScreen();
+      const afterLast = after.slice(after.lastIndexOf('Components (3)'));
+      // The cursor glyph "›" appears once per frame — its position should differ.
+      const beforeCursorIdx = beforeLast.indexOf('›');
+      const afterCursorIdx = afterLast.indexOf('›');
+      expect(afterCursorIdx).toBeGreaterThan(beforeCursorIdx);
+    });
+
+    it('f confirms and advances past the scope-gate', async () => {
+      const w = await reachScopeGate();
+      w.writeText('f');
+      // Next durable state is generate ("Checking claude" / "Generating") or
+      // save-path ("Save to:"). Any of these means we left the scope-gate.
+      await w.waitFor(/Generating|Checking claude|Save to:/, { timeout: 30000 });
+      const screen = w.getScreen();
+      expect(screen).toMatch(/Generating|Checking claude|Save to:/);
+    });
+
+    it('q quits from the scope-gate', async () => {
+      const w = await reachScopeGate();
+      w.writeText('q');
+      const start = Date.now();
+      while (Date.now() - start < 8000) {
+        if (w.isExited()) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      expect(w.isExited()).toBe(true);
+    });
+  });
 });
