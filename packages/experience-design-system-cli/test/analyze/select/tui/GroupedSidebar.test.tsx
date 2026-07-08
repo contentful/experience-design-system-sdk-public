@@ -6,6 +6,7 @@ import {
   GroupedSidebar,
   visibleItemOrder,
   labelStyleFor,
+  buildVisibleRows,
   type GroupedSidebarItem,
   type VisibleRow,
 } from '../../../../src/analyze/select/tui/components/GroupedSidebar.js';
@@ -759,3 +760,72 @@ describe('visibleItemOrder — navigation contract', () => {
     expect(bareIdx).toBe(-1);
   });
 });
+
+describe('buildVisibleRows — large-list view mode', () => {
+  it('emits one flat row per component, alphabetical, no group nesting', () => {
+    const items = [
+      item('Card', { slots: { body: ['Text'] } }),
+      item('Text'),
+      item('Standalone'),
+    ];
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(),
+      viewMode: 'large-list',
+    });
+    // No group-root / group-child / standalone rows; every component is a
+    // `flat` row (or `cycle` when applicable). Composite roots get a suffix.
+    const kinds = new Set(rows.map((r) => r.kind));
+    expect(kinds.has('group-root')).toBe(false);
+    expect(kinds.has('group-child')).toBe(false);
+    expect(kinds.has('standalone')).toBe(false);
+    expect(rows.length).toBe(3);
+    // Alphabetical: Card, Standalone, Text.
+    expect(rows.map((r) => r.label)).toEqual([
+      'Card (1 dep)',
+      'Standalone',
+      'Text',
+    ]);
+  });
+
+  it('pins cycle participants to the top (alphabetical), then flat rows', () => {
+    const items = [
+      item('Zeta'),
+      item('Alpha'),
+      item('Loopy', { slots: { child: ['Inner'] } }),
+      item('Inner', { slots: { back: ['Loopy'] } }),
+    ];
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(['Loopy', 'Inner']),
+      expandedGroups: new Set(),
+      viewMode: 'large-list',
+    });
+    expect(rows[0].kind).toBe('cycle');
+    expect(rows[0].label).toContain('Inner');
+    expect(rows[1].kind).toBe('cycle');
+    expect(rows[1].label).toContain('Loopy');
+    // Non-cycle rows follow alphabetical.
+    expect(rows.slice(2).map((r) => r.label)).toEqual(['Alpha', 'Zeta']);
+  });
+
+  it('renders each component exactly once — no shared-dep duplication', () => {
+    // Shared "Text" would appear twice under grouped view (once per parent);
+    // large-list must show it exactly once.
+    const items = [
+      item('Card', { slots: { body: ['Text'] } }),
+      item('Panel', { slots: { title: ['Text'] } }),
+      item('Text'),
+    ];
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(),
+      viewMode: 'large-list',
+    });
+    const textRows = rows.filter((r) => r.label.startsWith('Text'));
+    expect(textRows.length).toBe(1);
+  });
+});
+

@@ -115,6 +115,7 @@ export function ScopeGateStep({
     useState<{ target: string; ancestors: string[]; descendants: string[] } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [columnOneView, setColumnOneView] = useState<'grouped' | 'large-list'>('grouped');
 
   const baselineState = (name: string): Decision => {
     const c = components.find((x) => x.name === name);
@@ -194,8 +195,9 @@ export function ScopeGateStep({
         expandedGroups: new Set(),
         alwaysExpanded: true,
         showFlatTier: false,
+        viewMode: columnOneView,
       }),
-    [groupedItems, cycleParticipants],
+    [groupedItems, cycleParticipants, columnOneView],
   );
 
   const total = visibleRows.length;
@@ -563,6 +565,41 @@ export function ScopeGateStep({
       handleToggleFocused();
       return;
     }
+    if (input === 'L') {
+      // Toggle Column-1 view between grouped and large-list. Preserve cursor
+      // on the same underlying component when possible; otherwise reset to 0.
+      const currentKey = currentRowKey;
+      const nextView: 'grouped' | 'large-list' =
+        columnOneView === 'grouped' ? 'large-list' : 'grouped';
+      const nextRows = buildVisibleRows({
+        items: groupedItems,
+        cycleParticipants,
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+        showFlatTier: false,
+        viewMode: nextView,
+      });
+      let nextCursor = 0;
+      if (currentKey) {
+        for (let i = 0; i < nextRows.length; i++) {
+          const r = nextRows[i];
+          if (r.itemIdx < 0) continue;
+          if (groupedItems[r.itemIdx]?.key === currentKey) {
+            nextCursor = i;
+            break;
+          }
+        }
+      }
+      const nextScroll =
+        nextCursor < scrollOffset
+          ? nextCursor
+          : nextCursor >= scrollOffset + VISIBLE_COUNT
+            ? nextCursor - VISIBLE_COUNT + 1
+            : scrollOffset;
+      setColumnOneView(nextView);
+      setNav({ cursor: nextCursor, scrollOffset: nextScroll });
+      return;
+    }
     if (input === 'A') {
       const selectable = components.filter((c) => !cycleParticipants.has(c.name)).map((c) => c.name);
       const anyNotAccepted = selectable.some((n) => getState(n) !== 'accepted');
@@ -772,6 +809,7 @@ export function ScopeGateStep({
             aiFlaggedByKey={aiFlaggedByKey}
             dimPredicate={dimPredicate}
             visibleRows={visibleRows}
+            viewMode={columnOneView}
           />
           {columnPlan.layout === 'three-column' && (
             <>
@@ -959,6 +997,9 @@ export function ScopeGateStep({
         </Text>
         <Text>
           <Text color="cyan">[A]</Text> <Text dimColor>toggle all</Text>
+        </Text>
+        <Text>
+          <Text color="cyan">[L]</Text> <Text dimColor>large list</Text>
         </Text>
         <Text>
           <Text color="cyan">[f]</Text> <Text dimColor>continue</Text>

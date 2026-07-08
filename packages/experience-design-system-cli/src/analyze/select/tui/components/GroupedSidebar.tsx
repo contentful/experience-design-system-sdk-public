@@ -110,6 +110,15 @@ export interface GroupedSidebarProps {
    */
   dimPredicate?: (componentKey: string) => boolean;
   /**
+   * View mode for the Column-1 render. `'grouped'` (default) uses the tiered
+   * cycle/empty/grouped-roots/standalone layout. `'large-list'` emits a
+   * cycles-first, otherwise-alphabetical flat list of every component with a
+   * `(N deps)` suffix on composite roots. Only `buildVisibleRows` observes this
+   * flag — every downstream decoration (cursor, selection glyph, AI badge,
+   * dim, cycle color) is row-kind-driven and unchanged.
+   */
+  viewMode?: 'grouped' | 'large-list';
+  /**
    * Optional precomputed visible-row list. When provided, GroupedSidebar
    * renders these rows directly and skips its internal `buildVisibleRows`
    * call. Callers that already memoize the row list (e.g. ScopeGateStep,
@@ -202,8 +211,63 @@ export function buildVisibleRows(props: {
   expandedGroups: Set<string>;
   alwaysExpanded?: boolean;
   showFlatTier?: boolean;
+  viewMode?: 'grouped' | 'large-list';
 }): VisibleRow[] {
-  const { items, cycleParticipants, alwaysExpanded, showFlatTier } = props;
+  const { items, cycleParticipants, alwaysExpanded, showFlatTier, viewMode } = props;
+
+  if (viewMode === 'large-list') {
+    // Cycles-first (alphabetical), then all remaining components alphabetical.
+    // One row per component; no group nesting, no `(shared)` markers. Composite
+    // roots get a `(N deps)` suffix so the density hint from Column-3 carries
+    // over. Every row is a `flat` kind so selection-glyph / AI-badge / dim
+    // logic on the render side lights up unchanged.
+    const rows: VisibleRow[] = [];
+    if (items.length === 0) return rows;
+    const itemByKey = new Map(items.map((it, idx) => [it.key, { it, idx }]));
+    const cycleKeys: string[] = [];
+    const otherKeys: string[] = [];
+    for (const it of items) {
+      if (cycleParticipants.has(it.key)) cycleKeys.push(it.key);
+      else otherKeys.push(it.key);
+    }
+    cycleKeys.sort();
+    otherKeys.sort();
+    // Compute closures over the non-cycle subgraph so we can annotate composite
+    // roots with dep counts. Cycle participants never anchor a closure here —
+    // they're rendered with the cycle glyph and no suffix.
+    const otherItems = items.filter((it) => otherKeys.includes(it.key));
+    const closures = computeAllClosures(itemsToGraph(otherItems));
+    const depCountByKey = new Map<string, number>();
+    for (const [name, closure] of closures) {
+      if (closure.nodes.length > 1) depCountByKey.set(name, closure.nodes.length - 1);
+    }
+    for (const key of cycleKeys) {
+      const rec = itemByKey.get(key);
+      if (!rec) continue;
+      rows.push({
+        kind: 'cycle',
+        key: `cycle:${key}`,
+        label: `${GLYPH_WARN} ${key} (cycle)`,
+        indent: 0,
+        itemIdx: rec.idx,
+      });
+    }
+    for (const key of otherKeys) {
+      const rec = itemByKey.get(key);
+      if (!rec) continue;
+      const dep = depCountByKey.get(key);
+      const suffix = dep !== undefined ? ` (${dep} dep${dep === 1 ? '' : 's'})` : '';
+      rows.push({
+        kind: 'flat',
+        key: `flat:${key}`,
+        label: `${key}${suffix}`,
+        indent: 0,
+        itemIdx: rec.idx,
+      });
+    }
+    return rows;
+  }
+
   const rows: VisibleRow[] = [];
   if (items.length === 0) return rows;
 
@@ -436,6 +500,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
     visibleCount,
     alwaysExpanded,
     showFlatTier,
+    viewMode,
     selectionStateByKey,
     aiFlaggedByKey,
     dimPredicate,
@@ -449,6 +514,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
       expandedGroups,
       alwaysExpanded,
       showFlatTier,
+      viewMode,
     });
 
   // Window rows when scrollOffset+visibleCount are provided; otherwise render

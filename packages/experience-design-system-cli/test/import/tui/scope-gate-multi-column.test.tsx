@@ -376,6 +376,94 @@ describe('ScopeGateStep — legend advertises Enter-jump', () => {
   });
 });
 
+describe('ScopeGateStep — [L] large-list view toggle', () => {
+  it('advertises [L] large list in the legend', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).toContain('[L]');
+    expect(out).toContain('large list');
+  });
+
+  it('grouped view (default) renders composite tree with ▾/├─/└─ glyphs', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    const out = lastFrame() ?? '';
+    // Card is a composite root; grouped view renders `▾ Card (2 deps)` and
+    // tree glyphs on descendants (├─ before a child name).
+    expect(out).toMatch(/▾[^\n]*Card/);
+    expect(out).toMatch(/├─ /);
+  });
+
+  it('[L] switches Column 1 to large-list: no tree glyphs, one row per component', () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    stdin.write('L');
+    const out = lastFrame() ?? '';
+    // Tree glyphs from grouped view are gone (child rows use `├─ ` / `└─ `
+    // with a trailing space; box borders also use `└─` without a space, so
+    // require the trailing space to avoid matching the border).
+    expect(out).not.toMatch(/├─ /);
+    expect(out).not.toMatch(/└─ /);
+    expect(out).not.toMatch(/▾/);
+    // Every component appears (Card, Icon, Standalone, Text).
+    expect(out).toContain('Card (2 deps)');
+    expect(out).toContain('Icon');
+    expect(out).toContain('Standalone');
+    expect(out).toContain('Text');
+  });
+
+  it('[L] toggles between grouped and large-list views', () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    stdin.write('L');
+    expect(lastFrame() ?? '').not.toMatch(/├─ /);
+    stdin.write('L');
+    // Back to grouped: tree glyphs return.
+    expect(lastFrame() ?? '').toMatch(/├─ /);
+  });
+
+  it('cycle participants pin to the top in large-list mode', () => {
+    const CYCLE_GRAPH = [
+      { name: 'Loopy', componentId: 'c0', slots: [{ name: 'child', allowedComponents: ['Inner'] }] },
+      { name: 'Inner', componentId: 'c1', slots: [{ name: 'back', allowedComponents: ['Loopy'] }] },
+      { name: 'Card', componentId: 'c2', slots: [{ name: 'body', allowedComponents: ['Text'] }] },
+      { name: 'Text', componentId: 'c3' },
+    ];
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={CYCLE_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    stdin.write('L');
+    const out = lastFrame() ?? '';
+    const innerPos = out.indexOf('⚠ Inner');
+    const loopyPos = out.indexOf('⚠ Loopy');
+    const cardPos = out.indexOf('Card (1 dep)');
+    expect(innerPos).toBeGreaterThan(-1);
+    expect(loopyPos).toBeGreaterThan(innerPos);
+    expect(cardPos).toBeGreaterThan(loopyPos);
+  });
+
+  it('cursor persists on the same component across view toggle', () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    // Move down: grouped view starts with Card at row 0. Down → first child
+    // (Icon or Text). Grouped ordering: Card, ├─ Icon, └─ Text, Standalone.
+    stdin.write('\x1b[B'); // down → Icon (group-child)
+    const beforeToggle = lastFrame() ?? '';
+    expect(beforeToggle).toMatch(/▶[^\n]*Icon/);
+    stdin.write('L');
+    const afterToggle = lastFrame() ?? '';
+    // Cursor should now land on the Icon row in large-list ordering
+    // (alphabetical: Card, Icon, Standalone, Text).
+    expect(afterToggle).toMatch(/▶[^\n]*Icon/);
+  });
+});
+
 describe('ScopeGateStep — Column 1 flat-tier removal', () => {
   it('does not render the "── All components ──" flat-tier header in Column 1', () => {
     const { lastFrame } = render(
