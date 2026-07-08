@@ -1569,6 +1569,65 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     // And component names still visible.
     expect(frame).toMatch(/Card/);
   });
+
+  it('[C] collapses every group root; [E] expands every group root; both idempotent', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // Two independent groups so we can prove the bindings hit every root, not
+    // just the currently-selected one.
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Card', entry: withSlot('Card', ['Heading']) },
+      { key: 'Heading', entry: leaf('Heading') },
+      { key: 'Layout', entry: withSlot('Layout', ['Header']) },
+      { key: 'Header', entry: leaf('Header') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Groups seed as expanded, so children start visible.
+    let frame = lastFrame() ?? '';
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).toMatch(/▾ Layout/);
+    expect(frame).toContain('Heading');
+    expect(frame).toContain('Header');
+
+    // [C] collapses every group root.
+    stdin.write('C');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/▸ Card/);
+    expect(frame).toMatch(/▸ Layout/);
+    expect(frame).not.toMatch(/▾ Card/);
+    expect(frame).not.toMatch(/▾ Layout/);
+    // Child rows should be gone (collapsed).
+    expect(frame).not.toContain('├─ Heading');
+    expect(frame).not.toContain('└─ Heading');
+    expect(frame).not.toContain('├─ Header');
+    expect(frame).not.toContain('└─ Header');
+
+    // Idempotent — another [C] leaves the state alone.
+    stdin.write('C');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/▸ Card/);
+    expect(frame).toMatch(/▸ Layout/);
+
+    // [E] expands every group root.
+    stdin.write('E');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).toMatch(/▾ Layout/);
+    expect(frame).toContain('Heading');
+    expect(frame).toContain('Header');
+
+    // Idempotent — another [E] leaves the state alone.
+    stdin.write('E');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).toMatch(/▾ Layout/);
+  });
 });
 
 describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {

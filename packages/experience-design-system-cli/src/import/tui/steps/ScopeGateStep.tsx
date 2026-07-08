@@ -248,7 +248,6 @@ export function ScopeGateStep({
         return;
       }
       case 'cycle':
-      case 'group-more':
       case 'flat-header':
       default:
         return;

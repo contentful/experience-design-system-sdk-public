@@ -121,23 +121,52 @@ describe('GroupedSidebar', () => {
     expect(dMatches.length).toBe(1);
   });
 
-  it('depth cap of 2: A->B->C->D hides D behind +N more', () => {
+  it('deep chain A->B->C->D: all descendants render, no +N more, indented per depth', () => {
+    const items = [
+      item('A', { slots: { s: ['B'] } }),
+      item('B', { slots: { s: ['C'] } }),
+      item('C', { slots: { s: ['D'] } }),
+      item('D'),
+    ];
     const { lastFrame } = renderSidebar({
-      items: [
-        item('A', { slots: { s: ['B'] } }),
-        item('B', { slots: { s: ['C'] } }),
-        item('C', { slots: { s: ['D'] } }),
-        item('D'),
-      ],
+      items,
       expandedGroups: new Set(['A']),
     });
     const frame = lastFrame() ?? '';
+    // Never emit the overflow marker.
+    expect(frame).not.toMatch(/\+\d+ more/);
+    // Root + every descendant is present.
     expect(frame).toContain('A');
     expect(frame).toContain('B');
     expect(frame).toContain('C');
-    // D is depth 3, beyond cap; hidden behind +N more marker.
-    expect(frame).not.toMatch(/[│├└─ ]D\b/);
-    expect(frame).toMatch(/\+\d+ more/);
+    expect(frame).toContain('D');
+
+    // The A closure produces 4 total rows (root + 3 descendants). Assert on
+    // the visible-row structure so we don't get fooled by substring matches
+    // on ordinary letter tokens.
+    const order = visibleItemOrder({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(['A']),
+    });
+    // All 4 items reachable via selectable rows exactly once.
+    expect(order.slice().sort()).toEqual([0, 1, 2, 3]);
+
+    // Each descendant should sit on its own line with tree glyphs and
+    // depth-proportional indent (2 spaces per depth beyond 1).
+    const lines = frame.split('\n');
+    const bLine = lines.find((l) => /├─ B\b|└─ B\b/.test(l)) ?? '';
+    const cLine = lines.find((l) => /├─ C\b|└─ C\b/.test(l)) ?? '';
+    const dLine = lines.find((l) => /├─ D\b|└─ D\b/.test(l)) ?? '';
+    expect(bLine).not.toBe('');
+    expect(cLine).not.toBe('');
+    expect(dLine).not.toBe('');
+    // Indent grows with depth: B at depth 1 has no extra padding before the
+    // tree glyph; C (depth 2) has 2 spaces; D (depth 3) has 4 spaces.
+    expect(bLine.indexOf('├─') < cLine.indexOf('├─') + 1 || bLine.indexOf('└─') < cLine.indexOf('└─') + 1).toBe(true);
+    const cGlyphIdx = cLine.search(/[├└]─/);
+    const dGlyphIdx = dLine.search(/[├└]─/);
+    expect(dGlyphIdx).toBeGreaterThan(cGlyphIdx);
   });
 
   it('cycle participants render as flat rows at TOP with ⚠', () => {

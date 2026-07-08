@@ -838,6 +838,20 @@ export function GenerateReviewStep({
       setFinalizeError(null);
       return;
     }
+    if (input === 'E') {
+      // Expand every group root — the set of "every group root" is any
+      // closure whose node count is >1 (i.e., roots with ≥1 descendant).
+      const roots = new Set<string>();
+      for (const [name, closure] of closures.entries()) {
+        if (closure.nodes.length > 1) roots.add(name);
+      }
+      setExpandedGroups(roots);
+      return;
+    }
+    if (input === 'C') {
+      setExpandedGroups(new Set());
+      return;
+    }
     if (input === 'J') {
       // Toggle read-only JSON view.
       setShowJson((prev) => !prev);
@@ -1332,7 +1346,7 @@ export function GenerateReviewStep({
                     ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel' +
-                      (closures.size > 0 ? '  [Space] expand/collapse' : '') +
+                      (closures.size > 0 ? '  [Space] expand/collapse  [E/C] expand/collapse all' : '') +
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       '  [q] quit'
