@@ -88,6 +88,31 @@ describe('ScopeGateStep — cycle-member injection under composite parents', () 
   });
 });
 
+describe('ScopeGateStep — cycle-tier subtree expansion (task 35)', () => {
+  // At scope-gate (alwaysExpanded=true) cycle-tier rows render as expanded
+  // mini-groups. A cycle participant's slot targets appear inline beneath it
+  // with tree glyphs, so the operator can see the closure without leaving
+  // the sidebar.
+  it('renders slot targets inline under an expanded cycle row', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep
+        components={[
+          withSlots('NodeA', 'c0', [{ name: 's', allowedComponents: ['NodeB'] }]),
+          withSlots('NodeB', 'c1', [{ name: 's', allowedComponents: ['NodeA'] }]),
+        ]}
+        onConfirm={() => {}}
+        onQuit={() => {}}
+      />,
+    );
+    const out = lastFrame() ?? '';
+    // Both cycle rows are expanded (▾) with the ⚠ warning glyph.
+    expect(out).toMatch(/▾.*⚠.*NodeA/);
+    expect(out).toMatch(/▾.*⚠.*NodeB/);
+    // Tree glyph shows a nested slot target.
+    expect(out).toMatch(/[├└]─/);
+  });
+});
+
 describe('ScopeGateStep — closure-aware selection', () => {
   it('Accepting a root cascades to every component in its closure', () => {
     const onConfirm = vi.fn();

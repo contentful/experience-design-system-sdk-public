@@ -507,18 +507,26 @@ describe('ScopeGateStep — cycle participants in side columns', () => {
     const loopyPos = out.indexOf('⚠ Loopy');
     expect(innerPos).toBeGreaterThan(-1);
     expect(loopyPos).toBeGreaterThan(innerPos);
-    // Column 2's non-cycle "Card" row is the one on the same line as its ⚠
-    // separator group — we match a line that begins with whitespace + "Card"
-    // and lacks "(1 dep)" (that suffix only appears in Column 3).
-    const lines = out.split('\n');
-    const col2CardLineIdx = lines.findIndex(
-      (l) => /^\s+Card$/.test(l.replace(/\s+$/, '')) || (l.includes('  Card') && !l.includes('(1 dep)') && !l.includes('⚠')),
-    );
-    expect(col2CardLineIdx).toBeGreaterThan(-1);
-    const loopyLineIdx = lines.findIndex((l) => l.includes('⚠ Loopy') && !l.includes('(cycle)'));
-    // Column 2's ⚠ Loopy line (no "(cycle)" suffix — that's in Column 1).
-    expect(loopyLineIdx).toBeGreaterThan(-1);
-    expect(col2CardLineIdx).toBeGreaterThan(loopyLineIdx);
+    // Extract Column 2 content by stripping Column 1 (everything up to and
+    // including the last `│` on each line). Task 35 expanded cycle-tier rows
+    // in Column 1, so line-wise Column-1/Column-2 alignment shifted — but the
+    // ORDER within Column 2 alone is unchanged: cycle members (alphabetical:
+    // Inner, Loopy) then non-cycle rows (Card, Text).
+    const col2 = out
+      .split('\n')
+      .map((line) => {
+        const lastPipe = line.lastIndexOf('│');
+        return lastPipe >= 0 ? line.slice(lastPipe + 1) : '';
+      })
+      .join('\n');
+    const col2InnerPos = col2.indexOf('⚠ Inner');
+    const col2LoopyPos = col2.indexOf('⚠ Loopy');
+    // Match Column 2's non-cycle Card row specifically — Column 3 renders
+    // "Card (1 dep)" (a group-root), so exclude the "(1 dep)" occurrence.
+    const col2CardPos = col2.search(/\bCard(?!\s*\()/);
+    expect(col2InnerPos).toBeGreaterThan(-1);
+    expect(col2LoopyPos).toBeGreaterThan(col2InnerPos);
+    expect(col2CardPos).toBeGreaterThan(col2LoopyPos);
   });
 });
 

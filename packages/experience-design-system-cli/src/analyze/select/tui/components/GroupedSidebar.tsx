@@ -297,15 +297,93 @@ export function buildVisibleRows(props: {
   cycleKeys.sort();
   emptyKeys.sort();
 
+  // Track cycle-child occurrences ACROSS the cycle-tier subtrees so a member
+  // slotted by multiple cycle-tier parents picks up `(shared)` on 2nd+.
+  const seenCycleTierChildOccurrence = new Set<string>();
+
+  /**
+   * Local subtree walker for a cycle-tier root. `computeAllClosures` collapses
+   * cyclic closures to `[root]`, so we can't reuse the grouped-roots walker.
+   * BFS from `root` through slot edges, stopping at back-edges (visited seed
+   * includes root itself). Nodes reached via a back-edge are still emitted
+   * once as a leaf so the operator can see the closure boundary.
+   */
+  const computeCycleMemberSubtree = (
+    root: string,
+  ): Array<{ name: string; depth: number; isCycleMember: boolean }> => {
+    const out: Array<{ name: string; depth: number; isCycleMember: boolean }> = [];
+    const visited = new Set<string>([root]);
+    const queue: Array<{ name: string; depth: number }> = [{ name: root, depth: 0 }];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      const parentItem = itemByKey.get(cur.name)?.it;
+      if (!parentItem) continue;
+      const slotTargets: string[] = [];
+      const seenTarget = new Set<string>();
+      for (const slot of Object.values(parentItem.entry.$slots ?? {})) {
+        const allowed = Array.isArray(slot?.$allowedComponents)
+          ? (slot.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
+          : [];
+        for (const target of allowed) {
+          if (!itemByKey.has(target)) continue;
+          if (seenTarget.has(target)) continue;
+          seenTarget.add(target);
+          slotTargets.push(target);
+        }
+      }
+      slotTargets.sort();
+      for (const target of slotTargets) {
+        if (visited.has(target)) continue;
+        visited.add(target);
+        const isCycleMember = cycleParticipants.has(target);
+        out.push({ name: target, depth: cur.depth + 1, isCycleMember });
+        // Continue descent unless this is a cycle back-edge into the root.
+        // BFS through target for its own slots — but if target itself is a
+        // cycle participant and slotting it would loop back to root, we still
+        // add it once (already done above) and BFS naturally terminates via
+        // the `visited` guard when a back-edge is revisited.
+        queue.push({ name: target, depth: cur.depth + 1 });
+      }
+    }
+    return out;
+  };
+
   for (const key of cycleKeys) {
     const rec = itemByKey.get(key);
     if (!rec) continue;
+    const expanded = alwaysExpanded ? true : props.expandedGroups.has(key);
+    const glyphExpand = expanded ? GLYPH_EXPAND_EXPANDED : GLYPH_EXPAND_COLLAPSED;
     rows.push({
       kind: 'cycle',
       key: `cycle:${key}`,
-      label: `${GLYPH_WARN} ${key} (cycle)`,
+      label: `${glyphExpand} ${GLYPH_WARN} ${key} (cycle)`,
       indent: 0,
       itemIdx: rec.idx,
+      rootName: key,
+    });
+    if (!expanded) continue;
+    const subtree = computeCycleMemberSubtree(key);
+    subtree.forEach((child, i) => {
+      const isLast = i === subtree.length - 1;
+      const glyph = isLast ? GLYPH_TREE_LAST : GLYPH_TREE_MID;
+      let sharedSuffix = false;
+      if (seenCycleTierChildOccurrence.has(child.name)) sharedSuffix = true;
+      else seenCycleTierChildOccurrence.add(child.name);
+      const childRec = itemByKey.get(child.name);
+      const indent = '  '.repeat(Math.max(0, child.depth - 1));
+      const labelName = child.isCycleMember
+        ? `${GLYPH_WARN} ${child.name} (cycle)`
+        : child.name;
+      rows.push({
+        kind: 'group-child',
+        key: `cycle-child:${key}:${child.name}`,
+        label: `${indent}${glyph} ${labelName}${sharedSuffix ? ' (shared)' : ''}`,
+        indent: child.depth,
+        sharedSuffix,
+        cycleChild: child.isCycleMember || undefined,
+        itemIdx: childRec?.idx ?? -1,
+        rootName: key,
+      });
     });
   }
   for (const key of emptyKeys) {
