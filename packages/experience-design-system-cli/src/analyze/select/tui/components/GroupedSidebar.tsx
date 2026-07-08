@@ -498,14 +498,25 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           dimPredicate(itemName);
 
         const isSynthetic = row.kind === 'group-more' || row.kind === 'flat-header';
+        const isCursor = isSelected && focused;
         const labelDim =
-          row.kind === 'group-more' ||
-          row.kind === 'flat-header' ||
-          row.sharedSuffix === true ||
-          canDim;
+          !isCursor &&
+          (row.kind === 'group-more' ||
+            row.kind === 'flat-header' ||
+            row.sharedSuffix === true ||
+            canDim);
 
         return (
           <Box key={row.key}>
+            {isCursor ? (
+              <Text color="cyan" bold>
+                {'▶'}
+              </Text>
+            ) : (
+              // Reserve the cursor-glyph column so labels stay column-aligned
+              // as the cursor moves through the list.
+              <Text> </Text>
+            )}
             {badge ? (
               <Text color={badge.color} bold={badge.bold} dimColor={badge.dim}>
                 {badge.char}

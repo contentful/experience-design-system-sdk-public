@@ -643,20 +643,29 @@ export function ScopeGateStep({
             if (e.kind === 'section') {
               return (
                 <Text key={i} bold>
+                  {'  '}
                   {e.label}
                 </Text>
               );
             }
             if (e.kind === 'empty') {
               return (
-                <Text key={i} dimColor>
-                  {e.label}
+                <Text key={i}>
+                  <Text> </Text>
+                  <Text dimColor>{' ' + e.label}</Text>
                 </Text>
               );
             }
             return (
-              <Text key={i} inverse={isCursor}>
-                {e.label}
+              <Text key={i}>
+                {isCursor ? (
+                  <Text color="cyan" bold>
+                    {'▶'}
+                  </Text>
+                ) : (
+                  <Text> </Text>
+                )}
+                <Text inverse={isCursor}>{' ' + e.label}</Text>
               </Text>
             );
           })}

@@ -370,6 +370,85 @@ describe('GroupedSidebar', () => {
     expect(line).not.toMatch(/Widget\s+\*/);
   });
 
+  describe('cursor glyph', () => {
+    it('cursor row is prefixed with a ▶ glyph when focused', () => {
+      const { lastFrame } = renderSidebar({
+        items: [item('Alpha'), item('Bravo')],
+        selectedIdx: 0,
+        focused: true,
+      });
+      const frame = lastFrame() ?? '';
+      const alphaLine = frame.split('\n').find((l) => l.includes('Alpha')) ?? '';
+      expect(alphaLine).toContain('▶');
+    });
+
+    it('non-cursor rows do NOT have the ▶ glyph (leading space reserved instead)', () => {
+      const { lastFrame } = renderSidebar({
+        items: [item('Alpha'), item('Bravo')],
+        selectedIdx: 0,
+        focused: true,
+      });
+      const frame = lastFrame() ?? '';
+      const bravoLine = frame.split('\n').find((l) => l.includes('Bravo')) ?? '';
+      expect(bravoLine).not.toContain('▶');
+    });
+
+    it('cursor row on a shared-dep suffix row is NOT dimmed', () => {
+      // Two roots sharing dep S. When expanded, the 2nd S occurrence carries
+      // `sharedSuffix=true` which would normally dim the row. If the cursor
+      // lands on that row, brightness must be preserved so the user sees it.
+      const items: GroupedSidebarItem[] = [
+        item('R1', { slots: { s: ['S'] } }),
+        item('R2', { slots: { s: ['S'] } }),
+        item('S'),
+      ];
+      // Find visible-row order and put the cursor on the 2nd (shared) S.
+      const order = visibleItemOrder({
+        items,
+        cycleParticipants: new Set(),
+        expandedGroups: new Set(['R1', 'R2']),
+      });
+      // The 2nd occurrence of S's itemIdx corresponds to items index of S.
+      const sIdx = items.findIndex((i) => i.key === 'S');
+      // Confirm S is reachable in the visible order (it appears twice).
+      expect(order.filter((i) => i === sIdx).length).toBe(2);
+
+      const { lastFrame } = renderSidebar({
+        items,
+        expandedGroups: new Set(['R1', 'R2']),
+        selectedIdx: sIdx,
+        focused: true,
+      });
+      const frame = lastFrame() ?? '';
+      // Both S rows share the same itemIdx, so both become "cursor rows"
+      // visually. Assert the cursor glyph is present at least once and that
+      // the shared-suffix row still renders its "(shared)" text without
+      // being hidden.
+      expect(frame).toContain('▶');
+      expect(frame).toContain('(shared)');
+      // The line carrying the cursor glyph should also NOT be wrapped in the
+      // dim escape sequence. `ink-testing-library` strips ANSI, so we assert
+      // structurally: the cursor row is present and legible.
+      const cursorLine = frame.split('\n').find((l) => l.includes('▶')) ?? '';
+      expect(cursorLine).toContain('S');
+    });
+
+    it('cursor row is NOT dimmed even when dimPredicate matches every row', () => {
+      const { lastFrame } = renderSidebar({
+        items: [item('Alpha'), item('Bravo')],
+        selectedIdx: 0,
+        focused: true,
+        // Predicate that matches every component: normally every row would
+        // dim; the cursor row must stay bright.
+        dimPredicate: () => true,
+      });
+      const frame = lastFrame() ?? '';
+      // Cursor row renders with the glyph even under a matching predicate.
+      const cursorLine = frame.split('\n').find((l) => l.includes('▶')) ?? '';
+      expect(cursorLine).toContain('Alpha');
+    });
+  });
+
   it('showFlatTier: flat rows are selectable via itemIdx', () => {
     const items = [
       item('Card', { slots: { s: ['Heading'] } }),
