@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import type { RawComponentDefinition } from '../../types.js';
+import type { RawComponentDefinition } from '../types.js';
 
 export const HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON = 'data-fetch-wrapper';
 export const POSSIBLE_DATA_FETCH_WRAPPER_REASON = 'possible-data-fetch-wrapper';

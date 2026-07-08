@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { shouldExcludeDueToValidation, validateExtractedComponents } from '../../../src/analyze/extract/validate.js';
+import {
+  shouldExcludeDueToValidation,
+  validateExtractedComponents,
+} from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../../src/types.js';
 
 function makeComponent(overrides: Partial<RawComponentDefinition> = {}): RawComponentDefinition {

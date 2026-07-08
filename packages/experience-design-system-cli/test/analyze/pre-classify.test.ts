@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { preClassifyProp, preClassifyComponent } from '../../src/analyze/pre-classify.js';
+import { preClassifyProp, preClassifyComponent } from '@contentful/experience-design-system-extraction';
 import type { RawPropDefinition, RawComponentDefinition } from '../../src/types.js';
 
 function makeProp(partial: Partial<RawPropDefinition> & Pick<RawPropDefinition, 'name' | 'type'>): RawPropDefinition {

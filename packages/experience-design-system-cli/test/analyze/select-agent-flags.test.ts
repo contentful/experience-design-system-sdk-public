@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { runCli, runCliWithEnv } from '../helpers/cli-runner.js';
 import { createTestFixture, type TestFixture } from '../helpers/fixtures.js';
 import { createMockAgent, type MockAgent } from '../helpers/mock-agent.js';
-import { HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON } from '../../src/analyze/extract/source-inspection.js';
+import { HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON } from '@contentful/experience-design-system-extraction';
 
 describe('analyze select-agent — flag variations', () => {
   let fixture: TestFixture;

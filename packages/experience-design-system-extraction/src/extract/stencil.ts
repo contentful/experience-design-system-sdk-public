@@ -4,7 +4,7 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
-} from '../../types.js';
+} from '../types.js';
 
 function isStencilFile(sourceFile: SourceFile): boolean {
   return sourceFile.getImportDeclarations().some((imp) => imp.getModuleSpecifierValue() === '@stencil/core');

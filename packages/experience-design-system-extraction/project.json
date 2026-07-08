@@ -1,0 +1,74 @@
+{
+  "name": "experience-design-system-extraction",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/experience-design-system-extraction/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "packages/experience-design-system-extraction/dist",
+        "main": "packages/experience-design-system-extraction/src/index.ts",
+        "tsConfig": "packages/experience-design-system-extraction/tsconfig.build.json",
+        "assets": []
+      },
+      "dependsOn": []
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "packages/experience-design-system-extraction"
+      },
+      "dependsOn": ["build"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint",
+        "cwd": "packages/experience-design-system-extraction"
+      },
+      "dependsOn": ["build"]
+    },
+    "lint:fix": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint --fix",
+        "cwd": "packages/experience-design-system-extraction"
+      },
+      "dependsOn": ["build"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run",
+        "cwd": "packages/experience-design-system-extraction"
+      },
+      "dependsOn": ["build"]
+    },
+    "test:watch": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest",
+        "cwd": "packages/experience-design-system-extraction"
+      },
+      "dependsOn": ["build"]
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "rm -rf dist",
+        "cwd": "packages/experience-design-system-extraction"
+      }
+    },
+    "nx-release-publish": {
+      "executor": "@nx/js:release-publish",
+      "options": {
+        "packageRoot": "packages/experience-design-system-extraction"
+      },
+      "dependsOn": ["build"]
+    }
+  }
+}

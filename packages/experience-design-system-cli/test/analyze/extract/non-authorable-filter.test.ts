@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isNonAuthorableComponent } from '../../../src/analyze/extract/non-authorable-filter.js';
+import { isNonAuthorableComponent } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../../src/types.js';
 
 function makeComponent(partial: Partial<RawComponentDefinition>): RawComponentDefinition {

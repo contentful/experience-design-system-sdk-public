@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateExtractedComponents } from '../../../src/analyze/extract/validate.js';
+import { validateExtractedComponents } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../../src/types.js';
 
 describe('validateExtractedComponents integration', () => {

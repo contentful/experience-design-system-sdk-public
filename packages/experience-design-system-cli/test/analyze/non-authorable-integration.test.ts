@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { preClassifyComponent } from '../../src/analyze/pre-classify.js';
-import { isNonAuthorableComponent } from '../../src/analyze/extract/non-authorable-filter.js';
+import { preClassifyComponent } from '@contentful/experience-design-system-extraction';
+import { isNonAuthorableComponent } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../src/types.js';
 
 // Exercises the same composition that command.ts will use:

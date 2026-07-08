@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolve } from 'node:path';
-import { extractReactComponents } from '../../../src/analyze/extract/react.js';
+import { extractReactComponents } from '@contentful/experience-design-system-extraction';
 
 const FIXTURES = resolve(import.meta.dirname, 'fixtures');
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeExtractionScore, deriveNeedsReview } from '../../../src/analyze/extract/scoring.js';
+import { computeExtractionScore, deriveNeedsReview } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../../src/types.js';
 
 function makeComponent(overrides: Partial<RawComponentDefinition> = {}): RawComponentDefinition {

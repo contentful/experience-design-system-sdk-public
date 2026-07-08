@@ -1,0 +1,44 @@
+{
+  "name": "@contentful/experience-design-system-extraction",
+  "version": "2.7.4",
+  "description": "Component extraction engine for the Contentful Experience Design System SDK",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "node": "./dist/src/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "nx build experience-design-system-extraction",
+    "typecheck": "nx typecheck experience-design-system-extraction",
+    "clean": "nx clean experience-design-system-extraction",
+    "test": "nx test experience-design-system-extraction",
+    "lint": "nx lint experience-design-system-extraction",
+    "lint:fix": "nx lint:fix experience-design-system-extraction"
+  },
+  "dependencies": {
+    "@contentful/experience-design-system-types": "workspace:*",
+    "@vue/compiler-sfc": "^3.5.31",
+    "svelte": "^5.56.4",
+    "ts-morph": "^27.0.2",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@tsconfig/node24": "^24.0.3",
+    "@types/node": "^24.0.3",
+    "typescript-eslint": "^8.52.0",
+    "vitest": "^4.0.16"
+  }
+}

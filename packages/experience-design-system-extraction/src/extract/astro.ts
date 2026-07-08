@@ -7,7 +7,7 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
-} from '../../types.js';
+} from '../types.js';
 
 function extractAllowedValues(typeText: string): string[] | undefined {
   // Check if the type is a union of string literals like 'a' | 'b' | 'c'

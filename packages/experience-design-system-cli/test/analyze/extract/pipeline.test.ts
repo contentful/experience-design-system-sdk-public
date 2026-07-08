@@ -2,7 +2,7 @@ import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { extractComponents } from '../../../src/analyze/extract/pipeline.js';
+import { extractComponents } from '@contentful/experience-design-system-extraction';
 
 let tempDir: string;
 

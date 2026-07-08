@@ -3,7 +3,16 @@ import { render } from 'ink';
 import { mkdir, readdir, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Command } from 'commander';
-import { extractComponents } from './extract/pipeline.js';
+import {
+  extractComponents,
+  preClassifyComponent,
+  isNonAuthorableComponent,
+  computeExtractionScore,
+  deriveNeedsReview,
+  describeReviewReasons,
+  inspectComponentSource,
+  validateExtractedComponents,
+} from '@contentful/experience-design-system-extraction';
 import { AnalyzeView } from './tui/AnalyzeView.js';
 import type { AnalyzeViewResult } from './tui/AnalyzeView.js';
 import { registerAnalyzeEditCommand } from './select/command.js';
@@ -16,11 +25,6 @@ import {
   storeRawComponents,
   storeScannedFiles,
 } from '../session/db.js';
-import { preClassifyComponent } from './pre-classify.js';
-import { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
-import { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
-import { describeReviewReasons, inspectComponentSource } from './extract/source-inspection.js';
-import { validateExtractedComponents } from './extract/validate.js';
 import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
 
 interface AnalyzeExtractOptions {

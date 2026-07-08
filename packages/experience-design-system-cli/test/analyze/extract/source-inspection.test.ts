@@ -6,7 +6,7 @@ import {
   HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON,
   ZERO_SURFACE_RENDERED_UI_REASON,
   inspectComponentSource,
-} from '../../../src/analyze/extract/source-inspection.js';
+} from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../../src/types.js';
 
 const tempDirs: string[] = [];

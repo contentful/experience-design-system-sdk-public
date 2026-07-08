@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ExtractionValidationIssue } from '../../../src/analyze/extract/validate.js';
+import type { ExtractionValidationIssue } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../../src/types.js';
 
 describe('ExtractionValidationIssue type', () => {
@@ -62,7 +62,10 @@ describe('RawComponentDefinition with validationIssues', () => {
   });
 });
 
-import { validateExtractedComponents, shouldExcludeDueToValidation } from '../../../src/analyze/extract/validate.js';
+import {
+  validateExtractedComponents,
+  shouldExcludeDueToValidation,
+} from '@contentful/experience-design-system-extraction';
 
 function makeComponent(overrides: Partial<RawComponentDefinition> = {}): RawComponentDefinition {
   return {
@@ -310,7 +313,7 @@ describe('validateExtractedComponents', () => {
   });
 });
 
-import { formatExclusionWarning } from '../../../src/analyze/extract/validate.js';
+import { formatExclusionWarning } from '@contentful/experience-design-system-extraction';
 
 describe('formatExclusionWarning', () => {
   it('returns empty string when no components are excluded', () => {

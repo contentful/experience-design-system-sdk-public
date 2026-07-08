@@ -12,7 +12,7 @@ import {
   validateExtractedComponents,
   shouldExcludeDueToValidation,
   formatExclusionWarning,
-} from '../extract/validate.js';
+} from '@contentful/experience-design-system-extraction';
 import type { PreviewValidationError } from '../../apply/api-client.js';
 import type { ExtractionValidationIssue } from '../../types.js';
 

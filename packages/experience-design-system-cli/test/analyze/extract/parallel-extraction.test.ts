@@ -2,9 +2,9 @@ import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { extractVueComponents } from '../../../src/analyze/extract/vue.js';
-import { extractAstroComponents } from '../../../src/analyze/extract/astro.js';
-import { extractComponents } from '../../../src/analyze/extract/pipeline.js';
+import { extractVueComponents } from '@contentful/experience-design-system-extraction';
+import { extractAstroComponents } from '@contentful/experience-design-system-extraction';
+import { extractComponents } from '@contentful/experience-design-system-extraction';
 
 let tempDir: string;
 

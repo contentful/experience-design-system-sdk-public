@@ -4,7 +4,7 @@ import {
   isWarningForComponent,
   partitionGlobalWarnings,
 } from '../../src/analyze/build-analyze-view-rows.js';
-import { validateExtractedComponents } from '../../src/analyze/extract/validate.js';
+import { validateExtractedComponents } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../src/types.js';
 
 describe('buildAnalyzeViewRows', () => {

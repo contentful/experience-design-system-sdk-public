@@ -12,7 +12,7 @@ import {
   loadCDFComponents,
 } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
-import { HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON } from '../../src/analyze/extract/source-inspection.js';
+import { HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON } from '@contentful/experience-design-system-extraction';
 
 const bin = resolve(import.meta.dirname, '../../bin/cli.js');
 
