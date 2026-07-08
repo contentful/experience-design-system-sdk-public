@@ -324,6 +324,219 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     expect(out).toContain('AI excluded all components');
   });
 
+  describe('D2 — per-row cascade selection', () => {
+    // Article slots Card via `body`, so Article is an ancestor of Card.
+    // Rejecting Card should cascade UP to Article; accepting Article should
+    // cascade DOWN to Card.
+    const ARTICLE_CARD = [
+      {
+        name: 'Article',
+        componentId: 'a0',
+        slots: [{ name: 'body', allowedComponents: ['Card'] }],
+      },
+      { name: 'Card', componentId: 'c0' },
+    ];
+
+    it('rejecting a child cascades to ancestors (blast radius 1 → no prompt)', () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={ARTICLE_CARD} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      // Cursor starts on Article (root row). Move to Card child then reject.
+      stdin.write('j'); // Card child
+      stdin.write(' '); // reject Card — cascades to Article (single ancestor → no prompt)
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Article']));
+      expect(arg.accepted).toEqual([]);
+    });
+
+    it('accepting a root cascades to descendants', () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={ARTICLE_CARD} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      // Reject Article first (no ancestors), then re-accept — cascade to Card.
+      stdin.write(' '); // reject Article
+      stdin.write(' '); // accept Article → cascades to Card
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.accepted).toEqual(expect.arrayContaining(['Article', 'Card']));
+      expect(arg.rejected).toEqual([]);
+    });
+
+    it('reject cascade with blast-radius ≥ 2 shows confirm; [y] applies', () => {
+      // Two ancestors slot Card: Article and Newsletter.
+      const TWO_PARENTS = [
+        {
+          name: 'Article',
+          componentId: 'a0',
+          slots: [{ name: 'body', allowedComponents: ['Card'] }],
+        },
+        {
+          name: 'Newsletter',
+          componentId: 'n0',
+          slots: [{ name: 'items', allowedComponents: ['Card'] }],
+        },
+        { name: 'Card', componentId: 'c0' },
+      ];
+      const onConfirm = vi.fn();
+      const { stdin, lastFrame } = render(
+        <ScopeGateStep components={TWO_PARENTS} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      // Row order: Article root, Card child; Newsletter root, Card child; ...
+      // Move to Card (child of Article, row 1). Reject → blast radius 2.
+      stdin.write('j');
+      stdin.write(' ');
+      let frame = lastFrame() ?? '';
+      expect(frame).toContain('Reject Card');
+      expect(frame).toContain('Article');
+      expect(frame).toContain('Newsletter');
+      stdin.write('y'); // confirm
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Article', 'Newsletter']));
+    });
+
+    it('reject cascade confirm can be cancelled with [n]', () => {
+      const TWO_PARENTS = [
+        {
+          name: 'Article',
+          componentId: 'a0',
+          slots: [{ name: 'body', allowedComponents: ['Card'] }],
+        },
+        {
+          name: 'Newsletter',
+          componentId: 'n0',
+          slots: [{ name: 'items', allowedComponents: ['Card'] }],
+        },
+        { name: 'Card', componentId: 'c0' },
+      ];
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={TWO_PARENTS} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      stdin.write('j'); // Card
+      stdin.write(' '); // reject → prompt
+      stdin.write('n'); // cancel
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      // Nothing rejected.
+      expect(arg.rejected).toEqual([]);
+      expect(arg.accepted).toEqual(expect.arrayContaining(['Article', 'Newsletter', 'Card']));
+    });
+
+    it('group-child rows and flat-tier rows are individually selectable', () => {
+      const onConfirm = vi.fn();
+      // Card + Text child; plus a standalone. Flat tier exposes every
+      // component once.
+      const setup = [
+        {
+          name: 'Card',
+          componentId: 'c0',
+          slots: [{ name: 'body', allowedComponents: ['Text'] }],
+        },
+        { name: 'Text', componentId: 't0' },
+        { name: 'Standalone', componentId: 's0' },
+      ];
+      const { stdin } = render(
+        <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      // Rows: Card(root), Text(child), Standalone, flat-header, Card(flat),
+      // Standalone(flat), Text(flat).
+      // Reject Text via its flat row (last). Cascades to Card.
+      stdin.write('j'); // Text child
+      stdin.write('j'); // Standalone
+      stdin.write('j'); // flat-header (skipped by toggle)
+      stdin.write('j'); // Card flat
+      stdin.write('j'); // Standalone flat
+      stdin.write('j'); // Text flat
+      stdin.write(' '); // reject Text — cascades up to Card
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.rejected).toEqual(expect.arrayContaining(['Text', 'Card']));
+      expect(arg.accepted).toEqual(expect.arrayContaining(['Standalone']));
+    });
+  });
+
+  describe('D4 — lineage panel', () => {
+    const FIXTURE_L = [
+      {
+        name: 'Article',
+        componentId: 'a0',
+        slots: [{ name: 'body', allowedComponents: ['Card'] }],
+      },
+      { name: 'Card', componentId: 'c0' },
+    ];
+
+    it('[l] opens lineage panel showing ancestors + descendants of focused row', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE_L} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      // Focus Card (child row).
+      stdin.write('j');
+      stdin.write('l');
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('Lineage: Card');
+      expect(frame).toContain('Ancestors:');
+      expect(frame).toContain('Article');
+      expect(frame).toContain('Descendants:');
+    });
+
+    it('lineage panel closes on [l] or Esc', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE_L} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('l');
+      expect(lastFrame() ?? '').toContain('Lineage:');
+      stdin.write('l');
+      expect(lastFrame() ?? '').not.toContain('Lineage:');
+    });
+  });
+
+  describe('D7 — fuzzy search', () => {
+    const FIXTURE_S = [
+      { name: 'AlphaCard', componentId: 'c0' },
+      { name: 'BetaBadge', componentId: 'c1' },
+      { name: 'GammaButton', componentId: 'c2' },
+    ];
+
+    it('[/] opens a search prompt at the bottom', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE_S} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('/');
+      const frame = lastFrame() ?? '';
+      expect(frame).toMatch(/\/(.*)$/m);
+    });
+
+    it('typing dims non-matches (verified via match counter)', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE_S} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('/');
+      stdin.write('b');
+      const frame = lastFrame() ?? '';
+      // Only BetaBadge and GammaButton contain 'b'.
+      expect(frame).toContain('/b');
+      expect(frame).toContain('2/3');
+    });
+
+    it('Esc while a query is active (and search input closed) clears the query', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE_S} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('/');
+      stdin.write('b');
+      stdin.write('\r'); // close input, preserve query
+      let frame = lastFrame() ?? '';
+      expect(frame).toContain('/b');
+      stdin.write('\x1b'); // Esc
+      frame = lastFrame() ?? '';
+      expect(frame).not.toContain('/b');
+    });
+  });
+
   describe('streaming AI-decision sync (delta on prop)', () => {
     it('AI-flagged surfaces update when components prop arrives with new rejections after mount', () => {
       const initial = [
