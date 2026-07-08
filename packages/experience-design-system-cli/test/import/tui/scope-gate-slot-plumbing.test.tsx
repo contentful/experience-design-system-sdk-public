@@ -94,13 +94,13 @@ describe('scope-gate slot plumbing (loader → ScopeGateStep)', () => {
       );
       const out = lastFrame() ?? '';
 
-      // Card has 1 dep (Heading).
-      expect(out).toMatch(/▸ Card \(1 dep\)/);
+      // Card has 1 dep (Heading) — always expanded per D1.
+      expect(out).toMatch(/▾ Card \(1 dep\)/);
       // Layout has 3 deps (Header/Sidebar/Footer).
-      expect(out).toMatch(/▸ Layout \(3 deps\)/);
+      expect(out).toMatch(/▾ Layout \(3 deps\)/);
       // Standalone stays flat.
       expect(out).toContain('Standalone');
-      expect(out).not.toMatch(/▸ Standalone/);
+      expect(out).not.toMatch(/[▸▾] Standalone/);
     });
   });
 
@@ -142,13 +142,14 @@ describe('scope-gate slot plumbing (loader → ScopeGateStep)', () => {
         <ScopeGateStep components={components} onConfirm={onConfirm} onQuit={() => {}} />,
       );
       // Grouped root visible → slot data reached the UI.
-      expect(lastFrame() ?? '').toMatch(/▸ Card \(1 dep\)/);
+      expect(lastFrame() ?? '').toMatch(/▾ Card \(1 dep\)/);
 
-      // Cursor starts on the Card root row. Toggling the closure off and back
-      // on exercises PR #105 sticky-inclusion + closure semantics against the
-      // loader-plumbed graph.
-      stdin.write(' '); // exclude Card + Heading closure
-      stdin.write(' '); // re-include
+      // Cursor starts on the Card root row. Toggle the root off then back on
+      // to exercise cascade semantics against the loader-plumbed graph.
+      // Rejecting Card (target only, no ancestors) applies immediately.
+      // Accepting Card cascades to Heading.
+      stdin.write(' '); // exclude Card (no ancestors → no prompt)
+      stdin.write(' '); // re-include Card (accept-cascade → Heading too)
       stdin.write('f');
 
       const arg = onConfirm.mock.calls[0][0];

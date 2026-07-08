@@ -200,18 +200,17 @@ describe('ScopeGateStep — AI reason surfacing on focused row', () => {
 });
 
 describe('ScopeGateStep — legend', () => {
-  it('legend advertises toggle, expand/collapse, continue, quit, toggle-all', () => {
+  it('legend advertises toggle, lineage, search, continue, quit, toggle-all', () => {
     const { lastFrame } = render(
       <ScopeGateStep components={[{ name: 'Button', componentId: 'c0' }]} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
-    // The legend row is narrow enough that Ink wraps mid-phrase on
-    // short terminals; check for keywords rather than contiguous strings.
     expect(out).toContain('toggle');
     expect(out).toContain('all');
     expect(out).toContain('continue');
     expect(out).toContain('quit');
-    expect(out).toContain('expand');
+    expect(out).toContain('lineage');
+    expect(out).toContain('search');
   });
 
   it('shows [s] AI reason only when at least one AI-flagged row exists', () => {
