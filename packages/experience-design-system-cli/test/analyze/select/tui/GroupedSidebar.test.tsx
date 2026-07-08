@@ -6,6 +6,7 @@ import {
   GroupedSidebar,
   visibleItemOrder,
   type GroupedSidebarItem,
+  type VisibleRow,
 } from '../../../../src/analyze/select/tui/components/GroupedSidebar.js';
 import type { NodeStatus } from '../../../../src/analyze/composite-closure.js';
 
@@ -568,5 +569,26 @@ describe('visibleItemOrder — navigation contract', () => {
     const nameOrder = order.map((i) => items[i].key);
     // Cycle tier first (alphabetical within tier), then the standalone.
     expect(nameOrder).toEqual(['CycleA', 'CycleB', 'A']);
+  });
+
+  it('when visibleRows prop is provided, renders those rows verbatim and skips internal computation', () => {
+    // Hand-crafted rows that do NOT match anything buildVisibleRows would
+    // compute from `items`. If GroupedSidebar honors the prop, we see the
+    // sentinel labels; if it re-derives from items, we don't.
+    const items: GroupedSidebarItem[] = [item('Alpha'), item('Bravo')];
+    const visibleRows: VisibleRow[] = [
+      { kind: 'standalone', key: 'stand:Alpha', label: 'HAND_CRAFTED_ALPHA', indent: 0, itemIdx: 0 },
+      { kind: 'standalone', key: 'stand:Bravo', label: 'HAND_CRAFTED_BRAVO', indent: 0, itemIdx: 1 },
+    ];
+    const { lastFrame } = renderSidebar({ items, visibleRows });
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('HAND_CRAFTED_ALPHA');
+    expect(frame).toContain('HAND_CRAFTED_BRAVO');
+    // The default label ("Alpha" alone as a standalone row) would only appear
+    // if buildVisibleRows ran internally. The custom label overrides it.
+    const handIdx = frame.indexOf('HAND_CRAFTED_ALPHA');
+    const bareIdx = frame.indexOf('\nAlpha');
+    expect(handIdx).toBeGreaterThanOrEqual(0);
+    expect(bareIdx).toBe(-1);
   });
 });

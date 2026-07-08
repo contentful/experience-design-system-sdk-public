@@ -91,6 +91,15 @@ export interface GroupedSidebarProps {
    * (tree structure must remain findable). Cycle rows never dim.
    */
   dimPredicate?: (componentKey: string) => boolean;
+  /**
+   * Optional precomputed visible-row list. When provided, GroupedSidebar
+   * renders these rows directly and skips its internal `buildVisibleRows`
+   * call. Callers that already memoize the row list (e.g. ScopeGateStep,
+   * GenerateReviewStep) pass their memoized array in to avoid recomputing
+   * the same rows on every render. When omitted, GroupedSidebar falls back
+   * to computing rows from `items` / `cycleParticipants` / etc.
+   */
+  visibleRows?: VisibleRow[];
 }
 
 const GLYPH_EXPAND_COLLAPSED = '▸';
@@ -109,7 +118,7 @@ type RowKind =
   | 'flat'
   | 'flat-header';
 
-interface VisibleRow {
+export interface VisibleRow {
   kind: RowKind;
   key: string;
   label: string;
@@ -384,14 +393,17 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
     selectionStateByKey,
     aiFlaggedByKey,
     dimPredicate,
+    visibleRows: providedRows,
   } = props;
-  const allRows = buildVisibleRows({
-    items,
-    cycleParticipants,
-    expandedGroups,
-    alwaysExpanded,
-    showFlatTier,
-  });
+  const allRows =
+    providedRows ??
+    buildVisibleRows({
+      items,
+      cycleParticipants,
+      expandedGroups,
+      alwaysExpanded,
+      showFlatTier,
+    });
 
   // Window rows when scrollOffset+visibleCount are provided; otherwise render
   // the full list. Arrow indicators mirror the flat Sidebar behavior.

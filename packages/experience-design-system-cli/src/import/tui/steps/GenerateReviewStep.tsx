@@ -5,7 +5,11 @@ import type {
   ComponentTypeSummary,
   ServerPreviewResponse,
 } from '@contentful/experience-design-system-types';
-import { GroupedSidebar, visibleItemOrder } from '../../../analyze/select/tui/components/GroupedSidebar.js';
+import {
+  GroupedSidebar,
+  buildVisibleRows,
+  type VisibleRow,
+} from '../../../analyze/select/tui/components/GroupedSidebar.js';
 import { computeAllClosures, type ComponentGraphNode, type NodeStatus } from '../../../analyze/composite-closure.js';
 import { computeRenderStatuses, pickDrillTarget, type RenderStatus } from '../../../analyze/issue-inheritance.js';
 import { JsonPanel } from '../../../analyze/select/tui/components/JsonPanel.js';
@@ -122,8 +126,20 @@ export function GenerateReviewStep({
   const [components, setComponents] = useState<CdfReviewEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const [sidebarScrollOffset, setSidebarScrollOffset] = useState(0);
+  const [nav, setNav] = useState<{ selectedIdx: number; sidebarScrollOffset: number }>({
+    selectedIdx: 0,
+    sidebarScrollOffset: 0,
+  });
+  const selectedIdx = nav.selectedIdx;
+  const sidebarScrollOffset = nav.sidebarScrollOffset;
+  const setSelectedIdx = (
+    updater: number | ((prev: number) => number),
+  ): void => {
+    setNav((prev) => {
+      const nextIdx = typeof updater === 'function' ? updater(prev.selectedIdx) : updater;
+      return { ...prev, selectedIdx: nextIdx };
+    });
+  };
   const [jsonScrollOffset, setJsonScrollOffset] = useState(0);
   const [sidebarFocused, setSidebarFocused] = useState(true);
   const [showFinalize, setShowFinalize] = useState(false);
@@ -428,17 +444,33 @@ export function GenerateReviewStep({
     }
     return m;
   }, [components]);
+  const cycleParticipantsMemo = useMemo<Set<string>>(() => {
+    const set = new Set<string>();
+    for (const cyc of slotCycles) for (const p of cyc.path) set.add(p);
+    return set;
+  }, [slotCycles]);
+  const groupedItemsMemo = useMemo(
+    () =>
+      components.map((c) => ({
+        key: c.key,
+        entry: c.entry,
+        status: (directIssues.get(c.key) ?? 'ok') as NodeStatus,
+      })),
+    [components, directIssues],
+  );
+  const visibleRowsMemo = useMemo<VisibleRow[]>(
+    () =>
+      buildVisibleRows({
+        items: groupedItemsMemo,
+        cycleParticipants: cycleParticipantsMemo,
+        expandedGroups,
+      }),
+    [groupedItemsMemo, cycleParticipantsMemo, expandedGroups],
+  );
   const navOrder = useMemo<number[]>(() => {
-    const cycleSet = new Set<string>();
-    for (const cyc of slotCycles) for (const p of cyc.path) cycleSet.add(p);
-    const items = components.map((c) => ({
-      key: c.key,
-      entry: c.entry,
-      status: (directIssues.get(c.key) ?? 'ok') as NodeStatus,
-    }));
-    const order = visibleItemOrder({ items, cycleParticipants: cycleSet, expandedGroups });
+    const order = visibleRowsMemo.filter((r) => r.itemIdx >= 0).map((r) => r.itemIdx);
     return order.length > 0 ? order : components.map((_, i) => i);
-  }, [components, slotCycles, directIssues, expandedGroups]);
+  }, [visibleRowsMemo, components]);
   useEffect(() => {
     if (navOrder.length === 0) return;
     if (navOrder.includes(selectedIdx)) return;
@@ -483,11 +515,11 @@ export function GenerateReviewStep({
   const jumpCursorTo = (idx: number): void => {
     const visualPos = navOrder.indexOf(idx);
     if (visualPos < 0) return;
-    setSelectedIdx(idx);
-    setSidebarScrollOffset((prev) => {
-      if (visualPos < prev) return visualPos;
-      if (visualPos >= prev + VISIBLE_COUNT) return visualPos - VISIBLE_COUNT + 1;
-      return prev;
+    setNav(({ sidebarScrollOffset: prev }) => {
+      let nextOff = prev;
+      if (visualPos < prev) nextOff = visualPos;
+      else if (visualPos >= prev + VISIBLE_COUNT) nextOff = visualPos - VISIBLE_COUNT + 1;
+      return { selectedIdx: idx, sidebarScrollOffset: nextOff };
     });
     setJsonScrollOffset(0);
     setDraftValue('');
@@ -890,28 +922,25 @@ export function GenerateReviewStep({
       // because the previous implementation read `selectedIdx` from the
       // handler's closure. Under high keyboard-repeat rate multiple key
       // events fire between Ink render flushes, so every invocation saw the
-      // same stale value and recomputed the same `newIdx`. Using functional
-      // setState chains the updates correctly: each pending update sees the
-      // post-update value of the previous one. The viewport offset update is
-      // nested inside the cursor updater so it always reflects the same
-      // newIdx that selectedIdx is being set to.
-      setSelectedIdx((prev) => {
+      // same stale value. Merging cursor + scrollOffset into one `setNav`
+      // updater keeps them consistent AND avoids the nested-setState pattern
+      // that queued a second render per keystroke.
+      setNav(({ selectedIdx: prev, sidebarScrollOffset: off }) => {
         const pos = navOrder.indexOf(prev);
         const newIdx = pos > 0 ? navOrder[pos - 1] : navOrder[0] ?? prev;
         const visualPos = Math.max(0, navOrder.indexOf(newIdx));
-        setSidebarScrollOffset((off) => Math.min(off, visualPos));
-        return newIdx;
+        return { selectedIdx: newIdx, sidebarScrollOffset: Math.min(off, visualPos) };
       });
       setJsonScrollOffset(0);
       setDraftValue('');
       setSaveError(null);
     } else if (key.downArrow || input === 'j') {
-      setSelectedIdx((prev) => {
+      setNav(({ selectedIdx: prev, sidebarScrollOffset: off }) => {
         const pos = navOrder.indexOf(prev);
         const nextPos = pos < 0 ? 0 : Math.min(navOrder.length - 1, pos + 1);
         const newIdx = navOrder[nextPos] ?? prev;
-        setSidebarScrollOffset((off) => (nextPos >= off + VISIBLE_COUNT ? nextPos - VISIBLE_COUNT + 1 : off));
-        return newIdx;
+        const nextOff = nextPos >= off + VISIBLE_COUNT ? nextPos - VISIBLE_COUNT + 1 : off;
+        return { selectedIdx: newIdx, sidebarScrollOffset: nextOff };
       });
       setJsonScrollOffset(0);
       setDraftValue('');
@@ -953,11 +982,7 @@ export function GenerateReviewStep({
     return '';
   };
 
-  const groupedItems = components.map((c) => ({
-    key: c.key,
-    entry: c.entry,
-    status: (directIssues.get(c.key) ?? 'ok') as NodeStatus,
-  }));
+  const groupedItems = groupedItemsMemo;
 
   const previewAnnotationByKey = previewAnnotations;
 
@@ -1209,6 +1234,7 @@ export function GenerateReviewStep({
             scrollOffset={sidebarScrollOffset}
             visibleCount={VISIBLE_COUNT}
             dimPredicate={dimPredicate}
+            visibleRows={visibleRowsMemo}
           />
           <Box flexGrow={1} paddingLeft={1} flexDirection="column">
             {selected ? (

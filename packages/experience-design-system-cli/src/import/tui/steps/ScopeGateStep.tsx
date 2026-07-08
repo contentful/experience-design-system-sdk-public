@@ -88,8 +88,9 @@ export function ScopeGateStep({
 }: ScopeGateStepProps): React.ReactElement {
   type Decision = 'accepted' | 'rejected' | 'undecided';
   const [userDecisions, setUserDecisions] = useState<Map<string, Decision>>(new Map());
-  const [cursor, setCursor] = useState(0);
-  const [scrollOffset, setScrollOffset] = useState(0);
+  const [nav, setNav] = useState<{ cursor: number; scrollOffset: number }>({ cursor: 0, scrollOffset: 0 });
+  const cursor = nav.cursor;
+  const scrollOffset = nav.scrollOffset;
   const [reasonPanelOpen, setReasonPanelOpen] = useState(false);
   const [lineagePanelOpen, setLineagePanelOpen] = useState(false);
   const [lineageCursor, setLineageCursor] = useState(0);
@@ -322,11 +323,11 @@ export function ScopeGateStep({
   const jumpCursorTo = (name: string): void => {
     const idx = findRowIndexForName(name);
     if (idx < 0) return;
-    setCursor(idx);
-    setScrollOffset((prev) => {
-      if (idx < prev) return idx;
-      if (idx >= prev + VISIBLE_COUNT) return idx - VISIBLE_COUNT + 1;
-      return prev;
+    setNav(({ scrollOffset: prev }) => {
+      let nextScroll = prev;
+      if (idx < prev) nextScroll = idx;
+      else if (idx >= prev + VISIBLE_COUNT) nextScroll = idx - VISIBLE_COUNT + 1;
+      return { cursor: idx, scrollOffset: nextScroll };
     });
   };
 
@@ -488,19 +489,18 @@ export function ScopeGateStep({
     }
     if (key.upArrow || input === 'k') {
       if (total === 0) return;
-      setCursor((c) => {
+      setNav(({ cursor: c, scrollOffset: prev }) => {
         const next = c <= 0 ? 0 : c - 1;
-        setScrollOffset((prev) => Math.min(prev, next));
-        return next;
+        return { cursor: next, scrollOffset: Math.min(prev, next) };
       });
       return;
     }
     if (key.downArrow || input === 'j') {
       if (total === 0) return;
-      setCursor((c) => {
+      setNav(({ cursor: c, scrollOffset: prev }) => {
         const next = c >= total - 1 ? total - 1 : c + 1;
-        setScrollOffset((prev) => (next >= prev + VISIBLE_COUNT ? next - VISIBLE_COUNT + 1 : prev));
-        return next;
+        const nextScroll = next >= prev + VISIBLE_COUNT ? next - VISIBLE_COUNT + 1 : prev;
+        return { cursor: next, scrollOffset: nextScroll };
       });
       return;
     }
@@ -531,7 +531,7 @@ export function ScopeGateStep({
   const totalMatches = searchQuery ? searchMatches.length : 0;
 
   return (
-    <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
+    <Box flexDirection="column" paddingX={2}>
       <Text color="green">✓ Extraction complete</Text>
       <Text dimColor>
         Found {totalComponents} component{totalComponents === 1 ? '' : 's'}. Pick which ones to import. Generation runs
@@ -598,6 +598,7 @@ export function ScopeGateStep({
           selectionStateByKey={selectionStateByKey}
           aiFlaggedByKey={aiFlaggedByKey}
           dimPredicate={dimPredicate}
+          visibleRows={visibleRows}
         />
       )}
 
