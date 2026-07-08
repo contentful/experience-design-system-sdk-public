@@ -8,10 +8,11 @@ import { ScopeGateStep } from '../../../src/import/tui/steps/ScopeGateStep.js';
 // through GroupedSidebar so composite grouping (root + deps) is visible at
 // selection time — matching the same tiering used in GenerateReviewStep.
 //
-// Selection semantics at scope-gate differ from generate-review:
-//   - Space/a/r on a grouped-root row toggles the ENTIRE closure's inclusion.
-//   - Space on a group-child row (inside a grouped-roots tier) is a no-op.
-//   - Space on a standalone row toggles just that component.
+// Selection semantics at scope-gate (post-D2 cascade rework):
+//   - Groups render always-expanded (▾) — no collapse.
+//   - Accepting any row cascades to all descendants.
+//   - Rejecting any row cascades to all ancestors that slot it.
+//   - Every row is individually selectable (roots, children, standalones, flat).
 
 const withSlots = (
   name: string,
@@ -24,7 +25,7 @@ const withSlots = (
 });
 
 describe('ScopeGateStep — grouped sidebar rendering', () => {
-  it('renders a root as `▸ Root (N deps)` when it has children in its closure', () => {
+  it('renders a root as `▾ Root (N deps)` (always expanded) when it has children in its closure', () => {
     const { lastFrame } = render(
       <ScopeGateStep
         components={[
@@ -38,35 +39,18 @@ describe('ScopeGateStep — grouped sidebar rendering', () => {
       />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toMatch(/▸ Card \(2 deps\)/);
+    expect(out).toMatch(/▾ Card \(2 deps\)/);
     // Standalone stays flat (no arrow, no dep count).
     expect(out).toContain('Standalone');
-    expect(out).not.toMatch(/▸ Standalone/);
-  });
-
-  it('expands a group on Enter (Root becomes `▾ Root (N deps)` with children)', () => {
-    const { lastFrame, stdin } = render(
-      <ScopeGateStep
-        components={[
-          withSlots('Card', 'c0', [{ name: 'body', allowedComponents: ['Text', 'Icon'] }]),
-          withSlots('Text', 'c1'),
-          withSlots('Icon', 'c2'),
-        ]}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-      />,
-    );
-    stdin.write('\r'); // Enter on the first row (Card root).
-    const out = lastFrame() ?? '';
-    expect(out).toMatch(/▾ Card \(2 deps\)/);
-    // Children visible under the expanded root.
+    expect(out).not.toMatch(/[▸▾] Standalone/);
+    // Children visible under the always-expanded root.
     expect(out).toContain('Text');
     expect(out).toContain('Icon');
   });
 });
 
 describe('ScopeGateStep — closure-aware selection', () => {
-  it('Space on a root selects every component in its closure', () => {
+  it('Accepting a root cascades to every component in its closure', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep
@@ -80,10 +64,11 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    // Cursor starts on the first row (Card root). Toggle OFF the whole
-    // closure, then toggle it back ON, so we can assert closure-aware behavior.
-    stdin.write(' '); // exclude Card + Text + Icon
-    stdin.write(' '); // re-include Card + Text + Icon
+    // Cursor starts on the first row (Card root). Reject the closure by
+    // rejecting Card (no ancestors → no prompt), then re-accept (cascade to
+    // all descendants).
+    stdin.write(' '); // reject Card → only Card flips off (no ancestors)
+    stdin.write(' '); // accept Card → cascades to Text + Icon
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
     expect(arg.accepted).toEqual(expect.arrayContaining(['Card', 'Text', 'Icon', 'Standalone']));
@@ -92,7 +77,7 @@ describe('ScopeGateStep — closure-aware selection', () => {
     expect(arg.rejected).not.toContain('Icon');
   });
 
-  it('Space on a root can exclude every component in its closure at once', () => {
+  it('Rejecting a root without ancestors flips only itself (descendants stay)', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep
@@ -106,11 +91,12 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    stdin.write(' '); // Space on Card root — excludes Card + Text + Icon.
+    // Rejecting Card cascades UP (to its ancestors — none), so only Card flips.
+    stdin.write(' ');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Text', 'Icon']));
-    expect(arg.accepted).toEqual(['Standalone']);
+    expect(arg.rejected).toEqual(['Card']);
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Text', 'Icon', 'Standalone']));
   });
 
   it('Space on a standalone toggles only that component', () => {
@@ -126,10 +112,11 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    // Rows in tier order: Card root (idx 0), Standalone (idx 1).
-    // Move cursor to Standalone.
-    stdin.write('j');
-    stdin.write(' '); // toggle Standalone off (was on by default).
+    // Rows: Card (root), Text (child), Standalone, flat-header, Card (flat),
+    // Standalone (flat), Text (flat). Move to Standalone (row 2).
+    stdin.write('j'); // Text child
+    stdin.write('j'); // Standalone
+    stdin.write(' ');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
     expect(arg.rejected).toEqual(['Standalone']);
@@ -137,7 +124,7 @@ describe('ScopeGateStep — closure-aware selection', () => {
     expect(arg.accepted).not.toContain('Standalone');
   });
 
-  it('Space on a group-child (inside an expanded root) is a no-op', () => {
+  it('Rejecting a group-child cascades to ancestors (blast radius 1 = no prompt)', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep
@@ -149,14 +136,12 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    // Expand the group so Text becomes a child row underneath Card.
-    stdin.write('\r'); // Enter on Card root — expand.
-    stdin.write('j'); // move to child (Text).
-    stdin.write(' '); // no-op per spec.
+    // Rows: Card (root), Text (child), flat-header, Card (flat), Text (flat).
+    stdin.write('j'); // move to Text child
+    stdin.write(' '); // reject Text — cascades to Card (blast radius 1 → no prompt).
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    // Both stay included — child-row Space did nothing.
-    expect(arg.rejected).toEqual([]);
-    expect(arg.accepted).toEqual(expect.arrayContaining(['Card', 'Text']));
+    expect(arg.rejected).toEqual(expect.arrayContaining(['Text', 'Card']));
+    expect(arg.accepted).toEqual([]);
   });
 });

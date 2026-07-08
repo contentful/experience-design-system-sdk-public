@@ -13,20 +13,21 @@ import {
   type NodeStatus,
 } from '../../../analyze/composite-closure.js';
 import { findSlotCycles } from '../../../analyze/cycle-detection.js';
+import {
+  findAllAncestorChains,
+  type LineageChain,
+} from '../../../analyze/lineage.js';
+import {
+  computeAcceptCascade,
+  computeRejectCascade,
+} from '../../../analyze/selection-cascade.js';
+import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
 
 export type ScopeComponent = {
   name: string;
   componentId: string;
   aiDecision?: 'accepted' | 'rejected' | 'failed' | null;
   aiReason?: string | null;
-  /**
-   * Composite-components grouping: extraction-time slot metadata for this
-   * component. When present on every scope component, ScopeGateStep renders
-   * through GroupedSidebar so composite closures (root + deps) are visible
-   * at selection time — matching the same tiering used in GenerateReviewStep.
-   * When omitted (older callers, tests without slot data), every component
-   * falls into the standalone tier and Space toggles just that row.
-   */
   slots?: Array<{ name: string; allowedComponents: string[] }>;
 };
 
@@ -34,8 +35,6 @@ export type ScopeGateStepProps = {
   components: ScopeComponent[];
   onConfirm: (decisions: { accepted: string[]; rejected: string[] }) => void;
   onQuit: () => void;
-  // Feature 3: auto-filter overlay state. Optional so existing callers (and
-  // tests) without auto-filter still work unchanged.
   aiFilterStatus?: 'idle' | 'running' | 'complete' | 'cancelled' | 'failed';
   aiFilterProgress?: { done: number; total: number } | null;
   aiFilterError?: string | null;
@@ -45,6 +44,7 @@ export type ScopeGateStepProps = {
 const VISIBLE_COUNT = 20;
 const SIDEBAR_WIDTH = 36;
 const REASON_DISPLAY_MAX = 60;
+const AI_BANNER_MAX = 5;
 
 function truncateReason(reason: string | null | undefined): string {
   if (reason === null || reason === undefined || reason === '') return '<no reason given>';
@@ -53,19 +53,9 @@ function truncateReason(reason: string | null | undefined): string {
 }
 
 function isAiFlagged(row: ScopeComponent): boolean {
-  // INTEG-4318: `failed` means the LLM omitted a decision for this component
-  // (e.g. batch under-emit). Treat as rejected for the default-inclusion
-  // computation so silent inclusion regressions never resurface.
   return row.aiDecision === 'rejected' || row.aiDecision === 'failed';
 }
 
-/**
- * Build a synthetic CDFComponentEntry from a scope-gate component so the
- * shared `GroupedSidebar` (which was designed to consume the review-stage
- * entry shape) can render our data. The stub `$properties` prevents the
- * empty-tier fallback in GroupedSidebar — extraction-stage components with
- * zero slots would otherwise be surfaced as yellow `(empty)` rows.
- */
 function toSidebarEntry(c: ScopeComponent): CDFComponentEntry {
   const $slots: NonNullable<CDFComponentEntry['$slots']> = {};
   if (c.slots) {
@@ -75,14 +65,28 @@ function toSidebarEntry(c: ScopeComponent): CDFComponentEntry {
   }
   const entry: CDFComponentEntry = {
     $type: 'component',
-    // The scope-gate sidebar only needs $slots for closure detection; but
-    // GroupedSidebar's empty-tier heuristic also inspects $properties. Give
-    // every row a placeholder so nothing lands in the yellow empty tier.
     $properties: { __scopeGate: { $type: 'string', $category: 'content' } },
   };
   if (Object.keys($slots).length > 0) entry.$slots = $slots;
   return entry;
 }
+
+function chainToString(chain: LineageChain, target: string): string {
+  if (chain.length === 0) return target;
+  const parts: string[] = [];
+  parts.push(chain[0].from);
+  for (const edge of chain) {
+    parts.push(`─[${edge.slotName}]→`);
+    parts.push(edge.to);
+  }
+  return parts.join(' ');
+}
+
+type LineageEntry =
+  | { kind: 'section'; label: string }
+  | { kind: 'ancestor'; label: string; jumpTarget: string }
+  | { kind: 'descendant'; label: string; jumpTarget: string }
+  | { kind: 'empty'; label: string };
 
 export function ScopeGateStep({
   components,
@@ -93,16 +97,17 @@ export function ScopeGateStep({
   aiFilterError = null,
   onCancelAutoFilter,
 }: ScopeGateStepProps): React.ReactElement {
-  // Inclusion delta over the AI default. Operator toggles are always sticky
-  // even when AI streaming updates arrive later (Pilot-2026-06-25 R2 invariant
-  // preserved from the flat-sidebar rewrite).
   const [userExcluded, setUserExcluded] = useState<Set<string>>(new Set());
   const [userUnExcluded, setUserUnExcluded] = useState<Set<string>>(new Set());
   const [cursor, setCursor] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  // Reason side panel — kept for narrow-terminal / screen-reader overflow.
   const [reasonPanelOpen, setReasonPanelOpen] = useState(false);
+  const [lineagePanelOpen, setLineagePanelOpen] = useState(false);
+  const [lineageCursor, setLineageCursor] = useState(0);
+  const [pendingRejectCascade, setPendingRejectCascade] =
+    useState<{ target: string; ancestors: string[] } | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const isIncluded = (name: string): boolean => {
     if (userExcluded.has(name)) return false;
@@ -112,7 +117,7 @@ export function ScopeGateStep({
     return !isAiFlagged(c);
   };
 
-  const flipToExcluded = (names: string[]): void => {
+  const flipToExcluded = (names: Iterable<string>): void => {
     setUserExcluded((prev) => {
       const next = new Set(prev);
       for (const n of names) next.add(n);
@@ -125,7 +130,7 @@ export function ScopeGateStep({
     });
   };
 
-  const flipToIncluded = (names: string[]): void => {
+  const flipToIncluded = (names: Iterable<string>): void => {
     setUserUnExcluded((prev) => {
       const next = new Set(prev);
       for (const n of names) next.add(n);
@@ -138,9 +143,6 @@ export function ScopeGateStep({
     });
   };
 
-  // Build the GroupedSidebar item list. Sorted so the underlying `items`
-  // array's `selectedIdx` isn't strictly needed by our keyboard model — we
-  // drive selection off the visible-rows list directly.
   const groupedItems: GroupedSidebarItem[] = useMemo(
     () =>
       components.map((c) => ({
@@ -160,53 +162,108 @@ export function ScopeGateStep({
     [components],
   );
 
-  // Cycle-participant set drives GroupedSidebar's cycle tier.
   const cycleParticipants = useMemo<Set<string>>(() => {
     const set = new Set<string>();
     try {
       const cycles = findSlotCycles(graph);
       for (const c of cycles) for (const n of c.path) set.add(n);
     } catch {
-      // Defensive — cycle detection must never crash the scope-gate UI.
+      // Defensive.
     }
     return set;
   }, [graph]);
 
   const closures = useMemo(() => computeAllClosures(graph), [graph]);
 
-  // Flat list of visible rows GroupedSidebar renders, in the exact order it
-  // will render them. We drive cursor / space-toggle semantics against this
-  // list so our behavior stays in lockstep with the visual layout — including
-  // when a group collapses or expands.
   const visibleRows = useMemo(
-    () => buildVisibleRows({ items: groupedItems, cycleParticipants, expandedGroups }),
-    [groupedItems, cycleParticipants, expandedGroups],
+    () =>
+      buildVisibleRows({
+        items: groupedItems,
+        cycleParticipants,
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+        showFlatTier: true,
+      }),
+    [groupedItems, cycleParticipants],
   );
 
   const total = visibleRows.length;
-
-  // Clamp cursor if the row set shrinks (e.g. after collapse).
   const safeCursor = Math.min(cursor, Math.max(0, total - 1));
 
   const currentRow = visibleRows[safeCursor];
-  const currentRowKey = currentRow && currentRow.itemIdx >= 0 ? groupedItems[currentRow.itemIdx]?.key : undefined;
-  const focusedComponent = currentRowKey ? components.find((c) => c.name === currentRowKey) : undefined;
+  const currentRowKey =
+    currentRow && currentRow.itemIdx >= 0 ? groupedItems[currentRow.itemIdx]?.key : undefined;
+  const focusedComponent = currentRowKey
+    ? components.find((c) => c.name === currentRowKey)
+    : undefined;
 
-  // Toggle the closure anchored at `rootName`. If every node is currently
-  // included → exclude them all; otherwise → include them all. This matches
-  // the "selecting a root auto-selects its full closure" spec while still
-  // giving the operator a way to drop the whole subtree.
-  const toggleClosure = (rootName: string): void => {
-    const closure = closures.get(rootName);
-    const names = closure ? closure.nodes.map((n) => n.name) : [rootName];
-    const allIncluded = names.every((n) => isIncluded(n));
-    if (allIncluded) flipToExcluded(names);
-    else flipToIncluded(names);
+  // Selection state map for GroupedSidebar rendering (D1: per-row glyphs).
+  const selectionStateByKey = useMemo(() => {
+    const map = new Map<string, 'accepted' | 'rejected' | 'undecided'>();
+    for (const c of components) {
+      map.set(c.name, isIncluded(c.name) ? 'accepted' : 'rejected');
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [components, userExcluded, userUnExcluded]);
+
+  const aiFlaggedByKey = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const c of components) map.set(c.name, isAiFlagged(c));
+    return map;
+  }, [components]);
+
+  const dimPredicate = useMemo(() => {
+    if (!searchQuery) return undefined;
+    return (name: string) => !fuzzyMatches(searchQuery, name);
+  }, [searchQuery]);
+
+  const applyReject = (target: string): void => {
+    const cascade = computeRejectCascade(target, graph);
+    flipToExcluded(cascade);
+  };
+  const applyAccept = (target: string): void => {
+    const cascade = computeAcceptCascade(target, graph);
+    flipToIncluded(cascade);
   };
 
-  const toggleSingle = (name: string): void => {
-    if (isIncluded(name)) flipToExcluded([name]);
-    else flipToIncluded([name]);
+  const requestToggle = (name: string): void => {
+    if (isIncluded(name)) {
+      // Reject path — may require confirm.
+      const cascade = computeRejectCascade(name, graph);
+      const ancestors = [...cascade].filter((n) => n !== name).sort();
+      // Blast radius = number of ancestors that will flip to rejected.
+      // Only count those currently included (already-excluded ancestors don't
+      // add operator-visible surprise, but keep this simple: use ancestor count).
+      if (ancestors.length >= 2) {
+        setPendingRejectCascade({ target: name, ancestors });
+        return;
+      }
+      flipToExcluded(cascade);
+    } else {
+      applyAccept(name);
+    }
+  };
+
+  const handleToggleFocused = (): void => {
+    const row = visibleRows[safeCursor];
+    if (!row) return;
+    switch (row.kind) {
+      case 'standalone':
+      case 'empty':
+      case 'group-root':
+      case 'group-child':
+      case 'flat': {
+        const key = row.itemIdx >= 0 ? groupedItems[row.itemIdx]?.key : undefined;
+        if (key) requestToggle(key);
+        return;
+      }
+      case 'cycle':
+      case 'group-more':
+      case 'flat-header':
+      default:
+        return;
+    }
   };
 
   const partition = (): { accepted: string[]; rejected: string[] } => {
@@ -219,45 +276,167 @@ export function ScopeGateStep({
     return { accepted, rejected };
   };
 
-  const handleToggleFocused = (): void => {
-    const row = visibleRows[safeCursor];
-    if (!row) return;
-    // Standalones + empty rows toggle a single component. Group-root rows
-    // toggle the whole closure. Group-child + cycle + synthetic rows are
-    // no-ops per spec (child selection follows its root; cycle rows are
-    // advisory-only; `+N more` has no component).
-    switch (row.kind) {
-      case 'standalone':
-      case 'empty': {
-        const key = row.itemIdx >= 0 ? groupedItems[row.itemIdx]?.key : undefined;
-        if (key) toggleSingle(key);
-        return;
+  // Lineage panel entries for the focused component.
+  const lineageEntries = useMemo<LineageEntry[]>(() => {
+    if (!focusedComponent) return [];
+    const name = focusedComponent.name;
+    const chains = findAllAncestorChains(name, graph);
+    const closure = closures.get(name);
+    const entries: LineageEntry[] = [];
+    entries.push({ kind: 'section', label: 'Ancestors:' });
+    if (chains.length === 0) {
+      entries.push({ kind: 'empty', label: '  (none)' });
+    } else {
+      for (const chain of chains) {
+        entries.push({
+          kind: 'ancestor',
+          label: '  ' + chainToString(chain, name),
+          jumpTarget: chain[0].from,
+        });
       }
-      case 'group-root': {
-        if (row.rootName) toggleClosure(row.rootName);
-        return;
-      }
-      case 'group-child':
-      case 'cycle':
-      case 'group-more':
-      default:
-        return;
     }
+    entries.push({ kind: 'section', label: 'Descendants:' });
+    if (!closure || closure.nodes.length <= 1) {
+      entries.push({ kind: 'empty', label: '  (none)' });
+    } else {
+      for (const node of closure.nodes) {
+        if (node.name === name) continue;
+        entries.push({
+          kind: 'descendant',
+          label: '  ' + '  '.repeat(Math.max(0, node.depth - 1)) + node.name,
+          jumpTarget: node.name,
+        });
+      }
+    }
+    return entries;
+  }, [focusedComponent, graph, closures]);
+
+  const lineageJumpables = useMemo(
+    () =>
+      lineageEntries
+        .map((e, i) => ({ e, i }))
+        .filter(({ e }) => e.kind === 'ancestor' || e.kind === 'descendant'),
+    [lineageEntries],
+  );
+
+  const searchMatches = useMemo(() => {
+    if (!searchQuery) return [];
+    return components.filter((c) => fuzzyMatches(searchQuery, c.name)).map((c) => c.name);
+  }, [components, searchQuery]);
+
+  const findRowIndexForName = (name: string): number => {
+    for (let i = 0; i < visibleRows.length; i++) {
+      const row = visibleRows[i];
+      if (row.itemIdx < 0) continue;
+      if (groupedItems[row.itemIdx]?.key === name) return i;
+    }
+    return -1;
   };
 
-  const handleToggleExpand = (): void => {
-    const row = visibleRows[safeCursor];
-    if (!row || row.kind !== 'group-root' || !row.rootName) return;
-    const name = row.rootName;
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
+  const jumpCursorTo = (name: string): void => {
+    const idx = findRowIndexForName(name);
+    if (idx < 0) return;
+    setCursor(idx);
+    setScrollOffset((prev) => {
+      if (idx < prev) return idx;
+      if (idx >= prev + VISIBLE_COUNT) return idx - VISIBLE_COUNT + 1;
+      return prev;
     });
   };
 
   useImmediateInput((input, key) => {
+    // Confirm prompt owns keystrokes when open.
+    if (pendingRejectCascade) {
+      if (input === 'y' || input === 'Y') {
+        applyReject(pendingRejectCascade.target);
+        setPendingRejectCascade(null);
+        return;
+      }
+      if (input === 'n' || input === 'N' || key.escape) {
+        setPendingRejectCascade(null);
+        return;
+      }
+      return;
+    }
+
+    // Search input mode owns most keystrokes.
+    if (searchOpen) {
+      if (key.escape) {
+        setSearchOpen(false);
+        setSearchQuery('');
+        return;
+      }
+      if (key.return) {
+        // Jump to nearest match, close input, preserve query.
+        if (searchQuery) {
+          const cursorRow = visibleRows[safeCursor];
+          const cursorItemName =
+            cursorRow && cursorRow.itemIdx >= 0
+              ? groupedItems[cursorRow.itemIdx]?.key
+              : undefined;
+          // Find first match at or after cursor.
+          let jumped = false;
+          for (let i = safeCursor; i < visibleRows.length; i++) {
+            const r = visibleRows[i];
+            if (r.itemIdx < 0) continue;
+            const n = groupedItems[r.itemIdx]?.key;
+            if (n && n !== cursorItemName && fuzzyMatches(searchQuery, n)) {
+              jumpCursorTo(n);
+              jumped = true;
+              break;
+            }
+          }
+          if (!jumped) {
+            for (let i = 0; i < visibleRows.length; i++) {
+              const r = visibleRows[i];
+              if (r.itemIdx < 0) continue;
+              const n = groupedItems[r.itemIdx]?.key;
+              if (n && fuzzyMatches(searchQuery, n)) {
+                jumpCursorTo(n);
+                break;
+              }
+            }
+          }
+        }
+        setSearchOpen(false);
+        return;
+      }
+      if (key.backspace) {
+        setSearchQuery((q) => q.slice(0, -1));
+        return;
+      }
+      if (input && input.length === 1 && input >= ' ' && input !== '\r' && input !== '\n') {
+        setSearchQuery((q) => q + input);
+        return;
+      }
+      return;
+    }
+
+    // Lineage panel owns most keystrokes when open.
+    if (lineagePanelOpen) {
+      if (key.escape || input === 'l') {
+        setLineagePanelOpen(false);
+        return;
+      }
+      if (key.upArrow || input === 'k') {
+        setLineageCursor((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        setLineageCursor((c) => Math.min(Math.max(0, lineageJumpables.length - 1), c + 1));
+        return;
+      }
+      if (key.return) {
+        const target = lineageJumpables[lineageCursor];
+        if (target && (target.e.kind === 'ancestor' || target.e.kind === 'descendant')) {
+          jumpCursorTo(target.e.jumpTarget);
+        }
+        setLineagePanelOpen(false);
+        return;
+      }
+      return;
+    }
+
     if (input === 'q' || key.escape) {
       if (aiFilterStatus === 'running' && onCancelAutoFilter) {
         onCancelAutoFilter();
@@ -265,6 +444,10 @@ export function ScopeGateStep({
       }
       if (key.escape && reasonPanelOpen) {
         setReasonPanelOpen(false);
+        return;
+      }
+      if (key.escape && searchQuery) {
+        setSearchQuery('');
         return;
       }
       onQuit();
@@ -278,24 +461,38 @@ export function ScopeGateStep({
       setReasonPanelOpen((prev) => !prev);
       return;
     }
-    if (key.return) {
-      handleToggleExpand();
+    if (input === 'l') {
+      setLineagePanelOpen(true);
+      setLineageCursor(0);
       return;
     }
-    // `a`, space, and `r` all toggle. `r` kept as muscle-memory alias.
+    if (input === '/') {
+      setSearchOpen(true);
+      return;
+    }
     if (input === 'a' || input === ' ' || input === 'r') {
       handleToggleFocused();
       return;
     }
     if (input === 'A') {
-      // Toggle-all across every selectable component (skipping cycle rows so
-      // we don't silently ship components that can't be pushed anyway). If
-      // any selectable is excluded, include everything; otherwise exclude
-      // everything.
       const selectable = components.filter((c) => !cycleParticipants.has(c.name)).map((c) => c.name);
       const anyExcluded = selectable.some((n) => !isIncluded(n));
       if (anyExcluded) flipToIncluded(selectable);
       else flipToExcluded(selectable);
+      return;
+    }
+    if (key.tab) {
+      // Cycle through search matches only.
+      if (searchQuery && searchMatches.length > 0) {
+        const cursorRow = visibleRows[safeCursor];
+        const cursorName =
+          cursorRow && cursorRow.itemIdx >= 0
+            ? groupedItems[cursorRow.itemIdx]?.key
+            : undefined;
+        const curIdx = cursorName ? searchMatches.indexOf(cursorName) : -1;
+        const nextName = searchMatches[(curIdx + 1) % searchMatches.length];
+        if (nextName) jumpCursorTo(nextName);
+      }
       return;
     }
     if (key.upArrow || input === 'k') {
@@ -320,24 +517,27 @@ export function ScopeGateStep({
 
   const includedCount = useMemo(
     () => components.filter((c) => isIncluded(c.name)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [components, userExcluded, userUnExcluded],
   );
   const hasAnyAi = components.some(isAiFlagged);
   const aiExcludedCount = components.filter(isAiFlagged).length;
+  const aiExcludedWithReasons = components.filter(
+    (c) => isAiFlagged(c) && c.aiReason !== null && c.aiReason !== undefined && c.aiReason !== '',
+  );
 
-  // GroupedSidebar's `selectedIdx` is an index into `items` (not visibleRows),
-  // so translate the cursor via the current row's `itemIdx`. Synthetic rows
-  // (`+N more`) don't map back to an item — leave `selectedIdx` on the last
-  // real selection so nothing else in the sidebar loses its inverse-color.
-  const selectedItemIdx = currentRow && currentRow.itemIdx >= 0 ? currentRow.itemIdx : -1;
+  const selectedItemIdx =
+    currentRow && currentRow.itemIdx >= 0 ? currentRow.itemIdx : -1;
 
   const showRunningHeader =
     aiFilterStatus === 'running' && aiFilterProgress !== null && aiFilterProgress.total > 0;
   const showCancelledBanner = aiFilterStatus === 'cancelled';
   const showFailedBanner = aiFilterStatus === 'failed';
-  const allRejected = aiFilterStatus === 'complete' && components.length > 0 && components.every((c) => !isIncluded(c.name));
+  const allRejected =
+    aiFilterStatus === 'complete' && components.length > 0 && components.every((c) => !isIncluded(c.name));
 
   const totalComponents = components.length;
+  const totalMatches = searchQuery ? searchMatches.length : 0;
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
@@ -372,7 +572,18 @@ export function ScopeGateStep({
       )}
 
       {hasAnyAi && (
-        <Text dimColor>{`AI recommended exclusions: ${aiExcludedCount}`}</Text>
+        <Box flexDirection="column">
+          <Text dimColor>{`AI recommended exclusions (${aiExcludedCount}):`}</Text>
+          {aiExcludedWithReasons.slice(0, AI_BANNER_MAX).map((c) => (
+            <Text key={c.name} dimColor>
+              {'  '}
+              {c.name} — {truncateReason(c.aiReason)}
+            </Text>
+          ))}
+          {aiExcludedWithReasons.length > AI_BANNER_MAX && (
+            <Text dimColor>{`  …and ${aiExcludedWithReasons.length - AI_BANNER_MAX} more`}</Text>
+          )}
+        </Box>
       )}
 
       {allRejected ? (
@@ -385,26 +596,20 @@ export function ScopeGateStep({
           cycleParticipants={cycleParticipants}
           selectedIdx={selectedItemIdx}
           onSelect={() => {}}
-          expandedGroups={expandedGroups}
-          onToggleExpanded={(rootName) => {
-            setExpandedGroups((prev) => {
-              const next = new Set(prev);
-              if (next.has(rootName)) next.delete(rootName);
-              else next.add(rootName);
-              return next;
-            });
-          }}
+          expandedGroups={new Set()}
+          onToggleExpanded={() => {}}
           width={SIDEBAR_WIDTH}
           focused={true}
           scrollOffset={scrollOffset}
           visibleCount={VISIBLE_COUNT}
+          alwaysExpanded={true}
+          showFlatTier={true}
+          selectionStateByKey={selectionStateByKey}
+          aiFlaggedByKey={aiFlaggedByKey}
+          dimPredicate={dimPredicate}
         />
       )}
 
-      {/* Focused-row detail: inclusion state + AI reason (if any). The
-          in-row `[✓]`/`[✗]` glyphs and `*` marker from the flat sidebar are
-          replaced by GroupedSidebar's tier rendering; we surface the same
-          signal here for the focused row instead. */}
       {focusedComponent && !allRejected && (
         <Box flexDirection="column" marginTop={1}>
           <Text>
@@ -434,6 +639,69 @@ export function ScopeGateStep({
         </Box>
       )}
 
+      {lineagePanelOpen && focusedComponent && (
+        <Box flexDirection="column" borderStyle="single" borderColor="cyan" paddingX={1} marginTop={1}>
+          <Text bold>{`Lineage: ${focusedComponent.name}`}</Text>
+          {lineageEntries.map((e, i) => {
+            const jumpableIdx = lineageJumpables.findIndex((j) => j.i === i);
+            const isCursor = jumpableIdx === lineageCursor && jumpableIdx >= 0;
+            if (e.kind === 'section') {
+              return (
+                <Text key={i} bold>
+                  {e.label}
+                </Text>
+              );
+            }
+            if (e.kind === 'empty') {
+              return (
+                <Text key={i} dimColor>
+                  {e.label}
+                </Text>
+              );
+            }
+            return (
+              <Text key={i} inverse={isCursor}>
+                {e.label}
+              </Text>
+            );
+          })}
+          <Text dimColor>[↑/↓] move · [Enter] jump · [l/Esc] close</Text>
+        </Box>
+      )}
+
+      {pendingRejectCascade && (
+        <Box flexDirection="column" borderStyle="single" borderColor="yellow" paddingX={1} marginTop={1}>
+          <Text bold color="yellow">
+            Reject {pendingRejectCascade.target}?
+          </Text>
+          <Text dimColor>
+            This will also reject {pendingRejectCascade.ancestors.length} ancestor
+            {pendingRejectCascade.ancestors.length === 1 ? '' : 's'} that slot it:
+          </Text>
+          {pendingRejectCascade.ancestors.map((a) => (
+            <Text key={a}>{`  ${a}`}</Text>
+          ))}
+          <Text dimColor>[y] confirm · [n]/[Esc] cancel</Text>
+        </Box>
+      )}
+
+      {searchOpen && (
+        <Box marginTop={1}>
+          <Text>
+            {`/${searchQuery}`}
+            <Text color="cyan">{'▎'}</Text>
+            {searchQuery && (
+              <Text dimColor>{`  (${totalMatches}/${totalComponents} matches)`}</Text>
+            )}
+          </Text>
+        </Box>
+      )}
+      {!searchOpen && searchQuery && (
+        <Box marginTop={1}>
+          <Text dimColor>{`/${searchQuery}  (${totalMatches}/${totalComponents} matches) · [Esc] clear · [Tab] next`}</Text>
+        </Box>
+      )}
+
       <Box gap={3} marginTop={1}>
         {includedCount > 0 ? (
           <Text>
@@ -450,7 +718,10 @@ export function ScopeGateStep({
           <Text color="cyan">[a/space]</Text> <Text dimColor>toggle</Text>
         </Text>
         <Text>
-          <Text color="cyan">[Enter]</Text> <Text dimColor>expand/collapse</Text>
+          <Text color="cyan">[l]</Text> <Text dimColor>lineage</Text>
+        </Text>
+        <Text>
+          <Text color="cyan">[/]</Text> <Text dimColor>search</Text>
         </Text>
         <Text>
           <Text color="cyan">[A]</Text> <Text dimColor>toggle all</Text>
