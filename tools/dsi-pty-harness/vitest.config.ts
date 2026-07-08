@@ -17,7 +17,7 @@ const enabled = process.env.PTY_TESTS === '1';
 
 export default defineConfig({
   test: {
-    include: enabled ? ['tests/**/*.{pty,validation}.test.mjs'] : [],
+    include: enabled ? ['test/**/*.{pty,validation}.test.mjs'] : [],
     testTimeout: 30_000,
     hookTimeout: 30_000,
     pool: 'forks',
