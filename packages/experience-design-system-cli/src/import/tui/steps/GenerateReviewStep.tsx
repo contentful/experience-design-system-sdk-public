@@ -5,7 +5,11 @@ import type {
   ComponentTypeSummary,
   ServerPreviewResponse,
 } from '@contentful/experience-design-system-types';
-import { GroupedSidebar, visibleItemOrder } from '../../../analyze/select/tui/components/GroupedSidebar.js';
+import {
+  GroupedSidebar,
+  buildVisibleRows,
+  type VisibleRow,
+} from '../../../analyze/select/tui/components/GroupedSidebar.js';
 import { computeAllClosures, type ComponentGraphNode, type NodeStatus } from '../../../analyze/composite-closure.js';
 import { computeRenderStatuses, pickDrillTarget, type RenderStatus } from '../../../analyze/issue-inheritance.js';
 import { JsonPanel } from '../../../analyze/select/tui/components/JsonPanel.js';
@@ -112,8 +116,19 @@ export function GenerateReviewStep({
   const [components, setComponents] = useState<CdfReviewEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const [sidebarScrollOffset, setSidebarScrollOffset] = useState(0);
+  // INTEG-4411 duplicate-cursor fix: cursor position is a visible-row index
+  // (into `visibleRowsMemo`), not an item-index into `components`. When a
+  // shared dep like `Card` appears under multiple parents, each occurrence is
+  // its own row with the same `itemIdx` — an item-indexed cursor renders
+  // "selected" on every occurrence and snaps back to the first one on j/k.
+  // `selectedIdx` (the item-index of the component currently under the
+  // cursor) is derived below from `visibleRowsMemo[cursorRowIdx]`.
+  const [nav, setNav] = useState<{ cursorRowIdx: number; sidebarScrollOffset: number }>({
+    cursorRowIdx: 0,
+    sidebarScrollOffset: 0,
+  });
+  const cursorRowIdx = nav.cursorRowIdx;
+  const sidebarScrollOffset = nav.sidebarScrollOffset;
   const [jsonScrollOffset, setJsonScrollOffset] = useState(0);
   const [sidebarFocused, setSidebarFocused] = useState(true);
   const [showFinalize, setShowFinalize] = useState(false);
@@ -241,43 +256,6 @@ export function GenerateReviewStep({
     // handleEditSave. Adding livePreviewHook to deps would re-fire on every
     // hook re-creation.
   }, [loading]);
-
-  // Feature 1: load review metadata (rationale + source location) for the
-  // selected component when selection changes.
-  useEffect(() => {
-    const current = components[selectedIdx];
-    if (!current) {
-      setReviewMetadata(null);
-      return;
-    }
-    const db = openPipelineDb();
-    try {
-      setReviewMetadata(loadComponentReviewMetadata(db, extractSessionId, current.key));
-    } catch {
-      setReviewMetadata(null);
-    } finally {
-      db.close();
-    }
-  }, [selectedIdx, components, extractSessionId]);
-
-  // Load component-level rationale for the selected component (drives the
-  // `I` ComponentRationalePanel). Decoupled from review metadata so the data
-  // contracts can evolve independently.
-  useEffect(() => {
-    const current = components[selectedIdx];
-    if (!current) {
-      setComponentRationale(null);
-      return;
-    }
-    const db = openPipelineDb();
-    try {
-      setComponentRationale(loadComponentRationale(db, extractSessionId, current.key));
-    } catch {
-      setComponentRationale(null);
-    } finally {
-      db.close();
-    }
-  }, [selectedIdx, components, extractSessionId]);
 
   const updateStatus = (idx: number, status: ReviewComponentStatus) => {
     setComponents((prev) => prev.map((c, i) => (i === idx ? { ...c, status } : c)));
@@ -418,22 +396,88 @@ export function GenerateReviewStep({
     }
     return m;
   }, [components]);
-  const navOrder = useMemo<number[]>(() => {
-    const cycleSet = new Set<string>();
-    for (const cyc of slotCycles) for (const p of cyc.path) cycleSet.add(p);
-    const items = components.map((c) => ({
-      key: c.key,
-      entry: c.entry,
-      status: (directIssues.get(c.key) ?? 'ok') as NodeStatus,
-    }));
-    const order = visibleItemOrder({ items, cycleParticipants: cycleSet, expandedGroups });
-    return order.length > 0 ? order : components.map((_, i) => i);
-  }, [components, slotCycles, directIssues, expandedGroups]);
+  const cycleParticipantsMemo = useMemo<Set<string>>(() => {
+    const set = new Set<string>();
+    for (const cyc of slotCycles) for (const p of cyc.path) set.add(p);
+    return set;
+  }, [slotCycles]);
+  const groupedItemsMemo = useMemo(
+    () =>
+      components.map((c) => ({
+        key: c.key,
+        entry: c.entry,
+        status: (directIssues.get(c.key) ?? 'ok') as NodeStatus,
+      })),
+    [components, directIssues],
+  );
+  const visibleRowsMemo = useMemo<VisibleRow[]>(
+    () =>
+      buildVisibleRows({
+        items: groupedItemsMemo,
+        cycleParticipants: cycleParticipantsMemo,
+        expandedGroups,
+      }),
+    [groupedItemsMemo, cycleParticipantsMemo, expandedGroups],
+  );
+  // Row positions that map to a real component (skip synthetic flat-header
+  // rows). j/k navigation walks these in order, so duplicate occurrences of
+  // the same itemIdx (shared deps under multiple parents) each get their own
+  // stop instead of being deduped.
+  const selectableRowPositions = useMemo<number[]>(() => {
+    const out: number[] = [];
+    for (let i = 0; i < visibleRowsMemo.length; i++) {
+      if (visibleRowsMemo[i].itemIdx >= 0) out.push(i);
+    }
+    return out;
+  }, [visibleRowsMemo]);
+  // Derived item-index of the component currently under the cursor. Used by
+  // logic that needs to know WHICH component is focused (which detail panel
+  // to render, which entry to accept/reject, etc.) — never for rendering the
+  // sidebar cursor position (that's cursorRowIdx via selectedRowIdx).
+  const selectedIdx =
+    visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1;
   useEffect(() => {
-    if (navOrder.length === 0) return;
-    if (navOrder.includes(selectedIdx)) return;
-    setSelectedIdx(navOrder[0]);
-  }, [navOrder, selectedIdx]);
+    if (selectableRowPositions.length === 0) return;
+    if (selectableRowPositions.includes(cursorRowIdx)) return;
+    setNav((prev) => ({ ...prev, cursorRowIdx: selectableRowPositions[0] }));
+  }, [selectableRowPositions, cursorRowIdx]);
+
+  // Feature 1: load review metadata (rationale + source location) for the
+  // selected component when selection changes.
+  useEffect(() => {
+    const current = components[selectedIdx];
+    if (!current) {
+      setReviewMetadata(null);
+      return;
+    }
+    const db = openPipelineDb();
+    try {
+      setReviewMetadata(loadComponentReviewMetadata(db, extractSessionId, current.key));
+    } catch {
+      setReviewMetadata(null);
+    } finally {
+      db.close();
+    }
+  }, [selectedIdx, components, extractSessionId]);
+
+  // Load component-level rationale for the selected component (drives the
+  // `I` ComponentRationalePanel). Decoupled from review metadata so the data
+  // contracts can evolve independently.
+  useEffect(() => {
+    const current = components[selectedIdx];
+    if (!current) {
+      setComponentRationale(null);
+      return;
+    }
+    const db = openPipelineDb();
+    try {
+      setComponentRationale(loadComponentRationale(db, extractSessionId, current.key));
+    } catch {
+      setComponentRationale(null);
+    } finally {
+      db.close();
+    }
+  }, [selectedIdx, components, extractSessionId]);
   // Merge per-closure render statuses into one map. When the same node
   // appears in multiple closures (shared dep), an entry with `isOwn: true`
   // wins over an `isOwn: false` — a real issue on a shared node beats the
@@ -452,36 +496,53 @@ export function GenerateReviewStep({
     return merged;
   }, [closures, directIssues]);
 
-  // Visible-row match list drives the (N/M) count and Tab cycling. A "row"
-  // is any entry in navOrder (which already respects group expand/collapse +
-  // tier ordering). Match = fuzzy hit against the component key.
+  // Visible-row match list drives the (N/M) count and Tab cycling. A "match"
+  // is a row position (into visibleRowsMemo) whose component key fuzzy-hits
+  // the query. Row positions (not item-indices) so duplicate occurrences of
+  // a shared dep can each be visited independently.
   const searchMatches = useMemo<number[]>(() => {
     if (!searchQuery) return [];
     const out: number[] = [];
-    for (const idx of navOrder) {
-      const key = components[idx]?.key;
-      if (key && fuzzyMatches(searchQuery, key)) out.push(idx);
+    for (const pos of selectableRowPositions) {
+      const row = visibleRowsMemo[pos];
+      const key = row ? components[row.itemIdx]?.key : undefined;
+      if (key && fuzzyMatches(searchQuery, key)) out.push(pos);
     }
     return out;
-  }, [searchQuery, navOrder, components]);
+  }, [searchQuery, selectableRowPositions, visibleRowsMemo, components]);
 
   const dimPredicate = useMemo(() => {
     if (!searchQuery) return undefined;
     return (name: string) => !fuzzyMatches(searchQuery, name);
   }, [searchQuery]);
 
-  const jumpCursorTo = (idx: number): void => {
-    const visualPos = navOrder.indexOf(idx);
-    if (visualPos < 0) return;
-    setSelectedIdx(idx);
-    setSidebarScrollOffset((prev) => {
-      if (visualPos < prev) return visualPos;
-      if (visualPos >= prev + VISIBLE_COUNT) return visualPos - VISIBLE_COUNT + 1;
-      return prev;
+  /**
+   * Jump the cursor to a specific row position in `visibleRowsMemo`. Callers
+   * that only know the target component name should use `jumpCursorToName`
+   * so they land on the FIRST occurrence deterministically instead of e.g.
+   * the last one from a linear scan.
+   */
+  const jumpCursorToRow = (rowIdx: number): void => {
+    if (rowIdx < 0 || rowIdx >= visibleRowsMemo.length) return;
+    setNav(({ sidebarScrollOffset: prev }) => {
+      let nextOff = prev;
+      if (rowIdx < prev) nextOff = rowIdx;
+      else if (rowIdx >= prev + VISIBLE_COUNT) nextOff = rowIdx - VISIBLE_COUNT + 1;
+      return { cursorRowIdx: rowIdx, sidebarScrollOffset: nextOff };
     });
     setJsonScrollOffset(0);
     setDraftValue('');
     setSaveError(null);
+  };
+  const jumpCursorToName = (name: string): void => {
+    for (let i = 0; i < visibleRowsMemo.length; i++) {
+      const row = visibleRowsMemo[i];
+      if (row.itemIdx < 0) continue;
+      if (components[row.itemIdx]?.key === name) {
+        jumpCursorToRow(i);
+        return;
+      }
+    }
   };
 
   const handleEditSave = () => {
@@ -551,19 +612,19 @@ export function GenerateReviewStep({
       }
       if (key.return) {
         if (searchQuery) {
-          const curPos = navOrder.indexOf(selectedIdx);
           let jumped = false;
-          for (let i = Math.max(0, curPos); i < navOrder.length; i++) {
-            const idx = navOrder[i];
-            const key2 = components[idx]?.key;
+          for (let i = Math.max(0, cursorRowIdx); i < visibleRowsMemo.length; i++) {
+            const row = visibleRowsMemo[i];
+            if (row.itemIdx < 0) continue;
+            const key2 = components[row.itemIdx]?.key;
             if (key2 && fuzzyMatches(searchQuery, key2)) {
-              jumpCursorTo(idx);
+              jumpCursorToRow(i);
               jumped = true;
               break;
             }
           }
           if (!jumped && searchMatches.length > 0) {
-            jumpCursorTo(searchMatches[0]);
+            jumpCursorToRow(searchMatches[0]);
           }
         }
         setSearchOpen(false);
@@ -700,18 +761,18 @@ export function GenerateReviewStep({
       // sidebar-focused state instead of toggling focus. Preserves scope-gate
       // parity. When no query is active, Tab behaves as before.
       if (sidebarFocused && searchQuery && searchMatches.length > 0) {
-        const curPos = navOrder.indexOf(selectedIdx);
         let next: number | null = null;
-        for (let i = curPos + 1; i < navOrder.length; i++) {
-          const idx = navOrder[i];
-          const key2 = components[idx]?.key;
+        for (let i = cursorRowIdx + 1; i < visibleRowsMemo.length; i++) {
+          const row = visibleRowsMemo[i];
+          if (row.itemIdx < 0) continue;
+          const key2 = components[row.itemIdx]?.key;
           if (key2 && fuzzyMatches(searchQuery, key2)) {
-            next = idx;
+            next = i;
             break;
           }
         }
         if (next === null) next = searchMatches[0] ?? null;
-        if (next !== null) jumpCursorTo(next);
+        if (next !== null) jumpCursorToRow(next);
         return;
       }
       setSidebarFocused((prev) => !prev);
@@ -864,11 +925,7 @@ export function GenerateReviewStep({
         if (!closure.nodes.some((n) => n.name === current.key)) continue;
         const target = pickDrillTarget(current.key, closure, directIssues);
         if (target && target !== current.key) {
-          const idx = components.findIndex((c) => c.key === target);
-          if (idx >= 0) {
-            setSelectedIdx(idx);
-            setJsonScrollOffset(0);
-          }
+          jumpCursorToName(target);
         }
         break;
       }
@@ -876,32 +933,50 @@ export function GenerateReviewStep({
     }
 
     if (key.upArrow || input === 'k') {
-      // Pilot-2026-06-23 bug: rapid k/j bursts could lose cursor position
-      // because the previous implementation read `selectedIdx` from the
-      // handler's closure. Under high keyboard-repeat rate multiple key
-      // events fire between Ink render flushes, so every invocation saw the
-      // same stale value and recomputed the same `newIdx`. Using functional
-      // setState chains the updates correctly: each pending update sees the
-      // post-update value of the previous one. The viewport offset update is
-      // nested inside the cursor updater so it always reflects the same
-      // newIdx that selectedIdx is being set to.
-      setSelectedIdx((prev) => {
-        const pos = navOrder.indexOf(prev);
-        const newIdx = pos > 0 ? navOrder[pos - 1] : navOrder[0] ?? prev;
-        const visualPos = Math.max(0, navOrder.indexOf(newIdx));
-        setSidebarScrollOffset((off) => Math.min(off, visualPos));
-        return newIdx;
+      // INTEG-4411 duplicate-cursor fix: cursor moves through visible-row
+      // positions (not item indices), so a shared dep occurring under
+      // multiple parents visits each row on its own instead of collapsing
+      // to a single stop. `selectableRowPositions` is the ordered list of
+      // rows that map to a real component (skips flat-header separators).
+      //
+      // Pilot-2026-06-23 bug: rapid k/j bursts previously lost cursor
+      // position because the handler read `selectedIdx` from its closure —
+      // merging cursor + scrollOffset into one `setNav` updater keeps them
+      // consistent AND avoids nested-setState re-renders per keystroke.
+      setNav(({ cursorRowIdx: prev, sidebarScrollOffset: off }) => {
+        const positions = selectableRowPositions;
+        if (positions.length === 0) return { cursorRowIdx: prev, sidebarScrollOffset: off };
+        const pos = positions.indexOf(prev);
+        // If we're not on a selectable row (shouldn't happen, but defensive),
+        // land on the nearest selectable row at or before the current row.
+        const currentSelectableIdx = pos >= 0
+          ? pos
+          : Math.max(
+              0,
+              positions.reduce((acc, p, i) => (p <= prev ? i : acc), 0),
+            );
+        const nextSelectableIdx = Math.max(0, currentSelectableIdx - 1);
+        const newRow = positions[nextSelectableIdx] ?? prev;
+        return { cursorRowIdx: newRow, sidebarScrollOffset: Math.min(off, newRow) };
       });
       setJsonScrollOffset(0);
       setDraftValue('');
       setSaveError(null);
     } else if (key.downArrow || input === 'j') {
-      setSelectedIdx((prev) => {
-        const pos = navOrder.indexOf(prev);
-        const nextPos = pos < 0 ? 0 : Math.min(navOrder.length - 1, pos + 1);
-        const newIdx = navOrder[nextPos] ?? prev;
-        setSidebarScrollOffset((off) => (nextPos >= off + VISIBLE_COUNT ? nextPos - VISIBLE_COUNT + 1 : off));
-        return newIdx;
+      setNav(({ cursorRowIdx: prev, sidebarScrollOffset: off }) => {
+        const positions = selectableRowPositions;
+        if (positions.length === 0) return { cursorRowIdx: prev, sidebarScrollOffset: off };
+        const pos = positions.indexOf(prev);
+        const currentSelectableIdx = pos >= 0
+          ? pos
+          : Math.max(
+              0,
+              positions.reduce((acc, p, i) => (p <= prev ? i : acc), 0),
+            );
+        const nextSelectableIdx = Math.min(positions.length - 1, currentSelectableIdx + 1);
+        const newRow = positions[nextSelectableIdx] ?? prev;
+        const nextOff = newRow >= off + VISIBLE_COUNT ? newRow - VISIBLE_COUNT + 1 : off;
+        return { cursorRowIdx: newRow, sidebarScrollOffset: nextOff };
       });
       setJsonScrollOffset(0);
       setDraftValue('');
@@ -943,11 +1018,7 @@ export function GenerateReviewStep({
     return '';
   };
 
-  const groupedItems = components.map((c) => ({
-    key: c.key,
-    entry: c.entry,
-    status: (directIssues.get(c.key) ?? 'ok') as NodeStatus,
-  }));
+  const groupedItems = groupedItemsMemo;
 
   const previewAnnotationByKey = previewAnnotations;
 
@@ -1179,8 +1250,15 @@ export function GenerateReviewStep({
             items={groupedItems}
             cycleParticipants={cycleParticipantSet}
             selectedIdx={selectedIdx}
+            selectedRowIdx={cursorRowIdx}
             onSelect={(idx) => {
-              setSelectedIdx(idx);
+              // Jump to the FIRST visible row for the target itemIdx.
+              for (let i = 0; i < visibleRowsMemo.length; i++) {
+                if (visibleRowsMemo[i].itemIdx === idx) {
+                  jumpCursorToRow(i);
+                  return;
+                }
+              }
               setJsonScrollOffset(0);
             }}
             expandedGroups={expandedGroups}
@@ -1199,6 +1277,7 @@ export function GenerateReviewStep({
             scrollOffset={sidebarScrollOffset}
             visibleCount={VISIBLE_COUNT}
             dimPredicate={dimPredicate}
+            visibleRows={visibleRowsMemo}
           />
           <Box flexGrow={1} paddingLeft={1} flexDirection="column">
             {selected ? (

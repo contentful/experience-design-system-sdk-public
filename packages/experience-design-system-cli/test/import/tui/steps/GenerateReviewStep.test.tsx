@@ -1751,6 +1751,68 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
   });
 });
 
+// ── Bug INTEG-4411: duplicate-row cursor loop ────────────────────────────────
+// A shared dep like `Card` appears once under each parent group plus once in
+// the flat "All components" tier — several rows in `visibleRows` sharing the
+// same itemIdx. The old cursor state was an item-index, so the sidebar drew
+// EVERY duplicate row as selected and j/k snapped back to the first
+// occurrence. Fix: cursor is a visible-row index (`cursorRowIdx`) and the
+// sidebar highlights exactly one row via `selectedRowIdx`.
+describe('GenerateReviewStep — duplicate-row cursor (INTEG-4411)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const parentEntry = (childName: string): Entry => ({
+    $type: 'component',
+    $properties: { title: { $type: 'string', $category: 'content' } },
+    $slots: { children: { $allowedComponents: [childName] } },
+  });
+  const cardEntry: Entry = {
+    $type: 'component',
+    $properties: { text: { $type: 'string', $category: 'content' } },
+  };
+
+  it('j-presses walk through duplicate Card rows one at a time (no snap-back)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // Article → Card, Section → Card. Card is shared, so buildVisibleRows
+    // emits it under BOTH Article and Section (grouped rows expand by
+    // default on this step). Total selectable rows: Article, Card (under
+    // Article), Section, Card (under Section).
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Article', entry: parentEntry('Card') },
+      { key: 'Section', entry: parentEntry('Card') },
+      { key: 'Card', entry: cardEntry },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Expected visible-row order (sortComponentsForSidebar sorts alphabetically
+    // by key within the populated tier, so root groups come out in that order):
+    //   0: ▾ Article (root)
+    //   1: └─ Card    (child under Article)
+    //   2: ▾ Section  (root)
+    //   3: └─ Card    (child under Section)
+    // Fire 3 j's — cursor should land on the SECOND Card row. Before the
+    // fix, cursor would snap back to the first Card row (row 1) on every j
+    // after position 1 because both rows shared itemIdx=2.
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Cursor glyph should appear exactly once in the sidebar (not on every
+    // Card row).
+    const cursorCount = (frame.match(/▶/g) ?? []).length;
+    expect(cursorCount).toBe(1);
+    // The row carrying the cursor must be the SECOND Card occurrence, which
+    // renders under the Section root. We assert by locating the cursor line
+    // and confirming it sits AFTER the Section root in the frame.
+    const lines = frame.split('\n');
+    const cursorLineIdx = lines.findIndex((l) => l.includes('▶'));
+    const sectionLineIdx = lines.findIndex((l) => l.includes('Section'));
+    expect(cursorLineIdx).toBeGreaterThan(sectionLineIdx);
+  });
+});
+
 describe('sortComponentsForSidebar — 3-tier ordering (INTEG-4401)', () => {
   const empty = { $type: 'component' as const, $properties: {} };
   const populated = {

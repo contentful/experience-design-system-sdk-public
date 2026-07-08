@@ -64,10 +64,11 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    // Cursor starts on the first row (Card root). Reject the closure by
-    // rejecting Card (no ancestors → no prompt), then re-accept (cascade to
-    // all descendants).
-    stdin.write(' '); // reject Card → only Card flips off (no ancestors)
+    // Cursor starts on the first row (Card root). Rejecting Card now
+    // deselects its 2 descendants → blast radius 2 → confirm prompt. Press
+    // [y] to apply. Then Space again re-accepts, cascading to Text + Icon.
+    stdin.write(' '); // reject Card → confirm prompt (0 ancestors + 2 descendants)
+    stdin.write('y'); // confirm: Card rejected, Text/Icon undecided
     stdin.write(' '); // accept Card → cascades to Text + Icon
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -77,7 +78,7 @@ describe('ScopeGateStep — closure-aware selection', () => {
     expect(arg.rejected).not.toContain('Icon');
   });
 
-  it('Rejecting a root without ancestors flips only itself (descendants stay)', () => {
+  it('Rejecting a root deselects its descendants (undecided → partitions to rejected)', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep
@@ -91,12 +92,15 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    // Rejecting Card cascades UP (to its ancestors — none), so only Card flips.
+    // Rejecting Card cascades UP (to its ancestors — none) and now DEselects
+    // its descendants (Text, Icon → undecided). Blast radius = 2 → confirm.
     stdin.write(' ');
+    stdin.write('y');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    expect(arg.rejected).toEqual(['Card']);
-    expect(arg.accepted).toEqual(expect.arrayContaining(['Text', 'Icon', 'Standalone']));
+    // Card explicitly rejected; Text/Icon undecided → partition to rejected.
+    expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Text', 'Icon']));
+    expect(arg.accepted).toEqual(['Standalone']);
   });
 
   it('Space on a standalone toggles only that component', () => {
