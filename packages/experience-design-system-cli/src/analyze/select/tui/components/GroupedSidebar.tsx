@@ -65,6 +65,28 @@ export interface GroupedSidebarProps {
    */
   scrollOffset?: number;
   visibleCount?: number;
+  /** When true, force every group open regardless of expandedGroups. */
+  alwaysExpanded?: boolean;
+  /**
+   * When true, append a flat "All components" tier below the standalone tier
+   * listing every non-empty, non-cycle component once (roots + children +
+   * standalones), alphabetical. Each row is selectable via its own itemIdx.
+   */
+  showFlatTier?: boolean;
+  /**
+   * Per-source-component selection state. When provided, rows that resolve to
+   * a ComponentType render a leading glyph (`[✓]` / `[✗]` / `[ ]`). Applies
+   * to standalone, group-root, group-child, and flat rows only.
+   */
+  selectionStateByKey?: Map<string, 'accepted' | 'rejected' | 'undecided'>;
+  /** Optional per-source-component AI-flagged marker. Trailing dim ` *`. */
+  aiFlaggedByKey?: Map<string, boolean>;
+  /**
+   * Optional predicate over the row's underlying component key. When it
+   * returns true, the row's label renders dim. Group-root rows never dim
+   * (tree structure must remain findable). Cycle rows never dim.
+   */
+  dimPredicate?: (componentKey: string) => boolean;
 }
 
 const GLYPH_EXPAND_COLLAPSED = '▸';
@@ -75,7 +97,15 @@ const GLYPH_WARN = '⚠';
 const GLYPH_ERROR = '✗';
 const DEPTH_CAP = 2;
 
-type RowKind = 'cycle' | 'empty' | 'group-root' | 'group-child' | 'group-more' | 'standalone';
+type RowKind =
+  | 'cycle'
+  | 'empty'
+  | 'group-root'
+  | 'group-child'
+  | 'group-more'
+  | 'standalone'
+  | 'flat'
+  | 'flat-header';
 
 interface VisibleRow {
   kind: RowKind;
@@ -141,8 +171,10 @@ export function buildVisibleRows(props: {
   items: GroupedSidebarItem[];
   cycleParticipants: Set<string>;
   expandedGroups: Set<string>;
+  alwaysExpanded?: boolean;
+  showFlatTier?: boolean;
 }): VisibleRow[] {
-  const { items, cycleParticipants } = props;
+  const { items, cycleParticipants, alwaysExpanded, showFlatTier } = props;
   const rows: VisibleRow[] = [];
   if (items.length === 0) return rows;
 
@@ -213,7 +245,7 @@ export function buildVisibleRows(props: {
   for (const root of groupRoots) {
     const closure = closures.get(root)!;
     const depCount = closure.nodes.length - 1;
-    const expanded = props.expandedGroups.has(root);
+    const expanded = alwaysExpanded ? true : props.expandedGroups.has(root);
     const glyphExpand = expanded ? GLYPH_EXPAND_EXPANDED : GLYPH_EXPAND_COLLAPSED;
     const aggregate = expanded ? null : aggregateGlyphFor(closure, statusByName);
     const rec = itemByKey.get(root)!;
@@ -285,6 +317,32 @@ export function buildVisibleRows(props: {
     });
   }
 
+  // Tier 5: optional flat "All components" tier — every non-empty, non-cycle
+  // component once, alphabetical. Shared deps appear exactly once here.
+  if (showFlatTier) {
+    const flatNames = otherKeys.slice().sort();
+    if (flatNames.length > 0) {
+      rows.push({
+        kind: 'flat-header',
+        key: 'flat-header',
+        label: '── All components ──',
+        indent: 0,
+        itemIdx: -1,
+      });
+      for (const name of flatNames) {
+        const rec = itemByKey.get(name);
+        if (!rec) continue;
+        rows.push({
+          kind: 'flat',
+          key: `flat:${name}`,
+          label: name,
+          indent: 0,
+          itemIdx: rec.idx,
+        });
+      }
+    }
+  }
+
   return rows;
 }
 
@@ -298,6 +356,8 @@ export function visibleItemOrder(props: {
   items: GroupedSidebarItem[];
   cycleParticipants: Set<string>;
   expandedGroups: Set<string>;
+  alwaysExpanded?: boolean;
+  showFlatTier?: boolean;
 }): number[] {
   return buildVisibleRows(props)
     .filter((row) => row.itemIdx >= 0)
@@ -329,8 +389,19 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
     previewAnnotationByKey,
     scrollOffset,
     visibleCount,
+    alwaysExpanded,
+    showFlatTier,
+    selectionStateByKey,
+    aiFlaggedByKey,
+    dimPredicate,
   } = props;
-  const allRows = buildVisibleRows({ items, cycleParticipants, expandedGroups });
+  const allRows = buildVisibleRows({
+    items,
+    cycleParticipants,
+    expandedGroups,
+    alwaysExpanded,
+    showFlatTier,
+  });
 
   // Window rows when scrollOffset+visibleCount are provided; otherwise render
   // the full list. Arrow indicators mirror the flat Sidebar behavior.
@@ -385,6 +456,54 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           : undefined;
         const inheritanceDim = rs ? !rs.isOwn : false;
 
+        // Selection glyph applies to component-backed rows only.
+        const supportsSelectionGlyph =
+          selectionStateByKey !== undefined &&
+          itemName !== undefined &&
+          (row.kind === 'standalone' ||
+            row.kind === 'group-root' ||
+            row.kind === 'group-child' ||
+            row.kind === 'flat');
+        const selState = supportsSelectionGlyph
+          ? selectionStateByKey!.get(itemName!) ?? 'undecided'
+          : undefined;
+        let selGlyph: string | null = null;
+        let selColor: string | undefined;
+        let selDim = false;
+        if (selState === 'accepted') {
+          selGlyph = '[✓]';
+          selColor = 'green';
+        } else if (selState === 'rejected') {
+          selGlyph = '[✗]';
+          selColor = 'red';
+        } else if (selState === 'undecided') {
+          selGlyph = '[ ]';
+          selDim = true;
+        }
+
+        const aiFlagged =
+          aiFlaggedByKey !== undefined &&
+          itemName !== undefined &&
+          row.kind !== 'group-more' &&
+          row.kind !== 'flat-header' &&
+          aiFlaggedByKey.get(itemName) === true;
+
+        const canDim =
+          dimPredicate !== undefined &&
+          itemName !== undefined &&
+          row.kind !== 'cycle' &&
+          row.kind !== 'group-root' &&
+          row.kind !== 'flat-header' &&
+          row.kind !== 'group-more' &&
+          dimPredicate(itemName);
+
+        const isSynthetic = row.kind === 'group-more' || row.kind === 'flat-header';
+        const labelDim =
+          row.kind === 'group-more' ||
+          row.kind === 'flat-header' ||
+          row.sharedSuffix === true ||
+          canDim;
+
         return (
           <Box key={row.key}>
             {badge ? (
@@ -396,16 +515,31 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
               // annotations flip in/out — matches the flat Sidebar.
               <Text> </Text>
             )}
+            {selectionStateByKey !== undefined && (
+              selGlyph && !isSynthetic ? (
+                <Text color={selColor} dimColor={selDim}>
+                  {' ' + selGlyph}
+                </Text>
+              ) : (
+                // Reserve the 4-char slot ("[ ] " width) so labels stay
+                // column-aligned across every row (including rows that don't
+                // themselves carry a selection glyph).
+                <Text>{'    '}</Text>
+              )
+            )}
             <Text
               color={color}
               inverse={isSelected && focused}
               underline={isSelected && !focused}
-              dimColor={row.kind === 'group-more' || row.sharedSuffix === true}
+              dimColor={labelDim}
               wrap="truncate"
             >
               {' '}
               {row.label}
             </Text>
+            {aiFlagged && (
+              <Text dimColor>{' *'}</Text>
+            )}
             {inheritanceGlyph && (
               <Text color={inheritanceColor} dimColor={inheritanceDim}>
                 {' ' + inheritanceGlyph}
