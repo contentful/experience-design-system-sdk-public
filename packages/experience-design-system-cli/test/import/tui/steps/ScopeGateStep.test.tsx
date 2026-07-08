@@ -587,6 +587,82 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     });
   });
 
+  describe('cycle-row rejection (INTEG task #31)', () => {
+    // 2-cycle: NodeA ↔ NodeB. Both are cycle-tier rows at the top of the
+    // sidebar. Rejecting either from its cycle row must work — previously
+    // the [a]/[r]/Space handler treated 'cycle' as a no-op, blocking the
+    // user from breaking the cycle.
+    const CYCLE = [
+      {
+        name: 'NodeA',
+        componentId: 'a',
+        slots: [{ name: 'slotA', allowedComponents: ['NodeB'] }],
+      },
+      {
+        name: 'NodeB',
+        componentId: 'b',
+        slots: [{ name: 'slotB', allowedComponents: ['NodeA'] }],
+      },
+    ];
+
+    it('[r] on a cycle-tier row rejects that participant', () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={CYCLE} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      // Cursor starts on the first cycle-tier row (NodeA, alphabetical).
+      // NodeA's ancestors in this graph = {NodeB} (slots NodeA via slotB);
+      // descendants (accept-cascade) stops at the cycle so it's just
+      // {NodeA}. Blast radius = 1 ancestor + 0 descendants → direct reject
+      // without a confirm prompt. Reject cascade takes both A and B (the
+      // cascade always includes ancestors).
+      stdin.write('r');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.rejected).toEqual(expect.arrayContaining(['NodeA', 'NodeB']));
+      expect(arg.accepted).toEqual([]);
+    });
+
+    it('Space on a cycle-tier row behaves the same as [r]', () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={CYCLE} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      stdin.write(' ');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.rejected).toEqual(expect.arrayContaining(['NodeA', 'NodeB']));
+    });
+
+    it('[a] on a cycle-tier row after a reject re-accepts the participant', () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={CYCLE} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      // Reject → both flip to rejected. Then [a] on NodeA re-accepts NodeA
+      // (accept-cascade includes just {NodeA} since closure stops at cycle).
+      stdin.write('r');
+      stdin.write('a');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.accepted).toContain('NodeA');
+    });
+
+    it('cycle-row glyph still renders after a cycle participant is rejected', () => {
+      // Cycle detection runs on the extracted graph, not the pushed subset —
+      // so the ⚠ (cycle) marker stays visible even after the reject. Pins
+      // current behavior against future re-rendering changes.
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('r');
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('(cycle)');
+      expect(frame).toContain('NodeA');
+      expect(frame).toContain('NodeB');
+    });
+  });
+
   describe('D7 — fuzzy search', () => {
     const FIXTURE_S = [
       { name: 'AlphaCard', componentId: 'c0' },

@@ -275,12 +275,12 @@ export function ScopeGateStep({
       case 'empty':
       case 'group-root':
       case 'group-child':
-      case 'flat': {
+      case 'flat':
+      case 'cycle': {
         const key = row.itemIdx >= 0 ? groupedItems[row.itemIdx]?.key : undefined;
         if (key) requestToggle(key);
         return;
       }
-      case 'cycle':
       case 'flat-header':
       default:
         return;
