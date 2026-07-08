@@ -22,7 +22,12 @@ import {
   computeRejectCascade,
 } from '../../../analyze/selection-cascade.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
-import { computeSidebarWidth } from '../sidebar-width.js';
+import {
+  buildAddedComponentsList,
+  buildAddedGroupsList,
+  computeColumnWidths,
+  computeCounters,
+} from '../scope-gate-columns.js';
 
 export type ScopeComponent = {
   name: string;
@@ -87,10 +92,16 @@ export function ScopeGateStep({
   onCancelAutoFilter,
 }: ScopeGateStepProps): React.ReactElement {
   const { stdout } = useStdout();
-  const sidebarWidth = computeSidebarWidth(stdout?.columns ?? 80);
+  const totalWidth = stdout?.columns ?? 80;
+  const columnPlan = useMemo(() => computeColumnWidths(totalWidth), [totalWidth]);
+  const sidebarWidth = columnPlan.main;
   type Decision = 'accepted' | 'rejected' | 'undecided';
   const [userDecisions, setUserDecisions] = useState<Map<string, Decision>>(new Map());
   const [nav, setNav] = useState<{ cursor: number; scrollOffset: number }>({ cursor: 0, scrollOffset: 0 });
+  type FocusedColumn = 'main' | 'added-components' | 'added-groups';
+  const [focusedColumn, setFocusedColumn] = useState<FocusedColumn>('main');
+  const [addedComponentsCursor, setAddedComponentsCursor] = useState(0);
+  const [addedGroupsCursor, setAddedGroupsCursor] = useState(0);
   const cursor = nav.cursor;
   const scrollOffset = nav.scrollOffset;
   const [reasonPanelOpen, setReasonPanelOpen] = useState(false);
@@ -456,6 +467,16 @@ export function ScopeGateStep({
       return;
     }
     if (input === 'l') {
+      // From a side column, jump the main cursor to the highlighted row first
+      // so the existing lineage-panel machinery (which reads focusedComponent
+      // off the main cursor) targets the intended component.
+      if (focusedColumn === 'added-components') {
+        const name = addedComponents[safeAddedComponentsCursor];
+        if (name) jumpCursorTo(name);
+      } else if (focusedColumn === 'added-groups') {
+        const g = addedGroups[safeAddedGroupsCursor];
+        if (g) jumpCursorTo(g.name);
+      }
       setLineagePanelOpen(true);
       setLineageCursor(0);
       return;
@@ -476,7 +497,9 @@ export function ScopeGateStep({
       return;
     }
     if (key.tab) {
-      // Cycle through search matches only.
+      // Search-match cycling has priority when a query is active — matches
+      // existing behavior. Column-focus cycling only kicks in in three-column
+      // layout when the user is not actively searching.
       if (searchQuery && searchMatches.length > 0) {
         const cursorRow = visibleRows[safeCursor];
         const cursorName =
@@ -486,10 +509,42 @@ export function ScopeGateStep({
         const curIdx = cursorName ? searchMatches.indexOf(cursorName) : -1;
         const nextName = searchMatches[(curIdx + 1) % searchMatches.length];
         if (nextName) jumpCursorTo(nextName);
+        return;
+      }
+      if (columnPlan.layout !== 'three-column') return;
+      const forward: FocusedColumn[] = ['main', 'added-components', 'added-groups'];
+      const curIdx = forward.indexOf(focusedColumn);
+      const delta = 1; // shift-tab is not distinguishable via useImmediateInput; forward-only.
+      setFocusedColumn(forward[(curIdx + delta + forward.length) % forward.length]);
+      return;
+    }
+    // Enter in side columns jumps main cursor and returns focus to main.
+    if (key.return) {
+      if (focusedColumn === 'added-components') {
+        const name = addedComponents[safeAddedComponentsCursor];
+        if (name) jumpCursorTo(name);
+        setFocusedColumn('main');
+        return;
+      }
+      if (focusedColumn === 'added-groups') {
+        const g = addedGroups[safeAddedGroupsCursor];
+        if (g) jumpCursorTo(g.name);
+        setFocusedColumn('main');
+        return;
       }
       return;
     }
     if (key.upArrow || input === 'k') {
+      if (focusedColumn === 'added-components') {
+        if (addedComponents.length === 0) return;
+        setAddedComponentsCursor((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (focusedColumn === 'added-groups') {
+        if (addedGroups.length === 0) return;
+        setAddedGroupsCursor((c) => Math.max(0, c - 1));
+        return;
+      }
       if (total === 0) return;
       setNav(({ cursor: c, scrollOffset: prev }) => {
         const next = c <= 0 ? 0 : c - 1;
@@ -498,6 +553,16 @@ export function ScopeGateStep({
       return;
     }
     if (key.downArrow || input === 'j') {
+      if (focusedColumn === 'added-components') {
+        if (addedComponents.length === 0) return;
+        setAddedComponentsCursor((c) => Math.min(addedComponents.length - 1, c + 1));
+        return;
+      }
+      if (focusedColumn === 'added-groups') {
+        if (addedGroups.length === 0) return;
+        setAddedGroupsCursor((c) => Math.min(addedGroups.length - 1, c + 1));
+        return;
+      }
       if (total === 0) return;
       setNav(({ cursor: c, scrollOffset: prev }) => {
         const next = c >= total - 1 ? total - 1 : c + 1;
@@ -531,6 +596,29 @@ export function ScopeGateStep({
 
   const totalComponents = components.length;
   const totalMatches = searchQuery ? searchMatches.length : 0;
+
+  const addedComponents = useMemo(
+    () => buildAddedComponentsList(components, selectionStateByKey),
+    [components, selectionStateByKey],
+  );
+  const addedGroups = useMemo(
+    () => buildAddedGroupsList(graph, selectionStateByKey),
+    [graph, selectionStateByKey],
+  );
+  const counters = useMemo(
+    () => computeCounters(components, graph, selectionStateByKey),
+    [components, graph, selectionStateByKey],
+  );
+
+  // Clamp column cursors when their lists shrink under decisions changes.
+  const safeAddedComponentsCursor = Math.min(
+    addedComponentsCursor,
+    Math.max(0, addedComponents.length - 1),
+  );
+  const safeAddedGroupsCursor = Math.min(
+    addedGroupsCursor,
+    Math.max(0, addedGroups.length - 1),
+  );
 
   return (
     <Box flexDirection="column" paddingX={2}>
@@ -579,30 +667,54 @@ export function ScopeGateStep({
         </Box>
       )}
 
+      {!allRejected && (
+        <CounterStrip counters={counters} totalWidth={totalWidth} />
+      )}
+
       {allRejected ? (
         <Box marginTop={1}>
           <Text color="yellow">AI excluded all components — press [a] to override or [q] to quit</Text>
         </Box>
       ) : (
-        <GroupedSidebar
-          items={groupedItems}
-          cycleParticipants={cycleParticipants}
-          selectedIdx={selectedItemIdx}
-          selectedRowIdx={safeCursor}
-          onSelect={() => {}}
-          expandedGroups={new Set()}
-          onToggleExpanded={() => {}}
-          width={sidebarWidth}
-          focused={true}
-          scrollOffset={scrollOffset}
-          visibleCount={VISIBLE_COUNT}
-          alwaysExpanded={true}
-          showFlatTier={true}
-          selectionStateByKey={selectionStateByKey}
-          aiFlaggedByKey={aiFlaggedByKey}
-          dimPredicate={dimPredicate}
-          visibleRows={visibleRows}
-        />
+        <Box flexDirection="row">
+          <GroupedSidebar
+            items={groupedItems}
+            cycleParticipants={cycleParticipants}
+            selectedIdx={selectedItemIdx}
+            selectedRowIdx={safeCursor}
+            onSelect={() => {}}
+            expandedGroups={new Set()}
+            onToggleExpanded={() => {}}
+            width={sidebarWidth}
+            focused={focusedColumn === 'main'}
+            scrollOffset={scrollOffset}
+            visibleCount={VISIBLE_COUNT}
+            alwaysExpanded={true}
+            showFlatTier={true}
+            selectionStateByKey={selectionStateByKey}
+            aiFlaggedByKey={aiFlaggedByKey}
+            dimPredicate={dimPredicate}
+            visibleRows={visibleRows}
+          />
+          {columnPlan.layout === 'three-column' && (
+            <>
+              <Box width={2} flexShrink={0} />
+              <AddedComponentsColumn
+                width={columnPlan.added}
+                names={addedComponents}
+                cursor={safeAddedComponentsCursor}
+                focused={focusedColumn === 'added-components'}
+              />
+              <Box width={2} flexShrink={0} />
+              <AddedGroupsColumn
+                width={columnPlan.groups}
+                groups={addedGroups}
+                cursor={safeAddedGroupsCursor}
+                focused={focusedColumn === 'added-groups'}
+              />
+            </>
+          )}
+        </Box>
       )}
 
       {focusedComponent && !allRejected && (
@@ -739,6 +851,11 @@ export function ScopeGateStep({
         <Text>
           <Text color="cyan">[q]</Text> <Text dimColor>quit</Text>
         </Text>
+        {columnPlan.layout === 'three-column' && (
+          <Text>
+            <Text color="cyan">[Tab]</Text> <Text dimColor>switch column</Text>
+          </Text>
+        )}
         {hasAnyAi && (
           <Text>
             <Text color="cyan">[s]</Text> <Text dimColor>AI reason</Text>
@@ -750,6 +867,135 @@ export function ScopeGateStep({
           </Text>
         )}
       </Box>
+    </Box>
+  );
+}
+
+/**
+ * Top counter strip. Always visible above the columns. Condenses labels to
+ * short forms when the terminal is narrower than 60 columns.
+ */
+function CounterStrip(props: {
+  counters: { accepted: number; rejected: number; undecided: number; groups: number; total: number };
+  totalWidth: number;
+}): React.ReactElement {
+  const { counters, totalWidth } = props;
+  const condensed = totalWidth < 60;
+  const labelAcc = condensed ? 'Acc' : 'Accepted';
+  const labelGrp = condensed ? 'Grp' : 'Groups';
+  const labelRej = condensed ? 'Rej' : 'Rejected';
+  const labelUnd = condensed ? 'Und' : 'Undecided';
+  const sep = condensed ? ' | ' : '    ';
+  return (
+    <Box marginTop={1}>
+      <Text>
+        <Text dimColor>{labelAcc} </Text>
+        <Text bold>{counters.accepted}</Text>
+        <Text dimColor>{`/${counters.total}`}</Text>
+        <Text dimColor>{sep}</Text>
+        <Text dimColor>{labelGrp} </Text>
+        <Text bold>{counters.groups}</Text>
+        <Text dimColor>{sep}</Text>
+        <Text dimColor>{labelRej} </Text>
+        <Text bold>{counters.rejected}</Text>
+        <Text dimColor>{sep}</Text>
+        <Text dimColor>{labelUnd} </Text>
+        <Text bold>{counters.undecided}</Text>
+      </Text>
+    </Box>
+  );
+}
+
+function ColumnHeader(props: { title: string; width: number; focused: boolean }): React.ReactElement {
+  const { title, width, focused } = props;
+  const sep = '─'.repeat(Math.max(0, width - 2));
+  return (
+    <Box flexDirection="column">
+      <Text bold color={focused ? 'white' : undefined} inverse={focused}>
+        {title}
+      </Text>
+      <Text dimColor>{sep}</Text>
+    </Box>
+  );
+}
+
+function AddedComponentsColumn(props: {
+  width: number;
+  names: string[];
+  cursor: number;
+  focused: boolean;
+}): React.ReactElement {
+  const { width, names, cursor, focused } = props;
+  return (
+    <Box flexDirection="column" width={width} flexShrink={0}>
+      <ColumnHeader title="Added components" width={width} focused={focused} />
+      {names.length === 0 ? (
+        <Text dimColor>(none)</Text>
+      ) : (
+        names.map((name, i) => {
+          const isCursor = focused && i === cursor;
+          return (
+            <Box key={name}>
+              {isCursor ? (
+                <Text color="cyan" bold>
+                  {'▶'}
+                </Text>
+              ) : (
+                <Text> </Text>
+              )}
+              <Text
+                color={isCursor ? 'white' : undefined}
+                bold={isCursor}
+                inverse={isCursor}
+                wrap="truncate"
+              >
+                {' ' + name}
+              </Text>
+            </Box>
+          );
+        })
+      )}
+    </Box>
+  );
+}
+
+function AddedGroupsColumn(props: {
+  width: number;
+  groups: Array<{ name: string; depCount: number }>;
+  cursor: number;
+  focused: boolean;
+}): React.ReactElement {
+  const { width, groups, cursor, focused } = props;
+  return (
+    <Box flexDirection="column" width={width} flexShrink={0}>
+      <ColumnHeader title="Added groups" width={width} focused={focused} />
+      {groups.length === 0 ? (
+        <Text dimColor>(none)</Text>
+      ) : (
+        groups.map((g, i) => {
+          const isCursor = focused && i === cursor;
+          const label = `${g.name} (${g.depCount} dep${g.depCount === 1 ? '' : 's'})`;
+          return (
+            <Box key={g.name}>
+              {isCursor ? (
+                <Text color="cyan" bold>
+                  {'▶'}
+                </Text>
+              ) : (
+                <Text> </Text>
+              )}
+              <Text
+                color={isCursor ? 'white' : undefined}
+                bold={isCursor}
+                inverse={isCursor}
+                wrap="truncate"
+              >
+                {' ' + label}
+              </Text>
+            </Box>
+          );
+        })
+      )}
     </Box>
   );
 }
