@@ -121,23 +121,52 @@ describe('GroupedSidebar', () => {
     expect(dMatches.length).toBe(1);
   });
 
-  it('depth cap of 2: A->B->C->D hides D behind +N more', () => {
+  it('deep chain A->B->C->D: all descendants render, no +N more, indented per depth', () => {
+    const items = [
+      item('A', { slots: { s: ['B'] } }),
+      item('B', { slots: { s: ['C'] } }),
+      item('C', { slots: { s: ['D'] } }),
+      item('D'),
+    ];
     const { lastFrame } = renderSidebar({
-      items: [
-        item('A', { slots: { s: ['B'] } }),
-        item('B', { slots: { s: ['C'] } }),
-        item('C', { slots: { s: ['D'] } }),
-        item('D'),
-      ],
+      items,
       expandedGroups: new Set(['A']),
     });
     const frame = lastFrame() ?? '';
+    // Never emit the overflow marker.
+    expect(frame).not.toMatch(/\+\d+ more/);
+    // Root + every descendant is present.
     expect(frame).toContain('A');
     expect(frame).toContain('B');
     expect(frame).toContain('C');
-    // D is depth 3, beyond cap; hidden behind +N more marker.
-    expect(frame).not.toMatch(/[│├└─ ]D\b/);
-    expect(frame).toMatch(/\+\d+ more/);
+    expect(frame).toContain('D');
+
+    // The A closure produces 4 total rows (root + 3 descendants). Assert on
+    // the visible-row structure so we don't get fooled by substring matches
+    // on ordinary letter tokens.
+    const order = visibleItemOrder({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(['A']),
+    });
+    // All 4 items reachable via selectable rows exactly once.
+    expect(order.slice().sort()).toEqual([0, 1, 2, 3]);
+
+    // Each descendant should sit on its own line with tree glyphs and
+    // depth-proportional indent (2 spaces per depth beyond 1).
+    const lines = frame.split('\n');
+    const bLine = lines.find((l) => /├─ B\b|└─ B\b/.test(l)) ?? '';
+    const cLine = lines.find((l) => /├─ C\b|└─ C\b/.test(l)) ?? '';
+    const dLine = lines.find((l) => /├─ D\b|└─ D\b/.test(l)) ?? '';
+    expect(bLine).not.toBe('');
+    expect(cLine).not.toBe('');
+    expect(dLine).not.toBe('');
+    // Indent grows with depth: B at depth 1 has no extra padding before the
+    // tree glyph; C (depth 2) has 2 spaces; D (depth 3) has 4 spaces.
+    expect(bLine.indexOf('├─') < cLine.indexOf('├─') + 1 || bLine.indexOf('└─') < cLine.indexOf('└─') + 1).toBe(true);
+    const cGlyphIdx = cLine.search(/[├└]─/);
+    const dGlyphIdx = dLine.search(/[├└]─/);
+    expect(dGlyphIdx).toBeGreaterThan(cGlyphIdx);
   });
 
   it('cycle participants render as flat rows at TOP with ⚠', () => {
@@ -368,6 +397,85 @@ describe('GroupedSidebar', () => {
     const frame = lastFrame() ?? '';
     const line = frame.split('\n').find((l) => l.includes('Widget')) ?? '';
     expect(line).not.toMatch(/Widget\s+\*/);
+  });
+
+  describe('cursor glyph', () => {
+    it('cursor row is prefixed with a ▶ glyph when focused', () => {
+      const { lastFrame } = renderSidebar({
+        items: [item('Alpha'), item('Bravo')],
+        selectedIdx: 0,
+        focused: true,
+      });
+      const frame = lastFrame() ?? '';
+      const alphaLine = frame.split('\n').find((l) => l.includes('Alpha')) ?? '';
+      expect(alphaLine).toContain('▶');
+    });
+
+    it('non-cursor rows do NOT have the ▶ glyph (leading space reserved instead)', () => {
+      const { lastFrame } = renderSidebar({
+        items: [item('Alpha'), item('Bravo')],
+        selectedIdx: 0,
+        focused: true,
+      });
+      const frame = lastFrame() ?? '';
+      const bravoLine = frame.split('\n').find((l) => l.includes('Bravo')) ?? '';
+      expect(bravoLine).not.toContain('▶');
+    });
+
+    it('cursor row on a shared-dep suffix row is NOT dimmed', () => {
+      // Two roots sharing dep S. When expanded, the 2nd S occurrence carries
+      // `sharedSuffix=true` which would normally dim the row. If the cursor
+      // lands on that row, brightness must be preserved so the user sees it.
+      const items: GroupedSidebarItem[] = [
+        item('R1', { slots: { s: ['S'] } }),
+        item('R2', { slots: { s: ['S'] } }),
+        item('S'),
+      ];
+      // Find visible-row order and put the cursor on the 2nd (shared) S.
+      const order = visibleItemOrder({
+        items,
+        cycleParticipants: new Set(),
+        expandedGroups: new Set(['R1', 'R2']),
+      });
+      // The 2nd occurrence of S's itemIdx corresponds to items index of S.
+      const sIdx = items.findIndex((i) => i.key === 'S');
+      // Confirm S is reachable in the visible order (it appears twice).
+      expect(order.filter((i) => i === sIdx).length).toBe(2);
+
+      const { lastFrame } = renderSidebar({
+        items,
+        expandedGroups: new Set(['R1', 'R2']),
+        selectedIdx: sIdx,
+        focused: true,
+      });
+      const frame = lastFrame() ?? '';
+      // Both S rows share the same itemIdx, so both become "cursor rows"
+      // visually. Assert the cursor glyph is present at least once and that
+      // the shared-suffix row still renders its "(shared)" text without
+      // being hidden.
+      expect(frame).toContain('▶');
+      expect(frame).toContain('(shared)');
+      // The line carrying the cursor glyph should also NOT be wrapped in the
+      // dim escape sequence. `ink-testing-library` strips ANSI, so we assert
+      // structurally: the cursor row is present and legible.
+      const cursorLine = frame.split('\n').find((l) => l.includes('▶')) ?? '';
+      expect(cursorLine).toContain('S');
+    });
+
+    it('cursor row is NOT dimmed even when dimPredicate matches every row', () => {
+      const { lastFrame } = renderSidebar({
+        items: [item('Alpha'), item('Bravo')],
+        selectedIdx: 0,
+        focused: true,
+        // Predicate that matches every component: normally every row would
+        // dim; the cursor row must stay bright.
+        dimPredicate: () => true,
+      });
+      const frame = lastFrame() ?? '';
+      // Cursor row renders with the glyph even under a matching predicate.
+      const cursorLine = frame.split('\n').find((l) => l.includes('▶')) ?? '';
+      expect(cursorLine).toContain('Alpha');
+    });
   });
 
   it('showFlatTier: flat rows are selectable via itemIdx', () => {

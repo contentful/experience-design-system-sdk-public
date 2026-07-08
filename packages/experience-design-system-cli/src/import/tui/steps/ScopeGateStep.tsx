@@ -14,8 +14,8 @@ import {
 } from '../../../analyze/composite-closure.js';
 import { findSlotCycles } from '../../../analyze/cycle-detection.js';
 import {
-  findAllAncestorChains,
-  type LineageChain,
+  buildAncestorTree,
+  renderAncestorTree,
 } from '../../../analyze/lineage.js';
 import {
   computeAcceptCascade,
@@ -69,17 +69,6 @@ function toSidebarEntry(c: ScopeComponent): CDFComponentEntry {
   };
   if (Object.keys($slots).length > 0) entry.$slots = $slots;
   return entry;
-}
-
-function chainToString(chain: LineageChain, target: string): string {
-  if (chain.length === 0) return target;
-  const parts: string[] = [];
-  parts.push(chain[0].from);
-  for (const edge of chain) {
-    parts.push(`─[${edge.slotName}]→`);
-    parts.push(edge.to);
-  }
-  return parts.join(' ');
 }
 
 type LineageEntry =
@@ -259,7 +248,6 @@ export function ScopeGateStep({
         return;
       }
       case 'cycle':
-      case 'group-more':
       case 'flat-header':
       default:
         return;
@@ -280,18 +268,19 @@ export function ScopeGateStep({
   const lineageEntries = useMemo<LineageEntry[]>(() => {
     if (!focusedComponent) return [];
     const name = focusedComponent.name;
-    const chains = findAllAncestorChains(name, graph);
+    const tree = buildAncestorTree(name, graph);
     const closure = closures.get(name);
     const entries: LineageEntry[] = [];
     entries.push({ kind: 'section', label: 'Ancestors:' });
-    if (chains.length === 0) {
-      entries.push({ kind: 'empty', label: '  (none)' });
+    if (tree.parents.length === 0) {
+      entries.push({ kind: 'empty', label: '  (no ancestors)' });
     } else {
-      for (const chain of chains) {
+      const lines = renderAncestorTree(tree);
+      for (const line of lines) {
         entries.push({
           kind: 'ancestor',
-          label: '  ' + chainToString(chain, name),
-          jumpTarget: chain[0].from,
+          label: '  ' + line.text,
+          jumpTarget: line.jumpTarget ?? name,
         });
       }
     }
@@ -367,34 +356,39 @@ export function ScopeGateStep({
         return;
       }
       if (key.return) {
+        // Enter with an empty query or zero matches clears everything —
+        // otherwise the user would land in a dim-all state with no
+        // obvious recovery besides Esc.
+        if (!searchQuery || searchMatches.length === 0) {
+          setSearchOpen(false);
+          setSearchQuery('');
+          return;
+        }
         // Jump to nearest match, close input, preserve query.
-        if (searchQuery) {
-          const cursorRow = visibleRows[safeCursor];
-          const cursorItemName =
-            cursorRow && cursorRow.itemIdx >= 0
-              ? groupedItems[cursorRow.itemIdx]?.key
-              : undefined;
-          // Find first match at or after cursor.
-          let jumped = false;
-          for (let i = safeCursor; i < visibleRows.length; i++) {
+        const cursorRow = visibleRows[safeCursor];
+        const cursorItemName =
+          cursorRow && cursorRow.itemIdx >= 0
+            ? groupedItems[cursorRow.itemIdx]?.key
+            : undefined;
+        let jumped = false;
+        for (let i = safeCursor; i < visibleRows.length; i++) {
+          const r = visibleRows[i];
+          if (r.itemIdx < 0) continue;
+          const n = groupedItems[r.itemIdx]?.key;
+          if (n && n !== cursorItemName && fuzzyMatches(searchQuery, n)) {
+            jumpCursorTo(n);
+            jumped = true;
+            break;
+          }
+        }
+        if (!jumped) {
+          for (let i = 0; i < visibleRows.length; i++) {
             const r = visibleRows[i];
             if (r.itemIdx < 0) continue;
             const n = groupedItems[r.itemIdx]?.key;
-            if (n && n !== cursorItemName && fuzzyMatches(searchQuery, n)) {
+            if (n && fuzzyMatches(searchQuery, n)) {
               jumpCursorTo(n);
-              jumped = true;
               break;
-            }
-          }
-          if (!jumped) {
-            for (let i = 0; i < visibleRows.length; i++) {
-              const r = visibleRows[i];
-              if (r.itemIdx < 0) continue;
-              const n = groupedItems[r.itemIdx]?.key;
-              if (n && fuzzyMatches(searchQuery, n)) {
-                jumpCursorTo(n);
-                break;
-              }
             }
           }
         }
@@ -648,20 +642,29 @@ export function ScopeGateStep({
             if (e.kind === 'section') {
               return (
                 <Text key={i} bold>
+                  {'  '}
                   {e.label}
                 </Text>
               );
             }
             if (e.kind === 'empty') {
               return (
-                <Text key={i} dimColor>
-                  {e.label}
+                <Text key={i}>
+                  <Text> </Text>
+                  <Text dimColor>{' ' + e.label}</Text>
                 </Text>
               );
             }
             return (
-              <Text key={i} inverse={isCursor}>
-                {e.label}
+              <Text key={i}>
+                {isCursor ? (
+                  <Text color="cyan" bold>
+                    {'▶'}
+                  </Text>
+                ) : (
+                  <Text> </Text>
+                )}
+                <Text inverse={isCursor}>{' ' + e.label}</Text>
               </Text>
             );
           })}
