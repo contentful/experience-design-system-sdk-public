@@ -8,6 +8,9 @@ import {
   type Closure,
   type NodeStatus,
 } from '../../../composite-closure.js';
+import type { RenderStatus } from '../../../issue-inheritance.js';
+import { previewBadge } from './Sidebar.js';
+import type { PreviewAnnotation } from '../../types.js';
 
 /**
  * Composite Components — grouped sidebar renderer.
@@ -40,6 +43,28 @@ export interface GroupedSidebarProps {
   onToggleExpanded: (rootName: string) => void;
   width: number;
   focused: boolean;
+  /**
+   * Optional issue-inheritance render statuses keyed by component name.
+   * When present, rows render a status glyph (⚠/✗) after their label. Rows
+   * whose entry has `isOwn: true` render in a bright color; `isOwn: false`
+   * (i.e., inherited from a descendant) render dimmed.
+   */
+  renderStatusByKey?: Map<string, RenderStatus>;
+  /**
+   * Optional preview-diff annotation keyed by component name. When present,
+   * a one-character badge is reserved in the column between the status glyph
+   * and the row label. Preserves the flat-Sidebar behavior so live-preview
+   * annotations don't disappear under grouping.
+   */
+  previewAnnotationByKey?: Map<string, PreviewAnnotation>;
+  /**
+   * Optional scroll offset. When provided together with `visibleCount`, the
+   * component renders a windowed slice of the flat visible-row list and
+   * surfaces up/down scroll arrows (▲/▼) when content lies outside the
+   * window. Omit to render every row (test-friendly default).
+   */
+  scrollOffset?: number;
+  visibleCount?: number;
 }
 
 const GLYPH_EXPAND_COLLAPSED = '▸';
@@ -117,7 +142,7 @@ export function buildVisibleRows(props: {
   cycleParticipants: Set<string>;
   expandedGroups: Set<string>;
 }): VisibleRow[] {
-  const { items, cycleParticipants, expandedGroups } = props;
+  const { items, cycleParticipants } = props;
   const rows: VisibleRow[] = [];
   if (items.length === 0) return rows;
 
@@ -277,8 +302,28 @@ function rowColor(row: VisibleRow, aggregate?: string | null): string | undefine
 }
 
 export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
-  const { items, cycleParticipants = new Set(), expandedGroups, focused, width, selectedIdx } = props;
-  const rows = buildVisibleRows({ items, cycleParticipants, expandedGroups });
+  const {
+    items,
+    cycleParticipants = new Set(),
+    expandedGroups,
+    focused,
+    width,
+    selectedIdx,
+    renderStatusByKey,
+    previewAnnotationByKey,
+    scrollOffset,
+    visibleCount,
+  } = props;
+  const allRows = buildVisibleRows({ items, cycleParticipants, expandedGroups });
+
+  // Window rows when scrollOffset+visibleCount are provided; otherwise render
+  // the full list. Arrow indicators mirror the flat Sidebar behavior.
+  const windowed = scrollOffset !== undefined && visibleCount !== undefined;
+  const start = windowed ? Math.max(0, scrollOffset ?? 0) : 0;
+  const end = windowed ? start + (visibleCount ?? allRows.length) : allRows.length;
+  const rows = windowed ? allRows.slice(start, end) : allRows;
+  const showScrollUp = windowed && start > 0;
+  const showScrollDown = windowed && end < allRows.length;
 
   return (
     <Box
@@ -288,11 +333,53 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
       borderStyle="single"
       borderColor={focused ? 'white' : undefined}
     >
+      {showScrollUp && <Text dimColor>▲</Text>}
       {rows.map((row) => {
         const isSelected = row.itemIdx >= 0 && row.itemIdx === selectedIdx;
         const color = rowColor(row, row.aggregateGlyph);
+        // Look up per-row inheritance status + preview annotation by the
+        // component name this row represents (synthetic rows like `+N more`
+        // have itemIdx < 0 and never carry decorations).
+        const itemName = row.itemIdx >= 0 ? items[row.itemIdx]?.key : undefined;
+        const rs = itemName ? renderStatusByKey?.get(itemName) : undefined;
+        const badge = itemName ? previewBadge(previewAnnotationByKey?.get(itemName)) : null;
+        // Suppress inheritance glyph on rows that already have a semantic
+        // marker: cycle rows carry their own ⚠, empty rows are advisory-only,
+        // and group-root rows use `aggregateGlyph` (own roll-up path).
+        const showInheritance =
+          rs !== undefined &&
+          row.kind !== 'cycle' &&
+          row.kind !== 'empty' &&
+          row.kind !== 'group-root' &&
+          row.kind !== 'group-more';
+        const inheritanceGlyph =
+          showInheritance && rs
+            ? rs.status === 'error'
+              ? GLYPH_ERROR
+              : rs.status === 'warning'
+                ? GLYPH_WARN
+                : null
+            : null;
+        const inheritanceColor = rs
+          ? rs.status === 'error'
+            ? 'red'
+            : rs.status === 'warning'
+              ? 'yellow'
+              : undefined
+          : undefined;
+        const inheritanceDim = rs ? !rs.isOwn : false;
+
         return (
           <Box key={row.key}>
+            {badge ? (
+              <Text color={badge.color} bold={badge.bold} dimColor={badge.dim}>
+                {badge.char}
+              </Text>
+            ) : (
+              // Reserve the badge column so row widths stay stable as
+              // annotations flip in/out — matches the flat Sidebar.
+              <Text> </Text>
+            )}
             <Text
               color={color}
               inverse={isSelected && focused}
@@ -300,11 +387,18 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
               dimColor={row.kind === 'group-more' || row.sharedSuffix === true}
               wrap="truncate"
             >
+              {' '}
               {row.label}
             </Text>
+            {inheritanceGlyph && (
+              <Text color={inheritanceColor} dimColor={inheritanceDim}>
+                {' ' + inheritanceGlyph}
+              </Text>
+            )}
           </Box>
         );
       })}
+      {showScrollDown && <Text dimColor>▼</Text>}
     </Box>
   );
 }
