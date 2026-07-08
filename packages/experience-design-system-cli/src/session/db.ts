@@ -1536,6 +1536,15 @@ export type ScopeComponentRow = {
   componentId: string;
   aiDecision: 'accepted' | 'rejected' | null;
   aiReason: string | null;
+  /**
+   * Extraction-time slot graph for this component, joined from `raw_slots` and
+   * `raw_slot_allowed_components`. Populated for every returned row (empty
+   * array when the component has no slots) so ScopeGateStep can drive the
+   * shared GroupedSidebar composite-closure grouping without a follow-up
+   * per-component fetch. Matches the shape ScopeGateStep's synthetic
+   * CDFComponentEntry expects.
+   */
+  slots: Array<{ name: string; allowedComponents: string[] }>;
 };
 
 export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeComponentRow[] {
@@ -1555,11 +1564,43 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
     status: string;
     reject_reason: string | null;
   }>;
+
+  if (rows.length === 0) return [];
+
+  // Join raw_slots + raw_slot_allowed_components in the same shape
+  // loadRawComponents uses, so composite grouping at scope-gate matches
+  // generate-review exactly. Two batched reads keep this O(1) queries per
+  // session regardless of component count.
+  const slotRows = db
+    .prepare(
+      `SELECT component_id, name, position
+       FROM raw_slots WHERE session_id = ? ORDER BY component_id, position`,
+    )
+    .all(sessionId) as Array<{ component_id: string; name: string; position: number }>;
+  const allowedRows = db
+    .prepare(
+      `SELECT component_id, slot_name, position, allowed_component
+       FROM raw_slot_allowed_components WHERE session_id = ? ORDER BY component_id, slot_name, position`,
+    )
+    .all(sessionId) as Array<{
+    component_id: string;
+    slot_name: string;
+    position: number;
+    allowed_component: string;
+  }>;
+
+  const slotsByComponent = groupBy(slotRows, (s) => s.component_id);
+  const allowedBySlot = groupBy(allowedRows, (a) => `${a.component_id}::${a.slot_name}`);
+
   return rows.map((r) => ({
     name: r.name,
     componentId: r.component_id,
     aiDecision: r.status === 'accepted' ? 'accepted' : r.status === 'rejected' ? 'rejected' : null,
     aiReason: r.reject_reason,
+    slots: (slotsByComponent.get(r.component_id) ?? []).map((s) => ({
+      name: s.name,
+      allowedComponents: (allowedBySlot.get(`${r.component_id}::${s.name}`) ?? []).map((a) => a.allowed_component),
+    })),
   }));
 }
 
