@@ -1064,6 +1064,17 @@ export function GenerateReviewStep({
     })),
   }));
 
+  // Legend gates: only advertise [Space]/[E]/[C] when at least one closure
+  // has actual dependents (nodes.length > 1). `closures.size > 0` is true
+  // even when every component is a standalone, which made the legend lie
+  // about expand/collapse being useful. Tightening to real group roots means
+  // operators with grouped manifests see the affordance and operators with
+  // flat manifests don't chase a no-op key.
+  const hasGroupRoots = (() => {
+    for (const c of closures.values()) if (c.nodes.length > 1) return true;
+    return false;
+  })();
+
   const accepted = components.filter((c) => c.status === 'accepted').length;
   const rejected = components.filter((c) => c.status === 'rejected').length;
   const needsReview = components.filter((c) => c.status === 'needs-review').length;
@@ -1425,7 +1436,7 @@ export function GenerateReviewStep({
                     ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel' +
-                      (closures.size > 0 ? '  [Space] expand/collapse  [E/C] expand/collapse all' : '') +
+                      (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '') +
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       '  [q] quit'

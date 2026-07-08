@@ -5,6 +5,7 @@ import type { CDFComponentEntry } from '@contentful/experience-design-system-typ
 import {
   GroupedSidebar,
   visibleItemOrder,
+  labelStyleFor,
   type GroupedSidebarItem,
   type VisibleRow,
 } from '../../../../src/analyze/select/tui/components/GroupedSidebar.js';
@@ -416,6 +417,95 @@ describe('GroupedSidebar', () => {
     const aLine = frame.split('\n').find((l) => l.includes('Alpha')) ?? '';
     const bLine = frame.split('\n').find((l) => l.includes('Bravo')) ?? '';
     expect(aLine.indexOf('Alpha')).toBe(bLine.indexOf('Bravo'));
+  });
+
+  describe('cursor row overrides row-kind coloring (labelStyleFor)', () => {
+    // The cursor row must render uniformly "you are here" regardless of the
+    // underlying row's kind or dim state. labelStyleFor is the pure helper
+    // that drives the render loop's label <Text> props — we assert on it
+    // directly to avoid coupling tests to ANSI escape output.
+    const cycleRow: VisibleRow = {
+      kind: 'cycle',
+      key: 'cycle:Card',
+      label: '⚠ Card (cycle)',
+      indent: 0,
+      itemIdx: 0,
+    };
+    const warnRootRow: VisibleRow = {
+      kind: 'group-root',
+      key: 'root:R1',
+      label: '▸ R1 (1 dep) ⚠',
+      indent: 0,
+      aggregateGlyph: '⚠',
+      itemIdx: 0,
+    };
+    const errorRootRow: VisibleRow = {
+      kind: 'group-root',
+      key: 'root:R1',
+      label: '▸ R1 (1 dep) ✗',
+      indent: 0,
+      aggregateGlyph: '✗',
+      itemIdx: 0,
+    };
+    const sharedChildRow: VisibleRow = {
+      kind: 'group-child',
+      key: 'child:R2:S',
+      label: '└─ S (shared)',
+      indent: 1,
+      sharedSuffix: true,
+      itemIdx: 0,
+    };
+    const standaloneRow: VisibleRow = {
+      kind: 'standalone',
+      key: 'stand:Widget',
+      label: 'Widget',
+      indent: 0,
+      itemIdx: 0,
+    };
+
+    it('non-cursor cycle row keeps its red label color', () => {
+      const s = labelStyleFor({ row: cycleRow, isCursor: false, wouldDim: false });
+      expect(s.color).toBe('red');
+      expect(s.bold).toBe(false);
+      expect(s.dim).toBe(false);
+    });
+
+    it('cursor cycle row drops red — renders white + bold', () => {
+      const s = labelStyleFor({ row: cycleRow, isCursor: true, wouldDim: false });
+      expect(s.color).toBe('white');
+      expect(s.bold).toBe(true);
+      expect(s.dim).toBe(false);
+    });
+
+    it('cursor aggregate-warning root drops yellow — renders white + bold', () => {
+      const s = labelStyleFor({ row: warnRootRow, isCursor: true, wouldDim: false });
+      expect(s.color).toBe('white');
+      expect(s.bold).toBe(true);
+    });
+
+    it('cursor aggregate-error root drops red — renders white + bold', () => {
+      const s = labelStyleFor({ row: errorRootRow, isCursor: true, wouldDim: false });
+      expect(s.color).toBe('white');
+      expect(s.bold).toBe(true);
+    });
+
+    it('cursor row on shared-suffix child suppresses dim', () => {
+      const s = labelStyleFor({ row: sharedChildRow, isCursor: true, wouldDim: true });
+      expect(s.dim).toBe(false);
+      expect(s.color).toBe('white');
+      expect(s.bold).toBe(true);
+    });
+
+    it('cursor row suppresses dim even when dimPredicate would apply', () => {
+      const s = labelStyleFor({ row: standaloneRow, isCursor: true, wouldDim: true });
+      expect(s.dim).toBe(false);
+      expect(s.color).toBe('white');
+    });
+
+    it('non-cursor shared-suffix row still dims', () => {
+      const s = labelStyleFor({ row: sharedChildRow, isCursor: false, wouldDim: true });
+      expect(s.dim).toBe(true);
+    });
   });
 
   describe('cycle rows carry user selection and cursor glyphs', () => {

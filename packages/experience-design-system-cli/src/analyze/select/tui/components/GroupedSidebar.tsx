@@ -394,6 +394,33 @@ function rowColor(row: VisibleRow, aggregate?: string | null): string | undefine
   return undefined;
 }
 
+/**
+ * Compute the label styling for a row. When the cursor is on the row, the
+ * cursor-here affordance overrides all row-kind coloring/dim: the label
+ * renders in bold white regardless of whether the row is a cycle (red),
+ * an aggregate-warning root (yellow), a shared-suffix child (dim), or a
+ * `dimPredicate` match (dim). This makes "you are here" unambiguous on
+ * every row kind — the ▶ glyph alone competes with red/yellow row colors
+ * and inverse-video, so we drop those on the cursor row.
+ *
+ * Exported for tests; the render loop consumes it directly.
+ */
+export function labelStyleFor(input: {
+  row: VisibleRow;
+  isCursor: boolean;
+  wouldDim: boolean;
+}): { color: string | undefined; bold: boolean; dim: boolean } {
+  const { row, isCursor, wouldDim } = input;
+  if (isCursor) {
+    return { color: 'white', bold: true, dim: false };
+  }
+  return {
+    color: rowColor(row, row.aggregateGlyph),
+    bold: false,
+    dim: wouldDim,
+  };
+}
+
 export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
   const {
     items,
@@ -453,7 +480,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           selectedRowIdx !== undefined
             ? absoluteRowIdx === selectedRowIdx && row.itemIdx >= 0
             : row.itemIdx >= 0 && row.itemIdx === selectedIdx;
-        const color = rowColor(row, row.aggregateGlyph);
+        // baseColor kept for potential fallbacks; labelStyleFor is the source of truth.
         // Look up per-row inheritance status + preview annotation by the
         // component name this row represents (synthetic rows like the flat-
         // tier header have itemIdx < 0 and never carry decorations).
@@ -535,11 +562,11 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
 
         const isSynthetic = row.kind === 'flat-header';
         const isCursor = isSelected && focused;
-        const labelDim =
-          !isCursor &&
-          (row.kind === 'flat-header' ||
-            row.sharedSuffix === true ||
-            canDim);
+        const wouldDim =
+          row.kind === 'flat-header' ||
+          row.sharedSuffix === true ||
+          canDim;
+        const labelStyle = labelStyleFor({ row, isCursor, wouldDim });
 
         return (
           <Box key={row.key}>
@@ -585,17 +612,22 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
               )
             )}
             <Text
-              color={color}
+              color={labelStyle.color}
+              bold={labelStyle.bold}
               inverse={isSelected && focused}
               underline={isSelected && !focused}
-              dimColor={labelDim}
+              dimColor={labelStyle.dim}
               wrap="truncate"
             >
               {' '}
               {row.label}
             </Text>
             {inheritanceGlyph && (
-              <Text color={inheritanceColor} dimColor={inheritanceDim}>
+              <Text
+                color={isCursor ? 'white' : inheritanceColor}
+                bold={isCursor}
+                dimColor={!isCursor && inheritanceDim}
+              >
                 {' ' + inheritanceGlyph}
               </Text>
             )}
