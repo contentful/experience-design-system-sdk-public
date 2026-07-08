@@ -27,6 +27,8 @@ import {
   buildAddedGroupsList,
   computeColumnWidths,
   computeCounters,
+  type AddedComponentEntry,
+  type AddedGroupEntry,
 } from '../scope-gate-columns.js';
 
 export type ScopeComponent = {
@@ -471,8 +473,8 @@ export function ScopeGateStep({
       // so the existing lineage-panel machinery (which reads focusedComponent
       // off the main cursor) targets the intended component.
       if (focusedColumn === 'added-components') {
-        const name = addedComponents[safeAddedComponentsCursor];
-        if (name) jumpCursorTo(name);
+        const entry = addedComponents[safeAddedComponentsCursor];
+        if (entry) jumpCursorTo(entry.name);
       } else if (focusedColumn === 'added-groups') {
         const g = addedGroups[safeAddedGroupsCursor];
         if (g) jumpCursorTo(g.name);
@@ -491,8 +493,8 @@ export function ScopeGateStep({
       // back to the main column. Routed through requestToggle so the reject-
       // cascade confirm-prompt still fires when the blast radius warrants it.
       if (focusedColumn === 'added-components') {
-        const name = addedComponents[safeAddedComponentsCursor];
-        if (name) requestToggle(name);
+        const entry = addedComponents[safeAddedComponentsCursor];
+        if (entry) requestToggle(entry.name);
         return;
       }
       if (focusedColumn === 'added-groups') {
@@ -538,8 +540,8 @@ export function ScopeGateStep({
     // Enter in side columns jumps main cursor and returns focus to main.
     if (key.return) {
       if (focusedColumn === 'added-components') {
-        const name = addedComponents[safeAddedComponentsCursor];
-        if (name) jumpCursorTo(name);
+        const entry = addedComponents[safeAddedComponentsCursor];
+        if (entry) jumpCursorTo(entry.name);
         setFocusedColumn('main');
         return;
       }
@@ -615,12 +617,12 @@ export function ScopeGateStep({
   const totalMatches = searchQuery ? searchMatches.length : 0;
 
   const addedComponents = useMemo(
-    () => buildAddedComponentsList(components, selectionStateByKey),
-    [components, selectionStateByKey],
+    () => buildAddedComponentsList(components, selectionStateByKey, cycleParticipants),
+    [components, selectionStateByKey, cycleParticipants],
   );
   const addedGroups = useMemo(
-    () => buildAddedGroupsList(closures, selectionStateByKey),
-    [closures, selectionStateByKey],
+    () => buildAddedGroupsList(closures, selectionStateByKey, cycleParticipants),
+    [closures, selectionStateByKey, cycleParticipants],
   );
   const counters = useMemo(
     () => computeCounters(components, closures, selectionStateByKey),
@@ -718,16 +720,18 @@ export function ScopeGateStep({
               <Box width={2} flexShrink={0} />
               <AddedComponentsColumn
                 width={columnPlan.added}
-                names={addedComponents}
+                entries={addedComponents}
                 cursor={safeAddedComponentsCursor}
                 focused={focusedColumn === 'added-components'}
+                aiFlaggedByKey={aiFlaggedByKey}
               />
               <Box width={2} flexShrink={0} />
               <AddedGroupsColumn
                 width={columnPlan.groups}
-                groups={addedGroups}
+                entries={addedGroups}
                 cursor={safeAddedGroupsCursor}
                 focused={focusedColumn === 'added-groups'}
+                aiFlaggedByKey={aiFlaggedByKey}
               />
             </>
           )}
@@ -938,37 +942,61 @@ function ColumnHeader(props: { title: string; width: number; focused: boolean })
 
 function AddedComponentsColumn(props: {
   width: number;
-  names: string[];
+  entries: AddedComponentEntry[];
   cursor: number;
   focused: boolean;
+  aiFlaggedByKey?: Map<string, boolean>;
 }): React.ReactElement {
-  const { width, names, cursor, focused } = props;
+  const { width, entries, cursor, focused, aiFlaggedByKey } = props;
+  // Only reserve the 4-char AI-badge column when at least one row in this
+  // column is actually flagged. Keeps the existing badge-free layout stable
+  // for graphs with no AI activity (and preserves existing test snapshots).
+  const reserveAiBadge = entries.some((e) => aiFlaggedByKey?.get(e.name) === true);
+  const firstNonCycleIdx = entries.findIndex((e) => !e.isCycle);
   return (
     <Box flexDirection="column" width={width} flexShrink={0}>
       <ColumnHeader title="Added components" width={width} focused={focused} />
-      {names.length === 0 ? (
+      {entries.length === 0 ? (
         <Text dimColor>(none)</Text>
       ) : (
-        names.map((name, i) => {
+        entries.map((entry, i) => {
           const isCursor = focused && i === cursor;
+          const aiFlagged = aiFlaggedByKey?.get(entry.name) === true;
+          const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
+          const rowLabel = entry.isCycle ? `⚠ ${entry.name}` : entry.name;
+          const labelColor = entry.isCycle ? 'red' : isCursor ? 'white' : undefined;
           return (
-            <Box key={name}>
-              {isCursor ? (
-                <Text color="cyan" bold>
-                  {'▶'}
-                </Text>
-              ) : (
-                <Text> </Text>
+            <React.Fragment key={entry.name}>
+              {showSeparator && (
+                <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>
               )}
-              <Text
-                color={isCursor ? 'white' : undefined}
-                bold={isCursor}
-                inverse={isCursor}
-                wrap="truncate"
-              >
-                {' ' + name}
-              </Text>
-            </Box>
+              <Box>
+                {isCursor ? (
+                  <Text color="cyan" bold>
+                    {'▶'}
+                  </Text>
+                ) : (
+                  <Text> </Text>
+                )}
+                {reserveAiBadge && (
+                  aiFlagged ? (
+                    <Text color="yellow" bold>
+                      {' [×]'}
+                    </Text>
+                  ) : (
+                    <Text>{'    '}</Text>
+                  )
+                )}
+                <Text
+                  color={labelColor}
+                  bold={isCursor}
+                  inverse={isCursor}
+                  wrap="truncate"
+                >
+                  {' ' + rowLabel}
+                </Text>
+              </Box>
+            </React.Fragment>
           );
         })
       )}
@@ -978,38 +1006,61 @@ function AddedComponentsColumn(props: {
 
 function AddedGroupsColumn(props: {
   width: number;
-  groups: Array<{ name: string; depCount: number }>;
+  entries: AddedGroupEntry[];
   cursor: number;
   focused: boolean;
+  aiFlaggedByKey?: Map<string, boolean>;
 }): React.ReactElement {
-  const { width, groups, cursor, focused } = props;
+  const { width, entries, cursor, focused, aiFlaggedByKey } = props;
+  // Match AddedComponentsColumn: reserve the AI badge column only when at
+  // least one composite root in this column is AI-flagged.
+  const reserveAiBadge = entries.some((g) => aiFlaggedByKey?.get(g.name) === true);
+  const firstNonCycleIdx = entries.findIndex((e) => !e.isCycle);
   return (
     <Box flexDirection="column" width={width} flexShrink={0}>
       <ColumnHeader title="Added groups" width={width} focused={focused} />
-      {groups.length === 0 ? (
+      {entries.length === 0 ? (
         <Text dimColor>(none)</Text>
       ) : (
-        groups.map((g, i) => {
+        entries.map((g, i) => {
           const isCursor = focused && i === cursor;
-          const label = `${g.name} (${g.depCount} dep${g.depCount === 1 ? '' : 's'})`;
+          const baseLabel = `${g.name} (${g.depCount} dep${g.depCount === 1 ? '' : 's'})`;
+          const label = g.isCycle ? `⚠ ${baseLabel}` : baseLabel;
+          const aiFlagged = aiFlaggedByKey?.get(g.name) === true;
+          const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
+          const labelColor = g.isCycle ? 'red' : isCursor ? 'white' : undefined;
           return (
-            <Box key={g.name}>
-              {isCursor ? (
-                <Text color="cyan" bold>
-                  {'▶'}
-                </Text>
-              ) : (
-                <Text> </Text>
+            <React.Fragment key={g.name}>
+              {showSeparator && (
+                <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>
               )}
-              <Text
-                color={isCursor ? 'white' : undefined}
-                bold={isCursor}
-                inverse={isCursor}
-                wrap="truncate"
-              >
-                {' ' + label}
-              </Text>
-            </Box>
+              <Box>
+                {isCursor ? (
+                  <Text color="cyan" bold>
+                    {'▶'}
+                  </Text>
+                ) : (
+                  <Text> </Text>
+                )}
+                {reserveAiBadge && (
+                  aiFlagged ? (
+                    <Text color="yellow" bold>
+                      {' [×]'}
+                    </Text>
+                  ) : (
+                    <Text>{'    '}</Text>
+                  )
+                )}
+                <Text
+                  color={labelColor}
+                  bold={isCursor}
+                  inverse={isCursor}
+                  wrap="truncate"
+                >
+                  {' ' + label}
+                </Text>
+              </Box>
+            </React.Fragment>
           );
         })
       )}

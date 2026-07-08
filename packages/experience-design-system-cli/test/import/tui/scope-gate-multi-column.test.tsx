@@ -234,6 +234,54 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
   });
 });
 
+describe('ScopeGateStep — cycle participants in side columns', () => {
+  const CYCLE_GRAPH = [
+    { name: 'Loopy', componentId: 'c0', slots: [{ name: 'child', allowedComponents: ['Inner'] }] },
+    { name: 'Inner', componentId: 'c1', slots: [{ name: 'back', allowedComponents: ['Loopy'] }] },
+    { name: 'Card', componentId: 'c2', slots: [{ name: 'body', allowedComponents: ['Text'] }] },
+    { name: 'Text', componentId: 'c3' },
+  ];
+
+  it('renders an accepted cycle-participant at the top of Column 2 with a ⚠ prefix', () => {
+    setWide(160);
+    const { lastFrame } = render(
+      <ScopeGateStep components={CYCLE_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).toContain('Added components');
+    // Cycle-tier row carries the ⚠ glyph. Loopy and Inner both participate.
+    const cycleLine = out.split('\n').find((l) => /⚠ (Inner|Loopy)\b/.test(l));
+    expect(cycleLine).toBeDefined();
+  });
+
+  it('places cycle members alphabetically at the top of Column 2 before non-cycle rows', () => {
+    setWide(160);
+    const { lastFrame } = render(
+      <ScopeGateStep components={CYCLE_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    const out = lastFrame() ?? '';
+    // Cycle-tier rows have ⚠ prefixes. Non-cycle rows in Column 2 do not.
+    // Assert overall ordering: ⚠ Inner (cycle-tier alphabetical first) appears
+    // before ⚠ Loopy, which appears before the first non-cycle line for Card.
+    const innerPos = out.indexOf('⚠ Inner');
+    const loopyPos = out.indexOf('⚠ Loopy');
+    expect(innerPos).toBeGreaterThan(-1);
+    expect(loopyPos).toBeGreaterThan(innerPos);
+    // Column 2's non-cycle "Card" row is the one on the same line as its ⚠
+    // separator group — we match a line that begins with whitespace + "Card"
+    // and lacks "(1 dep)" (that suffix only appears in Column 3).
+    const lines = out.split('\n');
+    const col2CardLineIdx = lines.findIndex(
+      (l) => /^\s+Card$/.test(l.replace(/\s+$/, '')) || (l.includes('  Card') && !l.includes('(1 dep)') && !l.includes('⚠')),
+    );
+    expect(col2CardLineIdx).toBeGreaterThan(-1);
+    const loopyLineIdx = lines.findIndex((l) => l.includes('⚠ Loopy') && !l.includes('(cycle)'));
+    // Column 2's ⚠ Loopy line (no "(cycle)" suffix — that's in Column 1).
+    expect(loopyLineIdx).toBeGreaterThan(-1);
+    expect(col2CardLineIdx).toBeGreaterThan(loopyLineIdx);
+  });
+});
+
 describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
   it('renders the AI-recommended-exclusions banner above the columns in wide layout', () => {
     // Regression: after the three-column layout landed, both AI-suggestion
@@ -283,5 +331,123 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
     expect(sidebarLine).toBeDefined();
     // Legend also advertises the badge (surfaces via `hasAnyAi`).
     expect(out).toContain('AI recommends');
+  });
+
+  it('renders [×] on AI-flagged accepted rows in the Added-components column', () => {
+    // DebugPanel is AI-flagged (aiDecision:'rejected') so it starts rejected
+    // per the ScopeGateStep baseline — accept it to force it into the Added
+    // column, mirroring the "user overrode the AI's suggestion" flow.
+    setWide(160);
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep
+        components={AI_FLAGGED_GRAPH}
+        onConfirm={() => {}}
+        onQuit={() => {}}
+        aiFilterStatus="complete"
+      />,
+    );
+    // Card, Text, DebugPanel — DebugPanel is last after Card (2 rows down
+    // through the main-column tree: Card, ├─ Text, ── flat header, Card,
+    // DebugPanel, Text). Jump to DebugPanel via search to keep the test
+    // resilient to sidebar row-ordering shifts.
+    stdin.write('/');
+    for (const ch of 'DebugPanel') stdin.write(ch);
+    stdin.write('\r');
+    // Accept it (baseline was rejected).
+    stdin.write('a');
+    const out = lastFrame() ?? '';
+    // Locate the Added-components column: its lines follow the header. Find a
+    // row that carries both DebugPanel and [×] — exclusion of the AI banner
+    // line (dimmed, no [×]) and the main-sidebar row (has [✓]) leaves the
+    // Added-components row as the unique remaining match.
+    const lines = out.split('\n');
+    const flaggedAddedLine = lines.find(
+      (line) =>
+        line.includes('DebugPanel') &&
+        line.includes('[×]') &&
+        !line.includes('[✓]') &&
+        !line.includes('[ ]') &&
+        !line.includes('▾') &&
+        !line.includes('├─') &&
+        !line.includes('└─'),
+    );
+    expect(flaggedAddedLine).toBeDefined();
+  });
+
+  it('renders [×] on an AI-flagged accepted composite root in the Added-groups column', () => {
+    setWide(160);
+    // Make the composite root itself AI-flagged. User overrides → accepts it,
+    // so the root shows up in Added-groups with a red [×] warning.
+    const graph = [
+      {
+        name: 'Card',
+        componentId: 'c0',
+        aiDecision: 'rejected' as const,
+        aiReason: 'suspected trash component',
+        slots: [{ name: 'body', allowedComponents: ['Text'] }],
+      },
+      { name: 'Text', componentId: 'c1' },
+    ];
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep
+        components={graph}
+        onConfirm={() => {}}
+        onQuit={() => {}}
+        aiFilterStatus="complete"
+      />,
+    );
+    // Card starts rejected under the AI baseline. Toggle to accept — that
+    // registers the whole composite in Added-groups.
+    stdin.write('a');
+    const out = lastFrame() ?? '';
+    // Find a line that mentions the group "Card (1 dep)" AND [×]. The main
+    // sidebar row for Card renders "▾ Card (1 dep)" whereas the Added-groups
+    // row renders bare "Card (1 dep)" — the "▾" filter isolates the latter.
+    const lines = out.split('\n');
+    const flaggedGroupLine = lines.find(
+      (line) =>
+        line.includes('Card (1 dep)') &&
+        line.includes('[×]') &&
+        !line.includes('▾') &&
+        !line.includes('▸'),
+    );
+    expect(flaggedGroupLine).toBeDefined();
+  });
+
+  it('side columns keep column-alignment when a peer row is AI-flagged (4-space placeholder)', () => {
+    setWide(160);
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep
+        components={AI_FLAGGED_GRAPH}
+        onConfirm={() => {}}
+        onQuit={() => {}}
+        aiFilterStatus="complete"
+      />,
+    );
+    // Accept DebugPanel so it lands in Added-components alongside Card/Text.
+    // Non-flagged peers must reserve a 4-space slot so their labels align
+    // with DebugPanel's [×] badge.
+    stdin.write('/');
+    for (const ch of 'DebugPanel') stdin.write(ch);
+    stdin.write('\r');
+    stdin.write('a');
+    const out = lastFrame() ?? '';
+    // Terminal renders columns side-by-side per line. Isolate the segment
+    // right of the main-sidebar box border. The Added-components column
+    // starts after '│' followed by whitespace. Look for a row whose
+    // Added-components slice begins with the reserved 4-space padding
+    // followed by ` Card` (peer of the DebugPanel [×] row).
+    const addedRegion = out
+      .split('\n')
+      .map((line) => {
+        const idx = line.indexOf('│  ');
+        return idx >= 0 ? line.slice(idx) : line;
+      })
+      .join('\n');
+    // A row like "        Card" (4-space badge slot + " Card"). The
+    // DebugPanel peer renders as "    [×] DebugPanel" — those [×] columns
+    // must line up with each other.
+    expect(addedRegion).toMatch(/\s{4} Card\b/);
+    expect(addedRegion).toMatch(/ \[×\] DebugPanel\b/);
   });
 });
