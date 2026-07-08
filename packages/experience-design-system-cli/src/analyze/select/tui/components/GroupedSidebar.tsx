@@ -154,6 +154,13 @@ export interface VisibleRow {
   aggregateGlyph?: string | null;
   /** For group-child rows: whether the item is a shared dep occurring the 2nd+ time. */
   sharedSuffix?: boolean;
+  /**
+   * For group-child rows only: true when the child is a cycle-participant
+   * reachable via a slot from a composite in the closure. Renders red with a
+   * `⚠ ` prefix and `(cycle)` suffix in its label, but keeps `kind: 'group-child'`
+   * so selection/AI/preview decoration paths stay unchanged.
+   */
+  cycleChild?: boolean;
   /** Selectable index into `items`; -1 for synthetic rows (e.g. flat-header). */
   itemIdx: number;
   /** Root name — for children/roots, so the caller can toggle via row. */
@@ -320,24 +327,73 @@ export function buildVisibleRows(props: {
   const closures = computeAllClosures(graph);
   const sharedDeps = findSharedDeps(closures);
 
+  // Detect cycle-member slot references for every candidate item. A composite
+  // whose slots point at a cycle-participant needs to render that participant
+  // as a `⚠ (cycle)` child — even if the composite has no other (non-cycle)
+  // deps, in which case the composite is still shown as a group-root, not a
+  // standalone. We compute this map once and consult it during (a) root
+  // categorization and (b) the cycle-child injection walk further below.
+  const hasCycleDepDirect = (name: string): boolean => {
+    const it = itemByKey.get(name)?.it;
+    if (!it) return false;
+    for (const slot of Object.values(it.entry.$slots ?? {})) {
+      const allowed = Array.isArray(slot?.$allowedComponents)
+        ? (slot.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
+        : [];
+      for (const target of allowed) {
+        if (cycleParticipants.has(target)) return true;
+      }
+    }
+    return false;
+  };
+
   // Split "other" into standalones vs group-roots.
-  // A standalone: closure has exactly 1 node (itself) AND it is not a dep of
-  // any other root's closure. A group-root: closure size > 1.
+  // A standalone: closure has exactly 1 node (itself) AND it slots no cycle
+  // participants. A group-root: closure size > 1 OR the root slots at least
+  // one cycle participant (which will be injected as a `⚠ (cycle)` child).
   const rootNames = [...closures.keys()].sort();
   const standaloneRoots: string[] = [];
   const groupRoots: string[] = [];
   for (const root of rootNames) {
     const c = closures.get(root)!;
-    if (c.nodes.length <= 1) standaloneRoots.push(root);
+    const promotesForCycle = hasCycleDepDirect(root);
+    if (c.nodes.length <= 1 && !promotesForCycle) standaloneRoots.push(root);
     else groupRoots.push(root);
   }
 
   // Track shared-dep occurrences so we can decorate the 2nd+ occurrence.
   const seenSharedOccurrence = new Set<string>();
+  // Track cycle-member injection occurrences across every group so a cycle
+  // member slotted by multiple composites picks up the same `(shared)`
+  // decoration on its 2nd+ occurrence (findSharedDeps only sees the non-cycle
+  // subgraph, so cycle members never surface through it).
+  const seenCycleChildOccurrence = new Set<string>();
 
   for (const root of groupRoots) {
     const closure = closures.get(root)!;
-    const depCount = closure.nodes.length - 1;
+    // Count cycle-member injections across the root + every closure node so
+    // the collapsed dep count matches what the user will see when they expand.
+    let injectedCycleCount = 0;
+    const seenInject = new Set<string>();
+    const countInjections = (parentName: string): void => {
+      const parentItem = itemByKey.get(parentName)?.it;
+      if (!parentItem) return;
+      for (const slot of Object.values(parentItem.entry.$slots ?? {})) {
+        const allowed = Array.isArray(slot?.$allowedComponents)
+          ? (slot.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
+          : [];
+        for (const target of allowed) {
+          if (!cycleParticipants.has(target)) continue;
+          const key = `${parentName}→${target}`;
+          if (seenInject.has(key)) continue;
+          seenInject.add(key);
+          injectedCycleCount += 1;
+        }
+      }
+    };
+    countInjections(root);
+    for (const n of closure.nodes) if (n.name !== root) countInjections(n.name);
+    const depCount = (closure.nodes.length - 1) + injectedCycleCount;
     const expanded = alwaysExpanded ? true : props.expandedGroups.has(root);
     const glyphExpand = expanded ? GLYPH_EXPAND_EXPANDED : GLYPH_EXPAND_COLLAPSED;
     const aggregate = expanded ? null : aggregateGlyphFor(closure, statusByName);
@@ -358,27 +414,77 @@ export function buildVisibleRows(props: {
     // returns them, minus the root itself. Every descendant renders; there is
     // no depth cap and no `+N more` overflow row. Users manage visual density
     // via per-group collapse (`expandedGroups`).
-    const children = closure.nodes
+    //
+    // Cycle-injection: closure computation runs over the non-cycle subgraph
+    // (cycle-participants are excluded so `computeClosure` doesn't collapse
+    // the subtree to `containsCycle: true`). But cycle members can still be
+    // slotted BY composites in the closure — and the operator needs to see
+    // them under those parents. So after collecting the closure's own
+    // children, we scan each closure node's original slots for cycle-member
+    // references and inject them as leaf children at `parent.depth + 1`.
+    const closureChildren = closure.nodes
       .filter((n) => n.name !== root)
       .slice()
       .sort((a, b) => (a.depth - b.depth) || a.name.localeCompare(b.name));
 
-    children.forEach((child, i) => {
-      const isLast = i === children.length - 1;
+    // Build ordered child list, weaving in cycle-member leaves under each
+    // parent that slots them (including the root itself).
+    type ChildRow = {
+      name: string;
+      depth: number;
+      isCycleChild: boolean;
+    };
+    const injectedChildren: ChildRow[] = [];
+    const emitCycleChildrenOf = (parentName: string, parentDepth: number): void => {
+      const parentItem = itemByKey.get(parentName)?.it;
+      if (!parentItem) return;
+      const seen = new Set<string>();
+      for (const slot of Object.values(parentItem.entry.$slots ?? {})) {
+        const allowed = Array.isArray(slot?.$allowedComponents)
+          ? (slot.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
+          : [];
+        for (const target of allowed) {
+          if (!cycleParticipants.has(target)) continue;
+          if (seen.has(target)) continue;
+          seen.add(target);
+          injectedChildren.push({
+            name: target,
+            depth: parentDepth + 1,
+            isCycleChild: true,
+          });
+        }
+      }
+    };
+    // Root's own cycle-member slots first (they render at depth 1).
+    emitCycleChildrenOf(root, 0);
+    for (const c of closureChildren) {
+      injectedChildren.push({ name: c.name, depth: c.depth, isCycleChild: false });
+      emitCycleChildrenOf(c.name, c.depth);
+    }
+
+    injectedChildren.forEach((child, i) => {
+      const isLast = i === injectedChildren.length - 1;
       const glyph = isLast ? GLYPH_TREE_LAST : GLYPH_TREE_MID;
-      const shared = sharedDeps.has(child.name);
       let sharedSuffix = false;
-      if (shared) {
+      if (child.isCycleChild) {
+        if (seenCycleChildOccurrence.has(child.name)) sharedSuffix = true;
+        else seenCycleChildOccurrence.add(child.name);
+      } else if (sharedDeps.has(child.name)) {
         if (seenSharedOccurrence.has(child.name)) sharedSuffix = true;
         else seenSharedOccurrence.add(child.name);
       }
       const childRec = itemByKey.get(child.name);
+      const indent = '  '.repeat(Math.max(0, child.depth - 1));
+      const labelName = child.isCycleChild
+        ? `${GLYPH_WARN} ${child.name} (cycle)`
+        : child.name;
       rows.push({
         kind: 'group-child',
         key: `child:${root}:${child.name}`,
-        label: `${'  '.repeat(child.depth - 1)}${glyph} ${child.name}${sharedSuffix ? ' (shared)' : ''}`,
+        label: `${indent}${glyph} ${labelName}${sharedSuffix ? ' (shared)' : ''}`,
         indent: child.depth,
         sharedSuffix,
+        cycleChild: child.isCycleChild || undefined,
         itemIdx: childRec?.idx ?? -1,
         rootName: root,
       });
@@ -452,6 +558,7 @@ export function visibleItemOrder(props: {
  */
 function rowColor(row: VisibleRow, aggregate?: string | null): string | undefined {
   if (row.kind === 'cycle') return 'red';
+  if (row.kind === 'group-child' && row.cycleChild) return 'red';
   if (row.kind === 'empty') return 'yellow';
   if (row.kind === 'group-root' && aggregate === GLYPH_ERROR) return 'red';
   if (row.kind === 'group-root' && aggregate === GLYPH_WARN) return 'yellow';
