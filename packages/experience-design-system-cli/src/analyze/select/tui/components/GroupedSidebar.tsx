@@ -18,7 +18,11 @@ import type { PreviewAnnotation } from '../../types.js';
  * Rendering rules (locked in dsi-composite-components-grouping-spec.md):
  *   Tier order (top → bottom): cycle-rejected → empty → grouped roots → standalones.
  *   Roots with ≥1 dep render as `▸ Name (N deps)` collapsed, `▾ Name (N deps)` expanded.
- *   Children indent with `├─` / `└─`; depth capped at 2 levels, overflow → `+N more`.
+ *   Children indent with `├─` / `└─` at every depth — no truncation. Every
+ *     descendant renders on its own row so the operator sees the full tree.
+ *     Aggressive per-group collapse (via `expandedGroups`) remains the sole
+ *     lever for hiding subtrees; the caller can wire expand-all / collapse-all
+ *     shortcuts on top of that.
  *   Aggregate status: worst-case glyph only (`✗` beats `⚠` beats none) on collapsed row.
  *   Shared deps: render under every root, with a dim `(shared)` marker on 2nd+ occurrence.
  *   Zero-dep components that are also not a dep of anyone → standalone tier (flat row).
@@ -95,14 +99,12 @@ const GLYPH_TREE_MID = '├─';
 const GLYPH_TREE_LAST = '└─';
 const GLYPH_WARN = '⚠';
 const GLYPH_ERROR = '✗';
-const DEPTH_CAP = 2;
 
 type RowKind =
   | 'cycle'
   | 'empty'
   | 'group-root'
   | 'group-child'
-  | 'group-more'
   | 'standalone'
   | 'flat'
   | 'flat-header';
@@ -116,7 +118,7 @@ interface VisibleRow {
   aggregateGlyph?: string | null;
   /** For group-child rows: whether the item is a shared dep occurring the 2nd+ time. */
   sharedSuffix?: boolean;
-  /** Selectable index into `items`; -1 for synthetic rows (e.g. `+N more`). */
+  /** Selectable index into `items`; -1 for synthetic rows (e.g. flat-header). */
   itemIdx: number;
   /** Root name — for children/roots, so the caller can toggle via row. */
   rootName?: string;
@@ -262,17 +264,16 @@ export function buildVisibleRows(props: {
     if (!expanded) continue;
 
     // Sort children by (depth asc, name asc) — same order composite-closure
-    // returns them, minus the root itself. Apply depth cap.
+    // returns them, minus the root itself. Every descendant renders; there is
+    // no depth cap and no `+N more` overflow row. Users manage visual density
+    // via per-group collapse (`expandedGroups`).
     const children = closure.nodes
       .filter((n) => n.name !== root)
       .slice()
       .sort((a, b) => (a.depth - b.depth) || a.name.localeCompare(b.name));
 
-    const inCap = children.filter((n) => n.depth <= DEPTH_CAP);
-    const overflow = children.length - inCap.length;
-
-    inCap.forEach((child, i) => {
-      const isLast = i === inCap.length - 1 && overflow === 0;
+    children.forEach((child, i) => {
+      const isLast = i === children.length - 1;
       const glyph = isLast ? GLYPH_TREE_LAST : GLYPH_TREE_MID;
       const shared = sharedDeps.has(child.name);
       let sharedSuffix = false;
@@ -291,17 +292,6 @@ export function buildVisibleRows(props: {
         rootName: root,
       });
     });
-
-    if (overflow > 0) {
-      rows.push({
-        kind: 'group-more',
-        key: `more:${root}`,
-        label: `  ${GLYPH_TREE_LAST} +${overflow} more`,
-        indent: 1,
-        itemIdx: -1,
-        rootName: root,
-      });
-    }
   }
 
   // Tier 4: standalones (bottom, alphabetical).
@@ -425,8 +415,8 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
         const isSelected = row.itemIdx >= 0 && row.itemIdx === selectedIdx;
         const color = rowColor(row, row.aggregateGlyph);
         // Look up per-row inheritance status + preview annotation by the
-        // component name this row represents (synthetic rows like `+N more`
-        // have itemIdx < 0 and never carry decorations).
+        // component name this row represents (synthetic rows like the flat-
+        // tier header have itemIdx < 0 and never carry decorations).
         const itemName = row.itemIdx >= 0 ? items[row.itemIdx]?.key : undefined;
         const rs = itemName ? renderStatusByKey?.get(itemName) : undefined;
         const badge = itemName ? previewBadge(previewAnnotationByKey?.get(itemName)) : null;
@@ -437,8 +427,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           rs !== undefined &&
           row.kind !== 'cycle' &&
           row.kind !== 'empty' &&
-          row.kind !== 'group-root' &&
-          row.kind !== 'group-more';
+          row.kind !== 'group-root';
         const inheritanceGlyph =
           showInheritance && rs
             ? rs.status === 'error'
@@ -484,7 +473,6 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
         const aiFlagged =
           aiFlaggedByKey !== undefined &&
           itemName !== undefined &&
-          row.kind !== 'group-more' &&
           row.kind !== 'flat-header' &&
           aiFlaggedByKey.get(itemName) === true;
 
@@ -494,18 +482,27 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           row.kind !== 'cycle' &&
           row.kind !== 'group-root' &&
           row.kind !== 'flat-header' &&
-          row.kind !== 'group-more' &&
           dimPredicate(itemName);
 
-        const isSynthetic = row.kind === 'group-more' || row.kind === 'flat-header';
+        const isSynthetic = row.kind === 'flat-header';
+        const isCursor = isSelected && focused;
         const labelDim =
-          row.kind === 'group-more' ||
-          row.kind === 'flat-header' ||
-          row.sharedSuffix === true ||
-          canDim;
+          !isCursor &&
+          (row.kind === 'flat-header' ||
+            row.sharedSuffix === true ||
+            canDim);
 
         return (
           <Box key={row.key}>
+            {isCursor ? (
+              <Text color="cyan" bold>
+                {'▶'}
+              </Text>
+            ) : (
+              // Reserve the cursor-glyph column so labels stay column-aligned
+              // as the cursor moves through the list.
+              <Text> </Text>
+            )}
             {badge ? (
               <Text color={badge.color} bold={badge.bold} dimColor={badge.dim}>
                 {badge.char}

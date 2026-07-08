@@ -1569,6 +1569,186 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     // And component names still visible.
     expect(frame).toMatch(/Card/);
   });
+
+  it('[C] collapses every group root; [E] expands every group root; both idempotent', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // Two independent groups so we can prove the bindings hit every root, not
+    // just the currently-selected one.
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Card', entry: withSlot('Card', ['Heading']) },
+      { key: 'Heading', entry: leaf('Heading') },
+      { key: 'Layout', entry: withSlot('Layout', ['Header']) },
+      { key: 'Header', entry: leaf('Header') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Groups seed as expanded, so children start visible.
+    let frame = lastFrame() ?? '';
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).toMatch(/▾ Layout/);
+    expect(frame).toContain('Heading');
+    expect(frame).toContain('Header');
+
+    // [C] collapses every group root.
+    stdin.write('C');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/▸ Card/);
+    expect(frame).toMatch(/▸ Layout/);
+    expect(frame).not.toMatch(/▾ Card/);
+    expect(frame).not.toMatch(/▾ Layout/);
+    // Child rows should be gone (collapsed).
+    expect(frame).not.toContain('├─ Heading');
+    expect(frame).not.toContain('└─ Heading');
+    expect(frame).not.toContain('├─ Header');
+    expect(frame).not.toContain('└─ Header');
+
+    // Idempotent — another [C] leaves the state alone.
+    stdin.write('C');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/▸ Card/);
+    expect(frame).toMatch(/▸ Layout/);
+
+    // [E] expands every group root.
+    stdin.write('E');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).toMatch(/▾ Layout/);
+    expect(frame).toContain('Heading');
+    expect(frame).toContain('Header');
+
+    // Idempotent — another [E] leaves the state alone.
+    stdin.write('E');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).toMatch(/▾ Layout/);
+  });
+});
+
+describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const makeEntry = (label: string): Entry => ({
+    $type: 'component',
+    $properties: { [label.toLowerCase()]: { $type: 'string', $category: 'content' } },
+  });
+
+  it('pressing / opens the search input showing "/" prompt', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Alpha', entry: makeEntry('Alpha') },
+      { key: 'Beta', entry: makeEntry('Beta') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Cursor glyph rendered after empty query.
+    expect(frame).toMatch(/\/▎/);
+  });
+
+  it('typing after / filters via dimPredicate and shows a match count', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Button', entry: makeEntry('Button') },
+      { key: 'Modal', entry: makeEntry('Modal') },
+      { key: 'Card', entry: makeEntry('Card') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('u');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Query echoed with count. Only Button matches 'u'.
+    expect(frame).toMatch(/\/u/);
+    expect(frame).toMatch(/1\/3 matches/);
+  });
+
+  it('Enter closes input but preserves the query; Tab cycles to next match', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Button', entry: makeEntry('Button') },
+      { key: 'Banner', entry: makeEntry('Banner') },
+      { key: 'Modal', entry: makeEntry('Modal') },
+      { key: 'Chip', entry: makeEntry('Chip') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('B');
+    await tick();
+    stdin.write('\r'); // Enter — close input, preserve query
+    await tick();
+    let frame = lastFrame() ?? '';
+    // Persistent hint shown when input closed but query active.
+    expect(frame).toMatch(/\[Tab\] next/);
+    // Cursor on Banner (first match at/after cursor position 0; alphabetical order Banner < Button).
+    let titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleLine).toContain('Banner');
+    // Tab cycles to the next match: Button.
+    stdin.write('\t');
+    await tick();
+    frame = lastFrame() ?? '';
+    titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleLine).toContain('Button');
+  });
+
+  it('Esc from active-query state clears the query', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Button', entry: makeEntry('Button') },
+      { key: 'Modal', entry: makeEntry('Modal') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('u');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/1\/2 matches/);
+    stdin.write('\x1b'); // Esc
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/matches/);
+  });
+
+  it('match count reflects fuzzy matches across all rows (accurate N/M)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Button', entry: makeEntry('Button') },
+      { key: 'Banner', entry: makeEntry('Banner') },
+      { key: 'Card', entry: makeEntry('Card') },
+      { key: 'Modal', entry: makeEntry('Modal') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('b');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // 'b' matches Button + Banner; total 4.
+    expect(frame).toMatch(/2\/4 matches/);
+  });
 });
 
 describe('sortComponentsForSidebar — 3-tier ordering (INTEG-4401)', () => {

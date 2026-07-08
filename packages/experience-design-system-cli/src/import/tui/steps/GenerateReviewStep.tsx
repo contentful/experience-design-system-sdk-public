@@ -34,6 +34,7 @@ import type { PreviewAnnotation, ReviewComponentStatus } from '../../../analyze/
 import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
 import { useLivePreview } from '../useLivePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
+import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -163,6 +164,12 @@ export function GenerateReviewStep({
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const seededGroupsRef = useRef(false);
+  // Fuzzy-search overlay (mirrors ScopeGateStep). `/` opens the input;
+  // Enter closes but preserves the query so dim persists; Tab cycles matches
+  // once the input is closed; Esc from input closes+clears, Esc from
+  // sidebar-with-active-query clears.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
@@ -455,6 +462,38 @@ export function GenerateReviewStep({
     return merged;
   }, [closures, directIssues]);
 
+  // Visible-row match list drives the (N/M) count and Tab cycling. A "row"
+  // is any entry in navOrder (which already respects group expand/collapse +
+  // tier ordering). Match = fuzzy hit against the component key.
+  const searchMatches = useMemo<number[]>(() => {
+    if (!searchQuery) return [];
+    const out: number[] = [];
+    for (const idx of navOrder) {
+      const key = components[idx]?.key;
+      if (key && fuzzyMatches(searchQuery, key)) out.push(idx);
+    }
+    return out;
+  }, [searchQuery, navOrder, components]);
+
+  const dimPredicate = useMemo(() => {
+    if (!searchQuery) return undefined;
+    return (name: string) => !fuzzyMatches(searchQuery, name);
+  }, [searchQuery]);
+
+  const jumpCursorTo = (idx: number): void => {
+    const visualPos = navOrder.indexOf(idx);
+    if (visualPos < 0) return;
+    setSelectedIdx(idx);
+    setSidebarScrollOffset((prev) => {
+      if (visualPos < prev) return visualPos;
+      if (visualPos >= prev + VISIBLE_COUNT) return visualPos - VISIBLE_COUNT + 1;
+      return prev;
+    });
+    setJsonScrollOffset(0);
+    setDraftValue('');
+    setSaveError(null);
+  };
+
   const handleEditSave = () => {
     const current = components[selectedIdx];
     if (!current) return;
@@ -509,6 +548,47 @@ export function GenerateReviewStep({
   useImmediateInput((input, key) => {
     if (loading || loadError) return;
     if (dialogOpen) return;
+
+    // Fuzzy-search input mode owns most keystrokes while the input is open.
+    // Mirrors ScopeGateStep's `/` UX: Esc closes + clears, Enter closes but
+    // preserves the query (dim persists), Backspace deletes, printable chars
+    // append.
+    if (searchOpen) {
+      if (key.escape) {
+        setSearchOpen(false);
+        setSearchQuery('');
+        return;
+      }
+      if (key.return) {
+        if (searchQuery) {
+          const curPos = navOrder.indexOf(selectedIdx);
+          let jumped = false;
+          for (let i = Math.max(0, curPos); i < navOrder.length; i++) {
+            const idx = navOrder[i];
+            const key2 = components[idx]?.key;
+            if (key2 && fuzzyMatches(searchQuery, key2)) {
+              jumpCursorTo(idx);
+              jumped = true;
+              break;
+            }
+          }
+          if (!jumped && searchMatches.length > 0) {
+            jumpCursorTo(searchMatches[0]);
+          }
+        }
+        setSearchOpen(false);
+        return;
+      }
+      if (key.backspace) {
+        setSearchQuery((q) => q.slice(0, -1));
+        return;
+      }
+      if (input && input.length === 1 && input >= ' ' && input !== '\r' && input !== '\n') {
+        setSearchQuery((q) => q + input);
+        return;
+      }
+      return;
+    }
 
     // Pilot-2026-06-24: removed-detail panel. When open, only `d` (toggle)
     // and Esc (close) respond — all other input is swallowed so j/k/Enter/
@@ -626,6 +706,24 @@ export function GenerateReviewStep({
     // `e` binding (INTEG-4254) when the panel is focused. Crossing back from
     // panel to sidebar is Tab-only.
     if (key.tab) {
+      // With an active fuzzy-search query, Tab cycles matches from the
+      // sidebar-focused state instead of toggling focus. Preserves scope-gate
+      // parity. When no query is active, Tab behaves as before.
+      if (sidebarFocused && searchQuery && searchMatches.length > 0) {
+        const curPos = navOrder.indexOf(selectedIdx);
+        let next: number | null = null;
+        for (let i = curPos + 1; i < navOrder.length; i++) {
+          const idx = navOrder[i];
+          const key2 = components[idx]?.key;
+          if (key2 && fuzzyMatches(searchQuery, key2)) {
+            next = idx;
+            break;
+          }
+        }
+        if (next === null) next = searchMatches[0] ?? null;
+        if (next !== null) jumpCursorTo(next);
+        return;
+      }
       setSidebarFocused((prev) => !prev);
       return;
     }
@@ -690,6 +788,17 @@ export function GenerateReviewStep({
     if (!sidebarFocused) return;
 
     // Sidebar-focused keymap.
+    // Fuzzy-search openers/cycle. `/` opens input, Tab cycles matches at/after
+    // cursor, Esc with an active query clears it. `/` is not currently bound
+    // in this step so no collision.
+    if (input === '/') {
+      setSearchOpen(true);
+      return;
+    }
+    if (key.escape && searchQuery) {
+      setSearchQuery('');
+      return;
+    }
     if (input === 'q') {
       setShowQuit(true);
       return;
@@ -727,6 +836,20 @@ export function GenerateReviewStep({
     if (input === 'A') {
       setComponents((prev) => prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c)));
       setFinalizeError(null);
+      return;
+    }
+    if (input === 'E') {
+      // Expand every group root — the set of "every group root" is any
+      // closure whose node count is >1 (i.e., roots with ≥1 descendant).
+      const roots = new Set<string>();
+      for (const [name, closure] of closures.entries()) {
+        if (closure.nodes.length > 1) roots.add(name);
+      }
+      setExpandedGroups(roots);
+      return;
+    }
+    if (input === 'C') {
+      setExpandedGroups(new Set());
       return;
     }
     if (input === 'J') {
@@ -1044,6 +1167,22 @@ export function GenerateReviewStep({
         </Text>
       )}
       {!dialogOpen && finalizeError && <Text color="red">{`⚠ ${finalizeError}`}</Text>}
+      {!dialogOpen && searchOpen && (
+        <Box>
+          <Text>
+            {`/${searchQuery}`}
+            <Text color="cyan">{'▎'}</Text>
+            {searchQuery && (
+              <Text dimColor>{`  (${searchMatches.length}/${components.length} matches)`}</Text>
+            )}
+          </Text>
+        </Box>
+      )}
+      {!dialogOpen && !searchOpen && searchQuery && (
+        <Box>
+          <Text dimColor>{`/${searchQuery}  (${searchMatches.length}/${components.length} matches) · [Esc] clear · [Tab] next`}</Text>
+        </Box>
+      )}
       {!dialogOpen && (
         <Box>
           <GroupedSidebar
@@ -1069,6 +1208,7 @@ export function GenerateReviewStep({
             previewAnnotationByKey={previewAnnotationByKey}
             scrollOffset={sidebarScrollOffset}
             visibleCount={VISIBLE_COUNT}
+            dimPredicate={dimPredicate}
           />
           <Box flexGrow={1} paddingLeft={1} flexDirection="column">
             {selected ? (
@@ -1206,7 +1346,7 @@ export function GenerateReviewStep({
                     ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel' +
-                      (closures.size > 0 ? '  [Space] expand/collapse' : '') +
+                      (closures.size > 0 ? '  [Space] expand/collapse  [E/C] expand/collapse all' : '') +
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       '  [q] quit'
