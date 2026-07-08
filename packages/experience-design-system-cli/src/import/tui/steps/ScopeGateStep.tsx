@@ -14,8 +14,8 @@ import {
 } from '../../../analyze/composite-closure.js';
 import { findSlotCycles } from '../../../analyze/cycle-detection.js';
 import {
-  findAllAncestorChains,
-  type LineageChain,
+  buildAncestorTree,
+  renderAncestorTree,
 } from '../../../analyze/lineage.js';
 import {
   computeAcceptCascade,
@@ -69,17 +69,6 @@ function toSidebarEntry(c: ScopeComponent): CDFComponentEntry {
   };
   if (Object.keys($slots).length > 0) entry.$slots = $slots;
   return entry;
-}
-
-function chainToString(chain: LineageChain, target: string): string {
-  if (chain.length === 0) return target;
-  const parts: string[] = [];
-  parts.push(chain[0].from);
-  for (const edge of chain) {
-    parts.push(`─[${edge.slotName}]→`);
-    parts.push(edge.to);
-  }
-  return parts.join(' ');
 }
 
 type LineageEntry =
@@ -280,18 +269,19 @@ export function ScopeGateStep({
   const lineageEntries = useMemo<LineageEntry[]>(() => {
     if (!focusedComponent) return [];
     const name = focusedComponent.name;
-    const chains = findAllAncestorChains(name, graph);
+    const tree = buildAncestorTree(name, graph);
     const closure = closures.get(name);
     const entries: LineageEntry[] = [];
     entries.push({ kind: 'section', label: 'Ancestors:' });
-    if (chains.length === 0) {
-      entries.push({ kind: 'empty', label: '  (none)' });
+    if (tree.parents.length === 0) {
+      entries.push({ kind: 'empty', label: '  (no ancestors)' });
     } else {
-      for (const chain of chains) {
+      const lines = renderAncestorTree(tree);
+      for (const line of lines) {
         entries.push({
           kind: 'ancestor',
-          label: '  ' + chainToString(chain, name),
-          jumpTarget: chain[0].from,
+          label: '  ' + line.text,
+          jumpTarget: line.jumpTarget ?? name,
         });
       }
     }
