@@ -42,6 +42,16 @@ export interface GroupedSidebarProps {
   items: GroupedSidebarItem[];
   cycleParticipants?: Set<string>;
   selectedIdx: number;
+  /**
+   * Visible-row cursor index. When provided, this takes precedence over
+   * `selectedIdx` for determining which row renders as selected. Required
+   * whenever `items` may produce multiple rows for the same item (shared
+   * deps under multiple parents, or `showFlatTier`), since `selectedIdx` on
+   * its own draws EVERY row with a matching itemIdx as selected — causing
+   * the cursor to appear in multiple places and navigation to snap back to
+   * the first occurrence. See INTEG-4411 grouped-sidebar duplicate-cursor fix.
+   */
+  selectedRowIdx?: number;
   onSelect: (idx: number) => void;
   expandedGroups: Set<string>;
   onToggleExpanded: (rootName: string) => void;
@@ -83,7 +93,15 @@ export interface GroupedSidebarProps {
    * to standalone, group-root, group-child, and flat rows only.
    */
   selectionStateByKey?: Map<string, 'accepted' | 'rejected' | 'undecided'>;
-  /** Optional per-source-component AI-flagged marker. Trailing dim ` *`. */
+  /**
+   * Optional per-source-component AI-flagged marker. When present, rows whose
+   * key maps to `true` render a dedicated 3-char `[×]` glyph in bright yellow
+   * in a reserved column between the user's selection glyph and the label
+   * (rows that map to `false` or are absent render a 3-space placeholder so
+   * labels stay column-aligned). This is deliberately separate from the
+   * user's own `[✓]`/`[✗]` decision glyph so the AI's suggestion is legible
+   * at a glance without being confused with the user's own choice.
+   */
   aiFlaggedByKey?: Map<string, boolean>;
   /**
    * Optional predicate over the row's underlying component key. When it
@@ -384,6 +402,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
     focused,
     width,
     selectedIdx,
+    selectedRowIdx,
     renderStatusByKey,
     previewAnnotationByKey,
     scrollOffset,
@@ -423,8 +442,17 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
       borderColor={focused ? 'white' : undefined}
     >
       {showScrollUp && <Text dimColor>▲</Text>}
-      {rows.map((row) => {
-        const isSelected = row.itemIdx >= 0 && row.itemIdx === selectedIdx;
+      {rows.map((row, i) => {
+        // When `selectedRowIdx` is provided, use it as the sole source of
+        // truth so exactly one row is highlighted — even when the same
+        // itemIdx appears on multiple rows (shared deps under multiple
+        // parents, flat-tier + grouped occurrences, etc.). Fall back to
+        // itemIdx matching only when the caller hasn't opted in.
+        const absoluteRowIdx = start + i;
+        const isSelected =
+          selectedRowIdx !== undefined
+            ? absoluteRowIdx === selectedRowIdx && row.itemIdx >= 0
+            : row.itemIdx >= 0 && row.itemIdx === selectedIdx;
         const color = rowColor(row, row.aggregateGlyph);
         // Look up per-row inheritance status + preview annotation by the
         // component name this row represents (synthetic rows like the flat-
@@ -457,29 +485,38 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           : undefined;
         const inheritanceDim = rs ? !rs.isOwn : false;
 
-        // Selection glyph applies to component-backed rows only.
+        // Selection glyph applies to component-backed rows only. Cycle rows
+        // are included: cycle members are selectable in the manifest push, so
+        // hiding their user-decision state on a red row is a bug — the glyph
+        // renders in bright white to stay legible against the red row color.
         const supportsSelectionGlyph =
           selectionStateByKey !== undefined &&
           itemName !== undefined &&
           (row.kind === 'standalone' ||
             row.kind === 'group-root' ||
             row.kind === 'group-child' ||
-            row.kind === 'flat');
+            row.kind === 'flat' ||
+            row.kind === 'cycle');
         const selState = supportsSelectionGlyph
           ? selectionStateByKey!.get(itemName!) ?? 'undecided'
           : undefined;
+        const isCycleRow = row.kind === 'cycle';
         let selGlyph: string | null = null;
         let selColor: string | undefined;
         let selDim = false;
+        let selBold = false;
         if (selState === 'accepted') {
           selGlyph = '[✓]';
-          selColor = 'green';
+          selColor = isCycleRow ? 'white' : 'green';
+          selBold = isCycleRow;
         } else if (selState === 'rejected') {
           selGlyph = '[✗]';
-          selColor = 'red';
+          selColor = isCycleRow ? 'white' : 'red';
+          selBold = isCycleRow;
         } else if (selState === 'undecided') {
           selGlyph = '[ ]';
-          selDim = true;
+          selDim = !isCycleRow;
+          selColor = isCycleRow ? 'white' : undefined;
         }
 
         const aiFlagged =
@@ -526,13 +563,24 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
             )}
             {selectionStateByKey !== undefined && (
               selGlyph && !isSynthetic ? (
-                <Text color={selColor} dimColor={selDim}>
+                <Text color={selColor} dimColor={selDim} bold={selBold}>
                   {' ' + selGlyph}
                 </Text>
               ) : (
                 // Reserve the 4-char slot ("[ ] " width) so labels stay
                 // column-aligned across every row (including rows that don't
                 // themselves carry a selection glyph).
+                <Text>{'    '}</Text>
+              )
+            )}
+            {aiFlaggedByKey !== undefined && (
+              aiFlagged ? (
+                <Text color="yellow" bold>
+                  {' [×]'}
+                </Text>
+              ) : (
+                // Reserve the 4-char slot ("[×] " width) so labels stay
+                // column-aligned when the AI has no opinion on the row.
                 <Text>{'    '}</Text>
               )
             )}
@@ -546,9 +594,6 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
               {' '}
               {row.label}
             </Text>
-            {aiFlagged && (
-              <Text dimColor>{' *'}</Text>
-            )}
             {inheritanceGlyph && (
               <Text color={inheritanceColor} dimColor={inheritanceDim}>
                 {' ' + inheritanceGlyph}

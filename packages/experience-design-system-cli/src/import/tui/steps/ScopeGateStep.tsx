@@ -586,6 +586,7 @@ export function ScopeGateStep({
           items={groupedItems}
           cycleParticipants={cycleParticipants}
           selectedIdx={selectedItemIdx}
+          selectedRowIdx={safeCursor}
           onSelect={() => {}}
           expandedGroups={new Set()}
           onToggleExpanded={() => {}}
@@ -612,7 +613,7 @@ export function ScopeGateStep({
             ) : (
               <Text color="red">excluded</Text>
             )}
-            {isAiFlagged(focusedComponent) && <Text color="cyan">{' *'}</Text>}
+            {isAiFlagged(focusedComponent) && <Text color="yellow" bold>{' [×]'}</Text>}
           </Text>
           {isAiFlagged(focusedComponent) &&
             focusedComponent.aiReason !== null &&
@@ -743,7 +744,7 @@ export function ScopeGateStep({
         )}
         {hasAnyAi && (
           <Text>
-            <Text color="cyan">*</Text> <Text dimColor>originally excluded by AI</Text>
+            <Text color="yellow" bold>[×]</Text> <Text dimColor>AI recommends excluding</Text>
           </Text>
         )}
       </Box>

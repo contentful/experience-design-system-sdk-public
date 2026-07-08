@@ -380,24 +380,78 @@ describe('GroupedSidebar', () => {
     expect(frame).toContain('Other');
   });
 
-  it('aiFlaggedByKey: appends a trailing " *" after the label', () => {
+  it('aiFlaggedByKey: renders [×] AI-decision glyph before the label on flagged rows', () => {
     const { lastFrame } = renderSidebar({
       items: [item('Widget')],
       aiFlaggedByKey: new Map([['Widget', true]]),
     });
     const frame = lastFrame() ?? '';
     const line = frame.split('\n').find((l) => l.includes('Widget')) ?? '';
-    expect(line).toMatch(/Widget\s+\*/);
+    expect(line).toContain('[×]');
+    expect(line.indexOf('[×]')).toBeLessThan(line.indexOf('Widget'));
+    // The legacy trailing ` *` marker is gone.
+    expect(line).not.toMatch(/Widget\s+\*/);
   });
 
-  it('aiFlaggedByKey: no marker when key is absent or false', () => {
+  it('aiFlaggedByKey: no [×] glyph when key is absent or false', () => {
     const { lastFrame } = renderSidebar({
       items: [item('Widget')],
       aiFlaggedByKey: new Map([['Widget', false]]),
     });
     const frame = lastFrame() ?? '';
     const line = frame.split('\n').find((l) => l.includes('Widget')) ?? '';
+    expect(line).not.toContain('[×]');
     expect(line).not.toMatch(/Widget\s+\*/);
+  });
+
+  it('aiFlaggedByKey: flagged and non-flagged rows keep the label column aligned', () => {
+    const { lastFrame } = renderSidebar({
+      items: [item('Alpha'), item('Bravo')],
+      aiFlaggedByKey: new Map([
+        ['Alpha', true],
+        ['Bravo', false],
+      ]),
+    });
+    const frame = lastFrame() ?? '';
+    const aLine = frame.split('\n').find((l) => l.includes('Alpha')) ?? '';
+    const bLine = frame.split('\n').find((l) => l.includes('Bravo')) ?? '';
+    expect(aLine.indexOf('Alpha')).toBe(bLine.indexOf('Bravo'));
+  });
+
+  describe('cycle rows carry user selection and cursor glyphs', () => {
+    it('cycle row renders the user selection glyph when selectionStateByKey is provided', () => {
+      const { lastFrame } = renderSidebar({
+        items: [
+          item('Card', { slots: { s: ['Media'] } }),
+          item('Media', { slots: { s: ['Card'] } }),
+        ],
+        cycleParticipants: new Set(['Card', 'Media']),
+        selectionStateByKey: new Map([
+          ['Card', 'accepted'],
+          ['Media', 'rejected'],
+        ]),
+      });
+      const frame = lastFrame() ?? '';
+      const cardLine = frame.split('\n').find((l) => l.includes('Card')) ?? '';
+      const mediaLine = frame.split('\n').find((l) => l.includes('Media')) ?? '';
+      expect(cardLine).toContain('[✓]');
+      expect(mediaLine).toContain('[✗]');
+    });
+
+    it('cycle row renders the ▶ cursor glyph when selected + focused', () => {
+      const { lastFrame } = renderSidebar({
+        items: [
+          item('Card', { slots: { s: ['Media'] } }),
+          item('Media', { slots: { s: ['Card'] } }),
+        ],
+        cycleParticipants: new Set(['Card', 'Media']),
+        selectedIdx: 0,
+        focused: true,
+      });
+      const frame = lastFrame() ?? '';
+      const cardLine = frame.split('\n').find((l) => l.includes('Card')) ?? '';
+      expect(cardLine).toContain('▶');
+    });
   });
 
   describe('cursor glyph', () => {
@@ -569,6 +623,29 @@ describe('visibleItemOrder — navigation contract', () => {
     const nameOrder = order.map((i) => items[i].key);
     // Cycle tier first (alphabetical within tier), then the standalone.
     expect(nameOrder).toEqual(['CycleA', 'CycleB', 'A']);
+  });
+
+  it('selectedRowIdx renders exactly one row selected even when many rows share the same itemIdx', () => {
+    // Two rows point at itemIdx 0. Without selectedRowIdx, selectedIdx=0
+    // would inverse EVERY row that resolves to itemIdx 0 (the duplicate-
+    // cursor bug from INTEG-4411). With selectedRowIdx=1, only the row at
+    // visible-row position 1 is drawn selected.
+    const items: GroupedSidebarItem[] = [item('Card'), item('Filler')];
+    const visibleRows: VisibleRow[] = [
+      { kind: 'group-child', key: 'child:A:Card', label: 'FIRST_CARD_ROW', indent: 1, itemIdx: 0 },
+      { kind: 'group-child', key: 'child:B:Card', label: 'SECOND_CARD_ROW', indent: 1, itemIdx: 0 },
+      { kind: 'flat', key: 'flat:Card', label: 'THIRD_CARD_ROW', indent: 0, itemIdx: 0 },
+      { kind: 'flat', key: 'flat:Filler', label: 'FILLER_ROW', indent: 0, itemIdx: 1 },
+    ];
+    const { lastFrame } = renderSidebar({ items, visibleRows, selectedIdx: 0, selectedRowIdx: 1 });
+    const frame = lastFrame() ?? '';
+    // Cursor glyph appears exactly once — only on the row at selectedRowIdx.
+    const cursorCount = (frame.match(/▶/g) ?? []).length;
+    expect(cursorCount).toBe(1);
+    // Verify it lands on SECOND_CARD_ROW specifically.
+    const lines = frame.split('\n');
+    const cursorLine = lines.find((l) => l.includes('▶')) ?? '';
+    expect(cursorLine).toContain('SECOND_CARD_ROW');
   });
 
   it('when visibleRows prop is provided, renders those rows verbatim and skips internal computation', () => {
