@@ -5,7 +5,7 @@ import type {
   ComponentTypeSummary,
   ServerPreviewResponse,
 } from '@contentful/experience-design-system-types';
-import { GroupedSidebar } from '../../../analyze/select/tui/components/GroupedSidebar.js';
+import { GroupedSidebar, visibleItemOrder } from '../../../analyze/select/tui/components/GroupedSidebar.js';
 import { computeAllClosures, type ComponentGraphNode, type NodeStatus } from '../../../analyze/composite-closure.js';
 import { computeRenderStatuses, pickDrillTarget, type RenderStatus } from '../../../analyze/issue-inheritance.js';
 import { JsonPanel } from '../../../analyze/select/tui/components/JsonPanel.js';
@@ -411,6 +411,22 @@ export function GenerateReviewStep({
     }
     return m;
   }, [components]);
+  const navOrder = useMemo<number[]>(() => {
+    const cycleSet = new Set<string>();
+    for (const cyc of slotCycles) for (const p of cyc.path) cycleSet.add(p);
+    const items = components.map((c) => ({
+      key: c.key,
+      entry: c.entry,
+      status: (directIssues.get(c.key) ?? 'ok') as NodeStatus,
+    }));
+    const order = visibleItemOrder({ items, cycleParticipants: cycleSet, expandedGroups });
+    return order.length > 0 ? order : components.map((_, i) => i);
+  }, [components, slotCycles, directIssues, expandedGroups]);
+  useEffect(() => {
+    if (navOrder.length === 0) return;
+    if (navOrder.includes(selectedIdx)) return;
+    setSelectedIdx(navOrder[0]);
+  }, [navOrder, selectedIdx]);
   // Merge per-closure render statuses into one map. When the same node
   // appears in multiple closures (shared dep), an entry with `isOwn: true`
   // wins over an `isOwn: false` — a real issue on a shared node beats the
@@ -747,8 +763,10 @@ export function GenerateReviewStep({
       // nested inside the cursor updater so it always reflects the same
       // newIdx that selectedIdx is being set to.
       setSelectedIdx((prev) => {
-        const newIdx = Math.max(0, prev - 1);
-        setSidebarScrollOffset((off) => Math.min(off, newIdx));
+        const pos = navOrder.indexOf(prev);
+        const newIdx = pos > 0 ? navOrder[pos - 1] : navOrder[0] ?? prev;
+        const visualPos = Math.max(0, navOrder.indexOf(newIdx));
+        setSidebarScrollOffset((off) => Math.min(off, visualPos));
         return newIdx;
       });
       setJsonScrollOffset(0);
@@ -756,8 +774,10 @@ export function GenerateReviewStep({
       setSaveError(null);
     } else if (key.downArrow || input === 'j') {
       setSelectedIdx((prev) => {
-        const newIdx = Math.min(components.length - 1, prev + 1);
-        setSidebarScrollOffset((off) => (newIdx >= off + VISIBLE_COUNT ? newIdx - VISIBLE_COUNT + 1 : off));
+        const pos = navOrder.indexOf(prev);
+        const nextPos = pos < 0 ? 0 : Math.min(navOrder.length - 1, pos + 1);
+        const newIdx = navOrder[nextPos] ?? prev;
+        setSidebarScrollOffset((off) => (nextPos >= off + VISIBLE_COUNT ? nextPos - VISIBLE_COUNT + 1 : off));
         return newIdx;
       });
       setJsonScrollOffset(0);
