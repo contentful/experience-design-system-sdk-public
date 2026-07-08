@@ -426,10 +426,8 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       expect(arg.accepted).toEqual(expect.arrayContaining(['Article', 'Newsletter', 'Card']));
     });
 
-    it('group-child rows and flat-tier rows are individually selectable', () => {
+    it('group-child rows are individually selectable', () => {
       const onConfirm = vi.fn();
-      // Card + Text child; plus a standalone. Flat tier exposes every
-      // component once.
       const setup = [
         {
           name: 'Card',
@@ -442,15 +440,9 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin } = render(
         <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // Rows: Card(root), Text(child), Standalone, flat-header, Card(flat),
-      // Standalone(flat), Text(flat).
-      // Reject Text via its flat row (last). Cascades to Card.
+      // Rows: Card(root), Text(child), Standalone. Reject Text via its
+      // group-child row. Cascades to Card.
       stdin.write('j'); // Text child
-      stdin.write('j'); // Standalone
-      stdin.write('j'); // flat-header (skipped by toggle)
-      stdin.write('j'); // Card flat
-      stdin.write('j'); // Standalone flat
-      stdin.write('j'); // Text flat
       stdin.write(' '); // reject Text — cascades up to Card
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];

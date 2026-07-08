@@ -116,8 +116,7 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    // Rows: Card (root), Text (child), Standalone, flat-header, Card (flat),
-    // Standalone (flat), Text (flat). Move to Standalone (row 2).
+    // Rows: Card (root), Text (child), Standalone. Move to Standalone (row 2).
     stdin.write('j'); // Text child
     stdin.write('j'); // Standalone
     stdin.write(' ');

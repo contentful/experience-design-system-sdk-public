@@ -174,7 +174,7 @@ export function ScopeGateStep({
         cycleParticipants,
         expandedGroups: new Set(),
         alwaysExpanded: true,
-        showFlatTier: true,
+        showFlatTier: false,
       }),
     [groupedItems, cycleParticipants],
   );
@@ -488,16 +488,18 @@ export function ScopeGateStep({
       return;
     }
     if (input === 'a' || input === ' ' || input === 'r') {
-      // In a side column, Space/a/r toggles the highlighted row's decision so
-      // the user can reject an accepted composite/component without navigating
-      // back to the main column. Routed through requestToggle so the reject-
-      // cascade confirm-prompt still fires when the blast radius warrants it.
+      // Side columns only show accepted items — re-accepting is meaningless,
+      // so [a] / Space are no-ops there. [r] still rejects the highlighted
+      // row via requestToggle (which fires the cascade confirm-prompt when
+      // the blast radius warrants it).
       if (focusedColumn === 'added-components') {
+        if (input !== 'r') return;
         const entry = addedComponents[safeAddedComponentsCursor];
         if (entry) requestToggle(entry.name);
         return;
       }
       if (focusedColumn === 'added-groups') {
+        if (input !== 'r') return;
         const g = addedGroups[safeAddedGroupsCursor];
         if (g) requestToggle(g.name);
         return;
@@ -709,7 +711,7 @@ export function ScopeGateStep({
             scrollOffset={scrollOffset}
             visibleCount={VISIBLE_COUNT}
             alwaysExpanded={true}
-            showFlatTier={true}
+            showFlatTier={false}
             selectionStateByKey={selectionStateByKey}
             aiFlaggedByKey={aiFlaggedByKey}
             dimPredicate={dimPredicate}
@@ -842,7 +844,7 @@ export function ScopeGateStep({
         </Box>
       )}
 
-      <Box gap={3} marginTop={1}>
+      <Box gap={3} marginTop={1} flexWrap="wrap">
         {includedCount > 0 ? (
           <Text>
             <Text color="green">{includedCount}</Text>
@@ -875,6 +877,11 @@ export function ScopeGateStep({
         {columnPlan.layout === 'three-column' && (
           <Text>
             <Text color="cyan">[Tab/Shift-Tab]</Text> <Text dimColor>switch column</Text>
+          </Text>
+        )}
+        {columnPlan.layout === 'three-column' && (
+          <Text>
+            <Text color="cyan">[Enter]</Text> <Text dimColor>jump to main</Text>
           </Text>
         )}
         {hasAnyAi && (

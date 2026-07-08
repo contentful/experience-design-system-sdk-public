@@ -211,12 +211,12 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     expect(lastFrame() ?? '').toMatch(/▶ Icon\b/);
   });
 
-  it('Space in Added-components toggles the highlighted row via reject-cascade machinery', () => {
+  it('[r] in Added-components rejects the highlighted row via reject-cascade machinery', () => {
     setWide(160);
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
-    // Baseline: Standalone is accepted; toggling it has no cascade (blast
+    // Baseline: Standalone is accepted; rejecting it has no cascade (blast
     // radius 0), so it flips straight to rejected and drops off the
     // added-components list.
     stdin.write('\t');
@@ -224,13 +224,103 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     stdin.write('\x1b[B');
     // Now at Standalone (Card, Icon, Standalone, Text alphabetical).
     expect(lastFrame() ?? '').toMatch(/▶ Standalone\b/);
-    stdin.write(' ');
+    stdin.write('r');
     const out = lastFrame() ?? '';
     // Standalone is no longer in the accepted list, so the side-column no
     // longer shows a ▶ next to it. Counter reflects the flip.
     expect(out).not.toMatch(/▶ Standalone\b/);
     expect(out).toMatch(/Accepted[^0-9]*3[^0-9]*4/);
     expect(out).toMatch(/Rejected[^0-9]*1/);
+  });
+
+  it('[a] in Added-components is a no-op (side columns only accept [r])', () => {
+    setWide(160);
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    stdin.write('\t');
+    stdin.write('\x1b[B');
+    stdin.write('\x1b[B');
+    expect(lastFrame() ?? '').toMatch(/▶ Standalone\b/);
+    stdin.write('a');
+    const out = lastFrame() ?? '';
+    // No state change: Standalone still accepted, still in the column.
+    expect(out).toMatch(/▶ Standalone\b/);
+    expect(out).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
+    expect(out).toMatch(/Rejected[^0-9]*0/);
+  });
+
+  it('Space in Added-components is a no-op (side columns only accept [r])', () => {
+    setWide(160);
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    stdin.write('\t');
+    stdin.write('\x1b[B');
+    stdin.write('\x1b[B');
+    expect(lastFrame() ?? '').toMatch(/▶ Standalone\b/);
+    stdin.write(' ');
+    const out = lastFrame() ?? '';
+    expect(out).toMatch(/▶ Standalone\b/);
+    expect(out).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
+    expect(out).toMatch(/Rejected[^0-9]*0/);
+  });
+
+  it('[a] in Added-groups is a no-op; [r] rejects the composite root', () => {
+    setWide(160);
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    // Tab twice: main → added-components → added-groups. Highlighted row is
+    // "Card (2 deps)". [a] should not change state.
+    stdin.write('\t');
+    stdin.write('\t');
+    expect(lastFrame() ?? '').toMatch(/▶ Card \(2 deps\)/);
+    stdin.write('a');
+    const afterA = lastFrame() ?? '';
+    expect(afterA).toMatch(/▶ Card \(2 deps\)/);
+    expect(afterA).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
+    // Space: still no-op.
+    stdin.write(' ');
+    const afterSpace = lastFrame() ?? '';
+    expect(afterSpace).toMatch(/▶ Card \(2 deps\)/);
+    expect(afterSpace).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
+    // [r]: reject Card → cascade prompt (2 descendants), confirm with y.
+    stdin.write('r');
+    stdin.write('y');
+    const afterR = lastFrame() ?? '';
+    // Card is now rejected → drops out of added-groups.
+    expect(afterR).not.toMatch(/▶ Card \(2 deps\)/);
+  });
+});
+
+describe('ScopeGateStep — legend advertises Enter-jump', () => {
+  it('shows [Enter] jump to main in three-column layout', () => {
+    setWide(160);
+    const { lastFrame } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).toContain('[Enter]');
+    expect(out).toContain('jump to main');
+  });
+
+  it('omits [Enter] jump to main in narrow (single-column) layout', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).not.toContain('jump to main');
+  });
+});
+
+describe('ScopeGateStep — Column 1 flat-tier removal', () => {
+  it('does not render the "── All components ──" flat-tier header in Column 1', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).not.toContain('All components');
   });
 });
 
