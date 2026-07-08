@@ -486,6 +486,20 @@ export function ScopeGateStep({
       return;
     }
     if (input === 'a' || input === ' ' || input === 'r') {
+      // In a side column, Space/a/r toggles the highlighted row's decision so
+      // the user can reject an accepted composite/component without navigating
+      // back to the main column. Routed through requestToggle so the reject-
+      // cascade confirm-prompt still fires when the blast radius warrants it.
+      if (focusedColumn === 'added-components') {
+        const name = addedComponents[safeAddedComponentsCursor];
+        if (name) requestToggle(name);
+        return;
+      }
+      if (focusedColumn === 'added-groups') {
+        const g = addedGroups[safeAddedGroupsCursor];
+        if (g) requestToggle(g.name);
+        return;
+      }
       handleToggleFocused();
       return;
     }

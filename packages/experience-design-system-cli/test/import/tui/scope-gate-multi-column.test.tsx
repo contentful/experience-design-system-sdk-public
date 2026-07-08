@@ -45,6 +45,17 @@ const CARD_GRAPH = [
   { name: 'Standalone', componentId: 'c3' },
 ];
 
+const AI_FLAGGED_GRAPH = [
+  { name: 'Card', componentId: 'c0', slots: [{ name: 'body', allowedComponents: ['Text'] }] },
+  { name: 'Text', componentId: 'c1' },
+  {
+    name: 'DebugPanel',
+    componentId: 'c2',
+    aiDecision: 'rejected' as const,
+    aiReason: 'internal-only debugging widget',
+  },
+];
+
 describe('ScopeGateStep — counter strip', () => {
   it('always renders the counter strip with Accepted / Groups / Rejected / Undecided labels', () => {
     const { lastFrame } = render(
@@ -142,19 +153,135 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     expect(out).toContain('Tab/Shift-Tab');
   });
 
-  it('Enter in the Added-components column jumps main cursor', () => {
+  it('Enter in the Added-components column jumps main cursor and returns focus to main', () => {
     setWide(160);
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
-    // Tab from main → added-components, then Enter should jump the main
-    // cursor to whichever added component is highlighted (Card, since it
-    // sorts first alphabetically among accepted names Card/Icon/Standalone/Text).
+    // Tab from main → added-components. Move down one row (Card → Icon,
+    // alphabetical among Card/Icon/Standalone/Text). Enter should jump the
+    // main cursor to Icon and return focus to main.
     stdin.write('\t');
+    stdin.write('\x1b[B'); // down arrow → Icon
+    // Side column shows its cursor while focused.
+    expect(lastFrame() ?? '').toMatch(/▶ Icon\b/);
     stdin.write('\r');
     const out = lastFrame() ?? '';
-    // Card is a group root; the main-cursor row highlights Card in the
-    // grouped sidebar. The ▶ glyph should appear beside Card.
-    expect(out).toContain('Card');
+    // Side-column cursor glyph is gone (focus returned to main).
+    expect(out).not.toMatch(/▶ Icon\b/);
+    // Main-column ▶ landed on Icon. Icon appears as a group-child of Card
+    // (row label "├─ Icon" or similar) and again in the flat tier. The
+    // grouped occurrence comes first; the ▶ glyph precedes the label with
+    // reserved slots between them, so match a permissive "▶ ... Icon" line.
+    expect(out).toMatch(/▶[^\n]*Icon/);
+  });
+
+  it('Enter in the Added-groups column jumps main cursor to composite root and returns focus to main', () => {
+    setWide(160);
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    // Tab twice: main → added-components → added-groups.
+    stdin.write('\t');
+    stdin.write('\t');
+    expect(lastFrame() ?? '').toMatch(/▶ Card \(2 deps\)/);
+    stdin.write('\r');
+    const out = lastFrame() ?? '';
+    // Focus returned to main: no side-column cursor glyph on Card (2 deps).
+    expect(out).not.toMatch(/▶ Card \(2 deps\)/);
+    // Main-column ▶ lands on Card — the group-root row (rendered as
+    // "▾ Card (2 deps)").
+    expect(out).toMatch(/▶[^\n]*Card \(2 deps\)/);
+  });
+
+  it('side-column cursor persists across refocus (does not reset on Tab away and back)', () => {
+    setWide(160);
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    // Tab to added-components, move to row 1 (Icon).
+    stdin.write('\t');
+    stdin.write('\x1b[B');
+    expect(lastFrame() ?? '').toMatch(/▶ Icon\b/);
+    // Tab away twice (added-components → added-groups → main), then back to
+    // added-components; cursor should still be on Icon.
+    stdin.write('\t');
+    stdin.write('\t');
+    stdin.write('\t');
+    expect(lastFrame() ?? '').toMatch(/▶ Icon\b/);
+  });
+
+  it('Space in Added-components toggles the highlighted row via reject-cascade machinery', () => {
+    setWide(160);
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    // Baseline: Standalone is accepted; toggling it has no cascade (blast
+    // radius 0), so it flips straight to rejected and drops off the
+    // added-components list.
+    stdin.write('\t');
+    stdin.write('\x1b[B');
+    stdin.write('\x1b[B');
+    // Now at Standalone (Card, Icon, Standalone, Text alphabetical).
+    expect(lastFrame() ?? '').toMatch(/▶ Standalone\b/);
+    stdin.write(' ');
+    const out = lastFrame() ?? '';
+    // Standalone is no longer in the accepted list, so the side-column no
+    // longer shows a ▶ next to it. Counter reflects the flip.
+    expect(out).not.toMatch(/▶ Standalone\b/);
+    expect(out).toMatch(/Accepted[^0-9]*3[^0-9]*4/);
+    expect(out).toMatch(/Rejected[^0-9]*1/);
+  });
+});
+
+describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
+  it('renders the AI-recommended-exclusions banner above the columns in wide layout', () => {
+    // Regression: after the three-column layout landed, both AI-suggestion
+    // signals — the banner text block and the per-row [×] glyph — must
+    // continue to surface. Nothing in the narrow-layout scope-gate tests
+    // covered this once the counter strip + side columns were introduced.
+    setWide(160);
+    const { lastFrame } = render(
+      <ScopeGateStep
+        components={AI_FLAGGED_GRAPH}
+        onConfirm={() => {}}
+        onQuit={() => {}}
+        aiFilterStatus="complete"
+      />,
+    );
+    const out = lastFrame() ?? '';
+    // Banner header + the flagged component's name + a fragment of the
+    // truncated reason (defends against a future banner-suppression bug).
+    expect(out).toContain('AI recommended exclusions');
+    expect(out).toContain('DebugPanel');
+    expect(out).toContain('internal-only debugging widget');
+    // And the three-column layout is actually engaged for this test.
+    expect(out).toContain('Added components');
+    expect(out).toContain('Added groups');
+  });
+
+  it('renders the per-row [×] AI badge in the main sidebar in wide layout', () => {
+    setWide(160);
+    const { lastFrame } = render(
+      <ScopeGateStep
+        components={AI_FLAGGED_GRAPH}
+        onConfirm={() => {}}
+        onQuit={() => {}}
+        aiFilterStatus="complete"
+      />,
+    );
+    const out = lastFrame() ?? '';
+    // [×] appears on the DebugPanel row specifically. GroupedSidebar reserves
+    // a 4-char slot for the badge column, so the glyph precedes the label
+    // (with a space between them).
+    expect(out).toContain('[×]');
+    // Two lines mention DebugPanel: the banner (no [×]) and the sidebar row
+    // (has [×]). Assert at least one sidebar row co-locates [×] with the name.
+    const sidebarLine = out
+      .split('\n')
+      .find((line) => line.includes('DebugPanel') && line.includes('[×]'));
+    expect(sidebarLine).toBeDefined();
+    // Legend also advertises the badge (surfaces via `hasAnyAi`).
+    expect(out).toContain('AI recommends');
   });
 });
