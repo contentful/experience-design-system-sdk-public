@@ -128,21 +128,16 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    // Cursor starts on the first row (Card root). Rejecting Card now
-    // deselects its 2 descendants → blast radius 2 → confirm prompt. Press
-    // [y] to apply. Then Space again re-accepts, cascading to Text + Icon.
-    stdin.write(' '); // reject Card → confirm prompt (0 ancestors + 2 descendants)
-    stdin.write('y'); // confirm: Card rejected, Text/Icon undecided
-    stdin.write(' '); // accept Card → cascades to Text + Icon
+    // Cursor starts on Card root (undecided). [a] accepts Card + cascades
+    // to Text + Icon. Standalone remains undecided → partitions to rejected.
+    stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    expect(arg.accepted).toEqual(expect.arrayContaining(['Card', 'Text', 'Icon', 'Standalone']));
-    expect(arg.rejected).not.toContain('Card');
-    expect(arg.rejected).not.toContain('Text');
-    expect(arg.rejected).not.toContain('Icon');
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Card', 'Text', 'Icon']));
+    expect(arg.rejected).toEqual(['Standalone']);
   });
 
-  it('Rejecting a root deselects its descendants (undecided → partitions to rejected)', () => {
+  it('Rejecting an accepted root deselects its descendants (undecided → partitions to rejected)', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep
@@ -156,18 +151,18 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    // Rejecting Card cascades UP (to its ancestors — none) and now DEselects
-    // its descendants (Text, Icon → undecided). Blast radius = 2 → confirm.
-    stdin.write(' ');
+    // Accept-all first so Card is accepted, then reject Card → 2 descendants
+    // → prompt. Standalone stays accepted (not part of Card's closure).
+    stdin.write('A');
+    stdin.write('r');
     stdin.write('y');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    // Card explicitly rejected; Text/Icon undecided → partition to rejected.
     expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Text', 'Icon']));
     expect(arg.accepted).toEqual(['Standalone']);
   });
 
-  it('Space on a standalone toggles only that component', () => {
+  it('[a] on a standalone accepts only that component', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep
@@ -180,18 +175,17 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    // Rows: Card (root), Text (child), Standalone. Move to Standalone (row 2).
+    // Rows: Card (root), Text (child), Standalone. Move to Standalone.
     stdin.write('j'); // Text child
     stdin.write('j'); // Standalone
-    stdin.write(' ');
+    stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    expect(arg.rejected).toEqual(['Standalone']);
-    expect(arg.accepted).toEqual(expect.arrayContaining(['Card', 'Text']));
-    expect(arg.accepted).not.toContain('Standalone');
+    expect(arg.accepted).toEqual(['Standalone']);
+    expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Text']));
   });
 
-  it('Rejecting a group-child cascades to ancestors (blast radius 1 = no prompt)', () => {
+  it('Rejecting an accepted group-child cascades to ancestors (blast radius 1 = no prompt)', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep
@@ -203,9 +197,10 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    // Rows: Card (root), Text (child), flat-header, Card (flat), Text (flat).
+    // Accept-all first, then reject Text via its child row.
+    stdin.write('A');
     stdin.write('j'); // move to Text child
-    stdin.write(' '); // reject Text — cascades to Card (blast radius 1 → no prompt).
+    stdin.write('r'); // reject Text — cascades to Card (blast radius 1 → no prompt).
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
     expect(arg.rejected).toEqual(expect.arrayContaining(['Text', 'Card']));

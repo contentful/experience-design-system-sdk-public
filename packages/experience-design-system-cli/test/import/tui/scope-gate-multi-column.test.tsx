@@ -130,12 +130,24 @@ describe('ScopeGateStep — counter strip', () => {
     expect(out).toContain('Undecided');
   });
 
-  it('counter values reflect the initial accepted state (all-accepted baseline)', () => {
+  it('counter values reflect the undecided baseline at mount (nothing pre-accepted)', () => {
     const { lastFrame } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
-    // 4 accepted out of 4, one composite root (Card) accepted.
+    // 0 accepted out of 4 at mount — everything defaults to undecided.
+    expect(out).toMatch(/Accepted[^0-9]*0[^0-9]*4/);
+    expect(out).toMatch(/Groups[^0-9]*0/);
+    expect(out).toMatch(/Rejected[^0-9]*0/);
+    expect(out).toMatch(/Undecided[^0-9]*4/);
+  });
+
+  it('counter values after [A]: 4 accepted, 1 group, 0 rejected, 0 undecided', () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    stdin.write('A');
+    const out = lastFrame() ?? '';
     expect(out).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
     expect(out).toMatch(/Groups[^0-9]*1/);
     expect(out).toMatch(/Rejected[^0-9]*0/);
@@ -172,15 +184,12 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
-    // Baseline: main column focused (its header is inverse). The three column
-    // headers ("Components", "Added components", "Added groups") each render
-    // via ColumnHeader; the focused one is the only one wrapped with inverse.
-    // We assert focus indirectly via the "▶" cursor glyph which only renders
-    // in the side columns when they are focused.
+    // Accept-all so side columns are populated.
+    stdin.write('A');
+    // Baseline: main column focused (its header is inverse). We assert focus
+    // indirectly via the "▶" cursor glyph which only renders in the side
+    // columns when they are focused.
     const initial = lastFrame() ?? '';
-    // "▶" doesn't render in side columns at rest (main is focused).
-    // Confirm at least neither side-column cursor is drawn.
-    // (added-components list is non-empty since all 4 components are accepted.)
     // Fire Shift-Tab: main → added-groups.
     stdin.write('\x1b[Z');
     const afterShift1 = lastFrame() ?? '';
@@ -220,6 +229,8 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
+    // Accept-all so Column 2 is populated.
+    stdin.write('A');
     // Tab from main → added-components. Move down one row (Card → Icon,
     // alphabetical among Card/Icon/Standalone/Text). Enter should jump the
     // main cursor to Icon and return focus to main.
@@ -243,6 +254,8 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
+    // Accept-all so both side columns are populated.
+    stdin.write('A');
     // Tab twice: main → added-components → added-groups.
     stdin.write('\t');
     stdin.write('\t');
@@ -261,6 +274,7 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
+    stdin.write('A');
     // Tab to added-components, move to row 1 (Icon).
     stdin.write('\t');
     stdin.write('\x1b[B');
@@ -278,9 +292,9 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
-    // Baseline: Standalone is accepted; rejecting it has no cascade (blast
-    // radius 0), so it flips straight to rejected and drops off the
-    // added-components list.
+    // Accept-all so Standalone is accepted; then rejecting it has no cascade
+    // (blast radius 0) → flips straight to rejected and drops off the list.
+    stdin.write('A');
     stdin.write('\t');
     stdin.write('\x1b[B');
     stdin.write('\x1b[B');
@@ -300,6 +314,7 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
+    stdin.write('A');
     stdin.write('\t');
     stdin.write('\x1b[B');
     stdin.write('\x1b[B');
@@ -317,6 +332,7 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
+    stdin.write('A');
     stdin.write('\t');
     stdin.write('\x1b[B');
     stdin.write('\x1b[B');
@@ -333,6 +349,8 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
+    // Accept-all so Card composite is in Column 3.
+    stdin.write('A');
     // Tab twice: main → added-components → added-groups. Highlighted row is
     // "Card (2 deps)". [a] should not change state.
     stdin.write('\t');
@@ -484,9 +502,16 @@ describe('ScopeGateStep — cycle participants in side columns', () => {
 
   it('renders an accepted cycle-participant at the top of Column 2 with a ⚠ prefix', () => {
     setWide(160);
-    const { lastFrame } = render(
+    const { lastFrame, stdin } = render(
       <ScopeGateStep components={CYCLE_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
+    // Accept-all so Column 2 is populated with every component (including
+    // cycle participants — [A] skips them, so accept them individually).
+    stdin.write('A');
+    // [A] deliberately skips cycle participants. Toggle them via cycle rows.
+    stdin.write('a'); // cursor on ⚠ Inner (first cycle-tier row alphabetically)
+    stdin.write('j'); // move to ⚠ Loopy
+    stdin.write('a');
     const out = lastFrame() ?? '';
     expect(out).toContain('Added components');
     // Cycle-tier row carries the ⚠ glyph. Loopy and Inner both participate.
@@ -496,9 +521,15 @@ describe('ScopeGateStep — cycle participants in side columns', () => {
 
   it('places cycle members alphabetically at the top of Column 2 before non-cycle rows', () => {
     setWide(160);
-    const { lastFrame } = render(
+    const { lastFrame, stdin } = render(
       <ScopeGateStep components={CYCLE_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
+    // Accept-all so non-cycle rows populate Column 2, then accept the two
+    // cycle participants individually.
+    stdin.write('A');
+    stdin.write('a'); // ⚠ Inner
+    stdin.write('j');
+    stdin.write('a'); // ⚠ Loopy
     const out = lastFrame() ?? '';
     // Cycle-tier rows have ⚠ prefixes. Non-cycle rows in Column 2 do not.
     // Assert overall ordering: ⚠ Inner (cycle-tier alphabetical first) appears
@@ -672,9 +703,10 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
         aiFilterStatus="complete"
       />,
     );
-    // Accept DebugPanel so it lands in Added-components alongside Card/Text.
-    // Non-flagged peers must reserve a 4-space slot so their labels align
-    // with DebugPanel's [×] badge.
+    // Accept-all so Card + Text are in Added-components. Then accept
+    // DebugPanel too so all three peers coexist and the badge column can be
+    // asserted for alignment.
+    stdin.write('A');
     stdin.write('/');
     for (const ch of 'DebugPanel') stdin.write(ch);
     stdin.write('\r');

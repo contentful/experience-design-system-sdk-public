@@ -117,15 +117,13 @@ export function ScopeGateStep({
   const [searchQuery, setSearchQuery] = useState('');
   const [columnOneView, setColumnOneView] = useState<'grouped' | 'large-list'>('grouped');
 
-  const baselineState = (name: string): Decision => {
-    const c = components.find((x) => x.name === name);
-    if (!c) return 'accepted';
-    return isAiFlagged(c) ? 'rejected' : 'accepted';
-  };
-
+  // Everything defaults to undecided. AI decisions are advisory only —
+  // surfaced via the [×] badge and the recommends-exclusions banner, never
+  // auto-applied. The operator explicitly opts each component in via
+  // [a]/[space] or [Y]/[A] bulk-accept.
   const getState = (name: string): Decision => {
     const v = userDecisions.get(name);
-    return v ?? baselineState(name);
+    return v ?? 'undecided';
   };
 
   const isIncluded = (name: string): boolean => getState(name) === 'accepted';
@@ -248,42 +246,39 @@ export function ScopeGateStep({
     applyDecisions([...cascade].map((n) => [n, 'accepted'] as [string, Decision]));
   };
 
-  const requestToggle = (name: string): void => {
-    if (isIncluded(name)) {
-      // Reject path — may require confirm.
-      const rejectCascade = computeRejectCascade(name, graph);
-      const acceptCascade = computeAcceptCascade(name, graph);
-      const ancestors = [...rejectCascade].filter((n) => n !== name).sort();
-      const descendants = [...acceptCascade].filter((n) => n !== name).sort();
-      // Blast radius = ancestors flipping to rejected + descendants flipping
-      // to undecided. Prompt when total ≥ 2.
-      if (ancestors.length + descendants.length >= 2) {
-        setPendingRejectCascade({ target: name, ancestors, descendants });
-        return;
-      }
-      applyReject(name);
-    } else {
-      applyAccept(name);
-    }
+  const requestAccept = (name: string): void => {
+    if (getState(name) === 'accepted') return;
+    applyAccept(name);
   };
 
-  const handleToggleFocused = (): void => {
+  const requestReject = (name: string): void => {
+    if (getState(name) === 'rejected') return;
+    const rejectCascade = computeRejectCascade(name, graph);
+    const acceptCascade = computeAcceptCascade(name, graph);
+    const ancestors = [...rejectCascade].filter((n) => n !== name).sort();
+    const descendants = [...acceptCascade].filter((n) => n !== name).sort();
+    // Blast radius = ancestors flipping to rejected + descendants flipping
+    // to undecided. Prompt when total ≥ 2.
+    if (ancestors.length + descendants.length >= 2) {
+      setPendingRejectCascade({ target: name, ancestors, descendants });
+      return;
+    }
+    applyReject(name);
+  };
+
+  const focusedRowKey = (): string | undefined => {
     const row = visibleRows[safeCursor];
-    if (!row) return;
+    if (!row) return undefined;
     switch (row.kind) {
       case 'standalone':
       case 'empty':
       case 'group-root':
       case 'group-child':
       case 'flat':
-      case 'cycle': {
-        const key = row.itemIdx >= 0 ? groupedItems[row.itemIdx]?.key : undefined;
-        if (key) requestToggle(key);
-        return;
-      }
-      case 'flat-header':
+      case 'cycle':
+        return row.itemIdx >= 0 ? groupedItems[row.itemIdx]?.key : undefined;
       default:
-        return;
+        return undefined;
     }
   };
 
@@ -546,23 +541,27 @@ export function ScopeGateStep({
       return;
     }
     if (input === 'a' || input === ' ' || input === 'r') {
-      // Side columns only show accepted items — re-accepting is meaningless,
-      // so [a] / Space are no-ops there. [r] still rejects the highlighted
-      // row via requestToggle (which fires the cascade confirm-prompt when
-      // the blast radius warrants it).
+      const isReject = input === 'r';
+      // Side columns only show accepted items — [a]/Space are no-ops there
+      // (re-accepting is meaningless). [r] rejects the highlighted row via
+      // requestReject (which fires the cascade confirm-prompt when the blast
+      // radius warrants it).
       if (focusedColumn === 'added-components') {
-        if (input !== 'r') return;
+        if (!isReject) return;
         const entry = addedComponents[safeAddedComponentsCursor];
-        if (entry) requestToggle(entry.name);
+        if (entry) requestReject(entry.name);
         return;
       }
       if (focusedColumn === 'added-groups') {
-        if (input !== 'r') return;
+        if (!isReject) return;
         const g = addedGroups[safeAddedGroupsCursor];
-        if (g) requestToggle(g.name);
+        if (g) requestReject(g.name);
         return;
       }
-      handleToggleFocused();
+      const key = focusedRowKey();
+      if (!key) return;
+      if (isReject) requestReject(key);
+      else requestAccept(key);
       return;
     }
     if (input === 'L') {
@@ -605,6 +604,17 @@ export function ScopeGateStep({
       const anyNotAccepted = selectable.some((n) => getState(n) !== 'accepted');
       const target: Decision = anyNotAccepted ? 'accepted' : 'rejected';
       applyDecisions(selectable.map((n) => [n, target] as [string, Decision]));
+      return;
+    }
+    if (input === 'Y') {
+      // Accept every non-cycle-participant that the AI did NOT flag as
+      // rejected/failed. Cycle participants and AI-rejects still require
+      // an explicit [a] to opt in. Meant as a fast opt-in-to-defaults
+      // now that everything starts undecided.
+      const targets = components
+        .filter((c) => !cycleParticipants.has(c.name) && !isAiFlagged(c))
+        .map((c) => c.name);
+      applyDecisions(targets.map((n) => [n, 'accepted'] as [string, Decision]));
       return;
     }
     if (key.tab) {
@@ -705,8 +715,7 @@ export function ScopeGateStep({
     aiFilterStatus === 'running' && aiFilterProgress !== null && aiFilterProgress.total > 0;
   const showCancelledBanner = aiFilterStatus === 'cancelled';
   const showFailedBanner = aiFilterStatus === 'failed';
-  const allRejected =
-    aiFilterStatus === 'complete' && components.length > 0 && components.every((c) => !isIncluded(c.name));
+  const nothingIncluded = components.length > 0 && components.every((c) => !isIncluded(c.name));
 
   const totalComponents = components.length;
   const totalMatches = searchQuery ? searchMatches.length : 0;
@@ -781,60 +790,63 @@ export function ScopeGateStep({
         </Box>
       )}
 
-      {!allRejected && (
-        <CounterStrip counters={counters} totalWidth={totalWidth} />
-      )}
+      <CounterStrip counters={counters} totalWidth={totalWidth} />
 
-      {allRejected ? (
+      {nothingIncluded && (
         <Box marginTop={1}>
-          <Text color="yellow">AI excluded all components — press [a] to override or [q] to quit</Text>
-        </Box>
-      ) : (
-        <Box flexDirection="row">
-          <GroupedSidebar
-            items={groupedItems}
-            cycleParticipants={cycleParticipants}
-            selectedIdx={selectedItemIdx}
-            selectedRowIdx={safeCursor}
-            onSelect={() => {}}
-            expandedGroups={new Set()}
-            onToggleExpanded={() => {}}
-            width={sidebarWidth}
-            focused={focusedColumn === 'main'}
-            scrollOffset={scrollOffset}
-            visibleCount={VISIBLE_COUNT}
-            alwaysExpanded={true}
-            showFlatTier={false}
-            selectionStateByKey={selectionStateByKey}
-            aiFlaggedByKey={aiFlaggedByKey}
-            dimPredicate={dimPredicate}
-            visibleRows={visibleRows}
-            viewMode={columnOneView}
-          />
-          {columnPlan.layout === 'three-column' && (
-            <>
-              <Box width={2} flexShrink={0} />
-              <AddedComponentsColumn
-                width={columnPlan.added}
-                entries={addedComponents}
-                cursor={safeAddedComponentsCursor}
-                focused={focusedColumn === 'added-components'}
-                aiFlaggedByKey={aiFlaggedByKey}
-              />
-              <Box width={2} flexShrink={0} />
-              <AddedGroupsColumn
-                width={columnPlan.groups}
-                entries={addedGroups}
-                cursor={safeAddedGroupsCursor}
-                focused={focusedColumn === 'added-groups'}
-                aiFlaggedByKey={aiFlaggedByKey}
-              />
-            </>
-          )}
+          <Text color="yellow">
+            nothing selected — press{' '}
+            <Text color="cyan">[Y]</Text> to accept all non-flagged,{' '}
+            <Text color="cyan">[A]</Text> to toggle all, or{' '}
+            <Text color="cyan">[a]</Text> to accept the highlighted row
+          </Text>
         </Box>
       )}
 
-      {focusedComponent && !allRejected && (
+      <Box flexDirection="row">
+        <GroupedSidebar
+          items={groupedItems}
+          cycleParticipants={cycleParticipants}
+          selectedIdx={selectedItemIdx}
+          selectedRowIdx={safeCursor}
+          onSelect={() => {}}
+          expandedGroups={new Set()}
+          onToggleExpanded={() => {}}
+          width={sidebarWidth}
+          focused={focusedColumn === 'main'}
+          scrollOffset={scrollOffset}
+          visibleCount={VISIBLE_COUNT}
+          alwaysExpanded={true}
+          showFlatTier={false}
+          selectionStateByKey={selectionStateByKey}
+          aiFlaggedByKey={aiFlaggedByKey}
+          dimPredicate={dimPredicate}
+          visibleRows={visibleRows}
+          viewMode={columnOneView}
+        />
+        {columnPlan.layout === 'three-column' && (
+          <>
+            <Box width={2} flexShrink={0} />
+            <AddedComponentsColumn
+              width={columnPlan.added}
+              entries={addedComponents}
+              cursor={safeAddedComponentsCursor}
+              focused={focusedColumn === 'added-components'}
+              aiFlaggedByKey={aiFlaggedByKey}
+            />
+            <Box width={2} flexShrink={0} />
+            <AddedGroupsColumn
+              width={columnPlan.groups}
+              entries={addedGroups}
+              cursor={safeAddedGroupsCursor}
+              focused={focusedColumn === 'added-groups'}
+              aiFlaggedByKey={aiFlaggedByKey}
+            />
+          </>
+        )}
+      </Box>
+
+      {focusedComponent && (
         <Box flexDirection="column" marginTop={1}>
           <Text>
             <Text color="cyan">{focusedComponent.name}</Text>
@@ -982,7 +994,10 @@ export function ScopeGateStep({
           <Text color="cyan">[j/k]</Text> <Text dimColor>move</Text>
         </Text>
         <Text>
-          <Text color="cyan">[a/space]</Text> <Text dimColor>toggle</Text>
+          <Text color="cyan">[a/space]</Text> <Text dimColor>accept</Text>
+        </Text>
+        <Text>
+          <Text color="cyan">[r]</Text> <Text dimColor>reject</Text>
         </Text>
         <Text>
           <Text color="cyan">[l]</Text> <Text dimColor>lineage</Text>
@@ -997,6 +1012,9 @@ export function ScopeGateStep({
         </Text>
         <Text>
           <Text color="cyan">[A]</Text> <Text dimColor>toggle all</Text>
+        </Text>
+        <Text>
+          <Text color="cyan">[Y]</Text> <Text dimColor>accept non-flagged</Text>
         </Text>
         <Text>
           <Text color="cyan">[L]</Text> <Text dimColor>large list</Text>

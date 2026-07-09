@@ -44,8 +44,8 @@ describe('ScopeGateStep + applyScopeDecisions integration', () => {
         applyScopeDecisions(db, sessionId, decisions);
       });
       const { stdin } = render(<ScopeGateStep components={[...components]} onConfirm={onConfirm} onQuit={() => {}} />);
-      // Cursor starts on 'Button' (alphabetical). Move down to 'Junk' and deselect.
-      stdin.write('j');
+      // Everything defaults to undecided. Cursor starts on Button (alphabetical).
+      // Accept Button; leave Junk undecided so it partitions to rejected.
       stdin.write('a');
       stdin.write('f');
 
