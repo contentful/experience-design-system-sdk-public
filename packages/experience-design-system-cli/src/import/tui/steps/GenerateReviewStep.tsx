@@ -595,6 +595,20 @@ export function GenerateReviewStep({
     return merged;
   }, [closures, directIssues]);
 
+  // Per-row selection glyph state ([✓]/[✗]/[ ]) driven by each component's
+  // ReviewComponentStatus. `needs-review` and `reviewed` render as undecided
+  // so operators can see at a glance what the auto-reject (task #37) touched
+  // and what still awaits an explicit accept/reject.
+  const selectionStateByKey = useMemo<Map<string, 'accepted' | 'rejected' | 'undecided'>>(() => {
+    const map = new Map<string, 'accepted' | 'rejected' | 'undecided'>();
+    for (const c of components) {
+      if (c.status === 'accepted') map.set(c.key, 'accepted');
+      else if (c.status === 'rejected') map.set(c.key, 'rejected');
+      else map.set(c.key, 'undecided');
+    }
+    return map;
+  }, [components]);
+
   // Visible-row match list drives the (N/M) count and Tab cycling. A "match"
   // is a row position (into visibleRowsMemo) whose component key fuzzy-hits
   // the query. Row positions (not item-indices) so duplicate occurrences of
@@ -1187,14 +1201,15 @@ export function GenerateReviewStep({
     const groupOverhead = 12; // "▸  (99 deps) ✗"
     return Math.max(m, c.key.length + Math.max(suffixLen, groupOverhead));
   }, 0);
-  // +5 = border (1) + badge column (1) + leading space (1) + trailing pad (1) + border (1).
-  // The badge column is reserved even when no annotation is present so the
-  // sidebar width doesn't jitter as live-preview annotations flip in/out.
+  // +9 = border (1) + selection glyph column "[✓] " (4) + badge column (1) +
+  // leading space (1) + trailing pad (1) + border (1). Both reserved columns
+  // stay fixed-width so the sidebar doesn't jitter as live-preview annotations
+  // or selection state flip.
   //
   // INTEG-4412: cap by terminal-width-aware upper bound so long/nested composite
   // names aren't truncated at the old fixed 34-col ceiling.
   const sidebarWidthCap = computeSidebarWidth(terminalWidth);
-  const sidebarWidth = Math.min(Math.max(longestName + 5, 14), sidebarWidthCap);
+  const sidebarWidth = Math.min(Math.max(longestName + 9, 18), sidebarWidthCap);
   const panelWidth = Math.max(10, terminalWidth - sidebarWidth - 4);
 
   // INTEG-4401: project-wide slot graph passed to FieldEditor so its
@@ -1478,6 +1493,7 @@ export function GenerateReviewStep({
             focused={sidebarFocused}
             renderStatusByKey={renderStatusByKey}
             previewAnnotationByKey={previewAnnotationByKey}
+            selectionStateByKey={selectionStateByKey}
             scrollOffset={sidebarScrollOffset}
             visibleCount={VISIBLE_COUNT}
             dimPredicate={dimPredicate}
