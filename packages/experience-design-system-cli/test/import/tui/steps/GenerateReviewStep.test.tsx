@@ -1291,7 +1291,14 @@ describe('GenerateReviewStep — slot-cycle re-detection on user actions (INTEG-
     $slots: { footer: { $allowedComponents: ['CycleA'] } },
   };
 
-  it('rejecting a cycle participant clears the banner (cycle collapses)', async () => {
+  it('rejecting a cycle participant clears the push-safety banner but keeps sidebar badges', async () => {
+    // Two independent signals:
+    //   - Top banner ("N slot dependency cycles detected — push will fail")
+    //     reflects cycles in the FILTERED graph (rejected excluded). Rejecting
+    //     a cycle member collapses the push-time cycle → banner disappears.
+    //   - Sidebar `(cycle)` badges reflect cycles in the UNFILTERED slot data
+    //     so cycle members don't visually orphan the moment they're rejected.
+    //     They keep their tier position + `[✗]` selection glyph.
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'CycleA', entry: CYCLE_A },
@@ -1322,9 +1329,14 @@ describe('GenerateReviewStep — slot-cycle re-detection on user actions (INTEG-
     stdin.write('r');
     await tick();
     frame = lastFrame() ?? '';
+    // Push-safety banner: gone (rejected components can't form a push cycle).
     expect(frame).not.toMatch(/slot dependency cycle/);
-    expect(frame).not.toMatch(/\(cycle\)/);
-    // storeSlotCycles was called with the empty updated list.
+    // Sidebar cycle badges: still there — CycleA's slot data still references
+    // CycleB and vice versa, so operators can see the cycle structure they
+    // just neutralised.
+    expect(frame).toMatch(/CycleA \(cycle\)/);
+    expect(frame).toMatch(/CycleB \(cycle\)/);
+    // storeSlotCycles was called with the empty updated list (banner state).
     expect(vi.mocked(dbMod.storeSlotCycles)).toHaveBeenCalled();
     const lastCallArgs = vi.mocked(dbMod.storeSlotCycles).mock.calls.at(-1);
     expect(lastCallArgs?.[2]).toEqual([]);

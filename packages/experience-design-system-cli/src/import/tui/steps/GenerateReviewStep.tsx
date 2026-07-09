@@ -444,11 +444,26 @@ export function GenerateReviewStep({
     }
     return m;
   }, [components]);
+  // Sidebar cycle tier — must include EVERY component that participates in a
+  // slot cycle, whether or not the cycle survives the reject-filter used by
+  // `slotCycles` for push-safety. Otherwise cycle members whose only path in
+  // the sidebar was via a composite ancestor get orphaned once the operator
+  // rejects that ancestor: `computeAllClosures` short-circuits closures that
+  // hit a cycle → the ancestor's closure loses its descendants → and the
+  // filtered `slotCycles` no longer classifies the members as cycle
+  // participants → they disappear from the visible list. Detecting cycles on
+  // the full unfiltered graph keeps them in the cycle tier.
   const cycleParticipantsMemo = useMemo<Set<string>>(() => {
     const set = new Set<string>();
     for (const cyc of slotCycles) for (const p of cyc.path) set.add(p);
+    try {
+      const unfilteredCycles = findSlotCycles(componentGraph);
+      for (const cyc of unfilteredCycles) for (const p of cyc.path) set.add(p);
+    } catch {
+      // Malformed slot data — swallow (matches recomputeCycles' try/catch).
+    }
     return set;
-  }, [slotCycles]);
+  }, [slotCycles, componentGraph]);
 
   // Task #37 — Aggressive mount-time auto-reject. Whenever the detected
   // cycle-participant set changes to a NEW non-empty set (i.e., the signature
