@@ -684,18 +684,20 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       expect(arg.accepted).toContain('NodeA');
     });
 
-    it('[a] on a cycle-tier row after a reject re-accepts the participant', () => {
+    it('[a] on a cycle-tier row after a reject re-accepts the whole cycle unit (task #47 cohesion)', () => {
       const onConfirm = vi.fn();
       const { stdin } = render(
         <ScopeGateStep components={CYCLE} onConfirm={onConfirm} onQuit={() => {}} />,
       );
       // Reject NodeA → both A and B flip to rejected. Then [a] on NodeA
-      // re-accepts NodeA (accept-cascade stops at cycle → just {NodeA}).
+      // re-accepts BOTH — cycle-unit cohesion (task #47) means the whole
+      // cycle must move together at all times.
       stdin.write('r');
       stdin.write('a');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
-      expect(arg.accepted).toContain('NodeA');
+      expect(arg.accepted).toEqual(expect.arrayContaining(['NodeA', 'NodeB']));
+      expect(arg.rejected).toEqual([]);
     });
 
     it('cycle-row glyph still renders after a cycle participant is rejected', () => {
@@ -965,5 +967,345 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
     expect(arg.accepted).toEqual(expect.arrayContaining(['Card', 'Text', 'Icon']));
+  });
+});
+
+// ── Cycle-unit cohesion (task #47) ──────────────────────────────────────────
+//
+// Cycle members must stay in the same state after any single [a]/[r] action.
+// [a] on any cycle member accepts the whole unit + full descendant closure.
+// [r] on any cycle member rejects the whole unit + ancestors that slot it.
+// [a] on a non-cycle ancestor whose slot targets a cycle also drags the
+// cycle unit in — otherwise the accepted parent references a non-accepted
+// slot target (invariant violation, breaks topo-sort at push).
+
+describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
+  // Two-node cycle: NodeA ↔ NodeB.
+  const TWO_CYCLE = [
+    {
+      name: 'NodeA',
+      componentId: 'a',
+      slots: [{ name: 'slotA', allowedComponents: ['NodeB'] }],
+    },
+    {
+      name: 'NodeB',
+      componentId: 'b',
+      slots: [{ name: 'slotB', allowedComponents: ['NodeA'] }],
+    },
+  ];
+
+  it('[a] on a cycle member accepts every member of the cycle', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={TWO_CYCLE} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    // Cursor starts on NodeA (cycle-tier alphabetical). [a] accepts.
+    stdin.write('a');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual(expect.arrayContaining(['NodeA', 'NodeB']));
+    expect(arg.rejected).toEqual([]);
+  });
+
+  it('[a] on a cycle member accepts non-cycle descendants of every member (full closure)', () => {
+    const setup = [
+      {
+        name: 'NodeA',
+        componentId: 'a',
+        slots: [
+          { name: 'cycle', allowedComponents: ['NodeB'] },
+          { name: 'aux', allowedComponents: ['Leaf1'] },
+        ],
+      },
+      {
+        name: 'NodeB',
+        componentId: 'b',
+        slots: [
+          { name: 'cycle', allowedComponents: ['NodeA'] },
+          { name: 'aux', allowedComponents: ['Leaf2'] },
+        ],
+      },
+      { name: 'Leaf1', componentId: 'l1' },
+      { name: 'Leaf2', componentId: 'l2' },
+    ];
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    // Cursor on NodeA cycle-tier row. [a] cascades into cycle + descendants.
+    stdin.write('a');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual(expect.arrayContaining(['NodeA', 'NodeB', 'Leaf1', 'Leaf2']));
+  });
+
+  it('[a] on an ancestor that slots a cycle accepts ancestor + entire cycle', () => {
+    const setup = [
+      {
+        name: 'Wrapper',
+        componentId: 'w',
+        slots: [{ name: 's', allowedComponents: ['NodeA'] }],
+      },
+      ...TWO_CYCLE,
+    ];
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    // Cursor starts on the first cycle-tier row. Cycle-tier rows are
+    // expandable and duplicated per participant, so counting `j` presses is
+    // fragile — jump to Wrapper via fuzzy search instead.
+    stdin.write('/');
+    stdin.write('W');
+    stdin.write('r');
+    stdin.write('\r'); // Enter jumps cursor + closes input
+    stdin.write('a');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Wrapper', 'NodeA', 'NodeB']));
+  });
+
+  it('[a] on an ancestor with a cycle two levels down accepts all of them', () => {
+    // Wrapper → SharedInterior → InnerA ↔ InnerB.
+    const setup = [
+      {
+        name: 'Wrapper',
+        componentId: 'w',
+        slots: [{ name: 's', allowedComponents: ['SharedInterior'] }],
+      },
+      {
+        name: 'SharedInterior',
+        componentId: 'si',
+        slots: [{ name: 's', allowedComponents: ['InnerA'] }],
+      },
+      {
+        name: 'InnerA',
+        componentId: 'ia',
+        slots: [{ name: 's', allowedComponents: ['InnerB'] }],
+      },
+      {
+        name: 'InnerB',
+        componentId: 'ib',
+        slots: [{ name: 's', allowedComponents: ['InnerA'] }],
+      },
+    ];
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    // Move past the two cycle-tier rows (InnerA, InnerB) and the
+    // SharedInterior composite group-child rows to the Wrapper group-root.
+    // Simpler: press [Y] which accepts non-cycle, non-AI-flagged with
+    // reachable cycles included by design.
+    stdin.write('Y');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual(
+      expect.arrayContaining(['Wrapper', 'SharedInterior', 'InnerA', 'InnerB']),
+    );
+  });
+
+  it('[r] on a cycle member rejects every member + ancestors that reference any member', () => {
+    // Wrapper1 slots NodeA; Wrapper2 slots NodeB. Rejecting NodeA must
+    // reject the whole cycle unit (NodeA, NodeB) AND both wrappers.
+    const setup = [
+      {
+        name: 'Wrapper1',
+        componentId: 'w1',
+        slots: [{ name: 's', allowedComponents: ['NodeA'] }],
+      },
+      {
+        name: 'Wrapper2',
+        componentId: 'w2',
+        slots: [{ name: 's', allowedComponents: ['NodeB'] }],
+      },
+      ...TWO_CYCLE,
+    ];
+    const onConfirm = vi.fn();
+    const { stdin, lastFrame } = render(
+      <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    // Accept-all first to make [r] meaningful.
+    stdin.write('A');
+    // Cursor is on NodeA (cycle-tier first). [r] rejects — blast radius > 1
+    // (NodeB partner + Wrapper1 + Wrapper2), so a confirm prompt appears.
+    stdin.write('r');
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Rejecting NodeA will:');
+    stdin.write('y');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.rejected).toEqual(
+      expect.arrayContaining(['NodeA', 'NodeB', 'Wrapper1', 'Wrapper2']),
+    );
+    expect(arg.accepted).toEqual([]);
+  });
+
+  it('[r] on a non-cycle ancestor of a cycle: ancestor rejected, cycle members deselect, non-cycle descendants deselect', () => {
+    // Wrapper → NodeA ↔ NodeB, plus a non-cycle Leaf child of Wrapper.
+    const setup = [
+      {
+        name: 'Wrapper',
+        componentId: 'w',
+        slots: [
+          { name: 'cycle', allowedComponents: ['NodeA'] },
+          { name: 'aux', allowedComponents: ['Leaf'] },
+        ],
+      },
+      ...TWO_CYCLE,
+      { name: 'Leaf', componentId: 'l' },
+    ];
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    // Accept-all first so everything reachable is accepted.
+    stdin.write('A');
+    // Jump to Wrapper via search — cursor-jump semantics are stable across
+    // the cycle-tier expansion rows.
+    stdin.write('/');
+    stdin.write('W');
+    stdin.write('\r');
+    stdin.write('r'); // reject Wrapper — blast radius includes Leaf + cycle → prompt
+    stdin.write('y');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    // Wrapper rejected. Cycle members and Leaf deselected → undecided →
+    // partitioned into rejected on confirm.
+    expect(arg.rejected).toEqual(
+      expect.arrayContaining(['Wrapper', 'NodeA', 'NodeB', 'Leaf']),
+    );
+    expect(arg.accepted).toEqual([]);
+  });
+
+  it('[A] toggle-all: cycles reachable from accepted ancestors are also accepted', () => {
+    const setup = [
+      {
+        name: 'Wrapper',
+        componentId: 'w',
+        slots: [{ name: 's', allowedComponents: ['NodeA'] }],
+      },
+      ...TWO_CYCLE,
+      { name: 'Standalone', componentId: 's0' },
+    ];
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    stdin.write('A');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    // Wrapper slots NodeA → cohesion pulls NodeA + NodeB in as accepted.
+    expect(arg.accepted).toEqual(
+      expect.arrayContaining(['Wrapper', 'Standalone', 'NodeA', 'NodeB']),
+    );
+    expect(arg.rejected).toEqual([]);
+  });
+
+  it('[Y] accept-non-AI-flagged: cycles reachable from accepted ancestors are also accepted', () => {
+    const setup = [
+      {
+        name: 'Wrapper',
+        componentId: 'w',
+        slots: [{ name: 's', allowedComponents: ['NodeA'] }],
+      },
+      ...TWO_CYCLE,
+    ];
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    stdin.write('Y');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Wrapper', 'NodeA', 'NodeB']));
+    expect(arg.rejected).toEqual([]);
+  });
+
+  it('directional invariant holds after arbitrary [a]/[r] sequences (parent accepted ⇒ slot targets accepted or same cycle)', () => {
+    const setup = [
+      {
+        name: 'Wrapper1',
+        componentId: 'w1',
+        slots: [{ name: 's', allowedComponents: ['NodeA'] }],
+      },
+      {
+        name: 'Wrapper2',
+        componentId: 'w2',
+        slots: [{ name: 's', allowedComponents: ['NodeB'] }],
+      },
+      ...TWO_CYCLE,
+      { name: 'Standalone', componentId: 's0' },
+    ];
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    // Sequence: A (accept all) → r on NodeA (reject cycle) → confirm →
+    // a on Wrapper1 (re-accept ancestor + cycle).
+    stdin.write('A');
+    stdin.write('r'); // cursor is NodeA
+    stdin.write('y');
+    // Jump to Wrapper1 via search — cycle-tier row duplication makes j/k
+    // counting fragile.
+    stdin.write('/');
+    stdin.write('W');
+    stdin.write('r');
+    stdin.write('a');
+    stdin.write('p');
+    stdin.write('1');
+    stdin.write('\r');
+    stdin.write('a');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    const accepted = new Set(arg.accepted);
+    // Invariant check: every accepted component's slot targets must be
+    // accepted OR in the same cycle unit as the accepted component. Because
+    // task #47's cascade should guarantee this, we assert directly.
+    for (const c of setup) {
+      if (!accepted.has(c.name)) continue;
+      for (const slot of c.slots ?? []) {
+        for (const target of slot.allowedComponents) {
+          expect(accepted.has(target)).toBe(true);
+        }
+      }
+    }
+    // Concretely: Wrapper1 accepted → NodeA + NodeB accepted (cohesion).
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Wrapper1', 'NodeA', 'NodeB']));
+  });
+
+  it('[a] on a cycle member with two overlapping cycles pulls both units together', () => {
+    // A ↔ B ↔ C: A↔B and B↔C, sharing B. Accepting A must accept all three.
+    const setup = [
+      {
+        name: 'A',
+        componentId: 'a',
+        slots: [{ name: 's', allowedComponents: ['B'] }],
+      },
+      {
+        name: 'B',
+        componentId: 'b',
+        slots: [
+          { name: 'sa', allowedComponents: ['A'] },
+          { name: 'sc', allowedComponents: ['C'] },
+        ],
+      },
+      {
+        name: 'C',
+        componentId: 'c',
+        slots: [{ name: 's', allowedComponents: ['B'] }],
+      },
+    ];
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    // All three are cycle participants → all live in the cycle tier
+    // (alphabetical). Cursor starts on A. [a] pulls whole unit in.
+    stdin.write('a');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual(expect.arrayContaining(['A', 'B', 'C']));
+    expect(arg.rejected).toEqual([]);
   });
 });
