@@ -18,9 +18,11 @@ import {
   renderAncestorTree,
 } from '../../../analyze/lineage.js';
 import {
-  computeAcceptCascade,
-  computeRejectCascade,
-} from '../../../analyze/selection-cascade.js';
+  buildCycleUnits,
+  collectReachableCycleUnits,
+  computeCycleAwareAcceptCascade,
+  computeCycleAwareRejectCascade,
+} from '../../../analyze/scope-gate-cascade.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
 import {
   buildAddedComponentsList,
@@ -169,6 +171,12 @@ export function ScopeGateStep({
     return set;
   }, [slotCycles]);
 
+  // Cycle-unit lookup: any cycle member → the union of every cycle it
+  // participates in (transitively via shared nodes). Non-cycle components
+  // are absent. Wraps `selection-cascade` at the callsite to enforce
+  // cycle-unit cohesion (see `analyze/scope-gate-cascade.ts`).
+  const cycleUnits = useMemo(() => buildCycleUnits(slotCycles), [slotCycles]);
+
   // Flat, walkable list of cycle-participant jump targets. One entry per
   // cycle — Enter jumps the main cursor to the first component in the
   // cycle's path (its canonical "root" per Johnson's least-vertex ordering).
@@ -230,19 +238,18 @@ export function ScopeGateStep({
   }, [searchQuery]);
 
   const applyReject = (target: string): void => {
-    const rejectCascade = computeRejectCascade(target, graph);
-    const acceptCascade = computeAcceptCascade(target, graph);
+    const { toReject, toDeselect } = computeCycleAwareRejectCascade(
+      target,
+      graph,
+      cycleUnits,
+    );
     const entries: Array<[string, Decision]> = [];
-    // Target + ancestors → rejected.
-    for (const n of rejectCascade) entries.push([n, 'rejected']);
-    // Descendants (accept-cascade minus target) → undecided.
-    for (const n of acceptCascade) {
-      if (n !== target) entries.push([n, 'undecided']);
-    }
+    for (const n of toReject) entries.push([n, 'rejected']);
+    for (const n of toDeselect) entries.push([n, 'undecided']);
     applyDecisions(entries);
   };
   const applyAccept = (target: string): void => {
-    const cascade = computeAcceptCascade(target, graph);
+    const cascade = computeCycleAwareAcceptCascade(target, graph, cycleUnits);
     applyDecisions([...cascade].map((n) => [n, 'accepted'] as [string, Decision]));
   };
 
@@ -253,12 +260,18 @@ export function ScopeGateStep({
 
   const requestReject = (name: string): void => {
     if (getState(name) === 'rejected') return;
-    const rejectCascade = computeRejectCascade(name, graph);
-    const acceptCascade = computeAcceptCascade(name, graph);
-    const ancestors = [...rejectCascade].filter((n) => n !== name).sort();
-    const descendants = [...acceptCascade].filter((n) => n !== name).sort();
-    // Blast radius = ancestors flipping to rejected + descendants flipping
-    // to undecided. Prompt when total ≥ 2.
+    const { toReject, toDeselect } = computeCycleAwareRejectCascade(
+      name,
+      graph,
+      cycleUnits,
+    );
+    // "Ancestors" for the confirm prompt = everything flipping to rejected
+    // except the target itself. This includes cycle partners in the target's
+    // unit, transitive slot-ancestors, and any cycle-unit ancestors along the
+    // way — collectively the blast-up radius. `descendants` = everything
+    // being deselected to undecided.
+    const ancestors = [...toReject].filter((n) => n !== name).sort();
+    const descendants = [...toDeselect].sort();
     if (ancestors.length + descendants.length >= 2) {
       setPendingRejectCascade({ target: name, ancestors, descendants });
       return;
@@ -600,21 +613,57 @@ export function ScopeGateStep({
       return;
     }
     if (input === 'A') {
-      const selectable = components.filter((c) => !cycleParticipants.has(c.name)).map((c) => c.name);
-      const anyNotAccepted = selectable.some((n) => getState(n) !== 'accepted');
+      // Toggle-all excludes cycle participants from the direct selection set,
+      // but if any accepted non-cycle component's slot points at a cycle
+      // member, the cycle unit MUST come with it — otherwise the manifest
+      // has an accepted parent pointing at a non-accepted cycle target
+      // (invariant violation). See cycle-cohesion note in
+      // `analyze/scope-gate-cascade.ts`.
+      const nonCycle = components
+        .filter((c) => !cycleParticipants.has(c.name))
+        .map((c) => c.name);
+      const anyNotAccepted = nonCycle.some((n) => getState(n) !== 'accepted');
       const target: Decision = anyNotAccepted ? 'accepted' : 'rejected';
-      applyDecisions(selectable.map((n) => [n, target] as [string, Decision]));
+      if (target === 'accepted') {
+        const cyclesToInclude = collectReachableCycleUnits(
+          nonCycle,
+          graph,
+          cycleUnits,
+        );
+        const entries: Array<[string, Decision]> = nonCycle.map(
+          (n) => [n, 'accepted'] as [string, Decision],
+        );
+        for (const n of cyclesToInclude) entries.push([n, 'accepted']);
+        applyDecisions(entries);
+      } else {
+        // Flip back: non-cycle → rejected. Any cycle member that was
+        // accepted-by-cohesion during the previous [A] press drops to
+        // undecided (nothing accepted references them anymore).
+        const entries: Array<[string, Decision]> = nonCycle.map(
+          (n) => [n, 'rejected'] as [string, Decision],
+        );
+        for (const c of components) {
+          if (cycleParticipants.has(c.name) && getState(c.name) === 'accepted') {
+            entries.push([c.name, 'undecided']);
+          }
+        }
+        applyDecisions(entries);
+      }
       return;
     }
     if (input === 'Y') {
       // Accept every non-cycle-participant that the AI did NOT flag as
-      // rejected/failed. Cycle participants and AI-rejects still require
-      // an explicit [a] to opt in. Meant as a fast opt-in-to-defaults
-      // now that everything starts undecided.
-      const targets = components
+      // rejected/failed. Same cycle-cohesion caveat as [A]: any accepted
+      // ancestor whose slot targets a cycle member drags the cycle unit in.
+      const seeds = components
         .filter((c) => !cycleParticipants.has(c.name) && !isAiFlagged(c))
         .map((c) => c.name);
-      applyDecisions(targets.map((n) => [n, 'accepted'] as [string, Decision]));
+      const cyclesToInclude = collectReachableCycleUnits(seeds, graph, cycleUnits);
+      const entries: Array<[string, Decision]> = seeds.map(
+        (n) => [n, 'accepted'] as [string, Decision],
+      );
+      for (const n of cyclesToInclude) entries.push([n, 'accepted']);
+      applyDecisions(entries);
       return;
     }
     if (key.tab) {
