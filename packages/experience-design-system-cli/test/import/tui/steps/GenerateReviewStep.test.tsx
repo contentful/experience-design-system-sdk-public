@@ -1330,7 +1330,12 @@ describe('GenerateReviewStep — slot-cycle re-detection on user actions (INTEG-
     expect(lastCallArgs?.[2]).toEqual([]);
   });
 
-  it('[F] finalize is blocked with an inline banner when cycles exist', async () => {
+  it('[F] with cycle at mount: auto-reject leaves accepted-set non-cyclic → dialog opens', async () => {
+    // Task #37 replaces the "block finalize on ANY cycle" rule with a
+    // stronger "block finalize on cycle IN ACCEPTED SUBSET" rule. Mount-time
+    // auto-reject flips every cycle participant to rejected, so the
+    // accepted set is empty (non-cyclic) and [F] proceeds — the wizard's
+    // downstream preview check owns the "nothing to push" decision.
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'CycleA', entry: CYCLE_A },
@@ -1354,11 +1359,8 @@ describe('GenerateReviewStep — slot-cycle re-detection on user actions (INTEG-
     stdin.write('F');
     await tick();
     const frame = lastFrame() ?? '';
-    // FinalizeDialog does NOT open; instead the inline finalize-error banner shows.
-    expect(frame).toMatch(/Cannot finalize — resolve slot dependency cycle/);
-    // Confirm the dialog itself is not present (it would render the divider
-    // header "── Finalize ──" and the y/Enter confirm hint).
-    expect(frame).not.toMatch(/Save decisions and exit/);
+    // Dialog opens because auto-reject left the accepted subset empty.
+    expect(frame).toMatch(/Save decisions and exit/);
   });
 });
 
@@ -1495,7 +1497,18 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     expect(titleLine).not.toContain('Card');
   });
 
-  it('pressing Enter on an ancestor with an inherited issue drills to the descendant', async () => {
+  it('pressing Enter on an ancestor without direct/inherited issues is a no-op', async () => {
+    // Task #37 replaced the row-level reject with a reject-cascade UP,
+    // which means rejecting Body also flips Card. Both would then own
+    // `error` direct-issues, so the ancestor-with-INHERITED-issue drill
+    // path is no longer reachable through UI actions alone (previously
+    // the drill was tested with a manual Body-only rejection).
+    //
+    // We keep the drill machinery in place for any future callsite that
+    // stages inherited-only issues (e.g. task #39 slot validation). This
+    // regression guard verifies Enter is inert when neither row has an
+    // issue — pinning the "Enter must not crash / must not move on a
+    // clean ancestor" contract.
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'Card', entry: withSlot('Card', ['Body']) },
@@ -1505,24 +1518,12 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    // Default selection is Card (root, first in nav order). Move down to Body,
-    // reject it → error direct-issue. Move back up to Card (which now has an
-    // INHERITED issue from Body). Enter on Card should drill back to Body.
-    stdin.write('j'); // navigate to Body
-    await tick();
-    stdin.write('r'); // reject Body
-    await tick();
-    stdin.write('k'); // navigate back up to Card
-    await tick();
-    // Confirm we're on Card before drilling.
-    let frame = lastFrame() ?? '';
-    let titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleLine).toContain('Card');
+    // Default selection is Card. Enter should be a no-op — no issue to drill.
     stdin.write('\r');
     await tick();
-    frame = lastFrame() ?? '';
-    titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleLine).toContain('Body');
+    const frame = lastFrame() ?? '';
+    const titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleLine).toContain('Card');
   });
 
   it('preview annotations still render alongside grouped rows (badge column preserved)', async () => {
@@ -1863,5 +1864,275 @@ describe('sortComponentsForSidebar — 3-tier ordering (INTEG-4401)', () => {
       new Set(['CycleA']),
     );
     expect(sorted.map((c) => c.key)).toEqual(['CycleA', 'Empty', 'Populated']);
+  });
+});
+
+// ── Task #37 — mount-time cycle auto-reject + undo + partition-by-decisions ──
+// GenerateReviewStep at mount, when any slot cycle is detected, auto-flips
+// every cycle participant + every transitive ancestor that slots them to
+// `rejected`. A red banner surfaces the auto-reject; `[u]` undoes the mount
+// event once (subsequent presses are no-ops). `[F]` continue partitions by
+// decisions and refuses to proceed when the accepted subset still contains
+// a cycle.
+describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
+  // Cycle A ↔ B, plus Wrapper that slots CycleA (transitive ancestor).
+  const cycleA = {
+    $type: 'component' as const,
+    $properties: { name: { $type: 'string' as const, $category: 'content' as const } },
+    $slots: { next: { $allowedComponents: ['CycleB'] } },
+  };
+  const cycleB = {
+    $type: 'component' as const,
+    $properties: { name: { $type: 'string' as const, $category: 'content' as const } },
+    $slots: { prev: { $allowedComponents: ['CycleA'] } },
+  };
+  const wrapper = {
+    $type: 'component' as const,
+    $properties: { label: { $type: 'string' as const, $category: 'content' as const } },
+    $slots: { body: { $allowedComponents: ['CycleA'] } },
+  };
+  const outer = {
+    $type: 'component' as const,
+    $properties: { tag: { $type: 'string' as const, $category: 'content' as const } },
+    $slots: { child: { $allowedComponents: ['Wrapper'] } },
+  };
+  const leaf = {
+    $type: 'component' as const,
+    $properties: { text: { $type: 'string' as const, $category: 'content' as const } },
+  };
+
+  const primeCycles = async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: cycleA },
+      { key: 'CycleB', entry: cycleB },
+      { key: 'Wrapper', entry: wrapper },
+      { key: 'Outer', entry: outer },
+      { key: 'Standalone', entry: leaf },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'next', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'prev', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: null,
+      },
+    ]);
+  };
+
+  beforeEach(() => {
+    hookReturnOverride = null;
+  });
+
+  it('cycle at mount → auto-rejects every cycle participant', async () => {
+    await primeCycles();
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Banner text and cycle members listed as auto-rejected.
+    expect(frame).toMatch(/Cyclic manifest — auto-rejected/);
+    expect(frame).toMatch(/Cycle members:.*CycleA/);
+    expect(frame).toMatch(/Cycle members:.*CycleB/);
+  });
+
+  it('cycle at mount → auto-rejects transitive ancestors that slot cycle members', async () => {
+    await primeCycles();
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Wrapper slots CycleA directly; Outer slots Wrapper transitively.
+    expect(frame).toMatch(/Ancestors:.*Outer/);
+    expect(frame).toMatch(/Ancestors:.*Wrapper/);
+    // Standalone (unrelated leaf) must NOT be auto-rejected.
+    expect(frame).not.toMatch(/Ancestors:.*Standalone/);
+  });
+
+  it('no cycle at mount → no auto-reject, no banner', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Solo', entry: leaf }]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/Cyclic manifest — auto-rejected/);
+    void dbMod;
+  });
+
+  it('legend advertises [u] undo while undo is armed; omits it after undo fires', async () => {
+    await primeCycles();
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Widen terminal so the legend renders without truncation. Ink's default
+    // 100 columns can wrap the legend and dice up the `[u] undo` substring.
+    let frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
+    expect(frame).toContain('[u] undo');
+    stdin.write('u');
+    await tick();
+    frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
+    // Undo spent — legend no longer advertises the hint.
+    expect(frame).not.toContain('[u] undo');
+  });
+
+  it('[u] undo restores pre-mount state (empty user decisions)', async () => {
+    await primeCycles();
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Banner visible after auto-reject.
+    expect(lastFrame() ?? '').toMatch(/Cyclic manifest — auto-rejected/);
+    stdin.write('u');
+    await tick();
+    // Banner gone: no auto-rejected components remain.
+    expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
+  });
+
+  it('[u] twice is a no-op after first press', async () => {
+    await primeCycles();
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('u');
+    await tick();
+    const afterFirstUndo = lastFrame() ?? '';
+    stdin.write('u');
+    await tick();
+    const afterSecondUndo = lastFrame() ?? '';
+    // Both frames match on the top-level structure (banner remains absent).
+    expect(afterFirstUndo).not.toMatch(/Cyclic manifest — auto-rejected/);
+    expect(afterSecondUndo).not.toMatch(/Cyclic manifest — auto-rejected/);
+  });
+
+  it('operator [a] on a cycle member after mount survives (does not re-trigger auto-reject)', async () => {
+    await primeCycles();
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Cursor is on CycleA (first cycle-tier row). Accept it — cascade-down
+    // will also flip CycleB back to accepted. Auto-reject must NOT re-fire.
+    stdin.write('a');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Banner is either gone (both cycle members no longer rejected) or now
+    // has zero "still-rejected" targets. Either way it's the "no banner" shape.
+    expect(frame).not.toMatch(/Cyclic manifest — auto-rejected 2 components/);
+  });
+
+  it('[F] continue with accepted subset still cyclic → blocked with re-shown banner', async () => {
+    await primeCycles();
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Undo the mount auto-reject, restoring every affected component to
+    // `needs-review`. Then bulk-accept via [A]. Every cycle member and
+    // ancestor is now `accepted` → the accepted subgraph is still cyclic.
+    stdin.write('u');
+    await tick();
+    stdin.write('A');
+    await tick();
+    stdin.write('F');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Cannot finalize — accepted set still contains a cycle/);
+    // Finalize dialog must NOT open.
+    expect(frame).not.toMatch(/Save decisions and exit/);
+  });
+
+  it('[F] continue after auto-reject (accepted set empty) → dialog opens', async () => {
+    await primeCycles();
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('F');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Save decisions and exit/);
+  });
+
+  it('[r] on an accepted row cascades reject UP to ancestors', async () => {
+    // Non-cycle graph: Article slots Card, Card slots Icon. Rejecting Icon
+    // must reject Article + Card too, mirroring scope-gate cascade rules.
+    const dbMod = await import('../../../../src/session/db.js');
+    const article = {
+      $type: 'component' as const,
+      $properties: { title: { $type: 'string' as const, $category: 'content' as const } },
+      $slots: { body: { $allowedComponents: ['Card'] } },
+    };
+    const card = {
+      $type: 'component' as const,
+      $properties: { title: { $type: 'string' as const, $category: 'content' as const } },
+      $slots: { icon: { $allowedComponents: ['Icon'] } },
+    };
+    const icon = {
+      $type: 'component' as const,
+      $properties: { src: { $type: 'string' as const, $category: 'content' as const } },
+    };
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Article', entry: article },
+      { key: 'Card', entry: card },
+      { key: 'Icon', entry: icon },
+    ]);
+
+    const onFinalize = vi.fn();
+    const { stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={onFinalize} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Accept Article (cascades down to Card + Icon), then reject Icon
+    // (should cascade UP → Card + Article both rejected).
+    stdin.write('a');
+    await tick();
+    // Navigate to Icon (Article is at row 0, Card row 1, Icon row 2 in expanded group order).
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('r');
+    await tick();
+    // Finalize with F. Accepted set should be empty.
+    stdin.write('F');
+    await tick();
+    stdin.write('y');
+    await tick();
+    expect(onFinalize).toHaveBeenCalledTimes(1);
+    const [acceptedCount, rejectedCount] = onFinalize.mock.calls[0];
+    expect(acceptedCount).toBe(0);
+    expect(rejectedCount).toBe(3);
+  });
+});
+
+describe('computeCycleAutoRejectTargets — pure helper', () => {
+  it('returns empty set when no cycles', async () => {
+    const mod = await import('../../../../src/import/tui/steps/GenerateReviewStep.js');
+    const targets = mod.computeCycleAutoRejectTargets([], []);
+    expect(targets.size).toBe(0);
+  });
+
+  it('unions cycle participants + every transitive ancestor', async () => {
+    const mod = await import('../../../../src/import/tui/steps/GenerateReviewStep.js');
+    const graph = [
+      { name: 'CycleA', slots: [{ name: 'next', allowedComponents: ['CycleB'] }] },
+      { name: 'CycleB', slots: [{ name: 'prev', allowedComponents: ['CycleA'] }] },
+      { name: 'Wrapper', slots: [{ name: 'body', allowedComponents: ['CycleA'] }] },
+      { name: 'Outer', slots: [{ name: 'child', allowedComponents: ['Wrapper'] }] },
+      { name: 'Standalone', slots: [] },
+    ];
+    const cycles = [{ path: ['CycleA', 'CycleB', 'CycleA'] }];
+    const targets = mod.computeCycleAutoRejectTargets(cycles, graph);
+    expect([...targets].sort()).toEqual(['CycleA', 'CycleB', 'Outer', 'Wrapper']);
+    expect(targets.has('Standalone')).toBe(false);
   });
 });

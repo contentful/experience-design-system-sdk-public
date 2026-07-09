@@ -40,6 +40,8 @@ import { useLivePreview } from '../useLivePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
 import { computeSidebarWidth } from '../sidebar-width.js';
+import { computeAcceptCascade, computeRejectCascade } from '../../../analyze/selection-cascade.js';
+import { findAllAncestors } from '../../../analyze/lineage.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -108,6 +110,30 @@ export function sortComponentsForSidebar<T extends { key: string; entry: CDFComp
 
 const VISIBLE_COUNT = 20;
 const PANEL_HEIGHT = 22;
+
+/**
+ * Task #37 — Given the current set of detected slot cycles and the component
+ * graph, compute the union of cycle participants + every transitive ancestor
+ * that slots any cycle participant. These are the components that must be
+ * auto-rejected on mount so the review step never presents a cyclic manifest
+ * as viable (cyclic manifests fail at push time via TopoSortCycleError).
+ *
+ * Pure by design so callers can unit-test the union without simulating the
+ * mount effect. Empty `slotCycles` yields an empty set.
+ */
+export function computeCycleAutoRejectTargets(
+  slotCycles: Array<{ path: string[] }>,
+  graph: ComponentGraphNode[],
+): Set<string> {
+  const targets = new Set<string>();
+  const participants = new Set<string>();
+  for (const cyc of slotCycles) for (const p of cyc.path) participants.add(p);
+  for (const p of participants) {
+    targets.add(p);
+    for (const anc of findAllAncestors(p, graph)) targets.add(anc);
+  }
+  return targets;
+}
 
 export function GenerateReviewStep({
   extractSessionId,
@@ -186,6 +212,19 @@ export function GenerateReviewStep({
   // sidebar-with-active-query clears.
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // Task #37 — mount-time cycle auto-reject bookkeeping. `autoRejected`
+  // tracks which components were flipped to `rejected` by the auto-reject
+  // effect so the banner can enumerate them and `[u]` undo can restore only
+  // that specific delta. `undoSnapshot` captures the pre-mount review-status
+  // for every affected component so undo restores it byte-for-byte. When
+  // `undoSnapshot === null`, the undo is spent (`[u]` is a no-op).
+  const [autoRejected, setAutoRejected] = useState<string[]>([]);
+  const [undoSnapshot, setUndoSnapshot] = useState<Map<string, ReviewComponentStatus> | null>(null);
+  // Tracks the last cycle-participant set we auto-rejected against. When a
+  // NEW cycle participant appears (streaming or edit-driven cycle emergence),
+  // the mount-time effect fires again and re-arms undo. Comparing serialised
+  // sorted lists avoids Set-identity churn on renders.
+  const lastAutoRejectSignatureRef = useRef<string>('');
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
@@ -267,10 +306,6 @@ export function GenerateReviewStep({
     // handleEditSave. Adding livePreviewHook to deps would re-fire on every
     // hook re-creation.
   }, [loading]);
-
-  const updateStatus = (idx: number, status: ReviewComponentStatus) => {
-    setComponents((prev) => prev.map((c, i) => (i === idx ? { ...c, status } : c)));
-  };
 
   const handleFinalizeConfirm = () => {
     // Strict opt-in: only EXPLICITLY ACCEPTED components ship. Anything left
@@ -414,6 +449,57 @@ export function GenerateReviewStep({
     for (const cyc of slotCycles) for (const p of cyc.path) set.add(p);
     return set;
   }, [slotCycles]);
+
+  // Task #37 — Aggressive mount-time auto-reject. Whenever the detected
+  // cycle-participant set changes to a NEW non-empty set (i.e., the signature
+  // differs from what we last acted on), snapshot every affected component's
+  // current review status, flip each to `rejected`, and arm the single-shot
+  // `[u]` undo. Fires on load, on streaming updates that introduce new
+  // cycles, and on edits (via recomputeCycles) that re-introduce a cycle
+  // after it was previously broken.
+  //
+  // Re-entry guard: the signature is the sorted unique cycle-participant
+  // set. If it matches the last-seen signature the effect is a no-op — so
+  // an operator who manually re-toggles after the mount event does NOT
+  // trigger another auto-reject.
+  useEffect(() => {
+    if (loading) return;
+    if (cycleParticipantsMemo.size === 0) {
+      // Cycle set went to zero — nothing to auto-reject. We deliberately
+      // leave `autoRejected` / `undoSnapshot` alone so a subsequent [u]
+      // still restores state from the last auto-reject event, matching
+      // the "keep undo actionable" contract.
+      lastAutoRejectSignatureRef.current = '';
+      return;
+    }
+    const signature = [...cycleParticipantsMemo].sort().join('|');
+    if (signature === lastAutoRejectSignatureRef.current) return;
+    lastAutoRejectSignatureRef.current = signature;
+    const targets = computeCycleAutoRejectTargets(slotCycles, componentGraph);
+    if (targets.size === 0) return;
+    // Compute the snapshot + flipped list from the current `components`
+    // reference. Safe against React strict-mode's double-invocation of the
+    // setComponents updater below because we snapshot BEFORE calling
+    // setComponents and the effect's signature guard prevents re-entry.
+    const snapshot = new Map<string, ReviewComponentStatus>();
+    const flipped: string[] = [];
+    for (const c of components) {
+      if (!targets.has(c.key)) continue;
+      snapshot.set(c.key, c.status);
+      if (c.status !== 'rejected') flipped.push(c.key);
+    }
+    setComponents((prev) =>
+      prev.map((c) =>
+        targets.has(c.key) ? { ...c, status: 'rejected' as ReviewComponentStatus } : c,
+      ),
+    );
+    // Even when nothing actually flipped (already all rejected), still record
+    // which components are the auto-reject targets so the banner explains
+    // WHY they are rejected. Undo, however, is only armed when there's a
+    // real delta to restore.
+    setAutoRejected(flipped.length > 0 ? flipped : [...targets].sort());
+    setUndoSnapshot(flipped.length > 0 ? snapshot : null);
+  }, [loading, cycleParticipantsMemo, componentGraph, slotCycles]);
   const groupedItemsMemo = useMemo(
     () =>
       components.map((c) => ({
@@ -869,32 +955,86 @@ export function GenerateReviewStep({
       setShowQuit(true);
       return;
     }
-    if (input === 'F') {
-      // INTEG-4401: refuse to open the finalize dialog while any slot cycle
-      // is unresolved. The push-time hard block (`assertNoSlotCycles`) would
-      // catch this downstream, but showing an inline banner here saves the
-      // operator from confirming the dialog only to hit a stderr crash.
-      if (slotCycles.length > 0) {
-        setFinalizeError('Cannot finalize — resolve slot dependency cycle(s) first (press [c] for detail)');
+    if (input === 'F' || input === 'f') {
+      // Task #37 — partition-by-decisions gate. Reproduce scope-gate's
+      // `[f]` contract: partition into { accepted, rejected } and refuse
+      // to continue if the accepted subset still contains a slot cycle
+      // (the strongest local approximation of task #39's slot validator).
+      const acceptedNames = new Set(
+        components.filter((c) => c.status === 'accepted').map((c) => c.key),
+      );
+      const acceptedSubgraph: ComponentGraphNode[] = componentGraph.filter((n) =>
+        acceptedNames.has(n.name),
+      );
+      const acceptedCycles = (() => {
+        try {
+          return findSlotCycles(acceptedSubgraph);
+        } catch {
+          return [];
+        }
+      })();
+      if (acceptedCycles.length > 0) {
+        const participants = new Set<string>();
+        for (const c of acceptedCycles) for (const p of c.path) participants.add(p);
+        setFinalizeError(
+          `Cannot finalize — accepted set still contains a cycle (${[...participants].sort().join(', ')}). Reject a cycle member to break it.`,
+        );
         return;
       }
       setShowFinalize(true);
       return;
     }
+    if (input === 'u') {
+      // Task #37 — single-shot undo of the mount-time auto-reject. Restores
+      // the pre-mount review-status of every component the effect flipped,
+      // then spends the undo. Subsequent `[u]` presses are no-ops until a
+      // fresh auto-reject event re-arms undoSnapshot.
+      if (!undoSnapshot) return;
+      const snapshot = undoSnapshot;
+      let restored: CdfReviewEntry[] = [];
+      setComponents((prev) => {
+        restored = prev.map((c) =>
+          snapshot.has(c.key) ? { ...c, status: snapshot.get(c.key)! } : c,
+        );
+        return restored;
+      });
+      setUndoSnapshot(null);
+      setAutoRejected([]);
+      // Re-run cycle detection now that the graph may have changed shape.
+      recomputeCycles(restored);
+      return;
+    }
     if (input === 'a') {
-      updateStatus(selectedIdx, 'accepted');
+      // Task #37 — accept cascades DOWN to descendants (mirrors scope-gate).
+      const current = components[selectedIdx];
+      if (!current) return;
+      const cascade = computeAcceptCascade(current.key, componentGraph);
+      const next = components.map((c) =>
+        cascade.has(c.key) ? { ...c, status: 'accepted' as ReviewComponentStatus } : c,
+      );
+      setComponents(next);
       setFinalizeError(null);
+      recomputeCycles(next);
       return;
     }
     if (input === 'r') {
-      // INTEG-4401 (Fix 4): rejecting removes the component from the effective
-      // manifest, so recompute cycles across the reduced graph — any cycle
-      // that routed through this component collapses. We build the "next"
-      // components array inline (mirroring updateStatus) so recomputeCycles
-      // sees the post-update graph without waiting for a render tick.
-      const next = components.map((c, i) =>
-        i === selectedIdx ? { ...c, status: 'rejected' as ReviewComponentStatus } : c,
-      );
+      // Task #37 — reject cascades UP to ancestors AND deselects descendants
+      // back to `needs-review` (mirrors scope-gate's tri-state cascade). We
+      // build the "next" components array inline so recomputeCycles sees the
+      // post-update graph without waiting for a render tick.
+      const current = components[selectedIdx];
+      if (!current) return;
+      const rejectCascade = computeRejectCascade(current.key, componentGraph);
+      const acceptCascade = computeAcceptCascade(current.key, componentGraph);
+      const next = components.map((c) => {
+        if (rejectCascade.has(c.key)) {
+          return { ...c, status: 'rejected' as ReviewComponentStatus };
+        }
+        if (acceptCascade.has(c.key) && c.key !== current.key) {
+          return { ...c, status: 'needs-review' as ReviewComponentStatus };
+        }
+        return c;
+      });
       setComponents(next);
       recomputeCycles(next);
       return;
@@ -1220,6 +1360,40 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
+      {!dialogOpen &&
+        autoRejected.length > 0 &&
+        (() => {
+          // Task #37 — mount-time auto-reject banner. Only render when at
+          // least one of the auto-rejected components is still `rejected`
+          // in the current state — an operator who re-toggled a member to
+          // `accepted` no longer needs the banner.
+          const stillRejected = autoRejected.filter((name) => {
+            const c = components.find((x) => x.key === name);
+            return c?.status === 'rejected';
+          });
+          if (stillRejected.length === 0) return null;
+          const participantSet = cycleParticipantsMemo;
+          const members = stillRejected.filter((n) => participantSet.has(n)).sort();
+          const ancestors = stillRejected.filter((n) => !participantSet.has(n)).sort();
+          return (
+            <Box flexDirection="column" borderStyle="single" borderColor="red" paddingX={1}>
+              <Text color="red" bold>
+                {`Cyclic manifest — auto-rejected ${stillRejected.length} component${stillRejected.length === 1 ? '' : 's'}:`}
+              </Text>
+              {members.length > 0 && (
+                <Text color="red">{`  Cycle members: ${members.join(', ')}`}</Text>
+              )}
+              {ancestors.length > 0 && (
+                <Text color="red">{`  Ancestors: ${ancestors.join(', ')}`}</Text>
+              )}
+              <Text dimColor>
+                {undoSnapshot
+                  ? '  [u] undo · [r]/[a] manually toggle · [F] continue'
+                  : '  [r]/[a] manually toggle · [F] continue'}
+              </Text>
+            </Box>
+          );
+        })()}
       {!dialogOpen && slotCycles.length > 0 && !showCyclePanel && (
         <Box flexDirection="column">
           <Text color="yellow">
@@ -1448,6 +1622,7 @@ export function GenerateReviewStep({
                       (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '') +
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
+                      (undoSnapshot ? '  [u] undo' : '') +
                       '  [q] quit'
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
