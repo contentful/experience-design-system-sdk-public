@@ -47,7 +47,6 @@ import { findAllAncestors } from '../../../analyze/lineage.js';
 import { useLineage } from '../hooks/useLineage.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
-import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -269,21 +268,6 @@ export function GenerateReviewStep({
   const [pendingFocusAway, setPendingFocusAway] = useState<null | 'tab-to-sidebar'>(null);
   const [discardTrigger, setDiscardTrigger] = useState(0);
 
-  // T4 (parity plan §3) — undo/redo history stack.
-  //   - `historyRef` lazily instantiates once the initial load completes so the
-  //     seed snapshot reflects the post-load, pre-auto-reject state. The mount
-  //     auto-reject then pushes ITS post-flip snapshot on top, so Cmd+Z from
-  //     the auto-rejected state correctly restores the pre-auto-reject state.
-  //   - `showReloadDialog` gates the inline Ctrl+R confirm affordance. On
-  //     Enter, `reloadFromSave` re-runs the mount load path and resets the
-  //     stack via `historyRef.current.reset(newSeed)`.
-  //   - Undo/redo restore snapshots IN-MEMORY only. `storeCDFComponents` is
-  //     never invoked on undo — reload-from-save is the escape hatch for
-  //     "the DB is right, my in-memory is wrong."
-  const historyRef = useRef<HistoryStack | null>(null);
-  const historySeededRef = useRef(false);
-  const [showReloadDialog, setShowReloadDialog] = useState(false);
-
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
     setPreviewAnnotations(
@@ -331,55 +315,37 @@ export function GenerateReviewStep({
   }, [livePreviewHook.status]);
   const livePreviewSpinner = SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length];
 
-  // Load path extracted so `reloadFromSave` (T4 Ctrl+R affordance) can re-run
-  // it without duplicating the DB access pattern. Pure w.r.t. React state:
-  // returns the shaped review entries + cycles; the caller commits them.
-  const loadSessionState = (): {
-    entries: CdfReviewEntry[];
-    cycles: StoredSlotCycle[];
-    error: string | null;
-  } => {
-    const db = openPipelineDb();
-    let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }> = [];
-    let cycles: StoredSlotCycle[] = [];
-    try {
-      cdfComponents = loadCDFComponents(db, extractSessionId);
-      cycles = loadSlotCycles(db, extractSessionId);
-    } finally {
-      db.close();
-    }
-    if (cdfComponents.length === 0) {
-      return { entries: [], cycles: [], error: 'No generated definitions found for this session. Try re-running generate.' };
-    }
-    const cycleParticipants = new Set<string>();
-    for (const c of cycles) for (const p of c.path) cycleParticipants.add(p);
-    const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
-      key,
-      entry,
-      status: 'needs-review',
-    }));
-    return {
-      entries: sortComponentsForSidebar(reviewEntries, cycleParticipants),
-      cycles,
-      error: null,
-    };
-  };
-
   useEffect(() => {
-    try {
-      const { entries, cycles, error } = loadSessionState();
-      if (error) {
-        setLoadError(error);
+    async function load() {
+      const db = openPipelineDb();
+      let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }>;
+      let cycles: StoredSlotCycle[] = [];
+      try {
+        cdfComponents = loadCDFComponents(db, extractSessionId);
+        cycles = loadSlotCycles(db, extractSessionId);
+      } finally {
+        db.close();
+      }
+      if (cdfComponents.length === 0) {
+        setLoadError('No generated definitions found for this session. Try re-running generate.');
         setLoading(false);
         return;
       }
+      const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
+        key,
+        entry,
+        status: 'needs-review',
+      }));
+      const cycleParticipants = new Set<string>();
+      for (const c of cycles) for (const p of c.path) cycleParticipants.add(p);
       setSlotCycles(cycles);
-      setComponents(entries);
-      setLoading(false);
-    } catch (e: unknown) {
-      setLoadError(String(e));
+      setComponents(sortComponentsForSidebar(reviewEntries, cycleParticipants));
       setLoading(false);
     }
+    load().catch((e: unknown) => {
+      setLoadError(String(e));
+      setLoading(false);
+    });
   }, []);
 
   // Pilot-2026-06-23 R2: fire the live preview once on entry to final-review
@@ -601,120 +567,6 @@ export function GenerateReviewStep({
     setAutoRejected(flipped.length > 0 ? flipped : [...targets].sort());
     setUndoSnapshot(flipped.length > 0 ? snapshot : null);
   }, [loading, cycleView, componentGraph, slotCycles]);
-
-  // T4 (parity plan §3) — seed the history stack once the initial load has
-  // completed. Sequencing matters: seed with `S0` = post-load, pre-auto-reject
-  // state on the first non-loading render. The auto-reject effect above then
-  // pushes its post-flip snapshot onto the stack (see `pushHistorySnapshot`
-  // wiring below) so Cmd+Z from the auto-rejected state returns to S0.
-  useEffect(() => {
-    if (loading) return;
-    if (historySeededRef.current) return;
-    historySeededRef.current = true;
-    historyRef.current = createHistoryStack({
-      components: components.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-      autoRejected: [],
-      undoSnapshot: null,
-    });
-  }, [loading, components]);
-
-  // Push a snapshot of the CURRENT (post-mutation) state onto the history
-  // stack. Callers invoke this AFTER the state update they want captured, with
-  // the fresh values passed in explicitly so the push doesn't chase stale
-  // closures. `label` is captured for future debugging (currently unused).
-  const pushHistorySnapshot = (
-    entries: CdfReviewEntry[],
-    autoRej: string[],
-    undoSnap: Map<string, ReviewComponentStatus> | null,
-    label: string,
-  ): void => {
-    if (!historyRef.current) return;
-    historyRef.current.push(
-      {
-        components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-        autoRejected: [...autoRej],
-        undoSnapshot: undoSnap === null ? null : new Map(undoSnap),
-      },
-      label,
-    );
-  };
-
-  // Auto-reject pushes its post-flip snapshot exactly once, right after it
-  // fires. Guarded by an internal ref so React strict-mode's double invocation
-  // can't double-push.
-  const autoRejectPushedRef = useRef(false);
-  useEffect(() => {
-    if (loading) return;
-    if (!historySeededRef.current) return;
-    if (!autoRejectFiredRef.current) return;
-    if (autoRejectPushedRef.current) return;
-    autoRejectPushedRef.current = true;
-    pushHistorySnapshot(components, autoRejected, undoSnapshot, 'mount-auto-reject');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRejected]);
-
-  const applyHistorySnapshot = (snap: HistorySnapshot): void => {
-    // Rehydrate visible state from the snapshot. `slotCycles` / `cycleView` /
-    // `expandedGroups` derive from `components`, so we don't touch them
-    // directly (they'll recompute on the next render). We DO restore
-    // `autoRejected` + `undoSnapshot` because they drive the banner and the
-    // legacy `[u]` alias respectively.
-    const restored: CdfReviewEntry[] = snap.components.map((c) => ({
-      key: c.key,
-      entry: c.entry,
-      status: c.status,
-    }));
-    setComponents(restored);
-    setAutoRejected(snap.autoRejected);
-    setUndoSnapshot(snap.undoSnapshot);
-    // Cycle detection may need to rerun against the restored graph so the
-    // sidebar `(cycle)` badges stay in sync. `recomputeCycles` no-ops when
-    // nothing changed.
-    recomputeCycles(restored);
-  };
-
-  const handleUndo = (): void => {
-    const snap = historyRef.current?.undo();
-    if (!snap) return;
-    applyHistorySnapshot(snap);
-  };
-
-  const handleRedo = (): void => {
-    const snap = historyRef.current?.redo();
-    if (!snap) return;
-    applyHistorySnapshot(snap);
-  };
-
-  const reloadFromSave = (): void => {
-    try {
-      const { entries, cycles, error } = loadSessionState();
-      if (error) {
-        setLoadError(error);
-        return;
-      }
-      setSlotCycles(cycles);
-      setComponents(entries);
-      setExpandedGroups(new Set());
-      seededGroupsRef.current = false;
-      setAutoRejected([]);
-      setUndoSnapshot(null);
-      // Reset one-shot latches so mount auto-reject fires again for the
-      // reloaded state. `autoRejectPushedRef` re-arms so the auto-reject
-      // effect's history push runs against the fresh seed.
-      autoRejectFiredRef.current = false;
-      autoRejectPushedRef.current = false;
-      historyRef.current?.reset({
-        components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-        autoRejected: [],
-        undoSnapshot: null,
-      });
-      setNav({ cursorRowIdx: 0, sidebarScrollOffset: 0 });
-      setSaveError(null);
-      setFinalizeError(null);
-    } catch (e: unknown) {
-      setLoadError(String(e));
-    }
-  };
   const groupedItemsMemo = useMemo(
     () =>
       components.map((c) => ({
@@ -948,10 +800,6 @@ export function GenerateReviewStep({
       // Feature 2: re-fire the live preview now that pipeline.db reflects
       // the new state. The hook owns debounce + cred-missing short-circuit.
       livePreviewHook.trigger();
-      // T4 — push the post-save snapshot onto the history stack. Undo will
-      // revert the entry IN-MEMORY only; the DB write above stays intact.
-      // Reload-from-save is the escape hatch to also re-read from DB.
-      pushHistorySnapshot(updatedComponents, autoRejected, undoSnapshot, 'edit-save');
     } catch (e) {
       setSaveError(String(e));
     }
@@ -967,39 +815,6 @@ export function GenerateReviewStep({
   useImmediateInput((input, key) => {
     if (loading || loadError) return;
     if (dialogOpen) return;
-
-    // T4 (parity plan §3) — reload-from-save confirm dialog owns keystrokes
-    // when open. Enter re-runs the load path + resets history; Esc cancels.
-    if (showReloadDialog) {
-      if (key.return) {
-        reloadFromSave();
-        setShowReloadDialog(false);
-        return;
-      }
-      if (key.escape) {
-        setShowReloadDialog(false);
-        return;
-      }
-      return;
-    }
-
-    // T4 — top-level undo/redo/reload keybindings. Gated above sidebar-focused
-    // vs panel-focused vs overlay checks so they work uniformly across states.
-    // Terminal-key spike (log entry `spike:cmd-z`): Cmd+Z / Cmd+Y on macOS
-    // Terminal.app + iTerm2 map to Ctrl+Z / Ctrl+Y bytes (\x1a / \x19), which
-    // `useImmediateInput.parseInput` surfaces as `key.ctrl && input === 'z'|'y'`.
-    if (key.ctrl && input === 'z') {
-      handleUndo();
-      return;
-    }
-    if (key.ctrl && input === 'y') {
-      handleRedo();
-      return;
-    }
-    if (key.ctrl && input === 'r') {
-      setShowReloadDialog(true);
-      return;
-    }
 
     // T5 (parity plan §3): unsaved-changes warning owns keystrokes when open.
     // Enter → save + complete deferred focus cross.
@@ -1378,15 +1193,13 @@ export function GenerateReviewStep({
       return;
     }
     if (input === 'u') {
-      // T4 (parity plan §3) — `[u]` is a generic undo alias for Cmd+Z. When
-      // the history stack has an undoable entry (which includes the mount
-      // auto-reject snapshot), pop it. Falls through to the legacy task #37
-      // single-shot restore only when the stack isn't seeded yet (defensive
-      // — shouldn't happen in practice).
-      if (historyRef.current?.canUndo()) {
-        handleUndo();
-        return;
-      }
+      // Task #37 / T2 (parity plan §3) — single-shot undo of the mount-time
+      // auto-reject. Restores the pre-mount review-status of every component
+      // the effect flipped, then spends the undo. Because auto-reject is now
+      // a strict one-shot per session (T2), `undoSnapshot` is never re-armed
+      // — subsequent `[u]` presses are no-ops for the rest of the session.
+      // T4 (undo/redo history) will supersede this handler with a general
+      // Cmd+Z stack.
       if (!undoSnapshot) return;
       const snapshot = undoSnapshot;
       let restored: CdfReviewEntry[] = [];
@@ -1398,6 +1211,7 @@ export function GenerateReviewStep({
       });
       setUndoSnapshot(null);
       setAutoRejected([]);
+      // Re-run cycle detection now that the graph may have changed shape.
       recomputeCycles(restored);
       return;
     }
@@ -1452,7 +1266,6 @@ export function GenerateReviewStep({
       setComponents(next);
       setFinalizeError(null);
       recomputeCycles(next);
-      pushHistorySnapshot(next, autoRejected, undoSnapshot, 'accept-cascade');
       return;
     }
     if (input === 'r') {
@@ -1475,16 +1288,11 @@ export function GenerateReviewStep({
       });
       setComponents(next);
       recomputeCycles(next);
-      pushHistorySnapshot(next, autoRejected, undoSnapshot, 'reject-cascade');
       return;
     }
     if (input === 'A') {
-      const next = components.map((c) =>
-        c.status === 'needs-review' ? { ...c, status: 'accepted' as ReviewComponentStatus } : c,
-      );
-      setComponents(next);
+      setComponents((prev) => prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c)));
       setFinalizeError(null);
-      pushHistorySnapshot(next, autoRejected, undoSnapshot, 'bulk-accept');
       return;
     }
     if (input === 'E') {
@@ -1701,18 +1509,6 @@ export function GenerateReviewStep({
           <Text>{'  [Enter]  Save and continue'}</Text>
           <Text>{'  [Esc]    Discard changes and continue'}</Text>
           <Text>{'  [Tab]    Stay in the panel'}</Text>
-        </Box>
-      )}
-      {showReloadDialog && !dialogOpen && (
-        // T4 (parity plan §3): inline confirm dialog for Ctrl+R reload-from-
-        // save. Kept inline (mirrors T5 UnsavedChangesDialog shape) to stay
-        // under the ~15-line threshold that would justify extraction.
-        <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
-          <Text bold color="yellow">Reload from saved state?</Text>
-          <Text>Unsaved in-memory changes will be lost.</Text>
-          <Text> </Text>
-          <Text>{'  [Enter]  Confirm'}</Text>
-          <Text>{'  [Esc]    Cancel'}</Text>
         </Box>
       )}
       {showRemovedPanel && !dialogOpen && (
@@ -2118,7 +1914,6 @@ export function GenerateReviewStep({
                       '  [L] flat' +
                       '  [/] search' +
                       (undoSnapshot ? '  [u] undo' : '') +
-                      '  [Cmd+Z] undo  [Cmd+Y] redo  [Ctrl+R] reload' +
                       '  [q] quit'
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'

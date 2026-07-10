@@ -92,6 +92,21 @@ type FieldEditorProps = {
    * self-entry replacement in the cycle simulation.
    */
   currentComponentName?: string;
+  /**
+   * T5 (parity plan §3): fired whenever the editor's dirty state changes.
+   * `true` when the operator has made edits that haven't been saved (Ctrl+S)
+   * or discarded (Esc / discardTrigger). Parents use this to gate focus-away
+   * actions with an "unsaved changes" warning. Fired only on transitions to
+   * keep listener churn low.
+   */
+  onDirtyChange?: (isDirty: boolean) => void;
+  /**
+   * T5 (parity plan §3): monotonically-increasing counter. When it changes,
+   * the editor discards its internal draft and resets to the last parsed
+   * value. Wired by the parent's "unsaved changes" warning dialog's discard
+   * branch. Undefined = no discard requests (backwards compatible).
+   */
+  discardTrigger?: number;
 };
 
 /**
@@ -888,6 +903,8 @@ export function FieldEditor({
   onTextEntryActiveChange,
   projectSlotGraph,
   currentComponentName,
+  onDirtyChange,
+  discardTrigger,
 }: FieldEditorProps): React.ReactElement {
   const { state: initialState, error: parseError } = parseToState(value);
 
@@ -987,6 +1004,46 @@ export function FieldEditor({
     setEditorState(next);
     onChange(serializeState(next, value));
   };
+
+  // ── T5 (parity plan §3): dirty-state signaling ─────────────────────────
+  // Snapshot the mount-time value as a canonical (whitespace-independent)
+  // baseline. `editorState` diverges from that baseline as soon as the user
+  // makes a real edit; whitespace-only edits parse to the same canonical form
+  // so they never register. Save (Ctrl+S) refreshes the baseline to the newly
+  // saved state so the editor becomes clean again immediately after a save.
+  const canonicalize = React.useCallback((json: string): string => {
+    try {
+      return JSON.stringify(JSON.parse(json));
+    } catch {
+      // Malformed JSON — treat as a distinct "dirty" fingerprint so parents
+      // block focus-away on unparseable pending edits.
+      return `__unparseable__:${json}`;
+    }
+  }, []);
+  const initialStateRef = React.useRef<EditorState>(initialState);
+  const [baselineCanonical, setBaselineCanonical] = useState<string>(() =>
+    canonicalize(serializeState(initialState, value)),
+  );
+  const currentCanonical = canonicalize(serializeState(editorState, value));
+  const isDirty = currentCanonical !== baselineCanonical;
+  React.useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  // Discard-trigger: parent-driven "revert draft to mount-time state".
+  // Wired by the unsaved-changes warning dialog in GenerateReviewStep when
+  // the operator picks Esc (discard). Also emits an onChange so the parent's
+  // draftValue clears in step with the internal revert.
+  const lastDiscardTriggerRef = React.useRef<number | undefined>(discardTrigger);
+  React.useEffect(() => {
+    if (discardTrigger === undefined) return;
+    if (discardTrigger === lastDiscardTriggerRef.current) return;
+    lastDiscardTriggerRef.current = discardTrigger;
+    setEditorState(initialStateRef.current);
+    // Emit a synthetic onChange so callers that mirror our JSON into their
+    // own draft-state clear back to the baseline in lock-step.
+    onChange(serializeState(initialStateRef.current, value));
+  }, [discardTrigger, onChange, value]);
 
   useImmediateInput((input, key) => {
     if (!active) return;
@@ -1133,6 +1190,13 @@ export function FieldEditor({
     // ── Save / Discard ───────────────────────────────────────────────────────
     if (key.ctrl && input === 's') {
       setValidationError(null);
+      // T5: refresh the dirty-baseline + captured initialState to the current
+      // editor state so the FieldEditor becomes "clean" immediately after
+      // save. Also update initialStateRef so a subsequent discardTrigger
+      // reverts to the newly-saved value (not the pre-mount value).
+      const canonicalNow = canonicalize(serializeState(editorState, value));
+      setBaselineCanonical(canonicalNow);
+      initialStateRef.current = editorState;
       onSave();
       return;
     }

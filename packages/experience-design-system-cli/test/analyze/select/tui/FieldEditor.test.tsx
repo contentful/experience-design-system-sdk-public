@@ -2412,3 +2412,127 @@ describe('FieldEditor — INTEG-4401: cycle existing $allowedComponents entries 
     expect(frame).toContain('candidates (↑↓ cycle, Enter to add):');
   });
 });
+
+describe('FieldEditor — onDirtyChange + discardTrigger (T5)', () => {
+  // Navigate mounted-on-string-prop editor into the description text-entry so
+  // typed characters mutate the persisted state. Reused across dirty tests.
+  async function enterStringDescriptionEdit(stdin: { write: (data: string) => void }): Promise<void> {
+    stdin.write('\r'); // Return → type
+    await tick();
+    stdin.write('j'); // → category
+    await tick();
+    stdin.write('j'); // → required
+    await tick();
+    stdin.write('j'); // → default (string default is text-entry — j literal)
+    await tick();
+    stdin.write('\x1b[B'); // ↓ arrow → description
+    await tick();
+  }
+
+  it('fires onDirtyChange(false) at mount (no edits)', async () => {
+    const onDirtyChange = vi.fn();
+    render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    await tick();
+    // Mount effect runs once with the initial (clean) predicate.
+    expect(onDirtyChange).toHaveBeenCalled();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('fires onDirtyChange(true) after a real edit', async () => {
+    const onDirtyChange = vi.fn();
+    const { stdin } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    await tick();
+    await enterStringDescriptionEdit(stdin);
+    stdin.write('Q'); // append literal 'Q' to description
+    await tick();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it('fires onDirtyChange(false) after Ctrl+S (save clears the baseline)', async () => {
+    const onDirtyChange = vi.fn();
+    const onSave = vi.fn();
+    const { stdin } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={onSave}
+        onDiscard={vi.fn()}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    await tick();
+    await enterStringDescriptionEdit(stdin);
+    stdin.write('Q');
+    await tick();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    // Ctrl+S = byte \x13
+    stdin.write('\x13');
+    await tick();
+    expect(onSave).toHaveBeenCalled();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('discardTrigger increments revert the draft and fire onDirtyChange(false)', async () => {
+    const onDirtyChange = vi.fn();
+    const onChange = vi.fn();
+    const { stdin, rerender } = render(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        onDirtyChange={onDirtyChange}
+        discardTrigger={0}
+      />,
+    );
+    await tick();
+    await enterStringDescriptionEdit(stdin);
+    stdin.write('Q');
+    await tick();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    // Parent bumps discardTrigger → editor reverts to initial state, emits
+    // an onChange with the mount-time serialization, and fires clean signal.
+    onChange.mockClear();
+    rerender(
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={80}
+        height={20}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        onDirtyChange={onDirtyChange}
+        discardTrigger={1}
+      />,
+    );
+    await tick();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    // onChange fired with the reverted serialization so the parent's mirrored
+    // draft-state clears in lock-step.
+    expect(onChange).toHaveBeenCalled();
+  });
+});
