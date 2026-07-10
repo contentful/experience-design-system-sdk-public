@@ -1496,10 +1496,17 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     );
     await tick();
     // Default selection is Card (root, first in nav order). Move down to Body,
-    // reject it → own issue. Pressing Enter on Body should be a no-op (isOwn: true).
+    // reject it → task #37 cascades UP so Card is rejected too. Task #7 fix
+    // strips outgoing edges of rejected roots, so Body promotes from group-
+    // child to a standalone. Post-cascade tier order: [Body, Card] alphabetical.
+    // Cursor stays at rowIdx=1 (was Body pre-cascade) → now points at Card.
+    // Press `k` to move back to Body, then Enter should be a no-op (Body owns
+    // its issue → isOwn: true).
     stdin.write('j'); // navigate to Body
     await tick();
-    stdin.write('r'); // reject Body
+    stdin.write('r'); // reject Body (cascade rejects Card)
+    await tick();
+    stdin.write('k'); // move cursor back to Body (now at rowIdx=0)
     await tick();
     stdin.write('\r'); // Enter — no drill because Body owns its issue
     await tick();
@@ -1673,6 +1680,79 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     frame = lastFrame() ?? '';
     expect(frame).toMatch(/▾ Card/);
     expect(frame).toMatch(/▾ Layout/);
+  });
+});
+
+describe('GenerateReviewStep — [E] expand-all (T1: cycle-tier parity)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const leaf = (name: string): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+  });
+  const withSlot = (name: string, allowed: string[]): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+    $slots: {
+      children: {
+        $type: 'slot',
+        $allowedComponents: allowed,
+      },
+    } as never,
+  });
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  it('[E] expands cycle-tier rows in addition to composite group roots', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // Two tiers: a P↔C cycle pair plus a Card→Body composite group. After [C]
+    // collapses everything, [E] must re-expand BOTH the Card group root AND
+    // the P cycle-tier row (parity bug — pre-fix [E] only touched composite
+    // group closures, leaving cycle rows collapsed).
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Card', entry: withSlot('Card', ['Body']) },
+      { key: 'Body', entry: leaf('Body') },
+      { key: 'P', entry: withSlot('P', ['C']) },
+      { key: 'C', entry: withSlot('C', ['P']) },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['P', 'C', 'P'],
+        edges: [
+          { fromComponent: 'P', slotName: 'children', toComponent: 'C' },
+          { fromComponent: 'C', slotName: 'children', toComponent: 'P' },
+        ],
+        suggestedBreak: null,
+      },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+
+    // Mount auto-reject fires for the cycle. Undo it so cycle members are
+    // back at needs-review — makes the test independent of reject/cascade
+    // side effects on visibility.
+    stdin.write('u');
+    await tick();
+
+    // Collapse everything to establish a clean baseline. Cycle-tier rows read
+    // `expandedGroups.has(cycleRoot)` — [C] clears the set → all collapsed.
+    stdin.write('C');
+    await tick();
+    let frame = lastFrame() ?? '';
+    expect(frame).toMatch(/▸ Card/);
+    expect(frame).toMatch(/▸ ⚠ P/);
+
+    // [E] expand-all must expand BOTH the Card group AND the P cycle row.
+    stdin.write('E');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).toMatch(/▾ ⚠ P/);
   });
 });
 

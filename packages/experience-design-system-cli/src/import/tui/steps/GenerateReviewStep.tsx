@@ -11,6 +11,8 @@ import {
   type VisibleRow,
 } from '../../../analyze/select/tui/components/GroupedSidebar.js';
 import { computeAllClosures, type ComponentGraphNode, type NodeStatus } from '../../../analyze/composite-closure.js';
+import { buildComponentGraph } from '../../../analyze/slot-graph.js';
+import { computeCycleView, type CycleView } from '../../../analyze/cycle-view.js';
 import { computeRenderStatuses, pickDrillTarget, type RenderStatus } from '../../../analyze/issue-inheritance.js';
 import { JsonPanel } from '../../../analyze/select/tui/components/JsonPanel.js';
 import { FieldEditor } from '../../../analyze/select/tui/components/FieldEditor.js';
@@ -358,18 +360,13 @@ export function GenerateReviewStep({
    */
   const recomputeCycles = (currentComponents: CdfReviewEntry[]): void => {
     try {
-      const graph = currentComponents
-        .filter((c) => c.status !== 'rejected')
-        .map((c) => ({
-          name: c.key,
-          slots: Object.entries(c.entry.$slots ?? {}).map(([slotName, slotDef]) => ({
-            name: slotName,
-            allowedComponents: Array.isArray(slotDef?.$allowedComponents)
-              ? (slotDef.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
-              : [],
-          })),
-        }));
-      const rawCycles = findSlotCycles(graph);
+      // Compute the reified CycleView (ADR-0010 Part 3 / plan §4.2) and wrap
+      // its `pushBlocking` cycles into `StoredSlotCycle` for persistence. The
+      // `structural` arm is derived at render time by `cycleView` and is NOT
+      // persisted. Preserves today's drop-the-rows semantics for the filtered
+      // arm (rejected components contribute no rows and no edges).
+      const view = computeCycleView(currentComponents);
+      const rawCycles = view.pushBlocking;
       const next: StoredSlotCycle[] = rawCycles.map((cycle) => ({
         path: cycle.path,
         edges: cycle.edges,
@@ -400,17 +397,25 @@ export function GenerateReviewStep({
   // transition. Derives the closure set from the in-memory `components`
   // state's `$slots` shape so edits + rejections propagate on the next
   // render tick without a DB round-trip.
+  // ADR-0010 §C.1 two-graph split — this is the UNFILTERED arm. Every
+  // component contributes its slot edges regardless of `status`. Consumers:
+  // `computeAllClosures`, `computeAcceptCascade` / `computeRejectCascade`, and
+  // task #37 `computeCycleAutoRejectTargets`. Cycle detection now lives in
+  // `cycleView` (see below). The sidebar's tier layout does NOT read this
+  // graph — it reads `sidebarGraph` below (rejected rows contribute no edges
+  // there) so rejected ancestors don't drag their former targets under them.
   const componentGraph = useMemo<ComponentGraphNode[]>(
-    () =>
-      components.map((c) => ({
-        name: c.key,
-        slots: Object.entries(c.entry.$slots ?? {}).map(([slotName, slotDef]) => ({
-          name: slotName,
-          allowedComponents: Array.isArray(slotDef?.$allowedComponents)
-            ? (slotDef.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
-            : [],
-        })),
-      })),
+    () => buildComponentGraph(components),
+    [components],
+  );
+  // Sidebar-layout arm: rejected components contribute no outgoing edges
+  // (ADR-0010 Part 3, plan §4.3). Passed into `GroupedSidebar.graph` so
+  // tier layout, cycle-child injection, and closure walking read from one
+  // canonical source. Rejected rows still appear as rows (they map to
+  // `{ name, slots: [] }`), but their former slot targets are promoted back
+  // to standalones.
+  const sidebarGraph = useMemo<ComponentGraphNode[]>(
+    () => buildComponentGraph(components, { stripRejectedEdges: true }),
     [components],
   );
   const closures = useMemo(() => computeAllClosures(componentGraph), [componentGraph]);
@@ -434,8 +439,9 @@ export function GenerateReviewStep({
     }
     return m;
   }, [components]);
-  // Sidebar cycle tier — must include EVERY component that participates in a
-  // slot cycle, whether or not the cycle survives the reject-filter used by
+  // Reified two-graph split (ADR-0010 Part 3 / plan §4.2). `cycleView.structural`
+  // is the sidebar cycle tier — every component that participates in a slot
+  // cycle whether or not the cycle survives the reject-filter used by
   // `slotCycles` for push-safety. Otherwise cycle members whose only path in
   // the sidebar was via a composite ancestor get orphaned once the operator
   // rejects that ancestor: `computeAllClosures` short-circuits closures that
@@ -443,17 +449,12 @@ export function GenerateReviewStep({
   // filtered `slotCycles` no longer classifies the members as cycle
   // participants → they disappear from the visible list. Detecting cycles on
   // the full unfiltered graph keeps them in the cycle tier.
-  const cycleParticipantsMemo = useMemo<Set<string>>(() => {
-    const set = new Set<string>();
-    for (const cyc of slotCycles) for (const p of cyc.path) set.add(p);
-    try {
-      const unfilteredCycles = findSlotCycles(componentGraph);
-      for (const cyc of unfilteredCycles) for (const p of cyc.path) set.add(p);
-    } catch {
-      // Malformed slot data — swallow (matches recomputeCycles' try/catch).
-    }
-    return set;
-  }, [slotCycles, componentGraph]);
+  //
+  // `cycleView.pushBlocking` is the source-of-truth for push-safety cycles at
+  // render time; the persisted `slotCycles` state still exists because it
+  // carries the `suggestedBreak` field + is the DB shape. `recomputeCycles`
+  // keeps them in lockstep whenever the operator edits/rejects.
+  const cycleView = useMemo<CycleView>(() => computeCycleView(components), [components]);
 
   // Task #37 — Aggressive mount-time auto-reject. Whenever the detected
   // cycle-participant set changes to a NEW non-empty set (i.e., the signature
@@ -469,7 +470,7 @@ export function GenerateReviewStep({
   // trigger another auto-reject.
   useEffect(() => {
     if (loading) return;
-    if (cycleParticipantsMemo.size === 0) {
+    if (cycleView.structural.size === 0) {
       // Cycle set went to zero — nothing to auto-reject. We deliberately
       // leave `autoRejected` / `undoSnapshot` alone so a subsequent [u]
       // still restores state from the last auto-reject event, matching
@@ -477,7 +478,7 @@ export function GenerateReviewStep({
       lastAutoRejectSignatureRef.current = '';
       return;
     }
-    const signature = [...cycleParticipantsMemo].sort().join('|');
+    const signature = [...cycleView.structural].sort().join('|');
     if (signature === lastAutoRejectSignatureRef.current) return;
     lastAutoRejectSignatureRef.current = signature;
     const targets = computeCycleAutoRejectTargets(slotCycles, componentGraph);
@@ -504,7 +505,7 @@ export function GenerateReviewStep({
     // real delta to restore.
     setAutoRejected(flipped.length > 0 ? flipped : [...targets].sort());
     setUndoSnapshot(flipped.length > 0 ? snapshot : null);
-  }, [loading, cycleParticipantsMemo, componentGraph, slotCycles]);
+  }, [loading, cycleView, componentGraph, slotCycles]);
   const groupedItemsMemo = useMemo(
     () =>
       components.map((c) => ({
@@ -518,10 +519,11 @@ export function GenerateReviewStep({
     () =>
       buildVisibleRows({
         items: groupedItemsMemo,
-        cycleParticipants: cycleParticipantsMemo,
+        cycleParticipants: cycleView.structural,
         expandedGroups,
+        graph: sidebarGraph,
       }),
-    [groupedItemsMemo, cycleParticipantsMemo, expandedGroups],
+    [groupedItemsMemo, cycleView, expandedGroups, sidebarGraph],
   );
   // Row positions that map to a real component (skip synthetic flat-header
   // rows). j/k navigation walks these in order, so duplicate occurrences of
@@ -915,7 +917,7 @@ export function GenerateReviewStep({
     if (input === ' ' && sidebarFocused && !showJson) {
       const current = components[selectedIdx];
       if (!current) return;
-      const rootName = cycleParticipantsMemo.has(current.key)
+      const rootName = cycleView.structural.has(current.key)
         ? current.key
         : closures.has(current.key)
           ? current.key
@@ -1078,10 +1080,14 @@ export function GenerateReviewStep({
     if (input === 'E') {
       // Expand every group root — the set of "every group root" is any
       // closure whose node count is >1 (i.e., roots with ≥1 descendant).
+      // T1 parity fix: cycle-tier rows also read `expandedGroups.has(root)`
+      // (see GroupedSidebar cycle-tier render), so union every structural
+      // cycle participant in so [E] expand-all covers both tiers.
       const roots = new Set<string>();
       for (const [name, closure] of closures.entries()) {
         if (closure.nodes.length > 1) roots.add(name);
       }
+      for (const name of cycleView.structural) roots.add(name);
       setExpandedGroups(roots);
       return;
     }
@@ -1193,10 +1199,10 @@ export function GenerateReviewStep({
     Object.keys(c.entry.$properties).length === 0 && Object.keys(c.entry.$slots ?? {}).length === 0;
   const emptyCount = components.filter(isEmpty).length;
 
-  // INTEG-4401: cycle-participant set drives sidebar `(cycle)` badges plus
-  // the banner counts. Recomputed on every render — cheap for typical N.
-  const cycleParticipantSet = new Set<string>();
-  for (const cycle of slotCycles) for (const p of cycle.path) cycleParticipantSet.add(p);
+  // INTEG-4401: cycle-participant set drives sidebar `(cycle)` badges. Reads
+  // from the reified `cycleView.structural` so members whose ancestor is
+  // rejected still get badged (matches the ADR-0010 §C.1 unfiltered arm).
+  const cycleParticipantSet = cycleView.structural;
 
   const sidebarSuffix = (c: CdfReviewEntry): string => {
     if (cycleParticipantSet.has(c.key)) return ' (cycle)';
@@ -1404,7 +1410,7 @@ export function GenerateReviewStep({
             return c?.status === 'rejected';
           });
           if (stillRejected.length === 0) return null;
-          const participantSet = cycleParticipantsMemo;
+          const participantSet = cycleView.structural;
           const members = stillRejected.filter((n) => participantSet.has(n)).sort();
           const ancestors = stillRejected.filter((n) => !participantSet.has(n)).sort();
           return (
@@ -1515,6 +1521,7 @@ export function GenerateReviewStep({
             visibleCount={VISIBLE_COUNT}
             dimPredicate={dimPredicate}
             visibleRows={visibleRowsMemo}
+            graph={sidebarGraph}
           />
           <Box flexGrow={1} paddingLeft={1} flexDirection="column">
             {selected ? (
