@@ -523,7 +523,7 @@ describe('GenerateReviewStep — Feature 2 spinner indicator', () => {
     );
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame.replace(/[^\w!]+/g, ' ')).toMatch(/live preview/);
+    expect(frame).toMatch(/live preview/);
   });
 
   it('shows "live preview disabled" in dim text when hook reports disabled', async () => {
@@ -720,14 +720,14 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
     expect(frame).toMatch(/2 removed/);
   });
 
-  it('panel auto-opens on preview response and lists removed component names', async () => {
-    // T3: with auto-open behavior, the panel opens as soon as the preview
-    // reports a non-empty removed set — no `d` press needed.
-    const { lastFrame } = render(
+  it('pressing d opens a panel listing removed component names', async () => {
+    const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
     lastOnResult!(previewWithRemoved(['GoneAlpha', 'GoneBeta']));
+    await tick();
+    stdin.write('d');
     await tick();
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/Removed components/);
@@ -735,26 +735,29 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
     expect(frame).toMatch(/GoneBeta/);
   });
 
-  it('pressing d toggles the auto-opened panel closed', async () => {
+  it('pressing d again closes the panel', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
     lastOnResult!(previewWithRemoved(['GoneAlpha']));
     await tick();
-    // Auto-opened.
+    stdin.write('d');
+    await tick();
     expect(lastFrame() ?? '').toMatch(/Removed components/);
     stdin.write('d');
     await tick();
     expect(lastFrame() ?? '').not.toMatch(/Removed components/);
   });
 
-  it('pressing Esc closes the auto-opened panel', async () => {
+  it('pressing Esc closes the panel', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
     lastOnResult!(previewWithRemoved(['GoneAlpha']));
+    await tick();
+    stdin.write('d');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Removed components/);
     stdin.write('\x1b');
@@ -774,9 +777,9 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    // T3: panel auto-opens on preview response — no explicit `d` press
-    // needed. j/k should be inert while it is open.
     lastOnResult!(previewWithRemoved(['ZZZ']));
+    await tick();
+    stdin.write('d');
     await tick();
     // Panel open — j should be inert.
     stdin.write('j');
@@ -817,106 +820,6 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
     stdin.write('d');
     await tick();
     expect(lastFrame() ?? '').not.toMatch(/Removed components/);
-  });
-});
-
-// ── T3 (parity plan §3): removed panel default-open + notability polish ──────
-// Behavior:
-//   - When a live-preview response transitions removedComponents from empty
-//     → non-empty, auto-open the panel (once per session).
-//   - If the operator manually closes (via [d] toggle OR Esc), remember the
-//     decision and DO NOT re-open on subsequent preview refreshes.
-//   - Notability polish: border is red, title includes the word DELETE.
-describe('GenerateReviewStep — removed panel default-open (T3)', () => {
-  beforeEach(() => {
-    triggerSpy.mockReset();
-    lastUseLivePreviewArgs = null;
-    lastOnResult = null;
-    hookReturnOverride = null;
-  });
-
-  const previewWithRemoved = (names: string[]) =>
-    ({
-      components: {
-        new: [],
-        changed: [],
-        removed: names.map((n, i) => ({
-          id: `r${i}`,
-          name: n,
-          contentProperties: [],
-          designProperties: [],
-          slots: [],
-        })) as never,
-        unchanged: [],
-      },
-      tokens: { new: [], changed: [], removed: [], unchanged: [] },
-    }) as never;
-
-  it('auto-opens on first non-empty removed set', async () => {
-    const { lastFrame } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    // Panel is CLOSED before any preview response.
-    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
-    // Fire a preview response with a removed component — panel should
-    // auto-open.
-    lastOnResult!(previewWithRemoved(['AutoGone']));
-    await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/Removed components/);
-    expect(frame).toMatch(/AutoGone/);
-  });
-
-  it('does NOT re-open after operator closes via [d]', async () => {
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    lastOnResult!(previewWithRemoved(['Gone1']));
-    await tick();
-    expect(lastFrame() ?? '').toMatch(/Removed components/);
-    // Manual close via [d].
-    stdin.write('d');
-    await tick();
-    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
-    // Another preview response — panel stays CLOSED.
-    lastOnResult!(previewWithRemoved(['Gone1', 'Gone2']));
-    await tick();
-    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
-  });
-
-  it('does NOT re-open after operator closes via Esc', async () => {
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    lastOnResult!(previewWithRemoved(['Gone1']));
-    await tick();
-    expect(lastFrame() ?? '').toMatch(/Removed components/);
-    // Manual close via Esc.
-    stdin.write('\x1b');
-    await tick();
-    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
-    // Another preview response — panel stays CLOSED.
-    lastOnResult!(previewWithRemoved(['Gone1', 'Gone2']));
-    await tick();
-    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
-  });
-
-  it('title includes the word DELETE for notability', async () => {
-    // ink-testing-library strips ANSI, so we can't directly assert
-    // borderColor="red" from the frame. The visible label carries the
-    // load-bearing signal — assert on the title text.
-    const { lastFrame } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    lastOnResult!(previewWithRemoved(['Gone1']));
-    await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/Removed components \(1\)/);
-    expect(frame).toContain('DELETE');
   });
 });
 
@@ -1919,17 +1822,15 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     let frame = lastFrame() ?? '';
     // Persistent hint shown when input closed but query active.
     expect(frame).toMatch(/\[Tab\] next/);
-    // T7b delta 4: Enter now scans strictly AFTER cursorRowIdx (parity with
-    // ScopeGate). Cursor starts on Banner (row 0), so Enter advances to
-    // Button (the next match after cursor).
+    // Cursor on Banner (first match at/after cursor position 0; alphabetical order Banner < Button).
     let titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleLine).toContain('Button');
-    // Tab cycles to the next match: wraps to Banner (the only other match).
+    expect(titleLine).toContain('Banner');
+    // Tab cycles to the next match: Button.
     stdin.write('\t');
     await tick();
     frame = lastFrame() ?? '';
     titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleLine).toContain('Banner');
+    expect(titleLine).toContain('Button');
   });
 
   it('Esc from active-query state clears the query', async () => {
@@ -1973,152 +1874,6 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     const frame = lastFrame() ?? '';
     // 'b' matches Button + Banner; total 4.
     expect(frame).toMatch(/2\/4 matches/);
-  });
-});
-
-describe('GenerateReviewStep — search parity (T7b: legend, dedupe, enter-clear, enter-advance)', () => {
-  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
-  const makeEntry = (label: string): Entry => ({
-    $type: 'component',
-    $properties: { [label.toLowerCase()]: { $type: 'string', $category: 'content' } },
-  });
-  const parentEntry = (childName: string): Entry => ({
-    $type: 'component',
-    $properties: { title: { $type: 'string', $category: 'content' } },
-    $slots: { children: { $allowedComponents: [childName] } },
-  });
-
-  it('legend advertises [/] search when sidebar focused (parity with ScopeGate)', async () => {
-    const dbMod = await import('../../../../src/session/db.js');
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'Alpha', entry: makeEntry('Alpha') },
-      { key: 'Beta', entry: makeEntry('Beta') },
-    ]);
-    const { lastFrame } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
-    );
-    await tick();
-    // Ink can wrap the legend and insert ANSI codes; strip both before asserting.
-    // eslint-disable-next-line no-control-regex
-    const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
-    expect(frame).toMatch(/\[\/\][^\n]*search/);
-  });
-
-  it('match counter dedupes shared-dep rows to unique component count (1/N not 2/N)', async () => {
-    const dbMod = await import('../../../../src/session/db.js');
-    // Article → Card, Section → Card. Card is a shared dep, so buildVisibleRows
-    // emits it under BOTH parents. Total components = 3, but the row list has
-    // Card twice. Search 'card' hits both Card rows: raw count = 2, but the
-    // user-visible numerator must be 1 (one unique component matched).
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'Article', entry: parentEntry('Card') },
-      { key: 'Section', entry: parentEntry('Card') },
-      { key: 'Card', entry: makeEntry('Card') },
-    ]);
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
-    );
-    await tick();
-    stdin.write('/');
-    await tick();
-    stdin.write('c');
-    await tick();
-    stdin.write('a');
-    await tick();
-    stdin.write('r');
-    await tick();
-    stdin.write('d');
-    await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/1\/3 matches/);
-    expect(frame).not.toMatch(/2\/3 matches/);
-  });
-
-  it('Enter with 0 matches clears the query and closes the input (no stuck dim-all)', async () => {
-    const dbMod = await import('../../../../src/session/db.js');
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'Alpha', entry: makeEntry('Alpha') },
-      { key: 'Beta', entry: makeEntry('Beta') },
-    ]);
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
-    );
-    await tick();
-    stdin.write('/');
-    await tick();
-    // One char at a time — useImmediateInput only consumes single chars per call.
-    stdin.write('z');
-    await tick();
-    stdin.write('z');
-    await tick();
-    stdin.write('z');
-    await tick();
-    stdin.write('z');
-    await tick();
-    // Confirm we're in 0-match state while input still open.
-    expect(lastFrame() ?? '').toMatch(/0\/2 matches/);
-    stdin.write('\r'); // Enter — should clear + close (mirror ScopeGate)
-    await tick();
-    const frame = lastFrame() ?? '';
-    // No persistent-hint line for the query.
-    expect(frame).not.toMatch(/\[Tab\] next/);
-    expect(frame).not.toMatch(/matches/);
-    expect(frame).not.toMatch(/\/zzzz/);
-  });
-
-  it('Enter advances the cursor past the current match row (cursor exclusion)', async () => {
-    const dbMod = await import('../../../../src/session/db.js');
-    // Two components both matching 'b'. Sort puts them into the standalone tier
-    // alphabetically: [Banner, Button]. Cursor starts on row 0 = Banner (first
-    // match). Enter should advance to Button (second match), not stay on Banner.
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'Banner', entry: makeEntry('Banner') },
-      { key: 'Button', entry: makeEntry('Button') },
-    ]);
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
-    );
-    await tick();
-    stdin.write('/');
-    await tick();
-    stdin.write('b');
-    await tick();
-    stdin.write('\r'); // Enter
-    await tick();
-    const frame = lastFrame() ?? '';
-    const titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleLine).toContain('Button');
-    expect(titleLine).not.toContain('Banner');
-  });
-
-  it('Enter with cursor on the last match wraps to the first match', async () => {
-    const dbMod = await import('../../../../src/session/db.js');
-    // [Banner, Button] alphabetical. Move cursor to Button (last match), then
-    // Enter with query 'b' should wrap to Banner.
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'Banner', entry: makeEntry('Banner') },
-      { key: 'Button', entry: makeEntry('Button') },
-    ]);
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
-    );
-    await tick();
-    // Move cursor from row 0 (Banner) to row 1 (Button).
-    stdin.write('j');
-    await tick();
-    let titleLine = (lastFrame() ?? '').split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleLine).toContain('Button');
-    // Now open search and Enter — cursor sits on last match, should wrap to Banner.
-    stdin.write('/');
-    await tick();
-    stdin.write('b');
-    await tick();
-    stdin.write('\r');
-    await tick();
-    const frame = lastFrame() ?? '';
-    titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleLine).toContain('Banner');
-    expect(titleLine).not.toContain('Button');
   });
 });
 
@@ -2924,109 +2679,5 @@ describe('GenerateReviewStep — lineage panel (T6)', () => {
   it('legend advertises [l] lineage when sidebar is focused', async () => {
     const { lastFrame } = await renderLineageFixture();
     expect(lastFrame() ?? '').toContain('[l]');
-  });
-});
-
-describe('GenerateReviewStep — view toggle (T8)', () => {
-  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
-  const leaf = (name: string): Entry => ({
-    $type: 'component',
-    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
-  });
-  const withSlot = (name: string, allowed: string[]): Entry => ({
-    $type: 'component',
-    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
-    $slots: {
-      children: {
-        $type: 'slot',
-        $allowedComponents: allowed,
-      },
-    } as never,
-  });
-
-  beforeEach(() => {
-    triggerSpy.mockReset();
-    lastOnResult = null;
-    hookReturnOverride = null;
-  });
-
-  // Card → [Body, Heading], plus Standalone. Grouped view renders composite
-  // tree with `▾` on Card and `├─`/`└─` prefixes on children. Large-list
-  // renders one row per component alphabetical, no tree glyphs.
-  async function renderToggleFixture() {
-    const dbMod = await import('../../../../src/session/db.js');
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'Card', entry: withSlot('Card', ['Body', 'Heading']) },
-      { key: 'Body', entry: leaf('Body') },
-      { key: 'Heading', entry: leaf('Heading') },
-      { key: 'Standalone', entry: leaf('Standalone') },
-    ]);
-    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
-    const utils = render(
-      <GenerateReviewStep
-        extractSessionId="sess-1"
-        onFinalize={vi.fn()}
-        onQuit={vi.fn()}
-        livePreview={false}
-      />,
-    );
-    await tick();
-    return utils;
-  }
-
-  it('legend advertises [L] flat when sidebar is focused', async () => {
-    const { lastFrame } = await renderToggleFixture();
-    const out = lastFrame() ?? '';
-    expect(out).toContain('[L]');
-    expect(out).toContain('flat');
-  });
-
-  it('pressing [L] toggles to flat view (composite tree glyphs disappear)', async () => {
-    const { lastFrame, stdin } = await renderToggleFixture();
-    // Grouped view (default): ▾ on expanded root; ├─/└─ on children.
-    const beforeToggle = lastFrame() ?? '';
-    expect(beforeToggle).toMatch(/▾[^\n]*Card/);
-    expect(beforeToggle).toMatch(/├─ /);
-    stdin.write('L');
-    await tick();
-    const afterToggle = lastFrame() ?? '';
-    // Flat view: no tree glyphs; Card gets a `(N deps)` suffix and
-    // every component surfaces as its own row.
-    expect(afterToggle).not.toMatch(/├─ /);
-    expect(afterToggle).not.toMatch(/└─ /);
-    expect(afterToggle).not.toMatch(/▾/);
-    expect(afterToggle).toContain('Card (2 deps)');
-    expect(afterToggle).toContain('Body');
-    expect(afterToggle).toContain('Heading');
-    expect(afterToggle).toContain('Standalone');
-  });
-
-  it('pressing [L] again toggles back to grouped view', async () => {
-    const { lastFrame, stdin } = await renderToggleFixture();
-    stdin.write('L');
-    await tick();
-    expect(lastFrame() ?? '').not.toMatch(/├─ /);
-    stdin.write('L');
-    await tick();
-    // Back to grouped: tree glyphs return.
-    expect(lastFrame() ?? '').toMatch(/├─ /);
-  });
-
-  it('cursor selection is preserved on the same component across view toggle', async () => {
-    const { lastFrame, stdin } = await renderToggleFixture();
-    // Grouped order (expanded seed): Card, ├─ Body, └─ Heading, Standalone.
-    // Move down to Body (first child row).
-    stdin.write('j');
-    await tick();
-    const beforeToggle = lastFrame() ?? '';
-    // Detail-panel title line shows the focused component.
-    const titleBefore = beforeToggle.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleBefore).toContain('Body');
-    stdin.write('L');
-    await tick();
-    const afterToggle = lastFrame() ?? '';
-    // Cursor stays on Body after switching to flat view.
-    const titleAfter = afterToggle.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleAfter).toContain('Body');
   });
 });

@@ -14,10 +14,9 @@ import {
 } from '../../../analyze/composite-closure.js';
 import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { findSlotCycles, type SlotCycle } from '../../../analyze/cycle-detection.js';
-import {
-  buildAncestorTree,
-  renderAncestorTree,
-} from '../../../analyze/lineage.js';
+import { useLineage } from '../hooks/useLineage.js';
+import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
+import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import {
   buildCycleUnits,
   collectReachableCycleUnits,
@@ -81,12 +80,6 @@ function toSidebarEntry(c: ScopeComponent): CDFComponentEntry {
   return entry;
 }
 
-type LineageEntry =
-  | { kind: 'section'; label: string }
-  | { kind: 'ancestor'; label: string; jumpTarget: string }
-  | { kind: 'descendant'; label: string; jumpTarget: string }
-  | { kind: 'empty'; label: string };
-
 export function ScopeGateStep({
   components,
   onConfirm,
@@ -110,7 +103,10 @@ export function ScopeGateStep({
   const cursor = nav.cursor;
   const scrollOffset = nav.scrollOffset;
   const [reasonPanelOpen, setReasonPanelOpen] = useState(false);
-  const [lineagePanelOpen, setLineagePanelOpen] = useState(false);
+  // T10 — lineage panel open/close via shared hook. Close-side (`[l]` toggle
+  // and `[Esc]`) is delegated; other keystrokes (Tab/Enter/j/k/↑/↓, plus the
+  // step-specific `c` cross-to-cycles switch) stay in the caller.
+  const lineagePanel = useOverlayPanel({ toggleKey: 'l' });
   const [lineageCursor, setLineageCursor] = useState(0);
   const [cyclesPanelOpen, setCyclesPanelOpen] = useState(false);
   const [cyclesCursor, setCyclesCursor] = useState(0);
@@ -310,48 +306,12 @@ export function ScopeGateStep({
     return { accepted, rejected };
   };
 
-  // Lineage panel entries for the focused component.
-  const lineageEntries = useMemo<LineageEntry[]>(() => {
-    if (!focusedComponent) return [];
-    const name = focusedComponent.name;
-    const tree = buildAncestorTree(name, graph);
-    const closure = closures.get(name);
-    const entries: LineageEntry[] = [];
-    entries.push({ kind: 'section', label: 'Ancestors:' });
-    if (tree.parents.length === 0) {
-      entries.push({ kind: 'empty', label: '  (no ancestors)' });
-    } else {
-      const lines = renderAncestorTree(tree);
-      for (const line of lines) {
-        entries.push({
-          kind: 'ancestor',
-          label: '  ' + line.text,
-          jumpTarget: line.jumpTarget ?? name,
-        });
-      }
-    }
-    entries.push({ kind: 'section', label: 'Descendants:' });
-    if (!closure || closure.nodes.length <= 1) {
-      entries.push({ kind: 'empty', label: '  (none)' });
-    } else {
-      for (const node of closure.nodes) {
-        if (node.name === name) continue;
-        entries.push({
-          kind: 'descendant',
-          label: '  ' + '  '.repeat(Math.max(0, node.depth - 1)) + node.name,
-          jumpTarget: node.name,
-        });
-      }
-    }
-    return entries;
-  }, [focusedComponent, graph, closures]);
-
-  const lineageJumpables = useMemo(
-    () =>
-      lineageEntries
-        .map((e, i) => ({ e, i }))
-        .filter(({ e }) => e.kind === 'ancestor' || e.kind === 'descendant'),
-    [lineageEntries],
+  // Lineage panel entries for the focused component. Shared with
+  // GenerateReviewStep via the `useLineage` hook — see
+  // `src/import/tui/hooks/useLineage.ts`.
+  const { entries: lineageEntries, jumpables: lineageJumpables } = useLineage(
+    focusedComponent?.name ?? null,
+    graph,
   );
 
   const searchMatches = useMemo(() => {
@@ -475,18 +435,18 @@ export function ScopeGateStep({
       return;
     }
 
-    // Lineage panel owns most keystrokes when open.
-    if (lineagePanelOpen) {
-      if (key.escape || input === 'l') {
-        setLineagePanelOpen(false);
-        return;
-      }
+    // Lineage panel owns most keystrokes when open. Close-side (`[l]` / `[Esc]`)
+    // delegated to the shared `useOverlayPanel` hook (T10). The step-specific
+    // `[c]` cross-to-cycles switch runs BEFORE the shared handler so `c` is
+    // captured as a hand-off rather than a toggle.
+    if (lineagePanel.isOpen) {
       if (input === 'c' && hasCycles) {
-        setLineagePanelOpen(false);
+        lineagePanel.close();
         setCyclesPanelOpen(true);
         setCyclesCursor(0);
         return;
       }
+      if (lineagePanel.handleInput(input, key)) return;
       if (key.upArrow || input === 'k') {
         setLineageCursor((c) => Math.max(0, c - 1));
         return;
@@ -497,10 +457,10 @@ export function ScopeGateStep({
       }
       if (key.return) {
         const target = lineageJumpables[lineageCursor];
-        if (target && (target.e.kind === 'ancestor' || target.e.kind === 'descendant')) {
-          jumpCursorTo(target.e.jumpTarget);
+        if (target && (target.entry.kind === 'ancestor' || target.entry.kind === 'descendant')) {
+          jumpCursorTo(target.entry.jumpTarget);
         }
-        setLineagePanelOpen(false);
+        lineagePanel.close();
         return;
       }
       return;
@@ -541,7 +501,7 @@ export function ScopeGateStep({
         const g = addedGroups[safeAddedGroupsCursor];
         if (g) jumpCursorTo(g.name);
       }
-      setLineagePanelOpen(true);
+      lineagePanel.open();
       setLineageCursor(0);
       setCyclesPanelOpen(false);
       return;
@@ -550,7 +510,7 @@ export function ScopeGateStep({
       if (!hasCycles) return;
       setCyclesPanelOpen(true);
       setCyclesCursor(0);
-      setLineagePanelOpen(false);
+      lineagePanel.close();
       return;
     }
     if (input === '/') {
@@ -961,43 +921,13 @@ export function ScopeGateStep({
         </Box>
       )}
 
-      {lineagePanelOpen && focusedComponent && (
-        <Box flexDirection="column" borderStyle="single" borderColor="cyan" paddingX={1} marginTop={1}>
-          <Text bold>{`Lineage: ${focusedComponent.name}`}</Text>
-          {lineageEntries.map((e, i) => {
-            const jumpableIdx = lineageJumpables.findIndex((j) => j.i === i);
-            const isCursor = jumpableIdx === lineageCursor && jumpableIdx >= 0;
-            if (e.kind === 'section') {
-              return (
-                <Text key={i} bold>
-                  {'  '}
-                  {e.label}
-                </Text>
-              );
-            }
-            if (e.kind === 'empty') {
-              return (
-                <Text key={i}>
-                  <Text> </Text>
-                  <Text dimColor>{' ' + e.label}</Text>
-                </Text>
-              );
-            }
-            return (
-              <Text key={i}>
-                {isCursor ? (
-                  <Text color="cyan" bold>
-                    {'▶'}
-                  </Text>
-                ) : (
-                  <Text> </Text>
-                )}
-                <Text inverse={isCursor}>{' ' + e.label}</Text>
-              </Text>
-            );
-          })}
-          <Text dimColor>[↑/↓] move · [Enter] jump · [l/Esc] close</Text>
-        </Box>
+      {lineagePanel.isOpen && focusedComponent && (
+        <LineagePanel
+          focusedComponentKey={focusedComponent.name}
+          entries={lineageEntries}
+          cursor={lineageCursor}
+          jumpables={lineageJumpables}
+        />
       )}
 
       {pendingRejectCascade && (

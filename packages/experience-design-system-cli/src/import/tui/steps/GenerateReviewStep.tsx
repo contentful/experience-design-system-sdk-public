@@ -45,8 +45,10 @@ import { computeSidebarWidth } from '../sidebar-width.js';
 import { computeAcceptCascade, computeRejectCascade } from '../../../analyze/selection-cascade.js';
 import { findAllAncestors } from '../../../analyze/lineage.js';
 import { useLineage } from '../hooks/useLineage.js';
+import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
+import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -193,16 +195,22 @@ export function GenerateReviewStep({
   // annotation map only carries kind, not the rich summaries we need to list
   // names/ids when the operator asks "which ones?".
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
-  const [showRemovedPanel, setShowRemovedPanel] = useState(false);
   // T3 (parity plan §3) — removed-panel default-open bookkeeping.
   //   - `autoOpenedRemovedRef` latches on the first auto-open so we don't
   //     re-open every time a preview refresh reports a removed set.
-  //   - `manuallyClosedRef` latches on any operator close (via [d] or Esc)
+  //   - `manuallyClosedRemovedRef` latches on any operator close (via [d] or Esc)
   //     and permanently disables auto-open for this session. Reset only on
-  //     unmount/remount (i.e., a fresh session). T10 will extract this into
-  //     a shared `useOverlayPanel` hook — inline for now.
+  //     unmount/remount (i.e., a fresh session). Persisted via the
+  //     `useOverlayPanel({ onClose })` seam extracted in T10 — the hook owns
+  //     the isOpen boolean; the manual-close latch is orthogonal.
   const autoOpenedRemovedRef = useRef(false);
   const manuallyClosedRemovedRef = useRef(false);
+  const removedPanel = useOverlayPanel({
+    toggleKey: 'd',
+    onClose: () => {
+      manuallyClosedRemovedRef.current = true;
+    },
+  });
   // Lifted rationale + source panels (replaces FieldEditor's right pane).
   // Mutually exclusive states.
   const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>('none');
@@ -216,8 +224,14 @@ export function GenerateReviewStep({
   // triggers sidebar (cycle) badges, banner + [c] detail-panel affordance,
   // and (at push time) a hard block.
   const [slotCycles, setSlotCycles] = useState<StoredSlotCycle[]>([]);
-  const [showCyclePanel, setShowCyclePanel] = useState(false);
+  // T10 — cycle panel open/close via shared hook. The scroll state stays
+  // step-local since it's not part of the shared close-key convention;
+  // it's reset on close by the caller's toggle handlers.
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
+  const cyclePanel = useOverlayPanel({
+    toggleKey: 'c',
+    onClose: () => setCyclePanelScroll(0),
+  });
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const seededGroupsRef = useRef(false);
   // Fuzzy-search overlay (mirrors ScopeGateStep). `/` opens the input;
@@ -230,7 +244,7 @@ export function GenerateReviewStep({
   // ancestors + descendants of the focused component. Same shape as
   // ScopeGateStep; derivation happens via the shared `useLineage` hook so
   // both callsites render pixel-identical panels.
-  const [lineagePanelOpen, setLineagePanelOpen] = useState(false);
+  const lineagePanel = useOverlayPanel({ toggleKey: 'l' });
   const [lineageCursor, setLineageCursor] = useState(0);
   // T8 (parity plan §3) — Column-1 view mode. `'grouped'` (default) uses the
   // tiered cycle/empty/composite/standalone layout; `'flat'` flattens to
@@ -254,6 +268,35 @@ export function GenerateReviewStep({
   // `./auto-reject-decision.ts` so the invariant is pinned by pure-fn tests.
   const autoRejectFiredRef = useRef<boolean>(false);
 
+  // T5 (parity plan §3) — unsaved-changes warning on Tab-away.
+  //   - `editorDirty` mirrors FieldEditor's internal dirty predicate (set
+  //     via its `onDirtyChange` callback).
+  //   - `showUnsavedWarning` gates rendering of the inline yellow warning
+  //     dialog.
+  //   - `pendingFocusAway` remembers the deferred cross action so Enter/Esc
+  //     from the warning can complete it after save-or-discard.
+  //   - `discardTrigger` is a monotonic counter passed to FieldEditor;
+  //     bumping it reverts the internal draft to the last-saved value.
+  const [editorDirty, setEditorDirty] = useState(false);
+  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const [pendingFocusAway, setPendingFocusAway] = useState<null | 'tab-to-sidebar'>(null);
+  const [discardTrigger, setDiscardTrigger] = useState(0);
+
+  // T4 (parity plan §3) — undo/redo history stack.
+  //   - `historyRef` lazily instantiates once the initial load completes so the
+  //     seed snapshot reflects the post-load, pre-auto-reject state. The mount
+  //     auto-reject then pushes ITS post-flip snapshot on top, so Cmd+Z from
+  //     the auto-rejected state correctly restores the pre-auto-reject state.
+  //   - `showReloadDialog` gates the inline Ctrl+R confirm affordance. On
+  //     Enter, `reloadFromSave` re-runs the mount load path and resets the
+  //     stack via `historyRef.current.reset(newSeed)`.
+  //   - Undo/redo restore snapshots IN-MEMORY only. `storeCDFComponents` is
+  //     never invoked on undo — reload-from-save is the escape hatch for
+  //     "the DB is right, my in-memory is wrong."
+  const historyRef = useRef<HistoryStack | null>(null);
+  const historySeededRef = useRef(false);
+  const [showReloadDialog, setShowReloadDialog] = useState(false);
+
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
     setPreviewAnnotations(
@@ -275,7 +318,7 @@ export function GenerateReviewStep({
       !manuallyClosedRemovedRef.current
     ) {
       autoOpenedRemovedRef.current = true;
-      setShowRemovedPanel(true);
+      removedPanel.open();
     }
   };
 
@@ -301,37 +344,55 @@ export function GenerateReviewStep({
   }, [livePreviewHook.status]);
   const livePreviewSpinner = SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length];
 
+  // Load path extracted so `reloadFromSave` (T4 Ctrl+R affordance) can re-run
+  // it without duplicating the DB access pattern. Pure w.r.t. React state:
+  // returns the shaped review entries + cycles; the caller commits them.
+  const loadSessionState = (): {
+    entries: CdfReviewEntry[];
+    cycles: StoredSlotCycle[];
+    error: string | null;
+  } => {
+    const db = openPipelineDb();
+    let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }> = [];
+    let cycles: StoredSlotCycle[] = [];
+    try {
+      cdfComponents = loadCDFComponents(db, extractSessionId);
+      cycles = loadSlotCycles(db, extractSessionId);
+    } finally {
+      db.close();
+    }
+    if (cdfComponents.length === 0) {
+      return { entries: [], cycles: [], error: 'No generated definitions found for this session. Try re-running generate.' };
+    }
+    const cycleParticipants = new Set<string>();
+    for (const c of cycles) for (const p of c.path) cycleParticipants.add(p);
+    const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
+      key,
+      entry,
+      status: 'needs-review',
+    }));
+    return {
+      entries: sortComponentsForSidebar(reviewEntries, cycleParticipants),
+      cycles,
+      error: null,
+    };
+  };
+
   useEffect(() => {
-    async function load() {
-      const db = openPipelineDb();
-      let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }>;
-      let cycles: StoredSlotCycle[] = [];
-      try {
-        cdfComponents = loadCDFComponents(db, extractSessionId);
-        cycles = loadSlotCycles(db, extractSessionId);
-      } finally {
-        db.close();
-      }
-      if (cdfComponents.length === 0) {
-        setLoadError('No generated definitions found for this session. Try re-running generate.');
+    try {
+      const { entries, cycles, error } = loadSessionState();
+      if (error) {
+        setLoadError(error);
         setLoading(false);
         return;
       }
-      const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
-        key,
-        entry,
-        status: 'needs-review',
-      }));
-      const cycleParticipants = new Set<string>();
-      for (const c of cycles) for (const p of c.path) cycleParticipants.add(p);
       setSlotCycles(cycles);
-      setComponents(sortComponentsForSidebar(reviewEntries, cycleParticipants));
+      setComponents(entries);
       setLoading(false);
-    }
-    load().catch((e: unknown) => {
+    } catch (e: unknown) {
       setLoadError(String(e));
       setLoading(false);
-    });
+    }
   }, []);
 
   // Pilot-2026-06-23 R2: fire the live preview once on entry to final-review
@@ -553,6 +614,120 @@ export function GenerateReviewStep({
     setAutoRejected(flipped.length > 0 ? flipped : [...targets].sort());
     setUndoSnapshot(flipped.length > 0 ? snapshot : null);
   }, [loading, cycleView, componentGraph, slotCycles]);
+
+  // T4 (parity plan §3) — seed the history stack once the initial load has
+  // completed. Sequencing matters: seed with `S0` = post-load, pre-auto-reject
+  // state on the first non-loading render. The auto-reject effect above then
+  // pushes its post-flip snapshot onto the stack (see `pushHistorySnapshot`
+  // wiring below) so Cmd+Z from the auto-rejected state returns to S0.
+  useEffect(() => {
+    if (loading) return;
+    if (historySeededRef.current) return;
+    historySeededRef.current = true;
+    historyRef.current = createHistoryStack({
+      components: components.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
+      autoRejected: [],
+      undoSnapshot: null,
+    });
+  }, [loading, components]);
+
+  // Push a snapshot of the CURRENT (post-mutation) state onto the history
+  // stack. Callers invoke this AFTER the state update they want captured, with
+  // the fresh values passed in explicitly so the push doesn't chase stale
+  // closures. `label` is captured for future debugging (currently unused).
+  const pushHistorySnapshot = (
+    entries: CdfReviewEntry[],
+    autoRej: string[],
+    undoSnap: Map<string, ReviewComponentStatus> | null,
+    label: string,
+  ): void => {
+    if (!historyRef.current) return;
+    historyRef.current.push(
+      {
+        components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
+        autoRejected: [...autoRej],
+        undoSnapshot: undoSnap === null ? null : new Map(undoSnap),
+      },
+      label,
+    );
+  };
+
+  // Auto-reject pushes its post-flip snapshot exactly once, right after it
+  // fires. Guarded by an internal ref so React strict-mode's double invocation
+  // can't double-push.
+  const autoRejectPushedRef = useRef(false);
+  useEffect(() => {
+    if (loading) return;
+    if (!historySeededRef.current) return;
+    if (!autoRejectFiredRef.current) return;
+    if (autoRejectPushedRef.current) return;
+    autoRejectPushedRef.current = true;
+    pushHistorySnapshot(components, autoRejected, undoSnapshot, 'mount-auto-reject');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRejected]);
+
+  const applyHistorySnapshot = (snap: HistorySnapshot): void => {
+    // Rehydrate visible state from the snapshot. `slotCycles` / `cycleView` /
+    // `expandedGroups` derive from `components`, so we don't touch them
+    // directly (they'll recompute on the next render). We DO restore
+    // `autoRejected` + `undoSnapshot` because they drive the banner and the
+    // legacy `[u]` alias respectively.
+    const restored: CdfReviewEntry[] = snap.components.map((c) => ({
+      key: c.key,
+      entry: c.entry,
+      status: c.status,
+    }));
+    setComponents(restored);
+    setAutoRejected(snap.autoRejected);
+    setUndoSnapshot(snap.undoSnapshot);
+    // Cycle detection may need to rerun against the restored graph so the
+    // sidebar `(cycle)` badges stay in sync. `recomputeCycles` no-ops when
+    // nothing changed.
+    recomputeCycles(restored);
+  };
+
+  const handleUndo = (): void => {
+    const snap = historyRef.current?.undo();
+    if (!snap) return;
+    applyHistorySnapshot(snap);
+  };
+
+  const handleRedo = (): void => {
+    const snap = historyRef.current?.redo();
+    if (!snap) return;
+    applyHistorySnapshot(snap);
+  };
+
+  const reloadFromSave = (): void => {
+    try {
+      const { entries, cycles, error } = loadSessionState();
+      if (error) {
+        setLoadError(error);
+        return;
+      }
+      setSlotCycles(cycles);
+      setComponents(entries);
+      setExpandedGroups(new Set());
+      seededGroupsRef.current = false;
+      setAutoRejected([]);
+      setUndoSnapshot(null);
+      // Reset one-shot latches so mount auto-reject fires again for the
+      // reloaded state. `autoRejectPushedRef` re-arms so the auto-reject
+      // effect's history push runs against the fresh seed.
+      autoRejectFiredRef.current = false;
+      autoRejectPushedRef.current = false;
+      historyRef.current?.reset({
+        components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
+        autoRejected: [],
+        undoSnapshot: null,
+      });
+      setNav({ cursorRowIdx: 0, sidebarScrollOffset: 0 });
+      setSaveError(null);
+      setFinalizeError(null);
+    } catch (e: unknown) {
+      setLoadError(String(e));
+    }
+  };
   const groupedItemsMemo = useMemo(
     () =>
       components.map((c) => ({
@@ -786,6 +961,10 @@ export function GenerateReviewStep({
       // Feature 2: re-fire the live preview now that pipeline.db reflects
       // the new state. The hook owns debounce + cred-missing short-circuit.
       livePreviewHook.trigger();
+      // T4 — push the post-save snapshot onto the history stack. Undo will
+      // revert the entry IN-MEMORY only; the DB write above stays intact.
+      // Reload-from-save is the escape hatch to also re-read from DB.
+      pushHistorySnapshot(updatedComponents, autoRejected, undoSnapshot, 'edit-save');
     } catch (e) {
       setSaveError(String(e));
     }
@@ -801,6 +980,66 @@ export function GenerateReviewStep({
   useImmediateInput((input, key) => {
     if (loading || loadError) return;
     if (dialogOpen) return;
+
+    // T4 (parity plan §3) — reload-from-save confirm dialog owns keystrokes
+    // when open. Enter re-runs the load path + resets history; Esc cancels.
+    if (showReloadDialog) {
+      if (key.return) {
+        reloadFromSave();
+        setShowReloadDialog(false);
+        return;
+      }
+      if (key.escape) {
+        setShowReloadDialog(false);
+        return;
+      }
+      return;
+    }
+
+    // T4 — top-level undo/redo/reload keybindings. Gated above sidebar-focused
+    // vs panel-focused vs overlay checks so they work uniformly across states.
+    // Terminal-key spike (log entry `spike:cmd-z`): Cmd+Z / Cmd+Y on macOS
+    // Terminal.app + iTerm2 map to Ctrl+Z / Ctrl+Y bytes (\x1a / \x19), which
+    // `useImmediateInput.parseInput` surfaces as `key.ctrl && input === 'z'|'y'`.
+    if (key.ctrl && input === 'z') {
+      handleUndo();
+      return;
+    }
+    if (key.ctrl && input === 'y') {
+      handleRedo();
+      return;
+    }
+    if (key.ctrl && input === 'r') {
+      setShowReloadDialog(true);
+      return;
+    }
+
+    // T5 (parity plan §3): unsaved-changes warning owns keystrokes when open.
+    // Enter → save + complete deferred focus cross.
+    // Esc   → discard (revert FieldEditor draft) + complete deferred cross.
+    // Tab   → cancel: close dialog, keep focus in the panel, leave the
+    //         FieldEditor dirty. Anything else falls through to close-cancel.
+    if (showUnsavedWarning) {
+      if (key.return) {
+        handleEditSave();
+        setShowUnsavedWarning(false);
+        if (pendingFocusAway === 'tab-to-sidebar') setSidebarFocused(true);
+        setPendingFocusAway(null);
+        return;
+      }
+      if (key.escape) {
+        setDiscardTrigger((n) => n + 1);
+        setShowUnsavedWarning(false);
+        if (pendingFocusAway === 'tab-to-sidebar') setSidebarFocused(true);
+        setPendingFocusAway(null);
+        return;
+      }
+      // Tab (and any other input) cancels — keep the operator in the panel
+      // with their pending edit intact.
+      setShowUnsavedWarning(false);
+      setPendingFocusAway(null);
+      return;
+    }
 
     // Fuzzy-search input mode owns most keystrokes while the input is open.
     // Mirrors ScopeGateStep's `/` UX: Esc closes + clears, Enter closes but
@@ -854,14 +1093,12 @@ export function GenerateReviewStep({
     }
 
     // T6 (parity plan §3) — lineage panel owns keystrokes when open.
-    // Mirrors ScopeGate's overlay-owns-input pattern; the panel closes on
-    // `[l]` (toggle) or `[Esc]`, ↑/↓ (or j/k) move the panel cursor, and
-    // Enter jumps main selection to the highlighted jumpable and closes.
-    if (lineagePanelOpen) {
-      if (key.escape || input === 'l') {
-        setLineagePanelOpen(false);
-        return;
-      }
+    // Mirrors ScopeGate's overlay-owns-input pattern. Close-side (`[l]` toggle
+    // and `[Esc]`) is delegated to the shared `useOverlayPanel` hook (T10);
+    // ↑/↓/j/k move the panel cursor, Tab cycles, and Enter jumps main selection
+    // to the highlighted jumpable and closes.
+    if (lineagePanel.isOpen) {
+      if (lineagePanel.handleInput(input, key)) return;
       if (key.upArrow || input === 'k') {
         setLineageCursor((c) => Math.max(0, c - 1));
         return;
@@ -881,30 +1118,28 @@ export function GenerateReviewStep({
         if (target && (target.entry.kind === 'ancestor' || target.entry.kind === 'descendant')) {
           jumpCursorToName(target.entry.jumpTarget);
         }
-        setLineagePanelOpen(false);
+        lineagePanel.close();
         return;
       }
       return;
     }
     // Pilot-2026-06-24: removed-detail panel. When open, only `d` (toggle)
     // and Esc (close) respond — all other input is swallowed so j/k/Enter/
-    // Ctrl+S can't move state behind the modal. Mirrors the `?` overlay
-    // pattern from 8f0c62e in FieldEditor.
-    if (showRemovedPanel) {
-      if (input === 'd' || key.escape) {
-        // T3 — any manual close latches the "don't auto-open again" flag so
-        // subsequent preview refreshes don't re-pop the panel.
-        manuallyClosedRemovedRef.current = true;
-        setShowRemovedPanel(false);
-      }
+    // Ctrl+S can't move state behind the modal. Close-side delegated to the
+    // shared `useOverlayPanel` hook (T10); the hook's `onClose` callback
+    // latches `manuallyClosedRemovedRef` so subsequent preview refreshes don't
+    // re-pop the panel.
+    if (removedPanel.isOpen) {
+      removedPanel.handleInput(input, key);
       return;
     }
     // INTEG-4401: slot-cycle detail panel. Same modal-swallow rules as
-    // showRemovedPanel; q/Esc close, ↑↓ scroll.
-    if (showCyclePanel) {
-      if (input === 'c' || input === 'q' || key.escape) {
-        setShowCyclePanel(false);
-        setCyclePanelScroll(0);
+    // removed panel; `[c]` / `[Esc]` close (via shared hook), `[q]` also closes
+    // (legacy), ↑↓ scroll.
+    if (cyclePanel.isOpen) {
+      if (cyclePanel.handleInput(input, key)) return;
+      if (input === 'q') {
+        cyclePanel.close();
         return;
       }
       if (key.upArrow || input === 'k') {
@@ -920,7 +1155,7 @@ export function GenerateReviewStep({
     // Open the cycle panel from sidebar-focused state when there is at
     // least one cycle to display.
     if (input === 'c' && sidebarFocused && slotCycles.length > 0) {
-      setShowCyclePanel(true);
+      cyclePanel.open();
       setCyclePanelScroll(0);
       return;
     }
@@ -928,14 +1163,14 @@ export function GenerateReviewStep({
     // least one removed component to display. Sidebar-focused only so it
     // doesn't collide with FieldEditor input.
     if (input === 'd' && sidebarFocused && livePreview && removedComponents.length > 0) {
-      setShowRemovedPanel(true);
+      removedPanel.open();
       return;
     }
     // T6 (parity plan §3) — `[l]` opens the lineage panel when the sidebar
     // has a component under the cursor. Gated to sidebar-focused so it can't
     // collide with FieldEditor input.
     if (input === 'l' && sidebarFocused && focusedComponentKey) {
-      setLineagePanelOpen(true);
+      lineagePanel.open();
       setLineageCursor(0);
       return;
     }
@@ -1013,6 +1248,16 @@ export function GenerateReviewStep({
     // `e` binding (INTEG-4254) when the panel is focused. Crossing back from
     // panel to sidebar is Tab-only.
     if (key.tab) {
+      // T5: intercept panel→sidebar Tab when the FieldEditor is dirty. Open
+      // the warning dialog and remember the deferred action; Enter/Esc from
+      // the dialog will complete it. Only fires when crossing OUT of the
+      // panel — sidebar→panel Tab is not blocked because entering the panel
+      // never risks losing edits.
+      if (!sidebarFocused && editorDirty) {
+        setPendingFocusAway('tab-to-sidebar');
+        setShowUnsavedWarning(true);
+        return;
+      }
       // With an active fuzzy-search query, Tab cycles matches from the
       // sidebar-focused state instead of toggling focus. Preserves scope-gate
       // parity. When no query is active, Tab behaves as before.
@@ -1142,13 +1387,15 @@ export function GenerateReviewStep({
       return;
     }
     if (input === 'u') {
-      // Task #37 / T2 (parity plan §3) — single-shot undo of the mount-time
-      // auto-reject. Restores the pre-mount review-status of every component
-      // the effect flipped, then spends the undo. Because auto-reject is now
-      // a strict one-shot per session (T2), `undoSnapshot` is never re-armed
-      // — subsequent `[u]` presses are no-ops for the rest of the session.
-      // T4 (undo/redo history) will supersede this handler with a general
-      // Cmd+Z stack.
+      // T4 (parity plan §3) — `[u]` is a generic undo alias for Cmd+Z. When
+      // the history stack has an undoable entry (which includes the mount
+      // auto-reject snapshot), pop it. Falls through to the legacy task #37
+      // single-shot restore only when the stack isn't seeded yet (defensive
+      // — shouldn't happen in practice).
+      if (historyRef.current?.canUndo()) {
+        handleUndo();
+        return;
+      }
       if (!undoSnapshot) return;
       const snapshot = undoSnapshot;
       let restored: CdfReviewEntry[] = [];
@@ -1160,7 +1407,6 @@ export function GenerateReviewStep({
       });
       setUndoSnapshot(null);
       setAutoRejected([]);
-      // Re-run cycle detection now that the graph may have changed shape.
       recomputeCycles(restored);
       return;
     }
@@ -1215,6 +1461,7 @@ export function GenerateReviewStep({
       setComponents(next);
       setFinalizeError(null);
       recomputeCycles(next);
+      pushHistorySnapshot(next, autoRejected, undoSnapshot, 'accept-cascade');
       return;
     }
     if (input === 'r') {
@@ -1237,11 +1484,16 @@ export function GenerateReviewStep({
       });
       setComponents(next);
       recomputeCycles(next);
+      pushHistorySnapshot(next, autoRejected, undoSnapshot, 'reject-cascade');
       return;
     }
     if (input === 'A') {
-      setComponents((prev) => prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c)));
+      const next = components.map((c) =>
+        c.status === 'needs-review' ? { ...c, status: 'accepted' as ReviewComponentStatus } : c,
+      );
+      setComponents(next);
       setFinalizeError(null);
+      pushHistorySnapshot(next, autoRejected, undoSnapshot, 'bulk-accept');
       return;
     }
     if (input === 'E') {
@@ -1447,7 +1699,32 @@ export function GenerateReviewStep({
         />
       )}
       {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
-      {showRemovedPanel && !dialogOpen && (
+      {showUnsavedWarning && !dialogOpen && (
+        // T5 (parity plan §3): inline warning shown when the operator tries
+        // to leave a dirty FieldEditor via Tab. Enter saves, Esc discards,
+        // Tab cancels (keystrokes handled in the useImmediateInput block).
+        <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
+          <Text bold color="yellow">Unsaved changes</Text>
+          <Text>You have unsaved edits in the current field editor.</Text>
+          <Text> </Text>
+          <Text>{'  [Enter]  Save and continue'}</Text>
+          <Text>{'  [Esc]    Discard changes and continue'}</Text>
+          <Text>{'  [Tab]    Stay in the panel'}</Text>
+        </Box>
+      )}
+      {showReloadDialog && !dialogOpen && (
+        // T4 (parity plan §3): inline confirm dialog for Ctrl+R reload-from-
+        // save. Kept inline (mirrors T5 UnsavedChangesDialog shape) to stay
+        // under the ~15-line threshold that would justify extraction.
+        <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
+          <Text bold color="yellow">Reload from saved state?</Text>
+          <Text>Unsaved in-memory changes will be lost.</Text>
+          <Text> </Text>
+          <Text>{'  [Enter]  Confirm'}</Text>
+          <Text>{'  [Esc]    Cancel'}</Text>
+        </Box>
+      )}
+      {removedPanel.isOpen && !dialogOpen && (
         // T3 — notability polish. Border flipped cyan → red and title made
         // explicit ("will be DELETED from target space") since these
         // components are about to be dropped from the target space.
@@ -1465,7 +1742,7 @@ export function GenerateReviewStep({
           <Text dimColor>press d or Esc to close</Text>
         </Box>
       )}
-      {showCyclePanel &&
+      {cyclePanel.isOpen &&
         !dialogOpen &&
         (() => {
           // Materialize the full panel body as a flat list of Text lines,
@@ -1534,7 +1811,7 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {lineagePanelOpen && !dialogOpen && focusedComponentKey && (
+      {lineagePanel.isOpen && !dialogOpen && focusedComponentKey && (
         <LineagePanel
           focusedComponentKey={focusedComponentKey}
           entries={lineageEntries}
@@ -1613,7 +1890,7 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {!dialogOpen && slotCycles.length > 0 && !showCyclePanel && (
+      {!dialogOpen && slotCycles.length > 0 && !cyclePanel.isOpen && (
         <Box flexDirection="column">
           <Text color="yellow">
             {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
@@ -1833,6 +2110,8 @@ export function GenerateReviewStep({
                     onTextEntryActiveChange={setTextEntryActive}
                     projectSlotGraph={projectSlotGraph}
                     currentComponentName={selected.key}
+                    onDirtyChange={setEditorDirty}
+                    discardTrigger={discardTrigger}
                   />
                 )}
                 {saveError && <Text color="red">{'✗ ' + saveError}</Text>}
@@ -1848,6 +2127,7 @@ export function GenerateReviewStep({
                       '  [L] flat' +
                       '  [/] search' +
                       (undoSnapshot ? '  [u] undo' : '') +
+                      '  [Cmd+Z] undo  [Cmd+Y] redo  [Ctrl+R] reload' +
                       '  [q] quit'
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
