@@ -41,7 +41,10 @@ import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotat
 import { useLivePreview } from '../useLivePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
-import { computeDirectNeighborhood } from '../../../analyze/search-neighborhood.js';
+import {
+  computeDirectNeighborhood,
+  findAllAncestors as findAllAncestorsInclusive,
+} from '../../../analyze/search-neighborhood.js';
 import { computeSidebarWidth } from '../sidebar-width.js';
 import { computeAcceptCascade, computeRejectCascade } from '../../../analyze/selection-cascade.js';
 import { findAllAncestors } from '../../../analyze/lineage.js';
@@ -225,6 +228,11 @@ export function GenerateReviewStep({
   // sidebar-with-active-query clears.
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // T5b (layout plan §B) — jump-and-filter target. Mirrors ScopeGateStep T5:
+  // independent of `searchQuery`; OR-merged into `filterVisibleKeys` with
+  // jump-target winning priority. Esc clears this before clearing the
+  // search-query.
+  const [jumpFilterTarget, setJumpFilterTarget] = useState<string | null>(null);
   // T6 (parity plan §3) — lineage panel state. Sidebar-only overlay showing
   // ancestors + descendants of the focused component. Same shape as
   // ScopeGateStep; derivation happens via the shared `useLineage` hook so
@@ -710,13 +718,19 @@ export function GenerateReviewStep({
     [components, directIssues],
   );
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
+    // T5b: jump-filter takes priority over the T4 search-neighborhood filter.
+    // When active, the sidebar shows only the target + its transitive
+    // ancestors — search-neighborhood is set aside until Esc clears the jump.
+    if (jumpFilterTarget) {
+      return findAllAncestorsInclusive(jumpFilterTarget, sidebarGraph);
+    }
     if (!searchQuery) return undefined;
     const matches = groupedItemsMemo
       .map((it) => it.key)
       .filter((k) => fuzzyMatches(searchQuery, k));
     if (matches.length === 0) return undefined;
     return computeDirectNeighborhood(matches, sidebarGraph);
-  }, [searchQuery, groupedItemsMemo, sidebarGraph]);
+  }, [jumpFilterTarget, searchQuery, groupedItemsMemo, sidebarGraph]);
 
   const visibleRowsMemo = useMemo<VisibleRow[]>(
     () =>
@@ -1154,6 +1168,22 @@ export function GenerateReviewStep({
       setLineageCursor(0);
       return;
     }
+    // T5b (layout plan §B) — jump-and-filter to focused component + all
+    // transitive ancestors. Sidebar-focused only. Mirrors ScopeGateStep T5.
+    // Guard against Ctrl-I aliasing: Tab is Ctrl+I (\x09), which
+    // `parseInput` surfaces as `input='i'` with `key.tab=true, key.ctrl=true`.
+    if (
+      input === 'i' &&
+      sidebarFocused &&
+      !key.tab &&
+      !key.ctrl &&
+      !key.meta &&
+      focusedComponentKey
+    ) {
+      const t = focusedComponentKey;
+      setJumpFilterTarget((prev) => (prev === t ? null : t));
+      return;
+    }
 
     // Lifted rationale + source panels: i/I/s fire from anywhere (sidebar OR
     // panel focus). Gated against text-entry surfaces inside FieldEditor
@@ -1175,7 +1205,7 @@ export function GenerateReviewStep({
       // Guard against Ctrl-letter aliases (Tab is Ctrl+I in ASCII, Ctrl+S would
       // collide with save in nested editors). Only react to bare keystrokes.
       const togglable = !key.ctrl && !key.tab && !key.meta && !key.return;
-      if (togglable && input === 'i' && panelOpen === 'prop-rationale') {
+      if (togglable && input === 'p' && panelOpen === 'prop-rationale') {
         setPanelOpen('none');
         setPanelScrollOffset(() => 0);
         return;
@@ -1191,7 +1221,7 @@ export function GenerateReviewStep({
         return;
       }
       // Cross-panel toggles while one is open.
-      if (togglable && input === 'i') {
+      if (togglable && input === 'p') {
         setPanelOpen('prop-rationale');
         setPanelScrollOffset(() => 0);
         return;
@@ -1210,7 +1240,7 @@ export function GenerateReviewStep({
     }
     const rationaleKeyOk = !textEntryActive && !showJson && !key.ctrl && !key.tab && !key.meta && !key.return;
     if (rationaleKeyOk) {
-      if (input === 'i') {
+      if (input === 'p') {
         setPanelOpen('prop-rationale');
         setPanelScrollOffset(() => 0);
         return;
@@ -1328,6 +1358,11 @@ export function GenerateReviewStep({
       }
       if (next === null) next = searchMatches[0] ?? null;
       if (next !== null) jumpCursorToRow(next);
+      return;
+    }
+    // T5b: Esc clears jump-filter first, then search-query (mirrors SG T5).
+    if (key.escape && jumpFilterTarget) {
+      setJumpFilterTarget(null);
       return;
     }
     if (key.escape && searchQuery) {
@@ -2033,6 +2068,7 @@ export function GenerateReviewStep({
                       setPanelOpen('prop-rationale');
                       setPanelScrollOffset(() => 0);
                     }}
+                    propRationaleKey="p"
                     onToggleComponentRationale={() => {
                       setPanelOpen('component-rationale');
                       setPanelScrollOffset(() => 0);
@@ -2057,6 +2093,8 @@ export function GenerateReviewStep({
                       (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       (focusedComponentKey ? '  [l] lineage' : '') +
+                      (focusedComponentKey ? '  [i] focus lineage' : '') +
+                      '  [p] rationale' +
                       '  [L] flat' +
                       '  [/] search' +
                       (undoSnapshot ? '  [u] undo' : '') +
