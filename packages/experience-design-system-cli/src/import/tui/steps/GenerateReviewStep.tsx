@@ -195,22 +195,6 @@ export function GenerateReviewStep({
   // annotation map only carries kind, not the rich summaries we need to list
   // names/ids when the operator asks "which ones?".
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
-  // T3 (parity plan §3) — removed-panel default-open bookkeeping.
-  //   - `autoOpenedRemovedRef` latches on the first auto-open so we don't
-  //     re-open every time a preview refresh reports a removed set.
-  //   - `manuallyClosedRemovedRef` latches on any operator close (via [d] or Esc)
-  //     and permanently disables auto-open for this session. Reset only on
-  //     unmount/remount (i.e., a fresh session). Persisted via the
-  //     `useOverlayPanel({ onClose })` seam extracted in T10 — the hook owns
-  //     the isOpen boolean; the manual-close latch is orthogonal.
-  const autoOpenedRemovedRef = useRef(false);
-  const manuallyClosedRemovedRef = useRef(false);
-  const removedPanel = useOverlayPanel({
-    toggleKey: 'd',
-    onClose: () => {
-      manuallyClosedRemovedRef.current = true;
-    },
-  });
   // Lifted rationale + source panels (replaces FieldEditor's right pane).
   // Mutually exclusive states.
   const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>('none');
@@ -307,19 +291,6 @@ export function GenerateReviewStep({
     );
     const nextRemoved = response.components.removed ?? [];
     setRemovedComponents(nextRemoved);
-    // T3 — auto-open the panel the first time we see a non-empty removed
-    // set, so operators can't miss impending deletions. Guarded by the
-    // manual-close latch so an operator who closes it doesn't get it
-    // popped back open on every debounced preview refresh.
-    if (
-      livePreview &&
-      nextRemoved.length > 0 &&
-      !autoOpenedRemovedRef.current &&
-      !manuallyClosedRemovedRef.current
-    ) {
-      autoOpenedRemovedRef.current = true;
-      removedPanel.open();
-    }
   };
 
   const livePreviewHook = useLivePreview({
@@ -1123,16 +1094,6 @@ export function GenerateReviewStep({
       }
       return;
     }
-    // Pilot-2026-06-24: removed-detail panel. When open, only `d` (toggle)
-    // and Esc (close) respond — all other input is swallowed so j/k/Enter/
-    // Ctrl+S can't move state behind the modal. Close-side delegated to the
-    // shared `useOverlayPanel` hook (T10); the hook's `onClose` callback
-    // latches `manuallyClosedRemovedRef` so subsequent preview refreshes don't
-    // re-pop the panel.
-    if (removedPanel.isOpen) {
-      removedPanel.handleInput(input, key);
-      return;
-    }
     // INTEG-4401: slot-cycle detail panel. Same modal-swallow rules as
     // removed panel; `[c]` / `[Esc]` close (via shared hook), `[q]` also closes
     // (legacy), ↑↓ scroll.
@@ -1157,13 +1118,6 @@ export function GenerateReviewStep({
     if (input === 'c' && sidebarFocused && slotCycles.length > 0) {
       cyclePanel.open();
       setCyclePanelScroll(0);
-      return;
-    }
-    // `d` opens the panel only when live-preview is enabled and there is at
-    // least one removed component to display. Sidebar-focused only so it
-    // doesn't collide with FieldEditor input.
-    if (input === 'd' && sidebarFocused && livePreview && removedComponents.length > 0) {
-      removedPanel.open();
       return;
     }
     // T6 (parity plan §3) — `[l]` opens the lineage panel when the sidebar
@@ -1724,10 +1678,11 @@ export function GenerateReviewStep({
           <Text>{'  [Esc]    Cancel'}</Text>
         </Box>
       )}
-      {removedPanel.isOpen && !dialogOpen && (
-        // T3 — notability polish. Border flipped cyan → red and title made
-        // explicit ("will be DELETED from target space") since these
-        // components are about to be dropped from the target space.
+      {removedComponents.length > 0 && !dialogOpen && (
+        // T1 (layout plan §A) — permanent top strip. Renders unconditionally
+        // above the auto-reject banner + cycle strips whenever the live
+        // preview reports at least one removed component. When empty, this
+        // block renders NOTHING (no placeholder, no push-down of layout).
         <Box flexDirection="column" borderStyle="round" borderColor="red" paddingX={1}>
           <Text bold color="red">
             {`Removed components (${removedComponents.length}) — will be `}
@@ -1738,8 +1693,6 @@ export function GenerateReviewStep({
           {removedComponents.map((rc) => (
             <Text key={rc.id}>{`- ${rc.name}${rc.id ? `  (${rc.id})` : ''}`}</Text>
           ))}
-          <Text> </Text>
-          <Text dimColor>press d or Esc to close</Text>
         </Box>
       )}
       {cyclePanel.isOpen &&
@@ -1848,7 +1801,6 @@ export function GenerateReviewStep({
               <Text color="yellow">{`${counts.changed} changed`}</Text>
               <Text>{' · '}</Text>
               <Text dimColor>{`${counts.removed} removed`}</Text>
-              {removedComponents.length > 0 && <Text dimColor>{' ([d] removed list)'}</Text>}
               <Text>{' · '}</Text>
               <Text color="red" bold>
                 {`${counts.breaking} breaking`}
@@ -2121,7 +2073,6 @@ export function GenerateReviewStep({
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel' +
                       (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '') +
-                      (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       (focusedComponentKey ? '  [l] lineage' : '') +
                       '  [L] flat' +
