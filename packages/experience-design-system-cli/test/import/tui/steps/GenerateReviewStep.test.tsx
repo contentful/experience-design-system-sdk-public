@@ -1683,6 +1683,79 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
   });
 });
 
+describe('GenerateReviewStep — [E] expand-all (T1: cycle-tier parity)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const leaf = (name: string): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+  });
+  const withSlot = (name: string, allowed: string[]): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+    $slots: {
+      children: {
+        $type: 'slot',
+        $allowedComponents: allowed,
+      },
+    } as never,
+  });
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  it('[E] expands cycle-tier rows in addition to composite group roots', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // Two tiers: a P↔C cycle pair plus a Card→Body composite group. After [C]
+    // collapses everything, [E] must re-expand BOTH the Card group root AND
+    // the P cycle-tier row (parity bug — pre-fix [E] only touched composite
+    // group closures, leaving cycle rows collapsed).
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Card', entry: withSlot('Card', ['Body']) },
+      { key: 'Body', entry: leaf('Body') },
+      { key: 'P', entry: withSlot('P', ['C']) },
+      { key: 'C', entry: withSlot('C', ['P']) },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['P', 'C', 'P'],
+        edges: [
+          { fromComponent: 'P', slotName: 'children', toComponent: 'C' },
+          { fromComponent: 'C', slotName: 'children', toComponent: 'P' },
+        ],
+        suggestedBreak: null,
+      },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+
+    // Mount auto-reject fires for the cycle. Undo it so cycle members are
+    // back at needs-review — makes the test independent of reject/cascade
+    // side effects on visibility.
+    stdin.write('u');
+    await tick();
+
+    // Collapse everything to establish a clean baseline. Cycle-tier rows read
+    // `expandedGroups.has(cycleRoot)` — [C] clears the set → all collapsed.
+    stdin.write('C');
+    await tick();
+    let frame = lastFrame() ?? '';
+    expect(frame).toMatch(/▸ Card/);
+    expect(frame).toMatch(/▸ ⚠ P/);
+
+    // [E] expand-all must expand BOTH the Card group AND the P cycle row.
+    stdin.write('E');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).toMatch(/▾ ⚠ P/);
+  });
+});
+
 describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
   type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
   const makeEntry = (label: string): Entry => ({

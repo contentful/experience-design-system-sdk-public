@@ -1090,10 +1090,14 @@ export function GenerateReviewStep({
     if (input === 'E') {
       // Expand every group root — the set of "every group root" is any
       // closure whose node count is >1 (i.e., roots with ≥1 descendant).
+      // T1 parity fix: cycle-tier rows also read `expandedGroups.has(root)`
+      // (see GroupedSidebar cycle-tier render), so union every structural
+      // cycle participant in so [E] expand-all covers both tiers.
       const roots = new Set<string>();
       for (const [name, closure] of closures.entries()) {
         if (closure.nodes.length > 1) roots.add(name);
       }
+      for (const name of cycleView.structural) roots.add(name);
       setExpandedGroups(roots);
       return;
     }
