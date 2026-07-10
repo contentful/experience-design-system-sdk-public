@@ -661,12 +661,13 @@ describe('GenerateReviewStep — diff summary panel (R2)', () => {
   });
 });
 
-// ── T1 (layout plan §A): removed components as permanent top strip ──────────
-// The removed panel is no longer a modal toggled by `[d]` / `[Esc]`. It's a
-// red-bordered strip rendered unconditionally above every other GR banner
-// whenever `removedComponents.length > 0`. When empty, it renders NOTHING
-// (no placeholder, no push-down of layout). `[d]` is no longer bound.
-describe('GenerateReviewStep — removed-components top strip (T1)', () => {
+// ── Pilot-2026-06-24: removed-detail panel ('d' key) ────────────────────────
+// API reports N removed components but operators previously had no way to
+// see WHICH ones. The fix adds a `(d for details)` hint to the summary line
+// when removed > 0 and a modal-ish panel toggled by `d` listing each removed
+// component. The legend gains `d removed` and the FieldEditor `?` overlay
+// lists `d` alongside `s` and `?`.
+describe('GenerateReviewStep — removed-detail panel (d key)', () => {
   beforeEach(() => {
     triggerSpy.mockReset();
     lastUseLivePreviewArgs = null;
@@ -691,7 +692,7 @@ describe('GenerateReviewStep — removed-components top strip (T1)', () => {
       tokens: { new: [], changed: [], removed: [], unchanged: [] },
     }) as never;
 
-  it('renders NOTHING when removedComponents is empty (no push-down)', async () => {
+  it('summary omits "(d for details)" when removed.length === 0', async () => {
     const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
@@ -702,48 +703,211 @@ describe('GenerateReviewStep — removed-components top strip (T1)', () => {
     } as never);
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).not.toMatch(/Removed components/);
+    expect(frame).not.toMatch(/\(\[d\] removed list\)/);
+    expect(frame).not.toMatch(/d for details/);
   });
 
-  it('renders the strip permanently (no keystroke needed) when removed > 0', async () => {
+  it('summary includes "([d] removed list)" when removed.length > 0', async () => {
     const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    lastOnResult!(previewWithRemoved(['Widget']));
+    lastOnResult!(previewWithRemoved(['Gone1', 'Gone2']));
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('Removed components (1)');
-    expect(frame).toContain('DELETE');
-    expect(frame).toMatch(/Widget/);
+    expect(frame).toContain('([d] removed list)');
+    expect(frame).not.toContain('(d for details)');
+    expect(frame).toMatch(/2 removed/);
   });
 
-  it('[d] no longer toggles anything (removed panel wiring is gone)', async () => {
+  it('panel auto-opens on preview response and lists removed component names', async () => {
+    // T3: with auto-open behavior, the panel opens as soon as the preview
+    // reports a non-empty removed set — no `d` press needed.
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['GoneAlpha', 'GoneBeta']));
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Removed components/);
+    expect(frame).toMatch(/GoneAlpha/);
+    expect(frame).toMatch(/GoneBeta/);
+  });
+
+  it('pressing d toggles the auto-opened panel closed', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    // Empty removed set, so strip should be absent.
-    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+    lastOnResult!(previewWithRemoved(['GoneAlpha']));
+    await tick();
+    // Auto-opened.
+    expect(lastFrame() ?? '').toMatch(/Removed components/);
     stdin.write('d');
     await tick();
-    // Still absent — `d` no longer opens the panel.
     expect(lastFrame() ?? '').not.toMatch(/Removed components/);
   });
 
-  it('legend no longer advertises [d]', async () => {
+  it('pressing Esc closes the auto-opened panel', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['GoneAlpha']));
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Removed components/);
+    stdin.write('\x1b');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+  });
+
+  it('when panel is open, j/k do not affect editor state', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const KEYS = ['Aaa', 'Bbb', 'Ccc'];
+    const POPULATED = {
+      $type: 'component' as const,
+      $properties: { foo: { $type: 'string' as const, $category: 'content' as const } },
+    };
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: POPULATED })));
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // T3: panel auto-opens on preview response — no explicit `d` press
+    // needed. j/k should be inert while it is open.
+    lastOnResult!(previewWithRemoved(['ZZZ']));
+    await tick();
+    // Panel open — j should be inert.
+    stdin.write('j');
+    stdin.write('j');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Selection still on Aaa (top of list).
+    const titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleLine).toContain('Aaa');
+  });
+
+  it('legend includes "[d] removed list" when removed > 0', async () => {
     const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    lastOnResult!(previewWithRemoved(['Widget']));
+    lastOnResult!(previewWithRemoved(['GoneAlpha']));
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).not.toContain('[d] removed list');
+    expect(frame).toContain('[d] removed list');
+  });
+
+  it('renders no "([d] removed list)" hint when livePreview=false', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
     expect(frame).not.toContain('([d] removed list)');
+    expect(frame).not.toMatch(/d for details/);
+  });
+
+  it('d key is inert when livePreview=false', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('d');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+  });
+});
+
+// ── T3 (parity plan §3): removed panel default-open + notability polish ──────
+// Behavior:
+//   - When a live-preview response transitions removedComponents from empty
+//     → non-empty, auto-open the panel (once per session).
+//   - If the operator manually closes (via [d] toggle OR Esc), remember the
+//     decision and DO NOT re-open on subsequent preview refreshes.
+//   - Notability polish: border is red, title includes the word DELETE.
+describe('GenerateReviewStep — removed panel default-open (T3)', () => {
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastUseLivePreviewArgs = null;
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  const previewWithRemoved = (names: string[]) =>
+    ({
+      components: {
+        new: [],
+        changed: [],
+        removed: names.map((n, i) => ({
+          id: `r${i}`,
+          name: n,
+          contentProperties: [],
+          designProperties: [],
+          slots: [],
+        })) as never,
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    }) as never;
+
+  it('auto-opens on first non-empty removed set', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // Panel is CLOSED before any preview response.
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+    // Fire a preview response with a removed component — panel should
+    // auto-open.
+    lastOnResult!(previewWithRemoved(['AutoGone']));
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Removed components/);
+    expect(frame).toMatch(/AutoGone/);
+  });
+
+  it('does NOT re-open after operator closes via [d]', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['Gone1']));
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Removed components/);
+    // Manual close via [d].
+    stdin.write('d');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+    // Another preview response — panel stays CLOSED.
+    lastOnResult!(previewWithRemoved(['Gone1', 'Gone2']));
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+  });
+
+  it('does NOT re-open after operator closes via Esc', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['Gone1']));
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Removed components/);
+    // Manual close via Esc.
+    stdin.write('\x1b');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+    // Another preview response — panel stays CLOSED.
+    lastOnResult!(previewWithRemoved(['Gone1', 'Gone2']));
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
   });
 
   it('title includes the word DELETE for notability', async () => {
+    // ink-testing-library strips ANSI, so we can't directly assert
+    // borderColor="red" from the frame. The visible label carries the
+    // load-bearing signal — assert on the title text.
     const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
@@ -755,10 +919,6 @@ describe('GenerateReviewStep — removed-components top strip (T1)', () => {
     expect(frame).toContain('DELETE');
   });
 });
-
-// Legacy T3-era describe blocks removed as part of T1 (top-strip conversion).
-// Removed 13 tests exercising [d] toggle, Esc close, auto-open latching, and
-// legend/summary "[d] removed list" hints. Replaced by the 5 T1 tests above.
 
 // ── Bug pilot-2026-06-23: rapid j/k stutter / cursor loss ────────────────────
 // Holding `j` or `k` rapidly used to leave the cursor on a stale row because
@@ -3255,114 +3415,5 @@ describe('GenerateReviewStep — undo/redo + reload-from-save (T4)', () => {
     expect(frame).toContain('[Cmd+Z] undo');
     expect(frame).toContain('[Cmd+Y] redo');
     expect(frame).toContain('[Ctrl+R] reload');
-  });
-});
-
-// ── T2 (layout plan §A): cycle banner + search input move BELOW sidebar ─────
-// Layout order top→bottom:
-//   removed strip · auto-reject banner · sidebar+detail · cycle banner
-//   · search input · legend.
-// Auto-reject banner stays HIGH; cycle banner + search input drop to bottom.
-describe('GenerateReviewStep — bottom-of-step banners (T2)', () => {
-  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
-  const CYCLE_A: Entry = {
-    $type: 'component',
-    $properties: {},
-    $slots: { header: { $allowedComponents: ['CycleB'] } } as never,
-  };
-  const CYCLE_B: Entry = {
-    $type: 'component',
-    $properties: {},
-    $slots: { footer: { $allowedComponents: ['CycleA'] } } as never,
-  };
-
-  beforeEach(() => {
-    triggerSpy.mockReset();
-    lastOnResult = null;
-    hookReturnOverride = null;
-  });
-
-  it('cycle banner renders BELOW the sidebar+detail row', async () => {
-    const dbMod = await import('../../../../src/session/db.js');
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'CycleA', entry: CYCLE_A },
-      { key: 'CycleB', entry: CYCLE_B },
-    ]);
-    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
-      {
-        path: ['CycleA', 'CycleB', 'CycleA'],
-        edges: [
-          { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
-          { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
-        ],
-        suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
-      },
-    ]);
-    // Undo the mount auto-reject so the sidebar detail panel renders (an
-    // all-rejected accepted set is fine but we still need FIELDS marker to
-    // pin the sidebar+detail row).
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
-    );
-    await tick();
-    stdin.write('u'); // undo mount auto-reject so FIELDS marker present
-    await tick();
-    const frame = lastFrame() ?? '';
-    const fieldsIdx = frame.indexOf('FIELDS');
-    const cycleIdx = frame.search(/slot dependency cycle/);
-    expect(fieldsIdx).toBeGreaterThanOrEqual(0);
-    expect(cycleIdx).toBeGreaterThanOrEqual(0);
-    expect(cycleIdx).toBeGreaterThan(fieldsIdx);
-  });
-
-  it('search input renders BELOW the sidebar+detail row', async () => {
-    const dbMod = await import('../../../../src/session/db.js');
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'Alpha', entry: { $type: 'component', $properties: { a: { $type: 'string', $category: 'content' } } } as Entry },
-      { key: 'Beta', entry: { $type: 'component', $properties: { b: { $type: 'string', $category: 'content' } } } as Entry },
-    ]);
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
-    );
-    await tick();
-    stdin.write('/');
-    await tick();
-    stdin.write('a');
-    await tick();
-    const frame = lastFrame() ?? '';
-    const fieldsIdx = frame.indexOf('FIELDS');
-    // Search input marker: match-count text pinned to the input line.
-    const searchIdx = frame.search(/\/a[^\n]*matches/);
-    expect(fieldsIdx).toBeGreaterThanOrEqual(0);
-    expect(searchIdx).toBeGreaterThanOrEqual(0);
-    expect(searchIdx).toBeGreaterThan(fieldsIdx);
-  });
-
-  it('auto-reject banner stays ABOVE the sidebar+detail row', async () => {
-    const dbMod = await import('../../../../src/session/db.js');
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'CycleA', entry: CYCLE_A },
-      { key: 'CycleB', entry: CYCLE_B },
-    ]);
-    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
-      {
-        path: ['CycleA', 'CycleB', 'CycleA'],
-        edges: [
-          { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
-          { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
-        ],
-        suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
-      },
-    ]);
-    const { lastFrame } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
-    );
-    await tick();
-    const frame = lastFrame() ?? '';
-    const autoRejIdx = frame.search(/Cyclic manifest — auto-rejected/);
-    const fieldsIdx = frame.indexOf('FIELDS');
-    expect(autoRejIdx).toBeGreaterThanOrEqual(0);
-    expect(fieldsIdx).toBeGreaterThanOrEqual(0);
-    expect(autoRejIdx).toBeLessThan(fieldsIdx);
   });
 });
