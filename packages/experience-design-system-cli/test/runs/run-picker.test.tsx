@@ -34,25 +34,24 @@ function makeHandlers() {
 }
 
 describe('RunPicker', () => {
-  it('renders all runs when there are 1-4 (no Show all button)', async () => {
-    const runs = [makeRun('AAA'), makeRun('BBB'), makeRun('CCC'), makeRun('DDD')];
+  it('renders all runs when there are 1-11 (no Show all button)', async () => {
+    const ids = ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF', 'GGG', 'HHH', 'III', 'JJJ', 'KKK'];
+    const runs = ids.map(makeRun);
     const handlers = makeHandlers();
     const { lastFrame } = render(<RunPicker runs={runs} {...handlers} />);
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('AAA') && f.includes('DDD'),
+      (f) => f.includes('AAA') && f.includes('KKK'),
       3000,
     );
-    expect(frame).toContain('AAA');
-    expect(frame).toContain('BBB');
-    expect(frame).toContain('CCC');
-    expect(frame).toContain('DDD');
+    for (const id of ids) expect(frame).toContain(id);
     expect(frame).not.toContain('Show all');
     expect(frame).toContain('Start a new run');
   });
 
-  it('renders top 3 + Show all when there are 5+', async () => {
-    const runs = [makeRun('AAA'), makeRun('BBB'), makeRun('CCC'), makeRun('DDD'), makeRun('EEE')];
+  it('renders top 10 + Show all when there are 12+', async () => {
+    const ids = ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF', 'GGG', 'HHH', 'III', 'JJJ', 'KKK', 'LLL'];
+    const runs = ids.map(makeRun);
     const handlers = makeHandlers();
     const { lastFrame } = render(<RunPicker runs={runs} {...handlers} />);
     const frame = await waitForFrame(
@@ -60,16 +59,17 @@ describe('RunPicker', () => {
       (f) => f.includes('AAA') && f.includes('Show all'),
       3000,
     );
-    expect(frame).toContain('AAA');
-    expect(frame).toContain('BBB');
-    expect(frame).toContain('CCC');
-    expect(frame).not.toContain('DDD');
-    expect(frame).not.toContain('EEE');
-    expect(frame).toContain('Show all (5)');
+    // First 10 visible.
+    for (const id of ids.slice(0, 10)) expect(frame).toContain(id);
+    // Overflow entries hidden.
+    expect(frame).not.toContain('KKK');
+    expect(frame).not.toContain('LLL');
+    expect(frame).toContain('Show all (12)');
   });
 
   it('expands to show all entries after pressing Enter on Show all', async () => {
-    const runs = [makeRun('AAA'), makeRun('BBB'), makeRun('CCC'), makeRun('DDD'), makeRun('EEE')];
+    const ids = ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF', 'GGG', 'HHH', 'III', 'JJJ', 'KKK', 'LLL'];
+    const runs = ids.map(makeRun);
     const handlers = makeHandlers();
     const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
     await waitForFrame(
@@ -77,20 +77,15 @@ describe('RunPicker', () => {
       (f) => f.includes('Show all'),
       3000,
     );
-    // Navigate down to the Show all row (after 3 runs) then press Enter.
-    // Default cursor is at index 0; press j 3 times to reach index 3 (Show all).
-    stdin.write('j');
-    stdin.write('j');
-    stdin.write('j');
+    // Cursor starts at index 0; press j 10 times to reach index 10 (Show all row).
+    for (let i = 0; i < 10; i++) stdin.write('j');
     stdin.write('\r');
     const expanded = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('DDD') && f.includes('EEE'),
+      (f) => f.includes('KKK') && f.includes('LLL'),
       3000,
     );
-    expect(expanded).toContain('AAA');
-    expect(expanded).toContain('DDD');
-    expect(expanded).toContain('EEE');
+    for (const id of ids) expect(expanded).toContain(id);
     expect(expanded).not.toContain('Show all');
   });
 
