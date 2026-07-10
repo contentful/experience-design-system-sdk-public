@@ -11,6 +11,7 @@ import {
   type VisibleRow,
 } from '../../../analyze/select/tui/components/GroupedSidebar.js';
 import { computeAllClosures, type ComponentGraphNode, type NodeStatus } from '../../../analyze/composite-closure.js';
+import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { computeRenderStatuses, pickDrillTarget, type RenderStatus } from '../../../analyze/issue-inheritance.js';
 import { JsonPanel } from '../../../analyze/select/tui/components/JsonPanel.js';
 import { FieldEditor } from '../../../analyze/select/tui/components/FieldEditor.js';
@@ -368,17 +369,16 @@ export function GenerateReviewStep({
    */
   const recomputeCycles = (currentComponents: CdfReviewEntry[]): void => {
     try {
-      const graph = currentComponents
-        .filter((c) => c.status !== 'rejected')
-        .map((c) => ({
-          name: c.key,
-          slots: Object.entries(c.entry.$slots ?? {}).map(([slotName, slotDef]) => ({
-            name: slotName,
-            allowedComponents: Array.isArray(slotDef?.$allowedComponents)
-              ? (slotDef.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
-              : [],
-          })),
-        }));
+      // Push-safety graph: rejected components are dropped ENTIRELY (not just
+      // their edges) — they will never ship, so they cannot contribute to a
+      // real push-time cycle even if their slot config still references other
+      // components locally. This is the "filtered" arm of the ADR-0010 §C.1
+      // two-graph split. Using `stripRejectedEdges: true` here would leave
+      // rejected rows in the graph as empty-slot nodes and change
+      // `findSlotCycles` behavior; preserve today's drop-the-rows semantics.
+      const graph = buildComponentGraph(
+        currentComponents.filter((c) => c.status !== 'rejected'),
+      );
       const rawCycles = findSlotCycles(graph);
       const next: StoredSlotCycle[] = rawCycles.map((cycle) => ({
         path: cycle.path,
@@ -410,17 +410,26 @@ export function GenerateReviewStep({
   // transition. Derives the closure set from the in-memory `components`
   // state's `$slots` shape so edits + rejections propagate on the next
   // render tick without a DB round-trip.
+  // ADR-0010 §C.1 two-graph split — this is the UNFILTERED arm. Every
+  // component contributes its slot edges regardless of `status`. Consumers:
+  // `computeAllClosures`, `cycleParticipantsMemo` (unfiltered
+  // `findSlotCycles`), `computeAcceptCascade` / `computeRejectCascade`, and
+  // task #37 `computeCycleAutoRejectTargets`. The sidebar's tier layout does
+  // NOT read this graph — it reads `sidebarGraph` below (rejected rows
+  // contribute no edges there) so rejected ancestors don't drag their former
+  // targets under them.
   const componentGraph = useMemo<ComponentGraphNode[]>(
-    () =>
-      components.map((c) => ({
-        name: c.key,
-        slots: Object.entries(c.entry.$slots ?? {}).map(([slotName, slotDef]) => ({
-          name: slotName,
-          allowedComponents: Array.isArray(slotDef?.$allowedComponents)
-            ? (slotDef.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
-            : [],
-        })),
-      })),
+    () => buildComponentGraph(components),
+    [components],
+  );
+  // Sidebar-layout arm: rejected components contribute no outgoing edges,
+  // matching the post-task-#7 `itemsToGraph` behavior. Passed into
+  // `GroupedSidebar.graph` so `buildVisibleRows` uses this canonical graph
+  // instead of the fallback `itemsToGraph(items)`. Rejected rows still
+  // appear as rows (they map to `{ name, slots: [] }`), but their former
+  // slot targets are promoted back to standalones.
+  const sidebarGraph = useMemo<ComponentGraphNode[]>(
+    () => buildComponentGraph(components, { stripRejectedEdges: true }),
     [components],
   );
   const closures = useMemo(() => computeAllClosures(componentGraph), [componentGraph]);
@@ -530,8 +539,9 @@ export function GenerateReviewStep({
         items: groupedItemsMemo,
         cycleParticipants: cycleParticipantsMemo,
         expandedGroups,
+        graph: sidebarGraph,
       }),
-    [groupedItemsMemo, cycleParticipantsMemo, expandedGroups],
+    [groupedItemsMemo, cycleParticipantsMemo, expandedGroups, sidebarGraph],
   );
   // Row positions that map to a real component (skip synthetic flat-header
   // rows). j/k navigation walks these in order, so duplicate occurrences of
@@ -1525,6 +1535,7 @@ export function GenerateReviewStep({
             visibleCount={VISIBLE_COUNT}
             dimPredicate={dimPredicate}
             visibleRows={visibleRowsMemo}
+            graph={sidebarGraph}
           />
           <Box flexGrow={1} paddingLeft={1} flexDirection="column">
             {selected ? (

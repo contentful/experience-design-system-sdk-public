@@ -127,6 +127,17 @@ export interface GroupedSidebarProps {
    * to computing rows from `items` / `cycleParticipants` / etc.
    */
   visibleRows?: VisibleRow[];
+  /**
+   * Optional prebuilt component graph (edges from every row's slot
+   * `$allowedComponents`). When provided, `buildVisibleRows` uses this graph
+   * for `computeAllClosures` in place of its internal `itemsToGraph`
+   * fallback — see ADR-0010 Part 3 and consolidation plan §4.3. Callers pass
+   * this from `analyze/slot-graph.buildComponentGraph` so tier layout,
+   * cycle-child injection, and closure walking read from one canonical
+   * source instead of an independent re-derivation of the same edges. When
+   * absent, `buildVisibleRows` falls back to `itemsToGraph(items)`.
+   */
+  graph?: ComponentGraphNode[];
 }
 
 const GLYPH_EXPAND_COLLAPSED = '▸';
@@ -231,8 +242,15 @@ export function buildVisibleRows(props: {
   alwaysExpanded?: boolean;
   showFlatTier?: boolean;
   viewMode?: 'grouped' | 'large-list';
+  /**
+   * Optional prebuilt component graph (see ADR-0010 Part 3, plan §4.3).
+   * When provided, this is used for `computeAllClosures` instead of the
+   * internal `itemsToGraph(items)` fallback. Callers threading their
+   * canonical graph in avoid re-deriving the same edges here.
+   */
+  graph?: ComponentGraphNode[];
 }): VisibleRow[] {
-  const { items, cycleParticipants, alwaysExpanded, showFlatTier, viewMode } = props;
+  const { items, cycleParticipants, alwaysExpanded, showFlatTier, viewMode, graph } = props;
 
   if (viewMode === 'large-list') {
     // Cycles-first (alphabetical), then all remaining components alphabetical.
@@ -255,7 +273,15 @@ export function buildVisibleRows(props: {
     // roots with dep counts. Cycle participants never anchor a closure here —
     // they're rendered with the cycle glyph and no suffix.
     const otherItems = items.filter((it) => otherKeys.includes(it.key));
-    const closures = computeAllClosures(itemsToGraph(otherItems));
+    // Prefer the caller-provided canonical graph when present (ADR-0010 Part 3);
+    // fall back to `itemsToGraph(otherItems)` otherwise. Filtering the prebuilt
+    // graph to the "other" subset matches what `itemsToGraph(otherItems)` would
+    // produce — cycle participants stay out of this subgraph either way.
+    const otherKeySet = new Set(otherKeys);
+    const largeListGraph = graph
+      ? graph.filter((n) => otherKeySet.has(n.name))
+      : itemsToGraph(otherItems);
+    const closures = computeAllClosures(largeListGraph);
     const depCountByKey = new Map<string, number>();
     for (const [name, closure] of closures) {
       if (closure.nodes.length > 1) depCountByKey.set(name, closure.nodes.length - 1);
@@ -412,9 +438,15 @@ export function buildVisibleRows(props: {
 
   // Compute closures over the "other" scope only (cycle-participants and empty
   // components live in their own flat tiers and never anchor a group).
+  // Prefer the caller-provided canonical graph (ADR-0010 Part 3, plan §4.3).
+  // When absent, fall back to `itemsToGraph(otherItems)`. Either way, only
+  // the non-cycle/non-empty subgraph feeds the closure walk.
   const otherItems = items.filter((it) => otherKeys.includes(it.key));
-  const graph = itemsToGraph(otherItems);
-  const closures = computeAllClosures(graph);
+  const otherKeySet = new Set(otherKeys);
+  const subgraph = graph
+    ? graph.filter((n) => otherKeySet.has(n.name))
+    : itemsToGraph(otherItems);
+  const closures = computeAllClosures(subgraph);
   const sharedDeps = findSharedDeps(closures);
 
   // Detect cycle-member slot references for every candidate item. A composite
@@ -702,6 +734,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
     aiFlaggedByKey,
     dimPredicate,
     visibleRows: providedRows,
+    graph,
   } = props;
   const allRows =
     providedRows ??
@@ -712,6 +745,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
       alwaysExpanded,
       showFlatTier,
       viewMode,
+      graph,
     });
 
   // Window rows when scrollOffset+visibleCount are provided; otherwise render

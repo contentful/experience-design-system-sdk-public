@@ -12,6 +12,7 @@ import {
   type ComponentGraphNode,
   type NodeStatus,
 } from '../../../analyze/composite-closure.js';
+import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { findSlotCycles, type SlotCycle } from '../../../analyze/cycle-detection.js';
 import {
   buildAncestorTree,
@@ -148,13 +149,15 @@ export function ScopeGateStep({
     [components],
   );
 
+  // ADR-0010 Part 3 / plan §4.4: build the graph via the canonical
+  // `buildComponentGraph` helper. No `stripRejectedEdges` at scope-gate —
+  // "rejected" here means "excluded from generation scope," and a rejected
+  // component's slot references are still meaningful to cycle detection
+  // (that's the whole reason to send them to generate). Cycles are expected
+  // pre-generation, not push-blocking.
   const graph: ComponentGraphNode[] = useMemo(
-    () =>
-      components.map((c) => ({
-        name: c.name,
-        slots: (c.slots ?? []).map((s) => ({ name: s.name, allowedComponents: s.allowedComponents })),
-      })),
-    [components],
+    () => buildComponentGraph(groupedItems),
+    [groupedItems],
   );
 
   const slotCycles = useMemo<SlotCycle[]>(() => {
@@ -202,8 +205,9 @@ export function ScopeGateStep({
         alwaysExpanded: true,
         showFlatTier: false,
         viewMode: columnOneView,
+        graph,
       }),
-    [groupedItems, cycleParticipants, columnOneView],
+    [groupedItems, cycleParticipants, columnOneView, graph],
   );
 
   const total = visibleRows.length;
@@ -590,6 +594,7 @@ export function ScopeGateStep({
         alwaysExpanded: true,
         showFlatTier: false,
         viewMode: nextView,
+        graph,
       });
       let nextCursor = 0;
       if (currentKey) {
@@ -872,6 +877,7 @@ export function ScopeGateStep({
           dimPredicate={dimPredicate}
           visibleRows={visibleRows}
           viewMode={columnOneView}
+          graph={graph}
         />
         {columnPlan.layout === 'three-column' && (
           <>
