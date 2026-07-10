@@ -868,6 +868,14 @@ export function ScopeGateStep({
 
       <CounterStrip counters={counters} totalWidth={totalWidth} />
 
+      {hasCycles && (
+        <Box marginTop={1}>
+          <Text dimColor>
+            If you must have components with cycles, select them together into the generate step and then use the editor to fix them.
+          </Text>
+        </Box>
+      )}
+
       {nothingIncluded && (
         <Box marginTop={1}>
           <Text color="yellow">

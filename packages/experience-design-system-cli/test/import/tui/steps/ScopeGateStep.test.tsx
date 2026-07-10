@@ -638,6 +638,40 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     });
   });
 
+  describe('T6 — cycle guidance banner', () => {
+    const CYCLE_FIXTURE = [
+      {
+        name: 'NodeA',
+        componentId: 'a',
+        slots: [{ name: 'slotA', allowedComponents: ['NodeB'] }],
+      },
+      {
+        name: 'NodeB',
+        componentId: 'b',
+        slots: [{ name: 'slotB', allowedComponents: ['NodeA'] }],
+      },
+    ];
+
+    it('renders guidance banner when at least one cycle exists', () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={CYCLE_FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      expect(lastFrame() ?? '').toContain(
+        'If you must have components with cycles',
+      );
+    });
+
+    it('does not render guidance banner when no cycles exist', () => {
+      const noCycles = [{ name: 'Solo', componentId: 's' }];
+      const { lastFrame } = render(
+        <ScopeGateStep components={noCycles} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      expect(lastFrame() ?? '').not.toContain(
+        'If you must have components with cycles',
+      );
+    });
+  });
+
   describe('cycle-row rejection (INTEG task #31)', () => {
     // 2-cycle: NodeA ↔ NodeB. Both are cycle-tier rows at the top of the
     // sidebar. Rejecting either from its cycle row must work — previously
