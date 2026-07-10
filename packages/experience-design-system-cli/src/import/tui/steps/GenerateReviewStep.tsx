@@ -44,6 +44,7 @@ import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
 import { computeSidebarWidth } from '../sidebar-width.js';
 import { computeAcceptCascade, computeRejectCascade } from '../../../analyze/selection-cascade.js';
 import { findAllAncestors } from '../../../analyze/lineage.js';
+import { computeAutoRejectDecision } from './auto-reject-decision.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -222,11 +223,13 @@ export function GenerateReviewStep({
   // `undoSnapshot === null`, the undo is spent (`[u]` is a no-op).
   const [autoRejected, setAutoRejected] = useState<string[]>([]);
   const [undoSnapshot, setUndoSnapshot] = useState<Map<string, ReviewComponentStatus> | null>(null);
-  // Tracks the last cycle-participant set we auto-rejected against. When a
-  // NEW cycle participant appears (streaming or edit-driven cycle emergence),
-  // the mount-time effect fires again and re-arms undo. Comparing serialised
-  // sorted lists avoids Set-identity churn on renders.
-  const lastAutoRejectSignatureRef = useRef<string>('');
+  // T2 (parity plan §3, 2026-07-10) — auto-reject is a strict one-shot per
+  // session. Once the mount-time effect fires, this ref latches to `true` and
+  // the effect never fires again — regardless of subsequent edits, cycle
+  // emergence, or cycle disappearance. Replaces the earlier signature-based
+  // re-fire guard which allowed edit-driven re-fires. Decision seam lives in
+  // `./auto-reject-decision.ts` so the invariant is pinned by pure-fn tests.
+  const autoRejectFiredRef = useRef<boolean>(false);
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
@@ -466,31 +469,28 @@ export function GenerateReviewStep({
   // keeps them in lockstep whenever the operator edits/rejects.
   const cycleView = useMemo<CycleView>(() => computeCycleView(components), [components]);
 
-  // Task #37 — Aggressive mount-time auto-reject. Whenever the detected
-  // cycle-participant set changes to a NEW non-empty set (i.e., the signature
-  // differs from what we last acted on), snapshot every affected component's
-  // current review status, flip each to `rejected`, and arm the single-shot
-  // `[u]` undo. Fires on load, on streaming updates that introduce new
-  // cycles, and on edits (via recomputeCycles) that re-introduce a cycle
-  // after it was previously broken.
+  // T2 (parity plan §3, 2026-07-10) — mount-time auto-reject is a STRICT
+  // ONE-SHOT per session. Fires exactly once, on the first post-load render
+  // where at least one structural cycle exists. After firing, latches
+  // `autoRejectFiredRef` and never fires again — regardless of edits,
+  // cycle emergence, cycle disappearance, or undo. This is a semantic revert
+  // of task #37's "re-fire on edit-induced new cycle" branch: auto-reject
+  // is meant to be a "welcome to this screen, here are the cycles we found
+  // at load" gesture, not an ongoing enforcer.
   //
-  // Re-entry guard: the signature is the sorted unique cycle-participant
-  // set. If it matches the last-seen signature the effect is a no-op — so
-  // an operator who manually re-toggles after the mount event does NOT
-  // trigger another auto-reject.
+  // The sidebar `(cycle)` badges, push-safety banner, `[F]` gate, and `[c]`
+  // cycle panel all still track live cycles via `cycleView` / `slotCycles`
+  // — that infrastructure is independent of auto-reject.
+  //
+  // The `[u]` undo remains a single-shot restore of the pre-mount snapshot.
   useEffect(() => {
-    if (loading) return;
-    if (cycleView.structural.size === 0) {
-      // Cycle set went to zero — nothing to auto-reject. We deliberately
-      // leave `autoRejected` / `undoSnapshot` alone so a subsequent [u]
-      // still restores state from the last auto-reject event, matching
-      // the "keep undo actionable" contract.
-      lastAutoRejectSignatureRef.current = '';
-      return;
-    }
-    const signature = [...cycleView.structural].sort().join('|');
-    if (signature === lastAutoRejectSignatureRef.current) return;
-    lastAutoRejectSignatureRef.current = signature;
+    const decision = computeAutoRejectDecision({
+      loading,
+      autoRejectFired: autoRejectFiredRef.current,
+      hasCycle: cycleView.structural.size > 0,
+    });
+    if (decision === 'skip') return;
+    autoRejectFiredRef.current = true;
     const targets = computeCycleAutoRejectTargets(slotCycles, componentGraph);
     if (targets.size === 0) return;
     // Compute the snapshot + flipped list from the current `components`
@@ -1028,10 +1028,13 @@ export function GenerateReviewStep({
       return;
     }
     if (input === 'u') {
-      // Task #37 — single-shot undo of the mount-time auto-reject. Restores
-      // the pre-mount review-status of every component the effect flipped,
-      // then spends the undo. Subsequent `[u]` presses are no-ops until a
-      // fresh auto-reject event re-arms undoSnapshot.
+      // Task #37 / T2 (parity plan §3) — single-shot undo of the mount-time
+      // auto-reject. Restores the pre-mount review-status of every component
+      // the effect flipped, then spends the undo. Because auto-reject is now
+      // a strict one-shot per session (T2), `undoSnapshot` is never re-armed
+      // — subsequent `[u]` presses are no-ops for the rest of the session.
+      // T4 (undo/redo history) will supersede this handler with a general
+      // Cmd+Z stack.
       if (!undoSnapshot) return;
       const snapshot = undoSnapshot;
       let restored: CdfReviewEntry[] = [];

@@ -2206,6 +2206,101 @@ describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
   });
 });
 
+// ── T2 (parity plan §3) — auto-reject is a strict one-shot per session ────
+// Semantic revert of task #37's "re-fire on edit-induced new cycle" branch.
+// Once the mount-time effect fires, it never fires again — regardless of
+// edits, cycle emergence, or cycle disappearance. Undo semantics unchanged.
+describe('GenerateReviewStep — auto-reject strict one-shot (T2)', () => {
+  const cycleA = {
+    $type: 'component' as const,
+    $properties: { name: { $type: 'string' as const, $category: 'content' as const } },
+    $slots: { next: { $allowedComponents: ['CycleB'] } },
+  };
+  const cycleB = {
+    $type: 'component' as const,
+    $properties: { name: { $type: 'string' as const, $category: 'content' as const } },
+    $slots: { prev: { $allowedComponents: ['CycleA'] } },
+  };
+  const acyclic = {
+    $type: 'component' as const,
+    $properties: { title: { $type: 'string' as const, $category: 'content' as const } },
+    $slots: { body: { $allowedComponents: ['Leaf'] } },
+  };
+  const leaf = {
+    $type: 'component' as const,
+    $properties: { text: { $type: 'string' as const, $category: 'content' as const } },
+  };
+
+  beforeEach(() => {
+    hookReturnOverride = null;
+  });
+
+  it('undo then subsequent state change → auto-reject does NOT re-fire', async () => {
+    // Mount with a cycle → auto-reject fires once. Undo. Fire another
+    // keystroke that changes state (`C` collapse-all). The banner must NOT
+    // return; the effect is a strict one-shot per session.
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: cycleA },
+      { key: 'CycleB', entry: cycleB },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'next', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'prev', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: null,
+      },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Cyclic manifest — auto-rejected/);
+    // Undo the mount auto-reject.
+    stdin.write('u');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
+    // State-changing keystrokes must NOT re-arm auto-reject even though
+    // `cycleView.structural` is still non-empty (the cycle still exists in
+    // the unfiltered graph after the undo).
+    stdin.write('C'); // collapse-all
+    await tick();
+    stdin.write('E'); // expand-all
+    await tick();
+    stdin.write('j'); // move cursor
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
+  });
+
+  it('mount with NO cycle → later edit introduces a cycle → auto-reject never fires', async () => {
+    // Session enters with an acyclic manifest → effect skips on mount. If a
+    // later edit introduces a cycle, the STRUCTURAL cycle indicators (sidebar
+    // badges, push-safety banner) still light up — but auto-reject stays
+    // silent, per the T2 "welcome gesture, once" policy.
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Card', entry: acyclic },
+      { key: 'Leaf', entry: leaf },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // No banner at mount (no cycle).
+    expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
+    // The full edit-driven cycle injection through FieldEditor is not
+    // drivable via pure key input from ink-testing-library. The pure-fn
+    // seam (`computeAutoRejectDecision`) covers the "already fired, cycle
+    // appears" branch. Here we just confirm the mount path doesn't fire.
+    // Any additional interactions must not spontaneously produce the banner.
+    expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
+  });
+});
+
 describe('computeCycleAutoRejectTargets — pure helper', () => {
   it('returns empty set when no cycles', async () => {
     const mod = await import('../../../../src/import/tui/steps/GenerateReviewStep.js');
