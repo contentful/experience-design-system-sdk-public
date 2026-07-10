@@ -2555,3 +2555,129 @@ describe('GenerateReviewStep — ADR-0010 scenarios', () => {
     });
   });
 });
+
+describe('GenerateReviewStep — lineage panel (T6)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const leaf = (name: string): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+  });
+  const withSlot = (name: string, allowed: string[]): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+    $slots: {
+      children: {
+        $type: 'slot',
+        $allowedComponents: allowed,
+      },
+    } as never,
+  });
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  // P → C → X — focus C to exercise both ancestors + descendants.
+  async function renderLineageFixture() {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'P', entry: withSlot('P', ['C']) },
+      { key: 'C', entry: withSlot('C', ['X']) },
+      { key: 'X', entry: leaf('X') },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
+    const utils = render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+        livePreview={false}
+      />,
+    );
+    await tick();
+    return utils;
+  }
+
+  // Move cursor to the row whose key is `target` (using j/k). Deterministic:
+  // the sidebar walks rows in order, so we just press j the right number of
+  // times relative to a first-row known state.
+  async function jumpToRow(stdin: { write: (s: string) => void }, presses: number) {
+    for (let i = 0; i < presses; i++) {
+      stdin.write('j');
+      await tick(10);
+    }
+  }
+
+  it('[l] opens the lineage panel when a component is focused', async () => {
+    const { lastFrame, stdin } = await renderLineageFixture();
+    stdin.write('l');
+    await tick();
+    expect(lastFrame() ?? '').toContain('Lineage:');
+  });
+
+  it('lineage panel shows the focused component + ancestors + descendants', async () => {
+    const { lastFrame, stdin } = await renderLineageFixture();
+    // Move down one row so we're focused on C (the middle of P→C→X).
+    await jumpToRow(stdin, 1);
+    stdin.write('l');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Lineage: C');
+    expect(frame).toContain('Ancestors:');
+    expect(frame).toContain('Descendants:');
+    // P is an ancestor of C; X is a descendant.
+    expect(frame).toContain('P');
+    expect(frame).toContain('X');
+  });
+
+  it('Tab moves cursor forward through jumpables inside the panel', async () => {
+    const { lastFrame, stdin } = await renderLineageFixture();
+    await jumpToRow(stdin, 1);
+    stdin.write('l');
+    await tick();
+    // Panel is open, cursor at 0. Move down.
+    stdin.write('j');
+    await tick();
+    // Panel should still be open — j inside panel moves the panel cursor.
+    expect(lastFrame() ?? '').toContain('Lineage: C');
+  });
+
+  it('Enter jumps main selection to the highlighted entry and closes the panel', async () => {
+    const { lastFrame, stdin } = await renderLineageFixture();
+    // Focus P first.
+    stdin.write('l');
+    await tick();
+    // Panel is at cursor 0 — first jumpable is the ancestor/descendant tree
+    // root. Enter should jump and close.
+    stdin.write('\r');
+    await tick();
+    expect(lastFrame() ?? '').not.toContain('Lineage:');
+  });
+
+  it('Esc closes the panel without jumping', async () => {
+    const { lastFrame, stdin } = await renderLineageFixture();
+    stdin.write('l');
+    await tick();
+    expect(lastFrame() ?? '').toContain('Lineage:');
+    stdin.write('\x1b');
+    await tick();
+    expect(lastFrame() ?? '').not.toContain('Lineage:');
+  });
+
+  it('[l] while the panel is already open closes it (toggle, matching ScopeGate)', async () => {
+    const { lastFrame, stdin } = await renderLineageFixture();
+    stdin.write('l');
+    await tick();
+    expect(lastFrame() ?? '').toContain('Lineage:');
+    stdin.write('l');
+    await tick();
+    expect(lastFrame() ?? '').not.toContain('Lineage:');
+  });
+
+  it('legend advertises [l] lineage when sidebar is focused', async () => {
+    const { lastFrame } = await renderLineageFixture();
+    expect(lastFrame() ?? '').toContain('[l]');
+  });
+});

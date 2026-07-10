@@ -44,6 +44,8 @@ import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
 import { computeSidebarWidth } from '../sidebar-width.js';
 import { computeAcceptCascade, computeRejectCascade } from '../../../analyze/selection-cascade.js';
 import { findAllAncestors } from '../../../analyze/lineage.js';
+import { useLineage } from '../hooks/useLineage.js';
+import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
 
 type CdfReviewEntry = {
@@ -215,6 +217,12 @@ export function GenerateReviewStep({
   // sidebar-with-active-query clears.
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // T6 (parity plan §3) — lineage panel state. Sidebar-only overlay showing
+  // ancestors + descendants of the focused component. Same shape as
+  // ScopeGateStep; derivation happens via the shared `useLineage` hook so
+  // both callsites render pixel-identical panels.
+  const [lineagePanelOpen, setLineagePanelOpen] = useState(false);
+  const [lineageCursor, setLineageCursor] = useState(0);
   // Task #37 — mount-time cycle auto-reject bookkeeping. `autoRejected`
   // tracks which components were flipped to `rejected` by the auto-reject
   // effect so the banner can enumerate them and `[u]` undo can restore only
@@ -552,6 +560,15 @@ export function GenerateReviewStep({
   // sidebar cursor position (that's cursorRowIdx via selectedRowIdx).
   const selectedIdx =
     visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1;
+  // T6 — derive lineage panel entries + jumpables. Uses the UNFILTERED
+  // `componentGraph` per ADR-0010 §Part 1 (rejected components still
+  // contribute structural lineage). Shared with ScopeGateStep via the same
+  // hook so both steps render pixel-identical panels.
+  const focusedComponentKey: string | null = components[selectedIdx]?.key ?? null;
+  const { entries: lineageEntries, jumpables: lineageJumpables } = useLineage(
+    focusedComponentKey,
+    componentGraph,
+  );
   useEffect(() => {
     if (selectableRowPositions.length === 0) return;
     const cursorInRange = selectableRowPositions.includes(cursorRowIdx);
@@ -783,6 +800,39 @@ export function GenerateReviewStep({
       return;
     }
 
+    // T6 (parity plan §3) — lineage panel owns keystrokes when open.
+    // Mirrors ScopeGate's overlay-owns-input pattern; the panel closes on
+    // `[l]` (toggle) or `[Esc]`, ↑/↓ (or j/k) move the panel cursor, and
+    // Enter jumps main selection to the highlighted jumpable and closes.
+    if (lineagePanelOpen) {
+      if (key.escape || input === 'l') {
+        setLineagePanelOpen(false);
+        return;
+      }
+      if (key.upArrow || input === 'k') {
+        setLineageCursor((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        setLineageCursor((c) => Math.min(Math.max(0, lineageJumpables.length - 1), c + 1));
+        return;
+      }
+      if (key.tab) {
+        setLineageCursor((c) =>
+          lineageJumpables.length === 0 ? 0 : (c + 1) % lineageJumpables.length,
+        );
+        return;
+      }
+      if (key.return) {
+        const target = lineageJumpables[lineageCursor];
+        if (target && (target.entry.kind === 'ancestor' || target.entry.kind === 'descendant')) {
+          jumpCursorToName(target.entry.jumpTarget);
+        }
+        setLineagePanelOpen(false);
+        return;
+      }
+      return;
+    }
     // Pilot-2026-06-24: removed-detail panel. When open, only `d` (toggle)
     // and Esc (close) respond — all other input is swallowed so j/k/Enter/
     // Ctrl+S can't move state behind the modal. Mirrors the `?` overlay
@@ -823,6 +873,14 @@ export function GenerateReviewStep({
     // doesn't collide with FieldEditor input.
     if (input === 'd' && sidebarFocused && livePreview && removedComponents.length > 0) {
       setShowRemovedPanel(true);
+      return;
+    }
+    // T6 (parity plan §3) — `[l]` opens the lineage panel when the sidebar
+    // has a component under the cursor. Gated to sidebar-focused so it can't
+    // collide with FieldEditor input.
+    if (input === 'l' && sidebarFocused && focusedComponentKey) {
+      setLineagePanelOpen(true);
+      setLineageCursor(0);
       return;
     }
 
@@ -1374,6 +1432,14 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
+      {lineagePanelOpen && !dialogOpen && focusedComponentKey && (
+        <LineagePanel
+          focusedComponentKey={focusedComponentKey}
+          entries={lineageEntries}
+          cursor={lineageCursor}
+          jumpables={lineageJumpables}
+        />
+      )}
       {!dialogOpen &&
         livePreview &&
         (() => {
@@ -1675,6 +1741,7 @@ export function GenerateReviewStep({
                       (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '') +
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
+                      (focusedComponentKey ? '  [l] lineage' : '') +
                       (undoSnapshot ? '  [u] undo' : '') +
                       '  [q] quit'
                     : showJson

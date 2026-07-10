@@ -14,10 +14,8 @@ import {
 } from '../../../analyze/composite-closure.js';
 import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { findSlotCycles, type SlotCycle } from '../../../analyze/cycle-detection.js';
-import {
-  buildAncestorTree,
-  renderAncestorTree,
-} from '../../../analyze/lineage.js';
+import { useLineage } from '../hooks/useLineage.js';
+import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import {
   buildCycleUnits,
   collectReachableCycleUnits,
@@ -80,12 +78,6 @@ function toSidebarEntry(c: ScopeComponent): CDFComponentEntry {
   if (Object.keys($slots).length > 0) entry.$slots = $slots;
   return entry;
 }
-
-type LineageEntry =
-  | { kind: 'section'; label: string }
-  | { kind: 'ancestor'; label: string; jumpTarget: string }
-  | { kind: 'descendant'; label: string; jumpTarget: string }
-  | { kind: 'empty'; label: string };
 
 export function ScopeGateStep({
   components,
@@ -310,48 +302,12 @@ export function ScopeGateStep({
     return { accepted, rejected };
   };
 
-  // Lineage panel entries for the focused component.
-  const lineageEntries = useMemo<LineageEntry[]>(() => {
-    if (!focusedComponent) return [];
-    const name = focusedComponent.name;
-    const tree = buildAncestorTree(name, graph);
-    const closure = closures.get(name);
-    const entries: LineageEntry[] = [];
-    entries.push({ kind: 'section', label: 'Ancestors:' });
-    if (tree.parents.length === 0) {
-      entries.push({ kind: 'empty', label: '  (no ancestors)' });
-    } else {
-      const lines = renderAncestorTree(tree);
-      for (const line of lines) {
-        entries.push({
-          kind: 'ancestor',
-          label: '  ' + line.text,
-          jumpTarget: line.jumpTarget ?? name,
-        });
-      }
-    }
-    entries.push({ kind: 'section', label: 'Descendants:' });
-    if (!closure || closure.nodes.length <= 1) {
-      entries.push({ kind: 'empty', label: '  (none)' });
-    } else {
-      for (const node of closure.nodes) {
-        if (node.name === name) continue;
-        entries.push({
-          kind: 'descendant',
-          label: '  ' + '  '.repeat(Math.max(0, node.depth - 1)) + node.name,
-          jumpTarget: node.name,
-        });
-      }
-    }
-    return entries;
-  }, [focusedComponent, graph, closures]);
-
-  const lineageJumpables = useMemo(
-    () =>
-      lineageEntries
-        .map((e, i) => ({ e, i }))
-        .filter(({ e }) => e.kind === 'ancestor' || e.kind === 'descendant'),
-    [lineageEntries],
+  // Lineage panel entries for the focused component. Shared with
+  // GenerateReviewStep via the `useLineage` hook — see
+  // `src/import/tui/hooks/useLineage.ts`.
+  const { entries: lineageEntries, jumpables: lineageJumpables } = useLineage(
+    focusedComponent?.name ?? null,
+    graph,
   );
 
   const searchMatches = useMemo(() => {
@@ -497,8 +453,8 @@ export function ScopeGateStep({
       }
       if (key.return) {
         const target = lineageJumpables[lineageCursor];
-        if (target && (target.e.kind === 'ancestor' || target.e.kind === 'descendant')) {
-          jumpCursorTo(target.e.jumpTarget);
+        if (target && (target.entry.kind === 'ancestor' || target.entry.kind === 'descendant')) {
+          jumpCursorTo(target.entry.jumpTarget);
         }
         setLineagePanelOpen(false);
         return;
@@ -962,42 +918,12 @@ export function ScopeGateStep({
       )}
 
       {lineagePanelOpen && focusedComponent && (
-        <Box flexDirection="column" borderStyle="single" borderColor="cyan" paddingX={1} marginTop={1}>
-          <Text bold>{`Lineage: ${focusedComponent.name}`}</Text>
-          {lineageEntries.map((e, i) => {
-            const jumpableIdx = lineageJumpables.findIndex((j) => j.i === i);
-            const isCursor = jumpableIdx === lineageCursor && jumpableIdx >= 0;
-            if (e.kind === 'section') {
-              return (
-                <Text key={i} bold>
-                  {'  '}
-                  {e.label}
-                </Text>
-              );
-            }
-            if (e.kind === 'empty') {
-              return (
-                <Text key={i}>
-                  <Text> </Text>
-                  <Text dimColor>{' ' + e.label}</Text>
-                </Text>
-              );
-            }
-            return (
-              <Text key={i}>
-                {isCursor ? (
-                  <Text color="cyan" bold>
-                    {'▶'}
-                  </Text>
-                ) : (
-                  <Text> </Text>
-                )}
-                <Text inverse={isCursor}>{' ' + e.label}</Text>
-              </Text>
-            );
-          })}
-          <Text dimColor>[↑/↓] move · [Enter] jump · [l/Esc] close</Text>
-        </Box>
+        <LineagePanel
+          focusedComponentKey={focusedComponent.name}
+          entries={lineageEntries}
+          cursor={lineageCursor}
+          jumpables={lineageJumpables}
+        />
       )}
 
       {pendingRejectCascade && (
