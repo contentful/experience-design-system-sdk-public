@@ -118,7 +118,7 @@ export function ScopeGateStep({
     useState<{ target: string; ancestors: string[]; descendants: string[] } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [columnOneView, setColumnOneView] = useState<'grouped' | 'large-list'>('grouped');
+  const [columnOneView, setColumnOneView] = useState<'grouped' | 'flat'>('grouped');
 
   // Everything defaults to undecided. AI decisions are advisory only —
   // surfaced via the [×] badge and the recommends-exclusions banner, never
@@ -582,11 +582,11 @@ export function ScopeGateStep({
       return;
     }
     if (input === 'L') {
-      // Toggle Column-1 view between grouped and large-list. Preserve cursor
+      // Toggle Column-1 view between grouped and flat. Preserve cursor
       // on the same underlying component when possible; otherwise reset to 0.
       const currentKey = currentRowKey;
-      const nextView: 'grouped' | 'large-list' =
-        columnOneView === 'grouped' ? 'large-list' : 'grouped';
+      const nextView: 'grouped' | 'flat' =
+        columnOneView === 'grouped' ? 'flat' : 'grouped';
       const nextRows = buildVisibleRows({
         items: groupedItems,
         cycleParticipants,
@@ -1072,7 +1072,7 @@ export function ScopeGateStep({
           <Text color="cyan">[Y]</Text> <Text dimColor>accept non-flagged</Text>
         </Text>
         <Text>
-          <Text color="cyan">[L]</Text> <Text dimColor>large list</Text>
+          <Text color="cyan">[L]</Text> <Text dimColor>flat</Text>
         </Text>
         <Text>
           <Text color="cyan">[f]</Text> <Text dimColor>continue</Text>
