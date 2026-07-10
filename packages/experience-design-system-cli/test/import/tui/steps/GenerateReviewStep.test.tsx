@@ -720,14 +720,14 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
     expect(frame).toMatch(/2 removed/);
   });
 
-  it('pressing d opens a panel listing removed component names', async () => {
-    const { lastFrame, stdin } = render(
+  it('panel auto-opens on preview response and lists removed component names', async () => {
+    // T3: with auto-open behavior, the panel opens as soon as the preview
+    // reports a non-empty removed set — no `d` press needed.
+    const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
     lastOnResult!(previewWithRemoved(['GoneAlpha', 'GoneBeta']));
-    await tick();
-    stdin.write('d');
     await tick();
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/Removed components/);
@@ -735,29 +735,26 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
     expect(frame).toMatch(/GoneBeta/);
   });
 
-  it('pressing d again closes the panel', async () => {
+  it('pressing d toggles the auto-opened panel closed', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
     lastOnResult!(previewWithRemoved(['GoneAlpha']));
     await tick();
-    stdin.write('d');
-    await tick();
+    // Auto-opened.
     expect(lastFrame() ?? '').toMatch(/Removed components/);
     stdin.write('d');
     await tick();
     expect(lastFrame() ?? '').not.toMatch(/Removed components/);
   });
 
-  it('pressing Esc closes the panel', async () => {
+  it('pressing Esc closes the auto-opened panel', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
     lastOnResult!(previewWithRemoved(['GoneAlpha']));
-    await tick();
-    stdin.write('d');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Removed components/);
     stdin.write('\x1b');
@@ -777,9 +774,9 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
+    // T3: panel auto-opens on preview response — no explicit `d` press
+    // needed. j/k should be inert while it is open.
     lastOnResult!(previewWithRemoved(['ZZZ']));
-    await tick();
-    stdin.write('d');
     await tick();
     // Panel open — j should be inert.
     stdin.write('j');
@@ -820,6 +817,106 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
     stdin.write('d');
     await tick();
     expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+  });
+});
+
+// ── T3 (parity plan §3): removed panel default-open + notability polish ──────
+// Behavior:
+//   - When a live-preview response transitions removedComponents from empty
+//     → non-empty, auto-open the panel (once per session).
+//   - If the operator manually closes (via [d] toggle OR Esc), remember the
+//     decision and DO NOT re-open on subsequent preview refreshes.
+//   - Notability polish: border is red, title includes the word DELETE.
+describe('GenerateReviewStep — removed panel default-open (T3)', () => {
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastUseLivePreviewArgs = null;
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  const previewWithRemoved = (names: string[]) =>
+    ({
+      components: {
+        new: [],
+        changed: [],
+        removed: names.map((n, i) => ({
+          id: `r${i}`,
+          name: n,
+          contentProperties: [],
+          designProperties: [],
+          slots: [],
+        })) as never,
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    }) as never;
+
+  it('auto-opens on first non-empty removed set', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // Panel is CLOSED before any preview response.
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+    // Fire a preview response with a removed component — panel should
+    // auto-open.
+    lastOnResult!(previewWithRemoved(['AutoGone']));
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Removed components/);
+    expect(frame).toMatch(/AutoGone/);
+  });
+
+  it('does NOT re-open after operator closes via [d]', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['Gone1']));
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Removed components/);
+    // Manual close via [d].
+    stdin.write('d');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+    // Another preview response — panel stays CLOSED.
+    lastOnResult!(previewWithRemoved(['Gone1', 'Gone2']));
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+  });
+
+  it('does NOT re-open after operator closes via Esc', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['Gone1']));
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Removed components/);
+    // Manual close via Esc.
+    stdin.write('\x1b');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+    // Another preview response — panel stays CLOSED.
+    lastOnResult!(previewWithRemoved(['Gone1', 'Gone2']));
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+  });
+
+  it('title includes the word DELETE for notability', async () => {
+    // ink-testing-library strips ANSI, so we can't directly assert
+    // borderColor="red" from the frame. The visible label carries the
+    // load-bearing signal — assert on the title text.
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['Gone1']));
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Removed components \(1\)/);
+    expect(frame).toContain('DELETE');
   });
 });
 

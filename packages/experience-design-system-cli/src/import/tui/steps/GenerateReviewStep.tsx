@@ -194,6 +194,15 @@ export function GenerateReviewStep({
   // names/ids when the operator asks "which ones?".
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
   const [showRemovedPanel, setShowRemovedPanel] = useState(false);
+  // T3 (parity plan §3) — removed-panel default-open bookkeeping.
+  //   - `autoOpenedRemovedRef` latches on the first auto-open so we don't
+  //     re-open every time a preview refresh reports a removed set.
+  //   - `manuallyClosedRef` latches on any operator close (via [d] or Esc)
+  //     and permanently disables auto-open for this session. Reset only on
+  //     unmount/remount (i.e., a fresh session). T10 will extract this into
+  //     a shared `useOverlayPanel` hook — inline for now.
+  const autoOpenedRemovedRef = useRef(false);
+  const manuallyClosedRemovedRef = useRef(false);
   // Lifted rationale + source panels (replaces FieldEditor's right pane).
   // Mutually exclusive states.
   const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>('none');
@@ -247,7 +256,21 @@ export function GenerateReviewStep({
         components.map((c) => c.key),
       ),
     );
-    setRemovedComponents(response.components.removed ?? []);
+    const nextRemoved = response.components.removed ?? [];
+    setRemovedComponents(nextRemoved);
+    // T3 — auto-open the panel the first time we see a non-empty removed
+    // set, so operators can't miss impending deletions. Guarded by the
+    // manual-close latch so an operator who closes it doesn't get it
+    // popped back open on every debounced preview refresh.
+    if (
+      livePreview &&
+      nextRemoved.length > 0 &&
+      !autoOpenedRemovedRef.current &&
+      !manuallyClosedRemovedRef.current
+    ) {
+      autoOpenedRemovedRef.current = true;
+      setShowRemovedPanel(true);
+    }
   };
 
   const livePreviewHook = useLivePreview({
@@ -839,6 +862,9 @@ export function GenerateReviewStep({
     // pattern from 8f0c62e in FieldEditor.
     if (showRemovedPanel) {
       if (input === 'd' || key.escape) {
+        // T3 — any manual close latches the "don't auto-open again" flag so
+        // subsequent preview refreshes don't re-pop the panel.
+        manuallyClosedRemovedRef.current = true;
         setShowRemovedPanel(false);
       }
       return;
@@ -1352,9 +1378,15 @@ export function GenerateReviewStep({
       )}
       {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
       {showRemovedPanel && !dialogOpen && (
-        <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
-          <Text bold color="cyan">{`Removed components (${removedComponents.length})`}</Text>
-          <Text dimColor>these will be DELETED from the target space</Text>
+        // T3 — notability polish. Border flipped cyan → red and title made
+        // explicit ("will be DELETED from target space") since these
+        // components are about to be dropped from the target space.
+        <Box flexDirection="column" borderStyle="round" borderColor="red" paddingX={1}>
+          <Text bold color="red">
+            {`Removed components (${removedComponents.length}) — will be `}
+            <Text bold color="red">DELETE</Text>
+            {'D from target space'}
+          </Text>
           <Text> </Text>
           {removedComponents.map((rc) => (
             <Text key={rc.id}>{`- ${rc.name}${rc.id ? `  (${rc.id})` : ''}`}</Text>
