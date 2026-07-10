@@ -20,12 +20,12 @@ export type RunPickerProps = {
   onCancel: () => void;
 };
 
-const COLLAPSED_LIMIT = 3;
+const COLLAPSED_LIMIT = 10;
 /**
- * The picker collapses to top 3 + Show all only when there are 5+ total.
- * Four or fewer runs render in full.
+ * The picker collapses to top 10 + Show all only when there are 12+ total.
+ * Eleven or fewer runs render in full.
  */
-const COLLAPSE_THRESHOLD = 5;
+const COLLAPSE_THRESHOLD = 12;
 
 /**
  * Format the createdAt timestamp as `YYYY-MM-DD HH:MM` in the operator's
