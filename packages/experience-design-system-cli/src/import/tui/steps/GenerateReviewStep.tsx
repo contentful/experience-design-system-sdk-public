@@ -1842,60 +1842,15 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {!dialogOpen && slotCycles.length > 0 && !cyclePanel.isOpen && (
-        <Box flexDirection="column">
-          <Text color="yellow">
-            {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
-          </Text>
-          {slotCycles.slice(0, 3).map((cycle, idx) => {
-            const segs = formatCyclePathSegments(cycle);
-            return (
-              <Text key={`cyc-banner-${idx}`} color="yellow">
-                {'  Cycle: '}
-                {segs.map((seg, si) =>
-                  seg.kind === 'slot' ? (
-                    <Text key={si} color="cyan">
-                      {seg.text}
-                    </Text>
-                  ) : seg.kind === 'arrow' ? (
-                    <Text key={si} dimColor>
-                      {seg.text}
-                    </Text>
-                  ) : (
-                    <Text key={si} color="yellow">
-                      {seg.text}
-                    </Text>
-                  ),
-                )}
-              </Text>
-            );
-          })}
-          {slotCycles.length > 3 && <Text color="yellow">{`  …${slotCycles.length - 3} more`}</Text>}
-          <Text dimColor>{'  press [c] for detail'}</Text>
-        </Box>
-      )}
       {!dialogOpen && emptyCount > 0 && (
         <Text color="yellow">
           {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
         </Text>
       )}
       {!dialogOpen && finalizeError && <Text color="red">{`⚠ ${finalizeError}`}</Text>}
-      {!dialogOpen && searchOpen && (
-        <Box>
-          <Text>
-            {`/${searchQuery}`}
-            <Text color="cyan">{'▎'}</Text>
-            {searchQuery && (
-              <Text dimColor>{`  (${searchMatchCount}/${components.length} matches)`}</Text>
-            )}
-          </Text>
-        </Box>
-      )}
-      {!dialogOpen && !searchOpen && searchQuery && (
-        <Box>
-          <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear · [Tab] next`}</Text>
-        </Box>
-      )}
+      {/* T2 (layout plan §A): cycle banner + search input strips render BELOW
+          the sidebar+detail row (they used to be here, above). Located in a
+          fragment right after the sidebar Box. */}
       {!dialogOpen && (
         <Box>
           <GroupedSidebar
@@ -2091,6 +2046,54 @@ export function GenerateReviewStep({
               <Text dimColor>No component selected</Text>
             )}
           </Box>
+        </Box>
+      )}
+      {!dialogOpen && slotCycles.length > 0 && !cyclePanel.isOpen && (
+        <Box flexDirection="column">
+          <Text color="yellow">
+            {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
+          </Text>
+          {slotCycles.slice(0, 3).map((cycle, idx) => {
+            const segs = formatCyclePathSegments(cycle);
+            return (
+              <Text key={`cyc-banner-${idx}`} color="yellow">
+                {'  Cycle: '}
+                {segs.map((seg, si) =>
+                  seg.kind === 'slot' ? (
+                    <Text key={si} color="cyan">
+                      {seg.text}
+                    </Text>
+                  ) : seg.kind === 'arrow' ? (
+                    <Text key={si} dimColor>
+                      {seg.text}
+                    </Text>
+                  ) : (
+                    <Text key={si} color="yellow">
+                      {seg.text}
+                    </Text>
+                  ),
+                )}
+              </Text>
+            );
+          })}
+          {slotCycles.length > 3 && <Text color="yellow">{`  …${slotCycles.length - 3} more`}</Text>}
+          <Text dimColor>{'  press [c] for detail'}</Text>
+        </Box>
+      )}
+      {!dialogOpen && searchOpen && (
+        <Box>
+          <Text>
+            {`/${searchQuery}`}
+            <Text color="cyan">{'▎'}</Text>
+            {searchQuery && (
+              <Text dimColor>{`  (${searchMatchCount}/${components.length} matches)`}</Text>
+            )}
+          </Text>
+        </Box>
+      )}
+      {!dialogOpen && !searchOpen && searchQuery && (
+        <Box>
+          <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear · [Tab] next`}</Text>
         </Box>
       )}
       {!dialogOpen && (

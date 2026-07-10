@@ -3257,3 +3257,112 @@ describe('GenerateReviewStep — undo/redo + reload-from-save (T4)', () => {
     expect(frame).toContain('[Ctrl+R] reload');
   });
 });
+
+// ── T2 (layout plan §A): cycle banner + search input move BELOW sidebar ─────
+// Layout order top→bottom:
+//   removed strip · auto-reject banner · sidebar+detail · cycle banner
+//   · search input · legend.
+// Auto-reject banner stays HIGH; cycle banner + search input drop to bottom.
+describe('GenerateReviewStep — bottom-of-step banners (T2)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const CYCLE_A: Entry = {
+    $type: 'component',
+    $properties: {},
+    $slots: { header: { $allowedComponents: ['CycleB'] } } as never,
+  };
+  const CYCLE_B: Entry = {
+    $type: 'component',
+    $properties: {},
+    $slots: { footer: { $allowedComponents: ['CycleA'] } } as never,
+  };
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  it('cycle banner renders BELOW the sidebar+detail row', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+      },
+    ]);
+    // Undo the mount auto-reject so the sidebar detail panel renders (an
+    // all-rejected accepted set is fine but we still need FIELDS marker to
+    // pin the sidebar+detail row).
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('u'); // undo mount auto-reject so FIELDS marker present
+    await tick();
+    const frame = lastFrame() ?? '';
+    const fieldsIdx = frame.indexOf('FIELDS');
+    const cycleIdx = frame.search(/slot dependency cycle/);
+    expect(fieldsIdx).toBeGreaterThanOrEqual(0);
+    expect(cycleIdx).toBeGreaterThanOrEqual(0);
+    expect(cycleIdx).toBeGreaterThan(fieldsIdx);
+  });
+
+  it('search input renders BELOW the sidebar+detail row', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Alpha', entry: { $type: 'component', $properties: { a: { $type: 'string', $category: 'content' } } } as Entry },
+      { key: 'Beta', entry: { $type: 'component', $properties: { b: { $type: 'string', $category: 'content' } } } as Entry },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('a');
+    await tick();
+    const frame = lastFrame() ?? '';
+    const fieldsIdx = frame.indexOf('FIELDS');
+    // Search input marker: match-count text pinned to the input line.
+    const searchIdx = frame.search(/\/a[^\n]*matches/);
+    expect(fieldsIdx).toBeGreaterThanOrEqual(0);
+    expect(searchIdx).toBeGreaterThanOrEqual(0);
+    expect(searchIdx).toBeGreaterThan(fieldsIdx);
+  });
+
+  it('auto-reject banner stays ABOVE the sidebar+detail row', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+      },
+    ]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    const autoRejIdx = frame.search(/Cyclic manifest — auto-rejected/);
+    const fieldsIdx = frame.indexOf('FIELDS');
+    expect(autoRejIdx).toBeGreaterThanOrEqual(0);
+    expect(fieldsIdx).toBeGreaterThanOrEqual(0);
+    expect(autoRejIdx).toBeLessThan(fieldsIdx);
+  });
+});
