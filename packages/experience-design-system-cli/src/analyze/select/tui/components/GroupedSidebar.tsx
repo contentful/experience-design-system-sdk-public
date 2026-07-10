@@ -111,13 +111,13 @@ export interface GroupedSidebarProps {
   dimPredicate?: (componentKey: string) => boolean;
   /**
    * View mode for the Column-1 render. `'grouped'` (default) uses the tiered
-   * cycle/empty/grouped-roots/standalone layout. `'large-list'` emits a
+   * cycle/empty/grouped-roots/standalone layout. `'flat'` emits a
    * cycles-first, otherwise-alphabetical flat list of every component with a
    * `(N deps)` suffix on composite roots. Only `buildVisibleRows` observes this
    * flag — every downstream decoration (cursor, selection glyph, AI badge,
    * dim, cycle color) is row-kind-driven and unchanged.
    */
-  viewMode?: 'grouped' | 'large-list';
+  viewMode?: 'grouped' | 'flat';
   /**
    * Optional precomputed visible-row list. When provided, GroupedSidebar
    * renders these rows directly and skips its internal `buildVisibleRows`
@@ -216,7 +216,7 @@ export function buildVisibleRows(props: {
   expandedGroups: Set<string>;
   alwaysExpanded?: boolean;
   showFlatTier?: boolean;
-  viewMode?: 'grouped' | 'large-list';
+  viewMode?: 'grouped' | 'flat';
   /**
    * Prebuilt component graph (see ADR-0010 Part 3, plan §4.3). Consumed by
    * `computeAllClosures` — the canonical edge source for tier layout and
@@ -226,7 +226,7 @@ export function buildVisibleRows(props: {
 }): VisibleRow[] {
   const { items, cycleParticipants, alwaysExpanded, showFlatTier, viewMode, graph } = props;
 
-  if (viewMode === 'large-list') {
+  if (viewMode === 'flat') {
     // Cycles-first (alphabetical), then all remaining components alphabetical.
     // One row per component; no group nesting, no `(shared)` markers. Composite
     // roots get a `(N deps)` suffix so the density hint from Column-3 carries
@@ -248,10 +248,10 @@ export function buildVisibleRows(props: {
     // they're rendered with the cycle glyph and no suffix.
     // Filter the caller-provided canonical graph to the "other" subset —
     // cycle participants live in their own tier and never anchor a closure
-    // in the large-list view.
+    // in the flat view.
     const otherKeySet = new Set(otherKeys);
-    const largeListGraph = graph.filter((n) => otherKeySet.has(n.name));
-    const closures = computeAllClosures(largeListGraph);
+    const flatGraph = graph.filter((n) => otherKeySet.has(n.name));
+    const closures = computeAllClosures(flatGraph);
     const depCountByKey = new Map<string, number>();
     for (const [name, closure] of closures) {
       if (closure.nodes.length > 1) depCountByKey.set(name, closure.nodes.length - 1);

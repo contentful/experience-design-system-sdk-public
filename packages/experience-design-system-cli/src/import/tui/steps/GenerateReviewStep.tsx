@@ -254,20 +254,6 @@ export function GenerateReviewStep({
   // `./auto-reject-decision.ts` so the invariant is pinned by pure-fn tests.
   const autoRejectFiredRef = useRef<boolean>(false);
 
-  // T5 (parity plan §3) — unsaved-changes warning on Tab-away.
-  //   - `editorDirty` mirrors FieldEditor's internal dirty predicate (set
-  //     via its `onDirtyChange` callback).
-  //   - `showUnsavedWarning` gates rendering of the inline yellow warning
-  //     dialog.
-  //   - `pendingFocusAway` remembers the deferred cross action so Enter/Esc
-  //     from the warning can complete it after save-or-discard.
-  //   - `discardTrigger` is a monotonic counter passed to FieldEditor;
-  //     bumping it reverts the internal draft to the last-saved value.
-  const [editorDirty, setEditorDirty] = useState(false);
-  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
-  const [pendingFocusAway, setPendingFocusAway] = useState<null | 'tab-to-sidebar'>(null);
-  const [discardTrigger, setDiscardTrigger] = useState(0);
-
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
     setPreviewAnnotations(
@@ -816,33 +802,6 @@ export function GenerateReviewStep({
     if (loading || loadError) return;
     if (dialogOpen) return;
 
-    // T5 (parity plan §3): unsaved-changes warning owns keystrokes when open.
-    // Enter → save + complete deferred focus cross.
-    // Esc   → discard (revert FieldEditor draft) + complete deferred cross.
-    // Tab   → cancel: close dialog, keep focus in the panel, leave the
-    //         FieldEditor dirty. Anything else falls through to close-cancel.
-    if (showUnsavedWarning) {
-      if (key.return) {
-        handleEditSave();
-        setShowUnsavedWarning(false);
-        if (pendingFocusAway === 'tab-to-sidebar') setSidebarFocused(true);
-        setPendingFocusAway(null);
-        return;
-      }
-      if (key.escape) {
-        setDiscardTrigger((n) => n + 1);
-        setShowUnsavedWarning(false);
-        if (pendingFocusAway === 'tab-to-sidebar') setSidebarFocused(true);
-        setPendingFocusAway(null);
-        return;
-      }
-      // Tab (and any other input) cancels — keep the operator in the panel
-      // with their pending edit intact.
-      setShowUnsavedWarning(false);
-      setPendingFocusAway(null);
-      return;
-    }
-
     // Fuzzy-search input mode owns most keystrokes while the input is open.
     // Mirrors ScopeGateStep's `/` UX: Esc closes + clears, Enter closes but
     // preserves the query (dim persists), Backspace deletes, printable chars
@@ -1054,16 +1013,6 @@ export function GenerateReviewStep({
     // `e` binding (INTEG-4254) when the panel is focused. Crossing back from
     // panel to sidebar is Tab-only.
     if (key.tab) {
-      // T5: intercept panel→sidebar Tab when the FieldEditor is dirty. Open
-      // the warning dialog and remember the deferred action; Enter/Esc from
-      // the dialog will complete it. Only fires when crossing OUT of the
-      // panel — sidebar→panel Tab is not blocked because entering the panel
-      // never risks losing edits.
-      if (!sidebarFocused && editorDirty) {
-        setPendingFocusAway('tab-to-sidebar');
-        setShowUnsavedWarning(true);
-        return;
-      }
       // With an active fuzzy-search query, Tab cycles matches from the
       // sidebar-focused state instead of toggling focus. Preserves scope-gate
       // parity. When no query is active, Tab behaves as before.
@@ -1498,19 +1447,6 @@ export function GenerateReviewStep({
         />
       )}
       {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
-      {showUnsavedWarning && !dialogOpen && (
-        // T5 (parity plan §3): inline warning shown when the operator tries
-        // to leave a dirty FieldEditor via Tab. Enter saves, Esc discards,
-        // Tab cancels (keystrokes handled in the useImmediateInput block).
-        <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
-          <Text bold color="yellow">Unsaved changes</Text>
-          <Text>You have unsaved edits in the current field editor.</Text>
-          <Text> </Text>
-          <Text>{'  [Enter]  Save and continue'}</Text>
-          <Text>{'  [Esc]    Discard changes and continue'}</Text>
-          <Text>{'  [Tab]    Stay in the panel'}</Text>
-        </Box>
-      )}
       {showRemovedPanel && !dialogOpen && (
         // T3 — notability polish. Border flipped cyan → red and title made
         // explicit ("will be DELETED from target space") since these
@@ -1897,8 +1833,6 @@ export function GenerateReviewStep({
                     onTextEntryActiveChange={setTextEntryActive}
                     projectSlotGraph={projectSlotGraph}
                     currentComponentName={selected.key}
-                    onDirtyChange={setEditorDirty}
-                    discardTrigger={discardTrigger}
                   />
                 )}
                 {saveError && <Text color="red">{'✗ ' + saveError}</Text>}
