@@ -1588,4 +1588,58 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(arg.rejected).toEqual(expect.arrayContaining(['P', 'X']));
     });
   });
+
+  describe('T4 — search-time neighborhood filter (grouped view)', () => {
+    // A slots B slots C slots D. Cursor starts on A.
+    const CHAIN = [
+      { name: 'A', componentId: 'a', slots: [{ name: 's', allowedComponents: ['B'] }] },
+      { name: 'B', componentId: 'b', slots: [{ name: 's', allowedComponents: ['C'] }] },
+      { name: 'C', componentId: 'c', slots: [{ name: 's', allowedComponents: ['D'] }] },
+      { name: 'D', componentId: 'd' },
+    ];
+
+    it('search matching only B keeps A and C visible; hides D', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={CHAIN} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('/');
+      stdin.write('B');
+      const frame = lastFrame() ?? '';
+      // Look at lines that carry a selection glyph — those are the sidebar
+      // rows for real components. At tip (no filter) every component
+      // renders such a row; with the filter active, D's row is dropped.
+      const componentRowLines = frame
+        .split('\n')
+        .filter((l) => /\[[ ✓✗×]\]/.test(l));
+      const namesInSidebar = new Set<string>();
+      for (const l of componentRowLines) {
+        for (const name of ['A', 'B', 'C', 'D']) {
+          // Match component labels as isolated tokens (adjacent to
+          // whitespace, tree glyphs, or line boundaries).
+          if (new RegExp(`(^|[\\s├└─▸▾]) ?${name}(\\s|$|[^A-Za-z])`).test(l)) {
+            namesInSidebar.add(name);
+          }
+        }
+      }
+      expect(namesInSidebar.has('A')).toBe(true);
+      expect(namesInSidebar.has('B')).toBe(true);
+      expect(namesInSidebar.has('C')).toBe(true);
+      expect(namesInSidebar.has('D')).toBe(false);
+    });
+
+    it('header/counter strip continues to show full totals when filter active', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={CHAIN} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      const before = lastFrame() ?? '';
+      // Grab the "Found N component" line.
+      const totalLineBefore = before.split('\n').find((l) => /Found \d+ component/.test(l)) ?? '';
+      stdin.write('/');
+      stdin.write('B');
+      const after = lastFrame() ?? '';
+      const totalLineAfter = after.split('\n').find((l) => /Found \d+ component/.test(l)) ?? '';
+      expect(totalLineAfter).toEqual(totalLineBefore);
+      expect(totalLineAfter).toContain('4');
+    });
+  });
 });

@@ -137,6 +137,23 @@ export interface GroupedSidebarProps {
    * the graph consolidation plan §4.3).
    */
   graph: ComponentGraphNode[];
+  /**
+   * Optional set of component keys that survive search-time neighborhood
+   * filtering. When defined AND `viewMode === 'grouped'`, `buildVisibleRows`
+   * drops any row whose underlying component key is not in the set (synthetic
+   * rows without an itemIdx are unaffected). When undefined, or in flat view,
+   * the prop is ignored — every row renders and non-matches dim via
+   * `dimPredicate` as today.
+   *
+   * The set is a plain `Set<string>` computed at the step level (see
+   * `computeDirectNeighborhood` in `analyze/search-neighborhood.ts`). Kept
+   * shape-agnostic so future search modes (e.g. T5 jump-and-filter) can reuse
+   * the same plumbing without touching sidebar internals.
+   *
+   * The header/counter strip still reads from unfiltered sources — filtering
+   * removes rows from the sidebar only, not from totals.
+   */
+  filterVisibleKeys?: Set<string>;
 }
 
 const GLYPH_EXPAND_COLLAPSED = '▸';
@@ -223,8 +240,13 @@ export function buildVisibleRows(props: {
    * closure walking. Build via `analyze/slot-graph.buildComponentGraph`.
    */
   graph: ComponentGraphNode[];
+  /**
+   * Optional search-time neighborhood filter (see `GroupedSidebarProps.filterVisibleKeys`).
+   * Applied only in grouped view; flat view ignores it.
+   */
+  filterVisibleKeys?: Set<string>;
 }): VisibleRow[] {
-  const { items, cycleParticipants, alwaysExpanded, showFlatTier, viewMode, graph } = props;
+  const { items, cycleParticipants, alwaysExpanded, showFlatTier, viewMode, graph, filterVisibleKeys } = props;
 
   if (viewMode === 'flat') {
     // Cycles-first (alphabetical), then all remaining components alphabetical.
@@ -618,6 +640,18 @@ export function buildVisibleRows(props: {
     }
   }
 
+  // Grouped-view neighborhood filter (plan §B T4). When active, drop rows
+  // whose underlying component key is not in the survivor set. Synthetic rows
+  // (itemIdx < 0, e.g. flat-header) stay — the filter is component-scoped.
+  if (filterVisibleKeys !== undefined) {
+    return rows.filter((row) => {
+      if (row.itemIdx < 0) return true;
+      const name = items[row.itemIdx]?.key;
+      if (name === undefined) return true;
+      return filterVisibleKeys.has(name);
+    });
+  }
+
   return rows;
 }
 
@@ -702,6 +736,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
     dimPredicate,
     visibleRows: providedRows,
     graph,
+    filterVisibleKeys,
   } = props;
   const allRows =
     providedRows ??
@@ -713,6 +748,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
       showFlatTier,
       viewMode,
       graph,
+      filterVisibleKeys,
     });
 
   // Window rows when scrollOffset+visibleCount are provided; otherwise render

@@ -24,6 +24,7 @@ import {
   computeCycleAwareRejectCascade,
 } from '../../../analyze/scope-gate-cascade.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
+import { computeDirectNeighborhood } from '../../../analyze/search-neighborhood.js';
 import {
   buildAddedComponentsList,
   buildAddedGroupsList,
@@ -192,6 +193,15 @@ export function ScopeGateStep({
 
   const closures = useMemo(() => computeAllClosures(graph), [graph]);
 
+  const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
+    if (!searchQuery) return undefined;
+    const matches = groupedItems
+      .map((it) => it.key)
+      .filter((k) => fuzzyMatches(searchQuery, k));
+    if (matches.length === 0) return undefined;
+    return computeDirectNeighborhood(matches, graph);
+  }, [searchQuery, groupedItems, graph]);
+
   const visibleRows = useMemo(
     () =>
       buildVisibleRows({
@@ -202,8 +212,9 @@ export function ScopeGateStep({
         showFlatTier: false,
         viewMode: columnOneView,
         graph,
+        filterVisibleKeys,
       }),
-    [groupedItems, cycleParticipants, columnOneView, graph],
+    [groupedItems, cycleParticipants, columnOneView, graph, filterVisibleKeys],
   );
 
   const total = visibleRows.length;

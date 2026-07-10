@@ -41,6 +41,7 @@ import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotat
 import { useLivePreview } from '../useLivePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
+import { computeDirectNeighborhood } from '../../../analyze/search-neighborhood.js';
 import { computeSidebarWidth } from '../sidebar-width.js';
 import { computeAcceptCascade, computeRejectCascade } from '../../../analyze/selection-cascade.js';
 import { findAllAncestors } from '../../../analyze/lineage.js';
@@ -708,6 +709,15 @@ export function GenerateReviewStep({
       })),
     [components, directIssues],
   );
+  const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
+    if (!searchQuery) return undefined;
+    const matches = groupedItemsMemo
+      .map((it) => it.key)
+      .filter((k) => fuzzyMatches(searchQuery, k));
+    if (matches.length === 0) return undefined;
+    return computeDirectNeighborhood(matches, sidebarGraph);
+  }, [searchQuery, groupedItemsMemo, sidebarGraph]);
+
   const visibleRowsMemo = useMemo<VisibleRow[]>(
     () =>
       buildVisibleRows({
@@ -716,8 +726,9 @@ export function GenerateReviewStep({
         expandedGroups,
         viewMode: columnOneView,
         graph: sidebarGraph,
+        filterVisibleKeys,
       }),
-    [groupedItemsMemo, cycleView, expandedGroups, columnOneView, sidebarGraph],
+    [groupedItemsMemo, cycleView, expandedGroups, columnOneView, sidebarGraph, filterVisibleKeys],
   );
   // Row positions that map to a real component (skip synthetic flat-header
   // rows). j/k navigation walks these in order, so duplicate occurrences of

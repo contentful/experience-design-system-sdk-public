@@ -1451,3 +1451,110 @@ describe('ADR-0010 scenarios — buildVisibleRows layer', () => {
   });
 });
 
+describe('GroupedSidebar — filterVisibleKeys (T4 search-time neighborhood filter)', () => {
+  const chain = () => [
+    item('A', { slots: { s: ['B'] } }),
+    item('B', { slots: { s: ['C'] } }),
+    item('C', { slots: { s: ['D'] } }),
+    item('D'),
+  ];
+
+  it('grouped view: filter=[B, direct neighbors] shows A/B/C, hides D', () => {
+    const items = chain();
+    const filter = new Set(['A', 'B', 'C']);
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(['A', 'B', 'C']),
+      alwaysExpanded: true,
+      viewMode: 'grouped',
+      graph: graphOf(items),
+      filterVisibleKeys: filter,
+    });
+    const keys = rows.filter((r) => r.itemIdx >= 0).map((r) => items[r.itemIdx].key);
+    expect(keys).toContain('A');
+    expect(keys).toContain('B');
+    expect(keys).toContain('C');
+    expect(keys).not.toContain('D');
+  });
+
+  it('direct-only, not transitive: filter of A+neighbors shows A/B, hides C/D', () => {
+    const items = chain();
+    const filter = new Set(['A', 'B']); // A's direct child is B; C and D are transitive
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(['A', 'B', 'C']),
+      alwaysExpanded: true,
+      viewMode: 'grouped',
+      graph: graphOf(items),
+      filterVisibleKeys: filter,
+    });
+    const keys = rows.filter((r) => r.itemIdx >= 0).map((r) => items[r.itemIdx].key);
+    expect(keys).toContain('A');
+    expect(keys).toContain('B');
+    expect(keys).not.toContain('C');
+    expect(keys).not.toContain('D');
+  });
+
+  it('flat view ignores filterVisibleKeys — every component present', () => {
+    const items = chain();
+    const filter = new Set(['B']); // in grouped mode this would hide most rows
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(),
+      alwaysExpanded: true,
+      viewMode: 'flat',
+      graph: graphOf(items),
+      filterVisibleKeys: filter,
+    });
+    const keys = rows.filter((r) => r.itemIdx >= 0).map((r) => items[r.itemIdx].key);
+    expect(keys).toContain('A');
+    expect(keys).toContain('B');
+    expect(keys).toContain('C');
+    expect(keys).toContain('D');
+  });
+
+  it('undefined filter = no filtering (all rows visible)', () => {
+    const items = chain();
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(['A', 'B', 'C']),
+      alwaysExpanded: true,
+      viewMode: 'grouped',
+      graph: graphOf(items),
+    });
+    const keys = new Set(
+      rows.filter((r) => r.itemIdx >= 0).map((r) => items[r.itemIdx].key),
+    );
+    expect(keys.has('A')).toBe(true);
+    expect(keys.has('B')).toBe(true);
+    expect(keys.has('C')).toBe(true);
+    expect(keys.has('D')).toBe(true);
+  });
+
+  it('cycle-tier row respects filter — cycle members hidden unless in set', () => {
+    // X ↔ Y form a cycle; Z is unrelated.
+    const items = [
+      item('X', { slots: { s: ['Y'] } }),
+      item('Y', { slots: { s: ['X'] } }),
+      item('Z'),
+    ];
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(['X', 'Y']),
+      expandedGroups: new Set(),
+      alwaysExpanded: true,
+      viewMode: 'grouped',
+      graph: graphOf(items),
+      filterVisibleKeys: new Set(['Z']),
+    });
+    const keys = rows.filter((r) => r.itemIdx >= 0).map((r) => items[r.itemIdx].key);
+    expect(keys).toContain('Z');
+    expect(keys).not.toContain('X');
+    expect(keys).not.toContain('Y');
+  });
+});
+
