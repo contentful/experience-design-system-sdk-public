@@ -66,6 +66,12 @@ type FieldEditorProps = {
    */
   onTogglePropRationale?: () => void;
   /**
+   * T5b — optional override for the key that fires `onTogglePropRationale`.
+   * Defaults to `i`. GenerateReviewStep passes `p` so `[i]` is free for
+   * jump-and-filter at the parent level.
+   */
+  propRationaleKey?: string;
+  /**
    * When provided, the parent owns the component-rationale panel: pressing
    * `I` (uppercase) calls this callback (subject to text-entry gating).
    */
@@ -898,6 +904,7 @@ export function FieldEditor({
   onExit,
   metadata,
   onTogglePropRationale,
+  propRationaleKey = 'i',
   onToggleComponentRationale,
   onToggleSourceExternal,
   onTextEntryActiveChange,
@@ -1258,12 +1265,13 @@ export function FieldEditor({
       !inComponentDescTextEntry &&
       !inStringDefaultTextEntry &&
       !inValueListTextEntry;
-    if (input === 'i' && rationaleKeyAllowed) {
-      if (onTogglePropRationale) {
-        onTogglePropRationale();
-        return;
-      }
-      // Legacy in-place toggle (no parent callback wired).
+    if (input === propRationaleKey && rationaleKeyAllowed && onTogglePropRationale) {
+      onTogglePropRationale();
+      return;
+    }
+    if (input === 'i' && rationaleKeyAllowed && !onTogglePropRationale) {
+      // Legacy in-place toggle (no parent callback wired). Preserves the
+      // pre-T5b UX for callers that haven't lifted the panel.
       setSourceOpen(false);
       setRationaleScrollOffset(() => 0);
       setRationaleOpen((o) => !o);

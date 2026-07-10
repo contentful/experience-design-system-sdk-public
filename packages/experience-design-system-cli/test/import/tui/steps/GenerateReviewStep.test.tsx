@@ -938,12 +938,12 @@ describe('GenerateReviewStep - component rationale panels (lifted)', () => {
     expect(out).not.toMatch(/FIELDS \[Ctrl\+S/);
   });
 
-  it('pressing i from sidebar focus opens the prop rationale panel and replaces the right pane', async () => {
+  it('pressing p from sidebar focus opens the prop rationale panel and replaces the right pane (T5b: [i] rebound)', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    stdin.write('i');
+    stdin.write('p');
     await tick();
     const out = lastFrame() ?? '';
     expect(out).toContain('RATIONALE');
@@ -985,7 +985,7 @@ describe('GenerateReviewStep - component rationale panels (lifted)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    stdin.write('i');
+    stdin.write('p');
     await tick();
     expect(lastFrame() ?? '').toContain('RATIONALE');
     stdin.write('I');
@@ -3440,5 +3440,169 @@ describe('GenerateReviewStep — bottom-of-step banners (T2)', () => {
     expect(autoRejIdx).toBeGreaterThanOrEqual(0);
     expect(fieldsIdx).toBeGreaterThanOrEqual(0);
     expect(autoRejIdx).toBeLessThan(fieldsIdx);
+  });
+});
+
+// ── T5b (layout plan §B) — [i] jump-and-filter in GenerateReviewStep ─────────
+// Mirrors ScopeGateStep T5. Prop-rationale rebound from [i] to [p]; [i] now
+// filters the sidebar to the focused component + its transitive ancestors.
+describe('GenerateReviewStep — [i] jump-and-filter (T5b)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  // A slots B slots C slots D — chain of composites.
+  const withSlot = (name: string, allowed: string[]): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+    $slots: {
+      children: { $type: 'slot', $allowedComponents: allowed },
+    } as never,
+  });
+  const leaf = (name: string): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+  });
+  const CHAIN: Array<{ key: string; entry: Entry }> = [
+    { key: 'A', entry: withSlot('A', ['B']) },
+    { key: 'B', entry: withSlot('B', ['C']) },
+    { key: 'C', entry: withSlot('C', ['D']) },
+    { key: 'D', entry: leaf('D') },
+  ];
+
+  function sidebarNames(frame: string): Set<string> {
+    // Only inspect lines that carry a sidebar row glyph (`[ ]` / `[✓]` / `[✗]`).
+    // The right pane never renders those, so this reliably restricts the scan.
+    const rowLines = frame.split('\n').filter((l) => /\[[ ✓✗×]\]/.test(l));
+    const found = new Set<string>();
+    for (const l of rowLines) {
+      for (const name of ['A', 'B', 'C', 'D']) {
+        if (new RegExp(`(^|[\\s├└─▸▾▶]) ?${name}(\\s|$|[^A-Za-z])`).test(l)) {
+          found.add(name);
+        }
+      }
+    }
+    return found;
+  }
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  it('[i] on component with two ancestors filters to target + those two', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(CHAIN);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Move cursor from top row (A) to C. Groups seed expanded so all four rows
+    // are visible; j walks the selectable-row positions.
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('i');
+    await tick();
+    const names = sidebarNames(lastFrame() ?? '');
+    expect(names.has('A')).toBe(true);
+    expect(names.has('B')).toBe(true);
+    expect(names.has('C')).toBe(true);
+    expect(names.has('D')).toBe(false);
+  });
+
+  it('[i] on root shows only that component', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(CHAIN);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Cursor starts on A (root).
+    stdin.write('i');
+    await tick();
+    const names = sidebarNames(lastFrame() ?? '');
+    expect(names.has('A')).toBe(true);
+    expect(names.has('B')).toBe(false);
+    expect(names.has('C')).toBe(false);
+    expect(names.has('D')).toBe(false);
+  });
+
+  it('repeat [i] on same target clears the filter', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(CHAIN);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('i');
+    await tick();
+    stdin.write('i');
+    await tick();
+    const names = sidebarNames(lastFrame() ?? '');
+    expect(names.has('A')).toBe(true);
+    expect(names.has('B')).toBe(true);
+    expect(names.has('C')).toBe(true);
+    expect(names.has('D')).toBe(true);
+  });
+
+  it('Esc clears jump filter before clearing search query', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(CHAIN);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('i');
+    await tick();
+    stdin.write(''); // Esc — clears jump filter
+    await tick();
+    const names = sidebarNames(lastFrame() ?? '');
+    expect(names.has('A')).toBe(true);
+    expect(names.has('B')).toBe(true);
+    expect(names.has('C')).toBe(true);
+    expect(names.has('D')).toBe(true);
+  });
+
+  it('[i] does NOT open prop-rationale panel any more', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('i');
+    await tick();
+    const out = lastFrame() ?? '';
+    // The rationale panel header must NOT appear at top of the right pane.
+    expect(out).not.toMatch(/^RATIONALE/m);
+  });
+
+  it('[p] opens the prop-rationale panel (new binding)', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('p');
+    await tick();
+    expect(lastFrame() ?? '').toContain('RATIONALE');
+  });
+
+  it('legend advertises [i] focus lineage and [p] rationale', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(CHAIN);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // eslint-disable-next-line no-control-regex
+    const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
+    expect(frame).toMatch(/\[i\][^\n]*focus lineage/);
+    expect(frame).toMatch(/\[p\][^\n]*rationale/);
   });
 });
