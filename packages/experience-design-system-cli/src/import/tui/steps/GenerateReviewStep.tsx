@@ -45,6 +45,7 @@ import { computeSidebarWidth } from '../sidebar-width.js';
 import { computeAcceptCascade, computeRejectCascade } from '../../../analyze/selection-cascade.js';
 import { findAllAncestors } from '../../../analyze/lineage.js';
 import { useLineage } from '../hooks/useLineage.js';
+import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
 import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
@@ -194,16 +195,22 @@ export function GenerateReviewStep({
   // annotation map only carries kind, not the rich summaries we need to list
   // names/ids when the operator asks "which ones?".
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
-  const [showRemovedPanel, setShowRemovedPanel] = useState(false);
   // T3 (parity plan §3) — removed-panel default-open bookkeeping.
   //   - `autoOpenedRemovedRef` latches on the first auto-open so we don't
   //     re-open every time a preview refresh reports a removed set.
-  //   - `manuallyClosedRef` latches on any operator close (via [d] or Esc)
+  //   - `manuallyClosedRemovedRef` latches on any operator close (via [d] or Esc)
   //     and permanently disables auto-open for this session. Reset only on
-  //     unmount/remount (i.e., a fresh session). T10 will extract this into
-  //     a shared `useOverlayPanel` hook — inline for now.
+  //     unmount/remount (i.e., a fresh session). Persisted via the
+  //     `useOverlayPanel({ onClose })` seam extracted in T10 — the hook owns
+  //     the isOpen boolean; the manual-close latch is orthogonal.
   const autoOpenedRemovedRef = useRef(false);
   const manuallyClosedRemovedRef = useRef(false);
+  const removedPanel = useOverlayPanel({
+    toggleKey: 'd',
+    onClose: () => {
+      manuallyClosedRemovedRef.current = true;
+    },
+  });
   // Lifted rationale + source panels (replaces FieldEditor's right pane).
   // Mutually exclusive states.
   const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>('none');
@@ -217,8 +224,14 @@ export function GenerateReviewStep({
   // triggers sidebar (cycle) badges, banner + [c] detail-panel affordance,
   // and (at push time) a hard block.
   const [slotCycles, setSlotCycles] = useState<StoredSlotCycle[]>([]);
-  const [showCyclePanel, setShowCyclePanel] = useState(false);
+  // T10 — cycle panel open/close via shared hook. The scroll state stays
+  // step-local since it's not part of the shared close-key convention;
+  // it's reset on close by the caller's toggle handlers.
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
+  const cyclePanel = useOverlayPanel({
+    toggleKey: 'c',
+    onClose: () => setCyclePanelScroll(0),
+  });
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const seededGroupsRef = useRef(false);
   // Fuzzy-search overlay (mirrors ScopeGateStep). `/` opens the input;
@@ -231,7 +244,7 @@ export function GenerateReviewStep({
   // ancestors + descendants of the focused component. Same shape as
   // ScopeGateStep; derivation happens via the shared `useLineage` hook so
   // both callsites render pixel-identical panels.
-  const [lineagePanelOpen, setLineagePanelOpen] = useState(false);
+  const lineagePanel = useOverlayPanel({ toggleKey: 'l' });
   const [lineageCursor, setLineageCursor] = useState(0);
   // T8 (parity plan §3) — Column-1 view mode. `'grouped'` (default) uses the
   // tiered cycle/empty/composite/standalone layout; `'flat'` flattens to
@@ -305,7 +318,7 @@ export function GenerateReviewStep({
       !manuallyClosedRemovedRef.current
     ) {
       autoOpenedRemovedRef.current = true;
-      setShowRemovedPanel(true);
+      removedPanel.open();
     }
   };
 
@@ -1080,14 +1093,12 @@ export function GenerateReviewStep({
     }
 
     // T6 (parity plan §3) — lineage panel owns keystrokes when open.
-    // Mirrors ScopeGate's overlay-owns-input pattern; the panel closes on
-    // `[l]` (toggle) or `[Esc]`, ↑/↓ (or j/k) move the panel cursor, and
-    // Enter jumps main selection to the highlighted jumpable and closes.
-    if (lineagePanelOpen) {
-      if (key.escape || input === 'l') {
-        setLineagePanelOpen(false);
-        return;
-      }
+    // Mirrors ScopeGate's overlay-owns-input pattern. Close-side (`[l]` toggle
+    // and `[Esc]`) is delegated to the shared `useOverlayPanel` hook (T10);
+    // ↑/↓/j/k move the panel cursor, Tab cycles, and Enter jumps main selection
+    // to the highlighted jumpable and closes.
+    if (lineagePanel.isOpen) {
+      if (lineagePanel.handleInput(input, key)) return;
       if (key.upArrow || input === 'k') {
         setLineageCursor((c) => Math.max(0, c - 1));
         return;
@@ -1107,30 +1118,28 @@ export function GenerateReviewStep({
         if (target && (target.entry.kind === 'ancestor' || target.entry.kind === 'descendant')) {
           jumpCursorToName(target.entry.jumpTarget);
         }
-        setLineagePanelOpen(false);
+        lineagePanel.close();
         return;
       }
       return;
     }
     // Pilot-2026-06-24: removed-detail panel. When open, only `d` (toggle)
     // and Esc (close) respond — all other input is swallowed so j/k/Enter/
-    // Ctrl+S can't move state behind the modal. Mirrors the `?` overlay
-    // pattern from 8f0c62e in FieldEditor.
-    if (showRemovedPanel) {
-      if (input === 'd' || key.escape) {
-        // T3 — any manual close latches the "don't auto-open again" flag so
-        // subsequent preview refreshes don't re-pop the panel.
-        manuallyClosedRemovedRef.current = true;
-        setShowRemovedPanel(false);
-      }
+    // Ctrl+S can't move state behind the modal. Close-side delegated to the
+    // shared `useOverlayPanel` hook (T10); the hook's `onClose` callback
+    // latches `manuallyClosedRemovedRef` so subsequent preview refreshes don't
+    // re-pop the panel.
+    if (removedPanel.isOpen) {
+      removedPanel.handleInput(input, key);
       return;
     }
     // INTEG-4401: slot-cycle detail panel. Same modal-swallow rules as
-    // showRemovedPanel; q/Esc close, ↑↓ scroll.
-    if (showCyclePanel) {
-      if (input === 'c' || input === 'q' || key.escape) {
-        setShowCyclePanel(false);
-        setCyclePanelScroll(0);
+    // removed panel; `[c]` / `[Esc]` close (via shared hook), `[q]` also closes
+    // (legacy), ↑↓ scroll.
+    if (cyclePanel.isOpen) {
+      if (cyclePanel.handleInput(input, key)) return;
+      if (input === 'q') {
+        cyclePanel.close();
         return;
       }
       if (key.upArrow || input === 'k') {
@@ -1146,7 +1155,7 @@ export function GenerateReviewStep({
     // Open the cycle panel from sidebar-focused state when there is at
     // least one cycle to display.
     if (input === 'c' && sidebarFocused && slotCycles.length > 0) {
-      setShowCyclePanel(true);
+      cyclePanel.open();
       setCyclePanelScroll(0);
       return;
     }
@@ -1154,14 +1163,14 @@ export function GenerateReviewStep({
     // least one removed component to display. Sidebar-focused only so it
     // doesn't collide with FieldEditor input.
     if (input === 'd' && sidebarFocused && livePreview && removedComponents.length > 0) {
-      setShowRemovedPanel(true);
+      removedPanel.open();
       return;
     }
     // T6 (parity plan §3) — `[l]` opens the lineage panel when the sidebar
     // has a component under the cursor. Gated to sidebar-focused so it can't
     // collide with FieldEditor input.
     if (input === 'l' && sidebarFocused && focusedComponentKey) {
-      setLineagePanelOpen(true);
+      lineagePanel.open();
       setLineageCursor(0);
       return;
     }
@@ -1715,7 +1724,7 @@ export function GenerateReviewStep({
           <Text>{'  [Esc]    Cancel'}</Text>
         </Box>
       )}
-      {showRemovedPanel && !dialogOpen && (
+      {removedPanel.isOpen && !dialogOpen && (
         // T3 — notability polish. Border flipped cyan → red and title made
         // explicit ("will be DELETED from target space") since these
         // components are about to be dropped from the target space.
@@ -1733,7 +1742,7 @@ export function GenerateReviewStep({
           <Text dimColor>press d or Esc to close</Text>
         </Box>
       )}
-      {showCyclePanel &&
+      {cyclePanel.isOpen &&
         !dialogOpen &&
         (() => {
           // Materialize the full panel body as a flat list of Text lines,
@@ -1802,7 +1811,7 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {lineagePanelOpen && !dialogOpen && focusedComponentKey && (
+      {lineagePanel.isOpen && !dialogOpen && focusedComponentKey && (
         <LineagePanel
           focusedComponentKey={focusedComponentKey}
           entries={lineageEntries}
@@ -1881,7 +1890,7 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {!dialogOpen && slotCycles.length > 0 && !showCyclePanel && (
+      {!dialogOpen && slotCycles.length > 0 && !cyclePanel.isOpen && (
         <Box flexDirection="column">
           <Text color="yellow">
             {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}

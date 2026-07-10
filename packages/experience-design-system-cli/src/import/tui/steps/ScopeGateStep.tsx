@@ -15,6 +15,7 @@ import {
 import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { findSlotCycles, type SlotCycle } from '../../../analyze/cycle-detection.js';
 import { useLineage } from '../hooks/useLineage.js';
+import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import {
   buildCycleUnits,
@@ -102,7 +103,10 @@ export function ScopeGateStep({
   const cursor = nav.cursor;
   const scrollOffset = nav.scrollOffset;
   const [reasonPanelOpen, setReasonPanelOpen] = useState(false);
-  const [lineagePanelOpen, setLineagePanelOpen] = useState(false);
+  // T10 — lineage panel open/close via shared hook. Close-side (`[l]` toggle
+  // and `[Esc]`) is delegated; other keystrokes (Tab/Enter/j/k/↑/↓, plus the
+  // step-specific `c` cross-to-cycles switch) stay in the caller.
+  const lineagePanel = useOverlayPanel({ toggleKey: 'l' });
   const [lineageCursor, setLineageCursor] = useState(0);
   const [cyclesPanelOpen, setCyclesPanelOpen] = useState(false);
   const [cyclesCursor, setCyclesCursor] = useState(0);
@@ -431,18 +435,18 @@ export function ScopeGateStep({
       return;
     }
 
-    // Lineage panel owns most keystrokes when open.
-    if (lineagePanelOpen) {
-      if (key.escape || input === 'l') {
-        setLineagePanelOpen(false);
-        return;
-      }
+    // Lineage panel owns most keystrokes when open. Close-side (`[l]` / `[Esc]`)
+    // delegated to the shared `useOverlayPanel` hook (T10). The step-specific
+    // `[c]` cross-to-cycles switch runs BEFORE the shared handler so `c` is
+    // captured as a hand-off rather than a toggle.
+    if (lineagePanel.isOpen) {
       if (input === 'c' && hasCycles) {
-        setLineagePanelOpen(false);
+        lineagePanel.close();
         setCyclesPanelOpen(true);
         setCyclesCursor(0);
         return;
       }
+      if (lineagePanel.handleInput(input, key)) return;
       if (key.upArrow || input === 'k') {
         setLineageCursor((c) => Math.max(0, c - 1));
         return;
@@ -456,7 +460,7 @@ export function ScopeGateStep({
         if (target && (target.entry.kind === 'ancestor' || target.entry.kind === 'descendant')) {
           jumpCursorTo(target.entry.jumpTarget);
         }
-        setLineagePanelOpen(false);
+        lineagePanel.close();
         return;
       }
       return;
@@ -497,7 +501,7 @@ export function ScopeGateStep({
         const g = addedGroups[safeAddedGroupsCursor];
         if (g) jumpCursorTo(g.name);
       }
-      setLineagePanelOpen(true);
+      lineagePanel.open();
       setLineageCursor(0);
       setCyclesPanelOpen(false);
       return;
@@ -506,7 +510,7 @@ export function ScopeGateStep({
       if (!hasCycles) return;
       setCyclesPanelOpen(true);
       setCyclesCursor(0);
-      setLineagePanelOpen(false);
+      lineagePanel.close();
       return;
     }
     if (input === '/') {
@@ -917,7 +921,7 @@ export function ScopeGateStep({
         </Box>
       )}
 
-      {lineagePanelOpen && focusedComponent && (
+      {lineagePanel.isOpen && focusedComponent && (
         <LineagePanel
           focusedComponentKey={focusedComponent.name}
           entries={lineageEntries}
