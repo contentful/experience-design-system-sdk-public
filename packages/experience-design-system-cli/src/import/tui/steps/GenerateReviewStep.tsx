@@ -418,12 +418,12 @@ export function GenerateReviewStep({
     () => buildComponentGraph(components),
     [components],
   );
-  // Sidebar-layout arm: rejected components contribute no outgoing edges,
-  // matching the post-task-#7 `itemsToGraph` behavior. Passed into
-  // `GroupedSidebar.graph` so `buildVisibleRows` uses this canonical graph
-  // instead of the fallback `itemsToGraph(items)`. Rejected rows still
-  // appear as rows (they map to `{ name, slots: [] }`), but their former
-  // slot targets are promoted back to standalones.
+  // Sidebar-layout arm: rejected components contribute no outgoing edges
+  // (ADR-0010 Part 3, plan §4.3). Passed into `GroupedSidebar.graph` so
+  // tier layout, cycle-child injection, and closure walking read from one
+  // canonical source. Rejected rows still appear as rows (they map to
+  // `{ name, slots: [] }`), but their former slot targets are promoted back
+  // to standalones.
   const sidebarGraph = useMemo<ComponentGraphNode[]>(
     () => buildComponentGraph(components, { stripRejectedEdges: true }),
     [components],
