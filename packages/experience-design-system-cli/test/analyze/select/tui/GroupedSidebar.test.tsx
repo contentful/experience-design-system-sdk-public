@@ -1095,3 +1095,97 @@ describe('buildVisibleRows — cycle member no longer in a cycle', () => {
   });
 });
 
+// Regression (task #7): the previous suite only asserted `label.includes('InnerA')`,
+// which passes even when InnerA is buried as a group-child under a REJECTED
+// InnerB. Post-edit, InnerA has no top-level row of its own — the user's
+// "InnerA disappeared" complaint.
+//
+// Rejected components will never ship, so their outgoing slot edges must NOT
+// dominate the sidebar tier layout. Otherwise a rejected ancestor drags its
+// former slot targets under it and hides them from the top-level list.
+describe('buildVisibleRows — rejected ancestor must not bury its slot targets', () => {
+  it('promotes InnerA to a top-level row when its only referrer InnerB is rejected', () => {
+    // Post-mount-auto-reject + post-edit state:
+    //   - InnerA had InnerB in its slot; operator removed it (slot now empty).
+    //   - Both are still `status='error'` (rejected by mount auto-reject).
+    //   - Cycle detection now sees no cycle → cycleParticipants is empty.
+    // Expected: InnerA renders as its OWN top-level row (standalone or group-
+    // root), not only nested under InnerB.
+    const items = [
+      item('InnerA', { slots: { s: [] }, status: 'error' }),
+      item('InnerB', { slots: { s: ['InnerA'] }, status: 'error' }),
+    ];
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(),
+      alwaysExpanded: true,
+    });
+    const topLevel = rows.filter((r) => r.indent === 0);
+    const topKeys = topLevel.map((r) => r.rootName ?? r.itemIdx).filter(Boolean);
+    const innerARows = rows.filter(
+      (r) =>
+        (r.kind === 'standalone' || r.kind === 'group-root' || r.kind === 'flat') &&
+        r.label.includes('InnerA'),
+    );
+    // InnerA MUST appear as a standalone / group-root / flat row (not only as
+    // a group-child under InnerB).
+    expect(innerARows.length).toBeGreaterThan(0);
+    // And InnerB should not carry a `(cycle)` marker since no cycle exists.
+    const innerBLabels = rows
+      .filter((r) => r.label.includes('InnerB'))
+      .map((r) => r.label);
+    expect(innerBLabels.some((l) => l.includes('(cycle)'))).toBe(false);
+  });
+
+  it('a rejected composite with a live slot target still promotes the target to top-level', () => {
+    // Wrapper1 was auto-rejected but still lists SharedInterior in its slots.
+    // SharedInterior is live. It must render as a top-level row — not buried
+    // under a rejected ancestor.
+    const items = [
+      item('Wrapper1', { slots: { body: ['SharedInterior'] }, status: 'error' }),
+      item('SharedInterior', { status: 'ok' }),
+    ];
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(),
+      alwaysExpanded: true,
+    });
+    const sharedTopLevel = rows.filter(
+      (r) =>
+        (r.kind === 'standalone' || r.kind === 'group-root' || r.kind === 'flat') &&
+        r.label.includes('SharedInterior'),
+    );
+    expect(sharedTopLevel.length).toBeGreaterThan(0);
+  });
+
+  it('a LIVE composite still groups its live slot target (no over-flattening)', () => {
+    // Guard: the rejected-edge fix must not affect the non-rejected case.
+    // Card (ok) slotting Text (ok) should still render Card as a group-root
+    // with Text as its child, NOT two standalones.
+    const items = [
+      item('Card', { slots: { body: ['Text'] }, status: 'ok' }),
+      item('Text', { status: 'ok' }),
+    ];
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(),
+      alwaysExpanded: true,
+    });
+    const cardRoot = rows.find(
+      (r) => r.kind === 'group-root' && r.label.includes('Card'),
+    );
+    expect(cardRoot).toBeDefined();
+    const textAsChild = rows.find(
+      (r) => r.kind === 'group-child' && r.label.includes('Text'),
+    );
+    expect(textAsChild).toBeDefined();
+    const textAsStandalone = rows.find(
+      (r) => r.kind === 'standalone' && r.label.includes('Text'),
+    );
+    expect(textAsStandalone).toBeUndefined();
+  });
+});
+

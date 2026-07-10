@@ -178,12 +178,24 @@ function isEmpty(entry: CDFComponentEntry): boolean {
 function itemsToGraph(items: GroupedSidebarItem[]): ComponentGraphNode[] {
   return items.map((it) => ({
     name: it.key,
-    slots: Object.entries(it.entry.$slots ?? {}).map(([slotName, slotDef]) => ({
-      name: slotName,
-      allowedComponents: Array.isArray(slotDef?.$allowedComponents)
-        ? (slotDef.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
-        : [],
-    })),
+    // Rejected components will never ship — their outgoing slot edges must
+    // not dominate the sidebar tier layout. Otherwise a rejected ancestor
+    // (e.g. mount-auto-rejected InnerB) drags its former slot targets (e.g.
+    // an edited InnerA) under it as group-children, hiding them from the
+    // top-level list. Stripping edges here promotes those targets back to
+    // standalones without altering cycle detection or push-safety (both use
+    // their own graphs).
+    slots:
+      it.status === 'error'
+        ? []
+        : Object.entries(it.entry.$slots ?? {}).map(([slotName, slotDef]) => ({
+            name: slotName,
+            allowedComponents: Array.isArray(slotDef?.$allowedComponents)
+              ? (slotDef.$allowedComponents as unknown[]).filter(
+                  (v): v is string => typeof v === 'string',
+                )
+              : [],
+          })),
   }));
 }
 

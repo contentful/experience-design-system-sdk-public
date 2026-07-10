@@ -1496,10 +1496,17 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
     );
     await tick();
     // Default selection is Card (root, first in nav order). Move down to Body,
-    // reject it → own issue. Pressing Enter on Body should be a no-op (isOwn: true).
+    // reject it → task #37 cascades UP so Card is rejected too. Task #7 fix
+    // strips outgoing edges of rejected roots, so Body promotes from group-
+    // child to a standalone. Post-cascade tier order: [Body, Card] alphabetical.
+    // Cursor stays at rowIdx=1 (was Body pre-cascade) → now points at Card.
+    // Press `k` to move back to Body, then Enter should be a no-op (Body owns
+    // its issue → isOwn: true).
     stdin.write('j'); // navigate to Body
     await tick();
-    stdin.write('r'); // reject Body
+    stdin.write('r'); // reject Body (cascade rejects Card)
+    await tick();
+    stdin.write('k'); // move cursor back to Body (now at rowIdx=0)
     await tick();
     stdin.write('\r'); // Enter — no drill because Body owns its issue
     await tick();
