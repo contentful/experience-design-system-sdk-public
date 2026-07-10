@@ -95,9 +95,15 @@ export async function spawnWizard(args, opts = {}) {
   });
 
   let buffer = '';
+  // PTY_HARNESS_DEBUG=1 mirrors every byte the child writes to stderr,
+  // prefixed with the child pid. Useful in CI when a wait_for times out
+  // with an empty screen — the mirrored bytes prove whether the child
+  // produced any output at all before termination.
+  const mirrorDebug = process.env.PTY_HARNESS_DEBUG === '1';
   term.onData((data) => {
     buffer += data;
     if (opts.debug) process.stdout.write(data);
+    if (mirrorDebug) process.stderr.write(`[pty-${term.pid}] ${data}`);
   });
 
   let exited = false;
@@ -130,8 +136,13 @@ export async function spawnWizard(args, opts = {}) {
       }
       await new Promise((r) => setTimeout(r, interval));
     }
+    const screen = getScreen();
+    const raw = getRaw();
     throw new Error(
-      `Timeout (${timeout}ms) waiting for: ${pattern}\n--- SCREEN ---\n${getScreen()}`,
+      `Timeout (${timeout}ms) waiting for: ${pattern}\n` +
+        `pid=${term.pid} exited=${exited} exitInfo=${JSON.stringify(exitInfo)} rawBytes=${raw.length}\n` +
+        `--- SCREEN ---\n${screen}\n` +
+        `--- RAW (first 400) ---\n${raw.slice(0, 400)}`,
     );
   };
 
