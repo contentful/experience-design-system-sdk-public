@@ -2148,3 +2148,235 @@ describe('computeCycleAutoRejectTargets — pure helper', () => {
     expect(targets.has('Standalone')).toBe(false);
   });
 });
+
+// ADR-0010 §Part 2 canonical scenarios — driven through the real
+// GenerateReviewStep. Pins mount auto-reject targeting (cycle participants
+// + transitive ancestors that slot them; NOT descendants), the [F] gate,
+// and Scenario-A slot-traversal cascade (NOT cycle-unit cohesion — that's
+// ScopeGate territory).
+//
+// Scenarios:
+//   A — P and C cycle with each other (P.slots⊃C, C.slots⊃P).
+//   B — P slots C; C cycles with unrelated X (P not in cycle).
+//   C — P cycles with X; P also slots C; C has no slots (leaf).
+
+describe('GenerateReviewStep — ADR-0010 scenarios', () => {
+  beforeEach(() => {
+    hookReturnOverride = null;
+  });
+
+  describe('Scenario A — P ↔ C cycle', () => {
+    const P = {
+      $type: 'component' as const,
+      $properties: { p: { $type: 'string' as const, $category: 'content' as const } },
+      $slots: { s: { $allowedComponents: ['C'] } },
+    };
+    const C = {
+      $type: 'component' as const,
+      $properties: { c: { $type: 'string' as const, $category: 'content' as const } },
+      $slots: { s: { $allowedComponents: ['P'] } },
+    };
+    const primeA = async () => {
+      const dbMod = await import('../../../../src/session/db.js');
+      vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+        { key: 'P', entry: P },
+        { key: 'C', entry: C },
+      ]);
+      vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+        {
+          path: ['P', 'C', 'P'],
+          edges: [
+            { fromComponent: 'P', slotName: 's', toComponent: 'C' },
+            { fromComponent: 'C', slotName: 's', toComponent: 'P' },
+          ],
+          suggestedBreak: null,
+        },
+      ]);
+    };
+
+    it('mount auto-reject targets BOTH P and C (both are cycle participants)', async () => {
+      await primeA();
+      const { lastFrame } = render(
+        <GenerateReviewStep extractSessionId="sess-a" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+      );
+      await tick();
+      const frame = lastFrame() ?? '';
+      expect(frame).toMatch(/Cyclic manifest — auto-rejected/);
+      // Both cycle members enumerated in the banner. No non-cycle ancestors
+      // exist in this graph, so no "Ancestors:" line.
+      expect(frame).toMatch(/Cycle members:.*C/);
+      expect(frame).toMatch(/Cycle members:.*P/);
+      expect(frame).not.toMatch(/Ancestors:/);
+    });
+
+    it('[F] blocks when accepted subset still contains the cycle', async () => {
+      await primeA();
+      const { lastFrame, stdin } = render(
+        <GenerateReviewStep extractSessionId="sess-a" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+      );
+      await tick();
+      // Undo the mount auto-reject → both P and C back to `needs-review`.
+      stdin.write('u');
+      await tick();
+      // Bulk-accept via [A] → both accepted → accepted subgraph still cyclic.
+      stdin.write('A');
+      await tick();
+      stdin.write('F');
+      await tick();
+      const frame = lastFrame() ?? '';
+      expect(frame).toMatch(/Cannot finalize — accepted set still contains a cycle/);
+      expect(frame).not.toMatch(/Save decisions and exit/);
+    });
+
+    it('[a] on a cycle member does NOT cascade to its partner (computeClosure short-circuits on cycles)', async () => {
+      // ADR-0010 §Part 2 Scenario A CLAIMS: "Accepting P cascades DOWN P→C,
+      // so C flips accepted... Both end accepted via slot traversal — no
+      // cycle-unit needed."
+      //
+      // ACTUAL BEHAVIOR (commit 15471b2): `computeAcceptCascade` uses
+      // `computeClosure`, which short-circuits any closure whose walk
+      // detects a cycle → the returned closure is JUST `[target]`. So [a]
+      // on C accepts C only; P stays `needs-review`. To reject the whole
+      // cycle-unit in GenerateReview, the operator must either edit slots
+      // or accept each member individually.
+      //
+      // This test PINS actual behavior. See `spec-disagreement` log entry
+      // for graph-consolidation-m1 — ADR §Part 2 Scenario A needs updating
+      // during D.20 refactor OR the source needs a cycle-aware cascade.
+      await primeA();
+      const { lastFrame, stdin } = render(
+        <GenerateReviewStep extractSessionId="sess-a" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+      );
+      await tick();
+      stdin.write('u'); // undo mount auto-reject → both needs-review
+      await tick();
+      // Cursor at row 0 (C, cycle-tier alphabetical). [a] on C.
+      stdin.write('a');
+      await tick();
+      stdin.write('F'); // finalize gate — accepted subset {C} is acyclic → dialog opens
+      await tick();
+      const frame = lastFrame() ?? '';
+      // Dialog opens (1 accepted = C, 1 unresolved = P). The [F] gate does
+      // NOT block because the accepted subgraph is a single node.
+      expect(frame).toMatch(/Save decisions and exit/);
+      expect(frame).toMatch(/1 accepted/);
+      expect(frame).toMatch(/1 unresolved/);
+    });
+  });
+
+  describe('Scenario B — P → C, C ↔ X (P not in cycle)', () => {
+    const P = {
+      $type: 'component' as const,
+      $properties: { p: { $type: 'string' as const, $category: 'content' as const } },
+      $slots: { s: { $allowedComponents: ['C'] } },
+    };
+    const C = {
+      $type: 'component' as const,
+      $properties: { c: { $type: 'string' as const, $category: 'content' as const } },
+      $slots: { s: { $allowedComponents: ['X'] } },
+    };
+    const X = {
+      $type: 'component' as const,
+      $properties: { x: { $type: 'string' as const, $category: 'content' as const } },
+      $slots: { s: { $allowedComponents: ['C'] } },
+    };
+    const primeB = async () => {
+      const dbMod = await import('../../../../src/session/db.js');
+      vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+        { key: 'P', entry: P },
+        { key: 'C', entry: C },
+        { key: 'X', entry: X },
+      ]);
+      vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+        {
+          path: ['C', 'X', 'C'],
+          edges: [
+            { fromComponent: 'C', slotName: 's', toComponent: 'X' },
+            { fromComponent: 'X', slotName: 's', toComponent: 'C' },
+          ],
+          suggestedBreak: null,
+        },
+      ]);
+    };
+
+    it('mount auto-rejects C, X, AND P (P is a transitive ancestor slotting cycle member C)', async () => {
+      await primeB();
+      const { lastFrame } = render(
+        <GenerateReviewStep extractSessionId="sess-b" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+      );
+      await tick();
+      const frame = lastFrame() ?? '';
+      // Cycle members: C and X. Ancestors: P (because P slots C).
+      expect(frame).toMatch(/Cycle members:.*C/);
+      expect(frame).toMatch(/Cycle members:.*X/);
+      expect(frame).toMatch(/Ancestors:.*P/);
+    });
+  });
+
+  describe('Scenario C — P ↔ X cycle, P also slots C (C not in any cycle)', () => {
+    const P = {
+      $type: 'component' as const,
+      $properties: { p: { $type: 'string' as const, $category: 'content' as const } },
+      $slots: {
+        cycle: { $allowedComponents: ['X'] },
+        child: { $allowedComponents: ['C'] },
+      },
+    };
+    const X = {
+      $type: 'component' as const,
+      $properties: { x: { $type: 'string' as const, $category: 'content' as const } },
+      $slots: { s: { $allowedComponents: ['P'] } },
+    };
+    const C = {
+      $type: 'component' as const,
+      $properties: { c: { $type: 'string' as const, $category: 'content' as const } },
+    };
+    const primeC = async () => {
+      const dbMod = await import('../../../../src/session/db.js');
+      vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+        { key: 'P', entry: P },
+        { key: 'X', entry: X },
+        { key: 'C', entry: C },
+      ]);
+      vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+        {
+          path: ['P', 'X', 'P'],
+          edges: [
+            { fromComponent: 'P', slotName: 'cycle', toComponent: 'X' },
+            { fromComponent: 'X', slotName: 's', toComponent: 'P' },
+          ],
+          suggestedBreak: null,
+        },
+      ]);
+    };
+
+    it('descendant C stays `needs-review` at mount (ADR-pinned — ancestor-flip does NOT cascade DOWN)', async () => {
+      // ADR-0010 §Part 2 scenario C: "P and X auto-rejected. C stays
+      // `needs-review` — task #37's ancestor-flip rule catches ancestors of
+      // cycle participants, not descendants." Verified by inspecting the
+      // auto-reject banner — C must NOT appear as a cycle member OR as an
+      // ancestor. And C's sidebar row must render the undecided glyph `[ ]`,
+      // not the rejected glyph `[✗]`.
+      await primeC();
+      const { lastFrame } = render(
+        <GenerateReviewStep extractSessionId="sess-c" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+      );
+      await tick();
+      const frame = lastFrame() ?? '';
+      // Banner enumerates only P and X as auto-rejected.
+      expect(frame).toMatch(/Cyclic manifest — auto-rejected/);
+      expect(frame).toMatch(/Cycle members:.*P/);
+      expect(frame).toMatch(/Cycle members:.*X/);
+      // C never appears in the banner's Cycle members or Ancestors lines.
+      const cycleMembersLine = frame.split('\n').find((l) => l.includes('Cycle members:')) ?? '';
+      const ancestorsLine = frame.split('\n').find((l) => l.includes('Ancestors:')) ?? '';
+      expect(cycleMembersLine).not.toMatch(/(^|[^A-Za-z])C([^A-Za-z]|$)/);
+      expect(ancestorsLine).not.toMatch(/(^|[^A-Za-z])C([^A-Za-z]|$)/);
+      // C's sidebar row shows the undecided glyph, not the rejected glyph.
+      const cSidebarLine =
+        frame.split('\n').find((l) => /(^|[^A-Za-z])C([^A-Za-z]|$)/.test(l) && (l.includes('[ ]') || l.includes('[✗]'))) ?? '';
+      expect(cSidebarLine).toContain('[ ]');
+      expect(cSidebarLine).not.toContain('[✗]');
+    });
+  });
+});

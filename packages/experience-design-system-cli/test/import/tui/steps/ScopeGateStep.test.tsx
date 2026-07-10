@@ -1309,3 +1309,206 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
     expect(arg.rejected).toEqual([]);
   });
 });
+
+// ADR-0010 §Part 2 canonical scenarios — driven through the real ScopeGateStep
+// component. Pins mount defaults (everything undecided, NO auto-reject),
+// cycle-unit cohesion, and slot-edge cascade per topology.
+//
+// Scenarios:
+//   A — P and C cycle with each other (P.slots⊃C, C.slots⊃P).
+//   B — P slots C; C cycles with unrelated X (P not in cycle).
+//   C — P cycles with X; P also slots C; C has no slots (leaf).
+
+describe('ScopeGateStep — ADR-0010 scenarios', () => {
+  describe('Scenario A — P ↔ C cycle-unit', () => {
+    const SCENARIO_A = [
+      {
+        name: 'P',
+        componentId: 'p',
+        slots: [{ name: 's', allowedComponents: ['C'] }],
+      },
+      {
+        name: 'C',
+        componentId: 'c',
+        slots: [{ name: 's', allowedComponents: ['P'] }],
+      },
+    ];
+
+    it('mount defaults — nothing accepted, NO auto-reject (ADR-0010 §Part 1)', () => {
+      // Everything defaults to undecided in ScopeGate. Confirming right away
+      // partitions everything (including cycle participants) into rejected —
+      // no auto-reject flipped anything before the operator touched a key.
+      const onConfirm = vi.fn();
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={SCENARIO_A} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      // "nothing selected" hint proves no auto-accept/reject happened at mount.
+      expect(lastFrame() ?? '').toContain('nothing selected');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.accepted).toEqual([]);
+      expect(arg.rejected).toEqual(expect.arrayContaining(['P', 'C']));
+    });
+
+    it('[a] on either cycle member accepts BOTH via cycle-unit cohesion', () => {
+      // Cursor starts on C (cycle tier alphabetical). [a] on C must accept
+      // both C and P — cycle-unit cohesion (task #47).
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={SCENARIO_A} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      stdin.write('a');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.accepted).toEqual(expect.arrayContaining(['P', 'C']));
+      expect(arg.rejected).toEqual([]);
+    });
+
+    it('[r] on either cycle member rejects BOTH via cycle-unit cohesion', () => {
+      // Cursor on C (first cycle-tier alphabetical). [r] rejects the whole
+      // unit. Blast radius is 1 partner (P) + 0 descendants → no confirm prompt.
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={SCENARIO_A} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      stdin.write('r');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.accepted).toEqual([]);
+      expect(arg.rejected).toEqual(expect.arrayContaining(['P', 'C']));
+    });
+  });
+
+  describe('Scenario B — P → C, C ↔ X (P not in cycle)', () => {
+    const SCENARIO_B = [
+      {
+        name: 'P',
+        componentId: 'p',
+        slots: [{ name: 's', allowedComponents: ['C'] }],
+      },
+      {
+        name: 'C',
+        componentId: 'c',
+        slots: [{ name: 's', allowedComponents: ['X'] }],
+      },
+      {
+        name: 'X',
+        componentId: 'x',
+        slots: [{ name: 's', allowedComponents: ['C'] }],
+      },
+    ];
+
+    it('mount defaults — nothing accepted; cycle detected but NO auto-reject', () => {
+      const onConfirm = vi.fn();
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={SCENARIO_B} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('nothing selected');
+      // [c] legend advertises the cycle affordance — cycle detection ran.
+      expect(frame).toContain('[c]');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.accepted).toEqual([]);
+    });
+
+    it('accepting P via [Y] cascades DOWN P→C and cohesion pulls X in', () => {
+      // ADR-0010 §Part 2 scenario B: "Accepting P cascades DOWN to C,
+      // cohesion pulls X into accepted as well." [Y] accepts every non-cycle
+      // non-AI-flagged component (P) then adds every cycle unit reachable
+      // via slot closure from those seeds. P → C → X unit → both pulled in.
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={SCENARIO_B} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      stdin.write('Y');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.accepted).toEqual(expect.arrayContaining(['P', 'C', 'X']));
+      expect(arg.rejected).toEqual([]);
+    });
+
+    it('[a] on cycle member C accepts cycle-unit {C,X}; P not pulled in (P is ancestor, not descendant)', () => {
+      // Cursor starts on C (first cycle-tier alphabetical). Accept C →
+      // cohesion pulls X. Cascade goes DOWN through slot edges. P is an
+      // ancestor (P slots C), NOT a descendant of C → accept does not
+      // touch P. P stays undecided → partitions to rejected on [f].
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={SCENARIO_B} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      stdin.write('a');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.accepted).toEqual(expect.arrayContaining(['C', 'X']));
+      expect(arg.accepted).not.toContain('P');
+      expect(arg.rejected).toContain('P');
+    });
+  });
+
+  describe('Scenario C — P ↔ X cycle-unit, P also slots C (C not in cycle)', () => {
+    const SCENARIO_C = [
+      {
+        name: 'P',
+        componentId: 'p',
+        slots: [
+          { name: 'cycle', allowedComponents: ['X'] },
+          { name: 'child', allowedComponents: ['C'] },
+        ],
+      },
+      {
+        name: 'X',
+        componentId: 'x',
+        slots: [{ name: 's', allowedComponents: ['P'] }],
+      },
+      { name: 'C', componentId: 'c' },
+    ];
+
+    it('mount defaults — everything undecided; NO auto-reject even though a cycle exists', () => {
+      const onConfirm = vi.fn();
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={SCENARIO_C} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      expect(lastFrame() ?? '').toContain('nothing selected');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.accepted).toEqual([]);
+    });
+
+    it('[a] on cycle member P accepts cycle-unit {P,X} AND descendant C via slot cascade', () => {
+      // ADR-0010 §Part 2 scenario C: "Accept P → cohesion flips X;
+      // slot-edge cascade P→C flips C." Cursor starts on P (first cycle-tier
+      // alphabetical). [a] accepts P → cohesion pulls X + slot P→C flips C.
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={SCENARIO_C} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      stdin.write('a');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.accepted).toEqual(expect.arrayContaining(['P', 'X', 'C']));
+      expect(arg.rejected).toEqual([]);
+    });
+
+    it('[a] on non-cycle descendant C accepts C only — no cascade up to ancestors', () => {
+      // Scenario-C corollary: C is a leaf, so accepting C should not drag P
+      // (its parent) or X into accepted. Ancestor cascade is a REJECT-only
+      // direction; accepts flow strictly DOWN through slots.
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={SCENARIO_C} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      // Jump to C via search — cycle-tier row layout makes j-counts fragile.
+      stdin.write('/');
+      stdin.write('C');
+      stdin.write('\r');
+      stdin.write('a');
+      stdin.write('f');
+      const arg = onConfirm.mock.calls[0][0];
+      expect(arg.accepted).toEqual(['C']);
+      expect(arg.accepted).not.toContain('P');
+      expect(arg.accepted).not.toContain('X');
+      expect(arg.rejected).toEqual(expect.arrayContaining(['P', 'X']));
+    });
+  });
+});
