@@ -692,6 +692,19 @@ export function GenerateReviewStep({
     }
     return out;
   }, [searchQuery, selectableRowPositions, visibleRowsMemo, components]);
+  // T7b delta 2 — display-only unique-component match count. `searchMatches`
+  // stores row positions (Tab-cycling walks duplicate rows for shared deps
+  // intentionally), but the user-visible numerator must be a component count
+  // to parity with ScopeGate ("N unique matches / M total"). Dedupe by itemIdx.
+  const searchMatchCount = useMemo<number>(() => {
+    if (searchMatches.length === 0) return 0;
+    const seen = new Set<number>();
+    for (const pos of searchMatches) {
+      const itemIdx = visibleRowsMemo[pos]?.itemIdx;
+      if (itemIdx != null && itemIdx >= 0) seen.add(itemIdx);
+    }
+    return seen.size;
+  }, [searchMatches, visibleRowsMemo]);
 
   const dimPredicate = useMemo(() => {
     if (!searchQuery) return undefined;
@@ -793,21 +806,31 @@ export function GenerateReviewStep({
         return;
       }
       if (key.return) {
-        if (searchQuery) {
-          let jumped = false;
-          for (let i = Math.max(0, cursorRowIdx); i < visibleRowsMemo.length; i++) {
-            const row = visibleRowsMemo[i];
-            if (row.itemIdx < 0) continue;
-            const key2 = components[row.itemIdx]?.key;
-            if (key2 && fuzzyMatches(searchQuery, key2)) {
-              jumpCursorToRow(i);
-              jumped = true;
-              break;
-            }
+        // T7b delta 3 — mirror ScopeGate: Enter with empty query OR zero
+        // matches clears + closes so the user doesn't get stuck with a
+        // dim-all state and no on-screen recovery besides Esc.
+        if (!searchQuery || searchMatches.length === 0) {
+          setSearchOpen(false);
+          setSearchQuery('');
+          return;
+        }
+        let jumped = false;
+        // T7b delta 4 — scan STRICTLY AFTER the current cursor row so Enter
+        // on a match advances to the next one (parity with ScopeGate).
+        for (let i = cursorRowIdx + 1; i < visibleRowsMemo.length; i++) {
+          const row = visibleRowsMemo[i];
+          if (row.itemIdx < 0) continue;
+          const key2 = components[row.itemIdx]?.key;
+          if (key2 && fuzzyMatches(searchQuery, key2)) {
+            jumpCursorToRow(i);
+            jumped = true;
+            break;
           }
-          if (!jumped && searchMatches.length > 0) {
-            jumpCursorToRow(searchMatches[0]);
-          }
+        }
+        if (!jumped) {
+          // Wrap-around: no match strictly after cursor, jump to first match
+          // anywhere in the list (searchMatches.length > 0 guaranteed above).
+          jumpCursorToRow(searchMatches[0]);
         }
         setSearchOpen(false);
         return;
@@ -1587,14 +1610,14 @@ export function GenerateReviewStep({
             {`/${searchQuery}`}
             <Text color="cyan">{'▎'}</Text>
             {searchQuery && (
-              <Text dimColor>{`  (${searchMatches.length}/${components.length} matches)`}</Text>
+              <Text dimColor>{`  (${searchMatchCount}/${components.length} matches)`}</Text>
             )}
           </Text>
         </Box>
       )}
       {!dialogOpen && !searchOpen && searchQuery && (
         <Box>
-          <Text dimColor>{`/${searchQuery}  (${searchMatches.length}/${components.length} matches) · [Esc] clear · [Tab] next`}</Text>
+          <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear · [Tab] next`}</Text>
         </Box>
       )}
       {!dialogOpen && (
@@ -1774,6 +1797,7 @@ export function GenerateReviewStep({
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       (focusedComponentKey ? '  [l] lineage' : '') +
+                      '  [/] search' +
                       (undoSnapshot ? '  [u] undo' : '') +
                       '  [q] quit'
                     : showJson

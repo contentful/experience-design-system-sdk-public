@@ -1919,15 +1919,17 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     let frame = lastFrame() ?? '';
     // Persistent hint shown when input closed but query active.
     expect(frame).toMatch(/\[Tab\] next/);
-    // Cursor on Banner (first match at/after cursor position 0; alphabetical order Banner < Button).
+    // T7b delta 4: Enter now scans strictly AFTER cursorRowIdx (parity with
+    // ScopeGate). Cursor starts on Banner (row 0), so Enter advances to
+    // Button (the next match after cursor).
     let titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleLine).toContain('Banner');
-    // Tab cycles to the next match: Button.
+    expect(titleLine).toContain('Button');
+    // Tab cycles to the next match: wraps to Banner (the only other match).
     stdin.write('\t');
     await tick();
     frame = lastFrame() ?? '';
     titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleLine).toContain('Button');
+    expect(titleLine).toContain('Banner');
   });
 
   it('Esc from active-query state clears the query', async () => {
@@ -1971,6 +1973,152 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     const frame = lastFrame() ?? '';
     // 'b' matches Button + Banner; total 4.
     expect(frame).toMatch(/2\/4 matches/);
+  });
+});
+
+describe('GenerateReviewStep — search parity (T7b: legend, dedupe, enter-clear, enter-advance)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const makeEntry = (label: string): Entry => ({
+    $type: 'component',
+    $properties: { [label.toLowerCase()]: { $type: 'string', $category: 'content' } },
+  });
+  const parentEntry = (childName: string): Entry => ({
+    $type: 'component',
+    $properties: { title: { $type: 'string', $category: 'content' } },
+    $slots: { children: { $allowedComponents: [childName] } },
+  });
+
+  it('legend advertises [/] search when sidebar focused (parity with ScopeGate)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Alpha', entry: makeEntry('Alpha') },
+      { key: 'Beta', entry: makeEntry('Beta') },
+    ]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Ink can wrap the legend and insert ANSI codes; strip both before asserting.
+    // eslint-disable-next-line no-control-regex
+    const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
+    expect(frame).toMatch(/\[\/\][^\n]*search/);
+  });
+
+  it('match counter dedupes shared-dep rows to unique component count (1/N not 2/N)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // Article → Card, Section → Card. Card is a shared dep, so buildVisibleRows
+    // emits it under BOTH parents. Total components = 3, but the row list has
+    // Card twice. Search 'card' hits both Card rows: raw count = 2, but the
+    // user-visible numerator must be 1 (one unique component matched).
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Article', entry: parentEntry('Card') },
+      { key: 'Section', entry: parentEntry('Card') },
+      { key: 'Card', entry: makeEntry('Card') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('c');
+    await tick();
+    stdin.write('a');
+    await tick();
+    stdin.write('r');
+    await tick();
+    stdin.write('d');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/1\/3 matches/);
+    expect(frame).not.toMatch(/2\/3 matches/);
+  });
+
+  it('Enter with 0 matches clears the query and closes the input (no stuck dim-all)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Alpha', entry: makeEntry('Alpha') },
+      { key: 'Beta', entry: makeEntry('Beta') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    // One char at a time — useImmediateInput only consumes single chars per call.
+    stdin.write('z');
+    await tick();
+    stdin.write('z');
+    await tick();
+    stdin.write('z');
+    await tick();
+    stdin.write('z');
+    await tick();
+    // Confirm we're in 0-match state while input still open.
+    expect(lastFrame() ?? '').toMatch(/0\/2 matches/);
+    stdin.write('\r'); // Enter — should clear + close (mirror ScopeGate)
+    await tick();
+    const frame = lastFrame() ?? '';
+    // No persistent-hint line for the query.
+    expect(frame).not.toMatch(/\[Tab\] next/);
+    expect(frame).not.toMatch(/matches/);
+    expect(frame).not.toMatch(/\/zzzz/);
+  });
+
+  it('Enter advances the cursor past the current match row (cursor exclusion)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // Two components both matching 'b'. Sort puts them into the standalone tier
+    // alphabetically: [Banner, Button]. Cursor starts on row 0 = Banner (first
+    // match). Enter should advance to Button (second match), not stay on Banner.
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Banner', entry: makeEntry('Banner') },
+      { key: 'Button', entry: makeEntry('Button') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('b');
+    await tick();
+    stdin.write('\r'); // Enter
+    await tick();
+    const frame = lastFrame() ?? '';
+    const titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleLine).toContain('Button');
+    expect(titleLine).not.toContain('Banner');
+  });
+
+  it('Enter with cursor on the last match wraps to the first match', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // [Banner, Button] alphabetical. Move cursor to Button (last match), then
+    // Enter with query 'b' should wrap to Banner.
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Banner', entry: makeEntry('Banner') },
+      { key: 'Button', entry: makeEntry('Button') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Move cursor from row 0 (Banner) to row 1 (Button).
+    stdin.write('j');
+    await tick();
+    let titleLine = (lastFrame() ?? '').split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleLine).toContain('Button');
+    // Now open search and Enter — cursor sits on last match, should wrap to Banner.
+    stdin.write('/');
+    await tick();
+    stdin.write('b');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleLine).toContain('Banner');
+    expect(titleLine).not.toContain('Button');
   });
 });
 
