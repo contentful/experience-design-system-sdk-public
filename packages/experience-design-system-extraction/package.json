@@ -29,7 +29,6 @@
     "lint:fix": "nx lint:fix experience-design-system-extraction"
   },
   "dependencies": {
-    "@contentful/experience-design-system-types": "workspace:*",
     "@vue/compiler-sfc": "^3.5.31",
     "svelte": "^5.56.4",
     "ts-morph": "^27.0.2",

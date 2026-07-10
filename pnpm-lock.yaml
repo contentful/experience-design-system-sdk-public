@@ -90,9 +90,6 @@ importers:
 
   packages/experience-design-system-extraction:
     dependencies:
-      '@contentful/experience-design-system-types':
-        specifier: workspace:*
-        version: link:../experience-design-system-types
       '@vue/compiler-sfc':
         specifier: ^3.5.31
         version: 3.5.32
