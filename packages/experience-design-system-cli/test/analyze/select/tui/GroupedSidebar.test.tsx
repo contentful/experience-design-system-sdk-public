@@ -1189,3 +1189,221 @@ describe('buildVisibleRows — rejected ancestor must not bury its slot targets'
   });
 });
 
+// ADR-0010 §Part 2 canonical scenarios — pinned at the `buildVisibleRows`
+// layer. This is the tier-layout / `(cycle)`-marker slice of the spec, driven
+// entirely by the caller-supplied `cycleParticipants` set. Selection
+// semantics (accept/reject/cascade) are covered in the step-level suites; here
+// we only pin the visual shape each topology + status combination produces.
+//
+// Scenarios:
+//   A — P and C cycle with each other (P.slots⊃C, C.slots⊃P).
+//   B — P slots C; C cycles with unrelated X (P not in cycle).
+//   C — P cycles with X; P also slots C; C has no slots (leaf).
+describe('ADR-0010 scenarios — buildVisibleRows layer', () => {
+  describe('Scenario A — P ↔ C cycle', () => {
+    // Both P and C are cycle participants. Under alwaysExpanded, both cycle
+    // rows render in the cycle tier at the top with the ⚠ glyph, and each
+    // expands to reveal the other member as a group-child with a (cycle)
+    // suffix. Neither is ever promoted to group-root/standalone.
+    const scenarioA = (statusP: NodeStatus, statusC: NodeStatus): GroupedSidebarItem[] => [
+      item('P', { slots: { s: ['C'] }, status: statusP }),
+      item('C', { slots: { s: ['P'] }, status: statusC }),
+    ];
+
+    it('mount default (both ok, cycleParticipants={P,C}) — two cycle-tier rows, no group-root, cycle-child marker present', () => {
+      const rows = buildVisibleRows({
+        items: scenarioA('ok', 'ok'),
+        cycleParticipants: new Set(['P', 'C']),
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+      });
+      const cycleRows = rows.filter((r) => r.kind === 'cycle');
+      expect(cycleRows.length).toBe(2);
+      // Alphabetical inside the cycle tier: C first, then P.
+      expect(cycleRows[0].label).toContain('C');
+      expect(cycleRows[0].label).toContain('⚠');
+      expect(cycleRows[0].label).toContain('(cycle)');
+      expect(cycleRows[1].label).toContain('P');
+      // Neither participant is promoted elsewhere.
+      expect(rows.every((r) => r.kind !== 'group-root')).toBe(true);
+      expect(rows.every((r) => r.kind !== 'standalone')).toBe(true);
+      // Each expanded cycle row emits at least one group-child pointing at
+      // the OTHER cycle member with a (cycle) marker.
+      const pChildren = rows.filter((r) => r.kind === 'group-child' && r.rootName === 'P');
+      const cChildren = rows.filter((r) => r.kind === 'group-child' && r.rootName === 'C');
+      expect(pChildren.some((r) => r.label.includes('C') && r.cycleChild === true)).toBe(true);
+      expect(cChildren.some((r) => r.label.includes('P') && r.cycleChild === true)).toBe(true);
+    });
+
+    it('both rejected (GenerateReview post-auto-reject) still renders both cycle-tier rows with (cycle) markers', () => {
+      // status='error' models the mount-auto-reject state. Both members
+      // continue to occupy cycle-tier rows — the (cycle) marker doesn't
+      // depend on the review-status field.
+      const rows = buildVisibleRows({
+        items: scenarioA('error', 'error'),
+        cycleParticipants: new Set(['P', 'C']),
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+      });
+      const cycleRows = rows.filter((r) => r.kind === 'cycle');
+      expect(cycleRows.length).toBe(2);
+      expect(cycleRows.every((r) => r.label.includes('(cycle)'))).toBe(true);
+    });
+
+    it('collapsed cycle rows carry the ▸ glyph and emit no group-children', () => {
+      const rows = buildVisibleRows({
+        items: scenarioA('ok', 'ok'),
+        cycleParticipants: new Set(['P', 'C']),
+        expandedGroups: new Set(),
+        // alwaysExpanded undefined → collapsed by default.
+      });
+      const cycleRows = rows.filter((r) => r.kind === 'cycle');
+      expect(cycleRows.length).toBe(2);
+      expect(cycleRows.every((r) => r.label.includes('▸'))).toBe(true);
+      expect(rows.filter((r) => r.kind === 'group-child').length).toBe(0);
+    });
+  });
+
+  describe('Scenario B — P → C, C ↔ X (P not in cycle)', () => {
+    // P slots C. C ↔ X. Only C and X are cycle participants.
+    // ScopeGate: cycleParticipants={C,X}, statuses all ok/undecided → P
+    //   renders as a group-root, its subtree contains cycle-member C.
+    // GenerateReview: at mount P is auto-rejected too (transitive ancestor
+    //   of cycle participant), and the task #7 fix strips its outgoing edges
+    //   so C promotes out from under P instead of being buried.
+    const scenarioB = (
+      statusP: NodeStatus,
+      statusC: NodeStatus,
+      statusX: NodeStatus,
+    ): GroupedSidebarItem[] => [
+      item('P', { slots: { s: ['C'] }, status: statusP }),
+      item('C', { slots: { s: ['X'] }, status: statusC }),
+      item('X', { slots: { s: ['C'] }, status: statusX }),
+    ];
+
+    it('ScopeGate mount (statuses ok, cycleParticipants={C,X}) — cycle tier has C+X; P is a group-root with cycle-child C in its subtree', () => {
+      const rows = buildVisibleRows({
+        items: scenarioB('ok', 'ok', 'ok'),
+        cycleParticipants: new Set(['C', 'X']),
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+      });
+      const cycleRows = rows.filter((r) => r.kind === 'cycle');
+      expect(cycleRows.length).toBe(2);
+      // Alphabetical: C, X.
+      expect(cycleRows[0].label).toContain('C');
+      expect(cycleRows[1].label).toContain('X');
+      // P anchors a group-root (non-cycle ancestor with a slot target).
+      const pRoot = rows.find((r) => r.kind === 'group-root' && r.label.includes('P'));
+      expect(pRoot).toBeDefined();
+      // Its subtree contains cycle-member C decorated with the cycle marker.
+      const pChildren = rows.filter((r) => r.kind === 'group-child' && r.rootName === 'P');
+      const cUnderP = pChildren.find((r) => r.label.includes('C'));
+      expect(cUnderP).toBeDefined();
+      expect(cUnderP!.cycleChild).toBe(true);
+      expect(cUnderP!.label).toContain('(cycle)');
+    });
+
+    it('GenerateReview mount (all three rejected) — task #7: P edge-stripped so C+X show as their own cycle-tier rows', () => {
+      // With P auto-rejected (status='error'), `itemsToGraph` drops P's
+      // outgoing edges. Even though the caller still passes cycleParticipants,
+      // P is not promoted to a group-root over live components — its
+      // subtree collapses.
+      const rows = buildVisibleRows({
+        items: scenarioB('error', 'error', 'error'),
+        cycleParticipants: new Set(['C', 'X']),
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+      });
+      const cycleRows = rows.filter((r) => r.kind === 'cycle');
+      expect(cycleRows.length).toBe(2);
+      expect(cycleRows.map((r) => r.rootName).sort()).toEqual(['C', 'X']);
+      // P appears somewhere — as an empty-tier row (its edges got stripped
+      // and its $properties has just one prop). Assert it's not buried as
+      // a group-child under one of the other tiers.
+      const pRows = rows.filter((r) => r.label.includes('P') && r.kind !== 'group-child');
+      expect(pRows.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Scenario C — P ↔ X cycle, P also slots C (C is a leaf, not in any cycle)', () => {
+    // Cycle-unit = {P, X}. C is a downstream leaf of P only.
+    // Under alwaysExpanded, P's cycle-tier row expands to reveal BOTH X
+    // (cycle-member) AND C (non-cycle descendant). C never gets a (cycle)
+    // marker — it's not in a cycle.
+    const scenarioC = (
+      statusP: NodeStatus,
+      statusX: NodeStatus,
+      statusC: NodeStatus,
+    ): GroupedSidebarItem[] => [
+      item('P', { slots: { s: ['X', 'C'] }, status: statusP }),
+      item('X', { slots: { s: ['P'] }, status: statusX }),
+      item('C', { status: statusC }),
+    ];
+
+    it('mount defaults (all ok, cycleParticipants={P,X}) — P+X in cycle tier; C is NOT decorated (cycle)', () => {
+      const rows = buildVisibleRows({
+        items: scenarioC('ok', 'ok', 'ok'),
+        cycleParticipants: new Set(['P', 'X']),
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+      });
+      const cycleRows = rows.filter((r) => r.kind === 'cycle');
+      expect(cycleRows.length).toBe(2);
+      expect(cycleRows.map((r) => r.rootName).sort()).toEqual(['P', 'X']);
+      // C never carries the (cycle) suffix anywhere it appears — ADR-0010
+      // §Part 2 pins that task #37's ancestor-flip rule catches ancestors
+      // of cycle participants, not descendants.
+      const cRows = rows.filter((r) => /(^|[^A-Za-z])C([^A-Za-z]|$)/.test(r.label));
+      expect(cRows.length).toBeGreaterThan(0);
+      for (const r of cRows) {
+        expect(r.label).not.toContain('(cycle)');
+        expect(r.cycleChild).toBeFalsy();
+      }
+    });
+
+    it('P expanded — subtree emits X as cycle-child AND C as a plain group-child', () => {
+      const rows = buildVisibleRows({
+        items: scenarioC('ok', 'ok', 'ok'),
+        cycleParticipants: new Set(['P', 'X']),
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+      });
+      const pChildren = rows.filter((r) => r.kind === 'group-child' && r.rootName === 'P');
+      // X should appear as a cycle-child under P.
+      const xUnderP = pChildren.find((r) => r.label.includes('X'));
+      expect(xUnderP).toBeDefined();
+      expect(xUnderP!.cycleChild).toBe(true);
+      // C should appear as a plain (non-cycle) child under P.
+      const cUnderP = pChildren.find((r) => /(^|[^A-Za-z])C([^A-Za-z]|$)/.test(r.label));
+      expect(cUnderP).toBeDefined();
+      expect(cUnderP!.cycleChild).toBeFalsy();
+      expect(cUnderP!.label).not.toContain('(cycle)');
+    });
+
+    it('GenerateReview mount (P and X rejected, C ok) — task #7 strips P edges; C promotes to a top-level row', () => {
+      // ADR-0010 §Part 2 for Scenario C: "user sees a screen with P red, X
+      // red, C uncommitted." The task #7 fix guarantees C doesn't get
+      // buried under rejected P.
+      const rows = buildVisibleRows({
+        items: scenarioC('error', 'error', 'ok'),
+        cycleParticipants: new Set(['P', 'X']),
+        expandedGroups: new Set(),
+        alwaysExpanded: true,
+      });
+      const cTopLevel = rows.filter(
+        (r) =>
+          (r.kind === 'standalone' || r.kind === 'group-root' || r.kind === 'flat') &&
+          /(^|[^A-Za-z])C([^A-Za-z]|$)/.test(r.label),
+      );
+      expect(cTopLevel.length).toBeGreaterThan(0);
+      // And crucially: C stays uncommitted — no (cycle) marker follows it
+      // even though its ancestor P is a cycle participant.
+      const anyCRow = rows.filter((r) => /(^|[^A-Za-z])C([^A-Za-z]|$)/.test(r.label));
+      for (const r of anyCRow) {
+        expect(r.label).not.toContain('(cycle)');
+      }
+    });
+  });
+});
+
