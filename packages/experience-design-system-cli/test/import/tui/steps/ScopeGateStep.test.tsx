@@ -1772,4 +1772,56 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(out).toContain('[i]');
     });
   });
+
+  // T7 — focused-row detail line no longer truncates the AI reason at 60 chars.
+  // Full reason renders (wrapped) up to a 4-line cap with an ellipsis on
+  // overflow. The AI-recommends-exclusions banner list still uses the compact
+  // truncated form.
+  describe('T7 — no-truncate AI reason on focused-row detail', () => {
+    it('renders the full AI reason past the 60-char truncate boundary on the focused row', () => {
+      const marker = 'UNIQUEMARKERWORD';
+      const longReason = 'x'.repeat(65) + marker + '.'.repeat(120);
+      expect(longReason.length).toBeGreaterThan(60);
+      const local = [
+        { name: 'AAA', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: longReason },
+        { name: 'Zeta', componentId: 'c1' },
+      ];
+      const { lastFrame } = render(
+        <ScopeGateStep components={local} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      const out = lastFrame() ?? '';
+      // Focused row is AAA (alphabetically first). Full reason (including the
+      // marker at position 65) must appear — no 60-char truncate on this line.
+      expect(out).toContain(marker);
+    });
+
+    it('AI-recommends-exclusions banner list STILL truncates the reason at 60 chars', () => {
+      const longReason = 'x'.repeat(80) + 'TAILWORD';
+      const local = [
+        { name: 'AAA', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: longReason },
+        { name: 'Zeta', componentId: 'c1' },
+      ];
+      const { lastFrame } = render(
+        <ScopeGateStep components={local} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      const out = lastFrame() ?? '';
+      // truncateReason returns first 59 chars + '…' for reasons > 60 chars.
+      // The banner line is prefixed by "  <name> — ". Assert the compact form
+      // still appears somewhere (the banner emits it verbatim).
+      expect(out).toContain('AAA — ' + 'x'.repeat(59) + '…');
+    });
+
+    it('focused-row detail caps wrapped output; tail text past the cap is not rendered', () => {
+      const longReason = 'A'.repeat(500) + 'TAILMARKER';
+      const local = [
+        { name: 'AAA', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: longReason },
+      ];
+      const { lastFrame } = render(
+        <ScopeGateStep components={local} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      const out = lastFrame() ?? '';
+      // Cap fires: the marker at position 500 must NOT be present.
+      expect(out).not.toContain('TAILMARKER');
+    });
+  });
 });

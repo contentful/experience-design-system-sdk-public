@@ -58,11 +58,23 @@ export type ScopeGateStepProps = {
 const VISIBLE_COUNT = 20;
 const REASON_DISPLAY_MAX = 60;
 const AI_BANNER_MAX = 5;
+// T7 — focused-row detail line renders the full AI reason with wrapping,
+// capped at 4 lines. Approximate the cap as `width * FOCUSED_REASON_MAX_LINES`
+// characters — precise wrap-position is width-dependent so this is intentionally
+// generous, and we append an ellipsis when the source exceeds the budget.
+const FOCUSED_REASON_MAX_LINES = 4;
 
 function truncateReason(reason: string | null | undefined): string {
   if (reason === null || reason === undefined || reason === '') return '<no reason given>';
   if (reason.length <= REASON_DISPLAY_MAX) return reason;
   return reason.slice(0, REASON_DISPLAY_MAX - 1).trimEnd() + '…';
+}
+
+function capReasonForFocusedRow(reason: string, width: number): string {
+  const safeWidth = Math.max(20, width);
+  const budget = safeWidth * FOCUSED_REASON_MAX_LINES;
+  if (reason.length <= budget) return reason;
+  return reason.slice(0, budget - 1).trimEnd() + '…';
 }
 
 function isAiFlagged(row: ScopeComponent): boolean {
@@ -947,7 +959,11 @@ export function ScopeGateStep({
             focusedComponent.aiReason !== null &&
             focusedComponent.aiReason !== undefined &&
             focusedComponent.aiReason !== '' && (
-              <Text dimColor>{truncateReason(focusedComponent.aiReason)}</Text>
+              <Box width={totalWidth} height={FOCUSED_REASON_MAX_LINES} flexShrink={0}>
+                <Text dimColor wrap="wrap">
+                  {capReasonForFocusedRow(focusedComponent.aiReason, totalWidth)}
+                </Text>
+              </Box>
             )}
         </Box>
       )}
