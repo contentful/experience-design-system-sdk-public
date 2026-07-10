@@ -127,6 +127,16 @@ export interface GroupedSidebarProps {
    * to computing rows from `items` / `cycleParticipants` / etc.
    */
   visibleRows?: VisibleRow[];
+  /**
+   * Prebuilt component graph (edges from every row's slot
+   * `$allowedComponents`). Canonical source consumed by `buildVisibleRows`
+   * for `computeAllClosures` — tier layout, cycle-child injection, and
+   * closure walking all read from this single graph rather than
+   * re-deriving the same edges. Callers build this via
+   * `analyze/slot-graph.buildComponentGraph` (see ADR-0010 Part 3 and
+   * the graph consolidation plan §4.3).
+   */
+  graph: ComponentGraphNode[];
 }
 
 const GLYPH_EXPAND_COLLAPSED = '▸';
@@ -175,18 +185,6 @@ function isEmpty(entry: CDFComponentEntry): boolean {
   );
 }
 
-function itemsToGraph(items: GroupedSidebarItem[]): ComponentGraphNode[] {
-  return items.map((it) => ({
-    name: it.key,
-    slots: Object.entries(it.entry.$slots ?? {}).map(([slotName, slotDef]) => ({
-      name: slotName,
-      allowedComponents: Array.isArray(slotDef?.$allowedComponents)
-        ? (slotDef.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
-        : [],
-    })),
-  }));
-}
-
 function aggregateGlyphFor(
   closure: Closure,
   statusByName: Map<string, NodeStatus>,
@@ -219,8 +217,14 @@ export function buildVisibleRows(props: {
   alwaysExpanded?: boolean;
   showFlatTier?: boolean;
   viewMode?: 'grouped' | 'large-list';
+  /**
+   * Prebuilt component graph (see ADR-0010 Part 3, plan §4.3). Consumed by
+   * `computeAllClosures` — the canonical edge source for tier layout and
+   * closure walking. Build via `analyze/slot-graph.buildComponentGraph`.
+   */
+  graph: ComponentGraphNode[];
 }): VisibleRow[] {
-  const { items, cycleParticipants, alwaysExpanded, showFlatTier, viewMode } = props;
+  const { items, cycleParticipants, alwaysExpanded, showFlatTier, viewMode, graph } = props;
 
   if (viewMode === 'large-list') {
     // Cycles-first (alphabetical), then all remaining components alphabetical.
@@ -242,8 +246,12 @@ export function buildVisibleRows(props: {
     // Compute closures over the non-cycle subgraph so we can annotate composite
     // roots with dep counts. Cycle participants never anchor a closure here —
     // they're rendered with the cycle glyph and no suffix.
-    const otherItems = items.filter((it) => otherKeys.includes(it.key));
-    const closures = computeAllClosures(itemsToGraph(otherItems));
+    // Filter the caller-provided canonical graph to the "other" subset —
+    // cycle participants live in their own tier and never anchor a closure
+    // in the large-list view.
+    const otherKeySet = new Set(otherKeys);
+    const largeListGraph = graph.filter((n) => otherKeySet.has(n.name));
+    const closures = computeAllClosures(largeListGraph);
     const depCountByKey = new Map<string, number>();
     for (const [name, closure] of closures) {
       if (closure.nodes.length > 1) depCountByKey.set(name, closure.nodes.length - 1);
@@ -399,10 +407,12 @@ export function buildVisibleRows(props: {
   }
 
   // Compute closures over the "other" scope only (cycle-participants and empty
-  // components live in their own flat tiers and never anchor a group).
-  const otherItems = items.filter((it) => otherKeys.includes(it.key));
-  const graph = itemsToGraph(otherItems);
-  const closures = computeAllClosures(graph);
+  // components live in their own flat tiers and never anchor a group). The
+  // canonical graph (ADR-0010 Part 3, plan §4.3) is filtered to the
+  // non-cycle/non-empty subset for this walk.
+  const otherKeySet = new Set(otherKeys);
+  const subgraph = graph.filter((n) => otherKeySet.has(n.name));
+  const closures = computeAllClosures(subgraph);
   const sharedDeps = findSharedDeps(closures);
 
   // Detect cycle-member slot references for every candidate item. A composite
@@ -623,6 +633,7 @@ export function visibleItemOrder(props: {
   expandedGroups: Set<string>;
   alwaysExpanded?: boolean;
   showFlatTier?: boolean;
+  graph: ComponentGraphNode[];
 }): number[] {
   return buildVisibleRows(props)
     .filter((row) => row.itemIdx >= 0)
@@ -690,6 +701,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
     aiFlaggedByKey,
     dimPredicate,
     visibleRows: providedRows,
+    graph,
   } = props;
   const allRows =
     providedRows ??
@@ -700,6 +712,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
       alwaysExpanded,
       showFlatTier,
       viewMode,
+      graph,
     });
 
   // Window rows when scrollOffset+visibleCount are provided; otherwise render
