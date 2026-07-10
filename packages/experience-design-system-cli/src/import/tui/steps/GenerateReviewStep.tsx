@@ -45,7 +45,6 @@ import { computeSidebarWidth } from '../sidebar-width.js';
 import { computeAcceptCascade, computeRejectCascade } from '../../../analyze/selection-cascade.js';
 import { findAllAncestors } from '../../../analyze/lineage.js';
 import { useLineage } from '../hooks/useLineage.js';
-import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
 import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
@@ -195,6 +194,16 @@ export function GenerateReviewStep({
   // annotation map only carries kind, not the rich summaries we need to list
   // names/ids when the operator asks "which ones?".
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
+  const [showRemovedPanel, setShowRemovedPanel] = useState(false);
+  // T3 (parity plan §3) — removed-panel default-open bookkeeping.
+  //   - `autoOpenedRemovedRef` latches on the first auto-open so we don't
+  //     re-open every time a preview refresh reports a removed set.
+  //   - `manuallyClosedRef` latches on any operator close (via [d] or Esc)
+  //     and permanently disables auto-open for this session. Reset only on
+  //     unmount/remount (i.e., a fresh session). T10 will extract this into
+  //     a shared `useOverlayPanel` hook — inline for now.
+  const autoOpenedRemovedRef = useRef(false);
+  const manuallyClosedRemovedRef = useRef(false);
   // Lifted rationale + source panels (replaces FieldEditor's right pane).
   // Mutually exclusive states.
   const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>('none');
@@ -208,14 +217,8 @@ export function GenerateReviewStep({
   // triggers sidebar (cycle) badges, banner + [c] detail-panel affordance,
   // and (at push time) a hard block.
   const [slotCycles, setSlotCycles] = useState<StoredSlotCycle[]>([]);
-  // T10 — cycle panel open/close via shared hook. The scroll state stays
-  // step-local since it's not part of the shared close-key convention;
-  // it's reset on close by the caller's toggle handlers.
+  const [showCyclePanel, setShowCyclePanel] = useState(false);
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
-  const cyclePanel = useOverlayPanel({
-    toggleKey: 'c',
-    onClose: () => setCyclePanelScroll(0),
-  });
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const seededGroupsRef = useRef(false);
   // Fuzzy-search overlay (mirrors ScopeGateStep). `/` opens the input;
@@ -228,7 +231,7 @@ export function GenerateReviewStep({
   // ancestors + descendants of the focused component. Same shape as
   // ScopeGateStep; derivation happens via the shared `useLineage` hook so
   // both callsites render pixel-identical panels.
-  const lineagePanel = useOverlayPanel({ toggleKey: 'l' });
+  const [lineagePanelOpen, setLineagePanelOpen] = useState(false);
   const [lineageCursor, setLineageCursor] = useState(0);
   // T8 (parity plan §3) — Column-1 view mode. `'grouped'` (default) uses the
   // tiered cycle/empty/composite/standalone layout; `'flat'` flattens to
@@ -291,6 +294,19 @@ export function GenerateReviewStep({
     );
     const nextRemoved = response.components.removed ?? [];
     setRemovedComponents(nextRemoved);
+    // T3 — auto-open the panel the first time we see a non-empty removed
+    // set, so operators can't miss impending deletions. Guarded by the
+    // manual-close latch so an operator who closes it doesn't get it
+    // popped back open on every debounced preview refresh.
+    if (
+      livePreview &&
+      nextRemoved.length > 0 &&
+      !autoOpenedRemovedRef.current &&
+      !manuallyClosedRemovedRef.current
+    ) {
+      autoOpenedRemovedRef.current = true;
+      setShowRemovedPanel(true);
+    }
   };
 
   const livePreviewHook = useLivePreview({
@@ -1064,12 +1080,14 @@ export function GenerateReviewStep({
     }
 
     // T6 (parity plan §3) — lineage panel owns keystrokes when open.
-    // Mirrors ScopeGate's overlay-owns-input pattern. Close-side (`[l]` toggle
-    // and `[Esc]`) is delegated to the shared `useOverlayPanel` hook (T10);
-    // ↑/↓/j/k move the panel cursor, Tab cycles, and Enter jumps main selection
-    // to the highlighted jumpable and closes.
-    if (lineagePanel.isOpen) {
-      if (lineagePanel.handleInput(input, key)) return;
+    // Mirrors ScopeGate's overlay-owns-input pattern; the panel closes on
+    // `[l]` (toggle) or `[Esc]`, ↑/↓ (or j/k) move the panel cursor, and
+    // Enter jumps main selection to the highlighted jumpable and closes.
+    if (lineagePanelOpen) {
+      if (key.escape || input === 'l') {
+        setLineagePanelOpen(false);
+        return;
+      }
       if (key.upArrow || input === 'k') {
         setLineageCursor((c) => Math.max(0, c - 1));
         return;
@@ -1089,18 +1107,30 @@ export function GenerateReviewStep({
         if (target && (target.entry.kind === 'ancestor' || target.entry.kind === 'descendant')) {
           jumpCursorToName(target.entry.jumpTarget);
         }
-        lineagePanel.close();
+        setLineagePanelOpen(false);
         return;
       }
       return;
     }
+    // Pilot-2026-06-24: removed-detail panel. When open, only `d` (toggle)
+    // and Esc (close) respond — all other input is swallowed so j/k/Enter/
+    // Ctrl+S can't move state behind the modal. Mirrors the `?` overlay
+    // pattern from 8f0c62e in FieldEditor.
+    if (showRemovedPanel) {
+      if (input === 'd' || key.escape) {
+        // T3 — any manual close latches the "don't auto-open again" flag so
+        // subsequent preview refreshes don't re-pop the panel.
+        manuallyClosedRemovedRef.current = true;
+        setShowRemovedPanel(false);
+      }
+      return;
+    }
     // INTEG-4401: slot-cycle detail panel. Same modal-swallow rules as
-    // removed panel; `[c]` / `[Esc]` close (via shared hook), `[q]` also closes
-    // (legacy), ↑↓ scroll.
-    if (cyclePanel.isOpen) {
-      if (cyclePanel.handleInput(input, key)) return;
-      if (input === 'q') {
-        cyclePanel.close();
+    // showRemovedPanel; q/Esc close, ↑↓ scroll.
+    if (showCyclePanel) {
+      if (input === 'c' || input === 'q' || key.escape) {
+        setShowCyclePanel(false);
+        setCyclePanelScroll(0);
         return;
       }
       if (key.upArrow || input === 'k') {
@@ -1116,15 +1146,22 @@ export function GenerateReviewStep({
     // Open the cycle panel from sidebar-focused state when there is at
     // least one cycle to display.
     if (input === 'c' && sidebarFocused && slotCycles.length > 0) {
-      cyclePanel.open();
+      setShowCyclePanel(true);
       setCyclePanelScroll(0);
+      return;
+    }
+    // `d` opens the panel only when live-preview is enabled and there is at
+    // least one removed component to display. Sidebar-focused only so it
+    // doesn't collide with FieldEditor input.
+    if (input === 'd' && sidebarFocused && livePreview && removedComponents.length > 0) {
+      setShowRemovedPanel(true);
       return;
     }
     // T6 (parity plan §3) — `[l]` opens the lineage panel when the sidebar
     // has a component under the cursor. Gated to sidebar-focused so it can't
     // collide with FieldEditor input.
     if (input === 'l' && sidebarFocused && focusedComponentKey) {
-      lineagePanel.open();
+      setLineagePanelOpen(true);
       setLineageCursor(0);
       return;
     }
@@ -1678,11 +1715,10 @@ export function GenerateReviewStep({
           <Text>{'  [Esc]    Cancel'}</Text>
         </Box>
       )}
-      {removedComponents.length > 0 && !dialogOpen && (
-        // T1 (layout plan §A) — permanent top strip. Renders unconditionally
-        // above the auto-reject banner + cycle strips whenever the live
-        // preview reports at least one removed component. When empty, this
-        // block renders NOTHING (no placeholder, no push-down of layout).
+      {showRemovedPanel && !dialogOpen && (
+        // T3 — notability polish. Border flipped cyan → red and title made
+        // explicit ("will be DELETED from target space") since these
+        // components are about to be dropped from the target space.
         <Box flexDirection="column" borderStyle="round" borderColor="red" paddingX={1}>
           <Text bold color="red">
             {`Removed components (${removedComponents.length}) — will be `}
@@ -1693,9 +1729,11 @@ export function GenerateReviewStep({
           {removedComponents.map((rc) => (
             <Text key={rc.id}>{`- ${rc.name}${rc.id ? `  (${rc.id})` : ''}`}</Text>
           ))}
+          <Text> </Text>
+          <Text dimColor>press d or Esc to close</Text>
         </Box>
       )}
-      {cyclePanel.isOpen &&
+      {showCyclePanel &&
         !dialogOpen &&
         (() => {
           // Materialize the full panel body as a flat list of Text lines,
@@ -1764,7 +1802,7 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {lineagePanel.isOpen && !dialogOpen && focusedComponentKey && (
+      {lineagePanelOpen && !dialogOpen && focusedComponentKey && (
         <LineagePanel
           focusedComponentKey={focusedComponentKey}
           entries={lineageEntries}
@@ -1801,6 +1839,7 @@ export function GenerateReviewStep({
               <Text color="yellow">{`${counts.changed} changed`}</Text>
               <Text>{' · '}</Text>
               <Text dimColor>{`${counts.removed} removed`}</Text>
+              {removedComponents.length > 0 && <Text dimColor>{' ([d] removed list)'}</Text>}
               <Text>{' · '}</Text>
               <Text color="red" bold>
                 {`${counts.breaking} breaking`}
@@ -1842,15 +1881,60 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
+      {!dialogOpen && slotCycles.length > 0 && !showCyclePanel && (
+        <Box flexDirection="column">
+          <Text color="yellow">
+            {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
+          </Text>
+          {slotCycles.slice(0, 3).map((cycle, idx) => {
+            const segs = formatCyclePathSegments(cycle);
+            return (
+              <Text key={`cyc-banner-${idx}`} color="yellow">
+                {'  Cycle: '}
+                {segs.map((seg, si) =>
+                  seg.kind === 'slot' ? (
+                    <Text key={si} color="cyan">
+                      {seg.text}
+                    </Text>
+                  ) : seg.kind === 'arrow' ? (
+                    <Text key={si} dimColor>
+                      {seg.text}
+                    </Text>
+                  ) : (
+                    <Text key={si} color="yellow">
+                      {seg.text}
+                    </Text>
+                  ),
+                )}
+              </Text>
+            );
+          })}
+          {slotCycles.length > 3 && <Text color="yellow">{`  …${slotCycles.length - 3} more`}</Text>}
+          <Text dimColor>{'  press [c] for detail'}</Text>
+        </Box>
+      )}
       {!dialogOpen && emptyCount > 0 && (
         <Text color="yellow">
           {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
         </Text>
       )}
       {!dialogOpen && finalizeError && <Text color="red">{`⚠ ${finalizeError}`}</Text>}
-      {/* T2 (layout plan §A): cycle banner + search input strips render BELOW
-          the sidebar+detail row (they used to be here, above). Located in a
-          fragment right after the sidebar Box. */}
+      {!dialogOpen && searchOpen && (
+        <Box>
+          <Text>
+            {`/${searchQuery}`}
+            <Text color="cyan">{'▎'}</Text>
+            {searchQuery && (
+              <Text dimColor>{`  (${searchMatchCount}/${components.length} matches)`}</Text>
+            )}
+          </Text>
+        </Box>
+      )}
+      {!dialogOpen && !searchOpen && searchQuery && (
+        <Box>
+          <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear · [Tab] next`}</Text>
+        </Box>
+      )}
       {!dialogOpen && (
         <Box>
           <GroupedSidebar
@@ -2028,6 +2112,7 @@ export function GenerateReviewStep({
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel' +
                       (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '') +
+                      (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       (focusedComponentKey ? '  [l] lineage' : '') +
                       '  [L] flat' +
@@ -2046,54 +2131,6 @@ export function GenerateReviewStep({
               <Text dimColor>No component selected</Text>
             )}
           </Box>
-        </Box>
-      )}
-      {!dialogOpen && slotCycles.length > 0 && !cyclePanel.isOpen && (
-        <Box flexDirection="column">
-          <Text color="yellow">
-            {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
-          </Text>
-          {slotCycles.slice(0, 3).map((cycle, idx) => {
-            const segs = formatCyclePathSegments(cycle);
-            return (
-              <Text key={`cyc-banner-${idx}`} color="yellow">
-                {'  Cycle: '}
-                {segs.map((seg, si) =>
-                  seg.kind === 'slot' ? (
-                    <Text key={si} color="cyan">
-                      {seg.text}
-                    </Text>
-                  ) : seg.kind === 'arrow' ? (
-                    <Text key={si} dimColor>
-                      {seg.text}
-                    </Text>
-                  ) : (
-                    <Text key={si} color="yellow">
-                      {seg.text}
-                    </Text>
-                  ),
-                )}
-              </Text>
-            );
-          })}
-          {slotCycles.length > 3 && <Text color="yellow">{`  …${slotCycles.length - 3} more`}</Text>}
-          <Text dimColor>{'  press [c] for detail'}</Text>
-        </Box>
-      )}
-      {!dialogOpen && searchOpen && (
-        <Box>
-          <Text>
-            {`/${searchQuery}`}
-            <Text color="cyan">{'▎'}</Text>
-            {searchQuery && (
-              <Text dimColor>{`  (${searchMatchCount}/${components.length} matches)`}</Text>
-            )}
-          </Text>
-        </Box>
-      )}
-      {!dialogOpen && !searchOpen && searchQuery && (
-        <Box>
-          <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear · [Tab] next`}</Text>
         </Box>
       )}
       {!dialogOpen && (
