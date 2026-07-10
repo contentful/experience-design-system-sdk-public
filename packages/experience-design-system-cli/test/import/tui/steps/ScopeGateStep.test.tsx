@@ -1642,4 +1642,100 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(totalLineAfter).toContain('4');
     });
   });
+
+  describe('T5 — jump-and-filter [i] (transitive ancestors)', () => {
+    // A slots B slots C slots D.
+    const CHAIN = [
+      { name: 'A', componentId: 'a', slots: [{ name: 's', allowedComponents: ['B'] }] },
+      { name: 'B', componentId: 'b', slots: [{ name: 's', allowedComponents: ['C'] }] },
+      { name: 'C', componentId: 'c', slots: [{ name: 's', allowedComponents: ['D'] }] },
+      { name: 'D', componentId: 'd' },
+    ];
+
+    function sidebarNames(frame: string): Set<string> {
+      const componentRowLines = frame.split('\n').filter((l) => /\[[ ✓✗×]\]/.test(l));
+      const found = new Set<string>();
+      for (const l of componentRowLines) {
+        for (const name of ['A', 'B', 'C', 'D']) {
+          if (new RegExp(`(^|[\\s├└─▸▾]) ?${name}(\\s|$|[^A-Za-z])`).test(l)) {
+            found.add(name);
+          }
+        }
+      }
+      return found;
+    }
+
+    function focusRow(stdin: NodeJS.WritableStream, from: string, to: string, chain: string[]): void {
+      const fromIdx = chain.indexOf(from);
+      const toIdx = chain.indexOf(to);
+      if (fromIdx < 0 || toIdx < 0) return;
+      const steps = toIdx - fromIdx;
+      const key = steps >= 0 ? 'j' : 'k';
+      const n = Math.abs(steps);
+      for (let i = 0; i < n; i++) stdin.write(key);
+    }
+
+    it('[i] on component with two ancestors filters to target + those two', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={CHAIN} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      // Alphabetical grouped order: A, B, C, D. Move to C.
+      focusRow(stdin, 'A', 'C', ['A', 'B', 'C', 'D']);
+      stdin.write('i');
+      const names = sidebarNames(lastFrame() ?? '');
+      expect(names.has('A')).toBe(true);
+      expect(names.has('B')).toBe(true);
+      expect(names.has('C')).toBe(true);
+      expect(names.has('D')).toBe(false);
+    });
+
+    it('[i] on root shows only that component', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={CHAIN} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      // Cursor starts on A (root).
+      stdin.write('i');
+      const names = sidebarNames(lastFrame() ?? '');
+      expect(names.has('A')).toBe(true);
+      expect(names.has('B')).toBe(false);
+      expect(names.has('C')).toBe(false);
+      expect(names.has('D')).toBe(false);
+    });
+
+    it('[i] is transitive — deep leaf shows every ancestor', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={CHAIN} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      focusRow(stdin, 'A', 'D', ['A', 'B', 'C', 'D']);
+      stdin.write('i');
+      const names = sidebarNames(lastFrame() ?? '');
+      expect(names.has('A')).toBe(true);
+      expect(names.has('B')).toBe(true);
+      expect(names.has('C')).toBe(true);
+      expect(names.has('D')).toBe(true);
+    });
+
+    it('Esc clears jump filter — all rows visible again', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={CHAIN} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      focusRow(stdin, 'A', 'C', ['A', 'B', 'C', 'D']);
+      stdin.write('i');
+      // Esc key
+      stdin.write('');
+      const names = sidebarNames(lastFrame() ?? '');
+      expect(names.has('A')).toBe(true);
+      expect(names.has('B')).toBe(true);
+      expect(names.has('C')).toBe(true);
+      expect(names.has('D')).toBe(true);
+    });
+
+    it('legend advertises [i]', () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={CHAIN} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      const out = lastFrame() ?? '';
+      expect(out).toContain('[i]');
+    });
+  });
 });

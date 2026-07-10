@@ -24,7 +24,10 @@ import {
   computeCycleAwareRejectCascade,
 } from '../../../analyze/scope-gate-cascade.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
-import { computeDirectNeighborhood } from '../../../analyze/search-neighborhood.js';
+import {
+  computeDirectNeighborhood,
+  findAllAncestors,
+} from '../../../analyze/search-neighborhood.js';
 import {
   buildAddedComponentsList,
   buildAddedGroupsList,
@@ -115,6 +118,10 @@ export function ScopeGateStep({
     useState<{ target: string; ancestors: string[]; descendants: string[] } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // T5 — jump-and-filter target. Independent of `searchQuery` so pressing
+  // `[i]` doesn't drive fuzzy matching; the two filters are OR-merged into
+  // `filterVisibleKeys`. Esc clears jumpFilter first (see input handler).
+  const [jumpFilterTarget, setJumpFilterTarget] = useState<string | null>(null);
   const [columnOneView, setColumnOneView] = useState<'grouped' | 'flat'>('grouped');
 
   // Everything defaults to undecided. AI decisions are advisory only —
@@ -194,13 +201,19 @@ export function ScopeGateStep({
   const closures = useMemo(() => computeAllClosures(graph), [graph]);
 
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
+    // T5: jump-filter takes priority. When active, the sidebar shows only the
+    // target + its transitive ancestors — search-neighborhood is set aside
+    // until Esc clears the jump.
+    if (jumpFilterTarget) {
+      return findAllAncestors(jumpFilterTarget, graph);
+    }
     if (!searchQuery) return undefined;
     const matches = groupedItems
       .map((it) => it.key)
       .filter((k) => fuzzyMatches(searchQuery, k));
     if (matches.length === 0) return undefined;
     return computeDirectNeighborhood(matches, graph);
-  }, [searchQuery, groupedItems, graph]);
+  }, [jumpFilterTarget, searchQuery, groupedItems, graph]);
 
   const visibleRows = useMemo(
     () =>
@@ -500,6 +513,12 @@ export function ScopeGateStep({
         setReasonPanelOpen(false);
         return;
       }
+      // T5: jump-filter takes Esc priority over search-query. If both are
+      // active, first Esc clears the jump; a second Esc clears the query.
+      if (key.escape && jumpFilterTarget) {
+        setJumpFilterTarget(null);
+        return;
+      }
       if (key.escape && searchQuery) {
         setSearchQuery('');
         return;
@@ -540,6 +559,24 @@ export function ScopeGateStep({
     }
     if (input === '/') {
       setSearchOpen(true);
+      return;
+    }
+    // T5 — jump-and-filter to the focused component + all transitive
+    // ancestors. Grouped view only (buildVisibleRows ignores
+    // `filterVisibleKeys` in flat view). Toggling `[i]` on the same target
+    // clears it; targeting a different row replaces the filter.
+    // Guard against Ctrl-I aliasing: Tab is Ctrl+I (\x09), which
+    // `parseInput` surfaces as `input='i'` with `key.tab=true, key.ctrl=true`.
+    // Without this guard every Tab would toggle the jump-filter.
+    if (input === 'i' && !key.tab && !key.ctrl) {
+      const targetKey =
+        focusedColumn === 'main'
+          ? focusedRowKey()
+          : focusedColumn === 'added-components'
+            ? addedComponents[safeAddedComponentsCursor]?.name
+            : addedGroups[safeAddedGroupsCursor]?.name;
+      if (!targetKey) return;
+      setJumpFilterTarget((prev) => (prev === targetKey ? null : targetKey));
       return;
     }
     if (input === 'a' || input === ' ' || input === 'r') {
@@ -1019,6 +1056,9 @@ export function ScopeGateStep({
         )}
         <Text>
           <Text color="cyan">[/]</Text> <Text dimColor>search</Text>
+        </Text>
+        <Text>
+          <Text color="cyan">[i]</Text> <Text dimColor>focus lineage</Text>
         </Text>
         <Text>
           <Text color="cyan">[A]</Text> <Text dimColor>toggle all</Text>

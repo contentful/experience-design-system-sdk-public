@@ -40,3 +40,48 @@ export function computeDirectNeighborhood(
   }
   return out;
 }
+
+/**
+ * Compute the transitive-ancestor closure of a target component over the
+ * component graph: the target plus every composite that transitively slots it
+ * (reverse-BFS along `slots[].allowedComponents` edges). Used by the step-
+ * level jump-and-filter `[i]` handler to build a `filterVisibleKeys` set
+ * (see plan §B T5).
+ *
+ * Traversal uses a visited set so cycles cannot cause infinite recursion.
+ * Semantically distinct from `computeDirectNeighborhood` — this walk is
+ * transitive and up-only (no descendants).
+ */
+export function findAllAncestors(
+  target: string,
+  graph: ComponentGraphNode[],
+): Set<string> {
+  const out = new Set<string>([target]);
+  // Reverse adjacency: node.name → set of names that slot it. Built once so
+  // repeated jump-filter invocations don't rescan the full graph each hop.
+  const parentsOf = new Map<string, string[]>();
+  for (const node of graph) {
+    for (const slot of node.slots) {
+      for (const child of slot.allowedComponents ?? []) {
+        const list = parentsOf.get(child);
+        if (list) {
+          if (!list.includes(node.name)) list.push(node.name);
+        } else {
+          parentsOf.set(child, [node.name]);
+        }
+      }
+    }
+  }
+  const queue: string[] = [target];
+  while (queue.length > 0) {
+    const cur = queue.shift() as string;
+    const parents = parentsOf.get(cur);
+    if (!parents) continue;
+    for (const p of parents) {
+      if (out.has(p)) continue;
+      out.add(p);
+      queue.push(p);
+    }
+  }
+  return out;
+}
