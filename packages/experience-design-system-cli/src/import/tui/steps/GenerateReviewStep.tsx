@@ -232,6 +232,13 @@ export function GenerateReviewStep({
   // both callsites render pixel-identical panels.
   const [lineagePanelOpen, setLineagePanelOpen] = useState(false);
   const [lineageCursor, setLineageCursor] = useState(0);
+  // T8 (parity plan §3) — Column-1 view mode. `'grouped'` (default) uses the
+  // tiered cycle/empty/composite/standalone layout; `'large-list'` flattens to
+  // an alphabetical list with `(N deps)` suffixes on composite roots. Mirrors
+  // ScopeGateStep's `columnOneView` — kept inline (rather than a shared hook)
+  // because the state + handler pattern is ~10 lines per step. T9 will rename
+  // `'large-list'` → `'flat'` across both steps in one coordinated commit.
+  const [columnOneView, setColumnOneView] = useState<'grouped' | 'large-list'>('grouped');
   // Task #37 — mount-time cycle auto-reject bookkeeping. `autoRejected`
   // tracks which components were flipped to `rejected` by the auto-reject
   // effect so the banner can enumerate them and `[u]` undo can restore only
@@ -562,9 +569,10 @@ export function GenerateReviewStep({
         items: groupedItemsMemo,
         cycleParticipants: cycleView.structural,
         expandedGroups,
+        viewMode: columnOneView,
         graph: sidebarGraph,
       }),
-    [groupedItemsMemo, cycleView, expandedGroups, sidebarGraph],
+    [groupedItemsMemo, cycleView, expandedGroups, columnOneView, sidebarGraph],
   );
   // Row positions that map to a real component (skip synthetic flat-header
   // rows). j/k navigation walks these in order, so duplicate occurrences of
@@ -1157,6 +1165,46 @@ export function GenerateReviewStep({
       recomputeCycles(restored);
       return;
     }
+    if (input === 'L') {
+      // T8 (parity plan §3) — toggle Column-1 view between grouped and
+      // large-list. Preserve cursor on the same underlying component when
+      // possible; otherwise fall back to the first selectable row. Mirrors
+      // ScopeGateStep's `[L]` handler line-for-line so the two steps stay
+      // pixel-consistent.
+      const currentKey =
+        cursorRowIdx >= 0 && cursorRowIdx < visibleRowsMemo.length
+          ? components[visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1]?.key ?? null
+          : null;
+      const nextView: 'grouped' | 'large-list' =
+        columnOneView === 'grouped' ? 'large-list' : 'grouped';
+      const nextRows = buildVisibleRows({
+        items: groupedItemsMemo,
+        cycleParticipants: cycleView.structural,
+        expandedGroups,
+        viewMode: nextView,
+        graph: sidebarGraph,
+      });
+      let nextCursor = 0;
+      if (currentKey) {
+        for (let i = 0; i < nextRows.length; i++) {
+          const r = nextRows[i];
+          if (r.itemIdx < 0) continue;
+          if (components[r.itemIdx]?.key === currentKey) {
+            nextCursor = i;
+            break;
+          }
+        }
+      }
+      const nextScroll =
+        nextCursor < sidebarScrollOffset
+          ? nextCursor
+          : nextCursor >= sidebarScrollOffset + VISIBLE_COUNT
+            ? nextCursor - VISIBLE_COUNT + 1
+            : sidebarScrollOffset;
+      setColumnOneView(nextView);
+      setNav({ cursorRowIdx: nextCursor, sidebarScrollOffset: nextScroll });
+      return;
+    }
     if (input === 'a') {
       // Task #37 — accept cascades DOWN to descendants (mirrors scope-gate).
       const current = components[selectedIdx];
@@ -1655,6 +1703,7 @@ export function GenerateReviewStep({
             visibleCount={VISIBLE_COUNT}
             dimPredicate={dimPredicate}
             visibleRows={visibleRowsMemo}
+            viewMode={columnOneView}
             graph={sidebarGraph}
           />
           <Box flexGrow={1} paddingLeft={1} flexDirection="column">
@@ -1797,6 +1846,7 @@ export function GenerateReviewStep({
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       (focusedComponentKey ? '  [l] lineage' : '') +
+                      '  [L] large list' +
                       '  [/] search' +
                       (undoSnapshot ? '  [u] undo' : '') +
                       '  [q] quit'

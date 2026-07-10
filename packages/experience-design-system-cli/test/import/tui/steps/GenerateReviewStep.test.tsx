@@ -2926,3 +2926,107 @@ describe('GenerateReviewStep — lineage panel (T6)', () => {
     expect(lastFrame() ?? '').toContain('[l]');
   });
 });
+
+describe('GenerateReviewStep — view toggle (T8)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const leaf = (name: string): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+  });
+  const withSlot = (name: string, allowed: string[]): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+    $slots: {
+      children: {
+        $type: 'slot',
+        $allowedComponents: allowed,
+      },
+    } as never,
+  });
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  // Card → [Body, Heading], plus Standalone. Grouped view renders composite
+  // tree with `▾` on Card and `├─`/`└─` prefixes on children. Large-list
+  // renders one row per component alphabetical, no tree glyphs.
+  async function renderToggleFixture() {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Card', entry: withSlot('Card', ['Body', 'Heading']) },
+      { key: 'Body', entry: leaf('Body') },
+      { key: 'Heading', entry: leaf('Heading') },
+      { key: 'Standalone', entry: leaf('Standalone') },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
+    const utils = render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+        livePreview={false}
+      />,
+    );
+    await tick();
+    return utils;
+  }
+
+  it('legend advertises [L] large list when sidebar is focused', async () => {
+    const { lastFrame } = await renderToggleFixture();
+    const out = lastFrame() ?? '';
+    expect(out).toContain('[L]');
+    expect(out).toContain('large list');
+  });
+
+  it('pressing [L] toggles to large-list view (composite tree glyphs disappear)', async () => {
+    const { lastFrame, stdin } = await renderToggleFixture();
+    // Grouped view (default): ▾ on expanded root; ├─/└─ on children.
+    const beforeToggle = lastFrame() ?? '';
+    expect(beforeToggle).toMatch(/▾[^\n]*Card/);
+    expect(beforeToggle).toMatch(/├─ /);
+    stdin.write('L');
+    await tick();
+    const afterToggle = lastFrame() ?? '';
+    // Large-list view: no tree glyphs; Card gets a `(N deps)` suffix and
+    // every component surfaces as its own row.
+    expect(afterToggle).not.toMatch(/├─ /);
+    expect(afterToggle).not.toMatch(/└─ /);
+    expect(afterToggle).not.toMatch(/▾/);
+    expect(afterToggle).toContain('Card (2 deps)');
+    expect(afterToggle).toContain('Body');
+    expect(afterToggle).toContain('Heading');
+    expect(afterToggle).toContain('Standalone');
+  });
+
+  it('pressing [L] again toggles back to grouped view', async () => {
+    const { lastFrame, stdin } = await renderToggleFixture();
+    stdin.write('L');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/├─ /);
+    stdin.write('L');
+    await tick();
+    // Back to grouped: tree glyphs return.
+    expect(lastFrame() ?? '').toMatch(/├─ /);
+  });
+
+  it('cursor selection is preserved on the same component across view toggle', async () => {
+    const { lastFrame, stdin } = await renderToggleFixture();
+    // Grouped order (expanded seed): Card, ├─ Body, └─ Heading, Standalone.
+    // Move down to Body (first child row).
+    stdin.write('j');
+    await tick();
+    const beforeToggle = lastFrame() ?? '';
+    // Detail-panel title line shows the focused component.
+    const titleBefore = beforeToggle.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleBefore).toContain('Body');
+    stdin.write('L');
+    await tick();
+    const afterToggle = lastFrame() ?? '';
+    // Cursor stays on Body after switching to large-list view.
+    const titleAfter = afterToggle.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleAfter).toContain('Body');
+  });
+});
