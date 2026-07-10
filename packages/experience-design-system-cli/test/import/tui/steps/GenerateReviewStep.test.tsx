@@ -523,7 +523,7 @@ describe('GenerateReviewStep — Feature 2 spinner indicator', () => {
     );
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/live preview/);
+    expect(frame.replace(/[^\w!]+/g, ' ')).toMatch(/live preview/);
   });
 
   it('shows "live preview disabled" in dim text when hook reports disabled', async () => {
@@ -661,13 +661,12 @@ describe('GenerateReviewStep — diff summary panel (R2)', () => {
   });
 });
 
-// ── Pilot-2026-06-24: removed-detail panel ('d' key) ────────────────────────
-// API reports N removed components but operators previously had no way to
-// see WHICH ones. The fix adds a `(d for details)` hint to the summary line
-// when removed > 0 and a modal-ish panel toggled by `d` listing each removed
-// component. The legend gains `d removed` and the FieldEditor `?` overlay
-// lists `d` alongside `s` and `?`.
-describe('GenerateReviewStep — removed-detail panel (d key)', () => {
+// ── T1 (layout plan §A): removed components as permanent top strip ──────────
+// The removed panel is no longer a modal toggled by `[d]` / `[Esc]`. It's a
+// red-bordered strip rendered unconditionally above every other GR banner
+// whenever `removedComponents.length > 0`. When empty, it renders NOTHING
+// (no placeholder, no push-down of layout). `[d]` is no longer bound.
+describe('GenerateReviewStep — removed-components top strip (T1)', () => {
   beforeEach(() => {
     triggerSpy.mockReset();
     lastUseLivePreviewArgs = null;
@@ -692,7 +691,7 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
       tokens: { new: [], changed: [], removed: [], unchanged: [] },
     }) as never;
 
-  it('summary omits "(d for details)" when removed.length === 0', async () => {
+  it('renders NOTHING when removedComponents is empty (no push-down)', async () => {
     const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
@@ -703,125 +702,63 @@ describe('GenerateReviewStep — removed-detail panel (d key)', () => {
     } as never);
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).not.toMatch(/\(\[d\] removed list\)/);
-    expect(frame).not.toMatch(/d for details/);
+    expect(frame).not.toMatch(/Removed components/);
   });
 
-  it('summary includes "([d] removed list)" when removed.length > 0', async () => {
+  it('renders the strip permanently (no keystroke needed) when removed > 0', async () => {
     const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    lastOnResult!(previewWithRemoved(['Gone1', 'Gone2']));
+    lastOnResult!(previewWithRemoved(['Widget']));
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('([d] removed list)');
-    expect(frame).not.toContain('(d for details)');
-    expect(frame).toMatch(/2 removed/);
+    expect(frame).toContain('Removed components (1)');
+    expect(frame).toContain('DELETE');
+    expect(frame).toMatch(/Widget/);
   });
 
-  it('pressing d opens a panel listing removed component names', async () => {
+  it('[d] no longer toggles anything (removed panel wiring is gone)', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    lastOnResult!(previewWithRemoved(['GoneAlpha', 'GoneBeta']));
-    await tick();
+    // Empty removed set, so strip should be absent.
+    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
     stdin.write('d');
     await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/Removed components/);
-    expect(frame).toMatch(/GoneAlpha/);
-    expect(frame).toMatch(/GoneBeta/);
-  });
-
-  it('pressing d again closes the panel', async () => {
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    lastOnResult!(previewWithRemoved(['GoneAlpha']));
-    await tick();
-    stdin.write('d');
-    await tick();
-    expect(lastFrame() ?? '').toMatch(/Removed components/);
-    stdin.write('d');
-    await tick();
+    // Still absent — `d` no longer opens the panel.
     expect(lastFrame() ?? '').not.toMatch(/Removed components/);
   });
 
-  it('pressing Esc closes the panel', async () => {
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    lastOnResult!(previewWithRemoved(['GoneAlpha']));
-    await tick();
-    stdin.write('d');
-    await tick();
-    expect(lastFrame() ?? '').toMatch(/Removed components/);
-    stdin.write('\x1b');
-    await tick();
-    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
-  });
-
-  it('when panel is open, j/k do not affect editor state', async () => {
-    const dbMod = await import('../../../../src/session/db.js');
-    const KEYS = ['Aaa', 'Bbb', 'Ccc'];
-    const POPULATED = {
-      $type: 'component' as const,
-      $properties: { foo: { $type: 'string' as const, $category: 'content' as const } },
-    };
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(KEYS.map((k) => ({ key: k, entry: POPULATED })));
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    lastOnResult!(previewWithRemoved(['ZZZ']));
-    await tick();
-    stdin.write('d');
-    await tick();
-    // Panel open — j should be inert.
-    stdin.write('j');
-    stdin.write('j');
-    await tick();
-    const frame = lastFrame() ?? '';
-    // Selection still on Aaa (top of list).
-    const titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleLine).toContain('Aaa');
-  });
-
-  it('legend includes "[d] removed list" when removed > 0', async () => {
+  it('legend no longer advertises [d]', async () => {
     const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    lastOnResult!(previewWithRemoved(['GoneAlpha']));
+    lastOnResult!(previewWithRemoved(['Widget']));
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('[d] removed list');
-  });
-
-  it('renders no "([d] removed list)" hint when livePreview=false', async () => {
-    const { lastFrame } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
-    );
-    await tick();
-    const frame = lastFrame() ?? '';
+    expect(frame).not.toContain('[d] removed list');
     expect(frame).not.toContain('([d] removed list)');
-    expect(frame).not.toMatch(/d for details/);
   });
 
-  it('d key is inert when livePreview=false', async () => {
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+  it('title includes the word DELETE for notability', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    stdin.write('d');
+    lastOnResult!(previewWithRemoved(['Gone1']));
     await tick();
-    expect(lastFrame() ?? '').not.toMatch(/Removed components/);
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Removed components \(1\)/);
+    expect(frame).toContain('DELETE');
   });
 });
+
+// Legacy T3-era describe blocks removed as part of T1 (top-strip conversion).
+// Removed 13 tests exercising [d] toggle, Esc close, auto-open latching, and
+// legend/summary "[d] removed list" hints. Replaced by the 5 T1 tests above.
 
 // ── Bug pilot-2026-06-23: rapid j/k stutter / cursor loss ────────────────────
 // Holding `j` or `k` rapidly used to leave the cursor on a stale row because
@@ -1801,7 +1738,7 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     expect(frame).toMatch(/1\/3 matches/);
   });
 
-  it('Enter closes input but preserves the query; Tab cycles to next match', async () => {
+  it('Enter closes input but preserves the query; [n] cycles to next match (T3)', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'Button', entry: makeEntry('Button') },
@@ -1820,17 +1757,95 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     stdin.write('\r'); // Enter — close input, preserve query
     await tick();
     let frame = lastFrame() ?? '';
-    // Persistent hint shown when input closed but query active.
-    expect(frame).toMatch(/\[Tab\] next/);
-    // Cursor on Banner (first match at/after cursor position 0; alphabetical order Banner < Button).
+    // T3: persistent hint advertises [n] next, not [Tab] next.
+    expect(frame).toMatch(/\[n\] next/);
+    expect(frame).not.toMatch(/\[Tab\] next/);
+    // T7b delta 4: Enter now scans strictly AFTER cursorRowIdx (parity with
+    // ScopeGate). Cursor starts on Banner (row 0), so Enter advances to
+    // Button (the next match after cursor).
     let titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleLine).toContain('Banner');
-    // Tab cycles to the next match: Button.
-    stdin.write('\t');
+    expect(titleLine).toContain('Button');
+    // T3: [n] cycles matches with search closed; wraps to Banner.
+    stdin.write('n');
     await tick();
     frame = lastFrame() ?? '';
     titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleLine).toContain('Button');
+    expect(titleLine).toContain('Banner');
+  });
+
+  it('T3: Tab while search input is OPEN autocompletes query to first prefix-match', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Widget', entry: makeEntry('Widget') },
+      { key: 'Wizard', entry: makeEntry('Wizard') },
+      { key: 'Waffle', entry: makeEntry('Waffle') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('W');
+    await tick();
+    stdin.write('i');
+    await tick();
+    stdin.write('\t'); // Tab — should autocomplete to first alphabetical prefix-match: Widget
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('/Widget');
+    // Input remains open (cursor block shown, no persistent [n] hint yet).
+    expect(frame).not.toMatch(/\[n\] next/);
+  });
+
+  it('T3: Tab while input open with no prefix match is a no-op', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Widget', entry: makeEntry('Widget') },
+      { key: 'Wizard', entry: makeEntry('Wizard') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('z');
+    await tick();
+    stdin.write('z');
+    await tick();
+    stdin.write('z');
+    await tick();
+    stdin.write('\t');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Query unchanged, no crash.
+    expect(frame).toContain('/zzz');
+  });
+
+  it('T3: Tab with search CLOSED and active query crosses focus (does not cycle)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Banner', entry: makeEntry('Banner') },
+      { key: 'Button', entry: makeEntry('Button') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Sidebar focused hint present.
+    expect(lastFrame() ?? '').toMatch(/\[e\/Tab\] focus panel/);
+    stdin.write('/');
+    await tick();
+    stdin.write('b');
+    await tick();
+    stdin.write('\r'); // close input, preserve query
+    await tick();
+    // Tab should cross to the panel, NOT cycle matches.
+    stdin.write('\t');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/\[Tab\] focus list/);
   });
 
   it('Esc from active-query state clears the query', async () => {
@@ -1874,6 +1889,152 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     const frame = lastFrame() ?? '';
     // 'b' matches Button + Banner; total 4.
     expect(frame).toMatch(/2\/4 matches/);
+  });
+});
+
+describe('GenerateReviewStep — search parity (T7b: legend, dedupe, enter-clear, enter-advance)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const makeEntry = (label: string): Entry => ({
+    $type: 'component',
+    $properties: { [label.toLowerCase()]: { $type: 'string', $category: 'content' } },
+  });
+  const parentEntry = (childName: string): Entry => ({
+    $type: 'component',
+    $properties: { title: { $type: 'string', $category: 'content' } },
+    $slots: { children: { $allowedComponents: [childName] } },
+  });
+
+  it('legend advertises [/] search when sidebar focused (parity with ScopeGate)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Alpha', entry: makeEntry('Alpha') },
+      { key: 'Beta', entry: makeEntry('Beta') },
+    ]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Ink can wrap the legend and insert ANSI codes; strip both before asserting.
+    // eslint-disable-next-line no-control-regex
+    const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
+    expect(frame).toMatch(/\[\/\][^\n]*search/);
+  });
+
+  it('match counter dedupes shared-dep rows to unique component count (1/N not 2/N)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // Article → Card, Section → Card. Card is a shared dep, so buildVisibleRows
+    // emits it under BOTH parents. Total components = 3, but the row list has
+    // Card twice. Search 'card' hits both Card rows: raw count = 2, but the
+    // user-visible numerator must be 1 (one unique component matched).
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Article', entry: parentEntry('Card') },
+      { key: 'Section', entry: parentEntry('Card') },
+      { key: 'Card', entry: makeEntry('Card') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('c');
+    await tick();
+    stdin.write('a');
+    await tick();
+    stdin.write('r');
+    await tick();
+    stdin.write('d');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/1\/3 matches/);
+    expect(frame).not.toMatch(/2\/3 matches/);
+  });
+
+  it('Enter with 0 matches clears the query and closes the input (no stuck dim-all)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Alpha', entry: makeEntry('Alpha') },
+      { key: 'Beta', entry: makeEntry('Beta') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    // One char at a time — useImmediateInput only consumes single chars per call.
+    stdin.write('z');
+    await tick();
+    stdin.write('z');
+    await tick();
+    stdin.write('z');
+    await tick();
+    stdin.write('z');
+    await tick();
+    // Confirm we're in 0-match state while input still open.
+    expect(lastFrame() ?? '').toMatch(/0\/2 matches/);
+    stdin.write('\r'); // Enter — should clear + close (mirror ScopeGate)
+    await tick();
+    const frame = lastFrame() ?? '';
+    // No persistent-hint line for the query.
+    expect(frame).not.toMatch(/\[Tab\] next/);
+    expect(frame).not.toMatch(/matches/);
+    expect(frame).not.toMatch(/\/zzzz/);
+  });
+
+  it('Enter advances the cursor past the current match row (cursor exclusion)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // Two components both matching 'b'. Sort puts them into the standalone tier
+    // alphabetically: [Banner, Button]. Cursor starts on row 0 = Banner (first
+    // match). Enter should advance to Button (second match), not stay on Banner.
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Banner', entry: makeEntry('Banner') },
+      { key: 'Button', entry: makeEntry('Button') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('b');
+    await tick();
+    stdin.write('\r'); // Enter
+    await tick();
+    const frame = lastFrame() ?? '';
+    const titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleLine).toContain('Button');
+    expect(titleLine).not.toContain('Banner');
+  });
+
+  it('Enter with cursor on the last match wraps to the first match', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // [Banner, Button] alphabetical. Move cursor to Button (last match), then
+    // Enter with query 'b' should wrap to Banner.
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Banner', entry: makeEntry('Banner') },
+      { key: 'Button', entry: makeEntry('Button') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Move cursor from row 0 (Banner) to row 1 (Button).
+    stdin.write('j');
+    await tick();
+    let titleLine = (lastFrame() ?? '').split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleLine).toContain('Button');
+    // Now open search and Enter — cursor sits on last match, should wrap to Banner.
+    stdin.write('/');
+    await tick();
+    stdin.write('b');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleLine).toContain('Banner');
+    expect(titleLine).not.toContain('Button');
   });
 });
 
@@ -2679,5 +2840,605 @@ describe('GenerateReviewStep — lineage panel (T6)', () => {
   it('legend advertises [l] lineage when sidebar is focused', async () => {
     const { lastFrame } = await renderLineageFixture();
     expect(lastFrame() ?? '').toContain('[l]');
+  });
+});
+
+describe('GenerateReviewStep — view toggle (T8)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const leaf = (name: string): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+  });
+  const withSlot = (name: string, allowed: string[]): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+    $slots: {
+      children: {
+        $type: 'slot',
+        $allowedComponents: allowed,
+      },
+    } as never,
+  });
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  // Card → [Body, Heading], plus Standalone. Grouped view renders composite
+  // tree with `▾` on Card and `├─`/`└─` prefixes on children. Large-list
+  // renders one row per component alphabetical, no tree glyphs.
+  async function renderToggleFixture() {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Card', entry: withSlot('Card', ['Body', 'Heading']) },
+      { key: 'Body', entry: leaf('Body') },
+      { key: 'Heading', entry: leaf('Heading') },
+      { key: 'Standalone', entry: leaf('Standalone') },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
+    const utils = render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+        livePreview={false}
+      />,
+    );
+    await tick();
+    return utils;
+  }
+
+  it('legend advertises [L] flat when sidebar is focused', async () => {
+    const { lastFrame } = await renderToggleFixture();
+    const out = lastFrame() ?? '';
+    expect(out).toContain('[L]');
+    expect(out).toContain('flat');
+  });
+
+  it('pressing [L] toggles to flat view (composite tree glyphs disappear)', async () => {
+    const { lastFrame, stdin } = await renderToggleFixture();
+    // Grouped view (default): ▾ on expanded root; ├─/└─ on children.
+    const beforeToggle = lastFrame() ?? '';
+    expect(beforeToggle).toMatch(/▾[^\n]*Card/);
+    expect(beforeToggle).toMatch(/├─ /);
+    stdin.write('L');
+    await tick();
+    const afterToggle = lastFrame() ?? '';
+    // Flat view: no tree glyphs; Card gets a `(N deps)` suffix and
+    // every component surfaces as its own row.
+    expect(afterToggle).not.toMatch(/├─ /);
+    expect(afterToggle).not.toMatch(/└─ /);
+    expect(afterToggle).not.toMatch(/▾/);
+    expect(afterToggle).toContain('Card (2 deps)');
+    expect(afterToggle).toContain('Body');
+    expect(afterToggle).toContain('Heading');
+    expect(afterToggle).toContain('Standalone');
+  });
+
+  it('pressing [L] again toggles back to grouped view', async () => {
+    const { lastFrame, stdin } = await renderToggleFixture();
+    stdin.write('L');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/├─ /);
+    stdin.write('L');
+    await tick();
+    // Back to grouped: tree glyphs return.
+    expect(lastFrame() ?? '').toMatch(/├─ /);
+  });
+
+  it('cursor selection is preserved on the same component across view toggle', async () => {
+    const { lastFrame, stdin } = await renderToggleFixture();
+    // Grouped order (expanded seed): Card, ├─ Body, └─ Heading, Standalone.
+    // Move down to Body (first child row).
+    stdin.write('j');
+    await tick();
+    const beforeToggle = lastFrame() ?? '';
+    // Detail-panel title line shows the focused component.
+    const titleBefore = beforeToggle.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleBefore).toContain('Body');
+    stdin.write('L');
+    await tick();
+    const afterToggle = lastFrame() ?? '';
+    // Cursor stays on Body after switching to flat view.
+    const titleAfter = afterToggle.split('\n').find((l) => /\bprop/.test(l)) ?? '';
+    expect(titleAfter).toContain('Body');
+  });
+});
+
+describe('GenerateReviewStep — unsaved-changes warning (T5)', () => {
+  // Cross focus into the panel and step down to the description field, then
+  // type a literal 'X' to make the FieldEditor dirty. Uses the same walk the
+  // existing FieldEditor tests use for the STRING sample: Return → j×3 → ↓.
+  async function crossAndDirty(stdin: { write: (data: string) => void }): Promise<void> {
+    stdin.write('\t'); // Tab → panel focus
+    await tick();
+    stdin.write('\r'); // Return → field-edit at `type`
+    await tick();
+    stdin.write('j'); // → category
+    await tick();
+    stdin.write('j'); // → required
+    await tick();
+    stdin.write('j'); // → default (string default is text-entry — j literal is fine at this step)
+    await tick();
+    stdin.write('\x1b[B'); // ↓ arrow → description
+    await tick();
+    stdin.write('X'); // literal edit
+    await tick();
+  }
+
+  const SAMPLE_STRING = {
+    $type: 'component' as const,
+    $description: 'Hero title',
+    $properties: {
+      title: { $type: 'string' as const, $category: 'content' as const, $description: 'Hero title' },
+    },
+  };
+
+  it('clean Tab-away crosses focus without a warning dialog', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Hero', entry: SAMPLE_STRING }]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // Cross into panel — no edits yet.
+    stdin.write('\t');
+    await tick();
+    let frame = lastFrame() ?? '';
+    expect(frame).toMatch(/\[Tab\] focus list/);
+    // Cross back out via Tab — clean, no warning.
+    stdin.write('\t');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/Unsaved changes/i);
+    expect(frame).toMatch(/\[e\/Tab\] focus panel/);
+  });
+
+  it('dirty Tab-away opens an Unsaved changes warning and blocks focus cross', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Hero', entry: SAMPLE_STRING }]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    await crossAndDirty(stdin);
+    // Tab away — warning dialog should appear.
+    stdin.write('\t');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Unsaved changes/i);
+    // Focus did NOT cross — the panel-focused hint is still visible.
+    // (Cannot assert sidebar hint because the dialog swallows the bottom row.)
+  });
+
+  it('Enter in the warning saves and completes the deferred focus cross', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Hero', entry: SAMPLE_STRING }]);
+    const storeSpy = vi.mocked(dbMod.storeCDFComponents);
+    storeSpy.mockClear();
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    await crossAndDirty(stdin);
+    stdin.write('\t'); // Tab → warning
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Unsaved changes/i);
+    stdin.write('\r'); // Enter → save + cross
+    await tick();
+    // Save fired.
+    expect(storeSpy).toHaveBeenCalled();
+    // Warning closed, focus crossed to sidebar.
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/Unsaved changes/i);
+    expect(frame).toMatch(/\[e\/Tab\] focus panel/);
+  });
+
+  it('Esc in the warning discards and completes the deferred focus cross', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Hero', entry: SAMPLE_STRING }]);
+    const storeSpy = vi.mocked(dbMod.storeCDFComponents);
+    storeSpy.mockClear();
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    await crossAndDirty(stdin);
+    stdin.write('\t'); // Tab → warning
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Unsaved changes/i);
+    stdin.write('\x1b'); // Esc → discard + cross
+    await tick();
+    // Save NOT fired.
+    expect(storeSpy).not.toHaveBeenCalled();
+    // Warning closed, focus crossed.
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/Unsaved changes/i);
+    expect(frame).toMatch(/\[e\/Tab\] focus panel/);
+  });
+
+  it('Tab in the warning cancels: focus stays in the panel, dirty preserved', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Hero', entry: SAMPLE_STRING }]);
+    const storeSpy = vi.mocked(dbMod.storeCDFComponents);
+    storeSpy.mockClear();
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    await crossAndDirty(stdin);
+    stdin.write('\t'); // Tab → warning
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Unsaved changes/i);
+    stdin.write('\t'); // Tab in dialog → cancel
+    await tick();
+    // Save NOT fired.
+    expect(storeSpy).not.toHaveBeenCalled();
+    const frame = lastFrame() ?? '';
+    // Warning closed but focus stayed in the panel.
+    expect(frame).not.toMatch(/Unsaved changes/i);
+    expect(frame).toMatch(/\[Tab\] focus list/);
+  });
+});
+
+// ── T4 (parity plan §3) — undo/redo history + reload-from-save ────────────
+// Cmd+Z / Ctrl+Z (byte \x1a via key.ctrl + input='z') pops the history stack
+// IN-MEMORY only. Cmd+Y / Ctrl+Y (byte \x19) re-applies. `[u]` retained as an
+// alias for undo (mirrors legacy task #37 shortcut). Ctrl+R (\x12) opens a
+// reload-from-save confirm dialog whose Enter re-runs the mount load path and
+// resets history; Esc cancels.
+describe('GenerateReviewStep — undo/redo + reload-from-save (T4)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const CTRL_Z = '\x1a';
+  const CTRL_Y = '\x19';
+  const CTRL_R = '\x12';
+
+  // Find the sidebar row for a given component name — the row that carries a
+  // selection glyph. Skips panel-title/hint lines that also contain the name.
+  const findSidebarRow = (frame: string, name: string): string =>
+    frame.split('\n').find((l) => l.includes(name) && /\[[✓✗ ]\]/.test(l)) ?? '';
+
+  const card: Entry = {
+    $type: 'component',
+    $properties: { title: { $type: 'string', $category: 'content' } },
+  };
+  const cycleA: Entry = {
+    $type: 'component',
+    $properties: { name: { $type: 'string', $category: 'content' } },
+    $slots: { next: { $allowedComponents: ['CycleB'] } as never },
+  };
+  const cycleB: Entry = {
+    $type: 'component',
+    $properties: { name: { $type: 'string', $category: 'content' } },
+    $slots: { prev: { $allowedComponents: ['CycleA'] } as never },
+  };
+
+  beforeEach(() => {
+    hookReturnOverride = null;
+    triggerSpy.mockReset();
+  });
+
+  it('Ctrl+Z undoes accept-cascade — status reverts to needs-review', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: card }]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Before accept: undecided glyph.
+    const before = lastFrame() ?? '';
+    const cardBefore = findSidebarRow(before, 'Card');
+    expect(cardBefore).toContain('[ ]');
+    // Accept cascade.
+    stdin.write('a');
+    await tick();
+    const afterAccept = lastFrame() ?? '';
+    const cardAccepted = findSidebarRow(afterAccept, 'Card');
+    expect(cardAccepted).toContain('[✓]');
+    // Ctrl+Z undo.
+    stdin.write(CTRL_Z);
+    await tick();
+    const afterUndo = lastFrame() ?? '';
+    const cardRestored = findSidebarRow(afterUndo, 'Card');
+    expect(cardRestored).toContain('[ ]');
+    expect(cardRestored).not.toContain('[✓]');
+  });
+
+  it('Ctrl+Z undoes reject-cascade', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: card }]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('r');
+    await tick();
+    const afterReject = lastFrame() ?? '';
+    const rejLine = findSidebarRow(afterReject, 'Card');
+    expect(rejLine).toContain('[✗]');
+    stdin.write(CTRL_Z);
+    await tick();
+    const afterUndo = lastFrame() ?? '';
+    const undoLine = findSidebarRow(afterUndo, 'Card');
+    expect(undoLine).toContain('[ ]');
+    expect(undoLine).not.toContain('[✗]');
+  });
+
+  it('Ctrl+Y redoes after Ctrl+Z', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: card }]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('a');
+    await tick();
+    stdin.write(CTRL_Z);
+    await tick();
+    stdin.write(CTRL_Y);
+    await tick();
+    const frame = lastFrame() ?? '';
+    const cardLine = findSidebarRow(frame, 'Card');
+    expect(cardLine).toContain('[✓]');
+  });
+
+  it('Ctrl+Z after mount auto-reject restores pre-auto-reject state; second Ctrl+Z is a floor no-op', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: cycleA },
+      { key: 'CycleB', entry: cycleB },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'next', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'prev', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: null,
+      },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Auto-reject fired — banner visible.
+    expect(lastFrame() ?? '').toMatch(/Cyclic manifest — auto-rejected/);
+    stdin.write(CTRL_Z);
+    await tick();
+    const after = lastFrame() ?? '';
+    expect(after).not.toMatch(/Cyclic manifest — auto-rejected/);
+    // Second Ctrl+Z at the floor — nothing further to undo.
+    stdin.write(CTRL_Z);
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
+  });
+
+  it('[u] is an alias for undo', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: card }]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('a');
+    await tick();
+    stdin.write('u');
+    await tick();
+    const frame = lastFrame() ?? '';
+    const cardLine = findSidebarRow(frame, 'Card');
+    expect(cardLine).toContain('[ ]');
+  });
+
+  it('undo of an accept does NOT re-write DB via storeCDFComponents', async () => {
+    // Accept doesn't call storeCDFComponents itself, but this pins the
+    // in-memory-only guarantee for the undo path even after `[a]`.
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: card }]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
+    const storeSpy = vi.mocked(dbMod.storeCDFComponents);
+    storeSpy.mockClear();
+    const { stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('a');
+    await tick();
+    const callsAfterAccept = storeSpy.mock.calls.length;
+    stdin.write(CTRL_Z);
+    await tick();
+    // Undo did NOT add a new storeCDFComponents call.
+    expect(storeSpy.mock.calls.length).toBe(callsAfterAccept);
+  });
+
+  it('Ctrl+R opens the reload-from-save confirm dialog', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: card }]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write(CTRL_R);
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Reload from saved state/i);
+  });
+
+  it('Enter in reload dialog re-runs the load path and resets state', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // First mount load: Card in `needs-review`. Second load (post-Ctrl+R):
+    // return a DIFFERENT manifest so we can prove the reload hydrated fresh.
+    vi.mocked(dbMod.loadCDFComponents)
+      .mockReturnValueOnce([{ key: 'Card', entry: card }])
+      .mockReturnValueOnce([{ key: 'FreshComponent', entry: card }]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]).mockReturnValueOnce([]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Mutate in-memory state via accept.
+    stdin.write('a');
+    await tick();
+    const cardAfterAccept = findSidebarRow(lastFrame() ?? '', 'Card');
+    expect(cardAfterAccept).toContain('[✓]');
+    // Reload.
+    stdin.write(CTRL_R);
+    await tick();
+    stdin.write('\r'); // Enter → confirm
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('FreshComponent');
+    expect(frame).not.toContain('Card');
+  });
+
+  it('Esc in reload dialog cancels and leaves state alone', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: card }]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('a');
+    await tick();
+    stdin.write(CTRL_R);
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Reload from saved state/i);
+    stdin.write('\x1b'); // Esc → cancel
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toMatch(/Reload from saved state/i);
+    // Card is still accepted.
+    const cardLine = findSidebarRow(frame, 'Card');
+    expect(cardLine).toContain('[✓]');
+  });
+
+  it('legend advertises Cmd+Z / Cmd+Y / Ctrl+R when sidebar is focused', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: card }]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
+    expect(frame).toContain('[Cmd+Z] undo');
+    expect(frame).toContain('[Cmd+Y] redo');
+    expect(frame).toContain('[Ctrl+R] reload');
+  });
+});
+
+// ── T2 (layout plan §A): cycle banner + search input move BELOW sidebar ─────
+// Layout order top→bottom:
+//   removed strip · auto-reject banner · sidebar+detail · cycle banner
+//   · search input · legend.
+// Auto-reject banner stays HIGH; cycle banner + search input drop to bottom.
+describe('GenerateReviewStep — bottom-of-step banners (T2)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const CYCLE_A: Entry = {
+    $type: 'component',
+    $properties: {},
+    $slots: { header: { $allowedComponents: ['CycleB'] } } as never,
+  };
+  const CYCLE_B: Entry = {
+    $type: 'component',
+    $properties: {},
+    $slots: { footer: { $allowedComponents: ['CycleA'] } } as never,
+  };
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  it('cycle banner renders BELOW the sidebar+detail row', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+      },
+    ]);
+    // Undo the mount auto-reject so the sidebar detail panel renders (an
+    // all-rejected accepted set is fine but we still need FIELDS marker to
+    // pin the sidebar+detail row).
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('u'); // undo mount auto-reject so FIELDS marker present
+    await tick();
+    const frame = lastFrame() ?? '';
+    const fieldsIdx = frame.indexOf('FIELDS');
+    const cycleIdx = frame.search(/slot dependency cycle/);
+    expect(fieldsIdx).toBeGreaterThanOrEqual(0);
+    expect(cycleIdx).toBeGreaterThanOrEqual(0);
+    expect(cycleIdx).toBeGreaterThan(fieldsIdx);
+  });
+
+  it('search input renders BELOW the sidebar+detail row', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Alpha', entry: { $type: 'component', $properties: { a: { $type: 'string', $category: 'content' } } } as Entry },
+      { key: 'Beta', entry: { $type: 'component', $properties: { b: { $type: 'string', $category: 'content' } } } as Entry },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('a');
+    await tick();
+    const frame = lastFrame() ?? '';
+    const fieldsIdx = frame.indexOf('FIELDS');
+    // Search input marker: match-count text pinned to the input line.
+    const searchIdx = frame.search(/\/a[^\n]*matches/);
+    expect(fieldsIdx).toBeGreaterThanOrEqual(0);
+    expect(searchIdx).toBeGreaterThanOrEqual(0);
+    expect(searchIdx).toBeGreaterThan(fieldsIdx);
+  });
+
+  it('auto-reject banner stays ABOVE the sidebar+detail row', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+      },
+    ]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    const autoRejIdx = frame.search(/Cyclic manifest — auto-rejected/);
+    const fieldsIdx = frame.indexOf('FIELDS');
+    expect(autoRejIdx).toBeGreaterThanOrEqual(0);
+    expect(fieldsIdx).toBeGreaterThanOrEqual(0);
+    expect(autoRejIdx).toBeLessThan(fieldsIdx);
   });
 });
