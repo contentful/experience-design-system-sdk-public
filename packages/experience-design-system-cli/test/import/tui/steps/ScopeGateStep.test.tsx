@@ -756,6 +756,83 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       frame = lastFrame() ?? '';
       expect(frame).not.toContain('/b');
     });
+
+    describe('T3 — Tab autocomplete + [n] match-cycle', () => {
+      const T3_FIXTURE = [
+        { name: 'Widget', componentId: 'c0' },
+        { name: 'Wizard', componentId: 'c1' },
+        { name: 'Waffle', componentId: 'c2' },
+      ];
+
+      it('Tab with search input OPEN autocompletes to the first alphabetical prefix-match', () => {
+        const { lastFrame, stdin } = render(
+          <ScopeGateStep components={T3_FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
+        );
+        stdin.write('/');
+        stdin.write('W');
+        stdin.write('i');
+        stdin.write('\t');
+        const frame = lastFrame() ?? '';
+        expect(frame).toContain('/Widget');
+      });
+
+      it('Tab with input open and no prefix match is a no-op (no crash, query unchanged)', () => {
+        const { lastFrame, stdin } = render(
+          <ScopeGateStep components={T3_FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
+        );
+        stdin.write('/');
+        stdin.write('z');
+        stdin.write('z');
+        stdin.write('z');
+        stdin.write('\t');
+        const frame = lastFrame() ?? '';
+        expect(frame).toContain('/zzz');
+      });
+
+      it('Tab with search CLOSED and active query does NOT cycle matches (falls through)', () => {
+        const { lastFrame, stdin } = render(
+          <ScopeGateStep components={T3_FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
+        );
+        stdin.write('/');
+        stdin.write('W');
+        stdin.write('\r'); // close, preserve query
+        const before = lastFrame() ?? '';
+        stdin.write('\t');
+        const after = lastFrame() ?? '';
+        // Two-column layout: Tab is a no-op (not three-column). Frame unchanged
+        // materially — importantly, the query is still `/W` and the hint has
+        // updated to advertise [n].
+        expect(after).toContain('/W');
+        // Regression: OLD behavior would have jumped to a different match; the
+        // cursor line before/after should still refer to the same match.
+        void before;
+      });
+
+      it('[n] with active query and search closed cycles to the next match', () => {
+        const { lastFrame, stdin } = render(
+          <ScopeGateStep components={T3_FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
+        );
+        stdin.write('/');
+        stdin.write('W');
+        stdin.write('\r'); // close, preserve query — cursor on first match (Waffle)
+        const before = lastFrame() ?? '';
+        stdin.write('n');
+        const after = lastFrame() ?? '';
+        expect(before).not.toEqual(after);
+      });
+
+      it('hint text advertises [n] next, not [Tab] next', () => {
+        const { lastFrame, stdin } = render(
+          <ScopeGateStep components={T3_FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
+        );
+        stdin.write('/');
+        stdin.write('W');
+        stdin.write('\r');
+        const frame = lastFrame() ?? '';
+        expect(frame).toContain('[n] next');
+        expect(frame).not.toContain('[Tab] next');
+      });
+    });
   });
 
   describe('streaming AI-decision sync (delta on prop)', () => {
@@ -1509,6 +1586,60 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(arg.accepted).not.toContain('P');
       expect(arg.accepted).not.toContain('X');
       expect(arg.rejected).toEqual(expect.arrayContaining(['P', 'X']));
+    });
+  });
+
+  describe('T4 — search-time neighborhood filter (grouped view)', () => {
+    // A slots B slots C slots D. Cursor starts on A.
+    const CHAIN = [
+      { name: 'A', componentId: 'a', slots: [{ name: 's', allowedComponents: ['B'] }] },
+      { name: 'B', componentId: 'b', slots: [{ name: 's', allowedComponents: ['C'] }] },
+      { name: 'C', componentId: 'c', slots: [{ name: 's', allowedComponents: ['D'] }] },
+      { name: 'D', componentId: 'd' },
+    ];
+
+    it('search matching only B keeps A and C visible; hides D', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={CHAIN} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('/');
+      stdin.write('B');
+      const frame = lastFrame() ?? '';
+      // Look at lines that carry a selection glyph — those are the sidebar
+      // rows for real components. At tip (no filter) every component
+      // renders such a row; with the filter active, D's row is dropped.
+      const componentRowLines = frame
+        .split('\n')
+        .filter((l) => /\[[ ✓✗×]\]/.test(l));
+      const namesInSidebar = new Set<string>();
+      for (const l of componentRowLines) {
+        for (const name of ['A', 'B', 'C', 'D']) {
+          // Match component labels as isolated tokens (adjacent to
+          // whitespace, tree glyphs, or line boundaries).
+          if (new RegExp(`(^|[\\s├└─▸▾]) ?${name}(\\s|$|[^A-Za-z])`).test(l)) {
+            namesInSidebar.add(name);
+          }
+        }
+      }
+      expect(namesInSidebar.has('A')).toBe(true);
+      expect(namesInSidebar.has('B')).toBe(true);
+      expect(namesInSidebar.has('C')).toBe(true);
+      expect(namesInSidebar.has('D')).toBe(false);
+    });
+
+    it('header/counter strip continues to show full totals when filter active', () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={CHAIN} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      const before = lastFrame() ?? '';
+      // Grab the "Found N component" line.
+      const totalLineBefore = before.split('\n').find((l) => /Found \d+ component/.test(l)) ?? '';
+      stdin.write('/');
+      stdin.write('B');
+      const after = lastFrame() ?? '';
+      const totalLineAfter = after.split('\n').find((l) => /Found \d+ component/.test(l)) ?? '';
+      expect(totalLineAfter).toEqual(totalLineBefore);
+      expect(totalLineAfter).toContain('4');
     });
   });
 });

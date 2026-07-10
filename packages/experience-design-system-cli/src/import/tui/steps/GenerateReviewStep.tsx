@@ -41,6 +41,7 @@ import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotat
 import { useLivePreview } from '../useLivePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
+import { computeDirectNeighborhood } from '../../../analyze/search-neighborhood.js';
 import { computeSidebarWidth } from '../sidebar-width.js';
 import { computeAcceptCascade, computeRejectCascade } from '../../../analyze/selection-cascade.js';
 import { findAllAncestors } from '../../../analyze/lineage.js';
@@ -195,22 +196,6 @@ export function GenerateReviewStep({
   // annotation map only carries kind, not the rich summaries we need to list
   // names/ids when the operator asks "which ones?".
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
-  // T3 (parity plan §3) — removed-panel default-open bookkeeping.
-  //   - `autoOpenedRemovedRef` latches on the first auto-open so we don't
-  //     re-open every time a preview refresh reports a removed set.
-  //   - `manuallyClosedRemovedRef` latches on any operator close (via [d] or Esc)
-  //     and permanently disables auto-open for this session. Reset only on
-  //     unmount/remount (i.e., a fresh session). Persisted via the
-  //     `useOverlayPanel({ onClose })` seam extracted in T10 — the hook owns
-  //     the isOpen boolean; the manual-close latch is orthogonal.
-  const autoOpenedRemovedRef = useRef(false);
-  const manuallyClosedRemovedRef = useRef(false);
-  const removedPanel = useOverlayPanel({
-    toggleKey: 'd',
-    onClose: () => {
-      manuallyClosedRemovedRef.current = true;
-    },
-  });
   // Lifted rationale + source panels (replaces FieldEditor's right pane).
   // Mutually exclusive states.
   const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>('none');
@@ -307,19 +292,6 @@ export function GenerateReviewStep({
     );
     const nextRemoved = response.components.removed ?? [];
     setRemovedComponents(nextRemoved);
-    // T3 — auto-open the panel the first time we see a non-empty removed
-    // set, so operators can't miss impending deletions. Guarded by the
-    // manual-close latch so an operator who closes it doesn't get it
-    // popped back open on every debounced preview refresh.
-    if (
-      livePreview &&
-      nextRemoved.length > 0 &&
-      !autoOpenedRemovedRef.current &&
-      !manuallyClosedRemovedRef.current
-    ) {
-      autoOpenedRemovedRef.current = true;
-      removedPanel.open();
-    }
   };
 
   const livePreviewHook = useLivePreview({
@@ -737,6 +709,15 @@ export function GenerateReviewStep({
       })),
     [components, directIssues],
   );
+  const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
+    if (!searchQuery) return undefined;
+    const matches = groupedItemsMemo
+      .map((it) => it.key)
+      .filter((k) => fuzzyMatches(searchQuery, k));
+    if (matches.length === 0) return undefined;
+    return computeDirectNeighborhood(matches, sidebarGraph);
+  }, [searchQuery, groupedItemsMemo, sidebarGraph]);
+
   const visibleRowsMemo = useMemo<VisibleRow[]>(
     () =>
       buildVisibleRows({
@@ -745,8 +726,9 @@ export function GenerateReviewStep({
         expandedGroups,
         viewMode: columnOneView,
         graph: sidebarGraph,
+        filterVisibleKeys,
       }),
-    [groupedItemsMemo, cycleView, expandedGroups, columnOneView, sidebarGraph],
+    [groupedItemsMemo, cycleView, expandedGroups, columnOneView, sidebarGraph, filterVisibleKeys],
   );
   // Row positions that map to a real component (skip synthetic flat-header
   // rows). j/k navigation walks these in order, so duplicate occurrences of
@@ -1081,6 +1063,21 @@ export function GenerateReviewStep({
         setSearchOpen(false);
         return;
       }
+      if (key.tab) {
+        // T3: Tab autocompletes the query to the first alphabetical
+        // component name (by key) that has the current query as a
+        // case-insensitive prefix. Input stays open. No-op when no
+        // prefix-match exists.
+        if (!searchQuery) return;
+        const q = searchQuery.toLowerCase();
+        const prefix = components
+          .map((c) => c.key)
+          .filter((n) => n.toLowerCase().startsWith(q))
+          .sort();
+        const pick = prefix[0];
+        if (pick) setSearchQuery(pick);
+        return;
+      }
       if (key.backspace) {
         setSearchQuery((q) => q.slice(0, -1));
         return;
@@ -1123,16 +1120,6 @@ export function GenerateReviewStep({
       }
       return;
     }
-    // Pilot-2026-06-24: removed-detail panel. When open, only `d` (toggle)
-    // and Esc (close) respond — all other input is swallowed so j/k/Enter/
-    // Ctrl+S can't move state behind the modal. Close-side delegated to the
-    // shared `useOverlayPanel` hook (T10); the hook's `onClose` callback
-    // latches `manuallyClosedRemovedRef` so subsequent preview refreshes don't
-    // re-pop the panel.
-    if (removedPanel.isOpen) {
-      removedPanel.handleInput(input, key);
-      return;
-    }
     // INTEG-4401: slot-cycle detail panel. Same modal-swallow rules as
     // removed panel; `[c]` / `[Esc]` close (via shared hook), `[q]` also closes
     // (legacy), ↑↓ scroll.
@@ -1157,13 +1144,6 @@ export function GenerateReviewStep({
     if (input === 'c' && sidebarFocused && slotCycles.length > 0) {
       cyclePanel.open();
       setCyclePanelScroll(0);
-      return;
-    }
-    // `d` opens the panel only when live-preview is enabled and there is at
-    // least one removed component to display. Sidebar-focused only so it
-    // doesn't collide with FieldEditor input.
-    if (input === 'd' && sidebarFocused && livePreview && removedComponents.length > 0) {
-      removedPanel.open();
       return;
     }
     // T6 (parity plan §3) — `[l]` opens the lineage panel when the sidebar
@@ -1258,24 +1238,9 @@ export function GenerateReviewStep({
         setShowUnsavedWarning(true);
         return;
       }
-      // With an active fuzzy-search query, Tab cycles matches from the
-      // sidebar-focused state instead of toggling focus. Preserves scope-gate
-      // parity. When no query is active, Tab behaves as before.
-      if (sidebarFocused && searchQuery && searchMatches.length > 0) {
-        let next: number | null = null;
-        for (let i = cursorRowIdx + 1; i < visibleRowsMemo.length; i++) {
-          const row = visibleRowsMemo[i];
-          if (row.itemIdx < 0) continue;
-          const key2 = components[row.itemIdx]?.key;
-          if (key2 && fuzzyMatches(searchQuery, key2)) {
-            next = i;
-            break;
-          }
-        }
-        if (next === null) next = searchMatches[0] ?? null;
-        if (next !== null) jumpCursorToRow(next);
-        return;
-      }
+      // T3: match-cycling via Tab is retired — Tab now unconditionally
+      // toggles focus. Match-cycling moved to [n] (see sidebar-focused
+      // block below).
       setSidebarFocused((prev) => !prev);
       return;
     }
@@ -1347,6 +1312,22 @@ export function GenerateReviewStep({
     // in this step so no collision.
     if (input === '/') {
       setSearchOpen(true);
+      return;
+    }
+    // T3: [n] cycles matches when a query is active and search is closed.
+    if (input === 'n' && searchQuery && searchMatches.length > 0) {
+      let next: number | null = null;
+      for (let i = cursorRowIdx + 1; i < visibleRowsMemo.length; i++) {
+        const row = visibleRowsMemo[i];
+        if (row.itemIdx < 0) continue;
+        const key2 = components[row.itemIdx]?.key;
+        if (key2 && fuzzyMatches(searchQuery, key2)) {
+          next = i;
+          break;
+        }
+      }
+      if (next === null) next = searchMatches[0] ?? null;
+      if (next !== null) jumpCursorToRow(next);
       return;
     }
     if (key.escape && searchQuery) {
@@ -1724,10 +1705,11 @@ export function GenerateReviewStep({
           <Text>{'  [Esc]    Cancel'}</Text>
         </Box>
       )}
-      {removedPanel.isOpen && !dialogOpen && (
-        // T3 — notability polish. Border flipped cyan → red and title made
-        // explicit ("will be DELETED from target space") since these
-        // components are about to be dropped from the target space.
+      {removedComponents.length > 0 && !dialogOpen && (
+        // T1 (layout plan §A) — permanent top strip. Renders unconditionally
+        // above the auto-reject banner + cycle strips whenever the live
+        // preview reports at least one removed component. When empty, this
+        // block renders NOTHING (no placeholder, no push-down of layout).
         <Box flexDirection="column" borderStyle="round" borderColor="red" paddingX={1}>
           <Text bold color="red">
             {`Removed components (${removedComponents.length}) — will be `}
@@ -1738,8 +1720,6 @@ export function GenerateReviewStep({
           {removedComponents.map((rc) => (
             <Text key={rc.id}>{`- ${rc.name}${rc.id ? `  (${rc.id})` : ''}`}</Text>
           ))}
-          <Text> </Text>
-          <Text dimColor>press d or Esc to close</Text>
         </Box>
       )}
       {cyclePanel.isOpen &&
@@ -1848,7 +1828,6 @@ export function GenerateReviewStep({
               <Text color="yellow">{`${counts.changed} changed`}</Text>
               <Text>{' · '}</Text>
               <Text dimColor>{`${counts.removed} removed`}</Text>
-              {removedComponents.length > 0 && <Text dimColor>{' ([d] removed list)'}</Text>}
               <Text>{' · '}</Text>
               <Text color="red" bold>
                 {`${counts.breaking} breaking`}
@@ -1890,60 +1869,15 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {!dialogOpen && slotCycles.length > 0 && !cyclePanel.isOpen && (
-        <Box flexDirection="column">
-          <Text color="yellow">
-            {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
-          </Text>
-          {slotCycles.slice(0, 3).map((cycle, idx) => {
-            const segs = formatCyclePathSegments(cycle);
-            return (
-              <Text key={`cyc-banner-${idx}`} color="yellow">
-                {'  Cycle: '}
-                {segs.map((seg, si) =>
-                  seg.kind === 'slot' ? (
-                    <Text key={si} color="cyan">
-                      {seg.text}
-                    </Text>
-                  ) : seg.kind === 'arrow' ? (
-                    <Text key={si} dimColor>
-                      {seg.text}
-                    </Text>
-                  ) : (
-                    <Text key={si} color="yellow">
-                      {seg.text}
-                    </Text>
-                  ),
-                )}
-              </Text>
-            );
-          })}
-          {slotCycles.length > 3 && <Text color="yellow">{`  …${slotCycles.length - 3} more`}</Text>}
-          <Text dimColor>{'  press [c] for detail'}</Text>
-        </Box>
-      )}
       {!dialogOpen && emptyCount > 0 && (
         <Text color="yellow">
           {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
         </Text>
       )}
       {!dialogOpen && finalizeError && <Text color="red">{`⚠ ${finalizeError}`}</Text>}
-      {!dialogOpen && searchOpen && (
-        <Box>
-          <Text>
-            {`/${searchQuery}`}
-            <Text color="cyan">{'▎'}</Text>
-            {searchQuery && (
-              <Text dimColor>{`  (${searchMatchCount}/${components.length} matches)`}</Text>
-            )}
-          </Text>
-        </Box>
-      )}
-      {!dialogOpen && !searchOpen && searchQuery && (
-        <Box>
-          <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear · [Tab] next`}</Text>
-        </Box>
-      )}
+      {/* T2 (layout plan §A): cycle banner + search input strips render BELOW
+          the sidebar+detail row (they used to be here, above). Located in a
+          fragment right after the sidebar Box. */}
       {!dialogOpen && (
         <Box>
           <GroupedSidebar
@@ -2121,7 +2055,6 @@ export function GenerateReviewStep({
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel' +
                       (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '') +
-                      (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       (focusedComponentKey ? '  [l] lineage' : '') +
                       '  [L] flat' +
@@ -2140,6 +2073,54 @@ export function GenerateReviewStep({
               <Text dimColor>No component selected</Text>
             )}
           </Box>
+        </Box>
+      )}
+      {!dialogOpen && slotCycles.length > 0 && !cyclePanel.isOpen && (
+        <Box flexDirection="column">
+          <Text color="yellow">
+            {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
+          </Text>
+          {slotCycles.slice(0, 3).map((cycle, idx) => {
+            const segs = formatCyclePathSegments(cycle);
+            return (
+              <Text key={`cyc-banner-${idx}`} color="yellow">
+                {'  Cycle: '}
+                {segs.map((seg, si) =>
+                  seg.kind === 'slot' ? (
+                    <Text key={si} color="cyan">
+                      {seg.text}
+                    </Text>
+                  ) : seg.kind === 'arrow' ? (
+                    <Text key={si} dimColor>
+                      {seg.text}
+                    </Text>
+                  ) : (
+                    <Text key={si} color="yellow">
+                      {seg.text}
+                    </Text>
+                  ),
+                )}
+              </Text>
+            );
+          })}
+          {slotCycles.length > 3 && <Text color="yellow">{`  …${slotCycles.length - 3} more`}</Text>}
+          <Text dimColor>{'  press [c] for detail'}</Text>
+        </Box>
+      )}
+      {!dialogOpen && searchOpen && (
+        <Box>
+          <Text>
+            {`/${searchQuery}`}
+            <Text color="cyan">{'▎'}</Text>
+            {searchQuery && (
+              <Text dimColor>{`  (${searchMatchCount}/${components.length} matches)`}</Text>
+            )}
+          </Text>
+        </Box>
+      )}
+      {!dialogOpen && !searchOpen && searchQuery && (
+        <Box>
+          <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear · [n] next`}</Text>
         </Box>
       )}
       {!dialogOpen && (
