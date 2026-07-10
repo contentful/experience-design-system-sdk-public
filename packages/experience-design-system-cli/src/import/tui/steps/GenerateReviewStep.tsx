@@ -552,9 +552,21 @@ export function GenerateReviewStep({
     visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1;
   useEffect(() => {
     if (selectableRowPositions.length === 0) return;
-    if (selectableRowPositions.includes(cursorRowIdx)) return;
-    setNav((prev) => ({ ...prev, cursorRowIdx: selectableRowPositions[0] }));
-  }, [selectableRowPositions, cursorRowIdx]);
+    const cursorInRange = selectableRowPositions.includes(cursorRowIdx);
+    // When the row list shrinks or reshuffles (e.g. an edit removes a cycle
+    // and cycle-tier rows collapse into other tiers) the previously-in-range
+    // scroll offset can point past the shorter list. Slicing then hides rows
+    // before the stale offset. Clamp scroll to the largest offset that still
+    // renders a full window (or 0 when the list fits entirely).
+    const maxScroll = Math.max(0, visibleRowsMemo.length - VISIBLE_COUNT);
+    const scrollNeedsClamp = sidebarScrollOffset > maxScroll;
+    if (cursorInRange && !scrollNeedsClamp) return;
+    const nextCursor = cursorInRange ? cursorRowIdx : selectableRowPositions[0];
+    setNav(() => ({
+      cursorRowIdx: nextCursor,
+      sidebarScrollOffset: Math.min(sidebarScrollOffset, maxScroll),
+    }));
+  }, [selectableRowPositions, cursorRowIdx, sidebarScrollOffset, visibleRowsMemo.length]);
 
   // Feature 1: load review metadata (rationale + source location) for the
   // selected component when selection changes.

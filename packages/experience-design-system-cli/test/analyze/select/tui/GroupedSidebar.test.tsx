@@ -1043,3 +1043,55 @@ describe('buildVisibleRows — large-list view mode', () => {
   });
 });
 
+// Regression: after a user edits a cycle member and removes the cycle-forming
+// slot target, the residual node must remain visible in the sidebar. Before the
+// fix, walking the graph as `InnerB → InnerA` (with InnerA now having an empty
+// slot) produced a well-formed closure — but if the caller passes a
+// `cycleParticipants` set derived from the ORIGINAL cycle detection (before
+// the edit landed) the InnerA row still gets short-circuited into the cycle
+// tier despite no longer being in a cycle. The row is either rendered under
+// the wrong tier or missing depending on the stale-set contents.
+describe('buildVisibleRows — cycle member no longer in a cycle', () => {
+  it('renders both InnerA and InnerB when InnerA has removed its cycle-forming slot', () => {
+    // Post-edit state: InnerA has an empty allowed list; InnerB still slots
+    // InnerA. This is the scenario the user hit — "removed InnerB from
+    // InnerA's slot, InnerA disappeared."
+    const items = [
+      item('InnerA', { slots: { s: [] } }),
+      item('InnerB', { slots: { s: ['InnerA'] } }),
+    ];
+    // Cycle detection on this post-edit graph → no cycle. Simulates the
+    // ScopeGateStep / GenerateReviewStep flow where cycleParticipantsMemo
+    // recomputes from the current slot data after the edit.
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(),
+      alwaysExpanded: true,
+    });
+    const labels = rows.map((r) => r.label);
+    // Both must show up somewhere.
+    expect(labels.some((l) => l.includes('InnerA'))).toBe(true);
+    expect(labels.some((l) => l.includes('InnerB'))).toBe(true);
+  });
+
+  it('renders both InnerA and InnerB when cycleParticipants set is STALE (still lists them)', () => {
+    // Adversarial variant: the caller's cycle-detection is stale — it still
+    // reports InnerA and InnerB as cycle members even though the graph no
+    // longer has the cycle. Sidebar must still render both.
+    const items = [
+      item('InnerA', { slots: { s: [] } }),
+      item('InnerB', { slots: { s: ['InnerA'] } }),
+    ];
+    const rows = buildVisibleRows({
+      items,
+      cycleParticipants: new Set(['InnerA', 'InnerB']),
+      expandedGroups: new Set(),
+      alwaysExpanded: true,
+    });
+    const labels = rows.map((r) => r.label);
+    expect(labels.some((l) => l.includes('InnerA'))).toBe(true);
+    expect(labels.some((l) => l.includes('InnerB'))).toBe(true);
+  });
+});
+
