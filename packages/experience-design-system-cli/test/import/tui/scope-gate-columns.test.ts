@@ -164,6 +164,62 @@ describe('buildAddedGroupsList', () => {
     expect(buildAddedGroupsList(computeAllClosures(graph), s, new Set<string>())).toEqual([]);
   });
 
+  it('synthesizes a cycle-group entry from cycleUnits when a member is accepted', () => {
+    // A↔B cycle: composite-closure short-circuits to nodes.length=1, so no
+    // closure entry survives the filter. buildAddedGroupsList must synthesize
+    // one entry per accepted cycle-unit, named after the alphabetically-first
+    // member, with depCount = size - 1 and isCycle: true.
+    const closures = new Map();
+    const s = state([
+      ['B', 'accepted'],
+      ['A', 'accepted'],
+    ]);
+    const cycleParticipants = new Set(['A', 'B']);
+    const unit = new Set(['A', 'B']);
+    const cycleUnits = new Map<string, Set<string>>([
+      ['A', unit],
+      ['B', unit],
+    ]);
+    const out = buildAddedGroupsList(closures, s, cycleParticipants, cycleUnits);
+    expect(out).toEqual([{ name: 'A', depCount: 1, isCycle: true }]);
+  });
+
+  it('does not synthesize a cycle-group entry when no member is accepted', () => {
+    const closures = new Map();
+    const s = state([
+      ['A', 'rejected'],
+      ['B', 'undecided'],
+    ]);
+    const cycleParticipants = new Set(['A', 'B']);
+    const unit = new Set(['A', 'B']);
+    const cycleUnits = new Map<string, Set<string>>([
+      ['A', unit],
+      ['B', unit],
+    ]);
+    expect(buildAddedGroupsList(closures, s, cycleParticipants, cycleUnits)).toEqual([]);
+  });
+
+  it('preserves non-cycle groups alongside synthesized cycle-group entries', () => {
+    const s = state([
+      ['Card', 'accepted'],
+      ['Text', 'accepted'],
+      ['Icon', 'accepted'],
+      ['A', 'accepted'],
+      ['B', 'accepted'],
+    ]);
+    const cycleParticipants = new Set(['A', 'B']);
+    const unit = new Set(['A', 'B']);
+    const cycleUnits = new Map<string, Set<string>>([
+      ['A', unit],
+      ['B', unit],
+    ]);
+    const out = buildAddedGroupsList(computeAllClosures(graph), s, cycleParticipants, cycleUnits);
+    expect(out).toEqual([
+      { name: 'A', depCount: 1, isCycle: true },
+      { name: 'Card', depCount: 2, isCycle: false },
+    ]);
+  });
+
   it('tags composite roots as isCycle:true when they appear in cycleParticipants', () => {
     // Build the closure map synthetically. The composite-closure module cannot
     // organically produce a cyclic composite root (findRoots excludes cycle
