@@ -11,6 +11,17 @@ import {
   type VisibleRow,
 } from '../../../../src/analyze/select/tui/components/GroupedSidebar.js';
 import type { NodeStatus } from '../../../../src/analyze/composite-closure.js';
+import { buildComponentGraph } from '../../../../src/analyze/slot-graph.js';
+
+/**
+ * Test-only helper: build the canonical graph the sidebar consumes. Defaults to
+ * `stripRejectedEdges: true` so tests inherit the same semantics the removed
+ * `itemsToGraph` fallback used to provide (task #7 behavior).
+ */
+const graphOf = (
+  items: GroupedSidebarItem[],
+  opts?: { stripRejectedEdges?: boolean },
+) => buildComponentGraph(items, { stripRejectedEdges: opts?.stripRejectedEdges ?? true });
 
 /** Build a minimal review-entry-like item for the sidebar. */
 function item(
@@ -41,8 +52,10 @@ function item(
 }
 
 function renderSidebar(overrides: Partial<React.ComponentProps<typeof GroupedSidebar>> = {}) {
+  const items = overrides.items ?? [];
   const defaults: React.ComponentProps<typeof GroupedSidebar> = {
-    items: [],
+    items,
+    graph: graphOf(items),
     cycleParticipants: new Set<string>(),
     selectedIdx: 0,
     onSelect: vi.fn(),
@@ -149,6 +162,7 @@ describe('GroupedSidebar', () => {
     // on ordinary letter tokens.
     const order = visibleItemOrder({
       items,
+      graph: graphOf(items),
       cycleParticipants: new Set(),
       expandedGroups: new Set(['A']),
     });
@@ -581,6 +595,7 @@ describe('GroupedSidebar', () => {
       // Find visible-row order and put the cursor on the 2nd (shared) S.
       const order = visibleItemOrder({
         items,
+        graph: graphOf(items),
         cycleParticipants: new Set(),
         expandedGroups: new Set(['R1', 'R2']),
       });
@@ -640,6 +655,7 @@ describe('GroupedSidebar', () => {
       ];
       const rows = buildVisibleRows({
         items,
+        graph: graphOf(items),
         cycleParticipants: new Set(['InnerA', 'InnerB']),
         expandedGroups: new Set(),
         alwaysExpanded: true,
@@ -675,6 +691,7 @@ describe('GroupedSidebar', () => {
       ];
       const rows = buildVisibleRows({
         items,
+        graph: graphOf(items),
         cycleParticipants: new Set(['InnerA', 'InnerB']),
         expandedGroups: new Set(),
         alwaysExpanded: true,
@@ -701,6 +718,7 @@ describe('GroupedSidebar', () => {
       ];
       const rows = buildVisibleRows({
         items,
+        graph: graphOf(items),
         cycleParticipants: new Set(['InnerA', 'InnerB']),
         expandedGroups: new Set(),
         alwaysExpanded: true,
@@ -730,6 +748,7 @@ describe('GroupedSidebar', () => {
       ];
       const rows = buildVisibleRows({
         items,
+        graph: graphOf(items),
         cycleParticipants: new Set(['NodeA', 'NodeB']),
         expandedGroups: new Set(),
         alwaysExpanded: true,
@@ -767,6 +786,7 @@ describe('GroupedSidebar', () => {
       ];
       const rows = buildVisibleRows({
         items,
+        graph: graphOf(items),
         cycleParticipants: new Set(['Panel', 'Section']),
         expandedGroups: new Set(),
         alwaysExpanded: true,
@@ -796,6 +816,7 @@ describe('GroupedSidebar', () => {
       ];
       const collapsedRows = buildVisibleRows({
         items,
+        graph: graphOf(items),
         cycleParticipants: new Set(['NodeA', 'NodeB']),
         expandedGroups: new Set(),
       });
@@ -808,6 +829,7 @@ describe('GroupedSidebar', () => {
       // Toggle NodeA via expandedGroups — its subtree becomes visible.
       const partiallyExpanded = buildVisibleRows({
         items,
+        graph: graphOf(items),
         cycleParticipants: new Set(['NodeA', 'NodeB']),
         expandedGroups: new Set(['NodeA']),
       });
@@ -828,6 +850,7 @@ describe('GroupedSidebar', () => {
       ];
       const rows = buildVisibleRows({
         items,
+        graph: graphOf(items),
         cycleParticipants: new Set(['InnerA', 'InnerB']),
         expandedGroups: new Set(),
         alwaysExpanded: true,
@@ -845,6 +868,7 @@ describe('GroupedSidebar', () => {
     ];
     const order = visibleItemOrder({
       items,
+      graph: graphOf(items),
       cycleParticipants: new Set(),
       expandedGroups: new Set(['Card']),
       showFlatTier: true,
@@ -870,6 +894,7 @@ describe('visibleItemOrder — navigation contract', () => {
     ];
     const order = visibleItemOrder({
       items,
+      graph: graphOf(items),
       cycleParticipants: new Set(),
       expandedGroups: new Set(['Card', 'Layout']),
     });
@@ -888,6 +913,7 @@ describe('visibleItemOrder — navigation contract', () => {
     ];
     const order = visibleItemOrder({
       items,
+      graph: graphOf(items),
       cycleParticipants: new Set(),
       expandedGroups: new Set(),
     });
@@ -904,6 +930,7 @@ describe('visibleItemOrder — navigation contract', () => {
     ];
     const order = visibleItemOrder({
       items,
+      graph: graphOf(items),
       cycleParticipants: new Set(),
       expandedGroups: new Set(),
       showFlatTier: true,
@@ -922,6 +949,7 @@ describe('visibleItemOrder — navigation contract', () => {
     ];
     const order = visibleItemOrder({
       items,
+      graph: graphOf(items),
       cycleParticipants: new Set(['CycleA', 'CycleB']),
       expandedGroups: new Set(),
     });
@@ -984,6 +1012,7 @@ describe('buildVisibleRows — large-list view mode', () => {
     ];
     const rows = buildVisibleRows({
       items,
+      graph: graphOf(items),
       cycleParticipants: new Set(),
       expandedGroups: new Set(),
       viewMode: 'large-list',
@@ -1012,6 +1041,7 @@ describe('buildVisibleRows — large-list view mode', () => {
     ];
     const rows = buildVisibleRows({
       items,
+      graph: graphOf(items),
       cycleParticipants: new Set(['Loopy', 'Inner']),
       expandedGroups: new Set(),
       viewMode: 'large-list',
@@ -1034,6 +1064,7 @@ describe('buildVisibleRows — large-list view mode', () => {
     ];
     const rows = buildVisibleRows({
       items,
+      graph: graphOf(items),
       cycleParticipants: new Set(),
       expandedGroups: new Set(),
       viewMode: 'large-list',
@@ -1065,6 +1096,7 @@ describe('buildVisibleRows — cycle member no longer in a cycle', () => {
     // recomputes from the current slot data after the edit.
     const rows = buildVisibleRows({
       items,
+      graph: graphOf(items),
       cycleParticipants: new Set(),
       expandedGroups: new Set(),
       alwaysExpanded: true,
@@ -1085,6 +1117,7 @@ describe('buildVisibleRows — cycle member no longer in a cycle', () => {
     ];
     const rows = buildVisibleRows({
       items,
+      graph: graphOf(items),
       cycleParticipants: new Set(['InnerA', 'InnerB']),
       expandedGroups: new Set(),
       alwaysExpanded: true,
@@ -1117,6 +1150,7 @@ describe('buildVisibleRows — rejected ancestor must not bury its slot targets'
     ];
     const rows = buildVisibleRows({
       items,
+      graph: graphOf(items),
       cycleParticipants: new Set(),
       expandedGroups: new Set(),
       alwaysExpanded: true,
@@ -1148,6 +1182,7 @@ describe('buildVisibleRows — rejected ancestor must not bury its slot targets'
     ];
     const rows = buildVisibleRows({
       items,
+      graph: graphOf(items),
       cycleParticipants: new Set(),
       expandedGroups: new Set(),
       alwaysExpanded: true,
@@ -1170,6 +1205,7 @@ describe('buildVisibleRows — rejected ancestor must not bury its slot targets'
     ];
     const rows = buildVisibleRows({
       items,
+      graph: graphOf(items),
       cycleParticipants: new Set(),
       expandedGroups: new Set(),
       alwaysExpanded: true,
@@ -1213,6 +1249,7 @@ describe('ADR-0010 scenarios — buildVisibleRows layer', () => {
     it('mount default (both ok, cycleParticipants={P,C}) — two cycle-tier rows, no group-root, cycle-child marker present', () => {
       const rows = buildVisibleRows({
         items: scenarioA('ok', 'ok'),
+        graph: graphOf(scenarioA('ok', 'ok')),
         cycleParticipants: new Set(['P', 'C']),
         expandedGroups: new Set(),
         alwaysExpanded: true,
@@ -1241,6 +1278,7 @@ describe('ADR-0010 scenarios — buildVisibleRows layer', () => {
       // depend on the review-status field.
       const rows = buildVisibleRows({
         items: scenarioA('error', 'error'),
+        graph: graphOf(scenarioA('error', 'error')),
         cycleParticipants: new Set(['P', 'C']),
         expandedGroups: new Set(),
         alwaysExpanded: true,
@@ -1253,6 +1291,7 @@ describe('ADR-0010 scenarios — buildVisibleRows layer', () => {
     it('collapsed cycle rows carry the ▸ glyph and emit no group-children', () => {
       const rows = buildVisibleRows({
         items: scenarioA('ok', 'ok'),
+        graph: graphOf(scenarioA('ok', 'ok')),
         cycleParticipants: new Set(['P', 'C']),
         expandedGroups: new Set(),
         // alwaysExpanded undefined → collapsed by default.
@@ -1284,6 +1323,7 @@ describe('ADR-0010 scenarios — buildVisibleRows layer', () => {
     it('ScopeGate mount (statuses ok, cycleParticipants={C,X}) — cycle tier has C+X; P is a group-root with cycle-child C in its subtree', () => {
       const rows = buildVisibleRows({
         items: scenarioB('ok', 'ok', 'ok'),
+        graph: graphOf(scenarioB('ok', 'ok', 'ok')),
         cycleParticipants: new Set(['C', 'X']),
         expandedGroups: new Set(),
         alwaysExpanded: true,
@@ -1311,6 +1351,7 @@ describe('ADR-0010 scenarios — buildVisibleRows layer', () => {
       // subtree collapses.
       const rows = buildVisibleRows({
         items: scenarioB('error', 'error', 'error'),
+        graph: graphOf(scenarioB('error', 'error', 'error')),
         cycleParticipants: new Set(['C', 'X']),
         expandedGroups: new Set(),
         alwaysExpanded: true,
@@ -1344,6 +1385,7 @@ describe('ADR-0010 scenarios — buildVisibleRows layer', () => {
     it('mount defaults (all ok, cycleParticipants={P,X}) — P+X in cycle tier; C is NOT decorated (cycle)', () => {
       const rows = buildVisibleRows({
         items: scenarioC('ok', 'ok', 'ok'),
+        graph: graphOf(scenarioC('ok', 'ok', 'ok')),
         cycleParticipants: new Set(['P', 'X']),
         expandedGroups: new Set(),
         alwaysExpanded: true,
@@ -1365,6 +1407,7 @@ describe('ADR-0010 scenarios — buildVisibleRows layer', () => {
     it('P expanded — subtree emits X as cycle-child AND C as a plain group-child', () => {
       const rows = buildVisibleRows({
         items: scenarioC('ok', 'ok', 'ok'),
+        graph: graphOf(scenarioC('ok', 'ok', 'ok')),
         cycleParticipants: new Set(['P', 'X']),
         expandedGroups: new Set(),
         alwaysExpanded: true,
@@ -1387,6 +1430,7 @@ describe('ADR-0010 scenarios — buildVisibleRows layer', () => {
       // buried under rejected P.
       const rows = buildVisibleRows({
         items: scenarioC('error', 'error', 'ok'),
+        graph: graphOf(scenarioC('error', 'error', 'ok')),
         cycleParticipants: new Set(['P', 'X']),
         expandedGroups: new Set(),
         alwaysExpanded: true,
