@@ -394,14 +394,14 @@ describe('ScopeGateStep — legend advertises Enter-jump', () => {
   });
 });
 
-describe('ScopeGateStep — [L] large-list view toggle', () => {
-  it('advertises [L] large list in the legend', () => {
+describe('ScopeGateStep — [L] flat view toggle', () => {
+  it('advertises [L] flat in the legend', () => {
     const { lastFrame } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
     expect(out).toContain('[L]');
-    expect(out).toContain('large list');
+    expect(out).toContain('flat');
   });
 
   it('grouped view (default) renders composite tree with ▾/├─/└─ glyphs', () => {
@@ -415,7 +415,7 @@ describe('ScopeGateStep — [L] large-list view toggle', () => {
     expect(out).toMatch(/├─ /);
   });
 
-  it('[L] switches Column 1 to large-list: no tree glyphs, one row per component', () => {
+  it('[L] switches Column 1 to flat: no tree glyphs, one row per component', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
@@ -434,7 +434,7 @@ describe('ScopeGateStep — [L] large-list view toggle', () => {
     expect(out).toContain('Text');
   });
 
-  it('[L] toggles between grouped and large-list views', () => {
+  it('[L] toggles between grouped and flat views', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
@@ -445,7 +445,7 @@ describe('ScopeGateStep — [L] large-list view toggle', () => {
     expect(lastFrame() ?? '').toMatch(/├─ /);
   });
 
-  it('cycle participants pin to the top in large-list mode', () => {
+  it('cycle participants pin to the top in flat mode', () => {
     const CYCLE_GRAPH = [
       { name: 'Loopy', componentId: 'c0', slots: [{ name: 'child', allowedComponents: ['Inner'] }] },
       { name: 'Inner', componentId: 'c1', slots: [{ name: 'back', allowedComponents: ['Loopy'] }] },
@@ -476,7 +476,7 @@ describe('ScopeGateStep — [L] large-list view toggle', () => {
     expect(beforeToggle).toMatch(/▶[^\n]*Icon/);
     stdin.write('L');
     const afterToggle = lastFrame() ?? '';
-    // Cursor should now land on the Icon row in large-list ordering
+    // Cursor should now land on the Icon row in flat ordering
     // (alphabetical: Card, Icon, Standalone, Text).
     expect(afterToggle).toMatch(/▶[^\n]*Icon/);
   });

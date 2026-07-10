@@ -523,7 +523,7 @@ describe('GenerateReviewStep — Feature 2 spinner indicator', () => {
     );
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/live preview/);
+    expect(frame.replace(/[^\w!]+/g, ' ')).toMatch(/live preview/);
   });
 
   it('shows "live preview disabled" in dim text when hook reports disabled', async () => {
@@ -2974,14 +2974,14 @@ describe('GenerateReviewStep — view toggle (T8)', () => {
     return utils;
   }
 
-  it('legend advertises [L] large list when sidebar is focused', async () => {
+  it('legend advertises [L] flat when sidebar is focused', async () => {
     const { lastFrame } = await renderToggleFixture();
     const out = lastFrame() ?? '';
     expect(out).toContain('[L]');
-    expect(out).toContain('large list');
+    expect(out).toContain('flat');
   });
 
-  it('pressing [L] toggles to large-list view (composite tree glyphs disappear)', async () => {
+  it('pressing [L] toggles to flat view (composite tree glyphs disappear)', async () => {
     const { lastFrame, stdin } = await renderToggleFixture();
     // Grouped view (default): ▾ on expanded root; ├─/└─ on children.
     const beforeToggle = lastFrame() ?? '';
@@ -2990,7 +2990,7 @@ describe('GenerateReviewStep — view toggle (T8)', () => {
     stdin.write('L');
     await tick();
     const afterToggle = lastFrame() ?? '';
-    // Large-list view: no tree glyphs; Card gets a `(N deps)` suffix and
+    // Flat view: no tree glyphs; Card gets a `(N deps)` suffix and
     // every component surfaces as its own row.
     expect(afterToggle).not.toMatch(/├─ /);
     expect(afterToggle).not.toMatch(/└─ /);
@@ -3025,7 +3025,7 @@ describe('GenerateReviewStep — view toggle (T8)', () => {
     stdin.write('L');
     await tick();
     const afterToggle = lastFrame() ?? '';
-    // Cursor stays on Body after switching to large-list view.
+    // Cursor stays on Body after switching to flat view.
     const titleAfter = afterToggle.split('\n').find((l) => /\bprop/.test(l)) ?? '';
     expect(titleAfter).toContain('Body');
   });

@@ -233,12 +233,11 @@ export function GenerateReviewStep({
   const [lineagePanelOpen, setLineagePanelOpen] = useState(false);
   const [lineageCursor, setLineageCursor] = useState(0);
   // T8 (parity plan §3) — Column-1 view mode. `'grouped'` (default) uses the
-  // tiered cycle/empty/composite/standalone layout; `'large-list'` flattens to
+  // tiered cycle/empty/composite/standalone layout; `'flat'` flattens to
   // an alphabetical list with `(N deps)` suffixes on composite roots. Mirrors
   // ScopeGateStep's `columnOneView` — kept inline (rather than a shared hook)
-  // because the state + handler pattern is ~10 lines per step. T9 will rename
-  // `'large-list'` → `'flat'` across both steps in one coordinated commit.
-  const [columnOneView, setColumnOneView] = useState<'grouped' | 'large-list'>('grouped');
+  // because the state + handler pattern is ~10 lines per step.
+  const [columnOneView, setColumnOneView] = useState<'grouped' | 'flat'>('grouped');
   // Task #37 — mount-time cycle auto-reject bookkeeping. `autoRejected`
   // tracks which components were flipped to `rejected` by the auto-reject
   // effect so the banner can enumerate them and `[u]` undo can restore only
@@ -1167,7 +1166,7 @@ export function GenerateReviewStep({
     }
     if (input === 'L') {
       // T8 (parity plan §3) — toggle Column-1 view between grouped and
-      // large-list. Preserve cursor on the same underlying component when
+      // flat. Preserve cursor on the same underlying component when
       // possible; otherwise fall back to the first selectable row. Mirrors
       // ScopeGateStep's `[L]` handler line-for-line so the two steps stay
       // pixel-consistent.
@@ -1175,8 +1174,8 @@ export function GenerateReviewStep({
         cursorRowIdx >= 0 && cursorRowIdx < visibleRowsMemo.length
           ? components[visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1]?.key ?? null
           : null;
-      const nextView: 'grouped' | 'large-list' =
-        columnOneView === 'grouped' ? 'large-list' : 'grouped';
+      const nextView: 'grouped' | 'flat' =
+        columnOneView === 'grouped' ? 'flat' : 'grouped';
       const nextRows = buildVisibleRows({
         items: groupedItemsMemo,
         cycleParticipants: cycleView.structural,
@@ -1846,7 +1845,7 @@ export function GenerateReviewStep({
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       (focusedComponentKey ? '  [l] lineage' : '') +
-                      '  [L] large list' +
+                      '  [L] flat' +
                       '  [/] search' +
                       (undoSnapshot ? '  [u] undo' : '') +
                       '  [q] quit'

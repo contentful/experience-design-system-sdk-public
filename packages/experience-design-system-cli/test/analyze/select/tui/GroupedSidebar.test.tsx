@@ -1003,7 +1003,7 @@ describe('visibleItemOrder — navigation contract', () => {
   });
 });
 
-describe('buildVisibleRows — large-list view mode', () => {
+describe('buildVisibleRows — flat view mode', () => {
   it('emits one flat row per component, alphabetical, no group nesting', () => {
     const items = [
       item('Card', { slots: { body: ['Text'] } }),
@@ -1015,7 +1015,7 @@ describe('buildVisibleRows — large-list view mode', () => {
       graph: graphOf(items),
       cycleParticipants: new Set(),
       expandedGroups: new Set(),
-      viewMode: 'large-list',
+      viewMode: 'flat',
     });
     // No group-root / group-child / standalone rows; every component is a
     // `flat` row (or `cycle` when applicable). Composite roots get a suffix.
@@ -1044,7 +1044,7 @@ describe('buildVisibleRows — large-list view mode', () => {
       graph: graphOf(items),
       cycleParticipants: new Set(['Loopy', 'Inner']),
       expandedGroups: new Set(),
-      viewMode: 'large-list',
+      viewMode: 'flat',
     });
     expect(rows[0].kind).toBe('cycle');
     expect(rows[0].label).toContain('Inner');
@@ -1056,7 +1056,7 @@ describe('buildVisibleRows — large-list view mode', () => {
 
   it('renders each component exactly once — no shared-dep duplication', () => {
     // Shared "Text" would appear twice under grouped view (once per parent);
-    // large-list must show it exactly once.
+    // flat must show it exactly once.
     const items = [
       item('Card', { slots: { body: ['Text'] } }),
       item('Panel', { slots: { title: ['Text'] } }),
@@ -1067,7 +1067,7 @@ describe('buildVisibleRows — large-list view mode', () => {
       graph: graphOf(items),
       cycleParticipants: new Set(),
       expandedGroups: new Set(),
-      viewMode: 'large-list',
+      viewMode: 'flat',
     });
     const textRows = rows.filter((r) => r.label.startsWith('Text'));
     expect(textRows.length).toBe(1);
