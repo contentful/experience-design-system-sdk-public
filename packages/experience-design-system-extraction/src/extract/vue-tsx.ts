@@ -4,7 +4,7 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
-} from '../../types.js';
+} from '../types.js';
 import {
   extractAllowedValues,
   getTypeReferenceName,

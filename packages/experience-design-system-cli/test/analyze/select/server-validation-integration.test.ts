@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shouldExcludeDueToValidation } from '../../../src/analyze/extract/validate.js';
+import { shouldExcludeDueToValidation } from '@contentful/experience-design-system-extraction';
 import { countValidationIssues, createReviewSessionSummary } from '../../../src/analyze/select/types.js';
 import type { ReviewSessionSnapshot } from '../../../src/analyze/select/types.js';
 import type { RawComponentDefinition } from '../../../src/types.js';

@@ -11,7 +11,7 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
   ExtractorOptions,
-} from '../../types.js';
+} from '../types.js';
 import { computeExtractionScore, deriveNeedsReview } from './scoring.js';
 
 const SVELTE_EXTRACT_CONCURRENCY = Number(process.env['EDS_EXTRACT_CONCURRENCY'] ?? 0) || os.cpus().length;

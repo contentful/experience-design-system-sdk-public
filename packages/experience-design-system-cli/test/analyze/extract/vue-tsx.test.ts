@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { extractVueTsxComponents } from '../../../src/analyze/extract/vue-tsx.js';
+import { extractVueTsxComponents } from '@contentful/experience-design-system-extraction';
 
 let tempDir: string;
 

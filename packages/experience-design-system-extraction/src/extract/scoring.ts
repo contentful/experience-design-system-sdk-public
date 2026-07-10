@@ -1,4 +1,4 @@
-import type { RawComponentDefinition } from '../../types.js';
+import type { RawComponentDefinition } from '../types.js';
 
 // 1 = very low confidence (likely wrong), 5 = very high confidence (clearly correct)
 export type ExtractionConfidence = 1 | 2 | 3 | 4 | 5;

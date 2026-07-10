@@ -7,8 +7,8 @@ import {
   isReactNodeType,
   isArrayReactNodeType,
   shouldBeSlot,
-} from '../../../src/analyze/extract/slot-detection.js';
-import { extractReactComponents } from '../../../src/analyze/extract/react.js';
+} from '@contentful/experience-design-system-extraction';
+import { extractReactComponents } from '@contentful/experience-design-system-extraction';
 
 describe('slot-detection module', () => {
   describe('CONTENT_NAME_EXCEPTIONS', () => {

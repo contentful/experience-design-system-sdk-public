@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runCliWithEnv } from '../../helpers/cli-runner.js';
 import { createTestFixture, type TestFixture } from '../../helpers/fixtures.js';
-import { HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON } from '../../../src/analyze/extract/source-inspection.js';
+import { HIGH_CONFIDENCE_DATA_FETCH_WRAPPER_REASON } from '@contentful/experience-design-system-extraction';
 import { DEFAULT_CONCURRENCY, DEFAULT_BATCH_SIZE } from '../../../src/analyze/select-agent/command.js';
 
 describe('select-agent constants', () => {

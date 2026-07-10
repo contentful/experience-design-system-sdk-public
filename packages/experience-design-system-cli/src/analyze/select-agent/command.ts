@@ -36,7 +36,7 @@ import {
   validateExtractedComponents,
   shouldExcludeDueToValidation,
   formatExclusionWarning,
-} from '../extract/validate.js';
+} from '@contentful/experience-design-system-extraction';
 
 const VALID_AGENTS = new Set<string>(['claude', 'codex', 'opencode', 'cursor']);
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 3 * 60 * 1000);

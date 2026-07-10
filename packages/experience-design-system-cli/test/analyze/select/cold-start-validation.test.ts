@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openPipelineDb, storeRawComponents, loadRawComponents, getOrCreateSession } from '../../../src/session/db.js';
 import { loadReviewInput } from '../../../src/analyze/select/parser.js';
-import { validateExtractedComponents } from '../../../src/analyze/extract/validate.js';
+import { validateExtractedComponents } from '@contentful/experience-design-system-extraction';
 
 describe('analyze select cold-start re-validation', () => {
   let tmpDir: string;

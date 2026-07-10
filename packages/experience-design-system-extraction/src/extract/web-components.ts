@@ -5,7 +5,7 @@ import type {
   RawPropDefinition,
   RawSlotDefinition,
   ComponentExtractionResult,
-} from '../../types.js';
+} from '../types.js';
 
 function kebabToPascal(input: string): string {
   return input

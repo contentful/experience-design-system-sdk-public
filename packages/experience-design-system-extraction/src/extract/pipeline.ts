@@ -1,4 +1,4 @@
-import type { ComponentExtractionResult, ComponentExtractor, ExtractorOptions } from '../../types.js';
+import type { ComponentExtractionResult, ComponentExtractor, ExtractorOptions } from '../types.js';
 import { extractStencilComponents } from './stencil.js';
 import { extractReactComponents } from './react.js';
 import { extractVueTsxComponents } from './vue-tsx.js';

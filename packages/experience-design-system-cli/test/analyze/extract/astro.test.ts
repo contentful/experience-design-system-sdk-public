@@ -2,7 +2,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { extractAstroComponents } from '../../../src/analyze/extract/astro.js';
+import { extractAstroComponents } from '@contentful/experience-design-system-extraction';
 
 let tempDir: string;
 
