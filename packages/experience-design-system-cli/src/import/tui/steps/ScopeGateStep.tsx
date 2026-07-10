@@ -401,6 +401,20 @@ export function ScopeGateStep({
         setSearchOpen(false);
         return;
       }
+      if (key.tab) {
+        // T3: Tab autocompletes the query to the first alphabetical name
+        // among `searchMatches` that has the current query as a
+        // case-insensitive prefix. Input stays open. No-op when no
+        // prefix-match exists (never crashes).
+        if (!searchQuery) return;
+        const q = searchQuery.toLowerCase();
+        const prefix = searchMatches
+          .filter((n) => n.toLowerCase().startsWith(q))
+          .sort();
+        const pick = prefix[0];
+        if (pick) setSearchQuery(pick);
+        return;
+      }
       if (key.backspace) {
         setSearchQuery((q) => q.slice(0, -1));
         return;
@@ -631,21 +645,21 @@ export function ScopeGateStep({
       applyDecisions(entries);
       return;
     }
+    // T3: [n] cycles matches when search is closed with an active query.
+    // Previously Tab cycled matches; Tab now falls through to column-focus
+    // cycling (three-column) or is a no-op.
+    if (input === 'n' && searchQuery && searchMatches.length > 0) {
+      const cursorRow = visibleRows[safeCursor];
+      const cursorName =
+        cursorRow && cursorRow.itemIdx >= 0
+          ? groupedItems[cursorRow.itemIdx]?.key
+          : undefined;
+      const curIdx = cursorName ? searchMatches.indexOf(cursorName) : -1;
+      const nextName = searchMatches[(curIdx + 1) % searchMatches.length];
+      if (nextName) jumpCursorTo(nextName);
+      return;
+    }
     if (key.tab) {
-      // Search-match cycling has priority when a query is active — matches
-      // existing behavior. Column-focus cycling only kicks in in three-column
-      // layout when the user is not actively searching.
-      if (searchQuery && searchMatches.length > 0) {
-        const cursorRow = visibleRows[safeCursor];
-        const cursorName =
-          cursorRow && cursorRow.itemIdx >= 0
-            ? groupedItems[cursorRow.itemIdx]?.key
-            : undefined;
-        const curIdx = cursorName ? searchMatches.indexOf(cursorName) : -1;
-        const nextName = searchMatches[(curIdx + 1) % searchMatches.length];
-        if (nextName) jumpCursorTo(nextName);
-        return;
-      }
       if (columnPlan.layout !== 'three-column') return;
       const forward: FocusedColumn[] = ['main', 'added-components', 'added-groups'];
       const curIdx = forward.indexOf(focusedColumn);
@@ -962,7 +976,7 @@ export function ScopeGateStep({
       )}
       {!searchOpen && searchQuery && (
         <Box marginTop={1}>
-          <Text dimColor>{`/${searchQuery}  (${totalMatches}/${totalComponents} matches) · [Esc] clear · [Tab] next`}</Text>
+          <Text dimColor>{`/${searchQuery}  (${totalMatches}/${totalComponents} matches) · [Esc] clear · [n] next`}</Text>
         </Box>
       )}
 

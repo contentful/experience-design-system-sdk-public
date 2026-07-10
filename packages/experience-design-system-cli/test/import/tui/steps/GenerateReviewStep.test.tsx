@@ -1738,7 +1738,7 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     expect(frame).toMatch(/1\/3 matches/);
   });
 
-  it('Enter closes input but preserves the query; Tab cycles to next match', async () => {
+  it('Enter closes input but preserves the query; [n] cycles to next match (T3)', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'Button', entry: makeEntry('Button') },
@@ -1757,19 +1757,95 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     stdin.write('\r'); // Enter — close input, preserve query
     await tick();
     let frame = lastFrame() ?? '';
-    // Persistent hint shown when input closed but query active.
-    expect(frame).toMatch(/\[Tab\] next/);
+    // T3: persistent hint advertises [n] next, not [Tab] next.
+    expect(frame).toMatch(/\[n\] next/);
+    expect(frame).not.toMatch(/\[Tab\] next/);
     // T7b delta 4: Enter now scans strictly AFTER cursorRowIdx (parity with
     // ScopeGate). Cursor starts on Banner (row 0), so Enter advances to
     // Button (the next match after cursor).
     let titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
     expect(titleLine).toContain('Button');
-    // Tab cycles to the next match: wraps to Banner (the only other match).
-    stdin.write('\t');
+    // T3: [n] cycles matches with search closed; wraps to Banner.
+    stdin.write('n');
     await tick();
     frame = lastFrame() ?? '';
     titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
     expect(titleLine).toContain('Banner');
+  });
+
+  it('T3: Tab while search input is OPEN autocompletes query to first prefix-match', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Widget', entry: makeEntry('Widget') },
+      { key: 'Wizard', entry: makeEntry('Wizard') },
+      { key: 'Waffle', entry: makeEntry('Waffle') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('W');
+    await tick();
+    stdin.write('i');
+    await tick();
+    stdin.write('\t'); // Tab — should autocomplete to first alphabetical prefix-match: Widget
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('/Widget');
+    // Input remains open (cursor block shown, no persistent [n] hint yet).
+    expect(frame).not.toMatch(/\[n\] next/);
+  });
+
+  it('T3: Tab while input open with no prefix match is a no-op', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Widget', entry: makeEntry('Widget') },
+      { key: 'Wizard', entry: makeEntry('Wizard') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('z');
+    await tick();
+    stdin.write('z');
+    await tick();
+    stdin.write('z');
+    await tick();
+    stdin.write('\t');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Query unchanged, no crash.
+    expect(frame).toContain('/zzz');
+  });
+
+  it('T3: Tab with search CLOSED and active query crosses focus (does not cycle)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Banner', entry: makeEntry('Banner') },
+      { key: 'Button', entry: makeEntry('Button') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Sidebar focused hint present.
+    expect(lastFrame() ?? '').toMatch(/\[e\/Tab\] focus panel/);
+    stdin.write('/');
+    await tick();
+    stdin.write('b');
+    await tick();
+    stdin.write('\r'); // close input, preserve query
+    await tick();
+    // Tab should cross to the panel, NOT cycle matches.
+    stdin.write('\t');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/\[Tab\] focus list/);
   });
 
   it('Esc from active-query state clears the query', async () => {

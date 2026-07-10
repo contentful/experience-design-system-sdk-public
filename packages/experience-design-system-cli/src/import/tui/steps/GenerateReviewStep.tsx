@@ -1052,6 +1052,21 @@ export function GenerateReviewStep({
         setSearchOpen(false);
         return;
       }
+      if (key.tab) {
+        // T3: Tab autocompletes the query to the first alphabetical
+        // component name (by key) that has the current query as a
+        // case-insensitive prefix. Input stays open. No-op when no
+        // prefix-match exists.
+        if (!searchQuery) return;
+        const q = searchQuery.toLowerCase();
+        const prefix = components
+          .map((c) => c.key)
+          .filter((n) => n.toLowerCase().startsWith(q))
+          .sort();
+        const pick = prefix[0];
+        if (pick) setSearchQuery(pick);
+        return;
+      }
       if (key.backspace) {
         setSearchQuery((q) => q.slice(0, -1));
         return;
@@ -1212,24 +1227,9 @@ export function GenerateReviewStep({
         setShowUnsavedWarning(true);
         return;
       }
-      // With an active fuzzy-search query, Tab cycles matches from the
-      // sidebar-focused state instead of toggling focus. Preserves scope-gate
-      // parity. When no query is active, Tab behaves as before.
-      if (sidebarFocused && searchQuery && searchMatches.length > 0) {
-        let next: number | null = null;
-        for (let i = cursorRowIdx + 1; i < visibleRowsMemo.length; i++) {
-          const row = visibleRowsMemo[i];
-          if (row.itemIdx < 0) continue;
-          const key2 = components[row.itemIdx]?.key;
-          if (key2 && fuzzyMatches(searchQuery, key2)) {
-            next = i;
-            break;
-          }
-        }
-        if (next === null) next = searchMatches[0] ?? null;
-        if (next !== null) jumpCursorToRow(next);
-        return;
-      }
+      // T3: match-cycling via Tab is retired — Tab now unconditionally
+      // toggles focus. Match-cycling moved to [n] (see sidebar-focused
+      // block below).
       setSidebarFocused((prev) => !prev);
       return;
     }
@@ -1301,6 +1301,22 @@ export function GenerateReviewStep({
     // in this step so no collision.
     if (input === '/') {
       setSearchOpen(true);
+      return;
+    }
+    // T3: [n] cycles matches when a query is active and search is closed.
+    if (input === 'n' && searchQuery && searchMatches.length > 0) {
+      let next: number | null = null;
+      for (let i = cursorRowIdx + 1; i < visibleRowsMemo.length; i++) {
+        const row = visibleRowsMemo[i];
+        if (row.itemIdx < 0) continue;
+        const key2 = components[row.itemIdx]?.key;
+        if (key2 && fuzzyMatches(searchQuery, key2)) {
+          next = i;
+          break;
+        }
+      }
+      if (next === null) next = searchMatches[0] ?? null;
+      if (next !== null) jumpCursorToRow(next);
       return;
     }
     if (key.escape && searchQuery) {
@@ -2093,7 +2109,7 @@ export function GenerateReviewStep({
       )}
       {!dialogOpen && !searchOpen && searchQuery && (
         <Box>
-          <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear · [Tab] next`}</Text>
+          <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear · [n] next`}</Text>
         </Box>
       )}
       {!dialogOpen && (
