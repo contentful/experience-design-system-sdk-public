@@ -1,6 +1,6 @@
 {
   "name": "@contentful/experience-design-system-extraction",
-  "version": "2.7.4",
+  "version": "2.13.0",
   "description": "Component extraction engine for the Contentful Experience Design System SDK",
   "license": "MIT",
   "type": "module",
