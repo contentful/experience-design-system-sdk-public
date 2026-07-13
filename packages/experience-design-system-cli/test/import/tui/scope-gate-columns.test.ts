@@ -164,11 +164,12 @@ describe('buildAddedGroupsList', () => {
     expect(buildAddedGroupsList(computeAllClosures(graph), s, new Set<string>())).toEqual([]);
   });
 
-  it('synthesizes a cycle-group entry from cycleUnits when a member is accepted', () => {
+  it('emits one entry per accepted member of a 2-cycle (mirrors sidebar roots)', () => {
     // A↔B cycle: composite-closure short-circuits to nodes.length=1, so no
     // closure entry survives the filter. buildAddedGroupsList must synthesize
-    // one entry per accepted cycle-unit, named after the alphabetically-first
-    // member, with depCount = size - 1 and isCycle: true.
+    // ONE entry PER accepted member of each cycle unit — mirroring how the
+    // sidebar renders one cycle-root row per member — with depCount = size - 1
+    // and isCycle: true.
     const closures = new Map();
     const s = state([
       ['B', 'accepted'],
@@ -181,7 +182,83 @@ describe('buildAddedGroupsList', () => {
       ['B', unit],
     ]);
     const out = buildAddedGroupsList(closures, s, cycleParticipants, cycleUnits);
+    expect(out).toEqual([
+      { name: 'A', depCount: 1, isCycle: true },
+      { name: 'B', depCount: 1, isCycle: true },
+    ]);
+  });
+
+  it('emits only the accepted members of a cycle unit', () => {
+    // unit {A, B}, only A accepted → only A appears.
+    const closures = new Map();
+    const s = state([
+      ['A', 'accepted'],
+      ['B', 'rejected'],
+    ]);
+    const cycleParticipants = new Set(['A', 'B']);
+    const unit = new Set(['A', 'B']);
+    const cycleUnits = new Map<string, Set<string>>([
+      ['A', unit],
+      ['B', unit],
+    ]);
+    const out = buildAddedGroupsList(closures, s, cycleParticipants, cycleUnits);
     expect(out).toEqual([{ name: 'A', depCount: 1, isCycle: true }]);
+  });
+
+  it('emits all three members of a 3-cycle when all accepted', () => {
+    const closures = new Map();
+    const s = state([
+      ['NodeA', 'accepted'],
+      ['NodeB', 'accepted'],
+      ['NodeC', 'accepted'],
+    ]);
+    const cycleParticipants = new Set(['NodeA', 'NodeB', 'NodeC']);
+    const unit = new Set(['NodeA', 'NodeB', 'NodeC']);
+    const cycleUnits = new Map<string, Set<string>>([
+      ['NodeA', unit],
+      ['NodeB', unit],
+      ['NodeC', unit],
+    ]);
+    const out = buildAddedGroupsList(closures, s, cycleParticipants, cycleUnits);
+    expect(out).toEqual([
+      { name: 'NodeA', depCount: 2, isCycle: true },
+      { name: 'NodeB', depCount: 2, isCycle: true },
+      { name: 'NodeC', depCount: 2, isCycle: true },
+    ]);
+  });
+
+  it('does not double-emit a member that is also a real non-trivial closure root', () => {
+    // 'A' is both a cycle-unit member AND a surviving closure root (nodes>1).
+    // The real-closure pass emits it once; the cycle synthesis must dedup on
+    // member name and skip it — no duplicate entry.
+    const closures = new Map(
+      Object.entries({
+        A: {
+          root: 'A',
+          nodes: [
+            { name: 'A', depth: 0, path: ['A'], parents: [] },
+            { name: 'Leaf', depth: 1, path: ['A', 'Leaf'], parents: ['A'] },
+          ],
+          containsCycle: false,
+        },
+      }),
+    );
+    const s = state([
+      ['A', 'accepted'],
+      ['B', 'accepted'],
+    ]);
+    const cycleParticipants = new Set(['A', 'B']);
+    const unit = new Set(['A', 'B']);
+    const cycleUnits = new Map<string, Set<string>>([
+      ['A', unit],
+      ['B', unit],
+    ]);
+    const out = buildAddedGroupsList(closures, s, cycleParticipants, cycleUnits);
+    // A appears once (from the closure pass, depCount 1 from its 2-node
+    // closure); B appears once from cycle synthesis.
+    const names = out.map((e) => e.name).sort();
+    expect(names).toEqual(['A', 'B']);
+    expect(out.filter((e) => e.name === 'A')).toHaveLength(1);
   });
 
   it('does not synthesize a cycle-group entry when no member is accepted', () => {
@@ -216,6 +293,7 @@ describe('buildAddedGroupsList', () => {
     const out = buildAddedGroupsList(computeAllClosures(graph), s, cycleParticipants, cycleUnits);
     expect(out).toEqual([
       { name: 'A', depCount: 1, isCycle: true },
+      { name: 'B', depCount: 1, isCycle: true },
       { name: 'Card', depCount: 2, isCycle: false },
     ]);
   });
