@@ -17,10 +17,18 @@
  * sessionId, generateSessionId: sessionId` will load real generated
  * definitions from the seeded db.
  */
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve, basename } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+
+// PTY_DEBUG=1 dumps every source_path rewrite (before → after) and
+// asserts the fixture components dir exists. Off by default. Use to
+// diagnose fixture-path issues on another machine:
+//
+//   PTY_DEBUG=1 PTY_TESTS=1 pnpm --filter @contentful/dsi-pty-harness \
+//     exec vitest run test/analyze/select.validation.test.mjs
+const DEBUG = process.env.PTY_DEBUG === '1';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DB = resolve(HERE, '../../fixtures/pipeline-state/pipeline.db');
@@ -50,16 +58,39 @@ export const SEEDED_SESSION_ID = 'true-creek-c44b';
 function rewriteSourcePaths(dbPath) {
   const db = new DatabaseSync(dbPath);
   try {
+    // The fixture DB is captured in WAL mode. If we write in WAL, our
+    // updates go to a -wal sidecar file that the CLI's fresh open
+    // doesn't necessarily see (DatabaseSync.close() doesn't guarantee
+    // a checkpoint). Switch to DELETE mode on the copy so every write
+    // is durable in the main .db file before we close.
+    db.exec('PRAGMA journal_mode = DELETE');
     const rows = db
-      .prepare('SELECT session_id, component_id, source_path FROM raw_components')
+      .prepare('SELECT session_id, component_id, source, source_path FROM raw_components')
       .all();
     const update = db.prepare(
-      'UPDATE raw_components SET source_path = ? WHERE session_id = ? AND component_id = ?',
+      'UPDATE raw_components SET source = ?, source_path = ? WHERE session_id = ? AND component_id = ?',
     );
+    if (DEBUG) {
+      process.stderr.write(
+        `\n[seedPipelineDb] rewriting source_path in ${dbPath}\n` +
+          `  target dir=${REACT_MINIMAL_COMPONENTS_DIR}\n` +
+          `  target dir exists=${existsSync(REACT_MINIMAL_COMPONENTS_DIR)}\n` +
+          `  rows found=${rows.length}\n`,
+      );
+    }
     for (const row of rows) {
       if (typeof row.source_path !== 'string') continue;
       const newPath = join(REACT_MINIMAL_COMPONENTS_DIR, basename(row.source_path));
-      update.run(newPath, row.session_id, row.component_id);
+      if (DEBUG) {
+        process.stderr.write(
+          `  ${row.session_id}/${row.component_id}:\n` +
+            `    source_path: ${row.source_path}\n` +
+            `    source:      ${row.source}\n` +
+            `    → ${newPath}\n` +
+            `    → exists=${existsSync(newPath)}\n`,
+        );
+      }
+      update.run(newPath, newPath, row.session_id, row.component_id);
     }
   } finally {
     db.close();

@@ -42,20 +42,37 @@ directly.
 From the repo root:
 
 ```bash
+# Preferred — builds the CLI first via nx, then runs the suite
+pnpm exec nx run dsi-pty-harness:pty-test
+
+# Or, if the CLI is already built:
 PTY_TESTS=1 pnpm --filter @contentful/dsi-pty-harness exec vitest run
 ```
 
-Run this after `pnpm exec nx build experience-design-system-cli` — the
-tests spawn the already-built CLI binary from `dist/`, not `src/`.
+The tests spawn the already-built CLI binary from
+`packages/experience-design-system-cli/dist/`, not from source. The nx
+target ensures the build ran first; the direct vitest command skips
+that check.
 
 `vitest` in this package only picks up `*.pty.test.mjs` /
 `*.validation.test.mjs` when `PTY_TESTS=1` is set, so `nx test` /
 `pnpm test` at the repo root is a no-op for this package.
 
-The `nx run dsi-pty-harness:pty-test` target exists but currently
-transitively depends on `experience-design-system-extraction:build`,
-which is broken on main. Use the `pnpm --filter … vitest run` command
-above instead.
+### Debugging a failing test
+
+Set `PTY_DEBUG=1` to have the harness's headless runCli helper +
+seed-pipeline-db.mjs dump every spawned argv, environment override,
+exit code, full stdout/stderr, and every rewritten `source_path` row:
+
+```bash
+PTY_DEBUG=1 PTY_TESTS=1 pnpm --filter @contentful/dsi-pty-harness \
+  exec vitest run test/analyze/select.validation.test.mjs
+```
+
+Useful when a test passes on one machine and fails on another — the
+dump surfaces which env vars the CLI actually saw, whether the seeded
+component source files exist on this machine, and the wizard's full
+error output.
 
 ### node-pty native module
 
