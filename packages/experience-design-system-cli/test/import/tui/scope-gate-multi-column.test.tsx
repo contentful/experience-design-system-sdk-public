@@ -374,6 +374,34 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
   });
 });
 
+describe('ScopeGateStep — T10 side-column borders', () => {
+  it('renders single-line borders around columns 2 and 3', () => {
+    setWide(160);
+    const { lastFrame } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    const out = lastFrame() ?? '';
+    // Three boxed regions expected: main sidebar (existing), added-components,
+    // added-groups. Count top-left corners as the discriminator.
+    const corners = (out.match(/┌/g) ?? []).length;
+    expect(corners).toBe(3);
+    // Sanity: side columns still present.
+    expect(out).toContain('Added components');
+    expect(out).toContain('Added groups');
+  });
+
+  it('does NOT add extra borders at narrow terminals (single-column layout)', () => {
+    // Default width < 120; side columns are omitted, so only the main
+    // sidebar border should remain.
+    const { lastFrame } = render(
+      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    const out = lastFrame() ?? '';
+    const corners = (out.match(/┌/g) ?? []).length;
+    expect(corners).toBe(1);
+  });
+});
+
 describe('ScopeGateStep — legend advertises Enter-jump', () => {
   it('shows [Enter] jump to main in three-column layout', () => {
     setWide(160);
@@ -543,11 +571,14 @@ describe('ScopeGateStep — cycle participants in side columns', () => {
     // in Column 1, so line-wise Column-1/Column-2 alignment shifted — but the
     // ORDER within Column 2 alone is unchanged: cycle members (alphabetical:
     // Inner, Loopy) then non-cycle rows (Card, Text).
+    // Layout: `│col1│ │col2│ │col3│`. After T10 all three columns are
+    // boxed — split on `│` and pick index 3 (col2 content) when the line
+    // has enough pipes to represent all three columns.
     const col2 = out
       .split('\n')
       .map((line) => {
-        const lastPipe = line.lastIndexOf('│');
-        return lastPipe >= 0 ? line.slice(lastPipe + 1) : '';
+        const parts = line.split('│');
+        return parts.length >= 7 ? parts[3] : '';
       })
       .join('\n');
     const col2InnerPos = col2.indexOf('⚠ Inner');

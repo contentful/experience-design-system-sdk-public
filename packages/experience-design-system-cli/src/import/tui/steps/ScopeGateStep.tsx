@@ -1256,7 +1256,13 @@ function AddedComponentsColumn(props: {
   const reserveAiBadge = entries.some((e) => aiFlaggedByKey?.get(e.name) === true);
   const firstNonCycleIdx = entries.findIndex((e) => !e.isCycle);
   return (
-    <Box flexDirection="column" width={width} flexShrink={0}>
+    <Box
+      flexDirection="column"
+      width={width}
+      flexShrink={0}
+      borderStyle="single"
+      borderColor={focused ? 'white' : undefined}
+    >
       <ColumnHeader title="Added components" width={width} focused={focused} />
       {entries.length === 0 ? (
         <Text dimColor>(none)</Text>
@@ -1334,7 +1340,13 @@ function AddedGroupsColumn(props: {
   const reserveAiBadge = entries.some((g) => aiFlaggedByKey?.get(g.name) === true);
   const firstNonCycleIdx = entries.findIndex((e) => !e.isCycle);
   return (
-    <Box flexDirection="column" width={width} flexShrink={0}>
+    <Box
+      flexDirection="column"
+      width={width}
+      flexShrink={0}
+      borderStyle="single"
+      borderColor={focused ? 'white' : undefined}
+    >
       <ColumnHeader title="Added groups" width={width} focused={focused} />
       {entries.length === 0 ? (
         <Text dimColor>(none)</Text>
