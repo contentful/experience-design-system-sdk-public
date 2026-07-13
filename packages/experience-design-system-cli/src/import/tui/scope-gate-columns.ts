@@ -68,9 +68,11 @@ export function buildAddedGroupsList(
   closures: Map<string, Closure>,
   stateByKey: Map<string, Decision>,
   cycleParticipants: Set<string> = new Set<string>(),
+  cycleUnits: Map<string, Set<string>> = new Map<string, Set<string>>(),
 ): AddedGroupEntry[] {
   const cycleTier: AddedGroupEntry[] = [];
   const restTier: AddedGroupEntry[] = [];
+  const seenNames = new Set<string>();
   for (const [root, closure] of closures.entries()) {
     if (closure.nodes.length <= 1) continue;
     if (stateByKey.get(root) !== 'accepted') continue;
@@ -81,6 +83,28 @@ export function buildAddedGroupsList(
     };
     if (entry.isCycle) cycleTier.push(entry);
     else restTier.push(entry);
+    seenNames.add(root);
+  }
+  // Synthesize one entry per accepted cycle unit. composite-closure collapses
+  // cyclic closures to a single-node result (which the filter above drops),
+  // so cycle groups would otherwise never appear in the Added-groups panel.
+  const seenUnits = new Set<Set<string>>();
+  for (const unit of cycleUnits.values()) {
+    if (seenUnits.has(unit)) continue;
+    seenUnits.add(unit);
+    let anyAccepted = false;
+    for (const member of unit) {
+      if (stateByKey.get(member) === 'accepted') {
+        anyAccepted = true;
+        break;
+      }
+    }
+    if (!anyAccepted) continue;
+    // Alphabetically-first member = Johnson's least-vertex ordering.
+    const name = [...unit].sort((a, b) => a.localeCompare(b))[0];
+    if (seenNames.has(name)) continue;
+    seenNames.add(name);
+    cycleTier.push({ name, depCount: unit.size - 1, isCycle: true });
   }
   cycleTier.sort((a, b) => a.name.localeCompare(b.name));
   restTier.sort((a, b) => a.name.localeCompare(b.name));

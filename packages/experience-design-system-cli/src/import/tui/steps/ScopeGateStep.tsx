@@ -813,8 +813,8 @@ export function ScopeGateStep({
     [components, selectionStateByKey, cycleParticipants],
   );
   const addedGroups = useMemo(
-    () => buildAddedGroupsList(closures, selectionStateByKey, cycleParticipants),
-    [closures, selectionStateByKey, cycleParticipants],
+    () => buildAddedGroupsList(closures, selectionStateByKey, cycleParticipants, cycleUnits),
+    [closures, selectionStateByKey, cycleParticipants, cycleUnits],
   );
   const counters = useMemo(
     () => computeCounters(components, closures, selectionStateByKey),
