@@ -2128,4 +2128,76 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(out).not.toContain('AI recommended exclusions');
     });
   });
+
+  describe('L8 — category filters (broken / cycles)', () => {
+    const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+    // NodeA ↔ NodeB form a cycle; Standalone is a plain non-cycle component;
+    // BadgeIcon is AI-flagged (broken).
+    const FIX = [
+      {
+        name: 'NodeA',
+        componentId: 'a',
+        slots: [{ name: 'slotA', allowedComponents: ['NodeB'] }],
+      },
+      {
+        name: 'NodeB',
+        componentId: 'b',
+        slots: [{ name: 'slotB', allowedComponents: ['NodeA'] }],
+      },
+      { name: 'Standalone', componentId: 's' },
+      { name: 'BadgeIcon', componentId: 'x', aiDecision: 'rejected' as const, aiReason: 'low value' },
+    ];
+
+    it('[o] cycles filter narrows grouped sidebar to cycle members; toggling off restores', async () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
+      stdin.write('o');
+      await new Promise((r) => setTimeout(r, 20));
+      const filtered = stripAnsi(lastFrame() ?? '');
+      expect(filtered).toContain('NodeA');
+      expect(filtered).toContain('NodeB');
+      // Non-cycle standalone is hidden in grouped view under an active filter.
+      expect(filtered).not.toContain('Standalone');
+      stdin.write('o');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
+    });
+
+    it('[w] broken filter narrows to AI-flagged components; toggling off restores', async () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      stdin.write('w');
+      await new Promise((r) => setTimeout(r, 20));
+      const filtered = stripAnsi(lastFrame() ?? '');
+      expect(filtered).toContain('BadgeIcon');
+      expect(filtered).not.toContain('Standalone');
+      stdin.write('w');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
+    });
+
+    it('legend advertises the [o] cycles and [w] broken filter keys', async () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      const out = stripAnsi(lastFrame() ?? '');
+      expect(out).toContain('[o]');
+      expect(out).toContain('[w]');
+    });
+
+    it('does not advertise a [d] deleted filter (ScopeGate has no deleted concept)', async () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      const out = stripAnsi(lastFrame() ?? '');
+      expect(out).not.toContain('[d] deleted');
+    });
+  });
 });

@@ -59,6 +59,11 @@ import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/compo
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
 import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
 import { computeAutocomplete } from '../autocomplete.js';
+import {
+  computeFilterKeys,
+  intersectFilterKeys,
+  type FilterCategory,
+} from '../step-filters.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -152,6 +157,14 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: '/', label: 'Search' },
       { keys: 'n', label: 'Next match' },
       { keys: 'i', label: 'Focus lineage' },
+    ],
+  },
+  {
+    title: 'Filters',
+    entries: [
+      { keys: 'w', label: 'Broken' },
+      { keys: 'o', label: 'Cycles' },
+      { keys: 'd', label: 'Deleted' },
     ],
   },
   {
@@ -347,6 +360,10 @@ export function GenerateReviewStep({
   // ScopeGateStep's `columnOneView` — kept inline (rather than a shared hook)
   // because the state + handler pattern is ~10 lines per step.
   const [columnOneView, setColumnOneView] = useState<'grouped' | 'flat'>('grouped');
+  // L8 — category filters (broken / cycles / deleted). Each is an independent
+  // toggle; multiple active filters UNION their key sets. `deleted` is
+  // GenerateReview-only (sourced from `removedComponents`); ScopeGate omits it.
+  const [activeFilters, setActiveFilters] = useState<Set<FilterCategory>>(new Set());
   // Task #37 — mount-time cycle auto-reject bookkeeping. `autoRejected`
   // tracks which components were flipped to `rejected` by the auto-reject
   // effect so the banner can enumerate them and `[u]` undo can restore only
@@ -821,20 +838,51 @@ export function GenerateReviewStep({
       })),
     [components, directIssues],
   );
+  // L8 — "broken" in GenerateReview = components carrying a directIssue (a
+  // non-ok NodeStatus, e.g. a rejected leaf breaks its ancestors). "deleted" =
+  // components the live preview reports as removed from the target space.
+  const brokenKeys = useMemo<Set<string>>(
+    () => new Set(directIssues.keys()),
+    [directIssues],
+  );
+  const deletedKeys = useMemo<Set<string>>(
+    () => new Set(removedComponents.map((rc) => rc.name)),
+    [removedComponents],
+  );
+
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
     // T5b: jump-filter takes priority over the T4 search-neighborhood filter.
     // When active, the sidebar shows only the target + its transitive
-    // ancestors — search-neighborhood is set aside until Esc clears the jump.
+    // ancestors — search + category filters are set aside until Esc clears
+    // the jump.
     if (jumpFilterTarget) {
       return findAllAncestorsInclusive(jumpFilterTarget, sidebarGraph);
     }
-    if (!searchQuery) return undefined;
-    const matches = groupedItemsMemo
-      .map((it) => it.key)
-      .filter((k) => fuzzyMatches(searchQuery, k));
-    if (matches.length === 0) return undefined;
-    return computeDirectNeighborhood(matches, sidebarGraph);
-  }, [jumpFilterTarget, searchQuery, groupedItemsMemo, sidebarGraph]);
+    // L8: category filters (broken / cycles / deleted) → union of matching keys.
+    const categoryKeys = computeFilterKeys({
+      filters: activeFilters,
+      data: { cycles: cycleView.structural, broken: brokenKeys, deleted: deletedKeys },
+    });
+    const searchKeys = (() => {
+      if (!searchQuery) return undefined;
+      const matches = groupedItemsMemo
+        .map((it) => it.key)
+        .filter((k) => fuzzyMatches(searchQuery, k));
+      if (matches.length === 0) return undefined;
+      return computeDirectNeighborhood(matches, sidebarGraph);
+    })();
+    // Precedence: jump (above) → category ∩ search → whichever is active.
+    return intersectFilterKeys(categoryKeys, searchKeys);
+  }, [
+    jumpFilterTarget,
+    activeFilters,
+    cycleView,
+    brokenKeys,
+    deletedKeys,
+    searchQuery,
+    groupedItemsMemo,
+    sidebarGraph,
+  ]);
 
   const visibleRowsMemo = useMemo<VisibleRow[]>(
     () =>
@@ -1315,6 +1363,20 @@ export function GenerateReviewStep({
     if (input === 'b' && sidebarFocused && breakingChanges.length > 0) {
       breakingPanel.open();
       setBreakingCursor(0);
+      return;
+    }
+    // L8 — category filter toggles. `[o]` cycles, `[w]` broken, `[d]` deleted
+    // (GR-only). Sidebar-focused so they can't collide with FieldEditor input.
+    // Independent toggles; multiple active filters union in `filterVisibleKeys`.
+    if (sidebarFocused && (input === 'o' || input === 'w' || input === 'd')) {
+      const category: FilterCategory =
+        input === 'o' ? 'cycles' : input === 'w' ? 'broken' : 'deleted';
+      setActiveFilters((prev) => {
+        const next = new Set(prev);
+        if (next.has(category)) next.delete(category);
+        else next.add(category);
+        return next;
+      });
       return;
     }
     // T5b (layout plan §B) — jump-and-filter to focused component + all
@@ -2349,6 +2411,19 @@ export function GenerateReviewStep({
       {!dialogOpen && !searchOpen && searchQuery && (
         <Box>
           <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear · [n] next`}</Text>
+        </Box>
+      )}
+      {!dialogOpen && (
+        // L8 — one-line category-filter legend. Active filters render inverse
+        // so the operator can see what's narrowing the list (kept to a single
+        // line per the L2d frame-height caution; L10/L11 will regroup).
+        <Box gap={2} flexWrap="wrap">
+          <Text color={activeFilters.has('broken') ? 'yellow' : 'cyan'} inverse={activeFilters.has('broken')}>[w]</Text>
+          <Text dimColor>broken</Text>
+          <Text color={activeFilters.has('cycles') ? 'yellow' : 'cyan'} inverse={activeFilters.has('cycles')}>[o]</Text>
+          <Text dimColor>cycles</Text>
+          <Text color={activeFilters.has('deleted') ? 'yellow' : 'cyan'} inverse={activeFilters.has('deleted')}>[d]</Text>
+          <Text dimColor>deleted</Text>
         </Box>
       )}
       {!dialogOpen && (

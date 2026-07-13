@@ -3802,3 +3802,136 @@ describe('GenerateReviewStep — breaking-changes goto-banner (L6)', () => {
     expect(stripAnsiL6(lastFrame() ?? '')).toContain('[b] breaking');
   });
 });
+
+// ── L8 (lifecycle plan §5 L8): category filters (broken / cycles / deleted) ──
+// Keybinding-driven sidebar filters. [o] cycles, [w] broken (directIssues
+// non-ok), [d] deleted (removedComponents — GR ONLY). Grouped view hides
+// non-matching rows; toggling off restores. Multiple active filters union.
+describe('GenerateReviewStep — category filters (L8)', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const leaf = (label: string): Entry => ({
+    $type: 'component',
+    $properties: { [label]: { $type: 'string', $category: 'content' } },
+  });
+
+  const CYCLE_A: Entry = {
+    $type: 'component',
+    $properties: {},
+    $slots: { header: { $allowedComponents: ['CycleB'] } },
+  };
+  const CYCLE_B: Entry = {
+    $type: 'component',
+    $properties: {},
+    $slots: { footer: { $allowedComponents: ['CycleA'] } },
+  };
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastUseLivePreviewArgs = null;
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  it('[o] cycles filter narrows the sidebar to cycle members; toggling off restores', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+      { key: 'Standalone', entry: leaf('Standalone') },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+      },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
+    stdin.write('o');
+    await tick();
+    const filtered = stripAnsi(lastFrame() ?? '');
+    expect(filtered).toContain('CycleA');
+    expect(filtered).toContain('CycleB');
+    expect(filtered).not.toContain('Standalone');
+    stdin.write('o');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
+  });
+
+  it('[w] broken filter narrows to components with issues (rejected → error); toggling off restores', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Alpha', entry: leaf('Alpha') },
+      { key: 'Beta', entry: leaf('Beta') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Reject Alpha so it becomes a directIssue (error) = "broken".
+    stdin.write('r');
+    await tick();
+    stdin.write('w');
+    await tick();
+    const filtered = stripAnsi(lastFrame() ?? '');
+    expect(filtered).toContain('Alpha');
+    expect(filtered).not.toContain('Beta');
+    stdin.write('w');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Beta');
+  });
+
+  it('[d] deleted filter narrows to removed components; toggling off restores', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Widget', entry: leaf('Widget') },
+      { key: 'Keeper', entry: leaf('Keeper') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // Report Widget as removed via a live-preview response.
+    lastOnResult!({
+      components: {
+        new: [],
+        changed: [],
+        removed: [{ id: 'w', name: 'Widget', contentProperties: [], designProperties: [], slots: [] }],
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    } as never);
+    await tick();
+    stdin.write('d');
+    await tick();
+    const filtered = stripAnsi(lastFrame() ?? '');
+    expect(filtered).toContain('Widget');
+    expect(filtered).not.toContain('Keeper');
+    stdin.write('d');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Keeper');
+  });
+
+  it('legend advertises [o] cycles, [w] broken, and [d] deleted', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Alpha', entry: leaf('Alpha') },
+    ]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const out = stripAnsi(lastFrame() ?? '');
+    expect(out).toContain('[o]');
+    expect(out).toContain('[w]');
+    expect(out).toContain('[d]');
+  });
+});
