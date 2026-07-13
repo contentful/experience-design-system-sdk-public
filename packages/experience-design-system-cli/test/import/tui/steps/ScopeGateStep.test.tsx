@@ -1874,4 +1874,44 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(out).not.toContain('TAILMARKER');
     });
   });
+
+  describe('? help overlay (L3b)', () => {
+    const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+    it('advertises [?] help in the bottom legend', () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      expect(stripAnsi(lastFrame() ?? '')).toContain('[?]');
+    });
+
+    it('pressing ? opens a help overlay listing ScopeGate keys; Esc closes it', async () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('?');
+      await new Promise((r) => setTimeout(r, 30));
+      const open = stripAnsi(lastFrame() ?? '');
+      expect(open).toContain('Help');
+      expect(open).toMatch(/lineage/i);
+      // ScopeGate has no undo/redo.
+      expect(open).not.toContain('Ctrl+Z');
+
+      stdin.write('\x1b'); // Esc
+      await new Promise((r) => setTimeout(r, 30));
+      expect(stripAnsi(lastFrame() ?? '')).not.toContain('Help');
+    });
+
+    it('while the help overlay is open, other step keys are gated (f does not confirm)', async () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      stdin.write('?');
+      await new Promise((r) => setTimeout(r, 30));
+      stdin.write('f');
+      await new Promise((r) => setTimeout(r, 30));
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -48,4 +48,37 @@ describe('HelpOverlay', () => {
     const { lastFrame } = render(<HelpOverlay mode="review" onClose={vi.fn()} />);
     expect(stripAnsi(lastFrame() ?? '')).toMatchSnapshot();
   });
+
+  it('renders grouped sections when passed a `sections` prop (L3b)', () => {
+    const { lastFrame } = render(
+      <HelpOverlay
+        onClose={vi.fn()}
+        sections={[
+          { title: 'Navigation', entries: [{ keys: 'j/k', label: 'move' }] },
+          { title: 'History', entries: [{ keys: 'Ctrl+Z', label: 'Undo' }] },
+        ]}
+      />,
+    );
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toContain('Help');
+    expect(frame).toContain('Navigation');
+    expect(frame).toContain('History');
+    expect(frame).toContain('j/k');
+    expect(frame).toContain('move');
+    expect(frame).toContain('Ctrl+Z');
+    expect(frame).toContain('Undo');
+  });
+
+  it('closes on ? or Esc when in sections mode', async () => {
+    const onClose = vi.fn();
+    const { stdin } = render(
+      <HelpOverlay
+        onClose={onClose}
+        sections={[{ title: 'Navigation', entries: [{ keys: 'j/k', label: 'move' }] }]}
+      />,
+    );
+    stdin.write('\x1b');
+    await new Promise((r) => setTimeout(r, 30));
+    expect(onClose).toHaveBeenCalled();
+  });
 });

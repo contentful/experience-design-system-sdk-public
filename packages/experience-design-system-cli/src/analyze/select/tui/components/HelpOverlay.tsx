@@ -2,18 +2,41 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../hooks/useImmediateInput.js';
 
-type HelpOverlayProps = {
-  mode: 'analyze' | 'validate' | 'review';
-  onClose: () => void;
+export type HelpSection = {
+  title: string;
+  entries: { keys: string; label: string }[];
 };
 
-export function HelpOverlay({ mode, onClose }: HelpOverlayProps): React.ReactElement {
+type HelpOverlayProps =
+  | { mode: 'analyze' | 'validate' | 'review'; sections?: undefined; onClose: () => void }
+  | { mode?: undefined; sections: HelpSection[]; onClose: () => void };
+
+export function HelpOverlay(props: HelpOverlayProps): React.ReactElement {
+  const { onClose } = props;
   useImmediateInput((input, key) => {
     if (input === '?' || key.escape) {
       onClose();
     }
   });
 
+  if (props.sections) {
+    return (
+      <Box flexDirection="column" borderStyle="round" padding={1} width={46}>
+        <Text bold>{'─'.repeat(18) + ' Help ' + '─'.repeat(18)}</Text>
+        {props.sections.map((section) => (
+          <React.Fragment key={section.title}>
+            <Text> </Text>
+            <Text bold>{section.title}</Text>
+            {section.entries.map((entry) => (
+              <Text key={entry.keys + entry.label}>{'  ' + entry.keys.padEnd(16) + ' ' + entry.label}</Text>
+            ))}
+          </React.Fragment>
+        ))}
+      </Box>
+    );
+  }
+
+  const mode = props.mode;
   return (
     <Box flexDirection="column" borderStyle="round" padding={1} width={46}>
       <Text bold>{'─'.repeat(18) + ' Help ' + '─'.repeat(18)}</Text>

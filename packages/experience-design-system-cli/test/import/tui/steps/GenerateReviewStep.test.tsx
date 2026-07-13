@@ -3339,7 +3339,7 @@ describe('GenerateReviewStep — undo/redo + reload-from-save (T4)', () => {
     expect(cardLine).toContain('[✓]');
   });
 
-  it('legend advertises Cmd+Z / Cmd+Y / Ctrl+R when sidebar is focused', async () => {
+  it('legend advertises Ctrl+Z / Ctrl+Y / Ctrl+R when sidebar is focused', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: card }]);
     vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
@@ -3348,8 +3348,8 @@ describe('GenerateReviewStep — undo/redo + reload-from-save (T4)', () => {
     );
     await tick();
     const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
-    expect(frame).toContain('[Cmd+Z] undo');
-    expect(frame).toContain('[Cmd+Y] redo');
+    expect(frame).toContain('[Ctrl+Z] undo');
+    expect(frame).toContain('[Ctrl+Y] redo');
     expect(frame).toContain('[Ctrl+R] reload');
   });
 });
@@ -3624,5 +3624,38 @@ describe('GenerateReviewStep — [i] jump-and-filter (T5b)', () => {
     const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
     expect(frame).toMatch(/\[i\][^\n]*focus lineage/);
     expect(frame).toMatch(/\[p\][^\n]*rationale/);
+  });
+});
+
+describe('GenerateReviewStep — undo/redo legend + ? help overlay (L3b)', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+  it('legend advertises Ctrl+Z / Ctrl+Y and NOT Cmd+Z / Cmd+Y', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toContain('Ctrl+Z');
+    expect(frame).toContain('Ctrl+Y');
+    expect(frame).not.toContain('Cmd+Z');
+    expect(frame).not.toContain('Cmd+Y');
+  });
+
+  it('pressing ? opens a help overlay advertising Ctrl+Y / Redo; Esc closes', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('?');
+    await tick();
+    const open = stripAnsi(lastFrame() ?? '');
+    expect(open).toContain('Help');
+    expect(open).toContain('Ctrl+Y');
+    expect(open).toMatch(/Redo/i);
+
+    stdin.write('\x1b'); // Esc
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).not.toContain('Help');
   });
 });

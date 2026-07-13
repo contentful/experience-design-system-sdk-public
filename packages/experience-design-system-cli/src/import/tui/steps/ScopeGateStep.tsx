@@ -18,6 +18,7 @@ import { computeAutocomplete } from '../autocomplete.js';
 import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
+import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import {
   buildCycleUnits,
   collectReachableCycleUnits,
@@ -64,6 +65,51 @@ const AI_BANNER_MAX = 5;
 // characters — precise wrap-position is width-dependent so this is intentionally
 // generous, and we append an ellipsis when the source exceeds the budget.
 const FOCUSED_REASON_MAX_LINES = 4;
+
+const HELP_SECTIONS: HelpSection[] = [
+  {
+    title: 'Navigation',
+    entries: [
+      { keys: 'j / k / ↑ / ↓', label: 'Move cursor' },
+      { keys: 'Tab / Shift-Tab', label: 'Switch column' },
+      { keys: 'Enter', label: 'Jump to main' },
+    ],
+  },
+  {
+    title: 'Selection',
+    entries: [
+      { keys: 'a / space', label: 'Accept' },
+      { keys: 'r', label: 'Reject' },
+      { keys: 'A', label: 'Toggle all' },
+      { keys: 'Y', label: 'Accept non-flagged' },
+    ],
+  },
+  {
+    title: 'Search',
+    entries: [
+      { keys: '/', label: 'Search' },
+      { keys: 'n', label: 'Next match' },
+      { keys: 'i', label: 'Focus lineage' },
+    ],
+  },
+  {
+    title: 'Panels',
+    entries: [
+      { keys: 'l', label: 'Lineage' },
+      { keys: 'c', label: 'Cycles' },
+      { keys: 's', label: 'AI reason' },
+      { keys: 'L', label: 'Flat view' },
+    ],
+  },
+  {
+    title: 'General',
+    entries: [
+      { keys: 'f', label: 'Continue' },
+      { keys: '?', label: 'Close help' },
+      { keys: 'q', label: 'Quit' },
+    ],
+  },
+];
 
 function truncateReason(reason: string | null | undefined): string {
   if (reason === null || reason === undefined || reason === '') return '<no reason given>';
@@ -139,6 +185,7 @@ export function ScopeGateStep({
   // `filterVisibleKeys`. Esc clears jumpFilter first (see input handler).
   const [jumpFilterTarget, setJumpFilterTarget] = useState<string | null>(null);
   const [columnOneView, setColumnOneView] = useState<'grouped' | 'flat'>('grouped');
+  const [showHelp, setShowHelp] = useState(false);
 
   // Everything defaults to undecided. AI decisions are advisory only —
   // surfaced via the [×] badge and the recommends-exclusions banner, never
@@ -380,6 +427,10 @@ export function ScopeGateStep({
   };
 
   useImmediateInput((input, key) => {
+    // Help overlay owns all input while open — the HelpOverlay component's own
+    // handler closes it on `?`/Esc, so here we simply swallow everything else.
+    if (showHelp) return;
+
     // Confirm prompt owns keystrokes when open.
     if (pendingRejectCascade) {
       if (input === 'y' || input === 'Y') {
@@ -545,6 +596,10 @@ export function ScopeGateStep({
         return;
       }
       onQuit();
+      return;
+    }
+    if (input === '?') {
+      setShowHelp(true);
       return;
     }
     if (input === 'f' || input === 'F') {
@@ -840,6 +895,10 @@ export function ScopeGateStep({
     Math.max(0, addedGroups.length - 1),
   );
 
+  if (showHelp) {
+    return <HelpOverlay sections={HELP_SECTIONS} onClose={() => setShowHelp(false)} />;
+  }
+
   return (
     <Box flexDirection="column" paddingX={2}>
       <Text color="green">✓ Extraction complete</Text>
@@ -1109,6 +1168,9 @@ export function ScopeGateStep({
         </Text>
         <Text>
           <Text color="cyan">[f]</Text> <Text dimColor>continue</Text>
+        </Text>
+        <Text>
+          <Text color="cyan">[?]</Text> <Text dimColor>help</Text>
         </Text>
         <Text>
           <Text color="cyan">[q]</Text> <Text dimColor>quit</Text>

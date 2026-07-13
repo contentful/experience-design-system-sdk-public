@@ -51,6 +51,7 @@ import { findAllAncestors } from '../../../analyze/lineage.js';
 import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
+import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
 import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
 import { computeAutocomplete } from '../autocomplete.js';
@@ -122,6 +123,64 @@ export function sortComponentsForSidebar<T extends { key: string; entry: CDFComp
 
 const VISIBLE_COUNT = 20;
 const PANEL_HEIGHT = 22;
+
+const HELP_SECTIONS: HelpSection[] = [
+  {
+    title: 'Navigation',
+    entries: [
+      { keys: 'j / k / ↑ / ↓', label: 'Move cursor' },
+      { keys: 'Tab', label: 'Toggle sidebar/panel' },
+      { keys: 'e', label: 'Focus panel' },
+      { keys: 'Enter', label: 'Drill to source' },
+    ],
+  },
+  {
+    title: 'Selection',
+    entries: [
+      { keys: 'a', label: 'Accept' },
+      { keys: 'r', label: 'Reject' },
+      { keys: 'A', label: 'Accept all' },
+      { keys: 'F', label: 'Finalize' },
+    ],
+  },
+  {
+    title: 'Search',
+    entries: [
+      { keys: '/', label: 'Search' },
+      { keys: 'n', label: 'Next match' },
+      { keys: 'i', label: 'Focus lineage' },
+    ],
+  },
+  {
+    title: 'Panels',
+    entries: [
+      { keys: 'l', label: 'Lineage' },
+      { keys: 'c', label: 'Cycles' },
+      { keys: 'p', label: 'Prop rationale' },
+      { keys: 'I', label: 'Component rationale' },
+      { keys: 's', label: 'Source' },
+      { keys: 'J', label: 'Toggle JSON' },
+      { keys: 'space', label: 'Expand/collapse group' },
+      { keys: 'E / C', label: 'Expand/collapse all' },
+      { keys: 'L', label: 'Flat view' },
+    ],
+  },
+  {
+    title: 'History',
+    entries: [
+      { keys: 'Ctrl+Z', label: 'Undo' },
+      { keys: 'Ctrl+Y', label: 'Redo' },
+      { keys: 'Ctrl+R', label: 'Reload from save' },
+    ],
+  },
+  {
+    title: 'General',
+    entries: [
+      { keys: '?', label: 'Close help' },
+      { keys: 'q', label: 'Quit' },
+    ],
+  },
+];
 
 /**
  * Task #37 — Given the current set of detected slot cycles and the component
@@ -293,6 +352,7 @@ export function GenerateReviewStep({
   const historyRef = useRef<HistoryStack | null>(null);
   const historySeededRef = useRef(false);
   const [showReloadDialog, setShowReloadDialog] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
@@ -980,6 +1040,9 @@ export function GenerateReviewStep({
   useImmediateInput((input, key) => {
     if (loading || loadError) return;
     if (dialogOpen) return;
+    // Help overlay owns all input while open — the HelpOverlay component's own
+    // handler closes it on `?`/Esc, so here we simply swallow everything else.
+    if (showHelp) return;
 
     // T4 (parity plan §3) — reload-from-save confirm dialog owns keystrokes
     // when open. Enter re-runs the load path + resets history; Esc cancels.
@@ -998,9 +1061,8 @@ export function GenerateReviewStep({
 
     // T4 — top-level undo/redo/reload keybindings. Gated above sidebar-focused
     // vs panel-focused vs overlay checks so they work uniformly across states.
-    // Terminal-key spike (log entry `spike:cmd-z`): Cmd+Z / Cmd+Y on macOS
-    // Terminal.app + iTerm2 map to Ctrl+Z / Ctrl+Y bytes (\x1a / \x19), which
-    // `useImmediateInput.parseInput` surfaces as `key.ctrl && input === 'z'|'y'`.
+    // Advertised keys are Ctrl+Z / Ctrl+Y: these emit the bytes \x1a / \x19,
+    // which `useImmediateInput.parseInput` surfaces as `key.ctrl && input === 'z'|'y'`.
     if (key.ctrl && input === 'z') {
       handleUndo();
       return;
@@ -1377,6 +1439,10 @@ export function GenerateReviewStep({
       setAutocompleteCandidates([]);
       return;
     }
+    if (input === '?') {
+      setShowHelp(true);
+      return;
+    }
     if (input === 'q') {
       setShowQuit(true);
       return;
@@ -1633,6 +1699,10 @@ export function GenerateReviewStep({
         <Text color="red">{loadError}</Text>
       </Box>
     );
+  }
+
+  if (showHelp) {
+    return <HelpOverlay sections={HELP_SECTIONS} onClose={() => setShowHelp(false)} />;
   }
 
   const selected = components[selectedIdx] ?? null;
@@ -2106,7 +2176,8 @@ export function GenerateReviewStep({
                       '  [L] flat' +
                       '  [/] search' +
                       (undoSnapshot ? '  [u] undo' : '') +
-                      '  [Cmd+Z] undo  [Cmd+Y] redo  [Ctrl+R] reload' +
+                      '  [Ctrl+Z] undo  [Ctrl+Y] redo  [Ctrl+R] reload' +
+                      '  [?] help' +
                       '  [q] quit'
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
