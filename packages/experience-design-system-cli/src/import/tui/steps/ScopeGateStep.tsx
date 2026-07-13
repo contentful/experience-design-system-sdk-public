@@ -19,6 +19,7 @@ import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { computeLineageLayout } from '../lineage-layout.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
+import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import {
   buildCycleUnits,
@@ -59,7 +60,6 @@ export type ScopeGateStepProps = {
 };
 
 const REASON_DISPLAY_MAX = 60;
-const AI_BANNER_MAX = 5;
 // T7 — focused-row detail line renders the full AI reason with wrapping,
 // capped at 4 lines. Approximate the cap as `width * FOCUSED_REASON_MAX_LINES`
 // characters — precise wrap-position is width-dependent so this is intentionally
@@ -98,6 +98,7 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'l', label: 'Lineage' },
       { keys: 'c', label: 'Cycles' },
       { keys: 's', label: 'AI reason' },
+      { keys: 'x', label: 'AI exclusions' },
       { keys: 'L', label: 'Flat view' },
     ],
   },
@@ -173,6 +174,11 @@ export function ScopeGateStep({
   const [lineageCursor, setLineageCursor] = useState(0);
   const [cyclesPanelOpen, setCyclesPanelOpen] = useState(false);
   const [cyclesCursor, setCyclesCursor] = useState(0);
+  // L7 — AI-rationale goto-banner. Renders in the sidebar slot (like lineage,
+  // per L2d) so opening it never grows the frame. Mutually exclusive with the
+  // lineage + cycles panels.
+  const aiRationalePanel = useOverlayPanel({ toggleKey: 'x' });
+  const [aiCursor, setAiCursor] = useState(0);
   const [pendingRejectCascade, setPendingRejectCascade] =
     useState<{ target: string; ancestors: string[]; descendants: string[] } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -586,6 +592,28 @@ export function ScopeGateStep({
       return;
     }
 
+    // AI-rationale panel owns most keystrokes when open. Close-side (`[x]` /
+    // `[Esc]`) delegated to the shared `useOverlayPanel` hook; ↑/↓/j/k move the
+    // banner cursor and Enter jumps the main cursor to the flagged component.
+    if (aiRationalePanel.isOpen) {
+      if (aiRationalePanel.handleInput(input, key)) return;
+      if (key.upArrow || input === 'k') {
+        setAiCursor((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        setAiCursor((c) => Math.min(Math.max(0, aiRows.length - 1), c + 1));
+        return;
+      }
+      if (key.return) {
+        const row = aiRows[aiCursor];
+        if (row) jumpCursorTo(row.jumpTarget);
+        aiRationalePanel.close();
+        return;
+      }
+      return;
+    }
+
     if (input === 'q' || key.escape) {
       if (aiFilterStatus === 'running' && onCancelAutoFilter) {
         onCancelAutoFilter();
@@ -635,6 +663,7 @@ export function ScopeGateStep({
       lineagePanel.open();
       setLineageCursor(0);
       setCyclesPanelOpen(false);
+      aiRationalePanel.close();
       return;
     }
     if (input === 'c') {
@@ -642,6 +671,15 @@ export function ScopeGateStep({
       setCyclesPanelOpen(true);
       setCyclesCursor(0);
       lineagePanel.close();
+      aiRationalePanel.close();
+      return;
+    }
+    if (input === 'x') {
+      if (aiRows.length === 0) return;
+      aiRationalePanel.open();
+      setAiCursor(0);
+      lineagePanel.close();
+      setCyclesPanelOpen(false);
       return;
     }
     if (input === '/') {
@@ -870,6 +908,17 @@ export function ScopeGateStep({
   const aiExcludedWithReasons = components.filter(
     (c) => isAiFlagged(c) && c.aiReason !== null && c.aiReason !== undefined && c.aiReason !== '',
   );
+  // L7 — goto-banner rows for the AI-rationale panel. One row per AI-flagged
+  // component that carries a reason; the label pairs the name with a truncated
+  // reason (width-safe), and `jumpTarget` drives the main-cursor jump on Enter.
+  const aiRows = useMemo(
+    () =>
+      aiExcludedWithReasons.map((c) => ({
+        label: `${c.name} — ${truncateReason(c.aiReason)}`,
+        jumpTarget: c.name,
+      })),
+    [aiExcludedWithReasons],
+  );
 
   const selectedItemIdx =
     currentRow && currentRow.itemIdx >= 0 ? currentRow.itemIdx : -1;
@@ -943,17 +992,11 @@ export function ScopeGateStep({
       )}
 
       {hasAnyAi && (
-        <Box flexDirection="column">
-          <Text dimColor>{`AI recommended exclusions (${aiExcludedCount}):`}</Text>
-          {aiExcludedWithReasons.slice(0, AI_BANNER_MAX).map((c) => (
-            <Text key={c.name} dimColor>
-              {'  '}
-              {c.name} — {truncateReason(c.aiReason)}
-            </Text>
-          ))}
-          {aiExcludedWithReasons.length > AI_BANNER_MAX && (
-            <Text dimColor>{`  …and ${aiExcludedWithReasons.length - AI_BANNER_MAX} more`}</Text>
-          )}
+        <Box>
+          <Text dimColor>
+            {`AI recommended exclusions (${aiExcludedCount})`}
+            {aiRows.length > 0 && <Text color="cyan">{' — [x] review & jump'}</Text>}
+          </Text>
         </Box>
       )}
 
@@ -979,7 +1022,16 @@ export function ScopeGateStep({
       )}
 
       <Box flexDirection="row">
-        {lineagePanel.isOpen && focusedComponent ? (
+        {aiRationalePanel.isOpen ? (
+          <GotoBanner
+            title={`AI recommended exclusions (${aiExcludedCount})`}
+            rows={aiRows}
+            cursor={aiCursor}
+            maxRows={panelMaxRows}
+            width={sidebarWidth}
+            footerHint="[↑/↓] move · [Enter] jump · [x/Esc] close"
+          />
+        ) : lineagePanel.isOpen && focusedComponent ? (
           <LineagePanel
             focusedComponentKey={focusedComponent.name}
             entries={lineageEntries}
@@ -1201,6 +1253,11 @@ export function ScopeGateStep({
         {hasAnyAi && (
           <Text>
             <Text color="cyan">[s]</Text> <Text dimColor>AI reason</Text>
+          </Text>
+        )}
+        {hasAnyAi && (
+          <Text>
+            <Text color="cyan">[x]</Text> <Text dimColor>AI exclusions</Text>
           </Text>
         )}
         {hasAnyAi && (

@@ -1845,20 +1845,30 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(out).toContain(marker);
     });
 
-    it('AI-recommends-exclusions banner list STILL truncates the reason at 60 chars', () => {
+    it('AI-rationale goto-banner row STILL truncates the reason at 60 chars (L7)', async () => {
       const longReason = 'x'.repeat(80) + 'TAILWORD';
+      // Aaa is a non-flagged standalone that sorts first, so it (not the flagged
+      // Zeta) is the initially-focused row — keeping Zeta's full reason out of
+      // the focused-row detail block, so the ONLY place the reason surfaces is
+      // the goto-banner where truncation must apply.
       const local = [
-        { name: 'AAA', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: longReason },
-        { name: 'Zeta', componentId: 'c1' },
+        { name: 'Aaa', componentId: 'c0' },
+        { name: 'Zeta', componentId: 'c1', aiDecision: 'rejected' as const, aiReason: longReason },
       ];
-      const { lastFrame } = render(
+      const { lastFrame, stdin } = render(
         <ScopeGateStep components={local} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
+      // L7: the inline gray list is gone; the truncated reason now renders in
+      // the [x] goto-banner. truncateReason caps at 59 chars + '…', so the
+      // banner row carries the compact form and NOT the tail past the cap. (The
+      // sidebar-slot box may wrap the label, so assert the cap held — the
+      // ellipsis is present and the tail past the cap is absent.)
+      stdin.write('x');
+      await new Promise((r) => setTimeout(r, 30));
       const out = lastFrame() ?? '';
-      // truncateReason returns first 59 chars + '…' for reasons > 60 chars.
-      // The banner line is prefixed by "  <name> — ". Assert the compact form
-      // still appears somewhere (the banner emits it verbatim).
-      expect(out).toContain('AAA — ' + 'x'.repeat(59) + '…');
+      expect(out).toContain('Zeta');
+      expect(out).toContain('…');
+      expect(out).not.toContain('TAILWORD');
     });
 
     it('focused-row detail caps wrapped output; tail text past the cap is not rendered', () => {
@@ -2003,6 +2013,122 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       } finally {
         restore();
       }
+    });
+  });
+
+  describe('L7 — AI-rationale goto-banner', () => {
+    const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+    function withWideStdout(cols: number): () => void {
+      const probe = render(<ScopeGateStep components={[]} onConfirm={() => {}} onQuit={() => {}} />);
+      const proto = Object.getPrototypeOf(probe.stdout);
+      const original = Object.getOwnPropertyDescriptor(proto, 'columns');
+      Object.defineProperty(proto, 'columns', { configurable: true, get: () => cols });
+      probe.unmount();
+      probe.cleanup();
+      return () => {
+        if (original) Object.defineProperty(proto, 'columns', original);
+      };
+    }
+
+    // BadgeIcon + DivWrapper are AI-flagged with reasons. Hero is an
+    // undecided, non-flagged standalone that only ever renders in the main
+    // sidebar (never in the added columns, never AI-flagged) — so its presence
+    // is a proxy for "the GroupedSidebar occupies the sidebar slot".
+    const MIXED = [
+      { name: 'Button', componentId: 'c0' },
+      { name: 'Card', componentId: 'c1' },
+      { name: 'BadgeIcon', componentId: 'c2', aiDecision: 'rejected' as const, aiReason: 'low semantic value' },
+      { name: 'DivWrapper', componentId: 'c3', aiDecision: 'rejected' as const, aiReason: 'no semantic content' },
+      { name: 'Hero', componentId: 'c4' },
+    ];
+
+    it('replaces the multi-line gray list with a one-line hint advertising [x]', () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      const out = stripAnsi(lastFrame() ?? '');
+      // One-line hint carries the count + the keybinding.
+      expect(out).toContain('AI recommended exclusions');
+      expect(out).toContain('[x]');
+      // The OLD inline gray list is gone: DivWrapper's reason no longer renders
+      // inline (BadgeIcon is the initially-focused row so its reason still shows
+      // in the focused-row detail — DivWrapper's does not appear anywhere).
+      expect(out).not.toContain('no semantic content');
+    });
+
+    it('[x] opens a goto-banner in the sidebar slot listing AI-flagged components; columns 2 & 3 stay', async () => {
+      const restore = withWideStdout(160);
+      try {
+        const { lastFrame, stdin } = render(
+          <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+        );
+        const before = stripAnsi(lastFrame() ?? '');
+        // Baseline: sidebar renders Hero, columns 2 & 3 present.
+        expect(before).toContain('Hero');
+        expect(before).toContain('Added components');
+        expect(before).toContain('Added groups');
+
+        stdin.write('x');
+        await new Promise((r) => setTimeout(r, 30));
+        const open = stripAnsi(lastFrame() ?? '');
+
+        // (a) banner lists AI-flagged components.
+        expect(open).toContain('BadgeIcon');
+        expect(open).toContain('DivWrapper');
+        // (b) sidebar slot is replaced — the sidebar-only Hero is gone.
+        expect(open).not.toContain('Hero');
+        // (c) columns 2 & 3 stay visible alongside the banner (no stacking).
+        expect(open).toContain('Added components');
+        expect(open).toContain('Added groups');
+
+        // Esc closes; sidebar (Hero) returns.
+        stdin.write('\x1b');
+        await new Promise((r) => setTimeout(r, 30));
+        const closed = stripAnsi(lastFrame() ?? '');
+        expect(closed).toContain('Hero');
+      } finally {
+        restore();
+      }
+    });
+
+    it('Enter jumps the main cursor to the selected flagged component', async () => {
+      const restore = withWideStdout(160);
+      try {
+        const onConfirm = vi.fn();
+        const { stdin } = render(
+          <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
+        );
+        stdin.write('x'); // open AI-rationale banner (cursor on BadgeIcon)
+        await new Promise((r) => setTimeout(r, 30));
+        stdin.write('j'); // move banner cursor to DivWrapper
+        await new Promise((r) => setTimeout(r, 30));
+        stdin.write('\r'); // Enter → jump main cursor to DivWrapper + close
+        await new Promise((r) => setTimeout(r, 30));
+        stdin.write('a'); // accept the now-focused row
+        stdin.write('f');
+        const arg = onConfirm.mock.calls[onConfirm.mock.calls.length - 1][0];
+        expect(arg.accepted).toContain('DivWrapper');
+      } finally {
+        restore();
+      }
+    });
+
+    it('with zero AI-flagged components the hint is hidden and [x] is a no-op', async () => {
+      const clean = [
+        { name: 'Alpha', componentId: 'c0' },
+        { name: 'Beta', componentId: 'c1' },
+      ];
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={clean} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      expect(stripAnsi(lastFrame() ?? '')).not.toContain('AI recommended exclusions');
+      stdin.write('x');
+      await new Promise((r) => setTimeout(r, 30));
+      const out = stripAnsi(lastFrame() ?? '');
+      // No banner opened (Alpha still in the sidebar; nothing changed).
+      expect(out).toContain('Alpha');
+      expect(out).not.toContain('AI recommended exclusions');
     });
   });
 });
