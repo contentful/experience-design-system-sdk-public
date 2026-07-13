@@ -147,9 +147,10 @@ describe('scope-gate slot plumbing (loader → ScopeGateStep)', () => {
       // Cursor starts on the Card root row. Toggle the root off then back on
       // to exercise cascade semantics against the loader-plumbed graph.
       // Rejecting Card (target only, no ancestors) applies immediately.
-      // Accepting Card cascades to Heading.
-      stdin.write(' '); // exclude Card (no ancestors → no prompt)
-      stdin.write(' '); // re-include Card (accept-cascade → Heading too)
+      // Accepting Card cascades to Heading. (L9: [Space] now collapses groups,
+      // so this uses the explicit [r]/[a] accept/reject keys.)
+      stdin.write('r'); // exclude Card (no ancestors → no prompt)
+      stdin.write('a'); // re-include Card (accept-cascade → Heading too)
       stdin.write('f');
 
       const arg = onConfirm.mock.calls[0][0];

@@ -85,26 +85,24 @@ export function buildAddedGroupsList(
     else restTier.push(entry);
     seenNames.add(root);
   }
-  // Synthesize one entry per accepted cycle unit. composite-closure collapses
-  // cyclic closures to a single-node result (which the filter above drops),
-  // so cycle groups would otherwise never appear in the Added-groups panel.
+  // Synthesize one entry PER ACCEPTED MEMBER of each cycle unit. composite-closure
+  // collapses cyclic closures to a single-node result (which the filter above
+  // drops), so cycle groups would otherwise never appear in the Added-groups
+  // panel. We emit one row per member — mirroring how the sidebar renders one
+  // cycle-root row per member (GroupedSidebar) — so InnerA↔InnerB shows BOTH
+  // InnerA and InnerB rather than just the alpha-first member.
   const seenUnits = new Set<Set<string>>();
   for (const unit of cycleUnits.values()) {
     if (seenUnits.has(unit)) continue;
     seenUnits.add(unit);
-    let anyAccepted = false;
     for (const member of unit) {
-      if (stateByKey.get(member) === 'accepted') {
-        anyAccepted = true;
-        break;
-      }
+      if (stateByKey.get(member) !== 'accepted') continue;
+      // Dedup on member NAME — a name already emitted as a real closure root
+      // must not double-emit.
+      if (seenNames.has(member)) continue;
+      seenNames.add(member);
+      cycleTier.push({ name: member, depCount: unit.size - 1, isCycle: true });
     }
-    if (!anyAccepted) continue;
-    // Alphabetically-first member = Johnson's least-vertex ordering.
-    const name = [...unit].sort((a, b) => a.localeCompare(b))[0];
-    if (seenNames.has(name)) continue;
-    seenNames.add(name);
-    cycleTier.push({ name, depCount: unit.size - 1, isCycle: true });
   }
   cycleTier.sort((a, b) => a.name.localeCompare(b.name));
   restTier.sort((a, b) => a.name.localeCompare(b.name));

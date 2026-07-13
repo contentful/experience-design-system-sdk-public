@@ -705,9 +705,9 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       expect(arg.accepted).toEqual([]);
     });
 
-    it('Space on a cycle-tier row accepts (accept-cascade); [r] still rejects', () => {
-      // Under the split-direction model, Space aliases [a] (force-accept),
-      // NOT [r]. This test pins that behavior against future regressions.
+    it('Space on a cycle-tier row does NOT accept (L9 rebind: space = collapse)', () => {
+      // L9 rebind: Space no longer accepts — it toggles group collapse. [a]
+      // accepts, [r] rejects. This pins the rebind against future regressions.
       const onConfirm = vi.fn();
       const { stdin } = render(
         <ScopeGateStep components={CYCLE} onConfirm={onConfirm} onQuit={() => {}} />,
@@ -715,7 +715,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       stdin.write(' ');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
-      expect(arg.accepted).toContain('NodeA');
+      expect(arg.accepted).not.toContain('NodeA');
     });
 
     it('[a] on a cycle-tier row after a reject re-accepts the whole cycle unit (task #47 cohesion)', () => {
@@ -1118,16 +1118,17 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     expect(arg.rejected).toContain('Text');
   });
 
-  it('Space on an undecided row flips it to accepted', () => {
+  it('Space on an undecided row does NOT accept (L9 rebind: space = collapse)', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Cursor on Card (undecided). Space accepts Card + cascades to descendants.
+    // L9 rebind: Space toggles collapse, not accept. Card stays undecided →
+    // partitions into rejected on confirm.
     stdin.write(' ');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    expect(arg.accepted).toEqual(expect.arrayContaining(['Card', 'Text', 'Icon']));
+    expect(arg.accepted).not.toContain('Card');
   });
 });
 
@@ -2127,5 +2128,285 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(out).toContain('Alpha');
       expect(out).not.toContain('AI recommended exclusions');
     });
+  });
+
+  describe('L8 — category filters (broken / cycles)', () => {
+    const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+    // NodeA ↔ NodeB form a cycle; Standalone is a plain non-cycle component;
+    // BadgeIcon is AI-flagged (broken).
+    const FIX = [
+      {
+        name: 'NodeA',
+        componentId: 'a',
+        slots: [{ name: 'slotA', allowedComponents: ['NodeB'] }],
+      },
+      {
+        name: 'NodeB',
+        componentId: 'b',
+        slots: [{ name: 'slotB', allowedComponents: ['NodeA'] }],
+      },
+      { name: 'Standalone', componentId: 's' },
+      { name: 'BadgeIcon', componentId: 'x', aiDecision: 'rejected' as const, aiReason: 'low value' },
+    ];
+
+    it('[o] cycles filter narrows grouped sidebar to cycle members; toggling off restores', async () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
+      stdin.write('o');
+      await new Promise((r) => setTimeout(r, 20));
+      const filtered = stripAnsi(lastFrame() ?? '');
+      expect(filtered).toContain('NodeA');
+      expect(filtered).toContain('NodeB');
+      // Non-cycle standalone is hidden in grouped view under an active filter.
+      expect(filtered).not.toContain('Standalone');
+      stdin.write('o');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
+    });
+
+    it('[w] broken filter narrows to AI-flagged components; toggling off restores', async () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      stdin.write('w');
+      await new Promise((r) => setTimeout(r, 20));
+      const filtered = stripAnsi(lastFrame() ?? '');
+      expect(filtered).toContain('BadgeIcon');
+      expect(filtered).not.toContain('Standalone');
+      stdin.write('w');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
+    });
+
+    it('legend advertises the [o] cycles and [w] broken filter keys', async () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      const out = stripAnsi(lastFrame() ?? '');
+      expect(out).toContain('[o]');
+      expect(out).toContain('[w]');
+    });
+
+    it('does not advertise a [d] deleted filter (ScopeGate has no deleted concept)', async () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      const out = stripAnsi(lastFrame() ?? '');
+      expect(out).not.toContain('[d] deleted');
+    });
+  });
+
+  describe('L11 — legend/help overhaul', () => {
+    const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+    const CYC = [
+      { name: 'NodeA', componentId: 'a', slots: [{ name: 'sA', allowedComponents: ['NodeB'] }] },
+      { name: 'NodeB', componentId: 'b', slots: [{ name: 'sB', allowedComponents: ['NodeA'] }] },
+      { name: 'Standalone', componentId: 's' },
+    ];
+
+    it('disambiguates the two cycle features: [c] cycle list vs [o] only cycles', async () => {
+      const { stdin, lastFrame } = render(
+        <ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      const legend = stripAnsi(lastFrame() ?? '');
+      // No bare identical "cycles" label for both keys.
+      expect(legend).toContain('[c] cycle list');
+      expect(legend).toContain('[o] only cycles');
+      // Help panel uses the same distinct labels.
+      stdin.write('?');
+      await new Promise((r) => setTimeout(r, 30));
+      const help = stripAnsi(lastFrame() ?? '');
+      expect(help).toMatch(/Cycle list/i);
+      expect(help).toMatch(/Only cycles/i);
+    });
+
+    it('active-highlight keys [L] flat and [/] search are present in the legend', async () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      const legend = stripAnsi(lastFrame() ?? '');
+      // These toggle/mode keys get the active-highlight treatment via
+      // legendEntry (the highlight mechanism itself is unit-tested in
+      // LegendEntry.test.tsx; ink-testing-library strips ANSI here).
+      expect(legend).toContain('[L] flat');
+      expect(legend).toContain('[/] search');
+      expect(legend).toContain('[l] lineage');
+      expect(legend).toContain('[i] focus lineage');
+    });
+
+    it('help panel groups sidebar-view keys (L, l, o, w, i) together', async () => {
+      const { stdin, lastFrame } = render(
+        <ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      stdin.write('?');
+      await new Promise((r) => setTimeout(r, 30));
+      const help = stripAnsi(lastFrame() ?? '');
+      expect(help).toMatch(/Sidebar views/i);
+    });
+
+    it('[n] label matches its real behavior (next match, in Search group)', async () => {
+      const { stdin, lastFrame } = render(
+        <ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      stdin.write('?');
+      await new Promise((r) => setTimeout(r, 30));
+      const help = stripAnsi(lastFrame() ?? '');
+      expect(help).toMatch(/Next match/i);
+    });
+  });
+});
+
+// ── L9 — expand/collapse groups + accept/reject GR parity ───────────────────
+//
+// ScopeGate mirrors GenerateReview's collapse model: [Space] toggles the
+// focused group, [E]/[C] expand/collapse all. Accept rebinds so [a] accepts
+// and [Space] NO LONGER accepts (it collapses). Groups seed expanded so the
+// default view matches the previous always-expanded behavior.
+
+describe('ScopeGateStep — L9 collapse + accept rebind', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+  const GROUP = [
+    {
+      name: 'Card',
+      componentId: 'c0',
+      slots: [{ name: 'body', allowedComponents: ['Body'] }],
+    },
+    { name: 'Body', componentId: 'b0' },
+  ];
+
+  it('[Space] no longer accepts the focused row (rebound to collapse)', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={GROUP} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    // Cursor on Card group-root. Space must NOT accept it.
+    stdin.write(' ');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual([]);
+    expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Body']));
+  });
+
+  it('[a] still accepts the focused row', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={GROUP} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    stdin.write('a');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Card', 'Body']));
+  });
+
+  it('groups seed EXPANDED (default view matches old always-expanded)', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep components={GROUP} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).toContain('Body');
+  });
+
+  const flush = () => new Promise((r) => setTimeout(r, 20));
+
+  it('[Space] on the focused group collapses it, then re-expands', async () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={GROUP} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    await flush();
+    // Cursor on Card root. Collapse.
+    stdin.write(' ');
+    await flush();
+    let frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▸ Card/);
+    expect(frame).not.toMatch(/[├└]─ Body/);
+    // Re-expand.
+    stdin.write(' ');
+    await flush();
+    frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).toContain('Body');
+  });
+
+  it('[C] collapses all group roots; [E] expands all', async () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={GROUP} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    await flush();
+    stdin.write('C');
+    await flush();
+    let frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▸ Card/);
+    expect(frame).not.toMatch(/[├└]─ Body/);
+    stdin.write('E');
+    await flush();
+    frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).toContain('Body');
+  });
+
+  it('[C] collapses a cycle-participant group (set includes cycle participants)', async () => {
+    const CYCLE = [
+      {
+        name: 'NodeA',
+        componentId: 'a',
+        slots: [{ name: 'slotA', allowedComponents: ['NodeB'] }],
+      },
+      {
+        name: 'NodeB',
+        componentId: 'b',
+        slots: [{ name: 'slotB', allowedComponents: ['NodeA'] }],
+      },
+    ];
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    await flush();
+    // Cycle-tier rows render expanded by seed.
+    let frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▾ ⚠ NodeA/);
+    // Collapse-all must fold the cycle subtree.
+    stdin.write('C');
+    await flush();
+    frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▸ ⚠ NodeA/);
+    // Expand-all restores it.
+    stdin.write('E');
+    await flush();
+    frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▾ ⚠ NodeA/);
+  });
+
+  it('legend advertises [space] collapse + [E/C] and NOT "a/space" accept', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep components={GROUP} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    const legend = stripAnsi(lastFrame() ?? '');
+    expect(legend).toContain('[a] accept');
+    expect(legend).not.toContain('[a/space]');
+    expect(legend).toMatch(/\[space\][^\n]*expand\/collapse group/);
+    expect(legend).toMatch(/\[E\/C\]/);
+  });
+
+  it('help panel Selection entry no longer says "a / space"', async () => {
+    const { stdin, lastFrame } = render(
+      <ScopeGateStep components={GROUP} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('?');
+    await new Promise((r) => setTimeout(r, 30));
+    const help = stripAnsi(lastFrame() ?? '');
+    expect(help).not.toContain('a / space');
   });
 });
