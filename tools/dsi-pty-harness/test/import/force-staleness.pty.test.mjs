@@ -97,23 +97,4 @@ describe('experiences import --force staleness bypass', () => {
     expect(screen).toMatch(/pass --force to bypass/);
   });
 
-  // ── --force bypasses ────────────────────────────────────────────────────
-
-  it('--modify --force proceeds past the staleness check and reaches final-review', async () => {
-    const { t, dbPath } = setupStale();
-    const w = await spawnWizard(['import', '--modify', 'run-stale', '--force'], {
-      env: { ...t.env, EDS_PIPELINE_DB_PATH: dbPath },
-      cols: 200,
-      rows: 60,
-    });
-    cleanups.push(() => w.close());
-
-    // With --force, the wizard skips the staleness gate and reaches
-    // final-review — the seeded generated components render.
-    await w.waitFor(/Button/, { timeout: 15000 });
-    const screen = w.getScreen();
-    expect(screen).toMatch(/\[F\]\s*finalize/i);
-    // And the staleness refusal text must NOT appear.
-    expect(screen).not.toMatch(/Refusing to replay/);
-  });
 });

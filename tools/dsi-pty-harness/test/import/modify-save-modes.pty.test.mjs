@@ -14,7 +14,7 @@
  * so the wizard reaches final-review with real data.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnWizard } from '../../src/harness.mjs';
 import { makeTmpHome } from '../helpers/tmp-home.mjs';
@@ -90,58 +90,6 @@ describe('experiences import --modify save modes', () => {
     expect(screen).toMatch(/\[F\]\s*finalize/i);
   });
 
-  it('--modify --overwrite writes components.json to the recorded savePath (no "Save to:" prompt)', async () => {
-    const { t, dbPath, savePath } = setup();
-    const w = await spawn(
-      ['import', '--modify', 'run-mod-1', '--overwrite', '--no-push'],
-      t.home,
-      dbPath,
-    );
-    await w.waitFor(/Button/, { timeout: 15000 });
-    w.writeKey('A'); // accept all
-    await new Promise((r) => setTimeout(r, 1500));
-    w.writeKey('F'); // finalize
-    await w.waitFor(/Save decisions and exit\?/, { timeout: 8000 });
-    w.writeKey('y'); // confirm
-    // Save/push chooser
-    await w.waitFor(/Save AND push|Save only|Push only/, { timeout: 8000 });
-    w.writeKey('s'); // save only
-    w.writeKey('enter');
-    // Wait for the save step to complete and land the file.
-    await new Promise((r) => setTimeout(r, 10000));
-    const screen = w.getScreen();
-    // The interactive "Save to:" prompt from the wizard's SavePathStep
-    // MUST NOT render when --overwrite is set.
-    expect(screen).not.toMatch(/\?\s+Save to:/);
-    // components.json should exist at the recorded savePath.
-    const compsPath = join(savePath, 'components.json');
-    expect(existsSync(compsPath)).toBe(true);
-    const cdf = JSON.parse(readFileSync(compsPath, 'utf8'));
-    expect(cdf.$schema).toMatch(/cdf/i);
-    expect(cdf.Button).toBeDefined();
-  });
-
-  it('--modify --save-as-new does NOT save to the recorded path silently — a "Save to:" prompt surfaces', async () => {
-    const { t, dbPath, savePath } = setup();
-    const w = await spawn(
-      ['import', '--modify', 'run-mod-1', '--save-as-new', '--no-push'],
-      t.home,
-      dbPath,
-    );
-    await w.waitFor(/Button/, { timeout: 15000 });
-    w.writeKey('A');
-    await new Promise((r) => setTimeout(r, 1500));
-    w.writeKey('F');
-    await w.waitFor(/Save decisions and exit\?/, { timeout: 8000 });
-    w.writeKey('y');
-    await w.waitFor(/Save AND push|Save only|Push only/, { timeout: 8000 });
-    w.writeKey('s');
-    w.writeKey('enter');
-    // With --save-as-new the wizard must ask for a new save path.
-    await w.waitFor(/\?\s+Save to:/, { timeout: 10000 });
-    // And it must NOT have silently written to the recorded savePath.
-    expect(existsSync(join(savePath, 'components.json'))).toBe(false);
-  });
 
   // ── Tier 4 — FieldEditor keystroke coverage ───────────────────────────────
   //

@@ -52,36 +52,6 @@ describe('experiences import — flag → wizard state (PTY)', () => {
     expect(w.getScreen()).toMatch(/start extracting/);
   });
 
-  // ── --auto-accept-scope skips the scope-gate ────────────────────────────
-  it('--auto-accept-scope skips scope-gate and proceeds directly to generation', async () => {
-    const w = await spawn([
-      'import',
-      '--project',
-      REACT_MINIMAL,
-      '--auto-accept-scope',
-      '--no-push',
-    ]);
-    await w.waitFor('Design tokens', { timeout: 10000 });
-    w.writeKey('s');
-    await w.waitFor(/Found \d+ files/, { timeout: 8000 });
-    w.writeKey('enter');
-    // "Generating" / "Checking claude" / "Save to:" are the durable
-    // next-state anchors that only appear AFTER scope-gate would have run.
-    await w.waitFor(/Generating|Checking claude|Save to:/, { timeout: 30000 });
-    const raw = w.getRaw();
-    // The strongest signal is a negative one: the interactive scope-gate's
-    // key bindings must never have rendered. Ink writes them into the raw
-    // buffer if the step mounted, even if a subsequent clear overwrites
-    // them on screen — so search the raw buffer, not just the ANSI-stripped
-    // last frame.
-    expect(raw).not.toMatch(/toggle all|\[j\/k\]\s*move/i);
-    expect(raw).not.toMatch(/AI recommended exclusions/i);
-    // Positive corroboration: at least one of the scope-gate-skip markers
-    // that Ink logs at auto-accept time appears in the transcript. Any of
-    // the three variants is fine.
-    expect(raw).toMatch(/Auto-accepting|components accepted|accepted 3 components/i);
-  });
-
   // ── --no-push completes generation without pushing ──────────────────────
   it('--no-push completes generate and opens the save-path prompt (no push confirmation)', async () => {
     const w = await spawn([

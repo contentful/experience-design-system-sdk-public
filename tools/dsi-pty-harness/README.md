@@ -19,29 +19,50 @@ Private workspace package. Not published.
   LLM-driven testing.
 - `tests/*.pty.test.mjs` — vitest smoke tests. Opt-in via `PTY_TESTS=1`.
 
-## Local
+## First-time setup
 
 ```bash
-# From repo root, first time
+# From repo root
 pnpm install
 pnpm exec nx build experience-design-system-cli
 
-# Run the PTY smoke tests
-pnpm exec nx run dsi-pty-harness:pty-test
-
-# Real agents (skips stub) — hits actual claude/codex on $PATH.
-# Not run in CI.
-EDS_PTY_REAL_AGENT=1 pnpm exec nx run dsi-pty-harness:pty-test
+# If any PTY test exits immediately with an empty screen buffer,
+# the node-pty spawn-helper is missing its +x bit — run:
+node tools/dsi-pty-harness/scripts/fix-spawn-helper.mjs
 ```
 
-`vitest` in this package only picks up `*.pty.test.mjs` when `PTY_TESTS=1` is
-set, so `nx test` / `pnpm test` at the repo root is a no-op for this package.
+The root `postinstall` in `package.json` runs `fix-spawn-helper.mjs`
+automatically after every `pnpm install`. If you skipped scripts
+(`pnpm install --ignore-scripts`), ran a partial install, or otherwise
+end up with `posix_spawnp failed` / empty PTY output, run the helper
+directly.
+
+## Running the suite
+
+From the repo root:
+
+```bash
+PTY_TESTS=1 pnpm --filter @contentful/dsi-pty-harness exec vitest run
+```
+
+Run this after `pnpm exec nx build experience-design-system-cli` — the
+tests spawn the already-built CLI binary from `dist/`, not `src/`.
+
+`vitest` in this package only picks up `*.pty.test.mjs` /
+`*.validation.test.mjs` when `PTY_TESTS=1` is set, so `nx test` /
+`pnpm test` at the repo root is a no-op for this package.
+
+The `nx run dsi-pty-harness:pty-test` target exists but currently
+transitively depends on `experience-design-system-extraction:build`,
+which is broken on main. Use the `pnpm --filter … vitest run` command
+above instead.
 
 ### node-pty native module
 
 `node-pty` ships prebuilt binaries. pnpm strips the execute bit on
 `prebuilds/*/spawn-helper`, which breaks the module — the root `postinstall`
 runs `tools/dsi-pty-harness/scripts/fix-spawn-helper.mjs` to restore it.
+
 
 ## MCP server
 
@@ -100,6 +121,30 @@ describe('my flow', () => {
 
 `makeTmpHome()` gives each test an isolated `HOME` so `~/.config/experiences/runs.json`
 etc. don't leak between runs.
+
+### Seeded fixtures
+
+Tests that need the wizard to reach final-review / push / modify need a
+valid pipeline.db + runs.json + tokens.json placeholders. Pass a `seed`
+option to `makeTmpHome` and it wires the whole thing up:
+
+```js
+const t = makeTmpHome({ seed: 'default' })
+// t.dbPath          — copied pipeline.db under $HOME
+// t.savePath        — <home>/save/ with a tokens.json placeholder
+// t.projectPath     — <home>/fake-project/ with .contentful/tokens.json
+// t.runId           — 'run-seeded' (already in runs.json)
+// t.sessionId       — SEEDED_SESSION_ID from the fixture DB
+// t.env.EDS_PIPELINE_DB_PATH — wired through so the CLI opens the seed
+```
+
+Use `seed: 'with-props'` for the FieldEditor per-field tests (variant
+of pipeline.db whose raw_props have populated `cdf_type` +
+`cdf_category`).
+
+Tests that intentionally want a bare HOME (runs.json v1/v2 migration,
+malformed-file handling, "no prior runs" flows) omit the `seed`
+option.
 
 ## Not on Windows
 
