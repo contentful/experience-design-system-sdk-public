@@ -1,5 +1,5 @@
 import { Box, Text, useStdout } from 'ink';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import {
@@ -15,12 +15,19 @@ import {
 import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { findSlotCycles, type SlotCycle } from '../../../analyze/cycle-detection.js';
 import { computeAutocomplete } from '../autocomplete.js';
+import {
+  computeFilterKeys,
+  intersectFilterKeys,
+  type FilterCategory,
+} from '../step-filters.js';
 import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { computeLineageLayout } from '../lineage-layout.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
+import { legendEntry } from '../components/LegendEntry.js';
+import { resolveGroupRoot } from '../group-collapse.js';
 import {
   buildCycleUnits,
   collectReachableCycleUnits,
@@ -65,6 +72,12 @@ export type ScopeGateStepProps = {
 // generous, and we append an ellipsis when the source exceeds the budget.
 const FOCUSED_REASON_MAX_LINES = 4;
 
+// L11 — help groups ordered by WHERE a key is used (navigation → selection →
+// sidebar views/filters → panels → search → general). Sidebar-view keys (flat,
+// lineage, focus-lineage, broken filter, only-cycles filter) cluster together
+// because they all reshape the left column. The two cycle features carry
+// DISTINCT labels: `[c]` = "Cycle list" (breakdown panel), `[o]` = "Only cycles"
+// (sidebar filter).
 const HELP_SECTIONS: HelpSection[] = [
   {
     title: 'Navigation',
@@ -77,10 +90,30 @@ const HELP_SECTIONS: HelpSection[] = [
   {
     title: 'Selection',
     entries: [
-      { keys: 'a / space', label: 'Accept' },
+      { keys: 'a', label: 'Accept' },
       { keys: 'r', label: 'Reject' },
       { keys: 'A', label: 'Toggle all' },
       { keys: 'Y', label: 'Accept non-flagged' },
+    ],
+  },
+  {
+    title: 'Sidebar views',
+    entries: [
+      { keys: 'L', label: 'Flat view' },
+      { keys: 'l', label: 'Lineage' },
+      { keys: 'i', label: 'Focus lineage' },
+      { keys: 'w', label: 'Only broken' },
+      { keys: 'o', label: 'Only cycles' },
+      { keys: 'space', label: 'Expand/collapse group' },
+      { keys: 'E / C', label: 'Expand/collapse all' },
+    ],
+  },
+  {
+    title: 'Panels',
+    entries: [
+      { keys: 'c', label: 'Cycle list' },
+      { keys: 's', label: 'AI reason' },
+      { keys: 'x', label: 'AI exclusions' },
     ],
   },
   {
@@ -88,17 +121,6 @@ const HELP_SECTIONS: HelpSection[] = [
     entries: [
       { keys: '/', label: 'Search' },
       { keys: 'n', label: 'Next match' },
-      { keys: 'i', label: 'Focus lineage' },
-    ],
-  },
-  {
-    title: 'Panels',
-    entries: [
-      { keys: 'l', label: 'Lineage' },
-      { keys: 'c', label: 'Cycles' },
-      { keys: 's', label: 'AI reason' },
-      { keys: 'x', label: 'AI exclusions' },
-      { keys: 'L', label: 'Flat view' },
     ],
   },
   {
@@ -184,6 +206,11 @@ export function ScopeGateStep({
   // `filterVisibleKeys`. Esc clears jumpFilter first (see input handler).
   const [jumpFilterTarget, setJumpFilterTarget] = useState<string | null>(null);
   const [columnOneView, setColumnOneView] = useState<'grouped' | 'flat'>('grouped');
+  // L8 — category filters (broken / cycles). Each is an independent toggle;
+  // multiple active filters UNION their key sets. ScopeGate has no "deleted"
+  // concept (that's a GenerateReview-only removedComponents notion), so only
+  // `broken` and `cycles` are offered here.
+  const [activeFilters, setActiveFilters] = useState<Set<FilterCategory>>(new Set());
   const [showHelp, setShowHelp] = useState(false);
 
   // Everything defaults to undecided. AI decisions are advisory only —
@@ -262,34 +289,95 @@ export function ScopeGateStep({
 
   const closures = useMemo(() => computeAllClosures(graph), [graph]);
 
+  // L9 — expand/collapse groups (parity with GenerateReview). `expandedGroups`
+  // holds every currently-EXPANDED group root. Seeded EXPANDED so the default
+  // view matches the previous always-expanded behavior; [C] then collapses.
+  // The seed (and [E] expand-all) UNIONS closure roots AND cycle participants —
+  // cycle-tier rows in GroupedSidebar honor `expandedGroups.has` too, so
+  // omitting them would make cycle subtrees uncollapsible. ScopeGate's
+  // `components` are present at mount (unlike GR's async DB reload), so a lazy
+  // initializer seeds synchronously; a latched effect re-seeds if the derived
+  // graph first arrives empty and later populates.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
+    const seed = new Set<string>(closures.keys());
+    for (const p of cycleParticipants) seed.add(p);
+    return seed;
+  });
+  const seededGroupsRef = useRef(closures.size > 0 || cycleParticipants.size > 0);
+  useEffect(() => {
+    if (seededGroupsRef.current) return;
+    if (closures.size === 0 && cycleParticipants.size === 0) return;
+    seededGroupsRef.current = true;
+    const seed = new Set<string>(closures.keys());
+    for (const p of cycleParticipants) seed.add(p);
+    setExpandedGroups(seed);
+  }, [closures, cycleParticipants]);
+
+  // Legend gate: only advertise [space]/[E]/[C] when there's a collapsible
+  // group — a closure with >1 node OR any cycle participant (cycle-tier rows
+  // are collapsible). Flat manifests don't chase a no-op key.
+  const hasGroupRoots = useMemo(() => {
+    if (cycleParticipants.size > 0) return true;
+    for (const c of closures.values()) if (c.nodes.length > 1) return true;
+    return false;
+  }, [closures, cycleParticipants]);
+
+  const toggleExpanded = (rootName: string): void => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(rootName)) next.delete(rootName);
+      else next.add(rootName);
+      return next;
+    });
+  };
+
+  // L8 — "broken" in ScopeGate = AI-flagged (rejected/failed). Component keys
+  // feeding the `broken` category filter.
+  const brokenKeys = useMemo<Set<string>>(() => {
+    const set = new Set<string>();
+    for (const c of components) if (isAiFlagged(c)) set.add(c.name);
+    return set;
+  }, [components]);
+
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
     // T5: jump-filter takes priority. When active, the sidebar shows only the
-    // target + its transitive ancestors — search-neighborhood is set aside
-    // until Esc clears the jump.
+    // target + its transitive ancestors — search-neighborhood + category
+    // filters are set aside until Esc clears the jump.
     if (jumpFilterTarget) {
       return findAllAncestors(jumpFilterTarget, graph);
     }
-    if (!searchQuery) return undefined;
-    const matches = groupedItems
-      .map((it) => it.key)
-      .filter((k) => fuzzyMatches(searchQuery, k));
-    if (matches.length === 0) return undefined;
-    return computeDirectNeighborhood(matches, graph);
-  }, [jumpFilterTarget, searchQuery, groupedItems, graph]);
+    // L8: category filters (broken / cycles) → union of matching keys.
+    const categoryKeys = computeFilterKeys({
+      filters: activeFilters,
+      data: { cycles: cycleParticipants, broken: brokenKeys },
+    });
+    // Search-neighborhood key set (undefined when no query / no match).
+    const searchKeys = (() => {
+      if (!searchQuery) return undefined;
+      const matches = groupedItems
+        .map((it) => it.key)
+        .filter((k) => fuzzyMatches(searchQuery, k));
+      if (matches.length === 0) return undefined;
+      return computeDirectNeighborhood(matches, graph);
+    })();
+    // Precedence: jump (above) → category ∩ search → whichever is active.
+    // When both a category filter and search are active, INTERSECT so only
+    // components satisfying BOTH survive; either alone applies on its own.
+    return intersectFilterKeys(categoryKeys, searchKeys);
+  }, [jumpFilterTarget, activeFilters, cycleParticipants, brokenKeys, searchQuery, groupedItems, graph]);
 
   const visibleRows = useMemo(
     () =>
       buildVisibleRows({
         items: groupedItems,
         cycleParticipants,
-        expandedGroups: new Set(),
-        alwaysExpanded: true,
+        expandedGroups,
         showFlatTier: false,
         viewMode: columnOneView,
         graph,
         filterVisibleKeys,
       }),
-    [groupedItems, cycleParticipants, columnOneView, graph, filterVisibleKeys],
+    [groupedItems, cycleParticipants, expandedGroups, columnOneView, graph, filterVisibleKeys],
   );
 
   const total = visibleRows.length;
@@ -679,6 +767,19 @@ export function ScopeGateStep({
       setSearchOpen(true);
       return;
     }
+    // L8 — category filter toggles. `[o]` cycles, `[w]` broken. Independent
+    // toggles; multiple active filters union in `filterVisibleKeys`. Grouped
+    // view hides non-matching rows; flat view dims them (existing behavior).
+    if (input === 'o' || input === 'w') {
+      const category: FilterCategory = input === 'o' ? 'cycles' : 'broken';
+      setActiveFilters((prev) => {
+        const next = new Set(prev);
+        if (next.has(category)) next.delete(category);
+        else next.add(category);
+        return next;
+      });
+      return;
+    }
     // T5 — jump-and-filter to the focused component + all transitive
     // ancestors. Grouped view only (buildVisibleRows ignores
     // `filterVisibleKeys` in flat view). Toggling `[i]` on the same target
@@ -697,9 +798,38 @@ export function ScopeGateStep({
       setJumpFilterTarget((prev) => (prev === targetKey ? null : targetKey));
       return;
     }
-    if (input === 'a' || input === ' ' || input === 'r') {
+    // L9 — [Space] toggles collapse of the focused group (GR parity). Only in
+    // the main sidebar: the two added columns are FLAT lists (no nesting to
+    // collapse), so Space there is a no-op. Rebound from accept — [a] accepts,
+    // [Space] no longer accepts.
+    if (input === ' ') {
+      if (focusedColumn !== 'main') return;
+      const key = focusedRowKey();
+      if (!key) return;
+      const rootName = resolveGroupRoot(key, closures, cycleParticipants);
+      if (!rootName) return;
+      toggleExpanded(rootName);
+      return;
+    }
+    // L9 — [E] expand-all / [C] collapse-all (GR parity). [E] unions every
+    // closure root with >1 node AND every cycle participant (cycle-tier rows
+    // honor `expandedGroups.has` too). [C] clears the set. Main sidebar only.
+    if (input === 'E' && focusedColumn === 'main') {
+      const roots = new Set<string>();
+      for (const [name, closure] of closures.entries()) {
+        if (closure.nodes.length > 1) roots.add(name);
+      }
+      for (const p of cycleParticipants) roots.add(p);
+      setExpandedGroups(roots);
+      return;
+    }
+    if (input === 'C' && focusedColumn === 'main') {
+      setExpandedGroups(new Set());
+      return;
+    }
+    if (input === 'a' || input === 'r') {
       const isReject = input === 'r';
-      // Side columns only show accepted items — [a]/Space are no-ops there
+      // Side columns only show accepted items — [a] is a no-op there
       // (re-accepting is meaningless). [r] rejects the highlighted row via
       // requestReject (which fires the cascade confirm-prompt when the blast
       // radius warrants it).
@@ -730,8 +860,7 @@ export function ScopeGateStep({
       const nextRows = buildVisibleRows({
         items: groupedItems,
         cycleParticipants,
-        expandedGroups: new Set(),
-        alwaysExpanded: true,
+        expandedGroups,
         showFlatTier: false,
         viewMode: nextView,
         graph,
@@ -1041,13 +1170,12 @@ export function ScopeGateStep({
             selectedIdx={selectedItemIdx}
             selectedRowIdx={safeCursor}
             onSelect={() => {}}
-            expandedGroups={new Set()}
-            onToggleExpanded={() => {}}
+            expandedGroups={expandedGroups}
+            onToggleExpanded={toggleExpanded}
             width={sidebarWidth}
             focused={focusedColumn === 'main'}
             scrollOffset={scrollOffset}
             visibleCount={visibleCount}
-            alwaysExpanded={true}
             showFlatTier={false}
             selectionStateByKey={selectionStateByKey}
             aiFlaggedByKey={aiFlaggedByKey}
@@ -1184,7 +1312,12 @@ export function ScopeGateStep({
         </Box>
       )}
 
-      <Box gap={3} marginTop={1} flexWrap="wrap">
+      {/* L11 — one wrapping legend region. Each entry is a single atomic Text
+          node (via legendEntry) so a key never wraps away from its label.
+          Toggle/mode keys ([l] [i] [L] [o] [/] [w]) render inverse+yellow when
+          active so the legend reflects current state. Distinct cycle labels:
+          [c] "cycle list" (panel) vs [o] "only cycles" (filter). */}
+      <Box gap={2} marginTop={1} flexWrap="wrap">
         {includedCount > 0 ? (
           <Text>
             <Text color="green">{includedCount}</Text>
@@ -1193,67 +1326,27 @@ export function ScopeGateStep({
         ) : (
           <Text color="yellow">none included</Text>
         )}
-        <Text>
-          <Text color="cyan">[j/k]</Text> <Text dimColor>move</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[a/space]</Text> <Text dimColor>accept</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[r]</Text> <Text dimColor>reject</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[l]</Text> <Text dimColor>lineage</Text>
-        </Text>
-        {hasCycles && (
-          <Text>
-            <Text color="cyan">[c]</Text> <Text dimColor>cycles</Text>
-          </Text>
-        )}
-        <Text>
-          <Text color="cyan">[/]</Text> <Text dimColor>search</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[i]</Text> <Text dimColor>focus lineage</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[A]</Text> <Text dimColor>toggle all</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[Y]</Text> <Text dimColor>accept non-flagged</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[L]</Text> <Text dimColor>flat</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[f]</Text> <Text dimColor>continue</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[?]</Text> <Text dimColor>help</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[q]</Text> <Text dimColor>quit</Text>
-        </Text>
-        {columnPlan.layout === 'three-column' && (
-          <Text>
-            <Text color="cyan">[Tab/Shift-Tab]</Text> <Text dimColor>switch column</Text>
-          </Text>
-        )}
-        {columnPlan.layout === 'three-column' && (
-          <Text>
-            <Text color="cyan">[Enter]</Text> <Text dimColor>jump to main</Text>
-          </Text>
-        )}
-        {hasAnyAi && (
-          <Text>
-            <Text color="cyan">[s]</Text> <Text dimColor>AI reason</Text>
-          </Text>
-        )}
-        {hasAnyAi && (
-          <Text>
-            <Text color="cyan">[x]</Text> <Text dimColor>AI exclusions</Text>
-          </Text>
-        )}
+        {legendEntry('[j/k]', 'move')}
+        {legendEntry('[a]', 'accept')}
+        {legendEntry('[r]', 'reject')}
+        {hasGroupRoots && legendEntry('[space]', 'expand/collapse group')}
+        {hasGroupRoots && legendEntry('[E/C]', 'expand/collapse all')}
+        {legendEntry('[A]', 'toggle all')}
+        {legendEntry('[Y]', 'accept non-flagged')}
+        {legendEntry('[L]', 'flat', columnOneView === 'flat')}
+        {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
+        {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
+        {legendEntry('[w]', 'only broken', activeFilters.has('broken'))}
+        {hasCycles && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
+        {hasCycles && legendEntry('[c]', 'cycle list', cyclesPanelOpen)}
+        {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
+        {legendEntry('[f]', 'continue')}
+        {legendEntry('[?]', 'help')}
+        {legendEntry('[q]', 'quit')}
+        {columnPlan.layout === 'three-column' && legendEntry('[Tab/Shift-Tab]', 'switch column')}
+        {columnPlan.layout === 'three-column' && legendEntry('[Enter]', 'jump to main')}
+        {hasAnyAi && legendEntry('[s]', 'AI reason', reasonPanelOpen)}
+        {hasAnyAi && legendEntry('[x]', 'AI exclusions', aiRationalePanel.isOpen)}
         {hasAnyAi && (
           <Text>
             <Text color="yellow" bold>[×]</Text> <Text dimColor>AI recommends excluding</Text>
