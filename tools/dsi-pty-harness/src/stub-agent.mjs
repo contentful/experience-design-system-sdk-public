@@ -18,11 +18,23 @@
  *   STUB_DELAY_MS    : delay before emitting result (default 50)
  *   STUB_STDOUT_FILE : if set, write this file's contents to stdout instead
  *   STUB_STDERR_FILE : if set, write this file's contents to stderr instead
+ *   STUB_ARGV_LOG    : if set, append one JSON line per invocation to this
+ *                      file with { argv, cwd, ts }. Lets tests assert what
+ *                      flags the wizard passed through (e.g. --model).
  */
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 
 const argv = process.argv.slice(2);
 const sub = argv[0];
+
+if (process.env.STUB_ARGV_LOG) {
+  try {
+    appendFileSync(
+      process.env.STUB_ARGV_LOG,
+      JSON.stringify({ argv, cwd: process.cwd() }) + '\n',
+    );
+  } catch {}
+}
 
 // --- auth probe ---------------------------------------------------------
 if (sub === 'auth' && argv[1] === 'status') {
@@ -46,21 +58,47 @@ if (process.env.STUB_STDERR_FILE) {
 const delay = Number(process.env.STUB_DELAY_MS ?? 50);
 const exitCode = Number(process.env.STUB_EXIT_CODE ?? 0);
 
+// Best-effort prop recovery from the prompt argv. The wizard's parser
+// (agent-runner.ts:parseToolCallLines) reads tool-call JSON one-per-line
+// off stdout — no fencing. Emit a classify_component + one classify_prop
+// per detected prop so the pipeline never trips "agent produced no tool
+// calls" when generate is invoked against the react-minimal fixture.
+function findPropsInPrompt() {
+  const prompt = argv.join(' ');
+  const props = new Set();
+  for (const m of prompt.matchAll(
+    /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\??\s*:\s*(string|number|boolean|ReactNode|ReactElement|[A-Z][a-zA-Z]*)/g,
+  )) {
+    const name = m[1];
+    if (!name) continue;
+    if (['type', 'interface', 'export', 'import', 'default', 'React'].includes(name)) continue;
+    props.add(name);
+    if (props.size >= 4) break;
+  }
+  return [...props];
+}
+
 setTimeout(() => {
-  // Emit a couple of progress=… stderr lines so the wizard sees activity.
   process.stderr.write('progress=starting\n');
   process.stderr.write('progress=analyzing\n');
+
+  process.stdout.write(
+    JSON.stringify({
+      tool: 'classify_component',
+      description: 'stub-generated component',
+    }) + '\n',
+  );
+  for (const prop of findPropsInPrompt()) {
+    process.stdout.write(
+      JSON.stringify({
+        tool: 'classify_prop',
+        prop,
+        cdf_type: 'string',
+        cdf_category: 'content',
+      }) + '\n',
+    );
+  }
+
   process.stderr.write('progress=done\n');
-
-  // Emit a fenced EDS_OUTPUT block on stdout (matches the parser in
-  // agent-runner.ts). Content is an intentionally-minimal placeholder.
-  const payload = JSON.stringify({
-    components: [],
-    notes: 'stub-agent canned response',
-  });
-  process.stdout.write('<<<EDS_OUTPUT_START>>>\n');
-  process.stdout.write(payload + '\n');
-  process.stdout.write('<<<EDS_OUTPUT_END>>>\n');
-
   process.exit(exitCode);
 }, delay);
