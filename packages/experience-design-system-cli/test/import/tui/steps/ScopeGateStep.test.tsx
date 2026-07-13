@@ -1914,4 +1914,39 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(onConfirm).not.toHaveBeenCalled();
     });
   });
+
+  describe('L2c — height-aware layout shrinks the sidebar when the lineage panel opens', () => {
+    const MANY = Array.from({ length: 30 }, (_, i) => ({
+      name: `Comp${String(i).padStart(2, '0')}`,
+      componentId: `c${i}`,
+    }));
+
+    function countSidebarRows(frame: string): number {
+      return frame
+        .split('\n')
+        .filter((l) => /Comp\d\d/.test(l) && !/Lineage/.test(l)).length;
+    }
+
+    it('renders fewer sidebar rows with the panel open than closed (fits terminal)', async () => {
+      const closed = render(
+        <ScopeGateStep components={MANY} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      const closedRows = countSidebarRows(closed.lastFrame() ?? '');
+
+      const { stdin, lastFrame } = render(
+        <ScopeGateStep components={MANY} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('l'); // open lineage panel
+      await new Promise((r) => setTimeout(r, 30));
+      const openFrame = lastFrame() ?? '';
+      const openRows = countSidebarRows(openFrame);
+
+      // Panel is open (its header renders).
+      expect(openFrame).toContain('Lineage:');
+      // Sidebar shrank: with stdout.rows unavailable in tests the layout uses
+      // the conservative fallback, which shrinks the sidebar well below the
+      // full closed height so the whole stack fits.
+      expect(openRows).toBeLessThan(closedRows);
+    });
+  });
 });

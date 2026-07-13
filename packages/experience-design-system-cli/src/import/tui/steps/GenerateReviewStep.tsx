@@ -51,6 +51,7 @@ import { findAllAncestors } from '../../../analyze/lineage.js';
 import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
+import { computeLineageLayout } from '../lineage-layout.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
 import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
@@ -121,7 +122,6 @@ export function sortComponentsForSidebar<T extends { key: string; entry: CDFComp
   });
 }
 
-const VISIBLE_COUNT = 20;
 const PANEL_HEIGHT = 22;
 
 const HELP_SECTIONS: HelpSection[] = [
@@ -834,6 +834,17 @@ export function GenerateReviewStep({
     focusedComponentKey,
     componentGraph,
   );
+
+  // L2c — height-aware layout (mirrors ScopeGateStep). Shrink the sidebar and
+  // window the lineage panel from the remaining rows while the panel is open
+  // so the total frame fits `stdout.rows`; Ink then diffs in place instead of
+  // clearing + repainting each cursor move (the flash). Scroll math below uses
+  // `visibleCount` so the cursor stays inside the shrunk window.
+  const { sidebarVisible: visibleCount, panelMaxRows } = computeLineageLayout({
+    rows: stdout?.rows ?? 24,
+    panelOpen: lineagePanel.isOpen,
+    entryCount: lineageEntries.length,
+  });
   useEffect(() => {
     if (selectableRowPositions.length === 0) return;
     const cursorInRange = selectableRowPositions.includes(cursorRowIdx);
@@ -842,7 +853,7 @@ export function GenerateReviewStep({
     // scroll offset can point past the shorter list. Slicing then hides rows
     // before the stale offset. Clamp scroll to the largest offset that still
     // renders a full window (or 0 when the list fits entirely).
-    const maxScroll = Math.max(0, visibleRowsMemo.length - VISIBLE_COUNT);
+    const maxScroll = Math.max(0, visibleRowsMemo.length - visibleCount);
     const scrollNeedsClamp = sidebarScrollOffset > maxScroll;
     if (cursorInRange && !scrollNeedsClamp) return;
     const nextCursor = cursorInRange ? cursorRowIdx : selectableRowPositions[0];
@@ -850,7 +861,7 @@ export function GenerateReviewStep({
       cursorRowIdx: nextCursor,
       sidebarScrollOffset: Math.min(sidebarScrollOffset, maxScroll),
     }));
-  }, [selectableRowPositions, cursorRowIdx, sidebarScrollOffset, visibleRowsMemo.length]);
+  }, [selectableRowPositions, cursorRowIdx, sidebarScrollOffset, visibleRowsMemo.length, visibleCount]);
 
   // Feature 1: load review metadata (rationale + source location) for the
   // selected component when selection changes.
@@ -964,7 +975,7 @@ export function GenerateReviewStep({
     setNav(({ sidebarScrollOffset: prev }) => {
       let nextOff = prev;
       if (rowIdx < prev) nextOff = rowIdx;
-      else if (rowIdx >= prev + VISIBLE_COUNT) nextOff = rowIdx - VISIBLE_COUNT + 1;
+      else if (rowIdx >= prev + visibleCount) nextOff = rowIdx - visibleCount + 1;
       return { cursorRowIdx: rowIdx, sidebarScrollOffset: nextOff };
     });
     setJsonScrollOffset(0);
@@ -1533,8 +1544,8 @@ export function GenerateReviewStep({
       const nextScroll =
         nextCursor < sidebarScrollOffset
           ? nextCursor
-          : nextCursor >= sidebarScrollOffset + VISIBLE_COUNT
-            ? nextCursor - VISIBLE_COUNT + 1
+          : nextCursor >= sidebarScrollOffset + visibleCount
+            ? nextCursor - visibleCount + 1
             : sidebarScrollOffset;
       setColumnOneView(nextView);
       setNav({ cursorRowIdx: nextCursor, sidebarScrollOffset: nextScroll });
@@ -1676,7 +1687,7 @@ export function GenerateReviewStep({
             );
         const nextSelectableIdx = Math.min(positions.length - 1, currentSelectableIdx + 1);
         const newRow = positions[nextSelectableIdx] ?? prev;
-        const nextOff = newRow >= off + VISIBLE_COUNT ? newRow - VISIBLE_COUNT + 1 : off;
+        const nextOff = newRow >= off + visibleCount ? newRow - visibleCount + 1 : off;
         return { cursorRowIdx: newRow, sidebarScrollOffset: nextOff };
       });
       setJsonScrollOffset(0);
@@ -1910,6 +1921,7 @@ export function GenerateReviewStep({
           entries={lineageEntries}
           cursor={lineageCursor}
           jumpables={lineageJumpables}
+          maxRows={panelMaxRows}
         />
       )}
       {!dialogOpen &&
@@ -2023,7 +2035,7 @@ export function GenerateReviewStep({
             previewAnnotationByKey={previewAnnotationByKey}
             selectionStateByKey={selectionStateByKey}
             scrollOffset={sidebarScrollOffset}
-            visibleCount={VISIBLE_COUNT}
+            visibleCount={visibleCount}
             dimPredicate={dimPredicate}
             visibleRows={visibleRowsMemo}
             viewMode={columnOneView}
