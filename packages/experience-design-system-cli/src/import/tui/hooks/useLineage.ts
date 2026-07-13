@@ -44,12 +44,23 @@ export function useLineage(
   focusedKey: string | null,
   graph: ComponentGraphNode[],
 ): UseLineageResult {
-  const closures = useMemo(() => computeAllClosures(graph), [graph]);
+  // L2 (plan §4): callers rebuild `graph` on every render (ScopeGate reloads
+  // scope components from the DB upstream, so its `groupedItems`→`graph` memo
+  // chain produces a new array identity each render). Gating the memos below
+  // on that unstable reference re-derives everything every render, which
+  // remounts the lineage panel and makes the banner flash. Collapse the graph
+  // to a structural signature and pin a stable reference off it so an
+  // equivalent-but-new graph array does NOT invalidate the derived rows.
+  // GenerateReview holds its graph in `useState` (stable) and never flashed.
+  const graphKey = useMemo(() => JSON.stringify(graph), [graph]);
+  const stableGraph = useMemo(() => graph, [graphKey]);
+
+  const closures = useMemo(() => computeAllClosures(stableGraph), [stableGraph]);
 
   const entries = useMemo<LineageEntry[]>(() => {
     if (!focusedKey) return [];
     const name = focusedKey;
-    const tree = buildAncestorTree(name, graph);
+    const tree = buildAncestorTree(name, stableGraph);
     const closure = closures.get(name);
     const out: LineageEntry[] = [];
     out.push({ kind: 'section', label: 'Ancestors:' });
@@ -79,7 +90,7 @@ export function useLineage(
       }
     }
     return out;
-  }, [focusedKey, graph, closures]);
+  }, [focusedKey, stableGraph, closures]);
 
   const jumpables = useMemo<LineageJumpable[]>(
     () =>
