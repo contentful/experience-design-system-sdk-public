@@ -14,6 +14,7 @@ import {
 } from '../../../analyze/composite-closure.js';
 import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { findSlotCycles, type SlotCycle } from '../../../analyze/cycle-detection.js';
+import { computeAutocomplete } from '../autocomplete.js';
 import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
@@ -130,6 +131,9 @@ export function ScopeGateStep({
     useState<{ target: string; ancestors: string[]; descendants: string[] } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // L4 — Tab autocomplete possibilities strip. Populated when Tab finds >1
+  // prefix-match; cleared on the next keystroke/backspace/close.
+  const [autocompleteCandidates, setAutocompleteCandidates] = useState<string[]>([]);
   // T5 — jump-and-filter target. Independent of `searchQuery` so pressing
   // `[i]` doesn't drive fuzzy matching; the two filters are OR-merged into
   // `filterVisibleKeys`. Esc clears jumpFilter first (see input handler).
@@ -395,6 +399,7 @@ export function ScopeGateStep({
       if (key.escape) {
         setSearchOpen(false);
         setSearchQuery('');
+        setAutocompleteCandidates([]);
         return;
       }
       if (key.return) {
@@ -404,6 +409,7 @@ export function ScopeGateStep({
         if (!searchQuery || searchMatches.length === 0) {
           setSearchOpen(false);
           setSearchQuery('');
+          setAutocompleteCandidates([]);
           return;
         }
         // Jump to nearest match, close input, preserve query.
@@ -438,24 +444,26 @@ export function ScopeGateStep({
         return;
       }
       if (key.tab) {
-        // T3: Tab autocompletes the query to the first alphabetical name
-        // among `searchMatches` that has the current query as a
-        // case-insensitive prefix. Input stays open. No-op when no
-        // prefix-match exists (never crashes).
-        if (!searchQuery) return;
-        const q = searchQuery.toLowerCase();
-        const prefix = searchMatches
-          .filter((n) => n.toLowerCase().startsWith(q))
-          .sort();
-        const pick = prefix[0];
-        if (pick) setSearchQuery(pick);
+        // L4: shell-style Tab autocomplete. Complete to the longest common
+        // prefix of all prefix-matching component names; when >1 candidate,
+        // surface a possibilities strip. Prefix semantics (NOT fuzzy) — the
+        // fuzzy `[n]` match-cycle is a separate, preserved path. No-op with no
+        // candidates (never crashes). Input stays open.
+        const { completion, candidates } = computeAutocomplete(
+          searchQuery,
+          components.map((c) => c.name),
+        );
+        setSearchQuery(completion);
+        setAutocompleteCandidates(candidates);
         return;
       }
       if (key.backspace) {
+        setAutocompleteCandidates([]);
         setSearchQuery((q) => q.slice(0, -1));
         return;
       }
       if (input && input.length === 1 && input >= ' ' && input !== '\r' && input !== '\n') {
+        setAutocompleteCandidates([]);
         setSearchQuery((q) => q + input);
         return;
       }
@@ -533,6 +541,7 @@ export function ScopeGateStep({
       }
       if (key.escape && searchQuery) {
         setSearchQuery('');
+        setAutocompleteCandidates([]);
         return;
       }
       onQuit();
@@ -1036,7 +1045,7 @@ export function ScopeGateStep({
       )}
 
       {searchOpen && (
-        <Box marginTop={1}>
+        <Box marginTop={1} flexDirection="column">
           <Text>
             {`/${searchQuery}`}
             <Text color="cyan">{'▎'}</Text>
@@ -1044,6 +1053,11 @@ export function ScopeGateStep({
               <Text dimColor>{`  (${totalMatches}/${totalComponents} matches)`}</Text>
             )}
           </Text>
+          {autocompleteCandidates.length > 1 && (
+            <Text dimColor>
+              {`  possibilities: ${autocompleteCandidates.join(' · ').slice(0, 120)}`}
+            </Text>
+          )}
         </Box>
       )}
       {!searchOpen && searchQuery && (

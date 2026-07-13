@@ -53,6 +53,7 @@ import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
 import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
+import { computeAutocomplete } from '../autocomplete.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -228,6 +229,9 @@ export function GenerateReviewStep({
   // sidebar-with-active-query clears.
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // L4 — Tab autocomplete possibilities strip. Populated when Tab finds >1
+  // prefix-match; cleared on the next keystroke/backspace/close.
+  const [autocompleteCandidates, setAutocompleteCandidates] = useState<string[]>([]);
   // T5b (layout plan §B) — jump-and-filter target. Mirrors ScopeGateStep T5:
   // independent of `searchQuery`; OR-merged into `filterVisibleKeys` with
   // jump-target winning priority. Esc clears this before clearing the
@@ -1045,12 +1049,14 @@ export function GenerateReviewStep({
       if (key.escape) {
         setSearchOpen(false);
         setSearchQuery('');
+        setAutocompleteCandidates([]);
         return;
       }
       if (key.return) {
         // T7b delta 3 — mirror ScopeGate: Enter with empty query OR zero
         // matches clears + closes so the user doesn't get stuck with a
         // dim-all state and no on-screen recovery besides Esc.
+        setAutocompleteCandidates([]);
         if (!searchQuery || searchMatches.length === 0) {
           setSearchOpen(false);
           setSearchQuery('');
@@ -1078,25 +1084,26 @@ export function GenerateReviewStep({
         return;
       }
       if (key.tab) {
-        // T3: Tab autocompletes the query to the first alphabetical
-        // component name (by key) that has the current query as a
-        // case-insensitive prefix. Input stays open. No-op when no
-        // prefix-match exists.
-        if (!searchQuery) return;
-        const q = searchQuery.toLowerCase();
-        const prefix = components
-          .map((c) => c.key)
-          .filter((n) => n.toLowerCase().startsWith(q))
-          .sort();
-        const pick = prefix[0];
-        if (pick) setSearchQuery(pick);
+        // L4: shell-style Tab autocomplete. Complete to the longest common
+        // prefix of all prefix-matching component keys; when >1 candidate,
+        // surface a possibilities strip. Prefix semantics (NOT fuzzy) — the
+        // fuzzy `[n]` match-cycle is a separate, preserved path. No-op with no
+        // candidates. Input stays open.
+        const { completion, candidates } = computeAutocomplete(
+          searchQuery,
+          components.map((c) => c.key),
+        );
+        setSearchQuery(completion);
+        setAutocompleteCandidates(candidates);
         return;
       }
       if (key.backspace) {
+        setAutocompleteCandidates([]);
         setSearchQuery((q) => q.slice(0, -1));
         return;
       }
       if (input && input.length === 1 && input >= ' ' && input !== '\r' && input !== '\n') {
+        setAutocompleteCandidates([]);
         setSearchQuery((q) => q + input);
         return;
       }
@@ -1367,6 +1374,7 @@ export function GenerateReviewStep({
     }
     if (key.escape && searchQuery) {
       setSearchQuery('');
+      setAutocompleteCandidates([]);
       return;
     }
     if (input === 'q') {
@@ -2146,7 +2154,7 @@ export function GenerateReviewStep({
         </Box>
       )}
       {!dialogOpen && searchOpen && (
-        <Box>
+        <Box flexDirection="column">
           <Text>
             {`/${searchQuery}`}
             <Text color="cyan">{'▎'}</Text>
@@ -2154,6 +2162,11 @@ export function GenerateReviewStep({
               <Text dimColor>{`  (${searchMatchCount}/${components.length} matches)`}</Text>
             )}
           </Text>
+          {autocompleteCandidates.length > 1 && (
+            <Text dimColor>
+              {`  possibilities: ${autocompleteCandidates.join(' · ').slice(0, 120)}`}
+            </Text>
+          )}
         </Box>
       )}
       {!dialogOpen && !searchOpen && searchQuery && (

@@ -1773,12 +1773,34 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     expect(titleLine).toContain('Banner');
   });
 
-  it('T3: Tab while search input is OPEN autocompletes query to first prefix-match', async () => {
+  it('L4: Tab with a single prefix-match completes to the full name (input open)', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'Widget', entry: makeEntry('Widget') },
-      { key: 'Wizard', entry: makeEntry('Wizard') },
-      { key: 'Waffle', entry: makeEntry('Waffle') },
+      { key: 'Card', entry: makeEntry('Card') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('C');
+    await tick();
+    stdin.write('\t'); // Tab — single prefix-match → complete to Card
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('/Card');
+    // Input remains open (cursor block shown, no persistent [n] hint yet).
+    expect(frame).not.toMatch(/\[n\] next/);
+  });
+
+  it('L4: Tab with multiple prefix-matches extends to the LCP and lists possibilities', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Widget', entry: makeEntry('Widget') },
+      { key: 'Widen', entry: makeEntry('Widen') },
+      { key: 'Card', entry: makeEntry('Card') },
     ]);
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
@@ -1788,14 +1810,12 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     await tick();
     stdin.write('W');
     await tick();
-    stdin.write('i');
-    await tick();
-    stdin.write('\t'); // Tab — should autocomplete to first alphabetical prefix-match: Widget
+    stdin.write('\t'); // Tab — LCP of Widget + Widen is "Wid"
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('/Widget');
-    // Input remains open (cursor block shown, no persistent [n] hint yet).
-    expect(frame).not.toMatch(/\[n\] next/);
+    expect(frame).toContain('/Wid');
+    expect(frame).toContain('Widget');
+    expect(frame).toContain('Widen');
   });
 
   it('T3: Tab while input open with no prefix match is a no-op', async () => {
