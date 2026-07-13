@@ -73,9 +73,16 @@ type FieldEditorProps = {
   propRationaleKey?: string;
   /**
    * When provided, the parent owns the component-rationale panel: pressing
-   * `I` (uppercase) calls this callback (subject to text-entry gating).
+   * `componentRationaleKey` (default `I`) calls this callback (subject to
+   * text-entry gating).
    */
   onToggleComponentRationale?: () => void;
+  /**
+   * L11 — optional override for the key that fires `onToggleComponentRationale`.
+   * Defaults to `I`. GenerateReviewStep passes `P` so uppercase `I` no longer
+   * collides conceptually with lowercase `i` (focus-lineage at the parent).
+   */
+  componentRationaleKey?: string;
   /**
    * When provided, the parent owns the source-view panel: pressing `s`
    * calls this callback (subject to text-entry gating). FieldEditor will not
@@ -906,6 +913,7 @@ export function FieldEditor({
   onTogglePropRationale,
   propRationaleKey = 'i',
   onToggleComponentRationale,
+  componentRationaleKey = 'I',
   onToggleSourceExternal,
   onTextEntryActiveChange,
   projectSlotGraph,
@@ -1277,7 +1285,7 @@ export function FieldEditor({
       setRationaleOpen((o) => !o);
       return;
     }
-    if (input === 'I' && rationaleKeyAllowed && onToggleComponentRationale) {
+    if (input === componentRationaleKey && rationaleKeyAllowed && onToggleComponentRationale) {
       onToggleComponentRationale();
       return;
     }
@@ -1827,7 +1835,7 @@ export function FieldEditor({
     if (rationaleOpen) {
       return 'jk/Ctrl+u/d scroll  i/Esc close  rationale panel';
     }
-    return '↑↓/jk navigate rows  Enter edit fields  s source  i prop rationale  I component rationale  ? help  Ctrl+S save  Esc exit panel';
+    return `↑↓/jk navigate rows  Enter edit fields  s source  ${propRationaleKey} prop rationale  ${componentRationaleKey} component rationale  ? help  Ctrl+S save  Esc exit panel`;
   })();
 
   // Build visible rows
@@ -2036,9 +2044,8 @@ export function FieldEditor({
           <Text> </Text>
           <Text bold>Panels</Text>
           <Text>{'  s                toggle source-view for the current prop'}</Text>
-          <Text>{'  i                toggle prop rationale panel'}</Text>
-          <Text>{'  I                toggle component rationale panel'}</Text>
-          <Text>{'  d                toggle removed-components panel (wizard final-review)'}</Text>
+          <Text>{'  ' + propRationaleKey.padEnd(16) + ' toggle prop rationale panel'}</Text>
+          <Text>{'  ' + componentRationaleKey.padEnd(16) + ' toggle component rationale panel'}</Text>
           <Text>{'  ?                toggle this overlay'}</Text>
           <Text> </Text>
           <Text dimColor>press ? or Esc to close</Text>

@@ -1586,9 +1586,10 @@ describe('FieldEditor — keybindings overlay (`?`)', () => {
     expect(frame).toMatch(/source-view|source/i);
     // Foot of the overlay tells the user how to exit.
     expect(frame).toMatch(/\? or Esc to close|press \? .* close/i);
-    // Pilot-2026-06-24: `d` opens the removed-detail panel in the wizard's
-    // GenerateReviewStep — list it alongside `s` and `?` for discoverability.
-    expect(frame).toMatch(/\bd\b.*removed/i);
+    // L11 — the stale `d ... removed` help line was removed: GR's removed
+    // panel is no longer a `[d]` modal, and the `[d]` deleted filter was
+    // dropped entirely, so the FieldEditor overlay no longer advertises it.
+    expect(frame).not.toMatch(/\bd\b.*removed/i);
   });
 
   it('a second `?` press closes the overlay', async () => {

@@ -923,19 +923,29 @@ describe('GenerateReviewStep — strict opt-in finalize semantics', () => {
 });
 
 describe('GenerateReviewStep - component rationale panels (lifted)', () => {
-  it('pressing I from sidebar focus opens the component rationale panel and replaces the right pane', async () => {
+  it('pressing P from sidebar focus opens the component rationale panel and replaces the right pane (L11 I→P rebind)', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
     expect(lastFrame() ?? '').toMatch(/FIELDS/);
-    stdin.write('I');
+    stdin.write('P');
     await tick();
     const out = lastFrame() ?? '';
     expect(out).toContain('Component rationale');
     expect(out).toContain('Button');
     // FieldEditor must NOT be rendered when the panel is open.
     expect(out).not.toMatch(/FIELDS \[Ctrl\+S/);
+  });
+
+  it('L11: pressing I no longer opens the component rationale panel', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('I');
+    await tick();
+    expect(lastFrame() ?? '').not.toContain('Component rationale');
   });
 
   it('pressing p from sidebar focus opens the prop rationale panel and replaces the right pane (T5b: [i] rebound)', async () => {
@@ -950,15 +960,15 @@ describe('GenerateReviewStep - component rationale panels (lifted)', () => {
     expect(out).not.toMatch(/FIELDS \[Ctrl\+S/);
   });
 
-  it('pressing I again closes the panel and restores the right pane', async () => {
+  it('pressing P again closes the panel and restores the right pane', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    stdin.write('I');
+    stdin.write('P');
     await tick();
     expect(lastFrame() ?? '').toContain('Component rationale');
-    stdin.write('I');
+    stdin.write('P');
     await tick();
     const out = lastFrame() ?? '';
     expect(out).not.toContain('Component rationale');
@@ -971,7 +981,7 @@ describe('GenerateReviewStep - component rationale panels (lifted)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={onQuit} />,
     );
     await tick();
-    stdin.write('I');
+    stdin.write('P');
     await tick();
     expect(lastFrame() ?? '').toContain('Component rationale');
     stdin.write('\u001b'); // Esc
@@ -988,11 +998,11 @@ describe('GenerateReviewStep - component rationale panels (lifted)', () => {
     stdin.write('p');
     await tick();
     expect(lastFrame() ?? '').toContain('RATIONALE');
-    stdin.write('I');
+    stdin.write('P');
     await tick();
     const out = lastFrame() ?? '';
     expect(out).toContain('Component rationale');
-    // The lowercase-i panel header is "RATIONALE - <name>"; with the
+    // The lowercase-p panel header is "RATIONALE - <name>"; with the
     // uppercase panel open, the small-r prop panel should not render.
     expect(out).not.toMatch(/^RATIONALE/m);
   });
@@ -1004,7 +1014,7 @@ describe('GenerateReviewStep - component rationale panels (lifted)', () => {
     await tick();
     stdin.write('F'); // open finalize dialog
     await tick();
-    stdin.write('I');
+    stdin.write('P');
     await tick();
     expect(lastFrame() ?? '').not.toContain('Component rationale');
   });
@@ -3889,7 +3899,7 @@ describe('GenerateReviewStep — category filters (L8)', () => {
     expect(stripAnsi(lastFrame() ?? '')).toContain('Beta');
   });
 
-  it('[d] deleted filter narrows to removed components; toggling off restores', async () => {
+  it('L11: [d] deleted filter is removed — pressing d does not narrow to removed components', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'Widget', entry: leaf('Widget') },
@@ -3912,15 +3922,78 @@ describe('GenerateReviewStep — category filters (L8)', () => {
     await tick();
     stdin.write('d');
     await tick();
+    // No deleted filter: Keeper is NOT hidden.
     const filtered = stripAnsi(lastFrame() ?? '');
-    expect(filtered).toContain('Widget');
-    expect(filtered).not.toContain('Keeper');
-    stdin.write('d');
-    await tick();
-    expect(stripAnsi(lastFrame() ?? '')).toContain('Keeper');
+    expect(filtered).toContain('Keeper');
   });
 
-  it('legend advertises [o] cycles, [w] broken, and [d] deleted', async () => {
+  it('L11: legend advertises [w] and (with cycles) [o] but NOT a [d] deleted filter', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+      },
+    ]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const out = stripAnsi(lastFrame() ?? '');
+    expect(out).toContain('[o]');
+    expect(out).toContain('[w]');
+    expect(out).not.toContain('[d] deleted');
+  });
+
+  it('L11: help panel does not list a Deleted filter entry', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Alpha', entry: leaf('Alpha') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('?');
+    await tick();
+    const out = stripAnsi(lastFrame() ?? '');
+    expect(out).not.toMatch(/Deleted/);
+  });
+
+  it('L11: GR legend disambiguates [c] cycle list vs [o] only cycles', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+      },
+    ]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const out = stripAnsi(lastFrame() ?? '');
+    expect(out).toContain('[c] cycle list');
+    expect(out).toContain('[o] only cycles');
+  });
+
+  it('L11: GR bottom legend advertises the full keyset (accept/reject/panels/search/history)', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'Alpha', entry: leaf('Alpha') },
@@ -3930,8 +4003,31 @@ describe('GenerateReviewStep — category filters (L8)', () => {
     );
     await tick();
     const out = stripAnsi(lastFrame() ?? '');
-    expect(out).toContain('[o]');
-    expect(out).toContain('[w]');
-    expect(out).toContain('[d]');
+    // A complete legend, not just the L8 filter row.
+    expect(out).toContain('[a] accept');
+    expect(out).toContain('[r] reject');
+    expect(out).toContain('[L] flat');
+    expect(out).toContain('[/] search');
+    expect(out).toContain('[P] component rationale');
+    expect(out).toContain('[?] help');
+  });
+
+  it('L11: GR help panel lists P (not I) for component rationale', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Alpha', entry: leaf('Alpha') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('?');
+    await tick();
+    const out = stripAnsi(lastFrame() ?? '');
+    expect(out).toMatch(/Component rationale/i);
+    // The component-rationale entry is keyed to P, and the sidebar-views
+    // group exists.
+    expect(out).toContain('P');
+    expect(out).toMatch(/Sidebar views/i);
   });
 });

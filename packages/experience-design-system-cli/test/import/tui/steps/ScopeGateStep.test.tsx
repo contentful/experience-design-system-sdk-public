@@ -2200,4 +2200,67 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(out).not.toContain('[d] deleted');
     });
   });
+
+  describe('L11 — legend/help overhaul', () => {
+    const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+    const CYC = [
+      { name: 'NodeA', componentId: 'a', slots: [{ name: 'sA', allowedComponents: ['NodeB'] }] },
+      { name: 'NodeB', componentId: 'b', slots: [{ name: 'sB', allowedComponents: ['NodeA'] }] },
+      { name: 'Standalone', componentId: 's' },
+    ];
+
+    it('disambiguates the two cycle features: [c] cycle list vs [o] only cycles', async () => {
+      const { stdin, lastFrame } = render(
+        <ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      const legend = stripAnsi(lastFrame() ?? '');
+      // No bare identical "cycles" label for both keys.
+      expect(legend).toContain('[c] cycle list');
+      expect(legend).toContain('[o] only cycles');
+      // Help panel uses the same distinct labels.
+      stdin.write('?');
+      await new Promise((r) => setTimeout(r, 30));
+      const help = stripAnsi(lastFrame() ?? '');
+      expect(help).toMatch(/Cycle list/i);
+      expect(help).toMatch(/Only cycles/i);
+    });
+
+    it('active-highlight keys [L] flat and [/] search are present in the legend', async () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      const legend = stripAnsi(lastFrame() ?? '');
+      // These toggle/mode keys get the active-highlight treatment via
+      // legendEntry (the highlight mechanism itself is unit-tested in
+      // LegendEntry.test.tsx; ink-testing-library strips ANSI here).
+      expect(legend).toContain('[L] flat');
+      expect(legend).toContain('[/] search');
+      expect(legend).toContain('[l] lineage');
+      expect(legend).toContain('[i] focus lineage');
+    });
+
+    it('help panel groups sidebar-view keys (L, l, o, w, i) together', async () => {
+      const { stdin, lastFrame } = render(
+        <ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      stdin.write('?');
+      await new Promise((r) => setTimeout(r, 30));
+      const help = stripAnsi(lastFrame() ?? '');
+      expect(help).toMatch(/Sidebar views/i);
+    });
+
+    it('[n] label matches its real behavior (next match, in Search group)', async () => {
+      const { stdin, lastFrame } = render(
+        <ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      stdin.write('?');
+      await new Promise((r) => setTimeout(r, 30));
+      const help = stripAnsi(lastFrame() ?? '');
+      expect(help).toMatch(/Next match/i);
+    });
+  });
 });

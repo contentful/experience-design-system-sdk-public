@@ -26,6 +26,7 @@ import { computeLineageLayout } from '../lineage-layout.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
+import { legendEntry } from '../components/LegendEntry.js';
 import {
   buildCycleUnits,
   collectReachableCycleUnits,
@@ -70,6 +71,12 @@ export type ScopeGateStepProps = {
 // generous, and we append an ellipsis when the source exceeds the budget.
 const FOCUSED_REASON_MAX_LINES = 4;
 
+// L11 — help groups ordered by WHERE a key is used (navigation → selection →
+// sidebar views/filters → panels → search → general). Sidebar-view keys (flat,
+// lineage, focus-lineage, broken filter, only-cycles filter) cluster together
+// because they all reshape the left column. The two cycle features carry
+// DISTINCT labels: `[c]` = "Cycle list" (breakdown panel), `[o]` = "Only cycles"
+// (sidebar filter).
 const HELP_SECTIONS: HelpSection[] = [
   {
     title: 'Navigation',
@@ -89,28 +96,28 @@ const HELP_SECTIONS: HelpSection[] = [
     ],
   },
   {
-    title: 'Search',
+    title: 'Sidebar views',
     entries: [
-      { keys: '/', label: 'Search' },
-      { keys: 'n', label: 'Next match' },
+      { keys: 'L', label: 'Flat view' },
+      { keys: 'l', label: 'Lineage' },
       { keys: 'i', label: 'Focus lineage' },
-    ],
-  },
-  {
-    title: 'Filters',
-    entries: [
-      { keys: 'w', label: 'Broken' },
-      { keys: 'o', label: 'Cycles' },
+      { keys: 'w', label: 'Only broken' },
+      { keys: 'o', label: 'Only cycles' },
     ],
   },
   {
     title: 'Panels',
     entries: [
-      { keys: 'l', label: 'Lineage' },
-      { keys: 'c', label: 'Cycles' },
+      { keys: 'c', label: 'Cycle list' },
       { keys: 's', label: 'AI reason' },
       { keys: 'x', label: 'AI exclusions' },
-      { keys: 'L', label: 'Flat view' },
+    ],
+  },
+  {
+    title: 'Search',
+    entries: [
+      { keys: '/', label: 'Search' },
+      { keys: 'n', label: 'Next match' },
     ],
   },
   {
@@ -1234,7 +1241,12 @@ export function ScopeGateStep({
         </Box>
       )}
 
-      <Box gap={3} marginTop={1} flexWrap="wrap">
+      {/* L11 — one wrapping legend region. Each entry is a single atomic Text
+          node (via legendEntry) so a key never wraps away from its label.
+          Toggle/mode keys ([l] [i] [L] [o] [/] [w]) render inverse+yellow when
+          active so the legend reflects current state. Distinct cycle labels:
+          [c] "cycle list" (panel) vs [o] "only cycles" (filter). */}
+      <Box gap={2} marginTop={1} flexWrap="wrap">
         {includedCount > 0 ? (
           <Text>
             <Text color="green">{includedCount}</Text>
@@ -1243,75 +1255,25 @@ export function ScopeGateStep({
         ) : (
           <Text color="yellow">none included</Text>
         )}
-        <Text>
-          <Text color="cyan">[j/k]</Text> <Text dimColor>move</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[a/space]</Text> <Text dimColor>accept</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[r]</Text> <Text dimColor>reject</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[l]</Text> <Text dimColor>lineage</Text>
-        </Text>
-        {hasCycles && (
-          <Text>
-            <Text color="cyan">[c]</Text> <Text dimColor>cycles</Text>
-          </Text>
-        )}
-        <Text>
-          <Text color="cyan">[/]</Text> <Text dimColor>search</Text>
-        </Text>
-        <Text>
-          <Text color={activeFilters.has('broken') ? 'yellow' : 'cyan'} inverse={activeFilters.has('broken')}>[w]</Text> <Text dimColor>broken</Text>
-        </Text>
-        {hasCycles && (
-          <Text>
-            <Text color={activeFilters.has('cycles') ? 'yellow' : 'cyan'} inverse={activeFilters.has('cycles')}>[o]</Text> <Text dimColor>cycles</Text>
-          </Text>
-        )}
-        <Text>
-          <Text color="cyan">[i]</Text> <Text dimColor>focus lineage</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[A]</Text> <Text dimColor>toggle all</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[Y]</Text> <Text dimColor>accept non-flagged</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[L]</Text> <Text dimColor>flat</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[f]</Text> <Text dimColor>continue</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[?]</Text> <Text dimColor>help</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">[q]</Text> <Text dimColor>quit</Text>
-        </Text>
-        {columnPlan.layout === 'three-column' && (
-          <Text>
-            <Text color="cyan">[Tab/Shift-Tab]</Text> <Text dimColor>switch column</Text>
-          </Text>
-        )}
-        {columnPlan.layout === 'three-column' && (
-          <Text>
-            <Text color="cyan">[Enter]</Text> <Text dimColor>jump to main</Text>
-          </Text>
-        )}
-        {hasAnyAi && (
-          <Text>
-            <Text color="cyan">[s]</Text> <Text dimColor>AI reason</Text>
-          </Text>
-        )}
-        {hasAnyAi && (
-          <Text>
-            <Text color="cyan">[x]</Text> <Text dimColor>AI exclusions</Text>
-          </Text>
-        )}
+        {legendEntry('[j/k]', 'move')}
+        {legendEntry('[a/space]', 'accept')}
+        {legendEntry('[r]', 'reject')}
+        {legendEntry('[A]', 'toggle all')}
+        {legendEntry('[Y]', 'accept non-flagged')}
+        {legendEntry('[L]', 'flat', columnOneView === 'flat')}
+        {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
+        {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
+        {legendEntry('[w]', 'only broken', activeFilters.has('broken'))}
+        {hasCycles && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
+        {hasCycles && legendEntry('[c]', 'cycle list', cyclesPanelOpen)}
+        {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
+        {legendEntry('[f]', 'continue')}
+        {legendEntry('[?]', 'help')}
+        {legendEntry('[q]', 'quit')}
+        {columnPlan.layout === 'three-column' && legendEntry('[Tab/Shift-Tab]', 'switch column')}
+        {columnPlan.layout === 'three-column' && legendEntry('[Enter]', 'jump to main')}
+        {hasAnyAi && legendEntry('[s]', 'AI reason', reasonPanelOpen)}
+        {hasAnyAi && legendEntry('[x]', 'AI exclusions', aiRationalePanel.isOpen)}
         {hasAnyAi && (
           <Text>
             <Text color="yellow" bold>[×]</Text> <Text dimColor>AI recommends excluding</Text>
