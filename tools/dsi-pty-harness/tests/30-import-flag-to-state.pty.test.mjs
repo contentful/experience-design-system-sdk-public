@@ -68,14 +68,18 @@ describe('experiences import — flag → wizard state (PTY)', () => {
     // "Generating" / "Checking claude" / "Save to:" are the durable
     // next-state anchors that only appear AFTER scope-gate would have run.
     await w.waitFor(/Generating|Checking claude|Save to:/, { timeout: 30000 });
-    const stripped = w.getScreen();
     const raw = w.getRaw();
-    // Scope-gate bindings must never have rendered.
-    expect(stripped).not.toMatch(/\[a\]\s*accept/i);
-    expect(stripped).not.toMatch(/\[space\]\s*toggle/i);
-    // Positive: the auto-accept banner appears at least briefly in the
-    // raw transcript (Ink may overwrite it visually before we sample).
-    expect(raw).toMatch(/Auto-accepting|components accepted/);
+    // The strongest signal is a negative one: the interactive scope-gate's
+    // key bindings must never have rendered. Ink writes them into the raw
+    // buffer if the step mounted, even if a subsequent clear overwrites
+    // them on screen — so search the raw buffer, not just the ANSI-stripped
+    // last frame.
+    expect(raw).not.toMatch(/toggle all|\[j\/k\]\s*move/i);
+    expect(raw).not.toMatch(/AI recommended exclusions/i);
+    // Positive corroboration: at least one of the scope-gate-skip markers
+    // that Ink logs at auto-accept time appears in the transcript. Any of
+    // the three variants is fine.
+    expect(raw).toMatch(/Auto-accepting|components accepted|accepted 3 components/i);
   });
 
   // ── --no-push completes generation without pushing ──────────────────────
