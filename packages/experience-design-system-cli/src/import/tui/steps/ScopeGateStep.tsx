@@ -16,6 +16,7 @@ import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { findSlotCycles, type SlotCycle } from '../../../analyze/cycle-detection.js';
 import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
+import { computeLineageLayout } from '../lineage-layout.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import {
   buildCycleUnits,
@@ -55,7 +56,6 @@ export type ScopeGateStepProps = {
   onCancelAutoFilter?: () => void;
 };
 
-const VISIBLE_COUNT = 20;
 const REASON_DISPLAY_MAX = 60;
 const AI_BANNER_MAX = 5;
 // T7 — focused-row detail line renders the full AI reason with wrapping,
@@ -350,6 +350,17 @@ export function ScopeGateStep({
     graph,
   );
 
+  // L2c — height-aware layout. When the lineage panel is open the sidebar
+  // shrinks and the panel's window is sized from the remaining rows so the
+  // total frame fits `stdout.rows` and Ink never full-repaints (the flash).
+  // Closed → full sidebar height. Scroll-follow math below uses `visibleCount`
+  // so the cursor stays inside the (possibly shrunk) window.
+  const { sidebarVisible: visibleCount, panelMaxRows } = computeLineageLayout({
+    rows: stdout?.rows ?? 24,
+    panelOpen: lineagePanel.isOpen,
+    entryCount: lineageEntries.length,
+  });
+
   const searchMatches = useMemo(() => {
     if (!searchQuery) return [];
     return components.filter((c) => fuzzyMatches(searchQuery, c.name)).map((c) => c.name);
@@ -370,7 +381,7 @@ export function ScopeGateStep({
     setNav(({ scrollOffset: prev }) => {
       let nextScroll = prev;
       if (idx < prev) nextScroll = idx;
-      else if (idx >= prev + VISIBLE_COUNT) nextScroll = idx - VISIBLE_COUNT + 1;
+      else if (idx >= prev + visibleCount) nextScroll = idx - visibleCount + 1;
       return { cursor: idx, scrollOffset: nextScroll };
     });
   };
@@ -644,8 +655,8 @@ export function ScopeGateStep({
       const nextScroll =
         nextCursor < scrollOffset
           ? nextCursor
-          : nextCursor >= scrollOffset + VISIBLE_COUNT
-            ? nextCursor - VISIBLE_COUNT + 1
+          : nextCursor >= scrollOffset + visibleCount
+            ? nextCursor - visibleCount + 1
             : scrollOffset;
       setColumnOneView(nextView);
       setNav({ cursor: nextCursor, scrollOffset: nextScroll });
@@ -778,7 +789,7 @@ export function ScopeGateStep({
       if (total === 0) return;
       setNav(({ cursor: c, scrollOffset: prev }) => {
         const next = c >= total - 1 ? total - 1 : c + 1;
-        const nextScroll = next >= prev + VISIBLE_COUNT ? next - VISIBLE_COUNT + 1 : prev;
+        const nextScroll = next >= prev + visibleCount ? next - visibleCount + 1 : prev;
         return { cursor: next, scrollOffset: nextScroll };
       });
       return;
@@ -900,27 +911,38 @@ export function ScopeGateStep({
       )}
 
       <Box flexDirection="row">
-        <GroupedSidebar
-          items={groupedItems}
-          cycleParticipants={cycleParticipants}
-          selectedIdx={selectedItemIdx}
-          selectedRowIdx={safeCursor}
-          onSelect={() => {}}
-          expandedGroups={new Set()}
-          onToggleExpanded={() => {}}
-          width={sidebarWidth}
-          focused={focusedColumn === 'main'}
-          scrollOffset={scrollOffset}
-          visibleCount={VISIBLE_COUNT}
-          alwaysExpanded={true}
-          showFlatTier={false}
-          selectionStateByKey={selectionStateByKey}
-          aiFlaggedByKey={aiFlaggedByKey}
-          dimPredicate={dimPredicate}
-          visibleRows={visibleRows}
-          viewMode={columnOneView}
-          graph={graph}
-        />
+        {lineagePanel.isOpen && focusedComponent ? (
+          <LineagePanel
+            focusedComponentKey={focusedComponent.name}
+            entries={lineageEntries}
+            cursor={lineageCursor}
+            jumpables={lineageJumpables}
+            maxRows={panelMaxRows}
+            width={sidebarWidth}
+          />
+        ) : (
+          <GroupedSidebar
+            items={groupedItems}
+            cycleParticipants={cycleParticipants}
+            selectedIdx={selectedItemIdx}
+            selectedRowIdx={safeCursor}
+            onSelect={() => {}}
+            expandedGroups={new Set()}
+            onToggleExpanded={() => {}}
+            width={sidebarWidth}
+            focused={focusedColumn === 'main'}
+            scrollOffset={scrollOffset}
+            visibleCount={visibleCount}
+            alwaysExpanded={true}
+            showFlatTier={false}
+            selectionStateByKey={selectionStateByKey}
+            aiFlaggedByKey={aiFlaggedByKey}
+            dimPredicate={dimPredicate}
+            visibleRows={visibleRows}
+            viewMode={columnOneView}
+            graph={graph}
+          />
+        )}
         {columnPlan.layout === 'three-column' && (
           <>
             <Box width={2} flexShrink={0} />
@@ -1005,15 +1027,6 @@ export function ScopeGateStep({
           })}
           <Text dimColor>[↑/↓] move · [Enter] jump · [c/Esc] close</Text>
         </Box>
-      )}
-
-      {lineagePanel.isOpen && focusedComponent && (
-        <LineagePanel
-          focusedComponentKey={focusedComponent.name}
-          entries={lineageEntries}
-          cursor={lineageCursor}
-          jumpables={lineageJumpables}
-        />
       )}
 
       {pendingRejectCascade && (

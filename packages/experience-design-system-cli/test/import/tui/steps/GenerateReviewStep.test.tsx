@@ -2841,6 +2841,54 @@ describe('GenerateReviewStep — lineage panel (T6)', () => {
     const { lastFrame } = await renderLineageFixture();
     expect(lastFrame() ?? '').toContain('[l]');
   });
+
+  describe('L2d — lineage renders as a sidebar overlay (not stacked below)', () => {
+    // P → C → X plus an unrelated standalone Zzz. Zzz only ever renders in the
+    // GroupedSidebar (never in C's lineage), so its presence is a proxy for
+    // "the sidebar is rendered in its slot".
+    async function renderOverlayFixture() {
+      const dbMod = await import('../../../../src/session/db.js');
+      vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+        { key: 'P', entry: withSlot('P', ['C']) },
+        { key: 'C', entry: withSlot('C', ['X']) },
+        { key: 'X', entry: leaf('X') },
+        { key: 'Zzz', entry: leaf('Zzz') },
+      ]);
+      vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
+      const utils = render(
+        <GenerateReviewStep
+          extractSessionId="sess-1"
+          onFinalize={vi.fn()}
+          onQuit={vi.fn()}
+          livePreview={false}
+        />,
+      );
+      await tick();
+      return utils;
+    }
+
+    it('when lineage is open the sidebar is replaced by the panel; detail panel stays visible', async () => {
+      const { lastFrame, stdin } = await renderOverlayFixture();
+      const before = lastFrame() ?? '';
+      // Baseline: sidebar renders the standalone Zzz row.
+      expect(before).toContain('Zzz');
+      // Detail panel (right column) present.
+      expect(before).toContain('focus panel');
+
+      // Focus C (row 1), open lineage.
+      await jumpToRow(stdin, 1);
+      stdin.write('l');
+      await tick();
+      const open = lastFrame() ?? '';
+
+      // (a) lineage panel renders.
+      expect(open).toContain('Lineage:');
+      // (b) the sidebar no longer occupies its slot — Zzz is gone.
+      expect(open).not.toContain('Zzz');
+      // (c) the detail panel (GR's column 2 equivalent) stays visible.
+      expect(open).toContain('focus panel');
+    });
+  });
 });
 
 describe('GenerateReviewStep — view toggle (T8)', () => {
