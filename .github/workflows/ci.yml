@@ -92,46 +92,26 @@ jobs:
       - name: Build
         run: pnpm affected:build
 
-  pty-test:
-    name: PTY smoke tests
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || (github.event_name == 'push' && github.event.head_commit.author.name != 'contentful-automation[bot]')
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 #v6.0.3
-        with:
-          fetch-depth: 0
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: "lts/*"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build CLI
-        run: pnpm exec nx build experience-design-system-cli
-
-      - name: Run PTY smoke tests
-        run: pnpm exec nx run dsi-pty-harness:pty-test
+  # PTY smoke tests are intentionally NOT run in CI. node-pty on the
+  # ubuntu-latest runners produces a child whose stdin/stdout report
+  # isTTY=true, but Ink's setRawMode never returns and the render never
+  # progresses past the initial cursor-hide byte. Reproduces on every
+  # PR run; passes cleanly on macOS. Until we sort out a working
+  # runner (or move to a self-hosted Linux with a real PTY), gate the
+  # suite as local-only.
+  #
+  # Run locally:  PTY_TESTS=1 pnpm --filter @contentful/dsi-pty-harness exec vitest run
 
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [lint, test, pty-test]
+    needs: [lint, test]
     if: always()
     permissions: {}
     steps:
       - name: Check results
         run: |
-          if [[ "${{ needs.lint.result }}" == "failure" || "${{ needs.test.result }}" == "failure" || "${{ needs.pty-test.result }}" == "failure" ]]; then
+          if [[ "${{ needs.lint.result }}" == "failure" || "${{ needs.test.result }}" == "failure" ]]; then
             exit 1
           fi
 
