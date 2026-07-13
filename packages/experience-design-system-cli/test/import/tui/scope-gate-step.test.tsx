@@ -169,7 +169,11 @@ describe('ScopeGateStep — AI reason surfacing on focused row', () => {
   });
 
   it('truncates a long AI reason on the focused-row detail line', () => {
-    const longReason = 'a'.repeat(120);
+    // The focused-row detail caps at width * FOCUSED_REASON_MAX_LINES chars, so
+    // the reason must exceed that budget to trigger the ellipsis. (L7 removed
+    // the old inline gray list, which was the previous source of the ellipsis
+    // on short reasons.)
+    const longReason = 'a'.repeat(600) + 'TAILMARKER';
     const { lastFrame, stdin } = render(
       <ScopeGateStep
         components={[
@@ -184,7 +188,7 @@ describe('ScopeGateStep — AI reason surfacing on focused row', () => {
     stdin.write('j');
     const out = lastFrame() ?? '';
     expect(out).toContain('…');
-    expect(out).not.toContain('a'.repeat(120));
+    expect(out).not.toContain('TAILMARKER');
   });
 
   it('opens the full-reason side panel on `s` when focused row is AI-flagged', () => {
