@@ -51,8 +51,11 @@ import { findAllAncestors } from '../../../analyze/lineage.js';
 import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
+import { computeLineageLayout } from '../lineage-layout.js';
+import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
 import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
+import { computeAutocomplete } from '../autocomplete.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -119,8 +122,65 @@ export function sortComponentsForSidebar<T extends { key: string; entry: CDFComp
   });
 }
 
-const VISIBLE_COUNT = 20;
 const PANEL_HEIGHT = 22;
+
+const HELP_SECTIONS: HelpSection[] = [
+  {
+    title: 'Navigation',
+    entries: [
+      { keys: 'j / k / ↑ / ↓', label: 'Move cursor' },
+      { keys: 'Tab', label: 'Toggle sidebar/panel' },
+      { keys: 'e', label: 'Focus panel' },
+      { keys: 'Enter', label: 'Drill to source' },
+    ],
+  },
+  {
+    title: 'Selection',
+    entries: [
+      { keys: 'a', label: 'Accept' },
+      { keys: 'r', label: 'Reject' },
+      { keys: 'A', label: 'Accept all' },
+      { keys: 'F', label: 'Finalize' },
+    ],
+  },
+  {
+    title: 'Search',
+    entries: [
+      { keys: '/', label: 'Search' },
+      { keys: 'n', label: 'Next match' },
+      { keys: 'i', label: 'Focus lineage' },
+    ],
+  },
+  {
+    title: 'Panels',
+    entries: [
+      { keys: 'l', label: 'Lineage' },
+      { keys: 'c', label: 'Cycles' },
+      { keys: 'p', label: 'Prop rationale' },
+      { keys: 'I', label: 'Component rationale' },
+      { keys: 's', label: 'Source' },
+      { keys: 'J', label: 'Toggle JSON' },
+      { keys: 'space', label: 'Expand/collapse group' },
+      { keys: 'E / C', label: 'Expand/collapse all' },
+      { keys: 'L', label: 'Flat view' },
+    ],
+  },
+  {
+    title: 'History',
+    entries: [
+      { keys: 'Ctrl+Z', label: 'Undo' },
+      { keys: 'Ctrl+Y', label: 'Redo' },
+      { keys: 'Ctrl+R', label: 'Reload from save' },
+    ],
+  },
+  {
+    title: 'General',
+    entries: [
+      { keys: '?', label: 'Close help' },
+      { keys: 'q', label: 'Quit' },
+    ],
+  },
+];
 
 /**
  * Task #37 — Given the current set of detected slot cycles and the component
@@ -228,6 +288,9 @@ export function GenerateReviewStep({
   // sidebar-with-active-query clears.
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // L4 — Tab autocomplete possibilities strip. Populated when Tab finds >1
+  // prefix-match; cleared on the next keystroke/backspace/close.
+  const [autocompleteCandidates, setAutocompleteCandidates] = useState<string[]>([]);
   // T5b (layout plan §B) — jump-and-filter target. Mirrors ScopeGateStep T5:
   // independent of `searchQuery`; OR-merged into `filterVisibleKeys` with
   // jump-target winning priority. Esc clears this before clearing the
@@ -289,6 +352,7 @@ export function GenerateReviewStep({
   const historyRef = useRef<HistoryStack | null>(null);
   const historySeededRef = useRef(false);
   const [showReloadDialog, setShowReloadDialog] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
@@ -770,6 +834,17 @@ export function GenerateReviewStep({
     focusedComponentKey,
     componentGraph,
   );
+
+  // L2c — height-aware layout (mirrors ScopeGateStep). Shrink the sidebar and
+  // window the lineage panel from the remaining rows while the panel is open
+  // so the total frame fits `stdout.rows`; Ink then diffs in place instead of
+  // clearing + repainting each cursor move (the flash). Scroll math below uses
+  // `visibleCount` so the cursor stays inside the shrunk window.
+  const { sidebarVisible: visibleCount, panelMaxRows } = computeLineageLayout({
+    rows: stdout?.rows ?? 24,
+    panelOpen: lineagePanel.isOpen,
+    entryCount: lineageEntries.length,
+  });
   useEffect(() => {
     if (selectableRowPositions.length === 0) return;
     const cursorInRange = selectableRowPositions.includes(cursorRowIdx);
@@ -778,7 +853,7 @@ export function GenerateReviewStep({
     // scroll offset can point past the shorter list. Slicing then hides rows
     // before the stale offset. Clamp scroll to the largest offset that still
     // renders a full window (or 0 when the list fits entirely).
-    const maxScroll = Math.max(0, visibleRowsMemo.length - VISIBLE_COUNT);
+    const maxScroll = Math.max(0, visibleRowsMemo.length - visibleCount);
     const scrollNeedsClamp = sidebarScrollOffset > maxScroll;
     if (cursorInRange && !scrollNeedsClamp) return;
     const nextCursor = cursorInRange ? cursorRowIdx : selectableRowPositions[0];
@@ -786,7 +861,7 @@ export function GenerateReviewStep({
       cursorRowIdx: nextCursor,
       sidebarScrollOffset: Math.min(sidebarScrollOffset, maxScroll),
     }));
-  }, [selectableRowPositions, cursorRowIdx, sidebarScrollOffset, visibleRowsMemo.length]);
+  }, [selectableRowPositions, cursorRowIdx, sidebarScrollOffset, visibleRowsMemo.length, visibleCount]);
 
   // Feature 1: load review metadata (rationale + source location) for the
   // selected component when selection changes.
@@ -900,7 +975,7 @@ export function GenerateReviewStep({
     setNav(({ sidebarScrollOffset: prev }) => {
       let nextOff = prev;
       if (rowIdx < prev) nextOff = rowIdx;
-      else if (rowIdx >= prev + VISIBLE_COUNT) nextOff = rowIdx - VISIBLE_COUNT + 1;
+      else if (rowIdx >= prev + visibleCount) nextOff = rowIdx - visibleCount + 1;
       return { cursorRowIdx: rowIdx, sidebarScrollOffset: nextOff };
     });
     setJsonScrollOffset(0);
@@ -976,6 +1051,9 @@ export function GenerateReviewStep({
   useImmediateInput((input, key) => {
     if (loading || loadError) return;
     if (dialogOpen) return;
+    // Help overlay owns all input while open — the HelpOverlay component's own
+    // handler closes it on `?`/Esc, so here we simply swallow everything else.
+    if (showHelp) return;
 
     // T4 (parity plan §3) — reload-from-save confirm dialog owns keystrokes
     // when open. Enter re-runs the load path + resets history; Esc cancels.
@@ -994,9 +1072,8 @@ export function GenerateReviewStep({
 
     // T4 — top-level undo/redo/reload keybindings. Gated above sidebar-focused
     // vs panel-focused vs overlay checks so they work uniformly across states.
-    // Terminal-key spike (log entry `spike:cmd-z`): Cmd+Z / Cmd+Y on macOS
-    // Terminal.app + iTerm2 map to Ctrl+Z / Ctrl+Y bytes (\x1a / \x19), which
-    // `useImmediateInput.parseInput` surfaces as `key.ctrl && input === 'z'|'y'`.
+    // Advertised keys are Ctrl+Z / Ctrl+Y: these emit the bytes \x1a / \x19,
+    // which `useImmediateInput.parseInput` surfaces as `key.ctrl && input === 'z'|'y'`.
     if (key.ctrl && input === 'z') {
       handleUndo();
       return;
@@ -1045,12 +1122,14 @@ export function GenerateReviewStep({
       if (key.escape) {
         setSearchOpen(false);
         setSearchQuery('');
+        setAutocompleteCandidates([]);
         return;
       }
       if (key.return) {
         // T7b delta 3 — mirror ScopeGate: Enter with empty query OR zero
         // matches clears + closes so the user doesn't get stuck with a
         // dim-all state and no on-screen recovery besides Esc.
+        setAutocompleteCandidates([]);
         if (!searchQuery || searchMatches.length === 0) {
           setSearchOpen(false);
           setSearchQuery('');
@@ -1078,25 +1157,26 @@ export function GenerateReviewStep({
         return;
       }
       if (key.tab) {
-        // T3: Tab autocompletes the query to the first alphabetical
-        // component name (by key) that has the current query as a
-        // case-insensitive prefix. Input stays open. No-op when no
-        // prefix-match exists.
-        if (!searchQuery) return;
-        const q = searchQuery.toLowerCase();
-        const prefix = components
-          .map((c) => c.key)
-          .filter((n) => n.toLowerCase().startsWith(q))
-          .sort();
-        const pick = prefix[0];
-        if (pick) setSearchQuery(pick);
+        // L4: shell-style Tab autocomplete. Complete to the longest common
+        // prefix of all prefix-matching component keys; when >1 candidate,
+        // surface a possibilities strip. Prefix semantics (NOT fuzzy) — the
+        // fuzzy `[n]` match-cycle is a separate, preserved path. No-op with no
+        // candidates. Input stays open.
+        const { completion, candidates } = computeAutocomplete(
+          searchQuery,
+          components.map((c) => c.key),
+        );
+        setSearchQuery(completion);
+        setAutocompleteCandidates(candidates);
         return;
       }
       if (key.backspace) {
+        setAutocompleteCandidates([]);
         setSearchQuery((q) => q.slice(0, -1));
         return;
       }
       if (input && input.length === 1 && input >= ' ' && input !== '\r' && input !== '\n') {
+        setAutocompleteCandidates([]);
         setSearchQuery((q) => q + input);
         return;
       }
@@ -1367,6 +1447,11 @@ export function GenerateReviewStep({
     }
     if (key.escape && searchQuery) {
       setSearchQuery('');
+      setAutocompleteCandidates([]);
+      return;
+    }
+    if (input === '?') {
+      setShowHelp(true);
       return;
     }
     if (input === 'q') {
@@ -1459,8 +1544,8 @@ export function GenerateReviewStep({
       const nextScroll =
         nextCursor < sidebarScrollOffset
           ? nextCursor
-          : nextCursor >= sidebarScrollOffset + VISIBLE_COUNT
-            ? nextCursor - VISIBLE_COUNT + 1
+          : nextCursor >= sidebarScrollOffset + visibleCount
+            ? nextCursor - visibleCount + 1
             : sidebarScrollOffset;
       setColumnOneView(nextView);
       setNav({ cursorRowIdx: nextCursor, sidebarScrollOffset: nextScroll });
@@ -1602,7 +1687,7 @@ export function GenerateReviewStep({
             );
         const nextSelectableIdx = Math.min(positions.length - 1, currentSelectableIdx + 1);
         const newRow = positions[nextSelectableIdx] ?? prev;
-        const nextOff = newRow >= off + VISIBLE_COUNT ? newRow - VISIBLE_COUNT + 1 : off;
+        const nextOff = newRow >= off + visibleCount ? newRow - visibleCount + 1 : off;
         return { cursorRowIdx: newRow, sidebarScrollOffset: nextOff };
       });
       setJsonScrollOffset(0);
@@ -1625,6 +1710,10 @@ export function GenerateReviewStep({
         <Text color="red">{loadError}</Text>
       </Box>
     );
+  }
+
+  if (showHelp) {
+    return <HelpOverlay sections={HELP_SECTIONS} onClose={() => setShowHelp(false)} />;
   }
 
   const selected = components[selectedIdx] ?? null;
@@ -1826,14 +1915,6 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {lineagePanel.isOpen && !dialogOpen && focusedComponentKey && (
-        <LineagePanel
-          focusedComponentKey={focusedComponentKey}
-          entries={lineageEntries}
-          cursor={lineageCursor}
-          jumpables={lineageJumpables}
-        />
-      )}
       {!dialogOpen &&
         livePreview &&
         (() => {
@@ -1915,42 +1996,53 @@ export function GenerateReviewStep({
           fragment right after the sidebar Box. */}
       {!dialogOpen && (
         <Box>
-          <GroupedSidebar
-            items={groupedItems}
-            cycleParticipants={cycleParticipantSet}
-            selectedIdx={selectedIdx}
-            selectedRowIdx={cursorRowIdx}
-            onSelect={(idx) => {
-              // Jump to the FIRST visible row for the target itemIdx.
-              for (let i = 0; i < visibleRowsMemo.length; i++) {
-                if (visibleRowsMemo[i].itemIdx === idx) {
-                  jumpCursorToRow(i);
-                  return;
+          {lineagePanel.isOpen && focusedComponentKey ? (
+            <LineagePanel
+              focusedComponentKey={focusedComponentKey}
+              entries={lineageEntries}
+              cursor={lineageCursor}
+              jumpables={lineageJumpables}
+              maxRows={panelMaxRows}
+              width={sidebarWidth}
+            />
+          ) : (
+            <GroupedSidebar
+              items={groupedItems}
+              cycleParticipants={cycleParticipantSet}
+              selectedIdx={selectedIdx}
+              selectedRowIdx={cursorRowIdx}
+              onSelect={(idx) => {
+                // Jump to the FIRST visible row for the target itemIdx.
+                for (let i = 0; i < visibleRowsMemo.length; i++) {
+                  if (visibleRowsMemo[i].itemIdx === idx) {
+                    jumpCursorToRow(i);
+                    return;
+                  }
                 }
-              }
-              setJsonScrollOffset(0);
-            }}
-            expandedGroups={expandedGroups}
-            onToggleExpanded={(rootName) => {
-              setExpandedGroups((prev) => {
-                const next = new Set(prev);
-                if (next.has(rootName)) next.delete(rootName);
-                else next.add(rootName);
-                return next;
-              });
-            }}
-            width={sidebarWidth}
-            focused={sidebarFocused}
-            renderStatusByKey={renderStatusByKey}
-            previewAnnotationByKey={previewAnnotationByKey}
-            selectionStateByKey={selectionStateByKey}
-            scrollOffset={sidebarScrollOffset}
-            visibleCount={VISIBLE_COUNT}
-            dimPredicate={dimPredicate}
-            visibleRows={visibleRowsMemo}
-            viewMode={columnOneView}
-            graph={sidebarGraph}
-          />
+                setJsonScrollOffset(0);
+              }}
+              expandedGroups={expandedGroups}
+              onToggleExpanded={(rootName) => {
+                setExpandedGroups((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(rootName)) next.delete(rootName);
+                  else next.add(rootName);
+                  return next;
+                });
+              }}
+              width={sidebarWidth}
+              focused={sidebarFocused}
+              renderStatusByKey={renderStatusByKey}
+              previewAnnotationByKey={previewAnnotationByKey}
+              selectionStateByKey={selectionStateByKey}
+              scrollOffset={sidebarScrollOffset}
+              visibleCount={visibleCount}
+              dimPredicate={dimPredicate}
+              visibleRows={visibleRowsMemo}
+              viewMode={columnOneView}
+              graph={sidebarGraph}
+            />
+          )}
           <Box flexGrow={1} paddingLeft={1} flexDirection="column">
             {selected ? (
               <>
@@ -2098,7 +2190,8 @@ export function GenerateReviewStep({
                       '  [L] flat' +
                       '  [/] search' +
                       (undoSnapshot ? '  [u] undo' : '') +
-                      '  [Cmd+Z] undo  [Cmd+Y] redo  [Ctrl+R] reload' +
+                      '  [Ctrl+Z] undo  [Ctrl+Y] redo  [Ctrl+R] reload' +
+                      '  [?] help' +
                       '  [q] quit'
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
@@ -2146,7 +2239,7 @@ export function GenerateReviewStep({
         </Box>
       )}
       {!dialogOpen && searchOpen && (
-        <Box>
+        <Box flexDirection="column">
           <Text>
             {`/${searchQuery}`}
             <Text color="cyan">{'▎'}</Text>
@@ -2154,6 +2247,11 @@ export function GenerateReviewStep({
               <Text dimColor>{`  (${searchMatchCount}/${components.length} matches)`}</Text>
             )}
           </Text>
+          {autocompleteCandidates.length > 1 && (
+            <Text dimColor>
+              {`  possibilities: ${autocompleteCandidates.join(' · ').slice(0, 120)}`}
+            </Text>
+          )}
         </Box>
       )}
       {!dialogOpen && !searchOpen && searchQuery && (

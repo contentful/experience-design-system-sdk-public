@@ -791,23 +791,73 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       expect(frame).not.toContain('/b');
     });
 
-    describe('T3 — Tab autocomplete + [n] match-cycle', () => {
+    describe('L4 — Tab autocomplete possibilities + [n] match-cycle', () => {
       const T3_FIXTURE = [
         { name: 'Widget', componentId: 'c0' },
         { name: 'Wizard', componentId: 'c1' },
         { name: 'Waffle', componentId: 'c2' },
       ];
+      // Fixture where two candidates share a longer common prefix ("Wid") so
+      // Tab can extend the query beyond what was typed.
+      const LCP_FIXTURE = [
+        { name: 'Widget', componentId: 'c0' },
+        { name: 'Widen', componentId: 'c1' },
+        { name: 'Card', componentId: 'c2' },
+      ];
 
-      it('Tab with search input OPEN autocompletes to the first alphabetical prefix-match', () => {
+      it('Tab with a single prefix-match completes to the full name (input open)', () => {
+        const { lastFrame, stdin } = render(
+          <ScopeGateStep components={LCP_FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
+        );
+        stdin.write('/');
+        stdin.write('C');
+        stdin.write('\t');
+        const frame = lastFrame() ?? '';
+        expect(frame).toContain('/Card');
+      });
+
+      it('Tab with multiple prefix-matches extends to the LCP and lists possibilities', () => {
+        const { lastFrame, stdin } = render(
+          <ScopeGateStep components={LCP_FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
+        );
+        stdin.write('/');
+        stdin.write('W');
+        stdin.write('\t');
+        const frame = lastFrame() ?? '';
+        // Query extended to the longest common prefix of Widget + Widen.
+        expect(frame).toContain('/Wid');
+        // Possibilities strip lists both candidates.
+        expect(frame).toContain('Widget');
+        expect(frame).toContain('Widen');
+      });
+
+      it('Tab with no further common prefix keeps the query and still lists possibilities', () => {
         const { lastFrame, stdin } = render(
           <ScopeGateStep components={T3_FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
         );
         stdin.write('/');
         stdin.write('W');
-        stdin.write('i');
         stdin.write('\t');
         const frame = lastFrame() ?? '';
-        expect(frame).toContain('/Widget');
+        // LCP of Widget/Wizard/Waffle is just "W" — query unchanged.
+        expect(frame).toContain('/W');
+        expect(frame).toContain('Widget');
+        expect(frame).toContain('Wizard');
+        expect(frame).toContain('Waffle');
+      });
+
+      it('typing after Tab clears the possibilities strip', () => {
+        const { lastFrame, stdin } = render(
+          <ScopeGateStep components={T3_FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
+        );
+        stdin.write('/');
+        stdin.write('W');
+        stdin.write('\t');
+        expect(lastFrame() ?? '').toContain('Wizard');
+        stdin.write('i'); // narrows to Widget/Wizard; strip should clear on keystroke
+        const frame = lastFrame() ?? '';
+        // Strip cleared: the possibilities label is gone.
+        expect(frame).not.toContain('possibilities:');
       });
 
       it('Tab with input open and no prefix match is a no-op (no crash, query unchanged)', () => {
@@ -1822,6 +1872,137 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       const out = lastFrame() ?? '';
       // Cap fires: the marker at position 500 must NOT be present.
       expect(out).not.toContain('TAILMARKER');
+    });
+  });
+
+  describe('? help overlay (L3b)', () => {
+    const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+    it('advertises [?] help in the bottom legend', () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      expect(stripAnsi(lastFrame() ?? '')).toContain('[?]');
+    });
+
+    it('pressing ? opens a help overlay listing ScopeGate keys; Esc closes it', async () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIXTURE} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('?');
+      await new Promise((r) => setTimeout(r, 30));
+      const open = stripAnsi(lastFrame() ?? '');
+      expect(open).toContain('Help');
+      expect(open).toMatch(/lineage/i);
+      // ScopeGate has no undo/redo.
+      expect(open).not.toContain('Ctrl+Z');
+
+      stdin.write('\x1b'); // Esc
+      await new Promise((r) => setTimeout(r, 30));
+      expect(stripAnsi(lastFrame() ?? '')).not.toContain('Help');
+    });
+
+    it('while the help overlay is open, other step keys are gated (f does not confirm)', async () => {
+      const onConfirm = vi.fn();
+      const { stdin } = render(
+        <ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />,
+      );
+      stdin.write('?');
+      await new Promise((r) => setTimeout(r, 30));
+      stdin.write('f');
+      await new Promise((r) => setTimeout(r, 30));
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('L2c — height-aware layout shrinks the sidebar when the lineage panel opens', () => {
+    const MANY = Array.from({ length: 30 }, (_, i) => ({
+      name: `Comp${String(i).padStart(2, '0')}`,
+      componentId: `c${i}`,
+    }));
+
+    function countSidebarRows(frame: string): number {
+      return frame
+        .split('\n')
+        .filter((l) => /Comp\d\d/.test(l) && !/Lineage/.test(l)).length;
+    }
+
+    it('renders fewer sidebar rows with the panel open than closed (fits terminal)', async () => {
+      const closed = render(
+        <ScopeGateStep components={MANY} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      const closedRows = countSidebarRows(closed.lastFrame() ?? '');
+
+      const { stdin, lastFrame } = render(
+        <ScopeGateStep components={MANY} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      stdin.write('l'); // open lineage panel
+      await new Promise((r) => setTimeout(r, 30));
+      const openFrame = lastFrame() ?? '';
+      const openRows = countSidebarRows(openFrame);
+
+      // Panel is open (its header renders).
+      expect(openFrame).toContain('Lineage:');
+      // Sidebar shrank: with stdout.rows unavailable in tests the layout uses
+      // the conservative fallback, which shrinks the sidebar well below the
+      // full closed height so the whole stack fits.
+      expect(openRows).toBeLessThan(closedRows);
+    });
+  });
+
+  describe('L2d — lineage renders as a sidebar overlay (not stacked below)', () => {
+    function withWideStdout(cols: number): () => void {
+      const probe = render(<ScopeGateStep components={[]} onConfirm={() => {}} onQuit={() => {}} />);
+      const proto = Object.getPrototypeOf(probe.stdout);
+      const original = Object.getOwnPropertyDescriptor(proto, 'columns');
+      Object.defineProperty(proto, 'columns', { configurable: true, get: () => cols });
+      probe.unmount();
+      probe.cleanup();
+      return () => {
+        if (original) Object.defineProperty(proto, 'columns', original);
+      };
+    }
+
+    // Article slots Card; Zzz is an unrelated standalone that only ever
+    // renders in the main sidebar (undecided → never in the added columns,
+    // never in Card's lineage). So its presence is a proxy for "the
+    // GroupedSidebar is rendered".
+    const FIXTURE_L2D = [
+      { name: 'Article', componentId: 'a0', slots: [{ name: 'body', allowedComponents: ['Card'] }] },
+      { name: 'Card', componentId: 'c0' },
+      { name: 'Zzz', componentId: 'z0' },
+    ];
+
+    it('when lineage is open the sidebar is replaced by the panel; columns 2 & 3 stay visible', async () => {
+      const restore = withWideStdout(160);
+      try {
+        const { lastFrame, stdin } = render(
+          <ScopeGateStep components={FIXTURE_L2D} onConfirm={() => {}} onQuit={() => {}} />,
+        );
+        // Baseline: sidebar renders Zzz, columns 2 & 3 present.
+        const before = lastFrame() ?? '';
+        expect(before).toContain('Zzz');
+        expect(before).toContain('Added components');
+        expect(before).toContain('Added groups');
+
+        // Focus Card, open lineage.
+        stdin.write('j'); // move off Article toward Card
+        await new Promise((r) => setTimeout(r, 30));
+        stdin.write('l');
+        await new Promise((r) => setTimeout(r, 30));
+        const open = lastFrame() ?? '';
+
+        // (a) the lineage panel content renders.
+        expect(open).toContain('Lineage:');
+        // (b) the GroupedSidebar no longer occupies the sidebar slot — the
+        // sidebar-only component Zzz is gone.
+        expect(open).not.toContain('Zzz');
+        // (c) columns 2 & 3 stay visible alongside the overlay.
+        expect(open).toContain('Added components');
+        expect(open).toContain('Added groups');
+      } finally {
+        restore();
+      }
     });
   });
 });
