@@ -7,6 +7,7 @@ on:
       - canary
     paths:
       - "packages/**"
+      - "tools/**"
   pull_request:
     branches:
       - main
@@ -90,6 +91,16 @@ jobs:
 
       - name: Build
         run: pnpm affected:build
+
+  # PTY smoke tests are intentionally NOT run in CI. node-pty on the
+  # ubuntu-latest runners produces a child whose stdin/stdout report
+  # isTTY=true, but Ink's setRawMode never returns and the render never
+  # progresses past the initial cursor-hide byte. Reproduces on every
+  # PR run; passes cleanly on macOS. Until we sort out a working
+  # runner (or move to a self-hosted Linux with a real PTY), gate the
+  # suite as local-only.
+  #
+  # Run locally:  PTY_TESTS=1 pnpm --filter @contentful/dsi-pty-harness exec vitest run
 
   test-summary:
     name: Test Summary
