@@ -59,7 +59,6 @@ export type ScopeGateStepProps = {
   onCancelAutoFilter?: () => void;
 };
 
-const REASON_DISPLAY_MAX = 60;
 // T7 — focused-row detail line renders the full AI reason with wrapping,
 // capped at 4 lines. Approximate the cap as `width * FOCUSED_REASON_MAX_LINES`
 // characters — precise wrap-position is width-dependent so this is intentionally
@@ -111,12 +110,6 @@ const HELP_SECTIONS: HelpSection[] = [
     ],
   },
 ];
-
-function truncateReason(reason: string | null | undefined): string {
-  if (reason === null || reason === undefined || reason === '') return '<no reason given>';
-  if (reason.length <= REASON_DISPLAY_MAX) return reason;
-  return reason.slice(0, REASON_DISPLAY_MAX - 1).trimEnd() + '…';
-}
 
 function capReasonForFocusedRow(reason: string, width: number): string {
   const safeWidth = Math.max(20, width);
@@ -909,12 +902,13 @@ export function ScopeGateStep({
     (c) => isAiFlagged(c) && c.aiReason !== null && c.aiReason !== undefined && c.aiReason !== '',
   );
   // L7 — goto-banner rows for the AI-rationale panel. One row per AI-flagged
-  // component that carries a reason; the label pairs the name with a truncated
-  // reason (width-safe), and `jumpTarget` drives the main-cursor jump on Enter.
+  // component that carries a reason; the label pairs the name with the full
+  // reason (the sidebar-slot box wraps long text), and `jumpTarget` drives the
+  // main-cursor jump on Enter.
   const aiRows = useMemo(
     () =>
       aiExcludedWithReasons.map((c) => ({
-        label: `${c.name} — ${truncateReason(c.aiReason)}`,
+        label: `${c.name} — ${c.aiReason}`,
         jumpTarget: c.name,
       })),
     [aiExcludedWithReasons],

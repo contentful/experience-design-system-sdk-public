@@ -1845,12 +1845,12 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(out).toContain(marker);
     });
 
-    it('AI-rationale goto-banner row STILL truncates the reason at 60 chars (L7)', async () => {
+    it('AI-rationale goto-banner row renders the FULL reason without truncation (L7)', async () => {
       const longReason = 'x'.repeat(80) + 'TAILWORD';
       // Aaa is a non-flagged standalone that sorts first, so it (not the flagged
-      // Zeta) is the initially-focused row — keeping Zeta's full reason out of
-      // the focused-row detail block, so the ONLY place the reason surfaces is
-      // the goto-banner where truncation must apply.
+      // Zeta) is the initially-focused row — keeping Zeta's reason out of the
+      // focused-row detail block, so the ONLY place the reason surfaces is the
+      // goto-banner.
       const local = [
         { name: 'Aaa', componentId: 'c0' },
         { name: 'Zeta', componentId: 'c1', aiDecision: 'rejected' as const, aiReason: longReason },
@@ -1858,17 +1858,14 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={local} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
-      // L7: the inline gray list is gone; the truncated reason now renders in
-      // the [x] goto-banner. truncateReason caps at 59 chars + '…', so the
-      // banner row carries the compact form and NOT the tail past the cap. (The
-      // sidebar-slot box may wrap the label, so assert the cap held — the
-      // ellipsis is present and the tail past the cap is absent.)
+      // The banner no longer truncates: the full reason renders (the sidebar-slot
+      // box wraps long text), so the tail past the old 60-char cap must appear
+      // and no ellipsis cap is applied to the row.
       stdin.write('x');
       await new Promise((r) => setTimeout(r, 30));
       const out = lastFrame() ?? '';
       expect(out).toContain('Zeta');
-      expect(out).toContain('…');
-      expect(out).not.toContain('TAILWORD');
+      expect(out).toContain('TAILWORD');
     });
 
     it('focused-row detail caps wrapped output; tail text past the cap is not rendered', () => {
