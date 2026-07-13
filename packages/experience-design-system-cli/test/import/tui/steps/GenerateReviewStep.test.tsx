@@ -1773,12 +1773,34 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     expect(titleLine).toContain('Banner');
   });
 
-  it('T3: Tab while search input is OPEN autocompletes query to first prefix-match', async () => {
+  it('L4: Tab with a single prefix-match completes to the full name (input open)', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'Widget', entry: makeEntry('Widget') },
-      { key: 'Wizard', entry: makeEntry('Wizard') },
-      { key: 'Waffle', entry: makeEntry('Waffle') },
+      { key: 'Card', entry: makeEntry('Card') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('/');
+    await tick();
+    stdin.write('C');
+    await tick();
+    stdin.write('\t'); // Tab — single prefix-match → complete to Card
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('/Card');
+    // Input remains open (cursor block shown, no persistent [n] hint yet).
+    expect(frame).not.toMatch(/\[n\] next/);
+  });
+
+  it('L4: Tab with multiple prefix-matches extends to the LCP and lists possibilities', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Widget', entry: makeEntry('Widget') },
+      { key: 'Widen', entry: makeEntry('Widen') },
+      { key: 'Card', entry: makeEntry('Card') },
     ]);
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
@@ -1788,14 +1810,12 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     await tick();
     stdin.write('W');
     await tick();
-    stdin.write('i');
-    await tick();
-    stdin.write('\t'); // Tab — should autocomplete to first alphabetical prefix-match: Widget
+    stdin.write('\t'); // Tab — LCP of Widget + Widen is "Wid"
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('/Widget');
-    // Input remains open (cursor block shown, no persistent [n] hint yet).
-    expect(frame).not.toMatch(/\[n\] next/);
+    expect(frame).toContain('/Wid');
+    expect(frame).toContain('Widget');
+    expect(frame).toContain('Widen');
   });
 
   it('T3: Tab while input open with no prefix match is a no-op', async () => {
@@ -3367,7 +3387,7 @@ describe('GenerateReviewStep — undo/redo + reload-from-save (T4)', () => {
     expect(cardLine).toContain('[✓]');
   });
 
-  it('legend advertises Cmd+Z / Cmd+Y / Ctrl+R when sidebar is focused', async () => {
+  it('legend advertises Ctrl+Z / Ctrl+Y / Ctrl+R when sidebar is focused', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: card }]);
     vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
@@ -3376,8 +3396,8 @@ describe('GenerateReviewStep — undo/redo + reload-from-save (T4)', () => {
     );
     await tick();
     const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
-    expect(frame).toContain('[Cmd+Z] undo');
-    expect(frame).toContain('[Cmd+Y] redo');
+    expect(frame).toContain('[Ctrl+Z] undo');
+    expect(frame).toContain('[Ctrl+Y] redo');
     expect(frame).toContain('[Ctrl+R] reload');
   });
 });
@@ -3652,5 +3672,38 @@ describe('GenerateReviewStep — [i] jump-and-filter (T5b)', () => {
     const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
     expect(frame).toMatch(/\[i\][^\n]*focus lineage/);
     expect(frame).toMatch(/\[p\][^\n]*rationale/);
+  });
+});
+
+describe('GenerateReviewStep — undo/redo legend + ? help overlay (L3b)', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+  it('legend advertises Ctrl+Z / Ctrl+Y and NOT Cmd+Z / Cmd+Y', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toContain('Ctrl+Z');
+    expect(frame).toContain('Ctrl+Y');
+    expect(frame).not.toContain('Cmd+Z');
+    expect(frame).not.toContain('Cmd+Y');
+  });
+
+  it('pressing ? opens a help overlay advertising Ctrl+Y / Redo; Esc closes', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('?');
+    await tick();
+    const open = stripAnsi(lastFrame() ?? '');
+    expect(open).toContain('Help');
+    expect(open).toContain('Ctrl+Y');
+    expect(open).toMatch(/Redo/i);
+
+    stdin.write('\x1b'); // Esc
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).not.toContain('Help');
   });
 });

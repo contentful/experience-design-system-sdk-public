@@ -705,9 +705,9 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       expect(arg.accepted).toEqual([]);
     });
 
-    it('Space on a cycle-tier row accepts (accept-cascade); [r] still rejects', () => {
-      // Under the split-direction model, Space aliases [a] (force-accept),
-      // NOT [r]. This test pins that behavior against future regressions.
+    it('Space on a cycle-tier row does NOT accept (L9 rebind: space = collapse)', () => {
+      // L9 rebind: Space no longer accepts — it toggles group collapse. [a]
+      // accepts, [r] rejects. This pins the rebind against future regressions.
       const onConfirm = vi.fn();
       const { stdin } = render(
         <ScopeGateStep components={CYCLE} onConfirm={onConfirm} onQuit={() => {}} />,
@@ -715,7 +715,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       stdin.write(' ');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
-      expect(arg.accepted).toContain('NodeA');
+      expect(arg.accepted).not.toContain('NodeA');
     });
 
     it('[a] on a cycle-tier row after a reject re-accepts the whole cycle unit (task #47 cohesion)', () => {
@@ -1118,16 +1118,17 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     expect(arg.rejected).toContain('Text');
   });
 
-  it('Space on an undecided row flips it to accepted', () => {
+  it('Space on an undecided row does NOT accept (L9 rebind: space = collapse)', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Cursor on Card (undecided). Space accepts Card + cascades to descendants.
+    // L9 rebind: Space toggles collapse, not accept. Card stays undecided →
+    // partitions into rejected on confirm.
     stdin.write(' ');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    expect(arg.accepted).toEqual(expect.arrayContaining(['Card', 'Text', 'Icon']));
+    expect(arg.accepted).not.toContain('Card');
   });
 });
 
@@ -1845,20 +1846,27 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(out).toContain(marker);
     });
 
-    it('AI-recommends-exclusions banner list STILL truncates the reason at 60 chars', () => {
+    it('AI-rationale goto-banner row renders the FULL reason without truncation (L7)', async () => {
       const longReason = 'x'.repeat(80) + 'TAILWORD';
+      // Aaa is a non-flagged standalone that sorts first, so it (not the flagged
+      // Zeta) is the initially-focused row — keeping Zeta's reason out of the
+      // focused-row detail block, so the ONLY place the reason surfaces is the
+      // goto-banner.
       const local = [
-        { name: 'AAA', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: longReason },
-        { name: 'Zeta', componentId: 'c1' },
+        { name: 'Aaa', componentId: 'c0' },
+        { name: 'Zeta', componentId: 'c1', aiDecision: 'rejected' as const, aiReason: longReason },
       ];
-      const { lastFrame } = render(
+      const { lastFrame, stdin } = render(
         <ScopeGateStep components={local} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
+      // The banner no longer truncates: the full reason renders (the sidebar-slot
+      // box wraps long text), so the tail past the old 60-char cap must appear
+      // and no ellipsis cap is applied to the row.
+      stdin.write('x');
+      await new Promise((r) => setTimeout(r, 30));
       const out = lastFrame() ?? '';
-      // truncateReason returns first 59 chars + '…' for reasons > 60 chars.
-      // The banner line is prefixed by "  <name> — ". Assert the compact form
-      // still appears somewhere (the banner emits it verbatim).
-      expect(out).toContain('AAA — ' + 'x'.repeat(59) + '…');
+      expect(out).toContain('Zeta');
+      expect(out).toContain('TAILWORD');
     });
 
     it('focused-row detail caps wrapped output; tail text past the cap is not rendered', () => {
@@ -1950,6 +1958,50 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
     });
   });
 
+  describe('L2e — sidebar autoscales to a small terminal height', () => {
+    const MANY = Array.from({ length: 30 }, (_, i) => ({
+      name: `Comp${String(i).padStart(2, '0')}`,
+      componentId: `c${i}`,
+    }));
+
+    function countSidebarRows(frame: string): number {
+      return frame
+        .split('\n')
+        .filter((l) => /Comp\d\d/.test(l) && !/Lineage/.test(l)).length;
+    }
+
+    function withRows(rows: number): () => void {
+      const probe = render(<ScopeGateStep components={[]} onConfirm={() => {}} onQuit={() => {}} />);
+      const proto = Object.getPrototypeOf(probe.stdout);
+      const original = Object.getOwnPropertyDescriptor(proto, 'rows');
+      Object.defineProperty(proto, 'rows', { configurable: true, get: () => rows });
+      probe.unmount();
+      probe.cleanup();
+      return () => {
+        if (original) Object.defineProperty(proto, 'rows', original);
+        else delete (proto as Record<string, unknown>).rows;
+      };
+    }
+
+    it('renders FEWER sidebar rows on a short terminal than on a tall one', () => {
+      const restoreTall = withRows(60);
+      const tall = render(<ScopeGateStep components={MANY} onConfirm={() => {}} onQuit={() => {}} />);
+      const tallRows = countSidebarRows(tall.lastFrame() ?? '');
+      tall.unmount();
+      tall.cleanup();
+      restoreTall();
+
+      const restoreShort = withRows(24);
+      const short = render(<ScopeGateStep components={MANY} onConfirm={() => {}} onQuit={() => {}} />);
+      const shortRows = countSidebarRows(short.lastFrame() ?? '');
+      short.unmount();
+      short.cleanup();
+      restoreShort();
+
+      expect(shortRows).toBeLessThan(tallRows);
+    });
+  });
+
   describe('L2d — lineage renders as a sidebar overlay (not stacked below)', () => {
     function withWideStdout(cols: number): () => void {
       const probe = render(<ScopeGateStep components={[]} onConfirm={() => {}} onQuit={() => {}} />);
@@ -2004,5 +2056,487 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         restore();
       }
     });
+  });
+
+  describe('L7 — AI-rationale goto-banner', () => {
+    const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+    function withWideStdout(cols: number): () => void {
+      const probe = render(<ScopeGateStep components={[]} onConfirm={() => {}} onQuit={() => {}} />);
+      const proto = Object.getPrototypeOf(probe.stdout);
+      const original = Object.getOwnPropertyDescriptor(proto, 'columns');
+      Object.defineProperty(proto, 'columns', { configurable: true, get: () => cols });
+      probe.unmount();
+      probe.cleanup();
+      return () => {
+        if (original) Object.defineProperty(proto, 'columns', original);
+      };
+    }
+
+    // BadgeIcon + DivWrapper are AI-flagged with reasons. Hero is an
+    // undecided, non-flagged standalone that only ever renders in the main
+    // sidebar (never in the added columns, never AI-flagged) — so its presence
+    // is a proxy for "the GroupedSidebar occupies the sidebar slot".
+    const MIXED = [
+      { name: 'Button', componentId: 'c0' },
+      { name: 'Card', componentId: 'c1' },
+      { name: 'BadgeIcon', componentId: 'c2', aiDecision: 'rejected' as const, aiReason: 'low semantic value' },
+      { name: 'DivWrapper', componentId: 'c3', aiDecision: 'rejected' as const, aiReason: 'no semantic content' },
+      { name: 'Hero', componentId: 'c4' },
+    ];
+
+    it('replaces the multi-line gray list with a one-line hint advertising [x]', () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      const out = stripAnsi(lastFrame() ?? '');
+      // One-line hint carries the count + the keybinding.
+      expect(out).toContain('AI recommended exclusions');
+      expect(out).toContain('[x]');
+      // The OLD inline gray list is gone: DivWrapper's reason no longer renders
+      // inline (BadgeIcon is the initially-focused row so its reason still shows
+      // in the focused-row detail — DivWrapper's does not appear anywhere).
+      expect(out).not.toContain('no semantic content');
+    });
+
+    it('[x] opens a goto-banner in the sidebar slot listing AI-flagged components; columns 2 & 3 stay', async () => {
+      const restore = withWideStdout(160);
+      try {
+        const { lastFrame, stdin } = render(
+          <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+        );
+        const before = stripAnsi(lastFrame() ?? '');
+        // Baseline: sidebar renders Hero, columns 2 & 3 present.
+        expect(before).toContain('Hero');
+        expect(before).toContain('Added components');
+        expect(before).toContain('Added groups');
+
+        stdin.write('x');
+        await new Promise((r) => setTimeout(r, 30));
+        const open = stripAnsi(lastFrame() ?? '');
+
+        // (a) banner lists AI-flagged components.
+        expect(open).toContain('BadgeIcon');
+        expect(open).toContain('DivWrapper');
+        // (b) sidebar slot is replaced — the sidebar-only Hero is gone.
+        expect(open).not.toContain('Hero');
+        // (c) columns 2 & 3 stay visible alongside the banner (no stacking).
+        expect(open).toContain('Added components');
+        expect(open).toContain('Added groups');
+
+        // Esc closes; sidebar (Hero) returns.
+        stdin.write('\x1b');
+        await new Promise((r) => setTimeout(r, 30));
+        const closed = stripAnsi(lastFrame() ?? '');
+        expect(closed).toContain('Hero');
+      } finally {
+        restore();
+      }
+    });
+
+    it('Enter jumps the main cursor to the selected flagged component', async () => {
+      const restore = withWideStdout(160);
+      try {
+        const onConfirm = vi.fn();
+        const { stdin } = render(
+          <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
+        );
+        stdin.write('x'); // open AI-rationale banner (cursor on BadgeIcon)
+        await new Promise((r) => setTimeout(r, 30));
+        stdin.write('j'); // move banner cursor to DivWrapper
+        await new Promise((r) => setTimeout(r, 30));
+        stdin.write('\r'); // Enter → jump main cursor to DivWrapper + close
+        await new Promise((r) => setTimeout(r, 30));
+        stdin.write('a'); // accept the now-focused row
+        stdin.write('f');
+        const arg = onConfirm.mock.calls[onConfirm.mock.calls.length - 1][0];
+        expect(arg.accepted).toContain('DivWrapper');
+      } finally {
+        restore();
+      }
+    });
+
+    it('with zero AI-flagged components the hint is hidden and [x] is a no-op', async () => {
+      const clean = [
+        { name: 'Alpha', componentId: 'c0' },
+        { name: 'Beta', componentId: 'c1' },
+      ];
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={clean} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+      );
+      expect(stripAnsi(lastFrame() ?? '')).not.toContain('AI recommended exclusions');
+      stdin.write('x');
+      await new Promise((r) => setTimeout(r, 30));
+      const out = stripAnsi(lastFrame() ?? '');
+      // No banner opened (Alpha still in the sidebar; nothing changed).
+      expect(out).toContain('Alpha');
+      expect(out).not.toContain('AI recommended exclusions');
+    });
+  });
+
+  describe('L8 — category filters (broken / cycles)', () => {
+    const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+    // NodeA ↔ NodeB form a cycle; Standalone is a plain non-cycle component;
+    // BadgeIcon is AI-flagged (broken).
+    const FIX = [
+      {
+        name: 'NodeA',
+        componentId: 'a',
+        slots: [{ name: 'slotA', allowedComponents: ['NodeB'] }],
+      },
+      {
+        name: 'NodeB',
+        componentId: 'b',
+        slots: [{ name: 'slotB', allowedComponents: ['NodeA'] }],
+      },
+      { name: 'Standalone', componentId: 's' },
+      { name: 'BadgeIcon', componentId: 'x', aiDecision: 'rejected' as const, aiReason: 'low value' },
+    ];
+
+    it('[o] cycles filter narrows grouped sidebar to cycle members; toggling off restores', async () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
+      stdin.write('o');
+      await new Promise((r) => setTimeout(r, 20));
+      const filtered = stripAnsi(lastFrame() ?? '');
+      expect(filtered).toContain('NodeA');
+      expect(filtered).toContain('NodeB');
+      // Non-cycle standalone is hidden in grouped view under an active filter.
+      expect(filtered).not.toContain('Standalone');
+      stdin.write('o');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
+    });
+
+    it('[w] broken filter narrows to AI-flagged components; toggling off restores', async () => {
+      const { lastFrame, stdin } = render(
+        <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      stdin.write('w');
+      await new Promise((r) => setTimeout(r, 20));
+      const filtered = stripAnsi(lastFrame() ?? '');
+      expect(filtered).toContain('BadgeIcon');
+      expect(filtered).not.toContain('Standalone');
+      stdin.write('w');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
+    });
+
+    it('legend advertises the [o] cycles and [w] broken filter keys', async () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      const out = stripAnsi(lastFrame() ?? '');
+      expect(out).toContain('[o]');
+      expect(out).toContain('[w]');
+    });
+
+    it('does not advertise a [d] deleted filter (ScopeGate has no deleted concept)', async () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      const out = stripAnsi(lastFrame() ?? '');
+      expect(out).not.toContain('[d] deleted');
+    });
+  });
+
+  describe('L11 — legend/help overhaul', () => {
+    const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+    const CYC = [
+      { name: 'NodeA', componentId: 'a', slots: [{ name: 'sA', allowedComponents: ['NodeB'] }] },
+      { name: 'NodeB', componentId: 'b', slots: [{ name: 'sB', allowedComponents: ['NodeA'] }] },
+      { name: 'Standalone', componentId: 's' },
+    ];
+
+    it('disambiguates the two cycle features: [c] cycle list vs [o] only cycles', async () => {
+      const { stdin, lastFrame } = render(
+        <ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      const legend = stripAnsi(lastFrame() ?? '');
+      // No bare identical "cycles" label for both keys.
+      expect(legend).toContain('[c] cycle list');
+      expect(legend).toContain('[o] only cycles');
+      // Help panel uses the same distinct labels.
+      stdin.write('?');
+      await new Promise((r) => setTimeout(r, 30));
+      const help = stripAnsi(lastFrame() ?? '');
+      expect(help).toMatch(/Cycle list/i);
+      expect(help).toMatch(/Only cycles/i);
+    });
+
+    it('active-highlight keys [L] flat and [/] search are present in the legend', async () => {
+      const { lastFrame } = render(
+        <ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      const legend = stripAnsi(lastFrame() ?? '');
+      // These toggle/mode keys get the active-highlight treatment via
+      // legendEntry (the highlight mechanism itself is unit-tested in
+      // LegendEntry.test.tsx; ink-testing-library strips ANSI here).
+      expect(legend).toContain('[L] flat');
+      expect(legend).toContain('[/] search');
+      expect(legend).toContain('[l] lineage');
+      expect(legend).toContain('[i] focus lineage');
+    });
+
+    it('help panel groups sidebar-view keys (L, l, o, w, i) together', async () => {
+      const { stdin, lastFrame } = render(
+        <ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      stdin.write('?');
+      await new Promise((r) => setTimeout(r, 30));
+      const help = stripAnsi(lastFrame() ?? '');
+      expect(help).toMatch(/Sidebar views/i);
+    });
+
+    it('[n] label matches its real behavior (next match, in Search group)', async () => {
+      const { stdin, lastFrame } = render(
+        <ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      stdin.write('?');
+      await new Promise((r) => setTimeout(r, 30));
+      const help = stripAnsi(lastFrame() ?? '');
+      expect(help).toMatch(/Next match/i);
+    });
+  });
+});
+
+// ── L9 — expand/collapse groups + accept/reject GR parity ───────────────────
+//
+// ScopeGate mirrors GenerateReview's collapse model: [Space] toggles the
+// focused group, [E]/[C] expand/collapse all. Accept rebinds so [a] accepts
+// and [Space] NO LONGER accepts (it collapses). Groups seed expanded so the
+// default view matches the previous always-expanded behavior.
+
+describe('ScopeGateStep — L9 collapse + accept rebind', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+  const GROUP = [
+    {
+      name: 'Card',
+      componentId: 'c0',
+      slots: [{ name: 'body', allowedComponents: ['Body'] }],
+    },
+    { name: 'Body', componentId: 'b0' },
+  ];
+
+  it('[Space] no longer accepts the focused row (rebound to collapse)', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={GROUP} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    // Cursor on Card group-root. Space must NOT accept it.
+    stdin.write(' ');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual([]);
+    expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Body']));
+  });
+
+  it('[a] still accepts the focused row', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={GROUP} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    stdin.write('a');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Card', 'Body']));
+  });
+
+  it('groups seed EXPANDED (default view matches old always-expanded)', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep components={GROUP} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).toContain('Body');
+  });
+
+  const flush = () => new Promise((r) => setTimeout(r, 20));
+
+  it('[Space] on the focused group collapses it, then re-expands', async () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={GROUP} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    await flush();
+    // Cursor on Card root. Collapse.
+    stdin.write(' ');
+    await flush();
+    let frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▸ Card/);
+    expect(frame).not.toMatch(/[├└]─ Body/);
+    // Re-expand.
+    stdin.write(' ');
+    await flush();
+    frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).toContain('Body');
+  });
+
+  it('[C] collapses all group roots; [E] expands all', async () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={GROUP} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    await flush();
+    stdin.write('C');
+    await flush();
+    let frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▸ Card/);
+    expect(frame).not.toMatch(/[├└]─ Body/);
+    stdin.write('E');
+    await flush();
+    frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).toContain('Body');
+  });
+
+  it('[C] collapses a cycle-participant group (set includes cycle participants)', async () => {
+    const CYCLE = [
+      {
+        name: 'NodeA',
+        componentId: 'a',
+        slots: [{ name: 'slotA', allowedComponents: ['NodeB'] }],
+      },
+      {
+        name: 'NodeB',
+        componentId: 'b',
+        slots: [{ name: 'slotB', allowedComponents: ['NodeA'] }],
+      },
+    ];
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    await flush();
+    // Cycle-tier rows render expanded by seed.
+    let frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▾ ⚠ NodeA/);
+    // Collapse-all must fold the cycle subtree.
+    stdin.write('C');
+    await flush();
+    frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▸ ⚠ NodeA/);
+    // Expand-all restores it.
+    stdin.write('E');
+    await flush();
+    frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/▾ ⚠ NodeA/);
+  });
+
+  it('legend advertises [space] collapse + [E/C] and NOT "a/space" accept', () => {
+    const { lastFrame } = render(
+      <ScopeGateStep components={GROUP} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    const legend = stripAnsi(lastFrame() ?? '');
+    expect(legend).toContain('[a] accept');
+    expect(legend).not.toContain('[a/space]');
+    expect(legend).toMatch(/\[space\][^\n]*expand\/collapse group/);
+    expect(legend).toMatch(/\[E\/C\]/);
+  });
+
+  it('help panel Selection entry no longer says "a / space"', async () => {
+    const { stdin, lastFrame } = render(
+      <ScopeGateStep components={GROUP} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('?');
+    await new Promise((r) => setTimeout(r, 30));
+    const help = stripAnsi(lastFrame() ?? '');
+    expect(help).not.toContain('a / space');
+  });
+});
+
+describe('FB2 — cursor + selection coherence under active category filters', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+  // Return the sidebar label on the row that currently carries the ▶ cursor.
+  const cursorRowLabel = (frame: string): string | undefined => {
+    const line = stripAnsi(frame)
+      .split('\n')
+      .find((l) => l.includes('▶'));
+    if (!line) return undefined;
+    // Strip glyphs/selection-boxes/borders so we can match the component name.
+    return line.replace(/[▶✓✗×⚠▸▾├└─│\[\] ]/g, ' ').replace(/\s+/g, ' ').trim();
+  };
+
+  // Aaa..Ddd are plain; Zbrk1/Zbrk2 are AI-flagged (broken). Grouped standalone
+  // tier is alphabetical, so the two broken rows sort LAST — moving the cursor
+  // down before activating [w] strands nav.cursor beyond the shrunk list.
+  const FIX = [
+    { name: 'Aaa', componentId: 'a' },
+    { name: 'Bbb', componentId: 'b' },
+    { name: 'Ccc', componentId: 'c' },
+    { name: 'Ddd', componentId: 'd' },
+    { name: 'Zbrk1', componentId: 'z1', aiDecision: 'rejected' as const, aiReason: 'low value' },
+    { name: 'Zbrk2', componentId: 'z2', aiDecision: 'rejected' as const, aiReason: 'low value' },
+  ];
+
+  it('after [w] shrinks the list, a single [k] moves the cursor (not stuck on a stale index)', async () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    // Move the cursor down to Ddd (row index 3 in the full list).
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j');
+    await new Promise((r) => setTimeout(r, 20));
+    // Activate the broken filter — visible rows collapse to [Zbrk1, Zbrk2].
+    stdin.write('w');
+    await new Promise((r) => setTimeout(r, 20));
+    // The cursor clamps to the last visible row (Zbrk2).
+    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk2');
+    // One [k] must move the cursor up to Zbrk1.
+    stdin.write('k');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk1');
+  });
+
+  it('accept targets the row the cursor moved to after a filter shrink', async () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={FIX} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j');
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('w'); // shrink to [Zbrk1, Zbrk2]; cursor clamps to Zbrk2
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('k'); // should move to Zbrk1
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('a'); // accept the focused row
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[onConfirm.mock.calls.length - 1][0];
+    expect(arg.accepted).toContain('Zbrk1');
+    expect(arg.accepted).not.toContain('Zbrk2');
+  });
+
+  it('toggling [w] off then on again keeps navigation working (not stuck)', async () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j'); // cursor at Ddd
+    stdin.write('w'); // on -> clamp to Zbrk2
+    stdin.write('w'); // off -> full list again
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('w'); // on again -> [Zbrk1, Zbrk2], cursor should clamp coherently
+    await new Promise((r) => setTimeout(r, 20));
+    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk2');
+    stdin.write('k'); // must move to Zbrk1 on the first press
+    await new Promise((r) => setTimeout(r, 20));
+    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk1');
   });
 });
