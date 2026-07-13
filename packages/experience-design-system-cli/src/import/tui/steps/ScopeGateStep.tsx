@@ -15,12 +15,6 @@ import {
 import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { findSlotCycles, type SlotCycle } from '../../../analyze/cycle-detection.js';
 import { computeAutocomplete } from '../autocomplete.js';
-import {
-  buildFlatDimPredicate,
-  computeFilterKeys,
-  intersectFilterKeys,
-  type FilterCategory,
-} from '../step-filters.js';
 import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { computeLineageLayout } from '../lineage-layout.js';
@@ -95,13 +89,6 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: '/', label: 'Search' },
       { keys: 'n', label: 'Next match' },
       { keys: 'i', label: 'Focus lineage' },
-    ],
-  },
-  {
-    title: 'Filters',
-    entries: [
-      { keys: 'w', label: 'Broken' },
-      { keys: 'o', label: 'Cycles' },
     ],
   },
   {
@@ -197,11 +184,6 @@ export function ScopeGateStep({
   // `filterVisibleKeys`. Esc clears jumpFilter first (see input handler).
   const [jumpFilterTarget, setJumpFilterTarget] = useState<string | null>(null);
   const [columnOneView, setColumnOneView] = useState<'grouped' | 'flat'>('grouped');
-  // L8 — category filters (broken / cycles). Each is an independent toggle;
-  // multiple active filters UNION their key sets. ScopeGate has no "deleted"
-  // concept (that's a GenerateReview-only removedComponents notion), so only
-  // `broken` and `cycles` are offered here.
-  const [activeFilters, setActiveFilters] = useState<Set<FilterCategory>>(new Set());
   const [showHelp, setShowHelp] = useState(false);
 
   // Everything defaults to undecided. AI decisions are advisory only —
@@ -280,40 +262,20 @@ export function ScopeGateStep({
 
   const closures = useMemo(() => computeAllClosures(graph), [graph]);
 
-  // L8 — "broken" in ScopeGate = AI-flagged (rejected/failed). Component keys
-  // feeding the `broken` category filter.
-  const brokenKeys = useMemo<Set<string>>(() => {
-    const set = new Set<string>();
-    for (const c of components) if (isAiFlagged(c)) set.add(c.name);
-    return set;
-  }, [components]);
-
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
     // T5: jump-filter takes priority. When active, the sidebar shows only the
-    // target + its transitive ancestors — search-neighborhood + category
-    // filters are set aside until Esc clears the jump.
+    // target + its transitive ancestors — search-neighborhood is set aside
+    // until Esc clears the jump.
     if (jumpFilterTarget) {
       return findAllAncestors(jumpFilterTarget, graph);
     }
-    // L8: category filters (broken / cycles) → union of matching keys.
-    const categoryKeys = computeFilterKeys({
-      filters: activeFilters,
-      data: { cycles: cycleParticipants, broken: brokenKeys },
-    });
-    // Search-neighborhood key set (undefined when no query / no match).
-    const searchKeys = (() => {
-      if (!searchQuery) return undefined;
-      const matches = groupedItems
-        .map((it) => it.key)
-        .filter((k) => fuzzyMatches(searchQuery, k));
-      if (matches.length === 0) return undefined;
-      return computeDirectNeighborhood(matches, graph);
-    })();
-    // Precedence: jump (above) → category ∩ search → whichever is active.
-    // When both a category filter and search are active, INTERSECT so only
-    // components satisfying BOTH survive; either alone applies on its own.
-    return intersectFilterKeys(categoryKeys, searchKeys);
-  }, [jumpFilterTarget, activeFilters, cycleParticipants, brokenKeys, searchQuery, groupedItems, graph]);
+    if (!searchQuery) return undefined;
+    const matches = groupedItems
+      .map((it) => it.key)
+      .filter((k) => fuzzyMatches(searchQuery, k));
+    if (matches.length === 0) return undefined;
+    return computeDirectNeighborhood(matches, graph);
+  }, [jumpFilterTarget, searchQuery, groupedItems, graph]);
 
   const visibleRows = useMemo(
     () =>
@@ -356,20 +318,10 @@ export function ScopeGateStep({
     return map;
   }, [components]);
 
-  // FB1 — flat view dims non-matches for active category filters / focus-
-  // lineage (parity with search, which flat view already dims). Grouped view
-  // continues to HIDE those non-matches via `filterVisibleKeys`, so the flat-
-  // dim membership never narrows grouped rows. Search dimming still applies in
-  // both views.
-  const dimPredicate = useMemo(
-    () =>
-      buildFlatDimPredicate({
-        viewMode: columnOneView,
-        searchQuery,
-        filterVisibleKeys,
-      }),
-    [columnOneView, searchQuery, filterVisibleKeys],
-  );
+  const dimPredicate = useMemo(() => {
+    if (!searchQuery) return undefined;
+    return (name: string) => !fuzzyMatches(searchQuery, name);
+  }, [searchQuery]);
 
   const applyReject = (target: string): void => {
     const { toReject, toDeselect } = computeCycleAwareRejectCascade(
@@ -458,28 +410,6 @@ export function ScopeGateStep({
     panelOpen: lineagePanel.isOpen,
     entryCount: lineageEntries.length,
   });
-
-  // FB2 — keep the nav cursor coherent with the filtered visible set. When a
-  // category filter toggle (or an expand/collapse) shrinks `visibleRows`, the
-  // raw `nav.cursor` can strand PAST the end of the new list. The movement
-  // handlers read `nav.cursor` directly (not the render-time `safeCursor`), so
-  // the first up/down keypress is silently absorbed re-aligning the stale
-  // index — the "stuck" symptom — and a stranded `scrollOffset` can push the
-  // cursor off-window. This effect re-clamps both into bounds after the set
-  // recomputes. The filter sets are derived from static component props
-  // (AI-flagged / cycle-participant), NOT from user decisions, so accept/reject
-  // never reshapes the visible set — cascade semantics are untouched. Explicit
-  // jumps (search / lineage / cycles) set `nav.cursor` themselves and are not
-  // disturbed because they always land inside the current set.
-  useEffect(() => {
-    setNav((prev) => {
-      const maxIdx = Math.max(0, visibleRows.length - 1);
-      const nextCursor = Math.min(prev.cursor, maxIdx);
-      const nextScroll = Math.min(prev.scrollOffset, maxIdx);
-      if (nextCursor === prev.cursor && nextScroll === prev.scrollOffset) return prev;
-      return { cursor: nextCursor, scrollOffset: nextScroll };
-    });
-  }, [visibleRows]);
 
   const searchMatches = useMemo(() => {
     if (!searchQuery) return [];
@@ -747,19 +677,6 @@ export function ScopeGateStep({
     }
     if (input === '/') {
       setSearchOpen(true);
-      return;
-    }
-    // L8 — category filter toggles. `[o]` cycles, `[w]` broken. Independent
-    // toggles; multiple active filters union in `filterVisibleKeys`. Grouped
-    // view hides non-matching rows; flat view dims them (existing behavior).
-    if (input === 'o' || input === 'w') {
-      const category: FilterCategory = input === 'o' ? 'cycles' : 'broken';
-      setActiveFilters((prev) => {
-        const next = new Set(prev);
-        if (next.has(category)) next.delete(category);
-        else next.add(category);
-        return next;
-      });
       return;
     }
     // T5 — jump-and-filter to the focused component + all transitive
@@ -1296,14 +1213,6 @@ export function ScopeGateStep({
         <Text>
           <Text color="cyan">[/]</Text> <Text dimColor>search</Text>
         </Text>
-        <Text>
-          <Text color={activeFilters.has('broken') ? 'yellow' : 'cyan'} inverse={activeFilters.has('broken')}>[w]</Text> <Text dimColor>broken</Text>
-        </Text>
-        {hasCycles && (
-          <Text>
-            <Text color={activeFilters.has('cycles') ? 'yellow' : 'cyan'} inverse={activeFilters.has('cycles')}>[o]</Text> <Text dimColor>cycles</Text>
-          </Text>
-        )}
         <Text>
           <Text color="cyan">[i]</Text> <Text dimColor>focus lineage</Text>
         </Text>

@@ -593,13 +593,13 @@ describe('ScopeGateStep — cycle participants in side columns', () => {
 });
 
 describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
-  it('renders the AI-recommended-exclusions banner above the columns in wide layout', () => {
+  it('surfaces the AI-recommended-exclusions hint + [x] goto-banner in wide layout', async () => {
     // Regression: after the three-column layout landed, both AI-suggestion
-    // signals — the banner text block and the per-row [×] glyph — must
-    // continue to surface. Nothing in the narrow-layout scope-gate tests
-    // covered this once the counter strip + side columns were introduced.
+    // signals — the exclusions affordance and the per-row [×] glyph — must
+    // continue to surface. L7 replaced the inline gray list with a one-line
+    // hint + an [x] goto-banner that carries the name + reason.
     setWide(160);
-    const { lastFrame } = render(
+    const { lastFrame, stdin } = render(
       <ScopeGateStep
         components={AI_FLAGGED_GRAPH}
         onConfirm={() => {}}
@@ -607,13 +607,21 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
         aiFilterStatus="complete"
       />,
     );
+    const before = lastFrame() ?? '';
+    // One-line hint above the columns; three-column layout engaged.
+    expect(before).toContain('AI recommended exclusions');
+    expect(before).toContain('[x]');
+    expect(before).toContain('Added components');
+    expect(before).toContain('Added groups');
+
+    // Open the goto-banner — it lists the flagged name + a fragment of the
+    // reason (defends against a future banner-suppression bug).
+    stdin.write('x');
+    await new Promise((r) => setTimeout(r, 30));
     const out = lastFrame() ?? '';
-    // Banner header + the flagged component's name + a fragment of the
-    // truncated reason (defends against a future banner-suppression bug).
-    expect(out).toContain('AI recommended exclusions');
     expect(out).toContain('DebugPanel');
     expect(out).toContain('internal-only debugging widget');
-    // And the three-column layout is actually engaged for this test.
+    // Columns 2 & 3 stay visible alongside the banner (no stacking).
     expect(out).toContain('Added components');
     expect(out).toContain('Added groups');
   });
