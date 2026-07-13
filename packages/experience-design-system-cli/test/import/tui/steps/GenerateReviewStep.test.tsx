@@ -3707,3 +3707,98 @@ describe('GenerateReviewStep — undo/redo legend + ? help overlay (L3b)', () =>
     expect(stripAnsi(lastFrame() ?? '')).not.toContain('Help');
   });
 });
+
+// ── L6 (lifecycle plan §5 L6 + §5.1 Q2): breaking-changes goto-banner ────────
+// The removed-components strip also surfaces breaking changes. The rich
+// per-component `changeClassification.breakingChanges` detail — previously
+// discarded (only the bare kind 'breaking' survived into previewAnnotations) —
+// is plumbed into a `breakingChanges` list. `[b]` opens a GotoBanner listing
+// each breaking component; Enter jumps the main selection to it.
+describe('GenerateReviewStep — breaking-changes goto-banner (L6)', () => {
+  let deriveBreakingChanges: typeof import('../../../../src/import/tui/steps/GenerateReviewStep.js').deriveBreakingChanges;
+
+  beforeEach(async () => {
+    triggerSpy.mockReset();
+    lastUseLivePreviewArgs = null;
+    lastOnResult = null;
+    hookReturnOverride = null;
+    const mod = await import('../../../../src/import/tui/steps/GenerateReviewStep.js');
+    deriveBreakingChanges = mod.deriveBreakingChanges;
+  });
+
+  const stripAnsiL6 = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+  const previewWithBreaking = () =>
+    ({
+      components: {
+        new: [],
+        changed: [
+          {
+            current: { id: 'btn', name: 'Button', contentProperties: [], designProperties: [], slots: [] },
+            proposed: { $type: 'component', $properties: {} },
+            hasPendingDraftChanges: false,
+            changeClassification: {
+              classification: 'breaking',
+              breakingChanges: [{ propertyId: 'variant', reason: 'removed' }],
+            },
+            impact: { affectedFragments: 2, affectedExperiences: 1 },
+          },
+          {
+            current: { id: 'lbl', name: 'Label', contentProperties: [], designProperties: [], slots: [] },
+            proposed: { $type: 'component', $properties: {} },
+            hasPendingDraftChanges: false,
+            changeClassification: { classification: 'compatible', breakingChanges: [] },
+          },
+        ],
+        removed: [],
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    }) as never;
+
+  it('deriveBreakingChanges keeps only breaking-classified changed entities with their detail', () => {
+    const out = deriveBreakingChanges(previewWithBreaking());
+    expect(out).toHaveLength(1);
+    expect(out[0].componentName).toBe('Button');
+    expect(out[0].changes).toEqual([{ propertyId: 'variant', reason: 'removed' }]);
+    expect(out[0].impact).toEqual({ affectedFragments: 2, affectedExperiences: 1 });
+  });
+
+  it('deriveBreakingChanges returns empty for a response with no breaking changes', () => {
+    expect(
+      deriveBreakingChanges({
+        components: { new: [], changed: [], removed: [], unchanged: ['Button'] },
+        tokens: { new: [], changed: [], removed: [], unchanged: [] },
+      } as never),
+    ).toEqual([]);
+  });
+
+  it('shows the [b] N breaking changes hint and opens the goto-banner on [b]', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithBreaking());
+    await tick();
+    const hint = stripAnsiL6(lastFrame() ?? '');
+    expect(hint).toContain('[b]');
+    expect(hint).toMatch(/1 breaking/);
+
+    stdin.write('b');
+    await tick();
+    const open = stripAnsiL6(lastFrame() ?? '');
+    expect(open).toContain('Breaking changes');
+    expect(open).toMatch(/Button/);
+    expect(open).toMatch(/removed/);
+  });
+
+  it('legend advertises [b] breaking', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithBreaking());
+    await tick();
+    expect(stripAnsiL6(lastFrame() ?? '')).toContain('[b] breaking');
+  });
+});

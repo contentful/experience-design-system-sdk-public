@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import type {
+  BreakingChange,
   CDFComponentEntry,
   ComponentTypeSummary,
+  DownstreamImpact,
   ServerPreviewResponse,
 } from '@contentful/experience-design-system-types';
 import {
@@ -51,6 +53,7 @@ import { findAllAncestors } from '../../../analyze/lineage.js';
 import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
+import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
 import { computeLineageLayout } from '../lineage-layout.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
@@ -206,6 +209,34 @@ export function computeCycleAutoRejectTargets(
   return targets;
 }
 
+export interface BreakingComponent {
+  componentName: string;
+  changes: BreakingChange[];
+  impact?: DownstreamImpact;
+}
+
+/**
+ * L6 (lifecycle plan §5 L6 + §5.1 Q2) — pull the per-component breaking-change
+ * detail out of a live-preview response. `applyPreviewAnnotations` only keeps
+ * the bare kind `'breaking'`; the goto-banner needs the reasons + downstream
+ * impact, so we read `response.components.changed` directly. Component name is
+ * the changed entity's `current.name`.
+ */
+export function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
+  const out: BreakingComponent[] = [];
+  for (const item of response.components.changed ?? []) {
+    if (item.changeClassification?.classification !== 'breaking') continue;
+    const componentName = item.current?.name;
+    if (typeof componentName !== 'string') continue;
+    out.push({
+      componentName,
+      changes: item.changeClassification.breakingChanges ?? [],
+      impact: item.impact,
+    });
+  }
+  return out;
+}
+
 export function GenerateReviewStep({
   extractSessionId,
   onFinalize,
@@ -302,6 +333,14 @@ export function GenerateReviewStep({
   // both callsites render pixel-identical panels.
   const lineagePanel = useOverlayPanel({ toggleKey: 'l' });
   const [lineageCursor, setLineageCursor] = useState(0);
+  // L6 (lifecycle plan §5 L6 + §5.1 Q2) — breaking-changes goto-banner. The
+  // rich per-component detail (reasons + downstream impact) is discarded by the
+  // `previewAnnotations` map, so we stash it here from `handleLivePreviewResult`
+  // and surface it via a `[b]` overlay mirroring the lineage panel. `[b]` opens;
+  // ↑/↓/j/k move the cursor; Enter jumps the main selection + closes.
+  const breakingPanel = useOverlayPanel({ toggleKey: 'b' });
+  const [breakingChanges, setBreakingChanges] = useState<BreakingComponent[]>([]);
+  const [breakingCursor, setBreakingCursor] = useState(0);
   // T8 (parity plan §3) — Column-1 view mode. `'grouped'` (default) uses the
   // tiered cycle/empty/composite/standalone layout; `'flat'` flattens to
   // an alphabetical list with `(N deps)` suffixes on composite roots. Mirrors
@@ -364,6 +403,7 @@ export function GenerateReviewStep({
     );
     const nextRemoved = response.components.removed ?? [];
     setRemovedComponents(nextRemoved);
+    setBreakingChanges(deriveBreakingChanges(response));
   };
 
   const livePreviewHook = useLivePreview({
@@ -1183,6 +1223,28 @@ export function GenerateReviewStep({
       return;
     }
 
+    // L6 (lifecycle plan §5 L6) — breaking-changes goto-banner owns keystrokes
+    // when open. Mirrors the lineage panel: ↑/↓/j/k move the cursor, Enter
+    // jumps the main selection to the highlighted breaking component + closes,
+    // `[b]`/Esc close (via the shared hook).
+    if (breakingPanel.isOpen) {
+      if (breakingPanel.handleInput(input, key)) return;
+      if (key.upArrow || input === 'k') {
+        setBreakingCursor((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        setBreakingCursor((c) => Math.min(Math.max(0, breakingChanges.length - 1), c + 1));
+        return;
+      }
+      if (key.return) {
+        const target = breakingChanges[breakingCursor];
+        if (target) jumpCursorToName(target.componentName);
+        breakingPanel.close();
+        return;
+      }
+      return;
+    }
     // T6 (parity plan §3) — lineage panel owns keystrokes when open.
     // Mirrors ScopeGate's overlay-owns-input pattern. Close-side (`[l]` toggle
     // and `[Esc]`) is delegated to the shared `useOverlayPanel` hook (T10);
@@ -1246,6 +1308,13 @@ export function GenerateReviewStep({
     if (input === 'l' && sidebarFocused && focusedComponentKey) {
       lineagePanel.open();
       setLineageCursor(0);
+      return;
+    }
+    // L6 — `[b]` opens the breaking-changes goto-banner when the live preview
+    // reported at least one breaking change. No-op otherwise (hint hidden).
+    if (input === 'b' && sidebarFocused && breakingChanges.length > 0) {
+      breakingPanel.open();
+      setBreakingCursor(0);
       return;
     }
     // T5b (layout plan §B) — jump-and-filter to focused component + all
@@ -1846,6 +1915,13 @@ export function GenerateReviewStep({
           ))}
         </Box>
       )}
+      {breakingChanges.length > 0 && !dialogOpen && (
+        // L6 — key hint to open the breaking-changes goto-banner. Rendered
+        // alongside the removed strip; L11 will regroup the copy.
+        <Box paddingX={1}>
+          <Text color="yellow">{`[b] ${breakingChanges.length} breaking change${breakingChanges.length === 1 ? '' : 's'}`}</Text>
+        </Box>
+      )}
       {cyclePanel.isOpen &&
         !dialogOpen &&
         (() => {
@@ -1996,7 +2072,22 @@ export function GenerateReviewStep({
           fragment right after the sidebar Box. */}
       {!dialogOpen && (
         <Box>
-          {lineagePanel.isOpen && focusedComponentKey ? (
+          {breakingPanel.isOpen ? (
+            // L6 — rendered IN the sidebar slot (like the lineage panel post-
+            // L2d) so opening it does not grow the total frame height and
+            // trigger Ink's full-screen repaint flicker.
+            <GotoBanner
+              title="Breaking changes"
+              rows={breakingChanges.map((b) => ({
+                label: `${b.componentName} — ${b.changes[0]?.reason ?? 'breaking'}`,
+                jumpTarget: b.componentName,
+              }))}
+              cursor={breakingCursor}
+              maxRows={panelMaxRows}
+              width={sidebarWidth}
+              footerHint="[↑/↓] move · [Enter] jump · [Esc] close"
+            />
+          ) : lineagePanel.isOpen && focusedComponentKey ? (
             <LineagePanel
               focusedComponentKey={focusedComponentKey}
               entries={lineageEntries}
@@ -2185,6 +2276,7 @@ export function GenerateReviewStep({
                       (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '') +
                       (slotCycles.length > 0 ? '  [c] cycles' : '') +
                       (focusedComponentKey ? '  [l] lineage' : '') +
+                      (breakingChanges.length > 0 ? '  [b] breaking' : '') +
                       (focusedComponentKey ? '  [i] focus lineage' : '') +
                       '  [p] rationale' +
                       '  [L] flat' +
