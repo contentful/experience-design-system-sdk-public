@@ -21,6 +21,7 @@ exports[`HelpOverlay > matches snapshot in review mode 1`] = `
 │   F                Open finalize dialog    │
 │   Ctrl+S           Save draft              │
 │   Ctrl+Z           Undo                    │
+│   Ctrl+Y           Redo                    │
 │   Esc              Exit edit / close       │
 │                                            │
 │   ?                Close help              │

@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import type {
+  BreakingChange,
   CDFComponentEntry,
   ComponentTypeSummary,
+  DownstreamImpact,
   ServerPreviewResponse,
 } from '@contentful/experience-design-system-types';
 import {
@@ -51,11 +53,20 @@ import { findAllAncestors } from '../../../analyze/lineage.js';
 import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
-import { computeLineageLayout } from '../lineage-layout.js';
+import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
+import { computeSidebarBudget, FALLBACK_ROWS } from '../lineage-layout.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
+import { legendEntry } from '../components/LegendEntry.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
 import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
 import { computeAutocomplete } from '../autocomplete.js';
+import { resolveGroupRoot } from '../group-collapse.js';
+import {
+  buildFlatDimPredicate,
+  computeFilterKeys,
+  intersectFilterKeys,
+  type FilterCategory,
+} from '../step-filters.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -124,6 +135,14 @@ export function sortComponentsForSidebar<T extends { key: string; entry: CDFComp
 
 const PANEL_HEIGHT = 22;
 
+// L11 — help groups ordered by WHERE a key is used (navigation → selection →
+// sidebar views/filters → panels → search → history → general). Sidebar-view
+// keys (flat, lineage, focus-lineage, group expand/collapse, broken/cycles
+// filters) cluster together because they all reshape the left column. The two
+// cycle features carry DISTINCT labels: `[c]` = "Cycle list" (breakdown panel),
+// `[o]` = "Only cycles" (sidebar filter). Component rationale is `[P]` (was
+// `[I]`, which collided conceptually with lowercase `[i]` = focus-lineage).
+// There is NO "Deleted" filter (removed per L11 item 8).
 const HELP_SECTIONS: HelpSection[] = [
   {
     title: 'Navigation',
@@ -144,25 +163,32 @@ const HELP_SECTIONS: HelpSection[] = [
     ],
   },
   {
-    title: 'Search',
+    title: 'Sidebar views',
     entries: [
-      { keys: '/', label: 'Search' },
-      { keys: 'n', label: 'Next match' },
+      { keys: 'L', label: 'Flat view' },
+      { keys: 'l', label: 'Lineage' },
       { keys: 'i', label: 'Focus lineage' },
+      { keys: 'w', label: 'Only broken' },
+      { keys: 'o', label: 'Only cycles' },
+      { keys: 'space', label: 'Expand/collapse group' },
+      { keys: 'E / C', label: 'Expand/collapse all' },
     ],
   },
   {
     title: 'Panels',
     entries: [
-      { keys: 'l', label: 'Lineage' },
-      { keys: 'c', label: 'Cycles' },
+      { keys: 'c', label: 'Cycle list' },
       { keys: 'p', label: 'Prop rationale' },
-      { keys: 'I', label: 'Component rationale' },
+      { keys: 'P', label: 'Component rationale' },
       { keys: 's', label: 'Source' },
       { keys: 'J', label: 'Toggle JSON' },
-      { keys: 'space', label: 'Expand/collapse group' },
-      { keys: 'E / C', label: 'Expand/collapse all' },
-      { keys: 'L', label: 'Flat view' },
+    ],
+  },
+  {
+    title: 'Search',
+    entries: [
+      { keys: '/', label: 'Search' },
+      { keys: 'n', label: 'Next match' },
     ],
   },
   {
@@ -204,6 +230,34 @@ export function computeCycleAutoRejectTargets(
     for (const anc of findAllAncestors(p, graph)) targets.add(anc);
   }
   return targets;
+}
+
+export interface BreakingComponent {
+  componentName: string;
+  changes: BreakingChange[];
+  impact?: DownstreamImpact;
+}
+
+/**
+ * L6 (lifecycle plan §5 L6 + §5.1 Q2) — pull the per-component breaking-change
+ * detail out of a live-preview response. `applyPreviewAnnotations` only keeps
+ * the bare kind `'breaking'`; the goto-banner needs the reasons + downstream
+ * impact, so we read `response.components.changed` directly. Component name is
+ * the changed entity's `current.name`.
+ */
+export function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
+  const out: BreakingComponent[] = [];
+  for (const item of response.components.changed ?? []) {
+    if (item.changeClassification?.classification !== 'breaking') continue;
+    const componentName = item.current?.name;
+    if (typeof componentName !== 'string') continue;
+    out.push({
+      componentName,
+      changes: item.changeClassification.breakingChanges ?? [],
+      impact: item.impact,
+    });
+  }
+  return out;
 }
 
 export function GenerateReviewStep({
@@ -302,12 +356,24 @@ export function GenerateReviewStep({
   // both callsites render pixel-identical panels.
   const lineagePanel = useOverlayPanel({ toggleKey: 'l' });
   const [lineageCursor, setLineageCursor] = useState(0);
+  // L6 (lifecycle plan §5 L6 + §5.1 Q2) — breaking-changes goto-banner. The
+  // rich per-component detail (reasons + downstream impact) is discarded by the
+  // `previewAnnotations` map, so we stash it here from `handleLivePreviewResult`
+  // and surface it via a `[b]` overlay mirroring the lineage panel. `[b]` opens;
+  // ↑/↓/j/k move the cursor; Enter jumps the main selection + closes.
+  const breakingPanel = useOverlayPanel({ toggleKey: 'b' });
+  const [breakingChanges, setBreakingChanges] = useState<BreakingComponent[]>([]);
+  const [breakingCursor, setBreakingCursor] = useState(0);
   // T8 (parity plan §3) — Column-1 view mode. `'grouped'` (default) uses the
   // tiered cycle/empty/composite/standalone layout; `'flat'` flattens to
   // an alphabetical list with `(N deps)` suffixes on composite roots. Mirrors
   // ScopeGateStep's `columnOneView` — kept inline (rather than a shared hook)
   // because the state + handler pattern is ~10 lines per step.
   const [columnOneView, setColumnOneView] = useState<'grouped' | 'flat'>('grouped');
+  // L8 — category filters (broken / cycles). Each is an independent toggle;
+  // multiple active filters UNION their key sets. L11 removed the "deleted"
+  // filter that once lived here.
+  const [activeFilters, setActiveFilters] = useState<Set<FilterCategory>>(new Set());
   // Task #37 — mount-time cycle auto-reject bookkeeping. `autoRejected`
   // tracks which components were flipped to `rejected` by the auto-reject
   // effect so the banner can enumerate them and `[u]` undo can restore only
@@ -364,6 +430,7 @@ export function GenerateReviewStep({
     );
     const nextRemoved = response.components.removed ?? [];
     setRemovedComponents(nextRemoved);
+    setBreakingChanges(deriveBreakingChanges(response));
   };
 
   const livePreviewHook = useLivePreview({
@@ -781,20 +848,46 @@ export function GenerateReviewStep({
       })),
     [components, directIssues],
   );
+  // L8 — "broken" in GenerateReview = components carrying a directIssue (a
+  // non-ok NodeStatus, e.g. a rejected leaf breaks its ancestors). L11 removed
+  // the "deleted" filter — GR no longer offers it.
+  const brokenKeys = useMemo<Set<string>>(
+    () => new Set(directIssues.keys()),
+    [directIssues],
+  );
+
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
     // T5b: jump-filter takes priority over the T4 search-neighborhood filter.
     // When active, the sidebar shows only the target + its transitive
-    // ancestors — search-neighborhood is set aside until Esc clears the jump.
+    // ancestors — search + category filters are set aside until Esc clears
+    // the jump.
     if (jumpFilterTarget) {
       return findAllAncestorsInclusive(jumpFilterTarget, sidebarGraph);
     }
-    if (!searchQuery) return undefined;
-    const matches = groupedItemsMemo
-      .map((it) => it.key)
-      .filter((k) => fuzzyMatches(searchQuery, k));
-    if (matches.length === 0) return undefined;
-    return computeDirectNeighborhood(matches, sidebarGraph);
-  }, [jumpFilterTarget, searchQuery, groupedItemsMemo, sidebarGraph]);
+    // L8: category filters (broken / cycles) → union of matching keys.
+    const categoryKeys = computeFilterKeys({
+      filters: activeFilters,
+      data: { cycles: cycleView.structural, broken: brokenKeys },
+    });
+    const searchKeys = (() => {
+      if (!searchQuery) return undefined;
+      const matches = groupedItemsMemo
+        .map((it) => it.key)
+        .filter((k) => fuzzyMatches(searchQuery, k));
+      if (matches.length === 0) return undefined;
+      return computeDirectNeighborhood(matches, sidebarGraph);
+    })();
+    // Precedence: jump (above) → category ∩ search → whichever is active.
+    return intersectFilterKeys(categoryKeys, searchKeys);
+  }, [
+    jumpFilterTarget,
+    activeFilters,
+    cycleView,
+    brokenKeys,
+    searchQuery,
+    groupedItemsMemo,
+    sidebarGraph,
+  ]);
 
   const visibleRowsMemo = useMemo<VisibleRow[]>(
     () =>
@@ -835,13 +928,14 @@ export function GenerateReviewStep({
     componentGraph,
   );
 
-  // L2c — height-aware layout (mirrors ScopeGateStep). Shrink the sidebar and
-  // window the lineage panel from the remaining rows while the panel is open
-  // so the total frame fits `stdout.rows`; Ink then diffs in place instead of
-  // clearing + repainting each cursor move (the flash). Scroll math below uses
-  // `visibleCount` so the cursor stays inside the shrunk window.
-  const { sidebarVisible: visibleCount, panelMaxRows } = computeLineageLayout({
-    rows: stdout?.rows ?? 24,
+  // L2e — autoscale the frame to the terminal height (mirrors ScopeGateStep).
+  // The sidebar's visible-row budget is sized from `stdout.rows` minus the
+  // always-on chrome so the total frame fits even on small terminals with the
+  // panel CLOSED; Ink then diffs in place instead of clearing + repainting each
+  // cursor move (the flash). Panel-open window sizing is unified here too
+  // (L2c/L2d). Scroll math below uses `visibleCount`.
+  const { sidebarVisibleCount: visibleCount, panelMaxRows } = computeSidebarBudget({
+    rows: stdout?.rows ?? FALLBACK_ROWS,
     panelOpen: lineagePanel.isOpen,
     entryCount: lineageEntries.length,
   });
@@ -959,10 +1053,20 @@ export function GenerateReviewStep({
     return seen.size;
   }, [searchMatches, visibleRowsMemo]);
 
-  const dimPredicate = useMemo(() => {
-    if (!searchQuery) return undefined;
-    return (name: string) => !fuzzyMatches(searchQuery, name);
-  }, [searchQuery]);
+  // FB1 — flat view dims non-matches for active category filters / focus-
+  // lineage (parity with search, which flat view already dims). Grouped view
+  // continues to HIDE those non-matches via `filterVisibleKeys`, so the flat-
+  // dim membership never narrows grouped rows. Search dimming still applies in
+  // both views.
+  const dimPredicate = useMemo(
+    () =>
+      buildFlatDimPredicate({
+        viewMode: columnOneView,
+        searchQuery,
+        filterVisibleKeys,
+      }),
+    [columnOneView, searchQuery, filterVisibleKeys],
+  );
 
   /**
    * Jump the cursor to a specific row position in `visibleRowsMemo`. Callers
@@ -1183,6 +1287,28 @@ export function GenerateReviewStep({
       return;
     }
 
+    // L6 (lifecycle plan §5 L6) — breaking-changes goto-banner owns keystrokes
+    // when open. Mirrors the lineage panel: ↑/↓/j/k move the cursor, Enter
+    // jumps the main selection to the highlighted breaking component + closes,
+    // `[b]`/Esc close (via the shared hook).
+    if (breakingPanel.isOpen) {
+      if (breakingPanel.handleInput(input, key)) return;
+      if (key.upArrow || input === 'k') {
+        setBreakingCursor((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        setBreakingCursor((c) => Math.min(Math.max(0, breakingChanges.length - 1), c + 1));
+        return;
+      }
+      if (key.return) {
+        const target = breakingChanges[breakingCursor];
+        if (target) jumpCursorToName(target.componentName);
+        breakingPanel.close();
+        return;
+      }
+      return;
+    }
     // T6 (parity plan §3) — lineage panel owns keystrokes when open.
     // Mirrors ScopeGate's overlay-owns-input pattern. Close-side (`[l]` toggle
     // and `[Esc]`) is delegated to the shared `useOverlayPanel` hook (T10);
@@ -1248,6 +1374,27 @@ export function GenerateReviewStep({
       setLineageCursor(0);
       return;
     }
+    // L6 — `[b]` opens the breaking-changes goto-banner when the live preview
+    // reported at least one breaking change. No-op otherwise (hint hidden).
+    if (input === 'b' && sidebarFocused && breakingChanges.length > 0) {
+      breakingPanel.open();
+      setBreakingCursor(0);
+      return;
+    }
+    // L8 — category filter toggles. `[o]` cycles, `[w]` broken. Sidebar-focused
+    // so they can't collide with FieldEditor input. Independent toggles;
+    // multiple active filters union in `filterVisibleKeys`. L11 removed the
+    // `[d]` deleted filter — GR no longer offers it.
+    if (sidebarFocused && (input === 'o' || input === 'w')) {
+      const category: FilterCategory = input === 'o' ? 'cycles' : 'broken';
+      setActiveFilters((prev) => {
+        const next = new Set(prev);
+        if (next.has(category)) next.delete(category);
+        else next.add(category);
+        return next;
+      });
+      return;
+    }
     // T5b (layout plan §B) — jump-and-filter to focused component + all
     // transitive ancestors. Sidebar-focused only. Mirrors ScopeGateStep T5.
     // Guard against Ctrl-I aliasing: Tab is Ctrl+I (\x09), which
@@ -1290,7 +1437,7 @@ export function GenerateReviewStep({
         setPanelScrollOffset(() => 0);
         return;
       }
-      if (togglable && input === 'I' && panelOpen === 'component-rationale') {
+      if (togglable && input === 'P' && panelOpen === 'component-rationale') {
         setPanelOpen('none');
         setPanelScrollOffset(() => 0);
         return;
@@ -1306,7 +1453,7 @@ export function GenerateReviewStep({
         setPanelScrollOffset(() => 0);
         return;
       }
-      if (togglable && input === 'I') {
+      if (togglable && input === 'P') {
         setPanelOpen('component-rationale');
         setPanelScrollOffset(() => 0);
         return;
@@ -1325,7 +1472,7 @@ export function GenerateReviewStep({
         setPanelScrollOffset(() => 0);
         return;
       }
-      if (input === 'I') {
+      if (input === 'P') {
         setPanelOpen('component-rationale');
         setPanelScrollOffset(() => 0);
         return;
@@ -1361,11 +1508,7 @@ export function GenerateReviewStep({
     if (input === ' ' && sidebarFocused && !showJson) {
       const current = components[selectedIdx];
       if (!current) return;
-      const rootName = cycleView.structural.has(current.key)
-        ? current.key
-        : closures.has(current.key)
-          ? current.key
-          : [...closures.entries()].find(([, c]) => c.nodes.some((n) => n.name === current.key))?.[0];
+      const rootName = resolveGroupRoot(current.key, closures, cycleView.structural);
       if (!rootName) return;
       setExpandedGroups((prev) => {
         const next = new Set(prev);
@@ -1846,6 +1989,13 @@ export function GenerateReviewStep({
           ))}
         </Box>
       )}
+      {breakingChanges.length > 0 && !dialogOpen && (
+        // L6 — key hint to open the breaking-changes goto-banner. Rendered
+        // alongside the removed strip; L11 will regroup the copy.
+        <Box paddingX={1}>
+          <Text color="yellow">{`[b] ${breakingChanges.length} breaking change${breakingChanges.length === 1 ? '' : 's'}`}</Text>
+        </Box>
+      )}
       {cyclePanel.isOpen &&
         !dialogOpen &&
         (() => {
@@ -1996,7 +2146,22 @@ export function GenerateReviewStep({
           fragment right after the sidebar Box. */}
       {!dialogOpen && (
         <Box>
-          {lineagePanel.isOpen && focusedComponentKey ? (
+          {breakingPanel.isOpen ? (
+            // L6 — rendered IN the sidebar slot (like the lineage panel post-
+            // L2d) so opening it does not grow the total frame height and
+            // trigger Ink's full-screen repaint flicker.
+            <GotoBanner
+              title="Breaking changes"
+              rows={breakingChanges.map((b) => ({
+                label: `${b.componentName} — ${b.changes[0]?.reason ?? 'breaking'}`,
+                jumpTarget: b.componentName,
+              }))}
+              cursor={breakingCursor}
+              maxRows={panelMaxRows}
+              width={sidebarWidth}
+              footerHint="[↑/↓] move · [Enter] jump · [Esc] close"
+            />
+          ) : lineagePanel.isOpen && focusedComponentKey ? (
             <LineagePanel
               focusedComponentKey={focusedComponentKey}
               entries={lineageEntries}
@@ -2161,6 +2326,7 @@ export function GenerateReviewStep({
                       setPanelScrollOffset(() => 0);
                     }}
                     propRationaleKey="p"
+                    componentRationaleKey="P"
                     onToggleComponentRationale={() => {
                       setPanelOpen('component-rationale');
                       setPanelScrollOffset(() => 0);
@@ -2179,20 +2345,14 @@ export function GenerateReviewStep({
                 {saveError && <Text color="red">{'✗ ' + saveError}</Text>}
                 <Text dimColor>
                   {sidebarFocused
-                    ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
-                      (showJson ? 'hide JSON' : 'show JSON') +
-                      '  [F] finalize  [e/Tab] focus panel' +
-                      (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '') +
-                      (slotCycles.length > 0 ? '  [c] cycles' : '') +
-                      (focusedComponentKey ? '  [l] lineage' : '') +
-                      (focusedComponentKey ? '  [i] focus lineage' : '') +
-                      '  [p] rationale' +
-                      '  [L] flat' +
-                      '  [/] search' +
+                    ? // L11 — the complete sidebar keymap now lives in the
+                      // single wrapping legend region below (built from atomic
+                      // legendEntry nodes so keys never wrap away from labels
+                      // and active toggles highlight). This inline line only
+                      // carries context that depends on the selected component
+                      // + the group-expand affordances.
                       (undoSnapshot ? '  [u] undo' : '') +
-                      '  [Ctrl+Z] undo  [Ctrl+Y] redo  [Ctrl+R] reload' +
-                      '  [?] help' +
-                      '  [q] quit'
+                      (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '')
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
                       : '  [Tab] focus list  (edit fields)'}
@@ -2257,6 +2417,39 @@ export function GenerateReviewStep({
       {!dialogOpen && !searchOpen && searchQuery && (
         <Box>
           <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear · [n] next`}</Text>
+        </Box>
+      )}
+      {!dialogOpen && sidebarFocused && (
+        // L11 — complete bottom legend for the sidebar-focused state. One
+        // wrapping region of atomic legendEntry nodes so a key never wraps
+        // away from its label (item 7) and toggle/mode keys highlight when
+        // active (item 1). Kept to a single wrapping Box per the L2d
+        // frame-height caution (no stacked always-on rows). Distinct cycle
+        // labels: [c] "cycle list" (panel) vs [o] "only cycles" (filter).
+        <Box columnGap={2} flexWrap="wrap">
+          {legendEntry('[j/k]', 'move')}
+          {legendEntry('[a]', 'accept')}
+          {legendEntry('[r]', 'reject')}
+          {legendEntry('[A]', 'accept all')}
+          {legendEntry('[F]', 'finalize')}
+          {legendEntry('[L]', 'flat', columnOneView === 'flat')}
+          {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
+          {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
+          {legendEntry('[w]', 'only broken', activeFilters.has('broken'))}
+          {slotCycles.length > 0 && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
+          {slotCycles.length > 0 && legendEntry('[c]', 'cycle list', cyclePanel.isOpen)}
+          {legendEntry('[p]', 'prop rationale', panelOpen === 'prop-rationale')}
+          {legendEntry('[P]', 'component rationale', panelOpen === 'component-rationale')}
+          {legendEntry('[s]', 'source', panelOpen === 'source')}
+          {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
+          {breakingChanges.length > 0 && legendEntry('[b]', 'breaking', breakingPanel.isOpen)}
+          {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
+          {legendEntry('[e/Tab]', 'focus panel')}
+          {legendEntry('[Ctrl+Z]', 'undo')}
+          {legendEntry('[Ctrl+Y]', 'redo')}
+          {legendEntry('[Ctrl+R]', 'reload')}
+          {legendEntry('[?]', 'help')}
+          {legendEntry('[q]', 'quit')}
         </Box>
       )}
       {!dialogOpen && (
