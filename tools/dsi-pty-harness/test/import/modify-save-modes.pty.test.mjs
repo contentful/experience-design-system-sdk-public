@@ -38,13 +38,20 @@ describe('experiences import --modify save modes', () => {
     mkdirSync(savePath, { recursive: true });
     writeFileSync(join(savePath, 'tokens.json'), '{}\n');
 
+    // Seed <projectPath>/.contentful/tokens.json — the wizard's
+    // live-preview reads tokens from this exact path on entry to
+    // final-review and errors "file not found" if it's absent.
+    const projectPath = join(t.home, 'fake-project');
+    mkdirSync(join(projectPath, '.contentful'), { recursive: true });
+    writeFileSync(join(projectPath, '.contentful', 'tokens.json'), '{}\n');
+
     seedRuns(t.home, [
       {
         id: 'run-mod-1',
         extractSessionId: SEEDED_SESSION_ID,
         generateSessionId: SEEDED_SESSION_ID,
         savePath,
-        projectPath: t.home + '/fake-project', // any path — no source check
+        projectPath,
         ...runOverrides,
       },
     ]);
