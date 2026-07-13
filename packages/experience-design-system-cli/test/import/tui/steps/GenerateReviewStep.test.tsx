@@ -3707,3 +3707,231 @@ describe('GenerateReviewStep — undo/redo legend + ? help overlay (L3b)', () =>
     expect(stripAnsi(lastFrame() ?? '')).not.toContain('Help');
   });
 });
+
+// ── L6 (lifecycle plan §5 L6 + §5.1 Q2): breaking-changes goto-banner ────────
+// The removed-components strip also surfaces breaking changes. The rich
+// per-component `changeClassification.breakingChanges` detail — previously
+// discarded (only the bare kind 'breaking' survived into previewAnnotations) —
+// is plumbed into a `breakingChanges` list. `[b]` opens a GotoBanner listing
+// each breaking component; Enter jumps the main selection to it.
+describe('GenerateReviewStep — breaking-changes goto-banner (L6)', () => {
+  let deriveBreakingChanges: typeof import('../../../../src/import/tui/steps/GenerateReviewStep.js').deriveBreakingChanges;
+
+  beforeEach(async () => {
+    triggerSpy.mockReset();
+    lastUseLivePreviewArgs = null;
+    lastOnResult = null;
+    hookReturnOverride = null;
+    const mod = await import('../../../../src/import/tui/steps/GenerateReviewStep.js');
+    deriveBreakingChanges = mod.deriveBreakingChanges;
+  });
+
+  const stripAnsiL6 = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+  const previewWithBreaking = () =>
+    ({
+      components: {
+        new: [],
+        changed: [
+          {
+            current: { id: 'btn', name: 'Button', contentProperties: [], designProperties: [], slots: [] },
+            proposed: { $type: 'component', $properties: {} },
+            hasPendingDraftChanges: false,
+            changeClassification: {
+              classification: 'breaking',
+              breakingChanges: [{ propertyId: 'variant', reason: 'removed' }],
+            },
+            impact: { affectedFragments: 2, affectedExperiences: 1 },
+          },
+          {
+            current: { id: 'lbl', name: 'Label', contentProperties: [], designProperties: [], slots: [] },
+            proposed: { $type: 'component', $properties: {} },
+            hasPendingDraftChanges: false,
+            changeClassification: { classification: 'compatible', breakingChanges: [] },
+          },
+        ],
+        removed: [],
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    }) as never;
+
+  it('deriveBreakingChanges keeps only breaking-classified changed entities with their detail', () => {
+    const out = deriveBreakingChanges(previewWithBreaking());
+    expect(out).toHaveLength(1);
+    expect(out[0].componentName).toBe('Button');
+    expect(out[0].changes).toEqual([{ propertyId: 'variant', reason: 'removed' }]);
+    expect(out[0].impact).toEqual({ affectedFragments: 2, affectedExperiences: 1 });
+  });
+
+  it('deriveBreakingChanges returns empty for a response with no breaking changes', () => {
+    expect(
+      deriveBreakingChanges({
+        components: { new: [], changed: [], removed: [], unchanged: ['Button'] },
+        tokens: { new: [], changed: [], removed: [], unchanged: [] },
+      } as never),
+    ).toEqual([]);
+  });
+
+  it('shows the [b] N breaking changes hint and opens the goto-banner on [b]', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithBreaking());
+    await tick();
+    const hint = stripAnsiL6(lastFrame() ?? '');
+    expect(hint).toContain('[b]');
+    expect(hint).toMatch(/1 breaking/);
+
+    stdin.write('b');
+    await tick();
+    const open = stripAnsiL6(lastFrame() ?? '');
+    expect(open).toContain('Breaking changes');
+    expect(open).toMatch(/Button/);
+    expect(open).toMatch(/removed/);
+  });
+
+  it('legend advertises [b] breaking', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithBreaking());
+    await tick();
+    expect(stripAnsiL6(lastFrame() ?? '')).toContain('[b] breaking');
+  });
+});
+
+// ── L8 (lifecycle plan §5 L8): category filters (broken / cycles / deleted) ──
+// Keybinding-driven sidebar filters. [o] cycles, [w] broken (directIssues
+// non-ok), [d] deleted (removedComponents — GR ONLY). Grouped view hides
+// non-matching rows; toggling off restores. Multiple active filters union.
+describe('GenerateReviewStep — category filters (L8)', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const leaf = (label: string): Entry => ({
+    $type: 'component',
+    $properties: { [label]: { $type: 'string', $category: 'content' } },
+  });
+
+  const CYCLE_A: Entry = {
+    $type: 'component',
+    $properties: {},
+    $slots: { header: { $allowedComponents: ['CycleB'] } },
+  };
+  const CYCLE_B: Entry = {
+    $type: 'component',
+    $properties: {},
+    $slots: { footer: { $allowedComponents: ['CycleA'] } },
+  };
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastUseLivePreviewArgs = null;
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  it('[o] cycles filter narrows the sidebar to cycle members; toggling off restores', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+      { key: 'Standalone', entry: leaf('Standalone') },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+      },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
+    stdin.write('o');
+    await tick();
+    const filtered = stripAnsi(lastFrame() ?? '');
+    expect(filtered).toContain('CycleA');
+    expect(filtered).toContain('CycleB');
+    expect(filtered).not.toContain('Standalone');
+    stdin.write('o');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
+  });
+
+  it('[w] broken filter narrows to components with issues (rejected → error); toggling off restores', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Alpha', entry: leaf('Alpha') },
+      { key: 'Beta', entry: leaf('Beta') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Reject Alpha so it becomes a directIssue (error) = "broken".
+    stdin.write('r');
+    await tick();
+    stdin.write('w');
+    await tick();
+    const filtered = stripAnsi(lastFrame() ?? '');
+    expect(filtered).toContain('Alpha');
+    expect(filtered).not.toContain('Beta');
+    stdin.write('w');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Beta');
+  });
+
+  it('[d] deleted filter narrows to removed components; toggling off restores', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Widget', entry: leaf('Widget') },
+      { key: 'Keeper', entry: leaf('Keeper') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // Report Widget as removed via a live-preview response.
+    lastOnResult!({
+      components: {
+        new: [],
+        changed: [],
+        removed: [{ id: 'w', name: 'Widget', contentProperties: [], designProperties: [], slots: [] }],
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    } as never);
+    await tick();
+    stdin.write('d');
+    await tick();
+    const filtered = stripAnsi(lastFrame() ?? '');
+    expect(filtered).toContain('Widget');
+    expect(filtered).not.toContain('Keeper');
+    stdin.write('d');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Keeper');
+  });
+
+  it('legend advertises [o] cycles, [w] broken, and [d] deleted', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Alpha', entry: leaf('Alpha') },
+    ]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const out = stripAnsi(lastFrame() ?? '');
+    expect(out).toContain('[o]');
+    expect(out).toContain('[w]');
+    expect(out).toContain('[d]');
+  });
+});
