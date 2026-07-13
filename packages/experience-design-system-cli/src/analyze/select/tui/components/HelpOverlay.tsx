@@ -36,6 +36,7 @@ export function HelpOverlay({ mode, onClose }: HelpOverlayProps): React.ReactEle
           <Text>{'  F                Open finalize dialog'}</Text>
           <Text>{'  Ctrl+S           Save draft'}</Text>
           <Text>{'  Ctrl+Z           Undo'}</Text>
+          <Text>{'  Ctrl+Y           Redo'}</Text>
           <Text>{'  Esc              Exit edit / close'}</Text>
         </>
       )}

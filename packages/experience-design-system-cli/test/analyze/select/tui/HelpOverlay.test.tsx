@@ -21,6 +21,15 @@ describe('HelpOverlay', () => {
     expect(frame).toContain('Ctrl+S');
   });
 
+  it('advertises both undo and redo in review mode (L3)', () => {
+    const { lastFrame } = render(<HelpOverlay mode="review" onClose={vi.fn()} />);
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Ctrl+Z');
+    expect(frame).toMatch(/Undo/i);
+    expect(frame).toContain('Ctrl+Y');
+    expect(frame).toMatch(/Redo/i);
+  });
+
   it('does not render review keys when mode is analyze', () => {
     const { lastFrame } = render(<HelpOverlay mode="analyze" onClose={vi.fn()} />);
     const frame = lastFrame() ?? '';
