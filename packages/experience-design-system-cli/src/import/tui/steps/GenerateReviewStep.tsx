@@ -1915,15 +1915,6 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {lineagePanel.isOpen && !dialogOpen && focusedComponentKey && (
-        <LineagePanel
-          focusedComponentKey={focusedComponentKey}
-          entries={lineageEntries}
-          cursor={lineageCursor}
-          jumpables={lineageJumpables}
-          maxRows={panelMaxRows}
-        />
-      )}
       {!dialogOpen &&
         livePreview &&
         (() => {
@@ -2005,42 +1996,53 @@ export function GenerateReviewStep({
           fragment right after the sidebar Box. */}
       {!dialogOpen && (
         <Box>
-          <GroupedSidebar
-            items={groupedItems}
-            cycleParticipants={cycleParticipantSet}
-            selectedIdx={selectedIdx}
-            selectedRowIdx={cursorRowIdx}
-            onSelect={(idx) => {
-              // Jump to the FIRST visible row for the target itemIdx.
-              for (let i = 0; i < visibleRowsMemo.length; i++) {
-                if (visibleRowsMemo[i].itemIdx === idx) {
-                  jumpCursorToRow(i);
-                  return;
+          {lineagePanel.isOpen && focusedComponentKey ? (
+            <LineagePanel
+              focusedComponentKey={focusedComponentKey}
+              entries={lineageEntries}
+              cursor={lineageCursor}
+              jumpables={lineageJumpables}
+              maxRows={panelMaxRows}
+              width={sidebarWidth}
+            />
+          ) : (
+            <GroupedSidebar
+              items={groupedItems}
+              cycleParticipants={cycleParticipantSet}
+              selectedIdx={selectedIdx}
+              selectedRowIdx={cursorRowIdx}
+              onSelect={(idx) => {
+                // Jump to the FIRST visible row for the target itemIdx.
+                for (let i = 0; i < visibleRowsMemo.length; i++) {
+                  if (visibleRowsMemo[i].itemIdx === idx) {
+                    jumpCursorToRow(i);
+                    return;
+                  }
                 }
-              }
-              setJsonScrollOffset(0);
-            }}
-            expandedGroups={expandedGroups}
-            onToggleExpanded={(rootName) => {
-              setExpandedGroups((prev) => {
-                const next = new Set(prev);
-                if (next.has(rootName)) next.delete(rootName);
-                else next.add(rootName);
-                return next;
-              });
-            }}
-            width={sidebarWidth}
-            focused={sidebarFocused}
-            renderStatusByKey={renderStatusByKey}
-            previewAnnotationByKey={previewAnnotationByKey}
-            selectionStateByKey={selectionStateByKey}
-            scrollOffset={sidebarScrollOffset}
-            visibleCount={visibleCount}
-            dimPredicate={dimPredicate}
-            visibleRows={visibleRowsMemo}
-            viewMode={columnOneView}
-            graph={sidebarGraph}
-          />
+                setJsonScrollOffset(0);
+              }}
+              expandedGroups={expandedGroups}
+              onToggleExpanded={(rootName) => {
+                setExpandedGroups((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(rootName)) next.delete(rootName);
+                  else next.add(rootName);
+                  return next;
+                });
+              }}
+              width={sidebarWidth}
+              focused={sidebarFocused}
+              renderStatusByKey={renderStatusByKey}
+              previewAnnotationByKey={previewAnnotationByKey}
+              selectionStateByKey={selectionStateByKey}
+              scrollOffset={sidebarScrollOffset}
+              visibleCount={visibleCount}
+              dimPredicate={dimPredicate}
+              visibleRows={visibleRowsMemo}
+              viewMode={columnOneView}
+              graph={sidebarGraph}
+            />
+          )}
           <Box flexGrow={1} paddingLeft={1} flexDirection="column">
             {selected ? (
               <>

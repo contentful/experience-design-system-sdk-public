@@ -979,27 +979,38 @@ export function ScopeGateStep({
       )}
 
       <Box flexDirection="row">
-        <GroupedSidebar
-          items={groupedItems}
-          cycleParticipants={cycleParticipants}
-          selectedIdx={selectedItemIdx}
-          selectedRowIdx={safeCursor}
-          onSelect={() => {}}
-          expandedGroups={new Set()}
-          onToggleExpanded={() => {}}
-          width={sidebarWidth}
-          focused={focusedColumn === 'main'}
-          scrollOffset={scrollOffset}
-          visibleCount={visibleCount}
-          alwaysExpanded={true}
-          showFlatTier={false}
-          selectionStateByKey={selectionStateByKey}
-          aiFlaggedByKey={aiFlaggedByKey}
-          dimPredicate={dimPredicate}
-          visibleRows={visibleRows}
-          viewMode={columnOneView}
-          graph={graph}
-        />
+        {lineagePanel.isOpen && focusedComponent ? (
+          <LineagePanel
+            focusedComponentKey={focusedComponent.name}
+            entries={lineageEntries}
+            cursor={lineageCursor}
+            jumpables={lineageJumpables}
+            maxRows={panelMaxRows}
+            width={sidebarWidth}
+          />
+        ) : (
+          <GroupedSidebar
+            items={groupedItems}
+            cycleParticipants={cycleParticipants}
+            selectedIdx={selectedItemIdx}
+            selectedRowIdx={safeCursor}
+            onSelect={() => {}}
+            expandedGroups={new Set()}
+            onToggleExpanded={() => {}}
+            width={sidebarWidth}
+            focused={focusedColumn === 'main'}
+            scrollOffset={scrollOffset}
+            visibleCount={visibleCount}
+            alwaysExpanded={true}
+            showFlatTier={false}
+            selectionStateByKey={selectionStateByKey}
+            aiFlaggedByKey={aiFlaggedByKey}
+            dimPredicate={dimPredicate}
+            visibleRows={visibleRows}
+            viewMode={columnOneView}
+            graph={graph}
+          />
+        )}
         {columnPlan.layout === 'three-column' && (
           <>
             <Box width={2} flexShrink={0} />
@@ -1084,16 +1095,6 @@ export function ScopeGateStep({
           })}
           <Text dimColor>[↑/↓] move · [Enter] jump · [c/Esc] close</Text>
         </Box>
-      )}
-
-      {lineagePanel.isOpen && focusedComponent && (
-        <LineagePanel
-          focusedComponentKey={focusedComponent.name}
-          entries={lineageEntries}
-          cursor={lineageCursor}
-          jumpables={lineageJumpables}
-          maxRows={panelMaxRows}
-        />
       )}
 
       {pendingRejectCascade && (

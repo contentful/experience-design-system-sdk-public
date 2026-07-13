@@ -13,6 +13,8 @@ export interface LineagePanelProps {
   jumpables: LineageJumpable[];
   /** Max entry rows rendered at once. Larger lineages window around the cursor. */
   maxRows?: number;
+  /** Constrain the panel box to a fixed column width (e.g. the sidebar slot). */
+  width?: number;
 }
 
 const DEFAULT_MAX_ROWS = 15;
@@ -49,6 +51,7 @@ export function LineagePanel({
   cursor,
   jumpables,
   maxRows = DEFAULT_MAX_ROWS,
+  width,
 }: LineagePanelProps): React.ReactElement {
   // Window the entry list so the panel never exceeds a bounded height. An
   // unbounded panel taller than the terminal forces Ink to clear+repaint the
@@ -62,7 +65,15 @@ export function LineagePanel({
   const moreBelow = entries.length - end;
 
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor="cyan" paddingX={1} marginTop={1}>
+    <Box
+      flexDirection="column"
+      borderStyle="single"
+      borderColor="cyan"
+      paddingX={1}
+      marginTop={width === undefined ? 1 : 0}
+      width={width}
+      flexShrink={0}
+    >
       <Text bold>{`Lineage: ${focusedComponentKey}`}</Text>
       {moreAbove > 0 && <Text dimColor>{`  ▲ ${moreAbove} more`}</Text>}
       {visible.map((e, vi) => {

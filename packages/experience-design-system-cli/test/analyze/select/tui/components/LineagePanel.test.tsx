@@ -60,6 +60,27 @@ describe('LineagePanel windowing', () => {
     expect(lastOut).not.toContain('Descendant0');
   });
 
+  it('constrains the panel box to an explicit width when given', () => {
+    const strip = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, '');
+    const { entries, jumpables } = buildEntries(3);
+    const width = 34;
+    const out =
+      render(
+        <LineagePanel
+          focusedComponentKey="InnerA"
+          entries={entries}
+          cursor={0}
+          jumpables={jumpables}
+          width={width}
+        />,
+      ).lastFrame() ?? '';
+    const lines = strip(out).split('\n');
+    const border = lines.find((l) => l.includes('┌'));
+    expect(border).toBeDefined();
+    // The bordered box spans exactly `width` columns (border-to-border).
+    expect((border ?? '').length).toBe(width);
+  });
+
   it('shows scroll affordance indicators only when content overflows', () => {
     const big = buildEntries(40);
     const bigOut =

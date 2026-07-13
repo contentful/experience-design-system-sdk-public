@@ -1949,4 +1949,60 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(openRows).toBeLessThan(closedRows);
     });
   });
+
+  describe('L2d — lineage renders as a sidebar overlay (not stacked below)', () => {
+    function withWideStdout(cols: number): () => void {
+      const probe = render(<ScopeGateStep components={[]} onConfirm={() => {}} onQuit={() => {}} />);
+      const proto = Object.getPrototypeOf(probe.stdout);
+      const original = Object.getOwnPropertyDescriptor(proto, 'columns');
+      Object.defineProperty(proto, 'columns', { configurable: true, get: () => cols });
+      probe.unmount();
+      probe.cleanup();
+      return () => {
+        if (original) Object.defineProperty(proto, 'columns', original);
+      };
+    }
+
+    // Article slots Card; Zzz is an unrelated standalone that only ever
+    // renders in the main sidebar (undecided → never in the added columns,
+    // never in Card's lineage). So its presence is a proxy for "the
+    // GroupedSidebar is rendered".
+    const FIXTURE_L2D = [
+      { name: 'Article', componentId: 'a0', slots: [{ name: 'body', allowedComponents: ['Card'] }] },
+      { name: 'Card', componentId: 'c0' },
+      { name: 'Zzz', componentId: 'z0' },
+    ];
+
+    it('when lineage is open the sidebar is replaced by the panel; columns 2 & 3 stay visible', async () => {
+      const restore = withWideStdout(160);
+      try {
+        const { lastFrame, stdin } = render(
+          <ScopeGateStep components={FIXTURE_L2D} onConfirm={() => {}} onQuit={() => {}} />,
+        );
+        // Baseline: sidebar renders Zzz, columns 2 & 3 present.
+        const before = lastFrame() ?? '';
+        expect(before).toContain('Zzz');
+        expect(before).toContain('Added components');
+        expect(before).toContain('Added groups');
+
+        // Focus Card, open lineage.
+        stdin.write('j'); // move off Article toward Card
+        await new Promise((r) => setTimeout(r, 30));
+        stdin.write('l');
+        await new Promise((r) => setTimeout(r, 30));
+        const open = lastFrame() ?? '';
+
+        // (a) the lineage panel content renders.
+        expect(open).toContain('Lineage:');
+        // (b) the GroupedSidebar no longer occupies the sidebar slot — the
+        // sidebar-only component Zzz is gone.
+        expect(open).not.toContain('Zzz');
+        // (c) columns 2 & 3 stay visible alongside the overlay.
+        expect(open).toContain('Added components');
+        expect(open).toContain('Added groups');
+      } finally {
+        restore();
+      }
+    });
+  });
 });
