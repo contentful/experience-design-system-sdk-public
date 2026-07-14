@@ -398,14 +398,12 @@ function findPackageRootForSpecifier(seedDir: string, specifier: string): string
   let dir = seedDir;
   for (let i = 0; i < 32; i++) {
     if (existsSync(join(dir, 'package.json'))) {
-      // Check this is the package matching the specifier (best-effort: name field).
       try {
         const pkgRaw = readFileSync(join(dir, 'package.json'), 'utf-8') as string;
         const pkg = JSON.parse(pkgRaw) as { name?: string };
         if (pkg.name === specifier) return dir;
         if (pkg.name && specifier.startsWith(`${pkg.name}/`)) return dir;
       } catch {
-        // continue
       }
     }
     const parent = dirname(dir);
