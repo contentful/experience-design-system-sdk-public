@@ -54,7 +54,7 @@ import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
-import { computeLineageLayout } from '../lineage-layout.js';
+import { computeSidebarBudget, FALLBACK_ROWS } from '../lineage-layout.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import { legendEntry } from '../components/LegendEntry.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
@@ -928,13 +928,14 @@ export function GenerateReviewStep({
     componentGraph,
   );
 
-  // L2c — height-aware layout (mirrors ScopeGateStep). Shrink the sidebar and
-  // window the lineage panel from the remaining rows while the panel is open
-  // so the total frame fits `stdout.rows`; Ink then diffs in place instead of
-  // clearing + repainting each cursor move (the flash). Scroll math below uses
-  // `visibleCount` so the cursor stays inside the shrunk window.
-  const { sidebarVisible: visibleCount, panelMaxRows } = computeLineageLayout({
-    rows: stdout?.rows ?? 24,
+  // L2e — autoscale the frame to the terminal height (mirrors ScopeGateStep).
+  // The sidebar's visible-row budget is sized from `stdout.rows` minus the
+  // always-on chrome so the total frame fits even on small terminals with the
+  // panel CLOSED; Ink then diffs in place instead of clearing + repainting each
+  // cursor move (the flash). Panel-open window sizing is unified here too
+  // (L2c/L2d). Scroll math below uses `visibleCount`.
+  const { sidebarVisibleCount: visibleCount, panelMaxRows } = computeSidebarBudget({
+    rows: stdout?.rows ?? FALLBACK_ROWS,
     panelOpen: lineagePanel.isOpen,
     entryCount: lineageEntries.length,
   });
@@ -2425,7 +2426,7 @@ export function GenerateReviewStep({
         // active (item 1). Kept to a single wrapping Box per the L2d
         // frame-height caution (no stacked always-on rows). Distinct cycle
         // labels: [c] "cycle list" (panel) vs [o] "only cycles" (filter).
-        <Box gap={2} flexWrap="wrap">
+        <Box columnGap={2} flexWrap="wrap">
           {legendEntry('[j/k]', 'move')}
           {legendEntry('[a]', 'accept')}
           {legendEntry('[r]', 'reject')}

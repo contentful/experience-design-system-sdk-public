@@ -23,7 +23,7 @@ import {
 } from '../step-filters.js';
 import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
-import { computeLineageLayout } from '../lineage-layout.js';
+import { computeSidebarBudget, FALLBACK_ROWS } from '../lineage-layout.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
@@ -499,13 +499,15 @@ export function ScopeGateStep({
     graph,
   );
 
-  // L2c — height-aware layout. When the lineage panel is open the sidebar
-  // shrinks and the panel's window is sized from the remaining rows so the
-  // total frame fits `stdout.rows` and Ink never full-repaints (the flash).
-  // Closed → full sidebar height. Scroll-follow math below uses `visibleCount`
-  // so the cursor stays inside the (possibly shrunk) window.
-  const { sidebarVisible: visibleCount, panelMaxRows } = computeLineageLayout({
-    rows: stdout?.rows ?? 24,
+  // L2e — autoscale the whole frame to the terminal height. The sidebar's
+  // visible-row budget is sized from `stdout.rows` minus the always-on chrome
+  // so the total frame fits even on small terminals (24/30 rows) with the
+  // panel CLOSED — plain Ink (no alt-screen) full-repaints (`\x1b[2J`) on every
+  // cursor move otherwise = flicker. The panel-open window sizing is unified
+  // here too (L2c/L2d). Scroll-follow math below uses `visibleCount` so the
+  // cursor stays inside the (possibly shrunk) window.
+  const { sidebarVisibleCount: visibleCount, panelMaxRows } = computeSidebarBudget({
+    rows: stdout?.rows ?? FALLBACK_ROWS,
     panelOpen: lineagePanel.isOpen,
     entryCount: lineageEntries.length,
   });
@@ -1350,7 +1352,7 @@ export function ScopeGateStep({
           Toggle/mode keys ([l] [i] [L] [o] [/] [w]) render inverse+yellow when
           active so the legend reflects current state. Distinct cycle labels:
           [c] "cycle list" (panel) vs [o] "only cycles" (filter). */}
-      <Box gap={2} marginTop={1} flexWrap="wrap">
+      <Box columnGap={2} marginTop={1} flexWrap="wrap">
         {includedCount > 0 ? (
           <Text>
             <Text color="green">{includedCount}</Text>

@@ -1958,6 +1958,50 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
     });
   });
 
+  describe('L2e — sidebar autoscales to a small terminal height', () => {
+    const MANY = Array.from({ length: 30 }, (_, i) => ({
+      name: `Comp${String(i).padStart(2, '0')}`,
+      componentId: `c${i}`,
+    }));
+
+    function countSidebarRows(frame: string): number {
+      return frame
+        .split('\n')
+        .filter((l) => /Comp\d\d/.test(l) && !/Lineage/.test(l)).length;
+    }
+
+    function withRows(rows: number): () => void {
+      const probe = render(<ScopeGateStep components={[]} onConfirm={() => {}} onQuit={() => {}} />);
+      const proto = Object.getPrototypeOf(probe.stdout);
+      const original = Object.getOwnPropertyDescriptor(proto, 'rows');
+      Object.defineProperty(proto, 'rows', { configurable: true, get: () => rows });
+      probe.unmount();
+      probe.cleanup();
+      return () => {
+        if (original) Object.defineProperty(proto, 'rows', original);
+        else delete (proto as Record<string, unknown>).rows;
+      };
+    }
+
+    it('renders FEWER sidebar rows on a short terminal than on a tall one', () => {
+      const restoreTall = withRows(60);
+      const tall = render(<ScopeGateStep components={MANY} onConfirm={() => {}} onQuit={() => {}} />);
+      const tallRows = countSidebarRows(tall.lastFrame() ?? '');
+      tall.unmount();
+      tall.cleanup();
+      restoreTall();
+
+      const restoreShort = withRows(24);
+      const short = render(<ScopeGateStep components={MANY} onConfirm={() => {}} onQuit={() => {}} />);
+      const shortRows = countSidebarRows(short.lastFrame() ?? '');
+      short.unmount();
+      short.cleanup();
+      restoreShort();
+
+      expect(shortRows).toBeLessThan(tallRows);
+    });
+  });
+
   describe('L2d — lineage renders as a sidebar overlay (not stacked below)', () => {
     function withWideStdout(cols: number): () => void {
       const probe = render(<ScopeGateStep components={[]} onConfirm={() => {}} onQuit={() => {}} />);
