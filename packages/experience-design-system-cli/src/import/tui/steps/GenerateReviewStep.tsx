@@ -254,6 +254,46 @@ export interface BreakingComponent {
   impact?: DownstreamImpact;
 }
 
+export interface BreakingRow {
+  label: string;
+  componentName: string;
+  focusTarget?: { kind: 'prop' | 'slot'; name: string };
+}
+
+/**
+ * BD2 — flatten breaking components to one row per change. Each change is a
+ * discriminated union member keyed by presence: `propertyId` → prop branch,
+ * `slotId` → slot branch. Components with no enumerated changes contribute a
+ * single component-level row (no focusTarget) so the jump degrades to
+ * land-on-the-row. Exported as a pure function so the prop/slot branching is
+ * pinned by unit tests independent of the Ink render tree.
+ */
+export function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] {
+  const out: BreakingRow[] = [];
+  for (const b of breakingChanges) {
+    if (b.changes.length === 0) {
+      out.push({ label: `${b.componentName} — breaking`, componentName: b.componentName });
+      continue;
+    }
+    for (const change of b.changes) {
+      if ('slotId' in change) {
+        out.push({
+          label: `${b.componentName} · ${change.slotId}: ${change.reason}`,
+          componentName: b.componentName,
+          focusTarget: { kind: 'slot', name: change.slotId },
+        });
+      } else {
+        out.push({
+          label: `${b.componentName} · ${change.propertyId}: ${change.reason}`,
+          componentName: b.componentName,
+          focusTarget: { kind: 'prop', name: change.propertyId },
+        });
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * L6 (lifecycle plan §5 L6 + §5.1 Q2) — pull the per-component breaking-change
  * detail out of a live-preview response. `applyPreviewAnnotations` only keeps
@@ -942,33 +982,10 @@ export function GenerateReviewStep({
   // still contribute a single component-level row (focusTarget undefined) so
   // the jump degrades to today's land-on-the-row behavior. `breakingCursor`
   // indexes THIS list.
-  const breakingRows = useMemo<
-    Array<{
-      label: string;
-      componentName: string;
-      focusTarget?: { kind: 'prop' | 'slot'; name: string };
-    }>
-  >(() => {
-    const out: Array<{
-      label: string;
-      componentName: string;
-      focusTarget?: { kind: 'prop' | 'slot'; name: string };
-    }> = [];
-    for (const b of breakingChanges) {
-      if (b.changes.length === 0) {
-        out.push({ label: `${b.componentName} — breaking`, componentName: b.componentName });
-        continue;
-      }
-      for (const change of b.changes) {
-        out.push({
-          label: `${b.componentName} · ${change.propertyId}: ${change.reason}`,
-          componentName: b.componentName,
-          focusTarget: { kind: 'prop', name: change.propertyId },
-        });
-      }
-    }
-    return out;
-  }, [breakingChanges]);
+  const breakingRows = useMemo<BreakingRow[]>(
+    () => buildBreakingRows(breakingChanges),
+    [breakingChanges],
+  );
 
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
     // T5b: jump-filter takes priority over the T4 search-neighborhood filter.

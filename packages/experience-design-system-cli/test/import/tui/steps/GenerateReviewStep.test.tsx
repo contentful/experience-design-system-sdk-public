@@ -4352,6 +4352,59 @@ describe('GenerateReviewStep — breaking-changes goto-banner (L6)', () => {
     expect(frame).toContain('SIZE_DESC_BD4');
     expect(frame).toContain('[Tab] focus list');
   });
+
+  // ── BD2: slot-level breaking changes flow through deriveBreakingChanges +
+  // buildBreakingRows, discriminated by key presence (propertyId vs slotId). ──
+  it('BD2: deriveBreakingChanges carries BOTH property-branch and slot-branch changes', () => {
+    const out = deriveBreakingChanges({
+      components: {
+        new: [],
+        changed: [
+          {
+            current: { id: 'card', name: 'Card', contentProperties: [], designProperties: [], slots: ['footer'] },
+            proposed: { $type: 'component', $properties: {} },
+            hasPendingDraftChanges: false,
+            changeClassification: {
+              classification: 'breaking',
+              breakingChanges: [
+                { propertyId: 'variant', reason: 'removed' },
+                { slotId: 'footer', reason: 'slot_removed' },
+              ],
+            },
+          },
+        ],
+        removed: [],
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    } as never);
+    expect(out).toHaveLength(1);
+    expect(out[0].changes).toEqual([
+      { propertyId: 'variant', reason: 'removed' },
+      { slotId: 'footer', reason: 'slot_removed' },
+    ]);
+  });
+
+  it('BD2: buildBreakingRows emits a prop row and a slot row with the right focusTarget kinds', async () => {
+    const mod = await import('../../../../src/import/tui/steps/GenerateReviewStep.js');
+    const rows = mod.buildBreakingRows([
+      {
+        componentName: 'Card',
+        changes: [
+          { propertyId: 'variant', reason: 'removed' },
+          { slotId: 'footer', reason: 'slot_removed' },
+        ] as never,
+      },
+    ]);
+    const propRow = rows.find((r) => r.focusTarget?.kind === 'prop');
+    const slotRow = rows.find((r) => r.focusTarget?.kind === 'slot');
+    expect(propRow?.focusTarget).toEqual({ kind: 'prop', name: 'variant' });
+    expect(slotRow?.focusTarget).toEqual({ kind: 'slot', name: 'footer' });
+    // Slot row label carries the slotId + reason, not `undefined`.
+    expect(slotRow?.label).toContain('footer');
+    expect(slotRow?.label).toContain('slot_removed');
+    expect(slotRow?.label).not.toContain('undefined');
+  });
 });
 
 // ── L8 (lifecycle plan §5 L8): category filters (broken / cycles / deleted) ──
