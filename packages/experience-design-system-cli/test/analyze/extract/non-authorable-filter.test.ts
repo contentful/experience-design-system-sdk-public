@@ -101,8 +101,6 @@ describe('isNonAuthorableComponent', () => {
     });
 
     it('does NOT flag createContext components when the single prop is a handler', () => {
-      // This is a state-setter shape, which is a different kind of context (setter context)
-      // and shouldn't trip R4 — let other rules decide.
       const result = isNonAuthorableComponent(
         makeComponent({
           name: 'CounterSetterProvider',
@@ -110,8 +108,6 @@ describe('isNonAuthorableComponent', () => {
           props: [{ name: 'setCount', type: 'Dispatch<SetStateAction<number>>', required: true }],
         }),
       );
-      // R5 should catch this (all-handlers), so result.skip should still be true,
-      // but the reason should be R5, not R4.
       expect(result.skip).toBe(true);
       expect(result.reason).toMatch(/handler or ref/i);
     });
@@ -197,8 +193,6 @@ describe('isNonAuthorableComponent', () => {
     });
 
     it('keeps a CMS-driven wrapper with any-typed content props', () => {
-      // This is the regression case from the original Rule C: 100% any-typed props
-      // should NOT be dropped — they're CMS-driven authoring components.
       const result = isNonAuthorableComponent(
         makeComponent({
           name: 'BasicCardWrapper',
