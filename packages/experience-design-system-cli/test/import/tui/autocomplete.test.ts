@@ -16,8 +16,6 @@ describe('computeAutocomplete (L4 — shell-style Tab autocomplete)', () => {
   });
 
   it('multiple candidates sharing a longer prefix → completion is the LCP (longer than query)', () => {
-    // "Wi" matches Wizard + Widget; both share "Wi"... but also nothing longer.
-    // Use a case where the LCP is strictly longer than the query.
     const result = computeAutocomplete('W', ['Widget', 'Widened', 'Card']);
     expect(result.completion).toBe('Wid');
     expect(result.completion.length).toBeGreaterThan('W'.length);
@@ -26,23 +24,18 @@ describe('computeAutocomplete (L4 — shell-style Tab autocomplete)', () => {
 
   it('multiple candidates with no common prefix beyond the query → completion unchanged, candidates listed', () => {
     const result = computeAutocomplete('W', ['Widget', 'Wizard', 'Waffle']);
-    // LCP of Widget/Wizard/Waffle is just "W" — equal to the query.
     expect(result.completion).toBe('W');
     expect(result.candidates).toEqual(['Waffle', 'Widget', 'Wizard']);
   });
 
   it('is case-insensitive when matching', () => {
     const result = computeAutocomplete('wid', ['Widget', 'Widened', 'Card']);
-    // Both Widget/Widened match "wid" case-insensitively; LCP case-preserved
-    // from the first candidate.
     expect(result.candidates).toEqual(['Widened', 'Widget']);
-    // Completion drawn from candidate casing, at least as long as the query.
     expect(result.completion.length).toBeGreaterThanOrEqual('wid'.length);
     expect(result.completion.toLowerCase()).toBe('wid');
   });
 
   it('completion is never shorter than the query', () => {
-    // Query typed in a casing that could shrink a naive LCP.
     const result = computeAutocomplete('WI', ['Widget', 'Wizard']);
     expect(result.completion.length).toBeGreaterThanOrEqual('WI'.length);
   });
