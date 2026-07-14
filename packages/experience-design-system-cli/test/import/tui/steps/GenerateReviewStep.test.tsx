@@ -142,10 +142,10 @@ describe('GenerateReviewStep — sidebar↔panel cross-key (Bug 1)', () => {
     );
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/\[e\/Tab\] focus panel/);
+    expect(frame).toMatch(/\[Tab\] focus panel/);
   });
 
-  it('pressing e from sidebar crosses focus to the panel', async () => {
+  it('GA-1 A6: pressing e from sidebar does NOT cross focus to the panel', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
@@ -153,9 +153,10 @@ describe('GenerateReviewStep — sidebar↔panel cross-key (Bug 1)', () => {
     stdin.write('e');
     await tick();
     const frame = lastFrame() ?? '';
-    // After crossing, the bottom hint reflects panel-focused state.
-    // `e` is sidebar-only now, so the panel-focused hint advertises Tab only.
-    expect(frame).toMatch(/\[Tab\] focus list/);
+    // GA-1 A6 removed the [e] quick-edit binding — Tab is the sole cross.
+    // Focus stays on the sidebar.
+    expect(frame).toMatch(/\[Tab\] focus panel/);
+    expect(frame).not.toMatch(/\[Tab\] focus list/);
   });
 
   it('Tab still works as an alias to cross focus', async () => {
@@ -188,7 +189,7 @@ describe('GenerateReviewStep — sidebar↔panel cross-key (Bug 1)', () => {
     await tick();
     frame = lastFrame() ?? '';
     expect(frame).toMatch(/\[Tab\] focus list/);
-    expect(frame).not.toMatch(/\[e\/Tab\] focus panel/);
+    expect(frame).not.toMatch(/\[Tab\] focus panel/);
   });
 
   it('pressing Esc at FieldEditor row-level returns focus to the sidebar', async () => {
@@ -208,7 +209,7 @@ describe('GenerateReviewStep — sidebar↔panel cross-key (Bug 1)', () => {
     stdin.write('\x1b');
     await tick();
     frame = lastFrame() ?? '';
-    expect(frame).toMatch(/\[e\/Tab\] focus panel/);
+    expect(frame).toMatch(/\[Tab\] focus panel/);
   });
 });
 
@@ -655,7 +656,7 @@ describe('GenerateReviewStep — diff summary panel (R2)', () => {
     // Sidebar still renders the component
     expect(frame).toMatch(/Button/);
     // Focus hint still rendered
-    expect(frame).toMatch(/\[e\/Tab\] focus panel/);
+    expect(frame).toMatch(/\[Tab\] focus panel/);
     // Status bar still rendered
     expect(frame).toMatch(/accept all/);
   });
@@ -957,6 +958,25 @@ describe('GenerateReviewStep - component rationale panels (lifted)', () => {
     await tick();
     const out = lastFrame() ?? '';
     expect(out).toContain('RATIONALE');
+    expect(out).not.toMatch(/FIELDS \[Ctrl\+S/);
+  });
+
+  it('GA-2 A4: pressing s from sidebar focus opens the source panel', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadComponentReviewMetadata).mockReturnValue({
+      sourcePath: '/proj/Button.tsx',
+      componentSource: 'L1\nL2\nL3',
+      props: {},
+    });
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/FIELDS/);
+    stdin.write('s');
+    await tick();
+    const out = lastFrame() ?? '';
+    expect(out).toContain('source: /proj/Button.tsx');
     expect(out).not.toMatch(/FIELDS \[Ctrl\+S/);
   });
 
@@ -1683,7 +1703,7 @@ describe('GenerateReviewStep — [E] expand-all (T1: cycle-tier parity)', () => 
     // Mount auto-reject fires for the cycle. Undo it so cycle members are
     // back at needs-review — makes the test independent of reject/cascade
     // side effects on visibility.
-    stdin.write('u');
+    stdin.write('\x1a'); // Ctrl+Z
     await tick();
 
     // Collapse everything to establish a clean baseline. Cycle-tier rows read
@@ -1864,7 +1884,7 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     );
     await tick();
     // Sidebar focused hint present.
-    expect(lastFrame() ?? '').toMatch(/\[e\/Tab\] focus panel/);
+    expect(lastFrame() ?? '').toMatch(/\[Tab\] focus panel/);
     stdin.write('/');
     await tick();
     stdin.write('b');
@@ -2248,24 +2268,24 @@ describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
     void dbMod;
   });
 
-  it('legend advertises [u] undo while undo is armed; omits it after undo fires', async () => {
+  it('GA-1 A5: auto-reject banner advertises Ctrl+Z undo while armed; omits it after undo fires', async () => {
     await primeCycles();
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    // Widen terminal so the legend renders without truncation. Ink's default
-    // 100 columns can wrap the legend and dice up the `[u] undo` substring.
+    // GA-1 A5 replaced the [u] alias with Ctrl+Z as the sole undo.
     let frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
-    expect(frame).toContain('[u] undo');
-    stdin.write('u');
+    expect(frame).toContain('[Ctrl+Z] undo');
+    expect(frame).not.toContain('[u] undo');
+    stdin.write('\x1a'); // Ctrl+Z
     await tick();
     frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
-    // Undo spent — legend no longer advertises the hint.
-    expect(frame).not.toContain('[u] undo');
+    // Undo spent — banner (and its Ctrl+Z hint) gone.
+    expect(frame).not.toMatch(/Cyclic manifest — auto-rejected/);
   });
 
-  it('[u] undo restores pre-mount state (empty user decisions)', async () => {
+  it('Ctrl+Z undo restores pre-mount state (empty user decisions)', async () => {
     await primeCycles();
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
@@ -2273,22 +2293,22 @@ describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
     await tick();
     // Banner visible after auto-reject.
     expect(lastFrame() ?? '').toMatch(/Cyclic manifest — auto-rejected/);
-    stdin.write('u');
+    stdin.write('\x1a'); // Ctrl+Z
     await tick();
     // Banner gone: no auto-rejected components remain.
     expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
   });
 
-  it('[u] twice is a no-op after first press', async () => {
+  it('Ctrl+Z twice is a floor no-op after first press', async () => {
     await primeCycles();
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    stdin.write('u');
+    stdin.write('\x1a'); // Ctrl+Z
     await tick();
     const afterFirstUndo = lastFrame() ?? '';
-    stdin.write('u');
+    stdin.write('\x1a'); // Ctrl+Z
     await tick();
     const afterSecondUndo = lastFrame() ?? '';
     // Both frames match on the top-level structure (banner remains absent).
@@ -2321,7 +2341,7 @@ describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
     // Undo the mount auto-reject, restoring every affected component to
     // `needs-review`. Then bulk-accept via [A]. Every cycle member and
     // ancestor is now `accepted` → the accepted subgraph is still cyclic.
-    stdin.write('u');
+    stdin.write('\x1a'); // Ctrl+Z
     await tick();
     stdin.write('A');
     await tick();
@@ -2451,7 +2471,7 @@ describe('GenerateReviewStep — auto-reject strict one-shot (T2)', () => {
     await tick();
     expect(lastFrame() ?? '').toMatch(/Cyclic manifest — auto-rejected/);
     // Undo the mount auto-reject.
-    stdin.write('u');
+    stdin.write('\x1a'); // Ctrl+Z
     await tick();
     expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
     // State-changing keystrokes must NOT re-arm auto-reject even though
@@ -2582,7 +2602,7 @@ describe('GenerateReviewStep — ADR-0010 scenarios', () => {
       );
       await tick();
       // Undo the mount auto-reject → both P and C back to `needs-review`.
-      stdin.write('u');
+      stdin.write('\x1a'); // Ctrl+Z
       await tick();
       // Bulk-accept via [A] → both accepted → accepted subgraph still cyclic.
       stdin.write('A');
@@ -2614,7 +2634,7 @@ describe('GenerateReviewStep — ADR-0010 scenarios', () => {
         <GenerateReviewStep extractSessionId="sess-a" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
       );
       await tick();
-      stdin.write('u'); // undo mount auto-reject → both needs-review
+      stdin.write('\x1a'); // Ctrl+Z — undo mount auto-reject → both needs-review
       await tick();
       // Cursor at row 0 (C, cycle-tier alphabetical). [a] on C.
       stdin.write('a');
@@ -3071,7 +3091,7 @@ describe('GenerateReviewStep — unsaved-changes warning (T5)', () => {
     await tick();
     frame = lastFrame() ?? '';
     expect(frame).not.toMatch(/Unsaved changes/i);
-    expect(frame).toMatch(/\[e\/Tab\] focus panel/);
+    expect(frame).toMatch(/\[Tab\] focus panel/);
   });
 
   it('dirty Tab-away opens an Unsaved changes warning and blocks focus cross', async () => {
@@ -3111,7 +3131,7 @@ describe('GenerateReviewStep — unsaved-changes warning (T5)', () => {
     // Warning closed, focus crossed to sidebar.
     const frame = lastFrame() ?? '';
     expect(frame).not.toMatch(/Unsaved changes/i);
-    expect(frame).toMatch(/\[e\/Tab\] focus panel/);
+    expect(frame).toMatch(/\[Tab\] focus panel/);
   });
 
   it('Esc in the warning discards and completes the deferred focus cross', async () => {
@@ -3134,7 +3154,7 @@ describe('GenerateReviewStep — unsaved-changes warning (T5)', () => {
     // Warning closed, focus crossed.
     const frame = lastFrame() ?? '';
     expect(frame).not.toMatch(/Unsaved changes/i);
-    expect(frame).toMatch(/\[e\/Tab\] focus panel/);
+    expect(frame).toMatch(/\[Tab\] focus panel/);
   });
 
   it('Tab in the warning cancels: focus stays in the panel, dirty preserved', async () => {
@@ -3297,7 +3317,7 @@ describe('GenerateReviewStep — undo/redo + reload-from-save (T4)', () => {
     expect(lastFrame() ?? '').not.toMatch(/Cyclic manifest — auto-rejected/);
   });
 
-  it('[u] is an alias for undo', async () => {
+  it('GA-1 A5: [u] is NO LONGER an alias for undo (Ctrl+Z is the sole undo)', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: card }]);
     vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
@@ -3309,9 +3329,11 @@ describe('GenerateReviewStep — undo/redo + reload-from-save (T4)', () => {
     await tick();
     stdin.write('u');
     await tick();
+    // `u` is inert now — Card stays accepted.
     const frame = lastFrame() ?? '';
     const cardLine = findSidebarRow(frame, 'Card');
-    expect(cardLine).toContain('[ ]');
+    expect(cardLine).toContain('[✓]');
+    expect(cardLine).not.toContain('[ ]');
   });
 
   it('undo of an accept does NOT re-write DB via storeCDFComponents', async () => {
@@ -3459,7 +3481,7 @@ describe('GenerateReviewStep — bottom-of-step banners (T2)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    stdin.write('u'); // undo mount auto-reject so FIELDS marker present
+    stdin.write('\x1a'); // Ctrl+Z — undo mount auto-reject so FIELDS marker present
     await tick();
     const frame = lastFrame() ?? '';
     const fieldsIdx = frame.indexOf('FIELDS');
@@ -3876,18 +3898,33 @@ describe('GenerateReviewStep — category filters (L8)', () => {
     expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
   });
 
-  it('[w] broken filter narrows to components with issues (rejected → error); toggling off restores', async () => {
+  it('GA-1 A3: [w] "only breaking changes" filter narrows to breaking components; toggling off restores', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
       { key: 'Alpha', entry: leaf('Alpha') },
       { key: 'Beta', entry: leaf('Beta') },
     ]);
     const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    // Reject Alpha so it becomes a directIssue (error) = "broken".
-    stdin.write('r');
+    // Feed a live-preview response marking Alpha as breaking.
+    lastOnResult!({
+      components: {
+        new: [],
+        changed: [
+          {
+            current: { id: 'a', name: 'Alpha', contentProperties: [], designProperties: [], slots: [] },
+            proposed: { $type: 'component', $properties: {} },
+            hasPendingDraftChanges: false,
+            changeClassification: { classification: 'breaking', breakingChanges: [{ propertyId: 'x', reason: 'removed' }] },
+          },
+        ],
+        removed: [],
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    } as never);
     await tick();
     stdin.write('w');
     await tick();
@@ -4029,5 +4066,234 @@ describe('GenerateReviewStep — category filters (L8)', () => {
     // group exists.
     expect(out).toContain('P');
     expect(out).toMatch(/Sidebar views/i);
+  });
+});
+
+// ── GA-1 (spec §4 A3/A5/A6) — filter repoint + keybinding removals ───────────
+// A3: the [w] filter was mislabeled "only broken" and fed directIssues
+// (rejected-leaf error propagation). It now shows "only breaking changes" and
+// is fed the breaking-change component keys from the live-preview response.
+// A5: the [u] undo alias is removed — Ctrl+Z is the sole undo.
+// A6: the [e] quick-edit / focus-panel binding is removed — Tab is the sole
+// sidebar↔panel cross.
+describe('GenerateReviewStep — GA-1 (A3/A5/A6)', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const leaf = (label: string): Entry => ({
+    $type: 'component',
+    $properties: { [label]: { $type: 'string', $category: 'content' } },
+  });
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastUseLivePreviewArgs = null;
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  // A response marking `Break` as breaking and NOTHING as removed. `Reject`
+  // will be turned into a directIssue (error) via the `r` key so we can prove
+  // the [w] filter follows breaking-changes, NOT directIssues.
+  const previewBreaking = (breakingName: string) =>
+    ({
+      components: {
+        new: [],
+        changed: [
+          {
+            current: { id: 'bk', name: breakingName, contentProperties: [], designProperties: [], slots: [] },
+            proposed: { $type: 'component', $properties: {} },
+            hasPendingDraftChanges: false,
+            changeClassification: {
+              classification: 'breaking',
+              breakingChanges: [{ propertyId: 'x', reason: 'removed' }],
+            },
+          },
+        ],
+        removed: [],
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    }) as never;
+
+  // ── A3: filter data + label ────────────────────────────────────────────────
+  it('A3: [w] filter narrows to breaking-change components, NOT rejected-but-not-breaking ones', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    // Break is breaking (per preview). Reject we will reject → becomes a
+    // directIssue error. Under the OLD (broken) behavior, [w] would show Reject.
+    // Under the NEW (breaking) behavior, [w] shows Break only.
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'Break', entry: leaf('Break') },
+      { key: 'Reject', entry: leaf('Reject') },
+      { key: 'Clean', entry: leaf('Clean') },
+    ]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // Feed breaking-change data for Break.
+    lastOnResult!(previewBreaking('Break'));
+    await tick();
+    // Reject the second row so it becomes a directIssue (error) — the OLD data
+    // source. Navigate to Reject first.
+    stdin.write('j');
+    await tick();
+    stdin.write('r');
+    await tick();
+    // Activate the filter.
+    stdin.write('w');
+    await tick();
+    const filtered = stripAnsi(lastFrame() ?? '');
+    expect(filtered).toContain('Break');
+    expect(filtered).not.toContain('Clean');
+    // The key discriminator: Reject is a directIssue but NOT breaking, so the
+    // repointed filter must exclude it.
+    expect(filtered).not.toMatch(/^.*Reject.*\[[ ✓✗×]\]/m);
+  });
+
+  it('A3: legend advertises "only breaking changes" and NOT "only broken"', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Alpha', entry: leaf('Alpha') }]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const out = stripAnsi(lastFrame() ?? '');
+    expect(out).toContain('only breaking changes');
+    expect(out).not.toContain('only broken');
+  });
+
+  // ── A5: [u] undo alias removed ───────────────────────────────────────────────
+  it('A5: pressing u does NOT undo (Ctrl+Z is the sole undo)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: leaf('Card') }]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
+    const findSidebarRow = (frame: string, name: string): string =>
+      frame.split('\n').find((l) => l.includes(name) && /\[[✓✗ ]\]/.test(l)) ?? '';
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('a');
+    await tick();
+    expect(findSidebarRow(lastFrame() ?? '', 'Card')).toContain('[✓]');
+    // `u` must be inert now — Card stays accepted.
+    stdin.write('u');
+    await tick();
+    expect(findSidebarRow(lastFrame() ?? '', 'Card')).toContain('[✓]');
+  });
+
+  it('A5: auto-reject banner references Ctrl+Z, not [u]', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const cycleA: Entry = {
+      $type: 'component',
+      $properties: { name: { $type: 'string', $category: 'content' } },
+      $slots: { next: { $allowedComponents: ['CycleB'] } } as never,
+    };
+    const cycleB: Entry = {
+      $type: 'component',
+      $properties: { name: { $type: 'string', $category: 'content' } },
+      $slots: { prev: { $allowedComponents: ['CycleA'] } } as never,
+    };
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: cycleA },
+      { key: 'CycleB', entry: cycleB },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'next', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'prev', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: null,
+      },
+    ]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const out = stripAnsi(lastFrame() ?? '');
+    expect(out).toMatch(/Cyclic manifest — auto-rejected/);
+    expect(out).not.toContain('[u] undo');
+    expect(out).toContain('[Ctrl+Z] undo');
+  });
+
+  it('A5: legend never advertises [u] undo', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const cycleA: Entry = {
+      $type: 'component',
+      $properties: { name: { $type: 'string', $category: 'content' } },
+      $slots: { next: { $allowedComponents: ['CycleB'] } } as never,
+    };
+    const cycleB: Entry = {
+      $type: 'component',
+      $properties: { name: { $type: 'string', $category: 'content' } },
+      $slots: { prev: { $allowedComponents: ['CycleA'] } } as never,
+    };
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: cycleA },
+      { key: 'CycleB', entry: cycleB },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([
+      {
+        path: ['CycleA', 'CycleB', 'CycleA'],
+        edges: [
+          { fromComponent: 'CycleA', slotName: 'next', toComponent: 'CycleB' },
+          { fromComponent: 'CycleB', slotName: 'prev', toComponent: 'CycleA' },
+        ],
+        suggestedBreak: null,
+      },
+    ]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const out = (lastFrame() ?? '').replace(/\s+/g, ' ');
+    expect(out).not.toContain('[u] undo');
+  });
+
+  // ── A6: [e] quick-edit removed ───────────────────────────────────────────────
+  it('A6: pressing e from sidebar does NOT cross focus to the panel', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: leaf('Card') }]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Sidebar-focused hint present before.
+    expect(lastFrame() ?? '').toMatch(/\[Tab\] focus panel/);
+    stdin.write('e');
+    await tick();
+    // Focus must NOT have crossed — sidebar hint still shows.
+    expect(lastFrame() ?? '').toMatch(/\[Tab\] focus panel/);
+    expect(lastFrame() ?? '').not.toMatch(/\[Tab\] focus list/);
+  });
+
+  it('A6: focus-panel hint reads [Tab] (no [e] alias) and legend omits [e/Tab]', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: leaf('Card') }]);
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    const out = stripAnsi(lastFrame() ?? '');
+    expect(out).not.toContain('[e/Tab]');
+    expect(out).toContain('[Tab] focus panel');
+  });
+
+  it('A6: help overlay Navigation group has no [e] Focus panel entry', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: leaf('Card') }]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('?');
+    await tick();
+    const out = stripAnsi(lastFrame() ?? '');
+    // The help overlay renders "e" alongside "Focus panel" for the removed
+    // binding. After A6 the Focus-panel row is gone.
+    const focusLine = out.split('\n').find((l) => /Focus panel/.test(l)) ?? '';
+    expect(focusLine).not.toMatch(/\be\b/);
   });
 });
