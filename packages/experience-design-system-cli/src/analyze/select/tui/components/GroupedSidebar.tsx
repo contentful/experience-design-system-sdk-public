@@ -10,6 +10,7 @@ import {
 } from '../../../composite-closure.js';
 import type { RenderStatus } from '../../../issue-inheritance.js';
 import { previewBadge } from './Sidebar.js';
+import { PALETTE } from '../theme.js';
 import type { PreviewAnnotation } from '../../types.js';
 
 /**
@@ -680,11 +681,11 @@ export function visibleItemOrder(props: {
  * in the terminal's default fg — matches the existing flat Sidebar.tsx.
  */
 function rowColor(row: VisibleRow, aggregate?: string | null): string | undefined {
-  if (row.kind === 'cycle') return 'red';
-  if (row.kind === 'group-child' && row.cycleChild) return 'red';
-  if (row.kind === 'empty') return 'yellow';
-  if (row.kind === 'group-root' && aggregate === GLYPH_ERROR) return 'red';
-  if (row.kind === 'group-root' && aggregate === GLYPH_WARN) return 'yellow';
+  if (row.kind === 'cycle') return PALETTE.error;
+  if (row.kind === 'group-child' && row.cycleChild) return PALETTE.error;
+  if (row.kind === 'empty') return PALETTE.warning;
+  if (row.kind === 'group-root' && aggregate === GLYPH_ERROR) return PALETTE.error;
+  if (row.kind === 'group-root' && aggregate === GLYPH_WARN) return PALETTE.warning;
   return undefined;
 }
 
@@ -706,7 +707,7 @@ export function labelStyleFor(input: {
 }): { color: string | undefined; bold: boolean; dim: boolean } {
   const { row, isCursor, wouldDim } = input;
   if (isCursor) {
-    return { color: 'white', bold: true, dim: false };
+    return { color: PALETTE.info, bold: true, dim: false };
   }
   return {
     color: rowColor(row, row.aggregateGlyph),

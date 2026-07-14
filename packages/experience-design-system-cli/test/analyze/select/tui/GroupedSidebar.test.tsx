@@ -10,6 +10,7 @@ import {
   type GroupedSidebarItem,
   type VisibleRow,
 } from '../../../../src/analyze/select/tui/components/GroupedSidebar.js';
+import { PALETTE } from '../../../../src/analyze/select/tui/theme.js';
 import type { NodeStatus } from '../../../../src/analyze/composite-closure.js';
 import { buildComponentGraph } from '../../../../src/analyze/slot-graph.js';
 
@@ -479,43 +480,43 @@ describe('GroupedSidebar', () => {
       itemIdx: 0,
     };
 
-    it('non-cursor cycle row keeps its red label color', () => {
+    it('non-cursor cycle row keeps its error label color', () => {
       const s = labelStyleFor({ row: cycleRow, isCursor: false, wouldDim: false });
-      expect(s.color).toBe('red');
+      expect(s.color).toBe(PALETTE.error);
       expect(s.bold).toBe(false);
       expect(s.dim).toBe(false);
     });
 
-    it('cursor cycle row drops red — renders white + bold', () => {
+    it('cursor cycle row drops error — renders cursor-accent + bold', () => {
       const s = labelStyleFor({ row: cycleRow, isCursor: true, wouldDim: false });
-      expect(s.color).toBe('white');
+      expect(s.color).toBe(PALETTE.info);
       expect(s.bold).toBe(true);
       expect(s.dim).toBe(false);
     });
 
-    it('cursor aggregate-warning root drops yellow — renders white + bold', () => {
+    it('cursor aggregate-warning root drops warning — renders cursor-accent + bold', () => {
       const s = labelStyleFor({ row: warnRootRow, isCursor: true, wouldDim: false });
-      expect(s.color).toBe('white');
+      expect(s.color).toBe(PALETTE.info);
       expect(s.bold).toBe(true);
     });
 
-    it('cursor aggregate-error root drops red — renders white + bold', () => {
+    it('cursor aggregate-error root drops error — renders cursor-accent + bold', () => {
       const s = labelStyleFor({ row: errorRootRow, isCursor: true, wouldDim: false });
-      expect(s.color).toBe('white');
+      expect(s.color).toBe(PALETTE.info);
       expect(s.bold).toBe(true);
     });
 
     it('cursor row on shared-suffix child suppresses dim', () => {
       const s = labelStyleFor({ row: sharedChildRow, isCursor: true, wouldDim: true });
       expect(s.dim).toBe(false);
-      expect(s.color).toBe('white');
+      expect(s.color).toBe(PALETTE.info);
       expect(s.bold).toBe(true);
     });
 
     it('cursor row suppresses dim even when dimPredicate would apply', () => {
       const s = labelStyleFor({ row: standaloneRow, isCursor: true, wouldDim: true });
       expect(s.dim).toBe(false);
-      expect(s.color).toBe('white');
+      expect(s.color).toBe(PALETTE.info);
     });
 
     it('non-cursor shared-suffix row still dims', () => {

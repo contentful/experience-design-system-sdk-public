@@ -1,5 +1,6 @@
 import React from 'react';
 import { Text } from 'ink';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 
 /**
  * L11 — a single legend entry rendered as ONE atomic `<Text>` node so the
@@ -19,10 +20,10 @@ export function legendEntry(keyBracket: string, label: string, active = false): 
   // <Text> is inline — flex-wrap does not apply between them.
   return (
     <Text key={keyBracket + label}>
-      <Text color={active ? 'yellow' : 'cyan'} inverse={active}>
+      <Text color={active ? PALETTE.warning : PALETTE.info} inverse={active}>
         {keyBracket}
       </Text>
-      <Text color={active ? 'yellow' : undefined} inverse={active} dimColor={!active}>
+      <Text color={active ? PALETTE.warning : undefined} inverse={active} dimColor={!active}>
         {' ' + label}
       </Text>
     </Text>
