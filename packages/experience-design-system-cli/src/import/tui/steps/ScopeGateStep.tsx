@@ -499,6 +499,28 @@ export function ScopeGateStep({
     entryCount: lineageEntries.length,
   });
 
+  // FB2 — keep the nav cursor coherent with the filtered visible set. When a
+  // category filter toggle (or an expand/collapse) shrinks `visibleRows`, the
+  // raw `nav.cursor` can strand PAST the end of the new list. The movement
+  // handlers read `nav.cursor` directly (not the render-time `safeCursor`), so
+  // the first up/down keypress is silently absorbed re-aligning the stale
+  // index — the "stuck" symptom — and a stranded `scrollOffset` can push the
+  // cursor off-window. This effect re-clamps both into bounds after the set
+  // recomputes. The filter sets are derived from static component props
+  // (AI-flagged / cycle-participant), NOT from user decisions, so accept/reject
+  // never reshapes the visible set — cascade semantics are untouched. Explicit
+  // jumps (search / lineage / cycles) set `nav.cursor` themselves and are not
+  // disturbed because they always land inside the current set.
+  useEffect(() => {
+    setNav((prev) => {
+      const maxIdx = Math.max(0, visibleRows.length - 1);
+      const nextCursor = Math.min(prev.cursor, maxIdx);
+      const nextScroll = Math.min(prev.scrollOffset, maxIdx);
+      if (nextCursor === prev.cursor && nextScroll === prev.scrollOffset) return prev;
+      return { cursor: nextCursor, scrollOffset: nextScroll };
+    });
+  }, [visibleRows]);
+
   const searchMatches = useMemo(() => {
     if (!searchQuery) return [];
     return components.filter((c) => fuzzyMatches(searchQuery, c.name)).map((c) => c.name);

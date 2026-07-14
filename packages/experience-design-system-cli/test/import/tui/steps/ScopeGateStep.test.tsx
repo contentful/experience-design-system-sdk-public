@@ -2410,3 +2410,89 @@ describe('ScopeGateStep — L9 collapse + accept rebind', () => {
     expect(help).not.toContain('a / space');
   });
 });
+
+describe('FB2 — cursor + selection coherence under active category filters', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+  // Return the sidebar label on the row that currently carries the ▶ cursor.
+  const cursorRowLabel = (frame: string): string | undefined => {
+    const line = stripAnsi(frame)
+      .split('\n')
+      .find((l) => l.includes('▶'));
+    if (!line) return undefined;
+    // Strip glyphs/selection-boxes/borders so we can match the component name.
+    return line.replace(/[▶✓✗×⚠▸▾├└─│\[\] ]/g, ' ').replace(/\s+/g, ' ').trim();
+  };
+
+  // Aaa..Ddd are plain; Zbrk1/Zbrk2 are AI-flagged (broken). Grouped standalone
+  // tier is alphabetical, so the two broken rows sort LAST — moving the cursor
+  // down before activating [w] strands nav.cursor beyond the shrunk list.
+  const FIX = [
+    { name: 'Aaa', componentId: 'a' },
+    { name: 'Bbb', componentId: 'b' },
+    { name: 'Ccc', componentId: 'c' },
+    { name: 'Ddd', componentId: 'd' },
+    { name: 'Zbrk1', componentId: 'z1', aiDecision: 'rejected' as const, aiReason: 'low value' },
+    { name: 'Zbrk2', componentId: 'z2', aiDecision: 'rejected' as const, aiReason: 'low value' },
+  ];
+
+  it('after [w] shrinks the list, a single [k] moves the cursor (not stuck on a stale index)', async () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    // Move the cursor down to Ddd (row index 3 in the full list).
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j');
+    await new Promise((r) => setTimeout(r, 20));
+    // Activate the broken filter — visible rows collapse to [Zbrk1, Zbrk2].
+    stdin.write('w');
+    await new Promise((r) => setTimeout(r, 20));
+    // The cursor clamps to the last visible row (Zbrk2).
+    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk2');
+    // One [k] must move the cursor up to Zbrk1.
+    stdin.write('k');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk1');
+  });
+
+  it('accept targets the row the cursor moved to after a filter shrink', async () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={FIX} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j');
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('w'); // shrink to [Zbrk1, Zbrk2]; cursor clamps to Zbrk2
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('k'); // should move to Zbrk1
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('a'); // accept the focused row
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[onConfirm.mock.calls.length - 1][0];
+    expect(arg.accepted).toContain('Zbrk1');
+    expect(arg.accepted).not.toContain('Zbrk2');
+  });
+
+  it('toggling [w] off then on again keeps navigation working (not stuck)', async () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j'); // cursor at Ddd
+    stdin.write('w'); // on -> clamp to Zbrk2
+    stdin.write('w'); // off -> full list again
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('w'); // on again -> [Zbrk1, Zbrk2], cursor should clamp coherently
+    await new Promise((r) => setTimeout(r, 20));
+    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk2');
+    stdin.write('k'); // must move to Zbrk1 on the first press
+    await new Promise((r) => setTimeout(r, 20));
+    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk1');
+  });
+});
