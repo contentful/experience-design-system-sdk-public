@@ -28,7 +28,9 @@ export function HelpOverlay(props: HelpOverlayProps): React.ReactElement {
             <Text> </Text>
             <Text bold>{section.title}</Text>
             {section.entries.map((entry) => (
-              <Text key={entry.keys + entry.label}>{'  ' + entry.keys.padEnd(16) + ' ' + entry.label}</Text>
+              <Text key={entry.keys + entry.label}>
+                {entry.keys ? '  ' + entry.keys.padEnd(16) + ' ' + entry.label : '  ' + entry.label}
+              </Text>
             ))}
           </React.Fragment>
         ))}

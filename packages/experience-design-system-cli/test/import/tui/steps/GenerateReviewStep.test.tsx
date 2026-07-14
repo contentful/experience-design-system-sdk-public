@@ -1246,6 +1246,110 @@ describe('GenerateReviewStep — slot-cycle warning surface (INTEG-4401)', () =>
   });
 });
 
+// ── GA-3 (spec §4 A1/A2/A7/A8) — cycle filter/list labels, help text, and
+// GR↔SG cycle-list jump parity. ─────────────────────────────────────────────
+describe('GenerateReviewStep — GA-3 cycle features (A1/A2/A7/A8)', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+  const leaf = (name: string) => ({
+    $type: 'component' as const,
+    $properties: { [name]: { $type: 'string' as const, $category: 'content' as const } },
+  });
+  const CYCLE_A = {
+    $type: 'component' as const,
+    $properties: {},
+    $slots: { header: { $allowedComponents: ['CycleB'] } },
+  };
+  const CYCLE_B = {
+    $type: 'component' as const,
+    $properties: {},
+    $slots: { footer: { $allowedComponents: ['CycleA'] } },
+  };
+  const CYCLE_STORED = [
+    {
+      path: ['CycleA', 'CycleB', 'CycleA'],
+      edges: [
+        { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+        { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+      ],
+      suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+    },
+  ];
+
+  async function renderWithCycle(extra: Array<{ key: string; entry: unknown }> = []) {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+      ...(extra as Array<{ key: string; entry: typeof CYCLE_A }>),
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce(CYCLE_STORED);
+    const utils = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    return utils;
+  }
+
+  // A1/A2 — the two cycle features must be labeled distinctly in the legend.
+  it('legend labels [o] "only cycles" (filter) and [c] "cycle list" (panel) distinctly', async () => {
+    const { lastFrame } = await renderWithCycle();
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/\[o\]\s*only cycles/);
+    expect(frame).toMatch(/\[c\]\s*cycle list/);
+  });
+
+  // A7 — help overlay cycle guidance must state BOTH resolution paths.
+  it('? help overlay cycle entry mentions rejecting a member AND removing/breaking a slot edge', async () => {
+    const { lastFrame, stdin } = await renderWithCycle();
+    stdin.write('?');
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '').toLowerCase();
+    expect(frame).toMatch(/reject a cycle member/);
+    expect(frame).toMatch(/break the cycle|remove a slot/);
+  });
+
+  // A7 — the [c] cycle panel guidance text must state BOTH resolution paths.
+  it('[c] cycle panel guidance states reject-a-member AND remove/break-a-slot-edge', async () => {
+    const { lastFrame, stdin } = await renderWithCycle();
+    stdin.write('c');
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '').toLowerCase();
+    expect(frame).toMatch(/reject a cycle member/);
+    expect(frame).toMatch(/break the cycle|remove a slot/);
+  });
+
+  // A8 — jumpable parity: Enter in the [c] panel jumps the main cursor to the
+  // cycle member (mirrors SG). GR is scroll-only at tip so this is RED.
+  it('[c] cycle panel: Enter jumps the main cursor to the cycle member', async () => {
+    const { lastFrame, stdin } = await renderWithCycle([{ key: 'Zonk', entry: leaf('Zonk') }]);
+    // Move the main cursor off the cycle members (down to Zonk).
+    stdin.write('j');
+    await tick(10);
+    stdin.write('j');
+    await tick(10);
+    // Open cycle panel, jump via Enter.
+    stdin.write('c');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    // Panel closed after Enter jump.
+    expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/SLOT DEPENDENCY CYCLES/);
+    // The cursor landed on the cycle member — [l] lineage panel is now rooted
+    // at CycleA (the cycle's canonical root), not Zonk.
+    stdin.write('l');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Lineage: CycleA');
+  });
+
+  // A8 regression — the parity change must NOT drop the "Suggested fix:" line.
+  it('[c] cycle panel still renders the "Suggested fix:" (suggestedBreak) line', async () => {
+    const { lastFrame, stdin } = await renderWithCycle();
+    stdin.write('c');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toMatch(/Suggested fix/);
+  });
+});
+
 describe('GenerateReviewStep — slot-cycle re-detection on user actions (INTEG-4401 Fix 3/4)', () => {
   const CYCLE_A = {
     $type: 'component' as const,

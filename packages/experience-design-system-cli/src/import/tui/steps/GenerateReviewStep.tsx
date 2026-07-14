@@ -184,6 +184,16 @@ const HELP_SECTIONS: HelpSection[] = [
     ],
   },
   {
+    // A7 — a slot-dependency cycle has TWO valid resolutions. State both so the
+    // operator isn't left thinking rejection is the only path.
+    title: 'Resolving cycles',
+    entries: [
+      { keys: '', label: 'Reject a cycle member (drops it from the push), or' },
+      { keys: '', label: "break the cycle by removing a slot's" },
+      { keys: '', label: '$allowedComponents edge (see [c] suggested fix).' },
+    ],
+  },
+  {
     title: 'Search',
     entries: [
       { keys: '/', label: 'Search' },
@@ -329,9 +339,19 @@ export function GenerateReviewStep({
   // step-local since it's not part of the shared close-key convention;
   // it's reset on close by the caller's toggle handlers.
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
+  // A8 (spec §4) — GR↔SG cycle-list jump parity. The `[c]` panel is now a
+  // jumpable list: `cyclesCursor` selects a cycle and Enter jumps the main
+  // sidebar cursor to that cycle's canonical root. Mirrors ScopeGateStep's
+  // `cyclesJumpables` behavior. Kept inline (not a shared component) because
+  // GR's panel renders per-cycle `suggestedBreak` "Suggested fix:" lines +
+  // colorized path segments that SG's simpler list does not.
+  const [cyclesCursor, setCyclesCursor] = useState(0);
   const cyclePanel = useOverlayPanel({
     toggleKey: 'c',
-    onClose: () => setCyclePanelScroll(0),
+    onClose: () => {
+      setCyclePanelScroll(0);
+      setCyclesCursor(0);
+    },
   });
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const seededGroupsRef = useRef(false);
@@ -1351,12 +1371,20 @@ export function GenerateReviewStep({
         cyclePanel.close();
         return;
       }
+      // A8 — ↑/↓/j/k move the cycle cursor (mirrors SG's cyclesJumpables list);
+      // Enter jumps the main sidebar cursor to the highlighted cycle's root.
       if (key.upArrow || input === 'k') {
-        setCyclePanelScroll((v) => Math.max(0, v - 1));
+        setCyclesCursor((c) => Math.max(0, c - 1));
         return;
       }
       if (key.downArrow || input === 'j') {
-        setCyclePanelScroll((v) => v + 1);
+        setCyclesCursor((c) => Math.min(Math.max(0, slotCycles.length - 1), c + 1));
+        return;
+      }
+      if (key.return) {
+        const target = slotCycles[cyclesCursor];
+        if (target && target.path.length > 0) jumpCursorToName(target.path[0]);
+        cyclePanel.close();
         return;
       }
       return;
@@ -1366,6 +1394,7 @@ export function GenerateReviewStep({
     if (input === 'c' && sidebarFocused && slotCycles.length > 0) {
       cyclePanel.open();
       setCyclePanelScroll(0);
+      setCyclesCursor(0);
       return;
     }
     // T6 (parity plan §3) — `[l]` opens the lineage panel when the sidebar
@@ -1994,14 +2023,24 @@ export function GenerateReviewStep({
               {'push will fail until these are resolved'}
             </Text>,
           );
+          // A7 — state BOTH resolution paths so the operator knows rejection is
+          // not the only option. (The interactive break-a-slot overlay is A9;
+          // here we only mention it as a valid resolution.)
+          lines.push(
+            <Text key="cyc-guide" dimColor>
+              {'To fix: reject a cycle member, or break the cycle by removing a slot edge.'}
+            </Text>,
+          );
           lines.push(<Text key="cyc-space"> </Text>);
           slotCycles.forEach((cycle, idx) => {
             const nodeCount = new Set(cycle.path).size;
+            const isCursor = idx === cyclesCursor;
             lines.push(
               <Text
                 key={`cyc-h-${idx}`}
                 bold
-              >{`▸ Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
+                inverse={isCursor}
+              >{`${isCursor ? '▶' : ' '} Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
             );
             // Colorize slots (cyan, bracketed) distinctly from components so
             // the operator can visually parse the alternating structure.
@@ -2040,7 +2079,7 @@ export function GenerateReviewStep({
           return (
             <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
               {visible}
-              <Text dimColor>{'[↑↓/j/k] scroll  [c/q/Esc] close'}</Text>
+              <Text dimColor>{'[↑↓/j/k] move  [Enter] jump  [c/q/Esc] close'}</Text>
             </Box>
           );
         })()}
