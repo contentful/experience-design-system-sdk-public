@@ -7,18 +7,8 @@ export interface ScopeComponentLike {
 
 export type Decision = 'accepted' | 'rejected' | 'undecided';
 
-/**
- * Multi-column layout threshold. Below this the scope-gate collapses to a
- * single sidebar column + counter strip. Chosen so 3-col layout doesn't
- * overflow on a standard 120-col terminal.
- */
 export const THREE_COLUMN_MIN_WIDTH = 120;
 
-/**
- * Column-width plan for the scope-gate step. When the terminal is narrower
- * than THREE_COLUMN_MIN_WIDTH, only the main sidebar renders; `added` and
- * `groups` widths are 0.
- */
 export function computeColumnWidths(totalWidth: number): {
   layout: 'single' | 'three-column';
   main: number;
