@@ -328,6 +328,11 @@ export function GenerateReviewStep({
   // annotation map only carries kind, not the rich summaries we need to list
   // names/ids when the operator asks "which ones?".
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
+  // A2-2: when the removed-components banner is tall, `[d]` collapses its
+  // detail rows. The 1-line count header stays visible so the operator knows
+  // removed components exist. Gated to `sidebarFocused` so it can't collide
+  // with FieldEditor text entry.
+  const [removedBannerCollapsed, setRemovedBannerCollapsed] = useState(false);
   // Lifted rationale + source panels (replaces FieldEditor's right pane).
   // Mutually exclusive states.
   const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>('none');
@@ -862,8 +867,21 @@ export function GenerateReviewStep({
       }
       setSlotCycles(cycles);
       setComponents(entries);
-      setExpandedGroups(new Set());
-      seededGroupsRef.current = false;
+      // A2-1: seed the expanded set DIRECTLY from the freshly loaded state
+      // (reusing the [E] expand-all recipe) instead of emptying it, so grouped
+      // parents stay expanded after reload exactly as on first mount. Derived
+      // from `entries`/`cycles` because `closures`/`cycleView` are memos of the
+      // still-stale `components` state at this point.
+      const reloadGraph = buildComponentGraph(entries);
+      const reloadClosures = computeAllClosures(reloadGraph);
+      const reloadCycleView = computeCycleView(entries);
+      const reloadSeed = new Set<string>();
+      for (const [name, closure] of reloadClosures.entries()) {
+        if (closure.nodes.length > 1) reloadSeed.add(name);
+      }
+      for (const name of reloadCycleView.structural) reloadSeed.add(name);
+      setExpandedGroups(reloadSeed);
+      seededGroupsRef.current = true;
       setAutoRejected([]);
       setUndoSnapshot(null);
       // Reset one-shot latches so mount auto-reject fires again for the
@@ -1527,6 +1545,13 @@ export function GenerateReviewStep({
     // so they can't collide with FieldEditor input. Independent toggles;
     // multiple active filters union in `filterVisibleKeys`. L11 removed the
     // `[d]` deleted filter — GR no longer offers it.
+    // A2-2 — `[d]` toggles the removed-components banner detail rows. Sidebar-
+    // focused so it can't collide with FieldEditor text entry. No-op when there
+    // are no removed components (the banner isn't rendered anyway).
+    if (input === 'd' && sidebarFocused && removedComponents.length > 0) {
+      setRemovedBannerCollapsed((prev) => !prev);
+      return;
+    }
     if (sidebarFocused && (input === 'o' || input === 'w')) {
       const category: FilterCategory = input === 'o' ? 'cycles' : 'broken';
       setActiveFilters((prev) => {
@@ -2149,10 +2174,14 @@ export function GenerateReviewStep({
             <Text bold color="red">DELETE</Text>
             {'D from target space'}
           </Text>
-          <Text> </Text>
-          {removedComponents.map((rc) => (
-            <Text key={rc.id}>{`- ${rc.name}${rc.id ? `  (${rc.id})` : ''}`}</Text>
-          ))}
+          {!removedBannerCollapsed && (
+            <>
+              <Text> </Text>
+              {removedComponents.map((rc) => (
+                <Text key={rc.id}>{`- ${rc.name}${rc.id ? `  (${rc.id})` : ''}`}</Text>
+              ))}
+            </>
+          )}
         </Box>
       )}
       {breakingChanges.length > 0 && !dialogOpen && (
@@ -2619,6 +2648,8 @@ export function GenerateReviewStep({
           {legendEntry('[s]', 'source', panelOpen === 'source')}
           {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
           {breakingChanges.length > 0 && legendEntry('[b]', 'breaking', breakingPanel.isOpen)}
+          {removedComponents.length > 0 &&
+            legendEntry('[d]', removedBannerCollapsed ? 'show removed' : 'hide removed', removedBannerCollapsed)}
           {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
           {legendEntry('[Tab]', 'focus panel')}
           {legendEntry('[Ctrl+Z]', 'undo')}

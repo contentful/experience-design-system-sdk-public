@@ -4513,3 +4513,164 @@ describe('GenerateReviewStep — GA-1 (A3/A5/A6)', () => {
     expect(focusLine).not.toMatch(/\be\b/);
   });
 });
+
+// ── A2-1 (spec §4b): GR groups re-expand after reload-from-save ─────────────
+// First mount seeds grouped parents EXPANDED. reloadFromSave used to empty the
+// expanded set, leaving parents collapsed after a reload. A2-1 seeds the
+// expanded set directly in reloadFromSave (reusing the [E] expand-all recipe)
+// so grouped parents stay expanded after reload.
+describe('GenerateReviewStep — groups re-expand after reload (A2-1)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const CTRL_R = '\x12';
+  const leaf = (name: string): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+  });
+  const withSlot = (name: string, allowed: string[]): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+    $slots: {
+      children: {
+        $type: 'slot',
+        $allowedComponents: allowed,
+      },
+    } as never,
+  });
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  it('composite group parent stays expanded after Ctrl+R reload', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const group = [
+      { key: 'Card', entry: withSlot('Card', ['Heading']) },
+      { key: 'Heading', entry: leaf('Heading') },
+    ];
+    // Both the mount load and the post-reload load return the same group.
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(group).mockReturnValueOnce(group);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]).mockReturnValueOnce([]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // First mount: group parent expanded.
+    expect(lastFrame() ?? '').toMatch(/▾ Card/);
+    // Reload.
+    stdin.write(CTRL_R);
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // After reload the Card group parent must be expanded again, NOT collapsed.
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).not.toMatch(/▸ Card/);
+    expect(frame).toContain('Heading');
+  });
+
+  it('cycle-tier participant stays expanded after Ctrl+R reload', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const cyclePair = [
+      { key: 'P', entry: withSlot('P', ['C']) },
+      { key: 'C', entry: withSlot('C', ['P']) },
+    ];
+    const cycles = [
+      {
+        path: ['P', 'C', 'P'],
+        edges: [
+          { fromComponent: 'P', slotName: 'children', toComponent: 'C' },
+          { fromComponent: 'C', slotName: 'children', toComponent: 'P' },
+        ],
+        suggestedBreak: null,
+      },
+    ];
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(cyclePair).mockReturnValueOnce(cyclePair);
+    vi.mocked(dbMod.loadSlotCycles)
+      .mockReturnValueOnce(cycles as never)
+      .mockReturnValueOnce(cycles as never);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Reload.
+    stdin.write(CTRL_R);
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // The P cycle-tier row must be expanded after reload.
+    expect(frame).toMatch(/▾ ⚠ P/);
+    expect(frame).not.toMatch(/▸ ⚠ P/);
+  });
+});
+
+// ── A2-2 (spec §4b): [d] toggles the removed-components banner detail rows ───
+// The removed-components strip's detail rows can be tall. [d] (gated to
+// sidebar focus) collapses/expands the detail rows; the 1-line count header
+// stays visible so the operator knows removed components exist + that [d]
+// toggles. The [d] legend entry appears only when removedComponents > 0.
+describe('GenerateReviewStep — [d] toggles removed-components banner (A2-2)', () => {
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastUseLivePreviewArgs = null;
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  const previewWithRemoved = (names: string[]) =>
+    ({
+      components: {
+        new: [],
+        changed: [],
+        removed: names.map((n, i) => ({
+          id: `r${i}`,
+          name: n,
+          contentProperties: [],
+          designProperties: [],
+          slots: [],
+        })) as never,
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    }) as never;
+
+  it('[d] collapses the detail rows while keeping the count header visible', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['Widget']));
+    await tick();
+    // Present by default: both header + detail row.
+    let frame = lastFrame() ?? '';
+    expect(frame).toContain('Removed components (1)');
+    expect(frame).toMatch(/Widget/);
+    // Press d (sidebar is focused by default).
+    stdin.write('d');
+    await tick();
+    frame = lastFrame() ?? '';
+    // Detail row hidden, count header still shown.
+    expect(frame).toContain('Removed components (1)');
+    expect(frame).not.toMatch(/- Widget/);
+    // Press d again — detail rows return.
+    stdin.write('d');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Widget/);
+  });
+
+  it('legend advertises [d] only when there are removed components', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // No removed components yet — no [d] legend entry.
+    expect(lastFrame() ?? '').not.toContain('[d]');
+    lastOnResult!(previewWithRemoved(['Widget']));
+    await tick();
+    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
+    expect(frame).toContain('[d]');
+  });
+});
