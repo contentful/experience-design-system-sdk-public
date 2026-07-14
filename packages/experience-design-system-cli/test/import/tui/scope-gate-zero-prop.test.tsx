@@ -2,19 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'ink-testing-library';
 import { ScopeGateStep } from '../../../src/import/tui/steps/ScopeGateStep.js';
 
-// Pilot-testing invariant pinned by commit def35ef:
-// "Components with zero classified $properties surface in final-review with
-//  (empty) suffix + yellow warning banner."
-//
-// Feature 3 introduces auto-AI-filter, which CANNOT silently drop zero-prop
-// components. If select-agent rejects a zero-prop component, it must STILL
-// surface in the AI-excluded section (so the operator sees it). If un-excluded
-// via `a`, it must flow through to the main accepted list and ultimately to
-// final-review with the existing banner.
-//
-// This test pins both halves of the invariant: scope-gate auto-filter
-// surfacing, and the dual-write contract that `runScopeGate` later honors.
-
 describe('zero-prop component preserved through auto-filter (Feature 3 regression)', () => {
   it('surfaces a zero-prop AI-rejected component in the AI-excluded section', () => {
     const { lastFrame } = render(
@@ -29,12 +16,7 @@ describe('zero-prop component preserved through auto-filter (Feature 3 regressio
       />,
     );
     const out = lastFrame() ?? '';
-    // Component must surface — never silently dropped.
     expect(out).toContain('OpaqueWidget');
-    // Grouped-sidebar wiring: the "[AI]" literal is gone (replaced by a
-    // dim summary line + focused-row detail); the AI-recommended-exclusions
-    // signal still surfaces as a dim counter above the sidebar so operators
-    // can see something was flagged.
     expect(out).not.toContain('[AI]');
     expect(out).toMatch(/AI recommended exclusions/);
   });
@@ -53,12 +35,8 @@ describe('zero-prop component preserved through auto-filter (Feature 3 regressio
       />,
     );
     const out = lastFrame() ?? '';
-    // Accepted zero-prop components should NOT show up in the AI-excluded section.
     expect(out).not.toContain('AI excluded');
-    // OpaqueWidget renders in the main list.
     expect(out).toContain('OpaqueWidget');
-    // Under the everything-undecided default, the operator opts the AI-accepted
-    // rows in via [Y]. OpaqueWidget lands in accepted then.
     stdin.write('Y');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -81,10 +59,6 @@ describe('zero-prop component preserved through auto-filter (Feature 3 regressio
     );
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    // The AI-rejected zero-prop component is in the rejected list — so
-    // applyScopeDecisions explicitly marks status='rejected' (not silently
-    // skipped) and the snapshot reflects it. This is the same dual-write the
-    // 4b4a1ac invariant pins.
     expect(arg.rejected).toContain('OpaqueWidget');
     expect(arg.accepted).not.toContain('OpaqueWidget');
   });

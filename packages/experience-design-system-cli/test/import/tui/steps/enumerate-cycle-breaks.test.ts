@@ -51,7 +51,7 @@ describe('enumerateCycleBreaks', () => {
 
   it('excludes an edge whose $allowedComponents no longer contains the target (stale cycle)', () => {
     const components = [
-      { key: 'CycleA', entry: comp({ header: [] }) }, // edge already removed
+      { key: 'CycleA', entry: comp({ header: [] }) },
       { key: 'CycleB', entry: comp({ footer: ['CycleA'] }) },
     ];
     const cycle = {

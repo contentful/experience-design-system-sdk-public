@@ -2,13 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'ink-testing-library';
 import { ScopeGateStep } from '../../../../src/import/tui/steps/ScopeGateStep.js';
 
-// Pilot-2026-06-25: scope-gate UX overhaul keymap.
-// Active bindings: j/k (or arrows) move · a/Space accept · r reject ·
-// A toggle-all · Y accept non-flagged · f/F confirm · q quit · s AI-reason
-// side panel.
-// Enter and `n` are NOT bindings. `c` is no longer bound (the separate AI-
-// excluded section it controlled was removed).
-
 const FIXTURE = [
   { name: 'Button', componentId: 'c0' },
   { name: 'Card', componentId: 'c1' },
@@ -19,7 +12,7 @@ describe('ScopeGateStep keymap regression — pre-Feature-3 behavior preserved',
   it('a accepts the cursor component', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
-    stdin.write('a'); // accept Button
+    stdin.write('a');
     stdin.write('f');
     expect(onConfirm.mock.calls[0][0].accepted).toContain('Button');
   });
@@ -38,7 +31,7 @@ describe('ScopeGateStep keymap regression — pre-Feature-3 behavior preserved',
   it('r rejects the cursor component', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
-    stdin.write('r'); // reject Button
+    stdin.write('r');
     stdin.write('f');
     expect(onConfirm.mock.calls[0][0].rejected).toContain('Button');
   });
@@ -67,7 +60,7 @@ describe('ScopeGateStep keymap regression — pre-Feature-3 behavior preserved',
   it('Space does NOT accept the cursor component (L9 rebind: space = collapse)', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
-    stdin.write(' '); // L9: toggles group collapse, no longer an accept alias
+    stdin.write(' ');
     stdin.write('f');
     expect(onConfirm.mock.calls[0][0].accepted).not.toContain('Button');
   });
@@ -88,7 +81,6 @@ describe('ScopeGateStep keymap regression — pre-Feature-3 behavior preserved',
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={onQuit} />);
     stdin.write('\r');
     stdin.write('n');
-    // Neither confirms or quits — only f/F/q do.
     expect(onConfirm).not.toHaveBeenCalled();
     expect(onQuit).not.toHaveBeenCalled();
   });
