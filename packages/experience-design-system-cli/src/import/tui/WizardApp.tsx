@@ -279,13 +279,7 @@ export type WizardAppProps = {
   livePreview?: boolean;
   noPush?: boolean;
   noSave?: boolean;
-  /** `--out-dir <path>` flag. Bypasses the inline save-path prompt. */
   outDirOverride?: string;
-  /**
-   * `--on-conflict <overwrite|skip|fail>` flag. When supplied along
-   * with `outDirOverride`, the wizard skips the SaveConflictGate and applies
-   * the chosen mode automatically via `resolveSavePath`.
-   */
   onConflictMode?: OnConflictMode;
   selectPromptPath?: string;
   generatePromptPath?: string;
@@ -1376,12 +1370,6 @@ export function WizardApp({
     await startSaveFlow({ skipGate: true, andPush: true });
   };
 
-  // ── Task 4: save-path orchestration ────────────────────────────────────────
-  // Wraps every `runPrintFiles` site. When `--out-dir` is set we skip the
-  // inline prompt and conflict gate entirely. Otherwise the wizard transitions
-  // to the path-prompt step; the operator's submit handler calls back into
-  // `proceedToWrite` (which may surface the conflict gate).
-
   const pendingSaveOptionsRef = useRef<{ skipGate?: boolean; andPush?: boolean }>({});
 
   const startSaveFlow = async (opts: { skipGate?: boolean; andPush?: boolean } = {}): Promise<void> => {
@@ -1419,17 +1407,10 @@ export function WizardApp({
       ...(state.tokenSessionId ? { tokenSessionId: state.tokenSessionId } : {}),
     });
     if (!result.ok) return;
-    // Prefer the freshly emitted path/count (covers --out-dir); fall back to
-    // the values captured during the original generate-tokens step.
     const recordedTokensPath = result.tokensPath ?? (state.tokenSessionId ? tokensPath || null : null);
     const recordedTokenCount = result.tokenCount ?? state.tokenCount;
     if (result.ok) {
-      // Append a run record on every successful write. Best-effort: append
-      // failures must not break the wizard flow (they surface on stderr).
       try {
-        // Build the v3 fingerprints. Both are best-effort: if any step
-        // throws (missing source file, hash failure, db lookup error) we
-        // fall back to null fingerprints rather than aborting the save.
         let sourceFingerprint: Awaited<ReturnType<typeof buildSourceFingerprint>> | null = null;
         let savedFingerprint: ReturnType<typeof buildSavedFingerprint> | null = null;
         try {
@@ -1486,8 +1467,6 @@ export function WizardApp({
     }
   };
 
-  // ── Effect: kick off automatic steps ───────────────────────────────────────────────
-
   const tokenReuseChecked = useRef(false);
   useEffect(() => {
     if (state.step === 'generating-tokens') {
@@ -1508,22 +1487,14 @@ export function WizardApp({
             tokenSourceChanged: sourceChanged,
           });
         } catch {
-          // No existing tokens — need LLM to generate
           if (await runAgentAuthCheck('generating-tokens')) {
             void runGenerateTokens(state.rawTokensPath, state.outDir);
           }
         }
       })();
     }
-  }, [state.step]); // intentional: only re-run when step changes
+  }, [state.step]);
 
-  // Push-from-picker entry: on mount, dispatch runPreview to jump through
-  // previewing → preview-gate → pushing → done. We DON'T wait for the
-  // operator to interact with any pre-preview screen; the run-picker Push
-  // action is a "click Push and watch it happen" flow. `preview-gate` still
-  // renders after runPreview resolves — that's the diff-review screen where
-  // the operator can confirm/quit/edit. We route straight past
-  // push-decision-gate (which is for save-vs-push decisions on a fresh run).
   const pushFromPickerDispatched = useRef(false);
   useEffect(() => {
     if (state.step !== 'push-from-picker') return;
@@ -1539,8 +1510,6 @@ export function WizardApp({
     );
   }, [state.step]);
 
-  // ── Render ────────────────────────────────────────────────────────────────────────────
-
   const noQuitSteps: WizardStep[] = [
     'run-picker',
     'checking-claude-auth',
@@ -1555,7 +1524,6 @@ export function WizardApp({
   ];
   const hints = noQuitSteps.includes(state.step) ? [] : [{ key: 'q', label: 'quit' }];
 
-  // step count: tokens step adds 1, components steps add 2 (extract + generate)
   const hasTokens = !!state.tokensPath;
   const hasComponents = !state.skipComponents;
   const totalSteps = 3 + (hasTokens ? 1 : 0) + (hasComponents ? 2 : 0);
@@ -1571,10 +1539,6 @@ export function WizardApp({
                 update({ step: 'welcome' });
                 return;
               }
-              // Push / modify routing exits the wizard back into the CLI
-              // surface so `replayRun` / `modifyRun` (which spin their own
-              // UI / spawn their own Ink trees) can take over. The CLI
-              // entry point in `command.ts` provides `onRunPicked`.
               onRunPicked?.(selection);
             }}
             onCancel={() => process.exit(0)}
@@ -1660,9 +1624,6 @@ export function WizardApp({
               void runExtract(path);
             }}
             onSkipComponents={() => {
-              // No components — only design tokens to push. Still gather creds
-              // first (unless --no-push, in which case there is nothing to do
-              // and we save files instead).
               if (noPush) {
                 update({ skipComponents: true, acceptedCount: 0 });
                 void startSaveFlow();
@@ -1712,10 +1673,6 @@ export function WizardApp({
         } finally {
           db.close();
         }
-        // INTEG-4318: overlay the streamed auto-filter decisions (from
-        // stderr progress lines) onto DB-loaded rows so 'failed' components
-        // (LLM omitted a tool call in a batch) surface in the scope-gate
-        // instead of silently defaulting to included.
         components = mergeAiDecisions(components, state.aiDecisions);
         return (
           <ScopeGateHost
@@ -1739,12 +1696,6 @@ export function WizardApp({
                     }
                     return;
                   }
-                  // next === 'credentials' (push enabled). Kick off the
-                  // generate child in the background so the LLM call overlaps
-                  // with the operator's credential entry. We only prefetch
-                  // when we have accepted components to classify AND push is
-                  // enabled (noPush path is already excluded — the scope-gate
-                  // helper would have returned 'generating' there).
                   if (acceptedCount > 0 && !noPush) {
                     if (await runAgentAuthCheck('credentials')) {
                       startGeneratePrefetch(sid, state.tokensPath);
@@ -1759,7 +1710,6 @@ export function WizardApp({
                     void startSaveFlow();
                     return;
                   }
-                  // 'credentials' — still need creds for tokens/removals push.
                   advanceToPushFlow(count);
                 },
               });
@@ -1802,14 +1752,6 @@ export function WizardApp({
             onFinalize={(accepted, rejected, unresolved) => {
               process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`);
               update({ finalReviewPassed: true });
-              // INTEG-4411 refined: no `accepted === 0` up-front block here.
-              // A zero-accepted finalize can still be a valid push when the
-              // operator explicitly rejected component(s) that exist server-
-              // side (→ REMOVALS) or when tokens carry a diff. The load-
-              // bearing no-op check consults the preview response inside
-              // `runPreview` below (see `isEmptyPreview` branch) and routes
-              // back to `final-review` with `finalizeErrorBanner` set when
-              // the diff is truly empty.
               if (noPush) {
                 update({ generatedAcceptedCount: accepted });
                 void startSaveFlow();
@@ -1829,10 +1771,6 @@ export function WizardApp({
                 return;
               }
               if (autoAcceptScope) {
-                // Headless run with neither --no-save nor --no-push: pick the
-                // default "both" path automatically to preserve scripted
-                // (auto-accept-scope) UX from before the gate gained a third
-                // option. Operators who want push-only must pass --no-save.
                 update({ generatedAcceptedCount: accepted });
                 void runSaveAndPush();
                 return;
@@ -1878,7 +1816,6 @@ export function WizardApp({
                 );
                 return;
               }
-              // save-only
               void startSaveFlow();
             }}
             onQuit={() => process.exit(0)}
@@ -1900,13 +1837,6 @@ export function WizardApp({
             onConfirm={(spaceId, environmentId, cmaToken, host) => {
               void confirmCredentials(spaceId, environmentId, cmaToken, host);
             }}
-            // INTEG-4410: unify the unchanged-form path with the changed-form
-            // path so credentials are ALWAYS persisted to disk on submit.
-            // The pre-fix wiring routed `onContinue` at
-            // `advanceWithCredentials`, which only mutated state — so on
-            // `--modify` (where the wizard seeds `run.pushedTo` into the
-            // form, not disk) an operator pressing Enter never wrote to
-            // ~/.config/experiences/credentials.json and disk stayed stale.
             onContinue={(spaceId, environmentId, cmaToken, host) => {
               void confirmCredentials(spaceId, environmentId, cmaToken, host);
             }}
@@ -1919,11 +1849,6 @@ export function WizardApp({
                 : undefined
             }
             onSkip={() => {
-              // Skip-credentials: mark the wizard as skipped, clear any
-              // stale credentialsError banner, and advance through the
-              // normal post-credentials branch. The in-flight generate
-              // prefetch (PR #54) is intentionally NOT cancelled here —
-              // the operator still wants to see classifications.
               update({ credentialsSkipped: true, credentialsError: '' });
               void advanceAfterCredentialsValidated();
             }}
@@ -1933,18 +1858,6 @@ export function WizardApp({
             }}
           />
         );
-
-      // 'credential-test-gate' is intentionally NOT rendered as a dedicated
-      // screen any more (the post-#54 inline credentials-validating status made
-      // the gate redundant). The step value is kept in the union for back-compat
-      // with existing imports/tests but is never actually set as a step —
-      // `advanceWithCredentials` calls `validateCredentials` directly.
-      //
-      // 'validating-credentials' is intentionally NOT rendered as a dedicated
-      // screen any more (see CredentialsStep `validating` prop). The step
-      // value is kept in the union for back-compat with existing imports/tests
-      // but should never actually be set — `validateCredentials` keeps the
-      // step on 'credentials' and toggles `credentialsValidating` instead.
 
       case 'push-from-picker':
       case 'previewing':
@@ -2105,10 +2018,6 @@ export function WizardApp({
           />
         );
 
-      // 'validating-credentials' kept in the WizardStep union for back-compat
-      // but is no longer reachable as a step (validateCredentials toggles the
-      // `credentialsValidating` boolean while leaving step on 'credentials').
-      // Default-return null so the switch is exhaustive.
       default:
         return null;
     }
