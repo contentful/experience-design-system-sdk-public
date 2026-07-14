@@ -1496,6 +1496,68 @@ describe('GenerateReviewStep — GA-4 interactive break-cycle overlay (A9)', () 
     await tick();
     expect(stripAnsi(lastFrame() ?? '')).toMatch(/CycleB \(cycle\)/);
   });
+
+  // A2-5/A2-6 — the break overlay renders in the SAME bottom region as the
+  // slot-dependency-cycle banner (overlaying it, not stacked in the top strip)
+  // and it renders the highlighted cycle's dependency path under the title.
+  it('A2-5 — break overlay renders in the bottom banner slot (below FIELDS), not the top strip', async () => {
+    const { utils } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '');
+    const breakIdx = frame.indexOf('BREAK CYCLE');
+    const fieldsIdx = frame.indexOf('FIELDS');
+    expect(breakIdx).toBeGreaterThan(-1);
+    expect(fieldsIdx).toBeGreaterThan(-1);
+    // Overlay lives in the bottom region (after the columns/FIELDS panel), the
+    // slot-dependency-banner slot — not the top stack above the columns.
+    expect(breakIdx).toBeGreaterThan(fieldsIdx);
+  });
+
+  it('A2-5 — closing the break overlay + cycle panel restores the slot-dependency banner', async () => {
+    const { utils } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    // Banner visible before any panel opens.
+    expect(stripAnsi(lastFrame() ?? '')).toMatch(/detected — push will fail/);
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    // Break overlay open → banner not stacked underneath it.
+    expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/detected — push will fail/);
+    stdin.write('x'); // close break overlay
+    await tick();
+    stdin.write('c'); // close cycle panel
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toMatch(/detected — push will fail/);
+  });
+
+  it('A2-6 — break overlay renders the highlighted cycle dependency path under the title', async () => {
+    const { utils } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '');
+    // Isolate the break-overlay box: from its title to its own legend line.
+    const start = frame.indexOf('BREAK CYCLE');
+    const end = frame.indexOf('[Enter] delete');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const box = frame.slice(start, end);
+    // formatCyclePathSegments output: bracketed slots + arrow separators. The
+    // edge list uses `.$slots.header.` (no brackets), so these markers are
+    // unique to the cycle-path render.
+    expect(box).toMatch(/\[header\]/);
+    expect(box).toMatch(/\[footer\]/);
+    expect(box).toMatch(/→/);
+    // Existing edge list + confirm/close legend still present in the overlay.
+    expect(box).toMatch(/remove 'CycleB' from CycleA\.\$slots\.header\.\$allowedComponents/);
+  });
 });
 
 describe('GenerateReviewStep — slot-cycle re-detection on user actions (INTEG-4401 Fix 3/4)', () => {

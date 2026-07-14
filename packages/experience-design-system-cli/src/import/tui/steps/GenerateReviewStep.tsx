@@ -2027,6 +2027,30 @@ export function GenerateReviewStep({
         <Text bold color="yellow">
           {`BREAK CYCLE ${cyclesCursor + 1} — remove a slot edge`}
         </Text>
+        {highlightedCycle &&
+          (() => {
+            const segs = formatCyclePathSegments(highlightedCycle);
+            return (
+              <Text>
+                {'  '}
+                {segs.map((seg, si) =>
+                  seg.kind === 'slot' ? (
+                    <Text key={si} color="cyan">
+                      {seg.text}
+                    </Text>
+                  ) : seg.kind === 'arrow' ? (
+                    <Text key={si} dimColor>
+                      {seg.text}
+                    </Text>
+                  ) : (
+                    <Text key={si} color="yellow">
+                      {seg.text}
+                    </Text>
+                  ),
+                )}
+              </Text>
+            );
+          })()}
         <Text dimColor>
           {highlightedCycle
             ? 'Deleting an edge removes it from $allowedComponents (undo with Ctrl+Z).'
@@ -2284,7 +2308,6 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {breakPanel.isOpen && !breakOverlayFullScreen && !dialogOpen && renderBreakOverlay()}
       {!dialogOpen &&
         livePreview &&
         (() => {
@@ -2585,7 +2608,8 @@ export function GenerateReviewStep({
           </Box>
         </Box>
       )}
-      {!dialogOpen && slotCycles.length > 0 && !cyclePanel.isOpen && (
+      {breakPanel.isOpen && !breakOverlayFullScreen && !dialogOpen && renderBreakOverlay()}
+      {!dialogOpen && slotCycles.length > 0 && !cyclePanel.isOpen && !breakPanel.isOpen && (
         <Box flexDirection="column">
           <Text color="yellow">
             {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
