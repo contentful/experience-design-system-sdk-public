@@ -1246,6 +1246,320 @@ describe('GenerateReviewStep — slot-cycle warning surface (INTEG-4401)', () =>
   });
 });
 
+// ── GA-3 (spec §4 A1/A2/A7/A8) — cycle filter/list labels, help text, and
+// GR↔SG cycle-list jump parity. ─────────────────────────────────────────────
+describe('GenerateReviewStep — GA-3 cycle features (A1/A2/A7/A8)', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+  const leaf = (name: string) => ({
+    $type: 'component' as const,
+    $properties: { [name]: { $type: 'string' as const, $category: 'content' as const } },
+  });
+  const CYCLE_A = {
+    $type: 'component' as const,
+    $properties: {},
+    $slots: { header: { $allowedComponents: ['CycleB'] } },
+  };
+  const CYCLE_B = {
+    $type: 'component' as const,
+    $properties: {},
+    $slots: { footer: { $allowedComponents: ['CycleA'] } },
+  };
+  const CYCLE_STORED = [
+    {
+      path: ['CycleA', 'CycleB', 'CycleA'],
+      edges: [
+        { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+        { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+      ],
+      suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+    },
+  ];
+
+  async function renderWithCycle(extra: Array<{ key: string; entry: unknown }> = []) {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+      ...(extra as Array<{ key: string; entry: typeof CYCLE_A }>),
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce(CYCLE_STORED);
+    const utils = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    return utils;
+  }
+
+  // A1/A2 — the two cycle features must be labeled distinctly in the legend.
+  it('legend labels [o] "only cycles" (filter) and [c] "cycle list" (panel) distinctly', async () => {
+    const { lastFrame } = await renderWithCycle();
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toMatch(/\[o\]\s*only cycles/);
+    expect(frame).toMatch(/\[c\]\s*cycle list/);
+  });
+
+  // A7 — help overlay cycle guidance must state BOTH resolution paths.
+  it('? help overlay cycle entry mentions rejecting a member AND removing/breaking a slot edge', async () => {
+    const { lastFrame, stdin } = await renderWithCycle();
+    stdin.write('?');
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '').toLowerCase();
+    expect(frame).toMatch(/reject a cycle member/);
+    expect(frame).toMatch(/break the cycle|remove a slot/);
+  });
+
+  // A7 — the [c] cycle panel guidance text must state BOTH resolution paths.
+  it('[c] cycle panel guidance states reject-a-member AND remove/break-a-slot-edge', async () => {
+    const { lastFrame, stdin } = await renderWithCycle();
+    stdin.write('c');
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '').toLowerCase();
+    expect(frame).toMatch(/reject a cycle member/);
+    expect(frame).toMatch(/break the cycle|remove a slot/);
+  });
+
+  // A8 — jumpable parity: Enter in the [c] panel jumps the main cursor to the
+  // cycle member (mirrors SG). GR is scroll-only at tip so this is RED.
+  it('[c] cycle panel: Enter jumps the main cursor to the cycle member', async () => {
+    const { lastFrame, stdin } = await renderWithCycle([{ key: 'Zonk', entry: leaf('Zonk') }]);
+    // Move the main cursor off the cycle members (down to Zonk).
+    stdin.write('j');
+    await tick(10);
+    stdin.write('j');
+    await tick(10);
+    // Open cycle panel, jump via Enter.
+    stdin.write('c');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    // Panel closed after Enter jump.
+    expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/SLOT DEPENDENCY CYCLES/);
+    // The cursor landed on the cycle member — [l] lineage panel is now rooted
+    // at CycleA (the cycle's canonical root), not Zonk.
+    stdin.write('l');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Lineage: CycleA');
+  });
+
+  // A8 regression — the parity change must NOT drop the "Suggested fix:" line.
+  it('[c] cycle panel still renders the "Suggested fix:" (suggestedBreak) line', async () => {
+    const { lastFrame, stdin } = await renderWithCycle();
+    stdin.write('c');
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toMatch(/Suggested fix/);
+  });
+
+  // A2-3 (spec §4b) — with more cycles than fit in the PANEL_H window, moving
+  // the cursor to a cycle below the initial window must scroll the panel so
+  // the selected cycle's header becomes visible (cursor-follow).
+  it('[c] cycle panel scroll follows the cursor to a cycle below the window', async () => {
+    const MANY = Array.from({ length: 12 }, (_, i) => ({
+      path: [`Comp${i}A`, `Comp${i}B`, `Comp${i}A`],
+      edges: [
+        { fromComponent: `Comp${i}A`, slotName: 'header', toComponent: `Comp${i}B` },
+        { fromComponent: `Comp${i}B`, slotName: 'footer', toComponent: `Comp${i}A` },
+      ],
+      suggestedBreak: { fromComponent: `Comp${i}A`, slotName: 'header', toComponent: `Comp${i}B` },
+    }));
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce(MANY);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('c');
+    await tick();
+    // Cycle 12 (index 11) starts far below the initial 20-line window and must
+    // not be visible at scroll=0.
+    expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/Cycle 12 \(/);
+    // Walk the cursor down to the last cycle.
+    for (let i = 0; i < 11; i++) {
+      stdin.write('j');
+      await tick();
+    }
+    // Cursor-follow must have advanced the scroll so Cycle 12's header shows.
+    expect(stripAnsi(lastFrame() ?? '')).toMatch(/▶ Cycle 12 \(/);
+  });
+});
+
+describe('GenerateReviewStep — GA-4 interactive break-cycle overlay (A9)', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+  const CYCLE_A = {
+    $type: 'component' as const,
+    $properties: {},
+    $slots: { header: { $allowedComponents: ['CycleB'] } },
+  };
+  const CYCLE_B = {
+    $type: 'component' as const,
+    $properties: {},
+    $slots: { footer: { $allowedComponents: ['CycleA'] } },
+  };
+  const CYCLE_STORED = [
+    {
+      path: ['CycleA', 'CycleB', 'CycleA'],
+      edges: [
+        { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+        { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+      ],
+      suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+    },
+  ];
+
+  async function renderWithCycle() {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce(CYCLE_STORED);
+    const utils = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    return { utils, dbMod };
+  }
+
+  it('[x] from the cycle list opens the break overlay enumerating removable slot edges', async () => {
+    const { utils } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '');
+    // Both edges of the elementary cycle are removable break candidates.
+    expect(frame).toMatch(/remove 'CycleB' from CycleA\.\$slots\.header\.\$allowedComponents/);
+    expect(frame).toMatch(/remove 'CycleA' from CycleB\.\$slots\.footer\.\$allowedComponents/);
+  });
+
+  it('Enter + confirm (y) removes the highlighted edge from $allowedComponents in review state', async () => {
+    const { utils, dbMod } = await renderWithCycle();
+    const { stdin } = utils;
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    stdin.write('\r'); // select first edge → confirm prompt
+    await tick();
+    stdin.write('y'); // confirm delete
+    await tick();
+    // The undoable slot-edit seam persists via storeCDFComponents.
+    const calls = vi.mocked(dbMod.storeCDFComponents).mock.calls;
+    const lastCdf = calls.at(-1);
+    expect(lastCdf?.[2]).toEqual([
+      expect.objectContaining({
+        key: 'CycleA',
+        entry: expect.objectContaining({
+          $slots: { header: expect.objectContaining({ $allowedComponents: [] }) },
+        }),
+      }),
+    ]);
+  });
+
+  it('after a break-delete that resolves the only cycle, cycles drop out (recompute → storeSlotCycles [])', async () => {
+    const { utils, dbMod } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    stdin.write('y');
+    await tick();
+    // recomputeCycles ran over the mutated state → no structural cycle remains.
+    const lastStore = vi.mocked(dbMod.storeSlotCycles).mock.calls.at(-1);
+    expect(lastStore?.[2]).toEqual([]);
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).not.toMatch(/CycleB \(cycle\)/);
+  });
+
+  it('Ctrl+Z restores the removed $allowedComponents edge after a break-delete', async () => {
+    const { utils } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    stdin.write('y');
+    await tick();
+    // Cycle badges gone after the delete.
+    expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/CycleB \(cycle\)/);
+    // Undo restores the edge → structural cycle (and its badge) returns.
+    stdin.write('\x1a'); // Ctrl+Z
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toMatch(/CycleB \(cycle\)/);
+  });
+
+  // A2-5/A2-6 — the break overlay renders in the SAME bottom region as the
+  // slot-dependency-cycle banner (overlaying it, not stacked in the top strip)
+  // and it renders the highlighted cycle's dependency path under the title.
+  it('A2-5 — break overlay renders in the bottom banner slot (below FIELDS), not the top strip', async () => {
+    const { utils } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '');
+    const breakIdx = frame.indexOf('BREAK CYCLE');
+    const fieldsIdx = frame.indexOf('FIELDS');
+    expect(breakIdx).toBeGreaterThan(-1);
+    expect(fieldsIdx).toBeGreaterThan(-1);
+    // Overlay lives in the bottom region (after the columns/FIELDS panel), the
+    // slot-dependency-banner slot — not the top stack above the columns.
+    expect(breakIdx).toBeGreaterThan(fieldsIdx);
+  });
+
+  it('A2-5 — closing the break overlay + cycle panel restores the slot-dependency banner', async () => {
+    const { utils } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    // Banner visible before any panel opens.
+    expect(stripAnsi(lastFrame() ?? '')).toMatch(/detected — push will fail/);
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    // Break overlay open → banner not stacked underneath it.
+    expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/detected — push will fail/);
+    stdin.write('x'); // close break overlay
+    await tick();
+    stdin.write('c'); // close cycle panel
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toMatch(/detected — push will fail/);
+  });
+
+  it('A2-6 — break overlay renders the highlighted cycle dependency path under the title', async () => {
+    const { utils } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '');
+    // Isolate the break-overlay box: from its title to its own legend line.
+    const start = frame.indexOf('BREAK CYCLE');
+    const end = frame.indexOf('[Enter] delete');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const box = frame.slice(start, end);
+    // formatCyclePathSegments output: bracketed slots + arrow separators. The
+    // edge list uses `.$slots.header.` (no brackets), so these markers are
+    // unique to the cycle-path render.
+    expect(box).toMatch(/\[header\]/);
+    expect(box).toMatch(/\[footer\]/);
+    expect(box).toMatch(/→/);
+    // Existing edge list + confirm/close legend still present in the overlay.
+    expect(box).toMatch(/remove 'CycleB' from CycleA\.\$slots\.header\.\$allowedComponents/);
+  });
+});
+
 describe('GenerateReviewStep — slot-cycle re-detection on user actions (INTEG-4401 Fix 3/4)', () => {
   const CYCLE_A = {
     $type: 'component' as const,
@@ -4295,5 +4609,210 @@ describe('GenerateReviewStep — GA-1 (A3/A5/A6)', () => {
     // binding. After A6 the Focus-panel row is gone.
     const focusLine = out.split('\n').find((l) => /Focus panel/.test(l)) ?? '';
     expect(focusLine).not.toMatch(/\be\b/);
+  });
+});
+
+// ── A2-1 (spec §4b): GR groups re-expand after reload-from-save ─────────────
+// First mount seeds grouped parents EXPANDED. reloadFromSave used to empty the
+// expanded set, leaving parents collapsed after a reload. A2-1 seeds the
+// expanded set directly in reloadFromSave (reusing the [E] expand-all recipe)
+// so grouped parents stay expanded after reload.
+describe('GenerateReviewStep — groups re-expand after reload (A2-1)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+  const CTRL_R = '\x12';
+  const leaf = (name: string): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+  });
+  const withSlot = (name: string, allowed: string[]): Entry => ({
+    $type: 'component',
+    $properties: { [name.toLowerCase()]: { $type: 'string', $category: 'content' } },
+    $slots: {
+      children: {
+        $type: 'slot',
+        $allowedComponents: allowed,
+      },
+    } as never,
+  });
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  it('composite group parent stays expanded after Ctrl+R reload', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const group = [
+      { key: 'Card', entry: withSlot('Card', ['Heading']) },
+      { key: 'Heading', entry: leaf('Heading') },
+    ];
+    // Both the mount load and the post-reload load return the same group.
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(group).mockReturnValueOnce(group);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]).mockReturnValueOnce([]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // First mount: group parent expanded.
+    expect(lastFrame() ?? '').toMatch(/▾ Card/);
+    // Reload.
+    stdin.write(CTRL_R);
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // After reload the Card group parent must be expanded again, NOT collapsed.
+    expect(frame).toMatch(/▾ Card/);
+    expect(frame).not.toMatch(/▸ Card/);
+    expect(frame).toContain('Heading');
+  });
+
+  it('cycle-tier participant stays expanded after Ctrl+R reload', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const cyclePair = [
+      { key: 'P', entry: withSlot('P', ['C']) },
+      { key: 'C', entry: withSlot('C', ['P']) },
+    ];
+    const cycles = [
+      {
+        path: ['P', 'C', 'P'],
+        edges: [
+          { fromComponent: 'P', slotName: 'children', toComponent: 'C' },
+          { fromComponent: 'C', slotName: 'children', toComponent: 'P' },
+        ],
+        suggestedBreak: null,
+      },
+    ];
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce(cyclePair).mockReturnValueOnce(cyclePair);
+    vi.mocked(dbMod.loadSlotCycles)
+      .mockReturnValueOnce(cycles as never)
+      .mockReturnValueOnce(cycles as never);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // Reload.
+    stdin.write(CTRL_R);
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    // The P cycle-tier row must be expanded after reload.
+    expect(frame).toMatch(/▾ ⚠ P/);
+    expect(frame).not.toMatch(/▸ ⚠ P/);
+  });
+});
+
+// ── A2-2 (spec §4b): [d] toggles the removed-components banner detail rows ───
+// The removed-components strip's detail rows can be tall. [d] (gated to
+// sidebar focus) collapses/expands the detail rows; the 1-line count header
+// stays visible so the operator knows removed components exist + that [d]
+// toggles. The [d] legend entry appears only when removedComponents > 0.
+describe('GenerateReviewStep — [d] toggles removed-components banner (A2-2)', () => {
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastUseLivePreviewArgs = null;
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  const previewWithRemoved = (names: string[]) =>
+    ({
+      components: {
+        new: [],
+        changed: [],
+        removed: names.map((n, i) => ({
+          id: `r${i}`,
+          name: n,
+          contentProperties: [],
+          designProperties: [],
+          slots: [],
+        })) as never,
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    }) as never;
+
+  it('[d] collapses the detail rows while keeping the count header visible', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['Widget']));
+    await tick();
+    // Present by default: both header + detail row.
+    let frame = lastFrame() ?? '';
+    expect(frame).toContain('Removed components (1)');
+    expect(frame).toMatch(/Widget/);
+    // Press d (sidebar is focused by default).
+    stdin.write('d');
+    await tick();
+    frame = lastFrame() ?? '';
+    // Detail row hidden, count header still shown.
+    expect(frame).toContain('Removed components (1)');
+    expect(frame).not.toMatch(/- Widget/);
+    // Press d again — detail rows return.
+    stdin.write('d');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Widget/);
+  });
+
+  it('legend advertises [d] only when there are removed components', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    // No removed components yet — no [d] legend entry.
+    expect(lastFrame() ?? '').not.toContain('[d]');
+    lastOnResult!(previewWithRemoved(['Widget']));
+    await tick();
+    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
+    expect(frame).toContain('[d]');
+  });
+
+  // A2-2 refinement (spec §4b, 2026-07-14): the banner starts COLLAPSED by
+  // default only when it would exceed 5 lines (>5 removed rows). Each removed
+  // component renders exactly one row, so the measure is
+  // `removedComponents.length > 5`.
+  it('starts COLLAPSED by default when there are more than 5 removed components', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['R1', 'R2', 'R3', 'R4', 'R5', 'R6']));
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Header (count) always visible.
+    expect(frame).toContain('Removed components (6)');
+    // Detail rows hidden by default because 6 > 5.
+    expect(frame).not.toMatch(/- R1/);
+    expect(frame).not.toMatch(/- R6/);
+  });
+
+  it('starts EXPANDED by default when there are 5 or fewer removed components', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['R1', 'R2', 'R3', 'R4', 'R5']));
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Removed components (5)');
+    // Detail rows visible by default because 5 is not > 5.
+    expect(frame).toMatch(/- R1/);
+    expect(frame).toMatch(/- R5/);
+  });
+
+  it('count header renders the expand/collapse hint text', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['Widget']));
+    await tick();
+    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
+    expect(frame).toMatch(/\[d\] to expand\/collapse/);
   });
 });
