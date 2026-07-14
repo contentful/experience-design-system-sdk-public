@@ -1,4 +1,5 @@
 import { Box, Text } from 'ink';
+import { PALETTE } from '../../analyze/select/tui/theme.js';
 import React from 'react';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
 
@@ -41,7 +42,7 @@ export function FinalReviewHost({
   if (!extractSessionId) {
     return (
       <Box paddingX={2} paddingY={1}>
-        <Text color="red">Error: no session ID — cannot load generated definitions.</Text>
+        <Text color={PALETTE.error}>Error: no session ID — cannot load generated definitions.</Text>
       </Box>
     );
   }

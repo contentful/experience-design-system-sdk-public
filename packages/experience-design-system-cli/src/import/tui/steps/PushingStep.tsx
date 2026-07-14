@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import type { PushProgress } from '../push-progress.js';
 
@@ -57,7 +58,7 @@ export function PushingStep({ stepNumber, totalSteps, progress }: PushingStepPro
 
       {showGlobal && progress && progress.kind === 'progress' && (
         <Box gap={1}>
-          <Text color="cyan">{SPINNER_FRAMES[frame]}</Text>
+          <Text color={PALETTE.info}>{SPINNER_FRAMES[frame]}</Text>
           <Text dimColor>
             {progress.processed}/{progress.total} entities
           </Text>

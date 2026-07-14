@@ -1,4 +1,5 @@
 import React from 'react';
+import { PALETTE } from '../theme.js';
 import { Box, Text } from 'ink';
 
 export type RationaleRow = {
@@ -111,7 +112,7 @@ export function RationalePanel({
       width={width}
       height={height + 2} // +2 for borders
       borderStyle="single"
-      borderColor={active ? 'white' : undefined}
+      borderColor={active ? PALETTE.inverse : undefined}
     >
       <Box>
         <Text bold dimColor={!active}>
@@ -135,7 +136,7 @@ export function RationalePanel({
         if (line.kind === 'name') {
           return (
             <Box key={i}>
-              <Text bold color="cyan" dimColor={!active}>
+              <Text bold color={PALETTE.info} dimColor={!active}>
                 {line.text}
               </Text>
               {line.isSlot && <Text dimColor> (slot)</Text>}

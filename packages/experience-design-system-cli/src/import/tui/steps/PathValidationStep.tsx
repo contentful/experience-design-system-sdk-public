@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
@@ -175,7 +176,7 @@ export function PathValidationStep({
     return (
       <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
         <Box flexDirection="column">
-          <Text color="red">✗ {lines[0]}</Text>
+          <Text color={PALETTE.error}>✗ {lines[0]}</Text>
           {lines.slice(1).map((line, i) => (
             <Text key={i} dimColor>
               {line}
@@ -201,7 +202,7 @@ export function PathValidationStep({
       </Text>
 
       <Box flexDirection="column" gap={0} marginTop={1}>
-        <Text color="green">✓ Found {c.total} files:</Text>
+        <Text color={PALETTE.success}>✓ Found {c.total} files:</Text>
         {c.tsx > 0 && (
           <Text>
             {'  • '}
@@ -239,7 +240,7 @@ export function PathValidationStep({
           </Text>
         )}
         {c.json > 0 && (
-          <Text color="cyan">
+          <Text color={PALETTE.info}>
             {'  • '}
             {String(c.json).padStart(3)} .json files (design tokens)
           </Text>
@@ -253,10 +254,10 @@ export function PathValidationStep({
       </Box>
 
       {componentFiles === 0 && tokenFiles === 0 && (
-        <Text color="yellow">⚠ No component or token files found. Try a different path.</Text>
+        <Text color={PALETTE.warning}>⚠ No component or token files found. Try a different path.</Text>
       )}
       {componentFiles === 0 && tokenFiles > 0 && (
-        <Text color="yellow">⚠ No component files found — only token files detected.</Text>
+        <Text color={PALETTE.warning}>⚠ No component files found — only token files detected.</Text>
       )}
 
       <Box marginTop={1}>

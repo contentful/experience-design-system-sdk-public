@@ -10,6 +10,7 @@ import {
 } from '../../../composite-closure.js';
 import type { RenderStatus } from '../../../issue-inheritance.js';
 import { previewBadge } from './Sidebar.js';
+import { PALETTE } from '../theme.js';
 import type { PreviewAnnotation } from '../../types.js';
 
 /**
@@ -680,11 +681,11 @@ export function visibleItemOrder(props: {
  * in the terminal's default fg — matches the existing flat Sidebar.tsx.
  */
 function rowColor(row: VisibleRow, aggregate?: string | null): string | undefined {
-  if (row.kind === 'cycle') return 'red';
-  if (row.kind === 'group-child' && row.cycleChild) return 'red';
-  if (row.kind === 'empty') return 'yellow';
-  if (row.kind === 'group-root' && aggregate === GLYPH_ERROR) return 'red';
-  if (row.kind === 'group-root' && aggregate === GLYPH_WARN) return 'yellow';
+  if (row.kind === 'cycle') return PALETTE.error;
+  if (row.kind === 'group-child' && row.cycleChild) return PALETTE.error;
+  if (row.kind === 'empty') return PALETTE.warning;
+  if (row.kind === 'group-root' && aggregate === GLYPH_ERROR) return PALETTE.error;
+  if (row.kind === 'group-root' && aggregate === GLYPH_WARN) return PALETTE.warning;
   return undefined;
 }
 
@@ -706,13 +707,62 @@ export function labelStyleFor(input: {
 }): { color: string | undefined; bold: boolean; dim: boolean } {
   const { row, isCursor, wouldDim } = input;
   if (isCursor) {
-    return { color: 'white', bold: true, dim: false };
+    return { color: PALETTE.info, bold: true, dim: false };
   }
   return {
     color: rowColor(row, row.aggregateGlyph),
     bold: false,
     dim: wouldDim,
   };
+}
+
+/**
+ * Compute the selection-glyph style for a component row. The accept/reject
+ * status glyphs carry a semantic color that must NOT be overridden by the
+ * row's cycle state: `[✓]` is always success, `[✗]` is always error. The
+ * glyph renders in its own column beside the label, so its green/red stays
+ * legible even when the row label itself is red (cycle) or inverse (cursor).
+ * Undecided has no accept/reject semantic → muted/dim.
+ *
+ * Exported for tests; the render loop consumes it directly.
+ */
+export function selectionGlyphStyleFor(
+  selState: 'accepted' | 'rejected' | 'undecided' | undefined,
+  isCycleRow: boolean,
+): { glyph: string | null; color: string | undefined; dim: boolean; bold: boolean } {
+  if (selState === 'accepted') {
+    return { glyph: '[✓]', color: PALETTE.success, dim: false, bold: isCycleRow };
+  }
+  if (selState === 'rejected') {
+    return { glyph: '[✗]', color: PALETTE.error, dim: false, bold: isCycleRow };
+  }
+  if (selState === 'undecided') {
+    return { glyph: '[ ]', color: PALETTE.muted, dim: !isCycleRow, bold: false };
+  }
+  return { glyph: null, color: undefined, dim: false, bold: false };
+}
+
+/**
+ * Compute the inheritance/validation-glyph style. The `✗`/`⚠` markers carry a
+ * semantic color (error/warning) that must NOT be whitened when the cursor is
+ * on the row — the glyph renders in its own column, so its green/red/yellow
+ * stays legible against the cursor's inverse label. Cursor only drives bold.
+ *
+ * Exported for tests; the render loop consumes it directly.
+ */
+export function inheritanceGlyphStyleFor(input: {
+  status: RenderStatus['status'] | undefined;
+  isOwn: boolean;
+  isCursor: boolean;
+}): { glyph: string | null; color: string | undefined; dim: boolean; bold: boolean } {
+  const { status, isOwn, isCursor } = input;
+  if (status === 'error') {
+    return { glyph: GLYPH_ERROR, color: PALETTE.error, dim: !isCursor && !isOwn, bold: isCursor };
+  }
+  if (status === 'warning') {
+    return { glyph: GLYPH_WARN, color: PALETTE.warning, dim: !isCursor && !isOwn, bold: isCursor };
+  }
+  return { glyph: null, color: undefined, dim: false, bold: false };
 }
 
 export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
@@ -795,27 +845,11 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           row.kind !== 'cycle' &&
           row.kind !== 'empty' &&
           row.kind !== 'group-root';
-        const inheritanceGlyph =
-          showInheritance && rs
-            ? rs.status === 'error'
-              ? GLYPH_ERROR
-              : rs.status === 'warning'
-                ? GLYPH_WARN
-                : null
-            : null;
-        const inheritanceColor = rs
-          ? rs.status === 'error'
-            ? 'red'
-            : rs.status === 'warning'
-              ? 'yellow'
-              : undefined
-          : undefined;
-        const inheritanceDim = rs ? !rs.isOwn : false;
-
         // Selection glyph applies to component-backed rows only. Cycle rows
         // are included: cycle members are selectable in the manifest push, so
-        // hiding their user-decision state on a red row is a bug — the glyph
-        // renders in bright white to stay legible against the red row color.
+        // hiding their user-decision state on a red row is a bug. The glyph
+        // renders in its own column, so its semantic green/red stays legible
+        // against the red cycle label without whitening the glyph itself.
         const supportsSelectionGlyph =
           selectionStateByKey !== undefined &&
           itemName !== undefined &&
@@ -828,23 +862,11 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           ? selectionStateByKey!.get(itemName!) ?? 'undecided'
           : undefined;
         const isCycleRow = row.kind === 'cycle';
-        let selGlyph: string | null = null;
-        let selColor: string | undefined;
-        let selDim = false;
-        let selBold = false;
-        if (selState === 'accepted') {
-          selGlyph = '[✓]';
-          selColor = isCycleRow ? 'white' : 'green';
-          selBold = isCycleRow;
-        } else if (selState === 'rejected') {
-          selGlyph = '[✗]';
-          selColor = isCycleRow ? 'white' : 'red';
-          selBold = isCycleRow;
-        } else if (selState === 'undecided') {
-          selGlyph = '[ ]';
-          selDim = !isCycleRow;
-          selColor = isCycleRow ? 'white' : undefined;
-        }
+        const selStyle = selectionGlyphStyleFor(selState, isCycleRow);
+        const selGlyph = selStyle.glyph;
+        const selColor = selStyle.color;
+        const selDim = selStyle.dim;
+        const selBold = selStyle.bold;
 
         const aiFlagged =
           aiFlaggedByKey !== undefined &&
@@ -867,11 +889,16 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
           row.sharedSuffix === true ||
           canDim;
         const labelStyle = labelStyleFor({ row, isCursor, wouldDim });
+        const inheritanceStyle = inheritanceGlyphStyleFor({
+          status: showInheritance ? rs?.status : undefined,
+          isOwn: rs?.isOwn ?? false,
+          isCursor,
+        });
 
         return (
           <Box key={row.key}>
             {isCursor ? (
-              <Text color="cyan" bold>
+              <Text color={PALETTE.info} bold>
                 {'▶'}
               </Text>
             ) : (
@@ -902,7 +929,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
             )}
             {aiFlaggedByKey !== undefined && (
               aiFlagged ? (
-                <Text color="yellow" bold>
+                <Text color={PALETTE.warning} bold>
                   {' [×]'}
                 </Text>
               ) : (
@@ -922,13 +949,13 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
               {' '}
               {row.label}
             </Text>
-            {inheritanceGlyph && (
+            {inheritanceStyle.glyph && (
               <Text
-                color={isCursor ? 'white' : inheritanceColor}
-                bold={isCursor}
-                dimColor={!isCursor && inheritanceDim}
+                color={inheritanceStyle.color}
+                bold={inheritanceStyle.bold}
+                dimColor={inheritanceStyle.dim}
               >
-                {' ' + inheritanceGlyph}
+                {' ' + inheritanceStyle.glyph}
               </Text>
             )}
           </Box>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text, useStdout } from 'ink';
 import type {
   BreakingChange,
@@ -163,7 +164,7 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'L', label: 'Flat view' },
       { keys: 'l', label: 'Lineage' },
       { keys: 'i', label: 'Focus lineage' },
-      { keys: 'w', label: 'See breaking changes' },
+      { keys: 'w', label: 'Only breaking' },
       { keys: 'o', label: 'Only cycles' },
       { keys: 'space', label: 'Expand/collapse group' },
       { keys: 'E / C', label: 'Expand/collapse all' },
@@ -2133,7 +2134,7 @@ export function GenerateReviewStep({
   if (loadError) {
     return (
       <Box paddingX={2} paddingY={1}>
-        <Text color="red">{loadError}</Text>
+        <Text color={PALETTE.error}>{loadError}</Text>
       </Box>
     );
   }
@@ -2148,8 +2149,8 @@ export function GenerateReviewStep({
   const renderBreakOverlay = (width?: number): React.ReactElement => {
     const highlightedCycle = slotCycles[cyclesCursor];
     return (
-      <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1} width={width}>
-        <Text bold color="yellow">
+      <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1} width={width}>
+        <Text bold color={PALETTE.warning}>
           {`BREAK CYCLE ${cyclesCursor + 1} — remove a slot edge or reject a member`}
         </Text>
         {highlightedCycle &&
@@ -2160,7 +2161,7 @@ export function GenerateReviewStep({
                 {'  '}
                 {segs.map((seg, si) =>
                   seg.kind === 'slot' ? (
-                    <Text key={si} color="cyan">
+                    <Text key={si} color={PALETTE.info}>
                       {seg.text}
                     </Text>
                   ) : seg.kind === 'arrow' ? (
@@ -2168,7 +2169,7 @@ export function GenerateReviewStep({
                       {seg.text}
                     </Text>
                   ) : (
-                    <Text key={si} color="yellow">
+                    <Text key={si} color={PALETTE.warning}>
                       {seg.text}
                     </Text>
                   ),
@@ -2203,7 +2204,7 @@ export function GenerateReviewStep({
         {breakConfirm ? (
           <>
             <Text> </Text>
-            <Text bold color="yellow">
+            <Text bold color={PALETTE.warning}>
               {'Delete this slot edge? [y] confirm  [n] cancel'}
             </Text>
           </>
@@ -2315,8 +2316,8 @@ export function GenerateReviewStep({
         // T5 (parity plan §3): inline warning shown when the operator tries
         // to leave a dirty FieldEditor via Tab. Enter saves, Esc discards,
         // Tab cancels (keystrokes handled in the useImmediateInput block).
-        <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
-          <Text bold color="yellow">Unsaved changes</Text>
+        <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
+          <Text bold color={PALETTE.warning}>Unsaved changes</Text>
           <Text>You have unsaved edits in the current field editor.</Text>
           <Text> </Text>
           <Text>{'  [Enter]  Save and continue'}</Text>
@@ -2328,8 +2329,8 @@ export function GenerateReviewStep({
         // T4 (parity plan §3): inline confirm dialog for Ctrl+R reload-from-
         // save. Kept inline (mirrors T5 UnsavedChangesDialog shape) to stay
         // under the ~15-line threshold that would justify extraction.
-        <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
-          <Text bold color="yellow">Reload from saved state?</Text>
+        <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
+          <Text bold color={PALETTE.warning}>Reload from saved state?</Text>
           <Text>Unsaved in-memory changes will be lost.</Text>
           <Text> </Text>
           <Text>{'  [Enter]  Confirm'}</Text>
@@ -2341,10 +2342,10 @@ export function GenerateReviewStep({
         // above the auto-reject banner + cycle strips whenever the live
         // preview reports at least one removed component. When empty, this
         // block renders NOTHING (no placeholder, no push-down of layout).
-        <Box flexDirection="column" borderStyle="round" borderColor="red" paddingX={1}>
-          <Text bold color="red">
+        <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.error} paddingX={1}>
+          <Text bold color={PALETTE.error}>
             {`Removed components (${removedComponents.length}) — will be `}
-            <Text bold color="red">DELETE</Text>
+            <Text bold color={PALETTE.error}>DELETE</Text>
             {'D from target space  (press [d] to expand/collapse)'}
           </Text>
           {!removedBannerCollapsed && (
@@ -2361,7 +2362,7 @@ export function GenerateReviewStep({
         // L6 — key hint to open the breaking-changes goto-banner. Rendered
         // alongside the removed strip; L11 will regroup the copy.
         <Box paddingX={1}>
-          <Text color="yellow">{`[b] ${breakingChanges.length} breaking change${breakingChanges.length === 1 ? '' : 's'}`}</Text>
+          <Text color={PALETTE.warning}>{`[b] ${breakingChanges.length} breaking change${breakingChanges.length === 1 ? '' : 's'}`}</Text>
         </Box>
       )}
       {breakingPanel.isOpen &&
@@ -2379,8 +2380,8 @@ export function GenerateReviewStep({
             : undefined;
           if (!comp) return null;
           return (
-            <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
-              <Text bold color="yellow">{`Breaking changes — ${comp.componentName}`}</Text>
+            <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
+              <Text bold color={PALETTE.warning}>{`Breaking changes — ${comp.componentName}`}</Text>
               {comp.impact && (
                 <Text dimColor>
                   {`  affects ${comp.impact.affectedExperiences} experience${comp.impact.affectedExperiences === 1 ? '' : 's'}, ${comp.impact.affectedFragments} fragment${comp.impact.affectedFragments === 1 ? '' : 's'}`}
@@ -2407,7 +2408,7 @@ export function GenerateReviewStep({
           const PANEL_H = 20;
           const lines: React.ReactElement[] = [];
           lines.push(
-            <Text key="cyc-title" bold color="yellow">
+            <Text key="cyc-title" bold color={PALETTE.warning}>
               {`SLOT DEPENDENCY CYCLES (${slotCycles.length})`}
             </Text>,
           );
@@ -2445,7 +2446,7 @@ export function GenerateReviewStep({
                 {'    '}
                 {segs.map((seg, si) =>
                   seg.kind === 'slot' ? (
-                    <Text key={si} color="cyan">
+                    <Text key={si} color={PALETTE.info}>
                       {seg.text}
                     </Text>
                   ) : seg.kind === 'arrow' ? (
@@ -2470,7 +2471,7 @@ export function GenerateReviewStep({
           });
           const visible = lines.slice(cyclePanelScroll, cyclePanelScroll + PANEL_H);
           return (
-            <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
+            <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
               {visible}
               <Text dimColor>{'[↑↓/j/k] move  [Enter] jump  [x] break cycle  [c/q/Esc] close'}</Text>
             </Box>
@@ -2500,13 +2501,13 @@ export function GenerateReviewStep({
           return (
             <Box>
               <Text>{'Preview: '}</Text>
-              <Text color="green">{`${counts.new} new`}</Text>
+              <Text color={PALETTE.success}>{`${counts.new} new`}</Text>
               <Text>{' · '}</Text>
-              <Text color="yellow">{`${counts.changed} changed`}</Text>
+              <Text color={PALETTE.warning}>{`${counts.changed} changed`}</Text>
               <Text>{' · '}</Text>
               <Text dimColor>{`${counts.removed} removed`}</Text>
               <Text>{' · '}</Text>
-              <Text color="red" bold>
+              <Text color={PALETTE.error} bold>
                 {`${counts.breaking} breaking`}
               </Text>
             </Box>
@@ -2528,15 +2529,15 @@ export function GenerateReviewStep({
           const members = stillRejected.filter((n) => participantSet.has(n)).sort();
           const ancestors = stillRejected.filter((n) => !participantSet.has(n)).sort();
           return (
-            <Box flexDirection="column" borderStyle="single" borderColor="red" paddingX={1}>
-              <Text color="red" bold>
+            <Box flexDirection="column" borderStyle="single" borderColor={PALETTE.error} paddingX={1}>
+              <Text color={PALETTE.error} bold>
                 {`Cyclic manifest — auto-rejected ${stillRejected.length} component${stillRejected.length === 1 ? '' : 's'}:`}
               </Text>
               {members.length > 0 && (
-                <Text color="red">{`  Cycle members: ${members.join(', ')}`}</Text>
+                <Text color={PALETTE.error}>{`  Cycle members: ${members.join(', ')}`}</Text>
               )}
               {ancestors.length > 0 && (
-                <Text color="red">{`  Ancestors: ${ancestors.join(', ')}`}</Text>
+                <Text color={PALETTE.error}>{`  Ancestors: ${ancestors.join(', ')}`}</Text>
               )}
               <Text dimColor>
                 {undoSnapshot
@@ -2547,11 +2548,11 @@ export function GenerateReviewStep({
           );
         })()}
       {!dialogOpen && emptyCount > 0 && (
-        <Text color="yellow">
+        <Text color={PALETTE.warning}>
           {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
         </Text>
       )}
-      {!dialogOpen && finalizeError && <Text color="red">{`⚠ ${finalizeError}`}</Text>}
+      {!dialogOpen && finalizeError && <Text color={PALETTE.error}>{`⚠ ${finalizeError}`}</Text>}
       {/* T2 (layout plan §A): cycle banner + search input strips render BELOW
           the sidebar+detail row (they used to be here, above). Located in a
           fragment right after the sidebar Box. */}
@@ -2768,7 +2769,7 @@ export function GenerateReviewStep({
                     }
                   />
                 )}
-                {saveError && <Text color="red">{'✗ ' + saveError}</Text>}
+                {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
                 <Text dimColor>
                   {sidebarFocused
                     ? // L11 — the complete sidebar keymap now lives in the
@@ -2794,17 +2795,17 @@ export function GenerateReviewStep({
       {breakPanel.isOpen && !breakOverlayFullScreen && !dialogOpen && renderBreakOverlay()}
       {!dialogOpen && slotCycles.length > 0 && !cyclePanel.isOpen && !breakPanel.isOpen && (
         <Box flexDirection="column">
-          <Text color="yellow">
+          <Text color={PALETTE.warning}>
             {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
           </Text>
           {slotCycles.slice(0, 3).map((cycle, idx) => {
             const segs = formatCyclePathSegments(cycle);
             return (
-              <Text key={`cyc-banner-${idx}`} color="yellow">
+              <Text key={`cyc-banner-${idx}`} color={PALETTE.warning}>
                 {'  Cycle: '}
                 {segs.map((seg, si) =>
                   seg.kind === 'slot' ? (
-                    <Text key={si} color="cyan">
+                    <Text key={si} color={PALETTE.info}>
                       {seg.text}
                     </Text>
                   ) : seg.kind === 'arrow' ? (
@@ -2812,7 +2813,7 @@ export function GenerateReviewStep({
                       {seg.text}
                     </Text>
                   ) : (
-                    <Text key={si} color="yellow">
+                    <Text key={si} color={PALETTE.warning}>
                       {seg.text}
                     </Text>
                   ),
@@ -2820,7 +2821,7 @@ export function GenerateReviewStep({
               </Text>
             );
           })}
-          {slotCycles.length > 3 && <Text color="yellow">{`  …${slotCycles.length - 3} more`}</Text>}
+          {slotCycles.length > 3 && <Text color={PALETTE.warning}>{`  …${slotCycles.length - 3} more`}</Text>}
           <Text dimColor>{'  press [c] for detail'}</Text>
         </Box>
       )}
@@ -2828,7 +2829,7 @@ export function GenerateReviewStep({
         <Box flexDirection="column">
           <Text>
             {`/${searchQuery}`}
-            <Text color="cyan">{'▎'}</Text>
+            <Text color={PALETTE.info}>{'▎'}</Text>
             {searchQuery && (
               <Text dimColor>{`  (${searchMatchCount}/${components.length} matches)`}</Text>
             )}
@@ -2861,14 +2862,14 @@ export function GenerateReviewStep({
           {legendEntry('[L]', 'flat', columnOneView === 'flat')}
           {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
           {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
-          {legendEntry('[w]', 'see breaking changes', activeFilters.has('broken'))}
+          {legendEntry('[w]', 'only breaking', activeFilters.has('broken'))}
           {slotCycles.length > 0 && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
           {slotCycles.length > 0 && legendEntry('[c]', 'cycle list', cyclePanel.isOpen)}
           {legendEntry('[p]', 'prop rationale', panelOpen === 'prop-rationale')}
           {legendEntry('[P]', 'component rationale', panelOpen === 'component-rationale')}
           {legendEntry('[s]', 'source', panelOpen === 'source')}
           {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
-          {breakingChanges.length > 0 && legendEntry('[b]', 'breaking', breakingPanel.isOpen)}
+          {breakingChanges.length > 0 && legendEntry('[b]', 'see breaking changes', breakingPanel.isOpen)}
           {removedComponents.length > 0 &&
             legendEntry('[d]', removedBannerCollapsed ? 'show removed' : 'hide removed', !removedBannerCollapsed)}
           {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}

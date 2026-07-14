@@ -2,6 +2,7 @@ import { render } from 'ink-testing-library';
 import { Box } from 'ink';
 import { describe, it, expect } from 'vitest';
 import { legendEntry } from '../../../src/import/tui/components/LegendEntry.js';
+import { PALETTE } from '../../../src/analyze/select/tui/theme.js';
 
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
 
@@ -17,10 +18,10 @@ describe('legendEntry (L11 atomic legend helper)', () => {
     // The outer Text wraps [keyNode, labelNode]. Inspect the key node props.
     const keyNode = (active.props.children as React.ReactElement[])[0];
     expect(keyNode.props.inverse).toBe(true);
-    expect(keyNode.props.color).toBe('yellow');
+    expect(keyNode.props.color).toBe(PALETTE.warning);
     const inactiveKey = (inactive.props.children as React.ReactElement[])[0];
     expect(inactiveKey.props.inverse).toBe(false);
-    expect(inactiveKey.props.color).toBe('cyan');
+    expect(inactiveKey.props.color).toBe(PALETTE.info);
   });
 
   it('is a single flex item so key + label never split across a wrap', () => {

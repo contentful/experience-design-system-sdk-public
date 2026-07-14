@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PALETTE } from '../theme.js';
 import { Box, Text } from 'ink';
 import { useUndo } from '../hooks/useUndo.js';
 import { useImmediateInput } from '../hooks/useImmediateInput.js';
@@ -128,7 +129,7 @@ export function JsonEditor({ value, width, height, onSave, onDiscard }: JsonEdit
   const visibleLines = lines.slice(effectiveScrollRow, effectiveScrollRow + height);
 
   return (
-    <Box flexDirection="column" width={width} borderStyle="single" borderColor="white">
+    <Box flexDirection="column" width={width} borderStyle="single" borderColor={PALETTE.inverse}>
       <Text bold>{'EDIT [EDITING — Ctrl+S save · Esc discard]'}</Text>
       {visibleLines.map((line, displayRow) => {
         const actualRow = displayRow + effectiveScrollRow;
@@ -149,7 +150,7 @@ export function JsonEditor({ value, width, height, onSave, onDiscard }: JsonEdit
 
         return <Text key={displayRow}>{displayLine}</Text>;
       })}
-      {validationError && <Text color="red">{'✗ Invalid JSON: ' + validationError}</Text>}
+      {validationError && <Text color={PALETTE.error}>{'✗ Invalid JSON: ' + validationError}</Text>}
     </Box>
   );
 }
