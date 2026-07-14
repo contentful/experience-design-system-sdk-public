@@ -2537,3 +2537,98 @@ describe('FieldEditor — onDirtyChange + discardTrigger (T5)', () => {
     expect(onChange).toHaveBeenCalled();
   });
 });
+
+// ── BD4: initialFocusTarget seeds the mount-time cursor to a named prop/slot ──
+// When a caller (GenerateReviewStep's breaking-change jump) passes
+// initialFocusTarget, the editor opens focused + scrolled to the exact
+// changed field rather than the default first prop. Unknown names fall back
+// to today's default (first prop/slot) with no crash.
+describe('FieldEditor — BD4 initialFocusTarget', () => {
+  const MULTI_PROP_COMPONENT = JSON.stringify(
+    {
+      Card: {
+        $type: 'component',
+        $properties: {
+          alpha: { $type: 'string', $category: 'content', $description: 'ALPHA_DESC' },
+          bravo: { $type: 'string', $category: 'content', $description: 'BRAVO_DESC' },
+          charlie: { $type: 'string', $category: 'content', $description: 'CHARLIE_DESC' },
+        },
+      },
+    },
+    null,
+    2,
+  );
+
+  const PROPS_AND_SLOTS_COMPONENT = JSON.stringify(
+    {
+      Layout: {
+        $type: 'component',
+        $properties: {
+          heading: { $type: 'string', $category: 'content', $description: 'HEADING_DESC' },
+        },
+        $slots: {
+          main: { $description: 'MAIN_SLOT_DESC' },
+          aside: { $description: 'ASIDE_SLOT_DESC' },
+        },
+      },
+    },
+    null,
+    2,
+  );
+
+  it('seeds focus to the named prop (not the first) — its desc sub-row renders', () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={MULTI_PROP_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        initialFocusTarget={{ kind: 'prop', name: 'charlie' }}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    // Only the SELECTED prop renders its `desc:` sub-row. Seeding to `charlie`
+    // means charlie's description shows and the first prop's (alpha) does not.
+    expect(frame).toContain('CHARLIE_DESC');
+    expect(frame).not.toContain('ALPHA_DESC');
+  });
+
+  it('seeds focus to the named slot — its desc sub-row renders', () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={PROPS_AND_SLOTS_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        initialFocusTarget={{ kind: 'slot', name: 'aside' }}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    // Selected slot renders its `desc:` sub-row; the default focus would land
+    // on the first prop (heading), so HEADING_DESC would show instead.
+    expect(frame).toContain('ASIDE_SLOT_DESC');
+    expect(frame).not.toContain('HEADING_DESC');
+  });
+
+  it('falls back to the first prop when the target name does not resolve', () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={MULTI_PROP_COMPONENT}
+        width={80}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        initialFocusTarget={{ kind: 'prop', name: 'does-not-exist' }}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    // Default behavior: first prop (alpha) selected, its desc sub-row renders.
+    expect(frame).toContain('ALPHA_DESC');
+    expect(frame).not.toContain('CHARLIE_DESC');
+  });
+});

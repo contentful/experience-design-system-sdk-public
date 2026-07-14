@@ -2,6 +2,7 @@ import type {
   ManifestPayload,
   ServerPreviewResponse,
   ApplyOperationResponse,
+  BreakingChange,
 } from '@contentful/experience-design-system-types';
 import { DEFAULT_API_HOST, toApiHost } from '../host-utils.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
@@ -101,6 +102,43 @@ export function parsePreviewValidationErrors(body: string): PreviewValidationErr
   return out;
 }
 
+const PROPERTY_BREAKING_REASONS = new Set([
+  'removed',
+  'added_required_no_default',
+  'type_changed',
+  'validation_narrowed',
+]);
+const SLOT_BREAKING_REASONS = new Set(['slot_removed', 'slot_allowed_components_narrowed']);
+
+export function sanitizeBreakingChanges(raw: unknown): BreakingChange[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BreakingChange[] = [];
+  for (const bc of raw) {
+    if (typeof bc !== 'object' || bc === null) continue;
+    const reason = (bc as { reason?: unknown }).reason;
+    if (typeof reason !== 'string') continue;
+    if ('propertyId' in bc && typeof (bc as { propertyId?: unknown }).propertyId === 'string') {
+      if (PROPERTY_BREAKING_REASONS.has(reason)) out.push(bc as BreakingChange);
+      continue;
+    }
+    if ('slotId' in bc && typeof (bc as { slotId?: unknown }).slotId === 'string') {
+      if (SLOT_BREAKING_REASONS.has(reason)) out.push(bc as BreakingChange);
+      continue;
+    }
+  }
+  return out;
+}
+
+function sanitizePreviewResponse(res: ServerPreviewResponse): ServerPreviewResponse {
+  for (const item of res.components?.changed ?? []) {
+    const cc = item.changeClassification;
+    if (cc && Array.isArray(cc.breakingChanges)) {
+      cc.breakingChanges = sanitizeBreakingChanges(cc.breakingChanges);
+    }
+  }
+  return res;
+}
+
 async function request(url: string, options: RequestInit & { token: string }): Promise<Response> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${options.token}`,
@@ -178,7 +216,7 @@ export class ImportApiClient {
     }
     const parsed = (await res.json()) as ServerPreviewResponse;
     debug.event('apply', 'preview.ok', { status: res.status, durationMs: Date.now() - startedAt });
-    return parsed;
+    return sanitizePreviewResponse(parsed);
   }
 
   async applyImport(manifest: ManifestPayload, acknowledgeBreakingChanges: boolean): Promise<ApplyOperationResponse> {

@@ -54,7 +54,7 @@ export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDi
     });
     if (item.changeClassification?.classification === 'breaking') {
       const reasons = item.changeClassification.breakingChanges
-        .map((bc) => `${bc.propertyId}: ${bc.reason}`)
+        .map((bc) => `${'slotId' in bc ? bc.slotId : bc.propertyId}: ${bc.reason}`)
         .join(', ');
       lines.push({ key: `comp-b-${item.current.name}`, color: 'red', text: ` ⚠ BREAKING: ${reasons}` });
     }
@@ -105,7 +105,7 @@ export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDi
     });
     if (item.changeClassification?.classification === 'breaking') {
       const reasons = item.changeClassification.breakingChanges
-        .map((bc) => `${bc.propertyId}: ${bc.reason}`)
+        .map((bc) => `${'slotId' in bc ? bc.slotId : bc.propertyId}: ${bc.reason}`)
         .join(', ');
       lines.push({ key: `tok-b-${tokenName}`, color: 'red', text: ` ⚠ BREAKING: ${reasons}` });
     }

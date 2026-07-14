@@ -59,6 +59,7 @@ import { computeLineageLayout } from '../lineage-layout.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import { legendEntry } from '../components/LegendEntry.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
+import { formatBreakingChange } from './breaking-change-format.js';
 import {
   enumerateCycleBreaks,
   shouldBreakOverlayGoFullScreen,
@@ -172,7 +173,7 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'L', label: 'Flat view' },
       { keys: 'l', label: 'Lineage' },
       { keys: 'i', label: 'Focus lineage' },
-      { keys: 'w', label: 'Only breaking changes' },
+      { keys: 'w', label: 'See breaking changes' },
       { keys: 'o', label: 'Only cycles' },
       { keys: 'space', label: 'Expand/collapse group' },
       { keys: 'E / C', label: 'Expand/collapse all' },
@@ -251,6 +252,58 @@ export interface BreakingComponent {
   componentName: string;
   changes: BreakingChange[];
   impact?: DownstreamImpact;
+  // BD3 — the changed entity's `current` summary, threaded so the friendly
+  // formatter can enrich property rows with `fullProperties` (type/category).
+  // Optional: absent when the preview response omits it, in which case the
+  // formatter degrades to id + reason.
+  current?: ComponentTypeSummary;
+}
+
+export interface BreakingRow {
+  label: string;
+  componentName: string;
+  focusTarget?: { kind: 'prop' | 'slot'; name: string };
+}
+
+/**
+ * BD2 — flatten breaking components to one row per change. Each change is a
+ * discriminated union member keyed by presence: `propertyId` → prop branch,
+ * `slotId` → slot branch. Components with no enumerated changes contribute a
+ * single component-level row (no focusTarget) so the jump degrades to
+ * land-on-the-row. Exported as a pure function so the prop/slot branching is
+ * pinned by unit tests independent of the Ink render tree.
+ */
+export function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] {
+  const out: BreakingRow[] = [];
+  for (const b of breakingChanges) {
+    if (b.changes.length === 0) {
+      out.push({ label: `${b.componentName} — breaking`, componentName: b.componentName });
+      continue;
+    }
+    for (const change of b.changes) {
+      // BD3 — the row label IS the friendly, `fullProperties`-enriched detail
+      // (per spec: replace the terser BD2 label with `formatBreakingChange`).
+      // The component name lives on `componentName` (the jump target) + the
+      // detail panel header, so it's not repeated in the one-liner. The
+      // `focusTarget` (prop/slot + name) is preserved so BD4's jump-to-field
+      // still works.
+      const label = formatBreakingChange(change, b.current);
+      if ('slotId' in change) {
+        out.push({
+          label,
+          componentName: b.componentName,
+          focusTarget: { kind: 'slot', name: change.slotId },
+        });
+      } else {
+        out.push({
+          label,
+          componentName: b.componentName,
+          focusTarget: { kind: 'prop', name: change.propertyId },
+        });
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -270,6 +323,7 @@ export function deriveBreakingChanges(response: ServerPreviewResponse): Breaking
       componentName,
       changes: item.changeClassification.breakingChanges ?? [],
       impact: item.impact,
+      current: item.current,
     });
   }
   return out;
@@ -411,9 +465,24 @@ export function GenerateReviewStep({
   // `previewAnnotations` map, so we stash it here from `handleLivePreviewResult`
   // and surface it via a `[b]` overlay mirroring the lineage panel. `[b]` opens;
   // ↑/↓/j/k move the cursor; Enter jumps the main selection + closes.
-  const breakingPanel = useOverlayPanel({ toggleKey: 'b' });
+  const breakingPanel = useOverlayPanel({ toggleKey: 'b', onClose: () => setBreakingDetailOpen(false) });
   const [breakingChanges, setBreakingChanges] = useState<BreakingComponent[]>([]);
   const [breakingCursor, setBreakingCursor] = useState(0);
+  // BD3 — dedicated breaking-change detail panel. Opened with `[D]` from within
+  // the `[b]` goto-banner; lists EVERY breaking change for the highlighted
+  // component with its friendly reason + `fullProperties` metadata. The banner
+  // row stays a one-liner; this panel carries the full breakdown. Closed by
+  // `[D]`/Esc or by closing the banner.
+  const [breakingDetailOpen, setBreakingDetailOpen] = useState(false);
+  // BD4 — deferred FieldEditor focus target. Set when the operator jumps from a
+  // breaking-change row (Enter) so the FieldEditor opens focused + scrolled to
+  // the exact changed field. Cleared when the operator leaves that component
+  // (jumpCursorToName / any cursor move) so a later manual entry into the
+  // editor doesn't re-jump. Shape accepts slot targets for BD2's later drop-in.
+  const [pendingEditorFocus, setPendingEditorFocus] = useState<{
+    componentName: string;
+    target: { kind: 'prop' | 'slot'; name: string };
+  } | null>(null);
   // T8 (parity plan §3) — Column-1 view mode. `'grouped'` (default) uses the
   // tiered cycle/empty/composite/standalone layout; `'flat'` flattens to
   // an alphabetical list with `(N deps)` suffixes on composite roots. Mirrors
@@ -926,6 +995,17 @@ export function GenerateReviewStep({
     [breakingChanges],
   );
 
+  // BD4 — flatten breaking changes to one row PER CHANGE so the goto-banner
+  // offers the finer jump the spec wants: each row carries its componentName +
+  // the specific `focusTarget` prop. Components with no enumerated changes
+  // still contribute a single component-level row (focusTarget undefined) so
+  // the jump degrades to today's land-on-the-row behavior. `breakingCursor`
+  // indexes THIS list.
+  const breakingRows = useMemo<BreakingRow[]>(
+    () => buildBreakingRows(breakingChanges),
+    [breakingChanges],
+  );
+
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
     // T5b: jump-filter takes priority over the T4 search-neighborhood filter.
     // When active, the sidebar shows only the target + its transitive
@@ -1144,6 +1224,10 @@ export function GenerateReviewStep({
     setJsonScrollOffset(0);
     setDraftValue('');
     setSaveError(null);
+    // BD4 — any cursor jump lands on a (possibly) different component; drop the
+    // pending editor-focus so it can't re-fire on a later navigation. The BD4
+    // breaking-row Enter handler re-sets it AFTER calling jumpCursorToName.
+    setPendingEditorFocus(null);
   };
   const jumpCursorToName = (name: string): void => {
     for (let i = 0; i < visibleRowsMemo.length; i++) {
@@ -1433,17 +1517,36 @@ export function GenerateReviewStep({
     // `[b]`/Esc close (via the shared hook).
     if (breakingPanel.isOpen) {
       if (breakingPanel.handleInput(input, key)) return;
+      // BD3 — `[D]` toggles the dedicated detail panel for the highlighted
+      // breaking component (full per-change breakdown). Handled before the
+      // cursor keys so it can't be shadowed.
+      if (input === 'D') {
+        setBreakingDetailOpen((prev) => !prev);
+        return;
+      }
       if (key.upArrow || input === 'k') {
+        setBreakingDetailOpen(false);
         setBreakingCursor((c) => Math.max(0, c - 1));
         return;
       }
       if (key.downArrow || input === 'j') {
-        setBreakingCursor((c) => Math.min(Math.max(0, breakingChanges.length - 1), c + 1));
+        setBreakingDetailOpen(false);
+        setBreakingCursor((c) => Math.min(Math.max(0, breakingRows.length - 1), c + 1));
         return;
       }
       if (key.return) {
-        const target = breakingChanges[breakingCursor];
-        if (target) jumpCursorToName(target.componentName);
+        // BD4 — jump the sidebar to the component AND focus the editor scrolled
+        // to the exact changed field. `jumpCursorToName` clears any stale
+        // pending focus, so set it AFTER the jump. `sidebarFocused=false` hands
+        // the keyboard to the FieldEditor so it opens on the target field.
+        const row = breakingRows[breakingCursor];
+        if (row) {
+          jumpCursorToName(row.componentName);
+          if (row.focusTarget) {
+            setPendingEditorFocus({ componentName: row.componentName, target: row.focusTarget });
+            setSidebarFocused(false);
+          }
+        }
         breakingPanel.close();
         return;
       }
@@ -2005,6 +2108,7 @@ export function GenerateReviewStep({
       setJsonScrollOffset(0);
       setDraftValue('');
       setSaveError(null);
+      setPendingEditorFocus(null);
     } else if (key.downArrow || input === 'j') {
       setNav(({ cursorRowIdx: prev, sidebarScrollOffset: off }) => {
         const positions = selectableRowPositions;
@@ -2024,6 +2128,7 @@ export function GenerateReviewStep({
       setJsonScrollOffset(0);
       setDraftValue('');
       setSaveError(null);
+      setPendingEditorFocus(null);
     }
   });
 
@@ -2269,6 +2374,39 @@ export function GenerateReviewStep({
           <Text color="yellow">{`[b] ${breakingChanges.length} breaking change${breakingChanges.length === 1 ? '' : 's'}`}</Text>
         </Box>
       )}
+      {breakingPanel.isOpen &&
+        breakingDetailOpen &&
+        !dialogOpen &&
+        (() => {
+          // BD3 — dedicated detail panel for the breaking component under the
+          // banner cursor. Lists EVERY change with its friendly reason +
+          // `fullProperties` metadata (via the shared formatter). Rendered as a
+          // top-level block so it doesn't fight the sidebar slot the banner
+          // already occupies.
+          const row = breakingRows[breakingCursor];
+          const comp = row
+            ? breakingChanges.find((b) => b.componentName === row.componentName)
+            : undefined;
+          if (!comp) return null;
+          return (
+            <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
+              <Text bold color="yellow">{`Breaking changes — ${comp.componentName}`}</Text>
+              {comp.impact && (
+                <Text dimColor>
+                  {`  affects ${comp.impact.affectedExperiences} experience${comp.impact.affectedExperiences === 1 ? '' : 's'}, ${comp.impact.affectedFragments} fragment${comp.impact.affectedFragments === 1 ? '' : 's'}`}
+                </Text>
+              )}
+              {comp.changes.length === 0 ? (
+                <Text dimColor>{'  (no enumerated changes)'}</Text>
+              ) : (
+                comp.changes.map((change, ci) => (
+                  <Text key={`bd-detail-${ci}`}>{`  • ${formatBreakingChange(change, comp.current)}`}</Text>
+                ))
+              )}
+              <Text dimColor>{'[D/Esc] close detail'}</Text>
+            </Box>
+          );
+        })()}
       {cyclePanel.isOpen &&
         !dialogOpen &&
         (() => {
@@ -2435,14 +2573,14 @@ export function GenerateReviewStep({
             // trigger Ink's full-screen repaint flicker.
             <GotoBanner
               title="Breaking changes"
-              rows={breakingChanges.map((b) => ({
-                label: `${b.componentName} — ${b.changes[0]?.reason ?? 'breaking'}`,
-                jumpTarget: b.componentName,
+              rows={breakingRows.map((r) => ({
+                label: r.label,
+                jumpTarget: r.componentName,
               }))}
               cursor={breakingCursor}
               maxRows={panelMaxRows}
               width={sidebarWidth}
-              footerHint="[↑/↓] move · [Enter] jump · [Esc] close"
+              footerHint="[↑/↓] move · [Enter] jump · [D] detail · [Esc] close"
             />
           ) : lineagePanel.isOpen && focusedComponentKey ? (
             <LineagePanel
@@ -2586,7 +2724,17 @@ export function GenerateReviewStep({
                   />
                 ) : (
                   <FieldEditor
-                    key={selected.key}
+                    key={
+                      // BD4 — fold the pending focus target into the mount key so
+                      // a jump to a breaking-change field on the ALREADY-selected
+                      // component still remounts the editor onto that field (the
+                      // initialFocusTarget seam is mount-time only). Clearing the
+                      // pending focus on navigation returns the key to the bare
+                      // component name (default first-field mount).
+                      pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                        ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
+                        : selected.key
+                    }
                     value={draftValue || selectedJson}
                     width={panelWidth}
                     height={PANEL_HEIGHT}
@@ -2623,6 +2771,11 @@ export function GenerateReviewStep({
                     currentComponentName={selected.key}
                     onDirtyChange={setEditorDirty}
                     discardTrigger={discardTrigger}
+                    initialFocusTarget={
+                      pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                        ? pendingEditorFocus.target
+                        : undefined
+                    }
                   />
                 )}
                 {saveError && <Text color="red">{'✗ ' + saveError}</Text>}
@@ -2718,7 +2871,7 @@ export function GenerateReviewStep({
           {legendEntry('[L]', 'flat', columnOneView === 'flat')}
           {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
           {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
-          {legendEntry('[w]', 'only breaking changes', activeFilters.has('broken'))}
+          {legendEntry('[w]', 'see breaking changes', activeFilters.has('broken'))}
           {slotCycles.length > 0 && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
           {slotCycles.length > 0 && legendEntry('[c]', 'cycle list', cyclePanel.isOpen)}
           {legendEntry('[p]', 'prop rationale', panelOpen === 'prop-rationale')}

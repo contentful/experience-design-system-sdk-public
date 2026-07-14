@@ -63,6 +63,7 @@ export function computeComponentDiffLines(
   // If no old definitions available, fall back to breaking change reasons
   if (!oldProps && changeClassification?.breakingChanges) {
     for (const bc of changeClassification.breakingChanges) {
+      if (!('propertyId' in bc)) continue;
       if (!currentProps.has(bc.propertyId) || !proposedProps.has(bc.propertyId)) continue;
       if (handledProps.has(bc.propertyId)) continue;
       handledProps.add(bc.propertyId);

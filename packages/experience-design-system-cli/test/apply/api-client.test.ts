@@ -181,6 +181,50 @@ describe('ImportApiClient — previewImport', () => {
     const callHeaders = mockFetch.mock.calls[0][1].headers;
     expect(callHeaders['x-contentful-organization-id']).toBeUndefined();
   });
+
+  // ── BD2: malformed breaking-change entries are degraded, not crashed ────────
+  it('drops malformed breaking-change entries (neither propertyId nor slotId, or unknown reason) and keeps valid ones', async () => {
+    const serverResponse = {
+      components: {
+        new: [],
+        changed: [
+          {
+            current: { id: 'c', name: 'Card', contentProperties: [], designProperties: [], slots: [] },
+            proposed: { $type: 'component', $properties: {} },
+            hasPendingDraftChanges: false,
+            changeClassification: {
+              classification: 'breaking',
+              breakingChanges: [
+                { propertyId: 'variant', reason: 'removed' },
+                { slotId: 'footer', reason: 'slot_removed' },
+                { reason: 'weird' },
+                { propertyId: 'x', reason: 'not_a_real_reason' },
+              ],
+            },
+          },
+        ],
+        unchanged: [],
+        removed: [],
+      },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(serverResponse),
+      text: () => Promise.resolve(''),
+    });
+
+    const client = createClient();
+    const result = await client.previewImport({ componentsManifest: {} });
+    const changes = result.components.changed[0].changeClassification?.breakingChanges ?? [];
+    // Only the two well-formed entries survive; the two malformed ones are dropped.
+    expect(changes).toEqual([
+      { propertyId: 'variant', reason: 'removed' },
+      { slotId: 'footer', reason: 'slot_removed' },
+    ]);
+  });
 });
 
 describe('ImportApiClient — applyImport', () => {

@@ -15,7 +15,9 @@ interface ServerPreviewViewProps {
 
 function BreakingBadge({ item }: { item: ChangedEntity<ComponentTypeSummary, CDFComponentEntry> }) {
   if (!item.changeClassification || item.changeClassification.classification !== 'breaking') return null;
-  const reasons = item.changeClassification.breakingChanges.map((bc) => `${bc.propertyId}: ${bc.reason}`).join(', ');
+  const reasons = item.changeClassification.breakingChanges
+    .map((bc) => `${'slotId' in bc ? bc.slotId : bc.propertyId}: ${bc.reason}`)
+    .join(', ');
   return (
     <Box flexDirection="column">
       <Text color="red"> ⚠ BREAKING: {reasons}</Text>
