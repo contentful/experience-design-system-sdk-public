@@ -1229,6 +1229,23 @@ export function GenerateReviewStep({
     return enumerateCycleBreaks(cycle, components);
   }, [slotCycles, cyclesCursor, components]);
 
+  // A2-4 (spec §4b) — the distinct participants in the HIGHLIGHTED cycle,
+  // offered as the second kind of break-overlay action: "reject component".
+  // Derived from the same cycle `path` the overlay renders; the path repeats
+  // its first element as its last so the loop closes, so we dedupe.
+  const breakMembers = useMemo<string[]>(() => {
+    const cycle = slotCycles[cyclesCursor];
+    if (!cycle) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const p of cycle.path) {
+      if (seen.has(p)) continue;
+      seen.add(p);
+      out.push(p);
+    }
+    return out;
+  }, [slotCycles, cyclesCursor]);
+
   // A9 — delete a slot-allowed edge to break a cycle. Reuses the exact undoable
   // slot-edit seam that FieldEditor saves flow through: mutate the component's
   // `$slots[slot].$allowedComponents` in review state, persist via
@@ -1260,6 +1277,29 @@ export function GenerateReviewStep({
     recomputeCycles(next);
     livePreviewHook.trigger();
     pushHistorySnapshot(next, autoRejected, undoSnapshot, 'break-cycle-edge');
+  };
+
+  // Task #37 reject-cascade, factored out of the sidebar `[r]` handler so the
+  // A2-4 break-overlay "reject component" entries can drive the IDENTICAL flow.
+  // Reject cascades UP to ancestors AND deselects descendants back to
+  // `needs-review` (scope-gate's tri-state cascade). Applies immediately (no
+  // confirm), recomputes cycles against the post-update graph, and pushes a
+  // history snapshot so Ctrl+Z restores the prior status.
+  const handleRejectComponent = (key: string): void => {
+    const rejectCascade = computeRejectCascade(key, componentGraph);
+    const acceptCascade = computeAcceptCascade(key, componentGraph);
+    const next = components.map((c) => {
+      if (rejectCascade.has(c.key)) {
+        return { ...c, status: 'rejected' as ReviewComponentStatus };
+      }
+      if (acceptCascade.has(c.key) && c.key !== key) {
+        return { ...c, status: 'needs-review' as ReviewComponentStatus };
+      }
+      return c;
+    });
+    setComponents(next);
+    recomputeCycles(next);
+    pushHistorySnapshot(next, autoRejected, undoSnapshot, 'reject-cascade');
   };
 
   const dialogOpen = showFinalize || showQuit;
@@ -1474,16 +1514,33 @@ export function GenerateReviewStep({
         return;
       }
       if (breakPanel.handleInput(input, key)) return;
+      // A2-4 — the overlay list spans TWO kinds of entries in one continuous
+      // cursor range: slot-edge removals [0, breakEdges.length) followed by
+      // reject-member entries [breakEdges.length, breakEdges.length +
+      // breakMembers.length).
+      const totalBreakEntries = breakEdges.length + breakMembers.length;
       if (key.upArrow || input === 'k') {
         setBreakCursor((c) => Math.max(0, c - 1));
         return;
       }
       if (key.downArrow || input === 'j') {
-        setBreakCursor((c) => Math.min(Math.max(0, breakEdges.length - 1), c + 1));
+        setBreakCursor((c) => Math.min(Math.max(0, totalBreakEntries - 1), c + 1));
         return;
       }
       if (key.return) {
-        if (breakEdges[breakCursor]) setBreakConfirm(true);
+        if (breakCursor < breakEdges.length) {
+          // Edge entry → arm the [y]/[n] confirm (unchanged behavior).
+          if (breakEdges[breakCursor]) setBreakConfirm(true);
+          return;
+        }
+        // A2-4 — reject-member entry → reject IMMEDIATELY (no confirm), matching
+        // the sidebar `[r]` reject. The recompute drops the resolved cycle;
+        // close the overlay afterward.
+        const member = breakMembers[breakCursor - breakEdges.length];
+        if (member) {
+          handleRejectComponent(member);
+          breakPanel.close();
+        }
         return;
       }
       return;
@@ -1495,7 +1552,7 @@ export function GenerateReviewStep({
       // A9 — `[x]` opens the break-cycle overlay for the highlighted cycle when
       // that cycle has at least one removable slot edge. The cycle list stays
       // open underneath; the break overlay renders on top + owns input.
-      if (input === 'x' && breakEdges.length > 0) {
+      if (input === 'x' && (breakEdges.length > 0 || breakMembers.length > 0)) {
         breakPanel.open();
         setBreakCursor(0);
         setBreakConfirm(false);
@@ -1867,26 +1924,11 @@ export function GenerateReviewStep({
       return;
     }
     if (input === 'r') {
-      // Task #37 — reject cascades UP to ancestors AND deselects descendants
-      // back to `needs-review` (mirrors scope-gate's tri-state cascade). We
-      // build the "next" components array inline so recomputeCycles sees the
-      // post-update graph without waiting for a render tick.
+      // Task #37 reject cascade, now shared with the A2-4 break-overlay
+      // "reject component" entries via `handleRejectComponent`.
       const current = components[selectedIdx];
       if (!current) return;
-      const rejectCascade = computeRejectCascade(current.key, componentGraph);
-      const acceptCascade = computeAcceptCascade(current.key, componentGraph);
-      const next = components.map((c) => {
-        if (rejectCascade.has(c.key)) {
-          return { ...c, status: 'rejected' as ReviewComponentStatus };
-        }
-        if (acceptCascade.has(c.key) && c.key !== current.key) {
-          return { ...c, status: 'needs-review' as ReviewComponentStatus };
-        }
-        return c;
-      });
-      setComponents(next);
-      recomputeCycles(next);
-      pushHistorySnapshot(next, autoRejected, undoSnapshot, 'reject-cascade');
+      handleRejectComponent(current.key);
       return;
     }
     if (input === 'A') {
@@ -2025,7 +2067,7 @@ export function GenerateReviewStep({
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1} width={width}>
         <Text bold color="yellow">
-          {`BREAK CYCLE ${cyclesCursor + 1} — remove a slot edge`}
+          {`BREAK CYCLE ${cyclesCursor + 1} — remove a slot edge or reject a member`}
         </Text>
         {highlightedCycle &&
           (() => {
@@ -2057,11 +2099,21 @@ export function GenerateReviewStep({
             : 'No cycle highlighted.'}
         </Text>
         <Text> </Text>
+        {breakEdges.length > 0 && <Text dimColor>{'remove slot edge:'}</Text>}
         {breakEdges.map((edge, idx) => {
           const isCursor = idx === breakCursor;
           return (
             <Text key={`break-${idx}`} inverse={isCursor}>
               {`${isCursor ? '▶' : ' '} remove '${edge.toComponent}' from ${edge.fromComponent}.$slots.${edge.slotName}.$allowedComponents`}
+            </Text>
+          );
+        })}
+        {breakMembers.length > 0 && <Text dimColor>{'reject cycle member:'}</Text>}
+        {breakMembers.map((member, idx) => {
+          const isCursor = breakEdges.length + idx === breakCursor;
+          return (
+            <Text key={`member-${idx}`} inverse={isCursor}>
+              {`${isCursor ? '▶' : ' '} reject component '${member}'`}
             </Text>
           );
         })}
@@ -2073,7 +2125,7 @@ export function GenerateReviewStep({
             </Text>
           </>
         ) : (
-          <Text dimColor>{'[↑↓/j/k] move  [Enter] delete  [x/Esc] close'}</Text>
+          <Text dimColor>{'[↑↓/j/k] move  [Enter] delete/reject  [x/Esc] close'}</Text>
         )}
       </Box>
     );
@@ -2082,7 +2134,7 @@ export function GenerateReviewStep({
     breakPanel.isOpen &&
     shouldBreakOverlayGoFullScreen({
       rows: stdout?.rows ?? FALLBACK_ROWS,
-      edgeCount: breakEdges.length,
+      edgeCount: breakEdges.length + breakMembers.length,
     });
   if (breakOverlayFullScreen) {
     return renderBreakOverlay();
