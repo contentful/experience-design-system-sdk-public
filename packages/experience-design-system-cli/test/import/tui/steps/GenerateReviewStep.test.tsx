@@ -4591,7 +4591,7 @@ describe('GenerateReviewStep — GA-1 (A3/A5/A6)', () => {
     expect(filtered).not.toMatch(/^.*Reject.*\[[ ✓✗×]\]/m);
   });
 
-  it('A3: legend advertises "only breaking changes" and NOT "only broken"', async () => {
+  it('A3: legend advertises "see breaking changes" and NOT "only broken"', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Alpha', entry: leaf('Alpha') }]);
     const { lastFrame } = render(
@@ -4599,8 +4599,22 @@ describe('GenerateReviewStep — GA-1 (A3/A5/A6)', () => {
     );
     await tick();
     const out = stripAnsi(lastFrame() ?? '');
-    expect(out).toContain('only breaking changes');
+    expect(out).toContain('see breaking changes');
     expect(out).not.toContain('only broken');
+  });
+
+  it('A3: help overlay advertises "see breaking changes" for [w]', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Alpha', entry: leaf('Alpha') }]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('?');
+    await tick();
+    const out = stripAnsi(lastFrame() ?? '');
+    expect(out).toContain('See breaking changes');
+    expect(out).not.toContain('Only breaking changes');
   });
 
   // ── A5: [u] undo alias removed ───────────────────────────────────────────────
