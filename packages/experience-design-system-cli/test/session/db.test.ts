@@ -103,9 +103,6 @@ describe('openPipelineDb', () => {
       const db1 = openPipelineDb(dbPath);
       const db2 = openPipelineDb(dbPath);
       const now = new Date().toISOString();
-      // Two interleaved writes from separate connections — under rollback
-      // journal + no busy_timeout this would frequently throw "database is
-      // locked". With WAL + busy_timeout it should always succeed.
       db1
         .prepare('INSERT INTO sessions (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)')
         .run('s1', null, now, now);
@@ -130,7 +127,6 @@ describe('openPipelineDb', () => {
       expect(byName.has('rationale')).toBe(true);
       expect(byName.has('source_start_line')).toBe(true);
       expect(byName.has('source_end_line')).toBe(true);
-      // All three nullable.
       expect(byName.get('rationale')!.notnull).toBe(0);
       expect(byName.get('source_start_line')!.notnull).toBe(0);
       expect(byName.get('source_end_line')!.notnull).toBe(0);
@@ -156,7 +152,6 @@ describe('openPipelineDb', () => {
     await withTempDb((dbPath) => {
       const db1 = openPipelineDb(dbPath);
       db1.close();
-      // Reopen — should not double-add columns or error.
       const db2 = openPipelineDb(dbPath);
       const propCols = db2.prepare('PRAGMA table_info(raw_props)').all() as Array<{ name: string }>;
       const propNames = propCols.map((c) => c.name);
@@ -199,7 +194,6 @@ describe('openPipelineDb', () => {
   it('preserves existing rows with reject_reason = NULL after migration', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
-      // Seed a session and a raw_component with the pre-Feature-3 columns only.
       db.prepare(
         `INSERT INTO sessions (id, created_at, updated_at)
          VALUES ('s1', '2026-06-23T00:00:00Z', '2026-06-23T00:00:00Z')`,
@@ -239,19 +233,16 @@ describe('loadScopeComponents (Feature 3)', () => {
         baseComp({ name: 'Rejected', source: 'src/Rejected.tsx' }),
         baseComp({ name: 'Untouched', source: 'src/Untouched.tsx' }),
       ]);
-      // Simulate Feature 3 select-agent persistence:
       db.prepare(
         `UPDATE raw_components SET status = 'accepted', reject_reason = NULL WHERE session_id = ? AND name = 'Accepted'`,
       ).run(sessionId);
       db.prepare(
         `UPDATE raw_components SET status = 'rejected', reject_reason = 'low semantic value' WHERE session_id = ? AND name = 'Rejected'`,
       ).run(sessionId);
-      // 'Untouched' keeps default status='extracted', reject_reason=NULL.
 
       const loaded = loadScopeComponents(db, sessionId);
       db.close();
 
-      // Should return all three (not just status='extracted').
       expect(loaded).toHaveLength(3);
       const byName = new Map(loaded.map((c) => [c.name, c]));
       expect(byName.get('Accepted')?.aiDecision).toBe('accepted');
@@ -397,7 +388,6 @@ describe('createStep + updateStep', () => {
       });
       const firstStepId = createStep(db, sessionId, 'analyze select', {});
 
-      // Simulate re-open by creating another step without updating the first
       const secondStepId = createStep(db, sessionId, 'analyze select', {});
 
       const first = db.prepare('SELECT status FROM steps WHERE id = ?').get(firstStepId) as { status: string };
@@ -518,7 +508,6 @@ describe('storeRawComponents + loadRawComponents', () => {
         .get(sessionId, 'label') as { rationale: string | null; source_start_line: number; source_end_line: number };
       expect(propRow.source_start_line).toBe(12);
       expect(propRow.source_end_line).toBe(15);
-      // rationale is set later by the generate phase, not by storeRawComponents.
       expect(propRow.rationale).toBeNull();
 
       const compRow = db.prepare(`SELECT source_path FROM raw_components WHERE session_id = ?`).get(sessionId) as {
@@ -570,7 +559,6 @@ describe('storeRawComponents + loadRawComponents', () => {
       const components: RawComponentDefinition[] = [
         {
           name: 'Hero',
-          // intentionally not a real path — loader falls back to this text
           source: 'L1\nL2\nL3\nL4',
           framework: 'react',
           props: [{ name: 'title', type: 'string', required: true, sourceStartLine: 2, sourceEndLine: 3 }],
@@ -901,7 +889,6 @@ describe('storeCDFComponents + loadCDFComponents', () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      // No storeRawComponents call — agent invented this component
       storeCDFComponents(db, sessionId, [
         {
           key: 'Badge',
@@ -933,7 +920,6 @@ describe('storeCDFComponents + loadCDFComponents', () => {
       storeRawComponents(db, sessionId, RAW);
       storeCDFComponents(db, sessionId, CDF_COMPONENTS);
 
-      // Re-call with updated $values
       storeCDFComponents(db, sessionId, [
         {
           key: 'Button',
@@ -953,10 +939,6 @@ describe('storeCDFComponents + loadCDFComponents', () => {
     });
   });
 
-  // Regression coverage for INTEG-4401: the `if (row)` branch of storeCDFComponents
-  // (component exists in raw_components) previously never touched raw_slots or
-  // raw_slot_allowed_components. FieldEditor edits to $slots (e.g. removing a
-  // $allowedComponents entry to break a cycle) were silently discarded on save.
   describe('slot persistence on update path (INTEG-4401)', () => {
     const RAW_CYCLE: RawComponentDefinition[] = [
       {
@@ -990,7 +972,6 @@ describe('storeCDFComponents + loadCDFComponents', () => {
         const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
         seedCycleA(db, sessionId);
 
-        // User edits FieldEditor: removes 'B' from $allowedComponents.
         storeCDFComponents(db, sessionId, [
           {
             key: 'CycleA',
@@ -1016,7 +997,6 @@ describe('storeCDFComponents + loadCDFComponents', () => {
         const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
         seedCycleA(db, sessionId);
 
-        // User adds 'C' to $allowedComponents.
         storeCDFComponents(db, sessionId, [
           {
             key: 'CycleA',
@@ -1042,7 +1022,6 @@ describe('storeCDFComponents + loadCDFComponents', () => {
         const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
         seedCycleA(db, sessionId);
 
-        // User removes slotB entirely.
         storeCDFComponents(db, sessionId, [
           {
             key: 'CycleA',
@@ -1076,7 +1055,6 @@ describe('storeCDFComponents + loadCDFComponents', () => {
       await withTempDb((dbPath) => {
         const db = openPipelineDb(dbPath);
         const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-        // Seed with a slot the extractor flagged as default (children).
         storeRawComponents(db, sessionId, [
           {
             name: 'Card',
@@ -1099,7 +1077,6 @@ describe('storeCDFComponents + loadCDFComponents', () => {
           },
         ]);
 
-        // User edits allowedComponents; is_default is not carried on the CDF entry.
         storeCDFComponents(db, sessionId, [
           {
             key: 'Card',
@@ -1123,8 +1100,6 @@ describe('storeCDFComponents + loadCDFComponents', () => {
           .get(sessionId, componentId, 'children') as { name: string; is_default: number } | undefined;
         expect(slotRow?.is_default).toBe(1);
 
-        // And the edit itself must have persisted — this is what fails against
-        // the buggy update path, which never touches raw_slot_allowed_components.
         const loaded = loadCDFComponents(db, sessionId);
         expect(loaded[0]?.entry.$slots?.['children']?.$allowedComponents).toEqual(['A']);
         db.close();
@@ -1178,7 +1153,6 @@ describe('storeRawComponents preserveCDF option', () => {
       storeRawComponents(db, sessionId, RAW);
       storeCDFComponents(db, sessionId, CDF_COMPONENTS);
 
-      // Re-store with same components but preserveCDF enabled
       storeRawComponents(db, sessionId, RAW, { status: 'generated', preserveCDF: true });
 
       const loaded = loadCDFComponents(db, sessionId);
@@ -1203,7 +1177,6 @@ describe('storeRawComponents preserveCDF option', () => {
       storeRawComponents(db, sessionId, RAW);
       storeCDFComponents(db, sessionId, CDF_COMPONENTS);
 
-      // Re-store with 'disabled' prop removed
       const edited: RawComponentDefinition[] = [
         {
           ...RAW[0]!,
@@ -1230,7 +1203,6 @@ describe('storeRawComponents preserveCDF option', () => {
       storeRawComponents(db, sessionId, RAW);
       storeCDFComponents(db, sessionId, CDF_COMPONENTS);
 
-      // Re-store with 'variant' renamed to 'theme' (same position)
       const edited: RawComponentDefinition[] = [
         {
           ...RAW[0]!,
@@ -1258,7 +1230,6 @@ describe('storeRawComponents preserveCDF option', () => {
       storeRawComponents(db, sessionId, RAW);
       storeCDFComponents(db, sessionId, CDF_COMPONENTS);
 
-      // Add a brand new component alongside the existing one
       const withNew: RawComponentDefinition[] = [
         ...RAW,
         {
@@ -1272,10 +1243,6 @@ describe('storeRawComponents preserveCDF option', () => {
       storeRawComponents(db, sessionId, withNew, { status: 'generated', preserveCDF: true });
 
       const loaded = loadCDFComponents(db, sessionId);
-      // Both Button (3 CDF props) and Card (no CDF props) are surfaced.
-      // INTEG-4257: zero-prop components used to be silently dropped — the
-      // wizard now surfaces them with empty $properties so the user can act
-      // (manually add props or reject) instead of having them disappear.
       expect(loaded).toHaveLength(2);
       const button = loaded.find((c) => c.key === 'Button');
       const card = loaded.find((c) => c.key === 'Card');
@@ -1295,7 +1262,6 @@ describe('storeRawComponents preserveCDF option', () => {
       storeRawComponents(db, sessionId, RAW);
       storeCDFComponents(db, sessionId, CDF_COMPONENTS);
 
-      // Re-store WITHOUT preserveCDF
       storeRawComponents(db, sessionId, RAW);
 
       const loaded = loadCDFComponents(db, sessionId);
@@ -1337,22 +1303,18 @@ describe('seedCDFFromPriorSession', () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
 
-      // Create a prior session with completed generate step and CDF data
       const { sessionId: priorId } = getOrCreateSession(db, 'new', undefined, { command: 'generate components' });
       storeRawComponents(db, priorId, RAW);
       storeCDFComponents(db, priorId, CDF);
       const stepId = createStep(db, priorId, 'generate components', {});
       updateStep(db, stepId, 'complete', {});
 
-      // Create a new extract session with the same components but no CDF
       const { sessionId: targetId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
       storeRawComponents(db, targetId, RAW);
 
-      // Seed should copy CDF from prior session
       const seeded = seedCDFFromPriorSession(db, targetId);
-      expect(seeded).toBe(2); // 2 props seeded
+      expect(seeded).toBe(2);
 
-      // Mark as generated so loadCDFComponents finds them
       db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ?`).run(targetId);
 
       const loaded = loadCDFComponents(db, targetId);
@@ -1380,14 +1342,12 @@ describe('seedCDFFromPriorSession', () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
 
-      // Prior session has Button with label + variant
       const { sessionId: priorId } = getOrCreateSession(db, 'new', undefined, { command: 'generate components' });
       storeRawComponents(db, priorId, RAW);
       storeCDFComponents(db, priorId, CDF);
       const stepId = createStep(db, priorId, 'generate components', {});
       updateStep(db, stepId, 'complete', {});
 
-      // Target session has Button but with a different prop (renamed variant → theme)
       const targetRaw: RawComponentDefinition[] = [
         {
           ...RAW[0]!,
@@ -1401,7 +1361,7 @@ describe('seedCDFFromPriorSession', () => {
       storeRawComponents(db, targetId, targetRaw);
 
       const seeded = seedCDFFromPriorSession(db, targetId);
-      expect(seeded).toBe(1); // only 'label' matched
+      expect(seeded).toBe(1);
 
       db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ?`).run(targetId);
       const loaded = loadCDFComponents(db, targetId);
@@ -1565,7 +1525,6 @@ describe('findLatestSessionForCommand', () => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'generate components' });
       createStep(db, sessionId, 'generate components', {});
-      // step left in 'pending' status
       expect(findLatestSessionForCommand(db, 'generate components')).toBeNull();
       db.close();
     });
@@ -1749,12 +1708,10 @@ describe('backfillUnclassifiedProps', () => {
       ];
       storeRawComponents(db, sessionId, raw);
 
-      // Get the actual component_id that was generated
       const comp = db
         .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = 'Widget'`)
         .get(sessionId) as { component_id: string };
 
-      // AI classifies 'title' but excludes 'internalRef'
       applyToolCalls(
         db,
         sessionId,
@@ -1767,7 +1724,6 @@ describe('backfillUnclassifiedProps', () => {
         [],
       );
 
-      // backfill should NOT re-include 'internalRef'
       backfillUnclassifiedProps(db, sessionId);
 
       const props = db
@@ -1780,7 +1736,6 @@ describe('backfillUnclassifiedProps', () => {
       expect(titleProp?.cdf_type).toBe('string');
       expect(refProp?.cdf_type).toBe('excluded');
 
-      // Should NOT appear in loaded CDF components
       const loaded = loadCDFComponents(db, sessionId);
       expect(loaded).toHaveLength(1);
       expect(Object.keys(loaded[0]!.entry.$properties)).toContain('title');
@@ -1823,10 +1778,6 @@ describe('generation cache', () => {
   });
 
   it('computeComponentInputHash ignores LLM-mutated fields (description, required, defaultValue, allowedValues, tokenReference)', () => {
-    // The hash must depend only on extractor-stable fields. Any field that
-    // `applyToolCalls` may rewrite must be excluded — otherwise re-reading
-    // raw_props after a generation pass would drift the hash even when the
-    // underlying source code is unchanged (cross-session cache misses).
     const base = {
       component_id: 'abc123',
       name: 'Button',
@@ -1841,7 +1792,6 @@ describe('generation cache', () => {
         {
           name: 'label',
           type: 'string',
-          // Fields below are all `applyToolCalls`-writable.
           required: true,
           description: 'LLM-written description',
           defaultValue: 'Submit',
@@ -1870,19 +1820,15 @@ describe('generation cache', () => {
       props: [{ name: 'label', type: 'string', required: true }],
       slots: [{ name: 'icon', isDefault: false }],
     };
-    // Different prop type → different hash
     const propTypeChanged = { ...base, props: [{ name: 'label', type: 'number', required: true }] };
     expect(computeComponentInputHash(base)).not.toBe(computeComponentInputHash(propTypeChanged));
 
-    // Different slot name → different hash
     const slotNameChanged = { ...base, slots: [{ name: 'header', isDefault: false }] };
     expect(computeComponentInputHash(base)).not.toBe(computeComponentInputHash(slotNameChanged));
 
-    // Different slot isDefault → different hash
     const slotIsDefaultChanged = { ...base, slots: [{ name: 'icon', isDefault: true }] };
     expect(computeComponentInputHash(base)).not.toBe(computeComponentInputHash(slotIsDefaultChanged));
 
-    // Different source path → different hash
     const sourceChanged = { ...base, source: 'src/Other.tsx' };
     expect(computeComponentInputHash(base)).not.toBe(computeComponentInputHash(sourceChanged));
   });
@@ -1931,7 +1877,6 @@ describe('generation cache', () => {
       storeCache(db, 'hash1', 'component', 'Button', session1, false);
       markCacheHumanEdited(db, 'component', 'Button');
 
-      // Re-store with humanEdited=false — should keep true due to UPSERT logic
       storeCache(db, 'hash1', 'component', 'Button', session2, false);
 
       const entry = lookupCache(db, 'hash1', 'component', 'Button');
@@ -1947,11 +1892,8 @@ describe('generation cache', () => {
       const { sessionId: session1 } = getOrCreateSession(db, 'new', undefined, { command: 'import' });
       const { sessionId: session2 } = getOrCreateSession(db, 'new', undefined, { command: 'import' });
 
-      // Store initial entry for Button
       storeCache(db, 'hash-v1', 'component', 'Button', session1, false);
 
-      // Update via UPSERT to a new session (same hash, same entity → conflict → update)
-      // Then store a second distinct entry for a different entity to confirm we get Button back
       storeCache(db, 'hash-v1', 'component', 'Button', session2, false);
 
       const entry = lookupCacheByEntity(db, 'component', 'Button');
@@ -1999,7 +1941,6 @@ describe('generation cache', () => {
         },
       ]);
 
-      // Create target session with same raw component
       const { sessionId: tgtSession } = getOrCreateSession(db, 'new', undefined, { command: 'import' });
       storeRawComponents(db, tgtSession, raw);
 
@@ -2093,7 +2034,6 @@ describe('renameEmptySlots', () => {
       expect(result.renames).toHaveLength(1);
       expect(result.renames[0]).toEqual({ oldName: '', newName: 'children' });
       expect(result.warnings[0]).toContain('"children"');
-      // Verify DB row was updated
       const db2 = openPipelineDb(dbPath);
       const slots = loadRawComponents(db2, sessionId)[0]!.slots;
       db2.close();
@@ -2103,7 +2043,6 @@ describe('renameEmptySlots', () => {
 
   it('uses positional name when the component has multiple total slots (one named, one empty)', async () => {
     await withTempDb((dbPath) => {
-      // Two total slots: one named, one empty. slotCount=2 → positional name.
       const { sessionId, componentId } = seedComponentWithSlots(dbPath, [
         { name: 'header', isDefault: false },
         { name: '', isDefault: false },
@@ -2142,8 +2081,6 @@ describe('renameEmptySlots', () => {
       expect(first.renames).toHaveLength(1);
       db.close();
 
-      // Re-extract: storeRawComponents deletes existing rows for the session
-      // and re-inserts with the original definitions, so the rename is undone.
       const db2 = openPipelineDb(dbPath);
       storeRawComponents(db2, sessionId, [
         {
@@ -2195,7 +2132,6 @@ describe('loadCDFComponents — empty-key sanitization (Option D / hallucination
           ],
         },
       ]);
-      // Mark as generated and classify the prop, so loadCDFComponents returns the entry.
       db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ?`).run(sessionId);
       db.prepare(`UPDATE raw_props SET cdf_type = 'string', cdf_category = 'content' WHERE session_id = ?`).run(
         sessionId,
@@ -2215,8 +2151,6 @@ describe('loadCDFComponents — empty-key sanitization (Option D / hallucination
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      // Extract: a component with one empty-named slot — the exact shape that
-      // produced the original "Slot id must be a non-empty string" 422.
       storeRawComponents(db, sessionId, [
         {
           name: 'PageLink',
@@ -2232,11 +2166,9 @@ describe('loadCDFComponents — empty-key sanitization (Option D / hallucination
         }
       ).component_id;
 
-      // Generate guard step — rename the empty slot before classification.
       const renameResult = renameEmptySlots(db, sessionId, componentId, 'PageLink', 1);
       expect(renameResult.renames).toEqual([{ oldName: '', newName: 'children' }]);
 
-      // Simulate the LLM classifying href + children, then mark generated.
       applyToolCalls(
         db,
         sessionId,
@@ -2304,11 +2236,6 @@ describe('loadCDFComponents — empty-key sanitization (Option D / hallucination
 
 describe('loadCDFComponents — zero-classified-prop components (INTEG-4257)', () => {
   it('surfaces components with zero classified props instead of silently filtering them', async () => {
-    // Repro of INTEG-4257: user accepts N components at scope-gate; the LLM
-    // classifies fewer than N (one component yields no classify_prop calls).
-    // Pre-fix, the unclassified component was silently dropped from
-    // loadCDFComponents and disappeared from final-review. Post-fix, it must
-    // surface with empty $properties so the wizard can warn the user.
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -2324,7 +2251,6 @@ describe('loadCDFComponents — zero-classified-prop components (INTEG-4257)', (
           name: 'OpaqueWidget',
           source: 'src/OpaqueWidget.tsx',
           framework: 'react',
-          // Two raw props that the LLM will fail to classify (cdf_type stays NULL).
           props: [
             { name: 'foo', type: 'unknown', required: false },
             { name: 'bar', type: 'unknown', required: false },
@@ -2332,10 +2258,7 @@ describe('loadCDFComponents — zero-classified-prop components (INTEG-4257)', (
           slots: [],
         },
       ]);
-      // Mark both as accepted at scope-gate.
       db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ?`).run(sessionId);
-      // Classify only Button; leave OpaqueWidget's props with NULL cdf_type
-      // (i.e. unclassified — the LLM produced no classify_prop tool calls).
       db.prepare(
         `UPDATE raw_props SET cdf_type = 'string', cdf_category = 'content'
          WHERE session_id = ? AND component_id IN (
@@ -2346,7 +2269,6 @@ describe('loadCDFComponents — zero-classified-prop components (INTEG-4257)', (
       const loaded = loadCDFComponents(db, sessionId);
       db.close();
 
-      // Both components must be present — OpaqueWidget with empty $properties.
       expect(loaded).toHaveLength(2);
       const button = loaded.find((c) => c.key === 'Button');
       const widget = loaded.find((c) => c.key === 'OpaqueWidget');
@@ -2354,7 +2276,6 @@ describe('loadCDFComponents — zero-classified-prop components (INTEG-4257)', (
       expect(Object.keys(button!.entry.$properties)).toEqual(['label']);
       expect(widget).toBeDefined();
       expect(Object.keys(widget!.entry.$properties)).toHaveLength(0);
-      // Entry shape is still valid: $type set, $properties is an empty object.
       expect(widget!.entry.$type).toBe('component');
       expect(widget!.entry.$properties).toEqual({});
     });
