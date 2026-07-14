@@ -72,7 +72,6 @@ describe('buildComponentGraph — multi-row topology', () => {
       { key: 'A', entry: entryWithSlots({ s: ['B'] }) },
       { key: 'B', entry: entryWithSlots({ s: ['A'] }) },
     ];
-    // Cycle detection is the caller's job; the builder just enumerates edges.
     expect(buildComponentGraph(rows)).toEqual([
       { name: 'A', slots: [{ name: 's', allowedComponents: ['B'] }] },
       { name: 'B', slots: [{ name: 's', allowedComponents: ['A'] }] },
@@ -151,7 +150,6 @@ describe('buildComponentGraph — stripRejectedEdges', () => {
   });
 
   it("preserves edges for statuses that are neither 'error' nor 'rejected'", () => {
-    // 'needs-review', 'undecided', 'warning', 'ok', arbitrary strings — none strip.
     for (const status of ['needs-review', 'undecided', 'warning', 'ok', 'anything']) {
       expect(buildComponentGraph([rowWith(status)], { stripRejectedEdges: true })).toEqual([
         { name: 'A', slots: [{ name: 's', allowedComponents: ['B'] }] },
