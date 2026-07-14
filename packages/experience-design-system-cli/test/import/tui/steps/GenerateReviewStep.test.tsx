@@ -1348,6 +1348,42 @@ describe('GenerateReviewStep — GA-3 cycle features (A1/A2/A7/A8)', () => {
     await tick();
     expect(stripAnsi(lastFrame() ?? '')).toMatch(/Suggested fix/);
   });
+
+  // A2-3 (spec §4b) — with more cycles than fit in the PANEL_H window, moving
+  // the cursor to a cycle below the initial window must scroll the panel so
+  // the selected cycle's header becomes visible (cursor-follow).
+  it('[c] cycle panel scroll follows the cursor to a cycle below the window', async () => {
+    const MANY = Array.from({ length: 12 }, (_, i) => ({
+      path: [`Comp${i}A`, `Comp${i}B`, `Comp${i}A`],
+      edges: [
+        { fromComponent: `Comp${i}A`, slotName: 'header', toComponent: `Comp${i}B` },
+        { fromComponent: `Comp${i}B`, slotName: 'footer', toComponent: `Comp${i}A` },
+      ],
+      suggestedBreak: { fromComponent: `Comp${i}A`, slotName: 'header', toComponent: `Comp${i}B` },
+    }));
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce(MANY);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    stdin.write('c');
+    await tick();
+    // Cycle 12 (index 11) starts far below the initial 20-line window and must
+    // not be visible at scroll=0.
+    expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/Cycle 12 \(/);
+    // Walk the cursor down to the last cycle.
+    for (let i = 0; i < 11; i++) {
+      stdin.write('j');
+      await tick();
+    }
+    // Cursor-follow must have advanced the scroll so Cycle 12's header shows.
+    expect(stripAnsi(lastFrame() ?? '')).toMatch(/▶ Cycle 12 \(/);
+  });
 });
 
 describe('GenerateReviewStep — GA-4 interactive break-cycle overlay (A9)', () => {

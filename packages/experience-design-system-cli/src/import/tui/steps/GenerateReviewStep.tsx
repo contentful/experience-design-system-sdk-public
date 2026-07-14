@@ -35,6 +35,7 @@ import {
   type StoredSlotCycle,
 } from '../../../session/db.js';
 import { formatCyclePathSegments, findSlotCycles, suggestCycleBreakEdge } from '../../../analyze/cycle-detection.js';
+import { followCycleScroll } from '../cycle-panel-scroll.js';
 import { RationalePanel, type RationaleRow } from '../../../analyze/select/tui/components/RationalePanel.js';
 import { ComponentRationalePanel } from '../../../analyze/select/tui/components/ComponentRationalePanel.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
@@ -1503,11 +1504,19 @@ export function GenerateReviewStep({
       // A8 — ↑/↓/j/k move the cycle cursor (mirrors SG's cyclesJumpables list);
       // Enter jumps the main sidebar cursor to the highlighted cycle's root.
       if (key.upArrow || input === 'k') {
-        setCyclesCursor((c) => Math.max(0, c - 1));
+        setCyclesCursor((c) => {
+          const next = Math.max(0, c - 1);
+          setCyclePanelScroll((scroll) => followCycleScroll(scroll, next, slotCycles, 20));
+          return next;
+        });
         return;
       }
       if (key.downArrow || input === 'j') {
-        setCyclesCursor((c) => Math.min(Math.max(0, slotCycles.length - 1), c + 1));
+        setCyclesCursor((c) => {
+          const next = Math.min(Math.max(0, slotCycles.length - 1), c + 1);
+          setCyclePanelScroll((scroll) => followCycleScroll(scroll, next, slotCycles, 20));
+          return next;
+        });
         return;
       }
       if (key.return) {
