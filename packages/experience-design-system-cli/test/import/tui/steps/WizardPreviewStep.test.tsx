@@ -20,8 +20,6 @@ describe('buildPreviewDiffLines', () => {
         $slots: {
           header: { $allowedComponents: ['Heading'] },
         },
-        // The key/name is stored as a private field on the entry in this codebase.
-        // The existing implementation reads `key` or `$name` off the entry via unknown-casting.
         ...({ key: 'Card' } as Record<string, unknown>),
       } as unknown as ServerPreviewResponse['components']['new'][number],
     ];
