@@ -26,7 +26,6 @@ describe('computeColumnWidths', () => {
     const plan = computeColumnWidths(120);
     expect(plan.layout).toBe('three-column');
     expect(plan.main).toBe(54);
-    // main + 4 padding + added + groups + 2 padding = 120
     expect(plan.main + 4 + plan.added + plan.groups + 2).toBeLessThanOrEqual(120);
     expect(plan.added).toBeGreaterThan(0);
     expect(plan.groups).toBeGreaterThan(0);
@@ -189,7 +188,6 @@ describe('buildAddedGroupsList', () => {
   });
 
   it('emits only the accepted members of a cycle unit', () => {
-    // unit {A, B}, only A accepted → only A appears.
     const closures = new Map();
     const s = state([
       ['A', 'accepted'],
@@ -254,8 +252,6 @@ describe('buildAddedGroupsList', () => {
       ['B', unit],
     ]);
     const out = buildAddedGroupsList(closures, s, cycleParticipants, cycleUnits);
-    // A appears once (from the closure pass, depCount 1 from its 2-node
-    // closure); B appears once from cycle synthesis.
     const names = out.map((e) => e.name).sort();
     expect(names).toEqual(['A', 'B']);
     expect(out.filter((e) => e.name === 'A')).toHaveLength(1);
