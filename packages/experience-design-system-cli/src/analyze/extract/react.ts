@@ -290,7 +290,6 @@ function isStencilFile(sourceFile: SourceFile): boolean {
 }
 
 function sourceFileUsesCreateContext(sourceFile: SourceFile): boolean {
-  // Match React.createContext(...) and createContext(...) call expressions
   return sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).some((call) => {
     const expr = call.getExpression();
     const text = expr.getText();
