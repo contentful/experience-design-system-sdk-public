@@ -20,6 +20,8 @@
  *    filter.
  */
 
+import { fuzzyMatches } from '../../analyze/fuzzy-search.js';
+
 export type FilterCategory = 'broken' | 'cycles' | 'deleted';
 
 export interface FilterDataSources {
@@ -72,4 +74,45 @@ export function intersectFilterKeys(
   const out = new Set<string>();
   for (const k of a) if (b.has(k)) out.add(k);
   return out;
+}
+
+/**
+ * FB1 (lifecycle-and-lineage plan §12) — build the flat-view dim predicate.
+ *
+ * Grouped view HIDES non-matching rows (via `filterVisibleKeys` in
+ * `buildVisibleRows`); flat view never hides — it DIMS non-matching rows,
+ * the same visual language search already uses. Before this, flat view only
+ * dimmed search non-matches, so toggling `[w]`/`[o]`/`[i]` highlighted the
+ * legend key without changing the sidebar. This folds the active filter/
+ * focus-lineage key set (`filterVisibleKeys`, already the union of category
+ * filters ∩ search, or the `[i]` ancestor set) into the flat dim so the
+ * active-highlight tells the truth.
+ *
+ * Search dimming applies in BOTH views (grouped surviving neighborhood rows
+ * that aren't direct fuzzy matches still dim — unchanged). Filter/focus-lineage
+ * dimming is flat-view ONLY, since grouped view hides those non-matches
+ * outright.
+ *
+ * Returns:
+ *  - `undefined` when nothing would dim: no search AND (grouped view, or no
+ *    filter/focus-lineage set in flat view).
+ *  - a predicate otherwise that dims a name when a search is active AND it is
+ *    not a fuzzy match, OR (flat view) a filter/focus-lineage set is active
+ *    AND the name is not a member. The constraints OR together so any active
+ *    narrowing dims its non-matches; matches of either stay bright.
+ */
+export function buildFlatDimPredicate(input: {
+  viewMode: 'grouped' | 'flat';
+  searchQuery: string;
+  filterVisibleKeys: Set<string> | undefined;
+}): ((componentKey: string) => boolean) | undefined {
+  const hasSearch = input.searchQuery.length > 0;
+  const isFlat = input.viewMode === 'flat';
+  const keys = isFlat ? input.filterVisibleKeys : undefined;
+  if (!hasSearch && keys === undefined) return undefined;
+  return (name: string): boolean => {
+    if (hasSearch && !fuzzyMatches(input.searchQuery, name)) return true;
+    if (keys !== undefined && !keys.has(name)) return true;
+    return false;
+  };
 }

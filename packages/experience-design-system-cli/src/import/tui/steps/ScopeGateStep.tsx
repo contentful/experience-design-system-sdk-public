@@ -16,6 +16,7 @@ import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { findSlotCycles, type SlotCycle } from '../../../analyze/cycle-detection.js';
 import { computeAutocomplete } from '../autocomplete.js';
 import {
+  buildFlatDimPredicate,
   computeFilterKeys,
   intersectFilterKeys,
   type FilterCategory,
@@ -406,10 +407,20 @@ export function ScopeGateStep({
     return map;
   }, [components]);
 
-  const dimPredicate = useMemo(() => {
-    if (!searchQuery) return undefined;
-    return (name: string) => !fuzzyMatches(searchQuery, name);
-  }, [searchQuery]);
+  // FB1 — flat view dims non-matches for active category filters / focus-
+  // lineage (parity with search, which flat view already dims). Grouped view
+  // continues to HIDE those non-matches via `filterVisibleKeys`, so the flat-
+  // dim membership never narrows grouped rows. Search dimming still applies in
+  // both views.
+  const dimPredicate = useMemo(
+    () =>
+      buildFlatDimPredicate({
+        viewMode: columnOneView,
+        searchQuery,
+        filterVisibleKeys,
+      }),
+    [columnOneView, searchQuery, filterVisibleKeys],
+  );
 
   const applyReject = (target: string): void => {
     const { toReject, toDeselect } = computeCycleAwareRejectCascade(

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildFlatDimPredicate,
   computeFilterKeys,
   intersectFilterKeys,
 } from '../../../src/import/tui/step-filters.js';
@@ -73,5 +74,64 @@ describe('intersectFilterKeys', () => {
   it('empty intersection yields an empty set', () => {
     const out = intersectFilterKeys(new Set(['A']), new Set(['B']));
     expect(out).toEqual(new Set<string>());
+  });
+});
+
+describe('buildFlatDimPredicate', () => {
+  // FB1 — flat view dims non-matching rows when a category filter and/or
+  // focus-lineage `[i]` is active, mirroring how search already dims. Grouped
+  // view keeps HIDING via filterVisibleKeys, so the flat-dim predicate never
+  // narrows grouped rows.
+
+  it('returns undefined in grouped view even with an active filter (grouped hides, never dims)', () => {
+    const pred = buildFlatDimPredicate({
+      viewMode: 'grouped',
+      searchQuery: '',
+      filterVisibleKeys: new Set(['Broken']),
+    });
+    expect(pred).toBeUndefined();
+  });
+
+  it('returns undefined in flat view when nothing is active', () => {
+    const pred = buildFlatDimPredicate({
+      viewMode: 'flat',
+      searchQuery: '',
+      filterVisibleKeys: undefined,
+    });
+    expect(pred).toBeUndefined();
+  });
+
+  it('flat view + category filter: dims names NOT in the filter set, keeps matches bright', () => {
+    const pred = buildFlatDimPredicate({
+      viewMode: 'flat',
+      searchQuery: '',
+      filterVisibleKeys: new Set(['Broken', 'AlsoBroken']),
+    });
+    expect(pred).toBeDefined();
+    expect(pred!('NotBroken')).toBe(true);
+    expect(pred!('Broken')).toBe(false);
+    expect(pred!('AlsoBroken')).toBe(false);
+  });
+
+  it('flat view + focus-lineage (ancestor set) dims non-ancestors', () => {
+    // `[i]` feeds its ancestor set through the same filterVisibleKeys prop.
+    const pred = buildFlatDimPredicate({
+      viewMode: 'flat',
+      searchQuery: '',
+      filterVisibleKeys: new Set(['Target', 'ParentOfTarget']),
+    });
+    expect(pred!('Unrelated')).toBe(true);
+    expect(pred!('Target')).toBe(false);
+    expect(pred!('ParentOfTarget')).toBe(false);
+  });
+
+  it('flat view + search only: dims fuzzy non-matches (existing behavior preserved)', () => {
+    const pred = buildFlatDimPredicate({
+      viewMode: 'flat',
+      searchQuery: 'card',
+      filterVisibleKeys: undefined,
+    });
+    expect(pred!('Card')).toBe(false);
+    expect(pred!('Heading')).toBe(true);
   });
 });

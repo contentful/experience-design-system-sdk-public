@@ -62,6 +62,7 @@ import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../
 import { computeAutocomplete } from '../autocomplete.js';
 import { resolveGroupRoot } from '../group-collapse.js';
 import {
+  buildFlatDimPredicate,
   computeFilterKeys,
   intersectFilterKeys,
   type FilterCategory,
@@ -1051,10 +1052,20 @@ export function GenerateReviewStep({
     return seen.size;
   }, [searchMatches, visibleRowsMemo]);
 
-  const dimPredicate = useMemo(() => {
-    if (!searchQuery) return undefined;
-    return (name: string) => !fuzzyMatches(searchQuery, name);
-  }, [searchQuery]);
+  // FB1 — flat view dims non-matches for active category filters / focus-
+  // lineage (parity with search, which flat view already dims). Grouped view
+  // continues to HIDE those non-matches via `filterVisibleKeys`, so the flat-
+  // dim membership never narrows grouped rows. Search dimming still applies in
+  // both views.
+  const dimPredicate = useMemo(
+    () =>
+      buildFlatDimPredicate({
+        viewMode: columnOneView,
+        searchQuery,
+        filterVisibleKeys,
+      }),
+    [columnOneView, searchQuery, filterVisibleKeys],
+  );
 
   /**
    * Jump the cursor to a specific row position in `visibleRowsMemo`. Callers
