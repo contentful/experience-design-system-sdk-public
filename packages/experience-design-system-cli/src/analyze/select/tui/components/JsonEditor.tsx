@@ -31,7 +31,6 @@ export function JsonEditor({ value, width, height, onSave, onDiscard }: JsonEdit
   const { lines, cursorRow, cursorCol } = undo.current;
   const scrollCol = 0;
 
-  // Sync scroll with cursor — pure derivation, no setState needed when within bounds
   let effectiveScrollRow = scrollRow;
   if (cursorRow < scrollRow) effectiveScrollRow = cursorRow;
   if (cursorRow >= scrollRow + height) effectiveScrollRow = cursorRow - height + 1;

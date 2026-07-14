@@ -4,7 +4,6 @@ import { resolveGroupRoot } from '../../../src/import/tui/group-collapse.js';
 import { computeAllClosures } from '../../../src/analyze/composite-closure.js';
 
 describe('resolveGroupRoot (L9 — shared group-root resolution)', () => {
-  // Card → Body → Heading closure; plus a standalone Solo.
   const graph = [
     { name: 'Card', slots: [{ name: 'body', allowedComponents: ['Body'] }] },
     { name: 'Body', slots: [{ name: 'inner', allowedComponents: ['Heading'] }] },

@@ -46,16 +46,14 @@ function parseInput(data: string): { input: string; key: Key } {
 
   let input = data;
 
-  // Ctrl+letter: data is \x01-\x1a (Ctrl+A through Ctrl+Z)
   if (data.length === 1) {
     const code = data.charCodeAt(0);
     if (code >= 1 && code <= 26) {
       key.ctrl = true;
-      input = String.fromCharCode(code + 96); // convert to lowercase letter
+      input = String.fromCharCode(code + 96);
     }
   }
 
-  // Arrow keys and special keys produce no printable input
   if (
     key.upArrow ||
     key.downArrow ||
@@ -75,11 +73,6 @@ function parseInput(data: string): { input: string; key: Key } {
   return { input, key };
 }
 
-/**
- * Like Ink's useInput, but uses useLayoutEffect so the listener is registered
- * synchronously after render. This allows stdin.write() calls in tests to work
- * immediately after render() without awaiting effects.
- */
 export function useImmediateInput(handler: InputHandler): void {
   const { stdin, setRawMode } = useStdin();
   const handlerRef = useRef(handler);

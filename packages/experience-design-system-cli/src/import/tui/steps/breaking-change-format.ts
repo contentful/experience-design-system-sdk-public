@@ -12,14 +12,6 @@ const SLOT_REASON_COPY: Record<string, string> = {
   slot_allowed_components_narrowed: 'allowed components narrowed',
 };
 
-/**
- * BD3 — render a single breaking change as human-readable copy. Branches by KEY
- * PRESENCE (the discriminated-union discriminant): `slotId` → slot branch,
- * otherwise property branch. Property changes are enriched with the
- * `fullProperties` metadata on `current` (type/category) when reachable, and
- * degrade to just id + reason when it is absent. Pure so the copy is pinned by
- * unit tests independent of the Ink render tree.
- */
 export function formatBreakingChange(
   bc: BreakingChange,
   current?: Pick<ComponentTypeSummary, 'fullProperties'>,

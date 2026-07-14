@@ -78,7 +78,6 @@ describe('findAllAncestors', () => {
   });
 
   it('returns transitive ancestors', () => {
-    // Landing → Section → Card. Card's ancestors = { Section, Landing }.
     const components = [
       comp('Landing', [['sections', ['Section']]]),
       comp('Section', [['items', ['Card']]]),
@@ -97,7 +96,6 @@ describe('findAllAncestors', () => {
   });
 
   it('handles cycles without infinite loop', () => {
-    // A → B, B → A. Both are ancestors of each other.
     const components = [
       comp('A', [['s', ['B']]]),
       comp('B', [['s', ['A']]]),
@@ -138,7 +136,6 @@ describe('findAllAncestorChains', () => {
   });
 
   it('extends chains through the transitive graph', () => {
-    // Landing → [sections] → Section → [items] → Card.
     const components = [
       comp('Landing', [['sections', ['Section']]]),
       comp('Section', [['items', ['Card']]]),
@@ -153,15 +150,12 @@ describe('findAllAncestorChains', () => {
   });
 
   it('terminates on cycles', () => {
-    // A → B → A. findAllAncestorChains(A) should return at least one chain
-    // starting at B without looping forever.
     const components = [
       comp('A', [['s', ['B']]]),
       comp('B', [['s', ['A']]]),
     ];
     const chains = findAllAncestorChains('A', components);
     expect(chains.length).toBeGreaterThan(0);
-    // No chain repeats a node.
     for (const chain of chains) {
       const nodes = new Set<string>();
       nodes.add(chain[0].from);
@@ -222,8 +216,6 @@ describe('buildAncestorTree', () => {
   });
 
   it('shared ancestor → second occurrence marked shared with no parents', () => {
-    // Foo slots both A and B. X's parents are A and B. So under A we recurse
-    // into Foo fully; under B, Foo appears again with shared=true.
     const components = [
       comp('Foo', [
         ['sA', ['A']],
@@ -234,7 +226,6 @@ describe('buildAncestorTree', () => {
       comp('X'),
     ];
     const tree = buildAncestorTree('X', components);
-    // Root parents: A, B (sorted).
     expect(tree.parents.map((p) => p.name)).toEqual(['A', 'B']);
     const a = tree.parents[0];
     const b = tree.parents[1];

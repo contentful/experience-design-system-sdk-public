@@ -96,7 +96,6 @@ describe('fuzzyFilter', () => {
   });
 
   it('preserves input order on ties', () => {
-    // Two identical candidates score identically; source order must be kept.
     const result = fuzzyFilter('ab', ['abX', 'abY']);
     expect(result).toEqual(['abX', 'abY']);
   });

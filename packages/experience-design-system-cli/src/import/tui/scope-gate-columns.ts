@@ -7,18 +7,8 @@ export interface ScopeComponentLike {
 
 export type Decision = 'accepted' | 'rejected' | 'undecided';
 
-/**
- * Multi-column layout threshold. Below this the scope-gate collapses to a
- * single sidebar column + counter strip. Chosen so 3-col layout doesn't
- * overflow on a standard 120-col terminal.
- */
 export const THREE_COLUMN_MIN_WIDTH = 120;
 
-/**
- * Column-width plan for the scope-gate step. When the terminal is narrower
- * than THREE_COLUMN_MIN_WIDTH, only the main sidebar renders; `added` and
- * `groups` widths are 0.
- */
 export function computeColumnWidths(totalWidth: number): {
   layout: 'single' | 'three-column';
   main: number;
@@ -29,7 +19,6 @@ export function computeColumnWidths(totalWidth: number): {
     return { layout: 'single', main: computeSidebarWidth(totalWidth), added: 0, groups: 0 };
   }
   const main = computeSidebarWidth(totalWidth);
-  // 4 chars of inter-column padding total.
   const remaining = Math.max(0, totalWidth - main - 4);
   const added = Math.floor(remaining * 0.45);
   const groups = Math.max(0, remaining - added - 2);
@@ -85,20 +74,12 @@ export function buildAddedGroupsList(
     else restTier.push(entry);
     seenNames.add(root);
   }
-  // Synthesize one entry PER ACCEPTED MEMBER of each cycle unit. composite-closure
-  // collapses cyclic closures to a single-node result (which the filter above
-  // drops), so cycle groups would otherwise never appear in the Added-groups
-  // panel. We emit one row per member — mirroring how the sidebar renders one
-  // cycle-root row per member (GroupedSidebar) — so InnerA↔InnerB shows BOTH
-  // InnerA and InnerB rather than just the alpha-first member.
   const seenUnits = new Set<Set<string>>();
   for (const unit of cycleUnits.values()) {
     if (seenUnits.has(unit)) continue;
     seenUnits.add(unit);
     for (const member of unit) {
       if (stateByKey.get(member) !== 'accepted') continue;
-      // Dedup on member NAME — a name already emitted as a real closure root
-      // must not double-emit.
       if (seenNames.has(member)) continue;
       seenNames.add(member);
       cycleTier.push({ name: member, depCount: unit.size - 1, isCycle: true });

@@ -10,8 +10,6 @@ import { buildUserAgent } from '../lib/user-agent.js';
 
 export const DEFAULT_HOST = DEFAULT_API_HOST;
 
-// Phase-prefix constants used at the two ApiError throw sites below and
-// imported by orchestrator.ts to identify preview-phase 422s for retry.
 export const PREVIEW_ERROR_PREFIX = 'preview failed:';
 export const APPLY_ERROR_PREFIX = 'apply failed:';
 
@@ -49,9 +47,6 @@ export class ApiError extends Error {
   ) {
     super(message);
     if (body) {
-      // Append a (possibly trimmed) version of the response body so callers
-      // that only log e.message don't silently swallow the server's error
-      // detail.
       const trimmed = body.length > ERROR_BODY_LOG_CAP ? body.slice(0, ERROR_BODY_LOG_CAP) + '…' : body;
       this.message = `${message}\n${trimmed}`;
     }

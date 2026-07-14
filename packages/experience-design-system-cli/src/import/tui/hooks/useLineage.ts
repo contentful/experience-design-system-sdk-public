@@ -2,11 +2,6 @@ import { useMemo } from 'react';
 import { computeAllClosures, type ComponentGraphNode } from '../../../analyze/composite-closure.js';
 import { buildAncestorTree, renderAncestorTree } from '../../../analyze/lineage.js';
 
-/**
- * Shape of a rendered lineage row. Matches ScopeGate's original inline
- * definition byte-for-byte so the extracted hook produces identical entry
- * lists — the M1 ADR-0010 scenario suite pins that behavior.
- */
 export type LineageEntry =
   | { kind: 'section'; label: string }
   | { kind: 'ancestor'; label: string; jumpTarget: string }
@@ -30,28 +25,10 @@ export interface UseLineageResult {
   jumpables: LineageJumpable[];
 }
 
-/**
- * Derives the lineage-panel row list for a focused component. Body extracted
- * verbatim from ScopeGateStep's inline `lineageEntries` + `lineageJumpables`
- * memos so both callers (ScopeGate and GenerateReview) share one seam.
- *
- * `focusedKey` may be `null` when nothing is focused — the hook returns empty
- * arrays in that case. `graph` is the unfiltered `ComponentGraphNode[]` per
- * ADR-0010 §Part 1: lineage rendering reads the full structure, not the
- * reject-filtered arm.
- */
 export function useLineage(
   focusedKey: string | null,
   graph: ComponentGraphNode[],
 ): UseLineageResult {
-  // L2 (plan §4): callers rebuild `graph` on every render (ScopeGate reloads
-  // scope components from the DB upstream, so its `groupedItems`→`graph` memo
-  // chain produces a new array identity each render). Gating the memos below
-  // on that unstable reference re-derives everything every render, which
-  // remounts the lineage panel and makes the banner flash. Collapse the graph
-  // to a structural signature and pin a stable reference off it so an
-  // equivalent-but-new graph array does NOT invalidate the derived rows.
-  // GenerateReview holds its graph in `useState` (stable) and never flashed.
   const graphKey = useMemo(() => JSON.stringify(graph), [graph]);
   const stableGraph = useMemo(() => graph, [graphKey]);
 

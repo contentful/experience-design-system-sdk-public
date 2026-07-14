@@ -188,15 +188,12 @@ describe('slot expansion integration', () => {
     const result = await extractReactComponents([filePath]);
     const card = result.components[0];
 
-    // icon and footer should be slots
     expect(card.slots.find((s) => s.name === 'icon')).toBeDefined();
     expect(card.slots.find((s) => s.name === 'footer')).toBeDefined();
 
-    // icon and footer should NOT be in props
     expect(card.props.find((p) => p.name === 'icon')).toBeUndefined();
     expect(card.props.find((p) => p.name === 'footer')).toBeUndefined();
 
-    // variant should remain as a prop
     expect(card.props.find((p) => p.name === 'variant')).toBeDefined();
   });
 
@@ -222,12 +219,10 @@ describe('slot expansion integration', () => {
     const result = await extractReactComponents([filePath]);
     const alert = result.components[0];
 
-    // title, description, label should stay as props (content exceptions)
     expect(alert.props.find((p) => p.name === 'title')).toBeDefined();
     expect(alert.props.find((p) => p.name === 'description')).toBeDefined();
     expect(alert.props.find((p) => p.name === 'label')).toBeDefined();
 
-    // icon should be a slot
     expect(alert.slots.find((s) => s.name === 'icon')).toBeDefined();
     expect(alert.props.find((p) => p.name === 'icon')).toBeUndefined();
   });
@@ -253,15 +248,12 @@ describe('slot expansion integration', () => {
     const result = await extractReactComponents([filePath]);
     const list = result.components[0];
 
-    // items should be a slot (array ReactNode)
     expect(list.slots.find((s) => s.name === 'items')).toBeDefined();
     expect(list.props.find((p) => p.name === 'items')).toBeUndefined();
 
-    // description should ALSO be a slot because it's an array (overrides exception)
     expect(list.slots.find((s) => s.name === 'description')).toBeDefined();
     expect(list.props.find((p) => p.name === 'description')).toBeUndefined();
 
-    // title is a string, stays as prop
     expect(list.props.find((p) => p.name === 'title')).toBeDefined();
   });
 
@@ -285,11 +277,9 @@ describe('slot expansion integration', () => {
     const result = await extractReactComponents([filePath]);
     const container = result.components[0];
 
-    // children handled by existing logic (default slot)
     const defaultSlots = container.slots.filter((s) => s.isDefault);
     expect(defaultSlots).toHaveLength(1);
 
-    // header should be a named slot
     expect(container.slots.find((s) => s.name === 'header' && !s.isDefault)).toBeDefined();
   });
 
@@ -313,10 +303,8 @@ describe('slot expansion integration', () => {
     const result = await extractReactComponents([filePath]);
     const modal = result.components[0];
 
-    // renderHeader is handled by existing render-prop logic
     expect(modal.slots.find((s) => s.name === 'header')).toBeDefined();
 
-    // icon should be a slot via the new expansion
     expect(modal.slots.find((s) => s.name === 'icon')).toBeDefined();
   });
 

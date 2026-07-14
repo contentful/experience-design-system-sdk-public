@@ -23,14 +23,12 @@ function useHookProbe<T>(hook: () => T): T {
 
 describe('useLineage', () => {
   it('for a middle node C in P→C→X: ancestors include P, descendants include X, jumpables exclude sections', () => {
-    // Graph: P → C → X (P slots C; C slots X)
     const graph: ComponentGraphNode[] = [
       { name: 'P', slots: [{ name: 'body', allowedComponents: ['C'] }] },
       { name: 'C', slots: [{ name: 'body', allowedComponents: ['X'] }] },
       { name: 'X', slots: [] },
     ];
 
-    // Focus P (root) — reveals descendants.
     const forP: UseLineageResult = useHookProbe(() => useLineage('P', graph));
     const pDescendants = forP.entries
       .filter((e) => e.kind === 'descendant')
@@ -39,26 +37,21 @@ describe('useLineage', () => {
     expect(pDescendants).toContain('C');
     expect(pDescendants).toContain('X');
 
-    // Focus C — reveals P as ancestor.
     const forC: UseLineageResult = useHookProbe(() => useLineage('C', graph));
     const cAncestors = forC.entries
       .filter((e) => e.kind === 'ancestor')
       .map((e) => e.label)
       .join(' ');
     expect(cAncestors).toContain('P');
-    // Sections always present.
     expect(forC.entries.map((e) => e.kind)).toContain('section');
-    // Jumpables never include sections or empties.
     for (const j of forC.jumpables) {
       expect(['ancestor', 'descendant']).toContain(j.entry.kind);
     }
-    // Descendant rows never include self (C).
     const cDescendantTargets = forC.jumpables
       .filter((j) => j.entry.kind === 'descendant')
       .map((j) => (j.entry.kind === 'descendant' ? j.entry.jumpTarget : ''));
     expect(cDescendantTargets).not.toContain('C');
 
-    // Focused key `null` yields empty arrays.
     const empty = useHookProbe(() => useLineage(null, graph));
     expect(empty.entries).toEqual([]);
     expect(empty.jumpables).toEqual([]);

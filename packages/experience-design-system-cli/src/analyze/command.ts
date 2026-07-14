@@ -254,10 +254,6 @@ export function registerAnalyzeCommand(program: Command): void {
       const validatedComponents = validateExtractedComponents(filteredComponents);
       storeRawComponents(db, sessionId, validatedComponents);
 
-      // INTEG-4401: post-extract slot-dependency cycle detection. The apply
-      // worker rejects cyclic slot graphs at push time, so we surface the
-      // same violation locally as a soft warning here (TUI reads
-      // slot_cycles) and as a hard block at manifest finalization.
       const cycleInput = validatedComponents.map((c) => ({
         name: c.name,
         slots: c.slots.map((s) => ({ name: s.name, allowedComponents: s.allowedComponents })),

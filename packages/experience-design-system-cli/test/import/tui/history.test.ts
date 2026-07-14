@@ -60,8 +60,8 @@ describe('createHistoryStack — T4 undo/redo primitive', () => {
     const h = createHistoryStack(snap('S0'));
     h.push(snap('S1'), 'p1');
     h.push(snap('S2'), 'p2');
-    h.undo(); // cursor at S1
-    h.push(snap('S3'), 'p3'); // drops S2, appends S3
+    h.undo();
+    h.push(snap('S3'), 'p3');
     expect(h.canRedo()).toBe(false);
     const back = h.undo();
     expect(back!.components[0].key).toBe('S1');
@@ -73,7 +73,7 @@ describe('createHistoryStack — T4 undo/redo primitive', () => {
     const h = createHistoryStack(snap('S0'), 3);
     h.push(snap('S1'), 'p1');
     h.push(snap('S2'), 'p2');
-    h.push(snap('S3'), 'p3'); // triggers overflow → S0 dropped
+    h.push(snap('S3'), 'p3');
     expect(h.size()).toBe(3);
     h.undo(); // → S2
     h.undo(); // → S1
@@ -93,12 +93,9 @@ describe('createHistoryStack — T4 undo/redo primitive', () => {
   it('snapshots are structurally cloned (mutating original does not corrupt stack)', () => {
     const s = snap('S0');
     const h = createHistoryStack(s);
-    // Mutate original AFTER seed.
     s.components[0].status = 'accepted';
     s.autoRejected.push('X');
     const restored = h.undo() ?? (h.redo() as HistorySnapshot);
-    // The stack's seed should still reflect the ORIGINAL state (needs-review, no autoRejected).
-    // (undo returns null at floor; use the peek via a push+undo cycle.)
     h.push(snap('S1'), 'p1');
     const back = h.undo();
     expect(back!.components[0].status).toBe('needs-review');
@@ -124,7 +121,6 @@ describe('createHistoryStack — T4 undo/redo primitive', () => {
     const back = h.undo()!;
     expect(back.undoSnapshot).not.toBeNull();
     expect(back.undoSnapshot!.get('A')).toBe('needs-review');
-    // Mutating the returned Map should not corrupt the stack.
     back.undoSnapshot!.set('A', 'accepted');
     h.push(
       {
@@ -135,7 +131,6 @@ describe('createHistoryStack — T4 undo/redo primitive', () => {
       'p2',
     );
     const backAgain = h.undo()!;
-    // Original snapshot still has its Map intact.
     expect(backAgain.undoSnapshot).not.toBeNull();
     expect(backAgain.undoSnapshot!.get('A')).toBe('needs-review');
   });

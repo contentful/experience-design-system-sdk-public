@@ -8,11 +8,6 @@ import {
   type UseOverlayPanelResult,
 } from '../../../../src/import/tui/hooks/useOverlayPanel.js';
 
-/**
- * Mount a probe that captures the hook result on every render, so tests can
- * fire actions and then read updated state on the next tick. Matches the
- * ink-based probe shape used in `useLineage.test.ts`.
- */
 function mountProbe(opts: UseOverlayPanelOptions): { current: UseOverlayPanelResult } {
   const ref: { current: UseOverlayPanelResult | null } = { current: null };
   function Probe(): React.ReactElement | null {
@@ -94,9 +89,7 @@ describe('useOverlayPanel', () => {
   it('onClose does NOT fire when handleInput ignores a key (panel closed, or wrong key)', () => {
     const onClose = vi.fn();
     const hook = mountProbe({ toggleKey: 'd', onClose });
-    // closed → ignored
     hook.current.handleInput('d', { escape: false });
-    // open + non-toggle → ignored
     hook.current.open();
     hook.current.handleInput('x', { escape: false });
     expect(onClose).not.toHaveBeenCalled();

@@ -30,12 +30,10 @@ describe('buildCycleUnits', () => {
     const units = unitsFor(graph);
     expect(units.get('A')).toEqual(new Set(['A', 'B']));
     expect(units.get('B')).toEqual(new Set(['A', 'B']));
-    // Same reference — cohesion is expressed as a shared Set.
     expect(units.get('A')).toBe(units.get('B'));
   });
 
   it('collapses two cycles sharing a node into a single unit', () => {
-    // A ↔ B and B ↔ C — B is shared, so all three must move together.
     const graph = [
       comp('A', [['s', ['B']]]),
       comp('B', [
@@ -59,7 +57,6 @@ describe('computeCycleAwareAcceptCascade', () => {
   });
 
   it('accepts every non-cycle descendant of every cycle member (full closure)', () => {
-    // A ↔ B; A slots Leaf1, B slots Leaf2.
     const graph = [
       comp('A', [
         ['cycle', ['B']],
@@ -82,7 +79,6 @@ describe('computeCycleAwareAcceptCascade', () => {
   });
 
   it('accepts ancestor + entire cycle when accepting an ancestor that slots a cycle member', () => {
-    // Wrapper → A ↔ B.
     const graph = [
       comp('Wrapper', [['s', ['A']]]),
       comp('A', [['s', ['B']]]),
@@ -97,7 +93,6 @@ describe('computeCycleAwareAcceptCascade', () => {
   });
 
   it('traverses through nested composite → shared-interior → cycle', () => {
-    // Wrapper → SharedInterior → InnerA ↔ InnerB.
     const graph = [
       comp('Wrapper', [['s', ['SharedInterior']]]),
       comp('SharedInterior', [['s', ['InnerA']]]),
@@ -124,7 +119,6 @@ describe('computeCycleAwareAcceptCascade', () => {
 
 describe('computeCycleAwareRejectCascade', () => {
   it('rejects every member of the cycle + ancestors referencing any member', () => {
-    // Wrapper slots A, A ↔ B. Rejecting A should also reject B and Wrapper.
     const graph = [
       comp('Wrapper', [['s', ['A']]]),
       comp('A', [['s', ['B']]]),
@@ -136,7 +130,6 @@ describe('computeCycleAwareRejectCascade', () => {
   });
 
   it('rejects non-cycle ancestor alone; leaves cycle members untouched by reject', () => {
-    // Wrapper slots A; A ↔ B. Rejecting Wrapper must NOT reject A/B.
     const graph = [
       comp('Wrapper', [['s', ['A']]]),
       comp('A', [['s', ['B']]]),
@@ -145,8 +138,6 @@ describe('computeCycleAwareRejectCascade', () => {
     const units = unitsFor(graph);
     const { toReject, toDeselect } = computeCycleAwareRejectCascade('Wrapper', graph, units);
     expect(toReject).toEqual(new Set(['Wrapper']));
-    // Cycle members WERE in the accept-cascade of Wrapper, so they land in
-    // toDeselect (get set to undecided) rather than being force-rejected.
     expect([...toDeselect].sort()).toEqual(['A', 'B']);
   });
 

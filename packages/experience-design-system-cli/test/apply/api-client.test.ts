@@ -198,7 +198,6 @@ describe('ImportApiClient — previewImport', () => {
     expect(callHeaders['x-contentful-organization-id']).toBeUndefined();
   });
 
-  // ── BD2: malformed breaking-change entries are degraded, not crashed ────────
   it('drops malformed breaking-change entries (neither propertyId nor slotId, or unknown reason) and keeps valid ones', async () => {
     const serverResponse = {
       components: {
@@ -235,7 +234,6 @@ describe('ImportApiClient — previewImport', () => {
     const client = createClient();
     const result = await client.previewImport({ componentsManifest: {} });
     const changes = result.components.changed[0].changeClassification?.breakingChanges ?? [];
-    // Only the two well-formed entries survive; the two malformed ones are dropped.
     expect(changes).toEqual([
       { propertyId: 'variant', reason: 'removed' },
       { slotId: 'footer', reason: 'slot_removed' },
@@ -565,8 +563,6 @@ describe('phase-prefix constants — orchestrator contract', () => {
 });
 
 describe('ApiError — body preservation for orchestrator retry parsing', () => {
-  // Builds a realistic CDF validation-failed body with N component errors.
-  // Each error is ~100 chars including JSON overhead, so 20 errors ≈ 2KB.
   function makeValidationFailedBody(errorCount: number): string {
     return JSON.stringify({
       sys: { type: 'Error', id: 'ValidationFailed' },

@@ -3,8 +3,6 @@ import { preClassifyComponent } from '@contentful/experience-design-system-extra
 import { isNonAuthorableComponent } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../src/types.js';
 
-// Exercises the same composition that command.ts will use:
-//   pre-classify → filter → emit
 function runPipeline(components: RawComponentDefinition[]) {
   const classified = components.map(preClassifyComponent);
   const kept: RawComponentDefinition[] = [];

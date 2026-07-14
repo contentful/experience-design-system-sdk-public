@@ -59,9 +59,7 @@ describe('RunPicker', () => {
       (f) => f.includes('AAA') && f.includes('Show all'),
       3000,
     );
-    // First 10 visible.
     for (const id of ids.slice(0, 10)) expect(frame).toContain(id);
-    // Overflow entries hidden.
     expect(frame).not.toContain('KKK');
     expect(frame).not.toContain('LLL');
     expect(frame).toContain('Show all (12)');
@@ -77,7 +75,6 @@ describe('RunPicker', () => {
       (f) => f.includes('Show all'),
       3000,
     );
-    // Cursor starts at index 0; press j 10 times to reach index 10 (Show all row).
     for (let i = 0; i < 10; i++) stdin.write('j');
     stdin.write('\r');
     const expanded = await waitForFrame(
@@ -100,7 +97,6 @@ describe('RunPicker', () => {
     );
     stdin.write('j');
     stdin.write('\r');
-    // After selecting a run we move to the "Push or modify?" screen.
     const sub = await waitForFrame(
       () => lastFrame(),
       (f) => /Push or modify/i.test(f),
@@ -108,7 +104,6 @@ describe('RunPicker', () => {
     );
     expect(sub).toMatch(/Push/);
     expect(sub).toMatch(/Modify/);
-    // Default cursor is on Push — pressing Enter routes to push.
     stdin.write('\r');
     expect(handlers.onSelect).toHaveBeenCalledWith({ runId: 'BBB', action: 'push' });
   });
@@ -122,13 +117,13 @@ describe('RunPicker', () => {
       (f) => f.includes('AAA'),
       3000,
     );
-    stdin.write('\r'); // pick AAA
+    stdin.write('\r');
     await waitForFrame(
       () => lastFrame(),
       (f) => /Push or modify/i.test(f),
       3000,
     );
-    stdin.write('j'); // move to Modify
+    stdin.write('j');
     stdin.write('\r');
     expect(handlers.onSelect).toHaveBeenCalledWith({ runId: 'AAA', action: 'modify' });
   });
@@ -142,14 +137,14 @@ describe('RunPicker', () => {
       (f) => f.includes('AAA'),
       3000,
     );
-    stdin.write('\r'); // pick AAA
+    stdin.write('\r');
     await waitForFrame(
       () => lastFrame(),
       (f) => /Push or modify/i.test(f),
       3000,
     );
     stdin.write('j');
-    stdin.write('j'); // navigate to Cancel
+    stdin.write('j');
     stdin.write('\r');
     const back = await waitForFrame(
       () => lastFrame(),
@@ -198,8 +193,6 @@ describe('RunPicker', () => {
       (f) => f.includes('PUSHED') && f.includes('UNPUSHED'),
       3000,
     );
-    // We use local-time formatting so we can't pin the exact hour, but the
-    // date portion is stable and the "pushed" / "not pushed" tag must appear.
     expect(frame).toMatch(/2026-06-25 \d{2}:\d{2}/);
     expect(frame).toMatch(/2026-06-24 \d{2}:\d{2}/);
     expect(frame).toContain('pushed');

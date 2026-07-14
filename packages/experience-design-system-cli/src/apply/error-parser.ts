@@ -1,22 +1,3 @@
-/**
- * INTEG-4401 Fix C — parse EDSI failure bodies into a structured shape the
- * TUI can render without dumping timestamps + trace ids at operators.
- *
- * EDSI failure bodies come in three broad shapes today:
- *
- *   1. Plain JSON error:
- *      `{"code":"TopoSortCycleError","message":"...","cycle":["CycleA","CycleB"]}`
- *
- *   2. Wrapper JSON with `details`:
- *      `{"sys":{"type":"Error"},"message":"...","details":{"code":"...","cycle":[...]}}`
- *
- *   3. Lambda log-line spill (the response body is the CloudWatch log
- *      formatting the worker's uncaught exception):
- *      `2026-07-07T22:26:26.479Z\t<request-id>\tERROR\t[dd.trace_id=... dd.span_id=...] <message> {\n  operationId: '...',\n  code: 'TopoSortCycleError',\n  cycle: [ 'CycleA', 'CycleB' ]\n}`
- *
- * We parse each shape best-effort and fall back to a cleaned raw message so
- * the ErrorStep never has to show the operator a timestamp + trace id.
- */
 
 export interface ParsedEdsiError {
   /** Server-side error code, if we could extract one. */
@@ -34,21 +15,12 @@ const LAMBDA_LOG_PREFIX_RE =
 
 const DD_TAG_RE = /\[dd\.(?:trace_id|span_id)=[^\]]*\]\s*/g;
 
-/**
- * Strip the Lambda/CloudWatch log-line decoration from the head of a body so
- * the operator-facing message reads as an error sentence, not a log entry.
- */
 export function stripLambdaLogPrefix(body: string): string {
   let out = body.replace(LAMBDA_LOG_PREFIX_RE, '');
   out = out.replace(DD_TAG_RE, '');
   return out.trim();
 }
 
-/**
- * Extract a JS-object-literal tail like `{ operationId: '...', code: '...', cycle: [ 'A', 'B' ] }`
- * that Lambda-spilled errors trail with. Returns `null` if no such structure
- * is present or the fields we care about can't be recovered.
- */
 function parseObjectLiteralTail(body: string): Pick<ParsedEdsiError, 'code' | 'cycle'> | null {
   const braceStart = body.lastIndexOf('{');
   if (braceStart === -1) return null;
@@ -68,11 +40,6 @@ function parseObjectLiteralTail(body: string): Pick<ParsedEdsiError, 'code' | 'c
   return { code, cycle };
 }
 
-/**
- * Best-effort JSON parse walking one level deep into `details`. Fields we
- * accept anywhere in the top-level or `details` object: `code`, `message`,
- * `cycle`. Returns `null` when the input isn't JSON.
- */
 function parseJsonBody(body: string): Partial<ParsedEdsiError> | null {
   let parsed: unknown;
   try {
@@ -100,11 +67,6 @@ function parseJsonBody(body: string): Partial<ParsedEdsiError> | null {
   return out;
 }
 
-/**
- * Parse an EDSI error body (the raw response body, or an `ApiError.message`
- * that has the body appended). Always returns a value — the fallback is the
- * cleaned raw message with `code: null`.
- */
 // ApiError.message shape: `${phasePrefix}\n${body}` where phasePrefix looks
 // like `apply failed: 400`, `preview failed: 422`, `poll failed: 500`. We
 // only strip the prefix line when the first line matches this shape —
@@ -140,10 +102,6 @@ export function parseEdsiError(rawInput: string | undefined | null): ParsedEdsiE
 
   const literal = parseObjectLiteralTail(cleaned);
   if (literal && (literal.code || literal.cycle)) {
-    // Grab the human-readable head — text before the trailing `{`. This is
-    // the sentence part of a Lambda log-line spill (e.g. "Apply operation
-    // <id> rejected: ComponentType slot dependency cycle detected among:
-    // CycleA, CycleB. Break the cycle by...").
     const braceStart = cleaned.lastIndexOf('{');
     const head = braceStart === -1 ? cleaned : cleaned.slice(0, braceStart).trim();
     return {
@@ -157,10 +115,6 @@ export function parseEdsiError(rawInput: string | undefined | null): ParsedEdsiE
   return { code: null, message: cleaned || prefix || rawInput, cycle: null, raw: true };
 }
 
-/**
- * Render a parsed error into a short multi-line block for the ErrorStep.
- * Callers can pass `verbose: true` to include the raw body underneath.
- */
 export function formatParsedEdsiError(parsed: ParsedEdsiError, opts: { verbose?: boolean; raw?: string } = {}): string {
   const lines: string[] = [];
   if (parsed.code) {

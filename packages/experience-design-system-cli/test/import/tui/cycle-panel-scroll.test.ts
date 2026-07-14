@@ -30,9 +30,7 @@ describe('cycle-panel-scroll helper', () => {
   });
 
   it('followCycleScroll scrolls down so a cycle below the window becomes visible', () => {
-    // 10 cycles, each with a break => 4 lines each; PANEL_H = 20.
     const cycles = Array.from({ length: 10 }, () => ({ ...withBreak }));
-    // Cursor on cycle index 6: its block starts at 4 + 6*4 = 28, well below 0..20.
     const next = followCycleScroll(0, 6, cycles, 20);
     const start = cycleLineOffsets(cycles)[6];
     expect(next).toBeGreaterThan(0);
@@ -42,7 +40,6 @@ describe('cycle-panel-scroll helper', () => {
 
   it('followCycleScroll scrolls up so a cycle above the window becomes visible', () => {
     const cycles = Array.from({ length: 10 }, () => ({ ...withBreak }));
-    // Start scrolled down; cursor on cycle 0 (start line 4) is above the window.
     const next = followCycleScroll(28, 0, cycles, 20);
     expect(next).toBeLessThanOrEqual(cycleLineOffsets(cycles)[0]);
   });

@@ -42,7 +42,6 @@ describe('LineagePanel windowing', () => {
 
   it('keeps the cursor row visible as the cursor moves toward the end', () => {
     const { entries, jumpables } = buildEntries(40);
-    // cursor 0 -> first descendants shown, last not shown
     const first = render(
       <LineagePanel focusedComponentKey="InnerA" entries={entries} cursor={0} jumpables={jumpables} />,
     );
@@ -50,8 +49,7 @@ describe('LineagePanel windowing', () => {
     expect(firstOut).toContain('Descendant0');
     expect(firstOut).not.toContain('Descendant39');
 
-    // cursor near the end -> last descendant (incl. cursor) shown, first not
-    const lastIdx = jumpables.length - 1; // Descendant39
+    const lastIdx = jumpables.length - 1;
     const last = render(
       <LineagePanel focusedComponentKey="InnerA" entries={entries} cursor={lastIdx} jumpables={jumpables} />,
     );
@@ -92,7 +90,6 @@ describe('LineagePanel windowing', () => {
           jumpables={big.jumpables}
         />,
       ).lastFrame() ?? '';
-    // When scrolled to the bottom there must be a "more above" indicator.
     expect(bigOut).toMatch(/more/);
 
     const small = buildEntries(3);
@@ -105,7 +102,6 @@ describe('LineagePanel windowing', () => {
           jumpables={small.jumpables}
         />,
       ).lastFrame() ?? '';
-    // Small lineage renders fully with no scroll indicators.
     expect(countEntryLines(smallOut)).toBe(3);
     expect(smallOut).not.toMatch(/more/);
   });

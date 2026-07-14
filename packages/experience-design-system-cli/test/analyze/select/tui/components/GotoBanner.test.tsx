@@ -38,7 +38,6 @@ describe('GotoBanner', () => {
     const cursorLine = lines.find((l) => l.includes('Target1'));
     expect(cursorLine).toBeDefined();
     expect(cursorLine ?? '').toContain('▶');
-    // Non-cursor rows have no pointer.
     const otherLine = lines.find((l) => l.includes('Target0'));
     expect(otherLine ?? '').not.toContain('▶');
   });
@@ -58,7 +57,6 @@ describe('GotoBanner', () => {
 
   it('windows rows to maxRows with ▲/▼ more indicators on overflow', () => {
     const rows = buildRows(40);
-    // Cursor at the end: rows before it are windowed off -> "more above".
     const out =
       render(
         <GotoBanner title="Goto" rows={rows} cursor={39} maxRows={10} />,

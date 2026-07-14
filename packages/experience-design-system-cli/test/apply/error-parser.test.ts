@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseEdsiError, formatParsedEdsiError, stripLambdaLogPrefix } from '../../src/apply/error-parser.js';
 
-/**
- * INTEG-4401 Fix C — EDSI error bodies must render as `[CODE] message`
- * blocks, not raw Lambda log lines. Covers the three shapes we've seen in
- * the wild: JSON, wrapper-JSON-with-details, and Lambda log-line spill.
- */
 describe('parseEdsiError', () => {
   it('parses a plain JSON body with code / message / cycle', () => {
     const body = JSON.stringify({

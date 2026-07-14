@@ -13,10 +13,6 @@ export type ComponentRationalePanelProps = {
 
 const PLACEHOLDER = '(no rationale captured)';
 
-/**
- * Word-wrap a paragraph to fit `innerWidth` columns. Mirrors the helper in
- * RationalePanel.tsx so wrapping is identical across both panels.
- */
 function wrapText(text: string, innerWidth: number): string[] {
   if (!text) return [''];
   const width = Math.max(1, innerWidth);
@@ -64,10 +60,6 @@ type RenderedLine =
   | { kind: 'list-name'; text: string; sublabel?: string }
   | { kind: 'blank' };
 
-/**
- * Flatten the component rationale into a list of rendered lines so scrollOffset
- * slicing matches what the operator sees.
- */
 export function renderComponentRationaleLines(data: ComponentRationale, innerWidth: number): RenderedLine[] {
   const out: RenderedLine[] = [];
 
@@ -80,10 +72,6 @@ export function renderComponentRationaleLines(data: ComponentRationale, innerWid
     out.push({ kind: 'blank' });
   };
 
-  // "Description" section shows the human-facing component description.
-  // The `descriptionRationale` (WHY the component was classified this way)
-  // is appended as a small "why" line so the operator can see the LLM's
-  // reasoning without leaving the panel.
   out.push({ kind: 'heading', text: 'Description' });
   const descBody = data.description && data.description.trim().length > 0 ? data.description : PLACEHOLDER;
   for (const ln of wrapText(descBody, Math.max(1, innerWidth - 2))) {
@@ -139,7 +127,6 @@ export function ComponentRationalePanel({
   const innerWidth = Math.max(1, width - 2);
   const all = renderComponentRationaleLines(data, innerWidth);
   const totalLines = all.length;
-  // Reserve one line at the bottom for the legend.
   const contentHeight = Math.max(1, height - 1);
   const visible = all.slice(scrollOffset, scrollOffset + contentHeight);
   const overflowed = totalLines > contentHeight;

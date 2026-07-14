@@ -2,12 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'ink-testing-library';
 import { ScopeGateStep } from '../../../../src/import/tui/steps/ScopeGateStep.js';
 
-// Grouped-sidebar wiring: ScopeGateStep now renders via GroupedSidebar. When
-// no slot data is provided, every component falls into the standalone tier
-// and is rendered in alphabetical order. Selection semantics collapse to
-// per-row toggle for standalones. Cursor starts on the first (alphabetical)
-// row.
-
 const FIXTURE = [
   { name: 'Button', componentId: 'c0' },
   { name: 'Card', componentId: 'c1' },
@@ -24,8 +18,6 @@ describe('ScopeGateStep', () => {
   });
 
   it('calls onConfirm with all-rejected on f when no toggles happened (undecided default)', () => {
-    // Everything starts undecided. Confirming without any explicit accepts
-    // partitions the whole set into rejected (undecided → rejected).
     const onConfirm = vi.fn();
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
     stdin.write('f');
@@ -38,7 +30,6 @@ describe('ScopeGateStep', () => {
   it('[a] accepts the cursor row; [f] partitions accepted vs. rejected', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
-    // Standalone tier alphabetical: Button, Card, Junk. Accept Card only.
     stdin.write('j');
     stdin.write('a');
     stdin.write('f');
@@ -50,14 +41,12 @@ describe('ScopeGateStep', () => {
   it('A toggles all — first press accepts all when anything is not-accepted', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
-    // Fresh state: all undecided → first [A] flips to accepted.
     stdin.write('A');
     stdin.write('f');
     let arg = onConfirm.mock.calls[onConfirm.mock.calls.length - 1][0];
     expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Card', 'Junk']));
     expect(arg.rejected).toEqual([]);
 
-    // Second [A]: all accepted → flip to rejected.
     stdin.write('A');
     stdin.write('f');
     arg = onConfirm.mock.calls[onConfirm.mock.calls.length - 1][0];
@@ -68,9 +57,7 @@ describe('ScopeGateStep', () => {
   it('[r] rejects the cursor component', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
-    // Accept-all first so [r] on Card exercises a real reject-from-accepted.
     stdin.write('A');
-    // Cursor starts at Button. Move down once to Card.
     stdin.write('j');
     stdin.write('r');
     stdin.write('f');
@@ -82,7 +69,6 @@ describe('ScopeGateStep', () => {
   it('[r] on an undecided leaf rejects it directly (blast radius 0 → no prompt)', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
-    // Cursor on Button. [r] rejects it. No ancestors/descendants → no prompt.
     stdin.write('r');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -95,7 +81,6 @@ describe('ScopeGateStep', () => {
     stdin.write('F');
     expect(onConfirm).toHaveBeenCalledTimes(1);
     const arg = onConfirm.mock.calls[0][0];
-    // Nothing was accepted → all → rejected.
     expect(arg.accepted).toEqual([]);
     expect(arg.rejected).toEqual(expect.arrayContaining(['Button', 'Card', 'Junk']));
   });
@@ -125,15 +110,6 @@ describe('ScopeGateStep', () => {
     expect(onQuit).toHaveBeenCalledTimes(1);
   });
 });
-
-// ── AI-decision surfacing (rewritten for grouped-sidebar UX) ─────────────────
-//
-// The two-section flat render was retired. AI info is now surfaced via:
-//   - a dim `AI recommended exclusions: N` summary line above the sidebar
-//   - a `*` marker + full reason on the focused-row detail below the sidebar
-//   - the `[s]` reason side-panel (untouched)
-//
-// The dual-write inclusion contract (partition on `f`) is preserved verbatim.
 
 describe('ScopeGateStep — AI-decision surfacing', () => {
   const MIXED = [
@@ -225,8 +201,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
         aiFilterStatus="complete"
       />,
     );
-    // Standalone tier is alphabetical: Foo, NoReason. Move cursor to NoReason
-    // then open the side panel.
     stdin.write('j');
     stdin.write('s');
     const out = lastFrame() ?? '';
@@ -235,9 +209,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
   });
 
   it('[Y] then [f] partitions AI-flagged (rejected/failed) into rejected, rest into accepted', () => {
-    // INTEG-4318: 'failed' behaves like 'rejected' for inclusion. Under the
-    // undecided-default model, [Y] accepts every non-AI-flagged component;
-    // the AI-flagged remainder stays undecided and lands in `rejected` on [f].
     const withFailed = [
       { name: 'Button', componentId: 'c0', aiDecision: 'accepted' as const },
       { name: 'Card', componentId: 'c1', aiDecision: 'accepted' as const },
@@ -314,12 +285,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin } = render(
         <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
-      // No visible-cursor glyph in the grouped sidebar (selection is
-      // inverse-video). k on the first row should be a no-op — asserted via
-      // the toggle behavior below.
       stdin.write('k');
-      // Cursor is still on the top-alphabetical row; toggling it flips a
-      // known component (BadgeIcon, since it sorts first).
     });
 
     it('s on AI-flagged focused row toggles the full reject_reason panel', () => {
@@ -333,8 +299,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={local} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
-      // Standalone tier alphabetical: BadgeIcon, Button, Card. Cursor
-      // starts on BadgeIcon (AI-flagged).
       stdin.write('s');
       let frame = lastFrame() ?? '';
       expect(frame).toContain('AI rejection reason');
@@ -355,7 +319,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     );
     const out = lastFrame() ?? '';
     expect(out).toContain('nothing selected');
-    // Hint advertises the fast opt-in keys.
     expect(out).toContain('[Y]');
     expect(out).toContain('[A]');
     expect(out).toContain('[a]');
@@ -375,9 +338,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
   });
 
   describe('D2 — per-row cascade selection', () => {
-    // Article slots Card via `body`, so Article is an ancestor of Card.
-    // Rejecting Card should cascade UP to Article; accepting Article should
-    // cascade DOWN to Card.
     const ARTICLE_CARD = [
       {
         name: 'Article',
@@ -392,10 +352,9 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin } = render(
         <ScopeGateStep components={ARTICLE_CARD} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // Accept-all first so Card is accepted; then [r] on Card cascades UP.
       stdin.write('A');
-      stdin.write('j'); // Card child
-      stdin.write('r'); // reject Card — cascades to Article (single ancestor → no prompt)
+      stdin.write('j');
+      stdin.write('r');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Article']));
@@ -407,7 +366,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin } = render(
         <ScopeGateStep components={ARTICLE_CARD} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // Cursor starts on Article root (undecided). [a] accepts → cascades to Card.
       stdin.write('a');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
@@ -416,7 +374,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     });
 
     it('reject cascade with blast-radius ≥ 2 shows confirm; [y] applies', () => {
-      // Two ancestors slot Card: Article and Newsletter.
       const TWO_PARENTS = [
         {
           name: 'Article',
@@ -434,7 +391,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin, lastFrame } = render(
         <ScopeGateStep components={TWO_PARENTS} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // Accept-all first, then move to Card (child under Article) and reject.
       stdin.write('A');
       stdin.write('j');
       stdin.write('r');
@@ -442,7 +398,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       expect(frame).toContain('Rejecting Card will:');
       expect(frame).toContain('Article');
       expect(frame).toContain('Newsletter');
-      stdin.write('y'); // confirm
+      stdin.write('y');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.rejected).toEqual(expect.arrayContaining(['Card', 'Article', 'Newsletter']));
@@ -466,13 +422,12 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin } = render(
         <ScopeGateStep components={TWO_PARENTS} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      stdin.write('A'); // accept-all so Card is accepted
-      stdin.write('j'); // Card
-      stdin.write('r'); // reject → prompt (blast radius 2)
-      stdin.write('n'); // cancel
+      stdin.write('A');
+      stdin.write('j');
+      stdin.write('r');
+      stdin.write('n');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
-      // Cancel leaves the accept-all state intact.
       expect(arg.rejected).toEqual([]);
       expect(arg.accepted).toEqual(expect.arrayContaining(['Article', 'Newsletter', 'Card']));
     });
@@ -491,10 +446,9 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin } = render(
         <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // Accept-all first, then reject Text via its group-child row.
       stdin.write('A');
-      stdin.write('j'); // Text child
-      stdin.write('r'); // reject Text — cascades up to Card
+      stdin.write('j');
+      stdin.write('r');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.rejected).toEqual(expect.arrayContaining(['Text', 'Card']));
@@ -516,7 +470,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={FIXTURE_L} onConfirm={() => {}} onQuit={() => {}} />,
       );
-      // Focus Card (child row).
       stdin.write('j');
       stdin.write('l');
       const frame = lastFrame() ?? '';
@@ -616,8 +569,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
 
     it('Enter on a cycle entry jumps main cursor and closes panel', () => {
       const onConfirm = vi.fn();
-      // Include a third non-cycle component so the cursor can be moved off
-      // NodeA first, letting us prove Enter actually jumps.
       const withStandalone = [
         ...FIXTURE_2CYCLE,
         { name: 'Zonk', componentId: 'z' },
@@ -625,14 +576,11 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={withStandalone} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // Move cursor to Zonk (last row).
       stdin.write('j');
       stdin.write('j');
       stdin.write('c');
       stdin.write('\r');
-      // Panel closed.
       expect(lastFrame() ?? '').not.toContain('Cycles detected');
-      // Now [l] should open lineage rooted at the jump target (NodeA), not Zonk.
       stdin.write('l');
       expect(lastFrame() ?? '').toContain('Lineage: NodeA');
     });
@@ -673,10 +621,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
   });
 
   describe('cycle-row rejection (INTEG task #31)', () => {
-    // 2-cycle: NodeA ↔ NodeB. Both are cycle-tier rows at the top of the
-    // sidebar. Rejecting either from its cycle row must work — previously
-    // the [a]/[r]/Space handler treated 'cycle' as a no-op, blocking the
-    // user from breaking the cycle.
     const CYCLE = [
       {
         name: 'NodeA',
@@ -695,9 +639,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin } = render(
         <ScopeGateStep components={CYCLE} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // Cursor starts on the first cycle-tier row (NodeA, alphabetical).
-      // Under undecided-default, [r] rejects NodeA (from undecided) and
-      // cascades UP to its ancestor NodeB.
       stdin.write('r');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
@@ -706,8 +647,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     });
 
     it('Space on a cycle-tier row does NOT accept (L9 rebind: space = collapse)', () => {
-      // L9 rebind: Space no longer accepts — it toggles group collapse. [a]
-      // accepts, [r] rejects. This pins the rebind against future regressions.
       const onConfirm = vi.fn();
       const { stdin } = render(
         <ScopeGateStep components={CYCLE} onConfirm={onConfirm} onQuit={() => {}} />,
@@ -723,9 +662,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin } = render(
         <ScopeGateStep components={CYCLE} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // Reject NodeA → both A and B flip to rejected. Then [a] on NodeA
-      // re-accepts BOTH — cycle-unit cohesion (task #47) means the whole
-      // cycle must move together at all times.
       stdin.write('r');
       stdin.write('a');
       stdin.write('f');
@@ -735,9 +671,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     });
 
     it('cycle-row glyph still renders after a cycle participant is rejected', () => {
-      // Cycle detection runs on the extracted graph, not the pushed subset —
-      // so the ⚠ (cycle) marker stays visible even after the reject. Pins
-      // current behavior against future re-rendering changes.
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
       );
@@ -772,7 +705,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       stdin.write('/');
       stdin.write('b');
       const frame = lastFrame() ?? '';
-      // Only BetaBadge and GammaButton contain 'b'.
       expect(frame).toContain('/b');
       expect(frame).toContain('2/3');
     });
@@ -783,10 +715,10 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       );
       stdin.write('/');
       stdin.write('b');
-      stdin.write('\r'); // close input, preserve query
+      stdin.write('\r');
       let frame = lastFrame() ?? '';
       expect(frame).toContain('/b');
-      stdin.write('\x1b'); // Esc
+      stdin.write('\x1b');
       frame = lastFrame() ?? '';
       expect(frame).not.toContain('/b');
     });
@@ -797,8 +729,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
         { name: 'Wizard', componentId: 'c1' },
         { name: 'Waffle', componentId: 'c2' },
       ];
-      // Fixture where two candidates share a longer common prefix ("Wid") so
-      // Tab can extend the query beyond what was typed.
       const LCP_FIXTURE = [
         { name: 'Widget', componentId: 'c0' },
         { name: 'Widen', componentId: 'c1' },
@@ -824,9 +754,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
         stdin.write('W');
         stdin.write('\t');
         const frame = lastFrame() ?? '';
-        // Query extended to the longest common prefix of Widget + Widen.
         expect(frame).toContain('/Wid');
-        // Possibilities strip lists both candidates.
         expect(frame).toContain('Widget');
         expect(frame).toContain('Widen');
       });
@@ -839,7 +767,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
         stdin.write('W');
         stdin.write('\t');
         const frame = lastFrame() ?? '';
-        // LCP of Widget/Wizard/Waffle is just "W" — query unchanged.
         expect(frame).toContain('/W');
         expect(frame).toContain('Widget');
         expect(frame).toContain('Wizard');
@@ -854,9 +781,8 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
         stdin.write('W');
         stdin.write('\t');
         expect(lastFrame() ?? '').toContain('Wizard');
-        stdin.write('i'); // narrows to Widget/Wizard; strip should clear on keystroke
+        stdin.write('i');
         const frame = lastFrame() ?? '';
-        // Strip cleared: the possibilities label is gone.
         expect(frame).not.toContain('possibilities:');
       });
 
@@ -879,16 +805,11 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
         );
         stdin.write('/');
         stdin.write('W');
-        stdin.write('\r'); // close, preserve query
+        stdin.write('\r');
         const before = lastFrame() ?? '';
         stdin.write('\t');
         const after = lastFrame() ?? '';
-        // Two-column layout: Tab is a no-op (not three-column). Frame unchanged
-        // materially — importantly, the query is still `/W` and the hint has
-        // updated to advertise [n].
         expect(after).toContain('/W');
-        // Regression: OLD behavior would have jumped to a different match; the
-        // cursor line before/after should still refer to the same match.
         void before;
       });
 
@@ -898,7 +819,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
         );
         stdin.write('/');
         stdin.write('W');
-        stdin.write('\r'); // close, preserve query — cursor on first match (Waffle)
+        stdin.write('\r');
         const before = lastFrame() ?? '';
         stdin.write('n');
         const after = lastFrame() ?? '';
@@ -935,7 +856,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
           aiFilterProgress={{ done: 0, total: 3 }}
         />,
       );
-      // No AI summary yet (no rejections at mount).
       expect(lastFrame() ?? '').not.toContain('AI recommended exclusions');
 
       const updated = [
@@ -946,9 +866,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       rerender(<ScopeGateStep components={updated} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />);
       const frame = lastFrame() ?? '';
       expect(frame).toContain('AI recommended exclusions');
-      // Focused-row detail carries the reason when cursor lands on BadgeIcon.
-      // Cursor is on the first alphabetical standalone (BadgeIcon), so the
-      // reason renders inline.
       expect(frame).toContain('low semantic value');
     });
 
@@ -961,11 +878,8 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin, rerender } = render(
         <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="running" />,
       );
-      // Accept-all first so Card lands accepted. Then move cursor to Button
-      // (index 0 after alphabetical sort) and reject it explicitly. The
-      // re-render arrives mid-flight; the operator decision must survive.
       stdin.write('A');
-      stdin.write('r'); // reject Button (cursor is on Button at index 0)
+      stdin.write('r');
       rerender(
         <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
       );
@@ -986,7 +900,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       const { stdin, rerender } = render(
         <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="running" />,
       );
-      // Standalone tier alphabetical: BadgeIcon first (cursor on it). `a` toggles ON.
       stdin.write('a');
       const updated = [
         ...initial,
@@ -1004,14 +917,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
   });
 });
 
-// ── Tri-state (deselect-descendants) semantics ──────────────────────────────
-//
-// Rejecting a parent no longer cascades a *reject* to descendants. It marks
-// descendants as `undecided` (deselected) instead. Ancestors that slot the
-// target still cascade-reject (manifest integrity). Space toggle skips the
-// undecided state — [a] promotes it back to accepted; [r] pushes it to
-// rejected.
-
 describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
   const ROOT_WITH_TWO_CHILDREN = [
     {
@@ -1028,16 +933,14 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     const { stdin, lastFrame } = render(
       <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Accept-all first so Card + descendants are accepted. Cursor on Card root.
     stdin.write('A');
-    stdin.write('r'); // reject Card — 2 descendants → prompt
+    stdin.write('r');
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Rejecting Card will:');
     expect(frame).toContain('Deselect descendants:');
     expect(frame).toContain('Text');
     expect(frame).toContain('Icon');
     stdin.write('y');
-    // After apply: Card row shows [✗], descendants show [ ].
     const after = lastFrame() ?? '';
     expect(after).toContain('[✗]');
     expect(after).toContain('[ ]');
@@ -1048,14 +951,12 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     const { stdin } = render(
       <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Accept-all first. Rows: Card root, Icon child, Text child.
     stdin.write('A');
-    stdin.write('j'); // Icon child
-    stdin.write('r'); // reject Icon — 1 ancestor (Card), 0 descendants
+    stdin.write('j');
+    stdin.write('r');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
     expect(arg.rejected).toEqual(expect.arrayContaining(['Icon', 'Card']));
-    // Text was never touched by the deselect cascade — remains accepted.
     expect(arg.accepted).toContain('Text');
   });
 
@@ -1076,11 +977,9 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     const { stdin, lastFrame } = render(
       <ScopeGateStep components={MIDDLE} onConfirm={() => {}} onQuit={() => {}} />,
     );
-    // Accept-all first so Mid is accepted (else [r] rejects from undecided
-    // with no descendants to deselect).
     stdin.write('A');
-    stdin.write('j'); // Mid
-    stdin.write('r'); // reject Mid → 1 ancestor (Root) + 1 descendant (Leaf) = 2 → prompt
+    stdin.write('j');
+    stdin.write('r');
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Rejecting Mid will:');
     expect(frame).toContain('Reject ancestors: Root');
@@ -1092,8 +991,8 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     const { stdin } = render(
       <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    stdin.write('A'); // accept-all
-    stdin.write('r'); // reject Card — Text/Icon → undecided (via prompt)
+    stdin.write('A');
+    stdin.write('r');
     stdin.write('y');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -1106,11 +1005,11 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     const { stdin } = render(
       <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    stdin.write('A'); // everything accepted
-    stdin.write('r'); // reject Card → Text/Icon → undecided
+    stdin.write('A');
+    stdin.write('r');
     stdin.write('y');
-    stdin.write('j'); // Icon child (alphabetical)
-    stdin.write('a'); // accept Icon (leaf → no descendants to cascade)
+    stdin.write('j');
+    stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
     expect(arg.accepted).toContain('Icon');
@@ -1123,8 +1022,6 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
     const { stdin } = render(
       <ScopeGateStep components={ROOT_WITH_TWO_CHILDREN} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // L9 rebind: Space toggles collapse, not accept. Card stays undecided →
-    // partitions into rejected on confirm.
     stdin.write(' ');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -1132,17 +1029,7 @@ describe('ScopeGateStep — tri-state (deselect-descendants) semantics', () => {
   });
 });
 
-// ── Cycle-unit cohesion (task #47) ──────────────────────────────────────────
-//
-// Cycle members must stay in the same state after any single [a]/[r] action.
-// [a] on any cycle member accepts the whole unit + full descendant closure.
-// [r] on any cycle member rejects the whole unit + ancestors that slot it.
-// [a] on a non-cycle ancestor whose slot targets a cycle also drags the
-// cycle unit in — otherwise the accepted parent references a non-accepted
-// slot target (invariant violation, breaks topo-sort at push).
-
 describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
-  // Two-node cycle: NodeA ↔ NodeB.
   const TWO_CYCLE = [
     {
       name: 'NodeA',
@@ -1161,7 +1048,6 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
     const { stdin } = render(
       <ScopeGateStep components={TWO_CYCLE} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Cursor starts on NodeA (cycle-tier alphabetical). [a] accepts.
     stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -1194,7 +1080,6 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
     const { stdin } = render(
       <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Cursor on NodeA cycle-tier row. [a] cascades into cycle + descendants.
     stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -1214,13 +1099,10 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
     const { stdin } = render(
       <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Cursor starts on the first cycle-tier row. Cycle-tier rows are
-    // expandable and duplicated per participant, so counting `j` presses is
-    // fragile — jump to Wrapper via fuzzy search instead.
     stdin.write('/');
     stdin.write('W');
     stdin.write('r');
-    stdin.write('\r'); // Enter jumps cursor + closes input
+    stdin.write('\r');
     stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -1228,7 +1110,6 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
   });
 
   it('[a] on an ancestor with a cycle two levels down accepts all of them', () => {
-    // Wrapper → SharedInterior → InnerA ↔ InnerB.
     const setup = [
       {
         name: 'Wrapper',
@@ -1255,10 +1136,6 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
     const { stdin } = render(
       <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Move past the two cycle-tier rows (InnerA, InnerB) and the
-    // SharedInterior composite group-child rows to the Wrapper group-root.
-    // Simpler: press [Y] which accepts non-cycle, non-AI-flagged with
-    // reachable cycles included by design.
     stdin.write('Y');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -1268,8 +1145,6 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
   });
 
   it('[r] on a cycle member rejects every member + ancestors that reference any member', () => {
-    // Wrapper1 slots NodeA; Wrapper2 slots NodeB. Rejecting NodeA must
-    // reject the whole cycle unit (NodeA, NodeB) AND both wrappers.
     const setup = [
       {
         name: 'Wrapper1',
@@ -1287,10 +1162,7 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
     const { stdin, lastFrame } = render(
       <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Accept-all first to make [r] meaningful.
     stdin.write('A');
-    // Cursor is on NodeA (cycle-tier first). [r] rejects — blast radius > 1
-    // (NodeB partner + Wrapper1 + Wrapper2), so a confirm prompt appears.
     stdin.write('r');
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Rejecting NodeA will:');
@@ -1304,7 +1176,6 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
   });
 
   it('[r] on a non-cycle ancestor of a cycle: ancestor rejected, cycle members deselect, non-cycle descendants deselect', () => {
-    // Wrapper → NodeA ↔ NodeB, plus a non-cycle Leaf child of Wrapper.
     const setup = [
       {
         name: 'Wrapper',
@@ -1321,19 +1192,14 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
     const { stdin } = render(
       <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Accept-all first so everything reachable is accepted.
     stdin.write('A');
-    // Jump to Wrapper via search — cursor-jump semantics are stable across
-    // the cycle-tier expansion rows.
     stdin.write('/');
     stdin.write('W');
     stdin.write('\r');
-    stdin.write('r'); // reject Wrapper — blast radius includes Leaf + cycle → prompt
+    stdin.write('r');
     stdin.write('y');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    // Wrapper rejected. Cycle members and Leaf deselected → undecided →
-    // partitioned into rejected on confirm.
     expect(arg.rejected).toEqual(
       expect.arrayContaining(['Wrapper', 'NodeA', 'NodeB', 'Leaf']),
     );
@@ -1357,7 +1223,6 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
     stdin.write('A');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
-    // Wrapper slots NodeA → cohesion pulls NodeA + NodeB in as accepted.
     expect(arg.accepted).toEqual(
       expect.arrayContaining(['Wrapper', 'Standalone', 'NodeA', 'NodeB']),
     );
@@ -1403,13 +1268,9 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
     const { stdin } = render(
       <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Sequence: A (accept all) → r on NodeA (reject cycle) → confirm →
-    // a on Wrapper1 (re-accept ancestor + cycle).
     stdin.write('A');
-    stdin.write('r'); // cursor is NodeA
+    stdin.write('r');
     stdin.write('y');
-    // Jump to Wrapper1 via search — cycle-tier row duplication makes j/k
-    // counting fragile.
     stdin.write('/');
     stdin.write('W');
     stdin.write('r');
@@ -1421,9 +1282,6 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
     const accepted = new Set(arg.accepted);
-    // Invariant check: every accepted component's slot targets must be
-    // accepted OR in the same cycle unit as the accepted component. Because
-    // task #47's cascade should guarantee this, we assert directly.
     for (const c of setup) {
       if (!accepted.has(c.name)) continue;
       for (const slot of c.slots ?? []) {
@@ -1432,12 +1290,10 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
         }
       }
     }
-    // Concretely: Wrapper1 accepted → NodeA + NodeB accepted (cohesion).
     expect(arg.accepted).toEqual(expect.arrayContaining(['Wrapper1', 'NodeA', 'NodeB']));
   });
 
   it('[a] on a cycle member with two overlapping cycles pulls both units together', () => {
-    // A ↔ B ↔ C: A↔B and B↔C, sharing B. Accepting A must accept all three.
     const setup = [
       {
         name: 'A',
@@ -1462,8 +1318,6 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
     const { stdin } = render(
       <ScopeGateStep components={setup} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // All three are cycle participants → all live in the cycle tier
-    // (alphabetical). Cursor starts on A. [a] pulls whole unit in.
     stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -1471,15 +1325,6 @@ describe('ScopeGateStep — cycle-unit cohesion (task #47)', () => {
     expect(arg.rejected).toEqual([]);
   });
 });
-
-// ADR-0010 §Part 2 canonical scenarios — driven through the real ScopeGateStep
-// component. Pins mount defaults (everything undecided, NO auto-reject),
-// cycle-unit cohesion, and slot-edge cascade per topology.
-//
-// Scenarios:
-//   A — P and C cycle with each other (P.slots⊃C, C.slots⊃P).
-//   B — P slots C; C cycles with unrelated X (P not in cycle).
-//   C — P cycles with X; P also slots C; C has no slots (leaf).
 
 describe('ScopeGateStep — ADR-0010 scenarios', () => {
   describe('Scenario A — P ↔ C cycle-unit', () => {
@@ -1497,14 +1342,10 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
     ];
 
     it('mount defaults — nothing accepted, NO auto-reject (ADR-0010 §Part 1)', () => {
-      // Everything defaults to undecided in ScopeGate. Confirming right away
-      // partitions everything (including cycle participants) into rejected —
-      // no auto-reject flipped anything before the operator touched a key.
       const onConfirm = vi.fn();
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={SCENARIO_A} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // "nothing selected" hint proves no auto-accept/reject happened at mount.
       expect(lastFrame() ?? '').toContain('nothing selected');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
@@ -1513,8 +1354,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
     });
 
     it('[a] on either cycle member accepts BOTH via cycle-unit cohesion', () => {
-      // Cursor starts on C (cycle tier alphabetical). [a] on C must accept
-      // both C and P — cycle-unit cohesion (task #47).
       const onConfirm = vi.fn();
       const { stdin } = render(
         <ScopeGateStep components={SCENARIO_A} onConfirm={onConfirm} onQuit={() => {}} />,
@@ -1527,8 +1366,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
     });
 
     it('[r] on either cycle member rejects BOTH via cycle-unit cohesion', () => {
-      // Cursor on C (first cycle-tier alphabetical). [r] rejects the whole
-      // unit. Blast radius is 1 partner (P) + 0 descendants → no confirm prompt.
       const onConfirm = vi.fn();
       const { stdin } = render(
         <ScopeGateStep components={SCENARIO_A} onConfirm={onConfirm} onQuit={() => {}} />,
@@ -1567,7 +1404,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       );
       const frame = lastFrame() ?? '';
       expect(frame).toContain('nothing selected');
-      // [c] legend advertises the cycle affordance — cycle detection ran.
       expect(frame).toContain('[c]');
       stdin.write('f');
       const arg = onConfirm.mock.calls[0][0];
@@ -1575,10 +1411,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
     });
 
     it('accepting P via [Y] cascades DOWN P→C and cohesion pulls X in', () => {
-      // ADR-0010 §Part 2 scenario B: "Accepting P cascades DOWN to C,
-      // cohesion pulls X into accepted as well." [Y] accepts every non-cycle
-      // non-AI-flagged component (P) then adds every cycle unit reachable
-      // via slot closure from those seeds. P → C → X unit → both pulled in.
       const onConfirm = vi.fn();
       const { stdin } = render(
         <ScopeGateStep components={SCENARIO_B} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
@@ -1591,10 +1423,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
     });
 
     it('[a] on cycle member C accepts cycle-unit {C,X}; P not pulled in (P is ancestor, not descendant)', () => {
-      // Cursor starts on C (first cycle-tier alphabetical). Accept C →
-      // cohesion pulls X. Cascade goes DOWN through slot edges. P is an
-      // ancestor (P slots C), NOT a descendant of C → accept does not
-      // touch P. P stays undecided → partitions to rejected on [f].
       const onConfirm = vi.fn();
       const { stdin } = render(
         <ScopeGateStep components={SCENARIO_B} onConfirm={onConfirm} onQuit={() => {}} />,
@@ -1638,9 +1466,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
     });
 
     it('[a] on cycle member P accepts cycle-unit {P,X} AND descendant C via slot cascade', () => {
-      // ADR-0010 §Part 2 scenario C: "Accept P → cohesion flips X;
-      // slot-edge cascade P→C flips C." Cursor starts on P (first cycle-tier
-      // alphabetical). [a] accepts P → cohesion pulls X + slot P→C flips C.
       const onConfirm = vi.fn();
       const { stdin } = render(
         <ScopeGateStep components={SCENARIO_C} onConfirm={onConfirm} onQuit={() => {}} />,
@@ -1653,14 +1478,10 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
     });
 
     it('[a] on non-cycle descendant C accepts C only — no cascade up to ancestors', () => {
-      // Scenario-C corollary: C is a leaf, so accepting C should not drag P
-      // (its parent) or X into accepted. Ancestor cascade is a REJECT-only
-      // direction; accepts flow strictly DOWN through slots.
       const onConfirm = vi.fn();
       const { stdin } = render(
         <ScopeGateStep components={SCENARIO_C} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // Jump to C via search — cycle-tier row layout makes j-counts fragile.
       stdin.write('/');
       stdin.write('C');
       stdin.write('\r');
@@ -1675,7 +1496,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
   });
 
   describe('T4 — search-time neighborhood filter (grouped view)', () => {
-    // A slots B slots C slots D. Cursor starts on A.
     const CHAIN = [
       { name: 'A', componentId: 'a', slots: [{ name: 's', allowedComponents: ['B'] }] },
       { name: 'B', componentId: 'b', slots: [{ name: 's', allowedComponents: ['C'] }] },
@@ -1690,17 +1510,12 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       stdin.write('/');
       stdin.write('B');
       const frame = lastFrame() ?? '';
-      // Look at lines that carry a selection glyph — those are the sidebar
-      // rows for real components. At tip (no filter) every component
-      // renders such a row; with the filter active, D's row is dropped.
       const componentRowLines = frame
         .split('\n')
         .filter((l) => /\[[ ✓✗×]\]/.test(l));
       const namesInSidebar = new Set<string>();
       for (const l of componentRowLines) {
         for (const name of ['A', 'B', 'C', 'D']) {
-          // Match component labels as isolated tokens (adjacent to
-          // whitespace, tree glyphs, or line boundaries).
           if (new RegExp(`(^|[\\s├└─▸▾]) ?${name}(\\s|$|[^A-Za-z])`).test(l)) {
             namesInSidebar.add(name);
           }
@@ -1717,7 +1532,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         <ScopeGateStep components={CHAIN} onConfirm={() => {}} onQuit={() => {}} />,
       );
       const before = lastFrame() ?? '';
-      // Grab the "Found N component" line.
       const totalLineBefore = before.split('\n').find((l) => /Found \d+ component/.test(l)) ?? '';
       stdin.write('/');
       stdin.write('B');
@@ -1729,7 +1543,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
   });
 
   describe('T5 — jump-and-filter [i] (transitive ancestors)', () => {
-    // A slots B slots C slots D.
     const CHAIN = [
       { name: 'A', componentId: 'a', slots: [{ name: 's', allowedComponents: ['B'] }] },
       { name: 'B', componentId: 'b', slots: [{ name: 's', allowedComponents: ['C'] }] },
@@ -1764,7 +1577,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={CHAIN} onConfirm={() => {}} onQuit={() => {}} />,
       );
-      // Alphabetical grouped order: A, B, C, D. Move to C.
       focusRow(stdin, 'A', 'C', ['A', 'B', 'C', 'D']);
       stdin.write('i');
       const names = sidebarNames(lastFrame() ?? '');
@@ -1778,7 +1590,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={CHAIN} onConfirm={() => {}} onQuit={() => {}} />,
       );
-      // Cursor starts on A (root).
       stdin.write('i');
       const names = sidebarNames(lastFrame() ?? '');
       expect(names.has('A')).toBe(true);
@@ -1806,7 +1617,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       );
       focusRow(stdin, 'A', 'C', ['A', 'B', 'C', 'D']);
       stdin.write('i');
-      // Esc key
       stdin.write('');
       const names = sidebarNames(lastFrame() ?? '');
       expect(names.has('A')).toBe(true);
@@ -1824,10 +1634,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
     });
   });
 
-  // T7 — focused-row detail line no longer truncates the AI reason at 60 chars.
-  // Full reason renders (wrapped) up to a 4-line cap with an ellipsis on
-  // overflow. The AI-recommends-exclusions banner list still uses the compact
-  // truncated form.
   describe('T7 — no-truncate AI reason on focused-row detail', () => {
     it('renders the full AI reason past the 60-char truncate boundary on the focused row', () => {
       const marker = 'UNIQUEMARKERWORD';
@@ -1841,17 +1647,11 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         <ScopeGateStep components={local} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
       const out = lastFrame() ?? '';
-      // Focused row is AAA (alphabetically first). Full reason (including the
-      // marker at position 65) must appear — no 60-char truncate on this line.
       expect(out).toContain(marker);
     });
 
     it('AI-rationale goto-banner row renders the FULL reason without truncation (L7)', async () => {
       const longReason = 'x'.repeat(80) + 'TAILWORD';
-      // Aaa is a non-flagged standalone that sorts first, so it (not the flagged
-      // Zeta) is the initially-focused row — keeping Zeta's reason out of the
-      // focused-row detail block, so the ONLY place the reason surfaces is the
-      // goto-banner.
       const local = [
         { name: 'Aaa', componentId: 'c0' },
         { name: 'Zeta', componentId: 'c1', aiDecision: 'rejected' as const, aiReason: longReason },
@@ -1859,9 +1659,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={local} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
-      // The banner no longer truncates: the full reason renders (the sidebar-slot
-      // box wraps long text), so the tail past the old 60-char cap must appear
-      // and no ellipsis cap is applied to the row.
       stdin.write('x');
       await new Promise((r) => setTimeout(r, 30));
       const out = lastFrame() ?? '';
@@ -1878,7 +1675,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         <ScopeGateStep components={local} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
       const out = lastFrame() ?? '';
-      // Cap fires: the marker at position 500 must NOT be present.
       expect(out).not.toContain('TAILMARKER');
     });
   });
@@ -1902,10 +1698,9 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       const open = stripAnsi(lastFrame() ?? '');
       expect(open).toContain('Help');
       expect(open).toMatch(/lineage/i);
-      // ScopeGate has no undo/redo.
       expect(open).not.toContain('Ctrl+Z');
 
-      stdin.write('\x1b'); // Esc
+      stdin.write('\x1b');
       await new Promise((r) => setTimeout(r, 30));
       expect(stripAnsi(lastFrame() ?? '')).not.toContain('Help');
     });
@@ -1944,17 +1739,57 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       const { stdin, lastFrame } = render(
         <ScopeGateStep components={MANY} onConfirm={() => {}} onQuit={() => {}} />,
       );
-      stdin.write('l'); // open lineage panel
+      stdin.write('l');
       await new Promise((r) => setTimeout(r, 30));
       const openFrame = lastFrame() ?? '';
       const openRows = countSidebarRows(openFrame);
 
-      // Panel is open (its header renders).
       expect(openFrame).toContain('Lineage:');
-      // Sidebar shrank: with stdout.rows unavailable in tests the layout uses
-      // the conservative fallback, which shrinks the sidebar well below the
-      // full closed height so the whole stack fits.
       expect(openRows).toBeLessThan(closedRows);
+    });
+  });
+
+  describe('L2e — sidebar autoscales to a small terminal height', () => {
+    const MANY = Array.from({ length: 30 }, (_, i) => ({
+      name: `Comp${String(i).padStart(2, '0')}`,
+      componentId: `c${i}`,
+    }));
+
+    function countSidebarRows(frame: string): number {
+      return frame
+        .split('\n')
+        .filter((l) => /Comp\d\d/.test(l) && !/Lineage/.test(l)).length;
+    }
+
+    function withRows(rows: number): () => void {
+      const probe = render(<ScopeGateStep components={[]} onConfirm={() => {}} onQuit={() => {}} />);
+      const proto = Object.getPrototypeOf(probe.stdout);
+      const original = Object.getOwnPropertyDescriptor(proto, 'rows');
+      Object.defineProperty(proto, 'rows', { configurable: true, get: () => rows });
+      probe.unmount();
+      probe.cleanup();
+      return () => {
+        if (original) Object.defineProperty(proto, 'rows', original);
+        else delete (proto as Record<string, unknown>).rows;
+      };
+    }
+
+    it('renders FEWER sidebar rows on a short terminal than on a tall one', () => {
+      const restoreTall = withRows(60);
+      const tall = render(<ScopeGateStep components={MANY} onConfirm={() => {}} onQuit={() => {}} />);
+      const tallRows = countSidebarRows(tall.lastFrame() ?? '');
+      tall.unmount();
+      tall.cleanup();
+      restoreTall();
+
+      const restoreShort = withRows(24);
+      const short = render(<ScopeGateStep components={MANY} onConfirm={() => {}} onQuit={() => {}} />);
+      const shortRows = countSidebarRows(short.lastFrame() ?? '');
+      short.unmount();
+      short.cleanup();
+      restoreShort();
+
+      expect(shortRows).toBeLessThan(tallRows);
     });
   });
 
@@ -1971,10 +1806,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       };
     }
 
-    // Article slots Card; Zzz is an unrelated standalone that only ever
-    // renders in the main sidebar (undecided → never in the added columns,
-    // never in Card's lineage). So its presence is a proxy for "the
-    // GroupedSidebar is rendered".
     const FIXTURE_L2D = [
       { name: 'Article', componentId: 'a0', slots: [{ name: 'body', allowedComponents: ['Card'] }] },
       { name: 'Card', componentId: 'c0' },
@@ -1987,25 +1818,18 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         const { lastFrame, stdin } = render(
           <ScopeGateStep components={FIXTURE_L2D} onConfirm={() => {}} onQuit={() => {}} />,
         );
-        // Baseline: sidebar renders Zzz, columns 2 & 3 present.
         const before = lastFrame() ?? '';
         expect(before).toContain('Zzz');
         expect(before).toContain('Added components');
         expect(before).toContain('Added groups');
 
-        // Focus Card, open lineage.
-        stdin.write('j'); // move off Article toward Card
+        stdin.write('j');
         await new Promise((r) => setTimeout(r, 30));
         stdin.write('l');
         await new Promise((r) => setTimeout(r, 30));
         const open = lastFrame() ?? '';
 
-        // (a) the lineage panel content renders.
-        expect(open).toContain('Lineage:');
-        // (b) the GroupedSidebar no longer occupies the sidebar slot — the
-        // sidebar-only component Zzz is gone.
         expect(open).not.toContain('Zzz');
-        // (c) columns 2 & 3 stay visible alongside the overlay.
         expect(open).toContain('Added components');
         expect(open).toContain('Added groups');
       } finally {
@@ -2029,10 +1853,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       };
     }
 
-    // BadgeIcon + DivWrapper are AI-flagged with reasons. Hero is an
-    // undecided, non-flagged standalone that only ever renders in the main
-    // sidebar (never in the added columns, never AI-flagged) — so its presence
-    // is a proxy for "the GroupedSidebar occupies the sidebar slot".
     const MIXED = [
       { name: 'Button', componentId: 'c0' },
       { name: 'Card', componentId: 'c1' },
@@ -2046,12 +1866,8 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
       const out = stripAnsi(lastFrame() ?? '');
-      // One-line hint carries the count + the keybinding.
       expect(out).toContain('AI recommended exclusions');
       expect(out).toContain('[x]');
-      // The OLD inline gray list is gone: DivWrapper's reason no longer renders
-      // inline (BadgeIcon is the initially-focused row so its reason still shows
-      // in the focused-row detail — DivWrapper's does not appear anywhere).
       expect(out).not.toContain('no semantic content');
     });
 
@@ -2062,7 +1878,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
           <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
         );
         const before = stripAnsi(lastFrame() ?? '');
-        // Baseline: sidebar renders Hero, columns 2 & 3 present.
         expect(before).toContain('Hero');
         expect(before).toContain('Added components');
         expect(before).toContain('Added groups');
@@ -2071,16 +1886,12 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         await new Promise((r) => setTimeout(r, 30));
         const open = stripAnsi(lastFrame() ?? '');
 
-        // (a) banner lists AI-flagged components.
         expect(open).toContain('BadgeIcon');
         expect(open).toContain('DivWrapper');
-        // (b) sidebar slot is replaced — the sidebar-only Hero is gone.
         expect(open).not.toContain('Hero');
-        // (c) columns 2 & 3 stay visible alongside the banner (no stacking).
         expect(open).toContain('Added components');
         expect(open).toContain('Added groups');
 
-        // Esc closes; sidebar (Hero) returns.
         stdin.write('\x1b');
         await new Promise((r) => setTimeout(r, 30));
         const closed = stripAnsi(lastFrame() ?? '');
@@ -2097,13 +1908,13 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         const { stdin } = render(
           <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
         );
-        stdin.write('x'); // open AI-rationale banner (cursor on BadgeIcon)
+        stdin.write('x');
         await new Promise((r) => setTimeout(r, 30));
-        stdin.write('j'); // move banner cursor to DivWrapper
+        stdin.write('j');
         await new Promise((r) => setTimeout(r, 30));
-        stdin.write('\r'); // Enter → jump main cursor to DivWrapper + close
+        stdin.write('\r');
         await new Promise((r) => setTimeout(r, 30));
-        stdin.write('a'); // accept the now-focused row
+        stdin.write('a');
         stdin.write('f');
         const arg = onConfirm.mock.calls[onConfirm.mock.calls.length - 1][0];
         expect(arg.accepted).toContain('DivWrapper');
@@ -2124,7 +1935,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       stdin.write('x');
       await new Promise((r) => setTimeout(r, 30));
       const out = stripAnsi(lastFrame() ?? '');
-      // No banner opened (Alpha still in the sidebar; nothing changed).
       expect(out).toContain('Alpha');
       expect(out).not.toContain('AI recommended exclusions');
     });
@@ -2132,8 +1942,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
 
   describe('L8 — category filters (broken / cycles)', () => {
     const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
-    // NodeA ↔ NodeB form a cycle; Standalone is a plain non-cycle component;
-    // BadgeIcon is AI-flagged (broken).
     const FIX = [
       {
         name: 'NodeA',
@@ -2160,7 +1968,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       const filtered = stripAnsi(lastFrame() ?? '');
       expect(filtered).toContain('NodeA');
       expect(filtered).toContain('NodeB');
-      // Non-cycle standalone is hidden in grouped view under an active filter.
       expect(filtered).not.toContain('Standalone');
       stdin.write('o');
       await new Promise((r) => setTimeout(r, 20));
@@ -2216,10 +2023,8 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       );
       await new Promise((r) => setTimeout(r, 20));
       const legend = stripAnsi(lastFrame() ?? '');
-      // No bare identical "cycles" label for both keys.
       expect(legend).toContain('[c] cycle list');
       expect(legend).toContain('[o] only cycles');
-      // Help panel uses the same distinct labels.
       stdin.write('?');
       await new Promise((r) => setTimeout(r, 30));
       const help = stripAnsi(lastFrame() ?? '');
@@ -2233,9 +2038,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       );
       await new Promise((r) => setTimeout(r, 20));
       const legend = stripAnsi(lastFrame() ?? '');
-      // These toggle/mode keys get the active-highlight treatment via
-      // legendEntry (the highlight mechanism itself is unit-tested in
-      // LegendEntry.test.tsx; ink-testing-library strips ANSI here).
       expect(legend).toContain('[L] flat');
       expect(legend).toContain('[/] search');
       expect(legend).toContain('[l] lineage');
@@ -2266,12 +2068,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
   });
 });
 
-// ── L9 — expand/collapse groups + accept/reject GR parity ───────────────────
-//
-// ScopeGate mirrors GenerateReview's collapse model: [Space] toggles the
-// focused group, [E]/[C] expand/collapse all. Accept rebinds so [a] accepts
-// and [Space] NO LONGER accepts (it collapses). Groups seed expanded so the
-// default view matches the previous always-expanded behavior.
 
 describe('ScopeGateStep — L9 collapse + accept rebind', () => {
   const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
@@ -2290,7 +2086,6 @@ describe('ScopeGateStep — L9 collapse + accept rebind', () => {
     const { stdin } = render(
       <ScopeGateStep components={GROUP} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Cursor on Card group-root. Space must NOT accept it.
     stdin.write(' ');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -2325,13 +2120,11 @@ describe('ScopeGateStep — L9 collapse + accept rebind', () => {
       <ScopeGateStep components={GROUP} onConfirm={() => {}} onQuit={() => {}} />,
     );
     await flush();
-    // Cursor on Card root. Collapse.
     stdin.write(' ');
     await flush();
     let frame = stripAnsi(lastFrame() ?? '');
     expect(frame).toMatch(/▸ Card/);
     expect(frame).not.toMatch(/[├└]─ Body/);
-    // Re-expand.
     stdin.write(' ');
     await flush();
     frame = stripAnsi(lastFrame() ?? '');
@@ -2373,15 +2166,12 @@ describe('ScopeGateStep — L9 collapse + accept rebind', () => {
       <ScopeGateStep components={CYCLE} onConfirm={() => {}} onQuit={() => {}} />,
     );
     await flush();
-    // Cycle-tier rows render expanded by seed.
     let frame = stripAnsi(lastFrame() ?? '');
     expect(frame).toMatch(/▾ ⚠ NodeA/);
-    // Collapse-all must fold the cycle subtree.
     stdin.write('C');
     await flush();
     frame = stripAnsi(lastFrame() ?? '');
     expect(frame).toMatch(/▸ ⚠ NodeA/);
-    // Expand-all restores it.
     stdin.write('E');
     await flush();
     frame = stripAnsi(lastFrame() ?? '');
@@ -2408,5 +2198,82 @@ describe('ScopeGateStep — L9 collapse + accept rebind', () => {
     await new Promise((r) => setTimeout(r, 30));
     const help = stripAnsi(lastFrame() ?? '');
     expect(help).not.toContain('a / space');
+  });
+});
+
+describe('FB2 — cursor + selection coherence under active category filters', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+  const cursorRowLabel = (frame: string): string | undefined => {
+    const line = stripAnsi(frame)
+      .split('\n')
+      .find((l) => l.includes('▶'));
+    if (!line) return undefined;
+    return line.replace(/[▶✓✗×⚠▸▾├└─│\[\] ]/g, ' ').replace(/\s+/g, ' ').trim();
+  };
+
+  const FIX = [
+    { name: 'Aaa', componentId: 'a' },
+    { name: 'Bbb', componentId: 'b' },
+    { name: 'Ccc', componentId: 'c' },
+    { name: 'Ddd', componentId: 'd' },
+    { name: 'Zbrk1', componentId: 'z1', aiDecision: 'rejected' as const, aiReason: 'low value' },
+    { name: 'Zbrk2', componentId: 'z2', aiDecision: 'rejected' as const, aiReason: 'low value' },
+  ];
+
+  it('after [w] shrinks the list, a single [k] moves the cursor (not stuck on a stale index)', async () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j');
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('w');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk2');
+    stdin.write('k');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk1');
+  });
+
+  it('accept targets the row the cursor moved to after a filter shrink', async () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={FIX} onConfirm={onConfirm} onQuit={() => {}} />,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j');
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('w');
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('k');
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('a');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[onConfirm.mock.calls.length - 1][0];
+    expect(arg.accepted).toContain('Zbrk1');
+    expect(arg.accepted).not.toContain('Zbrk2');
+  });
+
+  it('toggling [w] off then on again keeps navigation working (not stuck)', async () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('w');
+    stdin.write('w');
+    await new Promise((r) => setTimeout(r, 20));
+    stdin.write('w');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk2');
+    stdin.write('k');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk1');
   });
 });
