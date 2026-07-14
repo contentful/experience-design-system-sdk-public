@@ -120,6 +120,15 @@ type FieldEditorProps = {
    * branch. Undefined = no discard requests (backwards compatible).
    */
   discardTrigger?: number;
+  /**
+   * BD4: seed the mount-time cursor to a named prop/slot instead of the
+   * default first prop. Resolved against the enumerated props/slots inside the
+   * initial-focus IIFE — when a prop/slot with that name exists, the editor
+   * opens focused + scrolled to it. Unknown names fall back to the default
+   * (first prop/slot). Accepts both kinds so slot-level breaking-change data
+   * (BD2) drops in later; today's wired path is property-level.
+   */
+  initialFocusTarget?: { kind: 'prop' | 'slot'; name: string };
 };
 
 /**
@@ -861,6 +870,7 @@ export function FieldEditor({
   currentComponentName,
   onDirtyChange,
   discardTrigger,
+  initialFocusTarget,
 }: FieldEditorProps): React.ReactElement {
   const { state: initialState, error: parseError } = parseToState(value);
 
@@ -874,10 +884,44 @@ export function FieldEditor({
   // Description is reached via navigation, not auto-focus — this avoids
   // trapping the user in description-edit (where j/k type literals).
   const initialFocus = (() => {
+    // BD4: resolve an initialFocusTarget against the enumerated props/slots so
+    // the editor opens focused + scrolled to the named field. Seeding propIdx/
+    // slotIdx is sufficient for scroll — the render-time `selectedRowIdx` math
+    // windows the selected row into view. Unknown names fall through to the
+    // default (first prop/slot).
+    if (initialFocusTarget) {
+      if (initialFocusTarget.kind === 'prop') {
+        const idx = initialState.props.findIndex((p) => p.name === initialFocusTarget.name);
+        if (idx >= 0) {
+          return {
+            focusLevel: 'prop' as FocusLevel,
+            inSlots: false,
+            propIdx: idx,
+            slotIdx: 0,
+            activeField: null as PropField | SlotField | null,
+            textCursor: 0,
+          };
+        }
+      } else {
+        const idx = initialState.slots.findIndex((s) => s.name === initialFocusTarget.name);
+        if (idx >= 0) {
+          return {
+            focusLevel: 'slot' as FocusLevel,
+            inSlots: true,
+            propIdx: 0,
+            slotIdx: idx,
+            activeField: null as PropField | SlotField | null,
+            textCursor: 0,
+          };
+        }
+      }
+    }
     if (initialState.props.length > 0) {
       return {
         focusLevel: 'prop' as FocusLevel,
         inSlots: false,
+        propIdx: 0,
+        slotIdx: 0,
         activeField: null as PropField | SlotField | null,
         textCursor: 0,
       };
@@ -886,6 +930,8 @@ export function FieldEditor({
       return {
         focusLevel: 'slot' as FocusLevel,
         inSlots: true,
+        propIdx: 0,
+        slotIdx: 0,
         activeField: null as PropField | SlotField | null,
         textCursor: 0,
       };
@@ -893,14 +939,16 @@ export function FieldEditor({
     return {
       focusLevel: 'prop' as FocusLevel,
       inSlots: false,
+      propIdx: 0,
+      slotIdx: 0,
       activeField: null as PropField | SlotField | null,
       textCursor: 0,
     };
   })();
 
   const [focusLevel, setFocusLevel] = useState<FocusLevel>(initialFocus.focusLevel);
-  const [propIdx, setPropIdx] = useState(0);
-  const [slotIdx, setSlotIdx] = useState(0);
+  const [propIdx, setPropIdx] = useState(initialFocus.propIdx);
+  const [slotIdx, setSlotIdx] = useState(initialFocus.slotIdx);
   // Whether we're navigating props (false) or slots (true) at the top level
   const [inSlots, setInSlots] = useState(initialFocus.inSlots);
   // True when the active focus is the component-level $description row (rather
