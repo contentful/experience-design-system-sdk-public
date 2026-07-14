@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -51,7 +52,7 @@ export function RunningStep({
       <Text>{description}</Text>
 
       <Box gap={1} marginTop={1}>
-        <Text color="cyan">{SPINNER_FRAMES[frame]}</Text>
+        <Text color={PALETTE.info}>{SPINNER_FRAMES[frame]}</Text>
         <Text dimColor>{detail ?? 'Running...'}</Text>
       </Box>
       <Box marginTop={1}>

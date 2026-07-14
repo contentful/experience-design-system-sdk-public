@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../../host-utils.js';
@@ -165,7 +166,7 @@ export function CredentialsStep({
     const fallback = field === 'host' ? DEFAULT_CONFIGURED_HOST : <Text dimColor>(empty)</Text>;
     return (
       <Box gap={1}>
-        <Text color={isActive ? 'cyan' : undefined}>{'?'}</Text>
+        <Text color={isActive ? PALETTE.info : undefined}>{'?'}</Text>
         <Text bold={isActive}>{label}:</Text>
         <Text>{isActive ? display + cursor : display || fallback}</Text>
       </Box>
@@ -176,7 +177,7 @@ export function CredentialsStep({
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      {summary && <Text color="green">✓ {summary}</Text>}
+      {summary && <Text color={PALETTE.success}>✓ {summary}</Text>}
 
       <Box marginTop={1}>
         <Text>
@@ -200,10 +201,10 @@ export function CredentialsStep({
       </Box>
       {activeField === 'host' && <Text dimColor>Default: api.contentful.com · EU spaces: api.eu.contentful.com</Text>}
 
-      {displayError && <Text color="red">✗ {displayError}</Text>}
+      {displayError && <Text color={PALETTE.error}>✗ {displayError}</Text>}
 
       {validating && (
-        <Text color="cyan">
+        <Text color={PALETTE.info}>
           {generatePrefetchStatus === 'running'
             ? 'Validating credentials & finishing component generation...'
             : 'Validating credentials...'}
@@ -212,10 +213,10 @@ export function CredentialsStep({
 
       {!validating && generatePrefetchStatus === 'running' && <Text dimColor>Component generation in progress...</Text>}
       {!validating && generatePrefetchStatus === 'complete' && (
-        <Text color="green">Component generation complete.</Text>
+        <Text color={PALETTE.success}>Component generation complete.</Text>
       )}
       {!validating && generatePrefetchStatus === 'failed' && (
-        <Text color="yellow">
+        <Text color={PALETTE.warning}>
           Component generation failed
           {generatePrefetchError ? `: ${generatePrefetchError}` : ''}. Will retry after credential validation.
           {onRetryPrefetch ? ' Press R to retry now.' : ''}

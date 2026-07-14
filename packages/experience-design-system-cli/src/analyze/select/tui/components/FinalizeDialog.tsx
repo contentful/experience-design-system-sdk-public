@@ -1,4 +1,5 @@
 import React from 'react';
+import { PALETTE } from '../theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../hooks/useImmediateInput.js';
 
@@ -32,19 +33,19 @@ export function FinalizeDialog({
       <Text bold>{'─'.repeat(17) + ' Finalize ' + '─'.repeat(17)}</Text>
       <Text> </Text>
       <Text>
-        <Text color="green">{accepted} accepted</Text>
+        <Text color={PALETTE.success}>{accepted} accepted</Text>
         <Text> · </Text>
-        <Text color="red">{rejected} rejected</Text>
+        <Text color={PALETTE.error}>{rejected} rejected</Text>
         <Text> · </Text>
         <Text dimColor>{needsReview} unresolved</Text>
       </Text>
       <Text> </Text>
       {!allResolved && (
         <>
-          <Text color="yellow">
+          <Text color={PALETTE.warning}>
             {'⚠ ' + needsReview + ' unresolved component' + (needsReview === 1 ? '' : 's') + ' will not be pushed.'}
           </Text>
-          <Text color="yellow">{'  Only explicitly accepted components ship.'}</Text>
+          <Text color={PALETTE.warning}>{'  Only explicitly accepted components ship.'}</Text>
           <Text> </Text>
         </>
       )}

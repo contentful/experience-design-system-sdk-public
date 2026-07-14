@@ -872,7 +872,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
         return (
           <Box key={row.key}>
             {isCursor ? (
-              <Text color="cyan" bold>
+              <Text color={PALETTE.info} bold>
                 {'▶'}
               </Text>
             ) : (
@@ -903,7 +903,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
             )}
             {aiFlaggedByKey !== undefined && (
               aiFlagged ? (
-                <Text color="yellow" bold>
+                <Text color={PALETTE.warning} bold>
                   {' [×]'}
                 </Text>
               ) : (

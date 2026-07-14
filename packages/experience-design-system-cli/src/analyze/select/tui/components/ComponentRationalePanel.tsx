@@ -1,4 +1,5 @@
 import React from 'react';
+import { PALETTE } from '../theme.js';
 import { Box, Text } from 'ink';
 import type { ComponentRationale } from '../../../../session/db.js';
 
@@ -151,7 +152,7 @@ export function ComponentRationalePanel({
       width={width}
       height={height + 2}
       borderStyle="single"
-      borderColor={active ? 'white' : undefined}
+      borderColor={active ? PALETTE.inverse : undefined}
     >
       <Box>
         <Text bold dimColor={!active}>
@@ -169,7 +170,7 @@ export function ComponentRationalePanel({
         if (line.kind === 'heading') {
           return (
             <Box key={i}>
-              <Text bold color="cyan" dimColor={!active}>
+              <Text bold color={PALETTE.info} dimColor={!active}>
                 {line.text}
               </Text>
             </Box>

@@ -1,4 +1,5 @@
 import { Box, Text, useStdout } from 'ink';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
@@ -1119,7 +1120,7 @@ export function ScopeGateStep({
 
   return (
     <Box flexDirection="column" paddingX={2}>
-      <Text color="green">✓ Extraction complete</Text>
+      <Text color={PALETTE.success}>✓ Extraction complete</Text>
       <Text dimColor>
         Found {totalComponents} component{totalComponents === 1 ? '' : 's'}. Pick which ones to import. Generation runs
         only on the included set.
@@ -1127,14 +1128,14 @@ export function ScopeGateStep({
 
       {showRunningHeader && (
         <Box flexDirection="column" marginTop={1}>
-          <Text color="cyan">
+          <Text color={PALETTE.info}>
             [AI filtering ({aiFilterProgress!.done}/{aiFilterProgress!.total})…] <Text dimColor>[q] cancels</Text>
           </Text>
         </Box>
       )}
       {showCancelledBanner && (
         <Box marginTop={1}>
-          <Text color="yellow">
+          <Text color={PALETTE.warning}>
             AI auto-filter cancelled
             {aiFilterProgress ? ` at ${aiFilterProgress.done}/${aiFilterProgress.total}` : ''}. Review remaining
             manually.
@@ -1143,7 +1144,7 @@ export function ScopeGateStep({
       )}
       {showFailedBanner && (
         <Box marginTop={1}>
-          <Text color="yellow">
+          <Text color={PALETTE.warning}>
             AI auto-filter failed: {aiFilterError ?? 'unknown error'}. Continuing without AI suggestions.
           </Text>
         </Box>
@@ -1153,7 +1154,7 @@ export function ScopeGateStep({
         <Box>
           <Text dimColor>
             {`AI recommended exclusions (${aiExcludedCount})`}
-            {aiRows.length > 0 && <Text color="cyan">{' — [x] review & jump'}</Text>}
+            {aiRows.length > 0 && <Text color={PALETTE.info}>{' — [x] review & jump'}</Text>}
           </Text>
         </Box>
       )}
@@ -1170,11 +1171,11 @@ export function ScopeGateStep({
 
       {nothingIncluded && (
         <Box marginTop={1}>
-          <Text color="yellow">
+          <Text color={PALETTE.warning}>
             nothing selected — press{' '}
-            <Text color="cyan">[Y]</Text> to accept all non-flagged,{' '}
-            <Text color="cyan">[A]</Text> to toggle all, or{' '}
-            <Text color="cyan">[a]</Text> to accept the highlighted row
+            <Text color={PALETTE.info}>[Y]</Text> to accept all non-flagged,{' '}
+            <Text color={PALETTE.info}>[A]</Text> to toggle all, or{' '}
+            <Text color={PALETTE.info}>[a]</Text> to accept the highlighted row
           </Text>
         </Box>
       )}
@@ -1245,14 +1246,14 @@ export function ScopeGateStep({
       {focusedComponent && (
         <Box flexDirection="column" marginTop={1}>
           <Text>
-            <Text color="cyan">{focusedComponent.name}</Text>
+            <Text color={PALETTE.info}>{focusedComponent.name}</Text>
             <Text dimColor>{' — '}</Text>
             {isIncluded(focusedComponent.name) ? (
-              <Text color="green">included</Text>
+              <Text color={PALETTE.success}>included</Text>
             ) : (
-              <Text color="red">excluded</Text>
+              <Text color={PALETTE.error}>excluded</Text>
             )}
-            {isAiFlagged(focusedComponent) && <Text color="yellow" bold>{' [×]'}</Text>}
+            {isAiFlagged(focusedComponent) && <Text color={PALETTE.warning} bold>{' [×]'}</Text>}
           </Text>
           {isAiFlagged(focusedComponent) &&
             focusedComponent.aiReason !== null &&
@@ -1276,8 +1277,8 @@ export function ScopeGateStep({
       )}
 
       {cyclesPanelOpen && (
-        <Box flexDirection="column" borderStyle="single" borderColor="red" paddingX={1} marginTop={1}>
-          <Text bold color="red">{`Cycles detected (${slotCycles.length}):`}</Text>
+        <Box flexDirection="column" borderStyle="single" borderColor={PALETTE.error} paddingX={1} marginTop={1}>
+          <Text bold color={PALETTE.error}>{`Cycles detected (${slotCycles.length}):`}</Text>
           <Text> </Text>
           {slotCycles.map((cycle, i) => {
             const isCursor = i === cyclesCursor;
@@ -1294,11 +1295,11 @@ export function ScopeGateStep({
             return (
               <Text key={i}>
                 {isCursor ? (
-                  <Text color="cyan" bold>{'▶'}</Text>
+                  <Text color={PALETTE.info} bold>{'▶'}</Text>
                 ) : (
                   <Text> </Text>
                 )}
-                <Text color="red" inverse={isCursor}>{' ' + label}</Text>
+                <Text color={PALETTE.error} inverse={isCursor}>{' ' + label}</Text>
               </Text>
             );
           })}
@@ -1307,8 +1308,8 @@ export function ScopeGateStep({
       )}
 
       {pendingRejectCascade && (
-        <Box flexDirection="column" borderStyle="single" borderColor="yellow" paddingX={1} marginTop={1}>
-          <Text bold color="yellow">
+        <Box flexDirection="column" borderStyle="single" borderColor={PALETTE.warning} paddingX={1} marginTop={1}>
+          <Text bold color={PALETTE.warning}>
             {`Rejecting ${pendingRejectCascade.target} will:`}
           </Text>
           {pendingRejectCascade.ancestors.length > 0 && (
@@ -1329,7 +1330,7 @@ export function ScopeGateStep({
         <Box marginTop={1} flexDirection="column">
           <Text>
             {`/${searchQuery}`}
-            <Text color="cyan">{'▎'}</Text>
+            <Text color={PALETTE.info}>{'▎'}</Text>
             {searchQuery && (
               <Text dimColor>{`  (${totalMatches}/${totalComponents} matches)`}</Text>
             )}
@@ -1355,11 +1356,11 @@ export function ScopeGateStep({
       <Box columnGap={2} marginTop={1} flexWrap="wrap">
         {includedCount > 0 ? (
           <Text>
-            <Text color="green">{includedCount}</Text>
+            <Text color={PALETTE.success}>{includedCount}</Text>
             <Text dimColor>/{totalComponents} included</Text>
           </Text>
         ) : (
-          <Text color="yellow">none included</Text>
+          <Text color={PALETTE.warning}>none included</Text>
         )}
         {legendEntry('[j/k]', 'move')}
         {legendEntry('[a]', 'accept')}
@@ -1384,7 +1385,7 @@ export function ScopeGateStep({
         {hasAnyAi && legendEntry('[x]', 'AI exclusions', aiRationalePanel.isOpen)}
         {hasAnyAi && (
           <Text>
-            <Text color="yellow" bold>[×]</Text> <Text dimColor>AI recommends excluding</Text>
+            <Text color={PALETTE.warning} bold>[×]</Text> <Text dimColor>AI recommends excluding</Text>
           </Text>
         )}
       </Box>
@@ -1432,7 +1433,7 @@ function ColumnHeader(props: { title: string; width: number; focused: boolean })
   const sep = '─'.repeat(Math.max(0, width - 2));
   return (
     <Box flexDirection="column">
-      <Text bold color={focused ? 'white' : 'cyan'} inverse={focused}>
+      <Text bold color={focused ? PALETTE.inverse : PALETTE.info} inverse={focused}>
         {title}
       </Text>
       <Text dimColor>{sep}</Text>
@@ -1475,11 +1476,11 @@ export function sideColumnLabelStyle(input: {
   const isCursor = isSelected && focused;
   if (isCursor) {
     return {
-      nameColor: 'white',
+      nameColor: PALETTE.inverse,
       nameBold: true,
       nameInverse: true,
       nameUnderline: false,
-      suffixColor: 'white',
+      suffixColor: PALETTE.inverse,
       suffixDim: false,
       suffixInverse: true,
       suffixUnderline: false,
@@ -1488,22 +1489,22 @@ export function sideColumnLabelStyle(input: {
   const underline = isSelected && !focused;
   if (isCycle) {
     return {
-      nameColor: 'red',
+      nameColor: PALETTE.error,
       nameBold: false,
       nameInverse: false,
       nameUnderline: underline,
-      suffixColor: 'red',
+      suffixColor: PALETTE.error,
       suffixDim: false,
       suffixInverse: false,
       suffixUnderline: underline,
     };
   }
   return {
-    nameColor: 'green',
+    nameColor: PALETTE.success,
     nameBold: false,
     nameInverse: false,
     nameUnderline: underline,
-    suffixColor: 'cyan',
+    suffixColor: PALETTE.info,
     suffixDim: true,
     suffixInverse: false,
     suffixUnderline: underline,
@@ -1529,7 +1530,7 @@ function AddedComponentsColumn(props: {
       width={width}
       flexShrink={0}
       borderStyle="single"
-      borderColor={focused ? 'white' : undefined}
+      borderColor={focused ? PALETTE.inverse : undefined}
     >
       <ColumnHeader title="Added components" width={width} focused={focused} />
       {entries.length === 0 ? (
@@ -1552,7 +1553,7 @@ function AddedComponentsColumn(props: {
               )}
               <Box>
                 {isCursor ? (
-                  <Text color="cyan" bold>
+                  <Text color={PALETTE.info} bold>
                     {'▶'}
                   </Text>
                 ) : (
@@ -1560,7 +1561,7 @@ function AddedComponentsColumn(props: {
                 )}
                 {reserveAiBadge && (
                   aiFlagged ? (
-                    <Text color="yellow" bold>
+                    <Text color={PALETTE.warning} bold>
                       {' [×]'}
                     </Text>
                   ) : (
@@ -1569,7 +1570,7 @@ function AddedComponentsColumn(props: {
                 )}
                 {entry.isCycle && (
                   <Text
-                    color={isCursor ? 'white' : 'yellow'}
+                    color={isCursor ? PALETTE.inverse : PALETTE.warning}
                     bold
                     inverse={isCursor}
                     underline={style.nameUnderline}
@@ -1613,7 +1614,7 @@ function AddedGroupsColumn(props: {
       width={width}
       flexShrink={0}
       borderStyle="single"
-      borderColor={focused ? 'white' : undefined}
+      borderColor={focused ? PALETTE.inverse : undefined}
     >
       <ColumnHeader title="Added groups" width={width} focused={focused} />
       {entries.length === 0 ? (
@@ -1637,7 +1638,7 @@ function AddedGroupsColumn(props: {
               )}
               <Box>
                 {isCursor ? (
-                  <Text color="cyan" bold>
+                  <Text color={PALETTE.info} bold>
                     {'▶'}
                   </Text>
                 ) : (
@@ -1645,7 +1646,7 @@ function AddedGroupsColumn(props: {
                 )}
                 {reserveAiBadge && (
                   aiFlagged ? (
-                    <Text color="yellow" bold>
+                    <Text color={PALETTE.warning} bold>
                       {' [×]'}
                     </Text>
                   ) : (
@@ -1654,7 +1655,7 @@ function AddedGroupsColumn(props: {
                 )}
                 {g.isCycle && (
                   <Text
-                    color={isCursor ? 'white' : 'yellow'}
+                    color={isCursor ? PALETTE.inverse : PALETTE.warning}
                     bold
                     inverse={isCursor}
                     underline={style.nameUnderline}

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text, useStdout } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import type { ServerPreviewResponse, DesignTokenSummary } from '@contentful/experience-design-system-types';
@@ -7,7 +8,7 @@ import { computeComponentDiffLines } from './preview-diff.js';
 
 export interface PreviewDiffLine {
   key: string;
-  color: 'green' | 'red' | 'yellow' | 'gray';
+  color: string;
   text: string;
 }
 
@@ -22,12 +23,12 @@ export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDi
   for (const item of components.new) {
     const raw = item as unknown as Record<string, unknown>;
     const name = (raw.key as string) ?? (raw.$name as string) ?? 'unknown';
-    lines.push({ key: `comp-new-${name}`, color: 'green', text: ` + ${name}` });
+    lines.push({ key: `comp-new-${name}`, color: PALETTE.success, text: ` + ${name}` });
     const slots = (raw.$slots ?? {}) as Record<string, Record<string, unknown>>;
     for (const slotName of Object.keys(slots).sort()) {
       lines.push({
         key: `comp-new-${name}-slot-${slotName}`,
-        color: 'green',
+        color: PALETTE.success,
         text: `   slot: ${slotName}`,
       });
       const allowed = slots[slotName]?.['$allowedComponents'];
@@ -35,7 +36,7 @@ export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDi
         const names = (allowed as unknown[]).filter((n): n is string => typeof n === 'string');
         lines.push({
           key: `comp-new-${name}-slot-${slotName}-allow`,
-          color: 'green',
+          color: PALETTE.success,
           text: `     allowedComponents: [${names.join(', ')}]`,
         });
       }
@@ -43,20 +44,20 @@ export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDi
   }
 
   for (const item of components.removed) {
-    lines.push({ key: `comp-rm-${item.name}`, color: 'red', text: ` - ${item.name}` });
+    lines.push({ key: `comp-rm-${item.name}`, color: PALETTE.error, text: ` - ${item.name}` });
   }
 
   for (const item of components.changed) {
     lines.push({
       key: `comp-h-${item.current.name}`,
-      color: 'yellow',
+      color: PALETTE.warning,
       text: ` ~ ${item.current.name}${item.hasPendingDraftChanges ? ' ⚡ has pending draft changes' : ''}`,
     });
     if (item.changeClassification?.classification === 'breaking') {
       const reasons = item.changeClassification.breakingChanges
         .map((bc) => `${'slotId' in bc ? bc.slotId : bc.propertyId}: ${bc.reason}`)
         .join(', ');
-      lines.push({ key: `comp-b-${item.current.name}`, color: 'red', text: ` ⚠ BREAKING: ${reasons}` });
+      lines.push({ key: `comp-b-${item.current.name}`, color: PALETTE.error, text: ` ⚠ BREAKING: ${reasons}` });
     }
     const diffLines = computeComponentDiffLines(
       item.current,
@@ -91,23 +92,23 @@ export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDi
   for (const item of tokens.new) {
     const raw = item as unknown as Record<string, unknown>;
     const name = (raw.name as string) ?? (raw.path as string) ?? 'unknown';
-    lines.push({ key: `tok-new-${name}`, color: 'green', text: ` + ${name}` });
+    lines.push({ key: `tok-new-${name}`, color: PALETTE.success, text: ` + ${name}` });
   }
   for (const item of tokens.removed) {
-    lines.push({ key: `tok-rm-${item.name}`, color: 'red', text: ` - ${item.name}` });
+    lines.push({ key: `tok-rm-${item.name}`, color: PALETTE.error, text: ` - ${item.name}` });
   }
   for (const item of tokens.changed) {
     const tokenName = (item.current as DesignTokenSummary).name;
     lines.push({
       key: `tok-h-${tokenName}`,
-      color: 'yellow',
+      color: PALETTE.warning,
       text: ` ~ ${tokenName}${item.hasPendingDraftChanges ? ' ⚡ has pending draft changes' : ''}`,
     });
     if (item.changeClassification?.classification === 'breaking') {
       const reasons = item.changeClassification.breakingChanges
         .map((bc) => `${'slotId' in bc ? bc.slotId : bc.propertyId}: ${bc.reason}`)
         .join(', ');
-      lines.push({ key: `tok-b-${tokenName}`, color: 'red', text: ` ⚠ BREAKING: ${reasons}` });
+      lines.push({ key: `tok-b-${tokenName}`, color: PALETTE.error, text: ` ⚠ BREAKING: ${reasons}` });
     }
   }
 
@@ -233,13 +234,13 @@ export function WizardPreviewStep({
               {components.new.length > 0 && (
                 <Box flexDirection="column">
                   <Box gap={1}>
-                    <Text color="green"> ＋</Text>
+                    <Text color={PALETTE.success}> ＋</Text>
                     <Text>{components.new.length} will be created</Text>
                   </Box>
                   {(components.new as unknown as Array<Record<string, unknown>>).map((item, i) => {
                     const name = (item.key as string) ?? (item.$name as string) ?? 'unknown';
                     return (
-                      <Text key={`new-${i}`} color="green">
+                      <Text key={`new-${i}`} color={PALETTE.success}>
                         {' '}
                         + {name}
                       </Text>
@@ -250,13 +251,13 @@ export function WizardPreviewStep({
               {components.changed.length > 0 && (
                 <Box flexDirection="column">
                   <Box gap={1}>
-                    <Text color="yellow"> ～</Text>
+                    <Text color={PALETTE.warning}> ～</Text>
                     <Text>{components.changed.length} will be updated</Text>
                   </Box>
                   {components.changed.map((item, i) => {
                     const isBreaking = item.changeClassification?.classification === 'breaking';
                     return (
-                      <Text key={`chg-${i}`} color={isBreaking ? 'red' : 'yellow'}>
+                      <Text key={`chg-${i}`} color={isBreaking ? PALETTE.error : PALETTE.warning}>
                         {' '}
                         {isBreaking ? '⚠' : '~'} {item.current.name}
                       </Text>
@@ -267,11 +268,11 @@ export function WizardPreviewStep({
               {components.removed.length > 0 && (
                 <Box flexDirection="column">
                   <Box gap={1}>
-                    <Text color="red"> ✗</Text>
+                    <Text color={PALETTE.error}> ✗</Text>
                     <Text>{components.removed.length} will be removed</Text>
                   </Box>
                   {components.removed.map((item, i) => (
-                    <Text key={`rm-${i}`} color="red">
+                    <Text key={`rm-${i}`} color={PALETTE.error}>
                       {' '}
                       ✗ {item.name}
                     </Text>
@@ -296,19 +297,19 @@ export function WizardPreviewStep({
               </Box>
               {tokens.new.length > 0 && (
                 <Box gap={1}>
-                  <Text color="green"> ＋</Text>
+                  <Text color={PALETTE.success}> ＋</Text>
                   <Text>{tokens.new.length} will be created</Text>
                 </Box>
               )}
               {tokens.changed.length > 0 && (
                 <Box gap={1}>
-                  <Text color="yellow"> ～</Text>
+                  <Text color={PALETTE.warning}> ～</Text>
                   <Text>{tokens.changed.length} will be updated</Text>
                 </Box>
               )}
               {tokens.removed.length > 0 && (
                 <Box gap={1}>
-                  <Text color="red"> ✗</Text>
+                  <Text color={PALETTE.error}> ✗</Text>
                   <Text>{tokens.removed.length} will be removed</Text>
                 </Box>
               )}
@@ -352,7 +353,7 @@ export function WizardPreviewStep({
 
       {breakingWithImpact && (
         <Box marginTop={1}>
-          <Text color="red" bold>
+          <Text color={PALETTE.error} bold>
             ⚠ Breaking changes will affect downstream entities. Press Enter to acknowledge and apply.
           </Text>
         </Box>

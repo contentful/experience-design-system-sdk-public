@@ -4,6 +4,7 @@ import {
   GotoBanner,
   type GotoRow,
 } from '../../../../../src/analyze/select/tui/components/GotoBanner.js';
+import { PALETTE } from '../../../../../src/analyze/select/tui/theme.js';
 
 function buildRows(count: number): GotoRow[] {
   const rows: GotoRow[] = [];
@@ -76,6 +77,25 @@ describe('GotoBanner', () => {
       ).lastFrame() ?? '';
     expect(countRowLines(out)).toBe(3);
     expect(out).not.toMatch(/more/);
+  });
+
+  it('borders the overlay with the palette info color', () => {
+    const el = GotoBanner({ title: 'Goto', rows: buildRows(3), cursor: 0 });
+    expect(el.props.borderColor).toBe(PALETTE.info);
+  });
+
+  it('marks the cursor pointer with the palette info color', () => {
+    const el = GotoBanner({ title: 'Goto', rows: buildRows(3), cursor: 1 });
+    const children = el.props.children as React.ReactElement[];
+    const rowEls = children.flat().filter(Boolean);
+    const pointerRow = rowEls.find(
+      (c) =>
+        typeof c === 'object' &&
+        c?.props?.children &&
+        JSON.stringify(c.props.children).includes('▶'),
+    );
+    const frame = JSON.stringify(pointerRow);
+    expect(frame).toContain(PALETTE.info);
   });
 
   it('constrains the box to an explicit width', () => {

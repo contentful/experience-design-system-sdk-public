@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 
@@ -92,7 +93,7 @@ export function PushDecisionGateStep({
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Text color="green">✓ Generation complete</Text>
+      <Text color={PALETTE.success}>✓ Generation complete</Text>
       <Text dimColor>{summary}</Text>
 
       <Box marginTop={1}>
@@ -105,7 +106,7 @@ export function PushDecisionGateStep({
           const disabled = pushDisabled && opt.value !== 'save-only';
           const suffix = disabled ? ' (unavailable — credentials skipped)' : '';
           return (
-            <Text key={opt.value} color={selected ? 'cyan' : undefined} dimColor={disabled}>
+            <Text key={opt.value} color={selected ? PALETTE.info : undefined} dimColor={disabled}>
               {selected ? '›' : ' '} [{opt.shortcut}] {opt.label}
               {suffix}
             </Text>

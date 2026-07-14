@@ -1,4 +1,5 @@
 import React from 'react';
+import { PALETTE } from '../theme.js';
 import { Box, Text } from 'ink';
 
 export interface GotoRow {
@@ -55,7 +56,7 @@ function defaultRenderRow(
   return (
     <Text key={index}>
       {isCursor ? (
-        <Text color="cyan" bold>
+        <Text color={PALETTE.info} bold>
           {'▶'}
         </Text>
       ) : (
@@ -92,7 +93,7 @@ export function GotoBanner({
     <Box
       flexDirection="column"
       borderStyle="single"
-      borderColor="cyan"
+      borderColor={PALETTE.info}
       paddingX={1}
       marginTop={width === undefined ? 1 : 0}
       width={width}

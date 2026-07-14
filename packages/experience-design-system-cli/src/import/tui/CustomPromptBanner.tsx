@@ -1,4 +1,5 @@
 import { Box, Text } from 'ink';
+import { PALETTE } from '../../analyze/select/tui/theme.js';
 import React from 'react';
 
 /**
@@ -17,13 +18,13 @@ export function CustomPromptBanner({
 }: CustomPromptBannerProps): React.ReactElement | null {
   if (!selectPromptPath && !generatePromptPath) return null;
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
-      <Text color="yellow" bold>
+    <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
+      <Text color={PALETTE.warning} bold>
         WARNING: Custom prompt active
       </Text>
-      {selectPromptPath ? <Text color="yellow">select: {selectPromptPath}</Text> : null}
-      {generatePromptPath ? <Text color="yellow">components: {generatePromptPath}</Text> : null}
-      <Text color="yellow" dimColor>
+      {selectPromptPath ? <Text color={PALETTE.warning}>select: {selectPromptPath}</Text> : null}
+      {generatePromptPath ? <Text color={PALETTE.warning}>components: {generatePromptPath}</Text> : null}
+      <Text color={PALETTE.warning} dimColor>
         Bundled invariants (utility-wrapper rejection, description content rules) do NOT apply.
       </Text>
     </Box>
