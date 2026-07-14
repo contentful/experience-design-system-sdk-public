@@ -2,26 +2,6 @@ import type { ComponentGraphNode } from './composite-closure.js';
 import type { SlotCycle } from './cycle-detection.js';
 import { findDirectParents } from './lineage.js';
 
-/**
- * Scope-gate-only cycle-aware cascade helpers.
- *
- * Wraps the pure `selection-cascade` primitives with cycle-unit cohesion
- * semantics. The base helpers stop at cycle boundaries by design (their
- * downstream consumers depend on that). Scope-gate needs the opposite: an
- * `[a]` or `[r]` on a cycle-related component must keep every member of the
- * cycle unit in the same state at all times, otherwise the accepted manifest
- * would ship with a slot referencing a rejected target — a topo-sort
- * violation.
- *
- * A "cycle unit" is the equivalence class of components under the relation
- * "shares at least one cycle." Two overlapping cycles collapse into a single
- * unit because a shared node forces both cycles' membership sets to move
- * together.
- */
-
-/** Build a cycle-unit map: every cycle member points to the union of every
- * cycle that touches it (transitively via shared nodes). Non-cycle components
- * are absent from the map. */
 export function buildCycleUnits(slotCycles: SlotCycle[]): Map<string, Set<string>> {
   const parent = new Map<string, string>();
   const find = (x: string): string => {
@@ -29,7 +9,6 @@ export function buildCycleUnits(slotCycles: SlotCycle[]): Map<string, Set<string
     while (parent.get(cur) !== cur) {
       cur = parent.get(cur)!;
     }
-    // Path compression pass.
     let walk = x;
     while (parent.get(walk) !== cur) {
       const next = parent.get(walk)!;
@@ -75,7 +54,6 @@ export function buildCycleUnits(slotCycles: SlotCycle[]): Map<string, Set<string
   return out;
 }
 
-/** Slot targets of `node` restricted to components known to the graph. */
 function slotTargets(node: string, byName: Map<string, ComponentGraphNode>): string[] {
   const c = byName.get(node);
   if (!c) return [];
@@ -92,12 +70,6 @@ function slotTargets(node: string, byName: Map<string, ComponentGraphNode>): str
   return out;
 }
 
-/**
- * Cycle-aware accept cascade. Walks the full slot-target closure from
- * `target`, traversing INTO cycles rather than stopping at cycle boundaries.
- * When any cycle member is visited, every member of its cycle unit is
- * included and the walk continues from each member's slot targets. Idempotent.
- */
 export function computeCycleAwareAcceptCascade(
   target: string,
   components: ComponentGraphNode[],
@@ -133,34 +105,12 @@ export function computeCycleAwareAcceptCascade(
   return visited;
 }
 
-/**
- * Cycle-aware reject cascade result. `toReject` is the set that must flip to
- * `rejected`; `toDeselect` is the set that must flip to `undecided` (matches
- * the existing "reject-parent deselects-descendants" tri-state semantics).
- * The two sets are disjoint.
- */
 export interface CycleAwareRejectResult {
   toReject: Set<string>;
   toDeselect: Set<string>;
-  /** Members of the target's cycle unit other than target itself. Empty when
-   * target is not a cycle participant. Surfaced for the confirm-prompt UI so
-   * it can list "also reject cycle partners" separately from external
-   * ancestors. */
   cyclePartners: string[];
 }
 
-/**
- * Cycle-aware reject cascade.
- *
- * - Target + its cycle unit (if any) flip to `rejected`.
- * - All ancestors that reference any rejected node flip to `rejected`; the
- *   walk pulls in any ancestor's full cycle unit (cohesion) and continues
- *   from every unit member.
- * - Non-cycle descendants that the target's accept-cascade would have pulled
- *   in flip to `undecided` (existing deselect-descendants behavior). Cycle
- *   descendants that are already in `toReject` are excluded from
- *   `toDeselect` — they don't get deselected, they get rejected.
- */
 export function computeCycleAwareRejectCascade(
   target: string,
   components: ComponentGraphNode[],
@@ -194,10 +144,6 @@ export function computeCycleAwareRejectCascade(
     }
   }
 
-  // Deselect anything the accept-cascade of the target would have pulled in
-  // that we're NOT rejecting. Matches current "reject-parent deselects
-  // descendants" tri-state semantics — restricted to non-rejected descendants
-  // and excluding the target/unit themselves.
   const acceptCascade = computeCycleAwareAcceptCascade(target, components, cycleUnits);
   const toDeselect = new Set<string>();
   for (const n of acceptCascade) {
@@ -216,17 +162,6 @@ export function computeCycleAwareRejectCascade(
   return { toReject, toDeselect, cyclePartners };
 }
 
-/**
- * Union of every cycle unit reachable via slot-target closure from any of
- * `seeds`. Used by [A] toggle-all and [Y] accept-non-flagged to satisfy
- * cycle-unit cohesion: if any accepted seed transitively slots a cycle
- * member, that cycle's whole unit must also be accepted (otherwise the
- * seed's slot references a non-accepted target).
- *
- * Cheaper than running the full accept-cascade per seed — only cycle-unit
- * membership is emitted; non-cycle descendants of the seeds are ignored
- * because they'll be handled separately by the caller's own bulk-accept.
- */
 export function collectReachableCycleUnits(
   seeds: string[],
   components: ComponentGraphNode[],
