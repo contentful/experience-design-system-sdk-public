@@ -4274,6 +4274,84 @@ describe('GenerateReviewStep — breaking-changes goto-banner (L6)', () => {
     await tick();
     expect(stripAnsiL6(lastFrame() ?? '')).toContain('[b] breaking');
   });
+
+  // ── BD4: per-change rows + jump-focuses-editor-at-the-exact-field ──────────
+  // The banner lists one row per breaking CHANGE (carrying its propertyId), and
+  // Enter on a change row focuses the editor scrolled to that exact property.
+  const SAMPLE_BUTTON = {
+    $type: 'component' as const,
+    $properties: {
+      variant: { $type: 'enum' as const, $category: 'content' as const, $values: ['a', 'b'] },
+      size: { $type: 'string' as const, $category: 'content' as const, $description: 'SIZE_DESC_BD4' },
+    },
+  };
+
+  const previewWithTwoChangesOnButton = () =>
+    ({
+      components: {
+        new: [],
+        changed: [
+          {
+            current: { id: 'btn', name: 'Button', contentProperties: [], designProperties: [], slots: [] },
+            proposed: { $type: 'component', $properties: {} },
+            hasPendingDraftChanges: false,
+            changeClassification: {
+              classification: 'breaking',
+              breakingChanges: [
+                { propertyId: 'variant', reason: 'removed' },
+                { propertyId: 'size', reason: 'type_changed' },
+              ],
+            },
+          },
+        ],
+        removed: [],
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    }) as never;
+
+  it('BD4: banner lists one row per breaking change, each carrying its propertyId', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Button', entry: SAMPLE_BUTTON }]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithTwoChangesOnButton());
+    await tick();
+    stdin.write('b');
+    await tick();
+    const open = stripAnsiL6(lastFrame() ?? '');
+    // One row per breaking change: both propertyIds AND both reasons appear.
+    // At tip only `changes[0].reason` ('removed') renders in a single row, so
+    // `type_changed` (the second change's reason) is the RED discriminator.
+    expect(open).toMatch(/variant/);
+    expect(open).toMatch(/size/);
+    expect(open).toMatch(/removed/);
+    expect(open).toMatch(/type_changed/);
+  });
+
+  it('BD4: Enter on a change row focuses the editor scrolled to that exact prop', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Button', entry: SAMPLE_BUTTON }]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithTwoChangesOnButton());
+    await tick();
+    stdin.write('b'); // open banner
+    await tick();
+    stdin.write('j'); // move cursor to the SECOND change row (size)
+    await tick();
+    stdin.write('\r'); // Enter → jump + focus editor at `size`
+    await tick();
+    const frame = stripAnsiL6(lastFrame() ?? '');
+    // Editor is now focused (Tab hint flips to "focus list" once !sidebarFocused)
+    // and scrolled to `size` — its desc sub-row (only the selected prop shows it).
+    expect(frame).toContain('SIZE_DESC_BD4');
+    expect(frame).toContain('[Tab] focus list');
+  });
 });
 
 // ── L8 (lifecycle plan §5 L8): category filters (broken / cycles / deleted) ──

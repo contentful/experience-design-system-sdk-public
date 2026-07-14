@@ -415,6 +415,15 @@ export function GenerateReviewStep({
   const breakingPanel = useOverlayPanel({ toggleKey: 'b' });
   const [breakingChanges, setBreakingChanges] = useState<BreakingComponent[]>([]);
   const [breakingCursor, setBreakingCursor] = useState(0);
+  // BD4 — deferred FieldEditor focus target. Set when the operator jumps from a
+  // breaking-change row (Enter) so the FieldEditor opens focused + scrolled to
+  // the exact changed field. Cleared when the operator leaves that component
+  // (jumpCursorToName / any cursor move) so a later manual entry into the
+  // editor doesn't re-jump. Shape accepts slot targets for BD2's later drop-in.
+  const [pendingEditorFocus, setPendingEditorFocus] = useState<{
+    componentName: string;
+    target: { kind: 'prop' | 'slot'; name: string };
+  } | null>(null);
   // T8 (parity plan §3) — Column-1 view mode. `'grouped'` (default) uses the
   // tiered cycle/empty/composite/standalone layout; `'flat'` flattens to
   // an alphabetical list with `(N deps)` suffixes on composite roots. Mirrors
@@ -927,6 +936,40 @@ export function GenerateReviewStep({
     [breakingChanges],
   );
 
+  // BD4 — flatten breaking changes to one row PER CHANGE so the goto-banner
+  // offers the finer jump the spec wants: each row carries its componentName +
+  // the specific `focusTarget` prop. Components with no enumerated changes
+  // still contribute a single component-level row (focusTarget undefined) so
+  // the jump degrades to today's land-on-the-row behavior. `breakingCursor`
+  // indexes THIS list.
+  const breakingRows = useMemo<
+    Array<{
+      label: string;
+      componentName: string;
+      focusTarget?: { kind: 'prop' | 'slot'; name: string };
+    }>
+  >(() => {
+    const out: Array<{
+      label: string;
+      componentName: string;
+      focusTarget?: { kind: 'prop' | 'slot'; name: string };
+    }> = [];
+    for (const b of breakingChanges) {
+      if (b.changes.length === 0) {
+        out.push({ label: `${b.componentName} — breaking`, componentName: b.componentName });
+        continue;
+      }
+      for (const change of b.changes) {
+        out.push({
+          label: `${b.componentName} · ${change.propertyId}: ${change.reason}`,
+          componentName: b.componentName,
+          focusTarget: { kind: 'prop', name: change.propertyId },
+        });
+      }
+    }
+    return out;
+  }, [breakingChanges]);
+
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
     // T5b: jump-filter takes priority over the T4 search-neighborhood filter.
     // When active, the sidebar shows only the target + its transitive
@@ -1156,6 +1199,10 @@ export function GenerateReviewStep({
     setJsonScrollOffset(0);
     setDraftValue('');
     setSaveError(null);
+    // BD4 — any cursor jump lands on a (possibly) different component; drop the
+    // pending editor-focus so it can't re-fire on a later navigation. The BD4
+    // breaking-row Enter handler re-sets it AFTER calling jumpCursorToName.
+    setPendingEditorFocus(null);
   };
   const jumpCursorToName = (name: string): void => {
     for (let i = 0; i < visibleRowsMemo.length; i++) {
@@ -1450,12 +1497,22 @@ export function GenerateReviewStep({
         return;
       }
       if (key.downArrow || input === 'j') {
-        setBreakingCursor((c) => Math.min(Math.max(0, breakingChanges.length - 1), c + 1));
+        setBreakingCursor((c) => Math.min(Math.max(0, breakingRows.length - 1), c + 1));
         return;
       }
       if (key.return) {
-        const target = breakingChanges[breakingCursor];
-        if (target) jumpCursorToName(target.componentName);
+        // BD4 — jump the sidebar to the component AND focus the editor scrolled
+        // to the exact changed field. `jumpCursorToName` clears any stale
+        // pending focus, so set it AFTER the jump. `sidebarFocused=false` hands
+        // the keyboard to the FieldEditor so it opens on the target field.
+        const row = breakingRows[breakingCursor];
+        if (row) {
+          jumpCursorToName(row.componentName);
+          if (row.focusTarget) {
+            setPendingEditorFocus({ componentName: row.componentName, target: row.focusTarget });
+            setSidebarFocused(false);
+          }
+        }
         breakingPanel.close();
         return;
       }
@@ -2017,6 +2074,7 @@ export function GenerateReviewStep({
       setJsonScrollOffset(0);
       setDraftValue('');
       setSaveError(null);
+      setPendingEditorFocus(null);
     } else if (key.downArrow || input === 'j') {
       setNav(({ cursorRowIdx: prev, sidebarScrollOffset: off }) => {
         const positions = selectableRowPositions;
@@ -2036,6 +2094,7 @@ export function GenerateReviewStep({
       setJsonScrollOffset(0);
       setDraftValue('');
       setSaveError(null);
+      setPendingEditorFocus(null);
     }
   });
 
@@ -2447,9 +2506,9 @@ export function GenerateReviewStep({
             // trigger Ink's full-screen repaint flicker.
             <GotoBanner
               title="Breaking changes"
-              rows={breakingChanges.map((b) => ({
-                label: `${b.componentName} — ${b.changes[0]?.reason ?? 'breaking'}`,
-                jumpTarget: b.componentName,
+              rows={breakingRows.map((r) => ({
+                label: r.label,
+                jumpTarget: r.componentName,
               }))}
               cursor={breakingCursor}
               maxRows={panelMaxRows}
@@ -2598,7 +2657,17 @@ export function GenerateReviewStep({
                   />
                 ) : (
                   <FieldEditor
-                    key={selected.key}
+                    key={
+                      // BD4 — fold the pending focus target into the mount key so
+                      // a jump to a breaking-change field on the ALREADY-selected
+                      // component still remounts the editor onto that field (the
+                      // initialFocusTarget seam is mount-time only). Clearing the
+                      // pending focus on navigation returns the key to the bare
+                      // component name (default first-field mount).
+                      pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                        ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
+                        : selected.key
+                    }
                     value={draftValue || selectedJson}
                     width={panelWidth}
                     height={PANEL_HEIGHT}
@@ -2635,6 +2704,11 @@ export function GenerateReviewStep({
                     currentComponentName={selected.key}
                     onDirtyChange={setEditorDirty}
                     discardTrigger={discardTrigger}
+                    initialFocusTarget={
+                      pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                        ? pendingEditorFocus.target
+                        : undefined
+                    }
                   />
                 )}
                 {saveError && <Text color="red">{'✗ ' + saveError}</Text>}
