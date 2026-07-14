@@ -154,9 +154,6 @@ export function registerImportCommand(program: Command): void {
         saveAsNew?: boolean;
         force?: boolean;
       }) => {
-        // ── --push-from-run handling ───────────────────────────────────────
-        // Push-only replay of a prior run. Mutex checks happen *before* any
-        // side effects (no DB reads, no wizard render).
         if (opts.pushFromRun !== undefined) {
           if (opts.modify !== undefined) {
             process.stderr.write(
@@ -209,7 +206,6 @@ export function registerImportCommand(program: Command): void {
           }
         }
 
-        // ── --modify handling ──────────────────────────────────────────────
         if (opts.modify !== undefined) {
           if (opts.project !== '.') {
             process.stderr.write(
@@ -265,10 +261,6 @@ export function registerImportCommand(program: Command): void {
           return;
         }
 
-        // ── --raw-tokens validation ─────────────────────────────────────────
-        // The raw-tokens path is a source file the wizard hands to
-        // `generate tokens --raw-tokens <path>`. Validate at parse time so
-        // operators get an immediate error before the wizard renders.
         if (opts.rawTokens !== undefined) {
           if (opts.tokens !== undefined) {
             process.stderr.write(
@@ -345,16 +337,9 @@ export function registerImportCommand(program: Command): void {
             onRunPicked?: (selection: RunPickerSelection) => void;
           };
           const creds = await readExperiencesCredentials();
-          // Parity-audit Q4: resolve --agent / --model overrides against the
-          // stored credentials.json so both flags are functional for the
-          // wizard path. Flag wins, then stored value, then default.
           const resolvedAgent = resolveAgent(opts.agent, creds.agent);
           const resolvedModel = resolveModel(opts.model, creds.agentModel);
 
-          // ── Run picker decision ─────────────────────────────────────────
-          // When runs.json has prior entries and the operator didn't ask for
-          // a specific entry point, open the wizard with the run picker. The
-          // helper enforces every gate (TTY, conflicting flags, file state).
           const pickerDecision = await shouldShowRunPicker({
             flags: {
               ...(opts.pushFromRun !== undefined ? { pushFromRun: opts.pushFromRun } : {}),
@@ -367,10 +352,6 @@ export function registerImportCommand(program: Command): void {
           });
 
           let pickerSelection: RunPickerSelection | null = null;
-          // Ink `unmount` handle captured after `render(...)` below so the
-          // picker callback can tear down the wizard cleanly. Prior to this
-          // fix the callback did `setImmediate(() => process.exit(0))`, which
-          // killed the process before `dispatchPickerSelection` could run.
           let unmountInk: (() => void) | null = null;
           const pickerProps: {
             initialRuns?: typeof pickerDecision.runs;
@@ -410,10 +391,6 @@ export function registerImportCommand(program: Command): void {
           );
           unmountInk = unmount;
           await waitUntilExit();
-          // ── Picker dispatch ─────────────────────────────────────────────
-          // If the operator picked a run, route into replayRun / modifyRun.
-          // dispatchPickerSelection lives in ./picker-dispatch.ts so this
-          // decision is testable without an Ink runtime.
           if (pickerSelection) {
             await dispatchPickerSelection(
               pickerSelection,
@@ -450,7 +427,6 @@ export function registerImportCommand(program: Command): void {
         const projectRoot = resolve(opts.project);
         const outDir = opts.out ? resolve(opts.out) : join(projectRoot, '.contentful');
 
-        // Parity-audit Q4: also honor stored agent/model in headless mode.
         const headlessCreds = await readExperiencesCredentials();
         const headlessAgent = resolveAgent(opts.agent, headlessCreds.agent);
         const headlessModel = resolveModel(opts.model, headlessCreds.agentModel);
