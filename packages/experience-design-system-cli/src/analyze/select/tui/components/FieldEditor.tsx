@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PALETTE } from '../theme.js';
 import { Box, Text } from 'ink';
 import {
   CDF_PROPERTY_TYPES,
@@ -327,11 +328,11 @@ function serializeState(state: EditorState, originalJson: string): string {
 function Picker({ value, active }: { value: string; active: boolean }): React.ReactElement {
   return (
     <Box>
-      {active && <Text color="cyan">{'‹'}</Text>}
-      <Text color={active ? 'cyan' : 'white'} bold={active}>
+      {active && <Text color={PALETTE.info}>{'‹'}</Text>}
+      <Text color={active ? PALETTE.info : PALETTE.inverse} bold={active}>
         {value}
       </Text>
-      {active && <Text color="cyan">{'›'}</Text>}
+      {active && <Text color={PALETTE.info}>{'›'}</Text>}
     </Box>
   );
 }
@@ -339,7 +340,7 @@ function Picker({ value, active }: { value: string; active: boolean }): React.Re
 function Toggle({ value, active }: { value: boolean; active: boolean }): React.ReactElement {
   return (
     <Box>
-      <Text color={active ? 'cyan' : value ? 'green' : undefined}>{value ? '[✓]' : '[ ]'}</Text>
+      <Text color={active ? PALETTE.info : value ? PALETTE.success : undefined}>{value ? '[✓]' : '[ ]'}</Text>
     </Box>
   );
 }
@@ -372,7 +373,7 @@ function DefaultSubRow({
     return (
       <Box paddingLeft={2} gap={1}>
         <Text dimColor>default:</Text>
-        {active ? <Picker value={display} active={true} /> : <Text color="white">{display}</Text>}
+        {active ? <Picker value={display} active={true} /> : <Text color={PALETTE.inverse}>{display}</Text>}
       </Box>
     );
   }
@@ -391,7 +392,7 @@ function DefaultSubRow({
     return (
       <Box paddingLeft={2} gap={1}>
         <Text dimColor>default:</Text>
-        {active ? <Picker value={display} active={true} /> : <Text color="white">{display}</Text>}
+        {active ? <Picker value={display} active={true} /> : <Text color={PALETTE.inverse}>{display}</Text>}
       </Box>
     );
   }
@@ -403,7 +404,7 @@ function DefaultSubRow({
     return (
       <Box paddingLeft={2} flexDirection="row">
         <Text dimColor>default:</Text>
-        <Box flexGrow={1} borderStyle="round" borderColor="cyan" paddingX={1}>
+        <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
           <Text>{value.slice(0, textCursor)}</Text>
           <Text inverse={cursorVisible}>{value[textCursor] ?? cursor}</Text>
           <Text>{value.slice(textCursor + 1)}</Text>
@@ -414,7 +415,7 @@ function DefaultSubRow({
   return (
     <Box paddingLeft={2} gap={1}>
       <Text dimColor>default:</Text>
-      <Text color={value ? 'white' : undefined} dimColor={!value}>
+      <Text color={value ? PALETTE.inverse : undefined} dimColor={!value}>
         {value || '(none)'}
       </Text>
     </Box>
@@ -459,7 +460,7 @@ function PropRow({
     <Box flexDirection="column" width={width}>
       {/* Main row */}
       <Box gap={1}>
-        <Text color={selected ? 'white' : 'cyan'} bold={selected} backgroundColor={bg}>
+        <Text color={selected ? PALETTE.inverse : PALETTE.info} bold={selected} backgroundColor={bg}>
           {' '}
           {nameDisplay}{' '}
         </Text>
@@ -469,7 +470,7 @@ function PropRow({
         {activeField === 'type' ? (
           <Picker value={prop.type} active={true} />
         ) : (
-          <Text color={selected ? 'yellow' : 'white'}>{prop.type}</Text>
+          <Text color={selected ? PALETTE.warning : PALETTE.inverse}>{prop.type}</Text>
         )}
 
         {/* $category */}
@@ -477,7 +478,7 @@ function PropRow({
         {activeField === 'category' ? (
           <Picker value={prop.category} active={true} />
         ) : (
-          <Text color={selected ? 'magenta' : 'white'}>{prop.category}</Text>
+          <Text color={selected ? PALETTE.info : PALETTE.inverse}>{prop.category}</Text>
         )}
 
         {/* $required */}
@@ -495,7 +496,7 @@ function PropRow({
             {activeField === 'tokenKind' ? (
               <Picker value={prop.tokenKind || DESIGN_TOKEN_TYPES[0]} active={true} />
             ) : (
-              <Text color={selected ? 'green' : 'white'}>{prop.tokenKind || '—'}</Text>
+              <Text color={selected ? PALETTE.success : PALETTE.inverse}>{prop.tokenKind || '—'}</Text>
             )}
           </>
         )}
@@ -520,7 +521,7 @@ function PropRow({
       {selected && descActive && (
         <Box paddingLeft={2} flexDirection="row">
           <Text dimColor>desc:</Text>
-          <Box flexGrow={1} borderStyle="round" borderColor="cyan" paddingX={1}>
+          <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
             <Text>{prop.description.slice(0, textCursor)}</Text>
             <Text inverse={cursorVisible}>{prop.description[textCursor] ?? cursor}</Text>
             <Text>{prop.description.slice(textCursor + 1)}</Text>
@@ -530,7 +531,7 @@ function PropRow({
       {selected && !descActive && (
         <Box paddingLeft={2} gap={1}>
           <Text dimColor>desc:</Text>
-          <Text color="green">{prop.description || '—'}</Text>
+          <Text color={PALETTE.success}>{prop.description || '—'}</Text>
         </Box>
       )}
 
@@ -566,7 +567,7 @@ function PropRow({
             if (isBeingEdited) {
               return (
                 <Box key={i} paddingLeft={2}>
-                  <Text color="cyan">{'✎ '}</Text>
+                  <Text color={PALETTE.info}>{'✎ '}</Text>
                   <Text>{valueText}</Text>
                   <Text inverse={cursorVisible}> </Text>
                 </Box>
@@ -574,13 +575,13 @@ function PropRow({
             }
             return (
               <Box key={i} gap={1} paddingLeft={2}>
-                <Text color={isActiveCursor ? 'cyan' : 'white'}>{isActiveCursor ? `▶ ${v}` : `  ${v}`}</Text>
+                <Text color={isActiveCursor ? PALETTE.info : PALETTE.inverse}>{isActiveCursor ? `▶ ${v}` : `  ${v}`}</Text>
               </Box>
             );
           })}
           {editingValue?.mode === 'add' && (
             <Box paddingLeft={2}>
-              <Text color="cyan">{'+ '}</Text>
+              <Text color={PALETTE.info}>{'+ '}</Text>
               <Text>{valueText}</Text>
               <Text inverse={cursorVisible}> </Text>
             </Box>
@@ -624,7 +625,7 @@ function SlotRow({
   return (
     <Box flexDirection="column" width={width}>
       <Box gap={1}>
-        <Text color={selected ? 'white' : 'cyan'} bold={selected} backgroundColor={bg}>
+        <Text color={selected ? PALETTE.inverse : PALETTE.info} bold={selected} backgroundColor={bg}>
           {' '}
           {nameDisplay}{' '}
         </Text>
@@ -650,7 +651,7 @@ function SlotRow({
           {slot.allowedComponents.length === 0 ? (
             <Text dimColor>(any)</Text>
           ) : (
-            <Text color="cyan">{slot.allowedComponents.join(', ')}</Text>
+            <Text color={PALETTE.info}>{slot.allowedComponents.join(', ')}</Text>
           )}
         </Box>
       )}
@@ -679,7 +680,7 @@ function SlotRow({
             if (isBeingEdited) {
               return (
                 <Box key={i} paddingLeft={2}>
-                  <Text color="cyan">{'✎ '}</Text>
+                  <Text color={PALETTE.info}>{'✎ '}</Text>
                   <Text>{valueText}</Text>
                   <Text inverse={cursorVisible}> </Text>
                 </Box>
@@ -687,13 +688,13 @@ function SlotRow({
             }
             return (
               <Box key={i} gap={1} paddingLeft={2}>
-                <Text color={isActiveCursor ? 'cyan' : 'white'}>{isActiveCursor ? `▶ ${v}` : `  ${v}`}</Text>
+                <Text color={isActiveCursor ? PALETTE.info : PALETTE.inverse}>{isActiveCursor ? `▶ ${v}` : `  ${v}`}</Text>
               </Box>
             );
           })}
           {editingValue?.mode === 'add' && activeField === 'allowedComponents' && (
             <Box paddingLeft={2}>
-              <Text color="cyan">{'+ '}</Text>
+              <Text color={PALETTE.info}>{'+ '}</Text>
               <Text>{valueText}</Text>
               <Text inverse={cursorVisible}> </Text>
             </Box>
@@ -723,7 +724,7 @@ function SlotRow({
                         const absIdx = start + i;
                         const isCursor = absIdx === cursor;
                         return (
-                          <Text key={name} color={isCursor ? 'cyan' : undefined} dimColor={!isCursor}>
+                          <Text key={name} color={isCursor ? PALETTE.info : undefined} dimColor={!isCursor}>
                             {isCursor ? `  ▶ ${name}` : `    ${name}`}
                           </Text>
                         );
@@ -740,7 +741,7 @@ function SlotRow({
       {selected && activeField === 'description' && (
         <Box paddingLeft={2} flexDirection="row">
           <Text dimColor>desc:</Text>
-          <Box flexGrow={1} borderStyle="round" borderColor="cyan" paddingX={1}>
+          <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
             <Text>{slot.description.slice(0, textCursor)}</Text>
             <Text inverse={cursorVisible}>{slot.description[textCursor] ?? cursor}</Text>
             <Text>{slot.description.slice(textCursor + 1)}</Text>
@@ -750,7 +751,7 @@ function SlotRow({
       {selected && activeField !== 'description' && (
         <Box paddingLeft={2} gap={1}>
           <Text dimColor>desc:</Text>
-          <Text color="green">{slot.description || '—'}</Text>
+          <Text color={PALETTE.success}>{slot.description || '—'}</Text>
         </Box>
       )}
     </Box>
@@ -1834,11 +1835,11 @@ export function FieldEditor({
 
   if (parseErr) {
     return (
-      <Box flexDirection="column" width={width} borderStyle="single" borderColor="red">
-        <Text bold color="red">
+      <Box flexDirection="column" width={width} borderStyle="single" borderColor={PALETTE.error}>
+        <Text bold color={PALETTE.error}>
           FIELD EDITOR — parse error
         </Text>
-        <Text color="red">{parseErr}</Text>
+        <Text color={PALETTE.error}>{parseErr}</Text>
         <Text dimColor>Cannot display structured editor. Fix the JSON first.</Text>
       </Box>
     );
@@ -1846,11 +1847,11 @@ export function FieldEditor({
 
   if (props.length === 0 && slots.length === 0) {
     return (
-      <Box flexDirection="column" width={width} borderStyle="single" borderColor="yellow">
-        <Text bold color="yellow">
+      <Box flexDirection="column" width={width} borderStyle="single" borderColor={PALETTE.warning}>
+        <Text bold color={PALETTE.warning}>
           FIELD EDITOR — no fields
         </Text>
-        <Text color="yellow">
+        <Text color={PALETTE.warning}>
           {"⚠ No properties classified for this component. The LLM didn't find anything to classify."}
         </Text>
         <Text dimColor>You can add fields manually below or reject this component.</Text>
@@ -1918,13 +1919,13 @@ export function FieldEditor({
   const visibleRowSlice = rows.slice(scrollStart, scrollStart + visibleRows);
 
   return (
-    <Box flexDirection="column" width={width} borderStyle="single" borderColor={hasEmptyProperties ? 'yellow' : 'cyan'}>
-      <Text bold color={hasEmptyProperties ? 'yellow' : 'cyan'}>
+    <Box flexDirection="column" width={width} borderStyle="single" borderColor={hasEmptyProperties ? PALETTE.warning : PALETTE.info}>
+      <Text bold color={hasEmptyProperties ? PALETTE.warning : PALETTE.info}>
         {'FIELDS [Ctrl+S save · Esc discard]'}
       </Text>
 
       {hasEmptyProperties && (
-        <Text color="yellow">
+        <Text color={PALETTE.warning}>
           {
             "⚠ No properties classified for this component. The LLM didn't find anything to classify. Reject this component or add fields manually."
           }
@@ -1948,7 +1949,7 @@ export function FieldEditor({
               <Box key={`component-description-${i}`} flexDirection="column">
                 <Box gap={1}>
                   <Text
-                    color={isSelected ? 'white' : 'cyan'}
+                    color={isSelected ? PALETTE.inverse : PALETTE.info}
                     bold={isSelected}
                     backgroundColor={isSelected ? 'blue' : undefined}
                   >
@@ -1957,7 +1958,7 @@ export function FieldEditor({
                 </Box>
                 {isEditing ? (
                   <Box paddingLeft={2} flexDirection="row">
-                    <Box flexGrow={1} borderStyle="round" borderColor="cyan" paddingX={1}>
+                    <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
                       <Text>{desc.slice(0, textCursor)}</Text>
                       <Text inverse={cursorVisible}>{desc[textCursor] ?? (cursorVisible ? '█' : ' ')}</Text>
                       <Text>{desc.slice(textCursor + 1)}</Text>
@@ -1965,7 +1966,7 @@ export function FieldEditor({
                   </Box>
                 ) : (
                   <Box paddingLeft={2}>
-                    <Text color={desc ? 'green' : undefined} dimColor={!desc}>
+                    <Text color={desc ? PALETTE.success : undefined} dimColor={!desc}>
                       {desc || '(none — Return to edit)'}
                     </Text>
                   </Box>
@@ -2067,8 +2068,8 @@ export function FieldEditor({
           lifted-panel callbacks. */}
 
       {showHelp && (
-        <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
-          <Text bold color="cyan">
+        <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
+          <Text bold color={PALETTE.info}>
             Keybindings
           </Text>
           <Text> </Text>
@@ -2099,7 +2100,7 @@ export function FieldEditor({
           <Text dimColor>press ? or Esc to close</Text>
         </Box>
       )}
-      {validationError && <Text color="red">{'✗ ' + validationError}</Text>}
+      {validationError && <Text color={PALETTE.error}>{'✗ ' + validationError}</Text>}
       <Text dimColor>{modeLabel}</Text>
     </Box>
   );

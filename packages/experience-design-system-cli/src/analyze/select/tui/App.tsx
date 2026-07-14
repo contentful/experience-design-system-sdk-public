@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PALETTE } from './theme.js';
 import { Box, Text, useStdout } from 'ink';
 import { readFile } from 'node:fs/promises';
 import type { PreviewAnnotation, ReviewComponentStatus, ReviewSessionSnapshot } from '../types.js';
@@ -382,7 +383,7 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
 
   if (sessionError) {
     return (
-      <Text color="red">
+      <Text color={PALETTE.error}>
         {sessionError}
         {'\nPress q to exit.'}
       </Text>
@@ -390,7 +391,7 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
   }
 
   if (!session || !paths) {
-    return <Text color="red">Session unavailable.</Text>;
+    return <Text color={PALETTE.error}>Session unavailable.</Text>;
   }
 
   if (finalizedResult) {
@@ -618,8 +619,8 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
       )}
 
       <PreviewSummaryBar preview={previewResponse} loading={previewLoading} />
-      {previewError && <Text color="yellow">{'⚠ Preview: ' + previewError}</Text>}
-      {saveError && <Text color="red">{'⚠ ' + saveError}</Text>}
+      {previewError && <Text color={PALETTE.warning}>{'⚠ Preview: ' + previewError}</Text>}
+      {saveError && <Text color={PALETTE.error}>{'⚠ ' + saveError}</Text>}
 
       {!dialogOpen && (
         <StatusBar
@@ -648,17 +649,17 @@ function FinalizedScreen({
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1} gap={1}>
-      <Text bold color="green">
+      <Text bold color={PALETTE.success}>
         ✓ Finalized
       </Text>
       <Box flexDirection="column">
         <Box gap={1}>
-          <Text color="green">✓</Text>
+          <Text color={PALETTE.success}>✓</Text>
           <Text>{result.accepted} accepted</Text>
         </Box>
         {result.rejected > 0 && (
           <Box gap={1}>
-            <Text color="red">✗</Text>
+            <Text color={PALETTE.error}>✗</Text>
             <Text>{result.rejected} rejected</Text>
           </Box>
         )}

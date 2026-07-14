@@ -1,4 +1,5 @@
 import React from 'react';
+import { PALETTE } from '../theme.js';
 import { Text } from 'ink';
 import type {
   LineageEntry,
@@ -73,7 +74,7 @@ export function LineagePanel({
         return (
           <Text key={i}>
             {isCursor ? (
-              <Text color="cyan" bold>
+              <Text color={PALETTE.info} bold>
                 {'▶'}
               </Text>
             ) : (

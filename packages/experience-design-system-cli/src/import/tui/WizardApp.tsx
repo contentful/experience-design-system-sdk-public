@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { PALETTE } from '../../analyze/select/tui/theme.js';
 import { Box, Text, useStdout } from 'ink';
 import { join, resolve } from 'node:path';
 import { appendFileSync, writeFileSync } from 'node:fs';
@@ -1951,7 +1952,7 @@ export function WizardApp({
         if (!state.extractSessionId) {
           return (
             <Box paddingX={2} paddingY={1}>
-              <Text color="red">Error: extract session ID missing — please re-run.</Text>
+              <Text color={PALETTE.error}>Error: extract session ID missing — please re-run.</Text>
             </Box>
           );
         }

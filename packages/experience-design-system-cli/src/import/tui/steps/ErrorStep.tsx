@@ -1,4 +1,5 @@
 import React from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 
@@ -22,10 +23,10 @@ export function ErrorStep({ stepName, message, onExit, onRetryCredentials }: Err
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Text bold color="red">
+      <Text bold color={PALETTE.error}>
         ✗ {stepName} failed
       </Text>
-      <Text color="red">{message}</Text>
+      <Text color={PALETTE.error}>{message}</Text>
       <Box gap={3} marginTop={1}>
         <Text dimColor>[Enter / q] Exit</Text>
         {onRetryCredentials && <Text dimColor>[r] Re-enter credentials</Text>}

@@ -5,6 +5,7 @@ import {
   ScopeGateStep,
   sideColumnLabelStyle,
 } from '../../../src/import/tui/steps/ScopeGateStep.js';
+import { PALETTE } from '../../../src/analyze/select/tui/theme.js';
 
 /**
  * Multi-column scope-gate layout tests. The three-column layout only renders
@@ -62,57 +63,57 @@ const AI_FLAGGED_GRAPH = [
 describe('sideColumnLabelStyle', () => {
   it('cursor row (selected + focused) forces bold white + inverse and overrides green/red/dim', () => {
     const nonCycle = sideColumnLabelStyle({ isCycle: false, isSelected: true, focused: true });
-    expect(nonCycle.nameColor).toBe('white');
+    expect(nonCycle.nameColor).toBe(PALETTE.inverse);
     expect(nonCycle.nameBold).toBe(true);
     expect(nonCycle.nameInverse).toBe(true);
     expect(nonCycle.nameUnderline).toBe(false);
-    expect(nonCycle.suffixColor).toBe('white');
+    expect(nonCycle.suffixColor).toBe(PALETTE.inverse);
     expect(nonCycle.suffixDim).toBe(false);
     expect(nonCycle.suffixInverse).toBe(true);
 
     // Cycle rows also collapse to bold white on the cursor line.
     const cycle = sideColumnLabelStyle({ isCycle: true, isSelected: true, focused: true });
-    expect(cycle.nameColor).toBe('white');
+    expect(cycle.nameColor).toBe(PALETTE.inverse);
     expect(cycle.nameBold).toBe(true);
     expect(cycle.nameInverse).toBe(true);
   });
 
   it('selected but not focused: underline is on, retains base coloring', () => {
     const nonCycle = sideColumnLabelStyle({ isCycle: false, isSelected: true, focused: false });
-    expect(nonCycle.nameColor).toBe('green');
+    expect(nonCycle.nameColor).toBe(PALETTE.success);
     expect(nonCycle.nameInverse).toBe(false);
     expect(nonCycle.nameUnderline).toBe(true);
-    expect(nonCycle.suffixColor).toBe('cyan');
+    expect(nonCycle.suffixColor).toBe(PALETTE.info);
     expect(nonCycle.suffixDim).toBe(true);
     expect(nonCycle.suffixUnderline).toBe(true);
 
     const cycle = sideColumnLabelStyle({ isCycle: true, isSelected: true, focused: false });
-    expect(cycle.nameColor).toBe('red');
+    expect(cycle.nameColor).toBe(PALETTE.error);
     expect(cycle.nameUnderline).toBe(true);
-    expect(cycle.suffixColor).toBe('red');
+    expect(cycle.suffixColor).toBe(PALETTE.error);
   });
 
   it('non-selected non-cycle row: green name, dim cyan suffix, no underline', () => {
     const s = sideColumnLabelStyle({ isCycle: false, isSelected: false, focused: false });
-    expect(s.nameColor).toBe('green');
+    expect(s.nameColor).toBe(PALETTE.success);
     expect(s.nameBold).toBe(false);
     expect(s.nameInverse).toBe(false);
     expect(s.nameUnderline).toBe(false);
-    expect(s.suffixColor).toBe('cyan');
+    expect(s.suffixColor).toBe(PALETTE.info);
     expect(s.suffixDim).toBe(true);
     expect(s.suffixInverse).toBe(false);
   });
 
   it('non-selected cycle row: red name AND red suffix (cycle color applies to whole label)', () => {
     const s = sideColumnLabelStyle({ isCycle: true, isSelected: false, focused: false });
-    expect(s.nameColor).toBe('red');
-    expect(s.suffixColor).toBe('red');
+    expect(s.nameColor).toBe(PALETTE.error);
+    expect(s.suffixColor).toBe(PALETTE.error);
     expect(s.suffixDim).toBe(false);
   });
 
   it('focused but not selected: green (or red) is preserved', () => {
     const s = sideColumnLabelStyle({ isCycle: false, isSelected: false, focused: true });
-    expect(s.nameColor).toBe('green');
+    expect(s.nameColor).toBe(PALETTE.success);
     expect(s.nameInverse).toBe(false);
     expect(s.nameUnderline).toBe(false);
   });

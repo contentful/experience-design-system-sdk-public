@@ -4265,14 +4265,14 @@ describe('GenerateReviewStep — breaking-changes goto-banner (L6)', () => {
     expect(open).toMatch(/removed/);
   });
 
-  it('legend advertises [b] breaking', async () => {
+  it('legend advertises [b] see breaking changes', async () => {
     const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
     lastOnResult!(previewWithBreaking());
     await tick();
-    expect(stripAnsiL6(lastFrame() ?? '')).toContain('[b] breaking');
+    expect(stripAnsiL6(lastFrame() ?? '')).toContain('[b] see breaking changes');
   });
 
   // ── BD4: per-change rows + jump-focuses-editor-at-the-exact-field ──────────
@@ -4858,7 +4858,7 @@ describe('GenerateReviewStep — GA-1 (A3/A5/A6)', () => {
     expect(filtered).not.toMatch(/^.*Reject.*\[[ ✓✗×]\]/m);
   });
 
-  it('A3: legend advertises "see breaking changes" and NOT "only broken"', async () => {
+  it('A3: [w] filter legend advertises "only breaking" and NOT "only broken"', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Alpha', entry: leaf('Alpha') }]);
     const { lastFrame } = render(
@@ -4866,11 +4866,11 @@ describe('GenerateReviewStep — GA-1 (A3/A5/A6)', () => {
     );
     await tick();
     const out = stripAnsi(lastFrame() ?? '');
-    expect(out).toContain('see breaking changes');
+    expect(out).toContain('only breaking');
     expect(out).not.toContain('only broken');
   });
 
-  it('A3: help overlay advertises "see breaking changes" for [w]', async () => {
+  it('A3: help overlay advertises "Only breaking" for [w]', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Alpha', entry: leaf('Alpha') }]);
     const { lastFrame, stdin } = render(
@@ -4880,8 +4880,8 @@ describe('GenerateReviewStep — GA-1 (A3/A5/A6)', () => {
     stdin.write('?');
     await tick();
     const out = stripAnsi(lastFrame() ?? '');
-    expect(out).toContain('See breaking changes');
-    expect(out).not.toContain('Only breaking changes');
+    expect(out).toContain('Only breaking');
+    expect(out).not.toContain('See breaking changes');
   });
 
   // ── A5: [u] undo alias removed ───────────────────────────────────────────────

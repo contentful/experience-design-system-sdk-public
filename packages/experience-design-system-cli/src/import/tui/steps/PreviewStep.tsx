@@ -1,4 +1,5 @@
 import React from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 
@@ -74,13 +75,13 @@ export function PreviewStep({
         </Box>
         {summary.created > 0 && (
           <Box gap={1}>
-            <Text color="green"> ＋</Text>
+            <Text color={PALETTE.success}> ＋</Text>
             <Text>{summary.created} will be created</Text>
           </Box>
         )}
         {summary.updated > 0 && (
           <Box gap={1}>
-            <Text color="yellow"> ～</Text>
+            <Text color={PALETTE.warning}> ～</Text>
             <Text>{summary.updated} will be updated</Text>
           </Box>
         )}
@@ -92,16 +93,16 @@ export function PreviewStep({
         )}
         {summary.conflicts > 0 && (
           <Box gap={1}>
-            <Text color="red"> ✗</Text>
-            <Text color="red">
+            <Text color={PALETTE.error}> ✗</Text>
+            <Text color={PALETTE.error}>
               {summary.conflicts} conflict{summary.conflicts !== 1 ? 's' : ''} — resolve before pushing
             </Text>
           </Box>
         )}
         {summary.failed > 0 && (
           <Box gap={1}>
-            <Text color="red"> ✗</Text>
-            <Text color="red">{summary.failed} failed — check logs</Text>
+            <Text color={PALETTE.error}> ✗</Text>
+            <Text color={PALETTE.error}>{summary.failed} failed — check logs</Text>
           </Box>
         )}
       </>

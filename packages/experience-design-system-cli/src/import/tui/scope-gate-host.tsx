@@ -1,4 +1,5 @@
 import { Box, Text } from 'ink';
+import { PALETTE } from '../../analyze/select/tui/theme.js';
 import React from 'react';
 import { ScopeGateStep } from './steps/ScopeGateStep.js';
 import type { ScopeComponent } from './steps/ScopeGateStep.js';
@@ -32,7 +33,7 @@ export function ScopeGateHost({
   if (components.length === 0) {
     return (
       <Box paddingX={2} paddingY={1}>
-        <Text color="red">Error: no components found for this session — please re-run analyze extract.</Text>
+        <Text color={PALETTE.error}>Error: no components found for this session — please re-run analyze extract.</Text>
       </Box>
     );
   }
