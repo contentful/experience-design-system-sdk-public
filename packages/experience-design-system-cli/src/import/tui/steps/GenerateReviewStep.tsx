@@ -175,7 +175,7 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'L', label: 'Flat view' },
       { keys: 'l', label: 'Lineage' },
       { keys: 'i', label: 'Focus lineage' },
-      { keys: 'w', label: 'See breaking changes' },
+      { keys: 'w', label: 'Only breaking' },
       { keys: 'o', label: 'Only cycles' },
       { keys: 'space', label: 'Expand/collapse group' },
       { keys: 'E / C', label: 'Expand/collapse all' },
@@ -2884,14 +2884,14 @@ export function GenerateReviewStep({
           {legendEntry('[L]', 'flat', columnOneView === 'flat')}
           {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
           {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
-          {legendEntry('[w]', 'see breaking changes', activeFilters.has('broken'))}
+          {legendEntry('[w]', 'only breaking', activeFilters.has('broken'))}
           {slotCycles.length > 0 && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
           {slotCycles.length > 0 && legendEntry('[c]', 'cycle list', cyclePanel.isOpen)}
           {legendEntry('[p]', 'prop rationale', panelOpen === 'prop-rationale')}
           {legendEntry('[P]', 'component rationale', panelOpen === 'component-rationale')}
           {legendEntry('[s]', 'source', panelOpen === 'source')}
           {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
-          {breakingChanges.length > 0 && legendEntry('[b]', 'breaking', breakingPanel.isOpen)}
+          {breakingChanges.length > 0 && legendEntry('[b]', 'see breaking changes', breakingPanel.isOpen)}
           {removedComponents.length > 0 &&
             legendEntry('[d]', removedBannerCollapsed ? 'show removed' : 'hide removed', !removedBannerCollapsed)}
           {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
