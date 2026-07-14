@@ -1350,6 +1350,118 @@ describe('GenerateReviewStep — GA-3 cycle features (A1/A2/A7/A8)', () => {
   });
 });
 
+describe('GenerateReviewStep — GA-4 interactive break-cycle overlay (A9)', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+  const CYCLE_A = {
+    $type: 'component' as const,
+    $properties: {},
+    $slots: { header: { $allowedComponents: ['CycleB'] } },
+  };
+  const CYCLE_B = {
+    $type: 'component' as const,
+    $properties: {},
+    $slots: { footer: { $allowedComponents: ['CycleA'] } },
+  };
+  const CYCLE_STORED = [
+    {
+      path: ['CycleA', 'CycleB', 'CycleA'],
+      edges: [
+        { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+        { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+      ],
+      suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+    },
+  ];
+
+  async function renderWithCycle() {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce(CYCLE_STORED);
+    const utils = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    return { utils, dbMod };
+  }
+
+  it('[x] from the cycle list opens the break overlay enumerating removable slot edges', async () => {
+    const { utils } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '');
+    // Both edges of the elementary cycle are removable break candidates.
+    expect(frame).toMatch(/remove 'CycleB' from CycleA\.\$slots\.header\.\$allowedComponents/);
+    expect(frame).toMatch(/remove 'CycleA' from CycleB\.\$slots\.footer\.\$allowedComponents/);
+  });
+
+  it('Enter + confirm (y) removes the highlighted edge from $allowedComponents in review state', async () => {
+    const { utils, dbMod } = await renderWithCycle();
+    const { stdin } = utils;
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    stdin.write('\r'); // select first edge → confirm prompt
+    await tick();
+    stdin.write('y'); // confirm delete
+    await tick();
+    // The undoable slot-edit seam persists via storeCDFComponents.
+    const calls = vi.mocked(dbMod.storeCDFComponents).mock.calls;
+    const lastCdf = calls.at(-1);
+    expect(lastCdf?.[2]).toEqual([
+      expect.objectContaining({
+        key: 'CycleA',
+        entry: expect.objectContaining({
+          $slots: { header: expect.objectContaining({ $allowedComponents: [] }) },
+        }),
+      }),
+    ]);
+  });
+
+  it('after a break-delete that resolves the only cycle, cycles drop out (recompute → storeSlotCycles [])', async () => {
+    const { utils, dbMod } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    stdin.write('y');
+    await tick();
+    // recomputeCycles ran over the mutated state → no structural cycle remains.
+    const lastStore = vi.mocked(dbMod.storeSlotCycles).mock.calls.at(-1);
+    expect(lastStore?.[2]).toEqual([]);
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).not.toMatch(/CycleB \(cycle\)/);
+  });
+
+  it('Ctrl+Z restores the removed $allowedComponents edge after a break-delete', async () => {
+    const { utils } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    stdin.write('y');
+    await tick();
+    // Cycle badges gone after the delete.
+    expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/CycleB \(cycle\)/);
+    // Undo restores the edge → structural cycle (and its badge) returns.
+    stdin.write('\x1a'); // Ctrl+Z
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toMatch(/CycleB \(cycle\)/);
+  });
+});
+
 describe('GenerateReviewStep — slot-cycle re-detection on user actions (INTEG-4401 Fix 3/4)', () => {
   const CYCLE_A = {
     $type: 'component' as const,
