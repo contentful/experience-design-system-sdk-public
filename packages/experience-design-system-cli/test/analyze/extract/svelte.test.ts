@@ -21,15 +21,6 @@ async function writeFixture(filename: string, content: string): Promise<string> 
   return filePath;
 }
 
-/**
- * Build a `.svelte` fixture whose Props interface extends an unreachable
- * external package — the canonical "we can't resolve this" shape used by
- * Skeleton/Zag-style headless libraries. Returns the written filePath.
- *
- * Optional `moduleScriptExtras` lets a test inject extra declarations into
- * the module script (e.g. a local `Snippet`-bearing helper interface) when
- * exercising the partial-heritage signal.
- */
 async function writeUnresolvedPropsFixture(
   filename: string,
   componentTypeName: string,
@@ -54,12 +45,7 @@ async function writeUnresolvedPropsFixture(
 }
 
 describe('SvelteComponentExtractor', () => {
-  // ---------------------------------------------------------------------------
-  // Basic $props() with inline interface
-  // ---------------------------------------------------------------------------
-
   it('extracts $props() with inline Props interface (typed primitives)', async () => {
-    // Pattern: skeleton-svelte / svelte-5-ui-lib canonical form.
     const filePath = await writeFixture(
       'Button.svelte',
       `
@@ -133,10 +119,6 @@ describe('SvelteComponentExtractor', () => {
     expect(tag.props.find((p) => p.name === 'count')!.type).toBe('number');
     expect(tag.props.find((p) => p.name === 'count')!.defaultValue).toBe('0');
   });
-
-  // ---------------------------------------------------------------------------
-  // Snippet slots
-  // ---------------------------------------------------------------------------
 
   it('routes Snippet-typed props to slots; children → default slot', async () => {
     const filePath = await writeFixture(
@@ -214,7 +196,6 @@ describe('SvelteComponentExtractor', () => {
   });
 
   it('detects Snippet under an aliased import', async () => {
-    // import { Snippet as S } — must still route to slots, not props.
     const filePath = await writeFixture(
       'Aliased.svelte',
       `
@@ -233,10 +214,6 @@ describe('SvelteComponentExtractor', () => {
     expect(c.slots[0]!.name).toBe('children');
     expect(c.slots[0]!.isDefault).toBe(true);
   });
-
-  // ---------------------------------------------------------------------------
-  // Legacy <slot> elements (Svelte 5 still parses them for compat)
-  // ---------------------------------------------------------------------------
 
   it('extracts legacy <slot> elements from the template', async () => {
     const filePath = await writeFixture(
@@ -282,10 +259,6 @@ describe('SvelteComponentExtractor', () => {
     expect(result.warnings.some((w) => /mixed.*slot/i.test(w))).toBe(true);
   });
 
-  // ---------------------------------------------------------------------------
-  // Defaults, requiredness, allowedValues edge cases
-  // ---------------------------------------------------------------------------
-
   it('marks prop required when no default and no optional flag', async () => {
     const filePath = await writeFixture(
       'Strict.svelte',
@@ -303,9 +276,6 @@ describe('SvelteComponentExtractor', () => {
   });
 
   it('marks prop optional when default present even if interface field is non-optional', async () => {
-    // Edge case: interface says `name: string` (required) but destructure provides
-    // a default. Required-ness in Svelte 5 is governed by whether the *caller* must pass —
-    // a default in the destructure makes that "no". Treat as not-required.
     const filePath = await writeFixture(
       'Defaulted.svelte',
       `
@@ -322,10 +292,6 @@ describe('SvelteComponentExtractor', () => {
     expect(prop.required).toBe(false);
     expect(prop.defaultValue).toBe(`'Anon'`);
   });
-
-  // ---------------------------------------------------------------------------
-  // Unsupported / fallback / error paths
-  // ---------------------------------------------------------------------------
 
   it('emits unsupported-syntax warning for Svelte 4 export let components', async () => {
     const filePath = await writeFixture(
@@ -362,12 +328,6 @@ describe('SvelteComponentExtractor', () => {
   });
 
   it('extracts named destructure props and silently ignores rest spread', async () => {
-    // Nearly every Svelte 5 component in real libraries uses `...rest` to pass
-    // arbitrary HTML attributes through to the underlying element. Surfacing
-    // a warning per component drowned the analyze panel — and there's no
-    // actionable signal anyway since the downstream pipeline already strips
-    // DOM/a11y pass-through globally. We extract the named destructure props
-    // and leave the rest spread alone.
     const filePath = await writeFixture(
       'WithRest.svelte',
       `
@@ -393,12 +353,7 @@ describe('SvelteComponentExtractor', () => {
     expect(result.warnings.some((w) => /parse error/i.test(w))).toBe(true);
   });
 
-  // ---------------------------------------------------------------------------
-  // Patterns observed in real corpus targets
-  // ---------------------------------------------------------------------------
-
   it('follows cross-file re-export chains (named re-export)', async () => {
-    // svelte-5-ui-lib pattern: index.ts re-exports the type from a sibling file.
     await writeFixture(
       'type.ts',
       `
@@ -466,9 +421,6 @@ export interface CardProps {
   });
 
   it('honors aliased Snippet import in cross-file resolution', async () => {
-    // The external file imports Snippet under an alias. The hardcoded
-    // `typeText === 'Snippet'` check used to misclassify alias-typed members
-    // as regular props instead of slots.
     await writeFixture(
       'type.ts',
       `
@@ -497,20 +449,16 @@ export interface AliasedProps {
     const result = await extractSvelteComponents([filePath]);
     const component = result.components[0]!;
 
-    // header should be a slot, not a prop
     expect(component.props.find((p) => p.name === 'header')).toBeUndefined();
     const headerSlot = component.slots.find((s) => s.name === 'header')!;
     expect(headerSlot).toBeDefined();
     expect(headerSlot.isDefault).toBe(false);
 
-    // title remains a regular prop
     const title = component.props.find((p) => p.name === 'title')!;
     expect(title.type).toBe('string');
   });
 
   it('handles svelte-5-ui-lib pattern: cross-file Props import alias', async () => {
-    // import { type ButtonProps as Props } from '.';
-    // We need ts-morph to follow the import; sibling file in same tempDir.
     await writeFixture(
       'index.ts',
       `
@@ -542,10 +490,6 @@ export interface ButtonProps {
   });
 
   it('handles skeleton-svelte pattern: $props() bound to const, then splitProps via $derived', async () => {
-    // const props: AccordionRootProps = $props();
-    // const [accordionProps, componentProps] = $derived(splitProps(props));
-    // We only care about the $props() destructure-or-const result; splitProps
-    // is downstream rewiring we ignore.
     const filePath = await writeFixture(
       'AccordionRoot.svelte',
       `
@@ -564,16 +508,10 @@ export interface ButtonProps {
 
     const result = await extractSvelteComponents([filePath]);
     const c = result.components[0]!;
-    // No destructure → no per-prop names from binding pattern.
-    // Type annotation still gives us prop *names* from the interface, though defaults are absent.
     expect(c.props.map((p) => p.name).sort()).toEqual(['multiple', 'value']);
     expect(c.props.find((p) => p.name === 'multiple')!.required).toBe(false);
     expect(c.props.find((p) => p.name === 'multiple')!.defaultValue).toBeUndefined();
   });
-
-  // ---------------------------------------------------------------------------
-  // INTEG-4273: extends / intersection / Omit / Pick / Partial resolution
-  // ---------------------------------------------------------------------------
 
   it('resolves props from a local interface that extends another local interface', async () => {
     const filePath = await writeFixture(
@@ -669,15 +607,7 @@ export interface ButtonProps {
     expect(c.props.find((p) => p.name === 'label')!.required).toBe(false);
   });
 
-  // ---------------------------------------------------------------------------
-  // Unresolvable Props type — surface to the user
-  // ---------------------------------------------------------------------------
-
   it('warns and flags review when a typed Props interface resolves to zero properties', async () => {
-    // Skeleton-svelte pattern: extends a type from an external package the resolver
-    // can't see (no local body, no in-scope ancestor). We emit a warning + a
-    // 'props-type-unresolved' review reason rather than producing a silent 0-prop
-    // component.
     const filePath = await writeUnresolvedPropsFixture('Skeletonish.svelte', 'SkeletonishProps');
 
     const result = await extractSvelteComponents([filePath]);
@@ -691,11 +621,6 @@ export interface ButtonProps {
   });
 
   it('warns on partial resolution: heritage clauses extend unreachable types and only Snippet-typed members resolve', async () => {
-    // Skeleton-svelte real-world pattern: the interface extends Omit<ExternalProps, ...>
-    // from a package the synthetic resolver can't see, plus a local PropsWithSnippet
-    // helper. Today TS gives us the Snippet from the local helper but silently drops
-    // every prop from the unreachable external extend. Without surfacing this, we'd
-    // ship a "Snippet-only" component that looks intentional but is a resolution gap.
     const filePath = await writeUnresolvedPropsFixture('PartiallyResolved.svelte', 'PartiallyResolvedProps', {
       moduleScriptExtras: `import type { Snippet } from 'svelte'; interface PropsWithEl { element: Snippet }`,
       heritage: `Omit<ExtPkgProps, 'id'>, PropsWithEl`,
@@ -713,9 +638,6 @@ export interface ButtonProps {
   });
 
   it('warnings start with the component name so the TUI can group them', async () => {
-    // The analyze TUI groups warnings to components by `<ComponentName>:` prefix
-    // (see build-analyze-view-rows.ts). Every parser-emitted warning must start
-    // with that prefix or the user never sees it.
     const filePath = await writeFixture(
       'accordion/anatomy/root.svelte',
       `
@@ -738,9 +660,6 @@ export interface ButtonProps {
   });
 
   it('replaces per-component warnings with a single summary when 3+ share the unresolved-type pattern', async () => {
-    // Skeleton-style library: many components, all extending unreachable external types.
-    // Wall-of-warnings UX → 1 summary. Per-component reviewReasons + needsReview
-    // remain so the user can drill into any specific component.
     const make = (name: string) =>
       writeFixture(
         `${name}/anatomy/root.svelte`,
@@ -760,13 +679,11 @@ export interface ButtonProps {
     const result = await extractSvelteComponents(files);
     expect(result.components).toHaveLength(4);
 
-    // Exactly one warning line — the summary; no per-component lines.
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0]).toMatch(/^Unresolved component types: 4 components/);
   });
 
   it('does not collapse when fewer than 3 components share the pattern', async () => {
-    // 2 unresolved → keep the per-component lines as-is; no summary noise.
     const make = (name: string) =>
       writeFixture(
         `${name}/anatomy/root.svelte`,
@@ -789,12 +706,6 @@ export interface ButtonProps {
   });
 
   it('detects Snippet via type-checker alias symbol when text expands to instantiated form', async () => {
-    // Realistic Skeleton-style: an interface extends another type that declares
-    // `element: Snippet<[Attrs<HTMLDivElement>]>`. Through a real TS program,
-    // ts-morph expands the type text to the instantiated form, so a regex on
-    // 'Snippet' alone won't match. Detection has to follow the alias symbol.
-    // Without a fix, `element` ends up duplicated (both prop and slot) and the
-    // central PROP_SLOT_NAME_COLLISION validator flags every component.
     const filePath = await writeFixture(
       'WithGenericSnippet.svelte',
       `
@@ -821,17 +732,11 @@ export interface ButtonProps {
     const c = result.components[0]!;
     expect(c.props.map((p) => p.name).sort()).toEqual(['label']);
     expect(c.slots.map((s) => s.name).sort()).toEqual(['element', 'plain']);
-    // No collision warnings.
     expect(c.props.some((p) => p.name === 'element')).toBe(false);
     expect(c.props.some((p) => p.name === 'plain')).toBe(false);
   });
 
   it('uses the declared type-node text to detect Snippet even when the resolver gives up', async () => {
-    // Real-world failure mode caught in skeleton-svelte: under partial type-checker
-    // state, ts-morph can return `any`/`unknown` for a Snippet generic instantiation
-    // — the alias-symbol detector then has nothing to follow. The declared type-node
-    // text is the author's `Snippet<...>` annotation regardless of resolution and
-    // is the source of truth.
     const filePath = await writeFixture(
       'WithSnippetGeneric.svelte',
       `
@@ -859,8 +764,6 @@ export interface ButtonProps {
   });
 
   it('collapse drops per-component lines when summarizing 3+ unresolved-type warnings', async () => {
-    // 264 near-identical warnings is unreadable. The summary line is the user-facing
-    // signal; the per-component reviewReasons + needsReview stay intact for drill-down.
     const make = (name: string) =>
       writeFixture(
         `${name}/anatomy/root.svelte`,
@@ -879,11 +782,9 @@ export interface ButtonProps {
     const files = await Promise.all([make('Accordion'), make('Dialog'), make('Slider'), make('Combobox')]);
     const result = await extractSvelteComponents(files);
 
-    // Exactly one summary warning; no per-component warnings.
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0]).toMatch(/^Unresolved component types: 4 components/);
 
-    // Each component still carries the reason + needs-review flag for drill-down.
     for (const c of result.components) {
       expect(c.reviewReasons).toContain('props-type-unresolved');
       expect(c.needsReview).toBe(true);
@@ -891,12 +792,6 @@ export interface ButtonProps {
   });
 
   it('Snippet-only recovery clears props-type-unresolved (the type DID resolve, just to slots)', async () => {
-    // When ts-morph successfully reads the resolved member list and every member
-    // is Snippet-typed, that's a complete answer — not a partial one. Keeping
-    // `props-type-unresolved` on these components made the retry summary nonsense
-    // ("recovered 236, 236 remain unresolved"). Confidence-driven needsReview
-    // (e.g. from `no-props-or-slots`) is the right signal for headless
-    // Snippet-only components, not props-type-unresolved.
     await writeFixture(
       'lib/local-types.ts',
       `
@@ -922,15 +817,12 @@ export interface AnchorProps {
 
     const result = await extractSvelteComponents([filePath]);
     const c = result.components[0]!;
-    // Resolved fully via the AST fast path → slot known, no unresolved-type reason.
     expect(c.slots.map((s) => s.name)).toContain('element');
     expect(c.props).toEqual([]);
     expect(c.reviewReasons ?? []).not.toContain('props-type-unresolved');
   });
 
   it('does not warn when the user genuinely typed an empty type literal', async () => {
-    // An inline empty literal is a deliberate user choice, not a resolution failure.
-    // We should NOT pollute warnings or flag review for this case.
     const filePath = await writeFixture(
       'IntentionallyEmpty.svelte',
       `
@@ -948,16 +840,7 @@ export interface AnchorProps {
     expect(result.warnings.some((w) => /resolved to 0 properties/i.test(w))).toBe(false);
   });
 
-  // ---------------------------------------------------------------------------
-  // Naming — namespace by parent dir for anatomy/parts conventions
-  // ---------------------------------------------------------------------------
-
   it('namespaces components under an anatomy/ folder by their grandparent dir', async () => {
-    // Skeleton-svelte / Ark / Zag pattern: accordion/anatomy/root.svelte,
-    // dialog/anatomy/root.svelte, slider/anatomy/root.svelte. Without
-    // namespacing they all collapse to "Root" and the central
-    // DUPLICATE_COMPONENT_NAME validator floods the output. Namespace by
-    // the grandparent dir so they become AccordionRoot, DialogRoot, etc.
     const accRoot = await writeFixture(
       'accordion/anatomy/root.svelte',
       `<script lang="ts">interface P{a:string}let{a}:P=$props()</script><div>{a}</div>`,
@@ -986,7 +869,6 @@ export interface AnchorProps {
   });
 
   it('does not namespace ordinary nested components (no anatomy/parts marker)', async () => {
-    // accordion/root.svelte (no anatomy/) → just "Root", behavior unchanged.
     const filePath = await writeFixture(
       'accordion/root.svelte',
       `<script lang="ts">interface P{a:string}let{a}:P=$props()</script><div>{a}</div>`,
@@ -1011,28 +893,12 @@ export interface AnchorProps {
     expect(result.components[0]!.name).toBe('Avatar');
   });
 
-  // ---------------------------------------------------------------------------
-  // resolve-unreachable retry pass (Approach B)
-  //
-  // The retry pass kicks in after the normal extraction pass when components
-  // fail to resolve their declared Props type (typically cross-package extends).
-  // It rebuilds a richer ts-morph Project — first via tsconfig.json, then by
-  // adding .d.ts files from node_modules — and tries again.
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Build N svelte fixtures, K of which have an unresolvable extends pattern.
-   * The unresolvable ones extend from a fictitious external package so the
-   * type checker can't reach the parent and the parser flags them.
-   */
   async function writeUnresolvedFixtures(total: number, unresolved: number): Promise<string[]> {
     const paths: string[] = [];
     for (let i = 0; i < total; i++) {
       const isUnresolved = i < unresolved;
       const name = `Comp${i}`;
       if (isUnresolved) {
-        // Pure cross-package extends with no local members → resolver returns 0
-        // → classifyUnresolved tags 'empty' → props-type-unresolved.
         paths.push(
           await writeFixture(
             `${name}.svelte`,
@@ -1065,23 +931,17 @@ export interface AnchorProps {
   }
 
   it('resolve-unreachable=auto skips when unresolved ratio is below 20%', async () => {
-    // 6 components, 1 unresolved → 16.7% → below threshold.
     const filePaths = await writeUnresolvedFixtures(6, 1);
     const result = await extractSvelteComponents(filePaths, undefined, {
       resolveUnreachable: 'auto',
       projectRoot: tempDir,
     });
-    // No top-level retry-pass info warning means the retry was skipped.
     expect(result.warnings.some((w) => w.startsWith('Unresolved-type retry pass'))).toBe(false);
-    // Original per-component unresolved warning still present.
     expect(result.warnings.some((w) => /declared Props type .* resolved to/.test(w))).toBe(true);
   });
 
   it('resolve-unreachable=auto triggers when unresolved ratio is ≥20%', async () => {
-    // 5 components, 2 unresolved → 40% → above threshold; tempDir has no
-    // tsconfig but createTsconfig in this fixture lets the retry actually run.
     const filePaths = await writeUnresolvedFixtures(5, 2);
-    // Plant a minimal tsconfig so the retry pass has something to load.
     await writeFile(join(tempDir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { target: 'ESNext' } }));
 
     const result = await extractSvelteComponents(filePaths, undefined, {
@@ -1103,8 +963,6 @@ export interface AnchorProps {
   });
 
   it('resolve-unreachable=always retries even at low unresolved ratios', async () => {
-    // 4 components, 1 unresolved → 25% (would trigger auto too, but the point
-    // here is to demonstrate `always` doesn't gate on the threshold).
     const filePaths = await writeUnresolvedFixtures(4, 1);
     await writeFile(join(tempDir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { target: 'ESNext' } }));
 
@@ -1116,10 +974,6 @@ export interface AnchorProps {
   });
 
   it('tsconfig pass recovers a component whose Props extends a path-alias type', async () => {
-    // Path aliases (`$lib/*` → `./lib/*`) only resolve when the ts-morph
-    // Project is loaded with the user's tsconfig. The first pass uses a
-    // throwaway in-memory project with no tsconfig and fails; the retry pass
-    // shares a tsConfigFilePath-loaded Project that recovers.
     await writeFile(
       join(tempDir, 'tsconfig.json'),
       JSON.stringify({
@@ -1145,7 +999,6 @@ export interface AnchorProps {
 `,
     );
 
-    // With retry enabled, tsconfig pass should recover label/tone via path alias.
     const result = await extractSvelteComponents([filePath], undefined, {
       resolveUnreachable: 'always',
       projectRoot: tempDir,
@@ -1154,18 +1007,11 @@ export interface AnchorProps {
     const propNames = card.props.map((p) => p.name).sort();
     expect(propNames).toContain('label');
     expect(card.reviewReasons ?? []).not.toContain('props-type-unresolved');
-    // Per-component "declared Props type ... resolved to" warning should be gone.
     expect(result.warnings.some((w) => /Card: declared Props type .* resolved to/.test(w))).toBe(false);
-    // Top-level retry-pass info warning recorded the recovery.
     expect(result.warnings.some((w) => w.startsWith('Unresolved-type retry pass'))).toBe(true);
   });
 
   it('node_modules pass adds .d.ts from a fake package and recovers props', async () => {
-    // Build a fake node_modules entry with a package.json pointing at index.d.ts
-    // exporting a Props-shaped interface. The .svelte extends from that
-    // interface — ts-morph (without the package being in the program) won't
-    // resolve it in the first pass; the node_modules pass should locate the
-    // .d.ts via require.resolve + package.json#types and add it to the project.
     await mkdir(join(tempDir, 'node_modules/fake-svelte-pkg'), { recursive: true });
     await writeFile(
       join(tempDir, 'node_modules/fake-svelte-pkg/package.json'),
@@ -1195,8 +1041,6 @@ export interface AnchorProps {
     });
     const widget = result.components[0]!;
     const propNames = widget.props.map((p) => p.name).sort();
-    // We don't insist every prop comes through — we insist the parser actually
-    // saw the external members (color/size) that were unreachable before.
     expect(propNames).toEqual(expect.arrayContaining(['color']));
     expect(widget.reviewReasons ?? []).not.toContain('props-type-unresolved');
   });
@@ -1204,8 +1048,6 @@ export interface AnchorProps {
 
 describe('extractSvelteComponents — $allowedComponents from Snippet<[XProps]>', () => {
   it('populates slot.allowedComponents from Snippet<[HeadingProps]>', async () => {
-    // Two components in one directory: Heading (with HeadingProps) and Card
-    // (which exposes a `header` slot typed to render a Heading via a snippet).
     const headingPath = await writeFixture(
       'Heading.svelte',
       `
@@ -1244,7 +1086,6 @@ describe('extractSvelteComponents — $allowedComponents from Snippet<[XProps]>'
     const headerSlot = card.slots.find((s) => s.name === 'header')!;
     expect(headerSlot.allowedComponents).toEqual(['Heading']);
 
-    // Untyped/plain snippets have no allowedComponents.
     const defaultSlot = card.slots.find((s) => s.name === 'children')!;
     expect(defaultSlot.allowedComponents).toBeUndefined();
   });

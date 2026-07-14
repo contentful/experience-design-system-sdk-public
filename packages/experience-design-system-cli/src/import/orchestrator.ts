@@ -134,21 +134,12 @@ export function isPreviewValidationError(result: { exitCode: number; stderr: str
 }
 
 export function parseOffendingComponentNames(output: string): string[] {
-  // The 422 body is appended to the ApiError message by the constructor and
-  // written to stderr by die(). Extract the JSON portion by finding the first '{'.
   const jsonStart = output.indexOf('{');
   if (jsonStart === -1) return [];
   const errors = parsePreviewValidationErrors(output.slice(jsonStart));
   return [...new Set(errors.map((e) => e.componentName))];
 }
 
-/**
- * Build the apply-push StepResult record. Centralizes the success/failure
- * shape so excludedByValidationRetry is recorded consistently in both
- * branches — previously the total-failure branch dropped it, leaving users
- * with a failed pipeline and no audit trail of what was auto-excluded
- * before the retry loop gave up.
- */
 export function buildPushStepResult(args: {
   created: number;
   updated: number;
@@ -210,7 +201,6 @@ export async function runPipeline(
   const steps: StepResult[] = [];
   let stepNum = 0;
 
-  // print components is an optional step; adjust total accordingly
   const totalSteps = 4 + (opts.print ? 1 : 0);
 
   function stepLabel(name: string): string {
@@ -218,7 +208,6 @@ export async function runPipeline(
     return `  Step ${stepNum}/${totalSteps}  ${name}  `;
   }
 
-  // ── Step 1: analyze extract ──────────────────────────────────────────────
   const analyzeLabel = stepLabel('Statically analyzing project');
   const analyzeSkipped = !opts.noCache && opts.skipAnalyze;
   let extractSessionId: string | null = null;
@@ -230,7 +219,6 @@ export async function runPipeline(
       status: 'skipped',
       reason: '--skip-analyze',
     });
-    // Try to find a prior extract session to hand to downstream steps
     const prior = findLatestSessionForCommand(db, 'analyze extract');
     extractSessionId = prior ?? null;
   } else {
@@ -256,7 +244,6 @@ export async function runPipeline(
       return { session: sessionId, project: projectRoot, steps };
     }
 
-    // Read session ID from DB — avoids dependence on subprocess stdout format.
     extractSessionId = findLatestSessionForCommand(db, 'analyze extract') ?? null;
 
     const componentMatch = /Extracted (\d+) component/.exec(r.stderr);
@@ -275,7 +262,6 @@ export async function runPipeline(
     });
   }
 
-  // ── Step 2: analyze select ───────────────────────────────────────────────
   const editLabel = stepLabel('Filtering components');
   if (analyzeSkipped) {
     progressWriter(`${editLabel}–  skipped (--skip-analyze)`);
@@ -290,7 +276,6 @@ export async function runPipeline(
     });
     const t0Edit = Date.now();
 
-    // Use agentic select when an agent is available and no manual select/deselect patterns are given.
     const useAgentSelect =
       !opts.selectAll && (!opts.select || opts.select.length === 0) && (!opts.deselect || opts.deselect.length === 0);
 
@@ -307,7 +292,7 @@ export async function runPipeline(
         for (const p of opts.select) editArgs.push('--select', p);
       } else if (opts.deselect && opts.deselect.length > 0) {
         for (const p of opts.deselect) editArgs.push('--deselect', p);
-        editArgs.push('--select-all'); // select-all with deselect patterns = select all except matches
+        editArgs.push('--select-all');
       } else {
         editArgs.push('--select-all');
       }
@@ -350,8 +335,6 @@ export async function runPipeline(
       reason: 'no extract session',
     });
   }
-
-  // ── Step 3: generate components ──────────────────────────────────────────
 
   if (opts.skipGenerate) {
     const generateLabel = stepLabel('Categorizing component props');
@@ -408,7 +391,6 @@ export async function runPipeline(
     steps.push({ step: 'generate components', status: 'complete', durationMs });
   }
 
-  // ── Step 4 (optional): print components ─────────────────────────────────
   if (opts.print) {
     const printLabel = stepLabel('Writing components.json');
     const printArgs = ['print', 'components', '--out', componentsPath];
@@ -440,7 +422,6 @@ export async function runPipeline(
     steps.push({ step: 'print components', status: 'complete', durationMs });
   }
 
-  // ── Step 4/5: apply push ─────────────────────────────────────────────────
   const applyLabelText =
     opts.spaceId && opts.environmentId
       ? `Applying changes to Space: ${opts.spaceId} Environment: ${opts.environmentId}`
@@ -475,10 +456,6 @@ export async function runPipeline(
       opts.cmaToken,
     ];
 
-    // Components are stored under the extract session ID (generate command uses resolveSessionId
-    // which returns the passed --session value, i.e. the extract session). Pass that directly so
-    // apply push reads from the DB without needing a components.json file.
-    // Fall back to --components so the step fails with a clear error rather than a generic one.
     if (extractSessionId) {
       pushArgs.push('--session', extractSessionId);
     } else {
@@ -489,7 +466,7 @@ export async function runPipeline(
     if (opts.viewports) pushArgs.push('--viewports', opts.viewports);
     if (opts.host) pushArgs.push('--host', opts.host);
     if (opts.verbose) pushArgs.push('--verbose');
-    pushArgs.push('--yes'); // always non-interactive in subprocess context
+    pushArgs.push('--yes');
 
     const pushStepId = createStep(db, sessionId, 'apply push', {
       components: componentsPath,
@@ -497,25 +474,17 @@ export async function runPipeline(
     const t0 = Date.now();
     let r = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
 
-    // Bounded retry loop: on a preview-phase 422 with a parseable ValidationFailed
-    // body, exclude the offending components and re-run apply push.
     const excludedByRetry: string[] = [];
     let validationRetryCount = 0;
     while (validationRetryCount < MAX_VALIDATION_RETRIES && isPreviewValidationError(r) && extractSessionId) {
       const offenders = parseOffendingComponentNames(r.stderr + r.stdout);
-      if (offenders.length === 0) break; // unparseable body — give up and surface original error
+      if (offenders.length === 0) break;
 
       process.stderr.write(
         `[retry ${validationRetryCount + 1}/${MAX_VALIDATION_RETRIES}] Preview validation failed — excluding ${offenders.join(', ')} and retrying\n`,
       );
       excludedByRetry.push(...offenders);
 
-      // No --select-all here: that would route through runNonInteractive's
-      // rebuild path, which DELETEs all rows and re-inserts with default
-      // status='extracted' — wiping the post-`generate components` state
-      // (status='generated' + raw_props.cdf_type) the next apply push reads.
-      // The bare --exclude-components form takes the rejectComponentsByName
-      // early-return: pure UPDATE, no rebuild.
       const rejectArgs = [
         'analyze',
         'select',
@@ -525,7 +494,7 @@ export async function runPipeline(
         offenders.join(','),
       ];
       const rejectResult = await runStep(rejectArgs, cliPath);
-      if (rejectResult.exitCode !== 0) break; // selection step failed — give up
+      if (rejectResult.exitCode !== 0) break;
 
       r = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
       validationRetryCount++;
@@ -533,7 +502,6 @@ export async function runPipeline(
 
     const durationMs = Date.now() - t0;
 
-    // Parse push result JSON from stdout to distinguish partial vs total failure
     interface PushCounts {
       created: number;
       updated: number;
