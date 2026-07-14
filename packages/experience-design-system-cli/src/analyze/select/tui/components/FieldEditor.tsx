@@ -162,7 +162,6 @@ function serializeState(state: EditorState, originalJson: string): string {
       }
     }
   } catch {
-    // ignore
   }
 
   const $properties: Record<string, CDFPropertyDefinition> = {};
