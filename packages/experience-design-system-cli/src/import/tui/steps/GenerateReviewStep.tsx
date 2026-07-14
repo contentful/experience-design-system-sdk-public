@@ -149,7 +149,6 @@ const HELP_SECTIONS: HelpSection[] = [
     entries: [
       { keys: 'j / k / ↑ / ↓', label: 'Move cursor' },
       { keys: 'Tab', label: 'Toggle sidebar/panel' },
-      { keys: 'e', label: 'Focus panel' },
       { keys: 'Enter', label: 'Drill to source' },
     ],
   },
@@ -168,7 +167,7 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'L', label: 'Flat view' },
       { keys: 'l', label: 'Lineage' },
       { keys: 'i', label: 'Focus lineage' },
-      { keys: 'w', label: 'Only broken' },
+      { keys: 'w', label: 'Only breaking changes' },
       { keys: 'o', label: 'Only cycles' },
       { keys: 'space', label: 'Expand/collapse group' },
       { keys: 'E / C', label: 'Expand/collapse all' },
@@ -848,12 +847,15 @@ export function GenerateReviewStep({
       })),
     [components, directIssues],
   );
-  // L8 — "broken" in GenerateReview = components carrying a directIssue (a
-  // non-ok NodeStatus, e.g. a rejected leaf breaks its ancestors). L11 removed
-  // the "deleted" filter — GR no longer offers it.
+  // GA-1 A3 — the `[w]` filter is "only breaking changes": the components the
+  // live-preview classified as `breaking`. We keep the internal FilterCategory
+  // key `broken` (lower churn than renaming the category everywhere) but feed
+  // it the breaking-change component names, and the user-facing label reads
+  // "only breaking changes". Distinct from `directIssues` (rejected-leaf error
+  // propagation), which is no longer surfaced as a filter.
   const brokenKeys = useMemo<Set<string>>(
-    () => new Set(directIssues.keys()),
-    [directIssues],
+    () => new Set(breakingChanges.map((b) => b.componentName)),
+    [breakingChanges],
   );
 
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
@@ -1501,10 +1503,6 @@ export function GenerateReviewStep({
       setSidebarFocused((prev) => !prev);
       return;
     }
-    if (input === 'e' && sidebarFocused) {
-      setSidebarFocused(false);
-      return;
-    }
     if (input === ' ' && sidebarFocused && !showJson) {
       const current = components[selectedIdx];
       if (!current) return;
@@ -1628,30 +1626,6 @@ export function GenerateReviewStep({
         return;
       }
       setShowFinalize(true);
-      return;
-    }
-    if (input === 'u') {
-      // T4 (parity plan §3) — `[u]` is a generic undo alias for Cmd+Z. When
-      // the history stack has an undoable entry (which includes the mount
-      // auto-reject snapshot), pop it. Falls through to the legacy task #37
-      // single-shot restore only when the stack isn't seeded yet (defensive
-      // — shouldn't happen in practice).
-      if (historyRef.current?.canUndo()) {
-        handleUndo();
-        return;
-      }
-      if (!undoSnapshot) return;
-      const snapshot = undoSnapshot;
-      let restored: CdfReviewEntry[] = [];
-      setComponents((prev) => {
-        restored = prev.map((c) =>
-          snapshot.has(c.key) ? { ...c, status: snapshot.get(c.key)! } : c,
-        );
-        return restored;
-      });
-      setUndoSnapshot(null);
-      setAutoRejected([]);
-      recomputeCycles(restored);
       return;
     }
     if (input === 'L') {
@@ -2129,7 +2103,7 @@ export function GenerateReviewStep({
               )}
               <Text dimColor>
                 {undoSnapshot
-                  ? '  [u] undo · [r]/[a] manually toggle · [F] continue'
+                  ? '  [Ctrl+Z] undo · [r]/[a] manually toggle · [F] continue'
                   : '  [r]/[a] manually toggle · [F] continue'}
               </Text>
             </Box>
@@ -2218,7 +2192,7 @@ export function GenerateReviewStep({
                     {propCount} prop{propCount !== 1 ? 's' : ''}
                     {slotCount > 0 ? ` · ${slotCount} slot${slotCount !== 1 ? 's' : ''}` : ''}
                     {'  '}
-                    {sidebarFocused ? '[e/Tab] focus panel' : '[Tab] focus list'}
+                    {sidebarFocused ? '[Tab] focus panel' : '[Tab] focus list'}
                   </Text>
                 </Box>
                 {panelOpen === 'prop-rationale' ? (
@@ -2351,7 +2325,6 @@ export function GenerateReviewStep({
                       // and active toggles highlight). This inline line only
                       // carries context that depends on the selected component
                       // + the group-expand affordances.
-                      (undoSnapshot ? '  [u] undo' : '') +
                       (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '')
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
@@ -2435,7 +2408,7 @@ export function GenerateReviewStep({
           {legendEntry('[L]', 'flat', columnOneView === 'flat')}
           {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
           {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
-          {legendEntry('[w]', 'only broken', activeFilters.has('broken'))}
+          {legendEntry('[w]', 'only breaking changes', activeFilters.has('broken'))}
           {slotCycles.length > 0 && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
           {slotCycles.length > 0 && legendEntry('[c]', 'cycle list', cyclePanel.isOpen)}
           {legendEntry('[p]', 'prop rationale', panelOpen === 'prop-rationale')}
@@ -2444,7 +2417,7 @@ export function GenerateReviewStep({
           {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
           {breakingChanges.length > 0 && legendEntry('[b]', 'breaking', breakingPanel.isOpen)}
           {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
-          {legendEntry('[e/Tab]', 'focus panel')}
+          {legendEntry('[Tab]', 'focus panel')}
           {legendEntry('[Ctrl+Z]', 'undo')}
           {legendEntry('[Ctrl+Y]', 'redo')}
           {legendEntry('[Ctrl+R]', 'reload')}
