@@ -1560,6 +1560,133 @@ describe('GenerateReviewStep — GA-4 interactive break-cycle overlay (A9)', () 
   });
 });
 
+// A2-4 (spec §4b) — the break-cycle overlay offers a SECOND kind of action
+// alongside slot-edge removal: reject a cycle-member component. Rejecting
+// applies IMMEDIATELY + cascades — identical to the sidebar `[r]` reject, with
+// NO confirmation dialog. The sidebar `[r]` body is factored into a shared
+// `handleRejectComponent` helper both callsites drive.
+describe('GenerateReviewStep — A2-4 reject cycle members from the break overlay', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+  const CYCLE_A = {
+    $type: 'component' as const,
+    $properties: {},
+    $slots: { header: { $allowedComponents: ['CycleB'] } },
+  };
+  const CYCLE_B = {
+    $type: 'component' as const,
+    $properties: {},
+    $slots: { footer: { $allowedComponents: ['CycleA'] } },
+  };
+  const CYCLE_STORED = [
+    {
+      path: ['CycleA', 'CycleB', 'CycleA'],
+      edges: [
+        { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+        { fromComponent: 'CycleB', slotName: 'footer', toComponent: 'CycleA' },
+      ],
+      suggestedBreak: { fromComponent: 'CycleA', slotName: 'header', toComponent: 'CycleB' },
+    },
+  ];
+
+  async function renderWithCycle() {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: CYCLE_B },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce(CYCLE_STORED);
+    const utils = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    return { utils, dbMod };
+  }
+
+  it('sidebar [r] reject still flips the target to rejected + cascades (pins the shared-helper refactor)', async () => {
+    const { utils } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    // CycleA is the top row (cycle members sort first). Reject it.
+    stdin.write('r');
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '');
+    // Rejected glyph on CycleA's row.
+    expect(frame).toMatch(/\[✗\][^\n]*CycleA/);
+  });
+
+  it('break overlay lists a reject entry for each cycle participant (in addition to edges)', async () => {
+    const { utils } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '');
+    // Edge entries still present.
+    expect(frame).toMatch(/remove 'CycleB' from CycleA\.\$slots\.header\.\$allowedComponents/);
+    // Member reject entries — one per distinct cycle participant.
+    expect(frame).toMatch(/reject component 'CycleA'/);
+    expect(frame).toMatch(/reject component 'CycleB'/);
+  });
+
+  it('Enter on a reject-member entry rejects immediately with NO confirm prompt + drops the cycle', async () => {
+    const { utils, dbMod } = await renderWithCycle();
+    const { lastFrame, stdin } = utils;
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    // Two edge entries precede the member entries. Move the cursor down past
+    // the edges onto the first member entry (CycleA), then Enter.
+    stdin.write('j'); // edge 1 -> edge 2
+    await tick();
+    stdin.write('j'); // edge 2 -> member CycleA
+    await tick();
+    stdin.write('\r'); // reject CycleA immediately
+    await tick();
+    const frame = stripAnsi(lastFrame() ?? '');
+    // No confirm dialog was shown.
+    expect(frame).not.toMatch(/\[y\] confirm/);
+    // recomputeCycles ran → push-blocking cycle resolved, persisted as [].
+    const lastStore = vi.mocked(dbMod.storeSlotCycles).mock.calls.at(-1);
+    expect(lastStore?.[2]).toEqual([]);
+  });
+
+  it('Ctrl+Z restores the member status after an overlay reject', async () => {
+    // Fixture with a LOADED (but structurally stale) cycle: CycleA slots CycleB,
+    // CycleB is a leaf. slotCycles carries the cycle path so the overlay lists
+    // both members, but the components do NOT form a structural cycle — so
+    // mount auto-reject does NOT fire and CycleA starts `needs-review` ([ ]).
+    // This makes the reject → undo status flip observable.
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
+      { key: 'CycleA', entry: CYCLE_A },
+      { key: 'CycleB', entry: { $type: 'component', $properties: {} } },
+    ]);
+    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce(CYCLE_STORED);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
+    );
+    await tick();
+    // CycleA is undecided at mount (no structural cycle → no auto-reject).
+    expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/\[✗\][^\n]*CycleA/);
+    stdin.write('c');
+    await tick();
+    stdin.write('x');
+    await tick();
+    // One removable edge (CycleA→CycleB) at cursor 0, then member entries:
+    // CycleA at cursor 1, CycleB at cursor 2. Move to CycleA's reject entry.
+    stdin.write('j');
+    await tick();
+    stdin.write('\r'); // reject CycleA from the overlay
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toMatch(/\[✗\][^\n]*CycleA/);
+    stdin.write('\x1a'); // Ctrl+Z
+    await tick();
+    // Undo restores CycleA's prior (undecided) status.
+    expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/\[✗\][^\n]*CycleA/);
+  });
+});
+
 describe('GenerateReviewStep — slot-cycle re-detection on user actions (INTEG-4401 Fix 3/4)', () => {
   const CYCLE_A = {
     $type: 'component' as const,
