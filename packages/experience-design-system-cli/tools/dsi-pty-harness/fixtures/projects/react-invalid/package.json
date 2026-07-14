@@ -1,0 +1,6 @@
+{
+  "name": "react-invalid-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "description": "React fixture with a DUPLICATE_COMPONENT_NAME validation error. Used by --exclude-invalid tests."
+}
