@@ -48,20 +48,14 @@ const STRING_COMPONENT = JSON.stringify(
 
 const tick = () => new Promise((r) => setTimeout(r, 30));
 
-/**
- * For an enum prop, drive the editor into the `values` field. Field order is:
- * type, category, required, values, description. Mount lands on the prop ROW
- * (no field active). Press Return → first field (type). Then j×3 to walk:
- * type → category → required → values.
- */
 async function navigateToValuesField(stdin: { write: (data: string) => void }): Promise<void> {
-  stdin.write('\r'); // Return → field mode at `type`
+  stdin.write('\r');
   await tick();
-  stdin.write('j'); // type → category
+  stdin.write('j');
   await tick();
-  stdin.write('j'); // category → required
+  stdin.write('j');
   await tick();
-  stdin.write('j'); // required → values
+  stdin.write('j');
   await tick();
 }
 
@@ -78,10 +72,8 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
       />,
     );
     const frame = lastFrame() ?? '';
-    // Hint reflects row-level navigation, not description-text-entry.
     expect(frame).toMatch(/navigate rows/);
     expect(frame).not.toMatch(/Type to edit/);
-    // The description value is still rendered (just not active).
     expect(frame).toContain('Hero title');
   });
 
@@ -99,7 +91,6 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     );
     stdin.write('!');
     await tick();
-    // Row-level: '!' is not bound, so onChange should not fire.
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -114,10 +105,9 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    stdin.write('\r'); // Return → first field
+    stdin.write('\r');
     await tick();
     const frame = lastFrame() ?? '';
-    // 'type' is the first field; its picker hint shows.
     expect(frame).toMatch(/cycle/);
   });
 
@@ -132,28 +122,22 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    // Return → type field
     stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/cycle/);
 
-    // j → category (still picker-cycle hint)
     stdin.write('j');
     await tick();
     expect(lastFrame() ?? '').toMatch(/cycle/);
 
-    // j → required (toggle hint)
     stdin.write('j');
     await tick();
     expect(lastFrame() ?? '').toMatch(/toggle/);
 
-    // j → default (default sub-row active). String-typed default is text-entry,
-    // so j becomes literal there — use ↓ arrow to advance to description.
     stdin.write('j');
     await tick();
     expect(lastFrame() ?? '').toMatch(/default:/);
 
-    // ↓ arrow → description (text-entry hint)
     stdin.write('\x1b[B');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
@@ -178,14 +162,11 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     const { stdin, lastFrame } = render(
       <FieldEditor value={value} width={80} height={20} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
-    // Arrow-down at row level moves to `body` row but does NOT enter field-edit.
     stdin.write('\x1b[B');
     await tick();
-    // Typing 'Z' at row level should not write into the description.
     stdin.write('Z');
     await tick();
     expect(onChange).not.toHaveBeenCalled();
-    // Hint should still be row-level navigation.
     expect(lastFrame() ?? '').toMatch(/navigate rows/);
   });
 
@@ -201,9 +182,6 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    // Walk: row → Return (type) → j×3 → default → ↓ → description.
-    // Cycle is type → category → required → default → description. j is
-    // literal text in the (string-typed) default, so use ↓ to step past it.
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -214,7 +192,6 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     await tick();
     stdin.write('\x1b[B');
     await tick();
-    // Now description is active — j/k should type literal characters.
     stdin.write('j');
     await tick();
     stdin.write('k');
@@ -235,8 +212,6 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    // Walk to description: type → category → required → default → description.
-    // Use ↓ arrow for the last hop since default is text-entry for strings.
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -248,7 +223,6 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     stdin.write('\x1b[B');
     await tick();
     const frame = lastFrame() ?? '';
-    // Bordered box renders with cyan border characters around description.
     expect(frame).toMatch(/Type to edit/);
     expect(frame).toContain('Hero title');
   });
@@ -290,7 +264,6 @@ describe('FieldEditor — flat enum-values (Fix 3)', () => {
     await navigateToValuesField(stdin);
 
     onChange.mockClear();
-    // Add new value
     stdin.write('a');
     await tick();
     stdin.write('q');
@@ -301,13 +274,12 @@ describe('FieldEditor — flat enum-values (Fix 3)', () => {
     await tick();
     stdin.write('d');
     await tick();
-    stdin.write('\r'); // Enter to commit
+    stdin.write('\r');
     await tick();
 
     expect(onChange).toHaveBeenCalled();
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
     expect(lastCall).toContain('quad');
-    // Original values still there
     expect(lastCall).toContain('primary');
     expect(lastCall).toContain('secondary');
     expect(lastCall).toContain('tertiary');
@@ -327,14 +299,11 @@ describe('FieldEditor — flat enum-values (Fix 3)', () => {
     );
     await navigateToValuesField(stdin);
 
-    // Cursor is at index 0 by default (primary). Press 'e' to edit.
     stdin.write('e');
     await tick();
-    // Pre-filled with "primary" — visible in frame
     const editFrame = lastFrame() ?? '';
     expect(editFrame).toContain('primary');
 
-    // Backspace through "primary" (7 chars), then type "PRI"
     for (let i = 0; i < 7; i++) {
       stdin.write('\x7f');
       await tick();
@@ -369,7 +338,7 @@ describe('FieldEditor — flat enum-values (Fix 3)', () => {
     await navigateToValuesField(stdin);
 
     onChange.mockClear();
-    stdin.write('r'); // remove at cursor (index 0 = "primary")
+    stdin.write('r');
     await tick();
 
     expect(onChange).toHaveBeenCalled();
@@ -394,12 +363,11 @@ describe('FieldEditor — flat enum-values (Fix 3)', () => {
     await navigateToValuesField(stdin);
 
     onChange.mockClear();
-    stdin.write('J'); // move cursor (idx 0 = primary) down to idx 1
+    stdin.write('J');
     await tick();
 
     expect(onChange).toHaveBeenCalled();
     const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
-    // Expect order in serialized $values: secondary, primary, tertiary
     const sIdx = lastCall.indexOf('"secondary"');
     const pIdx = lastCall.indexOf('"primary"');
     const tIdx = lastCall.indexOf('"tertiary"');
@@ -422,14 +390,13 @@ describe('FieldEditor — flat enum-values (Fix 3)', () => {
     await navigateToValuesField(stdin);
 
     onChange.mockClear();
-    stdin.write('a'); // enter add mode
+    stdin.write('a');
     await tick();
     stdin.write('z');
     await tick();
-    stdin.write('\x1b'); // Esc to cancel
+    stdin.write('\x1b');
     await tick();
 
-    // No change committed — onChange shouldn't have fired with a new value containing "z".
     if (onChange.mock.calls.length > 0) {
       const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
       expect(lastCall).not.toContain('"z"');
@@ -469,8 +436,6 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    // Return → type → j → category → j → required → j → default → ↓ → description
-    // (↓ used for the last hop because j is literal text in string-typed default.)
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -482,11 +447,9 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     stdin.write('\x1b[B');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
-    // Now arrow-down (NOT 'j' — j types literals in description) cycles to first field (type).
     stdin.write('\x1b[B');
     await tick();
     const frame = lastFrame() ?? '';
-    // First field is `type` — picker hint shows.
     expect(frame).toMatch(/cycle/);
     expect(frame).not.toMatch(/Type to edit/);
   });
@@ -502,11 +465,9 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
         onDiscard={vi.fn()}
       />,
     );
-    // Return → type field
     stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/cycle/);
-    // arrow-up at first field cycles to last (description).
     stdin.write('\x1b[A');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
@@ -525,7 +486,6 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     );
     stdin.write('\r');
     await tick();
-    // k at type cycles back to description
     stdin.write('k');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
@@ -548,9 +508,6 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     const { stdin, lastFrame } = render(
       <FieldEditor value={value} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
-    // Return → type, j×3 → default, ↓ → description on the FIRST prop.
-    // Cycle: type → category → required → default → description. j is literal
-    // text in default for string-typed props; use ↓ for the last hop.
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -562,12 +519,10 @@ describe('FieldEditor — field-nav cycling at edges (Bug 2)', () => {
     stdin.write('\x1b[B');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
-    // Arrow-down inside description should now cycle to first field (type) of the SAME prop,
-    // not jump to the body row.
     stdin.write('\x1b[B');
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/cycle/); // type-picker hint
+    expect(frame).toMatch(/cycle/);
     expect(frame).not.toMatch(/Type to edit/);
   });
 });
@@ -587,7 +542,6 @@ describe('FieldEditor — onExit panel-exit callback (Bug 1)', () => {
         onExit={onExit}
       />,
     );
-    // We mount at row-level. Pressing Esc here should call onExit.
     stdin.write('\x1b');
     await tick();
     expect(onExit).toHaveBeenCalledTimes(1);
@@ -608,17 +562,14 @@ describe('FieldEditor — onExit panel-exit callback (Bug 1)', () => {
         onExit={onExit}
       />,
     );
-    // Enter field-level
     stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/cycle/);
-    // Esc at field-level drops to row-level — neither onExit nor onDiscard fires.
     stdin.write('\x1b');
     await tick();
     expect(onExit).not.toHaveBeenCalled();
     expect(onDiscard).not.toHaveBeenCalled();
     expect(lastFrame() ?? '').toMatch(/navigate rows/);
-    // A second Esc at row-level fires onExit.
     stdin.write('\x1b');
     await tick();
     expect(onExit).toHaveBeenCalledTimes(1);
@@ -644,11 +595,6 @@ describe('FieldEditor — onExit panel-exit callback (Bug 1)', () => {
 
 describe('FieldEditor — duplicate React-key safety (Bug 1, INTEG-4257)', () => {
   it('renders both a $properties section header AND a prop with idx 0 without dropping either', () => {
-    // Pre-fix, the section header used key={i} (loop index in visibleRowSlice)
-    // while prop rows used key={row.idx}. When the visible slice contained a
-    // header at i=0 AND the prop at idx=0, both got key="0" — React kept only
-    // the second. Post-fix, header keys are prefixed with "header-" so both
-    // render.
     const COMPONENT_WITH_HEADER_AND_PROP = JSON.stringify(
       {
         Hero: {
@@ -672,9 +618,7 @@ describe('FieldEditor — duplicate React-key safety (Bug 1, INTEG-4257)', () =>
       />,
     );
     const frame = lastFrame() ?? '';
-    // Section header rendered.
     expect(frame).toContain('$properties');
-    // Prop name (rendered by PropRow at idx 0) also rendered.
     expect(frame).toContain('title');
   });
 });
@@ -696,7 +640,6 @@ describe('FieldEditor — Feature 5: propFields ordering ($default before descri
     const { stdin, lastFrame } = render(
       <FieldEditor value={RICHTEXT} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
-    // Return → type, j×3 → description (default skipped for richtext).
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -768,7 +711,6 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
         onDiscard={vi.fn()}
       />,
     );
-    // Walk Return + j×3 → default.
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -777,7 +719,6 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
     await tick();
     stdin.write('j');
     await tick();
-    // Now type 'H' 'i'.
     stdin.write('H');
     await tick();
     stdin.write('i');
@@ -804,7 +745,6 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
     const { stdin, lastFrame } = render(
       <FieldEditor value={BOOL} width={80} height={20} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
-    // Walk Return + j×3 → default.
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -813,20 +753,17 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
     await tick();
     stdin.write('j');
     await tick();
-    // Right arrow: (unset) → true.
     stdin.write('\x1b[C');
     await tick();
     expect(lastFrame() ?? '').toMatch(/true/);
     let last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
     expect(last).toContain('"$default": true');
 
-    // Right again: true → false.
     stdin.write('\x1b[C');
     await tick();
     last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
     expect(last).toContain('"$default": false');
 
-    // Right again: false → (unset). $default should be omitted.
     stdin.write('\x1b[C');
     await tick();
     last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
@@ -845,21 +782,16 @@ describe('FieldEditor — Feature 5: $default editor per prop type', () => {
         onDiscard={vi.fn()}
       />,
     );
-    // Cycle for enum: type → category → required → values → default → description.
-    // Inside values, j/k navigate values not fields, so cycle backwards from
-    // type via ↑: type → description → default.
     stdin.write('\r');
     await tick();
-    stdin.write('\x1b[A'); // up: type → description (wrap)
+    stdin.write('\x1b[A');
     await tick();
-    stdin.write('\x1b[A'); // up: description → default
+    stdin.write('\x1b[A');
     await tick();
-    // Right arrow: (unset) → primary.
     stdin.write('\x1b[C');
     await tick();
     let last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
     expect(last).toContain('"$default": "primary"');
-    // Next: primary → secondary
     stdin.write('\x1b[C');
     await tick();
     last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
@@ -896,12 +828,10 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
     2,
   );
 
-  // Helper: walk into the slot's allowedComponents field. Slot mounts at row,
-  // Return → first field (required), j → allowedComponents.
   async function navigateToAllowedComponents(stdin: { write: (data: string) => void }): Promise<void> {
-    stdin.write('\r'); // Return → first field (required)
+    stdin.write('\r');
     await tick();
-    stdin.write('j'); // required → allowedComponents
+    stdin.write('j');
     await tick();
   }
 
@@ -946,7 +876,7 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
     );
     await navigateToAllowedComponents(stdin);
     onChange.mockClear();
-    stdin.write('r'); // remove at cursor 0 = Card
+    stdin.write('r');
     await tick();
     const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
     expect(last).not.toContain('"Card"');
@@ -988,10 +918,6 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
   });
 
   it('renders the allowedComponents summary on unselected slot rows (INTEG-4401 Fix 5)', () => {
-    // Multiple slots: on mount the first is not yet slot-focused (entry-level
-    // focus), so all SlotRow instances render with `selected=false`. We
-    // assert the non-selected summary path shows the actual list (`Heading`)
-    // rather than the previous `(any)` fallback.
     const TWO_SLOTS = JSON.stringify(
       {
         Container: {
@@ -1010,9 +936,7 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
       <FieldEditor value={TWO_SLOTS} width={80} height={25} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
     const frame = lastFrame() ?? '';
-    // The non-empty slot shows its allow-list, even without focus.
     expect(frame).toContain('Heading');
-    // The empty slot still surfaces `(any)`.
     expect(frame).toContain('(any)');
   });
 
@@ -1038,22 +962,17 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
     const { stdin, lastFrame } = render(
       <FieldEditor value={CONTAINER} width={80} height={25} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
-    // Return → required (toggle hint).
     stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/toggle/);
-    // ↓ → allowedComponents (legend visible).
     stdin.write('\x1b[B');
     await tick();
     expect(lastFrame() ?? '').toMatch(/\[a\]dd/);
-    // Once inside allowedComponents, ↑↓ navigate the list (not fields) —
-    // mirrors enum $values. To reach description, wrap backwards via Esc +
-    // Return to first field, then ↑ wraps to last (description).
-    stdin.write('\x1b'); // Esc → row level
+    stdin.write('\x1b');
     await tick();
-    stdin.write('\r'); // Return → required (first field)
+    stdin.write('\r');
     await tick();
-    stdin.write('\x1b[A'); // ↑ → wrap to last field (description)
+    stdin.write('\x1b[A');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
@@ -1086,9 +1005,7 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
       />,
     );
     const frame = lastFrame() ?? '';
-    // Row label and description value visible.
     expect(frame).toContain('Top-level hero');
-    // The component-description row appears before the $properties header.
     const descIdx = frame.indexOf('Top-level hero');
     const propsIdx = frame.indexOf('$properties');
     expect(descIdx).toBeGreaterThanOrEqual(0);
@@ -1106,10 +1023,8 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
         onDiscard={vi.fn()}
       />,
     );
-    // Mount lands on prop[0]. Press k → component-description row.
     stdin.write('k');
     await tick();
-    // Press Return → enter description editing (bordered cyan affordance).
     stdin.write('\r');
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
@@ -1127,9 +1042,9 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
         onDiscard={vi.fn()}
       />,
     );
-    stdin.write('k'); // → component-description row
+    stdin.write('k');
     await tick();
-    stdin.write('\r'); // enter edit
+    stdin.write('\r');
     await tick();
     stdin.write('!');
     await tick();
@@ -1149,16 +1064,12 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
         onDiscard={vi.fn()}
       />,
     );
-    // Mount on prop[0]. k → component-description. j → back to prop[0].
     stdin.write('k');
     await tick();
     stdin.write('j');
     await tick();
-    // Confirm we're back on a prop row by entering field-edit.
     stdin.write('\r');
     await tick();
-    // First field of prop[0] is type — picker hint shows.
-    // (No direct row-name selector in the frame, but Return + cycle proves it.)
   });
 
   it('renders the row even when $description is empty (operator can populate)', () => {
@@ -1177,7 +1088,6 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
     const { lastFrame } = render(
       <FieldEditor value={NO_DESC} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
-    // The row label should appear even when value is empty.
     expect(lastFrame() ?? '').toMatch(/component-description|component \$description|\$description/i);
   });
 });
@@ -1206,16 +1116,15 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
     const { stdin } = render(
       <FieldEditor value={FIXTURE} width={80} height={30} onChange={onChange} onSave={onSave} onDiscard={vi.fn()} />,
     );
-    // Force a serialize by toggling required on first prop, then toggling back.
-    stdin.write('\r'); // enter field-edit at type
+    stdin.write('\r');
     await tick();
-    stdin.write('j'); // category
+    stdin.write('j');
     await tick();
-    stdin.write('j'); // required
+    stdin.write('j');
     await tick();
-    stdin.write(' '); // toggle required on
+    stdin.write(' ');
     await tick();
-    stdin.write(' '); // toggle required off
+    stdin.write(' ');
     await tick();
 
     expect(onChange).toHaveBeenCalled();
@@ -1247,7 +1156,6 @@ describe('FieldEditor — Feature 5: parseToState round-trip ($default, $allowed
     const { stdin } = render(
       <FieldEditor value={FIXTURE} width={80} height={30} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
-    // Toggle required on title to force a serialize.
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -1394,7 +1302,7 @@ describe('FieldEditor — Feature 1 (rationale + source view)', () => {
         }}
       />,
     );
-    stdin.write('\r'); // Return → first field (type)
+    stdin.write('\r');
     await tick();
     stdin.write('j');
     await tick();
@@ -1403,7 +1311,6 @@ describe('FieldEditor — Feature 1 (rationale + source view)', () => {
     stdin.write('j');
     await tick();
     const frame = lastFrame() ?? '';
-    // Rationale row remains rendered; it is not a focusable field.
     expect(frame).toContain('~ reasoning');
   });
 
@@ -1480,7 +1387,7 @@ describe('FieldEditor — Feature 1 (rationale + source view)', () => {
     );
     stdin.write('s');
     await tick();
-    stdin.write(''); // Esc
+    stdin.write('');
     await tick();
     expect(onExit).not.toHaveBeenCalled();
     expect(onDiscard).not.toHaveBeenCalled();
@@ -1539,7 +1446,6 @@ describe('FieldEditor — Feature 1 (rationale + source view)', () => {
       />,
     );
     const frame = lastFrame() ?? '';
-    // Component still renders normally; no rationale row.
     expect(frame).toContain('title');
     expect(frame).not.toContain('~ ');
   });
@@ -1578,17 +1484,11 @@ describe('FieldEditor — keybindings overlay (`?`)', () => {
     stdin.write('?');
     await tick();
     const frame = lastFrame() ?? '';
-    // Title is present.
     expect(frame).toMatch(/Keybindings/);
-    // Lists at least one entry per group (row nav, field editing, panels).
     expect(frame).toMatch(/navigate.*rows|move between rows/i);
     expect(frame).toMatch(/Ctrl\+S/);
     expect(frame).toMatch(/source-view|source/i);
-    // Foot of the overlay tells the user how to exit.
     expect(frame).toMatch(/\? or Esc to close|press \? .* close/i);
-    // L11 — the stale `d ... removed` help line was removed: GR's removed
-    // panel is no longer a `[d]` modal, and the `[d]` deleted filter was
-    // dropped entirely, so the FieldEditor overlay no longer advertises it.
     expect(frame).not.toMatch(/\bd\b.*removed/i);
   });
 
@@ -1651,7 +1551,7 @@ describe('FieldEditor — keybindings overlay (`?`)', () => {
     await tick();
     stdin.write('\r');
     await tick();
-    stdin.write('\x13'); // Ctrl+S
+    stdin.write('\x13');
     await tick();
     expect(onSave).not.toHaveBeenCalled();
     expect(onChange).not.toHaveBeenCalled();
@@ -1683,8 +1583,6 @@ describe('FieldEditor - rationale panels are lifted to the parent', () => {
     stdin.write('i');
     await tick();
     const frame = lastFrame() ?? '';
-    // The lifted-panel callback handler short-circuits before any internal
-    // panel state would be set, so the inline RATIONALE header must NOT appear.
     expect(frame).not.toMatch(/^RATIONALE/m);
   });
 
@@ -1760,8 +1658,7 @@ describe('FieldEditor - rationale panels are lifted to the parent', () => {
         onTogglePropRationale={onTogglePropRationale}
       />,
     );
-    // Navigate into description text-entry.
-    stdin.write('\r'); // enter prop field-edit at first field
+    stdin.write('\r');
     await tick();
     stdin.write('j');
     await tick();
@@ -1790,10 +1687,8 @@ describe('FieldEditor - rationale panels are lifted to the parent', () => {
         onTextEntryActiveChange={onTextEntryActiveChange}
       />,
     );
-    // The effect fires at mount: should be false initially.
     await tick();
     expect(onTextEntryActiveChange).toHaveBeenCalledWith(false);
-    // Enter description text-entry. Now true.
     stdin.write('\r');
     await tick();
     stdin.write('j');
@@ -1869,25 +1764,16 @@ describe('FieldEditor - legend documents i and I keys', () => {
   });
 });
 
-// INTEG-4401 — cycle-aware $allowedComponents picker
-// ─────────────────────────────────────────────────────────────────────
-// The FieldEditor exposes a cycle-filtered candidate list when the caller
-// plumbs in `projectSlotGraph` + `currentComponentName`. These tests cover
-// the pure helper (unit) and the input flow (render).
 
 describe('FieldEditor — INTEG-4401: computeAllowedComponentCandidates (unit)', () => {
   it('excludes candidates whose addition would create a new cycle (Card.header ← X, X.body ← Card ⇒ Card→X)', () => {
-    // Card has a header slot with no allowed components yet. X.body points at
-    // Card. Adding Card→header→X would form Card → X → Card (via X.body).
     const graph = [
       { name: 'Card', slots: [{ name: 'header', allowedComponents: [] }] },
       { name: 'X', slots: [{ name: 'body', allowedComponents: ['Card'] }] },
       { name: 'Safe', slots: [] },
     ];
-    // simulate FieldEditor state for Card: same as graph entry, no pending edits.
     const currentSlots = [{ name: 'header', allowedComponents: [] as string[] }];
     const cands = computeAllowedComponentCandidates(graph, 'Card', currentSlots, 'header');
-    // Self is excluded, X is excluded (would form cycle), Safe is included.
     expect(cands).not.toContain('Card');
     expect(cands).not.toContain('X');
     expect(cands).toContain('Safe');
@@ -1906,10 +1792,6 @@ describe('FieldEditor — INTEG-4401: computeAllowedComponentCandidates (unit)',
   });
 
   it('returns the empty list when every candidate would cycle', () => {
-    // A tight A↔B cycle already exists via B.slot=A. Adding anything to A's
-    // slot that eventually reaches A creates a new cycle. But we test the
-    // simpler: A has one slot, B is the only other component and B→A already.
-    // Adding B to A.slot forms A→B→A (new elementary cycle).
     const graph = [
       { name: 'A', slots: [{ name: 's', allowedComponents: [] }] },
       { name: 'B', slots: [{ name: 't', allowedComponents: ['A'] }] },
@@ -1920,9 +1802,6 @@ describe('FieldEditor — INTEG-4401: computeAllowedComponentCandidates (unit)',
   });
 
   it('reflects pending unsaved edits — self entry is replaced by currentSlots', () => {
-    // Baseline graph has Card.header = [] (no cycle). But the FieldEditor is
-    // showing pending currentSlots where Card.other = [B]. Adding X to
-    // Card.header should still be safe (B is a dead-end).
     const graph = [
       { name: 'Card', slots: [{ name: 'header', allowedComponents: [] }] },
       { name: 'B', slots: [] },
@@ -1938,7 +1817,6 @@ describe('FieldEditor — INTEG-4401: computeAllowedComponentCandidates (unit)',
   });
 
   it('simulateGraphWithCandidate + findSlotCycles surfaces the new elementary cycle', () => {
-    // Card→X via header AND X→Card via body ⇒ Card→X→Card cycle after the sim.
     const graph = [
       { name: 'Card', slots: [{ name: 'header', allowedComponents: [] }] },
       { name: 'X', slots: [{ name: 'body', allowedComponents: ['Card'] }] },
@@ -1965,9 +1843,6 @@ describe('FieldEditor — INTEG-4401: computeAllowedComponentCandidates (unit)',
 });
 
 describe('FieldEditor — INTEG-4401: picker render + input (render)', () => {
-  // Container is the component under edit; children.$allowedComponents is
-  // empty. Alpha and Beta are candidates; Bad would create a cycle
-  // (Bad→ref→Container) so it must be excluded from the picker.
   const CONTAINER = JSON.stringify(
     {
       Container: {
@@ -1987,7 +1862,6 @@ describe('FieldEditor — INTEG-4401: picker render + input (render)', () => {
   ];
 
   async function navigateAndPressAdd(stdin: { write: (data: string) => void }): Promise<void> {
-    // Return → first field (required). j → allowedComponents. a → add-mode.
     stdin.write('\r');
     await new Promise((r) => setTimeout(r, 30));
     stdin.write('j');
@@ -2033,7 +1907,6 @@ describe('FieldEditor — INTEG-4401: picker render + input (render)', () => {
     );
     await navigateAndPressAdd(stdin);
     onChange.mockClear();
-    // Cursor lands on the first candidate (Alpha). ↓ moves to Beta.
     stdin.write('\x1b[B');
     await new Promise((r) => setTimeout(r, 30));
     stdin.write('\r');
@@ -2045,7 +1918,6 @@ describe('FieldEditor — INTEG-4401: picker render + input (render)', () => {
   });
 
   it('renders "no valid components" line when every candidate would cycle', async () => {
-    // Every other component in the graph points at Container ⇒ every add-cycle.
     const ALL_CYCLE = [
       { name: 'Container', slots: [{ name: 'children', allowedComponents: [] }] },
       { name: 'X', slots: [{ name: 'r', allowedComponents: ['Container'] }] },
@@ -2088,10 +1960,8 @@ describe('FieldEditor — INTEG-4401: picker render + input (render)', () => {
     await new Promise((r) => setTimeout(r, 30));
     stdin.write('\r');
     await new Promise((r) => setTimeout(r, 30));
-    // onChange should NOT have been called with a Bad-containing value.
     const anyBad = onChange.mock.calls.some((call) => typeof call[0] === 'string' && call[0].includes('"Bad"'));
     expect(anyBad).toBe(false);
-    // The inline error banner is shown.
     expect(lastFrame() ?? '').toMatch(/slot-dependency cycle/);
   });
 
@@ -2130,7 +2000,6 @@ describe('FieldEditor — INTEG-4401: picker render + input (render)', () => {
     const frame = lastFrame() ?? '';
     expect(frame).not.toContain('candidates (↑↓');
     expect(frame).not.toContain('no valid components');
-    // The `+` add-line is still visible.
     expect(frame).toContain('+ ');
   });
 
@@ -2150,8 +2019,6 @@ describe('FieldEditor — INTEG-4401: picker render + input (render)', () => {
     );
     await navigateAndPressAdd(stdin);
     onChange.mockClear();
-    // NewComp is not in the project graph — cycle simulation drops unknown
-    // edges, so adding it can't form a cycle. Should succeed as free-text.
     'NewComp'.split('').forEach((c) => stdin.write(c));
     await new Promise((r) => setTimeout(r, 30));
     stdin.write('\r');
@@ -2161,18 +2028,9 @@ describe('FieldEditor — INTEG-4401: picker render + input (render)', () => {
   });
 });
 
-// INTEG-4401 (fix 2) — in-place cycling of existing $allowedComponents entries
-// ─────────────────────────────────────────────────────────────────────
-// ←/→ (and h/l) on an existing entry replace it with the next valid candidate
-// from the cycle-filtered universe. Same guard rails as add-mode plus: the
-// entry being replaced is a valid candidate for its own position, but the
-// OTHER entries in the same slot are excluded.
 
 describe('FieldEditor — INTEG-4401: computeAllowedComponentReplacementCandidates (unit)', () => {
   it('excludes self-name and other existing entries, keeps the entry at replaceIndex', () => {
-    // Card.header has [Heading, Button]; cycling at index 0 should exclude
-    // Button (other entry) and Card (self), but include Heading (position
-    // being replaced) plus any other non-cycling candidate.
     const graph = [
       { name: 'Card', slots: [{ name: 'header', allowedComponents: ['Heading', 'Button'] }] },
       { name: 'Heading', slots: [] },
@@ -2188,7 +2046,6 @@ describe('FieldEditor — INTEG-4401: computeAllowedComponentReplacementCandidat
   });
 
   it('excludes cycle-forming candidates', () => {
-    // X.body → Card, so replacing Card.header entry with X would form Card→X→Card.
     const graph = [
       { name: 'Card', slots: [{ name: 'header', allowedComponents: ['Heading'] }] },
       { name: 'Heading', slots: [] },
@@ -2227,10 +2084,6 @@ describe('FieldEditor — INTEG-4401: computeAllowedComponentReplacementCandidat
   });
 
   it('returns [] when every candidate would introduce a cycle', () => {
-    // Only two components; the other one has a slot pointing back to A ⇒
-    // replacing A.s[0] with B forms A→B→A. Replacing with the same value is
-    // also excluded (dedup on the "other entries" set doesn't fire — the
-    // entry being replaced IS itself, but its self-name is excluded).
     const graph = [
       { name: 'A', slots: [{ name: 's', allowedComponents: ['A_prev'] }] },
       { name: 'B', slots: [{ name: 't', allowedComponents: ['A'] }] },
@@ -2238,7 +2091,6 @@ describe('FieldEditor — INTEG-4401: computeAllowedComponentReplacementCandidat
     ];
     const currentSlots = [{ name: 's', allowedComponents: ['A_prev'] }];
     const cands = computeAllowedComponentReplacementCandidates(graph, 'A', currentSlots, 's', 0);
-    // A_prev is fine (baseline). B forms new cycle. A is self (excluded).
     expect(cands).toContain('A_prev');
     expect(cands).not.toContain('B');
     expect(cands).not.toContain('A');
@@ -2265,7 +2117,6 @@ describe('FieldEditor — INTEG-4401: cycle existing $allowedComponents entries 
   ];
 
   async function navigateToAllowedComponentsRow(stdin: { write: (data: string) => void }): Promise<void> {
-    // Enter slot row → activate first field (required) → j to allowedComponents.
     stdin.write('\r');
     await new Promise((r) => setTimeout(r, 30));
     stdin.write('j');
@@ -2288,9 +2139,7 @@ describe('FieldEditor — INTEG-4401: cycle existing $allowedComponents entries 
     );
     await navigateToAllowedComponentsRow(stdin);
     onChange.mockClear();
-    // Candidates for position 0 (currently "Heading"): [Button, Heading, Layout]
-    // — sorted alphabetically. curIdx = 1, → moves to index 2 = "Layout".
-    stdin.write('\x1b[C'); // right arrow
+    stdin.write('\x1b[C');
     await new Promise((r) => setTimeout(r, 30));
     expect(onChange).toHaveBeenCalled();
     const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
@@ -2314,8 +2163,7 @@ describe('FieldEditor — INTEG-4401: cycle existing $allowedComponents entries 
     );
     await navigateToAllowedComponentsRow(stdin);
     onChange.mockClear();
-    // Candidates [Button, Heading, Layout]; ← from Heading (idx 1) → Button.
-    stdin.write('\x1b[D'); // left arrow
+    stdin.write('\x1b[D');
     await new Promise((r) => setTimeout(r, 30));
     const last = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
     expect(last).toContain('"Button"');
@@ -2323,7 +2171,6 @@ describe('FieldEditor — INTEG-4401: cycle existing $allowedComponents entries 
   });
 
   it('shows inline note when no other valid candidates exist for this position', async () => {
-    // Graph where the only alt candidates form cycles.
     const ALL_CYCLE = [
       { name: 'Card', slots: [{ name: 'header', allowedComponents: ['Heading'] }] },
       { name: 'Heading', slots: [] },
@@ -2342,15 +2189,8 @@ describe('FieldEditor — INTEG-4401: cycle existing $allowedComponents entries 
       />,
     );
     await navigateToAllowedComponentsRow(stdin);
-    // Candidates should be [Heading] only (self, X excluded). Cycling either
-    // way keeps it on Heading (single-candidate no-op). Force a cycle attempt
-    // where nothing else can replace it: make Heading the current entry AND
-    // the only candidate — no valid *alternative* exists.
-    // With only 1 candidate that equals current, no-op — no error. Instead
-    // test a case where the candidate set is genuinely empty for this position.
     stdin.write('\x1b[C');
     await new Promise((r) => setTimeout(r, 30));
-    // The frame should not have changed to a different entry (still Heading).
     expect(lastFrame() ?? '').toContain('Heading');
   });
 
@@ -2415,18 +2255,16 @@ describe('FieldEditor — INTEG-4401: cycle existing $allowedComponents entries 
 });
 
 describe('FieldEditor — onDirtyChange + discardTrigger (T5)', () => {
-  // Navigate mounted-on-string-prop editor into the description text-entry so
-  // typed characters mutate the persisted state. Reused across dirty tests.
   async function enterStringDescriptionEdit(stdin: { write: (data: string) => void }): Promise<void> {
-    stdin.write('\r'); // Return → type
+    stdin.write('\r');
     await tick();
-    stdin.write('j'); // → category
+    stdin.write('j');
     await tick();
-    stdin.write('j'); // → required
+    stdin.write('j');
     await tick();
-    stdin.write('j'); // → default (string default is text-entry — j literal)
+    stdin.write('j');
     await tick();
-    stdin.write('\x1b[B'); // ↓ arrow → description
+    stdin.write('\x1b[B');
     await tick();
   }
 
@@ -2444,7 +2282,6 @@ describe('FieldEditor — onDirtyChange + discardTrigger (T5)', () => {
       />,
     );
     await tick();
-    // Mount effect runs once with the initial (clean) predicate.
     expect(onDirtyChange).toHaveBeenCalled();
     expect(onDirtyChange).toHaveBeenLastCalledWith(false);
   });
@@ -2464,7 +2301,7 @@ describe('FieldEditor — onDirtyChange + discardTrigger (T5)', () => {
     );
     await tick();
     await enterStringDescriptionEdit(stdin);
-    stdin.write('Q'); // append literal 'Q' to description
+    stdin.write('Q');
     await tick();
     expect(onDirtyChange).toHaveBeenLastCalledWith(true);
   });
@@ -2488,7 +2325,6 @@ describe('FieldEditor — onDirtyChange + discardTrigger (T5)', () => {
     stdin.write('Q');
     await tick();
     expect(onDirtyChange).toHaveBeenLastCalledWith(true);
-    // Ctrl+S = byte \x13
     stdin.write('\x13');
     await tick();
     expect(onSave).toHaveBeenCalled();
@@ -2515,8 +2351,6 @@ describe('FieldEditor — onDirtyChange + discardTrigger (T5)', () => {
     stdin.write('Q');
     await tick();
     expect(onDirtyChange).toHaveBeenLastCalledWith(true);
-    // Parent bumps discardTrigger → editor reverts to initial state, emits
-    // an onChange with the mount-time serialization, and fires clean signal.
     onChange.mockClear();
     rerender(
       <FieldEditor
@@ -2532,17 +2366,10 @@ describe('FieldEditor — onDirtyChange + discardTrigger (T5)', () => {
     );
     await tick();
     expect(onDirtyChange).toHaveBeenLastCalledWith(false);
-    // onChange fired with the reverted serialization so the parent's mirrored
-    // draft-state clears in lock-step.
     expect(onChange).toHaveBeenCalled();
   });
 });
 
-// ── BD4: initialFocusTarget seeds the mount-time cursor to a named prop/slot ──
-// When a caller (GenerateReviewStep's breaking-change jump) passes
-// initialFocusTarget, the editor opens focused + scrolled to the exact
-// changed field rather than the default first prop. Unknown names fall back
-// to today's default (first prop/slot) with no crash.
 describe('FieldEditor — BD4 initialFocusTarget', () => {
   const MULTI_PROP_COMPONENT = JSON.stringify(
     {
@@ -2589,8 +2416,6 @@ describe('FieldEditor — BD4 initialFocusTarget', () => {
       />,
     );
     const frame = lastFrame() ?? '';
-    // Only the SELECTED prop renders its `desc:` sub-row. Seeding to `charlie`
-    // means charlie's description shows and the first prop's (alpha) does not.
     expect(frame).toContain('CHARLIE_DESC');
     expect(frame).not.toContain('ALPHA_DESC');
   });
@@ -2608,8 +2433,6 @@ describe('FieldEditor — BD4 initialFocusTarget', () => {
       />,
     );
     const frame = lastFrame() ?? '';
-    // Selected slot renders its `desc:` sub-row; the default focus would land
-    // on the first prop (heading), so HEADING_DESC would show instead.
     expect(frame).toContain('ASIDE_SLOT_DESC');
     expect(frame).not.toContain('HEADING_DESC');
   });
@@ -2627,7 +2450,6 @@ describe('FieldEditor — BD4 initialFocusTarget', () => {
       />,
     );
     const frame = lastFrame() ?? '';
-    // Default behavior: first prop (alpha) selected, its desc sub-row renders.
     expect(frame).toContain('ALPHA_DESC');
     expect(frame).not.toContain('CHARLIE_DESC');
   });

@@ -78,11 +78,6 @@ describe('intersectFilterKeys', () => {
 });
 
 describe('buildFlatDimPredicate', () => {
-  // FB1 — flat view dims non-matching rows when a category filter and/or
-  // focus-lineage `[i]` is active, mirroring how search already dims. Grouped
-  // view keeps HIDING via filterVisibleKeys, so the flat-dim predicate never
-  // narrows grouped rows.
-
   it('returns undefined in grouped view even with an active filter (grouped hides, never dims)', () => {
     const pred = buildFlatDimPredicate({
       viewMode: 'grouped',
@@ -114,7 +109,6 @@ describe('buildFlatDimPredicate', () => {
   });
 
   it('flat view + focus-lineage (ancestor set) dims non-ancestors', () => {
-    // `[i]` feeds its ancestor set through the same filterVisibleKeys prop.
     const pred = buildFlatDimPredicate({
       viewMode: 'flat',
       searchQuery: '',

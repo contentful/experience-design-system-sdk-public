@@ -9,19 +9,12 @@ export type FinalReviewHostProps = {
   autoAccept: boolean;
   onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
-  // Feature 2 plumbing — passed straight through to GenerateReviewStep.
   livePreview?: boolean;
   spaceId?: string;
   environmentId?: string;
   cmaToken?: string;
   host?: string;
   tokensPath?: string;
-  /**
-   * INTEG-4411 refined: message displayed as an inline banner when the wizard
-   * routes back here after the preview API returned an empty diff (pure
-   * no-op push). Cleared on the next `a` / `A` keystroke inside
-   * GenerateReviewStep.
-   */
   initialFinalizeError?: string | null;
 };
 
@@ -76,7 +69,6 @@ function FinalReviewAutoAccept({
 }): React.ReactElement {
   React.useEffect(() => {
     onFinalize(generatedCount, 0, 0);
-    // fire once on mount; deps intentionally empty so a re-render with new generatedCount doesn't double-finalize
   }, []);
   return (
     <Box paddingX={2} paddingY={1}>

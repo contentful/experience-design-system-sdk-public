@@ -23,12 +23,6 @@ function worstOf(statuses: NodeStatus[]): NodeStatus {
   return RANK_STATUS[worst];
 }
 
-/**
- * Compute render statuses for each node in a closure, given the set of nodes
- * that have direct, real issues. Ancestors of a node with an issue receive an
- * inherited render entry whose status is the worst-case of its descendant
- * issues and whose sourceComponents list all descendants with direct issues.
- */
 export function computeRenderStatuses(
   closure: Closure,
   directIssues: Map<string, NodeStatus>,
@@ -41,11 +35,6 @@ export function computeRenderStatuses(
     nodesByName.set(node.name, { name: node.name, path: node.path });
   }
 
-  // For every node in the closure that has a direct issue, mark every prefix
-  // node in its path (i.e., every ancestor including itself along the shortest
-  // path from root) as being affected. The node itself gets isOwn=true; each
-  // strict ancestor gets isOwn=false with the descendant recorded as a source.
-  //
   // Descendant relationship: A is an ancestor of B iff A appears in B.path
   // (which is the shortest path from root to B) at a position before B. Note
   // this uses the ONE canonical shortest path. For pure-inheritance semantics
@@ -56,20 +45,16 @@ export function computeRenderStatuses(
   // node. That is sufficient here because the closure is rooted and a node is
   // reachable from the root iff it appears in the closure.
 
-  // Aggregate direct issues on each node.
   const own = new Map<string, NodeStatus>();
   for (const node of closure.nodes) {
     const s = directIssues.get(node.name);
     if (s && s !== 'ok') own.set(node.name, s);
   }
 
-  // For each node with a direct issue, walk its shortest-path ancestor chain
-  // and register the descendant as a source on each ancestor.
   const inheritedSources = new Map<string, Map<string, NodeStatus>>();
   for (const node of closure.nodes) {
     const ownStatus = own.get(node.name);
     if (!ownStatus) continue;
-    // Every entry in node.path except the last (node itself) is an ancestor.
     for (let i = 0; i < node.path.length - 1; i++) {
       const ancestor = node.path[i];
       if (!inheritedSources.has(ancestor)) inheritedSources.set(ancestor, new Map());
@@ -77,7 +62,6 @@ export function computeRenderStatuses(
     }
   }
 
-  // Emit own-issue entries.
   for (const [name, status] of own.entries()) {
     out.set(name, {
       status,
@@ -86,7 +70,6 @@ export function computeRenderStatuses(
     });
   }
 
-  // Emit inherited entries (skip nodes that already have their own issue).
   for (const [ancestor, sources] of inheritedSources.entries()) {
     if (out.has(ancestor)) continue;
     const sourceNames = [...sources.keys()].sort();
@@ -101,17 +84,11 @@ export function computeRenderStatuses(
   return out;
 }
 
-/**
- * Given an ancestor showing an inherited marker, return the descendant the
- * user should drill to. Deterministic: worst-status first; then shortest path
- * from the ancestor; then alphabetical.
- */
 export function pickDrillTarget(
   ancestor: string,
   closure: Closure,
   directIssues: Map<string, NodeStatus>,
 ): string | null {
-  // If the ancestor itself has a direct issue, there is nothing to drill to.
   const ancestorDirect = directIssues.get(ancestor);
   if (ancestorDirect && ancestorDirect !== 'ok') return null;
 
@@ -121,14 +98,12 @@ export function pickDrillTarget(
   const ancestorNode = nodesByName.get(ancestor);
   if (!ancestorNode) return null;
 
-  // Collect descendants of `ancestor` (nodes whose path contains ancestor
-  // before the terminal element) that have their own issue.
   const candidates: Array<{ name: string; status: NodeStatus; depthFromAncestor: number }> = [];
   const ancestorDepth = ancestorNode.path.length - 1;
   for (const node of closure.nodes) {
     if (node.name === ancestor) continue;
     const idx = node.path.indexOf(ancestor);
-    if (idx === -1) continue; // not a descendant of ancestor
+    if (idx === -1) continue;
     const status = directIssues.get(node.name);
     if (!status || status === 'ok') continue;
     // depthFromAncestor is number of edges between ancestor and node along
@@ -143,7 +118,7 @@ export function pickDrillTarget(
   if (candidates.length === 0) return null;
 
   candidates.sort((a, b) => {
-    const rDiff = STATUS_RANK[b.status] - STATUS_RANK[a.status]; // worst first
+    const rDiff = STATUS_RANK[b.status] - STATUS_RANK[a.status];
     if (rDiff !== 0) return rDiff;
     if (a.depthFromAncestor !== b.depthFromAncestor) {
       return a.depthFromAncestor - b.depthFromAncestor;

@@ -1,35 +1,12 @@
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import type { ReviewComponentStatus } from '../../analyze/select/types.js';
 
-/**
- * T4 (parity plan §3) — bounded undo/redo history stack for GenerateReviewStep.
- *
- * Undo is IN-MEMORY ONLY: restoring a prior snapshot never writes back to the
- * session DB. The escape hatch for "the DB is right, my in-memory is wrong" is
- * the `[Ctrl+R]` reload-from-save affordance, which re-runs the mount load path
- * and resets the history via `reset(seed)`.
- *
- * Semantics:
- *  - `push(snap, label)` appends after the current cursor, dropping any
- *    redo-tail (standard undo/redo behavior).
- *  - `undo()` moves the cursor back one and returns the snapshot at the new
- *    position (the previous state), or `null` when at the floor.
- *  - `redo()` moves the cursor forward and returns the snapshot at the new
- *    position, or `null` when at the top.
- *  - `reset(seed)` clears the stack and reinitializes with a single seed.
- *  - Bounded by `maxDepth` (default 50). On overflow, the oldest entry drops
- *    off the bottom; `undo()` therefore bottoms out one entry closer to the
- *    current cursor than an unbounded stack would.
- */
 export interface HistorySnapshot {
   components: CdfReviewEntrySnapshot[];
   autoRejected: string[];
   undoSnapshot: Map<string, ReviewComponentStatus> | null;
 }
 
-/** Minimum shape we clone into the stack. Kept structurally identical to
- * `CdfReviewEntry` from the GenerateReview step so callers can pass their
- * state through without adapters. */
 export interface CdfReviewEntrySnapshot {
   key: string;
   entry: CDFComponentEntry;
@@ -72,12 +49,10 @@ export function createHistoryStack(
   let cursor = 0;
 
   function push(snapshot: HistorySnapshot, _label: string): void {
-    // Drop the redo tail: anything after the cursor is invalidated.
     if (cursor < stack.length - 1) {
       stack = stack.slice(0, cursor + 1);
     }
     stack.push(cloneSnapshot(snapshot));
-    // Overflow: drop from the bottom until we're within capacity.
     while (stack.length > cap) {
       stack.shift();
     }

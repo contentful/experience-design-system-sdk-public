@@ -45,8 +45,6 @@ describe('findRoots', () => {
   });
 
   it('treats components outside the selected set as external', () => {
-    // A depends on B, but only A is selected. B is not "selected" so it should
-    // not disqualify A from being a root. A remains a root.
     const components = [comp('A', [['slot', ['B']]]), comp('B')];
     const roots = findRoots(components, new Set(['A']));
     expect(roots).toEqual(['A']);
@@ -79,7 +77,6 @@ describe('computeClosure', () => {
   });
 
   it('deduplicates diamond shape: shared dep with two parents at shortest depth', () => {
-    // A -> B -> D, A -> C -> D. D has parents [B, C], depth 2.
     const components = [
       comp('A', [
         ['s1', ['B']],
@@ -95,12 +92,10 @@ describe('computeClosure', () => {
     const d = closure.nodes.find((n) => n.name === 'D')!;
     expect(d.depth).toBe(2);
     expect(d.parents.sort()).toEqual(['B', 'C']);
-    // path must be a valid shortest path (deterministic via alphabetical tie-break)
     expect(d.path).toEqual(['A', 'B', 'D']);
   });
 
   it('deduplicates when short and long path collide: shortest depth wins', () => {
-    // A -> B (depth 1), A -> C -> B (depth 2). B ends up at depth 1.
     const components = [
       comp('A', [
         ['s1', ['B']],
@@ -122,7 +117,6 @@ describe('computeClosure', () => {
     expect(closure.containsCycle).toBe(true);
     expect(closure.cyclePath).toBeDefined();
     expect(closure.cyclePath!.length).toBeGreaterThanOrEqual(3);
-    // cyclePath should contain the participants (A and B), with first === last
     const nodes = closure.cyclePath!.slice(0, -1);
     expect(new Set(nodes)).toEqual(new Set(['A', 'B']));
     expect(closure.cyclePath![0]).toBe(closure.cyclePath![closure.cyclePath!.length - 1]);
@@ -144,7 +138,6 @@ describe('computeClosure', () => {
   });
 
   it('flags cycle even when cycle is downstream of the root', () => {
-    // A -> B -> C -> B. Not a cycle through A, but the closure contains one.
     const components = [
       comp('A', [['s', ['B']]]),
       comp('B', [['s', ['C']]]),
@@ -155,8 +148,6 @@ describe('computeClosure', () => {
   });
 
   it('returns a closure for a root not defined in components as a standalone node with no cycle', () => {
-    // Defensive: asking for a root that isn't in the manifest yields a
-    // single-node closure with no edges.
     const closure = computeClosure('Missing', [comp('A')]);
     expect(closure.containsCycle).toBe(false);
     expect(closure.nodes).toEqual([{ name: 'Missing', depth: 0, path: ['Missing'], parents: [] }]);

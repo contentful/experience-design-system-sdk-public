@@ -15,7 +15,6 @@ describe('legendEntry (L11 atomic legend helper)', () => {
   it('active entry marks the key Text node inverse + yellow (mirrors L8)', () => {
     const active = legendEntry('[o]', 'only cycles', true);
     const inactive = legendEntry('[o]', 'only cycles', false);
-    // The outer Text wraps [keyNode, labelNode]. Inspect the key node props.
     const keyNode = (active.props.children as React.ReactElement[])[0];
     expect(keyNode.props.inverse).toBe(true);
     expect(keyNode.props.color).toBe(PALETTE.warning);
@@ -29,8 +28,6 @@ describe('legendEntry (L11 atomic legend helper)', () => {
     // so a wrapping parent Box cannot break between the key and its label.
     const el = legendEntry('[w]', 'broken');
     expect(el.type).toBeDefined();
-    // Its children are the inline [keyNode, labelNode] pair, not siblings of
-    // the wrapping Box.
     expect(Array.isArray(el.props.children)).toBe(true);
     expect((el.props.children as unknown[]).length).toBe(2);
     const { lastFrame } = render(

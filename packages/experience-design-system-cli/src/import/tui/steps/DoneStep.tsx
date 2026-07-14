@@ -17,9 +17,7 @@ type DoneStepProps = {
   summary?: { total: number; succeeded: number; failed: number };
   spaceId: string;
   environmentId: string;
-  /** Configured API host (e.g. `api.contentful.com`). Used to derive the webapp URL. */
   host?: string;
-  /** Task 8 — pre-formatted run teaser; rendered dim below the space link. */
   runTeaser?: string;
   onExit: () => void;
 };

@@ -43,7 +43,6 @@ describe('computeRenderStatuses', () => {
   });
 
   it('propagates two direct issues at different depths to common ancestors', () => {
-    // A -> B -> C (warning); A -> D (error)
     const components = [
       comp('A', [
         ['s1', ['B']],
@@ -60,25 +59,21 @@ describe('computeRenderStatuses', () => {
     ]);
     const out = computeRenderStatuses(closure, direct);
 
-    // C: own warning
     expect(out.get('C')).toEqual({
       status: 'warning',
       isOwn: true,
       sourceComponents: ['C'],
     });
-    // D: own error
     expect(out.get('D')).toEqual({
       status: 'error',
       isOwn: true,
       sourceComponents: ['D'],
     });
-    // B: inherited warning (only C is a descendant)
     expect(out.get('B')).toEqual({
       status: 'warning',
       isOwn: false,
       sourceComponents: ['C'],
     });
-    // A: inherited error (worst-case), sources include both C and D
     expect(out.get('A')).toEqual({
       status: 'error',
       isOwn: false,
@@ -110,8 +105,6 @@ describe('computeRenderStatuses', () => {
   });
 
   it('does not include clean ancestors', () => {
-    // A -> B; only B has an issue (not A's issue). A is ancestor -> included as inherited.
-    // But if we ask about a clean node with no issues in its closure, it's absent.
     const components = [comp('A'), comp('B')];
     // A closure only contains A (no deps). Neither has issues.
     const closure = computeClosure('A', components);
@@ -148,7 +141,6 @@ describe('pickDrillTarget', () => {
   });
 
   it('picks the worst-status descendant first', () => {
-    // A -> B (warning), A -> C (error). Pick C.
     const components = [
       comp('A', [
         ['s1', ['B']],
@@ -166,7 +158,6 @@ describe('pickDrillTarget', () => {
   });
 
   it('picks the shorter path among two same-status descendants', () => {
-    // A -> B -> D (error); A -> C (error). C is closer; pick C.
     const components = [
       comp('A', [
         ['s1', ['B']],
@@ -185,7 +176,6 @@ describe('pickDrillTarget', () => {
   });
 
   it('breaks equal-path ties alphabetically', () => {
-    // A -> Z (error), A -> B (error). Same depth. Pick B alphabetically.
     const components = [
       comp('A', [
         ['s1', ['Z']],

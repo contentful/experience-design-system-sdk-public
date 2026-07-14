@@ -2,11 +2,6 @@ import { Box, Text } from 'ink';
 import { PALETTE } from '../../analyze/select/tui/theme.js';
 import React from 'react';
 
-/**
- * Feature 8: top-of-wizard banner shown while any custom skill prompt is
- * active. Persists at every step so the operator cannot miss that bundled
- * invariants are bypassed.
- */
 export interface CustomPromptBannerProps {
   selectPromptPath?: string;
   generatePromptPath?: string;

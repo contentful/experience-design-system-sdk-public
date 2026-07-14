@@ -21,15 +21,6 @@ export interface LineagePanelProps {
 
 const LINEAGE_FOOTER_HINT = '[↑/↓] move · [Enter] jump · [l/Esc] close';
 
-/**
- * Lineage panel — a thin lineage-specific wrapper over the generic
- * {@link GotoBanner} shell. The shell owns the bordered box, windowing math,
- * ▲/▼ overflow indicators, title header, footer hint, and width/flexShrink
- * layout; this component supplies the lineage rows + the section/empty/entry
- * row formatting via the shell's `renderRow` escape hatch, keeping output
- * pixel-identical to the pre-extraction panel. Display-only — open/close state
- * stays with the parent step.
- */
 export function LineagePanel({
   focusedComponentKey,
   entries,

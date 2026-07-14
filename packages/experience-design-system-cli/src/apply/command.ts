@@ -215,23 +215,6 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   return { components, tokens, client };
 }
 
-// --- INTEG-4401: pre-push slot-cycle hard block ---
-//
-// The backend apply worker rejects cyclic slot graphs at topo-sort time, but
-// by then the request has already been serialized, transported, and partially
-// applied — leading to confusing partial-failure states. Detecting the same
-// violation locally lets us fail fast with a clear message and zero
-// side-effects. Called from the `apply push` and `apply select` flows AND
-// from the wizard's `experiences import` push path (via `detectSlotCycles`).
-// `apply preview` is read-only and still runs (its diff is used to warn but
-// not to block).
-
-/**
- * Pure cycle detection — returns [] when the graph is acyclic. Callers own
- * how to react (CLI standalone uses `assertNoSlotCycles` which exits 1; the
- * wizard uses `detectSlotCycles` directly to route to an in-TUI error step
- * without ever POSTing to EDSI).
- */
 export function detectSlotCycles(
   components: Array<{ key: string; entry: CDFComponentEntry }>,
 ): ReturnType<typeof findSlotCycles> {
@@ -245,11 +228,6 @@ export function detectSlotCycles(
   return findSlotCycles(cycleInput);
 }
 
-/**
- * Build a stderr-style message block for a set of cycles. Extracted so the
- * wizard can render the same text in an in-TUI error panel and any future
- * headless surface can log identical output.
- */
 export function formatSlotCycleReport(cycles: ReturnType<typeof findSlotCycles>): string[] {
   const lines: string[] = [];
   lines.push(
@@ -273,12 +251,6 @@ export function assertNoSlotCycles(components: Array<{ key: string; entry: CDFCo
   process.exit(1);
 }
 
-/**
- * Reconstruct the `{key, entry}` shape from a built `ManifestPayload`. The
- * wizard's push path holds a serialized manifest rather than the underlying
- * CDF records, so we unwrap it here to feed `detectSlotCycles`. Skips the
- * `$schema` sentinel key. Safe on undefined/empty manifests (returns []).
- */
 export function extractComponentsFromManifest(
   manifest: { componentsManifest?: Record<string, unknown> } | null | undefined,
 ): Array<{ key: string; entry: CDFComponentEntry }> {
@@ -292,8 +264,6 @@ export function extractComponentsFromManifest(
   }
   return out;
 }
-
-// --- Output helpers ---
 
 export function hasBreakingChangesWithImpact(preview: ServerPreviewResponse): boolean {
   const allChanged = [...preview.components.changed, ...preview.tokens.changed];
@@ -370,8 +340,6 @@ function buildApplyOutput(
   };
 }
 
-// --- Selection helpers ---
-
 function getSelectableEntities(preview: ServerPreviewResponse): SelectableEntity[] {
   const entities: SelectableEntity[] = [];
 
@@ -436,8 +404,6 @@ function resolveNonInteractiveSelection(entities: SelectableEntity[], opts: Sele
 
   return selected;
 }
-
-// --- Interactive Select TUI ---
 
 interface SelectAppProps {
   entities: SelectableEntity[];
@@ -508,8 +474,6 @@ function SelectApp({ entities, spaceId, environmentId, onApply }: SelectAppProps
   });
 }
 
-// --- Command registration ---
-
 function collect(val: string, prev: string[]): string[] {
   return [...prev, val];
 }
@@ -519,7 +483,6 @@ export function registerApplyCommand(program: Command): void {
     .command('apply')
     .description('Preview, select, or push design system entities to Contentful ExO');
 
-  // --- apply preview ---
   applyCmd
     .command('preview')
     .description('Show a read-only diff of what apply push would do')
@@ -577,7 +540,6 @@ export function registerApplyCommand(program: Command): void {
       }
     });
 
-  // --- apply push ---
   applyCmd
     .command('push')
     .description('Write component types and design tokens to Contentful ExO')
@@ -610,11 +572,6 @@ export function registerApplyCommand(program: Command): void {
 
       const { components, tokens, client } = inputs;
 
-      // INTEG-4401: refuse before spending any credentials or bytes on a
-      // manifest the backend will reject. Cycle detection is deterministic
-      // and cheap so we run it here (not just at extract time) — this also
-      // guards `apply push --components` where extract-time cycles are not
-      // in the session DB.
       assertNoSlotCycles(components);
 
       try {
@@ -637,7 +594,6 @@ export function registerApplyCommand(program: Command): void {
       const spaceId = opts.spaceId!;
       const environmentId = opts.environmentId!;
 
-      // --- Dry run: print preview and exit ---
       if (opts.dryRun) {
         if (isTTY) {
           const { waitUntilExit } = render(
@@ -654,7 +610,6 @@ export function registerApplyCommand(program: Command): void {
         process.exit(0);
       }
 
-      // --- Nothing to do: exit early without calling apply ---
       if (isEmptyPreview(preview)) {
         if (isTTY && !opts.yes) {
           process.stderr.write('Nothing to change — design system is up to date.\n');
@@ -666,7 +621,6 @@ export function registerApplyCommand(program: Command): void {
 
       const breakingWithImpact = hasBreakingChangesWithImpact(preview);
 
-      // --- Non-interactive: require --force for breaking changes ---
       if (!isTTY || opts.yes) {
         if (breakingWithImpact && !opts.force) {
           process.stderr.write(
@@ -704,7 +658,6 @@ export function registerApplyCommand(program: Command): void {
         return;
       }
 
-      // --- Interactive (TTY, no --yes) flow ---
       await new Promise<void>((resolvePromise) => {
         const runApply = async (acknowledge: boolean) => {
           instance.rerender(
@@ -789,7 +742,6 @@ export function registerApplyCommand(program: Command): void {
       });
     });
 
-  // --- apply select ---
   applyCmd
     .command('select')
     .description('Select a subset of entities and push to Contentful ExO')
@@ -823,10 +775,6 @@ export function registerApplyCommand(program: Command): void {
 
       const { components, tokens, client } = inputs;
 
-      // INTEG-4401: same pre-push cycle block as `apply push`. Running the
-      // check on the FULL component set (not the filtered selection) is
-      // deliberate: partial selection cannot resolve a cycle whose
-      // participants are all still present in the target space.
       assertNoSlotCycles(components);
 
       try {
@@ -903,7 +851,6 @@ export function registerApplyCommand(program: Command): void {
         return;
       }
 
-      // --- Interactive flow ---
       await new Promise<void>((resolvePromise) => {
         const runSelectApply = async (selectedKeys: Set<string>) => {
           const selectedComponentKeys = new Set<string>();

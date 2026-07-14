@@ -3,8 +3,6 @@ import { preClassifyComponent } from '../../src/analyze/pre-classify.js';
 import { isNonAuthorableComponent } from '../../src/analyze/extract/non-authorable-filter.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 
-// Exercises the same composition that command.ts will use:
-//   pre-classify → filter → emit
 function runPipeline(components: RawComponentDefinition[]) {
   const classified = components.map(preClassifyComponent);
   const kept: RawComponentDefinition[] = [];

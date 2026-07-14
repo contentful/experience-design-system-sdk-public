@@ -7,14 +7,8 @@ import {
 } from '../../../src/import/tui/steps/ScopeGateStep.js';
 import { PALETTE } from '../../../src/analyze/select/tui/theme.js';
 
-/**
- * Multi-column scope-gate layout tests. The three-column layout only renders
- * at terminal widths ≥ 120. ink-testing-library's Stdout hard-codes columns
- * to 100, so we monkey-patch its prototype for wide-terminal tests.
- */
 
 function withStdoutColumns(cols: number): () => void {
-  // Render once to obtain a stdout instance (and its prototype).
   const probe = render(<Empty />);
   const proto = Object.getPrototypeOf(probe.stdout);
   const original = Object.getOwnPropertyDescriptor(proto, 'columns');
@@ -71,7 +65,6 @@ describe('sideColumnLabelStyle', () => {
     expect(nonCycle.suffixDim).toBe(false);
     expect(nonCycle.suffixInverse).toBe(true);
 
-    // Cycle rows also collapse to bold white on the cursor line.
     const cycle = sideColumnLabelStyle({ isCycle: true, isSelected: true, focused: true });
     expect(cycle.nameColor).toBe(PALETTE.inverse);
     expect(cycle.nameBold).toBe(true);
@@ -136,7 +129,6 @@ describe('ScopeGateStep — counter strip', () => {
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
-    // 0 accepted out of 4 at mount — everything defaults to undecided.
     expect(out).toMatch(/Accepted[^0-9]*0[^0-9]*4/);
     expect(out).toMatch(/Groups[^0-9]*0/);
     expect(out).toMatch(/Rejected[^0-9]*0/);
@@ -165,12 +157,10 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const out = lastFrame() ?? '';
     expect(out).toContain('Added components');
     expect(out).toContain('Added groups');
-    // Legend advertises Tab.
     expect(out).toContain('switch column');
   });
 
   it('omits side columns at narrow terminals (< 120 cols)', () => {
-    // Default testing-library width is 100 (< 120).
     const { lastFrame } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
@@ -185,32 +175,18 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
-    // Accept-all so side columns are populated.
     stdin.write('A');
-    // Baseline: main column focused (its header is inverse). We assert focus
-    // indirectly via the "▶" cursor glyph which only renders in the side
-    // columns when they are focused.
     const initial = lastFrame() ?? '';
-    // Fire Shift-Tab: main → added-groups.
     stdin.write('\x1b[Z');
     const afterShift1 = lastFrame() ?? '';
-    // added-groups focused → cursor glyph beside "Card (2 deps)" in the
-    // added-groups column (single space between ▶ and label — distinguishes
-    // from the main-sidebar row which has "▶  [✓]     ▾ Card").
     expect(afterShift1).toMatch(/▶ Card \(2 deps\)/);
-    // Fire Shift-Tab again: added-groups → added-components.
     stdin.write('\x1b[Z');
     const afterShift2 = lastFrame() ?? '';
-    // added-components focused → cursor glyph beside the first added component
-    // (Card sorts first alphabetically among Card/Icon/Standalone/Text).
     expect(afterShift2).toMatch(/▶ Card\b/);
-    // Fire Shift-Tab a third time: added-components → main.
     stdin.write('\x1b[Z');
     const afterShift3 = lastFrame() ?? '';
-    // No side-column cursor glyph any more.
     expect(afterShift3).not.toMatch(/▶ Card \(2 deps\)/);
     expect(afterShift3).not.toMatch(/▶ Card\b/);
-    // Sanity: nothing crashed and the multi-column layout still renders.
     expect(afterShift3).toContain('Added components');
     expect(afterShift3).toContain('Added groups');
     void initial;
@@ -230,23 +206,13 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
-    // Accept-all so Column 2 is populated.
     stdin.write('A');
-    // Tab from main → added-components. Move down one row (Card → Icon,
-    // alphabetical among Card/Icon/Standalone/Text). Enter should jump the
-    // main cursor to Icon and return focus to main.
     stdin.write('\t');
-    stdin.write('\x1b[B'); // down arrow → Icon
-    // Side column shows its cursor while focused.
+    stdin.write('\x1b[B');
     expect(lastFrame() ?? '').toMatch(/▶ Icon\b/);
     stdin.write('\r');
     const out = lastFrame() ?? '';
-    // Side-column cursor glyph is gone (focus returned to main).
     expect(out).not.toMatch(/▶ Icon\b/);
-    // Main-column ▶ landed on Icon. Icon appears as a group-child of Card
-    // (row label "├─ Icon" or similar) and again in the flat tier. The
-    // grouped occurrence comes first; the ▶ glyph precedes the label with
-    // reserved slots between them, so match a permissive "▶ ... Icon" line.
     expect(out).toMatch(/▶[^\n]*Icon/);
   });
 
@@ -255,18 +221,13 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
-    // Accept-all so both side columns are populated.
     stdin.write('A');
-    // Tab twice: main → added-components → added-groups.
     stdin.write('\t');
     stdin.write('\t');
     expect(lastFrame() ?? '').toMatch(/▶ Card \(2 deps\)/);
     stdin.write('\r');
     const out = lastFrame() ?? '';
-    // Focus returned to main: no side-column cursor glyph on Card (2 deps).
     expect(out).not.toMatch(/▶ Card \(2 deps\)/);
-    // Main-column ▶ lands on Card — the group-root row (rendered as
-    // "▾ Card (2 deps)").
     expect(out).toMatch(/▶[^\n]*Card \(2 deps\)/);
   });
 
@@ -276,12 +237,9 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
     stdin.write('A');
-    // Tab to added-components, move to row 1 (Icon).
     stdin.write('\t');
     stdin.write('\x1b[B');
     expect(lastFrame() ?? '').toMatch(/▶ Icon\b/);
-    // Tab away twice (added-components → added-groups → main), then back to
-    // added-components; cursor should still be on Icon.
     stdin.write('\t');
     stdin.write('\t');
     stdin.write('\t');
@@ -293,18 +251,13 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
-    // Accept-all so Standalone is accepted; then rejecting it has no cascade
-    // (blast radius 0) → flips straight to rejected and drops off the list.
     stdin.write('A');
     stdin.write('\t');
     stdin.write('\x1b[B');
     stdin.write('\x1b[B');
-    // Now at Standalone (Card, Icon, Standalone, Text alphabetical).
     expect(lastFrame() ?? '').toMatch(/▶ Standalone\b/);
     stdin.write('r');
     const out = lastFrame() ?? '';
-    // Standalone is no longer in the accepted list, so the side-column no
-    // longer shows a ▶ next to it. Counter reflects the flip.
     expect(out).not.toMatch(/▶ Standalone\b/);
     expect(out).toMatch(/Accepted[^0-9]*3[^0-9]*4/);
     expect(out).toMatch(/Rejected[^0-9]*1/);
@@ -322,7 +275,6 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     expect(lastFrame() ?? '').toMatch(/▶ Standalone\b/);
     stdin.write('a');
     const out = lastFrame() ?? '';
-    // No state change: Standalone still accepted, still in the column.
     expect(out).toMatch(/▶ Standalone\b/);
     expect(out).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
     expect(out).toMatch(/Rejected[^0-9]*0/);
@@ -350,10 +302,7 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
-    // Accept-all so Card composite is in Column 3.
     stdin.write('A');
-    // Tab twice: main → added-components → added-groups. Highlighted row is
-    // "Card (2 deps)". [a] should not change state.
     stdin.write('\t');
     stdin.write('\t');
     expect(lastFrame() ?? '').toMatch(/▶ Card \(2 deps\)/);
@@ -361,16 +310,13 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const afterA = lastFrame() ?? '';
     expect(afterA).toMatch(/▶ Card \(2 deps\)/);
     expect(afterA).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
-    // Space: still no-op.
     stdin.write(' ');
     const afterSpace = lastFrame() ?? '';
     expect(afterSpace).toMatch(/▶ Card \(2 deps\)/);
     expect(afterSpace).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
-    // [r]: reject Card → cascade prompt (2 descendants), confirm with y.
     stdin.write('r');
     stdin.write('y');
     const afterR = lastFrame() ?? '';
-    // Card is now rejected → drops out of added-groups.
     expect(afterR).not.toMatch(/▶ Card \(2 deps\)/);
   });
 });
@@ -382,18 +328,13 @@ describe('ScopeGateStep — T10 side-column borders', () => {
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
-    // Three boxed regions expected: main sidebar (existing), added-components,
-    // added-groups. Count top-left corners as the discriminator.
     const corners = (out.match(/┌/g) ?? []).length;
     expect(corners).toBe(3);
-    // Sanity: side columns still present.
     expect(out).toContain('Added components');
     expect(out).toContain('Added groups');
   });
 
   it('does NOT add extra borders at narrow terminals (single-column layout)', () => {
-    // Default width < 120; side columns are omitted, so only the main
-    // sidebar border should remain.
     const { lastFrame } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
@@ -438,8 +379,6 @@ describe('ScopeGateStep — [L] flat view toggle', () => {
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
-    // Card is a composite root; grouped view renders `▾ Card (2 deps)` and
-    // tree glyphs on descendants (├─ before a child name).
     expect(out).toMatch(/▾[^\n]*Card/);
     expect(out).toMatch(/├─ /);
   });
@@ -456,7 +395,6 @@ describe('ScopeGateStep — [L] flat view toggle', () => {
     expect(out).not.toMatch(/├─ /);
     expect(out).not.toMatch(/└─ /);
     expect(out).not.toMatch(/▾/);
-    // Every component appears (Card, Icon, Standalone, Text).
     expect(out).toContain('Card (2 deps)');
     expect(out).toContain('Icon');
     expect(out).toContain('Standalone');
@@ -470,7 +408,6 @@ describe('ScopeGateStep — [L] flat view toggle', () => {
     stdin.write('L');
     expect(lastFrame() ?? '').not.toMatch(/├─ /);
     stdin.write('L');
-    // Back to grouped: tree glyphs return.
     expect(lastFrame() ?? '').toMatch(/├─ /);
   });
 
@@ -498,15 +435,11 @@ describe('ScopeGateStep — [L] flat view toggle', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
-    // Move down: grouped view starts with Card at row 0. Down → first child
-    // (Icon or Text). Grouped ordering: Card, ├─ Icon, └─ Text, Standalone.
-    stdin.write('\x1b[B'); // down → Icon (group-child)
+    stdin.write('\x1b[B');
     const beforeToggle = lastFrame() ?? '';
     expect(beforeToggle).toMatch(/▶[^\n]*Icon/);
     stdin.write('L');
     const afterToggle = lastFrame() ?? '';
-    // Cursor should now land on the Icon row in flat ordering
-    // (alphabetical: Card, Icon, Standalone, Text).
     expect(afterToggle).toMatch(/▶[^\n]*Icon/);
   });
 });
@@ -534,16 +467,12 @@ describe('ScopeGateStep — cycle participants in side columns', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CYCLE_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
-    // Accept-all so Column 2 is populated with every component (including
-    // cycle participants — [A] skips them, so accept them individually).
     stdin.write('A');
-    // [A] deliberately skips cycle participants. Toggle them via cycle rows.
-    stdin.write('a'); // cursor on ⚠ Inner (first cycle-tier row alphabetically)
-    stdin.write('j'); // move to ⚠ Loopy
+    stdin.write('a');
+    stdin.write('j');
     stdin.write('a');
     const out = lastFrame() ?? '';
     expect(out).toContain('Added components');
-    // Cycle-tier row carries the ⚠ glyph. Loopy and Inner both participate.
     const cycleLine = out.split('\n').find((l) => /⚠ (Inner|Loopy)\b/.test(l));
     expect(cycleLine).toBeDefined();
   });
@@ -553,28 +482,15 @@ describe('ScopeGateStep — cycle participants in side columns', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={CYCLE_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
     );
-    // Accept-all so non-cycle rows populate Column 2, then accept the two
-    // cycle participants individually.
     stdin.write('A');
-    stdin.write('a'); // ⚠ Inner
+    stdin.write('a');
     stdin.write('j');
-    stdin.write('a'); // ⚠ Loopy
+    stdin.write('a');
     const out = lastFrame() ?? '';
-    // Cycle-tier rows have ⚠ prefixes. Non-cycle rows in Column 2 do not.
-    // Assert overall ordering: ⚠ Inner (cycle-tier alphabetical first) appears
-    // before ⚠ Loopy, which appears before the first non-cycle line for Card.
     const innerPos = out.indexOf('⚠ Inner');
     const loopyPos = out.indexOf('⚠ Loopy');
     expect(innerPos).toBeGreaterThan(-1);
     expect(loopyPos).toBeGreaterThan(innerPos);
-    // Extract Column 2 content by stripping Column 1 (everything up to and
-    // including the last `│` on each line). Task 35 expanded cycle-tier rows
-    // in Column 1, so line-wise Column-1/Column-2 alignment shifted — but the
-    // ORDER within Column 2 alone is unchanged: cycle members (alphabetical:
-    // Inner, Loopy) then non-cycle rows (Card, Text).
-    // Layout: `│col1│ │col2│ │col3│`. After T10 all three columns are
-    // boxed — split on `│` and pick index 3 (col2 content) when the line
-    // has enough pipes to represent all three columns.
     const col2 = out
       .split('\n')
       .map((line) => {
@@ -595,10 +511,6 @@ describe('ScopeGateStep — cycle participants in side columns', () => {
 
 describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
   it('surfaces the AI-recommended-exclusions hint + [x] goto-banner in wide layout', async () => {
-    // Regression: after the three-column layout landed, both AI-suggestion
-    // signals — the exclusions affordance and the per-row [×] glyph — must
-    // continue to surface. L7 replaced the inline gray list with a one-line
-    // hint + an [x] goto-banner that carries the name + reason.
     setWide(160);
     const { lastFrame, stdin } = render(
       <ScopeGateStep
@@ -609,20 +521,16 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
       />,
     );
     const before = lastFrame() ?? '';
-    // One-line hint above the columns; three-column layout engaged.
     expect(before).toContain('AI recommended exclusions');
     expect(before).toContain('[x]');
     expect(before).toContain('Added components');
     expect(before).toContain('Added groups');
 
-    // Open the goto-banner — it lists the flagged name + a fragment of the
-    // reason (defends against a future banner-suppression bug).
     stdin.write('x');
     await new Promise((r) => setTimeout(r, 30));
     const out = lastFrame() ?? '';
     expect(out).toContain('DebugPanel');
     expect(out).toContain('internal-only debugging widget');
-    // Columns 2 & 3 stay visible alongside the banner (no stacking).
     expect(out).toContain('Added components');
     expect(out).toContain('Added groups');
   });
@@ -638,24 +546,15 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
       />,
     );
     const out = lastFrame() ?? '';
-    // [×] appears on the DebugPanel row specifically. GroupedSidebar reserves
-    // a 4-char slot for the badge column, so the glyph precedes the label
-    // (with a space between them).
     expect(out).toContain('[×]');
-    // Two lines mention DebugPanel: the banner (no [×]) and the sidebar row
-    // (has [×]). Assert at least one sidebar row co-locates [×] with the name.
     const sidebarLine = out
       .split('\n')
       .find((line) => line.includes('DebugPanel') && line.includes('[×]'));
     expect(sidebarLine).toBeDefined();
-    // Legend also advertises the badge (surfaces via `hasAnyAi`).
     expect(out).toContain('AI recommends');
   });
 
   it('renders [×] on AI-flagged accepted rows in the Added-components column', () => {
-    // DebugPanel is AI-flagged (aiDecision:'rejected') so it starts rejected
-    // per the ScopeGateStep baseline — accept it to force it into the Added
-    // column, mirroring the "user overrode the AI's suggestion" flow.
     setWide(160);
     const { lastFrame, stdin } = render(
       <ScopeGateStep
@@ -665,20 +564,11 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
         aiFilterStatus="complete"
       />,
     );
-    // Card, Text, DebugPanel — DebugPanel is last after Card (2 rows down
-    // through the main-column tree: Card, ├─ Text, ── flat header, Card,
-    // DebugPanel, Text). Jump to DebugPanel via search to keep the test
-    // resilient to sidebar row-ordering shifts.
     stdin.write('/');
     for (const ch of 'DebugPanel') stdin.write(ch);
     stdin.write('\r');
-    // Accept it (baseline was rejected).
     stdin.write('a');
     const out = lastFrame() ?? '';
-    // Locate the Added-components column: its lines follow the header. Find a
-    // row that carries both DebugPanel and [×] — exclusion of the AI banner
-    // line (dimmed, no [×]) and the main-sidebar row (has [✓]) leaves the
-    // Added-components row as the unique remaining match.
     const lines = out.split('\n');
     const flaggedAddedLine = lines.find(
       (line) =>
@@ -695,8 +585,6 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
 
   it('renders [×] on an AI-flagged accepted composite root in the Added-groups column', () => {
     setWide(160);
-    // Make the composite root itself AI-flagged. User overrides → accepts it,
-    // so the root shows up in Added-groups with a red [×] warning.
     const graph = [
       {
         name: 'Card',
@@ -715,13 +603,8 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
         aiFilterStatus="complete"
       />,
     );
-    // Card starts rejected under the AI baseline. Toggle to accept — that
-    // registers the whole composite in Added-groups.
     stdin.write('a');
     const out = lastFrame() ?? '';
-    // Find a line that mentions the group "Card (1 dep)" AND [×]. The main
-    // sidebar row for Card renders "▾ Card (1 dep)" whereas the Added-groups
-    // row renders bare "Card (1 dep)" — the "▾" filter isolates the latter.
     const lines = out.split('\n');
     const flaggedGroupLine = lines.find(
       (line) =>
@@ -743,20 +626,12 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
         aiFilterStatus="complete"
       />,
     );
-    // Accept-all so Card + Text are in Added-components. Then accept
-    // DebugPanel too so all three peers coexist and the badge column can be
-    // asserted for alignment.
     stdin.write('A');
     stdin.write('/');
     for (const ch of 'DebugPanel') stdin.write(ch);
     stdin.write('\r');
     stdin.write('a');
     const out = lastFrame() ?? '';
-    // Terminal renders columns side-by-side per line. Isolate the segment
-    // right of the main-sidebar box border. The Added-components column
-    // starts after '│' followed by whitespace. Look for a row whose
-    // Added-components slice begins with the reserved 4-space padding
-    // followed by ` Card` (peer of the DebugPanel [×] row).
     const addedRegion = out
       .split('\n')
       .map((line) => {
@@ -764,9 +639,6 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
         return idx >= 0 ? line.slice(idx) : line;
       })
       .join('\n');
-    // A row like "        Card" (4-space badge slot + " Card"). The
-    // DebugPanel peer renders as "    [×] DebugPanel" — those [×] columns
-    // must line up with each other.
     expect(addedRegion).toMatch(/\s{4} Card\b/);
     expect(addedRegion).toMatch(/ \[×\] DebugPanel\b/);
   });

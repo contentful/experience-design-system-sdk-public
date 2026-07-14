@@ -12,12 +12,6 @@ import {
 } from '../../../src/session/db.js';
 import type { RawComponentDefinition } from '../../../src/types.js';
 
-// End-to-end plumbing test for the composite scope-gate: seed a session DB
-// with a small slotted graph, run `loadScopeComponents`, mount
-// `ScopeGateStep` with the exact rows the wizard would hand it, and assert
-// GroupedSidebar sees the closures (i.e. the loader-side slot join actually
-// reaches the UI).
-
 const tempDirs: string[] = [];
 
 async function withTempDb(run: (dbPath: string) => void | Promise<void>): Promise<void> {
@@ -55,12 +49,6 @@ describe('scope-gate slot plumbing (loader → ScopeGateStep)', () => {
         command: 'analyze extract',
         inputPath: '/proj',
       });
-      // Two independent slotted roots (Card, Layout) with disjoint deps so
-      // both show up as distinct grouped roots — plus a Standalone with no
-      // slots at all. Matches the shape described in the task brief:
-      //   ▸ Card   (1 dep)
-      //   ▸ Layout (3 deps)
-      //   Standalone
       storeRawComponents(
         db,
         sessionId,
@@ -83,8 +71,6 @@ describe('scope-gate slot plumbing (loader → ScopeGateStep)', () => {
       const components = loadScopeComponents(db, sessionId);
       db.close();
 
-      // Loader hands the wizard a well-formed shape (spot-check — loader tests
-      // cover the full assertion set).
       expect(components.find((c) => c.name === 'Card')?.slots).toEqual([
         { name: 'body', allowedComponents: ['Heading'] },
       ]);
@@ -94,11 +80,8 @@ describe('scope-gate slot plumbing (loader → ScopeGateStep)', () => {
       );
       const out = lastFrame() ?? '';
 
-      // Card has 1 dep (Heading) — always expanded per D1.
       expect(out).toMatch(/▾ Card \(1 dep\)/);
-      // Layout has 3 deps (Header/Sidebar/Footer).
       expect(out).toMatch(/▾ Layout \(3 deps\)/);
-      // Standalone stays flat.
       expect(out).toContain('Standalone');
       expect(out).not.toMatch(/[▸▾] Standalone/);
     });
@@ -121,9 +104,6 @@ describe('scope-gate slot plumbing (loader → ScopeGateStep)', () => {
         ],
         { status: 'extracted' },
       );
-      // Simulate an AI rejection on the standalone (not on a closure member),
-      // so we can verify the AI-recommended-exclusion overlay survives the
-      // loader → UI trip without interacting with closure sticky semantics.
       db.prepare(
         `UPDATE raw_components SET status = 'rejected', reject_reason = ? WHERE session_id = ? AND name = ?`,
       ).run('not a design-system primitive', sessionId, 'Standalone');
@@ -131,7 +111,6 @@ describe('scope-gate slot plumbing (loader → ScopeGateStep)', () => {
       const components = loadScopeComponents(db, sessionId);
       db.close();
 
-      // AI-recommended-exclusion + slot graph both plumbed through.
       expect(components.find((c) => c.name === 'Standalone')?.aiDecision).toBe('rejected');
       expect(components.find((c) => c.name === 'Card')?.slots).toEqual([
         { name: 'body', allowedComponents: ['Heading'] },
@@ -141,21 +120,14 @@ describe('scope-gate slot plumbing (loader → ScopeGateStep)', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={components} onConfirm={onConfirm} onQuit={() => {}} />,
       );
-      // Grouped root visible → slot data reached the UI.
       expect(lastFrame() ?? '').toMatch(/▾ Card \(1 dep\)/);
 
-      // Cursor starts on the Card root row. Toggle the root off then back on
-      // to exercise cascade semantics against the loader-plumbed graph.
-      // Rejecting Card (target only, no ancestors) applies immediately.
-      // Accepting Card cascades to Heading. (L9: [Space] now collapses groups,
-      // so this uses the explicit [r]/[a] accept/reject keys.)
-      stdin.write('r'); // exclude Card (no ancestors → no prompt)
-      stdin.write('a'); // re-include Card (accept-cascade → Heading too)
+      stdin.write('r');
+      stdin.write('a');
       stdin.write('f');
 
       const arg = onConfirm.mock.calls[0][0];
       expect(arg.accepted).toEqual(expect.arrayContaining(['Card', 'Heading']));
-      // Standalone was AI-rejected and untouched — stays in `rejected`.
       expect(arg.rejected).toEqual(['Standalone']);
     });
   });

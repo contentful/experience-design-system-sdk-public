@@ -24,7 +24,6 @@ export function computeComponentDiffLines(
   const proposedProps = new Set(Object.keys(proposedProperties));
   const oldProps = current.fullProperties;
 
-  // Added props
   for (const name of [...proposedProps].sort()) {
     if (!currentProps.has(name)) {
       const def = proposedProperties[name]!;
@@ -32,7 +31,6 @@ export function computeComponentDiffLines(
     }
   }
 
-  // Removed props
   for (const name of [...currentProps].sort()) {
     if (!proposedProps.has(name)) {
       if (oldProps?.[name]) {
@@ -44,7 +42,6 @@ export function computeComponentDiffLines(
     }
   }
 
-  // Modified props — compare old vs new definitions
   const handledProps = new Set<string>();
   for (const name of [...currentProps].sort()) {
     if (!proposedProps.has(name)) continue;
@@ -60,7 +57,6 @@ export function computeComponentDiffLines(
     }
   }
 
-  // If no old definitions available, fall back to breaking change reasons
   if (!oldProps && changeClassification?.breakingChanges) {
     for (const bc of changeClassification.breakingChanges) {
       if (!('propertyId' in bc)) continue;
@@ -73,7 +69,6 @@ export function computeComponentDiffLines(
     }
   }
 
-  // Slot diffs
   const currentSlots = new Set(current.slots);
   const proposedSlots = (proposed['$slots'] ?? {}) as Record<string, Record<string, unknown>>;
   const proposedSlotNames = new Set(Object.keys(proposedSlots));
@@ -89,8 +84,6 @@ export function computeComponentDiffLines(
     }
   }
 
-  // $allowedComponents diffs — for each slot present in both sides, or newly-added
-  // with a non-empty allowedComponents list.
   for (const name of [...proposedSlotNames].sort()) {
     const nextAllowed = normalizeAllowedComponents(proposedSlots[name]?.['$allowedComponents']);
     const prevAllowed = normalizeAllowedComponents(currentSlotAllowed[name]);

@@ -13,7 +13,6 @@ export type ScopeGateHostProps = {
   autoAccept: boolean;
   onConfirm: (decisions: { accepted: string[]; rejected: string[] }) => void;
   onQuit: () => void;
-  // Feature 3: auto-filter status surfacing.
   aiFilterStatus?: AutoFilterStatus;
   aiFilterProgress?: { done: number; total: number } | null;
   aiFilterError?: string | null;
@@ -64,7 +63,6 @@ function ScopeGateAutoAccept({
 }): React.ReactElement {
   React.useEffect(() => {
     onConfirm({ accepted: components.map((c) => c.name), rejected: [] });
-    // fire once on mount; deps intentionally empty so a re-render with new components doesn't double-confirm
   }, []);
   return (
     <Box paddingX={2} paddingY={1}>

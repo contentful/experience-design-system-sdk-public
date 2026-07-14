@@ -2,18 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'ink-testing-library';
 import { ScopeGateStep } from '../../../src/import/tui/steps/ScopeGateStep.js';
 
-// Grouped-sidebar wiring: the flat two-section render (AI-recommended-
-// exclusions on top, Components below) was retired in favor of GroupedSidebar
-// so composite closures are visible at selection time. The AI-decision signal
-// is preserved via:
-//   - a dim `AI recommended exclusions: N` summary line above the sidebar
-//   - a `*` marker + full reason on the focused-row detail below the sidebar
-//   - the `[s]` reason side-panel (untouched)
-//
-// The sticky-inclusion invariant (operator decisions win over streaming AI
-// updates) is preserved, along with `f` confirm partition, `q` quit, `A`
-// toggle-all, and `s` AI-reason panel.
-
 const MIXED = [
   { name: 'Button', componentId: 'c0' },
   { name: 'DebugPanel', componentId: 'c1', aiDecision: 'rejected' as const, aiReason: 'internal-only widget' },
@@ -88,8 +76,6 @@ describe('ScopeGateStep — accept semantics', () => {
     const { stdin } = render(
       <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
     );
-    // Standalone tier alphabetical: BadgeDebug... Actually MIXED sorts as
-    // Button, Card, DebugPanel. Cursor on Button → accept it.
     stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -101,7 +87,6 @@ describe('ScopeGateStep — accept semantics', () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
-    // Cursor on Button (alphabetical). Accept it → detail line reads "included".
     stdin.write('a');
     const out = lastFrame() ?? '';
     expect(out).toContain('Button');
@@ -119,7 +104,6 @@ describe('ScopeGateStep — manual decision wins over streaming AI', () => {
     const { rerender, stdin } = render(
       <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} />,
     );
-    // Explicitly accept Button.
     stdin.write('a');
     const streamed = [
       { name: 'Button', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: 'AI thinks no' },
@@ -139,7 +123,7 @@ describe('ScopeGateStep — manual decision wins over streaming AI', () => {
       { name: 'Card', componentId: 'c1' },
     ];
     const { rerender, stdin } = render(<ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} />);
-    stdin.write('r'); // explicitly reject Button
+    stdin.write('r');
     rerender(<ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />);
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -160,8 +144,6 @@ describe('ScopeGateStep — AI reason surfacing on focused row', () => {
         aiFilterStatus="complete"
       />,
     );
-    // Cursor starts on the first standalone row (Button, alphabetical). Move
-    // down to DebugPanel so its AI-reason detail renders.
     stdin.write('j');
     const out = lastFrame() ?? '';
     expect(out).toContain('DebugPanel');
@@ -169,10 +151,6 @@ describe('ScopeGateStep — AI reason surfacing on focused row', () => {
   });
 
   it('truncates a long AI reason on the focused-row detail line', () => {
-    // The focused-row detail caps at width * FOCUSED_REASON_MAX_LINES chars, so
-    // the reason must exceed that budget to trigger the ellipsis. (L7 removed
-    // the old inline gray list, which was the previous source of the ellipsis
-    // on short reasons.)
     const longReason = 'a'.repeat(600) + 'TAILMARKER';
     const { lastFrame, stdin } = render(
       <ScopeGateStep
@@ -203,8 +181,8 @@ describe('ScopeGateStep — AI reason surfacing on focused row', () => {
         aiFilterStatus="complete"
       />,
     );
-    stdin.write('j'); // focus DebugPanel
-    stdin.write('s'); // open reason panel
+    stdin.write('j');
+    stdin.write('s');
     const out = lastFrame() ?? '';
     expect(out).toContain('AI rejection reason: DebugPanel');
     expect(out).toContain('the full unlimited reason text');

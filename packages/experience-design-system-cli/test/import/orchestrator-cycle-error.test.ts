@@ -3,8 +3,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { isSlotCycleError, extractCycleReport, parseCycleComponentNames } from '../../src/import/orchestrator.js';
 import type { PipelineOptions } from '../../src/import/orchestrator.js';
 
-// ─── Mocks for runPipeline integration test ──────────────────────────────────
-
 const mockExecFile = vi.fn();
 const mockFindLatestSessionForCommand = vi.fn(() => null as string | null);
 
@@ -36,14 +34,11 @@ vi.mock('../../src/lib/contentful-urls.js', () => ({
   buildPostPushUrl: vi.fn(() => 'https://test.contentful.com'),
 }));
 
-// ─── Constant mirrored from command.ts (verified against formatSlotCycleReport) ─
 const CYCLE_MARKER = 'manifest:components/slot-cycles';
 const CYCLE_STDERR =
   'Error: manifest:components/slot-cycles — 1 slot dependency cycle(s) detected. Push refused.\n' +
   '  Cycle 1: Comp_A → Comp_B → Comp_A\n' +
   "    Fix: remove 'Comp_A' from Comp_B.$slots.children.$allowedComponents";
-
-// ─── Tests 1–3: pure unit tests of isSlotCycleError ─────────────────────────
 
 describe('isSlotCycleError', () => {
   it('returns true when stderr contains the cycle error marker', () => {
@@ -73,8 +68,6 @@ describe('isSlotCycleError', () => {
     ).toBe(false);
   });
 });
-
-// ─── Test 4: runPipeline integration ────────────────────────────────────────
 
 describe('runPipeline cycle error', () => {
   beforeEach(() => {
@@ -124,8 +117,6 @@ describe('runPipeline cycle error', () => {
   });
 });
 
-// ─── parseCycleComponentNames unit tests ─────────────────────────────────────
-
 describe('parseCycleComponentNames', () => {
   it('parseCycleComponentNames extracts component names from Fix: lines', () => {
     const report = [
@@ -140,8 +131,6 @@ describe('parseCycleComponentNames', () => {
     expect(parseCycleComponentNames(["Error: some other message"])).toEqual([]);
   });
 });
-
-// ─── runPipeline auto-reject-cycles integration tests ────────────────────────
 
 describe('runPipeline auto-reject-cycles', () => {
   beforeEach(() => {
@@ -249,8 +238,6 @@ describe('runPipeline auto-reject-cycles', () => {
     expect(analyzeCalls.length).toBe(0);
   });
 });
-
-// ─── extractCycleReport unit tests ──────────────────────────────────────────
 
 describe('extractCycleReport', () => {
   it('returns non-empty lines from cycle stderr', () => {

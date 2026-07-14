@@ -55,9 +55,6 @@ describe('sortComponentsForSidebar', () => {
   });
 
   it('within a tier, sorts needs-review components first', () => {
-    // Previously the App.tsx caller did this sort inline before passing to
-    // sortComponentsForSidebar — a double-sort. Pulling the secondary sort
-    // into the helper makes the contract explicit and removes the redundancy.
     const input: ReviewComponentSummary[] = [
       makeSummary({ id: '1', name: 'AlreadyReviewed', status: 'accepted', needsReview: false }),
       makeSummary({ id: '2', name: 'Pending', status: 'needs-review', needsReview: true }),
@@ -65,7 +62,6 @@ describe('sortComponentsForSidebar', () => {
     ];
     const sorted = sortComponentsForSidebar(input);
     expect(sorted[0].id).toBe('2');
-    // Ties broken by input order within the same tier.
     expect(sorted[1].id).toBe('1');
     expect(sorted[2].id).toBe('3');
   });
@@ -88,7 +84,6 @@ describe('sortComponentsForSidebar', () => {
     ];
     const sorted = sortComponentsForSidebar(input);
     expect(sorted[0].id).toBe('2');
-    // Among nulls, input order is preserved.
     expect(sorted[1].id).toBe('1');
     expect(sorted[2].id).toBe('3');
   });
@@ -169,11 +164,6 @@ describe('sortComponentsForSidebar — three-way partition (errors / warnings / 
 });
 
 describe('statusIcon / statusColor — error vs warning vs clean', () => {
-  // Errors override the icon to ⚠ regardless of status (component is structurally
-  // broken). Warnings do NOT override the icon — the user's accept/reject decision
-  // remains visible — but the COLOR is still yellow so the warning cue is preserved.
-  // P1.1 fixed the prior behavior where warnings masked the icon too.
-
   it('warning-only component shows status icon (not ⚠) so user accept/reject decision is visible', () => {
     expect(statusIcon('needs-review', 0, 1)).toBe('·');
     expect(statusColor('needs-review', 0, 1)).toBe(PALETTE.warning);

@@ -211,18 +211,6 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
   mkdirSync(dirname(path), { recursive: true });
   try {
     const db = new DatabaseSync(path);
-    // Configure connection-level pragmas BEFORE running schema/migrations.
-    // - journal_mode=WAL: persistent on the DB file; readers don't block writers
-    //   and vice versa. (Also set in SCHEMA, but harmless to assert per-open.)
-    // - busy_timeout: per-connection; SQLite waits for a lock instead of
-    //   immediately throwing 'database is locked'. Critical when the wizard
-    //   main process and select-agent subprocesses contend on writes.
-    // - synchronous=NORMAL: safe under WAL, faster than FULL.
-    // busy_timeout MUST come first. PRAGMA journal_mode = WAL needs a
-    // RESERVED lock briefly even when the DB is already WAL; if the
-    // select-agent child is mid-write at that moment, the wizard's open
-    // fails instantly without retry. Setting busy_timeout first makes
-    // SQLite wait up to 5s for the lock.
     db.exec('PRAGMA busy_timeout = 5000');
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA synchronous = NORMAL');
@@ -232,11 +220,6 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('database is locked')) {
-      // Throw a typed-ish error rather than process.exit(1). Calling exit
-      // from inside Ink's render reconciler crashes the TUI mid-frame and
-      // emits a noisy 'setState during render' warning. The CLI entry
-      // point (src/index.ts) catches and exits cleanly for non-TUI
-      // contexts; the wizard catches and transitions to its error step.
       throw new Error('database is locked: another CLI process may be running. Retry once it exits.');
     }
     throw e;
@@ -244,7 +227,6 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
 }
 
 function applyDbMigrations(db: DatabaseSync): void {
-  // Add raw_slots.required column if it doesn't exist yet (added in v0.5.14).
   const cols = db.prepare('PRAGMA table_info(raw_slots)').all() as Array<{
     name: string;
   }>;
@@ -252,7 +234,6 @@ function applyDbMigrations(db: DatabaseSync): void {
     db.exec('ALTER TABLE raw_slots ADD COLUMN required INTEGER NOT NULL DEFAULT 1 CHECK (required IN (0, 1))');
   }
 
-  // Add extraction confidence scoring columns if they don't exist yet (added in v0.6.0).
   const rawCompCols = db.prepare('PRAGMA table_info(raw_components)').all() as Array<{ name: string }>;
   const rawCompColNames = new Set(rawCompCols.map((c) => c.name));
   if (!rawCompColNames.has('extraction_confidence')) {
@@ -265,8 +246,6 @@ function applyDbMigrations(db: DatabaseSync): void {
     db.exec('ALTER TABLE raw_components ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0');
   }
 
-  // Feature 1: per-component source path on raw_components, rationale + per-prop
-  // source location on raw_props. All nullable, no DEFAULT — existing rows survive.
   if (!rawCompColNames.has('source_path')) {
     db.exec('ALTER TABLE raw_components ADD COLUMN source_path TEXT');
   }
@@ -282,16 +261,10 @@ function applyDbMigrations(db: DatabaseSync): void {
     db.exec('ALTER TABLE raw_props ADD COLUMN source_end_line INTEGER');
   }
 
-  // Feature 3: persist select-agent's reject reason on raw_components. Nullable,
-  // no DEFAULT — accepted components keep NULL, rejected ones store the LLM's
-  // reason (or `validation error: <codes>` for validation auto-rejections).
   if (!rawCompColNames.has('reject_reason')) {
     db.exec('ALTER TABLE raw_components ADD COLUMN reject_reason TEXT');
   }
 
-  // Component rationale: WHY a component was classified, why these props,
-  // why these slots — surfaced via the `I` panel. All nullable, no DEFAULT
-  // so existing rows survive. Plus per-slot rationale on raw_slots.
   if (!rawCompColNames.has('component_description_rationale')) {
     db.exec('ALTER TABLE raw_components ADD COLUMN component_description_rationale TEXT');
   }
@@ -306,9 +279,6 @@ function applyDbMigrations(db: DatabaseSync): void {
     db.exec('ALTER TABLE raw_slots ADD COLUMN rationale TEXT');
   }
 
-  // Fine-grained cache: extract_cache holds per-file extracted components keyed
-  // on (file_hash, cli_version). cli_version is a content hash of bundled skill
-  // files so cache busts on a prompt change (not on every npm patch bump).
   const hasExtractCache = db
     .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='extract_cache'`)
     .all() as Array<{ name: string }>;
@@ -327,9 +297,6 @@ function applyDbMigrations(db: DatabaseSync): void {
     `);
   }
 
-  // Fine-grained cache: select_cache stores accept/reject decisions per
-  // (component_hash, prompt_hash, cli_version). On hit, the wizard replays the
-  // decision without an LLM call.
   const hasSelectCache = db
     .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='select_cache'`)
     .all() as Array<{ name: string }>;
@@ -348,7 +315,6 @@ function applyDbMigrations(db: DatabaseSync): void {
     `);
   }
 
-  // Add generation_cache table if it doesn't exist yet.
   const tables = db
     .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='generation_cache'`)
     .all() as Array<{ name: string }>;
@@ -369,16 +335,6 @@ function applyDbMigrations(db: DatabaseSync): void {
     `);
   }
 
-  // Fine-grained cache: add prompt_hash to generation_cache so cache busts when
-  // the operator switches prompt files. Existing rows get '' (matches the
-  // historical "default bundled prompt" — note that lookups using a non-empty
-  // hash for the bundled prompt won't match, so first run after upgrade busts
-  // the cache. Documented as acceptable.
-  //
-  // The primary key also needs to expand to include prompt_hash so multiple
-  // prompt variants can coexist per (input_hash, entity_type, entity_id).
-  // SQLite doesn't allow ALTERing a PK, so when promoting the schema we rebuild
-  // the table in-place.
   const genCacheCols = db.prepare(`PRAGMA table_info(generation_cache)`).all() as Array<{ name: string; pk: number }>;
   const hasPromptHash = genCacheCols.some((c) => c.name === 'prompt_hash');
   const oldPkCols = genCacheCols.filter((c) => c.pk > 0).map((c) => c.name);
@@ -425,12 +381,6 @@ export interface ApplyToolCallsResult {
   warnings: string[];
 }
 
-/**
- * Feature 1: load per-component metadata for surfacing in the review UI —
- * source path, full source text, and per-prop rationale + source-location.
- * Returns null when no row matches. Decoupled from loadCDFComponents so
- * the CDF projection stays unaffected.
- */
 export interface ComponentReviewMetadata {
   sourcePath: string | null;
   componentSource: string | null;
@@ -497,13 +447,6 @@ export interface ComponentRationale {
   slots: Array<{ name: string; description: string | null; rationale: string | null }>;
 }
 
-/**
- * Component-rationale loader: data contract for the `I` ComponentRationalePanel.
- * Returns the component's description + the three component-level rationale
- * strings (why-description / why-props / why-slots), plus per-prop and per-slot
- * rationale rows for the operator-facing panel. Returns null when no component
- * matches.
- */
 export function loadComponentRationale(
   db: DatabaseSync,
   sessionId: string,
@@ -621,9 +564,7 @@ export function applyToolCalls(
             componentId,
           );
         }
-        // Component-level rationale: sparse-update each field only when present
-        // so missing keys don't overwrite previously-stored values.
-        if (call.rationale) {
+          if (call.rationale) {
           if (call.rationale.description !== undefined) {
             db.prepare(
               'UPDATE raw_components SET component_description_rationale = ? WHERE session_id = ? AND component_id = ?',
@@ -687,8 +628,6 @@ export function applyToolCalls(
           warnings.push(`${componentName}: classify_slot '${call.slot}' — slot not found, skipped`);
           continue;
         }
-        // Per-slot rationale: sparse-update only when present so omitting it
-        // doesn't blank existing values.
         if (call.rationale !== undefined) {
           db.prepare('UPDATE raw_slots SET rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?').run(
             call.rationale,
@@ -736,9 +675,6 @@ export function getOrCreateSession(
   db: DatabaseSync,
   sessionFlag: string | undefined,
   sessionName: string | undefined,
-  // `_hints` is retained for call-site compatibility but no longer drives an
-  // implicit auto-match by inputPath/outDir — operators who want to resume must
-  // pass an explicit --session <id>.
   _hints: MatchHints,
 ): SessionResolution {
   const now = new Date().toISOString();
@@ -856,7 +792,6 @@ export function storeRawComponents(
 
   db.exec('BEGIN');
   try {
-    // Snapshot CDF classification data before deleting if preservation requested
     type CDFSnapshot = {
       component_id: string;
       name: string;
@@ -946,7 +881,6 @@ export function storeRawComponents(
       }
     }
 
-    // Restore CDF classification data for props that still exist
     if (options?.preserveCDF && cdfSnapshot.length > 0) {
       const updateCDFByName = db.prepare(
         `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?
@@ -958,7 +892,6 @@ export function storeRawComponents(
       );
       const restoredPropKeys = new Set<string>();
       const unmatchedSnaps: CDFSnapshot[] = [];
-      // First pass: match by name
       for (const snap of cdfSnapshot) {
         const result = updateCDFByName.run(
           snap.cdf_type,
@@ -974,7 +907,6 @@ export function storeRawComponents(
           unmatchedSnaps.push(snap);
         }
       }
-      // Second pass: for renamed props, fall back to position-based matching
       for (const snap of unmatchedSnaps) {
         const result = updateCDFByPosition.run(
           snap.cdf_type,
@@ -1001,7 +933,6 @@ export function storeRawComponents(
         updateDesc.run(snap.description, sessionId, snap.component_id);
       }
 
-      // Restore allowed values only for props that still exist (to avoid FK violations)
       const relevantAV = avSnapshot.filter((av) => restoredPropKeys.has(`${av.component_id}::${av.prop_name}`));
       if (relevantAV.length > 0) {
         const deleteAV = db.prepare(
@@ -1120,7 +1051,6 @@ export function loadRawComponents(
     allowed_component: string;
   }>;
 
-  // Group children by component_id
   const propsByComponent = groupBy(props, (p) => p.component_id);
   const allowedValuesByProp = groupBy(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
   const slotsByComponent = groupBy(slots, (s) => s.component_id);
@@ -1172,12 +1102,6 @@ export function loadRawComponents(
   );
 }
 
-/**
- * Rename empty-named slots in the DB to heuristic names before generation.
- * The LLM classify_slot tool call is matched back to the DB row by name, so a
- * row with name="" can never be updated by the LLM — renaming it here makes it
- * classifiable. Returns one warning string per renamed slot.
- */
 export function renameEmptySlots(
   db: DatabaseSync,
   sessionId: string,
@@ -1202,15 +1126,9 @@ export function renameEmptySlots(
     `UPDATE raw_slots SET name = ? WHERE session_id = ? AND component_id = ? AND name = ? AND position = ?`,
   );
 
-  // Multi-statement write — wrap in a transaction so a SIGINT or driver error
-  // mid-loop leaves raw_slots either fully renamed or fully untouched, never
-  // half-renamed (which would corrupt the prompt-vs-DB invariant the LLM
-  // relies on for classify_slot). Matches the existing BEGIN/COMMIT pattern
-  // throughout this file (see storeRawComponents, createStep, etc.).
   db.exec('BEGIN');
   try {
     for (const slot of emptySlots) {
-      // Single unnamed slot → "children". Multiple → positional names.
       const newName = slotCount === 1 ? 'children' : `slot_${slot.position}`;
       rename.run(newName, sessionId, componentId, slot.name, slot.position);
       renames.push({ oldName: slot.name, newName });
@@ -1269,11 +1187,6 @@ export function storeCDFComponents(
     `INSERT INTO raw_slot_allowed_components (session_id, component_id, slot_name, allowed_component, position)
      VALUES (?, ?, ?, ?, ?)`,
   );
-  // Slot delete+insert statements for the update path (INTEG-4401). We mirror
-  // the delete-then-insert pattern already used for raw_prop_allowed_values so
-  // that removing a slot or a $allowedComponents entry (e.g. user breaking a
-  // cycle in FieldEditor) actually clears the row instead of leaving stale
-  // data behind.
   const deleteSlots = db.prepare(`DELETE FROM raw_slots WHERE session_id = ? AND component_id = ?`);
   const deleteSlotAllowedComponents = db.prepare(
     `DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ?`,
@@ -1312,12 +1225,6 @@ export function storeCDFComponents(
           }
         }
 
-        // Persist $slots on the update path (INTEG-4401). We snapshot is_default
-        // from any pre-existing rows before deleting because the CDF entry
-        // doesn't carry that flag — the extractor sets it (e.g. `children` slots
-        // land with is_default=1) and losing it here would break downstream
-        // codegen. Delete-then-insert (not upsert) so a removed slot or a
-        // removed $allowedComponents entry actually disappears from the DB.
         const existingDefaults = new Map<string, number>(
           (readExistingSlotDefaults.all(sessionId, componentId) as Array<{ name: string; is_default: number }>).map(
             (r) => [r.name, r.is_default],
@@ -1344,7 +1251,6 @@ export function storeCDFComponents(
           }
         }
       } else {
-        // Component not in raw_components (e.g. agent added a new one) — insert a minimal record
         const componentId = createHash('sha256').update(`${key}:generated`).digest('hex').slice(0, 12);
         db.prepare(
           `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, status, description)
@@ -1474,21 +1380,9 @@ export function loadCDFComponents(
 
   return components.map(({ component_id, name, description }) => {
     const compProps = propsByComponent.get(component_id) ?? [];
-    // NOTE: Components with zero CDF-classified props are intentionally
-    // returned with an empty `$properties` object. Filtering them out here
-    // silently dropped them from the wizard's final-review (INTEG-4257),
-    // so the user couldn't see that the LLM had failed to classify anything
-    // and couldn't reject the empty component. Surface them instead — the
-    // wizard tags them with a ⚠ badge and an in-panel banner so the user
-    // can manually add props in FieldEditor or reject the component.
-    // Downstream consumers (buildManifest, push) tolerate empty $properties.
 
     const $properties: CDFComponentEntry['$properties'] = {};
     for (const p of compProps) {
-      // Hallucination insurance: drop any prop whose name didn't survive trim.
-      // The pre-generate rename guard catches empty-named slots, but if the LLM
-      // hallucinated a classify_prop with an empty name into the DB, surface
-      // nothing to the manifest builder rather than emitting "$properties: { '': ... }".
       if (!p.name.trim()) continue;
       const av = allowedValuesByProp.get(`${component_id}::${p.name}`);
       const propDef: CDFComponentEntry['$properties'][string] = {
@@ -1512,9 +1406,6 @@ export function loadCDFComponents(
     const compSlots = slotsByComponent.get(component_id) ?? [];
     const $slots: CDFComponentEntry['$slots'] = {};
     for (const s of compSlots) {
-      // Hallucination insurance: same as $properties — drop empty-named slots
-      // before they reach buildManifest, which faithfully passes empty keys
-      // through and triggers a 422 from the preview API.
       if (!s.name.trim()) continue;
       const ac = allowedComponentsBySlot.get(`${component_id}::${s.name}`);
       const slotDef: NonNullable<CDFComponentEntry['$slots']>[string] = {};
@@ -1536,22 +1427,10 @@ export type ScopeComponentRow = {
   componentId: string;
   aiDecision: 'accepted' | 'rejected' | null;
   aiReason: string | null;
-  /**
-   * Extraction-time slot graph for this component, joined from `raw_slots` and
-   * `raw_slot_allowed_components`. Populated for every returned row (empty
-   * array when the component has no slots) so ScopeGateStep can drive the
-   * shared GroupedSidebar composite-closure grouping without a follow-up
-   * per-component fetch. Matches the shape ScopeGateStep's synthetic
-   * CDFComponentEntry expects.
-   */
   slots: Array<{ name: string; allowedComponents: string[] }>;
 };
 
 export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeComponentRow[] {
-  // Loads extract-stage components: those still pending operator review (`extracted`)
-  // plus those the Feature 3 auto-filter has already classified (`accepted` /
-  // `rejected`). Excludes `generated` (already past scope-gate) so re-runs of the
-  // wizard don't show already-confirmed components.
   const rows = db
     .prepare(
       `SELECT name, component_id, status, reject_reason FROM raw_components
@@ -1567,10 +1446,6 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
 
   if (rows.length === 0) return [];
 
-  // Join raw_slots + raw_slot_allowed_components in the same shape
-  // loadRawComponents uses, so composite grouping at scope-gate matches
-  // generate-review exactly. Two batched reads keep this O(1) queries per
-  // session regardless of component count.
   const slotRows = db
     .prepare(
       `SELECT component_id, name, position
@@ -1612,10 +1487,7 @@ export function applyScopeDecisions(
   const now = new Date().toISOString();
   const acceptedSet = new Set(decisions.accepted);
   const accepted = [...acceptedSet];
-  // Conflict precedence: accepted wins over rejected.
   const rejected = [...new Set(decisions.rejected)].filter((n) => !acceptedSet.has(n));
-  // Rejected first so accepted writes can flip back to 'generated' afterwards
-  // if a name appears in both lists.
   if (rejected.length > 0) {
     const placeholders = rejected.map(() => '?').join(',');
     db.prepare(`UPDATE raw_components SET status = 'rejected' WHERE session_id = ? AND name IN (${placeholders})`).run(
@@ -1767,8 +1639,6 @@ export function findLatestSessionForCommand(db: DatabaseSync, command: CommandNa
 }
 
 export function seedCDFFromPriorSession(db: DatabaseSync, targetSessionId: string): number {
-  // Find the most recent session (other than target) that has CDF data for any of the
-  // target's component_ids. This works regardless of which command produced the CDF.
   const targetComponentIds = db
     .prepare(`SELECT component_id FROM raw_components WHERE session_id = ?`)
     .all(targetSessionId) as Array<{ component_id: string }>;
@@ -1788,7 +1658,6 @@ export function seedCDFFromPriorSession(db: DatabaseSync, targetSessionId: strin
   if (!priorRow) return 0;
   const priorSessionId = priorRow.session_id;
 
-  // Copy CDF columns from prior session's props into matching props in the target session.
   const result = db
     .prepare(
       `UPDATE raw_props SET
@@ -1808,7 +1677,6 @@ export function seedCDFFromPriorSession(db: DatabaseSync, targetSessionId: strin
     )
     .run(priorSessionId, priorSessionId, priorSessionId, targetSessionId, priorSessionId);
 
-  // Also copy descriptions from prior session's components
   db.prepare(
     `UPDATE raw_components SET description = (
        SELECT c2.description FROM raw_components c2
@@ -1821,7 +1689,6 @@ export function seedCDFFromPriorSession(db: DatabaseSync, targetSessionId: strin
                    AND c2.description IS NOT NULL)`,
   ).run(priorSessionId, targetSessionId, priorSessionId);
 
-  // Copy allowed values for seeded props from prior session
   if (result.changes > 0) {
     db.prepare(
       `INSERT OR IGNORE INTO raw_prop_allowed_values (session_id, component_id, prop_name, position, value)
@@ -1883,12 +1750,6 @@ export function seedCDFFromPreviewResponse(
   return totalSeeded;
 }
 
-/**
- * Seeds server-side metadata for changed components:
- * 1. Fills in defaults the server has but we don't (prevents accidental removal)
- * 2. Seeds cdf_type/cdf_category for props that exist on server but lack CDF locally
- *    (e.g. props with non-standard source types the generation step couldn't classify)
- */
 export function seedDefaultsFromChangedItems(
   db: DatabaseSync,
   sessionId: string,
@@ -1921,7 +1782,6 @@ export function seedDefaultsFromChangedItems(
     const designProps = new Set(current.designProperties);
 
     for (const [propName, propSummary] of Object.entries(current.fullProperties)) {
-      // Seed defaults
       if (propSummary.default !== undefined && propSummary.default !== null) {
         const defaultStr =
           typeof propSummary.default === 'string' ? propSummary.default : JSON.stringify(propSummary.default);
@@ -1929,7 +1789,6 @@ export function seedDefaultsFromChangedItems(
         totalSeeded += Number(result.changes);
       }
 
-      // Seed CDF type/category for props that lack it
       const cdfType = mapServerTypeToCDFType(propSummary.type);
       if (!cdfType) continue;
 
@@ -1948,14 +1807,7 @@ export function seedDefaultsFromChangedItems(
   return totalSeeded;
 }
 
-/**
- * Ensures all props on generated components have a cdf_type.
- * Uses the pre-classification `category` column when available.
- * Falls back to cdf_type: 'string', cdf_category: 'content' for props
- * with no pre-classification (safe default — content is the most common category).
- */
 export function backfillUnclassifiedProps(db: DatabaseSync, sessionId: string): number {
-  // First: backfill props that HAVE a pre-classification category
   const withCategory = db
     .prepare(
       `UPDATE raw_props SET cdf_type = 'string', cdf_category = category
@@ -1966,7 +1818,6 @@ export function backfillUnclassifiedProps(db: DatabaseSync, sessionId: string): 
     )
     .run(sessionId, sessionId);
 
-  // Second: backfill props with NO category (complex types the rules couldn't classify)
   const withoutCategory = db
     .prepare(
       `UPDATE raw_props SET cdf_type = 'string', cdf_category = 'content'
@@ -2003,27 +1854,18 @@ function mapServerTypeToCDFType(serverType: string): string | null {
   }
 }
 
-// ── Generation Cache ──────────────────────────────────────────────────────────
-
 export interface CacheEntry {
   inputHash: string;
   entityType: 'component' | 'token_set';
   entityId: string;
   sourceSessionId: string;
   humanEdited: boolean;
-  /** sha256 of the prompt content. '' for pre-upgrade rows that predate the fine-grained cache. */
   promptHash: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export function computeComponentInputHash(component: RawComponentWithId): string {
-  // Narrow the hashed payload to extractor-only fields. Any field that
-  // `applyToolCalls` may overwrite (prop description/required/default/allowed
-  // values, slot description/allowed components) is excluded so that the cache
-  // key does not depend on its own output — otherwise re-reading raw props
-  // after a generation pass would drift the hash even when the underlying
-  // source has not changed.
   const payload = {
     framework: component.framework,
     name: component.name,
@@ -2160,14 +2002,6 @@ export function loadScannedFiles(db: DatabaseSync, sessionId: string): string[] 
   }>;
   return rows.map((r) => r.path);
 }
-
-// --- Slot-dependency cycle persistence (INTEG-4401) ---
-//
-// The `slot_cycles` table caches the result of running the cycle detector
-// over the extractor's slot output so the TUI can render sidebar badges,
-// a banner, and an expandable detail panel without re-running the analysis
-// on every render. Rows are session-scoped and rewritten wholesale on each
-// re-extract via `storeSlotCycles`.
 
 export function storeSlotCycles(
   db: DatabaseSync,
@@ -2368,20 +2202,8 @@ export function copyTokensFromCache(db: DatabaseSync, sourceSessionId: string, t
   }
 }
 
-// ---------------------------------------------------------------------------
-// Fine-grained cache: extract_cache helpers
-// ---------------------------------------------------------------------------
-
 let _cliCacheVersionCache: string | null = null;
 
-/**
- * Returns the CLI cache version used to namespace cache rows. To avoid busting
- * the cache on every npm patch bump, this hashes the content of the bundled
- * skill prompts. When the prompts change, cache invalidates; when only library
- * code or test fixtures change, the cache stays warm.
- *
- * Memoized per-process. Falls back to package version on any I/O error.
- */
 export async function getCliCacheVersion(): Promise<string> {
   if (_cliCacheVersionCache) return _cliCacheVersionCache;
   try {
@@ -2466,10 +2288,6 @@ export function lookupExtractCache(db: DatabaseSync, fileHash: string, cliVersio
     components,
   };
 }
-
-// ---------------------------------------------------------------------------
-// Fine-grained cache: select_cache helpers
-// ---------------------------------------------------------------------------
 
 export type SelectDecision = 'accepted' | 'rejected';
 

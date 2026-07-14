@@ -14,11 +14,6 @@ function comp(name: string, slots: Array<[string, string[]]>): ComponentSlotInfo
   };
 }
 
-/**
- * Compare cycles ignoring the cyclic rotation start point — a cycle A→B→A
- * and B→A→B are the same elementary cycle. Normalize by rotating so the
- * lexicographically-smallest node is first, then compare paths.
- */
 function normalizeCyclePath(cycle: SlotCycle): string {
   const nodes = cycle.path.slice(0, -1); // drop repeated last element
   if (nodes.length === 0) return '';
@@ -78,7 +73,6 @@ describe('findSlotCycles', () => {
   });
 
   it('detects nested cycles sharing an edge', () => {
-    // A→B→C→A (3-cycle) plus B→C→B (2-cycle via a second slot on C)
     const components = [
       comp('A', [['s1', ['B']]]),
       comp('B', [['s1', ['C']]]),
@@ -91,7 +85,6 @@ describe('findSlotCycles', () => {
     const norms = cycles.map(normalizeCyclePath).sort();
     expect(norms).toContain('A>B>C');
     expect(norms).toContain('B>C');
-    // Johnson enumerates each elementary cycle exactly once.
     expect(cycles).toHaveLength(2);
   });
 
@@ -127,8 +120,6 @@ describe('formatCyclePath', () => {
   it('formats a 2-cycle inline', () => {
     const components = [comp('CardA', [['header', ['CardB']]]), comp('CardB', [['footer', ['CardA']]])];
     const [cycle] = findSlotCycles(components);
-    // The path starts at whichever node Johnson's found first; regardless,
-    // it must be a rotation of A→header→B→footer→A.
     const s = formatCyclePath(cycle);
     expect(s.startsWith('CardA') || s.startsWith('CardB')).toBe(true);
     expect(s.endsWith(s.split(' → ')[0])).toBe(true);
@@ -142,7 +133,6 @@ describe('formatCyclePath', () => {
     const [cycle] = findSlotCycles(components);
     const s = formatCyclePath(cycle, 8);
     expect(s).toContain('…');
-    // Ends with the same node it starts with.
     const first = s.split(' → ')[0];
     expect(s.endsWith(first)).toBe(true);
   });
@@ -157,7 +147,6 @@ describe('formatCyclePath', () => {
 
 describe('suggestCycleBreakEdge', () => {
   it('picks the edge whose target is the most-referenced hub across all cycles', () => {
-    // Two cycles both routing through Hub: A→Hub→A and B→Hub→B.
     const components = [
       comp('A', [['s', ['Hub']]]),
       comp('B', [['s', ['Hub']]]),
@@ -167,7 +156,6 @@ describe('suggestCycleBreakEdge', () => {
       ]),
     ];
     const cycles = findSlotCycles(components);
-    // Every cycle has an edge into Hub — that should be the suggested break.
     for (const cycle of cycles) {
       const edge = suggestCycleBreakEdge(cycle, cycles);
       expect(edge.toComponent).toBe('Hub');

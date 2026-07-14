@@ -19,8 +19,6 @@ describe('computeLineageLayout (L2d — panel in the sidebar slot)', () => {
   });
 
   it('sidebar height is CONSTANT whether the panel is open or closed', () => {
-    // L2d: the panel replaces the sidebar in the same slot, so the sidebar no
-    // longer shrinks when lineage opens (that was the L2c stacked approach).
     const closed = computeLineageLayout({ rows: 40, panelOpen: false });
     const open = computeLineageLayout({ rows: 40, panelOpen: true });
     expect(open.sidebarVisible).toBe(closed.sidebarVisible);

@@ -91,12 +91,9 @@ describe('loadScopeComponents', () => {
 
       expect(byName.Card?.slots).toEqual([{ name: 'body', allowedComponents: ['Heading'] }]);
 
-      // Component with no slot rows returns an empty slots array (not undefined).
       expect(byName.Heading?.slots).toEqual([]);
       expect(byName.Standalone?.slots).toEqual([]);
 
-      // Multi-slot component keeps DB ordering; a slot with no allowed components
-      // still surfaces with an empty allowedComponents list.
       expect(byName.Layout?.slots).toEqual([
         { name: 'header', allowedComponents: ['Heading'] },
         { name: 'sidebar', allowedComponents: ['Card'] },
@@ -118,7 +115,6 @@ describe('loadScopeComponents', () => {
         [makeComponent('Button'), makeComponent('Card'), makeComponent('AlreadyAccepted')],
         { status: 'extracted' },
       );
-      // Flip one to 'generated' to simulate a partially-finalized session
       db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND name = ?`).run(
         sessionId,
         'AlreadyAccepted',

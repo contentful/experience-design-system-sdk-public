@@ -62,8 +62,6 @@ describe('extractAllowedComponentsFromTypeText', () => {
     ).toEqual([]);
   });
 
-  // Svelte 5 typed snippets: Snippet<[XProps]> is the runes idiom for a
-  // snippet whose single render argument is a component-shaped props object.
   it('extracts a single Snippet<[XProps]>', () => {
     expect(
       extractAllowedComponentsFromTypeText('Snippet<[HeadingProps]>', { propsToComponent, componentNames }),

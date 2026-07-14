@@ -56,7 +56,7 @@ import { computeCycleAutoRejectTargets } from '../../cycle-auto-reject.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
-import { computeLineageLayout } from '../lineage-layout.js';
+import { computeSidebarBudget, FALLBACK_ROWS } from '../lineage-layout.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import { legendEntry } from '../components/LegendEntry.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
@@ -70,6 +70,7 @@ import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../
 import { computeAutocomplete } from '../autocomplete.js';
 import { resolveGroupRoot } from '../group-collapse.js';
 import {
+  buildFlatDimPredicate,
   computeFilterKeys,
   intersectFilterKeys,
   type FilterCategory,
@@ -85,48 +86,21 @@ type GenerateReviewStepProps = {
   extractSessionId: string;
   onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
-  /**
-   * Feature 2 (live preview after every save). When `true` (default), the
-   * wizard re-runs `previewImport` after each successful FieldEditor Ctrl+S
-   * (debounced 500ms) and refreshes the sidebar's previewAnnotation badges.
-   * Operator opts out via `experiences import --no-live-preview`.
-   */
   livePreview?: boolean;
-  // Creds + tokens path threaded from the wizard so the live-preview hook
-  // can call previewImport without re-prompting. Missing creds → silent
-  // no-op inside the hook.
   spaceId?: string;
   environmentId?: string;
   cmaToken?: string;
   host?: string;
   tokensPath?: string;
-  /**
-   * INTEG-4411 refined: initial value for the inline `finalizeError` banner.
-   * The wizard sets this when it routes back to `final-review` after the
-   * preview API returned an empty diff (pure no-op push). Cleared on the
-   * next `a` / `A` keystroke.
-   */
   initialFinalizeError?: string | null;
 };
 
-/**
- * Sort components for the final-review sidebar so the underlying data array
- * matches the visual order. Empty components (zero classified $properties)
- * surface at the top via the warning-tier path in Sidebar.tsx; we mirror that
- * here so `selectedIdx` indexes into the same order the user sees. Without
- * this, j/k navigation lands on different rows than the visually-selected
- * one (INTEG-4259).
- *
- * Within each tier (empty / non-empty) we tie-break alphabetically by `key`.
- */
 export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
   components: T[],
   cycleParticipants?: Set<string>,
 ): T[] {
   const isEmpty = (entry: CDFComponentEntry): boolean =>
     Object.keys(entry.$properties ?? {}).length === 0 && Object.keys(entry.$slots ?? {}).length === 0;
-  // Tier order: cycle members first (they block push — surface loudest),
-  // then empty (soft warning), then everything else. Ties broken alpha.
   const tier = (c: T): number => {
     if (cycleParticipants?.has(c.key)) return 0;
     if (isEmpty(c.entry)) return 1;
@@ -142,14 +116,6 @@ export function sortComponentsForSidebar<T extends { key: string; entry: CDFComp
 
 const PANEL_HEIGHT = 22;
 
-// L11 — help groups ordered by WHERE a key is used (navigation → selection →
-// sidebar views/filters → panels → search → history → general). Sidebar-view
-// keys (flat, lineage, focus-lineage, group expand/collapse, broken/cycles
-// filters) cluster together because they all reshape the left column. The two
-// cycle features carry DISTINCT labels: `[c]` = "Cycle list" (breakdown panel),
-// `[o]` = "Only cycles" (sidebar filter). Component rationale is `[P]` (was
-// `[I]`, which collided conceptually with lowercase `[i]` = focus-lineage).
-// There is NO "Deleted" filter (removed per L11 item 8).
 const HELP_SECTIONS: HelpSection[] = [
   {
     title: 'Navigation',
@@ -191,8 +157,6 @@ const HELP_SECTIONS: HelpSection[] = [
     ],
   },
   {
-    // A7 — a slot-dependency cycle has TWO valid resolutions. State both so the
-    // operator isn't left thinking rejection is the only path.
     title: 'Resolving cycles',
     entries: [
       { keys: '', label: 'Reject a cycle member (drops it from the push), or' },
@@ -231,10 +195,6 @@ export interface BreakingComponent {
   componentName: string;
   changes: BreakingChange[];
   impact?: DownstreamImpact;
-  // BD3 — the changed entity's `current` summary, threaded so the friendly
-  // formatter can enrich property rows with `fullProperties` (type/category).
-  // Optional: absent when the preview response omits it, in which case the
-  // formatter degrades to id + reason.
   current?: ComponentTypeSummary;
 }
 
@@ -244,14 +204,6 @@ export interface BreakingRow {
   focusTarget?: { kind: 'prop' | 'slot'; name: string };
 }
 
-/**
- * BD2 — flatten breaking components to one row per change. Each change is a
- * discriminated union member keyed by presence: `propertyId` → prop branch,
- * `slotId` → slot branch. Components with no enumerated changes contribute a
- * single component-level row (no focusTarget) so the jump degrades to
- * land-on-the-row. Exported as a pure function so the prop/slot branching is
- * pinned by unit tests independent of the Ink render tree.
- */
 export function buildBreakingRows(breakingChanges: BreakingComponent[]): BreakingRow[] {
   const out: BreakingRow[] = [];
   for (const b of breakingChanges) {
@@ -260,12 +212,6 @@ export function buildBreakingRows(breakingChanges: BreakingComponent[]): Breakin
       continue;
     }
     for (const change of b.changes) {
-      // BD3 — the row label IS the friendly, `fullProperties`-enriched detail
-      // (per spec: replace the terser BD2 label with `formatBreakingChange`).
-      // The component name lives on `componentName` (the jump target) + the
-      // detail panel header, so it's not repeated in the one-liner. The
-      // `focusTarget` (prop/slot + name) is preserved so BD4's jump-to-field
-      // still works.
       const label = formatBreakingChange(change, b.current);
       if ('slotId' in change) {
         out.push({
@@ -285,13 +231,6 @@ export function buildBreakingRows(breakingChanges: BreakingComponent[]): Breakin
   return out;
 }
 
-/**
- * L6 (lifecycle plan §5 L6 + §5.1 Q2) — pull the per-component breaking-change
- * detail out of a live-preview response. `applyPreviewAnnotations` only keeps
- * the bare kind `'breaking'`; the goto-banner needs the reasons + downstream
- * impact, so we read `response.components.changed` directly. Component name is
- * the changed entity's `current.name`.
- */
 export function deriveBreakingChanges(response: ServerPreviewResponse): BreakingComponent[] {
   const out: BreakingComponent[] = [];
   for (const item of response.components.changed ?? []) {
@@ -326,13 +265,6 @@ export function GenerateReviewStep({
   const [components, setComponents] = useState<CdfReviewEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // INTEG-4411 duplicate-cursor fix: cursor position is a visible-row index
-  // (into `visibleRowsMemo`), not an item-index into `components`. When a
-  // shared dep like `Card` appears under multiple parents, each occurrence is
-  // its own row with the same `itemIdx` — an item-indexed cursor renders
-  // "selected" on every occurrence and snaps back to the first one on j/k.
-  // `selectedIdx` (the item-index of the component currently under the
-  // cursor) is derived below from `visibleRowsMemo[cursorRowIdx]`.
   const [nav, setNav] = useState<{ cursorRowIdx: number; sidebarScrollOffset: number }>({
     cursorRowIdx: 0,
     sidebarScrollOffset: 0,
@@ -343,53 +275,22 @@ export function GenerateReviewStep({
   const [sidebarFocused, setSidebarFocused] = useState(true);
   const [showFinalize, setShowFinalize] = useState(false);
   const [showQuit, setShowQuit] = useState(false);
-  // FieldEditor is the default editor. JSON view is an opt-in read-only toggle.
   const [showJson, setShowJson] = useState(false);
   const [draftValue, setDraftValue] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
-  // INTEG-4411: inline banner shown when the operator tries to finalize
-  // with zero accepted components. Cleared on the next 'a' or 'A' press.
   const [finalizeError, setFinalizeError] = useState<string | null>(initialFinalizeError);
-  // Feature 1: per-component review metadata (rationale + source location)
-  // for the currently-selected component. Reloaded when selection changes.
   const [reviewMetadata, setReviewMetadata] = useState<ComponentReviewMetadata | null>(null);
-  // Feature 2: per-component preview annotations refreshed after every
-  // FieldEditor save via the useLivePreview hook below. Empty when live
-  // preview is disabled, when creds are missing, or before the first response.
   const [previewAnnotations, setPreviewAnnotations] = useState<Map<string, PreviewAnnotation>>(new Map());
-  // Pilot-2026-06-24: raw removed list for the `d` detail panel. The
-  // annotation map only carries kind, not the rich summaries we need to list
-  // names/ids when the operator asks "which ones?".
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
-  // A2-2: when the removed-components banner is tall, `[d]` collapses its
-  // detail rows. The 1-line count header stays visible so the operator knows
-  // removed components exist. Gated to `sidebarFocused` so it can't collide
-  // with FieldEditor text entry.
   const [removedBannerCollapsed, setRemovedBannerCollapsed] = useState(false);
   const removedBannerDefaultedRef = useRef(false);
-  // Lifted rationale + source panels (replaces FieldEditor's right pane).
-  // Mutually exclusive states.
   const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>('none');
   const [panelScrollOffset, setPanelScrollOffset] = useState(0);
   const [textEntryActive, setTextEntryActive] = useState(false);
   const [componentRationale, setComponentRationale] = useState<ComponentRationale | null>(null);
-  // Tracks the first `g` of a potential `gg` double-tap (jumps to top in
-  // JSON-view + panel-focused state). Reset on any non-`g` key.
   const pendingGRef = useRef(false);
-  // INTEG-4401: slot-dependency cycles loaded from the session DB. Non-empty
-  // triggers sidebar (cycle) badges, banner + [c] detail-panel affordance,
-  // and (at push time) a hard block.
   const [slotCycles, setSlotCycles] = useState<StoredSlotCycle[]>([]);
-  // T10 — cycle panel open/close via shared hook. The scroll state stays
-  // step-local since it's not part of the shared close-key convention;
-  // it's reset on close by the caller's toggle handlers.
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
-  // A8 (spec §4) — GR↔SG cycle-list jump parity. The `[c]` panel is now a
-  // jumpable list: `cyclesCursor` selects a cycle and Enter jumps the main
-  // sidebar cursor to that cycle's canonical root. Mirrors ScopeGateStep's
-  // `cyclesJumpables` behavior. Kept inline (not a shared component) because
-  // GR's panel renders per-cycle `suggestedBreak` "Suggested fix:" lines +
-  // colorized path segments that SG's simpler list does not.
   const [cyclesCursor, setCyclesCursor] = useState(0);
   const cyclePanel = useOverlayPanel({
     toggleKey: 'c',
@@ -398,14 +299,6 @@ export function GenerateReviewStep({
       setCyclesCursor(0);
     },
   });
-  // A9 (spec §4) — interactive break-cycle overlay. Opened with `[x]` from the
-  // `[c]` cycle list; enumerates the removable slot-allowed edges for the
-  // HIGHLIGHTED cycle (via `enumerateCycleBreaks`), lets the operator scroll +
-  // Enter-to-delete a slot edge. The delete flows through the SAME undoable
-  // slot-edit seam as FieldEditor saves (setComponents + storeCDFComponents +
-  // recomputeCycles + pushHistorySnapshot), so Ctrl+Z restores it. `[b]` was
-  // taken by the breaking-changes banner and `[c]` opens the parent list, so
-  // `[x]` (mnemonic: "x out" / cut a slot edge) is the free, unambiguous key.
   const breakPanel = useOverlayPanel({
     toggleKey: 'x',
     onClose: () => {
@@ -414,105 +307,34 @@ export function GenerateReviewStep({
     },
   });
   const [breakCursor, setBreakCursor] = useState(0);
-  // When true, the overlay shows the [y]/[n] confirm prompt for the currently
-  // highlighted break edge (reuses the reject-cascade confirm-dialog pattern).
   const [breakConfirm, setBreakConfirm] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const seededGroupsRef = useRef(false);
-  // Fuzzy-search overlay (mirrors ScopeGateStep). `/` opens the input;
-  // Enter closes but preserves the query so dim persists; Tab cycles matches
-  // once the input is closed; Esc from input closes+clears, Esc from
-  // sidebar-with-active-query clears.
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  // L4 — Tab autocomplete possibilities strip. Populated when Tab finds >1
-  // prefix-match; cleared on the next keystroke/backspace/close.
   const [autocompleteCandidates, setAutocompleteCandidates] = useState<string[]>([]);
-  // T5b (layout plan §B) — jump-and-filter target. Mirrors ScopeGateStep T5:
-  // independent of `searchQuery`; OR-merged into `filterVisibleKeys` with
-  // jump-target winning priority. Esc clears this before clearing the
-  // search-query.
   const [jumpFilterTarget, setJumpFilterTarget] = useState<string | null>(null);
-  // T6 (parity plan §3) — lineage panel state. Sidebar-only overlay showing
-  // ancestors + descendants of the focused component. Same shape as
-  // ScopeGateStep; derivation happens via the shared `useLineage` hook so
-  // both callsites render pixel-identical panels.
   const lineagePanel = useOverlayPanel({ toggleKey: 'l' });
   const [lineageCursor, setLineageCursor] = useState(0);
-  // L6 (lifecycle plan §5 L6 + §5.1 Q2) — breaking-changes goto-banner. The
-  // rich per-component detail (reasons + downstream impact) is discarded by the
-  // `previewAnnotations` map, so we stash it here from `handleLivePreviewResult`
-  // and surface it via a `[b]` overlay mirroring the lineage panel. `[b]` opens;
-  // ↑/↓/j/k move the cursor; Enter jumps the main selection + closes.
   const breakingPanel = useOverlayPanel({ toggleKey: 'b', onClose: () => setBreakingDetailOpen(false) });
   const [breakingChanges, setBreakingChanges] = useState<BreakingComponent[]>([]);
   const [breakingCursor, setBreakingCursor] = useState(0);
-  // BD3 — dedicated breaking-change detail panel. Opened with `[D]` from within
-  // the `[b]` goto-banner; lists EVERY breaking change for the highlighted
-  // component with its friendly reason + `fullProperties` metadata. The banner
-  // row stays a one-liner; this panel carries the full breakdown. Closed by
-  // `[D]`/Esc or by closing the banner.
   const [breakingDetailOpen, setBreakingDetailOpen] = useState(false);
-  // BD4 — deferred FieldEditor focus target. Set when the operator jumps from a
-  // breaking-change row (Enter) so the FieldEditor opens focused + scrolled to
-  // the exact changed field. Cleared when the operator leaves that component
-  // (jumpCursorToName / any cursor move) so a later manual entry into the
-  // editor doesn't re-jump. Shape accepts slot targets for BD2's later drop-in.
   const [pendingEditorFocus, setPendingEditorFocus] = useState<{
     componentName: string;
     target: { kind: 'prop' | 'slot'; name: string };
   } | null>(null);
-  // T8 (parity plan §3) — Column-1 view mode. `'grouped'` (default) uses the
-  // tiered cycle/empty/composite/standalone layout; `'flat'` flattens to
-  // an alphabetical list with `(N deps)` suffixes on composite roots. Mirrors
-  // ScopeGateStep's `columnOneView` — kept inline (rather than a shared hook)
-  // because the state + handler pattern is ~10 lines per step.
   const [columnOneView, setColumnOneView] = useState<'grouped' | 'flat'>('grouped');
-  // L8 — category filters (broken / cycles). Each is an independent toggle;
-  // multiple active filters UNION their key sets. L11 removed the "deleted"
-  // filter that once lived here.
   const [activeFilters, setActiveFilters] = useState<Set<FilterCategory>>(new Set());
-  // Task #37 — mount-time cycle auto-reject bookkeeping. `autoRejected`
-  // tracks which components were flipped to `rejected` by the auto-reject
-  // effect so the banner can enumerate them and `[u]` undo can restore only
-  // that specific delta. `undoSnapshot` captures the pre-mount review-status
-  // for every affected component so undo restores it byte-for-byte. When
-  // `undoSnapshot === null`, the undo is spent (`[u]` is a no-op).
   const [autoRejected, setAutoRejected] = useState<string[]>([]);
   const [undoSnapshot, setUndoSnapshot] = useState<Map<string, ReviewComponentStatus> | null>(null);
-  // T2 (parity plan §3, 2026-07-10) — auto-reject is a strict one-shot per
-  // session. Once the mount-time effect fires, this ref latches to `true` and
-  // the effect never fires again — regardless of subsequent edits, cycle
-  // emergence, or cycle disappearance. Replaces the earlier signature-based
-  // re-fire guard which allowed edit-driven re-fires. Decision seam lives in
-  // `./auto-reject-decision.ts` so the invariant is pinned by pure-fn tests.
   const autoRejectFiredRef = useRef<boolean>(false);
 
-  // T5 (parity plan §3) — unsaved-changes warning on Tab-away.
-  //   - `editorDirty` mirrors FieldEditor's internal dirty predicate (set
-  //     via its `onDirtyChange` callback).
-  //   - `showUnsavedWarning` gates rendering of the inline yellow warning
-  //     dialog.
-  //   - `pendingFocusAway` remembers the deferred cross action so Enter/Esc
-  //     from the warning can complete it after save-or-discard.
-  //   - `discardTrigger` is a monotonic counter passed to FieldEditor;
-  //     bumping it reverts the internal draft to the last-saved value.
   const [editorDirty, setEditorDirty] = useState(false);
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const [pendingFocusAway, setPendingFocusAway] = useState<null | 'tab-to-sidebar'>(null);
   const [discardTrigger, setDiscardTrigger] = useState(0);
 
-  // T4 (parity plan §3) — undo/redo history stack.
-  //   - `historyRef` lazily instantiates once the initial load completes so the
-  //     seed snapshot reflects the post-load, pre-auto-reject state. The mount
-  //     auto-reject then pushes ITS post-flip snapshot on top, so Cmd+Z from
-  //     the auto-rejected state correctly restores the pre-auto-reject state.
-  //   - `showReloadDialog` gates the inline Ctrl+R confirm affordance. On
-  //     Enter, `reloadFromSave` re-runs the mount load path and resets the
-  //     stack via `historyRef.current.reset(newSeed)`.
-  //   - Undo/redo restore snapshots IN-MEMORY only. `storeCDFComponents` is
-  //     never invoked on undo — reload-from-save is the escape hatch for
-  //     "the DB is right, my in-memory is wrong."
   const historyRef = useRef<HistoryStack | null>(null);
   const historySeededRef = useRef(false);
   const [showReloadDialog, setShowReloadDialog] = useState(false);
@@ -546,8 +368,6 @@ export function GenerateReviewStep({
     onResult: handleLivePreviewResult,
   });
 
-  // Manual spinner cycling (no extra dep) for the sidebar status-row
-  // indicator. Runs only while the live-preview hook reports `running`.
   const SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
   const [spinnerTick, setSpinnerTick] = useState(0);
   useEffect(() => {
@@ -557,9 +377,6 @@ export function GenerateReviewStep({
   }, [livePreviewHook.status]);
   const livePreviewSpinner = SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length];
 
-  // Load path extracted so `reloadFromSave` (T4 Ctrl+R affordance) can re-run
-  // it without duplicating the DB access pattern. Pure w.r.t. React state:
-  // returns the shaped review entries + cycles; the caller commits them.
   const loadSessionState = (): {
     entries: CdfReviewEntry[];
     cycles: StoredSlotCycle[];
@@ -608,36 +425,15 @@ export function GenerateReviewStep({
     }
   }, []);
 
-  // Pilot-2026-06-23 R2: fire the live preview once on entry to final-review
-  // so diff badges populate before the operator's first save. We gate on the
-  // livePreview prop to honor --no-live-preview without depending on the
-  // hook's internal short-circuit. Cred-missing is still handled by the
-  // hook's own no-op path.
   useEffect(() => {
     if (loading) return;
     if (!livePreview) return;
     if (components.length === 0) return;
     livePreviewHook.trigger();
-    // Intentionally only on load completion — subsequent fires happen via
-    // handleEditSave. Adding livePreviewHook to deps would re-fire on every
-    // hook re-creation.
   }, [loading]);
 
   const handleFinalizeConfirm = () => {
-    // Strict opt-in: only EXPLICITLY ACCEPTED components ship. Anything left
-    // in 'needs-review' OR explicitly 'rejected' is downgraded to
-    // 'generate-rejected' so loadCDFComponents excludes it from the manifest.
-    // The operator told us they want accept-to-ship semantics — leaving a
-    // component unresolved should NOT silently push it (Pilot-2026-06-24 R2).
     const acceptedCount = components.filter((c) => c.status === 'accepted').length;
-    // INTEG-4411 refined: DO NOT block on `acceptedCount === 0` up-front.
-    // A push with zero accepted but one or more rejections targeting a
-    // component that exists server-side still produces REMOVALS — a valid
-    // push, not a no-op. Same for token-only diffs. The load-bearing no-op
-    // check lives downstream in WizardApp.runPreview, which consults the
-    // preview response and only blocks when every diff bucket is empty.
-    // We keep the `finalizeError` state so the wizard can route back here
-    // with an inline banner when that downstream check fires.
     const explicitlyRejected = components.filter((c) => c.status === 'rejected').map((c) => c.key);
     const unresolved = components.filter((c) => c.status === 'needs-review').map((c) => c.key);
     const toReject = [...explicitlyRejected, ...unresolved];
@@ -664,31 +460,8 @@ export function GenerateReviewStep({
     onFinalize(acceptedCount, explicitlyRejected.length, unresolved.length);
   };
 
-  /**
-   * INTEG-4401 (Fix 3/4): re-run cycle detection against the current in-memory
-   * component state and, if the result differs from the persisted `slotCycles`
-   * state, update both React state and the session DB. Called from:
-   *  - `handleEditSave` after a FieldEditor save mutates a slot's
-   *    `$allowedComponents`, so the banner / sidebar badges / [c] panel reflect
-   *    reality instead of the stale extract-time snapshot.
-   *  - The `r` reject keystroke, since dropping a component from the manifest
-   *    can collapse cycles that routed through it.
-   *
-   * Rejected components are excluded from the graph — they will never ship, so
-   * they cannot contribute to a real push-time cycle even if their slot config
-   * still references other components locally.
-   *
-   * Cheap for typical N: findSlotCycles is O((V+E)(C+1)) and most manifests
-   * have zero or a handful of cycles. Wrapped in try/catch so a malformed
-   * $slots shape can't crash the render pipeline.
-   */
   const recomputeCycles = (currentComponents: CdfReviewEntry[]): void => {
     try {
-      // Compute the reified CycleView (ADR-0010 Part 3 / plan §4.2) and wrap
-      // its `pushBlocking` cycles into `StoredSlotCycle` for persistence. The
-      // `structural` arm is derived at render time by `cycleView` and is NOT
-      // persisted. Preserves today's drop-the-rows semantics for the filtered
-      // arm (rejected components contribute no rows and no edges).
       const view = computeCycleView(currentComponents);
       const rawCycles = view.pushBlocking;
       const next: StoredSlotCycle[] = rawCycles.map((cycle) => ({
@@ -696,8 +469,6 @@ export function GenerateReviewStep({
         edges: cycle.edges,
         suggestedBreak: cycle.edges.length > 0 ? suggestCycleBreakEdge(cycle, rawCycles) : null,
       }));
-      // Cheap structural equality via JSON.stringify — cycle count is tiny and
-      // this only fires on user actions, not on every render.
       const prevSerialized = JSON.stringify(slotCycles);
       const nextSerialized = JSON.stringify(next);
       if (prevSerialized === nextSerialized) return;
@@ -708,36 +479,16 @@ export function GenerateReviewStep({
       } finally {
         db.close();
       }
-      // If the new cycle set is empty, clear any lingering finalize error the
-      // [F] guard may have surfaced. Otherwise leave it alone.
       if (next.length === 0) setFinalizeError(null);
     } catch {
       // Defensive: swallow — never let cycle detection crash the review UI.
     }
   };
 
-  // Composite-components grouping wiring. Hooks must live above every early
-  // return so React's hook-count stays constant across the loading↔loaded
-  // transition. Derives the closure set from the in-memory `components`
-  // state's `$slots` shape so edits + rejections propagate on the next
-  // render tick without a DB round-trip.
-  // ADR-0010 §C.1 two-graph split — this is the UNFILTERED arm. Every
-  // component contributes its slot edges regardless of `status`. Consumers:
-  // `computeAllClosures`, `computeAcceptCascade` / `computeRejectCascade`, and
-  // task #37 `computeCycleAutoRejectTargets`. Cycle detection now lives in
-  // `cycleView` (see below). The sidebar's tier layout does NOT read this
-  // graph — it reads `sidebarGraph` below (rejected rows contribute no edges
-  // there) so rejected ancestors don't drag their former targets under them.
   const componentGraph = useMemo<ComponentGraphNode[]>(
     () => buildComponentGraph(components),
     [components],
   );
-  // Sidebar-layout arm: rejected components contribute no outgoing edges
-  // (ADR-0010 Part 3, plan §4.3). Passed into `GroupedSidebar.graph` so
-  // tier layout, cycle-child injection, and closure walking read from one
-  // canonical source. Rejected rows still appear as rows (they map to
-  // `{ name, slots: [] }`), but their former slot targets are promoted back
-  // to standalones.
   const sidebarGraph = useMemo<ComponentGraphNode[]>(
     () => buildComponentGraph(components, { stripRejectedEdges: true }),
     [components],
@@ -751,11 +502,6 @@ export function GenerateReviewStep({
     for (const cyc of slotCycles) for (const p of cyc.path) seed.add(p);
     setExpandedGroups(seed);
   }, [closures, slotCycles]);
-  // Direct issues per component. Wired signals:
-  //   - status === 'rejected'   → error (dropping a leaf breaks its ancestors)
-  // Cycle- and empty-tier components live in their own tiers in
-  // GroupedSidebar and deliberately do NOT feed the inheritance layer (they
-  // aren't part of any group closure anyway).
   const directIssues = useMemo<Map<string, NodeStatus>>(() => {
     const m = new Map<string, NodeStatus>();
     for (const c of components) {
@@ -763,37 +509,8 @@ export function GenerateReviewStep({
     }
     return m;
   }, [components]);
-  // Reified two-graph split (ADR-0010 Part 3 / plan §4.2). `cycleView.structural`
-  // is the sidebar cycle tier — every component that participates in a slot
-  // cycle whether or not the cycle survives the reject-filter used by
-  // `slotCycles` for push-safety. Otherwise cycle members whose only path in
-  // the sidebar was via a composite ancestor get orphaned once the operator
-  // rejects that ancestor: `computeAllClosures` short-circuits closures that
-  // hit a cycle → the ancestor's closure loses its descendants → and the
-  // filtered `slotCycles` no longer classifies the members as cycle
-  // participants → they disappear from the visible list. Detecting cycles on
-  // the full unfiltered graph keeps them in the cycle tier.
-  //
-  // `cycleView.pushBlocking` is the source-of-truth for push-safety cycles at
-  // render time; the persisted `slotCycles` state still exists because it
-  // carries the `suggestedBreak` field + is the DB shape. `recomputeCycles`
-  // keeps them in lockstep whenever the operator edits/rejects.
   const cycleView = useMemo<CycleView>(() => computeCycleView(components), [components]);
 
-  // T2 (parity plan §3, 2026-07-10) — mount-time auto-reject is a STRICT
-  // ONE-SHOT per session. Fires exactly once, on the first post-load render
-  // where at least one structural cycle exists. After firing, latches
-  // `autoRejectFiredRef` and never fires again — regardless of edits,
-  // cycle emergence, cycle disappearance, or undo. This is a semantic revert
-  // of task #37's "re-fire on edit-induced new cycle" branch: auto-reject
-  // is meant to be a "welcome to this screen, here are the cycles we found
-  // at load" gesture, not an ongoing enforcer.
-  //
-  // The sidebar `(cycle)` badges, push-safety banner, `[F]` gate, and `[c]`
-  // cycle panel all still track live cycles via `cycleView` / `slotCycles`
-  // — that infrastructure is independent of auto-reject.
-  //
-  // The `[u]` undo remains a single-shot restore of the pre-mount snapshot.
   useEffect(() => {
     const decision = computeAutoRejectDecision({
       loading,
@@ -804,10 +521,6 @@ export function GenerateReviewStep({
     autoRejectFiredRef.current = true;
     const targets = computeCycleAutoRejectTargets(slotCycles, componentGraph);
     if (targets.size === 0) return;
-    // Compute the snapshot + flipped list from the current `components`
-    // reference. Safe against React strict-mode's double-invocation of the
-    // setComponents updater below because we snapshot BEFORE calling
-    // setComponents and the effect's signature guard prevents re-entry.
     const snapshot = new Map<string, ReviewComponentStatus>();
     const flipped: string[] = [];
     for (const c of components) {
@@ -820,19 +533,10 @@ export function GenerateReviewStep({
         targets.has(c.key) ? { ...c, status: 'rejected' as ReviewComponentStatus } : c,
       ),
     );
-    // Even when nothing actually flipped (already all rejected), still record
-    // which components are the auto-reject targets so the banner explains
-    // WHY they are rejected. Undo, however, is only armed when there's a
-    // real delta to restore.
     setAutoRejected(flipped.length > 0 ? flipped : [...targets].sort());
     setUndoSnapshot(flipped.length > 0 ? snapshot : null);
   }, [loading, cycleView, componentGraph, slotCycles]);
 
-  // T4 (parity plan §3) — seed the history stack once the initial load has
-  // completed. Sequencing matters: seed with `S0` = post-load, pre-auto-reject
-  // state on the first non-loading render. The auto-reject effect above then
-  // pushes its post-flip snapshot onto the stack (see `pushHistorySnapshot`
-  // wiring below) so Cmd+Z from the auto-rejected state returns to S0.
   useEffect(() => {
     if (loading) return;
     if (historySeededRef.current) return;
@@ -844,10 +548,6 @@ export function GenerateReviewStep({
     });
   }, [loading, components]);
 
-  // Push a snapshot of the CURRENT (post-mutation) state onto the history
-  // stack. Callers invoke this AFTER the state update they want captured, with
-  // the fresh values passed in explicitly so the push doesn't chase stale
-  // closures. `label` is captured for future debugging (currently unused).
   const pushHistorySnapshot = (
     entries: CdfReviewEntry[],
     autoRej: string[],
@@ -865,9 +565,6 @@ export function GenerateReviewStep({
     );
   };
 
-  // Auto-reject pushes its post-flip snapshot exactly once, right after it
-  // fires. Guarded by an internal ref so React strict-mode's double invocation
-  // can't double-push.
   const autoRejectPushedRef = useRef(false);
   useEffect(() => {
     if (loading) return;
@@ -880,11 +577,6 @@ export function GenerateReviewStep({
   }, [autoRejected]);
 
   const applyHistorySnapshot = (snap: HistorySnapshot): void => {
-    // Rehydrate visible state from the snapshot. `slotCycles` / `cycleView` /
-    // `expandedGroups` derive from `components`, so we don't touch them
-    // directly (they'll recompute on the next render). We DO restore
-    // `autoRejected` + `undoSnapshot` because they drive the banner and the
-    // legacy `[u]` alias respectively.
     const restored: CdfReviewEntry[] = snap.components.map((c) => ({
       key: c.key,
       entry: c.entry,
@@ -893,9 +585,6 @@ export function GenerateReviewStep({
     setComponents(restored);
     setAutoRejected(snap.autoRejected);
     setUndoSnapshot(snap.undoSnapshot);
-    // Cycle detection may need to rerun against the restored graph so the
-    // sidebar `(cycle)` badges stay in sync. `recomputeCycles` no-ops when
-    // nothing changed.
     recomputeCycles(restored);
   };
 
@@ -920,11 +609,6 @@ export function GenerateReviewStep({
       }
       setSlotCycles(cycles);
       setComponents(entries);
-      // A2-1: seed the expanded set DIRECTLY from the freshly loaded state
-      // (reusing the [E] expand-all recipe) instead of emptying it, so grouped
-      // parents stay expanded after reload exactly as on first mount. Derived
-      // from `entries`/`cycles` because `closures`/`cycleView` are memos of the
-      // still-stale `components` state at this point.
       const reloadGraph = buildComponentGraph(entries);
       const reloadClosures = computeAllClosures(reloadGraph);
       const reloadCycleView = computeCycleView(entries);
@@ -937,9 +621,6 @@ export function GenerateReviewStep({
       seededGroupsRef.current = true;
       setAutoRejected([]);
       setUndoSnapshot(null);
-      // Reset one-shot latches so mount auto-reject fires again for the
-      // reloaded state. `autoRejectPushedRef` re-arms so the auto-reject
-      // effect's history push runs against the fresh seed.
       autoRejectFiredRef.current = false;
       autoRejectPushedRef.current = false;
       historyRef.current?.reset({
@@ -963,37 +644,20 @@ export function GenerateReviewStep({
       })),
     [components, directIssues],
   );
-  // GA-1 A3 — the `[w]` filter is "only breaking changes": the components the
-  // live-preview classified as `breaking`. We keep the internal FilterCategory
-  // key `broken` (lower churn than renaming the category everywhere) but feed
-  // it the breaking-change component names, and the user-facing label reads
-  // "only breaking changes". Distinct from `directIssues` (rejected-leaf error
-  // propagation), which is no longer surfaced as a filter.
   const brokenKeys = useMemo<Set<string>>(
     () => new Set(breakingChanges.map((b) => b.componentName)),
     [breakingChanges],
   );
 
-  // BD4 — flatten breaking changes to one row PER CHANGE so the goto-banner
-  // offers the finer jump the spec wants: each row carries its componentName +
-  // the specific `focusTarget` prop. Components with no enumerated changes
-  // still contribute a single component-level row (focusTarget undefined) so
-  // the jump degrades to today's land-on-the-row behavior. `breakingCursor`
-  // indexes THIS list.
   const breakingRows = useMemo<BreakingRow[]>(
     () => buildBreakingRows(breakingChanges),
     [breakingChanges],
   );
 
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
-    // T5b: jump-filter takes priority over the T4 search-neighborhood filter.
-    // When active, the sidebar shows only the target + its transitive
-    // ancestors — search + category filters are set aside until Esc clears
-    // the jump.
     if (jumpFilterTarget) {
       return findAllAncestorsInclusive(jumpFilterTarget, sidebarGraph);
     }
-    // L8: category filters (broken / cycles) → union of matching keys.
     const categoryKeys = computeFilterKeys({
       filters: activeFilters,
       data: { cycles: cycleView.structural, broken: brokenKeys },
@@ -1006,7 +670,6 @@ export function GenerateReviewStep({
       if (matches.length === 0) return undefined;
       return computeDirectNeighborhood(matches, sidebarGraph);
     })();
-    // Precedence: jump (above) → category ∩ search → whichever is active.
     return intersectFilterKeys(categoryKeys, searchKeys);
   }, [
     jumpFilterTarget,
@@ -1030,10 +693,6 @@ export function GenerateReviewStep({
       }),
     [groupedItemsMemo, cycleView, expandedGroups, columnOneView, sidebarGraph, filterVisibleKeys],
   );
-  // Row positions that map to a real component (skip synthetic flat-header
-  // rows). j/k navigation walks these in order, so duplicate occurrences of
-  // the same itemIdx (shared deps under multiple parents) each get their own
-  // stop instead of being deduped.
   const selectableRowPositions = useMemo<number[]>(() => {
     const out: number[] = [];
     for (let i = 0; i < visibleRowsMemo.length; i++) {
@@ -1041,40 +700,22 @@ export function GenerateReviewStep({
     }
     return out;
   }, [visibleRowsMemo]);
-  // Derived item-index of the component currently under the cursor. Used by
-  // logic that needs to know WHICH component is focused (which detail panel
-  // to render, which entry to accept/reject, etc.) — never for rendering the
-  // sidebar cursor position (that's cursorRowIdx via selectedRowIdx).
   const selectedIdx =
     visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1;
-  // T6 — derive lineage panel entries + jumpables. Uses the UNFILTERED
-  // `componentGraph` per ADR-0010 §Part 1 (rejected components still
-  // contribute structural lineage). Shared with ScopeGateStep via the same
-  // hook so both steps render pixel-identical panels.
   const focusedComponentKey: string | null = components[selectedIdx]?.key ?? null;
   const { entries: lineageEntries, jumpables: lineageJumpables } = useLineage(
     focusedComponentKey,
     componentGraph,
   );
 
-  // L2c — height-aware layout (mirrors ScopeGateStep). Shrink the sidebar and
-  // window the lineage panel from the remaining rows while the panel is open
-  // so the total frame fits `stdout.rows`; Ink then diffs in place instead of
-  // clearing + repainting each cursor move (the flash). Scroll math below uses
-  // `visibleCount` so the cursor stays inside the shrunk window.
-  const { sidebarVisible: visibleCount, panelMaxRows } = computeLineageLayout({
-    rows: stdout?.rows ?? 24,
+  const { sidebarVisibleCount: visibleCount, panelMaxRows } = computeSidebarBudget({
+    rows: stdout?.rows ?? FALLBACK_ROWS,
     panelOpen: lineagePanel.isOpen,
     entryCount: lineageEntries.length,
   });
   useEffect(() => {
     if (selectableRowPositions.length === 0) return;
     const cursorInRange = selectableRowPositions.includes(cursorRowIdx);
-    // When the row list shrinks or reshuffles (e.g. an edit removes a cycle
-    // and cycle-tier rows collapse into other tiers) the previously-in-range
-    // scroll offset can point past the shorter list. Slicing then hides rows
-    // before the stale offset. Clamp scroll to the largest offset that still
-    // renders a full window (or 0 when the list fits entirely).
     const maxScroll = Math.max(0, visibleRowsMemo.length - visibleCount);
     const scrollNeedsClamp = sidebarScrollOffset > maxScroll;
     if (cursorInRange && !scrollNeedsClamp) return;
@@ -1085,8 +726,6 @@ export function GenerateReviewStep({
     }));
   }, [selectableRowPositions, cursorRowIdx, sidebarScrollOffset, visibleRowsMemo.length, visibleCount]);
 
-  // Feature 1: load review metadata (rationale + source location) for the
-  // selected component when selection changes.
   useEffect(() => {
     const current = components[selectedIdx];
     if (!current) {
@@ -1103,9 +742,6 @@ export function GenerateReviewStep({
     }
   }, [selectedIdx, components, extractSessionId]);
 
-  // Load component-level rationale for the selected component (drives the
-  // `I` ComponentRationalePanel). Decoupled from review metadata so the data
-  // contracts can evolve independently.
   useEffect(() => {
     const current = components[selectedIdx];
     if (!current) {
@@ -1121,10 +757,6 @@ export function GenerateReviewStep({
       db.close();
     }
   }, [selectedIdx, components, extractSessionId]);
-  // Merge per-closure render statuses into one map. When the same node
-  // appears in multiple closures (shared dep), an entry with `isOwn: true`
-  // wins over an `isOwn: false` — a real issue on a shared node beats the
-  // inherited marker on its ancestor.
   const renderStatusByKey = useMemo<Map<string, RenderStatus>>(() => {
     const merged = new Map<string, RenderStatus>();
     for (const closure of closures.values()) {
@@ -1139,10 +771,6 @@ export function GenerateReviewStep({
     return merged;
   }, [closures, directIssues]);
 
-  // Per-row selection glyph state ([✓]/[✗]/[ ]) driven by each component's
-  // ReviewComponentStatus. `needs-review` and `reviewed` render as undecided
-  // so operators can see at a glance what the auto-reject (task #37) touched
-  // and what still awaits an explicit accept/reject.
   const selectionStateByKey = useMemo<Map<string, 'accepted' | 'rejected' | 'undecided'>>(() => {
     const map = new Map<string, 'accepted' | 'rejected' | 'undecided'>();
     for (const c of components) {
@@ -1153,10 +781,6 @@ export function GenerateReviewStep({
     return map;
   }, [components]);
 
-  // Visible-row match list drives the (N/M) count and Tab cycling. A "match"
-  // is a row position (into visibleRowsMemo) whose component key fuzzy-hits
-  // the query. Row positions (not item-indices) so duplicate occurrences of
-  // a shared dep can each be visited independently.
   const searchMatches = useMemo<number[]>(() => {
     if (!searchQuery) return [];
     const out: number[] = [];
@@ -1167,10 +791,6 @@ export function GenerateReviewStep({
     }
     return out;
   }, [searchQuery, selectableRowPositions, visibleRowsMemo, components]);
-  // T7b delta 2 — display-only unique-component match count. `searchMatches`
-  // stores row positions (Tab-cycling walks duplicate rows for shared deps
-  // intentionally), but the user-visible numerator must be a component count
-  // to parity with ScopeGate ("N unique matches / M total"). Dedupe by itemIdx.
   const searchMatchCount = useMemo<number>(() => {
     if (searchMatches.length === 0) return 0;
     const seen = new Set<number>();
@@ -1181,17 +801,16 @@ export function GenerateReviewStep({
     return seen.size;
   }, [searchMatches, visibleRowsMemo]);
 
-  const dimPredicate = useMemo(() => {
-    if (!searchQuery) return undefined;
-    return (name: string) => !fuzzyMatches(searchQuery, name);
-  }, [searchQuery]);
+  const dimPredicate = useMemo(
+    () =>
+      buildFlatDimPredicate({
+        viewMode: columnOneView,
+        searchQuery,
+        filterVisibleKeys,
+      }),
+    [columnOneView, searchQuery, filterVisibleKeys],
+  );
 
-  /**
-   * Jump the cursor to a specific row position in `visibleRowsMemo`. Callers
-   * that only know the target component name should use `jumpCursorToName`
-   * so they land on the FIRST occurrence deterministically instead of e.g.
-   * the last one from a linear scan.
-   */
   const jumpCursorToRow = (rowIdx: number): void => {
     if (rowIdx < 0 || rowIdx >= visibleRowsMemo.length) return;
     setNav(({ sidebarScrollOffset: prev }) => {
@@ -1203,9 +822,6 @@ export function GenerateReviewStep({
     setJsonScrollOffset(0);
     setDraftValue('');
     setSaveError(null);
-    // BD4 — any cursor jump lands on a (possibly) different component; drop the
-    // pending editor-focus so it can't re-fire on a later navigation. The BD4
-    // breaking-row Enter handler re-sets it AFTER calling jumpCursorToName.
     setPendingEditorFocus(null);
   };
   const jumpCursorToName = (name: string): void => {
@@ -1224,7 +840,6 @@ export function GenerateReviewStep({
     if (!current) return;
     try {
       const parsed = JSON.parse(draftValue) as Record<string, unknown>;
-      // Accept both bare entry and wrapped { [key]: entry } forms
       const keys = Object.keys(parsed);
       const entry =
         keys.length === 1 && typeof parsed[keys[0]] === 'object' && parsed[keys[0]] !== null
@@ -1249,18 +864,8 @@ export function GenerateReviewStep({
       } finally {
         db.close();
       }
-      // INTEG-4401 (Fix 3/4): recompute cycles against the freshly-edited
-      // component set so banner/badges/[c]-panel stay in sync. The FieldEditor
-      // picker filters cycle-forming candidates, but free-text edits + JSON
-      // pastes still slip through, and edits that BREAK an existing cycle
-      // won't propagate without this call.
       recomputeCycles(updatedComponents);
-      // Feature 2: re-fire the live preview now that pipeline.db reflects
-      // the new state. The hook owns debounce + cred-missing short-circuit.
       livePreviewHook.trigger();
-      // T4 — push the post-save snapshot onto the history stack. Undo will
-      // revert the entry IN-MEMORY only; the DB write above stays intact.
-      // Reload-from-save is the escape hatch to also re-read from DB.
       pushHistorySnapshot(updatedComponents, autoRejected, undoSnapshot, 'edit-save');
     } catch (e) {
       setSaveError(String(e));
@@ -1272,18 +877,12 @@ export function GenerateReviewStep({
     setSaveError(null);
   };
 
-  // A9 — the removable slot-allowed edges for the HIGHLIGHTED cycle only. Empty
-  // when no cycle is highlighted (defensive) or the cycle is already resolved.
   const breakEdges = useMemo<BreakEdge[]>(() => {
     const cycle = slotCycles[cyclesCursor];
     if (!cycle) return [];
     return enumerateCycleBreaks(cycle, components);
   }, [slotCycles, cyclesCursor, components]);
 
-  // A2-4 (spec §4b) — the distinct participants in the HIGHLIGHTED cycle,
-  // offered as the second kind of break-overlay action: "reject component".
-  // Derived from the same cycle `path` the overlay renders; the path repeats
-  // its first element as its last so the loop closes, so we dedupe.
   const breakMembers = useMemo<string[]>(() => {
     const cycle = slotCycles[cyclesCursor];
     if (!cycle) return [];
@@ -1297,12 +896,6 @@ export function GenerateReviewStep({
     return out;
   }, [slotCycles, cyclesCursor]);
 
-  // A9 — delete a slot-allowed edge to break a cycle. Reuses the exact undoable
-  // slot-edit seam that FieldEditor saves flow through: mutate the component's
-  // `$slots[slot].$allowedComponents` in review state, persist via
-  // storeCDFComponents, recompute cycles so the resolved cycle drops out, and
-  // push a history snapshot so Ctrl+Z restores the edge. Does NOT touch review
-  // status (this is a slot-edge edit, not a reject).
   const handleBreakEdge = (edge: BreakEdge): void => {
     const idx = components.findIndex((c) => c.key === edge.fromComponent);
     if (idx < 0) return;
@@ -1330,12 +923,6 @@ export function GenerateReviewStep({
     pushHistorySnapshot(next, autoRejected, undoSnapshot, 'break-cycle-edge');
   };
 
-  // Task #37 reject-cascade, factored out of the sidebar `[r]` handler so the
-  // A2-4 break-overlay "reject component" entries can drive the IDENTICAL flow.
-  // Reject cascades UP to ancestors AND deselects descendants back to
-  // `needs-review` (scope-gate's tri-state cascade). Applies immediately (no
-  // confirm), recomputes cycles against the post-update graph, and pushes a
-  // history snapshot so Ctrl+Z restores the prior status.
   const handleRejectComponent = (key: string): void => {
     const rejectCascade = computeRejectCascade(key, componentGraph);
     const acceptCascade = computeAcceptCascade(key, componentGraph);
@@ -1358,12 +945,8 @@ export function GenerateReviewStep({
   useImmediateInput((input, key) => {
     if (loading || loadError) return;
     if (dialogOpen) return;
-    // Help overlay owns all input while open — the HelpOverlay component's own
-    // handler closes it on `?`/Esc, so here we simply swallow everything else.
     if (showHelp) return;
 
-    // T4 (parity plan §3) — reload-from-save confirm dialog owns keystrokes
-    // when open. Enter re-runs the load path + resets history; Esc cancels.
     if (showReloadDialog) {
       if (key.return) {
         reloadFromSave();
@@ -1377,10 +960,6 @@ export function GenerateReviewStep({
       return;
     }
 
-    // T4 — top-level undo/redo/reload keybindings. Gated above sidebar-focused
-    // vs panel-focused vs overlay checks so they work uniformly across states.
-    // Advertised keys are Ctrl+Z / Ctrl+Y: these emit the bytes \x1a / \x19,
-    // which `useImmediateInput.parseInput` surfaces as `key.ctrl && input === 'z'|'y'`.
     if (key.ctrl && input === 'z') {
       handleUndo();
       return;
@@ -1394,11 +973,6 @@ export function GenerateReviewStep({
       return;
     }
 
-    // T5 (parity plan §3): unsaved-changes warning owns keystrokes when open.
-    // Enter → save + complete deferred focus cross.
-    // Esc   → discard (revert FieldEditor draft) + complete deferred cross.
-    // Tab   → cancel: close dialog, keep focus in the panel, leave the
-    //         FieldEditor dirty. Anything else falls through to close-cancel.
     if (showUnsavedWarning) {
       if (key.return) {
         handleEditSave();
@@ -1414,17 +988,11 @@ export function GenerateReviewStep({
         setPendingFocusAway(null);
         return;
       }
-      // Tab (and any other input) cancels — keep the operator in the panel
-      // with their pending edit intact.
       setShowUnsavedWarning(false);
       setPendingFocusAway(null);
       return;
     }
 
-    // Fuzzy-search input mode owns most keystrokes while the input is open.
-    // Mirrors ScopeGateStep's `/` UX: Esc closes + clears, Enter closes but
-    // preserves the query (dim persists), Backspace deletes, printable chars
-    // append.
     if (searchOpen) {
       if (key.escape) {
         setSearchOpen(false);
@@ -1433,9 +1001,6 @@ export function GenerateReviewStep({
         return;
       }
       if (key.return) {
-        // T7b delta 3 — mirror ScopeGate: Enter with empty query OR zero
-        // matches clears + closes so the user doesn't get stuck with a
-        // dim-all state and no on-screen recovery besides Esc.
         setAutocompleteCandidates([]);
         if (!searchQuery || searchMatches.length === 0) {
           setSearchOpen(false);
@@ -1443,8 +1008,6 @@ export function GenerateReviewStep({
           return;
         }
         let jumped = false;
-        // T7b delta 4 — scan STRICTLY AFTER the current cursor row so Enter
-        // on a match advances to the next one (parity with ScopeGate).
         for (let i = cursorRowIdx + 1; i < visibleRowsMemo.length; i++) {
           const row = visibleRowsMemo[i];
           if (row.itemIdx < 0) continue;
@@ -1456,19 +1019,12 @@ export function GenerateReviewStep({
           }
         }
         if (!jumped) {
-          // Wrap-around: no match strictly after cursor, jump to first match
-          // anywhere in the list (searchMatches.length > 0 guaranteed above).
           jumpCursorToRow(searchMatches[0]);
         }
         setSearchOpen(false);
         return;
       }
       if (key.tab) {
-        // L4: shell-style Tab autocomplete. Complete to the longest common
-        // prefix of all prefix-matching component keys; when >1 candidate,
-        // surface a possibilities strip. Prefix semantics (NOT fuzzy) — the
-        // fuzzy `[n]` match-cycle is a separate, preserved path. No-op with no
-        // candidates. Input stays open.
         const { completion, candidates } = computeAutocomplete(
           searchQuery,
           components.map((c) => c.key),
@@ -1490,15 +1046,8 @@ export function GenerateReviewStep({
       return;
     }
 
-    // L6 (lifecycle plan §5 L6) — breaking-changes goto-banner owns keystrokes
-    // when open. Mirrors the lineage panel: ↑/↓/j/k move the cursor, Enter
-    // jumps the main selection to the highlighted breaking component + closes,
-    // `[b]`/Esc close (via the shared hook).
     if (breakingPanel.isOpen) {
       if (breakingPanel.handleInput(input, key)) return;
-      // BD3 — `[D]` toggles the dedicated detail panel for the highlighted
-      // breaking component (full per-change breakdown). Handled before the
-      // cursor keys so it can't be shadowed.
       if (input === 'D') {
         setBreakingDetailOpen((prev) => !prev);
         return;
@@ -1514,10 +1063,6 @@ export function GenerateReviewStep({
         return;
       }
       if (key.return) {
-        // BD4 — jump the sidebar to the component AND focus the editor scrolled
-        // to the exact changed field. `jumpCursorToName` clears any stale
-        // pending focus, so set it AFTER the jump. `sidebarFocused=false` hands
-        // the keyboard to the FieldEditor so it opens on the target field.
         const row = breakingRows[breakingCursor];
         if (row) {
           jumpCursorToName(row.componentName);
@@ -1531,11 +1076,6 @@ export function GenerateReviewStep({
       }
       return;
     }
-    // T6 (parity plan §3) — lineage panel owns keystrokes when open.
-    // Mirrors ScopeGate's overlay-owns-input pattern. Close-side (`[l]` toggle
-    // and `[Esc]`) is delegated to the shared `useOverlayPanel` hook (T10);
-    // ↑/↓/j/k move the panel cursor, Tab cycles, and Enter jumps main selection
-    // to the highlighted jumpable and closes.
     if (lineagePanel.isOpen) {
       if (lineagePanel.handleInput(input, key)) return;
       if (key.upArrow || input === 'k') {
@@ -1562,13 +1102,7 @@ export function GenerateReviewStep({
       }
       return;
     }
-    // A9 — the interactive break-cycle overlay owns input while open. It sits
-    // ABOVE the cyclePanel handler because `[x]` opens it from within the `[c]`
-    // list, so both are technically "open"; the break overlay takes priority.
-    // Close-side (`[x]` toggle + Esc) is delegated to the shared hook.
     if (breakPanel.isOpen) {
-      // While the confirm prompt is up, [y] deletes, [n]/Esc cancels — nothing
-      // else moves the cursor or closes the overlay.
       if (breakConfirm) {
         if (input === 'y') {
           const edge = breakEdges[breakCursor];
@@ -1584,10 +1118,6 @@ export function GenerateReviewStep({
         return;
       }
       if (breakPanel.handleInput(input, key)) return;
-      // A2-4 — the overlay list spans TWO kinds of entries in one continuous
-      // cursor range: slot-edge removals [0, breakEdges.length) followed by
-      // reject-member entries [breakEdges.length, breakEdges.length +
-      // breakMembers.length).
       const totalBreakEntries = breakEdges.length + breakMembers.length;
       if (key.upArrow || input === 'k') {
         setBreakCursor((c) => Math.max(0, c - 1));
@@ -1599,13 +1129,9 @@ export function GenerateReviewStep({
       }
       if (key.return) {
         if (breakCursor < breakEdges.length) {
-          // Edge entry → arm the [y]/[n] confirm (unchanged behavior).
           if (breakEdges[breakCursor]) setBreakConfirm(true);
           return;
         }
-        // A2-4 — reject-member entry → reject IMMEDIATELY (no confirm), matching
-        // the sidebar `[r]` reject. The recompute drops the resolved cycle;
-        // close the overlay afterward.
         const member = breakMembers[breakCursor - breakEdges.length];
         if (member) {
           handleRejectComponent(member);
@@ -1615,13 +1141,7 @@ export function GenerateReviewStep({
       }
       return;
     }
-    // INTEG-4401: slot-cycle detail panel. Same modal-swallow rules as
-    // removed panel; `[c]` / `[Esc]` close (via shared hook), `[q]` also closes
-    // (legacy), ↑↓ scroll.
     if (cyclePanel.isOpen) {
-      // A9 — `[x]` opens the break-cycle overlay for the highlighted cycle when
-      // that cycle has at least one removable slot edge. The cycle list stays
-      // open underneath; the break overlay renders on top + owns input.
       if (input === 'x' && (breakEdges.length > 0 || breakMembers.length > 0)) {
         breakPanel.open();
         setBreakCursor(0);
@@ -1633,8 +1153,6 @@ export function GenerateReviewStep({
         cyclePanel.close();
         return;
       }
-      // A8 — ↑/↓/j/k move the cycle cursor (mirrors SG's cyclesJumpables list);
-      // Enter jumps the main sidebar cursor to the highlighted cycle's root.
       if (key.upArrow || input === 'k') {
         setCyclesCursor((c) => {
           const next = Math.max(0, c - 1);
@@ -1659,36 +1177,22 @@ export function GenerateReviewStep({
       }
       return;
     }
-    // Open the cycle panel from sidebar-focused state when there is at
-    // least one cycle to display.
     if (input === 'c' && sidebarFocused && slotCycles.length > 0) {
       cyclePanel.open();
       setCyclePanelScroll(0);
       setCyclesCursor(0);
       return;
     }
-    // T6 (parity plan §3) — `[l]` opens the lineage panel when the sidebar
-    // has a component under the cursor. Gated to sidebar-focused so it can't
-    // collide with FieldEditor input.
     if (input === 'l' && sidebarFocused && focusedComponentKey) {
       lineagePanel.open();
       setLineageCursor(0);
       return;
     }
-    // L6 — `[b]` opens the breaking-changes goto-banner when the live preview
-    // reported at least one breaking change. No-op otherwise (hint hidden).
     if (input === 'b' && sidebarFocused && breakingChanges.length > 0) {
       breakingPanel.open();
       setBreakingCursor(0);
       return;
     }
-    // L8 — category filter toggles. `[o]` cycles, `[w]` broken. Sidebar-focused
-    // so they can't collide with FieldEditor input. Independent toggles;
-    // multiple active filters union in `filterVisibleKeys`. L11 removed the
-    // `[d]` deleted filter — GR no longer offers it.
-    // A2-2 — `[d]` toggles the removed-components banner detail rows. Sidebar-
-    // focused so it can't collide with FieldEditor text entry. No-op when there
-    // are no removed components (the banner isn't rendered anyway).
     if (input === 'd' && sidebarFocused && removedComponents.length > 0) {
       setRemovedBannerCollapsed((prev) => !prev);
       return;
@@ -1703,10 +1207,6 @@ export function GenerateReviewStep({
       });
       return;
     }
-    // T5b (layout plan §B) — jump-and-filter to focused component + all
-    // transitive ancestors. Sidebar-focused only. Mirrors ScopeGateStep T5.
-    // Guard against Ctrl-I aliasing: Tab is Ctrl+I (\x09), which
-    // `parseInput` surfaces as `input='i'` with `key.tab=true, key.ctrl=true`.
     if (
       input === 'i' &&
       sidebarFocused &&
@@ -1720,11 +1220,6 @@ export function GenerateReviewStep({
       return;
     }
 
-    // Lifted rationale + source panels: i/I/s fire from anywhere (sidebar OR
-    // panel focus). Gated against text-entry surfaces inside FieldEditor
-    // (description editors, string-default editor, value-list text entry)
-    // via the `onTextEntryActiveChange` callback, plus the help/finalize/quit
-    // overlays and the JSON view.
     if (panelOpen !== 'none') {
       const PANEL_HEIGHT_LOCAL = 12;
       const next = computeNextScrollOffset(panelScrollOffset, input, key, 9999, PANEL_HEIGHT_LOCAL);
@@ -1737,8 +1232,6 @@ export function GenerateReviewStep({
         setPanelScrollOffset(() => 0);
         return;
       }
-      // Guard against Ctrl-letter aliases (Tab is Ctrl+I in ASCII, Ctrl+S would
-      // collide with save in nested editors). Only react to bare keystrokes.
       const togglable = !key.ctrl && !key.tab && !key.meta && !key.return;
       if (togglable && input === 'p' && panelOpen === 'prop-rationale') {
         setPanelOpen('none');
@@ -1755,7 +1248,6 @@ export function GenerateReviewStep({
         setPanelScrollOffset(() => 0);
         return;
       }
-      // Cross-panel toggles while one is open.
       if (togglable && input === 'p') {
         setPanelOpen('prop-rationale');
         setPanelScrollOffset(() => 0);
@@ -1792,25 +1284,12 @@ export function GenerateReviewStep({
       }
     }
 
-    // Tab toggles focus bidirectionally between sidebar and panel. `e` is a
-    // sidebar-only alias for crossing INTO the panel — gating it to the
-    // sidebar-focused state prevents collision with FieldEditor's enum-values
-    // `e` binding (INTEG-4254) when the panel is focused. Crossing back from
-    // panel to sidebar is Tab-only.
     if (key.tab) {
-      // T5: intercept panel→sidebar Tab when the FieldEditor is dirty. Open
-      // the warning dialog and remember the deferred action; Enter/Esc from
-      // the dialog will complete it. Only fires when crossing OUT of the
-      // panel — sidebar→panel Tab is not blocked because entering the panel
-      // never risks losing edits.
       if (!sidebarFocused && editorDirty) {
         setPendingFocusAway('tab-to-sidebar');
         setShowUnsavedWarning(true);
         return;
       }
-      // T3: match-cycling via Tab is retired — Tab now unconditionally
-      // toggles focus. Match-cycling moved to [n] (see sidebar-focused
-      // block below).
       setSidebarFocused((prev) => !prev);
       return;
     }
@@ -1828,16 +1307,12 @@ export function GenerateReviewStep({
       return;
     }
 
-    // JSON view + panel focused: own j/k/arrows/PageUp/PageDown/Ctrl+u/d/gg/G
-    // for scrolling. Computed against the live `selectedJson` so the
-    // viewport math matches what JsonPanel renders.
     if (!sidebarFocused && showJson) {
       const current = components[selectedIdx];
       const currentJson = current ? JSON.stringify({ [current.key]: current.entry }, null, 2) : '';
       const totalLines = currentJson.split('\n').length;
       const maxOffset = Math.max(0, totalLines - PANEL_HEIGHT);
 
-      // `gg` double-tap to jump to top; single `g` arms the pending flag.
       if (input === 'g' && !key.ctrl) {
         if (pendingGRef.current) {
           pendingGRef.current = false;
@@ -1851,32 +1326,19 @@ export function GenerateReviewStep({
       const next = computeNextScrollOffset(jsonScrollOffset, input, key, totalLines, PANEL_HEIGHT);
       if (next !== null) {
         pendingGRef.current = false;
-        // Functional setState mirrors the cursor-stutter fix (commit 5d11e60).
-        // Clamp against maxOffset re-computed at apply time in case totalLines
-        // shifted between events (defensive — helper already clamps).
         const clamped = Math.min(maxOffset, Math.max(0, next));
         setJsonScrollOffset(() => clamped);
         return;
       }
-      // Any other key in this slice resets the gg-pending flag, then falls
-      // through to the early-return below so the panel-focused state still
-      // swallows non-scroll input.
       pendingGRef.current = false;
     }
 
-    // When the panel is focused, FieldEditor (or JsonPanel) owns the keys.
-    // Only Tab (handled above) should escape from the panel-focused state.
     if (!sidebarFocused) return;
 
-    // Sidebar-focused keymap.
-    // Fuzzy-search openers/cycle. `/` opens input, Tab cycles matches at/after
-    // cursor, Esc with an active query clears it. `/` is not currently bound
-    // in this step so no collision.
     if (input === '/') {
       setSearchOpen(true);
       return;
     }
-    // T3: [n] cycles matches when a query is active and search is closed.
     if (input === 'n' && searchQuery && searchMatches.length > 0) {
       let next: number | null = null;
       for (let i = cursorRowIdx + 1; i < visibleRowsMemo.length; i++) {
@@ -1892,7 +1354,6 @@ export function GenerateReviewStep({
       if (next !== null) jumpCursorToRow(next);
       return;
     }
-    // T5b: Esc clears jump-filter first, then search-query (mirrors SG T5).
     if (key.escape && jumpFilterTarget) {
       setJumpFilterTarget(null);
       return;
@@ -1911,10 +1372,6 @@ export function GenerateReviewStep({
       return;
     }
     if (input === 'F' || input === 'f') {
-      // Task #37 — partition-by-decisions gate. Reproduce scope-gate's
-      // `[f]` contract: partition into { accepted, rejected } and refuse
-      // to continue if the accepted subset still contains a slot cycle
-      // (the strongest local approximation of task #39's slot validator).
       const acceptedNames = new Set(
         components.filter((c) => c.status === 'accepted').map((c) => c.key),
       );
@@ -1940,11 +1397,6 @@ export function GenerateReviewStep({
       return;
     }
     if (input === 'L') {
-      // T8 (parity plan §3) — toggle Column-1 view between grouped and
-      // flat. Preserve cursor on the same underlying component when
-      // possible; otherwise fall back to the first selectable row. Mirrors
-      // ScopeGateStep's `[L]` handler line-for-line so the two steps stay
-      // pixel-consistent.
       const currentKey =
         cursorRowIdx >= 0 && cursorRowIdx < visibleRowsMemo.length
           ? components[visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1]?.key ?? null
@@ -1980,7 +1432,6 @@ export function GenerateReviewStep({
       return;
     }
     if (input === 'a') {
-      // Task #37 — accept cascades DOWN to descendants (mirrors scope-gate).
       const current = components[selectedIdx];
       if (!current) return;
       const cascade = computeAcceptCascade(current.key, componentGraph);
@@ -1994,8 +1445,6 @@ export function GenerateReviewStep({
       return;
     }
     if (input === 'r') {
-      // Task #37 reject cascade, now shared with the A2-4 break-overlay
-      // "reject component" entries via `handleRejectComponent`.
       const current = components[selectedIdx];
       if (!current) return;
       handleRejectComponent(current.key);
@@ -2011,11 +1460,6 @@ export function GenerateReviewStep({
       return;
     }
     if (input === 'E') {
-      // Expand every group root — the set of "every group root" is any
-      // closure whose node count is >1 (i.e., roots with ≥1 descendant).
-      // T1 parity fix: cycle-tier rows also read `expandedGroups.has(root)`
-      // (see GroupedSidebar cycle-tier render), so union every structural
-      // cycle participant in so [E] expand-all covers both tiers.
       const roots = new Set<string>();
       for (const [name, closure] of closures.entries()) {
         if (closure.nodes.length > 1) roots.add(name);
@@ -2029,23 +1473,17 @@ export function GenerateReviewStep({
       return;
     }
     if (input === 'J') {
-      // Toggle read-only JSON view.
       setShowJson((prev) => !prev);
       setJsonScrollOffset(0);
       pendingGRef.current = false;
       return;
     }
 
-    // Composite-components drill-to-source. When the selected sidebar row is
-    // an ancestor showing an inherited-issue marker (isOwn: false), Enter
-    // jumps selection to the descendant that actually owns the issue. Rows
-    // that own their issue (isOwn: true) or have no marker are no-ops.
     if (key.return) {
       const current = components[selectedIdx];
       if (!current) return;
       const rs = renderStatusByKey.get(current.key);
       if (!rs || rs.isOwn) return;
-      // Find the closure that contains this ancestor and drill within it.
       for (const closure of closures.values()) {
         if (!closure.nodes.some((n) => n.name === current.key)) continue;
         const target = pickDrillTarget(current.key, closure, directIssues);
@@ -2058,22 +1496,10 @@ export function GenerateReviewStep({
     }
 
     if (key.upArrow || input === 'k') {
-      // INTEG-4411 duplicate-cursor fix: cursor moves through visible-row
-      // positions (not item indices), so a shared dep occurring under
-      // multiple parents visits each row on its own instead of collapsing
-      // to a single stop. `selectableRowPositions` is the ordered list of
-      // rows that map to a real component (skips flat-header separators).
-      //
-      // Pilot-2026-06-23 bug: rapid k/j bursts previously lost cursor
-      // position because the handler read `selectedIdx` from its closure —
-      // merging cursor + scrollOffset into one `setNav` updater keeps them
-      // consistent AND avoids nested-setState re-renders per keystroke.
       setNav(({ cursorRowIdx: prev, sidebarScrollOffset: off }) => {
         const positions = selectableRowPositions;
         if (positions.length === 0) return { cursorRowIdx: prev, sidebarScrollOffset: off };
         const pos = positions.indexOf(prev);
-        // If we're not on a selectable row (shouldn't happen, but defensive),
-        // land on the nearest selectable row at or before the current row.
         const currentSelectableIdx = pos >= 0
           ? pos
           : Math.max(
@@ -2131,9 +1557,6 @@ export function GenerateReviewStep({
     return <HelpOverlay sections={HELP_SECTIONS} onClose={() => setShowHelp(false)} />;
   }
 
-  // A9 — break-cycle overlay body. Shared between the in-panel render (tall
-  // terminal, beside the sidebar) and the full-screen fallback (short terminal
-  // — replaces the columns, mirroring the L2d + `?` help pattern).
   const renderBreakOverlay = (width?: number): React.ReactElement => {
     const highlightedCycle = slotCycles[cyclesCursor];
     return (
@@ -2219,9 +1642,6 @@ export function GenerateReviewStep({
     Object.keys(c.entry.$properties).length === 0 && Object.keys(c.entry.$slots ?? {}).length === 0;
   const emptyCount = components.filter(isEmpty).length;
 
-  // INTEG-4401: cycle-participant set drives sidebar `(cycle)` badges. Reads
-  // from the reified `cycleView.structural` so members whose ancestor is
-  // rejected still get badged (matches the ADR-0010 §C.1 unfiltered arm).
   const cycleParticipantSet = cycleView.structural;
 
   const sidebarSuffix = (c: CdfReviewEntry): string => {
@@ -2234,33 +1654,15 @@ export function GenerateReviewStep({
 
   const previewAnnotationByKey = previewAnnotations;
 
-  // Account for the "(cycle)" / "(empty)" suffix and the grouped-sidebar
-  // "(N deps)" / expand-arrow overhead so the sidebar doesn't truncate
-  // aggregate glyphs or dep counts. Widest possible row per name:
-  //   `▸ Name (NN deps) ✗` → keylen + 12
-  //   `Name (empty|cycle)` → keylen + suffixlen
   const longestName = components.reduce((m, c) => {
     const suffixLen = sidebarSuffix(c).length;
     const groupOverhead = 12; // "▸  (99 deps) ✗"
     return Math.max(m, c.key.length + Math.max(suffixLen, groupOverhead));
   }, 0);
-  // +9 = border (1) + selection glyph column "[✓] " (4) + badge column (1) +
-  // leading space (1) + trailing pad (1) + border (1). Both reserved columns
-  // stay fixed-width so the sidebar doesn't jitter as live-preview annotations
-  // or selection state flip.
-  //
-  // INTEG-4412: cap by terminal-width-aware upper bound so long/nested composite
-  // names aren't truncated at the old fixed 34-col ceiling.
   const sidebarWidthCap = computeSidebarWidth(terminalWidth);
   const sidebarWidth = Math.min(Math.max(longestName + 9, 18), sidebarWidthCap);
   const panelWidth = Math.max(10, terminalWidth - sidebarWidth - 4);
 
-  // INTEG-4401: project-wide slot graph passed to FieldEditor so its
-  // $allowedComponents picker can filter out cycle-forming candidates. Built
-  // from every review entry's $slots — includes accepted, rejected, and
-  // needs-review components so the graph reflects what will actually be
-  // pushed. The FieldEditor replaces its own entry in-simulation with its
-  // live editor state, so pending edits are always reflected.
   const projectSlotGraph = components.map((c) => ({
     name: c.key,
     slots: Object.entries(c.entry.$slots ?? {}).map(([slotName, slotDef]) => ({
@@ -2271,12 +1673,6 @@ export function GenerateReviewStep({
     })),
   }));
 
-  // Legend gates: only advertise [Space]/[E]/[C] when at least one closure
-  // has actual dependents (nodes.length > 1). `closures.size > 0` is true
-  // even when every component is a standalone, which made the legend lie
-  // about expand/collapse being useful. Tightening to real group roots means
-  // operators with grouped manifests see the affordance and operators with
-  // flat manifests don't chase a no-op key.
   const hasGroupRoots = (() => {
     for (const c of closures.values()) if (c.nodes.length > 1) return true;
     return false;
@@ -2301,9 +1697,6 @@ export function GenerateReviewStep({
       )}
       {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
       {showUnsavedWarning && !dialogOpen && (
-        // T5 (parity plan §3): inline warning shown when the operator tries
-        // to leave a dirty FieldEditor via Tab. Enter saves, Esc discards,
-        // Tab cancels (keystrokes handled in the useImmediateInput block).
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
           <Text bold color={PALETTE.warning}>Unsaved changes</Text>
           <Text>You have unsaved edits in the current field editor.</Text>
@@ -2314,9 +1707,6 @@ export function GenerateReviewStep({
         </Box>
       )}
       {showReloadDialog && !dialogOpen && (
-        // T4 (parity plan §3): inline confirm dialog for Ctrl+R reload-from-
-        // save. Kept inline (mirrors T5 UnsavedChangesDialog shape) to stay
-        // under the ~15-line threshold that would justify extraction.
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
           <Text bold color={PALETTE.warning}>Reload from saved state?</Text>
           <Text>Unsaved in-memory changes will be lost.</Text>
@@ -2326,10 +1716,6 @@ export function GenerateReviewStep({
         </Box>
       )}
       {removedComponents.length > 0 && !dialogOpen && (
-        // T1 (layout plan §A) — permanent top strip. Renders unconditionally
-        // above the auto-reject banner + cycle strips whenever the live
-        // preview reports at least one removed component. When empty, this
-        // block renders NOTHING (no placeholder, no push-down of layout).
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.error} paddingX={1}>
           <Text bold color={PALETTE.error}>
             {`Removed components (${removedComponents.length}) — will be `}
@@ -2347,8 +1733,6 @@ export function GenerateReviewStep({
         </Box>
       )}
       {breakingChanges.length > 0 && !dialogOpen && (
-        // L6 — key hint to open the breaking-changes goto-banner. Rendered
-        // alongside the removed strip; L11 will regroup the copy.
         <Box paddingX={1}>
           <Text color={PALETTE.warning}>{`[b] ${breakingChanges.length} breaking change${breakingChanges.length === 1 ? '' : 's'}`}</Text>
         </Box>
@@ -2357,11 +1741,6 @@ export function GenerateReviewStep({
         breakingDetailOpen &&
         !dialogOpen &&
         (() => {
-          // BD3 — dedicated detail panel for the breaking component under the
-          // banner cursor. Lists EVERY change with its friendly reason +
-          // `fullProperties` metadata (via the shared formatter). Rendered as a
-          // top-level block so it doesn't fight the sidebar slot the banner
-          // already occupies.
           const row = breakingRows[breakingCursor];
           const comp = row
             ? breakingChanges.find((b) => b.componentName === row.componentName)
@@ -2389,10 +1768,6 @@ export function GenerateReviewStep({
       {cyclePanel.isOpen &&
         !dialogOpen &&
         (() => {
-          // Materialize the full panel body as a flat list of Text lines,
-          // then slice by cyclePanelScroll so ↑↓ can walk arbitrarily long
-          // content. Each cycle contributes 3-4 lines: heading, path,
-          // suggested fix (if any), and a blank separator.
           const PANEL_H = 20;
           const lines: React.ReactElement[] = [];
           lines.push(
@@ -2405,9 +1780,6 @@ export function GenerateReviewStep({
               {'push will fail until these are resolved'}
             </Text>,
           );
-          // A7 — state BOTH resolution paths so the operator knows rejection is
-          // not the only option. (The interactive break-a-slot overlay is A9;
-          // here we only mention it as a valid resolution.)
           lines.push(
             <Text key="cyc-guide" dimColor>
               {'To fix: reject a cycle member, or break the cycle by removing a slot edge.'}
@@ -2424,10 +1796,6 @@ export function GenerateReviewStep({
                 inverse={isCursor}
               >{`${isCursor ? '▶' : ' '} Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
             );
-            // Colorize slots (cyan, bracketed) distinctly from components so
-            // the operator can visually parse the alternating structure.
-            // Brackets on slot names ensure the distinction survives when
-            // ANSI is stripped (logs, redirected output).
             const segs = formatCyclePathSegments(cycle, 16);
             lines.push(
               <Text key={`cyc-p-${idx}`}>
@@ -2468,12 +1836,6 @@ export function GenerateReviewStep({
       {!dialogOpen &&
         livePreview &&
         (() => {
-          // Pilot-2026-06-23 R2: at-a-glance diff summary at the top of the
-          // step. Mutually exclusive states:
-          //   - hook running (and we don't yet have annotations) → spinner.
-          //   - hook disabled (creds rejected) → static disabled hint.
-          //   - annotations populated → counts.
-          //   - idle, no annotations, not disabled → render nothing.
           const counts = { new: 0, changed: 0, removed: 0, breaking: 0 };
           for (const v of previewAnnotations.values()) {
             counts[v] = (counts[v] ?? 0) + 1;
@@ -2504,10 +1866,6 @@ export function GenerateReviewStep({
       {!dialogOpen &&
         autoRejected.length > 0 &&
         (() => {
-          // Task #37 — mount-time auto-reject banner. Only render when at
-          // least one of the auto-rejected components is still `rejected`
-          // in the current state — an operator who re-toggled a member to
-          // `accepted` no longer needs the banner.
           const stillRejected = autoRejected.filter((name) => {
             const c = components.find((x) => x.key === name);
             return c?.status === 'rejected';
@@ -2541,15 +1899,9 @@ export function GenerateReviewStep({
         </Text>
       )}
       {!dialogOpen && finalizeError && <Text color={PALETTE.error}>{`⚠ ${finalizeError}`}</Text>}
-      {/* T2 (layout plan §A): cycle banner + search input strips render BELOW
-          the sidebar+detail row (they used to be here, above). Located in a
-          fragment right after the sidebar Box. */}
       {!dialogOpen && (
         <Box>
           {breakingPanel.isOpen ? (
-            // L6 — rendered IN the sidebar slot (like the lineage panel post-
-            // L2d) so opening it does not grow the total frame height and
-            // trigger Ink's full-screen repaint flicker.
             <GotoBanner
               title="Breaking changes"
               rows={breakingRows.map((r) => ({
@@ -2577,7 +1929,6 @@ export function GenerateReviewStep({
               selectedIdx={selectedIdx}
               selectedRowIdx={cursorRowIdx}
               onSelect={(idx) => {
-                // Jump to the FIRST visible row for the target itemIdx.
                 for (let i = 0; i < visibleRowsMemo.length; i++) {
                   if (visibleRowsMemo[i].itemIdx === idx) {
                     jumpCursorToRow(i);
@@ -2704,12 +2055,6 @@ export function GenerateReviewStep({
                 ) : (
                   <FieldEditor
                     key={
-                      // BD4 — fold the pending focus target into the mount key so
-                      // a jump to a breaking-change field on the ALREADY-selected
-                      // component still remounts the editor onto that field (the
-                      // initialFocusTarget seam is mount-time only). Clearing the
-                      // pending focus on navigation returns the key to the bare
-                      // component name (default first-field mount).
                       pendingEditorFocus && pendingEditorFocus.componentName === selected.key
                         ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
                         : selected.key
@@ -2760,13 +2105,7 @@ export function GenerateReviewStep({
                 {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
                 <Text dimColor>
                   {sidebarFocused
-                    ? // L11 — the complete sidebar keymap now lives in the
-                      // single wrapping legend region below (built from atomic
-                      // legendEntry nodes so keys never wrap away from labels
-                      // and active toggles highlight). This inline line only
-                      // carries context that depends on the selected component
-                      // + the group-expand affordances.
-                      (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '')
+                    ? (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '')
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
                       : '  [Tab] focus list  (edit fields)'}
@@ -2835,13 +2174,7 @@ export function GenerateReviewStep({
         </Box>
       )}
       {!dialogOpen && sidebarFocused && (
-        // L11 — complete bottom legend for the sidebar-focused state. One
-        // wrapping region of atomic legendEntry nodes so a key never wraps
-        // away from its label (item 7) and toggle/mode keys highlight when
-        // active (item 1). Kept to a single wrapping Box per the L2d
-        // frame-height caution (no stacked always-on rows). Distinct cycle
-        // labels: [c] "cycle list" (panel) vs [o] "only cycles" (filter).
-        <Box gap={2} flexWrap="wrap">
+        <Box columnGap={2} flexWrap="wrap">
           {legendEntry('[j/k]', 'move')}
           {legendEntry('[a]', 'accept')}
           {legendEntry('[r]', 'reject')}

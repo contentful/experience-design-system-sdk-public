@@ -35,10 +35,6 @@ export interface GotoBannerProps {
 
 const DEFAULT_MAX_ROWS = 15;
 
-/**
- * Entry-index start of the visible window. Keeps the highlighted row within the
- * `maxRows`-tall slice, mirroring the sidebar's scroll-follow math.
- */
 function windowStart(rowCount: number, highlightIndex: number, maxRows: number): number {
   if (rowCount <= maxRows) return 0;
   const maxStart = rowCount - maxRows;
@@ -67,11 +63,6 @@ function defaultRenderRow(
   );
 }
 
-/**
- * Generic bordered "goto" overlay: a windowed list of jump targets with a
- * title, ▲/▼ overflow indicators, and an optional footer hint. Display-only —
- * open/close and key handling stay with the parent step, which owns the cursor.
- */
 export function GotoBanner({
   title,
   rows,

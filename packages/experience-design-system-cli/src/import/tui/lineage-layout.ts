@@ -1,24 +1,3 @@
-/**
- * L2d — terminal-height-aware sizing for the lineage panel, which now renders
- * AS AN OVERLAY IN THE SIDEBAR SLOT (in place of the GroupedSidebar) rather than
- * stacking below the columns.
- *
- * The flash was measured (PTY harness) to trigger when the total rendered frame
- * height exceeds `stdout.rows`: plain Ink `render()` then emits a full-screen
- * `\x1b[2J` clear on every render, so each lineage cursor move flashes. L2c
- * tried to compensate by SHRINKING the sidebar while stacking the panel below —
- * but the tall fixed chrome still pushed the frame over the terminal height.
- *
- * L2d's fix: the panel takes the sidebar's own vertical footprint. Because it
- * replaces the sidebar (rather than adding rows below the columns), opening the
- * panel does NOT grow the frame — it can never cross the terminal-height
- * threshold that triggers the `2J` clear. Columns 2 & 3 stay visible beside it.
- *
- * So the sidebar no longer needs to shrink. The only sizing job left is to
- * window the panel's entry list so the panel box is about as tall as the
- * sidebar was (never taller) and always fits the terminal.
- */
-
 /** Sidebar height (rows) — unchanged whether or not the panel is open. */
 export const VISIBLE_COUNT = 20;
 
@@ -37,14 +16,10 @@ export const MIN_PANEL_ROWS = 4;
  */
 export const FALLBACK_ROWS = 40;
 
-// Fixed vertical chrome that frames the columns row: header + counter strip +
-// focused-detail block + bottom legend. The panel now lives in the sidebar slot
-// (side-by-side with columns 2 & 3), so its own box chrome is NOT added on top
-// of this — that is the whole point of L2d.
-const HEADER_ROWS = 2; // "✓ Extraction complete" + the "Found N components…" line
-const COUNTER_STRIP_ROWS = 2; // marginTop blank + counter content
-const FOCUSED_DETAIL_ROWS = 2; // marginTop blank + focused-row name line
-const LEGEND_ROWS = 3; // marginTop blank + wrapped key legend
+const HEADER_ROWS = 2;
+const COUNTER_STRIP_ROWS = 2;
+const FOCUSED_DETAIL_ROWS = 2;
+const LEGEND_ROWS = 3;
 
 /**
  * Vertical space consumed by everything ABOVE/BELOW the columns row. The panel
