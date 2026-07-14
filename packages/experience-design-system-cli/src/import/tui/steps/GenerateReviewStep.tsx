@@ -35,6 +35,7 @@ import {
   type StoredSlotCycle,
 } from '../../../session/db.js';
 import { formatCyclePathSegments, findSlotCycles, suggestCycleBreakEdge } from '../../../analyze/cycle-detection.js';
+import { followCycleScroll } from '../cycle-panel-scroll.js';
 import { RationalePanel, type RationaleRow } from '../../../analyze/select/tui/components/RationalePanel.js';
 import { ComponentRationalePanel } from '../../../analyze/select/tui/components/ComponentRationalePanel.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
@@ -58,6 +59,11 @@ import { computeLineageLayout } from '../lineage-layout.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import { legendEntry } from '../components/LegendEntry.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
+import {
+  enumerateCycleBreaks,
+  shouldBreakOverlayGoFullScreen,
+  type BreakEdge,
+} from './enumerate-cycle-breaks.js';
 import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
 import { computeAutocomplete } from '../autocomplete.js';
 import { resolveGroupRoot } from '../group-collapse.js';
@@ -170,6 +176,17 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'P', label: 'Component rationale' },
       { keys: 's', label: 'Source' },
       { keys: 'J', label: 'Toggle JSON' },
+    ],
+  },
+  {
+    // A7 — a slot-dependency cycle has TWO valid resolutions. State both so the
+    // operator isn't left thinking rejection is the only path.
+    title: 'Resolving cycles',
+    entries: [
+      { keys: '', label: 'Reject a cycle member (drops it from the push), or' },
+      { keys: '', label: "break the cycle by removing a slot's" },
+      { keys: '', label: '$allowedComponents edge (see [c] suggested fix).' },
+      { keys: 'x', label: 'Break cycle (from [c]): delete a slot edge.' },
     ],
   },
   {
@@ -301,6 +318,12 @@ export function GenerateReviewStep({
   // annotation map only carries kind, not the rich summaries we need to list
   // names/ids when the operator asks "which ones?".
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
+  // A2-2: when the removed-components banner is tall, `[d]` collapses its
+  // detail rows. The 1-line count header stays visible so the operator knows
+  // removed components exist. Gated to `sidebarFocused` so it can't collide
+  // with FieldEditor text entry.
+  const [removedBannerCollapsed, setRemovedBannerCollapsed] = useState(false);
+  const removedBannerDefaultedRef = useRef(false);
   // Lifted rationale + source panels (replaces FieldEditor's right pane).
   // Mutually exclusive states.
   const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>('none');
@@ -318,10 +341,39 @@ export function GenerateReviewStep({
   // step-local since it's not part of the shared close-key convention;
   // it's reset on close by the caller's toggle handlers.
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
+  // A8 (spec §4) — GR↔SG cycle-list jump parity. The `[c]` panel is now a
+  // jumpable list: `cyclesCursor` selects a cycle and Enter jumps the main
+  // sidebar cursor to that cycle's canonical root. Mirrors ScopeGateStep's
+  // `cyclesJumpables` behavior. Kept inline (not a shared component) because
+  // GR's panel renders per-cycle `suggestedBreak` "Suggested fix:" lines +
+  // colorized path segments that SG's simpler list does not.
+  const [cyclesCursor, setCyclesCursor] = useState(0);
   const cyclePanel = useOverlayPanel({
     toggleKey: 'c',
-    onClose: () => setCyclePanelScroll(0),
+    onClose: () => {
+      setCyclePanelScroll(0);
+      setCyclesCursor(0);
+    },
   });
+  // A9 (spec §4) — interactive break-cycle overlay. Opened with `[x]` from the
+  // `[c]` cycle list; enumerates the removable slot-allowed edges for the
+  // HIGHLIGHTED cycle (via `enumerateCycleBreaks`), lets the operator scroll +
+  // Enter-to-delete a slot edge. The delete flows through the SAME undoable
+  // slot-edit seam as FieldEditor saves (setComponents + storeCDFComponents +
+  // recomputeCycles + pushHistorySnapshot), so Ctrl+Z restores it. `[b]` was
+  // taken by the breaking-changes banner and `[c]` opens the parent list, so
+  // `[x]` (mnemonic: "x out" / cut a slot edge) is the free, unambiguous key.
+  const breakPanel = useOverlayPanel({
+    toggleKey: 'x',
+    onClose: () => {
+      setBreakCursor(0);
+      setBreakConfirm(false);
+    },
+  });
+  const [breakCursor, setBreakCursor] = useState(0);
+  // When true, the overlay shows the [y]/[n] confirm prompt for the currently
+  // highlighted break edge (reuses the reject-cascade confirm-dialog pattern).
+  const [breakConfirm, setBreakConfirm] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const seededGroupsRef = useRef(false);
   // Fuzzy-search overlay (mirrors ScopeGateStep). `/` opens the input;
@@ -418,6 +470,10 @@ export function GenerateReviewStep({
     );
     const nextRemoved = response.components.removed ?? [];
     setRemovedComponents(nextRemoved);
+    if (!removedBannerDefaultedRef.current && nextRemoved.length > 0) {
+      removedBannerDefaultedRef.current = true;
+      setRemovedBannerCollapsed(nextRemoved.length > 5);
+    }
     setBreakingChanges(deriveBreakingChanges(response));
   };
 
@@ -806,8 +862,21 @@ export function GenerateReviewStep({
       }
       setSlotCycles(cycles);
       setComponents(entries);
-      setExpandedGroups(new Set());
-      seededGroupsRef.current = false;
+      // A2-1: seed the expanded set DIRECTLY from the freshly loaded state
+      // (reusing the [E] expand-all recipe) instead of emptying it, so grouped
+      // parents stay expanded after reload exactly as on first mount. Derived
+      // from `entries`/`cycles` because `closures`/`cycleView` are memos of the
+      // still-stale `components` state at this point.
+      const reloadGraph = buildComponentGraph(entries);
+      const reloadClosures = computeAllClosures(reloadGraph);
+      const reloadCycleView = computeCycleView(entries);
+      const reloadSeed = new Set<string>();
+      for (const [name, closure] of reloadClosures.entries()) {
+        if (closure.nodes.length > 1) reloadSeed.add(name);
+      }
+      for (const name of reloadCycleView.structural) reloadSeed.add(name);
+      setExpandedGroups(reloadSeed);
+      seededGroupsRef.current = true;
       setAutoRejected([]);
       setUndoSnapshot(null);
       // Reset one-shot latches so mount auto-reject fires again for the
@@ -1130,6 +1199,47 @@ export function GenerateReviewStep({
     setSaveError(null);
   };
 
+  // A9 — the removable slot-allowed edges for the HIGHLIGHTED cycle only. Empty
+  // when no cycle is highlighted (defensive) or the cycle is already resolved.
+  const breakEdges = useMemo<BreakEdge[]>(() => {
+    const cycle = slotCycles[cyclesCursor];
+    if (!cycle) return [];
+    return enumerateCycleBreaks(cycle, components);
+  }, [slotCycles, cyclesCursor, components]);
+
+  // A9 — delete a slot-allowed edge to break a cycle. Reuses the exact undoable
+  // slot-edit seam that FieldEditor saves flow through: mutate the component's
+  // `$slots[slot].$allowedComponents` in review state, persist via
+  // storeCDFComponents, recompute cycles so the resolved cycle drops out, and
+  // push a history snapshot so Ctrl+Z restores the edge. Does NOT touch review
+  // status (this is a slot-edge edit, not a reject).
+  const handleBreakEdge = (edge: BreakEdge): void => {
+    const idx = components.findIndex((c) => c.key === edge.fromComponent);
+    if (idx < 0) return;
+    const target = components[idx];
+    const slot = target.entry.$slots?.[edge.slotName];
+    if (!slot || !Array.isArray(slot.$allowedComponents)) return;
+    const nextAllowed = slot.$allowedComponents.filter((v) => v !== edge.toComponent);
+    const nextEntry: CDFComponentEntry = {
+      ...target.entry,
+      $slots: {
+        ...target.entry.$slots,
+        [edge.slotName]: { ...slot, $allowedComponents: nextAllowed },
+      },
+    };
+    const next = components.map((c, i) => (i === idx ? { ...c, entry: nextEntry } : c));
+    setComponents(next);
+    const db = openPipelineDb();
+    try {
+      storeCDFComponents(db, extractSessionId, [{ key: target.key, entry: nextEntry }]);
+    } finally {
+      db.close();
+    }
+    recomputeCycles(next);
+    livePreviewHook.trigger();
+    pushHistorySnapshot(next, autoRejected, undoSnapshot, 'break-cycle-edge');
+  };
+
   const dialogOpen = showFinalize || showQuit;
 
   useImmediateInput((input, key) => {
@@ -1320,21 +1430,82 @@ export function GenerateReviewStep({
       }
       return;
     }
+    // A9 — the interactive break-cycle overlay owns input while open. It sits
+    // ABOVE the cyclePanel handler because `[x]` opens it from within the `[c]`
+    // list, so both are technically "open"; the break overlay takes priority.
+    // Close-side (`[x]` toggle + Esc) is delegated to the shared hook.
+    if (breakPanel.isOpen) {
+      // While the confirm prompt is up, [y] deletes, [n]/Esc cancels — nothing
+      // else moves the cursor or closes the overlay.
+      if (breakConfirm) {
+        if (input === 'y') {
+          const edge = breakEdges[breakCursor];
+          if (edge) handleBreakEdge(edge);
+          setBreakConfirm(false);
+          breakPanel.close();
+          return;
+        }
+        if (input === 'n' || key.escape) {
+          setBreakConfirm(false);
+          return;
+        }
+        return;
+      }
+      if (breakPanel.handleInput(input, key)) return;
+      if (key.upArrow || input === 'k') {
+        setBreakCursor((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        setBreakCursor((c) => Math.min(Math.max(0, breakEdges.length - 1), c + 1));
+        return;
+      }
+      if (key.return) {
+        if (breakEdges[breakCursor]) setBreakConfirm(true);
+        return;
+      }
+      return;
+    }
     // INTEG-4401: slot-cycle detail panel. Same modal-swallow rules as
     // removed panel; `[c]` / `[Esc]` close (via shared hook), `[q]` also closes
     // (legacy), ↑↓ scroll.
     if (cyclePanel.isOpen) {
+      // A9 — `[x]` opens the break-cycle overlay for the highlighted cycle when
+      // that cycle has at least one removable slot edge. The cycle list stays
+      // open underneath; the break overlay renders on top + owns input.
+      if (input === 'x' && breakEdges.length > 0) {
+        breakPanel.open();
+        setBreakCursor(0);
+        setBreakConfirm(false);
+        return;
+      }
       if (cyclePanel.handleInput(input, key)) return;
       if (input === 'q') {
         cyclePanel.close();
         return;
       }
+      // A8 — ↑/↓/j/k move the cycle cursor (mirrors SG's cyclesJumpables list);
+      // Enter jumps the main sidebar cursor to the highlighted cycle's root.
       if (key.upArrow || input === 'k') {
-        setCyclePanelScroll((v) => Math.max(0, v - 1));
+        setCyclesCursor((c) => {
+          const next = Math.max(0, c - 1);
+          setCyclePanelScroll((scroll) => followCycleScroll(scroll, next, slotCycles, 20));
+          return next;
+        });
         return;
       }
       if (key.downArrow || input === 'j') {
-        setCyclePanelScroll((v) => v + 1);
+        setCyclesCursor((c) => {
+          const next = Math.min(Math.max(0, slotCycles.length - 1), c + 1);
+          setCyclePanelScroll((scroll) => followCycleScroll(scroll, next, slotCycles, 20));
+          return next;
+        });
+        return;
+      }
+      if (key.return) {
+        const target = slotCycles[cyclesCursor];
+        if (target && target.path.length > 0) jumpCursorToName(target.path[0]);
+        cyclePanel.close();
         return;
       }
       return;
@@ -1344,6 +1515,7 @@ export function GenerateReviewStep({
     if (input === 'c' && sidebarFocused && slotCycles.length > 0) {
       cyclePanel.open();
       setCyclePanelScroll(0);
+      setCyclesCursor(0);
       return;
     }
     // T6 (parity plan §3) — `[l]` opens the lineage panel when the sidebar
@@ -1365,6 +1537,13 @@ export function GenerateReviewStep({
     // so they can't collide with FieldEditor input. Independent toggles;
     // multiple active filters union in `filterVisibleKeys`. L11 removed the
     // `[d]` deleted filter — GR no longer offers it.
+    // A2-2 — `[d]` toggles the removed-components banner detail rows. Sidebar-
+    // focused so it can't collide with FieldEditor text entry. No-op when there
+    // are no removed components (the banner isn't rendered anyway).
+    if (input === 'd' && sidebarFocused && removedComponents.length > 0) {
+      setRemovedBannerCollapsed((prev) => !prev);
+      return;
+    }
     if (sidebarFocused && (input === 'o' || input === 'w')) {
       const category: FilterCategory = input === 'o' ? 'cycles' : 'broken';
       setActiveFilters((prev) => {
@@ -1816,6 +1995,77 @@ export function GenerateReviewStep({
     return <HelpOverlay sections={HELP_SECTIONS} onClose={() => setShowHelp(false)} />;
   }
 
+  // A9 — break-cycle overlay body. Shared between the in-panel render (tall
+  // terminal, beside the sidebar) and the full-screen fallback (short terminal
+  // — replaces the columns, mirroring the L2d + `?` help pattern).
+  const renderBreakOverlay = (width?: number): React.ReactElement => {
+    const highlightedCycle = slotCycles[cyclesCursor];
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1} width={width}>
+        <Text bold color="yellow">
+          {`BREAK CYCLE ${cyclesCursor + 1} — remove a slot edge`}
+        </Text>
+        {highlightedCycle &&
+          (() => {
+            const segs = formatCyclePathSegments(highlightedCycle);
+            return (
+              <Text>
+                {'  '}
+                {segs.map((seg, si) =>
+                  seg.kind === 'slot' ? (
+                    <Text key={si} color="cyan">
+                      {seg.text}
+                    </Text>
+                  ) : seg.kind === 'arrow' ? (
+                    <Text key={si} dimColor>
+                      {seg.text}
+                    </Text>
+                  ) : (
+                    <Text key={si} color="yellow">
+                      {seg.text}
+                    </Text>
+                  ),
+                )}
+              </Text>
+            );
+          })()}
+        <Text dimColor>
+          {highlightedCycle
+            ? 'Deleting an edge removes it from $allowedComponents (undo with Ctrl+Z).'
+            : 'No cycle highlighted.'}
+        </Text>
+        <Text> </Text>
+        {breakEdges.map((edge, idx) => {
+          const isCursor = idx === breakCursor;
+          return (
+            <Text key={`break-${idx}`} inverse={isCursor}>
+              {`${isCursor ? '▶' : ' '} remove '${edge.toComponent}' from ${edge.fromComponent}.$slots.${edge.slotName}.$allowedComponents`}
+            </Text>
+          );
+        })}
+        {breakConfirm ? (
+          <>
+            <Text> </Text>
+            <Text bold color="yellow">
+              {'Delete this slot edge? [y] confirm  [n] cancel'}
+            </Text>
+          </>
+        ) : (
+          <Text dimColor>{'[↑↓/j/k] move  [Enter] delete  [x/Esc] close'}</Text>
+        )}
+      </Box>
+    );
+  };
+  const breakOverlayFullScreen =
+    breakPanel.isOpen &&
+    shouldBreakOverlayGoFullScreen({
+      rows: stdout?.rows ?? FALLBACK_ROWS,
+      edgeCount: breakEdges.length,
+    });
+  if (breakOverlayFullScreen) {
+    return renderBreakOverlay();
+  }
+
   const selected = components[selectedIdx] ?? null;
   const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
 
@@ -1938,12 +2188,16 @@ export function GenerateReviewStep({
           <Text bold color="red">
             {`Removed components (${removedComponents.length}) — will be `}
             <Text bold color="red">DELETE</Text>
-            {'D from target space'}
+            {'D from target space  (press [d] to expand/collapse)'}
           </Text>
-          <Text> </Text>
-          {removedComponents.map((rc) => (
-            <Text key={rc.id}>{`- ${rc.name}${rc.id ? `  (${rc.id})` : ''}`}</Text>
-          ))}
+          {!removedBannerCollapsed && (
+            <>
+              <Text> </Text>
+              {removedComponents.map((rc) => (
+                <Text key={rc.id}>{`- ${rc.name}${rc.id ? `  (${rc.id})` : ''}`}</Text>
+              ))}
+            </>
+          )}
         </Box>
       )}
       {breakingChanges.length > 0 && !dialogOpen && (
@@ -1972,14 +2226,24 @@ export function GenerateReviewStep({
               {'push will fail until these are resolved'}
             </Text>,
           );
+          // A7 — state BOTH resolution paths so the operator knows rejection is
+          // not the only option. (The interactive break-a-slot overlay is A9;
+          // here we only mention it as a valid resolution.)
+          lines.push(
+            <Text key="cyc-guide" dimColor>
+              {'To fix: reject a cycle member, or break the cycle by removing a slot edge.'}
+            </Text>,
+          );
           lines.push(<Text key="cyc-space"> </Text>);
           slotCycles.forEach((cycle, idx) => {
             const nodeCount = new Set(cycle.path).size;
+            const isCursor = idx === cyclesCursor;
             lines.push(
               <Text
                 key={`cyc-h-${idx}`}
                 bold
-              >{`▸ Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
+                inverse={isCursor}
+              >{`${isCursor ? '▶' : ' '} Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
             );
             // Colorize slots (cyan, bracketed) distinctly from components so
             // the operator can visually parse the alternating structure.
@@ -2018,7 +2282,7 @@ export function GenerateReviewStep({
           return (
             <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
               {visible}
-              <Text dimColor>{'[↑↓/j/k] scroll  [c/q/Esc] close'}</Text>
+              <Text dimColor>{'[↑↓/j/k] move  [Enter] jump  [x] break cycle  [c/q/Esc] close'}</Text>
             </Box>
           );
         })()}
@@ -2322,7 +2586,8 @@ export function GenerateReviewStep({
           </Box>
         </Box>
       )}
-      {!dialogOpen && slotCycles.length > 0 && !cyclePanel.isOpen && (
+      {breakPanel.isOpen && !breakOverlayFullScreen && !dialogOpen && renderBreakOverlay()}
+      {!dialogOpen && slotCycles.length > 0 && !cyclePanel.isOpen && !breakPanel.isOpen && (
         <Box flexDirection="column">
           <Text color="yellow">
             {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
@@ -2399,6 +2664,8 @@ export function GenerateReviewStep({
           {legendEntry('[s]', 'source', panelOpen === 'source')}
           {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
           {breakingChanges.length > 0 && legendEntry('[b]', 'breaking', breakingPanel.isOpen)}
+          {removedComponents.length > 0 &&
+            legendEntry('[d]', removedBannerCollapsed ? 'show removed' : 'hide removed', removedBannerCollapsed)}
           {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
           {legendEntry('[Tab]', 'focus panel')}
           {legendEntry('[Ctrl+Z]', 'undo')}
