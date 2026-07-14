@@ -17,11 +17,6 @@ export type RationalePanelProps = {
   active: boolean;
 };
 
-/**
- * Word-wrap a single rationale paragraph to fit within `innerWidth` columns.
- * Returns an array of wrapped lines. Empty input → single empty line so the
- * row still occupies vertical space.
- */
 function wrapText(text: string, innerWidth: number): string[] {
   if (!text) return [''];
   const width = Math.max(1, innerWidth);
@@ -31,7 +26,6 @@ function wrapText(text: string, innerWidth: number): string[] {
   let current = '';
   for (const w of words) {
     if (current.length === 0) {
-      // Word longer than width — hard-break.
       if (w.length > width) {
         let rest = w;
         while (rest.length > width) {
@@ -69,13 +63,6 @@ type RenderedLine =
   | { kind: 'text'; text: string }
   | { kind: 'blank' };
 
-/**
- * Flatten `rows` to a list of rendered lines so scrollOffset slicing matches
- * what the operator sees. Layout per row:
- *   <name>           ← bold
- *   <wrapped text>   ← one or more lines
- *   <blank>          ← spacer (omitted after the final row)
- */
 export function renderRationaleLines(rows: RationaleRow[], innerWidth: number): RenderedLine[] {
   const out: RenderedLine[] = [];
   rows.forEach((row, idx) => {
