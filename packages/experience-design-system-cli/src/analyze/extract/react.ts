@@ -25,26 +25,12 @@ import {
 import { shouldBeSlot } from './slot-detection.js';
 import { extractAllowedComponentsFromTypeText, extractAllowedComponentsFromJsdoc } from './slot-allowed-components.js';
 
-/**
- * Matches ReactElement<XProps ...> (with optional `React.` prefix) anywhere in
- * a type text. TS often resolves this to ReactElement<XProps, string | JSXElementConstructor<any>>,
- * so we allow anything after the first type argument.
- */
 const REACT_ELEMENT_GENERIC_TEST = /(?:React\.)?ReactElement\s*<\s*[A-Za-z_$][\w$.]*/;
 
-/**
- * True when a type text references ReactElement<XProps> — either directly, as a
- * union with null/undefined, or as a union of ReactElement<...> types.
- */
 function isReactElementGenericSlotType(typeText: string): boolean {
   return REACT_ELEMENT_GENERIC_TEST.test(typeText);
 }
 
-/**
- * Internal-only slot fields captured during first-pass extraction so the
- * post-pass can resolve $allowedComponents once all components in the run are
- * known. Stripped before returning.
- */
 type RawSlotDefinitionInternal = RawSlotDefinition & {
   _rawTypeText?: string;
   _rawJsdoc?: string;
@@ -591,7 +577,6 @@ function extractPropsFromTypeSymbols(
       continue;
     }
 
-    // Skip props that are render props — they become slots
     if (slotNames.has(name)) continue;
 
     const declaration = property.getValueDeclaration() ?? property.getDeclarations()[0];
@@ -1698,7 +1683,6 @@ function isPureExpandableDomAttributeWrapperTypeNode(typeNode: Node, seen = new 
     }
 
     if (typeName === 'Pick') {
-      // Pick narrows the surface and should not be treated as a transparent wrapper.
       return false;
     }
 
@@ -2152,9 +2136,6 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
     }
   }
 
-  // Post-pass: resolve $allowedComponents for slots whose type text referenced
-  // ReactElement<XProps>. Build a props-type-name → component-name map from the
-  // full run first so cross-file references resolve.
   const propsToComponent = new Map<string, string>();
   const componentNames = new Set<string>();
   for (const c of components as Array<RawComponentDefinition & { _propsTypeName?: string }>) {
@@ -2314,11 +2295,10 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
 
     const filteredProps = filterImplementationOnlyAliasProps(propsWithDefaults, funcNode);
 
-    // Second pass: expand ReactNode-typed and ReactElement<XProps>-typed props into slots
     const existingSlotNames = new Set(slots.map((s) => s.name));
     const expandedSlots: RawSlotDefinitionInternal[] = [];
     const propsAfterSlotExpansion = filteredProps.filter((prop) => {
-      if (existingSlotNames.has(prop.name)) return true; // already handled
+      if (existingSlotNames.has(prop.name)) return true;
       const isElementSlot = isReactElementGenericSlotType(prop.type);
       if (shouldBeSlot(prop.name, prop.type) || isElementSlot) {
         expandedSlots.push({
@@ -2332,8 +2312,6 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
     });
     const finalSlots = [...slots, ...expandedSlots];
 
-    // Capture the props-type-name so the run-level post-pass can build a
-    // props-type → component-name map for $allowedComponents resolution.
     const propsTypeName = firstParamTypeNode?.getText?.().trim();
     const propsTypeNameCapture = propsTypeName && /^[A-Za-z_$][\w$]*$/.test(propsTypeName) ? propsTypeName : undefined;
 
