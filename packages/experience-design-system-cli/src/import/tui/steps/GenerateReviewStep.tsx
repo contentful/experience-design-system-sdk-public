@@ -51,8 +51,8 @@ import {
 } from '../../../analyze/search-neighborhood.js';
 import { computeSidebarWidth } from '../sidebar-width.js';
 import { computeAcceptCascade, computeRejectCascade } from '../../../analyze/selection-cascade.js';
-import { findAllAncestors } from '../../../analyze/lineage.js';
 import { useLineage } from '../hooks/useLineage.js';
+import { computeCycleAutoRejectTargets } from '../../cycle-auto-reject.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { LineagePanel } from '../../../analyze/select/tui/components/LineagePanel.js';
 import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
@@ -215,29 +215,7 @@ const HELP_SECTIONS: HelpSection[] = [
   },
 ];
 
-/**
- * Task #37 — Given the current set of detected slot cycles and the component
- * graph, compute the union of cycle participants + every transitive ancestor
- * that slots any cycle participant. These are the components that must be
- * auto-rejected on mount so the review step never presents a cyclic manifest
- * as viable (cyclic manifests fail at push time via TopoSortCycleError).
- *
- * Pure by design so callers can unit-test the union without simulating the
- * mount effect. Empty `slotCycles` yields an empty set.
- */
-export function computeCycleAutoRejectTargets(
-  slotCycles: Array<{ path: string[] }>,
-  graph: ComponentGraphNode[],
-): Set<string> {
-  const targets = new Set<string>();
-  const participants = new Set<string>();
-  for (const cyc of slotCycles) for (const p of cyc.path) participants.add(p);
-  for (const p of participants) {
-    targets.add(p);
-    for (const anc of findAllAncestors(p, graph)) targets.add(anc);
-  }
-  return targets;
-}
+export { computeCycleAutoRejectTargets } from '../../cycle-auto-reject.js';
 
 export interface BreakingComponent {
   componentName: string;
