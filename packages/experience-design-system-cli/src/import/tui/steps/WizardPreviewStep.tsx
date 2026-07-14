@@ -12,10 +12,6 @@ export interface PreviewDiffLine {
   text: string;
 }
 
-/**
- * Pure builder for the wizard preview diff lines. Extracted from the render
- * layer so it can be unit-tested independently of Ink.
- */
 export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDiffLine[] {
   const lines: PreviewDiffLine[] = [];
   const { components, tokens } = preview;
@@ -67,8 +63,6 @@ export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDi
     for (const d of diffLines) {
       lines.push({ key: `comp-d-${item.current.name}-${d.key}`, color: d.color, text: ` ${d.text}` });
     }
-    // Also enumerate slots + allowedComponents from the proposed side so the
-    // reviewer sees the shape they're pushing, not just the delta.
     const proposedSlots =
       ((item.proposed as unknown as Record<string, unknown>)['$slots'] as
         | Record<string, Record<string, unknown>>
