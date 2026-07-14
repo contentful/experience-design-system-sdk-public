@@ -53,6 +53,7 @@ export interface PipelineResult {
   session: string;
   project: string;
   steps: StepResult[];
+  cycleError?: { report: string[] };
 }
 
 function findCliPath(): string {
@@ -102,6 +103,16 @@ async function runStep(
 }
 
 const MAX_VALIDATION_RETRIES = Number(process.env['EDS_MAX_VALIDATION_RETRIES'] ?? 2);
+
+export const SLOT_CYCLE_MARKER = 'manifest:components/slot-cycles';
+
+export function isSlotCycleError(result: { exitCode: number; stderr: string }): boolean {
+  return result.exitCode !== 0 && result.stderr.includes(SLOT_CYCLE_MARKER);
+}
+
+export function extractCycleReport(stderr: string): string[] {
+  return stderr.split('\n').filter((line) => line.trim());
+}
 
 export function isPreviewValidationError(result: { exitCode: number; stderr: string }): boolean {
   return (
@@ -538,6 +549,27 @@ export async function runPipeline(
       ? (pushResult.componentTypes?.failed ?? 0) + (pushResult.designTokens?.failed ?? 0)
       : Number(/(\d+) failed/.exec(r.stdout + r.stderr)?.[1] ?? 0);
     const totalPushed = created + updated + failed;
+
+    if (isSlotCycleError(r)) {
+      const report = extractCycleReport(r.stderr);
+      updateStep(db, pushStepId, 'failed', {}, r.stderr);
+      progressWriter(`${pushLabel}✗  failed (${(durationMs / 1000).toFixed(1)}s)`);
+      progressWriter('Slot cycle detected. The manifest contains circular slot references that would block the push.');
+      for (const line of report) progressWriter(line);
+      steps.push(
+        buildPushStepResult({
+          created,
+          updated,
+          failed,
+          durationMs,
+          stderr: r.stderr,
+          excludedByRetry,
+          totalFailure: true,
+        }),
+      );
+      db.close();
+      return { session: sessionId, project: projectRoot, steps, cycleError: { report } };
+    }
 
     if (r.exitCode !== 0 && (totalPushed === 0 || failed === totalPushed)) {
       // Total failure — nothing was pushed
