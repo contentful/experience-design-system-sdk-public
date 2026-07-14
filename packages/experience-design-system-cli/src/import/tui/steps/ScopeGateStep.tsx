@@ -1,5 +1,5 @@
 import { Box, Text, useStdout } from 'ink';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import {
@@ -27,6 +27,7 @@ import { LineagePanel } from '../../../analyze/select/tui/components/LineagePane
 import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import { legendEntry } from '../components/LegendEntry.js';
+import { resolveGroupRoot } from '../group-collapse.js';
 import {
   buildCycleUnits,
   collectReachableCycleUnits,
@@ -89,7 +90,7 @@ const HELP_SECTIONS: HelpSection[] = [
   {
     title: 'Selection',
     entries: [
-      { keys: 'a / space', label: 'Accept' },
+      { keys: 'a', label: 'Accept' },
       { keys: 'r', label: 'Reject' },
       { keys: 'A', label: 'Toggle all' },
       { keys: 'Y', label: 'Accept non-flagged' },
@@ -103,6 +104,8 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'i', label: 'Focus lineage' },
       { keys: 'w', label: 'Only broken' },
       { keys: 'o', label: 'Only cycles' },
+      { keys: 'space', label: 'Expand/collapse group' },
+      { keys: 'E / C', label: 'Expand/collapse all' },
     ],
   },
   {
@@ -286,6 +289,48 @@ export function ScopeGateStep({
 
   const closures = useMemo(() => computeAllClosures(graph), [graph]);
 
+  // L9 — expand/collapse groups (parity with GenerateReview). `expandedGroups`
+  // holds every currently-EXPANDED group root. Seeded EXPANDED so the default
+  // view matches the previous always-expanded behavior; [C] then collapses.
+  // The seed (and [E] expand-all) UNIONS closure roots AND cycle participants —
+  // cycle-tier rows in GroupedSidebar honor `expandedGroups.has` too, so
+  // omitting them would make cycle subtrees uncollapsible. ScopeGate's
+  // `components` are present at mount (unlike GR's async DB reload), so a lazy
+  // initializer seeds synchronously; a latched effect re-seeds if the derived
+  // graph first arrives empty and later populates.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
+    const seed = new Set<string>(closures.keys());
+    for (const p of cycleParticipants) seed.add(p);
+    return seed;
+  });
+  const seededGroupsRef = useRef(closures.size > 0 || cycleParticipants.size > 0);
+  useEffect(() => {
+    if (seededGroupsRef.current) return;
+    if (closures.size === 0 && cycleParticipants.size === 0) return;
+    seededGroupsRef.current = true;
+    const seed = new Set<string>(closures.keys());
+    for (const p of cycleParticipants) seed.add(p);
+    setExpandedGroups(seed);
+  }, [closures, cycleParticipants]);
+
+  // Legend gate: only advertise [space]/[E]/[C] when there's a collapsible
+  // group — a closure with >1 node OR any cycle participant (cycle-tier rows
+  // are collapsible). Flat manifests don't chase a no-op key.
+  const hasGroupRoots = useMemo(() => {
+    if (cycleParticipants.size > 0) return true;
+    for (const c of closures.values()) if (c.nodes.length > 1) return true;
+    return false;
+  }, [closures, cycleParticipants]);
+
+  const toggleExpanded = (rootName: string): void => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(rootName)) next.delete(rootName);
+      else next.add(rootName);
+      return next;
+    });
+  };
+
   // L8 — "broken" in ScopeGate = AI-flagged (rejected/failed). Component keys
   // feeding the `broken` category filter.
   const brokenKeys = useMemo<Set<string>>(() => {
@@ -326,14 +371,13 @@ export function ScopeGateStep({
       buildVisibleRows({
         items: groupedItems,
         cycleParticipants,
-        expandedGroups: new Set(),
-        alwaysExpanded: true,
+        expandedGroups,
         showFlatTier: false,
         viewMode: columnOneView,
         graph,
         filterVisibleKeys,
       }),
-    [groupedItems, cycleParticipants, columnOneView, graph, filterVisibleKeys],
+    [groupedItems, cycleParticipants, expandedGroups, columnOneView, graph, filterVisibleKeys],
   );
 
   const total = visibleRows.length;
@@ -754,9 +798,38 @@ export function ScopeGateStep({
       setJumpFilterTarget((prev) => (prev === targetKey ? null : targetKey));
       return;
     }
-    if (input === 'a' || input === ' ' || input === 'r') {
+    // L9 — [Space] toggles collapse of the focused group (GR parity). Only in
+    // the main sidebar: the two added columns are FLAT lists (no nesting to
+    // collapse), so Space there is a no-op. Rebound from accept — [a] accepts,
+    // [Space] no longer accepts.
+    if (input === ' ') {
+      if (focusedColumn !== 'main') return;
+      const key = focusedRowKey();
+      if (!key) return;
+      const rootName = resolveGroupRoot(key, closures, cycleParticipants);
+      if (!rootName) return;
+      toggleExpanded(rootName);
+      return;
+    }
+    // L9 — [E] expand-all / [C] collapse-all (GR parity). [E] unions every
+    // closure root with >1 node AND every cycle participant (cycle-tier rows
+    // honor `expandedGroups.has` too). [C] clears the set. Main sidebar only.
+    if (input === 'E' && focusedColumn === 'main') {
+      const roots = new Set<string>();
+      for (const [name, closure] of closures.entries()) {
+        if (closure.nodes.length > 1) roots.add(name);
+      }
+      for (const p of cycleParticipants) roots.add(p);
+      setExpandedGroups(roots);
+      return;
+    }
+    if (input === 'C' && focusedColumn === 'main') {
+      setExpandedGroups(new Set());
+      return;
+    }
+    if (input === 'a' || input === 'r') {
       const isReject = input === 'r';
-      // Side columns only show accepted items — [a]/Space are no-ops there
+      // Side columns only show accepted items — [a] is a no-op there
       // (re-accepting is meaningless). [r] rejects the highlighted row via
       // requestReject (which fires the cascade confirm-prompt when the blast
       // radius warrants it).
@@ -787,8 +860,7 @@ export function ScopeGateStep({
       const nextRows = buildVisibleRows({
         items: groupedItems,
         cycleParticipants,
-        expandedGroups: new Set(),
-        alwaysExpanded: true,
+        expandedGroups,
         showFlatTier: false,
         viewMode: nextView,
         graph,
@@ -1098,13 +1170,12 @@ export function ScopeGateStep({
             selectedIdx={selectedItemIdx}
             selectedRowIdx={safeCursor}
             onSelect={() => {}}
-            expandedGroups={new Set()}
-            onToggleExpanded={() => {}}
+            expandedGroups={expandedGroups}
+            onToggleExpanded={toggleExpanded}
             width={sidebarWidth}
             focused={focusedColumn === 'main'}
             scrollOffset={scrollOffset}
             visibleCount={visibleCount}
-            alwaysExpanded={true}
             showFlatTier={false}
             selectionStateByKey={selectionStateByKey}
             aiFlaggedByKey={aiFlaggedByKey}
@@ -1256,8 +1327,10 @@ export function ScopeGateStep({
           <Text color="yellow">none included</Text>
         )}
         {legendEntry('[j/k]', 'move')}
-        {legendEntry('[a/space]', 'accept')}
+        {legendEntry('[a]', 'accept')}
         {legendEntry('[r]', 'reject')}
+        {hasGroupRoots && legendEntry('[space]', 'expand/collapse group')}
+        {hasGroupRoots && legendEntry('[E/C]', 'expand/collapse all')}
         {legendEntry('[A]', 'toggle all')}
         {legendEntry('[Y]', 'accept non-flagged')}
         {legendEntry('[L]', 'flat', columnOneView === 'flat')}

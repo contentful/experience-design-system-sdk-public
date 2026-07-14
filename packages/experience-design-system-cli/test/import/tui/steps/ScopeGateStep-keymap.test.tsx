@@ -64,12 +64,12 @@ describe('ScopeGateStep keymap regression — pre-Feature-3 behavior preserved',
     expect(onQuit).toHaveBeenCalledTimes(1);
   });
 
-  it('Space accepts the cursor component (Space is an alias for [a])', () => {
+  it('Space does NOT accept the cursor component (L9 rebind: space = collapse)', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
-    stdin.write(' '); // accept Button (same as [a])
+    stdin.write(' '); // L9: toggles group collapse, no longer an accept alias
     stdin.write('f');
-    expect(onConfirm.mock.calls[0][0].accepted).toContain('Button');
+    expect(onConfirm.mock.calls[0][0].accepted).not.toContain('Button');
   });
 
   it('Y accepts every non-cycle-participant that is not AI-flagged', () => {

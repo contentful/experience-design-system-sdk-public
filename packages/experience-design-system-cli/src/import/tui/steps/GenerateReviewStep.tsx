@@ -60,6 +60,7 @@ import { legendEntry } from '../components/LegendEntry.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
 import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
 import { computeAutocomplete } from '../autocomplete.js';
+import { resolveGroupRoot } from '../group-collapse.js';
 import {
   computeFilterKeys,
   intersectFilterKeys,
@@ -1495,11 +1496,7 @@ export function GenerateReviewStep({
     if (input === ' ' && sidebarFocused && !showJson) {
       const current = components[selectedIdx];
       if (!current) return;
-      const rootName = cycleView.structural.has(current.key)
-        ? current.key
-        : closures.has(current.key)
-          ? current.key
-          : [...closures.entries()].find(([, c]) => c.nodes.some((n) => n.name === current.key))?.[0];
+      const rootName = resolveGroupRoot(current.key, closures, cycleView.structural);
       if (!rootName) return;
       setExpandedGroups((prev) => {
         const next = new Set(prev);
