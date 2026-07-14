@@ -1,11 +1,12 @@
 import { EventEmitter } from 'node:events';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { isSlotCycleError, extractCycleReport } from '../../src/import/orchestrator.js';
+import { isSlotCycleError, extractCycleReport, parseCycleComponentNames } from '../../src/import/orchestrator.js';
 import type { PipelineOptions } from '../../src/import/orchestrator.js';
 
 // ─── Mocks for runPipeline integration test ──────────────────────────────────
 
 const mockExecFile = vi.fn();
+const mockFindLatestSessionForCommand = vi.fn(() => null as string | null);
 
 vi.mock('node:child_process', () => ({
   execFile: (...args: unknown[]) => mockExecFile(...args),
@@ -22,7 +23,7 @@ vi.mock('../../src/session/db.js', () => ({
   getOrCreateSession: vi.fn(() => ({ sessionId: 'test-session-id' })),
   createStep: vi.fn(() => 'test-step-id'),
   updateStep: vi.fn(),
-  findLatestSessionForCommand: vi.fn(() => null),
+  findLatestSessionForCommand: (...args: unknown[]) => mockFindLatestSessionForCommand(...args),
   loadCDFComponents: vi.fn(() => []),
 }));
 
@@ -78,6 +79,7 @@ describe('isSlotCycleError', () => {
 describe('runPipeline cycle error', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFindLatestSessionForCommand.mockReturnValue(null);
   });
 
   it('returns a cycleError result when apply push exits with slot-cycle stderr', async () => {
@@ -119,6 +121,132 @@ describe('runPipeline cycle error', () => {
     expect(pushStep).toBeDefined();
     expect(pushStep?.status).toBe('failed');
     expect(pushStep?.error).toContain(CYCLE_MARKER);
+  });
+});
+
+// ─── parseCycleComponentNames unit tests ─────────────────────────────────────
+
+describe('parseCycleComponentNames', () => {
+  it('parseCycleComponentNames extracts component names from Fix: lines', () => {
+    const report = [
+      "Error: manifest:components/slot-cycles — 1 slot dependency cycle(s) detected.",
+      "Cycle 1: A → B → A",
+      "Fix: remove 'B' from A.$slots.children.$allowedComponents",
+    ];
+    expect(parseCycleComponentNames(report)).toEqual(['B']);
+  });
+
+  it('parseCycleComponentNames returns [] when no Fix lines present', () => {
+    expect(parseCycleComponentNames(["Error: some other message"])).toEqual([]);
+  });
+});
+
+// ─── runPipeline auto-reject-cycles integration tests ────────────────────────
+
+describe('runPipeline auto-reject-cycles', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFindLatestSessionForCommand.mockReturnValue('extract-session-id');
+  });
+
+  it('runPipeline with autoRejectCycles:true re-runs analyze select and retries push on cycle', async () => {
+    const { runPipeline } = await import('../../src/import/orchestrator.js');
+
+    const calls: string[][] = [];
+    mockExecFile.mockImplementation((_cmd: string, args: string[], _opts: object) => {
+      calls.push(args as string[]);
+      const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter };
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+
+      const isAnalyzeSelect = args.includes('select') && args.includes('analyze');
+      const isPushCall = args.includes('push');
+      const isFirstPush = isPushCall && calls.filter((c) => c.includes('push')).length === 1;
+
+      setImmediate(() => {
+        if (isFirstPush) {
+          child.stderr.emit('data', Buffer.from(CYCLE_STDERR));
+          child.emit('close', 1);
+        } else {
+          child.stderr.emit('data', Buffer.from(''));
+          child.emit('close', 0);
+        }
+      });
+      return child;
+    });
+
+    const opts: PipelineOptions = {
+      project: '/fake/project',
+      out: '/fake/out',
+      spaceId: 'test-space',
+      environmentId: 'test-env',
+      cmaToken: 'test-token',
+      agent: 'fake-agent',
+      skipAnalyze: true,
+      skipGenerate: true,
+      print: false,
+      skipApply: false,
+      noCache: false,
+      yes: true,
+      verbose: false,
+      autoRejectCycles: true,
+    };
+
+    const result = await runPipeline(opts, () => {}, 'fake-cli-path');
+
+    expect(result.cycleError).toBeUndefined();
+
+    const analyzeCalls = calls.filter((c) => c.includes('select') && c.includes('--exclude-components'));
+    expect(analyzeCalls.length).toBeGreaterThanOrEqual(1);
+    expect(analyzeCalls[0]?.join(' ')).toContain('Comp_A');
+
+    const pushCalls = calls.filter((c) => c.includes('push'));
+    expect(pushCalls.length).toBe(2);
+  });
+
+  it('runPipeline with autoRejectCycles:false returns cycleError without retrying', async () => {
+    const { runPipeline } = await import('../../src/import/orchestrator.js');
+
+    const calls: string[][] = [];
+    mockExecFile.mockImplementation((_cmd: string, args: string[], _opts: object) => {
+      calls.push(args as string[]);
+      const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter };
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      setImmediate(() => {
+        if (args.includes('push')) {
+          child.stderr.emit('data', Buffer.from(CYCLE_STDERR));
+          child.emit('close', 1);
+        } else {
+          child.emit('close', 0);
+        }
+      });
+      return child;
+    });
+
+    const opts: PipelineOptions = {
+      project: '/fake/project',
+      out: '/fake/out',
+      spaceId: 'test-space',
+      environmentId: 'test-env',
+      cmaToken: 'test-token',
+      agent: 'fake-agent',
+      skipAnalyze: true,
+      skipGenerate: true,
+      print: false,
+      skipApply: false,
+      noCache: false,
+      yes: true,
+      verbose: false,
+      autoRejectCycles: false,
+    };
+
+    const result = await runPipeline(opts, () => {}, 'fake-cli-path');
+
+    expect(result.cycleError).toBeDefined();
+
+    const analyzeCalls = calls.filter((c) => c.includes('select') && c.includes('--exclude-components'));
+    expect(analyzeCalls.length).toBe(0);
   });
 });
 

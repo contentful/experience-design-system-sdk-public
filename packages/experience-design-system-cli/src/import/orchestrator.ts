@@ -38,6 +38,8 @@ export interface PipelineOptions {
   deselect?: string[];
   /** Forwarded to the spawned `analyze select-agent` subprocess. */
   selectPromptPath?: string;
+  /** When true, auto-reject cycle participants and retry push instead of surfacing an error. */
+  autoRejectCycles?: boolean;
 }
 
 export interface StepResult {
@@ -112,6 +114,15 @@ export function isSlotCycleError(result: { exitCode: number; stderr: string }): 
 
 export function extractCycleReport(stderr: string): string[] {
   return stderr.split('\n').filter((line) => line.trim());
+}
+
+export function parseCycleComponentNames(report: string[]): string[] {
+  const names: string[] = [];
+  for (const line of report) {
+    const m = line.match(/Fix: remove '([^']+)' from /);
+    if (m) names.push(m[1]);
+  }
+  return [...new Set(names)];
 }
 
 export function isPreviewValidationError(result: { exitCode: number; stderr: string }): boolean {
@@ -552,23 +563,93 @@ export async function runPipeline(
 
     if (isSlotCycleError(r)) {
       const report = extractCycleReport(r.stderr);
-      updateStep(db, pushStepId, 'failed', {}, r.stderr);
-      progressWriter(`${pushLabel}✗  failed (${(durationMs / 1000).toFixed(1)}s)`);
-      progressWriter('Slot cycle detected. The manifest contains circular slot references that would block the push.');
-      for (const line of report) progressWriter(line);
-      steps.push(
-        buildPushStepResult({
-          created,
-          updated,
-          failed,
-          durationMs,
-          stderr: r.stderr,
-          excludedByRetry,
-          totalFailure: true,
-        }),
-      );
-      db.close();
-      return { session: sessionId, project: projectRoot, steps, cycleError: { report } };
+
+      if (opts.autoRejectCycles && extractSessionId) {
+        const cycleNames = parseCycleComponentNames(report);
+        if (cycleNames.length > 0) {
+          process.stderr.write(
+            `[cycle-retry] Slot cycle detected — excluding ${cycleNames.join(', ')} and retrying\n`,
+          );
+          const rejectArgs = [
+            'analyze',
+            'select',
+            '--session',
+            extractSessionId,
+            '--exclude-components',
+            cycleNames.join(','),
+          ];
+          const rejectResult = await runStep(rejectArgs, cliPath);
+          if (rejectResult.exitCode === 0) {
+            const retryT0 = Date.now();
+            const retryR = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
+            const retryDurationMs = Date.now() - t0 + (Date.now() - retryT0);
+
+            if (isSlotCycleError(retryR)) {
+              const retryReport = extractCycleReport(retryR.stderr);
+              updateStep(db, pushStepId, 'failed', {}, retryR.stderr);
+              progressWriter(`${pushLabel}✗  failed (${(retryDurationMs / 1000).toFixed(1)}s)`);
+              progressWriter(
+                'Slot cycle detected after auto-reject retry. The manifest still contains circular slot references.',
+              );
+              for (const line of retryReport) progressWriter(line);
+              steps.push(
+                buildPushStepResult({
+                  created,
+                  updated,
+                  failed,
+                  durationMs: retryDurationMs,
+                  stderr: retryR.stderr,
+                  excludedByRetry: [...excludedByRetry, ...cycleNames],
+                  totalFailure: true,
+                }),
+              );
+              db.close();
+              return { session: sessionId, project: projectRoot, steps, cycleError: { report: retryReport } };
+            }
+
+            if (retryR.exitCode !== 0) {
+              updateStep(db, pushStepId, 'failed', {}, retryR.stderr);
+              progressWriter(`${pushLabel}✗  failed (${(retryDurationMs / 1000).toFixed(1)}s)`);
+              steps.push(
+                buildPushStepResult({
+                  created,
+                  updated,
+                  failed,
+                  durationMs: retryDurationMs,
+                  stderr: retryR.stderr,
+                  excludedByRetry: [...excludedByRetry, ...cycleNames],
+                  totalFailure: true,
+                }),
+              );
+              db.close();
+              return { session: sessionId, project: projectRoot, steps };
+            }
+
+            excludedByRetry.push(...cycleNames);
+            r = retryR;
+          }
+        }
+      }
+
+      if (isSlotCycleError(r)) {
+        updateStep(db, pushStepId, 'failed', {}, r.stderr);
+        progressWriter(`${pushLabel}✗  failed (${(durationMs / 1000).toFixed(1)}s)`);
+        progressWriter('Slot cycle detected. The manifest contains circular slot references that would block the push.');
+        for (const line of report) progressWriter(line);
+        steps.push(
+          buildPushStepResult({
+            created,
+            updated,
+            failed,
+            durationMs,
+            stderr: r.stderr,
+            excludedByRetry,
+            totalFailure: true,
+          }),
+        );
+        db.close();
+        return { session: sessionId, project: projectRoot, steps, cycleError: { report } };
+      }
     }
 
     if (r.exitCode !== 0 && (totalPushed === 0 || failed === totalPushed)) {
