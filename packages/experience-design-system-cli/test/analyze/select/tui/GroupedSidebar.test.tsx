@@ -6,6 +6,8 @@ import {
   GroupedSidebar,
   visibleItemOrder,
   labelStyleFor,
+  selectionGlyphStyleFor,
+  inheritanceGlyphStyleFor,
   buildVisibleRows,
   type GroupedSidebarItem,
   type VisibleRow,
@@ -1556,6 +1558,71 @@ describe('GroupedSidebar — filterVisibleKeys (T4 search-time neighborhood filt
     expect(keys).toContain('Z');
     expect(keys).not.toContain('X');
     expect(keys).not.toContain('Y');
+  });
+});
+
+describe('status glyphs are always semantic green/red, never white', () => {
+  describe('selectionGlyphStyleFor', () => {
+    it('accepted glyph is success-green on a non-cycle row', () => {
+      const s = selectionGlyphStyleFor('accepted', false);
+      expect(s.glyph).toBe('[✓]');
+      expect(s.color).toBe(PALETTE.success);
+    });
+
+    it('accepted glyph stays success-green on a CYCLE row (never white)', () => {
+      const s = selectionGlyphStyleFor('accepted', true);
+      expect(s.glyph).toBe('[✓]');
+      expect(s.color).toBe(PALETTE.success);
+      expect(s.color).not.toBe('white');
+      expect(s.color).not.toBe(PALETTE.inverse);
+    });
+
+    it('rejected glyph is error-red on a non-cycle row', () => {
+      const s = selectionGlyphStyleFor('rejected', false);
+      expect(s.glyph).toBe('[✗]');
+      expect(s.color).toBe(PALETTE.error);
+    });
+
+    it('rejected glyph stays error-red on a CYCLE row (never white)', () => {
+      const s = selectionGlyphStyleFor('rejected', true);
+      expect(s.glyph).toBe('[✗]');
+      expect(s.color).toBe(PALETTE.error);
+      expect(s.color).not.toBe('white');
+      expect(s.color).not.toBe(PALETTE.inverse);
+    });
+
+    it('undecided glyph carries no accept/reject color on any row kind', () => {
+      const nonCycle = selectionGlyphStyleFor('undecided', false);
+      const cycle = selectionGlyphStyleFor('undecided', true);
+      expect(nonCycle.glyph).toBe('[ ]');
+      expect(cycle.glyph).toBe('[ ]');
+      expect(cycle.color).not.toBe('white');
+      expect(cycle.color).not.toBe(PALETTE.inverse);
+    });
+  });
+
+  describe('inheritanceGlyphStyleFor', () => {
+    it('error glyph is error-red when the cursor is NOT on the row', () => {
+      const s = inheritanceGlyphStyleFor({ status: 'error', isOwn: true, isCursor: false });
+      expect(s.glyph).toBe('✗');
+      expect(s.color).toBe(PALETTE.error);
+    });
+
+    it('error glyph stays error-red when the CURSOR is on the row (never white)', () => {
+      const s = inheritanceGlyphStyleFor({ status: 'error', isOwn: true, isCursor: true });
+      expect(s.glyph).toBe('✗');
+      expect(s.color).toBe(PALETTE.error);
+      expect(s.color).not.toBe('white');
+      expect(s.color).not.toBe(PALETTE.inverse);
+    });
+
+    it('warning glyph stays warning-yellow when the CURSOR is on the row (never white)', () => {
+      const s = inheritanceGlyphStyleFor({ status: 'warning', isOwn: true, isCursor: true });
+      expect(s.glyph).toBe('⚠');
+      expect(s.color).toBe(PALETTE.warning);
+      expect(s.color).not.toBe('white');
+      expect(s.color).not.toBe(PALETTE.inverse);
+    });
   });
 });
 
