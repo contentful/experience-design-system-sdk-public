@@ -1479,6 +1479,11 @@ export function GenerateReviewStep({
         setPanelScrollOffset(() => 0);
         return;
       }
+      if (input === 's') {
+        setPanelOpen('source');
+        setPanelScrollOffset(() => 0);
+        return;
+      }
     }
 
     // Tab toggles focus bidirectionally between sidebar and panel. `e` is a

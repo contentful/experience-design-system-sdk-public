@@ -961,6 +961,25 @@ describe('GenerateReviewStep - component rationale panels (lifted)', () => {
     expect(out).not.toMatch(/FIELDS \[Ctrl\+S/);
   });
 
+  it('GA-2 A4: pressing s from sidebar focus opens the source panel', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadComponentReviewMetadata).mockReturnValue({
+      sourcePath: '/proj/Button.tsx',
+      componentSource: 'L1\nL2\nL3',
+      props: {},
+    });
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/FIELDS/);
+    stdin.write('s');
+    await tick();
+    const out = lastFrame() ?? '';
+    expect(out).toContain('source: /proj/Button.tsx');
+    expect(out).not.toMatch(/FIELDS \[Ctrl\+S/);
+  });
+
   it('pressing P again closes the panel and restores the right pane', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
