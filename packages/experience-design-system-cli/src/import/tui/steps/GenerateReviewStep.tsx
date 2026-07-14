@@ -334,6 +334,7 @@ export function GenerateReviewStep({
   // removed components exist. Gated to `sidebarFocused` so it can't collide
   // with FieldEditor text entry.
   const [removedBannerCollapsed, setRemovedBannerCollapsed] = useState(false);
+  const removedBannerDefaultedRef = useRef(false);
   // Lifted rationale + source panels (replaces FieldEditor's right pane).
   // Mutually exclusive states.
   const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>('none');
@@ -480,6 +481,10 @@ export function GenerateReviewStep({
     );
     const nextRemoved = response.components.removed ?? [];
     setRemovedComponents(nextRemoved);
+    if (!removedBannerDefaultedRef.current && nextRemoved.length > 0) {
+      removedBannerDefaultedRef.current = true;
+      setRemovedBannerCollapsed(nextRemoved.length > 5);
+    }
     setBreakingChanges(deriveBreakingChanges(response));
   };
 
@@ -2181,7 +2186,7 @@ export function GenerateReviewStep({
           <Text bold color="red">
             {`Removed components (${removedComponents.length}) — will be `}
             <Text bold color="red">DELETE</Text>
-            {'D from target space'}
+            {'D from target space  (press [d] to expand/collapse)'}
           </Text>
           {!removedBannerCollapsed && (
             <>

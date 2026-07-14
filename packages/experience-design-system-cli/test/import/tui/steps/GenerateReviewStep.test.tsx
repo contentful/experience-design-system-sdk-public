@@ -4709,4 +4709,48 @@ describe('GenerateReviewStep — [d] toggles removed-components banner (A2-2)', 
     const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
     expect(frame).toContain('[d]');
   });
+
+  // A2-2 refinement (spec §4b, 2026-07-14): the banner starts COLLAPSED by
+  // default only when it would exceed 5 lines (>5 removed rows). Each removed
+  // component renders exactly one row, so the measure is
+  // `removedComponents.length > 5`.
+  it('starts COLLAPSED by default when there are more than 5 removed components', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['R1', 'R2', 'R3', 'R4', 'R5', 'R6']));
+    await tick();
+    const frame = lastFrame() ?? '';
+    // Header (count) always visible.
+    expect(frame).toContain('Removed components (6)');
+    // Detail rows hidden by default because 6 > 5.
+    expect(frame).not.toMatch(/- R1/);
+    expect(frame).not.toMatch(/- R6/);
+  });
+
+  it('starts EXPANDED by default when there are 5 or fewer removed components', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['R1', 'R2', 'R3', 'R4', 'R5']));
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Removed components (5)');
+    // Detail rows visible by default because 5 is not > 5.
+    expect(frame).toMatch(/- R1/);
+    expect(frame).toMatch(/- R5/);
+  });
+
+  it('count header renders the expand/collapse hint text', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithRemoved(['Widget']));
+    await tick();
+    const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
+    expect(frame).toMatch(/\[d\] to expand\/collapse/);
+  });
 });
