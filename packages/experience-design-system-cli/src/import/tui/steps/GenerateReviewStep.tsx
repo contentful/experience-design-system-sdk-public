@@ -2687,7 +2687,7 @@ export function GenerateReviewStep({
           {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
           {breakingChanges.length > 0 && legendEntry('[b]', 'breaking', breakingPanel.isOpen)}
           {removedComponents.length > 0 &&
-            legendEntry('[d]', removedBannerCollapsed ? 'show removed' : 'hide removed', removedBannerCollapsed)}
+            legendEntry('[d]', removedBannerCollapsed ? 'show removed' : 'hide removed', !removedBannerCollapsed)}
           {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
           {legendEntry('[Tab]', 'focus panel')}
           {legendEntry('[Ctrl+Z]', 'undo')}
