@@ -68,11 +68,6 @@ export function CredentialsStep({
   const [activeField, setActiveField] = useState<Field>('spaceId');
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [cursorVisible, setCursorVisible] = useState(true);
-  // Tracks whether the operator has typed any printable character into a
-  // form field since mount. While false, the `s` keybind is interpreted as
-  // the skip-credentials shortcut. Once the operator has begun typing, `s`
-  // is routed into the active field as input (we don't want to swallow a
-  // legitimate letter in a space ID / token / host).
   const hasTypedRef = useRef(false);
 
   useEffect(() => {
@@ -81,10 +76,6 @@ export function CredentialsStep({
   }, []);
 
   useImmediateInput((input, key) => {
-    // While we are validating credentials, the screen stays mounted but the
-    // form is locked — any input is dropped. The exception is `R` when a
-    // prefetch failed and we expose a retry hook (so the operator can recover
-    // without backing out of the wizard).
     if (validating) {
       return;
     }
@@ -105,7 +96,6 @@ export function CredentialsStep({
         setActiveField('host');
         return;
       }
-      // Submit
       if (!spaceId.trim() || !environmentId.trim() || !cmaToken.trim()) {
         setInlineError('All fields are required.');
         return;
@@ -134,10 +124,6 @@ export function CredentialsStep({
       onQuit();
       return;
     }
-    // Skip-credentials shortcut. Gated against text-entry mode so the letter
-    // 's' can still be typed into a form field once the operator has begun
-    // editing. The legend hint is always rendered (see below) so operators
-    // know the escape hatch exists from the moment the screen mounts.
     if ((input === 's' || input === 'S') && onSkip && !hasTypedRef.current) {
       onSkip();
       return;

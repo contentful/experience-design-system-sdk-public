@@ -21,18 +21,8 @@ export type RunPickerProps = {
 };
 
 const COLLAPSED_LIMIT = 10;
-/**
- * The picker collapses to top 10 + Show all only when there are 12+ total.
- * Eleven or fewer runs render in full.
- */
 const COLLAPSE_THRESHOLD = 12;
 
-/**
- * Format the createdAt timestamp as `YYYY-MM-DD HH:MM` in the operator's
- * local timezone. We intentionally use local time (not UTC) because the
- * picker is for human recognition — operators expect to see times in the
- * same zone they were when the run happened.
- */
 function formatCreatedAt(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -50,8 +40,6 @@ function runLine(run: RunRecord): string {
   const count = `${run.componentCount} component${run.componentCount === 1 ? '' : 's'}`;
   return `${run.id} - ${date} - ${run.projectPath} (${count}, ${pushedTag})`;
 }
-
-// ── Sub-screen: Push / Modify / Cancel ─────────────────────────────────────
 
 type ActionOption = 'push' | 'modify' | 'cancel';
 const ACTION_OPTIONS: { key: ActionOption; label: string; description: string }[] = [
@@ -120,8 +108,6 @@ function ActionScreen({
   );
 }
 
-// ── Main picker ────────────────────────────────────────────────────────────
-
 type Row = { kind: 'run'; run: RunRecord } | { kind: 'show-all' } | { kind: 'new' };
 
 function buildRows(runs: RunRecord[], expanded: boolean): Row[] {
@@ -136,17 +122,14 @@ function buildRows(runs: RunRecord[], expanded: boolean): Row[] {
 export function RunPicker({ runs, staleRunIds, onSelect, onCancel }: RunPickerProps): React.ReactElement {
   const [expanded, setExpanded] = useState(false);
   const [focusIdx, setFocusIdx] = useState(0);
-  // When non-null, render the Push/Modify/Cancel sub-screen for this run.
   const [actionRunId, setActionRunId] = useState<string | null>(null);
 
   const rows = buildRows(runs, expanded);
-  // Clamp focus if the row count shrinks (e.g. after expansion changes layout).
   const clampedFocus = Math.min(focusIdx, rows.length - 1);
 
   const selectRow = (row: Row): void => {
     if (row.kind === 'show-all') {
       setExpanded(true);
-      // Keep cursor on the first newly-revealed run for continuity.
       setFocusIdx(COLLAPSED_LIMIT);
       return;
     }
@@ -159,9 +142,6 @@ export function RunPicker({ runs, staleRunIds, onSelect, onCancel }: RunPickerPr
 
   useImmediateInput((rawInput, key) => {
     if (actionRunId !== null) {
-      // Sub-screen owns input while it's active. (ActionScreen also installs
-      // its own useImmediateInput; only one is mounted at a time so there's
-      // no double-handle.)
       return;
     }
     if (key.upArrow || rawInput === 'k') {

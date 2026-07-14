@@ -2,18 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'ink-testing-library';
 import { ScopeGateStep } from '../../../src/import/tui/steps/ScopeGateStep.js';
 
-// Composite-components grouping — scope-gate wiring tests.
-//
-// When ScopeGateStep receives components with `slots` metadata, it renders
-// through GroupedSidebar so composite grouping (root + deps) is visible at
-// selection time — matching the same tiering used in GenerateReviewStep.
-//
-// Selection semantics at scope-gate (post-D2 cascade rework):
-//   - Groups render always-expanded (▾) — no collapse.
-//   - Accepting any row cascades to all descendants.
-//   - Rejecting any row cascades to all ancestors that slot it.
-//   - Every row is individually selectable (roots, children, standalones, flat).
-
 const withSlots = (
   name: string,
   componentId: string,
@@ -40,23 +28,14 @@ describe('ScopeGateStep — grouped sidebar rendering', () => {
     );
     const out = lastFrame() ?? '';
     expect(out).toMatch(/▾ Card \(2 deps\)/);
-    // Standalone stays flat (no arrow, no dep count).
     expect(out).toContain('Standalone');
     expect(out).not.toMatch(/[▸▾] Standalone/);
-    // Children visible under the always-expanded root.
     expect(out).toContain('Text');
     expect(out).toContain('Icon');
   });
 });
 
 describe('ScopeGateStep — cycle-member injection under composite parents', () => {
-  // Scenario 9 fixture from the react-ux-matrix debug harness:
-  //   InnerA ↔ InnerB (slot each other → cycle),
-  //   SharedInterior slots InnerA,
-  //   Wrapper1 + Wrapper2 slot SharedInterior.
-  // Before the fix: expanding Wrapper1/Wrapper2/SharedInterior never surfaced
-  // InnerA/InnerB. After: InnerA appears as `⚠ InnerA (cycle)` under
-  // SharedInterior AND (transitively) under Wrapper1 + Wrapper2.
   it('shows cycle members under every composite that slots them (scenario 9)', () => {
     const { lastFrame } = render(
       <ScopeGateStep
@@ -72,27 +51,17 @@ describe('ScopeGateStep — cycle-member injection under composite parents', () 
       />,
     );
     const out = lastFrame() ?? '';
-    // Cycle tier at top: both InnerA and InnerB.
     expect(out).toContain('InnerA');
     expect(out).toContain('InnerB');
-    // Wrapper roots present with dep counts.
     expect(out).toMatch(/Wrapper1/);
     expect(out).toMatch(/Wrapper2/);
-    // InnerA appears MULTIPLE times: cycle-tier row plus injected cycle-child
-    // rows under SharedInterior / Wrapper1 / Wrapper2 subtrees. Before the
-    // fix, InnerA appeared exactly once (cycle-tier only).
     const innerAMatches = out.match(/InnerA/g) ?? [];
     expect(innerAMatches.length).toBeGreaterThan(1);
-    // The (cycle) suffix decorates injected cycle-child rows.
     expect(out).toMatch(/⚠ InnerA \(cycle\)/);
   });
 });
 
 describe('ScopeGateStep — cycle-tier subtree expansion (task 35)', () => {
-  // At scope-gate (alwaysExpanded=true) cycle-tier rows render as expanded
-  // mini-groups. A cycle participant's slot targets appear inline beneath it
-  // with tree glyphs, so the operator can see the closure without leaving
-  // the sidebar.
   it('renders slot targets inline under an expanded cycle row', () => {
     const { lastFrame } = render(
       <ScopeGateStep
@@ -105,10 +74,8 @@ describe('ScopeGateStep — cycle-tier subtree expansion (task 35)', () => {
       />,
     );
     const out = lastFrame() ?? '';
-    // Both cycle rows are expanded (▾) with the ⚠ warning glyph.
     expect(out).toMatch(/▾.*⚠.*NodeA/);
     expect(out).toMatch(/▾.*⚠.*NodeB/);
-    // Tree glyph shows a nested slot target.
     expect(out).toMatch(/[├└]─/);
   });
 });
@@ -128,8 +95,6 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    // Cursor starts on Card root (undecided). [a] accepts Card + cascades
-    // to Text + Icon. Standalone remains undecided → partitions to rejected.
     stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -151,8 +116,6 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    // Accept-all first so Card is accepted, then reject Card → 2 descendants
-    // → prompt. Standalone stays accepted (not part of Card's closure).
     stdin.write('A');
     stdin.write('r');
     stdin.write('y');
@@ -175,9 +138,8 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    // Rows: Card (root), Text (child), Standalone. Move to Standalone.
-    stdin.write('j'); // Text child
-    stdin.write('j'); // Standalone
+    stdin.write('j');
+    stdin.write('j');
     stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -197,10 +159,9 @@ describe('ScopeGateStep — closure-aware selection', () => {
         onQuit={() => {}}
       />,
     );
-    // Accept-all first, then reject Text via its child row.
     stdin.write('A');
-    stdin.write('j'); // move to Text child
-    stdin.write('r'); // reject Text — cascades to Card (blast radius 1 → no prompt).
+    stdin.write('j');
+    stdin.write('r');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
     expect(arg.rejected).toEqual(expect.arrayContaining(['Text', 'Card']));
