@@ -4354,6 +4354,54 @@ describe('GenerateReviewStep — breaking-changes goto-banner (L6)', () => {
     expect(frame).toContain('[Tab] focus list');
   });
 
+  it('BD4: Enter on a slot-change row focuses the editor scrolled to that exact slot', async () => {
+    // Component with ONE slot-level breaking change (slot_removed on 'footer').
+    // The $slots entry is required so the FieldEditor renders a slot row for 'footer'.
+    const SLOT_CARD_ENTRY = {
+      $type: 'component' as const,
+      $properties: {},
+      $slots: { footer: { $allowedComponents: ['X'] } },
+    };
+    const previewWithSlotChange = () =>
+      ({
+        components: {
+          new: [],
+          changed: [
+            {
+              current: { id: 'card', name: 'Card', contentProperties: [], designProperties: [], slots: ['footer'] },
+              proposed: { $type: 'component', $properties: {}, $slots: { footer: { $allowedComponents: ['X'] } } },
+              hasPendingDraftChanges: false,
+              changeClassification: {
+                classification: 'breaking',
+                breakingChanges: [{ slotId: 'footer', reason: 'slot_removed' }],
+              },
+            },
+          ],
+          removed: [],
+          unchanged: [],
+        },
+        tokens: { new: [], changed: [], removed: [], unchanged: [] },
+      }) as never;
+
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: SLOT_CARD_ENTRY }]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithSlotChange());
+    await tick();
+    stdin.write('b'); // open breaking-changes banner
+    await tick();
+    stdin.write('\r'); // Enter on the first (only) row — the slot-change row
+    await tick();
+    const frame = stripAnsiL6(lastFrame() ?? '');
+    // Editor is now focused (sidebar loses focus → hint flips to "focus list")
+    expect(frame).toContain('[Tab] focus list');
+    // FieldEditor is scrolled to the 'footer' slot row — its name appears in the editor pane.
+    expect(frame).toContain('footer');
+  });
+
   // ── BD2: slot-level breaking changes flow through deriveBreakingChanges +
   // buildBreakingRows, discriminated by key presence (propertyId vs slotId). ──
   it('BD2: deriveBreakingChanges carries BOTH property-branch and slot-branch changes', () => {
