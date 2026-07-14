@@ -4324,11 +4324,12 @@ describe('GenerateReviewStep — breaking-changes goto-banner (L6)', () => {
     const open = stripAnsiL6(lastFrame() ?? '');
     // One row per breaking change: both propertyIds AND both reasons appear.
     // At tip only `changes[0].reason` ('removed') renders in a single row, so
-    // `type_changed` (the second change's reason) is the RED discriminator.
+    // the second change's reason is the RED discriminator. BD3 renders the
+    // friendly copy ("type changed") rather than the raw token.
     expect(open).toMatch(/variant/);
     expect(open).toMatch(/size/);
     expect(open).toMatch(/removed/);
-    expect(open).toMatch(/type_changed/);
+    expect(open).toMatch(/type changed/);
   });
 
   it('BD4: Enter on a change row focuses the editor scrolled to that exact prop', async () => {
@@ -4400,10 +4401,145 @@ describe('GenerateReviewStep — breaking-changes goto-banner (L6)', () => {
     const slotRow = rows.find((r) => r.focusTarget?.kind === 'slot');
     expect(propRow?.focusTarget).toEqual({ kind: 'prop', name: 'variant' });
     expect(slotRow?.focusTarget).toEqual({ kind: 'slot', name: 'footer' });
-    // Slot row label carries the slotId + reason, not `undefined`.
+    // Slot row label carries the slotId + friendly reason, not `undefined`.
     expect(slotRow?.label).toContain('footer');
-    expect(slotRow?.label).toContain('slot_removed');
+    expect(slotRow?.label).toContain('slot removed');
     expect(slotRow?.label).not.toContain('undefined');
+  });
+});
+
+// ── BD3: detailed, human-readable breaking-change reasons + detail panel ─────
+// `formatBreakingChange` is a pure formatter (NON-§G module) that maps each
+// discriminated-union branch to friendly copy, enriched with `fullProperties`
+// (type/category) when reachable. `buildBreakingRows` uses it for row labels.
+// A dedicated detail panel lists EVERY change for the highlighted component
+// with its detailed reason + metadata.
+describe('BD3 — formatBreakingChange (pure formatter)', () => {
+  let formatBreakingChange: typeof import('../../../../src/import/tui/steps/breaking-change-format.js').formatBreakingChange;
+
+  beforeEach(async () => {
+    const mod = await import('../../../../src/import/tui/steps/breaking-change-format.js');
+    formatBreakingChange = mod.formatBreakingChange;
+  });
+
+  it('property branch enriched with fullProperties names id, category, and reason', () => {
+    const s = formatBreakingChange(
+      { propertyId: 'colorScheme', reason: 'removed' },
+      { fullProperties: { colorScheme: { type: 'enum', category: 'design', required: true } } } as never,
+    );
+    expect(s).toContain('colorScheme');
+    expect(s).toContain('design');
+    expect(s).toContain('removed');
+  });
+
+  it('property branch degrades gracefully with no current metadata', () => {
+    const s = formatBreakingChange({ propertyId: 'variant', reason: 'type_changed' });
+    expect(s).toContain('variant');
+    expect(s).toContain('type changed');
+    expect(s).not.toContain('undefined');
+  });
+
+  it('slot branch names the slotId and a friendly reason', () => {
+    expect(formatBreakingChange({ slotId: 'footer', reason: 'slot_removed' })).toContain('footer');
+    expect(formatBreakingChange({ slotId: 'footer', reason: 'slot_removed' })).toContain('slot removed');
+    const narrowed = formatBreakingChange({ slotId: 'header', reason: 'slot_allowed_components_narrowed' });
+    expect(narrowed).toContain('header');
+    expect(narrowed).toContain('allowed components narrowed');
+  });
+});
+
+describe('BD3 — buildBreakingRows uses the friendly formatter', () => {
+  let buildBreakingRows: typeof import('../../../../src/import/tui/steps/GenerateReviewStep.js').buildBreakingRows;
+
+  beforeEach(async () => {
+    const mod = await import('../../../../src/import/tui/steps/GenerateReviewStep.js');
+    buildBreakingRows = mod.buildBreakingRows;
+  });
+
+  it('row label carries the enriched detail (category) from fullProperties', () => {
+    const rows = buildBreakingRows([
+      {
+        componentName: 'Card',
+        current: { fullProperties: { colorScheme: { type: 'enum', category: 'design', required: true } } } as never,
+        changes: [{ propertyId: 'colorScheme', reason: 'removed' }] as never,
+      },
+    ]);
+    const row = rows.find((r) => r.focusTarget?.name === 'colorScheme');
+    expect(row?.label).toContain('colorScheme');
+    expect(row?.label).toContain('design');
+    expect(row?.label).toContain('removed');
+  });
+});
+
+describe('BD3 — breaking-change detail panel', () => {
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+  const CARD_ENTRY = {
+    $type: 'component' as const,
+    $properties: {
+      colorScheme: { $type: 'enum' as const, $category: 'design' as const, $values: ['a', 'b'] },
+    },
+    $slots: { footer: { $allowedComponents: ['X'] } },
+  };
+
+  const previewWithMixedChanges = () =>
+    ({
+      components: {
+        new: [],
+        changed: [
+          {
+            current: {
+              id: 'card',
+              name: 'Card',
+              contentProperties: [],
+              designProperties: ['colorScheme'],
+              slots: ['footer'],
+              fullProperties: { colorScheme: { type: 'enum', category: 'design', required: true } },
+            },
+            proposed: { $type: 'component', $properties: {} },
+            hasPendingDraftChanges: false,
+            changeClassification: {
+              classification: 'breaking',
+              breakingChanges: [
+                { propertyId: 'colorScheme', reason: 'removed' },
+                { slotId: 'footer', reason: 'slot_removed' },
+              ],
+            },
+          },
+        ],
+        removed: [],
+        unchanged: [],
+      },
+      tokens: { new: [], changed: [], removed: [], unchanged: [] },
+    }) as never;
+
+  beforeEach(() => {
+    triggerSpy.mockReset();
+    lastUseLivePreviewArgs = null;
+    lastOnResult = null;
+    hookReturnOverride = null;
+  });
+
+  it('detail panel lists each change with its detailed reason + metadata', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Card', entry: CARD_ENTRY }]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    lastOnResult!(previewWithMixedChanges());
+    await tick();
+    stdin.write('b'); // open breaking panel
+    await tick();
+    stdin.write('D'); // open the detail panel for the highlighted breaking component
+    await tick();
+    const out = stripAnsi(lastFrame() ?? '');
+    // Both the property change and the slot change render with friendly copy.
+    expect(out).toContain('colorScheme');
+    expect(out).toContain('design');
+    expect(out).toContain('removed');
+    expect(out).toContain('footer');
+    expect(out).toContain('slot removed');
   });
 });
 

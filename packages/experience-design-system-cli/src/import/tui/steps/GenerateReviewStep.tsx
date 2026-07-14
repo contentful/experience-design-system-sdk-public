@@ -59,6 +59,7 @@ import { computeSidebarBudget, FALLBACK_ROWS } from '../lineage-layout.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import { legendEntry } from '../components/LegendEntry.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
+import { formatBreakingChange } from './breaking-change-format.js';
 import {
   enumerateCycleBreaks,
   shouldBreakOverlayGoFullScreen,
@@ -252,6 +253,11 @@ export interface BreakingComponent {
   componentName: string;
   changes: BreakingChange[];
   impact?: DownstreamImpact;
+  // BD3 — the changed entity's `current` summary, threaded so the friendly
+  // formatter can enrich property rows with `fullProperties` (type/category).
+  // Optional: absent when the preview response omits it, in which case the
+  // formatter degrades to id + reason.
+  current?: ComponentTypeSummary;
 }
 
 export interface BreakingRow {
@@ -276,15 +282,22 @@ export function buildBreakingRows(breakingChanges: BreakingComponent[]): Breakin
       continue;
     }
     for (const change of b.changes) {
+      // BD3 — the row label IS the friendly, `fullProperties`-enriched detail
+      // (per spec: replace the terser BD2 label with `formatBreakingChange`).
+      // The component name lives on `componentName` (the jump target) + the
+      // detail panel header, so it's not repeated in the one-liner. The
+      // `focusTarget` (prop/slot + name) is preserved so BD4's jump-to-field
+      // still works.
+      const label = formatBreakingChange(change, b.current);
       if ('slotId' in change) {
         out.push({
-          label: `${b.componentName} · ${change.slotId}: ${change.reason}`,
+          label,
           componentName: b.componentName,
           focusTarget: { kind: 'slot', name: change.slotId },
         });
       } else {
         out.push({
-          label: `${b.componentName} · ${change.propertyId}: ${change.reason}`,
+          label,
           componentName: b.componentName,
           focusTarget: { kind: 'prop', name: change.propertyId },
         });
@@ -311,6 +324,7 @@ export function deriveBreakingChanges(response: ServerPreviewResponse): Breaking
       componentName,
       changes: item.changeClassification.breakingChanges ?? [],
       impact: item.impact,
+      current: item.current,
     });
   }
   return out;
@@ -452,9 +466,15 @@ export function GenerateReviewStep({
   // `previewAnnotations` map, so we stash it here from `handleLivePreviewResult`
   // and surface it via a `[b]` overlay mirroring the lineage panel. `[b]` opens;
   // ↑/↓/j/k move the cursor; Enter jumps the main selection + closes.
-  const breakingPanel = useOverlayPanel({ toggleKey: 'b' });
+  const breakingPanel = useOverlayPanel({ toggleKey: 'b', onClose: () => setBreakingDetailOpen(false) });
   const [breakingChanges, setBreakingChanges] = useState<BreakingComponent[]>([]);
   const [breakingCursor, setBreakingCursor] = useState(0);
+  // BD3 — dedicated breaking-change detail panel. Opened with `[D]` from within
+  // the `[b]` goto-banner; lists EVERY breaking change for the highlighted
+  // component with its friendly reason + `fullProperties` metadata. The banner
+  // row stays a one-liner; this panel carries the full breakdown. Closed by
+  // `[D]`/Esc or by closing the banner.
+  const [breakingDetailOpen, setBreakingDetailOpen] = useState(false);
   // BD4 — deferred FieldEditor focus target. Set when the operator jumps from a
   // breaking-change row (Enter) so the FieldEditor opens focused + scrolled to
   // the exact changed field. Cleared when the operator leaves that component
@@ -1509,11 +1529,20 @@ export function GenerateReviewStep({
     // `[b]`/Esc close (via the shared hook).
     if (breakingPanel.isOpen) {
       if (breakingPanel.handleInput(input, key)) return;
+      // BD3 — `[D]` toggles the dedicated detail panel for the highlighted
+      // breaking component (full per-change breakdown). Handled before the
+      // cursor keys so it can't be shadowed.
+      if (input === 'D') {
+        setBreakingDetailOpen((prev) => !prev);
+        return;
+      }
       if (key.upArrow || input === 'k') {
+        setBreakingDetailOpen(false);
         setBreakingCursor((c) => Math.max(0, c - 1));
         return;
       }
       if (key.downArrow || input === 'j') {
+        setBreakingDetailOpen(false);
         setBreakingCursor((c) => Math.min(Math.max(0, breakingRows.length - 1), c + 1));
         return;
       }
@@ -2357,6 +2386,39 @@ export function GenerateReviewStep({
           <Text color="yellow">{`[b] ${breakingChanges.length} breaking change${breakingChanges.length === 1 ? '' : 's'}`}</Text>
         </Box>
       )}
+      {breakingPanel.isOpen &&
+        breakingDetailOpen &&
+        !dialogOpen &&
+        (() => {
+          // BD3 — dedicated detail panel for the breaking component under the
+          // banner cursor. Lists EVERY change with its friendly reason +
+          // `fullProperties` metadata (via the shared formatter). Rendered as a
+          // top-level block so it doesn't fight the sidebar slot the banner
+          // already occupies.
+          const row = breakingRows[breakingCursor];
+          const comp = row
+            ? breakingChanges.find((b) => b.componentName === row.componentName)
+            : undefined;
+          if (!comp) return null;
+          return (
+            <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
+              <Text bold color="yellow">{`Breaking changes — ${comp.componentName}`}</Text>
+              {comp.impact && (
+                <Text dimColor>
+                  {`  affects ${comp.impact.affectedExperiences} experience${comp.impact.affectedExperiences === 1 ? '' : 's'}, ${comp.impact.affectedFragments} fragment${comp.impact.affectedFragments === 1 ? '' : 's'}`}
+                </Text>
+              )}
+              {comp.changes.length === 0 ? (
+                <Text dimColor>{'  (no enumerated changes)'}</Text>
+              ) : (
+                comp.changes.map((change, ci) => (
+                  <Text key={`bd-detail-${ci}`}>{`  • ${formatBreakingChange(change, comp.current)}`}</Text>
+                ))
+              )}
+              <Text dimColor>{'[D/Esc] close detail'}</Text>
+            </Box>
+          );
+        })()}
       {cyclePanel.isOpen &&
         !dialogOpen &&
         (() => {
@@ -2530,7 +2592,7 @@ export function GenerateReviewStep({
               cursor={breakingCursor}
               maxRows={panelMaxRows}
               width={sidebarWidth}
-              footerHint="[↑/↓] move · [Enter] jump · [Esc] close"
+              footerHint="[↑/↓] move · [Enter] jump · [D] detail · [Esc] close"
             />
           ) : lineagePanel.isOpen && focusedComponentKey ? (
             <LineagePanel
