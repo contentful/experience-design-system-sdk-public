@@ -63,6 +63,7 @@ export function registerImportCommand(program: Command): void {
       'Print the generate components prompt without invoking the agent. Replaces the legacy --dry-run prompt-print behaviour on this command.',
     )
     .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)')
+    .option('--auto-reject-cycles', 'Automatically reject components involved in slot cycles and retry')
     .option('--auto-filter', 'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)')
     .option(
       '--no-auto-filter',
@@ -138,6 +139,7 @@ export function registerImportCommand(program: Command): void {
         dryRun?: boolean;
         printPrompt?: boolean;
         autoAcceptScope?: boolean;
+        autoRejectCycles?: boolean;
         autoFilter?: boolean;
         livePreview?: boolean;
         push?: boolean;
@@ -478,6 +480,7 @@ export function registerImportCommand(program: Command): void {
             host: opts.host,
             dryRun: dryRunForward,
             selectPromptPath: opts.selectPromptPath,
+            autoRejectCycles: opts.autoRejectCycles ?? false,
           },
           (line) => process.stderr.write(line + '\n'),
         );
