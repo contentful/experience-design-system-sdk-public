@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { render } from 'ink';
-import { mkdir, readdir, stat } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Command } from 'commander';
 import { extractComponents } from './extract/pipeline.js';
@@ -23,12 +23,26 @@ import { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
 import { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
 import { describeReviewReasons, inspectComponentSource } from './extract/source-inspection.js';
 import { validateExtractedComponents } from './extract/validate.js';
+import { resolveCompositionMode } from '../lib/composition-mode.js';
+import { resolveMapping } from './composition/resolve-mapping.js';
+import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
+import { selectCandidateFiles } from './composition/candidate-files.js';
+import { edgesToGroups } from './composition/interchange-schema.js';
+import { runAgent, type AgentName } from '../generate/agent-runner.js';
+import { readExperiencesCredentials } from '../credentials-store.js';
 import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
 
 interface AnalyzeExtractOptions {
   project: string;
   dir?: string;
   resolveUnreachable?: 'auto' | 'always' | 'never';
+  composite?: boolean;
+  atomic?: boolean;
+  compositionMap?: string;
+  compositionAdapter?: string;
+  compositionAgent?: boolean;
+  compositionRefresh?: boolean;
+  generateMap?: string;
 }
 
 const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
@@ -125,6 +139,49 @@ export async function collectSourceFiles(
   return files.sort();
 }
 
+/** Read the persisted default composition mode; missing config is fine. */
+async function safeReadCompositionMode(): Promise<'composite' | 'atomic' | undefined> {
+  try {
+    return (await readExperiencesCredentials()).compositionMode;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Resolve which coding-agent to use for mapping resolution (reuses the stored default). */
+function resolveCompositionAgentName(): AgentName {
+  const valid: AgentName[] = ['claude', 'codex', 'opencode', 'cursor'];
+  const env = process.env['EDS_COMPOSITION_AGENT'];
+  if (env && (valid as string[]).includes(env)) return env as AgentName;
+  return 'claude';
+}
+
+/**
+ * Read the source files of the extracted components plus nearby mapping/meta
+ * files, so the candidate pre-filter (T3) can pick the relevant ones. Reads
+ * each unique `sourcePath` once; missing files are skipped.
+ */
+async function readCandidateFiles(
+  components: Array<{ sourcePath?: string; source?: string }>,
+): Promise<Array<{ path: string; content: string }>> {
+  const paths = new Set<string>();
+  for (const c of components) {
+    if (c.sourcePath) paths.add(c.sourcePath);
+  }
+  const out: Array<{ path: string; content: string }> = [];
+  await Promise.all(
+    [...paths].map(async (p) => {
+      try {
+        const content = await readFile(p, 'utf8');
+        out.push({ path: p, content });
+      } catch {
+        // Missing source file — skip; the resolver simply sees fewer candidates.
+      }
+    }),
+  );
+  return out;
+}
+
 export function registerAnalyzeCommand(program: Command): void {
   const analyze = program
     .command('analyze')
@@ -140,6 +197,13 @@ export function registerAnalyzeCommand(program: Command): void {
       "Retry pass for unresolved Svelte Props types: 'auto' (default), 'always', or 'never'",
       'auto',
     )
+    .option('--composite', 'Resolve embedded-component composition (opt in; default is atomic)')
+    .option('--atomic', 'Skip composition resolution — flat components only (default)')
+    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map')
+    .option('--composition-adapter <name|path>', 'Use a native-format adapter (built-in name or custom module path)')
+    .option('--composition-agent', 'Opt into agentic mapping resolution when deterministic sources find no groups')
+    .option('--composition-refresh', 'Force the mapping agent to run even where deterministic sources answered')
+    .option('--generate-map <path>', 'Emit a skeleton interchange map from what deterministic sources found, then exit')
     .action(async (opts: AnalyzeExtractOptions) => {
       const resolveUnreachable: 'auto' | 'always' | 'never' = (() => {
         const v = opts.resolveUnreachable ?? 'auto';
@@ -247,7 +311,70 @@ export function registerAnalyzeCommand(program: Command): void {
             (component.needsReview ?? false),
         });
       }
-      const validatedComponents = validateExtractedComponents(filteredComponents);
+      let validatedComponents = validateExtractedComponents(filteredComponents);
+
+      // Composition mapping resolution (spec U2). Only in composite mode and
+      // only when a source is provided (user map / adapter / agent opt-in).
+      // Atomic (default) never resolves — it would only be stripped later.
+      const compositionMode = resolveCompositionMode(opts, (await safeReadCompositionMode()) ?? undefined);
+      if (compositionMode === 'composite') {
+        const sources = resolveCompositionSources(opts);
+        for (const err of sources.errors) process.stderr.write(`Warning: ${err}\n`);
+
+        let userMap;
+        if (opts.compositionMap) {
+          const loaded = await loadUserMap(opts.compositionMap);
+          if (!loaded.ok) {
+            process.stderr.write(`Error: ${loaded.error}\n`);
+            process.exit(1);
+          }
+          userMap = loaded.map;
+        }
+
+        const hasSource = !!userMap || !!sources.adapter || sources.useAgent || sources.forceAgent;
+        if (hasSource || opts.generateMap) {
+          // Candidate files for adapter/agent input: read the extracted
+          // components' own source files plus any mapping/meta files nearby.
+          const candidateInputs = await readCandidateFiles(validatedComponents);
+          const candidates = selectCandidateFiles(candidateInputs);
+
+          const resolverAgent = resolveCompositionAgentName();
+          const result = await resolveMapping({
+            components: validatedComponents,
+            ...(userMap ? { userMap } : {}),
+            ...(sources.adapter ? { adapter: sources.adapter } : {}),
+            useAgent: sources.useAgent,
+            forceAgent: sources.forceAgent,
+            files: candidates.map((c) => ({ path: c.path, content: c.content })),
+            runAgentFn: async ({ prompt }) => {
+              const res = await runAgent({
+                agent: resolverAgent,
+                prompt,
+                interactive: false,
+                timeoutMs: 120_000,
+              });
+              return res.stdout;
+            },
+          });
+
+          for (const w of result.warnings) process.stderr.write(`Warning: composition — ${w}\n`);
+          for (const c of result.conflicts) {
+            process.stderr.write(
+              `Warning: composition conflict on ${c.parent}→${c.child}: kept ${c.winner}, dropped ${c.loser}\n`,
+            );
+          }
+
+          if (opts.generateMap) {
+            const skeleton = edgesToGroups(result.edges);
+            await writeFile(opts.generateMap, JSON.stringify(skeleton, null, 2) + '\n');
+            process.stderr.write(`Wrote composition map skeleton to ${opts.generateMap}\n`);
+            process.exit(0);
+          }
+
+          validatedComponents = result.components as typeof validatedComponents;
+        }
+      }
+
       storeRawComponents(db, sessionId, validatedComponents);
 
       const cycleInput = validatedComponents.map((c) => ({
