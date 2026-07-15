@@ -2,7 +2,9 @@ import { Box, Text } from 'ink';
 import { PALETTE } from '../../analyze/select/tui/theme.js';
 import React from 'react';
 import { ScopeGateStep } from './steps/ScopeGateStep.js';
+import { AtomicScopeGateStep } from './steps/AtomicScopeGateStep.js';
 import type { ScopeComponent } from './steps/ScopeGateStep.js';
+import type { CompositionMode } from '../../lib/composition-mode.js';
 
 export type { ScopeComponent };
 
@@ -11,6 +13,7 @@ export type AutoFilterStatus = 'idle' | 'running' | 'complete' | 'cancelled' | '
 export type ScopeGateHostProps = {
   components: ReadonlyArray<ScopeComponent>;
   autoAccept: boolean;
+  compositionMode?: CompositionMode;
   onConfirm: (decisions: { accepted: string[]; rejected: string[] }) => void;
   onQuit: () => void;
   aiFilterStatus?: AutoFilterStatus;
@@ -22,6 +25,7 @@ export type ScopeGateHostProps = {
 export function ScopeGateHost({
   components,
   autoAccept,
+  compositionMode = 'atomic',
   onConfirm,
   onQuit,
   aiFilterStatus = 'idle',
@@ -39,6 +43,24 @@ export function ScopeGateHost({
 
   if (autoAccept) {
     return <ScopeGateAutoAccept components={components} onConfirm={onConfirm} />;
+  }
+
+  // Atomic mode (spec T9): render the pre-composite flat step. It never imports
+  // the graph/closures/cycles/cascade primitives, so this host fork is the
+  // single point where "atomic bypasses the graph" is guaranteed on the
+  // interactive path.
+  if (compositionMode === 'atomic') {
+    return (
+      <AtomicScopeGateStep
+        components={[...components]}
+        onConfirm={onConfirm}
+        onQuit={onQuit}
+        aiFilterStatus={aiFilterStatus}
+        aiFilterProgress={aiFilterProgress}
+        aiFilterError={aiFilterError}
+        onCancelAutoFilter={onCancelAutoFilter}
+      />
+    );
   }
 
   return (

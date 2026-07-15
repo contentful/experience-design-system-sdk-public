@@ -2,11 +2,14 @@ import { Box, Text } from 'ink';
 import { PALETTE } from '../../analyze/select/tui/theme.js';
 import React from 'react';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
+import { AtomicGenerateReviewStep } from './steps/AtomicGenerateReviewStep.js';
+import type { CompositionMode } from '../../lib/composition-mode.js';
 
 export type FinalReviewHostProps = {
   extractSessionId: string | null;
   generatedCount: number;
   autoAccept: boolean;
+  compositionMode?: CompositionMode;
   onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
   livePreview?: boolean;
@@ -22,6 +25,7 @@ export function FinalReviewHost({
   extractSessionId,
   generatedCount,
   autoAccept,
+  compositionMode = 'atomic',
   onFinalize,
   onQuit,
   livePreview,
@@ -44,8 +48,13 @@ export function FinalReviewHost({
     return <FinalReviewAutoAccept generatedCount={generatedCount} onFinalize={onFinalize} />;
   }
 
+  // Atomic mode (spec T9): render the pre-composite flat review step. It never
+  // passes projectSlotGraph to FieldEditor and never walks closures/cycles, so
+  // slot-composition editing and every hierarchy affordance stay absent.
+  const StepComponent = compositionMode === 'atomic' ? AtomicGenerateReviewStep : GenerateReviewStep;
+
   return (
-    <GenerateReviewStep
+    <StepComponent
       extractSessionId={extractSessionId}
       onFinalize={onFinalize}
       onQuit={onQuit}
