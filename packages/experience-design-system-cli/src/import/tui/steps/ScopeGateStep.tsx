@@ -94,7 +94,7 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'L', label: 'Flat view' },
       { keys: 'l', label: 'Lineage' },
       { keys: 'i', label: 'Focus lineage' },
-      { keys: 'w', label: 'Only broken' },
+      { keys: 'w', label: 'Only cycles' },
       { keys: 'space', label: 'Expand/collapse group' },
       { keys: 'E / C', label: 'Expand/collapse all' },
     ],
@@ -669,10 +669,11 @@ export function ScopeGateStep({
       return;
     }
     if (input === 'w') {
+      if (!hasCycles) return;
       setActiveFilters((prev) => {
         const next = new Set(prev);
-        if (next.has('broken')) next.delete('broken');
-        else next.add('broken');
+        if (next.has('cycles')) next.delete('cycles');
+        else next.add('cycles');
         return next;
       });
       return;
@@ -1174,7 +1175,7 @@ export function ScopeGateStep({
         {legendEntry('[L]', 'flat', columnOneView === 'flat')}
         {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
         {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
-        {legendEntry('[w]', 'only broken', activeFilters.has('broken'))}
+        {hasCycles && legendEntry('[w]', 'only cycles', activeFilters.has('cycles'))}
         {hasCycles && legendEntry('[c]', 'cycle list', cyclesPanelOpen)}
         {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
         {legendEntry('[f]', 'continue')}
