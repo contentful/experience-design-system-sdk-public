@@ -66,6 +66,9 @@ export function registerImportCommand(program: Command): void {
     .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)')
     .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
     .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
+    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (composite only)')
+    .option('--composition-adapter <name|path>', 'Use a native-format adapter for composition (composite only)')
+    .option('--composition-agent', 'Opt into agentic mapping resolution during extract (composite only)')
     .option('--auto-reject-cycles', 'Automatically reject components involved in slot cycles and retry')
     .option('--auto-filter', 'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)')
     .option(
@@ -144,6 +147,9 @@ export function registerImportCommand(program: Command): void {
         autoAcceptScope?: boolean;
         composite?: boolean;
         atomic?: boolean;
+        compositionMap?: string;
+        compositionAdapter?: string;
+        compositionAgent?: boolean;
         autoRejectCycles?: boolean;
         autoFilter?: boolean;
         livePreview?: boolean;
@@ -329,6 +335,9 @@ export function registerImportCommand(program: Command): void {
             host?: string;
             autoAcceptScope?: boolean;
             compositionMode?: CompositionMode;
+            compositionMap?: string;
+            compositionAdapter?: string;
+            compositionAgent?: boolean;
             noCache?: boolean;
             autoFilter?: boolean;
             livePreview?: boolean;
@@ -384,6 +393,9 @@ export function registerImportCommand(program: Command): void {
               host: opts.host,
               autoAcceptScope,
               compositionMode: resolvedCompositionMode,
+              ...(opts.compositionMap ? { compositionMap: opts.compositionMap } : {}),
+              ...(opts.compositionAdapter ? { compositionAdapter: opts.compositionAdapter } : {}),
+              ...(opts.compositionAgent ? { compositionAgent: true } : {}),
               noCache: opts.cache === false,
               autoFilter: resolveAutoFilter({ autoFilter: opts.autoFilter }, creds.autoFilter),
               livePreview: opts.livePreview !== false,
