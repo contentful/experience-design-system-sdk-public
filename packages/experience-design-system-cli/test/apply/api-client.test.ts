@@ -120,6 +120,22 @@ describe('ImportApiClient — validateToken', () => {
     const client = createClient();
     await expect(client.validateToken()).rejects.toThrow(ApiError);
   });
+
+  it('sends X-Contentful-User-Agent identifying the DSI CLI', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: () => Promise.resolve({ sys: { type: 'User', id: 'user-1' } }),
+      text: () => Promise.resolve(''),
+    });
+
+    const client = createClient();
+    await client.validateToken();
+
+    const callHeaders = mockFetch.mock.calls[0][1].headers;
+    expect(callHeaders['X-Contentful-User-Agent']).toMatch(/^app contentful\.experience-design-system-cli\//);
+  });
 });
 
 describe('ImportApiClient — previewImport', () => {
@@ -180,6 +196,26 @@ describe('ImportApiClient — previewImport', () => {
 
     const callHeaders = mockFetch.mock.calls[0][1].headers;
     expect(callHeaders['x-contentful-organization-id']).toBeUndefined();
+  });
+
+  it('sends X-Contentful-User-Agent identifying the DSI CLI', async () => {
+    const serverResponse: ServerPreviewResponse = {
+      components: { new: [], changed: [], unchanged: [], removed: [] },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(serverResponse),
+      text: () => Promise.resolve(''),
+    });
+
+    const client = createClient();
+    await client.previewImport({ tokensManifest: {} });
+
+    const callHeaders = mockFetch.mock.calls[0][1].headers;
+    expect(callHeaders['X-Contentful-User-Agent']).toMatch(/^app contentful\.experience-design-system-cli\//);
   });
 });
 
