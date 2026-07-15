@@ -1,4 +1,5 @@
-import { Node, Project, SyntaxKind, type SourceFile } from 'ts-morph';
+import { Node, SyntaxKind, type SourceFile } from 'ts-morph';
+import { loadTsMorphSourceFiles } from '../parse/project-factory.js';
 import type {
   RawComponentDefinition,
   RawPropDefinition,
@@ -19,21 +20,7 @@ export async function extractVueTsxComponents(filePaths: string[]): Promise<Comp
   }
 
   const projectFiles = filePaths.filter((f) => /\.[jt]sx?$/.test(f) && !f.endsWith('.d.ts'));
-  const project = new Project({
-    compilerOptions: {
-      jsx: 1,
-      target: 99,
-      module: 99,
-      moduleResolution: 100,
-      skipLibCheck: true,
-      allowJs: true,
-    },
-    skipAddingFilesFromTsConfig: true,
-  });
-
-  for (const filePath of projectFiles) {
-    project.addSourceFileAtPath(filePath);
-  }
+  const { project } = loadTsMorphSourceFiles(projectFiles);
 
   const warnings: string[] = [];
   const components: RawComponentDefinition[] = [];

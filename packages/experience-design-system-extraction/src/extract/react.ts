@@ -1,5 +1,4 @@
 import {
-  Project,
   Node,
   SyntaxKind,
   type SourceFile,
@@ -10,6 +9,7 @@ import {
   type ParameterDeclaration,
   type Type,
 } from 'ts-morph';
+import { loadTsMorphSourceFiles } from '../parse/project-factory.js';
 import type {
   RawComponentDefinition,
   RawPropDefinition,
@@ -2093,21 +2093,7 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
 
   const projectFiles = filePaths.filter((f) => /\.[jt]sx?$/.test(f) && !f.endsWith('.d.ts'));
 
-  const project = new Project({
-    compilerOptions: {
-      jsx: 1, // JsxEmit.Preserve
-      target: 99, // ScriptTarget.ESNext
-      module: 99, // ModuleKind.ESNext
-      moduleResolution: 100, // ModuleResolutionKind.Bundler
-      skipLibCheck: true,
-      allowJs: true,
-    },
-    skipAddingFilesFromTsConfig: true,
-  });
-
-  for (const filePath of projectFiles) {
-    project.addSourceFileAtPath(filePath);
-  }
+  const { project } = loadTsMorphSourceFiles(projectFiles);
 
   const warnings: string[] = [];
   const components: RawComponentDefinition[] = [];
