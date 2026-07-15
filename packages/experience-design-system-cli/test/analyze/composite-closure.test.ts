@@ -152,6 +152,42 @@ describe('computeClosure', () => {
     expect(closure.containsCycle).toBe(false);
     expect(closure.nodes).toEqual([{ name: 'Missing', depth: 0, path: ['Missing'], parents: [] }]);
   });
+
+  it('includes both cycle members as nodes when root is part of a 2-cycle', () => {
+    const components = [comp('A', [['s', ['B']]]), comp('B', [['s', ['A']]])];
+    const closure = computeClosure('A', components);
+    expect(closure.containsCycle).toBe(true);
+    const names = new Set(closure.nodes.map((n) => n.name));
+    expect(names).toEqual(new Set(['A', 'B']));
+  });
+
+  it('includes all reachable nodes when root is outside the cycle (Wrapper1 topology)', () => {
+    // Wrapper1 → SharedInterior → InnerA ↔ InnerB
+    // Root is Wrapper1 which is NOT part of the cycle; cycle is downstream.
+    const components = [
+      comp('Wrapper1', [['s', ['SharedInterior']]]),
+      comp('SharedInterior', [['s', ['InnerA']]]),
+      comp('InnerA', [['s', ['InnerB']]]),
+      comp('InnerB', [['s', ['InnerA']]]),
+    ];
+    const closure = computeClosure('Wrapper1', components);
+    expect(closure.containsCycle).toBe(true);
+    const names = new Set(closure.nodes.map((n) => n.name));
+    expect(names).toEqual(new Set(['Wrapper1', 'SharedInterior', 'InnerA', 'InnerB']));
+  });
+
+  it('includes all reachable nodes when root is a non-root non-cycle member (SharedInterior topology)', () => {
+    const components = [
+      comp('Wrapper1', [['s', ['SharedInterior']]]),
+      comp('SharedInterior', [['s', ['InnerA']]]),
+      comp('InnerA', [['s', ['InnerB']]]),
+      comp('InnerB', [['s', ['InnerA']]]),
+    ];
+    const closure = computeClosure('SharedInterior', components);
+    expect(closure.containsCycle).toBe(true);
+    const names = new Set(closure.nodes.map((n) => n.name));
+    expect(names).toEqual(new Set(['SharedInterior', 'InnerA', 'InnerB']));
+  });
 });
 
 describe('computeAllClosures', () => {

@@ -189,24 +189,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
     expect(out).toContain('agent crashed');
   });
 
-  it('renders <no reason given> in the side panel for AI-rejected component without a reason', () => {
-    const { lastFrame, stdin } = render(
-      <ScopeGateStep
-        components={[
-          { name: 'Foo', componentId: 'c0' },
-          { name: 'NoReason', componentId: 'c1', aiDecision: 'rejected', aiReason: null },
-        ]}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
-    );
-    stdin.write('j');
-    stdin.write('s');
-    const out = lastFrame() ?? '';
-    expect(out).toContain('NoReason');
-    expect(out).toContain('no reason given');
-  });
 
   it('[Y] then [f] partitions AI-flagged (rejected/failed) into rejected, rest into accepted', () => {
     const withFailed = [
@@ -288,25 +270,6 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       stdin.write('k');
     });
 
-    it('s on AI-flagged focused row toggles the full reject_reason panel', () => {
-      const longReason = 'low semantic value AND layout-only primitive — full reason text';
-      expect(longReason.length).toBeGreaterThan(60);
-      const local = [
-        { name: 'Button', componentId: 'c0' },
-        { name: 'Card', componentId: 'c1' },
-        { name: 'BadgeIcon', componentId: 'c2', aiDecision: 'rejected' as const, aiReason: longReason },
-      ];
-      const { lastFrame, stdin } = render(
-        <ScopeGateStep components={local} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
-      );
-      stdin.write('s');
-      let frame = lastFrame() ?? '';
-      expect(frame).toContain('AI rejection reason');
-      expect(frame).toContain(longReason);
-      stdin.write('s');
-      frame = lastFrame() ?? '';
-      expect(frame).not.toContain('AI rejection reason');
-    });
   });
 
   it('shows a "nothing selected" hint at mount (everything defaults to undecided)', () => {
@@ -1957,22 +1920,6 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       { name: 'BadgeIcon', componentId: 'x', aiDecision: 'rejected' as const, aiReason: 'low value' },
     ];
 
-    it('[o] cycles filter narrows grouped sidebar to cycle members; toggling off restores', async () => {
-      const { lastFrame, stdin } = render(
-        <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
-      );
-      await new Promise((r) => setTimeout(r, 20));
-      expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
-      stdin.write('o');
-      await new Promise((r) => setTimeout(r, 20));
-      const filtered = stripAnsi(lastFrame() ?? '');
-      expect(filtered).toContain('NodeA');
-      expect(filtered).toContain('NodeB');
-      expect(filtered).not.toContain('Standalone');
-      stdin.write('o');
-      await new Promise((r) => setTimeout(r, 20));
-      expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
-    });
 
     it('[w] broken filter narrows to AI-flagged components; toggling off restores', async () => {
       const { lastFrame, stdin } = render(
@@ -1989,13 +1936,13 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
     });
 
-    it('legend advertises the [o] cycles and [w] broken filter keys', async () => {
+    it('legend advertises the [w] broken filter key but not [o] cycles (ScopeGate has no cycles-only filter)', async () => {
       const { lastFrame } = render(
         <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
       );
       await new Promise((r) => setTimeout(r, 20));
       const out = stripAnsi(lastFrame() ?? '');
-      expect(out).toContain('[o]');
+      expect(out).not.toContain('[o]');
       expect(out).toContain('[w]');
     });
 
@@ -2017,19 +1964,19 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       { name: 'Standalone', componentId: 's' },
     ];
 
-    it('disambiguates the two cycle features: [c] cycle list vs [o] only cycles', async () => {
+    it('shows [c] cycle list in legend; [o] only cycles is not present (removed from ScopeGate)', async () => {
       const { stdin, lastFrame } = render(
         <ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />,
       );
       await new Promise((r) => setTimeout(r, 20));
       const legend = stripAnsi(lastFrame() ?? '');
       expect(legend).toContain('[c] cycle list');
-      expect(legend).toContain('[o] only cycles');
+      expect(legend).not.toContain('[o] only cycles');
       stdin.write('?');
       await new Promise((r) => setTimeout(r, 30));
       const help = stripAnsi(lastFrame() ?? '');
       expect(help).toMatch(/Cycle list/i);
-      expect(help).toMatch(/Only cycles/i);
+      expect(help).not.toMatch(/Only cycles/i);
     });
 
     it('active-highlight keys [L] flat and [/] search are present in the legend', async () => {

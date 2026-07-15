@@ -95,7 +95,6 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'l', label: 'Lineage' },
       { keys: 'i', label: 'Focus lineage' },
       { keys: 'w', label: 'Only broken' },
-      { keys: 'o', label: 'Only cycles' },
       { keys: 'space', label: 'Expand/collapse group' },
       { keys: 'E / C', label: 'Expand/collapse all' },
     ],
@@ -104,7 +103,6 @@ const HELP_SECTIONS: HelpSection[] = [
     title: 'Panels',
     entries: [
       { keys: 'c', label: 'Cycle list' },
-      { keys: 's', label: 'AI reason' },
       { keys: 'x', label: 'AI exclusions' },
     ],
   },
@@ -173,7 +171,6 @@ export function ScopeGateStep({
   const [addedGroupsCursor, setAddedGroupsCursor] = useState(0);
   const cursor = nav.cursor;
   const scrollOffset = nav.scrollOffset;
-  const [reasonPanelOpen, setReasonPanelOpen] = useState(false);
   const lineagePanel = useOverlayPanel({ toggleKey: 'l' });
   const [lineageCursor, setLineageCursor] = useState(0);
   const [cyclesPanelOpen, setCyclesPanelOpen] = useState(false);
@@ -617,10 +614,6 @@ export function ScopeGateStep({
         onCancelAutoFilter();
         return;
       }
-      if (key.escape && reasonPanelOpen) {
-        setReasonPanelOpen(false);
-        return;
-      }
       if (key.escape && jumpFilterTarget) {
         setJumpFilterTarget(null);
         return;
@@ -639,10 +632,6 @@ export function ScopeGateStep({
     }
     if (input === 'f' || input === 'F') {
       onConfirm(partition());
-      return;
-    }
-    if (input === 's') {
-      setReasonPanelOpen((prev) => !prev);
       return;
     }
     if (input === 'l') {
@@ -679,12 +668,11 @@ export function ScopeGateStep({
       setSearchOpen(true);
       return;
     }
-    if (input === 'o' || input === 'w') {
-      const category: FilterCategory = input === 'o' ? 'cycles' : 'broken';
+    if (input === 'w') {
       setActiveFilters((prev) => {
         const next = new Set(prev);
-        if (next.has(category)) next.delete(category);
-        else next.add(category);
+        if (next.has('broken')) next.delete('broken');
+        else next.add('broken');
         return next;
       });
       return;
@@ -1097,13 +1085,6 @@ export function ScopeGateStep({
         </Box>
       )}
 
-      {reasonPanelOpen && focusedComponent && isAiFlagged(focusedComponent) && (
-        <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1} marginTop={1}>
-          <Text dimColor bold>{`AI rejection reason: ${focusedComponent.name}`}</Text>
-          <Text>{focusedComponent.aiReason ?? '<no reason given>'}</Text>
-          <Text dimColor>[s] close · [Esc] close</Text>
-        </Box>
-      )}
 
       {cyclesPanelOpen && (
         <Box flexDirection="column" borderStyle="single" borderColor={PALETTE.error} paddingX={1} marginTop={1}>
@@ -1194,7 +1175,6 @@ export function ScopeGateStep({
         {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
         {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
         {legendEntry('[w]', 'only broken', activeFilters.has('broken'))}
-        {hasCycles && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
         {hasCycles && legendEntry('[c]', 'cycle list', cyclesPanelOpen)}
         {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
         {legendEntry('[f]', 'continue')}
@@ -1202,7 +1182,6 @@ export function ScopeGateStep({
         {legendEntry('[q]', 'quit')}
         {columnPlan.layout === 'three-column' && legendEntry('[Tab/Shift-Tab]', 'switch column')}
         {columnPlan.layout === 'three-column' && legendEntry('[Enter]', 'jump to main')}
-        {hasAnyAi && legendEntry('[s]', 'AI reason', reasonPanelOpen)}
         {hasAnyAi && legendEntry('[x]', 'AI exclusions', aiRationalePanel.isOpen)}
         {hasAnyAi && (
           <Text>
