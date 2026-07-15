@@ -1022,6 +1022,7 @@ export function ScopeGateStep({
               cursor={safeAddedComponentsCursor}
               focused={focusedColumn === 'added-components'}
               aiFlaggedByKey={aiFlaggedByKey}
+              visibleCount={visibleCount}
             />
             <Box width={2} flexShrink={0} />
             <AddedGroupsColumn
@@ -1030,6 +1031,7 @@ export function ScopeGateStep({
               cursor={safeAddedGroupsCursor}
               focused={focusedColumn === 'added-groups'}
               aiFlaggedByKey={aiFlaggedByKey}
+              visibleCount={visibleCount}
             />
           </>
         )}
@@ -1234,16 +1236,30 @@ export function sideColumnLabelStyle(input: {
   };
 }
 
+export function computeColumnWindow(
+  total: number,
+  cursor: number,
+  visibleCount: number,
+): { start: number; end: number; above: number; below: number } {
+  if (total <= visibleCount) return { start: 0, end: total, above: 0, below: 0 };
+  let start = Math.max(0, cursor - Math.floor(visibleCount / 2));
+  start = Math.min(start, total - visibleCount);
+  const end = start + visibleCount;
+  return { start, end, above: start, below: total - end };
+}
+
 function AddedComponentsColumn(props: {
   width: number;
   entries: AddedComponentEntry[];
   cursor: number;
   focused: boolean;
   aiFlaggedByKey?: Map<string, boolean>;
+  visibleCount: number;
 }): React.ReactElement {
-  const { width, entries, cursor, focused, aiFlaggedByKey } = props;
+  const { width, entries, cursor, focused, aiFlaggedByKey, visibleCount } = props;
   const reserveAiBadge = entries.some((e) => aiFlaggedByKey?.get(e.name) === true);
   const firstNonCycleIdx = entries.findIndex((e) => !e.isCycle);
+  const window = computeColumnWindow(entries.length, cursor, Math.max(1, visibleCount));
   return (
     <Box
       flexDirection="column"
@@ -1256,7 +1272,10 @@ function AddedComponentsColumn(props: {
       {entries.length === 0 ? (
         <Text dimColor>(none)</Text>
       ) : (
-        entries.map((entry, i) => {
+        <>
+        {window.above > 0 && <Text dimColor>{`↑ ${window.above} more`}</Text>}
+        {entries.slice(window.start, window.end).map((entry, vi) => {
+          const i = window.start + vi;
           const isSelected = i === cursor;
           const isCursor = focused && isSelected;
           const aiFlagged = aiFlaggedByKey?.get(entry.name) === true;
@@ -1310,7 +1329,9 @@ function AddedComponentsColumn(props: {
               </Box>
             </React.Fragment>
           );
-        })
+        })}
+        {window.below > 0 && <Text dimColor>{`↓ ${window.below} more`}</Text>}
+        </>
       )}
     </Box>
   );
@@ -1322,10 +1343,12 @@ function AddedGroupsColumn(props: {
   cursor: number;
   focused: boolean;
   aiFlaggedByKey?: Map<string, boolean>;
+  visibleCount: number;
 }): React.ReactElement {
-  const { width, entries, cursor, focused, aiFlaggedByKey } = props;
+  const { width, entries, cursor, focused, aiFlaggedByKey, visibleCount } = props;
   const reserveAiBadge = entries.some((g) => aiFlaggedByKey?.get(g.name) === true);
   const firstNonCycleIdx = entries.findIndex((e) => !e.isCycle);
+  const window = computeColumnWindow(entries.length, cursor, Math.max(1, visibleCount));
   return (
     <Box
       flexDirection="column"
@@ -1338,7 +1361,10 @@ function AddedGroupsColumn(props: {
       {entries.length === 0 ? (
         <Text dimColor>(none)</Text>
       ) : (
-        entries.map((g, i) => {
+        <>
+        {window.above > 0 && <Text dimColor>{`↑ ${window.above} more`}</Text>}
+        {entries.slice(window.start, window.end).map((g, vi) => {
+          const i = window.start + vi;
           const isSelected = i === cursor;
           const isCursor = focused && isSelected;
           const suffix = ` (${g.depCount} dep${g.depCount === 1 ? '' : 's'})`;
@@ -1403,7 +1429,9 @@ function AddedGroupsColumn(props: {
               </Box>
             </React.Fragment>
           );
-        })
+        })}
+        {window.below > 0 && <Text dimColor>{`↓ ${window.below} more`}</Text>}
+        </>
       )}
     </Box>
   );
