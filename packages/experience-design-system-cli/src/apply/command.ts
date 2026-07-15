@@ -19,6 +19,9 @@ import { isEmptyPreview } from './preview-utils.js';
 import { ServerPreviewApp, ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
 import { SelectView, makeSelectKey, type SelectableEntity } from './tui/SelectView.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
+import { resolveCompositionMode } from '../lib/composition-mode.js';
+import { stripAllowedComponents } from '../import/strip-allowed-components.js';
+import { readExperiencesCredentials } from '../credentials-store.js';
 
 function die(message: string): never {
   process.stderr.write(`${message}\n`);
@@ -133,6 +136,8 @@ interface SharedImportOptions {
   environmentId?: string;
   cmaToken?: string;
   host?: string;
+  composite?: boolean;
+  atomic?: boolean;
 }
 
 interface PreviewOptions extends SharedImportOptions {
@@ -198,6 +203,21 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
       die(`Error: --components failed schema validation: ${result.errors.map((e) => e.message).join(', ')}`);
     }
     components = result.components;
+  }
+
+  // Atomic mode (spec T8/T12): strip embedded-component composition at the
+  // single serialization boundary, regardless of load path. Normalizing here
+  // (rather than only in loadCDFComponents) also covers hand-authored
+  // `--components` files. Starving `$allowedComponents` at this one point
+  // means slot-cycle detection downstream structurally returns zero.
+  let configMode: 'composite' | 'atomic' | undefined;
+  try {
+    configMode = (await readExperiencesCredentials()).compositionMode;
+  } catch {
+    // Missing credentials.json → resolver falls through to default (atomic).
+  }
+  if (resolveCompositionMode(opts, configMode) === 'atomic') {
+    components = stripAllowedComponents(components);
   }
 
   let tokens: DTCGTokenEntry[] = [];
@@ -493,6 +513,8 @@ export function registerApplyCommand(program: Command): void {
     .requiredOption('--environment-id <id>', 'Contentful environment ID')
     .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--host <url>', 'Override API base URL')
+    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
+    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
     .action(async (opts: PreviewOptions) => {
       let inputs: Awaited<ReturnType<typeof resolveSharedInputs>>;
       try {
@@ -550,6 +572,8 @@ export function registerApplyCommand(program: Command): void {
     .requiredOption('--environment-id <id>', 'Contentful environment ID')
     .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--host <url>', 'Override API base URL')
+    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
+    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
     .option('--yes', 'Skip interactive confirmation')
     .option('--verbose', 'Show all entity progress including skipped/unchanged')
     .option('--force', 'Skip confirmation for breaking changes (for CI)')
@@ -752,6 +776,8 @@ export function registerApplyCommand(program: Command): void {
     .requiredOption('--environment-id <id>', 'Contentful environment ID')
     .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--host <url>', 'Override API base URL')
+    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
+    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
     .option('--select-all', 'Select all entities without launching TUI')
     .option('--select <pattern>', 'Select entities by ID pattern (repeatable)', collect, [])
     .option('--deselect <pattern>', 'Deselect entities by ID pattern (repeatable)', collect, [])
