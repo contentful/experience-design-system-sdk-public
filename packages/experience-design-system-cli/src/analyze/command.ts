@@ -190,8 +190,9 @@ function resolveCompositionAgentName(): AgentName {
  */
 async function readCandidateFiles(
   components: Array<{ sourcePath?: string; source?: string }>,
+  extraFiles: string[] = [],
 ): Promise<Array<{ path: string; content: string }>> {
-  const paths = new Set<string>();
+  const paths = new Set<string>(extraFiles);
   for (const c of components) {
     if (c.sourcePath) paths.add(c.sourcePath);
   }
@@ -202,7 +203,7 @@ async function readCandidateFiles(
         const content = await readFile(p, 'utf8');
         out.push({ path: p, content });
       } catch {
-        // Missing source file — skip; the resolver simply sees fewer candidates.
+        void 0;
       }
     }),
   );
@@ -369,7 +370,7 @@ export function registerAnalyzeCommand(program: Command): void {
 
         const hasSource = !!userMap || !!adapter || sources.useAgent || sources.forceAgent;
         if (hasSource || opts.generateMap) {
-          const candidateInputs = await readCandidateFiles(validatedComponents);
+          const candidateInputs = await readCandidateFiles(validatedComponents, sourceFiles);
           const markerCandidates = selectCandidateFiles(candidateInputs);
           const candidatePaths = new Set(markerCandidates.map((c) => c.path));
           const resolverFiles = [
