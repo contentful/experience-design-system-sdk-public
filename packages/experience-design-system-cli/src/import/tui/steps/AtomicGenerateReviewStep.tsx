@@ -817,7 +817,7 @@ export function AtomicGenerateReviewStep({
                 {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
                 <Text dimColor>
                   {sidebarFocused
-                    ? '  [a] accept  [r] reject  [A] accept all  [J] ' +
+                    ? '  [a] accept  [r] reject  [A] accept all  [i] prop rationale  [I] component rationale  [s] source  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
                       '  [F] finalize  [e/Tab] focus panel' +
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
