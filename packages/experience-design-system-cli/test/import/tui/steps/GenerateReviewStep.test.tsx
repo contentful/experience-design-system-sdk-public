@@ -2424,7 +2424,7 @@ describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
     expect(afterSecondUndo).not.toMatch(/Cyclic manifest — auto-rejected/);
   });
 
-  it('operator [a] on a cycle member after mount survives (does not re-trigger auto-reject)', async () => {
+  it('operator [a] on a cycle member cascades to its cycle partner and does not re-trigger auto-reject', async () => {
     await primeCycles();
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
@@ -2433,7 +2433,9 @@ describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
     stdin.write('a');
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).not.toMatch(/Cyclic manifest — auto-rejected 2 components/);
+    // Both cycle members accepted — banner now lists only the ancestor remainder, not the cycle members.
+    expect(frame).not.toMatch(/Cycle members:/);
+    expect(frame).toMatch(/Ancestors: Outer, Wrapper/);
   });
 
   it('[F] continue with accepted subset still cyclic → blocked with re-shown banner', async () => {
@@ -2673,7 +2675,7 @@ describe('GenerateReviewStep — ADR-0010 scenarios', () => {
       expect(frame).not.toMatch(/Save decisions and exit/);
     });
 
-    it('[a] on a cycle member does NOT cascade to its partner (computeClosure short-circuits on cycles)', async () => {
+    it('[a] on a cycle member cascades to its partner (cycle-unit cohesion)', async () => {
       await primeA();
       const { lastFrame, stdin } = render(
         <GenerateReviewStep extractSessionId="sess-a" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
@@ -2681,14 +2683,13 @@ describe('GenerateReviewStep — ADR-0010 scenarios', () => {
       await tick();
       stdin.write('\x1a'); // Ctrl+Z — undo mount auto-reject → both needs-review
       await tick();
-      stdin.write('a');
+      stdin.write('a'); // accept C — cascade pulls in P (cycle partner)
       await tick();
-      stdin.write('F'); // finalize gate — accepted subset {C} is acyclic → dialog opens
+      stdin.write('F'); // finalize gate — accepted subset {C, P} still cyclic → blocked
       await tick();
       const frame = lastFrame() ?? '';
-      expect(frame).toMatch(/Save decisions and exit/);
-      expect(frame).toMatch(/1 accepted/);
-      expect(frame).toMatch(/1 unresolved/);
+      expect(frame).toMatch(/Cannot finalize.*cycle/i);
+      expect(frame).not.toMatch(/Save decisions and exit/);
     });
   });
 

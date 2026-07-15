@@ -169,24 +169,6 @@ describe('ScopeGateStep — AI reason surfacing on focused row', () => {
     expect(out).not.toContain('TAILMARKER');
   });
 
-  it('opens the full-reason side panel on `s` when focused row is AI-flagged', () => {
-    const { lastFrame, stdin } = render(
-      <ScopeGateStep
-        components={[
-          { name: 'Button', componentId: 'c0' },
-          { name: 'DebugPanel', componentId: 'c1', aiDecision: 'rejected', aiReason: 'the full unlimited reason text' },
-        ]}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
-    );
-    stdin.write('j');
-    stdin.write('s');
-    const out = lastFrame() ?? '';
-    expect(out).toContain('AI rejection reason: DebugPanel');
-    expect(out).toContain('the full unlimited reason text');
-  });
 });
 
 describe('ScopeGateStep — legend', () => {
@@ -205,12 +187,12 @@ describe('ScopeGateStep — legend', () => {
     expect(out).toContain('search');
   });
 
-  it('shows [s] AI reason only when at least one AI-flagged row exists', () => {
+  it('shows [x] AI exclusions only when at least one AI-flagged row exists', () => {
     const { lastFrame: framePlain } = render(
       <ScopeGateStep components={[{ name: 'Button', componentId: 'c0' }]} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const plainOut = framePlain() ?? '';
-    expect(plainOut).not.toContain('AI reason');
+    expect(plainOut).not.toContain('AI exclusions');
 
     const { lastFrame: frameAi } = render(
       <ScopeGateStep
@@ -224,7 +206,7 @@ describe('ScopeGateStep — legend', () => {
       />,
     );
     const aiOut = frameAi() ?? '';
-    expect(aiOut).toContain('[s]');
-    expect(aiOut).toContain('reason');
+    expect(aiOut).toContain('[x]');
+    expect(aiOut).toContain('AI exclusions');
   });
 });
