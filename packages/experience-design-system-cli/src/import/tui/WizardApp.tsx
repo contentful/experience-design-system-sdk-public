@@ -276,6 +276,9 @@ export type WizardAppProps = {
   host?: string;
   autoAcceptScope?: boolean;
   compositionMode?: CompositionMode;
+  compositionMap?: string;
+  compositionAdapter?: string;
+  compositionAgent?: boolean;
   noCache?: boolean;
   autoFilter?: boolean;
   livePreview?: boolean;
@@ -306,6 +309,9 @@ export function WizardApp({
   host,
   autoAcceptScope = false,
   compositionMode = 'atomic',
+  compositionMap,
+  compositionAdapter,
+  compositionAgent = false,
   noCache = false,
   autoFilter = true,
   livePreview = true,
@@ -572,7 +578,14 @@ export function WizardApp({
       stdout: string;
       stderr: string;
     }>((res) => {
-      const child = spawn('node', [findCliPath(), 'analyze', 'extract', '--project', projectPath]);
+      const extractArgs = [findCliPath(), 'analyze', 'extract', '--project', projectPath];
+      if (compositionMode === 'composite') {
+        extractArgs.push('--composite');
+        if (compositionMap) extractArgs.push('--composition-map', compositionMap);
+        if (compositionAdapter) extractArgs.push('--composition-adapter', compositionAdapter);
+        if (compositionAgent) extractArgs.push('--composition-agent');
+      }
+      const child = spawn('node', extractArgs);
       let stdout = '';
       let stderr = '';
       child.stdout.on('data', (d: Buffer) => {
@@ -1220,7 +1233,7 @@ export function WizardApp({
           if (s) {
             const done = s.total - s.pending;
             const items = op.items ?? [];
-              const lastDone = items.length > 0 ? items[items.length - 1] : null;
+            const lastDone = items.length > 0 ? items[items.length - 1] : null;
             const current = lastDone && lastDone.status === 'succeeded' ? lastDone.id : null;
             update({
               pushProgress: { kind: 'progress', processed: done, total: s.total, current },
