@@ -1826,7 +1826,7 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         stdin.write('j');
         await new Promise((r) => setTimeout(r, 30));
         stdin.write('l');
-        stdin.write('l');
+        await new Promise((r) => setTimeout(r, 30));
         const open = lastFrame() ?? '';
 
         expect(open).not.toContain('Zzz');
