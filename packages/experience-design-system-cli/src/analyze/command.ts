@@ -28,6 +28,7 @@ import { resolveMapping } from './composition/resolve-mapping.js';
 import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
 import { selectCandidateFiles } from './composition/candidate-files.js';
 import { edgesToGroups } from './composition/interchange-schema.js';
+import type { CompositionAdapter } from './composition/adapters/index.js';
 import { runAgent, type AgentName } from '../generate/agent-runner.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
@@ -145,6 +146,23 @@ async function safeReadCompositionMode(): Promise<'composite' | 'atomic' | undef
     return (await readExperiencesCredentials()).compositionMode;
   } catch {
     return undefined;
+  }
+}
+
+async function loadCustomAdapter(modulePath: string): Promise<CompositionAdapter | undefined> {
+  const abs = isAbsolute(modulePath) ? modulePath : resolve(process.cwd(), modulePath);
+  process.stderr.write(`Warning: --composition-adapter is executing user code from ${abs}\n`);
+  try {
+    const mod = (await import(abs)) as { default?: unknown; adapter?: unknown };
+    const fn = typeof mod.default === 'function' ? mod.default : mod.adapter;
+    if (typeof fn !== 'function') {
+      process.stderr.write(`Error: --composition-adapter module must export a default function or 'adapter': ${abs}\n`);
+      process.exit(1);
+    }
+    return fn as CompositionAdapter;
+  } catch (e) {
+    process.stderr.write(`Error: failed to load --composition-adapter ${abs}: ${e instanceof Error ? e.message : e}\n`);
+    process.exit(1);
   }
 }
 
@@ -331,21 +349,33 @@ export function registerAnalyzeCommand(program: Command): void {
           userMap = loaded.map;
         }
 
-        const hasSource = !!userMap || !!sources.adapter || sources.useAgent || sources.forceAgent;
+        let adapter = sources.adapter;
+        if (
+          !adapter &&
+          opts.compositionAdapter &&
+          (opts.compositionAdapter.includes('/') || opts.compositionAdapter.includes('.'))
+        ) {
+          adapter = await loadCustomAdapter(opts.compositionAdapter);
+        }
+
+        const hasSource = !!userMap || !!adapter || sources.useAgent || sources.forceAgent;
         if (hasSource || opts.generateMap) {
-          // Candidate files for adapter/agent input: read the extracted
-          // components' own source files plus any mapping/meta files nearby.
           const candidateInputs = await readCandidateFiles(validatedComponents);
-          const candidates = selectCandidateFiles(candidateInputs);
+          const markerCandidates = selectCandidateFiles(candidateInputs);
+          const candidatePaths = new Set(markerCandidates.map((c) => c.path));
+          const resolverFiles = [
+            ...markerCandidates.map((c) => ({ path: c.path, content: c.content })),
+            ...candidateInputs.filter((c) => !candidatePaths.has(c.path)),
+          ];
 
           const resolverAgent = resolveCompositionAgentName();
           const result = await resolveMapping({
             components: validatedComponents,
             ...(userMap ? { userMap } : {}),
-            ...(sources.adapter ? { adapter: sources.adapter } : {}),
+            ...(adapter ? { adapter } : {}),
             useAgent: sources.useAgent,
             forceAgent: sources.forceAgent,
-            files: candidates.map((c) => ({ path: c.path, content: c.content })),
+            files: resolverFiles,
             runAgentFn: async ({ prompt }) => {
               const res = await runAgent({
                 agent: resolverAgent,
