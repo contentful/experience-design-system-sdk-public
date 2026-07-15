@@ -29,6 +29,9 @@ import { LineagePanel } from '../../../analyze/select/tui/components/LineagePane
 import { GotoBanner } from '../../../analyze/select/tui/components/GotoBanner.js';
 import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/components/HelpOverlay.js';
 import { legendEntry } from '../components/LegendEntry.js';
+import { AutoFilterBanner } from '../components/AutoFilterBanner.js';
+import { CounterStrip } from '../components/CounterStrip.js';
+import { isAiFlagged } from '../ai-flag.js';
 import { resolveGroupRoot } from '../group-collapse.js';
 import {
   buildCycleUnits,
@@ -128,10 +131,6 @@ function capReasonForFocusedRow(reason: string, width: number): string {
   const budget = safeWidth * FOCUSED_REASON_MAX_LINES;
   if (reason.length <= budget) return reason;
   return reason.slice(0, budget - 1).trimEnd() + '…';
-}
-
-function isAiFlagged(row: ScopeComponent): boolean {
-  return row.aiDecision === 'rejected' || row.aiDecision === 'failed';
 }
 
 function toSidebarEntry(c: ScopeComponent): CDFComponentEntry {
@@ -901,10 +900,6 @@ export function ScopeGateStep({
   const selectedItemIdx =
     currentRow && currentRow.itemIdx >= 0 ? currentRow.itemIdx : -1;
 
-  const showRunningHeader =
-    aiFilterStatus === 'running' && aiFilterProgress !== null && aiFilterProgress.total > 0;
-  const showCancelledBanner = aiFilterStatus === 'cancelled';
-  const showFailedBanner = aiFilterStatus === 'failed';
   const nothingIncluded = components.length > 0 && components.every((c) => !isIncluded(c.name));
 
   const totalComponents = components.length;
@@ -944,29 +939,8 @@ export function ScopeGateStep({
         only on the included set.
       </Text>
 
-      {showRunningHeader && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color={PALETTE.info}>
-            [AI filtering ({aiFilterProgress!.done}/{aiFilterProgress!.total})…] <Text dimColor>[q] cancels</Text>
-          </Text>
-        </Box>
-      )}
-      {showCancelledBanner && (
-        <Box marginTop={1}>
-          <Text color={PALETTE.warning}>
-            AI auto-filter cancelled
-            {aiFilterProgress ? ` at ${aiFilterProgress.done}/${aiFilterProgress.total}` : ''}. Review remaining
-            manually.
-          </Text>
-        </Box>
-      )}
-      {showFailedBanner && (
-        <Box marginTop={1}>
-          <Text color={PALETTE.warning}>
-            AI auto-filter failed: {aiFilterError ?? 'unknown error'}. Continuing without AI suggestions.
-          </Text>
-        </Box>
-      )}
+      <AutoFilterBanner status={aiFilterStatus} progress={aiFilterProgress} error={aiFilterError} />
+
 
       {hasAnyAi && (
         <Box>
@@ -1190,37 +1164,6 @@ export function ScopeGateStep({
           </Text>
         )}
       </Box>
-    </Box>
-  );
-}
-
-function CounterStrip(props: {
-  counters: { accepted: number; rejected: number; undecided: number; groups: number; total: number };
-  totalWidth: number;
-}): React.ReactElement {
-  const { counters, totalWidth } = props;
-  const condensed = totalWidth < 60;
-  const labelAcc = condensed ? 'Acc' : 'Accepted';
-  const labelGrp = condensed ? 'Grp' : 'Groups';
-  const labelRej = condensed ? 'Rej' : 'Rejected';
-  const labelUnd = condensed ? 'Und' : 'Undecided';
-  const sep = condensed ? ' | ' : '    ';
-  return (
-    <Box marginTop={1}>
-      <Text>
-        <Text dimColor>{labelAcc} </Text>
-        <Text bold>{counters.accepted}</Text>
-        <Text dimColor>{`/${counters.total}`}</Text>
-        <Text dimColor>{sep}</Text>
-        <Text dimColor>{labelGrp} </Text>
-        <Text bold>{counters.groups}</Text>
-        <Text dimColor>{sep}</Text>
-        <Text dimColor>{labelRej} </Text>
-        <Text bold>{counters.rejected}</Text>
-        <Text dimColor>{sep}</Text>
-        <Text dimColor>{labelUnd} </Text>
-        <Text bold>{counters.undecided}</Text>
-      </Text>
     </Box>
   );
 }
