@@ -21,8 +21,8 @@ const OS_NAMES: Record<string, string> = {
 /**
  * X-Contentful-User-Agent for the CLI's CMA requests, so writes are
  * attributable to the DSI CLI as their origin. Format follows CEP-0056:
- * `app <name>/<ver>; platform node.js/<ver>; os <name>/<ver>;`. Only the
- * app/platform/os segments — no customer content (public repo).
+ * `app <name>/<ver>; platform node.js/<ver>; os <name>/<ver>;`. Carries only
+ * the app/platform/os segments — no user- or content-identifying data.
  */
 export function buildUserAgent(version: string = pkg.version): string {
   const parts = [`app ${APP}/${version}`, `platform node.js/${process.version}`];
