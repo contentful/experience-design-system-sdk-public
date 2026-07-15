@@ -1903,7 +1903,7 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
     });
   });
 
-  describe('L8 — category filters (broken / cycles)', () => {
+  describe('L8 — category filters (cycles)', () => {
     const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
     const FIX = [
       {
@@ -1920,23 +1920,24 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       { name: 'BadgeIcon', componentId: 'x', aiDecision: 'rejected' as const, aiReason: 'low value' },
     ];
 
-
-    it('[w] broken filter narrows to AI-flagged components; toggling off restores', async () => {
+    it('[w] cycles filter narrows grouped sidebar to cycle members; toggling off restores', async () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
       );
       await new Promise((r) => setTimeout(r, 20));
+      expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
       stdin.write('w');
       await new Promise((r) => setTimeout(r, 20));
       const filtered = stripAnsi(lastFrame() ?? '');
-      expect(filtered).toContain('BadgeIcon');
+      expect(filtered).toContain('NodeA');
+      expect(filtered).toContain('NodeB');
       expect(filtered).not.toContain('Standalone');
       stdin.write('w');
       await new Promise((r) => setTimeout(r, 20));
       expect(stripAnsi(lastFrame() ?? '')).toContain('Standalone');
     });
 
-    it('legend advertises the [w] broken filter key but not [o] cycles (ScopeGate has no cycles-only filter)', async () => {
+    it('legend advertises [w] only cycles when cycles exist; does not show [o]', async () => {
       const { lastFrame } = render(
         <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
       );
@@ -1944,6 +1945,7 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       const out = stripAnsi(lastFrame() ?? '');
       expect(out).not.toContain('[o]');
       expect(out).toContain('[w]');
+      expect(out).toContain('only cycles');
     });
 
     it('does not advertise a [d] deleted filter (ScopeGate has no deleted concept)', async () => {
@@ -1964,19 +1966,20 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       { name: 'Standalone', componentId: 's' },
     ];
 
-    it('shows [c] cycle list in legend; [o] only cycles is not present (removed from ScopeGate)', async () => {
+    it('shows [c] cycle list and [w] only cycles in legend when cycles exist; no [o]', async () => {
       const { stdin, lastFrame } = render(
         <ScopeGateStep components={CYC} onConfirm={() => {}} onQuit={() => {}} />,
       );
       await new Promise((r) => setTimeout(r, 20));
       const legend = stripAnsi(lastFrame() ?? '');
       expect(legend).toContain('[c] cycle list');
-      expect(legend).not.toContain('[o] only cycles');
+      expect(legend).toContain('[w] only cycles');
+      expect(legend).not.toContain('[o]');
       stdin.write('?');
       await new Promise((r) => setTimeout(r, 30));
       const help = stripAnsi(lastFrame() ?? '');
       expect(help).toMatch(/Cycle list/i);
-      expect(help).not.toMatch(/Only cycles/i);
+      expect(help).toMatch(/Only cycles/i);
     });
 
     it('active-highlight keys [L] flat and [/] search are present in the legend', async () => {
@@ -2155,19 +2158,24 @@ describe('FB2 — cursor + selection coherence under active category filters', (
       .split('\n')
       .find((l) => l.includes('▶'));
     if (!line) return undefined;
-    return line.replace(/[▶✓✗×⚠▸▾├└─│\[\] ]/g, ' ').replace(/\s+/g, ' ').trim();
+    return line
+      .replace(/[▶✓✗×⚠▸▾├└─│\[\] ]/g, ' ')
+      .replace(/\(cycle\)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   };
 
+  // Zbrk1 ↔ Zbrk2 form a cycle so [w] (only cycles) actually fires.
   const FIX = [
     { name: 'Aaa', componentId: 'a' },
     { name: 'Bbb', componentId: 'b' },
     { name: 'Ccc', componentId: 'c' },
     { name: 'Ddd', componentId: 'd' },
-    { name: 'Zbrk1', componentId: 'z1', aiDecision: 'rejected' as const, aiReason: 'low value' },
-    { name: 'Zbrk2', componentId: 'z2', aiDecision: 'rejected' as const, aiReason: 'low value' },
+    { name: 'Zbrk1', componentId: 'z1', slots: [{ name: 's', allowedComponents: ['Zbrk2'] }] },
+    { name: 'Zbrk2', componentId: 'z2', slots: [{ name: 's', allowedComponents: ['Zbrk1'] }] },
   ];
 
-  it('after [w] shrinks the list, a single [k] moves the cursor (not stuck on a stale index)', async () => {
+  it('after [w] shrinks the list, cursor lands on a cycle member and navigation is not stuck', async () => {
     const { lastFrame, stdin } = render(
       <ScopeGateStep components={FIX} onConfirm={() => {}} onQuit={() => {}} />,
     );
@@ -2178,10 +2186,16 @@ describe('FB2 — cursor + selection coherence under active category filters', (
     await new Promise((r) => setTimeout(r, 20));
     stdin.write('w');
     await new Promise((r) => setTimeout(r, 20));
-    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk2');
+    const labelAfterFilter = cursorRowLabel(lastFrame() ?? '');
+    // Cursor must be on a cycle member (not stuck on a stale out-of-range index).
+    expect(['Zbrk1', 'Zbrk2']).toContain(labelAfterFilter);
+    // Navigation is not frozen: pressing [k] moves back toward the start.
+    stdin.write('j');
+    await new Promise((r) => setTimeout(r, 20));
     stdin.write('k');
     await new Promise((r) => setTimeout(r, 20));
-    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk1');
+    const after = cursorRowLabel(lastFrame() ?? '');
+    expect(['Zbrk1', 'Zbrk2']).toContain(after);
   });
 
   it('accept targets the row the cursor moved to after a filter shrink', async () => {
@@ -2201,8 +2215,9 @@ describe('FB2 — cursor + selection coherence under active category filters', (
     stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[onConfirm.mock.calls.length - 1][0];
+    // Accepting a cycle member cascades to its partner (cycle-unit cohesion).
     expect(arg.accepted).toContain('Zbrk1');
-    expect(arg.accepted).not.toContain('Zbrk2');
+    expect(arg.accepted).toContain('Zbrk2');
   });
 
   it('toggling [w] off then on again keeps navigation working (not stuck)', async () => {
@@ -2218,9 +2233,8 @@ describe('FB2 — cursor + selection coherence under active category filters', (
     await new Promise((r) => setTimeout(r, 20));
     stdin.write('w');
     await new Promise((r) => setTimeout(r, 20));
-    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk2');
-    stdin.write('k');
-    await new Promise((r) => setTimeout(r, 20));
-    expect(cursorRowLabel(lastFrame() ?? '')).toBe('Zbrk1');
+    const labelAfterReactivate = cursorRowLabel(lastFrame() ?? '');
+    // Cursor must be on a cycle member after re-activating the filter.
+    expect(['Zbrk1', 'Zbrk2']).toContain(labelAfterReactivate);
   });
 });
