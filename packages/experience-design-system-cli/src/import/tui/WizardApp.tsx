@@ -60,6 +60,7 @@ import {
 import { ScopeGateHost, type ScopeComponent } from './scope-gate-host.js';
 import { mergeAiDecisions } from './merge-ai-decisions.js';
 import { FinalReviewHost } from './final-review-host.js';
+import type { CompositionMode } from '../../lib/composition-mode.js';
 import { runScopeGate } from './runScopeGate.js';
 import { buildAutoFilterErrorTail } from './auto-filter-error.js';
 import { checkAgentAuth, type AgentName } from '../../generate/agent-runner.js';
@@ -274,6 +275,7 @@ export type WizardAppProps = {
   initialProjectPath?: string;
   host?: string;
   autoAcceptScope?: boolean;
+  compositionMode?: CompositionMode;
   noCache?: boolean;
   autoFilter?: boolean;
   livePreview?: boolean;
@@ -303,6 +305,7 @@ export function WizardApp({
   initialProjectPath,
   host,
   autoAcceptScope = false,
+  compositionMode = 'atomic',
   noCache = false,
   autoFilter = true,
   livePreview = true,
@@ -1678,6 +1681,7 @@ export function WizardApp({
           <ScopeGateHost
             components={components}
             autoAccept={autoAcceptScope}
+            compositionMode={compositionMode}
             aiFilterStatus={state.aiFilterStatus}
             aiFilterProgress={state.aiFilterProgress}
             aiFilterError={state.aiFilterError}
@@ -1742,6 +1746,7 @@ export function WizardApp({
             extractSessionId={state.extractSessionId}
             generatedCount={state.generatedCount}
             autoAccept={autoAcceptScope}
+            compositionMode={compositionMode}
             livePreview={livePreview}
             spaceId={state.spaceId}
             environmentId={state.environmentId}

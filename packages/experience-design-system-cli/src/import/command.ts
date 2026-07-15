@@ -3,6 +3,7 @@ import { resolve, join } from 'node:path';
 import { runPipeline } from './orchestrator.js';
 import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { resolveAgent, resolveModel } from './agent-model-resolve.js';
+import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { replayRun, modifyRun } from '../runs/replay-helpers.js';
@@ -63,6 +64,8 @@ export function registerImportCommand(program: Command): void {
       'Print the generate components prompt without invoking the agent. Replaces the legacy --dry-run prompt-print behaviour on this command.',
     )
     .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)')
+    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
+    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
     .option('--auto-reject-cycles', 'Automatically reject components involved in slot cycles and retry')
     .option('--auto-filter', 'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)')
     .option(
@@ -139,6 +142,8 @@ export function registerImportCommand(program: Command): void {
         dryRun?: boolean;
         printPrompt?: boolean;
         autoAcceptScope?: boolean;
+        composite?: boolean;
+        atomic?: boolean;
         autoRejectCycles?: boolean;
         autoFilter?: boolean;
         livePreview?: boolean;
@@ -323,6 +328,7 @@ export function registerImportCommand(program: Command): void {
             initialProjectPath?: string;
             host?: string;
             autoAcceptScope?: boolean;
+            compositionMode?: CompositionMode;
             noCache?: boolean;
             autoFilter?: boolean;
             livePreview?: boolean;
@@ -339,6 +345,7 @@ export function registerImportCommand(program: Command): void {
           const creds = await readExperiencesCredentials();
           const resolvedAgent = resolveAgent(opts.agent, creds.agent);
           const resolvedModel = resolveModel(opts.model, creds.agentModel);
+          const resolvedCompositionMode = resolveCompositionMode(opts, creds.compositionMode);
 
           const pickerDecision = await shouldShowRunPicker({
             flags: {
@@ -376,6 +383,7 @@ export function registerImportCommand(program: Command): void {
               initialProjectPath: opts.project !== '.' ? resolve(opts.project) : undefined,
               host: opts.host,
               autoAcceptScope,
+              compositionMode: resolvedCompositionMode,
               noCache: opts.cache === false,
               autoFilter: resolveAutoFilter({ autoFilter: opts.autoFilter }, creds.autoFilter),
               livePreview: opts.livePreview !== false,
