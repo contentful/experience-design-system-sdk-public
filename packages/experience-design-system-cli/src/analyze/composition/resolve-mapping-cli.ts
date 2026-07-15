@@ -41,13 +41,6 @@ export type ResolvedCompositionSources = {
   errors: string[];
 };
 
-/**
- * Turn CLI flags into resolver inputs (spec T2/T6 routing). A
- * `--composition-adapter` value with no `/` or `.` is treated as a built-in
- * name (small allowlist); a path is a custom module (loaded by the caller,
- * which owns the dynamic import + trust warning — not done here to keep this
- * synchronous and pure).
- */
 export function resolveCompositionSources(opts: CompositionCliOptions): ResolvedCompositionSources {
   const errors: string[] = [];
   let adapter: CompositionAdapter | undefined;
@@ -56,12 +49,7 @@ export function resolveCompositionSources(opts: CompositionCliOptions): Resolved
     const value = opts.compositionAdapter;
     const looksLikePath = value.includes('/') || value.includes('.');
     if (looksLikePath) {
-      // Custom module path — the caller loads it (executes user code) and
-      // passes the adapter fn directly into resolveMapping. Signal via error
-      // only if the caller didn't pre-resolve it; here we leave adapter unset.
-      errors.push(
-        `--composition-adapter path "${value}" must be loaded by the caller (custom module); pass the adapter fn to resolveMapping directly`,
-      );
+      adapter = undefined;
     } else {
       const builtin = getBuiltinAdapter(value);
       if (!builtin) {

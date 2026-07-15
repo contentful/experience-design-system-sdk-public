@@ -50,6 +50,12 @@ describe('resolve-mapping-cli (T2/T6 flag routing)', () => {
       expect(res.adapter).toBeUndefined();
     });
 
+    it('treats a path value as a custom module (no error; caller loads it)', () => {
+      const res = resolveCompositionSources({ compositionAdapter: './my-adapter.mjs' });
+      expect(res.errors).toHaveLength(0);
+      expect(res.adapter).toBeUndefined();
+    });
+
     it('flags useAgent when --composition-agent is set', () => {
       const res = resolveCompositionSources({ compositionAgent: true });
       expect(res.useAgent).toBe(true);
