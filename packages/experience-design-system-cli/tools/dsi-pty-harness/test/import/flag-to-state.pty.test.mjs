@@ -170,12 +170,16 @@ describe('experiences import — flag → wizard state (PTY)', () => {
   //   - [A] toggle-all from undecided baseline → all accepted → "3/3 included".
   describe('scope-gate keystrokes', () => {
     async function reachScopeGate() {
+      // These keystroke tests assert the composite scope-gate model
+      // (tri-state counters, [Y]/[?]/[w]/[E]/[C], group [space]). Atomic is
+      // the default now, so pin --composite to exercise that step.
       const w = await spawn([
         'import',
         '--project',
         REACT_MINIMAL,
         '--no-push',
         '--no-auto-filter',
+        '--composite',
       ]);
       await w.waitFor('Design tokens', { timeout: 10000 });
       w.writeKey('s');
@@ -220,20 +224,30 @@ describe('experiences import — flag → wizard state (PTY)', () => {
       expect(screen).toMatch(/3\/3 included/);
     });
 
-    it('j moves focus down', async () => {
-      const w = await reachScopeGate();
-      // Baseline: focus on first row (Button). Snapshot before/after so we
-      // can compare which row rendered with the cursor glyph.
-      const before = w.getScreen();
-      const beforeLast = before.slice(before.indexOf('Extraction complete'));
+    it('j moves focus down (atomic flat list)', async () => {
+      // The "›" cursor glyph is the atomic flat-list marker (the composite
+      // step highlights via inverse video instead). Drive the atomic step —
+      // the default mode — and compare the LINE the glyph sits on so the
+      // assertion is robust to shared row indentation.
+      const w = await spawn(['import', '--project', REACT_MINIMAL, '--no-push', '--no-auto-filter']);
+      await w.waitFor('Design tokens', { timeout: 10000 });
+      w.writeKey('s');
+      await w.waitFor(/Found \d+ files/, { timeout: 8000 });
+      w.writeKey('enter');
+      await w.waitFor(/Extraction complete/, { timeout: 20000 });
+      // getScreen() is the append-only buffer; scan from the LAST
+      // "Extraction complete" frame so we read the current render, not an
+      // earlier partial one.
+      const cursorLine = (screen) => {
+        const lines = screen.slice(screen.lastIndexOf('Extraction complete')).split('\n');
+        return lines.findIndex((l) => l.includes('›'));
+      };
+      const before = cursorLine(w.getScreen());
       w.writeKey('j');
       await new Promise((r) => setTimeout(r, 400));
-      const after = w.getScreen();
-      const afterLast = after.slice(after.indexOf('Extraction complete'));
-      // The cursor glyph "›" appears once per frame — its position should differ.
-      const beforeCursorIdx = beforeLast.indexOf('›');
-      const afterCursorIdx = afterLast.indexOf('›');
-      expect(afterCursorIdx).toBeGreaterThan(beforeCursorIdx);
+      const after = cursorLine(w.getScreen());
+      expect(before).toBeGreaterThanOrEqual(0);
+      expect(after).toBeGreaterThan(before);
     });
 
     it('f confirms and advances past the scope-gate', async () => {
