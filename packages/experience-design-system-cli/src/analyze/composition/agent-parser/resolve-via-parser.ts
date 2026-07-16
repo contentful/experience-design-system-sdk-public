@@ -54,7 +54,8 @@ export async function resolveViaAgentParser(input: {
     input.onPhase?.('authoring');
     const raw = await input.runAgentFn({ prompt });
     const source = extractParserSource(raw);
-    if (source === null) return { error: 'no parser source in agent output' };
+    if (source === null)
+      return { error: 'agent output had no parser-shaped code block (expected `export default function (ctx) {…}`)' };
     input.onPhase?.('parsing');
     const res = await runParserInSandbox(
       source,
