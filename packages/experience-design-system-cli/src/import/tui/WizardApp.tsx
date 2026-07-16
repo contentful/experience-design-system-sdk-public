@@ -279,6 +279,7 @@ export type WizardAppProps = {
   compositionMap?: string;
   compositionAdapter?: string;
   compositionAgent?: boolean;
+  generateMap?: string;
   noCache?: boolean;
   autoFilter?: boolean;
   livePreview?: boolean;
@@ -312,6 +313,7 @@ export function WizardApp({
   compositionMap,
   compositionAdapter,
   compositionAgent = false,
+  generateMap,
   noCache = false,
   autoFilter = true,
   livePreview = true,
@@ -584,6 +586,7 @@ export function WizardApp({
         if (compositionMap) extractArgs.push('--composition-map', compositionMap);
         if (compositionAdapter) extractArgs.push('--composition-adapter', compositionAdapter);
         if (compositionAgent) extractArgs.push('--composition-agent');
+        if (generateMap) extractArgs.push('--generate-map', generateMap);
       }
       const child = spawn('node', extractArgs);
       let stdout = '';

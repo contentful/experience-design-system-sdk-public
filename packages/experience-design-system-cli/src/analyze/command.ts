@@ -399,7 +399,6 @@ export function registerAnalyzeCommand(program: Command): void {
             const skeleton = edgesToGroups(result.edges);
             await writeFile(opts.generateMap, JSON.stringify(skeleton, null, 2) + '\n');
             process.stderr.write(`Wrote composition map skeleton to ${opts.generateMap}\n`);
-            process.exit(0);
           }
 
           validatedComponents = result.components as typeof validatedComponents;
