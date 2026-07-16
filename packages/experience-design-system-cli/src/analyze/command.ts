@@ -38,6 +38,7 @@ import { loadUserMap, resolveCompositionSources } from './composition/resolve-ma
 import { selectCandidateFiles } from './composition/candidate-files.js';
 import type { InterchangeMap } from './composition/interchange-schema.js';
 import type { RawSlotDefinition } from '../types.js';
+import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
 import type { CompositionAdapter } from './composition/adapters/index.js';
 import { runAgent, type AgentName } from '../generate/agent-runner.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
@@ -54,6 +55,7 @@ interface AnalyzeExtractOptions {
   compositionAgent?: boolean;
   compositionRefresh?: boolean;
   generateMap?: string;
+  prompt?: string[];
 }
 
 const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
@@ -254,6 +256,12 @@ export function registerAnalyzeCommand(program: Command): void {
     .option('--composition-agent', 'Opt into agentic mapping resolution when deterministic sources find no groups')
     .option('--composition-refresh', 'Force the mapping agent to run even where deterministic sources answered')
     .option('--generate-map <path>', 'Emit a skeleton interchange map from what deterministic sources found, then exit')
+    .option(
+      '--prompt <stage=value>',
+      'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
+      (v: string, acc: string[]) => [...acc, v],
+      [] as string[],
+    )
     .action(async (opts: AnalyzeExtractOptions) => {
       const resolveUnreachable: 'auto' | 'always' | 'never' = (() => {
         const v = opts.resolveUnreachable ?? 'auto';
@@ -371,6 +379,22 @@ export function registerAnalyzeCommand(program: Command): void {
         const sources = resolveCompositionSources(opts);
         for (const err of sources.errors) process.stderr.write(`Warning: ${err}\n`);
 
+        const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
+        for (const err of promptErrors) {
+          process.stderr.write(`Error: ${err}\n`);
+          process.exit(1);
+        }
+        let compositionPrompt: string | undefined;
+        const compositionOverride = promptOverrides.get('composition');
+        if (compositionOverride) {
+          try {
+            compositionPrompt = await resolvePromptOverride(compositionOverride);
+          } catch (e) {
+            process.stderr.write(`Error: ${e instanceof Error ? e.message : String(e)}\n`);
+            process.exit(1);
+          }
+        }
+
         let userMap;
         if (opts.compositionMap) {
           const loaded = await loadUserMap(opts.compositionMap);
@@ -408,6 +432,7 @@ export function registerAnalyzeCommand(program: Command): void {
             useAgent: sources.useAgent,
             forceAgent: sources.forceAgent,
             files: resolverFiles,
+            ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
             runAgentFn: async ({ prompt }) => {
               const res = await runAgent({
                 agent: resolverAgent,

@@ -280,6 +280,7 @@ export type WizardAppProps = {
   compositionAdapter?: string;
   compositionAgent?: boolean;
   generateMap?: string;
+  promptOverrides?: string[];
   noCache?: boolean;
   autoFilter?: boolean;
   livePreview?: boolean;
@@ -314,6 +315,7 @@ export function WizardApp({
   compositionAdapter,
   compositionAgent = false,
   generateMap,
+  promptOverrides,
   noCache = false,
   autoFilter = true,
   livePreview = true,
@@ -587,6 +589,7 @@ export function WizardApp({
         if (compositionAdapter) extractArgs.push('--composition-adapter', compositionAdapter);
         if (compositionAgent) extractArgs.push('--composition-agent');
         if (generateMap) extractArgs.push('--generate-map', generateMap);
+        for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
       }
       const child = spawn('node', extractArgs);
       let stdout = '';

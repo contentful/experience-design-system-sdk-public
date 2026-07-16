@@ -100,6 +100,43 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
     expect(res.components).toHaveLength(COMPONENTS.length);
   });
 
+  describe('promptOverride', () => {
+    it('injects the custom instruction while keeping the output contract + names', async () => {
+      let seenPrompt = '';
+      const runAgentFn = vi.fn(async ({ prompt }: { prompt: string }) => {
+        seenPrompt = prompt;
+        return '';
+      });
+      await resolveMapping({
+        components: COMPONENTS,
+        useAgent: true,
+        promptOverride: 'FOLLOW THESE CUSTOM RULES.',
+        files: [{ path: 'm.ts', content: 'withParentType' }],
+        runAgentFn,
+      });
+      expect(seenPrompt).toContain('FOLLOW THESE CUSTOM RULES.');
+      // Default instruction replaced, contract + names retained.
+      expect(seenPrompt).not.toContain('You are resolving parent→child component composition');
+      expect(seenPrompt).toContain('"tool":"map_edge"');
+      expect(seenPrompt).toContain('SectionTab');
+    });
+
+    it('falls back to the default instruction when no override is given', async () => {
+      let seenPrompt = '';
+      const runAgentFn = vi.fn(async ({ prompt }: { prompt: string }) => {
+        seenPrompt = prompt;
+        return '';
+      });
+      await resolveMapping({
+        components: COMPONENTS,
+        useAgent: true,
+        files: [{ path: 'm.ts', content: 'withParentType' }],
+        runAgentFn,
+      });
+      expect(seenPrompt).toContain('You are resolving parent→child component composition');
+    });
+  });
+
   describe('precedence: code slots > mapping (adapter) > agent', () => {
     it('code slots survive with no other source (pass-through)', async () => {
       const withCode = [comp('A', [dslot(['B'])]), comp('B')];
