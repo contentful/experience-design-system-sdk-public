@@ -414,15 +414,15 @@ export function registerAnalyzeCommand(program: Command): void {
           };
 
           emitCompositionProgress('resolving');
-          const candidateInputs = await readCandidateFiles(validatedComponents, sourceFiles);
-          // Feed the agent ONLY the mapping/meta marker-matched files — not the
-          // whole scanned tree. The full-source feed existed for adapters
-          // (removed); the agent just needs the mapping layer, and inlining the
-          // entire repo blows the prompt size.
-          const resolverFiles = selectCandidateFiles(candidateInputs).map((c) => ({
-            path: c.path,
-            content: c.content,
-          }));
+          const allFiles = await readCandidateFiles(validatedComponents, sourceFiles);
+          // Decouple the two file sets (design: candidate-heuristic fragility):
+          //  - `promptFiles`: a bounded candidate SAMPLE inlined into the agent
+          //    prompt so it sees the convention without ingesting the whole repo.
+          //  - `allFiles`: EVERY scanned file, handed to the authored parser at
+          //    runtime. The parser is deterministic code — give it everything so
+          //    a candidate-filter miss can never starve it of a definition file.
+          const promptFiles = selectCandidateFiles(allFiles).map((c) => ({ path: c.path, content: c.content }));
+          const runtimeFiles = allFiles.map((c) => ({ path: c.path, content: c.content }));
 
           const resolverAgent = resolveCompositionAgentName(opts.agent);
           const parserMode = (opts.compositionAgentMode ?? 'parser') !== 'edges';
@@ -445,13 +445,13 @@ export function registerAnalyzeCommand(program: Command): void {
           let parserEdges: CompositionEdge[] | undefined;
           if (sources.useAgent && parserMode) {
             const parserCacheKey =
-              buildMappingCacheKey({ files: resolverFiles, producer: { kind: 'agent', agent: resolverAgent } }) +
+              buildMappingCacheKey({ files: runtimeFiles, producer: { kind: 'agent', agent: resolverAgent } }) +
               '-parser';
             const cachedSource = opts.compositionRefresh ? null : await readRawAgentCache(parserCacheKey);
             if (cachedSource !== null) {
               emitCompositionProgress('cache-hit');
               const ran = await runParserInSandbox(cachedSource, {
-                files: resolverFiles,
+                files: runtimeFiles,
                 componentNames: [...componentNameSet],
               });
               if (!ran.error) {
@@ -460,7 +460,8 @@ export function registerAnalyzeCommand(program: Command): void {
             }
             if (parserEdges === undefined) {
               const pr = await resolveViaAgentParser({
-                files: resolverFiles,
+                files: promptFiles,
+                runtimeFiles,
                 componentNames: componentNameSet,
                 runAgentFn: ({ prompt }) => spawnAgent(prompt),
                 ...(compositionPrompt ? { instructionOverride: compositionPrompt } : {}),
@@ -478,15 +479,16 @@ export function registerAnalyzeCommand(program: Command): void {
 
           if (process.env['EDS_DEBUG'] && parserEdges) {
             process.stderr.write(
-              `[composition-debug] candidate files: ${resolverFiles.length}; componentNames: ${componentNameSet.size}; parser edges: ${parserEdges.length}\n`,
+              `[composition-debug] prompt files: ${promptFiles.length}; runtime files: ${runtimeFiles.length}; componentNames: ${componentNameSet.size}; parser edges: ${parserEdges.length}\n`,
             );
             for (const e of parserEdges) process.stderr.write(`[composition-debug]   edge ${e.parent} -> ${e.child}\n`);
           }
 
           // Edge-emission cache (used for both explicit edges-mode and the
-          // parser-mode fallback). Keyed on candidate files + agent identity.
+          // parser-mode fallback). Keyed on prompt files + agent identity — the
+          // agent emits edges directly from what it reads in the prompt.
           const agentCacheKey = buildMappingCacheKey({
-            files: resolverFiles,
+            files: promptFiles,
             producer: { kind: 'agent', agent: resolverAgent },
           });
           const useEdgeEmission = sources.useAgent && parserEdges === undefined;
@@ -496,7 +498,7 @@ export function registerAnalyzeCommand(program: Command): void {
             ...(parserEdges ? { extraEdges: parserEdges } : {}),
             useAgent: useEdgeEmission,
             forceAgent: sources.forceAgent && useEdgeEmission,
-            files: resolverFiles,
+            files: promptFiles,
             ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
             runAgentFn: async ({ prompt }) => {
               if (!opts.compositionRefresh) {

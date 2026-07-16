@@ -67,4 +67,32 @@ describe('resolveViaAgentParser', () => {
     expect(phases).toContain('authoring');
     expect(phases).toContain('parsing');
   });
+
+  it('runs the parser over runtimeFiles, not the (smaller) prompt files', async () => {
+    // The prompt sees only 'p.ts'; the parser must see the runtime set and
+    // resolve an edge that depends on a file NOT in the prompt.
+    const promptOnly = [{ path: 'p.ts', content: 'sample' }];
+    const runtime = [
+      { path: 'p.ts', content: 'sample' },
+      { path: 'extra.ts', content: 'EDGE_MARKER' },
+    ];
+    // Parser emits an edge only if it finds EDGE_MARKER in ctx.files (runtime).
+    const parser = [
+      '```js',
+      'export default function (ctx) {',
+      "  const found = ctx.files.some(f => f.content.includes('EDGE_MARKER'));",
+      "  return found ? [{ parent: 'Parent', child: 'Child' }] : [];",
+      '}',
+      '```',
+    ].join('\n');
+    const runAgentFn = vi.fn(async () => parser);
+    const res = await resolveViaAgentParser({
+      files: promptOnly,
+      runtimeFiles: runtime,
+      componentNames: names,
+      runAgentFn,
+    });
+    // If the parser had only seen promptOnly, it would find nothing → no edges.
+    expect(res.edges).toEqual([{ parent: 'Parent', child: 'Child', provenance: 'adapter:agent-parser' }]);
+  });
 });

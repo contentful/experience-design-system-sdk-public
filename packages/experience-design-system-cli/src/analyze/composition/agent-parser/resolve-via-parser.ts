@@ -22,7 +22,13 @@ export type ResolveViaParserResult = {
  * agent call is injected so this is testable without spawning a subprocess.
  */
 export async function resolveViaAgentParser(input: {
+  /** Files inlined into the authoring prompt — a bounded candidate sample so
+   *  the agent sees the convention without ingesting the whole repo. */
   files: Array<{ path: string; content: string }>;
+  /** Files the authored parser actually RUNS over in the sandbox. Defaults to
+   *  `files`; pass the full scanned set here so the parser is never starved by
+   *  the prompt-side candidate filter (the filter stops being load-bearing). */
+  runtimeFiles?: Array<{ path: string; content: string }>;
   componentNames: Set<string>;
   runAgentFn: (opts: { prompt: string }) => Promise<string>;
   instructionOverride?: string;
@@ -31,7 +37,7 @@ export async function resolveViaAgentParser(input: {
 }): Promise<ResolveViaParserResult> {
   const warnings: string[] = [];
   const componentNamesArr = [...input.componentNames];
-  const ctx = { files: input.files, componentNames: componentNamesArr };
+  const ctx = { files: input.runtimeFiles ?? input.files, componentNames: componentNamesArr };
 
   const verify = (edges: CompositionEdge[]): CompositionEdge[] => {
     const out: CompositionEdge[] = [];
