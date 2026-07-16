@@ -27,6 +27,8 @@ import { resolveCompositionMode } from '../lib/composition-mode.js';
 import { resolveMapping } from './composition/resolve-mapping.js';
 import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
 import { selectCandidateFiles } from './composition/candidate-files.js';
+import { buildMappingCacheKey } from './composition/cache-key.js';
+import { readRawAgentCache, writeRawAgentCache } from './composition/mapping-cache.js';
 import type { InterchangeMap } from './composition/interchange-schema.js';
 import type { RawSlotDefinition } from '../types.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
@@ -406,6 +408,13 @@ export function registerAnalyzeCommand(program: Command): void {
           }));
 
           const resolverAgent = resolveCompositionAgentName(opts.agent);
+          // Agent-output cache (spec T5): key on candidate files + agent
+          // identity + resolver version. On a hit we skip the (token-costly)
+          // agent spawn entirely. `--composition-refresh` bypasses the read.
+          const agentCacheKey = buildMappingCacheKey({
+            files: resolverFiles,
+            producer: { kind: 'agent', agent: resolverAgent },
+          });
           const result = await resolveMapping({
             components: validatedComponents,
             ...(userMap ? { userMap } : {}),
@@ -414,6 +423,13 @@ export function registerAnalyzeCommand(program: Command): void {
             files: resolverFiles,
             ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
             runAgentFn: async ({ prompt }) => {
+              if (!opts.compositionRefresh) {
+                const cached = await readRawAgentCache(agentCacheKey);
+                if (cached !== null) {
+                  emitCompositionProgress('cache-hit');
+                  return cached;
+                }
+              }
               emitCompositionProgress(`agent:${resolverAgent}`);
               const res = await runAgent({
                 agent: resolverAgent,
@@ -422,6 +438,7 @@ export function registerAnalyzeCommand(program: Command): void {
                 timeoutMs: 120_000,
                 promptViaStdin: true,
               });
+              await writeRawAgentCache(agentCacheKey, res.stdout);
               return res.stdout;
             },
           });
