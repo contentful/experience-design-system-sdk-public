@@ -127,5 +127,50 @@ describe('runParserInSandbox', () => {
       const res = await runParserInSandbox(src, ctx);
       expect(res.edges.map((e) => e.parent)).not.toContain('LEAKED');
     });
+
+    it('cannot leak from TOP-LEVEL code that runs before the returned function (gap #3)', async () => {
+      // The dangerous case the worker model missed: work done at module-eval
+      // time, not inside the returned function. In the vm allow-list model
+      // there is no process to reach even at top level.
+      const src = `
+        const leaked = (typeof process !== 'undefined' && process && process.env) ? 'LEAKED' : 'safe';
+        export default function(c){ return [{ parent: leaked, child: 'Child', provenance: 'adapter:agent-parser' }]; }
+      `;
+      const res = await runParserInSandbox(src, { ...ctx, componentNames: ['LEAKED', 'safe', 'Child'] });
+      expect(res.edges.map((e) => e.parent)).not.toContain('LEAKED');
+    });
+
+    it('has no require in scope (allow-list, not deny-list)', async () => {
+      const src = `export default function(c){ require('node:fs'); return []; }`;
+      const res = await runParserInSandbox(src, ctx);
+      expect(res.error).toBeTruthy();
+      expect(res.edges).toEqual([]);
+    });
+
+    it('has no Buffer / timers / fetch in scope', async () => {
+      for (const cap of ['Buffer', 'setTimeout', 'fetch', 'process', 'globalThis.process']) {
+        const src = `export default function(c){ return [{ parent: typeof ${cap} === 'undefined' ? 'safe' : 'LEAKED', child: 'Child', provenance: 'adapter:agent-parser' }]; }`;
+        const res = await runParserInSandbox(src, { ...ctx, componentNames: ['safe', 'LEAKED', 'Child'] });
+        expect(
+          res.edges.map((e) => e.parent),
+          `capability ${cap} must be absent`,
+        ).not.toContain('LEAKED');
+      }
+    });
+
+    it('rejects an async parser (closes the async-timeout gap)', async () => {
+      const src = `export default async function(c){ return [{ parent: 'Parent', child: 'Child', provenance: 'adapter:agent-parser' }]; }`;
+      const res = await runParserInSandbox(src, ctx);
+      expect(res.error).toMatch(/synchronous/i);
+      expect(res.edges).toEqual([]);
+    });
+
+    it('kills a parser that exhausts memory (heap cap)', async () => {
+      // Allocate unboundedly; the child's --max-old-space-size self-kills.
+      const src = `export default function(c){ const a=[]; for(;;){ a.push(new Array(1e6).fill(0)); } }`;
+      const res = await runParserInSandbox(src, ctx, { timeoutMs: 8000 });
+      expect(res.edges).toEqual([]);
+      expect(res.error).toBeTruthy();
+    }, 15000);
   });
 });
