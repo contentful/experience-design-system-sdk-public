@@ -1679,6 +1679,7 @@ export function WizardApp({
           const phase = state.compositionPhase;
           if (!phase) return undefined;
           if (phase === 'resolving') return 'Resolving composition mapping...';
+          if (phase === 'cache-hit') return 'Composition mapping (cached)...';
           if (phase.startsWith('agent:')) return `Resolving composition via ${phase.slice('agent:'.length)} agent...`;
           if (phase === 'done') return 'Composition mapping resolved ✓';
           return `Composition: ${phase}`;
