@@ -14,7 +14,7 @@ const dslot = (allowed?: string[]): RawSlotDefinition => ({
 const COMPONENTS = [comp('SectionTab', [dslot()]), comp('Section3Up'), comp('CaseStudyCard')];
 
 describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
-  it('user map only → used verbatim, no agent, no adapter', async () => {
+  it('user map only → used verbatim, no agent', async () => {
     const runAgentFn = vi.fn();
     const res = await resolveMapping({
       components: COMPONENTS,
@@ -26,14 +26,6 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
     expect(parent.slots.find((s) => s.isDefault)!.allowedComponents).toEqual(['Section3Up']);
     expect(runAgentFn).not.toHaveBeenCalled();
     expect(res.edges.every((e) => e.provenance === 'user')).toBe(true);
-  });
-
-  it('adapter path resolves without invoking the agent', async () => {
-    const runAgentFn = vi.fn();
-    const adapter = () => [{ parent: 'SectionTab', child: 'Section3Up', provenance: 'adapter:test' as const }];
-    const res = await resolveMapping({ components: COMPONENTS, adapter, files: [], runAgentFn });
-    expect(res.components.find((c) => c.name === 'SectionTab')!.slots[0].allowedComponents).toEqual(['Section3Up']);
-    expect(runAgentFn).not.toHaveBeenCalled();
   });
 
   it('agent path parses JSONL and applies edges', async () => {
@@ -137,7 +129,7 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
     });
   });
 
-  describe('precedence: code slots > mapping (adapter) > agent', () => {
+  describe('precedence: user map > code slots > agent', () => {
     it('code slots survive with no other source (pass-through)', async () => {
       const withCode = [comp('A', [dslot(['B'])]), comp('B')];
       const res = await resolveMapping({ components: withCode, files: [], runAgentFn: vi.fn() });
@@ -145,30 +137,36 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
       expect(res.edges.find((e) => e.parent === 'A')!.provenance).toBe('typed-slot');
     });
 
-    it('code and adapter union when disjoint (different children)', async () => {
+    it('code and agent union when disjoint (different children)', async () => {
       const withCode = [comp('A', [dslot(['B'])]), comp('B'), comp('C')];
-      const adapter = () => [{ parent: 'A', child: 'C', slot: 'children', provenance: 'adapter:x' as const }];
-      const res = await resolveMapping({ components: withCode, adapter, files: [], runAgentFn: vi.fn() });
+      const runAgentFn = vi.fn(async () => '{"tool":"map_edge","parent":"A","child":"C","slot":"children"}');
+      const res = await resolveMapping({
+        components: withCode,
+        forceAgent: true,
+        files: [{ path: 'm', content: 'x' }],
+        runAgentFn,
+      });
       const allowed = res.components.find((c) => c.name === 'A')!.slots[0].allowedComponents!.sort();
       expect(allowed).toEqual(['B', 'C']);
     });
 
-    it('code slot wins a slot-placement conflict against the adapter', async () => {
-      // Code: A.header → B. Adapter: A.footer → B. Code (rank 2) beats adapter (rank 3).
+    it('user map wins a slot-placement conflict against code slots', async () => {
+      // Code: A.header → B. User map places B under the default slot. User (1) beats code (2).
       const withCode = [
-        comp('A', [
-          { name: 'header', isDefault: false, allowedComponents: ['B'] },
-          { name: 'footer', isDefault: false },
-        ]),
+        comp('A', [{ name: 'header', isDefault: false, allowedComponents: ['B'] }, dslot()]),
         comp('B'),
       ];
-      const adapter = () => [{ parent: 'A', child: 'B', slot: 'footer', provenance: 'adapter:x' as const }];
-      const res = await resolveMapping({ components: withCode, adapter, files: [], runAgentFn: vi.fn() });
+      const res = await resolveMapping({
+        components: withCode,
+        userMap: { version: 1, groups: { A: ['B'] } },
+        files: [],
+        runAgentFn: vi.fn(),
+      });
       const a = res.components.find((c) => c.name === 'A')!;
-      expect(a.slots.find((s) => s.name === 'header')!.allowedComponents).toEqual(['B']);
-      expect(a.slots.find((s) => s.name === 'footer')!.allowedComponents ?? []).toEqual([]);
+      expect(a.slots.find((s) => s.isDefault)!.allowedComponents).toEqual(['B']);
+      expect(a.slots.find((s) => s.name === 'header')!.allowedComponents ?? []).toEqual([]);
       expect(res.conflicts).toHaveLength(1);
-      expect(res.conflicts[0]).toMatchObject({ parent: 'A', child: 'B', winner: 'typed-slot', loser: 'adapter:x' });
+      expect(res.conflicts[0]).toMatchObject({ parent: 'A', child: 'B', winner: 'user', loser: 'typed-slot' });
     });
 
     it('agent loses a slot-placement conflict to code slots', async () => {

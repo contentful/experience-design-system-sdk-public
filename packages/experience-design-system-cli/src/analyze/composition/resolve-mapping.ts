@@ -3,7 +3,6 @@ import { groupsToEdges, type CompositionEdge, type InterchangeMap } from './inte
 import { mergeEdges, type EdgeConflict } from './merge-edges.js';
 import { parseMapEdges } from './parse-map-edges.js';
 import { applyMapping } from './apply-mapping.js';
-import type { CompositionAdapter } from './adapters/types.js';
 
 export type ResolveMappingResult = {
   components: RawComponentDefinition[];
@@ -15,14 +14,14 @@ export type ResolveMappingResult = {
 /**
  * Orchestrate composition-map acquisition (spec T2) and enrichment (T7).
  *
- * Sources by rank: user map (1) > typed-slot / "code slots" (2) >
- * adapter (3) > agent (4). ALL sources — including the code slots already on
- * the incoming components — are fed into one ranked merge and unioned;
- * non-conflicting edges from every source survive, and on a conflict (same
- * parent+child, different slot) the higher-rank source wins and the loser is
- * recorded. The agent runs only when `useAgent`/`forceAgent` is set AND there
- * is residue a higher-rank source didn't cover (routing/cost optimization) —
- * `forceAgent` bypasses that suppression but never changes rank.
+ * Sources by rank: user map (1) > typed-slot / "code slots" (2) > agent (4).
+ * ALL sources — including the code slots already on the incoming components —
+ * are fed into one ranked merge and unioned; non-conflicting edges from every
+ * source survive, and on a conflict (same parent+child, different slot) the
+ * higher-rank source wins and the loser is recorded. The agent runs only when
+ * `useAgent`/`forceAgent` is set AND there is residue a higher-rank source
+ * didn't cover (routing/cost optimization) — `forceAgent` bypasses that
+ * suppression but never changes rank.
  *
  * `runAgentFn` is injected (returns the agent's raw stdout) so this is
  * testable without spawning a subprocess.
@@ -30,7 +29,6 @@ export type ResolveMappingResult = {
 export async function resolveMapping(input: {
   components: RawComponentDefinition[];
   userMap?: InterchangeMap;
-  adapter?: CompositionAdapter;
   useAgent?: boolean;
   forceAgent?: boolean;
   files: Array<{ path: string; content: string }>;
@@ -49,9 +47,9 @@ export async function resolveMapping(input: {
   const agentWarnings: string[] = [];
 
   // Rank 2 — typed-slot ("code slots") already resolved by the AST extractor.
-  // Feed them into the ranked merge so a conflicting lower-rank edge (adapter
-  // or agent placing the same child in a different slot) LOSES to code rather
-  // than being unioned in alongside it.
+  // Feed them into the ranked merge so a conflicting lower-rank edge (agent
+  // placing the same child in a different slot) LOSES to code rather than being
+  // unioned in alongside it.
   for (const c of input.components) {
     for (const slot of c.slots) {
       for (const child of slot.allowedComponents ?? []) {
@@ -63,11 +61,6 @@ export async function resolveMapping(input: {
   // Rank 1 — user-provided map.
   if (input.userMap) {
     collected.push(...groupsToEdges(input.userMap, 'user'));
-  }
-
-  // Rank 3 — native adapter (deterministic).
-  if (input.adapter) {
-    collected.push(...input.adapter({ files: input.files, componentNames }));
   }
 
   // Routing: which parents are already covered by a higher-rank source?

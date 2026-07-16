@@ -39,7 +39,6 @@ import { selectCandidateFiles } from './composition/candidate-files.js';
 import type { InterchangeMap } from './composition/interchange-schema.js';
 import type { RawSlotDefinition } from '../types.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
-import type { CompositionAdapter } from './composition/adapters/index.js';
 import { runAgent, type AgentName } from '../generate/agent-runner.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
@@ -51,7 +50,6 @@ interface AnalyzeExtractOptions {
   composite?: boolean;
   atomic?: boolean;
   compositionMap?: string;
-  compositionAdapter?: string;
   compositionAgent?: boolean;
   compositionRefresh?: boolean;
   generateMap?: string;
@@ -161,23 +159,6 @@ async function safeReadCompositionMode(): Promise<'composite' | 'atomic' | undef
   }
 }
 
-async function loadCustomAdapter(modulePath: string): Promise<CompositionAdapter | undefined> {
-  const abs = isAbsolute(modulePath) ? modulePath : resolve(process.cwd(), modulePath);
-  process.stderr.write(`Warning: --composition-adapter is executing user code from ${abs}\n`);
-  try {
-    const mod = (await import(abs)) as { default?: unknown; adapter?: unknown };
-    const fn = typeof mod.default === 'function' ? mod.default : mod.adapter;
-    if (typeof fn !== 'function') {
-      process.stderr.write(`Error: --composition-adapter module must export a default function or 'adapter': ${abs}\n`);
-      process.exit(1);
-    }
-    return fn as CompositionAdapter;
-  } catch (e) {
-    process.stderr.write(`Error: failed to load --composition-adapter ${abs}: ${e instanceof Error ? e.message : e}\n`);
-    process.exit(1);
-  }
-}
-
 /**
  * Build a { version, groups } interchange skeleton (spec T1) from the resolved
  * components' slot allowedComponents — reflecting BOTH typed-slot edges the
@@ -252,10 +233,6 @@ export function registerAnalyzeCommand(program: Command): void {
     .option('--composite', 'Resolve embedded-component composition (opt in; default is atomic)')
     .option('--atomic', 'Skip composition resolution — flat components only (default)')
     .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
-    .option(
-      '--composition-adapter <name|path>',
-      'Use a native-format adapter (built-in name or custom module path; implies --composite)',
-    )
     .option(
       '--composition-agent',
       'Opt into agentic mapping resolution when deterministic sources find no groups (implies --composite)',
@@ -381,12 +358,11 @@ export function registerAnalyzeCommand(program: Command): void {
       let validatedComponents = validateExtractedComponents(filteredComponents);
 
       // Composition mapping resolution (spec U2). Only in composite mode and
-      // only when a source is provided (user map / adapter / agent opt-in).
+      // only when a source is provided (user map / agent opt-in).
       // Atomic (default) never resolves — it would only be stripped later.
       const compositionMode = resolveCompositionMode(opts, (await safeReadCompositionMode()) ?? undefined);
       if (compositionMode === 'composite') {
         const sources = resolveCompositionSources(opts);
-        for (const err of sources.errors) process.stderr.write(`Warning: ${err}\n`);
 
         const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
         for (const err of promptErrors) {
@@ -414,16 +390,7 @@ export function registerAnalyzeCommand(program: Command): void {
           userMap = loaded.map;
         }
 
-        let adapter = sources.adapter;
-        if (
-          !adapter &&
-          opts.compositionAdapter &&
-          (opts.compositionAdapter.includes('/') || opts.compositionAdapter.includes('.'))
-        ) {
-          adapter = await loadCustomAdapter(opts.compositionAdapter);
-        }
-
-        const hasSource = !!userMap || !!adapter || sources.useAgent || sources.forceAgent;
+        const hasSource = !!userMap || sources.useAgent || sources.forceAgent;
         if (hasSource || opts.generateMap) {
           const candidateInputs = await readCandidateFiles(validatedComponents, sourceFiles);
           const markerCandidates = selectCandidateFiles(candidateInputs);
@@ -437,7 +404,6 @@ export function registerAnalyzeCommand(program: Command): void {
           const result = await resolveMapping({
             components: validatedComponents,
             ...(userMap ? { userMap } : {}),
-            ...(adapter ? { adapter } : {}),
             useAgent: sources.useAgent,
             forceAgent: sources.forceAgent,
             files: resolverFiles,

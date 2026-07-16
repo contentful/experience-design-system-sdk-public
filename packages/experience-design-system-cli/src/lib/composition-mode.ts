@@ -6,20 +6,13 @@ export type CompositionMode = 'composite' | 'atomic';
  */
 export type CompositionSourceOptions = {
   compositionMap?: string;
-  compositionAdapter?: string;
   compositionAgent?: boolean;
   compositionRefresh?: boolean;
   generateMap?: string;
 };
 
 function hasCompositionSource(opts: CompositionSourceOptions): boolean {
-  return (
-    !!opts.compositionMap ||
-    !!opts.compositionAdapter ||
-    !!opts.compositionAgent ||
-    !!opts.compositionRefresh ||
-    !!opts.generateMap
-  );
+  return !!opts.compositionMap || !!opts.compositionAgent || !!opts.compositionRefresh || !!opts.generateMap;
 }
 
 /**
@@ -31,7 +24,7 @@ function hasCompositionSource(opts: CompositionSourceOptions): boolean {
  * `--atomic` is accepted for symmetry and wins when passed — even alongside a
  * composition source, since it's an explicit "no" that overrides the implicit
  * opt-in. If both `--composite` and `--atomic` are present, `--composite`
- * wins. Passing a composition source (`--composition-map/-adapter/-agent`,
+ * wins. Passing a composition source (`--composition-map/-agent`,
  * `--composition-refresh`, or `--generate-map`) implies composite without a
  * separate `--composite`.
  */

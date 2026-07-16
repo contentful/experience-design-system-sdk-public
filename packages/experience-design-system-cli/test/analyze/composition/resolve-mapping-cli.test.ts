@@ -37,27 +37,9 @@ describe('resolve-mapping-cli (T2/T6 flag routing)', () => {
   });
 
   describe('resolveCompositionSources', () => {
-    it('resolves a built-in adapter by name', () => {
-      const opts: CompositionCliOptions = { compositionAdapter: 'required-parent' };
-      const res = resolveCompositionSources(opts);
-      expect(res.adapter).toBeTypeOf('function');
-      expect(res.errors).toHaveLength(0);
-    });
-
-    it('errors on an unknown built-in adapter name (no slash/dot → treated as name)', () => {
-      const res = resolveCompositionSources({ compositionAdapter: 'nope-not-real' });
-      expect(res.errors.join(' ')).toMatch(/adapter/i);
-      expect(res.adapter).toBeUndefined();
-    });
-
-    it('treats a path value as a custom module (no error; caller loads it)', () => {
-      const res = resolveCompositionSources({ compositionAdapter: './my-adapter.mjs' });
-      expect(res.errors).toHaveLength(0);
-      expect(res.adapter).toBeUndefined();
-    });
-
     it('flags useAgent when --composition-agent is set', () => {
-      const res = resolveCompositionSources({ compositionAgent: true });
+      const opts: CompositionCliOptions = { compositionAgent: true };
+      const res = resolveCompositionSources(opts);
       expect(res.useAgent).toBe(true);
     });
 
@@ -66,12 +48,10 @@ describe('resolve-mapping-cli (T2/T6 flag routing)', () => {
       expect(res.forceAgent).toBe(true);
     });
 
-    it('no composition flags → no adapter, no agent', () => {
+    it('no composition flags → no agent', () => {
       const res = resolveCompositionSources({});
-      expect(res.adapter).toBeUndefined();
       expect(res.useAgent).toBeFalsy();
       expect(res.forceAgent).toBeFalsy();
-      expect(res.errors).toHaveLength(0);
     });
   });
 });

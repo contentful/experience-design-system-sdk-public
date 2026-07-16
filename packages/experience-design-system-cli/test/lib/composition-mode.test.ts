@@ -44,10 +44,6 @@ describe('resolveCompositionMode (flag > env > config > default)', () => {
   });
 
   describe('implicit composite from a composition source', () => {
-    it('a composition adapter implies composite', () => {
-      expect(resolveCompositionMode({ compositionAdapter: 'required-parent' }, undefined)).toBe('composite');
-    });
-
     it('the composition agent implies composite', () => {
       expect(resolveCompositionMode({ compositionAgent: true }, undefined)).toBe('composite');
     });
@@ -66,11 +62,11 @@ describe('resolveCompositionMode (flag > env > config > default)', () => {
 
     it('an implied source beats env and config', () => {
       process.env[ENV] = 'atomic';
-      expect(resolveCompositionMode({ compositionAdapter: 'x' }, 'atomic')).toBe('composite');
+      expect(resolveCompositionMode({ compositionMap: './m.json' }, 'atomic')).toBe('composite');
     });
 
     it('explicit --atomic still wins over an implied source (contradictory input, user said no)', () => {
-      expect(resolveCompositionMode({ atomic: true, compositionAdapter: 'x' }, undefined)).toBe('atomic');
+      expect(resolveCompositionMode({ atomic: true, compositionMap: './m.json' }, undefined)).toBe('atomic');
     });
 
     it('explicit --composite is unaffected', () => {
