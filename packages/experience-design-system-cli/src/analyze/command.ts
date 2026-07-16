@@ -392,6 +392,15 @@ export function registerAnalyzeCommand(program: Command): void {
 
         const hasSource = !!userMap || sources.useAgent || sources.forceAgent;
         if (hasSource || opts.generateMap) {
+          // Composition progress mirrors the scan/extract progress convention:
+          // emit `progress=composition:<phase>` on stderr so the wizard can
+          // render a second progress line during the (potentially slow, agent-
+          // backed) resolution instead of appearing frozen.
+          const emitCompositionProgress = (phase: string): void => {
+            if (!process.stdout.isTTY) process.stderr.write(`progress=composition:${phase}\n`);
+          };
+
+          emitCompositionProgress('resolving');
           const candidateInputs = await readCandidateFiles(validatedComponents, sourceFiles);
           // Feed the agent ONLY the mapping/meta marker-matched files — not the
           // whole scanned tree. The full-source feed existed for adapters
@@ -411,6 +420,7 @@ export function registerAnalyzeCommand(program: Command): void {
             files: resolverFiles,
             ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
             runAgentFn: async ({ prompt }) => {
+              emitCompositionProgress(`agent:${resolverAgent}`);
               const res = await runAgent({
                 agent: resolverAgent,
                 prompt,
@@ -421,6 +431,7 @@ export function registerAnalyzeCommand(program: Command): void {
               return res.stdout;
             },
           });
+          emitCompositionProgress('done');
 
           for (const w of result.warnings) process.stderr.write(`Warning: composition — ${w}\n`);
           for (const c of result.conflicts) {

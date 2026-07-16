@@ -10,6 +10,9 @@ type RunningStepProps = {
   title: string;
   description: string;
   detail?: string;
+  /** Optional second progress line (own spinner) — e.g. composition resolution
+   *  running after the file scan on the extracting screen. */
+  secondaryDetail?: string;
 };
 
 export function RunningStep({
@@ -18,6 +21,7 @@ export function RunningStep({
   title,
   description,
   detail,
+  secondaryDetail,
 }: RunningStepProps): React.ReactElement {
   const [frame, setFrame] = useState(0);
   const [elapsed, setElapsed] = useState(0);
@@ -55,6 +59,12 @@ export function RunningStep({
         <Text color={PALETTE.info}>{SPINNER_FRAMES[frame]}</Text>
         <Text dimColor>{detail ?? 'Running...'}</Text>
       </Box>
+      {secondaryDetail !== undefined && (
+        <Box gap={1}>
+          <Text color={PALETTE.info}>{SPINNER_FRAMES[(frame + 5) % SPINNER_FRAMES.length]}</Text>
+          <Text dimColor>{secondaryDetail}</Text>
+        </Box>
+      )}
       <Box marginTop={1}>
         <Text dimColor>Elapsed: {elapsedStr}</Text>
       </Box>
