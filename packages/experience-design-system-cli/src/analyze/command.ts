@@ -393,12 +393,14 @@ export function registerAnalyzeCommand(program: Command): void {
         const hasSource = !!userMap || sources.useAgent || sources.forceAgent;
         if (hasSource || opts.generateMap) {
           const candidateInputs = await readCandidateFiles(validatedComponents, sourceFiles);
-          const markerCandidates = selectCandidateFiles(candidateInputs);
-          const candidatePaths = new Set(markerCandidates.map((c) => c.path));
-          const resolverFiles = [
-            ...markerCandidates.map((c) => ({ path: c.path, content: c.content })),
-            ...candidateInputs.filter((c) => !candidatePaths.has(c.path)),
-          ];
+          // Feed the agent ONLY the mapping/meta marker-matched files — not the
+          // whole scanned tree. The full-source feed existed for adapters
+          // (removed); the agent just needs the mapping layer, and inlining the
+          // entire repo blows the prompt size.
+          const resolverFiles = selectCandidateFiles(candidateInputs).map((c) => ({
+            path: c.path,
+            content: c.content,
+          }));
 
           const resolverAgent = resolveCompositionAgentName();
           const result = await resolveMapping({
@@ -414,6 +416,7 @@ export function registerAnalyzeCommand(program: Command): void {
                 prompt,
                 interactive: false,
                 timeoutMs: 120_000,
+                promptViaStdin: true,
               });
               return res.stdout;
             },
