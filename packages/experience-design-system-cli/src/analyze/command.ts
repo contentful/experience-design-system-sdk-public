@@ -476,6 +476,13 @@ export function registerAnalyzeCommand(program: Command): void {
             }
           }
 
+          if (process.env['EDS_DEBUG'] && parserEdges) {
+            process.stderr.write(
+              `[composition-debug] candidate files: ${resolverFiles.length}; componentNames: ${componentNameSet.size}; parser edges: ${parserEdges.length}\n`,
+            );
+            for (const e of parserEdges) process.stderr.write(`[composition-debug]   edge ${e.parent} -> ${e.child}\n`);
+          }
+
           // Edge-emission cache (used for both explicit edges-mode and the
           // parser-mode fallback). Keyed on candidate files + agent identity.
           const agentCacheKey = buildMappingCacheKey({

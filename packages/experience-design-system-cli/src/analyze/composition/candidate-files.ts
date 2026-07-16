@@ -15,17 +15,16 @@ const DEFAULT_SLICE_WINDOW = 3;
 export type CandidateFile = { path: string; content: string };
 export type SelectedCandidate = CandidateFile & { reason: string };
 
-function basename(path: string): string {
-  const parts = path.split('/');
-  return parts[parts.length - 1] ?? path;
-}
-
 function matchReason(file: CandidateFile): string | undefined {
-  const name = basename(file.path);
+  // Test the name patterns against EVERY path segment (directory names + the
+  // basename), not just the basename. A mapping-layer file that only DEFINES a
+  // component — e.g. src/mapping/call_to_action.ts, no withParentType of its
+  // own — must still be selected so the resolver can resolve OTHER files'
+  // parent references to it. Matching only the basename silently dropped these.
+  const segments = file.path.split('/').filter((s) => s !== '');
   for (const pattern of CANDIDATE_NAME_PATTERNS) {
-    if (pattern.test(name)) {
-      const label = pattern.source.toLowerCase();
-      return `name:${label}`;
+    if (segments.some((seg) => pattern.test(seg))) {
+      return `name:${pattern.source.toLowerCase()}`;
     }
   }
   for (const marker of CANDIDATE_CONTENT_MARKERS) {

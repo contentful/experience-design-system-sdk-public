@@ -65,6 +65,30 @@ describe('candidate-files (T3 — deterministic pre-filter)', () => {
       expect(res).toHaveLength(0);
     });
 
+    it('picks a file inside a mapping/ DIRECTORY even when the basename and content lack markers', () => {
+      // Regression: a mapping file that only DEFINES a component
+      // (MappingContext + component:) but has no withParentType of its own must
+      // still be fed to the resolver — the parser needs it to resolve the
+      // parent id of OTHER files' withParentType references. Matching only the
+      // basename dropped these and silently lost edges.
+      const res = selectCandidateFiles([
+        {
+          path: 'apps/web/src/mapping/call_to_action.ts',
+          content: "context: new MappingContext('sectionCallToAction'),\n  component: CallToActionSection,",
+        },
+      ]);
+      expect(res).toHaveLength(1);
+      expect(res[0].path).toBe('apps/web/src/mapping/call_to_action.ts');
+      expect(res[0].reason).toBe('name:mapping');
+    });
+
+    it('does NOT match a mapping-like substring in an unrelated path segment', () => {
+      // Guard the directory match against false positives: a component named
+      // remapping.ts is not a mapping-layer file unless it lives in mapping/.
+      const res = selectCandidateFiles([{ path: 'src/components/remap-utils.ts', content: 'export const x = 1;' }]);
+      expect(res).toHaveLength(0);
+    });
+
     it('dedups by path (a file counted once even if it matches multiple ways)', () => {
       const res = selectCandidateFiles([
         { path: 'src/foo.mapping.ts', content: 'const c = { requiredParent: "Grid" };' },
