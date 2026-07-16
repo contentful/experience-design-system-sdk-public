@@ -41,6 +41,13 @@ export async function resolveMapping(input: {
    * JSONL parser keeps working regardless of the override.
    */
   promptOverride?: string;
+  /**
+   * Pre-resolved edges from an external source (e.g. the agent-authored parser
+   * path). They join the ranked merge at their own provenance rank alongside
+   * code slots and the user map. Callers using this typically set
+   * `useAgent: false` since they've already run their own resolution.
+   */
+  extraEdges?: CompositionEdge[];
 }): Promise<ResolveMappingResult> {
   const componentNames = new Set(input.components.map((c) => c.name));
   const collected: CompositionEdge[] = [];
@@ -61,6 +68,11 @@ export async function resolveMapping(input: {
   // Rank 1 — user-provided map.
   if (input.userMap) {
     collected.push(...groupsToEdges(input.userMap, 'user'));
+  }
+
+  // Externally pre-resolved edges (e.g. agent-authored parser, rank 3).
+  if (input.extraEdges) {
+    collected.push(...input.extraEdges);
   }
 
   // Routing: which parents are already covered by a higher-rank source?

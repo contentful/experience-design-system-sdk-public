@@ -279,6 +279,7 @@ export type WizardAppProps = {
   compositionMode?: CompositionMode;
   compositionMap?: string;
   compositionAgent?: boolean;
+  compositionAgentMode?: string;
   generateMap?: string;
   promptOverrides?: string[];
   noCache?: boolean;
@@ -313,6 +314,7 @@ export function WizardApp({
   compositionMode = 'atomic',
   compositionMap,
   compositionAgent = false,
+  compositionAgentMode,
   generateMap,
   promptOverrides,
   noCache = false,
@@ -587,6 +589,7 @@ export function WizardApp({
         extractArgs.push('--composite');
         if (compositionMap) extractArgs.push('--composition-map', compositionMap);
         if (compositionAgent) extractArgs.push('--composition-agent');
+        if (compositionAgentMode) extractArgs.push('--composition-agent-mode', compositionAgentMode);
         if (generateMap) extractArgs.push('--generate-map', generateMap);
         for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
         // Composition resolution uses the same agent the user picked for the run.
@@ -1680,6 +1683,8 @@ export function WizardApp({
           if (!phase) return undefined;
           if (phase === 'resolving') return 'Resolving composition mapping...';
           if (phase === 'cache-hit') return 'Composition mapping (cached)...';
+          if (phase === 'authoring') return 'Writing a composition parser...';
+          if (phase === 'parsing') return 'Running the composition parser...';
           if (phase.startsWith('agent:')) return `Resolving composition via ${phase.slice('agent:'.length)} agent...`;
           if (phase === 'done') return 'Composition mapping resolved ✓';
           return `Composition: ${phase}`;

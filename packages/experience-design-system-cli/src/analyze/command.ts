@@ -29,7 +29,9 @@ import { loadUserMap, resolveCompositionSources } from './composition/resolve-ma
 import { selectCandidateFiles } from './composition/candidate-files.js';
 import { buildMappingCacheKey } from './composition/cache-key.js';
 import { readRawAgentCache, writeRawAgentCache } from './composition/mapping-cache.js';
-import type { InterchangeMap } from './composition/interchange-schema.js';
+import type { InterchangeMap, CompositionEdge } from './composition/interchange-schema.js';
+import { runParserInSandbox } from './composition/agent-parser/sandbox.js';
+import { resolveViaAgentParser } from './composition/agent-parser/resolve-via-parser.js';
 import type { RawSlotDefinition } from '../types.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
 import { runAgent, type AgentName } from '../generate/agent-runner.js';
@@ -45,6 +47,7 @@ interface AnalyzeExtractOptions {
   compositionMap?: string;
   compositionAgent?: boolean;
   compositionRefresh?: boolean;
+  compositionAgentMode?: string;
   generateMap?: string;
   prompt?: string[];
   agent?: string;
@@ -244,6 +247,11 @@ export function registerAnalyzeCommand(program: Command): void {
       [] as string[],
     )
     .option('--agent <name>', 'Coding agent for composition mapping resolution (claude|codex|opencode|cursor)')
+    .option(
+      '--composition-agent-mode <mode>',
+      "Agent resolution mode: 'parser' (agent writes a sandboxed parser — deterministic, default) or 'edges' (agent lists edges directly)",
+      'parser',
+    )
     .action(async (opts: AnalyzeExtractOptions) => {
       const resolveUnreachable: 'auto' | 'always' | 'never' = (() => {
         const v = opts.resolveUnreachable ?? 'auto';
@@ -408,18 +416,70 @@ export function registerAnalyzeCommand(program: Command): void {
           }));
 
           const resolverAgent = resolveCompositionAgentName(opts.agent);
-          // Agent-output cache (spec T5): key on candidate files + agent
-          // identity + resolver version. On a hit we skip the (token-costly)
-          // agent spawn entirely. `--composition-refresh` bypasses the read.
+          const parserMode = (opts.compositionAgentMode ?? 'parser') !== 'edges';
+          const componentNameSet = new Set(validatedComponents.map((c) => c.name));
+
+          const spawnAgent = async (prompt: string): Promise<string> => {
+            const res = await runAgent({
+              agent: resolverAgent,
+              prompt,
+              interactive: false,
+              timeoutMs: 120_000,
+              promptViaStdin: true,
+            });
+            return res.stdout;
+          };
+
+          // Agent-authored parser path (default): the agent writes a sandboxed
+          // (ctx) => Edge[] parser we run deterministically, cached by parser
+          // SOURCE. Falls back to direct edge-emission if authoring fails.
+          let parserEdges: CompositionEdge[] | undefined;
+          if (sources.useAgent && parserMode) {
+            const parserCacheKey =
+              buildMappingCacheKey({ files: resolverFiles, producer: { kind: 'agent', agent: resolverAgent } }) +
+              '-parser';
+            const cachedSource = opts.compositionRefresh ? null : await readRawAgentCache(parserCacheKey);
+            if (cachedSource !== null) {
+              emitCompositionProgress('cache-hit');
+              const ran = await runParserInSandbox(cachedSource, {
+                files: resolverFiles,
+                componentNames: [...componentNameSet],
+              });
+              if (!ran.error) {
+                parserEdges = ran.edges.filter((e) => componentNameSet.has(e.parent) && componentNameSet.has(e.child));
+              }
+            }
+            if (parserEdges === undefined) {
+              const pr = await resolveViaAgentParser({
+                files: resolverFiles,
+                componentNames: componentNameSet,
+                runAgentFn: ({ prompt }) => spawnAgent(prompt),
+                ...(compositionPrompt ? { instructionOverride: compositionPrompt } : {}),
+                onPhase: (phase) => emitCompositionProgress(phase),
+              });
+              for (const w of pr.warnings) process.stderr.write(`Warning: composition — ${w}\n`);
+              if (!pr.usedFallback) {
+                parserEdges = pr.edges;
+                if (pr.parserSource) await writeRawAgentCache(parserCacheKey, pr.parserSource);
+              } else {
+                process.stderr.write('Warning: composition — parser mode failed; falling back to edge emission\n');
+              }
+            }
+          }
+
+          // Edge-emission cache (used for both explicit edges-mode and the
+          // parser-mode fallback). Keyed on candidate files + agent identity.
           const agentCacheKey = buildMappingCacheKey({
             files: resolverFiles,
             producer: { kind: 'agent', agent: resolverAgent },
           });
+          const useEdgeEmission = sources.useAgent && parserEdges === undefined;
           const result = await resolveMapping({
             components: validatedComponents,
             ...(userMap ? { userMap } : {}),
-            useAgent: sources.useAgent,
-            forceAgent: sources.forceAgent,
+            ...(parserEdges ? { extraEdges: parserEdges } : {}),
+            useAgent: useEdgeEmission,
+            forceAgent: sources.forceAgent && useEdgeEmission,
             files: resolverFiles,
             ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
             runAgentFn: async ({ prompt }) => {
@@ -431,15 +491,9 @@ export function registerAnalyzeCommand(program: Command): void {
                 }
               }
               emitCompositionProgress(`agent:${resolverAgent}`);
-              const res = await runAgent({
-                agent: resolverAgent,
-                prompt,
-                interactive: false,
-                timeoutMs: 120_000,
-                promptViaStdin: true,
-              });
-              await writeRawAgentCache(agentCacheKey, res.stdout);
-              return res.stdout;
+              const stdout = await spawnAgent(prompt);
+              await writeRawAgentCache(agentCacheKey, stdout);
+              return stdout;
             },
           });
           emitCompositionProgress('done');
