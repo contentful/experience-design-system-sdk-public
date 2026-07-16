@@ -442,9 +442,10 @@ export function registerAnalyzeCommand(program: Command): void {
           };
 
           // Completeness critic: let the agent flag composition-relevant dirs
-          // the keyword filter missed (by path/name alone — cheap). Only when
-          // an agent is already in play; it can only ADD to the prompt sample.
-          if (sources.useAgent) {
+          // the keyword filter missed (by path/name alone — cheap). It can only
+          // ADD to the prompt sample. Runs ONLY on a genuine authoring pass (see
+          // the cache-miss branch below) so a parser cache hit pays nothing.
+          const runCandidateCritic = async (): Promise<void> => {
             const critic = await critiqueCandidates(runtimeFiles, promptFiles, async (dirs) =>
               parseDirCriticReply(await spawnAgent(buildDirCriticPrompt(dirs)), dirs),
             );
@@ -454,7 +455,7 @@ export function registerAnalyzeCommand(program: Command): void {
                 process.stderr.write(`[composition-debug] critic added dirs: ${critic.addedDirs.join(', ')}\n`);
               }
             }
-          }
+          };
 
           // Agent-authored parser path (default): the agent writes a sandboxed
           // (ctx) => Edge[] parser we run deterministically, cached by parser
@@ -476,6 +477,7 @@ export function registerAnalyzeCommand(program: Command): void {
               }
             }
             if (parserEdges === undefined) {
+              await runCandidateCritic();
               const pr = await resolveViaAgentParser({
                 files: promptFiles,
                 runtimeFiles,
