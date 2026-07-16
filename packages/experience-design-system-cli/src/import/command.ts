@@ -67,7 +67,6 @@ export function registerImportCommand(program: Command): void {
     .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
     .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
     .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
-    .option('--composition-adapter <name|path>', 'Use a native-format adapter for composition (implies --composite)')
     .option('--composition-agent', 'Opt into agentic mapping resolution during extract (implies --composite)')
     .option(
       '--generate-map <path>',
@@ -158,7 +157,6 @@ export function registerImportCommand(program: Command): void {
         composite?: boolean;
         atomic?: boolean;
         compositionMap?: string;
-        compositionAdapter?: string;
         compositionAgent?: boolean;
         generateMap?: string;
         prompt?: string[];
@@ -348,7 +346,6 @@ export function registerImportCommand(program: Command): void {
             autoAcceptScope?: boolean;
             compositionMode?: CompositionMode;
             compositionMap?: string;
-            compositionAdapter?: string;
             compositionAgent?: boolean;
             generateMap?: string;
             promptOverrides?: string[];
@@ -408,7 +405,6 @@ export function registerImportCommand(program: Command): void {
               autoAcceptScope,
               compositionMode: resolvedCompositionMode,
               ...(opts.compositionMap ? { compositionMap: opts.compositionMap } : {}),
-              ...(opts.compositionAdapter ? { compositionAdapter: opts.compositionAdapter } : {}),
               ...(opts.compositionAgent ? { compositionAgent: true } : {}),
               ...(opts.generateMap ? { generateMap: opts.generateMap } : {}),
               ...(opts.prompt && opts.prompt.length > 0 ? { promptOverrides: opts.prompt } : {}),

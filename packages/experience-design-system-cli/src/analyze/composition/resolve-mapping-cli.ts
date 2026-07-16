@@ -1,12 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { validateInterchangeMap, type InterchangeMap } from './interchange-schema.js';
-import { getBuiltinAdapter, type CompositionAdapter } from './adapters/index.js';
 
 export type CompositionCliOptions = {
   /** `--composition-map <path>` — hand-authored interchange file. */
   compositionMap?: string;
-  /** `--composition-adapter <name|path>` — built-in name or custom module path. */
-  compositionAdapter?: string;
   /** `--composition-agent` — opt into agentic resolution. */
   compositionAgent?: boolean;
   /** `--composition-refresh` — force the agent to run even over resolved residue. */
@@ -35,35 +32,13 @@ export async function loadUserMap(path: string): Promise<LoadUserMapResult> {
 }
 
 export type ResolvedCompositionSources = {
-  adapter?: CompositionAdapter;
   useAgent: boolean;
   forceAgent: boolean;
-  errors: string[];
 };
 
 export function resolveCompositionSources(opts: CompositionCliOptions): ResolvedCompositionSources {
-  const errors: string[] = [];
-  let adapter: CompositionAdapter | undefined;
-
-  if (opts.compositionAdapter) {
-    const value = opts.compositionAdapter;
-    const looksLikePath = value.includes('/') || value.includes('.');
-    if (looksLikePath) {
-      adapter = undefined;
-    } else {
-      const builtin = getBuiltinAdapter(value);
-      if (!builtin) {
-        errors.push(`--composition-adapter: unknown built-in adapter "${value}"`);
-      } else {
-        adapter = builtin.adapter;
-      }
-    }
-  }
-
   return {
-    adapter,
     useAgent: !!opts.compositionAgent,
     forceAgent: !!opts.compositionRefresh,
-    errors,
   };
 }
