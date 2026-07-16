@@ -43,8 +43,14 @@ export function buildAddedComponentsList(
 ): AddedComponentEntry[] {
   const cycleTier: AddedComponentEntry[] = [];
   const restTier: AddedComponentEntry[] = [];
+  // Selection state is keyed by name, so components sharing a name (real
+  // collisions across files) collapse to one accepted entry — dedupe by name
+  // to avoid duplicate rows and non-unique React keys downstream.
+  const seen = new Set<string>();
   for (const c of components) {
     if (stateByKey.get(c.name) !== 'accepted') continue;
+    if (seen.has(c.name)) continue;
+    seen.add(c.name);
     if (cycleParticipants.has(c.name)) cycleTier.push({ name: c.name, isCycle: true });
     else restTier.push({ name: c.name, isCycle: false });
   }

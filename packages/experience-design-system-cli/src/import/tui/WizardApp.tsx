@@ -589,6 +589,8 @@ export function WizardApp({
         if (compositionAgent) extractArgs.push('--composition-agent');
         if (generateMap) extractArgs.push('--generate-map', generateMap);
         for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
+        // Composition resolution uses the same agent the user picked for the run.
+        if (state.agent) extractArgs.push('--agent', state.agent);
       }
       const child = spawn('node', extractArgs);
       let stdout = '';

@@ -9,9 +9,7 @@ import {
 import type { ComponentGraphNode } from '../../../src/analyze/composite-closure.js';
 import { computeAllClosures } from '../../../src/analyze/composite-closure.js';
 
-const state = (
-  entries: Array<[string, Decision]>,
-): Map<string, Decision> => new Map(entries);
+const state = (entries: Array<[string, Decision]>): Map<string, Decision> => new Map(entries);
 
 describe('computeColumnWidths', () => {
   it('collapses to single-column at 80 cols', () => {
@@ -47,11 +45,7 @@ describe('computeColumnWidths', () => {
 });
 
 describe('buildAddedComponentsList', () => {
-  const comps = [
-    { name: 'Zed' },
-    { name: 'Alpha' },
-    { name: 'Mid' },
-  ];
+  const comps = [{ name: 'Zed' }, { name: 'Alpha' }, { name: 'Mid' }];
 
   it('returns only accepted entries, alphabetical', () => {
     const s = state([
@@ -71,8 +65,21 @@ describe('buildAddedComponentsList', () => {
       ['Alpha', 'rejected'],
       ['Mid', 'accepted'],
     ]);
-    expect(buildAddedComponentsList(comps, s, new Set<string>())).toEqual([
-      { name: 'Mid', isCycle: false },
+    expect(buildAddedComponentsList(comps, s, new Set<string>())).toEqual([{ name: 'Mid', isCycle: false }]);
+  });
+
+  it('dedupes components that share a name (real name collisions across files)', () => {
+    // The marketing repo has multiple components named e.g. `Navigation` from
+    // different files; selection state is keyed by name, so they collapse to
+    // one accepted entry — the added list must not emit a row per raw row.
+    const dupes = [{ name: 'Navigation' }, { name: 'Navigation' }, { name: 'Logo' }, { name: 'Logo' }];
+    const s = state([
+      ['Navigation', 'accepted'],
+      ['Logo', 'accepted'],
+    ]);
+    expect(buildAddedComponentsList(dupes, s, new Set<string>())).toEqual([
+      { name: 'Logo', isCycle: false },
+      { name: 'Navigation', isCycle: false },
     ]);
   });
 
