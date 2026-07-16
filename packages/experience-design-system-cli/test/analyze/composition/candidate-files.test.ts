@@ -17,8 +17,28 @@ describe('candidate-files (T3 — deterministic pre-filter)', () => {
 
     it('exposes the expected content markers', () => {
       expect(CANDIDATE_CONTENT_MARKERS).toEqual(
-        expect.arrayContaining(['requiredParent', 'withParentType', 'allowedTagNames', 'createContext']),
+        expect.arrayContaining([
+          'requiredParent',
+          'withParentType',
+          'allowedTagNames',
+          'createContext',
+          'MappingContext',
+          'allowedComponents',
+        ]),
       );
+    });
+
+    it('matches common composition-layer directory names, not just mapping/meta', () => {
+      for (const dir of ['mapping', 'meta', 'mappings', 'registry', 'schema', 'composition']) {
+        const res = selectCandidateFiles([{ path: `src/${dir}/x.ts`, content: 'export const x = 1;' }]);
+        expect(res, `dir ${dir} should be a candidate`).toHaveLength(1);
+      }
+    });
+
+    it('picks a file that only defines a MappingContext (no withParentType)', () => {
+      const res = selectCandidateFiles([{ path: 'src/x.ts', content: "new MappingContext('foo')" }]);
+      expect(res).toHaveLength(1);
+      expect(res[0].reason).toBe('content:MappingContext');
     });
 
     it('exposes a positive token budget', () => {
