@@ -5,6 +5,7 @@ import type {
 } from '@contentful/experience-design-system-types';
 import { DEFAULT_API_HOST, toApiHost } from '../host-utils.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
+import { buildUserAgent } from '../lib/user-agent.js';
 
 export const DEFAULT_HOST = DEFAULT_API_HOST;
 
@@ -105,6 +106,7 @@ async function request(url: string, options: RequestInit & { token: string }): P
   const headers: Record<string, string> = {
     Authorization: `Bearer ${options.token}`,
     'Content-Type': 'application/json',
+    'X-Contentful-User-Agent': buildUserAgent(),
   };
 
   const init: RequestInit = {
@@ -137,6 +139,7 @@ export class ImportApiClient {
     return {
       Authorization: `Bearer ${this.token}`,
       'Content-Type': 'application/json',
+      'X-Contentful-User-Agent': buildUserAgent(),
     };
   }
 
