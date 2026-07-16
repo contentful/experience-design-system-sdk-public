@@ -25,7 +25,8 @@
   "files": [
     "bin/",
     "dist/",
-    "skills/"
+    "skills/",
+    "prompts/"
   ],
   "scripts": {
     "build": "nx build experience-design-system-cli && BINDIR=$(dirname $(which node)) && for cmd in exo experiences experience-design-system-cli; do ln -sf \"$(pwd)/bin/cli.js\" \"$BINDIR/$cmd\"; done",
