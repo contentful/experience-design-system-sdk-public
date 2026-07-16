@@ -139,6 +139,7 @@ type WizardState = {
     totalFiles: number;
     componentsFound: number;
   } | null;
+  compositionPhase: string | null;
   componentsPath: string;
   spaceId: string;
   environmentId: string;
@@ -411,6 +412,7 @@ export function WizardApp({
     renamedSlotsCount: 0,
     generateProgress: null,
     extractProgress: null,
+    compositionPhase: null,
     componentsPath: '',
     spaceId: initialSpaceId,
     environmentId: initialEnvironmentId,
@@ -574,7 +576,7 @@ export function WizardApp({
 
   const runExtract = async (projectPath: string) => {
     const outDir = join(resolve(projectPath), '.contentful');
-    update({ step: 'extracting', outDir, extractProgress: null });
+    update({ step: 'extracting', outDir, extractProgress: null, compositionPhase: null });
     const r = await new Promise<{
       exitCode: number;
       stdout: string;
@@ -626,6 +628,12 @@ export function WizardApp({
                 componentsFound,
               },
             }));
+            continue;
+          }
+          const compositionMatch = /^progress=composition:(.+)$/.exec(line.trim());
+          if (compositionMatch) {
+            const phase = compositionMatch[1];
+            setState((prev) => ({ ...prev, compositionPhase: phase }));
           }
         }
       });
@@ -1665,6 +1673,14 @@ export function WizardApp({
         } else {
           extractDetail = 'Scanning...';
         }
+        const compositionDetail = ((): string | undefined => {
+          const phase = state.compositionPhase;
+          if (!phase) return undefined;
+          if (phase === 'resolving') return 'Resolving composition mapping...';
+          if (phase.startsWith('agent:')) return `Resolving composition via ${phase.slice('agent:'.length)} agent...`;
+          if (phase === 'done') return 'Composition mapping resolved ✓';
+          return `Composition: ${phase}`;
+        })();
         return (
           <RunningStep
             stepNumber={hasTokens ? 2 : 1}
@@ -1672,6 +1688,7 @@ export function WizardApp({
             title="Extracting components"
             description="I'm scanning your files and figuring out what components exist, what props they have, and how they're structured. This is fully automatic — sit tight."
             detail={extractDetail}
+            secondaryDetail={compositionDetail}
           />
         );
       }
