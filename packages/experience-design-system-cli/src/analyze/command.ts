@@ -251,11 +251,20 @@ export function registerAnalyzeCommand(program: Command): void {
     )
     .option('--composite', 'Resolve embedded-component composition (opt in; default is atomic)')
     .option('--atomic', 'Skip composition resolution — flat components only (default)')
-    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map')
-    .option('--composition-adapter <name|path>', 'Use a native-format adapter (built-in name or custom module path)')
-    .option('--composition-agent', 'Opt into agentic mapping resolution when deterministic sources find no groups')
-    .option('--composition-refresh', 'Force the mapping agent to run even where deterministic sources answered')
-    .option('--generate-map <path>', 'Emit a skeleton interchange map from what deterministic sources found, then exit')
+    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
+    .option(
+      '--composition-adapter <name|path>',
+      'Use a native-format adapter (built-in name or custom module path; implies --composite)',
+    )
+    .option(
+      '--composition-agent',
+      'Opt into agentic mapping resolution when deterministic sources find no groups (implies --composite)',
+    )
+    .option(
+      '--composition-refresh',
+      'Force the mapping agent to run even where deterministic sources answered (implies --composite)',
+    )
+    .option('--generate-map <path>', 'Write a skeleton interchange map from resolved composition (implies --composite)')
     .option(
       '--prompt <stage=value>',
       'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',

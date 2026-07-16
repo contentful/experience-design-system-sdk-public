@@ -42,4 +42,43 @@ describe('resolveCompositionMode (flag > env > config > default)', () => {
     process.env[ENV] = 'weird';
     expect(resolveCompositionMode({}, 'composite')).toBe('composite');
   });
+
+  describe('implicit composite from a composition source', () => {
+    it('a composition adapter implies composite', () => {
+      expect(resolveCompositionMode({ compositionAdapter: 'required-parent' }, undefined)).toBe('composite');
+    });
+
+    it('the composition agent implies composite', () => {
+      expect(resolveCompositionMode({ compositionAgent: true }, undefined)).toBe('composite');
+    });
+
+    it('a user map implies composite', () => {
+      expect(resolveCompositionMode({ compositionMap: './m.json' }, undefined)).toBe('composite');
+    });
+
+    it('--generate-map implies composite', () => {
+      expect(resolveCompositionMode({ generateMap: './out.json' }, undefined)).toBe('composite');
+    });
+
+    it('composition-refresh implies composite', () => {
+      expect(resolveCompositionMode({ compositionRefresh: true }, undefined)).toBe('composite');
+    });
+
+    it('an implied source beats env and config', () => {
+      process.env[ENV] = 'atomic';
+      expect(resolveCompositionMode({ compositionAdapter: 'x' }, 'atomic')).toBe('composite');
+    });
+
+    it('explicit --atomic still wins over an implied source (contradictory input, user said no)', () => {
+      expect(resolveCompositionMode({ atomic: true, compositionAdapter: 'x' }, undefined)).toBe('atomic');
+    });
+
+    it('explicit --composite is unaffected', () => {
+      expect(resolveCompositionMode({ composite: true, compositionAgent: true }, undefined)).toBe('composite');
+    });
+
+    it('no source and nothing else → still atomic default', () => {
+      expect(resolveCompositionMode({}, undefined)).toBe('atomic');
+    });
+  });
 });
