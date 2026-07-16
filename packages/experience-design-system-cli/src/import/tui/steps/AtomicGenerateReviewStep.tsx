@@ -30,6 +30,7 @@ import type {
   ReviewComponentSummary,
 } from '../../../analyze/select/types.js';
 import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
+import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
 import { useLivePreview } from '../useLivePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
@@ -143,6 +144,10 @@ export function AtomicGenerateReviewStep({
   // JSON-view + panel-focused state). Reset on any non-`g` key.
   const pendingGRef = useRef(false);
 
+  const [showReloadDialog, setShowReloadDialog] = useState(false);
+  const historyRef = useRef<HistoryStack | null>(null);
+  const historySeededRef = useRef(false);
+
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
     setPreviewAnnotations(
@@ -176,33 +181,95 @@ export function AtomicGenerateReviewStep({
   }, [livePreviewHook.status]);
   const livePreviewSpinner = SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length];
 
+  const loadEntries = (): { entries: CdfReviewEntry[]; error: string | null } => {
+    const db = openPipelineDb();
+    let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }>;
+    try {
+      cdfComponents = loadCDFComponents(db, extractSessionId);
+    } finally {
+      db.close();
+    }
+    if (cdfComponents.length === 0) {
+      return { entries: [], error: 'No generated definitions found for this session. Try re-running generate.' };
+    }
+    const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
+      key,
+      entry,
+      status: 'needs-review',
+    }));
+    return { entries: sortComponentsForSidebar(reviewEntries), error: null };
+  };
+
   useEffect(() => {
-    async function load() {
-      const db = openPipelineDb();
-      let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }>;
-      try {
-        cdfComponents = loadCDFComponents(db, extractSessionId);
-      } finally {
-        db.close();
+    try {
+      const { entries, error } = loadEntries();
+      if (error) {
+        setLoadError(error);
+      } else {
+        setComponents(entries);
       }
-      if (cdfComponents.length === 0) {
-        setLoadError('No generated definitions found for this session. Try re-running generate.');
-        setLoading(false);
-        return;
-      }
-      const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
-        key,
-        entry,
-        status: 'needs-review',
-      }));
-      setComponents(sortComponentsForSidebar(reviewEntries));
+    } catch (e: unknown) {
+      setLoadError(String(e));
+    } finally {
       setLoading(false);
     }
-    load().catch((e: unknown) => {
-      setLoadError(String(e));
-      setLoading(false);
-    });
   }, []);
+
+  // Seed the undo/redo history once components are loaded.
+  useEffect(() => {
+    if (loading) return;
+    if (historySeededRef.current) return;
+    historySeededRef.current = true;
+    historyRef.current = createHistoryStack({
+      components: components.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
+      autoRejected: [],
+      undoSnapshot: null,
+    });
+  }, [loading, components]);
+
+  const pushHistorySnapshot = (entries: CdfReviewEntry[], label: string): void => {
+    if (!historyRef.current) return;
+    historyRef.current.push(
+      {
+        components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
+        autoRejected: [],
+        undoSnapshot: null,
+      },
+      label,
+    );
+  };
+
+  const applyHistorySnapshot = (snap: HistorySnapshot): void => {
+    setComponents(snap.components.map((c) => ({ key: c.key, entry: c.entry, status: c.status })));
+  };
+
+  const handleUndo = (): void => {
+    const snap = historyRef.current?.undo();
+    if (snap) applyHistorySnapshot(snap);
+  };
+
+  const handleRedo = (): void => {
+    const snap = historyRef.current?.redo();
+    if (snap) applyHistorySnapshot(snap);
+  };
+
+  const reloadFromSave = (): void => {
+    try {
+      const { entries, error } = loadEntries();
+      if (error) {
+        setLoadError(error);
+        return;
+      }
+      setComponents(entries);
+      historyRef.current?.reset({
+        components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
+        autoRejected: [],
+        undoSnapshot: null,
+      });
+    } catch (e: unknown) {
+      setLoadError(String(e));
+    }
+  };
 
   // Pilot-2026-06-23 R2: fire the live preview once on entry to final-review
   // so diff badges populate before the operator's first save. We gate on the
@@ -257,7 +324,11 @@ export function AtomicGenerateReviewStep({
   }, [selectedIdx, components, extractSessionId]);
 
   const updateStatus = (idx: number, status: ReviewComponentStatus) => {
-    setComponents((prev) => prev.map((c, i) => (i === idx ? { ...c, status } : c)));
+    setComponents((prev) => {
+      const next = prev.map((c, i) => (i === idx ? { ...c, status } : c));
+      pushHistorySnapshot(next, `status:${status}`);
+      return next;
+    });
   };
 
   const handleFinalizeConfirm = () => {
@@ -348,6 +419,32 @@ export function AtomicGenerateReviewStep({
     if (loading || loadError) return;
     if (dialogOpen) return;
 
+    if (showReloadDialog) {
+      if (key.return) {
+        reloadFromSave();
+        setShowReloadDialog(false);
+        return;
+      }
+      if (key.escape) {
+        setShowReloadDialog(false);
+        return;
+      }
+      return;
+    }
+
+    if (key.ctrl && input === 'z') {
+      handleUndo();
+      return;
+    }
+    if (key.ctrl && input === 'y') {
+      handleRedo();
+      return;
+    }
+    if (key.ctrl && input === 'r') {
+      setShowReloadDialog(true);
+      return;
+    }
+
     // Pilot-2026-06-24: removed-detail panel. When open, only `d` (toggle)
     // and Esc (close) respond — all other input is swallowed so j/k/Enter/
     // Ctrl+S can't move state behind the modal. Mirrors the `?` overlay
@@ -431,6 +528,11 @@ export function AtomicGenerateReviewStep({
         setPanelScrollOffset(() => 0);
         return;
       }
+      if (input === 's') {
+        setPanelOpen('source');
+        setPanelScrollOffset(() => 0);
+        return;
+      }
     }
 
     // Tab toggles focus bidirectionally between sidebar and panel. `e` is a
@@ -506,7 +608,13 @@ export function AtomicGenerateReviewStep({
       return;
     }
     if (input === 'A') {
-      setComponents((prev) => prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c)));
+      setComponents((prev) => {
+        const next: CdfReviewEntry[] = prev.map((c) =>
+          c.status === 'needs-review' ? { ...c, status: 'accepted' } : c,
+        );
+        pushHistorySnapshot(next, 'accept-all');
+        return next;
+      });
       setFinalizeError(null);
       return;
     }
@@ -613,6 +721,17 @@ export function AtomicGenerateReviewStep({
         />
       )}
       {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
+      {showReloadDialog && !dialogOpen && (
+        <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
+          <Text bold color={PALETTE.warning}>
+            Reload from saved state?
+          </Text>
+          <Text>Unsaved in-memory changes will be lost.</Text>
+          <Text> </Text>
+          <Text>{'  [Enter]  Confirm'}</Text>
+          <Text>{'  [Esc]    Cancel'}</Text>
+        </Box>
+      )}
       {showRemovedPanel && !dialogOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
           <Text bold color={PALETTE.info}>{`Removed components (${removedComponents.length})`}</Text>
@@ -819,7 +938,7 @@ export function AtomicGenerateReviewStep({
                   {sidebarFocused
                     ? '  [a] accept  [r] reject  [A] accept all  [i] prop rationale  [I] component rationale  [s] source  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
-                      '  [F] finalize  [e/Tab] focus panel' +
+                      '  [^z] undo  [^y] redo  [^r] reload  [F] finalize  [e/Tab] focus panel' +
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       '  [q] quit'
                     : showJson
@@ -842,7 +961,13 @@ export function AtomicGenerateReviewStep({
           reviewed={0}
           needsReview={needsReview}
           onApproveAll={() => {
-            setComponents((prev) => prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c)));
+            setComponents((prev) => {
+              const next: CdfReviewEntry[] = prev.map((c) =>
+                c.status === 'needs-review' ? { ...c, status: 'accepted' } : c,
+              );
+              pushHistorySnapshot(next, 'accept-all');
+              return next;
+            });
           }}
           onFinalize={() => setShowFinalize(true)}
         />
