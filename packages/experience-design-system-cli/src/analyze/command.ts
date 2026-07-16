@@ -36,6 +36,8 @@ import { resolveCompositionMode } from '../lib/composition-mode.js';
 import { resolveMapping } from './composition/resolve-mapping.js';
 import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
 import { selectCandidateFiles } from './composition/candidate-files.js';
+import { critiqueCandidates } from './composition/candidate-critic.js';
+import { buildDirCriticPrompt, parseDirCriticReply } from './composition/candidate-critic-agent.js';
 import { buildMappingCacheKey } from './composition/cache-key.js';
 import { readRawAgentCache, writeRawAgentCache } from './composition/mapping-cache.js';
 import type { InterchangeMap, CompositionEdge } from './composition/interchange-schema.js';
@@ -421,7 +423,7 @@ export function registerAnalyzeCommand(program: Command): void {
           //  - `allFiles`: EVERY scanned file, handed to the authored parser at
           //    runtime. The parser is deterministic code — give it everything so
           //    a candidate-filter miss can never starve it of a definition file.
-          const promptFiles = selectCandidateFiles(allFiles).map((c) => ({ path: c.path, content: c.content }));
+          let promptFiles = selectCandidateFiles(allFiles).map((c) => ({ path: c.path, content: c.content }));
           const runtimeFiles = allFiles.map((c) => ({ path: c.path, content: c.content }));
 
           const resolverAgent = resolveCompositionAgentName(opts.agent);
@@ -438,6 +440,21 @@ export function registerAnalyzeCommand(program: Command): void {
             });
             return res.stdout;
           };
+
+          // Completeness critic: let the agent flag composition-relevant dirs
+          // the keyword filter missed (by path/name alone — cheap). Only when
+          // an agent is already in play; it can only ADD to the prompt sample.
+          if (sources.useAgent) {
+            const critic = await critiqueCandidates(runtimeFiles, promptFiles, async (dirs) =>
+              parseDirCriticReply(await spawnAgent(buildDirCriticPrompt(dirs)), dirs),
+            );
+            if (critic.addedDirs.length > 0) {
+              promptFiles = critic.files;
+              if (process.env['EDS_DEBUG']) {
+                process.stderr.write(`[composition-debug] critic added dirs: ${critic.addedDirs.join(', ')}\n`);
+              }
+            }
+          }
 
           // Agent-authored parser path (default): the agent writes a sandboxed
           // (ctx) => Edge[] parser we run deterministically, cached by parser
