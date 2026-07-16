@@ -331,19 +331,23 @@ export function resolveBinary(agent: AgentName): string {
   return AGENT_BINARIES[agent];
 }
 
-function buildArgs(agent: AgentName, prompt: string, model?: string): string[] {
+function buildArgs(agent: AgentName, prompt: string, model?: string, promptViaStdin = false): string[] {
   const m = model ?? DEFAULT_MODELS[agent];
+  // When the prompt is delivered on stdin, omit it from argv — a large prompt
+  // as a command-line argument overflows ARG_MAX (spawn E2BIG). All four CLIs
+  // read the prompt from stdin when it isn't passed positionally.
+  const promptArg = promptViaStdin ? [] : [prompt];
   switch (agent) {
     case 'claude':
-      return ['--print', '--model', m, prompt];
+      return ['--print', '--model', m, ...promptArg];
     case 'codex':
       // --dangerously-bypass-approvals-and-sandbox required for non-interactive use
-      return ['exec', '--model', m, '--dangerously-bypass-approvals-and-sandbox', prompt];
+      return ['exec', '--model', m, '--dangerously-bypass-approvals-and-sandbox', ...promptArg];
     case 'opencode':
-      return ['run', '--model', m, prompt];
+      return ['run', '--model', m, ...promptArg];
     case 'cursor':
       // cursor-agent uses --print for non-interactive stdout output
-      return ['--print', '--model', m, prompt];
+      return ['--print', '--model', m, ...promptArg];
   }
 }
 
@@ -354,11 +358,18 @@ export async function runAgent(options: {
   timeoutMs: number;
   model?: string;
   onOutput?: (chunk: string) => void;
+  /**
+   * Deliver the prompt on stdin instead of as an argv positional. Required for
+   * large prompts (e.g. the composition resolver inlining candidate files),
+   * which overflow ARG_MAX when passed as an argument. Non-interactive only.
+   */
+  promptViaStdin?: boolean;
 }): Promise<AgentRunResult> {
-  const { agent, prompt, interactive, timeoutMs, model, onOutput } = options;
+  const { agent, prompt, interactive, timeoutMs, model, onOutput, promptViaStdin } = options;
 
   const binary = resolveBinary(agent);
-  const args = buildArgs(agent, prompt, model);
+  const useStdin = !!promptViaStdin && !interactive;
+  const args = buildArgs(agent, prompt, model, useStdin);
 
   const debug = getDebugLogger();
   const startedAt = Date.now();
@@ -377,7 +388,17 @@ export async function runAgent(options: {
       stdio: interactive ? 'inherit' : ['pipe', 'pipe', 'pipe'],
     });
     if (!interactive) {
-      child.stdin?.end();
+      if (useStdin && child.stdin) {
+        // Guard against EPIPE: the child may close stdin before we finish
+        // writing (fast exit, or it stops reading). Swallow the write error —
+        // the child's own exit code/stderr is the source of truth.
+        child.stdin.on('error', () => {});
+        child.stdin.write(prompt, () => {
+          child.stdin?.end();
+        });
+      } else {
+        child.stdin?.end();
+      }
     }
 
     let stdout = '';
