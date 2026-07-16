@@ -165,6 +165,19 @@ describe('runParserInSandbox', () => {
       expect(res.edges).toEqual([]);
     });
 
+    it('a parser attempting filesystem access yields no data and no crash', async () => {
+      // Defense in depth: the vm allow-list has no `require` (first line of
+      // defense), and the child runs with --permission so even a runtime-level
+      // require of node:fs would be denied. Either way: no file contents leak.
+      const src = `export default function(c){
+        var leaked = 'safe';
+        try { leaked = require('node:fs').readFileSync('/etc/hosts', 'utf8').length ? 'LEAKED' : 'safe'; } catch (e) {}
+        return [{ parent: leaked, child: 'Child', provenance: 'adapter:agent-parser' }];
+      }`;
+      const res = await runParserInSandbox(src, { ...ctx, componentNames: ['LEAKED', 'safe', 'Child'] });
+      expect(res.edges.map((e) => e.parent)).not.toContain('LEAKED');
+    });
+
     it('kills a parser that exhausts memory (heap cap)', async () => {
       // Allocate unboundedly; the child's --max-old-space-size self-kills.
       const src = `export default function(c){ const a=[]; for(;;){ a.push(new Array(1e6).fill(0)); } }`;
