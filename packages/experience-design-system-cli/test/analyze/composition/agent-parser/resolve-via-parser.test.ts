@@ -60,6 +60,49 @@ describe('resolveViaAgentParser', () => {
     expect(res.edges).toEqual([]);
   });
 
+  it('drops self-edges (parent === child) with a warning', async () => {
+    const parser = [
+      '```js',
+      'export default function (ctx) {',
+      "  return [{ parent: 'Parent', child: 'Parent' }, { parent: 'Parent', child: 'Child' }];",
+      '}',
+      '```',
+    ].join('\n');
+    const runAgentFn = vi.fn(async () => parser);
+    const res = await resolveViaAgentParser({ files, componentNames: names, runAgentFn });
+    expect(res.edges).toEqual([{ parent: 'Parent', child: 'Child', provenance: 'adapter:agent-parser' }]);
+    expect(res.warnings.join(' ')).toMatch(/self-edge/);
+    expect(res.usedFallback).toBe(false);
+  });
+
+  it('retries once when a clean parse yields 0 edges and retryOnEmpty is set', async () => {
+    const empty = ['```js', 'export default function (ctx) { return []; }', '```'].join('\n');
+    const runAgentFn = vi.fn().mockResolvedValueOnce(empty).mockResolvedValueOnce(GOOD_PARSER);
+    const res = await resolveViaAgentParser({ files, componentNames: names, runAgentFn, retryOnEmpty: true });
+    expect(runAgentFn).toHaveBeenCalledTimes(2);
+    expect(res.edges).toEqual([{ parent: 'Parent', child: 'Child', provenance: 'adapter:agent-parser' }]);
+    expect(res.usedFallback).toBe(false);
+  });
+
+  it('does NOT retry on 0 edges when retryOnEmpty is unset (genuinely-flat repo)', async () => {
+    const empty = ['```js', 'export default function (ctx) { return []; }', '```'].join('\n');
+    const runAgentFn = vi.fn(async () => empty);
+    const res = await resolveViaAgentParser({ files, componentNames: names, runAgentFn });
+    expect(runAgentFn).toHaveBeenCalledTimes(1);
+    expect(res.edges).toEqual([]);
+    expect(res.usedFallback).toBe(false);
+  });
+
+  it('keeps the original parser when the empty-retry also yields 0 edges', async () => {
+    const empty = ['```js', 'export default function (ctx) { return []; }', '```'].join('\n');
+    const runAgentFn = vi.fn(async () => empty);
+    const res = await resolveViaAgentParser({ files, componentNames: names, runAgentFn, retryOnEmpty: true });
+    expect(runAgentFn).toHaveBeenCalledTimes(2); // initial + one empty-repair
+    expect(res.edges).toEqual([]);
+    expect(res.usedFallback).toBe(false);
+    expect(res.warnings.join(' ')).toMatch(/keeping the original/);
+  });
+
   it('passes an onPhase callback the authoring/parsing phases', async () => {
     const phases: string[] = [];
     const runAgentFn = vi.fn(async () => GOOD_PARSER);

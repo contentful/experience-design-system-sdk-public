@@ -464,7 +464,9 @@ export function registerAnalyzeCommand(program: Command): void {
                 componentNames: [...componentNameSet],
               });
               if (!ran.error) {
-                parserEdges = ran.edges.filter((e) => componentNameSet.has(e.parent) && componentNameSet.has(e.child));
+                parserEdges = ran.edges.filter(
+                  (e) => e.parent !== e.child && componentNameSet.has(e.parent) && componentNameSet.has(e.child),
+                );
               }
             }
             if (parserEdges === undefined) {
@@ -476,6 +478,10 @@ export function registerAnalyzeCommand(program: Command): void {
                 runAgentFn: ({ prompt }) => spawnAgent(prompt),
                 ...(compositionPrompt ? { instructionOverride: compositionPrompt } : {}),
                 onPhase: (phase) => emitCompositionProgress(phase),
+                // The candidate filter selected these files because they carry
+                // composition markers, so a clean 0-edge parse is suspicious —
+                // let the resolver spend its one repair round on it.
+                retryOnEmpty: promptFiles.length > 0,
               });
               for (const w of pr.warnings) process.stderr.write(`Warning: composition — ${w}\n`);
               if (!pr.usedFallback) {
