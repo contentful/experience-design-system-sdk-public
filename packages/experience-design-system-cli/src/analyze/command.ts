@@ -45,6 +45,7 @@ interface AnalyzeExtractOptions {
   compositionRefresh?: boolean;
   generateMap?: string;
   prompt?: string[];
+  agent?: string;
 }
 
 const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
@@ -171,9 +172,10 @@ export function componentsToInterchangeMap(
   return { version: 1, groups: sorted };
 }
 
-/** Resolve which coding-agent to use for mapping resolution (reuses the stored default). */
-function resolveCompositionAgentName(): AgentName {
+/** Resolve which coding-agent runs mapping resolution: `--agent` flag > env > default. */
+function resolveCompositionAgentName(flagValue?: string): AgentName {
   const valid: AgentName[] = ['claude', 'codex', 'opencode', 'cursor'];
+  if (flagValue && (valid as string[]).includes(flagValue)) return flagValue as AgentName;
   const env = process.env['EDS_COMPOSITION_AGENT'];
   if (env && (valid as string[]).includes(env)) return env as AgentName;
   return 'claude';
@@ -239,6 +241,7 @@ export function registerAnalyzeCommand(program: Command): void {
       (v: string, acc: string[]) => [...acc, v],
       [] as string[],
     )
+    .option('--agent <name>', 'Coding agent for composition mapping resolution (claude|codex|opencode|cursor)')
     .action(async (opts: AnalyzeExtractOptions) => {
       const resolveUnreachable: 'auto' | 'always' | 'never' = (() => {
         const v = opts.resolveUnreachable ?? 'auto';
@@ -402,7 +405,7 @@ export function registerAnalyzeCommand(program: Command): void {
             content: c.content,
           }));
 
-          const resolverAgent = resolveCompositionAgentName();
+          const resolverAgent = resolveCompositionAgentName(opts.agent);
           const result = await resolveMapping({
             components: validatedComponents,
             ...(userMap ? { userMap } : {}),
