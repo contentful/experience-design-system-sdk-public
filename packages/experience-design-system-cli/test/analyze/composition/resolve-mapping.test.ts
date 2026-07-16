@@ -108,7 +108,7 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
       });
       expect(seenPrompt).toContain('FOLLOW THESE CUSTOM RULES.');
       // Default instruction replaced, contract + names retained.
-      expect(seenPrompt).not.toContain('You are resolving parent→child component composition');
+      expect(seenPrompt).not.toContain('STRICT RULES');
       expect(seenPrompt).toContain('"tool":"map_edge"');
       expect(seenPrompt).toContain('SectionTab');
     });
@@ -125,7 +125,8 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
         files: [{ path: 'm.ts', content: 'withParentType' }],
         runAgentFn,
       });
-      expect(seenPrompt).toContain('You are resolving parent→child component composition');
+      expect(seenPrompt).toContain('STRICT RULES');
+      expect(seenPrompt).toContain('Direct textual evidence only.');
     });
   });
 
