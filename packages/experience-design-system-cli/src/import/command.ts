@@ -68,6 +68,7 @@ export function registerImportCommand(program: Command): void {
     .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
     .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
     .option('--composition-agent', 'Opt into agentic mapping resolution during extract (implies --composite)')
+    .option('--composition-refresh', 'Bypass the composition cache and re-resolve from scratch (implies --composite)')
     .option(
       '--composition-agent-mode <mode>',
       "Agent mode: 'parser' (agent writes a sandboxed parser, default) or 'edges' (agent lists edges)",
@@ -163,6 +164,7 @@ export function registerImportCommand(program: Command): void {
         compositionMap?: string;
         compositionAgent?: boolean;
         compositionAgentMode?: string;
+        compositionRefresh?: boolean;
         generateMap?: string;
         prompt?: string[];
         autoRejectCycles?: boolean;
@@ -353,6 +355,7 @@ export function registerImportCommand(program: Command): void {
             compositionMap?: string;
             compositionAgent?: boolean;
             compositionAgentMode?: string;
+            compositionRefresh?: boolean;
             generateMap?: string;
             promptOverrides?: string[];
             noCache?: boolean;
@@ -413,6 +416,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.compositionMap ? { compositionMap: opts.compositionMap } : {}),
               ...(opts.compositionAgent ? { compositionAgent: true } : {}),
               ...(opts.compositionAgentMode ? { compositionAgentMode: opts.compositionAgentMode } : {}),
+              ...(opts.compositionRefresh ? { compositionRefresh: true } : {}),
               ...(opts.generateMap ? { generateMap: opts.generateMap } : {}),
               ...(opts.prompt && opts.prompt.length > 0 ? { promptOverrides: opts.prompt } : {}),
               noCache: opts.cache === false,
