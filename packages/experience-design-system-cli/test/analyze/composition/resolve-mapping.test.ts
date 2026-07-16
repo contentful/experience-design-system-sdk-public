@@ -99,4 +99,60 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
     expect(res.edges).toHaveLength(0);
     expect(res.components).toHaveLength(COMPONENTS.length);
   });
+
+  describe('precedence: code slots > mapping (adapter) > agent', () => {
+    it('code slots survive with no other source (pass-through)', async () => {
+      const withCode = [comp('A', [dslot(['B'])]), comp('B')];
+      const res = await resolveMapping({ components: withCode, files: [], runAgentFn: vi.fn() });
+      expect(res.components.find((c) => c.name === 'A')!.slots[0].allowedComponents).toEqual(['B']);
+      expect(res.edges.find((e) => e.parent === 'A')!.provenance).toBe('typed-slot');
+    });
+
+    it('code and adapter union when disjoint (different children)', async () => {
+      const withCode = [comp('A', [dslot(['B'])]), comp('B'), comp('C')];
+      const adapter = () => [{ parent: 'A', child: 'C', slot: 'children', provenance: 'adapter:x' as const }];
+      const res = await resolveMapping({ components: withCode, adapter, files: [], runAgentFn: vi.fn() });
+      const allowed = res.components.find((c) => c.name === 'A')!.slots[0].allowedComponents!.sort();
+      expect(allowed).toEqual(['B', 'C']);
+    });
+
+    it('code slot wins a slot-placement conflict against the adapter', async () => {
+      // Code: A.header → B. Adapter: A.footer → B. Code (rank 2) beats adapter (rank 3).
+      const withCode = [
+        comp('A', [
+          { name: 'header', isDefault: false, allowedComponents: ['B'] },
+          { name: 'footer', isDefault: false },
+        ]),
+        comp('B'),
+      ];
+      const adapter = () => [{ parent: 'A', child: 'B', slot: 'footer', provenance: 'adapter:x' as const }];
+      const res = await resolveMapping({ components: withCode, adapter, files: [], runAgentFn: vi.fn() });
+      const a = res.components.find((c) => c.name === 'A')!;
+      expect(a.slots.find((s) => s.name === 'header')!.allowedComponents).toEqual(['B']);
+      expect(a.slots.find((s) => s.name === 'footer')!.allowedComponents ?? []).toEqual([]);
+      expect(res.conflicts).toHaveLength(1);
+      expect(res.conflicts[0]).toMatchObject({ parent: 'A', child: 'B', winner: 'typed-slot', loser: 'adapter:x' });
+    });
+
+    it('agent loses a slot-placement conflict to code slots', async () => {
+      const withCode = [
+        comp('A', [
+          { name: 'header', isDefault: false, allowedComponents: ['B'] },
+          { name: 'footer', isDefault: false },
+        ]),
+        comp('B'),
+      ];
+      const runAgentFn = vi.fn(async () => '{"tool":"map_edge","parent":"A","child":"B","slot":"footer"}');
+      const res = await resolveMapping({
+        components: withCode,
+        forceAgent: true,
+        files: [{ path: 'm', content: 'x' }],
+        runAgentFn,
+      });
+      const a = res.components.find((c) => c.name === 'A')!;
+      expect(a.slots.find((s) => s.name === 'header')!.allowedComponents).toEqual(['B']);
+      expect(a.slots.find((s) => s.name === 'footer')!.allowedComponents ?? []).toEqual([]);
+      expect(res.conflicts[0]).toMatchObject({ winner: 'typed-slot', loser: 'agent' });
+    });
+  });
 });
