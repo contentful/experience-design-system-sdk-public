@@ -36,6 +36,13 @@ export async function resolveMapping(input: {
   files: Array<{ path: string; content: string }>;
   runAgentFn: (opts: { prompt: string; files: Array<{ path: string; content: string }> }) => Promise<string>;
   buildPrompt?: (files: Array<{ path: string; content: string }>, componentNames: string[]) => string;
+  /**
+   * Custom instruction preamble (from `--prompt composition=...`). Replaces the
+   * default guidance line ONLY; the machine-readable output contract + the
+   * component-name allowlist + candidate files are always appended so the
+   * JSONL parser keeps working regardless of the override.
+   */
+  promptOverride?: string;
 }): Promise<ResolveMappingResult> {
   const componentNames = new Set(input.components.map((c) => c.name));
   const collected: CompositionEdge[] = [];
@@ -72,7 +79,7 @@ export async function resolveMapping(input: {
   if (shouldRunAgent) {
     const prompt = input.buildPrompt
       ? input.buildPrompt(input.files, [...componentNames])
-      : defaultPrompt(input.files, [...componentNames]);
+      : defaultPrompt(input.files, [...componentNames], input.promptOverride);
     const raw = await input.runAgentFn({ prompt, files: input.files });
     const parsed = parseMapEdges(raw, { componentNames });
     collected.push(...parsed.edges);
@@ -102,10 +109,20 @@ export async function resolveMapping(input: {
   };
 }
 
-function defaultPrompt(files: Array<{ path: string; content: string }>, componentNames: string[]): string {
+const DEFAULT_COMPOSITION_INSTRUCTION = 'You are resolving parent→child component composition from a design system.';
+
+function defaultPrompt(
+  files: Array<{ path: string; content: string }>,
+  componentNames: string[],
+  promptOverride?: string,
+): string {
   const fileBlocks = files.map((f) => `--- ${f.path} ---\n${f.content}`).join('\n\n');
+  // The override replaces only the leading instruction; the output contract,
+  // name allowlist, and candidate files are always appended so the JSONL
+  // parser keeps working.
+  const instruction = promptOverride?.trim() ? promptOverride.trim() : DEFAULT_COMPOSITION_INSTRUCTION;
   return [
-    'You are resolving parent→child component composition from a design system.',
+    instruction,
     'Emit one JSON object per line, each: {"tool":"map_edge","parent":"<Name>","child":"<Name>","slot"?:"<slot>","confidence"?:1-5,"reason"?:"..."}.',
     'Only use these component names:',
     componentNames.join(', '),

@@ -73,6 +73,12 @@ export function registerImportCommand(program: Command): void {
       '--generate-map <path>',
       'Also write a composition-map skeleton from resolved edges during extract (composite only)',
     )
+    .option(
+      '--prompt <stage=value>',
+      'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
+      (v: string, acc: string[]) => [...acc, v],
+      [] as string[],
+    )
     .option('--auto-reject-cycles', 'Automatically reject components involved in slot cycles and retry')
     .option('--auto-filter', 'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)')
     .option(
@@ -155,6 +161,7 @@ export function registerImportCommand(program: Command): void {
         compositionAdapter?: string;
         compositionAgent?: boolean;
         generateMap?: string;
+        prompt?: string[];
         autoRejectCycles?: boolean;
         autoFilter?: boolean;
         livePreview?: boolean;
@@ -344,6 +351,7 @@ export function registerImportCommand(program: Command): void {
             compositionAdapter?: string;
             compositionAgent?: boolean;
             generateMap?: string;
+            promptOverrides?: string[];
             noCache?: boolean;
             autoFilter?: boolean;
             livePreview?: boolean;
@@ -403,6 +411,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.compositionAdapter ? { compositionAdapter: opts.compositionAdapter } : {}),
               ...(opts.compositionAgent ? { compositionAgent: true } : {}),
               ...(opts.generateMap ? { generateMap: opts.generateMap } : {}),
+              ...(opts.prompt && opts.prompt.length > 0 ? { promptOverrides: opts.prompt } : {}),
               noCache: opts.cache === false,
               autoFilter: resolveAutoFilter({ autoFilter: opts.autoFilter }, creds.autoFilter),
               livePreview: opts.livePreview !== false,
