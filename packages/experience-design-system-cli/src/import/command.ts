@@ -66,12 +66,12 @@ export function registerImportCommand(program: Command): void {
     .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)')
     .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
     .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
-    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (composite only)')
-    .option('--composition-adapter <name|path>', 'Use a native-format adapter for composition (composite only)')
-    .option('--composition-agent', 'Opt into agentic mapping resolution during extract (composite only)')
+    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
+    .option('--composition-adapter <name|path>', 'Use a native-format adapter for composition (implies --composite)')
+    .option('--composition-agent', 'Opt into agentic mapping resolution during extract (implies --composite)')
     .option(
       '--generate-map <path>',
-      'Also write a composition-map skeleton from resolved edges during extract (composite only)',
+      'Also write a composition-map skeleton from resolved edges during extract (implies --composite)',
     )
     .option(
       '--prompt <stage=value>',
