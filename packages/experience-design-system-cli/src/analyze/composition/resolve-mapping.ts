@@ -15,9 +15,12 @@ export type ResolveMappingResult = {
 /**
  * Orchestrate composition-map acquisition (spec T2) and enrichment (T7).
  *
- * Sources by rank: user map (1) > typed-slot (2, already on components) >
- * adapter (3) > agent (4). All present sources are unioned; conflicts resolve
- * by rank. The agent runs only when `useAgent`/`forceAgent` is set AND there
+ * Sources by rank: user map (1) > typed-slot / "code slots" (2) >
+ * adapter (3) > agent (4). ALL sources — including the code slots already on
+ * the incoming components — are fed into one ranked merge and unioned;
+ * non-conflicting edges from every source survive, and on a conflict (same
+ * parent+child, different slot) the higher-rank source wins and the loser is
+ * recorded. The agent runs only when `useAgent`/`forceAgent` is set AND there
  * is residue a higher-rank source didn't cover (routing/cost optimization) —
  * `forceAgent` bypasses that suppression but never changes rank.
  *
@@ -37,6 +40,18 @@ export async function resolveMapping(input: {
   const componentNames = new Set(input.components.map((c) => c.name));
   const collected: CompositionEdge[] = [];
   const agentWarnings: string[] = [];
+
+  // Rank 2 — typed-slot ("code slots") already resolved by the AST extractor.
+  // Feed them into the ranked merge so a conflicting lower-rank edge (adapter
+  // or agent placing the same child in a different slot) LOSES to code rather
+  // than being unioned in alongside it.
+  for (const c of input.components) {
+    for (const slot of c.slots) {
+      for (const child of slot.allowedComponents ?? []) {
+        collected.push({ parent: c.name, child, slot: slot.name, provenance: 'typed-slot' });
+      }
+    }
+  }
 
   // Rank 1 — user-provided map.
   if (input.userMap) {
@@ -65,7 +80,19 @@ export async function resolveMapping(input: {
   }
 
   const merged = mergeEdges(collected);
-  const applied = applyMapping(input.components, merged.edges);
+
+  // Apply the merged edges onto components whose allowedComponents are cleared,
+  // so the ranked merge is authoritative — a code edge that lost to a rank-1
+  // user override is actually gone, not left behind on the original slot.
+  // Slot structure is preserved; only the composition constraint is reset.
+  const base: RawComponentDefinition[] = input.components.map((c) => ({
+    ...c,
+    slots: c.slots.map((s) => {
+      const { allowedComponents: _drop, ...rest } = s;
+      return rest;
+    }),
+  }));
+  const applied = applyMapping(base, merged.edges);
 
   return {
     components: applied.components,
