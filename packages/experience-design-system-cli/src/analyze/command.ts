@@ -36,7 +36,8 @@ import { resolveCompositionMode } from '../lib/composition-mode.js';
 import { resolveMapping } from './composition/resolve-mapping.js';
 import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
 import { selectCandidateFiles } from './composition/candidate-files.js';
-import { edgesToGroups } from './composition/interchange-schema.js';
+import type { InterchangeMap } from './composition/interchange-schema.js';
+import type { RawSlotDefinition } from '../types.js';
 import type { CompositionAdapter } from './composition/adapters/index.js';
 import { runAgent, type AgentName } from '../generate/agent-runner.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
@@ -173,6 +174,27 @@ async function loadCustomAdapter(modulePath: string): Promise<CompositionAdapter
     process.stderr.write(`Error: failed to load --composition-adapter ${abs}: ${e instanceof Error ? e.message : e}\n`);
     process.exit(1);
   }
+}
+
+/**
+ * Build a { version, groups } interchange skeleton (spec T1) from the resolved
+ * components' slot allowedComponents — reflecting BOTH typed-slot edges the
+ * extractor found and anything the mapping resolver added.
+ */
+export function componentsToInterchangeMap(
+  components: Array<{ name: string; slots: RawSlotDefinition[] }>,
+): InterchangeMap {
+  const groups: Record<string, string[]> = {};
+  for (const c of components) {
+    const children = new Set<string>();
+    for (const slot of c.slots) {
+      for (const child of slot.allowedComponents ?? []) children.add(child);
+    }
+    if (children.size > 0) groups[c.name] = [...children].sort();
+  }
+  const sorted: Record<string, string[]> = {};
+  for (const parent of Object.keys(groups).sort()) sorted[parent] = groups[parent];
+  return { version: 1, groups: sorted };
 }
 
 /** Resolve which coding-agent to use for mapping resolution (reuses the stored default). */
@@ -404,13 +426,16 @@ export function registerAnalyzeCommand(program: Command): void {
             );
           }
 
+          validatedComponents = result.components as typeof validatedComponents;
+
           if (opts.generateMap) {
-            const skeleton = edgesToGroups(result.edges);
+            // Reflect the FULL resolved composition — typed-slot edges already
+            // on the extracted components PLUS anything the resolver added — not
+            // just the resolver's own contributed edges.
+            const skeleton = componentsToInterchangeMap(validatedComponents);
             await writeFile(opts.generateMap, JSON.stringify(skeleton, null, 2) + '\n');
             process.stderr.write(`Wrote composition map skeleton to ${opts.generateMap}\n`);
           }
-
-          validatedComponents = result.components as typeof validatedComponents;
         }
       }
 
