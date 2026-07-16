@@ -16,12 +16,18 @@ const HEAP_CAP_MB = 128;
 const MAX_INPUT_BYTES = 8 * 1024 * 1024; // refuse absurd ctx up front
 
 /**
- * Execute agent-authored parser source under two nested jails (spec:
+ * Execute agent-authored parser source under three nested jails (spec:
  * dsi-agent-authored-parser-design, Phase 1 — the security core).
  *
  * OUTER — a throwaway child `node` process: `env: {}` (no secrets/tokens leak
  * even on a full escape), a heap cap (`--max-old-space-size`, OOM self-kills),
  * and a wall-clock `SIGKILL` the parent enforces for any hang (sync or async).
+ *
+ * PERMISSION — the child runs with `--permission` and NO `--allow-fs-*`, so
+ * the Node runtime denies filesystem access, child_process spawning, worker
+ * creation, and native addons (ERR_ACCESS_DENIED). The parser needs none —
+ * its files arrive via stdin as ctx — so even a vm escape reaching
+ * `require('node:fs')`/`child_process` is stopped at the runtime layer.
  *
  * INNER — a `node:vm` context created from a null-prototype object, an
  * ALLOW-LIST: it has only ECMAScript intrinsics (Object/Array/JSON/Math/RegExp
@@ -65,7 +71,19 @@ export function runParserInSandbox(
 
     const child = spawn(
       process.execPath,
-      [`--max-old-space-size=${HEAP_CAP_MB}`, '--input-type=module', '-e', RUNNER],
+      [
+        // Node Permission Model (Node ≥20/24): deny fs, child_process, worker,
+        // and native addons at the RUNTIME level. We pass NO --allow-fs-* — the
+        // parser needs no disk access (its files arrive via stdin as ctx), so
+        // even if the vm allow-list were escaped and `require('node:fs')` were
+        // reached, reads are denied (ERR_ACCESS_DENIED) and spawning is denied
+        // by default. Third jail layer beneath process-isolation + vm.
+        '--permission',
+        `--max-old-space-size=${HEAP_CAP_MB}`,
+        '--input-type=module',
+        '-e',
+        RUNNER,
+      ],
       // No inherited env (secrets stay out of the jail), neutral cwd, no argv.
       { env: {}, cwd: process.cwd(), stdio: ['pipe', 'pipe', 'pipe'] },
     );
