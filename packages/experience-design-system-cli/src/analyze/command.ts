@@ -27,11 +27,6 @@ import {
   storeSlotCycles,
 } from '../session/db.js';
 import { findSlotCycles, suggestCycleBreakEdge } from './cycle-detection.js';
-import { preClassifyComponent } from './pre-classify.js';
-import { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
-import { computeExtractionScore, deriveNeedsReview } from './extract/scoring.js';
-import { describeReviewReasons, inspectComponentSource } from './extract/source-inspection.js';
-import { validateExtractedComponents } from './extract/validate.js';
 import { resolveCompositionMode } from '../lib/composition-mode.js';
 import { resolveMapping } from './composition/resolve-mapping.js';
 import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';

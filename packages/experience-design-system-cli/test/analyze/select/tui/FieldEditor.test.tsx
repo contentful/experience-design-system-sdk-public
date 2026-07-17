@@ -3,7 +3,9 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   FieldEditor,
   computeAllowedComponentCandidates,
+  computeAllowedComponentReplacementCandidates,
   simulateGraphWithCandidate,
+  simulateGraphWithReplacement,
   introducesNewCycle,
 } from '../../../../src/analyze/select/tui/components/FieldEditor.js';
 import { findSlotCycles } from '../../../../src/analyze/cycle-detection.js';

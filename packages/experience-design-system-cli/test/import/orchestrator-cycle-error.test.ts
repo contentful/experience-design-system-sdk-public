@@ -5,6 +5,7 @@ import type { PipelineOptions } from '../../src/import/orchestrator.js';
 
 const mockExecFile = vi.fn();
 const mockFindLatestSessionForCommand = vi.fn(() => null as string | null);
+const mockLoadCDFComponents = vi.fn((): Array<{ key: string; entry: unknown }> => []);
 
 vi.mock('node:child_process', () => ({
   execFile: (...args: unknown[]) => mockExecFile(...args),
@@ -22,7 +23,7 @@ vi.mock('../../src/session/db.js', () => ({
   createStep: vi.fn(() => 'test-step-id'),
   updateStep: vi.fn(),
   findLatestSessionForCommand: (...args: unknown[]) => mockFindLatestSessionForCommand(...args),
-  loadCDFComponents: vi.fn(() => []),
+  loadCDFComponents: (...args: unknown[]) => mockLoadCDFComponents(...(args as [])),
 }));
 
 vi.mock('../../src/lib/debug-logger.js', () => ({
@@ -236,6 +237,86 @@ describe('runPipeline auto-reject-cycles', () => {
 
     const analyzeCalls = calls.filter((c) => c.includes('select') && c.includes('--exclude-components'));
     expect(analyzeCalls.length).toBe(0);
+  });
+});
+
+describe('runPipeline pre-save cycle gate', () => {
+  const CYCLIC_ACCEPTED = [
+    {
+      key: 'Comp_A',
+      entry: { $slots: { children: { $allowedComponents: ['Comp_B'] } } },
+    },
+    {
+      key: 'Comp_B',
+      entry: { $slots: { children: { $allowedComponents: ['Comp_A'] } } },
+    },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFindLatestSessionForCommand.mockReturnValue('extract-session-id');
+    mockLoadCDFComponents.mockReturnValue([]);
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: object) => {
+      const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter };
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      setImmediate(() => child.emit('close', 0));
+      return child;
+    });
+  });
+
+  it('blocks SAVE (skipApply:true) when accepted components contain a cycle', async () => {
+    const { runPipeline } = await import('../../src/import/orchestrator.js');
+    mockLoadCDFComponents.mockReturnValue(CYCLIC_ACCEPTED);
+
+    const opts: PipelineOptions = {
+      project: '/fake/project',
+      out: '/fake/out',
+      agent: 'fake-agent',
+      skipAnalyze: true,
+      skipGenerate: true,
+      print: true,
+      skipApply: true,
+      noCache: false,
+      yes: true,
+      verbose: false,
+    };
+
+    const result = await runPipeline(opts, () => {}, 'fake-cli-path');
+
+    expect(result.cycleError).toBeDefined();
+    expect(result.cycleError?.report).toEqual(expect.arrayContaining([expect.stringContaining(CYCLE_MARKER)]));
+    // The cycle gate fires BEFORE print, so components.json is never written.
+    const printStep = result.steps.find((s) => s.step === 'print components');
+    expect(printStep).toBeUndefined();
+    const gateStep = result.steps.find((s) => s.step === 'cycle gate');
+    expect(gateStep?.status).toBe('failed');
+  });
+
+  it('does not block save when accepted components are acyclic', async () => {
+    const { runPipeline } = await import('../../src/import/orchestrator.js');
+    mockLoadCDFComponents.mockReturnValue([
+      { key: 'Comp_A', entry: { $slots: { children: { $allowedComponents: ['Comp_B'] } } } },
+      { key: 'Comp_B', entry: { $slots: {} } },
+    ]);
+
+    const opts: PipelineOptions = {
+      project: '/fake/project',
+      out: '/fake/out',
+      agent: 'fake-agent',
+      skipAnalyze: true,
+      skipGenerate: true,
+      print: true,
+      skipApply: true,
+      noCache: false,
+      yes: true,
+      verbose: false,
+    };
+
+    const result = await runPipeline(opts, () => {}, 'fake-cli-path');
+
+    expect(result.cycleError).toBeUndefined();
+    expect(result.steps.find((s) => s.step === 'cycle gate')).toBeUndefined();
   });
 });
 

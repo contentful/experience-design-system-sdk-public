@@ -22,7 +22,7 @@ import { dirname, resolve } from 'node:path';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI_BIN = resolve(
   HERE,
-  '../../../../packages/experience-design-system-cli/bin/cli.js',
+  '../../../../bin/cli.js',
 );
 
 // PTY_DEBUG=1 prints every runCli invocation's argv, environment

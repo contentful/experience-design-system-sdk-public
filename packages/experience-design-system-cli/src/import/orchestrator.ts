@@ -8,10 +8,13 @@ import {
   createStep,
   updateStep,
   findLatestSessionForCommand,
+  loadCDFComponents,
 } from '../session/db.js';
+import { detectSlotCycles, formatSlotCycleReport } from '../apply/command.js';
 import { PREVIEW_ERROR_PREFIX, VALIDATION_FAILED_CODE, parsePreviewValidationErrors } from '../apply/api-client.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
 import { getDebugLogger, debugEnvForSubprocess } from '../lib/debug-logger.js';
+import type { CompositionMode } from '../lib/composition-mode.js';
 
 export interface PipelineOptions {
   project: string;
@@ -40,6 +43,13 @@ export interface PipelineOptions {
   selectPromptPath?: string;
   /** When true, auto-reject cycle participants and retry push instead of surfacing an error. */
   autoRejectCycles?: boolean;
+  compositionMode?: CompositionMode;
+  compositionMap?: string;
+  compositionAgent?: boolean;
+  compositionAgentMode?: string;
+  compositionRefresh?: boolean;
+  generateMap?: string;
+  promptOverrides?: string[];
 }
 
 export interface StepResult {
@@ -227,6 +237,16 @@ export async function runPipeline(
     });
     const t0 = Date.now();
     const analyzeArgs = ['analyze', 'extract', '--project', projectRoot];
+    if (opts.compositionMode === 'composite') {
+      analyzeArgs.push('--composite');
+      if (opts.compositionMap) analyzeArgs.push('--composition-map', opts.compositionMap);
+      if (opts.compositionAgent) analyzeArgs.push('--composition-agent');
+      if (opts.compositionAgentMode) analyzeArgs.push('--composition-agent-mode', opts.compositionAgentMode);
+      if (opts.compositionRefresh) analyzeArgs.push('--composition-refresh');
+      if (opts.generateMap) analyzeArgs.push('--generate-map', opts.generateMap);
+      for (const p of opts.promptOverrides ?? []) analyzeArgs.push('--prompt', p);
+      if (opts.agent) analyzeArgs.push('--agent', opts.agent);
+    }
     const r = await runStep(analyzeArgs, cliPath);
     const durationMs = Date.now() - t0;
 
@@ -389,6 +409,28 @@ export async function runPipeline(
     });
     progressWriter(`${generateLabel}✓  components stored locally  (${(durationMs / 1000).toFixed(1)}s)`);
     steps.push({ step: 'generate components', status: 'complete', durationMs });
+  }
+
+  // Block save or push when the accepted set still contains a slot cycle.
+  // Skipped under --auto-reject-cycles, which delegates to the push-path
+  // retry loop below (reject cycle members, then retry) instead of blocking.
+  if (extractSessionId && !opts.autoRejectCycles) {
+    const acceptedCycles = (() => {
+      try {
+        return detectSlotCycles(loadCDFComponents(db, extractSessionId));
+      } catch {
+        return [];
+      }
+    })();
+    if (acceptedCycles.length > 0) {
+      const report = formatSlotCycleReport(acceptedCycles);
+      process.stderr.write(report.join('\n') + '\n');
+      progressWriter('Slot cycle detected. The accepted components contain circular slot references — refusing to save or push.');
+      for (const line of report) progressWriter(line);
+      steps.push({ step: 'cycle gate', status: 'failed', error: report.join('\n') });
+      db.close();
+      return { session: sessionId, project: projectRoot, steps, cycleError: { report } };
+    }
   }
 
   if (opts.print) {

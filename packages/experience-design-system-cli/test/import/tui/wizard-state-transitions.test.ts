@@ -4,7 +4,10 @@ import {
   nextStepAfterCredentialsValidated,
   shouldSkipFinalReviewAfterCredentials,
   resolveNoCacheForGenerate,
+  resolveCycleGateAction,
 } from '../../../src/import/tui/wizard-state-transitions.js';
+import { computeCycleAutoRejectTargets } from '../../../src/import/cycle-auto-reject.js';
+import type { ComponentGraphNode } from '../../../src/analyze/composite-closure.js';
 
 describe('nextStepAfterScopeGate', () => {
   it('routes to credentials when accepted > 0 and push is enabled', () => {
@@ -58,20 +61,39 @@ describe('shouldSkipFinalReviewAfterCredentials', () => {
 });
 
 describe('resolveNoCacheForGenerate', () => {
-  it('forces --no-cache on a fresh session even when the CLI did not pass --no-cache', () => {
-    expect(resolveNoCacheForGenerate({ isFreshSession: true, cliNoCache: false })).toBe(true);
+  it('leaves the content-addressed cache enabled by default (no --no-cache)', () => {
+    expect(resolveNoCacheForGenerate({ cliNoCache: false })).toBe(false);
   });
 
-  it('forces --no-cache on a fresh session when --no-cache was also passed', () => {
-    expect(resolveNoCacheForGenerate({ isFreshSession: true, cliNoCache: true })).toBe(true);
+  it('honors --no-cache when explicitly opted in', () => {
+    expect(resolveNoCacheForGenerate({ cliNoCache: true })).toBe(true);
+  });
+});
+
+describe('resolveCycleGateAction', () => {
+  it('proceeds when there are no cycles regardless of the flag', () => {
+    expect(resolveCycleGateAction({ hasCycles: false, autoRejectCycles: false })).toBe('proceed');
+    expect(resolveCycleGateAction({ hasCycles: false, autoRejectCycles: true })).toBe('proceed');
   });
 
-  it('honors the CLI flag on continued sessions — cache-on by default', () => {
-    expect(resolveNoCacheForGenerate({ isFreshSession: false, cliNoCache: false })).toBe(false);
+  it('blocks when cycles exist and auto-reject is off', () => {
+    expect(resolveCycleGateAction({ hasCycles: true, autoRejectCycles: false })).toBe('block');
   });
 
-  it('honors --no-cache on continued sessions when explicitly opted in', () => {
-    expect(resolveNoCacheForGenerate({ isFreshSession: false, cliNoCache: true })).toBe(true);
+  it('auto-rejects when cycles exist and auto-reject is on', () => {
+    expect(resolveCycleGateAction({ hasCycles: true, autoRejectCycles: true })).toBe('auto-reject');
+  });
+
+  it('selects the same reject targets computeCycleAutoRejectTargets does for a cyclic graph', () => {
+    const graph: ComponentGraphNode[] = [
+      { name: 'A', slots: [{ name: 'default', allowedComponents: ['B'] }] },
+      { name: 'B', slots: [{ name: 'default', allowedComponents: ['A'] }] },
+    ];
+    const slotCycles = [{ path: ['A', 'B', 'A'] }];
+    expect(resolveCycleGateAction({ hasCycles: slotCycles.length > 0, autoRejectCycles: true })).toBe('auto-reject');
+    const targets = computeCycleAutoRejectTargets(slotCycles, graph);
+    expect(targets.has('A')).toBe(true);
+    expect(targets.has('B')).toBe(true);
   });
 });
 

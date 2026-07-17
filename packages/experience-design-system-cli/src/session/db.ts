@@ -1877,6 +1877,7 @@ export function computeComponentInputHash(component: RawComponentWithId): string
     slots: component.slots.map((s) => ({
       name: s.name,
       isDefault: s.isDefault,
+      allowedComponents: [...(s.allowedComponents ?? [])].sort(),
     })),
   };
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');

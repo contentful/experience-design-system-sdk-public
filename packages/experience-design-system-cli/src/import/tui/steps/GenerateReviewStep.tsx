@@ -107,9 +107,9 @@ export function sortComponentsForSidebar<T extends { key: string; entry: CDFComp
     return 2;
   };
   return [...components].sort((a, b) => {
-    const aEmpty = isEmpty(a.entry);
-    const bEmpty = isEmpty(b.entry);
-    if (aEmpty !== bEmpty) return aEmpty ? -1 : 1;
+    const at = tier(a);
+    const bt = tier(b);
+    if (at !== bt) return at - bt;
     return a.key.localeCompare(b.key);
   });
 }

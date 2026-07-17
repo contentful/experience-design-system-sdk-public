@@ -1,6 +1,0 @@
-{
-  "name": "react-minimal-fixture",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Minimal React fixture for PTY harness tests. Do not depend on this outside the harness."
-}

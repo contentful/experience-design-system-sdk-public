@@ -20,8 +20,7 @@ export function shouldSkipFinalReviewAfterCredentials(state: {
   return state.finalReviewPassed && state.generateSessionId != null;
 }
 
-export function resolveNoCacheForGenerate(opts: { isFreshSession: boolean; cliNoCache: boolean }): boolean {
-  if (opts.isFreshSession) return true;
+export function resolveNoCacheForGenerate(opts: { cliNoCache: boolean }): boolean {
   return opts.cliNoCache;
 }
 
@@ -31,6 +30,13 @@ export function shouldBypassPreview(state: { credentialsSkipped: boolean }): boo
 
 export function buildSkippedPreviewTransition(): { step: 'push-decision-gate'; serverPreview: null } {
   return { step: 'push-decision-gate', serverPreview: null };
+}
+
+export type CycleGateAction = 'block' | 'auto-reject' | 'proceed';
+
+export function resolveCycleGateAction(opts: { hasCycles: boolean; autoRejectCycles: boolean }): CycleGateAction {
+  if (!opts.hasCycles) return 'proceed';
+  return opts.autoRejectCycles ? 'auto-reject' : 'block';
 }
 
 export function shouldRefusePush(state: { credentialsSkipped: boolean }): boolean {

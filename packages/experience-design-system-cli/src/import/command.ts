@@ -357,6 +357,7 @@ export function registerImportCommand(program: Command): void {
             initialProjectPath?: string;
             host?: string;
             autoAcceptScope?: boolean;
+            autoRejectCycles?: boolean;
             compositionMode?: CompositionMode;
             compositionMap?: string;
             compositionAgent?: boolean;
@@ -418,6 +419,7 @@ export function registerImportCommand(program: Command): void {
               initialProjectPath: opts.project !== '.' ? resolve(opts.project) : undefined,
               host: opts.host,
               autoAcceptScope,
+              autoRejectCycles: opts.autoRejectCycles ?? false,
               compositionMode: resolvedCompositionMode,
               ...(opts.compositionMap ? { compositionMap: opts.compositionMap } : {}),
               ...(opts.compositionAgent ? { compositionAgent: true } : {}),
@@ -479,6 +481,7 @@ export function registerImportCommand(program: Command): void {
         const headlessCreds = await readExperiencesCredentials();
         const headlessAgent = resolveAgent(opts.agent, headlessCreds.agent);
         const headlessModel = resolveModel(opts.model, headlessCreds.agentModel);
+        const headlessCompositionMode = resolveCompositionMode(opts, headlessCreds.compositionMode);
 
         const result = await runPipeline(
           {
@@ -506,6 +509,13 @@ export function registerImportCommand(program: Command): void {
             dryRun: dryRunForward,
             selectPromptPath: opts.selectPromptPath,
             autoRejectCycles: opts.autoRejectCycles ?? false,
+            compositionMode: headlessCompositionMode,
+            ...(opts.compositionMap ? { compositionMap: opts.compositionMap } : {}),
+            ...(opts.compositionAgent ? { compositionAgent: true } : {}),
+            ...(opts.compositionAgentMode ? { compositionAgentMode: opts.compositionAgentMode } : {}),
+            ...(opts.compositionRefresh ? { compositionRefresh: true } : {}),
+            ...(opts.generateMap ? { generateMap: opts.generateMap } : {}),
+            ...(opts.prompt && opts.prompt.length > 0 ? { promptOverrides: opts.prompt } : {}),
           },
           (line) => process.stderr.write(line + '\n'),
         );

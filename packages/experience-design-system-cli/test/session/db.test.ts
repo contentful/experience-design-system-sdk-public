@@ -1804,11 +1804,38 @@ describe('generation cache', () => {
           name: 'icon',
           isDefault: false,
           description: 'LLM-written slot description',
-          allowedComponents: ['Icon'],
         },
       ],
     };
     expect(computeComponentInputHash(base)).toBe(computeComponentInputHash(enrichedByLLM));
+  });
+
+  it('computeComponentInputHash includes slot composition edges (allowedComponents) so composite and atomic runs never collide', () => {
+    const atomic = {
+      component_id: 'abc123',
+      name: 'Card',
+      source: 'src/Card.tsx',
+      framework: 'react' as const,
+      props: [{ name: 'title', type: 'string', required: true }],
+      slots: [{ name: 'children', isDefault: true }],
+    };
+    const composite = {
+      ...atomic,
+      slots: [{ name: 'children', isDefault: true, allowedComponents: ['Button', 'Icon'] }],
+    };
+    expect(computeComponentInputHash(atomic)).not.toBe(computeComponentInputHash(composite));
+
+    const differentEdges = {
+      ...atomic,
+      slots: [{ name: 'children', isDefault: true, allowedComponents: ['Button'] }],
+    };
+    expect(computeComponentInputHash(composite)).not.toBe(computeComponentInputHash(differentEdges));
+
+    const sameEdges = {
+      ...atomic,
+      slots: [{ name: 'children', isDefault: true, allowedComponents: ['Button', 'Icon'] }],
+    };
+    expect(computeComponentInputHash(composite)).toBe(computeComponentInputHash(sameEdges));
   });
 
   it('computeComponentInputHash changes when extractor-stable fields change', () => {

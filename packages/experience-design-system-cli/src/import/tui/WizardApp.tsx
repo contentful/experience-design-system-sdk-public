@@ -41,6 +41,8 @@ import { PushDecisionGateStep } from './steps/PushDecisionGateStep.js';
 import { chooseGateAction } from './push-decision-gate-helpers.js';
 import { ImportApiClient, ApiError, type PreviewValidationError } from '../../apply/api-client.js';
 import { detectSlotCycles, extractComponentsFromManifest, formatSlotCycleReport } from '../../apply/command.js';
+import { findSlotCycles } from '../../analyze/cycle-detection.js';
+import { buildComponentGraph } from '../../analyze/slot-graph.js';
 import { parseEdsiError, formatParsedEdsiError } from '../../apply/error-parser.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
 import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
@@ -76,7 +78,9 @@ import {
   buildSkippedPushTransition,
   shouldSkipFinalReviewAfterCredentials,
   resolveNoCacheForGenerate,
+  resolveCycleGateAction,
 } from './wizard-state-transitions.js';
+import { computeCycleAutoRejectTargets } from '../cycle-auto-reject.js';
 
 type WizardStep =
   | 'run-picker'
@@ -276,6 +280,7 @@ export type WizardAppProps = {
   initialProjectPath?: string;
   host?: string;
   autoAcceptScope?: boolean;
+  autoRejectCycles?: boolean;
   compositionMode?: CompositionMode;
   compositionMap?: string;
   compositionAgent?: boolean;
@@ -312,6 +317,7 @@ export function WizardApp({
   initialProjectPath,
   host,
   autoAcceptScope = false,
+  autoRejectCycles = false,
   compositionMode = 'atomic',
   compositionMap,
   compositionAgent = false,
@@ -374,8 +380,7 @@ export function WizardApp({
   const modifyEntryReady = !!seedExtractSessionId && initialStep === 'final-review';
   const pushFromPickerReady = !!seedExtractSessionId && initialStep === 'push-from-picker';
   const rawTokensEntryReady = !modifyEntryReady && !pushFromPickerReady && !!initialRawTokensPath;
-  const isFreshSession = !seedExtractSessionId;
-  const effectiveNoCache = resolveNoCacheForGenerate({ isFreshSession, cliNoCache: noCache });
+  const effectiveNoCache = resolveNoCacheForGenerate({ cliNoCache: noCache });
   const initialStepResolved: WizardStep = modifyEntryReady
     ? 'final-review'
     : pushFromPickerReady
@@ -1800,14 +1805,104 @@ export function WizardApp({
             initialFinalizeError={state.finalizeErrorBanner}
             onFinalize={(accepted, rejected, unresolved) => {
               process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`);
+              let acceptedCount = accepted;
+              const detectAcceptedCycles = (): ReturnType<typeof findSlotCycles> => {
+                if (!state.extractSessionId) return [];
+                try {
+                  const db = openPipelineDb();
+                  try {
+                    const acceptedComponents = loadCDFComponents(db, state.extractSessionId);
+                    return findSlotCycles(buildComponentGraph(acceptedComponents));
+                  } finally {
+                    db.close();
+                  }
+                } catch {
+                  return [];
+                }
+              };
+              let acceptedCycles = detectAcceptedCycles();
+              const gateAction = resolveCycleGateAction({
+                hasCycles: acceptedCycles.length > 0,
+                autoRejectCycles,
+              });
+              const routeToCycleError = (): void => {
+                update({
+                  step: 'error',
+                  errorStep: 'final review',
+                  errorMessage: formatSlotCycleReport(acceptedCycles).join('\n'),
+                  errorAllowCredentialRetry: false,
+                });
+              };
+              if (gateAction === 'block') {
+                routeToCycleError();
+                return;
+              }
+              if (gateAction === 'auto-reject' && state.extractSessionId) {
+                const sessionId = state.extractSessionId;
+                let excluded: string[] = [];
+                try {
+                  const db = openPipelineDb();
+                  try {
+                    const acceptedComponents = loadCDFComponents(db, sessionId);
+                    const targets = computeCycleAutoRejectTargets(
+                      acceptedCycles,
+                      buildComponentGraph(acceptedComponents),
+                    );
+                    excluded = [...targets];
+                    if (excluded.length > 0) {
+                      const stmt = db.prepare(
+                        `UPDATE raw_components SET status = 'generate-rejected' WHERE session_id = ? AND name = ?`,
+                      );
+                      db.exec('BEGIN');
+                      try {
+                        for (const name of excluded) {
+                          stmt.run(sessionId, name);
+                        }
+                        db.exec('COMMIT');
+                      } catch (e) {
+                        db.exec('ROLLBACK');
+                        throw e;
+                      }
+                    }
+                  } finally {
+                    db.close();
+                  }
+                } catch {
+                  routeToCycleError();
+                  return;
+                }
+                if (excluded.length > 0) {
+                  process.stderr.write(`Auto-rejected cycle participants: ${excluded.join(', ')}\n`);
+                  logStep({ event: 'cycle-auto-reject', excluded });
+                }
+                acceptedCycles = detectAcceptedCycles();
+                if (acceptedCycles.length > 0) {
+                  routeToCycleError();
+                  return;
+                }
+                const remaining = (() => {
+                  if (!state.extractSessionId) return acceptedCount;
+                  try {
+                    const db = openPipelineDb();
+                    try {
+                      return loadCDFComponents(db, sessionId).length;
+                    } finally {
+                      db.close();
+                    }
+                  } catch {
+                    return acceptedCount;
+                  }
+                })();
+                acceptedCount = remaining;
+              }
               update({ finalReviewPassed: true });
               if (noPush) {
-                update({ generatedAcceptedCount: accepted });
+                update({ generatedAcceptedCount: acceptedCount });
                 void startSaveFlow();
                 return;
               }
               if (noSave) {
-                update({ generatedAcceptedCount: accepted });
+                update({ generatedAcceptedCount: acceptedCount });
                 const { extractSessionId, tokensPath } = sessionRef.current;
                 void runPreview(
                   extractSessionId,
@@ -1820,11 +1915,11 @@ export function WizardApp({
                 return;
               }
               if (autoAcceptScope) {
-                update({ generatedAcceptedCount: accepted });
+                update({ generatedAcceptedCount: acceptedCount });
                 void runSaveAndPush();
                 return;
               }
-              update({ generatedAcceptedCount: accepted, step: 'push-decision-gate' });
+              update({ generatedAcceptedCount: acceptedCount, step: 'push-decision-gate' });
             }}
             onQuit={() => process.exit(0)}
           />
