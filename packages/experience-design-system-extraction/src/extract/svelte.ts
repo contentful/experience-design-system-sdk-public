@@ -13,6 +13,16 @@ import type {
   ExtractorOptions,
 } from '../types.js';
 import { computeExtractionScore, deriveNeedsReview } from './scoring.js';
+import { extractAllowedComponentsFromTypeText } from './slot-allowed-components.js';
+
+/**
+ * Internal-only slot fields captured during first-pass extraction so the
+ * post-pass can resolve $allowedComponents once all Svelte components in the
+ * run are known. Stripped before returning.
+ */
+type RawSlotDefinitionInternal = RawSlotDefinition & {
+  _rawTypeText?: string;
+};
 
 const SVELTE_EXTRACT_CONCURRENCY = Number(process.env['EDS_EXTRACT_CONCURRENCY'] ?? 0) || os.cpus().length;
 
@@ -86,10 +96,36 @@ export async function extractSvelteComponents(
 
   const finalWarnings = await maybeRunResolveUnreachableRetry(components, warnings, retryContexts, opts);
 
+  // Post-pass: resolve $allowedComponents for snippet slots whose type text
+  // referenced Snippet<[XProps]>. Build a props-type-name → component-name map
+  // from the full run first so cross-file references resolve.
+  resolveAllowedComponents(components);
+
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
     warnings: collapseUnresolvedTypeWarnings(finalWarnings),
   };
+}
+
+function resolveAllowedComponents(components: RawComponentDefinition[]): void {
+  const propsToComponent = new Map<string, string>();
+  const componentNames = new Set<string>();
+  for (const c of components as Array<RawComponentDefinition & { _propsTypeName?: string }>) {
+    componentNames.add(c.name);
+    if (c._propsTypeName) propsToComponent.set(c._propsTypeName, c.name);
+  }
+
+  for (const c of components as Array<RawComponentDefinition & { _propsTypeName?: string }>) {
+    for (const slot of c.slots as RawSlotDefinitionInternal[]) {
+      const raw = slot._rawTypeText;
+      if (raw) {
+        const found = extractAllowedComponentsFromTypeText(raw, { propsToComponent, componentNames });
+        if (found.length > 0) slot.allowedComponents = found;
+      }
+      delete slot._rawTypeText;
+    }
+    delete c._propsTypeName;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -614,12 +650,26 @@ async function extractFromSvelteFile(
     warnings.push(`${name}: mixed Snippet and <slot> usage detected (${filePath}); preferring Snippet entries`);
   }
 
-  const component: RawComponentDefinition = {
+  // Capture the props-type-name (if any) so the run-level post-pass can build
+  // a props-type → component-name map for $allowedComponents resolution
+  // (mirrors the React extractor's `_propsTypeName` mechanism).
+  let propsTypeNameCapture: string | undefined;
+  if (propsCall) {
+    const id = propsCall['id'] as AstNode | undefined;
+    const annotation = (id?.['typeAnnotation'] as AstNode | undefined)?.['typeAnnotation'] as AstNode | undefined;
+    if (annotation?.type === 'TSTypeReference') {
+      const tn = (annotation['typeName'] as AstNode | undefined)?.['name'] as string | undefined;
+      if (tn && /^[A-Za-z_$][\w$]*$/.test(tn)) propsTypeNameCapture = tn;
+    }
+  }
+
+  const component: RawComponentDefinition & { _propsTypeName?: string } = {
     name,
     source: filePath,
     framework: 'svelte',
     props,
     slots,
+    ...(propsTypeNameCapture ? { _propsTypeName: propsTypeNameCapture } : {}),
   };
 
   // Score & flag review. Forward extraction-time reasons (e.g. props-type-unresolved)
@@ -887,6 +937,12 @@ interface ResolvedTypeMember {
   name: string;
   optional: boolean;
   typeText: string;
+  /**
+   * Author-facing type-node text as written in source (e.g. `Snippet<[HeadingProps]>`).
+   * `typeText` may be the fully resolved / expanded form (call signature), which
+   * loses the `Snippet<[XProps]>` shape we need for $allowedComponents.
+   */
+  declaredTypeText?: string;
   /** True if this member's type resolves to the `Snippet` type from 'svelte'. */
   isSnippet: boolean;
   allowedValues?: string[];
@@ -1040,6 +1096,7 @@ async function resolveViaTypeChecker(
       name,
       optional,
       typeText,
+      ...(declaredTypeText ? { declaredTypeText } : {}),
       isSnippet,
       ...(allowed ? { allowedValues: allowed } : {}),
       ...(description ? { description } : {}),
@@ -1262,6 +1319,19 @@ function renderType(typeNode: AstNode | undefined): string {
     case 'TSArrayType': {
       return `${renderType(typeNode['elementType'] as AstNode)}[]`;
     }
+    case 'TSTupleType': {
+      // Tuple element types can be plain (`T`) or labeled (`name: T` →
+      // TSNamedTupleMember). Render each element by drilling to the type.
+      const elements = (typeNode['elementTypes'] as AstNode[] | undefined) ?? [];
+      const rendered = elements.map((el) => {
+        if (el.type === 'TSNamedTupleMember') {
+          const inner = el['elementType'] as AstNode | undefined;
+          return renderType(inner);
+        }
+        return renderType(el);
+      });
+      return `[${rendered.join(', ')}]`;
+    }
     case 'TSUnionType': {
       const members = (typeNode['types'] as AstNode[] | undefined) ?? [];
       return members.map(renderType).join(' | ');
@@ -1354,11 +1424,18 @@ function extractFromDestructure(
 
     if (typeMember?.isSnippet) {
       snippetNames.add(name);
-      snippetSlots.push({
+      const slot: RawSlotDefinitionInternal = {
         name,
         isDefault: name === 'children',
         ...(typeMember.description ? { description: typeMember.description } : {}),
-      });
+      };
+      // Stash the author-facing type text so the run-level post-pass can
+      // resolve $allowedComponents from `Snippet<[XProps]>`.
+      // Prefer the author-facing `Snippet<[XProps]>` shape; the resolved
+      // typeText may be an expanded call signature that loses the tuple form.
+      const authorText = typeMember.declaredTypeText ?? typeMember.typeText;
+      if (authorText) slot._rawTypeText = authorText;
+      snippetSlots.push(slot);
       continue;
     }
 
@@ -1406,11 +1483,14 @@ function extractFromTypeMembersOnly(typeMembers: ResolvedTypeMember[]): PropsExt
   for (const m of typeMembers) {
     if (m.isSnippet) {
       snippetNames.add(m.name);
-      snippetSlots.push({
+      const slot: RawSlotDefinitionInternal = {
         name: m.name,
         isDefault: m.name === 'children',
         ...(m.description ? { description: m.description } : {}),
-      });
+      };
+      const authorText = m.declaredTypeText ?? m.typeText;
+      if (authorText) slot._rawTypeText = authorText;
+      snippetSlots.push(slot);
       continue;
     }
     const propDef: RawPropDefinition = {

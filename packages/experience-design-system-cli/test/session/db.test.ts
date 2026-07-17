@@ -952,6 +952,185 @@ describe('storeCDFComponents + loadCDFComponents', () => {
       db.close();
     });
   });
+
+  // Regression coverage for INTEG-4401: the `if (row)` branch of storeCDFComponents
+  // (component exists in raw_components) previously never touched raw_slots or
+  // raw_slot_allowed_components. FieldEditor edits to $slots (e.g. removing a
+  // $allowedComponents entry to break a cycle) were silently discarded on save.
+  describe('slot persistence on update path (INTEG-4401)', () => {
+    const RAW_CYCLE: RawComponentDefinition[] = [
+      {
+        name: 'CycleA',
+        source: 'src/CycleA.tsx',
+        framework: 'react',
+        props: [],
+        slots: [{ name: 'slotB', isDefault: false, description: 'child slot' }],
+      },
+    ];
+
+    const seedCycleA = (db: ReturnType<typeof openPipelineDb>, sessionId: string) => {
+      storeRawComponents(db, sessionId, RAW_CYCLE);
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'CycleA',
+          entry: {
+            $type: 'component',
+            $properties: {},
+            $slots: {
+              slotB: { $allowedComponents: ['A', 'B'] },
+            },
+          },
+        },
+      ]);
+    };
+
+    it('persists removal of a $allowedComponents entry on an existing component', async () => {
+      await withTempDb((dbPath) => {
+        const db = openPipelineDb(dbPath);
+        const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+        seedCycleA(db, sessionId);
+
+        // User edits FieldEditor: removes 'B' from $allowedComponents.
+        storeCDFComponents(db, sessionId, [
+          {
+            key: 'CycleA',
+            entry: {
+              $type: 'component',
+              $properties: {},
+              $slots: {
+                slotB: { $allowedComponents: ['A'] },
+              },
+            },
+          },
+        ]);
+
+        const loaded = loadCDFComponents(db, sessionId);
+        expect(loaded[0]?.entry.$slots?.['slotB']?.$allowedComponents).toEqual(['A']);
+        db.close();
+      });
+    });
+
+    it('persists addition of a $allowedComponents entry on an existing component', async () => {
+      await withTempDb((dbPath) => {
+        const db = openPipelineDb(dbPath);
+        const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+        seedCycleA(db, sessionId);
+
+        // User adds 'C' to $allowedComponents.
+        storeCDFComponents(db, sessionId, [
+          {
+            key: 'CycleA',
+            entry: {
+              $type: 'component',
+              $properties: {},
+              $slots: {
+                slotB: { $allowedComponents: ['A', 'B', 'C'] },
+              },
+            },
+          },
+        ]);
+
+        const loaded = loadCDFComponents(db, sessionId);
+        expect(loaded[0]?.entry.$slots?.['slotB']?.$allowedComponents).toEqual(['A', 'B', 'C']);
+        db.close();
+      });
+    });
+
+    it('removes a slot entirely when omitted from a subsequent storeCDFComponents call', async () => {
+      await withTempDb((dbPath) => {
+        const db = openPipelineDb(dbPath);
+        const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+        seedCycleA(db, sessionId);
+
+        // User removes slotB entirely.
+        storeCDFComponents(db, sessionId, [
+          {
+            key: 'CycleA',
+            entry: {
+              $type: 'component',
+              $properties: {},
+              $slots: {},
+            },
+          },
+        ]);
+
+        const componentId = (
+          db
+            .prepare('SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?')
+            .get(sessionId, 'CycleA') as { component_id: string } | undefined
+        )?.component_id;
+        const slotRows = db
+          .prepare('SELECT name FROM raw_slots WHERE session_id = ? AND component_id = ?')
+          .all(sessionId, componentId) as Array<{ name: string }>;
+        expect(slotRows).toHaveLength(0);
+
+        const acRows = db
+          .prepare('SELECT allowed_component FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ?')
+          .all(sessionId, componentId) as Array<{ allowed_component: string }>;
+        expect(acRows).toHaveLength(0);
+        db.close();
+      });
+    });
+
+    it('preserves is_default on a slot across an edit that only changes $allowedComponents', async () => {
+      await withTempDb((dbPath) => {
+        const db = openPipelineDb(dbPath);
+        const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+        // Seed with a slot the extractor flagged as default (children).
+        storeRawComponents(db, sessionId, [
+          {
+            name: 'Card',
+            source: 'src/Card.tsx',
+            framework: 'react',
+            props: [],
+            slots: [{ name: 'children', isDefault: true, description: 'default slot' }],
+          },
+        ]);
+        storeCDFComponents(db, sessionId, [
+          {
+            key: 'Card',
+            entry: {
+              $type: 'component',
+              $properties: {},
+              $slots: {
+                children: { $allowedComponents: ['A', 'B'] },
+              },
+            },
+          },
+        ]);
+
+        // User edits allowedComponents; is_default is not carried on the CDF entry.
+        storeCDFComponents(db, sessionId, [
+          {
+            key: 'Card',
+            entry: {
+              $type: 'component',
+              $properties: {},
+              $slots: {
+                children: { $allowedComponents: ['A'] },
+              },
+            },
+          },
+        ]);
+
+        const componentId = (
+          db
+            .prepare('SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?')
+            .get(sessionId, 'Card') as { component_id: string } | undefined
+        )?.component_id;
+        const slotRow = db
+          .prepare('SELECT name, is_default FROM raw_slots WHERE session_id = ? AND component_id = ? AND name = ?')
+          .get(sessionId, componentId, 'children') as { name: string; is_default: number } | undefined;
+        expect(slotRow?.is_default).toBe(1);
+
+        // And the edit itself must have persisted — this is what fails against
+        // the buggy update path, which never touches raw_slot_allowed_components.
+        const loaded = loadCDFComponents(db, sessionId);
+        expect(loaded[0]?.entry.$slots?.['children']?.$allowedComponents).toEqual(['A']);
+        db.close();
+      });
+    });
+  });
 });
 
 describe('storeRawComponents preserveCDF option', () => {

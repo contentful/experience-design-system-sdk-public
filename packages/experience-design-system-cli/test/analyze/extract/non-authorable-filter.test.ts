@@ -8,7 +8,7 @@ function makeComponent(partial: Partial<RawComponentDefinition>): RawComponentDe
     source: '/sample.tsx',
     framework: 'react',
     props: [],
-    slots: [{ name: 'default', isDefault: true }],
+    slots: [{ name: 'children', isDefault: true }],
     ...partial,
   };
 }
@@ -23,7 +23,7 @@ describe('isNonAuthorableComponent', () => {
 
     it('does NOT flag a layout component with zero props but a children slot', () => {
       const result = isNonAuthorableComponent(
-        makeComponent({ name: 'Stack', props: [], slots: [{ name: 'default', isDefault: true }] }),
+        makeComponent({ name: 'Stack', props: [], slots: [{ name: 'children', isDefault: true }] }),
       );
       expect(result.skip).toBe(false);
     });
@@ -61,7 +61,7 @@ describe('isNonAuthorableComponent', () => {
           name: 'FontProvider',
           usesCreateContext: true,
           props: [],
-          slots: [{ name: 'default', isDefault: true }],
+          slots: [{ name: 'children', isDefault: true }],
         }),
       );
       expect(result.skip).toBe(true);
