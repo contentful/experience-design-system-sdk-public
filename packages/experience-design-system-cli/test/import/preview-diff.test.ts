@@ -257,6 +257,57 @@ describe('computeComponentDiffLines', () => {
     expect(lines[0]).toMatchObject({ color: 'red', text: '- slot: header' });
   });
 
+  describe('slot $allowedComponents diffs', () => {
+    it('emits an "-allow-new" line when a new slot gains a non-empty allowedComponents', () => {
+      const current = makeCurrent({ slots: [] });
+      const proposed = {
+        $properties: {},
+        $slots: { header: { $allowedComponents: ['Heading'] } },
+      };
+      const lines = computeComponentDiffLines(current, proposed);
+      expect(lines).toEqual(
+        expect.arrayContaining([
+          { key: 'slot-header-allow-new', color: 'green', text: '+ slot header allowedComponents: [Heading]' },
+        ]),
+      );
+    });
+
+    it("emits red+green pair when an existing slot's allowedComponents changes", () => {
+      const current = makeCurrent({
+        slots: ['header'],
+        currentSlotAllowed: { header: ['Heading'] },
+      });
+      const proposed = {
+        $properties: {},
+        $slots: { header: { $allowedComponents: ['Heading', 'Subtitle'] } },
+      };
+      const lines = computeComponentDiffLines(current, proposed);
+      expect(lines).toEqual(
+        expect.arrayContaining([
+          { key: 'slot-header-allow-old', color: 'red', text: '- slot header allowedComponents: [Heading]' },
+          {
+            key: 'slot-header-allow-new',
+            color: 'green',
+            text: '+ slot header allowedComponents: [Heading, Subtitle]',
+          },
+        ]),
+      );
+    });
+
+    it('emits no -allow- line when slot allowedComponents are unchanged', () => {
+      const current = makeCurrent({
+        slots: ['header'],
+        currentSlotAllowed: { header: ['Heading'] },
+      });
+      const proposed = {
+        $properties: {},
+        $slots: { header: { $allowedComponents: ['Heading'] } },
+      };
+      const lines = computeComponentDiffLines(current, proposed);
+      expect(lines.some((l) => l.key.includes('-allow-'))).toBe(false);
+    });
+  });
+
   it('falls back to breaking change reasons when fullProperties is absent', () => {
     const current = makeCurrent({ designProperties: ['size'] });
     const proposed = { $properties: { size: { $type: 'number', $category: 'design', $required: true } } };

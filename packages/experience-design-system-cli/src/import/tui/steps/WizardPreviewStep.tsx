@@ -5,6 +5,115 @@ import type { ServerPreviewResponse, DesignTokenSummary } from '@contentful/expe
 import { hasBreakingChangesWithImpact } from '../../../apply/manifest.js';
 import { computeComponentDiffLines } from './preview-diff.js';
 
+export interface PreviewDiffLine {
+  key: string;
+  color: 'green' | 'red' | 'yellow' | 'gray';
+  text: string;
+}
+
+/**
+ * Pure builder for the wizard preview diff lines. Extracted from the render
+ * layer so it can be unit-tested independently of Ink.
+ */
+export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDiffLine[] {
+  const lines: PreviewDiffLine[] = [];
+  const { components, tokens } = preview;
+
+  for (const item of components.new) {
+    const raw = item as unknown as Record<string, unknown>;
+    const name = (raw.key as string) ?? (raw.$name as string) ?? 'unknown';
+    lines.push({ key: `comp-new-${name}`, color: 'green', text: ` + ${name}` });
+    const slots = (raw.$slots ?? {}) as Record<string, Record<string, unknown>>;
+    for (const slotName of Object.keys(slots).sort()) {
+      lines.push({
+        key: `comp-new-${name}-slot-${slotName}`,
+        color: 'green',
+        text: `   slot: ${slotName}`,
+      });
+      const allowed = slots[slotName]?.['$allowedComponents'];
+      if (Array.isArray(allowed) && allowed.length > 0) {
+        const names = (allowed as unknown[]).filter((n): n is string => typeof n === 'string');
+        lines.push({
+          key: `comp-new-${name}-slot-${slotName}-allow`,
+          color: 'green',
+          text: `     allowedComponents: [${names.join(', ')}]`,
+        });
+      }
+    }
+  }
+
+  for (const item of components.removed) {
+    lines.push({ key: `comp-rm-${item.name}`, color: 'red', text: ` - ${item.name}` });
+  }
+
+  for (const item of components.changed) {
+    lines.push({
+      key: `comp-h-${item.current.name}`,
+      color: 'yellow',
+      text: ` ~ ${item.current.name}${item.hasPendingDraftChanges ? ' ⚡ has pending draft changes' : ''}`,
+    });
+    if (item.changeClassification?.classification === 'breaking') {
+      const reasons = item.changeClassification.breakingChanges
+        .map((bc) => `${bc.propertyId}: ${bc.reason}`)
+        .join(', ');
+      lines.push({ key: `comp-b-${item.current.name}`, color: 'red', text: ` ⚠ BREAKING: ${reasons}` });
+    }
+    const diffLines = computeComponentDiffLines(
+      item.current,
+      item.proposed as unknown as Record<string, unknown>,
+      item.changeClassification,
+    );
+    for (const d of diffLines) {
+      lines.push({ key: `comp-d-${item.current.name}-${d.key}`, color: d.color, text: ` ${d.text}` });
+    }
+    // Also enumerate slots + allowedComponents from the proposed side so the
+    // reviewer sees the shape they're pushing, not just the delta.
+    const proposedSlots =
+      ((item.proposed as unknown as Record<string, unknown>)['$slots'] as
+        | Record<string, Record<string, unknown>>
+        | undefined) ?? {};
+    for (const slotName of Object.keys(proposedSlots).sort()) {
+      const allowed = proposedSlots[slotName]?.['$allowedComponents'];
+      if (Array.isArray(allowed) && allowed.length > 0) {
+        const names = (allowed as unknown[]).filter((n): n is string => typeof n === 'string');
+        const key = `comp-d-${item.current.name}-slot-${slotName}-allow-list`;
+        if (!lines.some((l) => l.key === key)) {
+          lines.push({
+            key,
+            color: 'gray',
+            text: `   slot ${slotName} allowedComponents: [${names.join(', ')}]`,
+          });
+        }
+      }
+    }
+  }
+
+  for (const item of tokens.new) {
+    const raw = item as unknown as Record<string, unknown>;
+    const name = (raw.name as string) ?? (raw.path as string) ?? 'unknown';
+    lines.push({ key: `tok-new-${name}`, color: 'green', text: ` + ${name}` });
+  }
+  for (const item of tokens.removed) {
+    lines.push({ key: `tok-rm-${item.name}`, color: 'red', text: ` - ${item.name}` });
+  }
+  for (const item of tokens.changed) {
+    const tokenName = (item.current as DesignTokenSummary).name;
+    lines.push({
+      key: `tok-h-${tokenName}`,
+      color: 'yellow',
+      text: ` ~ ${tokenName}${item.hasPendingDraftChanges ? ' ⚡ has pending draft changes' : ''}`,
+    });
+    if (item.changeClassification?.classification === 'breaking') {
+      const reasons = item.changeClassification.breakingChanges
+        .map((bc) => `${bc.propertyId}: ${bc.reason}`)
+        .join(', ');
+      lines.push({ key: `tok-b-${tokenName}`, color: 'red', text: ` ⚠ BREAKING: ${reasons}` });
+    }
+  }
+
+  return lines;
+}
+
 type WizardPreviewStepProps = {
   preview: ServerPreviewResponse;
   spaceId: string;
@@ -37,74 +146,14 @@ export function WizardPreviewStep({
 
   const allDiffLines = useMemo(() => {
     if (!diffExpanded) return [];
-    const lines: Array<{ key: string; element: React.ReactElement }> = [];
-    const { components, tokens } = preview;
-    for (const item of components.new) {
-      const name =
-        ((item as unknown as Record<string, unknown>).key as string) ??
-        ((item as unknown as Record<string, unknown>).$name as string) ??
-        'unknown';
-      lines.push({ key: `comp-new-${name}`, element: <Text color="green"> + {name}</Text> });
-    }
-    for (const item of components.removed) {
-      lines.push({ key: `comp-rm-${item.name}`, element: <Text color="red"> - {item.name}</Text> });
-    }
-    for (const item of components.changed) {
-      lines.push({
-        key: `comp-h-${item.current.name}`,
-        element: (
-          <Text color="yellow">
-            {' '}
-            ~ {item.current.name}
-            {item.hasPendingDraftChanges ? <Text color="yellow"> ⚡ has pending draft changes</Text> : null}
-          </Text>
-        ),
-      });
-      if (item.changeClassification?.classification === 'breaking') {
-        const reasons = item.changeClassification.breakingChanges
-          .map((bc) => `${bc.propertyId}: ${bc.reason}`)
-          .join(', ');
-        lines.push({ key: `comp-b-${item.current.name}`, element: <Text color="red"> ⚠ BREAKING: {reasons}</Text> });
-      }
-      const diffLines = computeComponentDiffLines(
-        item.current,
-        item.proposed as unknown as Record<string, unknown>,
-        item.changeClassification,
-      );
-      for (const d of diffLines) {
-        lines.push({ key: `comp-d-${item.current.name}-${d.key}`, element: <Text color={d.color}> {d.text}</Text> });
-      }
-    }
-    for (const item of tokens.new) {
-      const name =
-        ((item as unknown as Record<string, unknown>).name as string) ??
-        ((item as unknown as Record<string, unknown>).path as string) ??
-        'unknown';
-      lines.push({ key: `tok-new-${name}`, element: <Text color="green"> + {name}</Text> });
-    }
-    for (const item of tokens.removed) {
-      lines.push({ key: `tok-rm-${item.name}`, element: <Text color="red"> - {item.name}</Text> });
-    }
-    for (const item of tokens.changed) {
-      const tokenName = (item.current as DesignTokenSummary).name;
-      lines.push({
-        key: `tok-h-${tokenName}`,
-        element: (
-          <Text color="yellow">
-            {' '}
-            ~ {tokenName}
-            {item.hasPendingDraftChanges ? <Text color="yellow"> ⚡ has pending draft changes</Text> : null}
-          </Text>
-        ),
-      });
-      if (item.changeClassification?.classification === 'breaking') {
-        const reasons = item.changeClassification.breakingChanges
-          .map((bc) => `${bc.propertyId}: ${bc.reason}`)
-          .join(', ');
-        lines.push({ key: `tok-b-${tokenName}`, element: <Text color="red"> ⚠ BREAKING: {reasons}</Text> });
-      }
-    }
-    return lines;
+    return buildPreviewDiffLines(preview).map((line) => ({
+      key: line.key,
+      element: (
+        <Text color={line.color === 'gray' ? undefined : line.color} dimColor={line.color === 'gray'}>
+          {line.text}
+        </Text>
+      ),
+    }));
   }, [diffExpanded, preview]);
 
   const maxScroll = Math.max(0, allDiffLines.length - viewportHeight);

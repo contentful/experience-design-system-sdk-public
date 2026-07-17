@@ -8,6 +8,7 @@ import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } fro
 import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
 import type { ToolCall, TokenToolCall } from '../generate/agent-runner.js';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
+import type { SlotCycle, SlotEdge } from '../analyze/cycle-detection.js';
 
 export type StepStatus = 'pending' | 'complete' | 'failed' | 'interrupted';
 export type CommandName =
@@ -175,6 +176,15 @@ CREATE TABLE IF NOT EXISTS scanned_files (
   session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   path        TEXT NOT NULL,
   PRIMARY KEY (session_id, path)
+);
+
+CREATE TABLE IF NOT EXISTS slot_cycles (
+  session_id             TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  cycle_index            INTEGER NOT NULL,
+  path_json              TEXT NOT NULL,
+  edges_json             TEXT NOT NULL,
+  suggested_break_json   TEXT,
+  PRIMARY KEY (session_id, cycle_index)
 );
 
 CREATE INDEX IF NOT EXISTS idx_steps_session            ON steps(session_id);
@@ -1259,6 +1269,22 @@ export function storeCDFComponents(
     `INSERT INTO raw_slot_allowed_components (session_id, component_id, slot_name, allowed_component, position)
      VALUES (?, ?, ?, ?, ?)`,
   );
+  // Slot delete+insert statements for the update path (INTEG-4401). We mirror
+  // the delete-then-insert pattern already used for raw_prop_allowed_values so
+  // that removing a slot or a $allowedComponents entry (e.g. user breaking a
+  // cycle in FieldEditor) actually clears the row instead of leaving stale
+  // data behind.
+  const deleteSlots = db.prepare(`DELETE FROM raw_slots WHERE session_id = ? AND component_id = ?`);
+  const deleteSlotAllowedComponents = db.prepare(
+    `DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ?`,
+  );
+  const readExistingSlotDefaults = db.prepare(
+    `SELECT name, is_default FROM raw_slots WHERE session_id = ? AND component_id = ?`,
+  );
+  const insertSlotOnUpdate = db.prepare(
+    `INSERT INTO raw_slots (session_id, component_id, name, is_default, required, description, position)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  );
 
   db.exec('BEGIN');
   try {
@@ -1283,6 +1309,38 @@ export function storeCDFComponents(
           if (prop.$values && prop.$values.length > 0) {
             deleteAllowedValues.run(sessionId, componentId, propName);
             prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
+          }
+        }
+
+        // Persist $slots on the update path (INTEG-4401). We snapshot is_default
+        // from any pre-existing rows before deleting because the CDF entry
+        // doesn't carry that flag — the extractor sets it (e.g. `children` slots
+        // land with is_default=1) and losing it here would break downstream
+        // codegen. Delete-then-insert (not upsert) so a removed slot or a
+        // removed $allowedComponents entry actually disappears from the DB.
+        const existingDefaults = new Map<string, number>(
+          (readExistingSlotDefaults.all(sessionId, componentId) as Array<{ name: string; is_default: number }>).map(
+            (r) => [r.name, r.is_default],
+          ),
+        );
+        deleteSlotAllowedComponents.run(sessionId, componentId);
+        deleteSlots.run(sessionId, componentId);
+        let slotPos = 0;
+        for (const [slotName, slot] of Object.entries(entry.$slots ?? {})) {
+          const isDefault = existingDefaults.get(slotName) ?? 0;
+          insertSlotOnUpdate.run(
+            sessionId,
+            componentId,
+            slotName,
+            isDefault,
+            slot.$required ? 1 : 0,
+            slot.$description ?? null,
+            slotPos++,
+          );
+          if (slot.$allowedComponents && slot.$allowedComponents.length > 0) {
+            slot.$allowedComponents.forEach((ac, i) =>
+              insertAllowedComponent.run(sessionId, componentId, slotName, ac, i),
+            );
           }
         }
       } else {
@@ -2060,6 +2118,69 @@ export function loadScannedFiles(db: DatabaseSync, sessionId: string): string[] 
     path: string;
   }>;
   return rows.map((r) => r.path);
+}
+
+// --- Slot-dependency cycle persistence (INTEG-4401) ---
+//
+// The `slot_cycles` table caches the result of running the cycle detector
+// over the extractor's slot output so the TUI can render sidebar badges,
+// a banner, and an expandable detail panel without re-running the analysis
+// on every render. Rows are session-scoped and rewritten wholesale on each
+// re-extract via `storeSlotCycles`.
+
+export function storeSlotCycles(
+  db: DatabaseSync,
+  sessionId: string,
+  cycles: Array<SlotCycle & { suggestedBreak?: SlotEdge | null }>,
+): void {
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM slot_cycles WHERE session_id = ?').run(sessionId);
+    const insert = db.prepare(
+      `INSERT INTO slot_cycles (session_id, cycle_index, path_json, edges_json, suggested_break_json)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+    for (let i = 0; i < cycles.length; i += 1) {
+      const cycle = cycles[i];
+      insert.run(
+        sessionId,
+        i,
+        JSON.stringify(cycle.path),
+        JSON.stringify(cycle.edges),
+        cycle.suggestedBreak ? JSON.stringify(cycle.suggestedBreak) : null,
+      );
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
+export interface StoredSlotCycle extends SlotCycle {
+  suggestedBreak: SlotEdge | null;
+}
+
+export function loadSlotCycles(db: DatabaseSync, sessionId: string): StoredSlotCycle[] {
+  const rows = db
+    .prepare(
+      'SELECT cycle_index, path_json, edges_json, suggested_break_json FROM slot_cycles WHERE session_id = ? ORDER BY cycle_index',
+    )
+    .all(sessionId) as Array<{
+    cycle_index: number;
+    path_json: string;
+    edges_json: string;
+    suggested_break_json: string | null;
+  }>;
+  return rows.map((r) => ({
+    path: JSON.parse(r.path_json) as string[],
+    edges: JSON.parse(r.edges_json) as SlotEdge[],
+    suggestedBreak: r.suggested_break_json ? (JSON.parse(r.suggested_break_json) as SlotEdge) : null,
+  }));
+}
+
+export function clearSlotCycles(db: DatabaseSync, sessionId: string): void {
+  db.prepare('DELETE FROM slot_cycles WHERE session_id = ?').run(sessionId);
 }
 
 export function markCacheHumanEdited(db: DatabaseSync, entityType: 'component' | 'token_set', entityId: string): void {
