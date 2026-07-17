@@ -67,8 +67,14 @@ export function registerImportCommand(program: Command): void {
     .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
     .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
     .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
-    .option('--composition-agent', 'Opt into agentic mapping resolution during extract (implies --composite)')
-    .option('--composition-refresh', 'Bypass the composition cache and re-resolve from scratch (implies --composite)')
+    .option(
+      '--composition-agent',
+      'Opt into agentic mapping resolution when deterministic sources find no groups (implies --composite)',
+    )
+    .option(
+      '--composition-refresh',
+      'Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies --composite)',
+    )
     .option(
       '--composition-agent-mode <mode>',
       "Agent mode: 'parser' (agent writes a sandboxed parser, default) or 'edges' (agent lists edges)",
