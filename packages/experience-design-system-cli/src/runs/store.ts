@@ -57,6 +57,10 @@ export type RunRecord = {
    *  writers always populate. Added in runs.json v3. Optional for the same
    *  reason as `sourceFingerprint`. */
   savedFingerprint?: SavedFingerprint | null;
+  /** Composition mode the run was produced in, so modify/replay resumes in the
+   *  same mode (`composite` vs `atomic`). Absent on records written before this
+   *  field existed; callers treat a missing value as `atomic` (the default). */
+  compositionMode?: 'composite' | 'atomic';
   notes?: string;
 };
 

@@ -618,7 +618,7 @@ describe('FieldEditor — duplicate React-key safety (Bug 1, INTEG-4257)', () =>
       />,
     );
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('$properties');
+    expect(frame).toContain('PROPERTIES');
     expect(frame).toContain('title');
   });
 });
@@ -976,6 +976,29 @@ describe('FieldEditor — Feature 5: $allowedComponents per-slot editor', () => 
     await tick();
     expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
+
+  it('down-arrow escapes allowedComponents to description at the list boundary, then typing edits it', async () => {
+    const onChange = vi.fn();
+    const { stdin, lastFrame } = render(
+      <FieldEditor value={CONTAINER} width={80} height={25} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    stdin.write('\r'); // enter fields on the slot → 'required'
+    await tick();
+    stdin.write('\x1b[B'); // down → 'allowedComponents' (values-nav; cursor lands at top)
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/\[a\]dd/);
+    // CONTAINER's slot has 2 allowedComponents (Card, Hero): first down moves the
+    // value cursor to the last entry, second down escapes the field → 'description'.
+    stdin.write('\x1b[B');
+    await tick();
+    stdin.write('\x1b[B');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Type to edit/);
+    stdin.write('X'); // typing edits the slot description
+    await tick();
+    const last = onChange.mock.calls.at(-1)?.[0] ?? '';
+    expect(last).toContain('BodyX');
+  });
 });
 
 describe('FieldEditor — Feature 5: component $description as first navigable row', () => {
@@ -1007,7 +1030,7 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Top-level hero');
     const descIdx = frame.indexOf('Top-level hero');
-    const propsIdx = frame.indexOf('$properties');
+    const propsIdx = frame.indexOf('PROPERTIES');
     expect(descIdx).toBeGreaterThanOrEqual(0);
     expect(propsIdx).toBeGreaterThan(descIdx);
   });

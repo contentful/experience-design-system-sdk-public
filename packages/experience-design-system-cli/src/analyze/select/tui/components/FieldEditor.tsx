@@ -1200,18 +1200,24 @@ export function FieldEditor({
               ? currentSlot.allowedComponents
               : null;
         if (vals !== null) {
+          // Move the value cursor within the list. At a boundary, fall through to
+          // field navigation so the field itself is escapable (e.g. reach the
+          // slot `description` field past `allowedComponents`).
           if (arrowUp || input === 'k') {
-            setValueCursor((c) => Math.max(0, c - 1));
-            return;
-          }
-          if (arrowDown || input === 'j') {
-            setValueCursor((c) => Math.max(0, Math.min(vals.length - 1, c + 1)));
-            return;
+            if (valueCursor > 0) {
+              setValueCursor((c) => Math.max(0, c - 1));
+              return;
+            }
+          } else if (arrowDown || input === 'j') {
+            if (valueCursor < vals.length - 1) {
+              setValueCursor((c) => Math.min(vals.length - 1, c + 1));
+              return;
+            }
           }
         }
       }
 
-      if (!isValuesNav) {
+      {
         const navUp = arrowUp || (!isDescriptionTextEntry && !isDefaultTextEntry && input === 'k');
         const navDown = arrowDown || (!isDescriptionTextEntry && !isDefaultTextEntry && input === 'j');
         if ((navUp || navDown) && fields.length > 0) {
@@ -1231,6 +1237,16 @@ export function FieldEditor({
           } else if (next === 'default' && currentProp) {
             const cur = typeof currentProp.default === 'string' ? currentProp.default : '';
             setTextCursor(cur.length);
+          } else if (next === 'values' || next === 'allowedComponents') {
+            const nextVals =
+              next === 'values' && currentProp
+                ? currentProp.values
+                : next === 'allowedComponents' && currentSlot
+                  ? currentSlot.allowedComponents
+                  : [];
+            // Land at the entry edge matching travel direction so continued
+            // nav moves through the list before escaping the field again.
+            setValueCursor(navDown ? 0 : Math.max(0, nextVals.length - 1));
           }
           return;
         }
@@ -1570,7 +1586,7 @@ export function FieldEditor({
   })();
 
   type Row =
-    | { kind: 'header'; label: string }
+    | { kind: 'header'; label: string; section: 'properties' | 'slots' }
     | { kind: 'prop'; idx: number }
     | { kind: 'slot'; idx: number }
     | { kind: 'component-description' };
@@ -1578,11 +1594,11 @@ export function FieldEditor({
   const rows: Row[] = [];
   rows.push({ kind: 'component-description' });
   if (props.length > 0) {
-    rows.push({ kind: 'header', label: `── $properties (${props.length}) ` });
+    rows.push({ kind: 'header', label: `── PROPERTIES (${props.length}) `, section: 'properties' });
     props.forEach((_, i) => rows.push({ kind: 'prop', idx: i }));
   }
   if (slots.length > 0) {
-    rows.push({ kind: 'header', label: `── $slots (${slots.length}) ` });
+    rows.push({ kind: 'header', label: `── SLOTS (${slots.length}) `, section: 'slots' });
     slots.forEach((_, i) => rows.push({ kind: 'slot', idx: i }));
   }
 
@@ -1614,7 +1630,7 @@ export function FieldEditor({
         {visibleRowSlice.map((row, i) => {
           if (row.kind === 'header') {
             return (
-              <Text key={`header-${i}`} dimColor>
+              <Text key={`header-${i}`} bold color={row.section === 'slots' ? PALETTE.info : PALETTE.success}>
                 {row.label}
               </Text>
             );

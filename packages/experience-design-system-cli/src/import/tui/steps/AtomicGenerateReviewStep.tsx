@@ -32,6 +32,7 @@ import type {
 import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
 import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
 import { useLivePreview } from '../useLivePreview.js';
+import { useFinalizePreview } from '../useFinalizePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 
@@ -331,6 +332,17 @@ export function AtomicGenerateReviewStep({
     });
   };
 
+  const finalizePreview = useFinalizePreview({
+    open: showFinalize,
+    extractSessionId,
+    tokensPath,
+    spaceId,
+    environmentId,
+    cmaToken,
+    host,
+    acceptedKeys: new Set(components.filter((c) => c.status === 'accepted').map((c) => c.key)),
+  });
+
   const handleFinalizeConfirm = () => {
     // Strict opt-in: only EXPLICITLY ACCEPTED components ship. Anything left
     // in 'needs-review' OR explicitly 'rejected' is downgraded to
@@ -416,7 +428,25 @@ export function AtomicGenerateReviewStep({
   const dialogOpen = showFinalize || showQuit;
 
   useImmediateInput((input, key) => {
-    if (loading || loadError) return;
+    if (loading) return;
+    // On a load error there's nothing to review — still let the operator quit
+    // (q / Esc / Enter) instead of trapping them on the error screen.
+    if (loadError) {
+      if (input === 'q' || key.escape || key.return) onQuit();
+      return;
+    }
+    if (showFinalize) {
+      // The dialog owns y/n/Enter/Esc; here we own j/k scroll of its deletion list.
+      if (input === 'j' || key.downArrow) {
+        finalizePreview.scrollBy(1);
+        return;
+      }
+      if (input === 'k' || key.upArrow) {
+        finalizePreview.scrollBy(-1);
+        return;
+      }
+      return;
+    }
     if (dialogOpen) return;
 
     if (showReloadDialog) {
@@ -666,8 +696,10 @@ export function AtomicGenerateReviewStep({
 
   if (loadError) {
     return (
-      <Box paddingX={2} paddingY={1}>
+      <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text color={PALETTE.error}>{loadError}</Text>
+        <Text> </Text>
+        <Text dimColor>[q / Enter / Esc] Quit</Text>
       </Box>
     );
   }
@@ -716,6 +748,9 @@ export function AtomicGenerateReviewStep({
           accepted={accepted}
           rejected={rejected}
           needsReview={needsReview}
+          removed={finalizePreview.removed}
+          previewStatus={finalizePreview.status}
+          removedScrollOffset={finalizePreview.scrollOffset}
           onConfirm={handleFinalizeConfirm}
           onCancel={() => setShowFinalize(false)}
         />

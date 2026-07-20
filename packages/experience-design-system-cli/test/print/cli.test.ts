@@ -139,6 +139,55 @@ describe('print components', () => {
     expect(stderr).toContain('generate components first');
   });
 
+  it('exits 1 with an accept-guidance message when every component was rejected at final review', async () => {
+    const dbDir = await createTempDir('print-comp-rejected-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const db = openPipelineDb(dbPath);
+    const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'generate components' });
+    // Simulate the final-review outcome: components were generated then all
+    // rejected / left unresolved, so none remain with status 'generated'.
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, status)
+       VALUES (?, ?, ?, '', 'react', ?, 'generate-rejected')`,
+    ).run(sessionId, 'c0', 'Article', now);
+    db.close();
+
+    const { stderr, code } = await run(
+      ['print', 'components', '--session', sessionId, '--out', '/tmp/out.json'],
+      dbPath,
+    );
+    expect(code).toBe(1);
+    expect(stderr).toContain('rejected or left unresolved');
+    expect(stderr).toMatch(/\[a\]|\[A\]/);
+    expect(stderr).toContain('--allow-empty');
+    expect(stderr).not.toContain('Run generate components first');
+  });
+
+  it('--allow-empty writes an empty-but-present manifest when all components were rejected (delete-all)', async () => {
+    const dbDir = await createTempDir('print-comp-allow-empty-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const outPath = join(dbDir, 'components.json');
+    const db = openPipelineDb(dbPath);
+    const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'generate components' });
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, status)
+       VALUES (?, ?, ?, '', 'react', ?, 'generate-rejected')`,
+    ).run(sessionId, 'c0', 'Article', now);
+    db.close();
+
+    const { code } = await run(
+      ['print', 'components', '--session', sessionId, '--out', outPath, '--allow-empty'],
+      dbPath,
+    );
+    expect(code).toBe(0);
+    const written = JSON.parse(await readFile(outPath, 'utf8'));
+    // Present-but-empty: only the $schema key, no component entries → push deletes all.
+    expect(written.$schema).toBeTruthy();
+    expect(Object.keys(written).filter((k) => k !== '$schema')).toEqual([]);
+  });
+
   it('exits 1 when no sessions exist', async () => {
     const dbDir = await createTempDir('print-comp-no-session-');
     const dbPath = join(dbDir, 'pipeline.db');

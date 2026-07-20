@@ -171,6 +171,10 @@ type WizardState = {
   lastRunId: string | null;
   finalizeErrorBanner: string | null;
   finalReviewPassed: boolean;
+  /** True when the user finalized with zero accepted components (confirmed via
+   *  the FinalizeDialog warning). Save/push then emit an empty-but-present
+   *  components manifest so the target space's components are all deleted. */
+  allowEmptyDeleteAll: boolean;
 };
 
 function findCliPath(): string {
@@ -366,6 +370,12 @@ export function WizardApp({
     tokensPath: '',
   });
 
+  // Set at finalize when zero components are accepted (confirmed via the
+  // FinalizeDialog warning). Read by preview/push so buildManifest emits an
+  // empty-but-present components manifest → server deletes all. A ref (not
+  // state) so the async preview/push closures see the confirmed value.
+  const allowEmptyDeleteAllRef = useRef(false);
+
   const autoFilterChildRef = useRef<import('node:child_process').ChildProcess | null>(null);
   const autoFilterDonePromiseRef = useRef<Promise<void> | null>(null);
 
@@ -391,8 +401,13 @@ export function WizardApp({
           ? 'token-input'
           : 'welcome';
   const initialOutDir = initialProjectPath ? join(resolve(initialProjectPath), '.contentful') : '';
+  // Only point at tokens.json when the run actually had a tokens session. A run
+  // saved without tokens has no tokens.json on disk, so assuming one exists made
+  // modify/push-from-picker fail with "file not found: .../tokens.json".
   const initialTokensPath =
-    (modifyEntryReady || pushFromPickerReady) && initialOutDir ? join(initialOutDir, 'tokens.json') : '';
+    (modifyEntryReady || pushFromPickerReady) && initialOutDir && seedTokenSessionId
+      ? join(initialOutDir, 'tokens.json')
+      : '';
 
   const [state, setState] = useState<WizardState>({
     step:
@@ -452,6 +467,7 @@ export function WizardApp({
     lastRunId: null,
     finalizeErrorBanner: null,
     finalReviewPassed: modifyEntryReady || pushFromPickerReady,
+    allowEmptyDeleteAll: false,
   });
 
   useEffect(() => {
@@ -1065,7 +1081,7 @@ export function WizardApp({
       if (tokensPath) {
         tokens = await readTokensFromPath('tokens', tokensPath);
       }
-      let manifest = buildManifest(components, tokens);
+      let manifest = buildManifest(components, tokens, { deleteAllComponents: allowEmptyDeleteAllRef.current });
       let preview = await client.previewImport(manifest);
 
       if (extractSessionId) {
@@ -1094,7 +1110,7 @@ export function WizardApp({
 
           if (needsRepreview) {
             components = loadCDFComponents(db, extractSessionId);
-            manifest = buildManifest(components, tokens);
+            manifest = buildManifest(components, tokens, { deleteAllComponents: allowEmptyDeleteAllRef.current });
             preview = await client.previewImport(manifest);
           }
         } finally {
@@ -1103,11 +1119,18 @@ export function WizardApp({
       }
 
       if (isEmptyPreview(preview)) {
+        // No-op push: the accepted set already matches the target space, so
+        // there is nothing to create/update/remove. Route to a terminal "done"
+        // state rather than bouncing back to final-review — the review screen
+        // resets every component to needs-review on remount, which otherwise
+        // traps the operator in an accept → empty-preview → reset loop.
         update({
-          step: 'final-review',
-          finalizeErrorBanner:
-            'Nothing to push — accept a component, reject a component that exists in Contentful, or quit.',
+          step: 'done',
           serverPreview: preview,
+          pushResult: {
+            componentTypes: { created: 0, updated: 0, removed: 0, failed: 0 },
+            designTokens: { created: 0, updated: 0, removed: 0, failed: 0 },
+          },
           ...clearedValidationErrorState(),
         });
         return;
@@ -1366,12 +1389,13 @@ export function WizardApp({
   const runPrintFiles = async (
     extractSessionId: string | null,
     outDir: string,
-    opts: { skipGate?: boolean; tokenSessionId?: string | null } = {},
+    opts: { skipGate?: boolean; tokenSessionId?: string | null; allowEmpty?: boolean } = {},
   ): Promise<{ ok: boolean; tokensPath?: string; tokenCount?: number }> => {
     update({ step: 'printing' });
     const componentsPath = join(outDir, 'components.json');
     const printArgs = ['print', 'components', '--out', componentsPath];
     if (extractSessionId) printArgs.push('--session', extractSessionId);
+    if (opts.allowEmpty) printArgs.push('--allow-empty');
     const r = await runCli(printArgs);
     if (r.exitCode !== 0) {
       update({
@@ -1445,6 +1469,7 @@ export function WizardApp({
     const result = await runPrintFiles(extractSessionId, path, {
       ...(skipGate ? { skipGate: true } : {}),
       ...(state.tokenSessionId ? { tokenSessionId: state.tokenSessionId } : {}),
+      ...(allowEmptyDeleteAllRef.current ? { allowEmpty: true } : {}),
     });
     if (!result.ok) return;
     const recordedTokensPath = result.tokensPath ?? (state.tokenSessionId ? tokensPath || null : null);
@@ -1496,6 +1521,7 @@ export function WizardApp({
           generateSessionId: state.generateSessionId,
           sourceFingerprint,
           savedFingerprint,
+          compositionMode,
         });
         setState((prev) => ({ ...prev, lastRunId: record.id }));
       } catch (err) {
@@ -1895,7 +1921,9 @@ export function WizardApp({
                 })();
                 acceptedCount = remaining;
               }
-              update({ finalReviewPassed: true });
+              const allowEmptyDeleteAll = acceptedCount === 0;
+              allowEmptyDeleteAllRef.current = allowEmptyDeleteAll;
+              update({ finalReviewPassed: true, allowEmptyDeleteAll });
               if (noPush) {
                 update({ generatedAcceptedCount: acceptedCount });
                 void startSaveFlow();
@@ -2014,7 +2042,14 @@ export function WizardApp({
           />
         );
 
-      case 'preview-gate':
+      case 'preview-gate': {
+        // Only offer "[e] Edit definitions" when the manifest actually has
+        // components to edit. In the delete-all / empty case the manifest is
+        // present-but-empty (only $schema), so editing would dead-end on the
+        // "No generated definitions found" screen.
+        const editableComponentCount = Object.keys(state.manifest?.componentsManifest ?? {}).filter(
+          (k) => k !== '$schema',
+        ).length;
         return (
           <WizardPreviewStep
             preview={state.serverPreview!}
@@ -2033,15 +2068,14 @@ export function WizardApp({
                 state.serverPreview,
               );
             }}
-            onEdit={() => {
-              void runEditFromPreview();
-            }}
+            {...(editableComponentCount > 0 ? { onEdit: () => void runEditFromPreview() } : {})}
             onSaveFiles={() => {
               void startSaveFlow();
             }}
             onQuit={() => process.exit(0)}
           />
         );
+      }
 
       case 'pushing':
         return <PushingStep stepNumber={totalSteps} totalSteps={totalSteps} progress={state.pushProgress} />;

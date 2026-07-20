@@ -88,6 +88,22 @@ describe('GenerateReviewStep — form by default (Fix 1)', () => {
     expect(frame).not.toMatch(/\[e\] edit/);
   });
 
+  it('load error screen shows an exit hint and q quits (not trapped)', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([]);
+    const onQuit = vi.fn();
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={onQuit} />,
+    );
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/No generated definitions found/);
+    expect(frame).toMatch(/\[q \/ Enter \/ Esc\] Quit/);
+    stdin.write('q');
+    await tick();
+    expect(onQuit).toHaveBeenCalled();
+  });
+
   it('pressing J toggles read-only JSON view; pressing J again returns to form', async () => {
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
@@ -1446,7 +1462,7 @@ describe('GenerateReviewStep — A2-4 reject cycle members from the break overla
     expect(frame).toMatch(/\[✗\][^\n]*CycleA/);
   });
 
-  it('break overlay lists a reject entry for each cycle participant (in addition to edges)', async () => {
+  it('break overlay lists only slot-edge removals, no reject-member entries', async () => {
     const { utils } = await renderWithCycle();
     const { lastFrame, stdin } = utils;
     stdin.write('c');
@@ -1455,53 +1471,8 @@ describe('GenerateReviewStep — A2-4 reject cycle members from the break overla
     await tick();
     const frame = stripAnsi(lastFrame() ?? '');
     expect(frame).toMatch(/remove 'CycleB' from CycleA\.\$slots\.header\.\$allowedComponents/);
-    expect(frame).toMatch(/reject component 'CycleA'/);
-    expect(frame).toMatch(/reject component 'CycleB'/);
-  });
-
-  it('Enter on a reject-member entry rejects immediately with NO confirm prompt + drops the cycle', async () => {
-    const { utils, dbMod } = await renderWithCycle();
-    const { lastFrame, stdin } = utils;
-    stdin.write('c');
-    await tick();
-    stdin.write('x');
-    await tick();
-    stdin.write('j'); // edge 1 -> edge 2
-    await tick();
-    stdin.write('j'); // edge 2 -> member CycleA
-    await tick();
-    stdin.write('\r'); // reject CycleA immediately
-    await tick();
-    const frame = stripAnsi(lastFrame() ?? '');
-    expect(frame).not.toMatch(/\[y\] confirm/);
-    const lastStore = vi.mocked(dbMod.storeSlotCycles).mock.calls.at(-1);
-    expect(lastStore?.[2]).toEqual([]);
-  });
-
-  it('Ctrl+Z restores the member status after an overlay reject', async () => {
-    const dbMod = await import('../../../../src/session/db.js');
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'CycleA', entry: CYCLE_A },
-      { key: 'CycleB', entry: { $type: 'component', $properties: {} } },
-    ]);
-    vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce(CYCLE_STORED);
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
-    );
-    await tick();
-    expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/\[✗\][^\n]*CycleA/);
-    stdin.write('c');
-    await tick();
-    stdin.write('x');
-    await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write('\r'); // reject CycleA from the overlay
-    await tick();
-    expect(stripAnsi(lastFrame() ?? '')).toMatch(/\[✗\][^\n]*CycleA/);
-    stdin.write('\x1a'); // Ctrl+Z
-    await tick();
-    expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/\[✗\][^\n]*CycleA/);
+    expect(frame).not.toMatch(/reject component/);
+    expect(frame).not.toMatch(/reject cycle member/);
   });
 });
 
@@ -1577,7 +1548,10 @@ describe('GenerateReviewStep — slot-cycle re-detection on user actions (INTEG-
     stdin.write('F');
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/Save decisions and exit/);
+    // Accepted set is empty here, so the finalize dialog opens with the
+    // nothing-accepted warning rather than the normal "Save decisions" copy.
+    expect(frame).toMatch(/No components are accepted|Confirm exit with nothing accepted/);
+    expect(frame).toMatch(/\[y \/ Enter\]/);
   });
 });
 
@@ -1940,36 +1914,6 @@ describe('GenerateReviewStep — fuzzy search overlay (D7)', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/\/u/);
     expect(frame).toMatch(/1\/3 matches/);
-  });
-
-  it('Enter closes input but preserves the query; [n] cycles to next match (T3)', async () => {
-    const dbMod = await import('../../../../src/session/db.js');
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'Button', entry: makeEntry('Button') },
-      { key: 'Banner', entry: makeEntry('Banner') },
-      { key: 'Modal', entry: makeEntry('Modal') },
-      { key: 'Chip', entry: makeEntry('Chip') },
-    ]);
-    const { lastFrame, stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
-    );
-    await tick();
-    stdin.write('/');
-    await tick();
-    stdin.write('B');
-    await tick();
-    stdin.write('\r'); // Enter — close input, preserve query
-    await tick();
-    let frame = lastFrame() ?? '';
-    expect(frame).toMatch(/\[n\] next/);
-    expect(frame).not.toMatch(/\[Tab\] next/);
-    let titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleLine).toContain('Button');
-    stdin.write('n');
-    await tick();
-    frame = lastFrame() ?? '';
-    titleLine = frame.split('\n').find((l) => /\bprop/.test(l)) ?? '';
-    expect(titleLine).toContain('Banner');
   });
 
   it('L4: Tab with a single prefix-match completes to the full name (input open)', async () => {
@@ -2464,7 +2408,10 @@ describe('GenerateReviewStep — Task #37 mount-time cycle auto-reject', () => {
     stdin.write('F');
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/Save decisions and exit/);
+    // Accepted set is empty here, so the finalize dialog opens with the
+    // nothing-accepted warning rather than the normal "Save decisions" copy.
+    expect(frame).toMatch(/No components are accepted|Confirm exit with nothing accepted/);
+    expect(frame).toMatch(/\[y \/ Enter\]/);
   });
 
   it('[r] on an accepted row cascades reject UP to ancestors', async () => {

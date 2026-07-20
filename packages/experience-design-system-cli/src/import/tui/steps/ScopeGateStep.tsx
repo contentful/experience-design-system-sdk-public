@@ -97,7 +97,7 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'L', label: 'Flat view' },
       { keys: 'l', label: 'Lineage' },
       { keys: 'i', label: 'Focus lineage' },
-      { keys: 'w', label: 'Only cycles' },
+      { keys: 'o', label: 'Only cycles' },
       { keys: 'space', label: 'Expand/collapse group' },
       { keys: 'E / C', label: 'Expand/collapse all' },
     ],
@@ -113,7 +113,6 @@ const HELP_SECTIONS: HelpSection[] = [
     title: 'Search',
     entries: [
       { keys: '/', label: 'Search' },
-      { keys: 'n', label: 'Next match' },
     ],
   },
   {
@@ -667,7 +666,7 @@ export function ScopeGateStep({
       setSearchOpen(true);
       return;
     }
-    if (input === 'w') {
+    if (input === 'o') {
       if (!hasCycles) return;
       setActiveFilters((prev) => {
         const next = new Set(prev);
@@ -803,17 +802,6 @@ export function ScopeGateStep({
       );
       for (const n of cyclesToInclude) entries.push([n, 'accepted']);
       applyDecisions(entries);
-      return;
-    }
-    if (input === 'n' && searchQuery && searchMatches.length > 0) {
-      const cursorRow = visibleRows[safeCursor];
-      const cursorName =
-        cursorRow && cursorRow.itemIdx >= 0
-          ? groupedItems[cursorRow.itemIdx]?.key
-          : undefined;
-      const curIdx = cursorName ? searchMatches.indexOf(cursorName) : -1;
-      const nextName = searchMatches[(curIdx + 1) % searchMatches.length];
-      if (nextName) jumpCursorTo(nextName);
       return;
     }
     if (key.tab) {
@@ -1064,8 +1052,8 @@ export function ScopeGateStep({
 
 
       {cyclesPanelOpen && (
-        <Box flexDirection="column" borderStyle="single" borderColor={PALETTE.error} paddingX={1} marginTop={1}>
-          <Text bold color={PALETTE.error}>{`Cycles detected (${slotCycles.length}):`}</Text>
+        <Box flexDirection="column" borderStyle="single" borderColor={PALETTE.warning} paddingX={1} marginTop={1}>
+          <Text bold color={PALETTE.warning}>{`Cycles detected (${slotCycles.length}):`}</Text>
           <Text> </Text>
           {slotCycles.map((cycle, i) => {
             const isCursor = i === cyclesCursor;
@@ -1083,7 +1071,7 @@ export function ScopeGateStep({
                 ) : (
                   <Text> </Text>
                 )}
-                <Text color={PALETTE.error} inverse={isCursor}>{' ' + label}</Text>
+                <Text color={PALETTE.warning} inverse={isCursor}>{' ' + label}</Text>
               </Text>
             );
           })}
@@ -1128,7 +1116,7 @@ export function ScopeGateStep({
       )}
       {!searchOpen && searchQuery && (
         <Box marginTop={1}>
-          <Text dimColor>{`/${searchQuery}  (${totalMatches}/${totalComponents} matches) · [Esc] clear · [n] next`}</Text>
+          <Text dimColor>{`/${searchQuery}  (${totalMatches}/${totalComponents} matches) · [Esc] clear`}</Text>
         </Box>
       )}
 
@@ -1151,7 +1139,7 @@ export function ScopeGateStep({
         {legendEntry('[L]', 'flat', columnOneView === 'flat')}
         {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
         {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
-        {hasCycles && legendEntry('[w]', 'only cycles', activeFilters.has('cycles'))}
+        {hasCycles && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
         {hasCycles && legendEntry('[c]', 'cycle list', cyclesPanelOpen)}
         {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
         {legendEntry('[f]', 'continue')}
@@ -1214,11 +1202,11 @@ export function sideColumnLabelStyle(input: {
   const underline = isSelected && !focused;
   if (isCycle) {
     return {
-      nameColor: PALETTE.error,
+      nameColor: PALETTE.warning,
       nameBold: false,
       nameInverse: false,
       nameUnderline: underline,
-      suffixColor: PALETTE.error,
+      suffixColor: PALETTE.warning,
       suffixDim: false,
       suffixInverse: false,
       suffixUnderline: underline,

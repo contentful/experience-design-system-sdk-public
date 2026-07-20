@@ -81,9 +81,9 @@ describe('sideColumnLabelStyle', () => {
     expect(nonCycle.suffixUnderline).toBe(true);
 
     const cycle = sideColumnLabelStyle({ isCycle: true, isSelected: true, focused: false });
-    expect(cycle.nameColor).toBe(PALETTE.error);
+    expect(cycle.nameColor).toBe(PALETTE.warning);
     expect(cycle.nameUnderline).toBe(true);
-    expect(cycle.suffixColor).toBe(PALETTE.error);
+    expect(cycle.suffixColor).toBe(PALETTE.warning);
   });
 
   it('non-selected non-cycle row: green name, dim cyan suffix, no underline', () => {
@@ -97,10 +97,10 @@ describe('sideColumnLabelStyle', () => {
     expect(s.suffixInverse).toBe(false);
   });
 
-  it('non-selected cycle row: red name AND red suffix (cycle color applies to whole label)', () => {
+  it('non-selected cycle row: warning-colored name AND suffix (cycle color applies to whole label)', () => {
     const s = sideColumnLabelStyle({ isCycle: true, isSelected: false, focused: false });
-    expect(s.nameColor).toBe(PALETTE.error);
-    expect(s.suffixColor).toBe(PALETTE.error);
+    expect(s.nameColor).toBe(PALETTE.warning);
+    expect(s.suffixColor).toBe(PALETTE.warning);
     expect(s.suffixDim).toBe(false);
   });
 

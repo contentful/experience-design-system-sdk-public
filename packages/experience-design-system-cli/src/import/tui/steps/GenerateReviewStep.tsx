@@ -21,6 +21,10 @@ import { JsonPanel } from '../../../analyze/select/tui/components/JsonPanel.js';
 import { FieldEditor } from '../../../analyze/select/tui/components/FieldEditor.js';
 import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
 import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
+import {
+  removedComponentsHeader,
+  removedComponentLine,
+} from '../../../analyze/select/tui/components/removed-components-text.js';
 import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import {
@@ -43,6 +47,7 @@ import type { FieldEditorMetadata } from '../../../analyze/select/tui/components
 import type { PreviewAnnotation, ReviewComponentStatus } from '../../../analyze/select/types.js';
 import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
 import { useLivePreview } from '../useLivePreview.js';
+import { useFinalizePreview } from '../useFinalizePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
 import {
@@ -159,7 +164,7 @@ const HELP_SECTIONS: HelpSection[] = [
   {
     title: 'Resolving cycles',
     entries: [
-      { keys: '', label: 'Reject a cycle member (drops it from the push), or' },
+      { keys: 'r', label: 'Reject a cycle member (drops it from the push), or' },
       { keys: '', label: "break the cycle by removing a slot's" },
       { keys: '', label: '$allowedComponents edge (see [c] suggested fix).' },
       { keys: 'x', label: 'Break cycle (from [c]): delete a slot edge.' },
@@ -169,7 +174,6 @@ const HELP_SECTIONS: HelpSection[] = [
     title: 'Search',
     entries: [
       { keys: '/', label: 'Search' },
-      { keys: 'n', label: 'Next match' },
     ],
   },
   {
@@ -357,6 +361,7 @@ export function GenerateReviewStep({
     setBreakingChanges(deriveBreakingChanges(response));
   };
 
+  const acceptedCountForPreview = components.filter((c) => c.status === 'accepted').length;
   const livePreviewHook = useLivePreview({
     enabled: livePreview,
     sessionId: extractSessionId,
@@ -366,6 +371,9 @@ export function GenerateReviewStep({
     cmaToken,
     host,
     onResult: handleLivePreviewResult,
+    // With nothing accepted, preview the delete-all diff so the review UI shows
+    // which existing components a push would remove (instead of an empty preview).
+    deleteAllComponents: acceptedCountForPreview === 0,
   });
 
   const SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
@@ -431,6 +439,17 @@ export function GenerateReviewStep({
     if (components.length === 0) return;
     livePreviewHook.trigger();
   }, [loading]);
+
+  const finalizePreview = useFinalizePreview({
+    open: showFinalize,
+    extractSessionId,
+    tokensPath,
+    spaceId,
+    environmentId,
+    cmaToken,
+    host,
+    acceptedKeys: new Set(components.filter((c) => c.status === 'accepted').map((c) => c.key)),
+  });
 
   const handleFinalizeConfirm = () => {
     const acceptedCount = components.filter((c) => c.status === 'accepted').length;
@@ -883,19 +902,6 @@ export function GenerateReviewStep({
     return enumerateCycleBreaks(cycle, components);
   }, [slotCycles, cyclesCursor, components]);
 
-  const breakMembers = useMemo<string[]>(() => {
-    const cycle = slotCycles[cyclesCursor];
-    if (!cycle) return [];
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const p of cycle.path) {
-      if (seen.has(p)) continue;
-      seen.add(p);
-      out.push(p);
-    }
-    return out;
-  }, [slotCycles, cyclesCursor]);
-
   const handleBreakEdge = (edge: BreakEdge): void => {
     const idx = components.findIndex((c) => c.key === edge.fromComponent);
     if (idx < 0) return;
@@ -943,7 +949,25 @@ export function GenerateReviewStep({
   const dialogOpen = showFinalize || showQuit;
 
   useImmediateInput((input, key) => {
-    if (loading || loadError) return;
+    if (loading) return;
+    // On a load error there's nothing to review — still let the operator quit
+    // (q / Esc / Enter) instead of trapping them on the error screen.
+    if (loadError) {
+      if (input === 'q' || key.escape || key.return) onQuit();
+      return;
+    }
+    if (showFinalize) {
+      // The dialog owns y/n/Enter/Esc; here we own j/k scroll of its deletion list.
+      if (input === 'j' || key.downArrow) {
+        finalizePreview.scrollBy(1);
+        return;
+      }
+      if (input === 'k' || key.upArrow) {
+        finalizePreview.scrollBy(-1);
+        return;
+      }
+      return;
+    }
     if (dialogOpen) return;
     if (showHelp) return;
 
@@ -1118,31 +1142,22 @@ export function GenerateReviewStep({
         return;
       }
       if (breakPanel.handleInput(input, key)) return;
-      const totalBreakEntries = breakEdges.length + breakMembers.length;
       if (key.upArrow || input === 'k') {
         setBreakCursor((c) => Math.max(0, c - 1));
         return;
       }
       if (key.downArrow || input === 'j') {
-        setBreakCursor((c) => Math.min(Math.max(0, totalBreakEntries - 1), c + 1));
+        setBreakCursor((c) => Math.min(Math.max(0, breakEdges.length - 1), c + 1));
         return;
       }
       if (key.return) {
-        if (breakCursor < breakEdges.length) {
-          if (breakEdges[breakCursor]) setBreakConfirm(true);
-          return;
-        }
-        const member = breakMembers[breakCursor - breakEdges.length];
-        if (member) {
-          handleRejectComponent(member);
-          breakPanel.close();
-        }
+        if (breakEdges[breakCursor]) setBreakConfirm(true);
         return;
       }
       return;
     }
     if (cyclePanel.isOpen) {
-      if (input === 'x' && (breakEdges.length > 0 || breakMembers.length > 0)) {
+      if (input === 'x' && breakEdges.length > 0) {
         breakPanel.open();
         setBreakCursor(0);
         setBreakConfirm(false);
@@ -1339,21 +1354,6 @@ export function GenerateReviewStep({
       setSearchOpen(true);
       return;
     }
-    if (input === 'n' && searchQuery && searchMatches.length > 0) {
-      let next: number | null = null;
-      for (let i = cursorRowIdx + 1; i < visibleRowsMemo.length; i++) {
-        const row = visibleRowsMemo[i];
-        if (row.itemIdx < 0) continue;
-        const key2 = components[row.itemIdx]?.key;
-        if (key2 && fuzzyMatches(searchQuery, key2)) {
-          next = i;
-          break;
-        }
-      }
-      if (next === null) next = searchMatches[0] ?? null;
-      if (next !== null) jumpCursorToRow(next);
-      return;
-    }
     if (key.escape && jumpFilterTarget) {
       setJumpFilterTarget(null);
       return;
@@ -1547,8 +1547,10 @@ export function GenerateReviewStep({
 
   if (loadError) {
     return (
-      <Box paddingX={2} paddingY={1}>
+      <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text color={PALETTE.error}>{loadError}</Text>
+        <Text> </Text>
+        <Text dimColor>[q / Enter / Esc] Quit</Text>
       </Box>
     );
   }
@@ -1603,15 +1605,6 @@ export function GenerateReviewStep({
             </Text>
           );
         })}
-        {breakMembers.length > 0 && <Text dimColor>{'reject cycle member:'}</Text>}
-        {breakMembers.map((member, idx) => {
-          const isCursor = breakEdges.length + idx === breakCursor;
-          return (
-            <Text key={`member-${idx}`} inverse={isCursor}>
-              {`${isCursor ? '▶' : ' '} reject component '${member}'`}
-            </Text>
-          );
-        })}
         {breakConfirm ? (
           <>
             <Text> </Text>
@@ -1620,7 +1613,7 @@ export function GenerateReviewStep({
             </Text>
           </>
         ) : (
-          <Text dimColor>{'[↑↓/j/k] move  [Enter] delete/reject  [x/Esc] close'}</Text>
+          <Text dimColor>{'[↑↓/j/k] move  [Enter] delete  [x/Esc] close'}</Text>
         )}
       </Box>
     );
@@ -1629,7 +1622,7 @@ export function GenerateReviewStep({
     breakPanel.isOpen &&
     shouldBreakOverlayGoFullScreen({
       rows: stdout?.rows ?? FALLBACK_ROWS,
-      edgeCount: breakEdges.length + breakMembers.length,
+      edgeCount: breakEdges.length,
     });
   if (breakOverlayFullScreen) {
     return renderBreakOverlay();
@@ -1691,6 +1684,9 @@ export function GenerateReviewStep({
           accepted={accepted}
           rejected={rejected}
           needsReview={needsReview}
+          removed={finalizePreview.removed}
+          previewStatus={finalizePreview.status}
+          removedScrollOffset={finalizePreview.scrollOffset}
           onConfirm={handleFinalizeConfirm}
           onCancel={() => setShowFinalize(false)}
         />
@@ -1718,15 +1714,13 @@ export function GenerateReviewStep({
       {removedComponents.length > 0 && !dialogOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.error} paddingX={1}>
           <Text bold color={PALETTE.error}>
-            {`Removed components (${removedComponents.length}) — will be `}
-            <Text bold color={PALETTE.error}>DELETE</Text>
-            {'D from target space  (press [d] to expand/collapse)'}
+            {removedComponentsHeader(removedComponents.length, true)}
           </Text>
           {!removedBannerCollapsed && (
             <>
               <Text> </Text>
               {removedComponents.map((rc) => (
-                <Text key={rc.id}>{`- ${rc.name}${rc.id ? `  (${rc.id})` : ''}`}</Text>
+                <Text key={rc.id}>{removedComponentLine(rc)}</Text>
               ))}
             </>
           )}
@@ -2170,7 +2164,7 @@ export function GenerateReviewStep({
       )}
       {!dialogOpen && !searchOpen && searchQuery && (
         <Box>
-          <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear · [n] next`}</Text>
+          <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear`}</Text>
         </Box>
       )}
       {!dialogOpen && sidebarFocused && (

@@ -48,7 +48,7 @@ export function registerImportCommand(program: Command): void {
     .option('--skip-analyze', 'Skip the analyze step (uses most recent extract session)')
     .option('--skip-generate', 'Skip the generate step (uses most recent generate session)')
     .option('--print', 'Write components.json to --out after generation')
-    .option('--skip-apply', 'Skip pushing to Contentful (stops after generate)')
+    .option('--skip-apply', '(deprecated alias for --no-push) Skip pushing to Contentful')
     .option('--no-cache', 'Re-run all steps even if output already exists')
     .option('--yes', 'Skip interactive confirmation in apply push')
     .option('--verbose', 'Show full agent output and all entity progress')
@@ -101,7 +101,7 @@ export function registerImportCommand(program: Command): void {
     )
     .option(
       '--no-push',
-      'Run extract → scope-gate → generate → final-review and exit without pushing to Contentful (no credentials prompt; live preview disabled)',
+      'Import without pushing to Contentful. Interactive: runs the full wizard (extract → scope-gate → generate → final-review) and stops before push. Non-interactive (piped/CI): runs headless through generate. No credentials needed either way.',
     )
     .option('--no-save', 'Push without writing components.json / tokens.json to disk (default: save AND push)')
     .option(
@@ -188,6 +188,34 @@ export function registerImportCommand(program: Command): void {
         saveAsNew?: boolean;
         force?: boolean;
       }) => {
+        // --modify and --push-from-run resume a recorded session; the composition
+        // mode comes from that run's record, so composition flags on the command
+        // line don't apply. Warn and clear them rather than let them mislead.
+        if (opts.modify !== undefined || opts.pushFromRun !== undefined) {
+          const passedCompositionFlags = [
+            opts.composite ? '--composite' : null,
+            opts.atomic ? '--atomic' : null,
+            opts.compositionMap ? '--composition-map' : null,
+            opts.compositionAgent ? '--composition-agent' : null,
+            opts.compositionAgentMode ? '--composition-agent-mode' : null,
+            opts.compositionRefresh ? '--composition-refresh' : null,
+            opts.generateMap ? '--generate-map' : null,
+          ].filter((f): f is string => f !== null);
+          if (passedCompositionFlags.length > 0) {
+            const entry = opts.modify !== undefined ? '--modify' : '--push-from-run';
+            process.stderr.write(
+              `Note: ${passedCompositionFlags.join(', ')} ignored with ${entry} — composition mode comes from the recorded run.\n`,
+            );
+            opts.composite = undefined;
+            opts.atomic = undefined;
+            opts.compositionMap = undefined;
+            opts.compositionAgent = undefined;
+            opts.compositionAgentMode = undefined;
+            opts.compositionRefresh = undefined;
+            opts.generateMap = undefined;
+          }
+        }
+
         if (opts.pushFromRun !== undefined) {
           if (opts.modify !== undefined) {
             process.stderr.write(
@@ -322,10 +350,18 @@ export function registerImportCommand(program: Command): void {
         }
         const dryRunForward = promptFlags.forwardDryRun;
 
+        // "Don't push" is one user intent (--no-push); --skip-apply is a
+        // deprecated alias. Interactive runs (TTY) take the wizard and stop
+        // before push; non-interactive runs take the headless pipeline and stop
+        // after generate. Either way no credentials are required.
+        const noPushRequested = opts.push === false || opts.skipApply === true;
+
         const isHeadless =
           opts.skipAnalyze ||
           opts.skipGenerate ||
-          opts.skipApply ||
+          // A "don't push" request on a non-TTY is a headless intent (the wizard
+          // needs a TTY); in a TTY it stays interactive and is NOT headless.
+          (noPushRequested && !process.stdout.isTTY) ||
           !!opts.spaceId ||
           !!opts.environmentId ||
           !!opts.cmaToken ||
@@ -337,7 +373,7 @@ export function registerImportCommand(program: Command): void {
 
         if (!process.stdout.isTTY && !isHeadless && !autoAcceptScope) {
           process.stderr.write(
-            'Error: experiences import is interactive. Pass --auto-accept-scope, or use a headless mode by providing credentials (--space-id, --environment-id, --cma-token) or one of --skip-analyze, --skip-generate, --skip-apply, --yes, --dry-run, --print-prompt.\n',
+            'Error: experiences import is interactive. Pass --auto-accept-scope, or use a headless mode by providing credentials (--space-id, --environment-id, --cma-token) or one of --no-push, --skip-analyze, --skip-generate, --yes, --dry-run, --print-prompt.\n',
           );
           process.exit(1);
           return;
@@ -430,7 +466,7 @@ export function registerImportCommand(program: Command): void {
               noCache: opts.cache === false,
               autoFilter: resolveAutoFilter({ autoFilter: opts.autoFilter }, creds.autoFilter),
               livePreview: opts.livePreview !== false,
-              noPush: opts.push === false,
+              noPush: noPushRequested,
               noSave: opts.save === false,
               ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
               ...(opts.onConflict ? { onConflictMode: opts.onConflict } : {}),
@@ -462,14 +498,16 @@ export function registerImportCommand(program: Command): void {
           return;
         }
 
-        const skipApply = opts.skipApply ?? false;
+        // --no-push (and its deprecated alias --skip-apply) both mean "stop
+        // before the push" on the headless path — so neither requires credentials.
+        const skipApply = noPushRequested;
         const spaceId = opts.spaceId ?? process.env['CONTENTFUL_SPACE_ID'];
         const environmentId = opts.environmentId ?? process.env['CONTENTFUL_ENVIRONMENT_ID'];
         const cmaToken = opts.cmaToken ?? process.env['CONTENTFUL_MANAGEMENT_TOKEN'];
 
         if (!skipApply && (!spaceId || !environmentId || !cmaToken)) {
           process.stderr.write(
-            'Error: --space-id (or CONTENTFUL_SPACE_ID), --environment-id (or CONTENTFUL_ENVIRONMENT_ID), and --cma-token (or CONTENTFUL_MANAGEMENT_TOKEN) are required unless --skip-apply is set.\n',
+            'Error: --space-id (or CONTENTFUL_SPACE_ID), --environment-id (or CONTENTFUL_ENVIRONMENT_ID), and --cma-token (or CONTENTFUL_MANAGEMENT_TOKEN) are required unless --no-push is set.\n',
           );
           process.exit(1);
           return;

@@ -132,6 +132,20 @@ describe('appendRun', () => {
     expect(parsed.runs[0].tokensPath).toBe('/work/foo/dist/tokens.json');
     expect(parsed.runs[0].tokenSessionId).toBe('tokens-xyz');
   });
+
+  it('persists compositionMode so modify/replay can resume in the same mode', async () => {
+    mockReadFile.mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    const rec = await appendRun(makeRecord({ compositionMode: 'composite' }));
+    expect(rec.compositionMode).toBe('composite');
+    const parsed = JSON.parse(String(mockWriteFile.mock.calls[0]![1]));
+    expect(parsed.runs[0].compositionMode).toBe('composite');
+  });
+
+  it('leaves compositionMode undefined when not provided (treated as atomic on resume)', async () => {
+    mockReadFile.mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    const rec = await appendRun(makeRecord());
+    expect(rec.compositionMode).toBeUndefined();
+  });
 });
 
 describe('runs.json v1 -> v2 migration', () => {

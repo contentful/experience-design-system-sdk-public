@@ -446,9 +446,9 @@ describe('GroupedSidebar', () => {
       itemIdx: 0,
     };
 
-    it('non-cursor cycle row keeps its error label color', () => {
+    it('non-cursor cycle row uses the warning (yellow/orange) label color', () => {
       const s = labelStyleFor({ row: cycleRow, isCursor: false, wouldDim: false });
-      expect(s.color).toBe(PALETTE.error);
+      expect(s.color).toBe(PALETTE.warning);
       expect(s.bold).toBe(false);
       expect(s.dim).toBe(false);
     });

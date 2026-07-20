@@ -14,6 +14,9 @@ export type ModifyLauncherInput = {
   savePath: string;
   entryStep: 'scope-gate' | 'final-review';
   saveMode: 'overwrite' | 'new' | 'prompt';
+  /** Composition mode from the run record, so the modify wizard resumes in the
+   *  same mode. Omitted → the wizard's default (`atomic`). */
+  compositionMode?: 'composite' | 'atomic';
   outDirOverride?: string;
   /** Pre-fill space id (from the run record's pushedTo). */
   initialSpaceId?: string;
@@ -40,6 +43,7 @@ export async function launchModifyWizard(input: ModifyLauncherInput): Promise<vo
     initialEnvironmentId?: string;
     initialHost?: string;
     initialCmaToken?: string;
+    compositionMode?: 'composite' | 'atomic';
   };
   // Modify entry: re-open the wizard with the prior run's sessions seeded so
   // extract + generate are skipped. The wizard short-circuits to `initialStep`
@@ -54,6 +58,7 @@ export async function launchModifyWizard(input: ModifyLauncherInput): Promise<vo
   };
   if (input.generateSessionId) props.seedGenerateSessionId = input.generateSessionId;
   if (input.tokenSessionId) props.seedTokenSessionId = input.tokenSessionId;
+  if (input.compositionMode) props.compositionMode = input.compositionMode;
   if (input.saveMode === 'overwrite') props.outDirOverride = input.savePath;
   if (input.outDirOverride) props.outDirOverride = input.outDirOverride;
   if (input.initialSpaceId) props.initialSpaceId = input.initialSpaceId;

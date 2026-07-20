@@ -461,8 +461,8 @@ export function visibleItemOrder(props: {
 }
 
 function rowColor(row: VisibleRow, aggregate?: string | null): string | undefined {
-  if (row.kind === 'cycle') return PALETTE.error;
-  if (row.kind === 'group-child' && row.cycleChild) return PALETTE.error;
+  if (row.kind === 'cycle') return PALETTE.warning;
+  if (row.kind === 'group-child' && row.cycleChild) return PALETTE.warning;
   if (row.kind === 'empty') return PALETTE.warning;
   if (row.kind === 'group-root' && aggregate === GLYPH_ERROR) return PALETTE.error;
   if (row.kind === 'group-root' && aggregate === GLYPH_WARN) return PALETTE.warning;
