@@ -3,9 +3,11 @@ import {
   CANDIDATE_NAME_PATTERNS,
   CANDIDATE_CONTENT_MARKERS,
   CANDIDATE_TOKEN_BUDGET,
+  PROMPT_CANDIDATE_TOKEN_BUDGET,
   selectCandidateFiles,
   sliceDeclarationRegions,
   batchCandidates,
+  capCandidatesToPromptBudget,
 } from '../../../src/analyze/composition/candidate-files.js';
 
 describe('candidate-files (T3 — deterministic pre-filter)', () => {
@@ -218,6 +220,40 @@ describe('candidate-files (T3 — deterministic pre-filter)', () => {
       const batches = batchCandidates(files, budget);
       expect(batches.length).toBeGreaterThan(1);
       expect(batches.flat()).toHaveLength(3);
+    });
+  });
+
+  describe('capCandidatesToPromptBudget', () => {
+    const file = (path: string, len: number) => ({ path, content: 'x'.repeat(len) });
+
+    it('exposes a positive prompt budget larger than the per-batch budget', () => {
+      expect(PROMPT_CANDIDATE_TOKEN_BUDGET).toBeGreaterThan(CANDIDATE_TOKEN_BUDGET);
+    });
+
+    it('keeps everything when the set fits the budget', () => {
+      const files = [file('a.ts', 100), file('b.ts', 100)];
+      const { kept, dropped } = capCandidatesToPromptBudget(files);
+      expect(kept).toHaveLength(2);
+      expect(dropped).toHaveLength(0);
+    });
+
+    it('drops the overflow and keeps smallest-first when over budget', () => {
+      const budget = 100; // 100 tokens ≈ 400 chars
+      const files = [file('big.ts', 400), file('small.ts', 40)];
+      const { kept, dropped } = capCandidatesToPromptBudget(files, budget);
+      expect(kept.map((f) => f.path)).toEqual(['small.ts']);
+      expect(dropped.map((f) => f.path)).toEqual(['big.ts']);
+    });
+
+    it('is deterministic (stable tie-break by path) and never truncates content', () => {
+      const budget = 25; // each 40-char file costs ceil(40/4)=10 tokens → admits two of three
+      const files = [file('c.ts', 40), file('a.ts', 40), file('b.ts', 40)];
+      const first = capCandidatesToPromptBudget(files, budget);
+      const second = capCandidatesToPromptBudget(files, budget);
+      expect(first).toEqual(second);
+      expect(first.kept.map((f) => f.path)).toEqual(['a.ts', 'b.ts']);
+      // kept files carry full content (dropped, not sliced)
+      expect(first.kept.every((f) => f.content.length === 40)).toBe(true);
     });
   });
 });

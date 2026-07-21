@@ -1,0 +1,1 @@
+Your previous parser ran without error but returned 0 edges, even though the candidate files clearly contain composition relationships. Re-examine the patterns (parent attribution is the usual culprit) and return only the corrected function in a single fenced code block.

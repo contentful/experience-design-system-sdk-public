@@ -372,6 +372,22 @@ function applyDbMigrations(db: DatabaseSync): void {
       throw e;
     }
   }
+
+  const hasCompositionCache = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='composition_cache'`)
+    .all() as Array<{ name: string }>;
+  if (hasCompositionCache.length === 0) {
+    db.exec(`
+      CREATE TABLE composition_cache (
+        input_hash   TEXT NOT NULL,
+        cli_version  TEXT NOT NULL,
+        agent_output TEXT NOT NULL,
+        created_at   TEXT NOT NULL,
+        updated_at   TEXT NOT NULL,
+        PRIMARY KEY (input_hash, cli_version)
+      );
+    `);
+  }
 }
 
 export interface ApplyToolCallsResult {
@@ -2288,6 +2304,37 @@ export function lookupExtractCache(db: DatabaseSync, fileHash: string, cliVersio
     updatedAt: row.updated_at,
     components,
   };
+}
+
+/**
+ * Content-addressed cache for the composition resolver's raw agent output
+ * (authored parser source or emitted-edge JSONL). Keyed by a hash of the
+ * candidate files + producer identity (`composition-cache-key.ts`), scoped by
+ * `cli_version` so a prompt/skill change invalidates stale entries. Replaces
+ * the former on-disk `~/.contentful/.../composition-cache` store so all CLI
+ * caches live in the one pipeline DB.
+ */
+export function storeCompositionCache(
+  db: DatabaseSync,
+  inputHash: string,
+  cliVersion: string,
+  agentOutput: string,
+): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO composition_cache (input_hash, cli_version, agent_output, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(input_hash, cli_version) DO UPDATE SET
+       agent_output = excluded.agent_output,
+       updated_at = excluded.updated_at`,
+  ).run(inputHash, cliVersion, agentOutput, now, now);
+}
+
+export function lookupCompositionCache(db: DatabaseSync, inputHash: string, cliVersion: string): string | null {
+  const row = db
+    .prepare(`SELECT agent_output FROM composition_cache WHERE input_hash = ? AND cli_version = ?`)
+    .get(inputHash, cliVersion) as { agent_output: string } | undefined;
+  return row ? row.agent_output : null;
 }
 
 export type SelectDecision = 'accepted' | 'rejected';

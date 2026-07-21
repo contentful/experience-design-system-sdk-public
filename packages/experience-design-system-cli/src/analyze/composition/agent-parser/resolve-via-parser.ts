@@ -2,6 +2,7 @@ import type { CompositionEdge } from '../interchange-schema.js';
 import { buildAuthorPrompt } from './author-prompt.js';
 import { extractParserSource } from './extract-parser.js';
 import { runParserInSandbox } from './sandbox.js';
+import { loadPrompt } from './load-prompt.js';
 
 export type ResolveViaParserResult = {
   edges: CompositionEdge[];
@@ -97,7 +98,7 @@ export async function resolveViaAgentParser(input: {
       return { edges: verified, warnings, usedFallback: false, parserSource: first.source };
     }
     warnings.push('parser produced 0 usable edges despite composition markers — retrying once');
-    const emptyRepairPrompt = `${basePrompt}\n\nYour previous parser ran without error but returned 0 edges, even though the candidate files clearly contain composition relationships. Re-examine the patterns (parent attribution is the usual culprit) and return only the corrected function in a single fenced code block.`;
+    const emptyRepairPrompt = `${basePrompt}\n\n${loadPrompt('composition-parser-repair-empty.md').trim()}`;
     const retry = await attempt(emptyRepairPrompt);
     if ('edges' in retry) {
       const retried = verify(retry.edges);
@@ -115,7 +116,7 @@ export async function resolveViaAgentParser(input: {
 
   // One repair round — tell the agent what went wrong and try again.
   warnings.push(`parser attempt failed: ${first.error} — retrying once`);
-  const repairPrompt = `${basePrompt}\n\nYour previous parser failed with: ${first.error}\nFix it and return only the corrected function in a single fenced code block.`;
+  const repairPrompt = `${basePrompt}\n\n${loadPrompt('composition-parser-repair-error.md').trim().replace('{{error}}', first.error)}`;
   const second = await attempt(repairPrompt);
   if ('edges' in second) {
     return { edges: verify(second.edges), warnings, usedFallback: false, parserSource: second.source };

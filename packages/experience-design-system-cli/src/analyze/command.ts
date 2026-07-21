@@ -25,16 +25,18 @@ import {
   storeRawComponents,
   storeScannedFiles,
   storeSlotCycles,
+  getCliCacheVersion,
+  lookupCompositionCache,
+  storeCompositionCache,
 } from '../session/db.js';
 import { findSlotCycles, suggestCycleBreakEdge } from './cycle-detection.js';
 import { resolveCompositionMode } from '../lib/composition-mode.js';
 import { resolveMapping } from './composition/resolve-mapping.js';
 import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
-import { selectCandidateFiles } from './composition/candidate-files.js';
+import { selectCandidateFiles, capCandidatesToPromptBudget } from './composition/candidate-files.js';
 import { critiqueCandidates } from './composition/candidate-critic.js';
 import { buildDirCriticPrompt, parseDirCriticReply } from './composition/candidate-critic-agent.js';
-import { buildMappingCacheKey } from './composition/cache-key.js';
-import { readRawAgentCache, writeRawAgentCache } from './composition/mapping-cache.js';
+import { buildCompositionInputHash } from './composition/composition-cache-key.js';
 import type { InterchangeMap, CompositionEdge } from './composition/interchange-schema.js';
 import { runParserInSandbox } from './composition/agent-parser/sandbox.js';
 import { resolveViaAgentParser } from './composition/agent-parser/resolve-via-parser.js';
@@ -418,13 +420,29 @@ export function registerAnalyzeCommand(program: Command): void {
           //  - `allFiles`: EVERY scanned file, handed to the authored parser at
           //    runtime. The parser is deterministic code — give it everything so
           //    a candidate-filter miss can never starve it of a definition file.
-          let promptFiles = selectCandidateFiles(allFiles).map((c) => ({ path: c.path, content: c.content }));
+          const selectedCandidates = selectCandidateFiles(allFiles).map((c) => ({ path: c.path, content: c.content }));
+          // Cap the inlined set so a large design system can't overflow the
+          // agent's context window and fail resolution outright (see the budget
+          // constant). The runtime parser still sees EVERY file.
+          const capped = capCandidatesToPromptBudget(selectedCandidates);
+          let promptFiles = capped.kept;
+          if (capped.dropped.length > 0) {
+            process.stderr.write(
+              `Warning: composition — ${capped.dropped.length} candidate file(s) omitted from the agent prompt to fit the context budget; resolution runs on the ${promptFiles.length} highest-value files.\n`,
+            );
+          }
           const runtimeFiles = allFiles.map((c) => ({ path: c.path, content: c.content }));
 
           const resolverAgent = resolveCompositionAgentName(opts.agent);
           const parserMode = (opts.compositionAgentMode ?? 'parser') !== 'edges';
           const componentNameSet = new Set(validatedComponents.map((c) => c.name));
+          const cacheVersion = await getCliCacheVersion();
 
+          // Tracks the exit code of the most recent spawnAgent call so the
+          // caching sites can refuse to persist a failed run (a non-zero exit —
+          // e.g. a context-window overflow — otherwise poisons the cache and
+          // replays the error on every subsequent run).
+          let lastAgentExitCode = 0;
           const spawnAgent = async (prompt: string): Promise<string> => {
             const res = await runAgent({
               agent: resolverAgent,
@@ -433,6 +451,10 @@ export function registerAnalyzeCommand(program: Command): void {
               timeoutMs: 120_000,
               promptViaStdin: true,
             });
+            lastAgentExitCode = res.exitCode;
+            if (res.exitCode !== 0 && res.stderr.trim()) {
+              process.stderr.write(`Warning: composition — agent exited ${res.exitCode}: ${res.stderr.trim()}\n`);
+            }
             return res.stdout;
           };
 
@@ -457,10 +479,12 @@ export function registerAnalyzeCommand(program: Command): void {
           // SOURCE. Falls back to direct edge-emission if authoring fails.
           let parserEdges: CompositionEdge[] | undefined;
           if (sources.useAgent && parserMode) {
-            const parserCacheKey =
-              buildMappingCacheKey({ files: runtimeFiles, producer: { kind: 'agent', agent: resolverAgent } }) +
-              '-parser';
-            const cachedSource = opts.compositionRefresh ? null : await readRawAgentCache(parserCacheKey);
+            const parserCacheKey = buildCompositionInputHash({
+              files: runtimeFiles,
+              agent: resolverAgent,
+              kind: 'parser',
+            });
+            const cachedSource = opts.compositionRefresh ? null : lookupCompositionCache(db, parserCacheKey, cacheVersion);
             if (cachedSource !== null) {
               emitCompositionProgress('cache-hit');
               const ran = await runParserInSandbox(cachedSource, {
@@ -490,7 +514,9 @@ export function registerAnalyzeCommand(program: Command): void {
               for (const w of pr.warnings) process.stderr.write(`Warning: composition — ${w}\n`);
               if (!pr.usedFallback) {
                 parserEdges = pr.edges;
-                if (pr.parserSource) await writeRawAgentCache(parserCacheKey, pr.parserSource);
+                if (pr.parserSource && lastAgentExitCode === 0) {
+                  storeCompositionCache(db, parserCacheKey, cacheVersion, pr.parserSource);
+                }
               } else {
                 process.stderr.write('Warning: composition — parser mode failed; falling back to edge emission\n');
               }
@@ -507,9 +533,10 @@ export function registerAnalyzeCommand(program: Command): void {
           // Edge-emission cache (used for both explicit edges-mode and the
           // parser-mode fallback). Keyed on prompt files + agent identity — the
           // agent emits edges directly from what it reads in the prompt.
-          const agentCacheKey = buildMappingCacheKey({
+          const agentCacheKey = buildCompositionInputHash({
             files: promptFiles,
-            producer: { kind: 'agent', agent: resolverAgent },
+            agent: resolverAgent,
+            kind: 'edges',
           });
           const useEdgeEmission = sources.useAgent && parserEdges === undefined;
           const result = await resolveMapping({
@@ -522,7 +549,7 @@ export function registerAnalyzeCommand(program: Command): void {
             ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),
             runAgentFn: async ({ prompt }) => {
               if (!opts.compositionRefresh) {
-                const cached = await readRawAgentCache(agentCacheKey);
+                const cached = lookupCompositionCache(db, agentCacheKey, cacheVersion);
                 if (cached !== null) {
                   emitCompositionProgress('cache-hit');
                   return cached;
@@ -530,7 +557,9 @@ export function registerAnalyzeCommand(program: Command): void {
               }
               emitCompositionProgress(`agent:${resolverAgent}`);
               const stdout = await spawnAgent(prompt);
-              await writeRawAgentCache(agentCacheKey, stdout);
+              if (lastAgentExitCode === 0) {
+                storeCompositionCache(db, agentCacheKey, cacheVersion, stdout);
+              }
               return stdout;
             },
           });

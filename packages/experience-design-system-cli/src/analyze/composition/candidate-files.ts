@@ -11,6 +11,17 @@ export const CANDIDATE_CONTENT_MARKERS: string[] = [
 
 export const CANDIDATE_TOKEN_BUDGET = 6000;
 
+/**
+ * Token ceiling for the candidate set INLINED into a single agent prompt.
+ * Sized to stay under a 200k-context model once the agent's own system prompt
+ * + tool definitions (~105k observed) are added, so a large design system
+ * (hundreds of components → many matched files) can't overflow the request and
+ * fail resolution. Files beyond the budget are dropped (with a warning), not
+ * silently truncated. Distinct from `CANDIDATE_TOKEN_BUDGET`, which sizes the
+ * unused per-batch chunking.
+ */
+export const PROMPT_CANDIDATE_TOKEN_BUDGET = 80_000;
+
 const CHARS_PER_TOKEN = 4;
 const DEFAULT_SLICE_WINDOW = 3;
 
@@ -46,6 +57,33 @@ export function selectCandidateFiles(files: CandidateFile[]): SelectedCandidate[
     selected.push({ path: file.path, content: file.content, reason });
   }
   return selected;
+}
+
+/**
+ * Cap a candidate set to what fits in a single agent prompt (see
+ * `PROMPT_CANDIDATE_TOKEN_BUDGET`). Files are kept smallest-first so the budget
+ * admits the most declarations; deterministic tie-break by path. Returns the
+ * kept files plus the paths dropped so the caller can warn (silent truncation
+ * would read as "resolved everything" when it didn't).
+ */
+export function capCandidatesToPromptBudget<T extends CandidateFile>(
+  files: T[],
+  budget: number = PROMPT_CANDIDATE_TOKEN_BUDGET,
+): { kept: T[]; dropped: T[] } {
+  const ordered = [...files].sort((a, b) => a.content.length - b.content.length || a.path.localeCompare(b.path));
+  const kept: T[] = [];
+  const dropped: T[] = [];
+  let spent = 0;
+  for (const file of ordered) {
+    const cost = tokenCost(file);
+    if (spent + cost > budget) {
+      dropped.push(file);
+      continue;
+    }
+    kept.push(file);
+    spent += cost;
+  }
+  return { kept, dropped };
 }
 
 export function sliceDeclarationRegions(
