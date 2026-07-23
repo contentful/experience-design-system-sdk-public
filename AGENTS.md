@@ -4,9 +4,10 @@ This file tells AI coding agents what they need to know to be productive in this
 
 ## Repo at a Glance
 
-Nx monorepo with two packages:
+Nx monorepo with three packages:
 
 - `packages/experience-design-system-cli` — the CLI and TUI (the main package)
+- `packages/experience-design-system-extraction` — component extraction engine (ts-morph, framework parsers); a runtime dependency of the CLI
 - `packages/experience-design-system-types` — shared types, schemas, validation
 
 The CLI extracts React/Vue/Astro/Stencil/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
