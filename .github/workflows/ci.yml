@@ -187,7 +187,47 @@ jobs:
           git merge origin/main --no-edit
 
       - name: Release
+        id: release
         run: pnpm release
         env:
           GITHUB_TOKEN: ${{ steps.vault.outputs.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ steps.vault.outputs.GITHUB_PACKAGES_WRITE_TOKEN }}
+
+      # nx (step above) publishes to GitHub Packages, then commits + tags the
+      # new version on main. Detect that tag; if present, mirror the same
+      # versions to the public npmjs.org registry so external users can install.
+      - name: Detect released version
+        if: github.ref == 'refs/heads/main'
+        id: released
+        run: |
+          git fetch --tags --force
+          TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*')
+          if git merge-base --is-ancestor "$TAG" HEAD && [ "$(git rev-list -n1 "$TAG")" = "$(git rev-parse HEAD)" ]; then
+            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+            echo "Release tag $TAG points at HEAD — will publish to npmjs.org"
+          else
+            echo "No new release tag at HEAD — skipping npmjs.org publish"
+          fi
+
+      # Publish to the PUBLIC registry. The repo .npmrc pins @contentful to
+      # GitHub Packages, and a scoped registry overrides any --registry flag —
+      # this is what broke every prior publish-public.yml run (ENEEDAUTH). Flip
+      # the scope back to npmjs.org here so OIDC trusted publishing takes effect.
+      - name: Setup Node.js for npmjs.org
+        if: github.ref == 'refs/heads/main' && steps.released.outputs.version != ''
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "lts/*"
+          registry-url: "https://registry.npmjs.org"  # wires OIDC token as NODE_AUTH_TOKEN
+
+      - name: Publish to npmjs.org
+        if: github.ref == 'refs/heads/main' && steps.released.outputs.version != ''
+        run: |
+          pnpm config set @contentful:registry https://registry.npmjs.org
+          pnpm --filter @contentful/experience-design-system-types run build
+          pnpm --filter @contentful/experience-design-system-extraction run build
+          pnpm --filter @contentful/experience-design-system-cli run build
+          # extraction must publish before cli, which pins it as a dependency
+          pnpm --filter @contentful/experience-design-system-types publish --access public --no-git-checks
+          pnpm --filter @contentful/experience-design-system-extraction publish --access public --no-git-checks
+          pnpm --filter @contentful/experience-design-system-cli publish --access public --no-git-checks
