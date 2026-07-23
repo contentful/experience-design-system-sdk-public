@@ -42,5 +42,14 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.52.0",
     "vitest": "^4.0.16"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/contentful/experience-design-system-sdk-public.git",
+    "directory": "packages/experience-design-system-types"
+  },
+  "homepage": "https://github.com/contentful/experience-design-system-sdk-public#readme",
+  "bugs": {
+    "url": "https://github.com/contentful/experience-design-system-sdk-public/issues"
   }
 }
