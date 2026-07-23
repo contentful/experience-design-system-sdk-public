@@ -78,11 +78,16 @@ jobs:
       - name: Build all packages
         run: |
           pnpm --filter @contentful/experience-design-system-types run build
+          pnpm --filter @contentful/experience-design-system-extraction run build
           pnpm --filter @contentful/experience-design-system-cli run build
 
       - name: Publish @contentful/experience-design-system-types
         if: ${{ !inputs.dry_run }}
         run: pnpm --filter @contentful/experience-design-system-types publish --access public --no-git-checks
+
+      - name: Publish @contentful/experience-design-system-extraction
+        if: ${{ !inputs.dry_run }}
+        run: pnpm --filter @contentful/experience-design-system-extraction publish --access public --no-git-checks
 
       - name: Publish @contentful/experience-design-system-cli
         if: ${{ !inputs.dry_run }}
@@ -93,6 +98,9 @@ jobs:
         run: |
           echo "[dry-run] Would publish @contentful/experience-design-system-types to npmjs.com"
           pnpm --filter @contentful/experience-design-system-types publish --access public --no-git-checks --dry-run
+          echo ""
+          echo "[dry-run] Would publish @contentful/experience-design-system-extraction to npmjs.com"
+          pnpm --filter @contentful/experience-design-system-extraction publish --access public --no-git-checks --dry-run
           echo ""
           echo "[dry-run] Would publish @contentful/experience-design-system-cli to npmjs.com"
           pnpm --filter @contentful/experience-design-system-cli publish --access public --no-git-checks --dry-run
