@@ -140,6 +140,56 @@ describe('runLivePreview', () => {
     });
   });
 
+  it('deleteAllComponents with an empty accepted set previews an empty-but-present componentsManifest', async () => {
+    await withTempDb(async ({ dbPath }) => {
+      // Empty session (no generated components) — the delete-all scenario.
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract', inputPath: '/p' });
+      db.close();
+      previewImportMock.mockResolvedValueOnce(SAMPLE_PREVIEW);
+      const { runLivePreview } = await import('../../../src/import/tui/runLivePreview.js');
+      await runLivePreview({
+        sessionId,
+        tokensPath: '',
+        spaceId: 'sp',
+        environmentId: 'master',
+        cmaToken: 't',
+        host: 'https://api.contentful.com',
+        generation: 1,
+        deleteAllComponents: true,
+      });
+      expect(previewImportMock).toHaveBeenCalledTimes(1);
+      const manifest = previewImportMock.mock.calls[0]?.[0] as { componentsManifest?: Record<string, unknown> };
+      // Present (so the server diffs delete-all) but with zero component entries.
+      expect(manifest.componentsManifest).toBeDefined();
+      expect(Object.keys(manifest.componentsManifest ?? {}).filter((k) => k !== '$schema')).toEqual([]);
+    });
+  });
+
+  it('acceptedKeys narrows the previewed manifest to just the accepted components', async () => {
+    await withTempDb(async ({ dbPath }) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract', inputPath: '/p' });
+      storeRawComponents(db, sessionId, [makeRaw('Button'), makeRaw('Card')], { status: 'generated' });
+      db.close();
+      previewImportMock.mockResolvedValueOnce(SAMPLE_PREVIEW);
+      const { runLivePreview } = await import('../../../src/import/tui/runLivePreview.js');
+      await runLivePreview({
+        sessionId,
+        tokensPath: '',
+        spaceId: 'sp',
+        environmentId: 'master',
+        cmaToken: 't',
+        host: 'https://api.contentful.com',
+        generation: 1,
+        acceptedKeys: new Set(['Button']),
+      });
+      const manifest = previewImportMock.mock.calls[0]?.[0] as { componentsManifest?: Record<string, unknown> };
+      const keys = Object.keys(manifest.componentsManifest ?? {}).filter((k) => k !== '$schema');
+      expect(keys).toEqual(['Button']);
+    });
+  });
+
   it('re-throws ApiError 401', async () => {
     await withTempDb(async ({ dbPath }) => {
       const sessionId = seed(dbPath);

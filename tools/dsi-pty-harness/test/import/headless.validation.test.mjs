@@ -14,7 +14,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { runCli } from '../helpers/run-cli.mjs';
 import { makeTmpHome } from '../helpers/tmp-home.mjs';
-import { REACT_MINIMAL } from '../helpers/fixtures.mjs';
+import { REACT_MINIMAL, REACT_COMPOSITE_CYCLE } from '../helpers/fixtures.mjs';
+import { startMockEma } from '../helpers/mock-ema.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -176,6 +177,34 @@ describe('experiences import — headless flows', () => {
       },
     );
     expect(code).toBe(0);
+  });
+
+  // ── D2-2: headless import exits non-zero and reports slot cycles ────────────
+  //
+  // The apply subcommand calls assertNoSlotCycles() *before* validateToken(),
+  // so cycle detection fires even with fake credentials. We point --host at
+  // a local mock-ema server so the apply subprocess binds correctly without
+  // needing real Contentful endpoints.
+  it('headless import exits non-zero and reports slot cycles (default, no --auto-reject-cycles)', async () => {
+    const mock = await startMockEma();
+    try {
+      const { code, stderr, stdout } = await runCli(
+        [
+          'import',
+          '--project', REACT_COMPOSITE_CYCLE,
+          '--space-id', 'sp1',
+          '--environment-id', 'master',
+          '--cma-token', 'fake-token',
+          '--host', mock.host,
+          '--print-prompt',
+        ],
+        { env: isolated() },
+      );
+      expect(code).not.toBe(0);
+      expect(stderr + stdout).toMatch(/manifest:components\/slot-cycles|NodeA|NodeB/i);
+    } finally {
+      await mock.close();
+    }
   });
 
   // ── --verbose surfaces extra output (loose assertion) ───────────────────

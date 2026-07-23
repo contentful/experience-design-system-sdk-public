@@ -8,10 +8,13 @@ import {
   createStep,
   updateStep,
   findLatestSessionForCommand,
+  loadCDFComponents,
 } from '../session/db.js';
+import { detectSlotCycles, formatSlotCycleReport } from '../apply/command.js';
 import { PREVIEW_ERROR_PREFIX, VALIDATION_FAILED_CODE, parsePreviewValidationErrors } from '../apply/api-client.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
 import { getDebugLogger, debugEnvForSubprocess } from '../lib/debug-logger.js';
+import type { CompositionMode } from '../lib/composition-mode.js';
 
 export interface PipelineOptions {
   project: string;
@@ -38,6 +41,15 @@ export interface PipelineOptions {
   deselect?: string[];
   /** Forwarded to the spawned `analyze select-agent` subprocess. */
   selectPromptPath?: string;
+  /** When true, auto-reject cycle participants and retry push instead of surfacing an error. */
+  autoRejectCycles?: boolean;
+  compositionMode?: CompositionMode;
+  compositionMap?: string;
+  compositionAgent?: boolean;
+  compositionAgentMode?: string;
+  compositionRefresh?: boolean;
+  generateMap?: string;
+  promptOverrides?: string[];
 }
 
 export interface StepResult {
@@ -53,6 +65,7 @@ export interface PipelineResult {
   session: string;
   project: string;
   steps: StepResult[];
+  cycleError?: { report: string[] };
 }
 
 function findCliPath(): string {
@@ -103,6 +116,25 @@ async function runStep(
 
 const MAX_VALIDATION_RETRIES = Number(process.env['EDS_MAX_VALIDATION_RETRIES'] ?? 2);
 
+export const SLOT_CYCLE_MARKER = 'manifest:components/slot-cycles';
+
+export function isSlotCycleError(result: { exitCode: number; stderr: string }): boolean {
+  return result.exitCode !== 0 && result.stderr.includes(SLOT_CYCLE_MARKER);
+}
+
+export function extractCycleReport(stderr: string): string[] {
+  return stderr.split('\n').filter((line) => line.trim());
+}
+
+export function parseCycleComponentNames(report: string[]): string[] {
+  const names: string[] = [];
+  for (const line of report) {
+    const m = line.match(/Fix: remove '([^']+)' from /);
+    if (m) names.push(m[1]);
+  }
+  return [...new Set(names)];
+}
+
 export function isPreviewValidationError(result: { exitCode: number; stderr: string }): boolean {
   return (
     result.exitCode !== 0 &&
@@ -112,21 +144,12 @@ export function isPreviewValidationError(result: { exitCode: number; stderr: str
 }
 
 export function parseOffendingComponentNames(output: string): string[] {
-  // The 422 body is appended to the ApiError message by the constructor and
-  // written to stderr by die(). Extract the JSON portion by finding the first '{'.
   const jsonStart = output.indexOf('{');
   if (jsonStart === -1) return [];
   const errors = parsePreviewValidationErrors(output.slice(jsonStart));
   return [...new Set(errors.map((e) => e.componentName))];
 }
 
-/**
- * Build the apply-push StepResult record. Centralizes the success/failure
- * shape so excludedByValidationRetry is recorded consistently in both
- * branches — previously the total-failure branch dropped it, leaving users
- * with a failed pipeline and no audit trail of what was auto-excluded
- * before the retry loop gave up.
- */
 export function buildPushStepResult(args: {
   created: number;
   updated: number;
@@ -188,7 +211,6 @@ export async function runPipeline(
   const steps: StepResult[] = [];
   let stepNum = 0;
 
-  // print components is an optional step; adjust total accordingly
   const totalSteps = 4 + (opts.print ? 1 : 0);
 
   function stepLabel(name: string): string {
@@ -196,7 +218,6 @@ export async function runPipeline(
     return `  Step ${stepNum}/${totalSteps}  ${name}  `;
   }
 
-  // ── Step 1: analyze extract ──────────────────────────────────────────────
   const analyzeLabel = stepLabel('Statically analyzing project');
   const analyzeSkipped = !opts.noCache && opts.skipAnalyze;
   let extractSessionId: string | null = null;
@@ -208,7 +229,6 @@ export async function runPipeline(
       status: 'skipped',
       reason: '--skip-analyze',
     });
-    // Try to find a prior extract session to hand to downstream steps
     const prior = findLatestSessionForCommand(db, 'analyze extract');
     extractSessionId = prior ?? null;
   } else {
@@ -217,6 +237,16 @@ export async function runPipeline(
     });
     const t0 = Date.now();
     const analyzeArgs = ['analyze', 'extract', '--project', projectRoot];
+    if (opts.compositionMode === 'composite') {
+      analyzeArgs.push('--composite');
+      if (opts.compositionMap) analyzeArgs.push('--composition-map', opts.compositionMap);
+      if (opts.compositionAgent) analyzeArgs.push('--composition-agent');
+      if (opts.compositionAgentMode) analyzeArgs.push('--composition-agent-mode', opts.compositionAgentMode);
+      if (opts.compositionRefresh) analyzeArgs.push('--composition-refresh');
+      if (opts.generateMap) analyzeArgs.push('--generate-map', opts.generateMap);
+      for (const p of opts.promptOverrides ?? []) analyzeArgs.push('--prompt', p);
+      if (opts.agent) analyzeArgs.push('--agent', opts.agent);
+    }
     const r = await runStep(analyzeArgs, cliPath);
     const durationMs = Date.now() - t0;
 
@@ -234,7 +264,6 @@ export async function runPipeline(
       return { session: sessionId, project: projectRoot, steps };
     }
 
-    // Read session ID from DB — avoids dependence on subprocess stdout format.
     extractSessionId = findLatestSessionForCommand(db, 'analyze extract') ?? null;
 
     const componentMatch = /Extracted (\d+) component/.exec(r.stderr);
@@ -253,7 +282,6 @@ export async function runPipeline(
     });
   }
 
-  // ── Step 2: analyze select ───────────────────────────────────────────────
   const editLabel = stepLabel('Filtering components');
   if (analyzeSkipped) {
     progressWriter(`${editLabel}–  skipped (--skip-analyze)`);
@@ -268,7 +296,6 @@ export async function runPipeline(
     });
     const t0Edit = Date.now();
 
-    // Use agentic select when an agent is available and no manual select/deselect patterns are given.
     const useAgentSelect =
       !opts.selectAll && (!opts.select || opts.select.length === 0) && (!opts.deselect || opts.deselect.length === 0);
 
@@ -285,7 +312,7 @@ export async function runPipeline(
         for (const p of opts.select) editArgs.push('--select', p);
       } else if (opts.deselect && opts.deselect.length > 0) {
         for (const p of opts.deselect) editArgs.push('--deselect', p);
-        editArgs.push('--select-all'); // select-all with deselect patterns = select all except matches
+        editArgs.push('--select-all');
       } else {
         editArgs.push('--select-all');
       }
@@ -328,8 +355,6 @@ export async function runPipeline(
       reason: 'no extract session',
     });
   }
-
-  // ── Step 3: generate components ──────────────────────────────────────────
 
   if (opts.skipGenerate) {
     const generateLabel = stepLabel('Categorizing component props');
@@ -386,7 +411,28 @@ export async function runPipeline(
     steps.push({ step: 'generate components', status: 'complete', durationMs });
   }
 
-  // ── Step 4 (optional): print components ─────────────────────────────────
+  // Block save or push when the accepted set still contains a slot cycle.
+  // Skipped under --auto-reject-cycles, which delegates to the push-path
+  // retry loop below (reject cycle members, then retry) instead of blocking.
+  if (extractSessionId && !opts.autoRejectCycles) {
+    const acceptedCycles = (() => {
+      try {
+        return detectSlotCycles(loadCDFComponents(db, extractSessionId));
+      } catch {
+        return [];
+      }
+    })();
+    if (acceptedCycles.length > 0) {
+      const report = formatSlotCycleReport(acceptedCycles);
+      process.stderr.write(report.join('\n') + '\n');
+      progressWriter('Slot cycle detected. The accepted components contain circular slot references — refusing to save or push.');
+      for (const line of report) progressWriter(line);
+      steps.push({ step: 'cycle gate', status: 'failed', error: report.join('\n') });
+      db.close();
+      return { session: sessionId, project: projectRoot, steps, cycleError: { report } };
+    }
+  }
+
   if (opts.print) {
     const printLabel = stepLabel('Writing components.json');
     const printArgs = ['print', 'components', '--out', componentsPath];
@@ -418,7 +464,6 @@ export async function runPipeline(
     steps.push({ step: 'print components', status: 'complete', durationMs });
   }
 
-  // ── Step 4/5: apply push ─────────────────────────────────────────────────
   const applyLabelText =
     opts.spaceId && opts.environmentId
       ? `Applying changes to Space: ${opts.spaceId} Environment: ${opts.environmentId}`
@@ -453,10 +498,6 @@ export async function runPipeline(
       opts.cmaToken,
     ];
 
-    // Components are stored under the extract session ID (generate command uses resolveSessionId
-    // which returns the passed --session value, i.e. the extract session). Pass that directly so
-    // apply push reads from the DB without needing a components.json file.
-    // Fall back to --components so the step fails with a clear error rather than a generic one.
     if (extractSessionId) {
       pushArgs.push('--session', extractSessionId);
     } else {
@@ -467,7 +508,7 @@ export async function runPipeline(
     if (opts.viewports) pushArgs.push('--viewports', opts.viewports);
     if (opts.host) pushArgs.push('--host', opts.host);
     if (opts.verbose) pushArgs.push('--verbose');
-    pushArgs.push('--yes'); // always non-interactive in subprocess context
+    pushArgs.push('--yes');
 
     const pushStepId = createStep(db, sessionId, 'apply push', {
       components: componentsPath,
@@ -475,25 +516,17 @@ export async function runPipeline(
     const t0 = Date.now();
     let r = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
 
-    // Bounded retry loop: on a preview-phase 422 with a parseable ValidationFailed
-    // body, exclude the offending components and re-run apply push.
     const excludedByRetry: string[] = [];
     let validationRetryCount = 0;
     while (validationRetryCount < MAX_VALIDATION_RETRIES && isPreviewValidationError(r) && extractSessionId) {
       const offenders = parseOffendingComponentNames(r.stderr + r.stdout);
-      if (offenders.length === 0) break; // unparseable body — give up and surface original error
+      if (offenders.length === 0) break;
 
       process.stderr.write(
         `[retry ${validationRetryCount + 1}/${MAX_VALIDATION_RETRIES}] Preview validation failed — excluding ${offenders.join(', ')} and retrying\n`,
       );
       excludedByRetry.push(...offenders);
 
-      // No --select-all here: that would route through runNonInteractive's
-      // rebuild path, which DELETEs all rows and re-inserts with default
-      // status='extracted' — wiping the post-`generate components` state
-      // (status='generated' + raw_props.cdf_type) the next apply push reads.
-      // The bare --exclude-components form takes the rejectComponentsByName
-      // early-return: pure UPDATE, no rebuild.
       const rejectArgs = [
         'analyze',
         'select',
@@ -503,7 +536,7 @@ export async function runPipeline(
         offenders.join(','),
       ];
       const rejectResult = await runStep(rejectArgs, cliPath);
-      if (rejectResult.exitCode !== 0) break; // selection step failed — give up
+      if (rejectResult.exitCode !== 0) break;
 
       r = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
       validationRetryCount++;
@@ -511,7 +544,6 @@ export async function runPipeline(
 
     const durationMs = Date.now() - t0;
 
-    // Parse push result JSON from stdout to distinguish partial vs total failure
     interface PushCounts {
       created: number;
       updated: number;
@@ -538,6 +570,97 @@ export async function runPipeline(
       ? (pushResult.componentTypes?.failed ?? 0) + (pushResult.designTokens?.failed ?? 0)
       : Number(/(\d+) failed/.exec(r.stdout + r.stderr)?.[1] ?? 0);
     const totalPushed = created + updated + failed;
+
+    if (isSlotCycleError(r)) {
+      const report = extractCycleReport(r.stderr);
+
+      if (opts.autoRejectCycles && extractSessionId) {
+        const cycleNames = parseCycleComponentNames(report);
+        if (cycleNames.length > 0) {
+          process.stderr.write(
+            `[cycle-retry] Slot cycle detected — excluding ${cycleNames.join(', ')} and retrying\n`,
+          );
+          const rejectArgs = [
+            'analyze',
+            'select',
+            '--session',
+            extractSessionId,
+            '--exclude-components',
+            cycleNames.join(','),
+          ];
+          const rejectResult = await runStep(rejectArgs, cliPath);
+          if (rejectResult.exitCode === 0) {
+            const retryT0 = Date.now();
+            const retryR = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
+            const retryDurationMs = Date.now() - t0 + (Date.now() - retryT0);
+
+            if (isSlotCycleError(retryR)) {
+              const retryReport = extractCycleReport(retryR.stderr);
+              updateStep(db, pushStepId, 'failed', {}, retryR.stderr);
+              progressWriter(`${pushLabel}✗  failed (${(retryDurationMs / 1000).toFixed(1)}s)`);
+              progressWriter(
+                'Slot cycle detected after auto-reject retry. The manifest still contains circular slot references.',
+              );
+              for (const line of retryReport) progressWriter(line);
+              steps.push(
+                buildPushStepResult({
+                  created,
+                  updated,
+                  failed,
+                  durationMs: retryDurationMs,
+                  stderr: retryR.stderr,
+                  excludedByRetry: [...excludedByRetry, ...cycleNames],
+                  totalFailure: true,
+                }),
+              );
+              db.close();
+              return { session: sessionId, project: projectRoot, steps, cycleError: { report: retryReport } };
+            }
+
+            if (retryR.exitCode !== 0) {
+              updateStep(db, pushStepId, 'failed', {}, retryR.stderr);
+              progressWriter(`${pushLabel}✗  failed (${(retryDurationMs / 1000).toFixed(1)}s)`);
+              steps.push(
+                buildPushStepResult({
+                  created,
+                  updated,
+                  failed,
+                  durationMs: retryDurationMs,
+                  stderr: retryR.stderr,
+                  excludedByRetry: [...excludedByRetry, ...cycleNames],
+                  totalFailure: true,
+                }),
+              );
+              db.close();
+              return { session: sessionId, project: projectRoot, steps };
+            }
+
+            excludedByRetry.push(...cycleNames);
+            r = retryR;
+          }
+        }
+      }
+
+      if (isSlotCycleError(r)) {
+        updateStep(db, pushStepId, 'failed', {}, r.stderr);
+        progressWriter(`${pushLabel}✗  failed (${(durationMs / 1000).toFixed(1)}s)`);
+        progressWriter('Slot cycle detected. The manifest contains circular slot references that would block the push.');
+        for (const line of report) progressWriter(line);
+        steps.push(
+          buildPushStepResult({
+            created,
+            updated,
+            failed,
+            durationMs,
+            stderr: r.stderr,
+            excludedByRetry,
+            totalFailure: true,
+          }),
+        );
+        db.close();
+        return { session: sessionId, project: projectRoot, steps, cycleError: { report } };
+      }
+    }
 
     if (r.exitCode !== 0 && (totalPushed === 0 || failed === totalPushed)) {
       // Total failure — nothing was pushed

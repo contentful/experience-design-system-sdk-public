@@ -95,7 +95,11 @@ export function registerPrintCommand(program: Command): void {
     .description('Write generated components to a CDF JSON file')
     .option('--session <id>', 'Session ID to print from (default: most recent generate components session)')
     .option('--out <path>', 'Output file path', 'components.json')
-    .action(async (opts: { session?: string; out: string }) => {
+    .option(
+      '--allow-empty',
+      'Write an empty-but-present components manifest when no components are accepted (a subsequent push then removes ALL components from the target space). Without this, an empty accepted set is an error.',
+    )
+    .action(async (opts: { session?: string; out: string; allowEmpty?: boolean }) => {
       const outPath = resolve(opts.out);
       await assertOutIsNotDirectory(outPath);
 
@@ -104,6 +108,7 @@ export function registerPrintCommand(program: Command): void {
       const db = openPipelineDb();
       let components: ReturnType<typeof loadCDFComponents>;
       let generateStepStatus: string | null = null;
+      let rejectedCount = 0;
       try {
         components = loadCDFComponents(db, sessionId);
         const stepRow = db
@@ -112,12 +117,31 @@ export function registerPrintCommand(program: Command): void {
           )
           .get(sessionId) as { status: string } | undefined;
         generateStepStatus = stepRow?.status ?? null;
+        const rejectedRow = db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM raw_components WHERE session_id = ? AND status = 'generate-rejected'`,
+          )
+          .get(sessionId) as { n: number } | undefined;
+        rejectedCount = rejectedRow?.n ?? 0;
       } finally {
         db.close();
       }
 
       if (components.length === 0) {
-        die(`Error: no generated components in session '${sessionId}'. Run generate components first.`);
+        if (rejectedCount > 0) {
+          // Components WERE generated, but final review left none accepted — every
+          // component was rejected or left unresolved. This is a legitimate
+          // "clear the space" intent, but it's destructive, so require --allow-empty.
+          if (!opts.allowEmpty) {
+            die(
+              `Error: all ${rejectedCount} generated component${rejectedCount === 1 ? ' was' : 's were'} rejected or left unresolved at final review in session '${sessionId}', so there is nothing to save. Accept at least one component (press [a] on a row, or [A] to accept all), or pass --allow-empty to write an empty manifest that will DELETE all components from the target space on push.`,
+            );
+          }
+          // Fall through: write an empty-but-present components manifest so a
+          // subsequent push removes every component from the target space.
+        } else {
+          die(`Error: no generated components in session '${sessionId}'. Run generate components first.`);
+        }
       }
 
       if (generateStepStatus === 'failed') {

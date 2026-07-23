@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 
@@ -39,7 +40,7 @@ export function WelcomeStep({ onContinue, onQuit }: WelcomeStepProps): React.Rea
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Text bold color="green">
+      <Text bold color={PALETTE.success}>
         👋 Hey! Let&apos;s import your design system into Contentful.
       </Text>
       <Text dimColor>I&apos;ll walk you through 5 steps to get your components into Contentful ExO.</Text>
@@ -72,7 +73,7 @@ export function WelcomeStep({ onContinue, onQuit }: WelcomeStepProps): React.Rea
       <Box flexDirection="column" marginTop={1} gap={0}>
         <Text>Where is your component library?</Text>
         <Box gap={1} marginTop={0}>
-          <Text color="cyan">?</Text>
+          <Text color={PALETTE.info}>?</Text>
           <Text>Project path:</Text>
           <Text>{displayValue}</Text>
         </Box>

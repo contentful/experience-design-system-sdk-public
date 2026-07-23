@@ -34,6 +34,46 @@ All intermediate data flows through a local SQLite session database (`~/.content
 
 ---
 
+## Composite components & composition
+
+A **composite component** is one that renders other components inside it — a `Card` that slots a `Button` and an `Icon`, a `Tabs` that slots `Tab` panels. When you import composite components, the CLI can populate each slot's `$allowedComponents` so the parent→child relationships survive into Contentful.
+
+### Atomic vs. composite
+
+Imports are **atomic by default** — flat components, no embedded hierarchy. This is the right choice when you just want each component registered on its own. Opt into hierarchy resolution with `--composite` (or any composition flag, which implies it).
+
+| Mode | Flag | Behavior |
+|---|---|---|
+| Atomic | `--atomic` (default) | Flat import; composition stripped before push |
+| Composite | `--composite` | Resolve and import the parent→child hierarchy |
+
+### How composition is resolved
+
+Under `--composite`, relationships are resolved from the highest-confidence source available, in this precedence order:
+
+1. **Typed slots (code)** — slots the source already declares, e.g. React `ReactElement<XProps>` / `children`, Svelte `Snippet<[XProps]>`, or an explicit `@allowedComponents` JSDoc tag. Fully deterministic; picked up automatically.
+2. **Mapping map** — a hand-authored parent→children interchange map you feed with `--composition-map <path>`. Use `--generate-map <path>` to emit a skeleton from whatever was resolved, then hand-edit it and feed it back.
+3. **Agent (`--composition-agent`)** — for codebases that encode composition in *code patterns* rather than typed slots (common in real-world design systems). Only runs when the deterministic sources above find nothing.
+
+When more than one source speaks to the same relationship, the higher-precedence one wins (**code slots > map > agent**).
+
+### The composition agent
+
+`--composition-agent` doesn't ask the model to *list* relationships (which would be non-deterministic and unauditable). Instead the agent **writes a small parser** — a pure `(ctx) => Edge[]` function — which the CLI runs in a locked-down sandbox (separate process, no filesystem/network, memory + wall-clock limits), caches by the parser's own source, and replays. Repeated runs over the same code are stable and inspectable.
+
+- `--composition-agent-mode <parser|edges>` — `parser` (default; the sandboxed-parser design above) or `edges` (agent lists relationships directly; less robust).
+- `--composition-refresh` — ignore the cache and re-resolve from scratch, forcing the agent to run.
+- `--agent <name>` — which coding agent authors the parser (`claude`, `codex`, `opencode`, `cursor`).
+- `--prompt composition=<file-or-text>` — override the composition stage's prompt.
+
+Because the agent path spawns a coding agent, it adds latency and cost and is best-effort (parser quality can vary run to run). For reproducible results, prefer `--composition-map`.
+
+### Slot cycles
+
+If the resolved graph contains a circular slot dependency (A slots B, B slots A), it is detected before push. `apply push` and the wizard's push path **refuse to send a manifest with cycles**; the cycle path is reported so you can break it. In headless `import`, pass `--auto-reject-cycles` to auto-reject the components in a cycle and retry instead of failing.
+
+---
+
 ## Prerequisites
 
 ### Coding agent
@@ -80,7 +120,8 @@ experiences import [flags]
 ```
 welcome
   ↓
-extracting             — runs analyze extract; spawns generate in parallel (prefetch)
+extracting             — runs analyze extract (atomic by default; resolves composition
+                         under --composite, see below); spawns generate in parallel (prefetch)
   ↓
 [auto-filter]          — analyze select-agent runs automatically (skip with --no-auto-filter)
   ↓
@@ -139,6 +180,15 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--model <name>`                  | agent default                          | Model name                                                                                                   |
 | `--tokens <path>`                 | —                                      | DTCG `tokens.json` to push alongside generated components                                                    |
 | `--auto-accept-scope`             | off                                    | Accept all extracted components without prompting (required for non-TTY without other headless flags)        |
+| `--atomic`                        | **default**                            | Flat import, no embedded-component hierarchy (composition stripped on push)                                   |
+| `--composite`                     | —                                      | Import the embedded-component hierarchy (any composition flag implies this)                                   |
+| `--composition-map <path>`        | —                                      | Consume a hand-authored parent→children interchange map (implies `--composite`)                              |
+| `--generate-map <path>`           | —                                      | Also write a composition-map skeleton from the resolved composition (implies `--composite`)                  |
+| `--composition-agent`             | —                                      | Opt into agentic resolution when deterministic sources find no groups (implies `--composite`)                |
+| `--composition-refresh`           | —                                      | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`)   |
+| `--composition-agent-mode <mode>` | `parser`                               | `parser` (agent writes a sandboxed parser) or `edges` (agent lists edges directly)                           |
+| `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
+| `--auto-reject-cycles`            | off (fail loud)                        | Auto-reject components in slot cycles and retry, instead of stopping with the cycle path                     |
 | `--auto-filter` / `--no-auto-filter` | persisted in `credentials.json`     | Force AI auto-filter on or off; overrides saved preference                                                   |
 | `--no-live-preview`               | live preview on                        | Skip the automatic preview re-run after each FieldEditor save                                                |
 | `--no-push`                       | push on                                | Run extract → scope-gate → generate → final-review and exit without pushing                                  |
@@ -224,19 +274,31 @@ The standalone subcommands below are pinned by snapshot test (`test/analyze/sele
 Extract component definitions from a project source tree.
 
 ```bash
-experiences analyze extract --project <path> [--dir <src-dir>]
+experiences analyze extract --project <path> [--dir <src-dir>] [composition flags]
 ```
 
 | Option | Default | Description |
 |---|---|---|
 | `--project <path>` | _(required)_ | Path to the project root |
 | `--dir <path>` | `src` (falls back to project root) | Source directory relative to project root |
+| `--resolve-unreachable <mode>` | `auto` | Retry pass for unresolved Svelte `Props` types: `auto`, `always`, or `never` |
+| `--atomic` | **default** | Skip composition resolution — flat components only |
+| `--composite` | — | Resolve embedded-component composition (any composition flag implies this) |
+| `--composition-map <path>` | — | Consume a hand-authored parent→children interchange map (implies `--composite`) |
+| `--generate-map <path>` | — | Write a skeleton interchange map from the resolved composition (implies `--composite`) |
+| `--composition-agent` | — | Opt into agentic resolution when deterministic sources find no groups (implies `--composite`) |
+| `--composition-refresh` | — | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`) |
+| `--composition-agent-mode <mode>` | `parser` | `parser` (agent writes a sandboxed parser — deterministic) or `edges` (agent lists edges directly) |
+| `--agent <name>` | saved by setup | Coding agent for composition resolution: `claude`, `codex`, `opencode`, `cursor` |
+| `--prompt <stage=value>` | — | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
 
 Scans `.tsx`, `.ts`, `.jsx`, `.js`, `.vue`, and `.astro` files. Ignores `node_modules`, `dist`, `build`, `.next`, `.nuxt`, `coverage`, `storybook-static`, `out`, `demo(s)`, and `example(s)` directories. Also ignores `*.stories.*`, `*.story.*`, `*.spec.*`, and `*.test.*` files.
 
 Writes extracted components to the session database and prints `session=<id>` to stdout. In an interactive terminal, a scrollable TUI displays the extraction summary; press `q` or `Enter` to exit.
 
 The deterministic non-authorable filter drops infrastructure components with no authoring surface (Context providers, refs-only wrappers, etc.); each drop is reported as a warning so the operator can audit.
+
+Extraction is **atomic by default** — flat components, no embedded hierarchy. See [Composite components & composition](#composite-components--composition) for how `--composite` and the composition flags resolve parent→child relationships.
 
 ---
 

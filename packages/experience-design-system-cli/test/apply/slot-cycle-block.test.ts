@@ -2,11 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { assertNoSlotCycles } from '../../src/apply/command.js';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 
-/**
- * INTEG-4401: `apply push` and `apply select` refuse to send a manifest
- * whose component graph contains a slot-dependency cycle. This test
- * exercises the standalone guard.
- */
 describe('assertNoSlotCycles — pre-push hard block (INTEG-4401)', () => {
   it('is a no-op when the graph has no cycles', () => {
     const components: Array<{ key: string; entry: CDFComponentEntry }> = [

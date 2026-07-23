@@ -1,7 +1,5 @@
 export interface AllowedComponentsContext {
-  /** e.g. { HeadingProps -> Heading, ButtonProps -> Button } */
   propsToComponent: ReadonlyMap<string, string>;
-  /** ComponentType names known to the project (post-filter). */
   componentNames: ReadonlySet<string>;
 }
 

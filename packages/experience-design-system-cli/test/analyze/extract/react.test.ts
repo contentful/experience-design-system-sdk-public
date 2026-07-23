@@ -2428,7 +2428,6 @@ describe('ReactComponentExtractor', () => {
   });
 
   it('captures sourcePath and per-prop source line ranges (Feature 1)', async () => {
-    // Lines 1 (blank), 2: import, 3: blank, 4: interface open, 5: label, 6: variant, 7: }
     const filePath = await writeFixture(
       'Button.tsx',
       [

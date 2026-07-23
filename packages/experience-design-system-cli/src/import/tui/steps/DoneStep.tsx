@@ -1,4 +1,5 @@
 import React from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import { buildPostPushUrl } from '../../../lib/contentful-urls.js';
@@ -16,9 +17,7 @@ type DoneStepProps = {
   summary?: { total: number; succeeded: number; failed: number };
   spaceId: string;
   environmentId: string;
-  /** Configured API host (e.g. `api.contentful.com`). Used to derive the webapp URL. */
   host?: string;
-  /** Task 8 — pre-formatted run teaser; rendered dim below the space link. */
   runTeaser?: string;
   onExit: () => void;
 };
@@ -54,7 +53,7 @@ export function DoneStep({
       <>
         {entity.created > 0 && (
           <Box gap={1}>
-            <Text color="green">✓</Text>
+            <Text color={PALETTE.success}>✓</Text>
             <Text>
               {entity.created} {label}
               {entity.created !== 1 ? 's' : ''} created
@@ -63,7 +62,7 @@ export function DoneStep({
         )}
         {entity.updated > 0 && (
           <Box gap={1}>
-            <Text color="green">✓</Text>
+            <Text color={PALETTE.success}>✓</Text>
             <Text>
               {entity.updated} {label}
               {entity.updated !== 1 ? 's' : ''} updated
@@ -72,7 +71,7 @@ export function DoneStep({
         )}
         {entity.removed > 0 && (
           <Box gap={1}>
-            <Text color="green">✓</Text>
+            <Text color={PALETTE.success}>✓</Text>
             <Text>
               {entity.removed} {label}
               {entity.removed !== 1 ? 's' : ''} removed
@@ -81,8 +80,8 @@ export function DoneStep({
         )}
         {entity.failed > 0 && (
           <Box gap={1}>
-            <Text color="red">✗</Text>
-            <Text color="red">
+            <Text color={PALETTE.error}>✗</Text>
+            <Text color={PALETTE.error}>
               {entity.failed} {label}
               {entity.failed !== 1 ? 's' : ''} failed — check logs above
             </Text>
@@ -95,11 +94,11 @@ export function DoneStep({
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       {success ? (
-        <Text bold color="green">
+        <Text bold color={PALETTE.success}>
           Done!
         </Text>
       ) : (
-        <Text bold color="yellow">
+        <Text bold color={PALETTE.warning}>
           ⚠ Finished with errors
         </Text>
       )}
@@ -117,7 +116,7 @@ export function DoneStep({
               <Text dimColor>
                 Server: {summary.succeeded}/{summary.total} succeeded
               </Text>
-              {summary.failed > 0 && <Text color="red">, {summary.failed} failed</Text>}
+              {summary.failed > 0 && <Text color={PALETTE.error}>, {summary.failed} failed</Text>}
             </Box>
           )}
         </Box>
@@ -136,7 +135,7 @@ export function DoneStep({
           <Text dimColor>Your design system is now in Contentful ExO.</Text>
           <Box flexDirection="column" gap={0}>
             <Text dimColor>View it here:</Text>
-            <Text color="cyan">{buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId })}</Text>
+            <Text color={PALETTE.info}>{buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId })}</Text>
           </Box>
         </Box>
       )}

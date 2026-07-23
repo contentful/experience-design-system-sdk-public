@@ -2,6 +2,7 @@ import type {
   ManifestPayload,
   ServerPreviewResponse,
   ApplyOperationResponse,
+  BreakingChange,
 } from '@contentful/experience-design-system-types';
 import { DEFAULT_API_HOST, toApiHost } from '../host-utils.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
@@ -9,8 +10,6 @@ import { buildUserAgent } from '../lib/user-agent.js';
 
 export const DEFAULT_HOST = DEFAULT_API_HOST;
 
-// Phase-prefix constants used at the two ApiError throw sites below and
-// imported by orchestrator.ts to identify preview-phase 422s for retry.
 export const PREVIEW_ERROR_PREFIX = 'preview failed:';
 export const APPLY_ERROR_PREFIX = 'apply failed:';
 
@@ -48,9 +47,6 @@ export class ApiError extends Error {
   ) {
     super(message);
     if (body) {
-      // Append a (possibly trimmed) version of the response body so callers
-      // that only log e.message don't silently swallow the server's error
-      // detail.
       const trimmed = body.length > ERROR_BODY_LOG_CAP ? body.slice(0, ERROR_BODY_LOG_CAP) + '…' : body;
       this.message = `${message}\n${trimmed}`;
     }
@@ -100,6 +96,43 @@ export function parsePreviewValidationErrors(body: string): PreviewValidationErr
     out.push({ componentName, path: entry.path, message: entry.message });
   }
   return out;
+}
+
+const PROPERTY_BREAKING_REASONS = new Set([
+  'removed',
+  'added_required_no_default',
+  'type_changed',
+  'validation_narrowed',
+]);
+const SLOT_BREAKING_REASONS = new Set(['slot_removed', 'slot_allowed_components_narrowed']);
+
+export function sanitizeBreakingChanges(raw: unknown): BreakingChange[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BreakingChange[] = [];
+  for (const bc of raw) {
+    if (typeof bc !== 'object' || bc === null) continue;
+    const reason = (bc as { reason?: unknown }).reason;
+    if (typeof reason !== 'string') continue;
+    if ('propertyId' in bc && typeof (bc as { propertyId?: unknown }).propertyId === 'string') {
+      if (PROPERTY_BREAKING_REASONS.has(reason)) out.push(bc as BreakingChange);
+      continue;
+    }
+    if ('slotId' in bc && typeof (bc as { slotId?: unknown }).slotId === 'string') {
+      if (SLOT_BREAKING_REASONS.has(reason)) out.push(bc as BreakingChange);
+      continue;
+    }
+  }
+  return out;
+}
+
+function sanitizePreviewResponse(res: ServerPreviewResponse): ServerPreviewResponse {
+  for (const item of res.components?.changed ?? []) {
+    const cc = item.changeClassification;
+    if (cc && Array.isArray(cc.breakingChanges)) {
+      cc.breakingChanges = sanitizeBreakingChanges(cc.breakingChanges);
+    }
+  }
+  return res;
 }
 
 async function request(url: string, options: RequestInit & { token: string }): Promise<Response> {
@@ -181,7 +214,7 @@ export class ImportApiClient {
     }
     const parsed = (await res.json()) as ServerPreviewResponse;
     debug.event('apply', 'preview.ok', { status: res.status, durationMs: Date.now() - startedAt });
-    return parsed;
+    return sanitizePreviewResponse(parsed);
   }
 
   async applyImport(manifest: ManifestPayload, acknowledgeBreakingChanges: boolean): Promise<ApplyOperationResponse> {

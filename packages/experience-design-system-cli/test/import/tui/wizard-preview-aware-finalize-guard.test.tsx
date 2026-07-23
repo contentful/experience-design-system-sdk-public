@@ -135,7 +135,10 @@ afterEach(() => {
 const emptyBuckets = { new: [], changed: [], removed: [], unchanged: [] };
 
 describe('WizardApp — preview-aware finalize guard (INTEG-4411 refined)', () => {
-  it('routes BACK to final-review with a banner when preview is fully empty (pure no-op)', async () => {
+  it('routes to a TERMINAL done screen (not back to review) when preview is fully empty (pure no-op)', async () => {
+    // Regression: previously this bounced back to final-review, which resets
+    // every component to needs-review on remount → an inescapable
+    // accept → empty-preview → reset loop. A no-op push must terminate.
     previewMock.mockResolvedValue({
       components: { ...emptyBuckets },
       tokens: { ...emptyBuckets },
@@ -157,11 +160,11 @@ describe('WizardApp — preview-aware finalize guard (INTEG-4411 refined)', () =
     );
     await new Promise((r) => setTimeout(r, 200));
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('BANNER:');
-    expect(frame).toMatch(/Nothing to push/);
-    const banners = initialFinalizeErrorHistory.filter((b) => !!b);
-    expect(banners.length).toBeGreaterThan(0);
-    expect(banners[0]).toMatch(/Nothing to push/);
+    // Terminal done screen with the up-to-date message + an exit affordance.
+    expect(frame).toMatch(/already up to date/i);
+    expect(frame).toMatch(/\[Enter \/ q\] Exit/);
+    // It must NOT bounce back into the review with the old "Nothing to push" banner.
+    expect(frame).not.toMatch(/Nothing to push/);
   });
 
   it('proceeds when preview contains a REMOVAL (rejection targeting a server-side component)', async () => {

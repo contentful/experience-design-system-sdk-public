@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PALETTE } from './theme.js';
 import { Box, Text, useStdout } from 'ink';
 import { readFile } from 'node:fs/promises';
 import type { PreviewAnnotation, ReviewComponentStatus, ReviewSessionSnapshot } from '../types.js';
@@ -167,7 +168,6 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
     };
   }, []);
 
-  // Sync loaded session into local state
   useEffect(() => {
     if (loadedSession && !session) {
       setSession(loadedSession);
@@ -213,7 +213,6 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
     }
   }, [session]);
 
-  // Lazy source code loading
   useEffect(() => {
     if (!session || !selectedId) return;
     const selectedComponent = session.components.find((c) => c.id === selectedId);
@@ -234,7 +233,6 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
       });
   }, [selectedId]);
 
-  // SIGINT handler
   useEffect(() => {
     const handler = () => {
       if (Object.keys(draftsByComponentId).length > 0) {
@@ -355,7 +353,6 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
     },
   );
 
-  // Must be before early returns — Rules of Hooks
   const sessionSummary = useMemo(
     () =>
       sortComponentsForSidebar(
@@ -382,7 +379,7 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
 
   if (sessionError) {
     return (
-      <Text color="red">
+      <Text color={PALETTE.error}>
         {sessionError}
         {'\nPress q to exit.'}
       </Text>
@@ -390,7 +387,7 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
   }
 
   if (!session || !paths) {
-    return <Text color="red">Session unavailable.</Text>;
+    return <Text color={PALETTE.error}>Session unavailable.</Text>;
   }
 
   if (finalizedResult) {
@@ -422,10 +419,6 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
   const visibleCount = 20;
 
   const longestName = session.components.reduce((max, c) => Math.max(max, c.name.length), 0);
-  // icon + badge + space + name + 2 border chars; min 14, max 22.
-  // The badge column is reserved (pilot R2) even when no annotation is set —
-  // see Sidebar.previewBadge — so the column width is stable as live-preview
-  // annotations flip in/out.
   const sidebarWidth = collapsed ? 3 : Math.min(Math.max(longestName + 5, 14), 22);
 
   const handleDraftSave = async (draft: string) => {
@@ -463,7 +456,6 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
         payload: { componentId: selectedId },
       });
 
-      // Sync all edited proposals to pipeline DB (keep 'generated' for preview)
       const allEdited = updatedSession.components.map((c) => c.editedProposal);
       const syncDb = openPipelineDb();
       try {
@@ -499,9 +491,6 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
         },
       });
 
-      // Write all components back to DB, marking accepted as 'generated'
-      // so loadCDFComponents (push/preview) only picks up accepted ones,
-      // but loadRawComponents (editor re-entry) still finds all of them
       const acceptedNames = new Set(session.components.filter((c) => c.status === 'accepted').map((c) => c.name));
       const db = openPipelineDb();
       try {
@@ -618,8 +607,8 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
       )}
 
       <PreviewSummaryBar preview={previewResponse} loading={previewLoading} />
-      {previewError && <Text color="yellow">{'⚠ Preview: ' + previewError}</Text>}
-      {saveError && <Text color="red">{'⚠ ' + saveError}</Text>}
+      {previewError && <Text color={PALETTE.warning}>{'⚠ Preview: ' + previewError}</Text>}
+      {saveError && <Text color={PALETTE.error}>{'⚠ ' + saveError}</Text>}
 
       {!dialogOpen && (
         <StatusBar
@@ -648,17 +637,17 @@ function FinalizedScreen({
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1} gap={1}>
-      <Text bold color="green">
+      <Text bold color={PALETTE.success}>
         ✓ Finalized
       </Text>
       <Box flexDirection="column">
         <Box gap={1}>
-          <Text color="green">✓</Text>
+          <Text color={PALETTE.success}>✓</Text>
           <Text>{result.accepted} accepted</Text>
         </Box>
         {result.rejected > 0 && (
           <Box gap={1}>
-            <Text color="red">✗</Text>
+            <Text color={PALETTE.error}>✗</Text>
             <Text>{result.rejected} rejected</Text>
           </Box>
         )}

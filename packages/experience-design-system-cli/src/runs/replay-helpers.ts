@@ -205,6 +205,7 @@ export async function modifyRun(opts: ModifyRunOptions): Promise<void> {
     savePath: run.savePath,
     entryStep: 'final-review',
     saveMode,
+    ...(run.compositionMode ? { compositionMode: run.compositionMode } : {}),
     ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
     ...(mergedSpaceId ? { initialSpaceId: mergedSpaceId } : {}),
     ...(mergedEnvironmentId ? { initialEnvironmentId: mergedEnvironmentId } : {}),
