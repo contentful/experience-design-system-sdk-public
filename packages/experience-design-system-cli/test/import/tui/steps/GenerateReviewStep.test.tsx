@@ -1737,7 +1737,7 @@ describe('GenerateReviewStep — composite-components grouped sidebar (subtask C
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    // eslint-disable-next-line no-control-regex
+
     const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
     expect(frame).toMatch(/\[Space\][^\n]*expand\/collapse group/);
     expect(frame).toMatch(/\[E\/C\][^\n]*expand\/collapse/);
@@ -2072,7 +2072,7 @@ describe('GenerateReviewStep — search parity (T7b: legend, dedupe, enter-clear
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    // eslint-disable-next-line no-control-regex
+
     const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
     expect(frame).toMatch(/\[\/\][^\n]*search/);
   });
@@ -2557,7 +2557,6 @@ describe('computeCycleAutoRejectTargets — pure helper', () => {
   });
 });
 
-
 describe('GenerateReviewStep — ADR-0010 scenarios', () => {
   beforeEach(() => {
     hookReturnOverride = null;
@@ -2740,7 +2739,9 @@ describe('GenerateReviewStep — ADR-0010 scenarios', () => {
       expect(cycleMembersLine).not.toMatch(/(^|[^A-Za-z])C([^A-Za-z]|$)/);
       expect(ancestorsLine).not.toMatch(/(^|[^A-Za-z])C([^A-Za-z]|$)/);
       const cSidebarLine =
-        frame.split('\n').find((l) => /(^|[^A-Za-z])C([^A-Za-z]|$)/.test(l) && (l.includes('[ ]') || l.includes('[✗]'))) ?? '';
+        frame
+          .split('\n')
+          .find((l) => /(^|[^A-Za-z])C([^A-Za-z]|$)/.test(l) && (l.includes('[ ]') || l.includes('[✗]'))) ?? '';
       expect(cSidebarLine).toContain('[ ]');
       expect(cSidebarLine).not.toContain('[✗]');
     });
@@ -2779,12 +2780,7 @@ describe('GenerateReviewStep — lineage panel (T6)', () => {
     ]);
     vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
     const utils = render(
-      <GenerateReviewStep
-        extractSessionId="sess-1"
-        onFinalize={vi.fn()}
-        onQuit={vi.fn()}
-        livePreview={false}
-      />,
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
     return utils;
@@ -2872,12 +2868,7 @@ describe('GenerateReviewStep — lineage panel (T6)', () => {
       ]);
       vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
       const utils = render(
-        <GenerateReviewStep
-          extractSessionId="sess-1"
-          onFinalize={vi.fn()}
-          onQuit={vi.fn()}
-          livePreview={false}
-        />,
+        <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
       );
       await tick();
       return utils;
@@ -2934,12 +2925,7 @@ describe('GenerateReviewStep — view toggle (T8)', () => {
     ]);
     vi.mocked(dbMod.loadSlotCycles).mockReturnValueOnce([]);
     const utils = render(
-      <GenerateReviewStep
-        extractSessionId="sess-1"
-        onFinalize={vi.fn()}
-        onQuit={vi.fn()}
-        livePreview={false}
-      />,
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
     return utils;
@@ -3399,8 +3385,14 @@ describe('GenerateReviewStep — bottom-of-step banners (T2)', () => {
   it('search input renders BELOW the sidebar+detail row', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'Alpha', entry: { $type: 'component', $properties: { a: { $type: 'string', $category: 'content' } } } as Entry },
-      { key: 'Beta', entry: { $type: 'component', $properties: { b: { $type: 'string', $category: 'content' } } } as Entry },
+      {
+        key: 'Alpha',
+        entry: { $type: 'component', $properties: { a: { $type: 'string', $category: 'content' } } } as Entry,
+      },
+      {
+        key: 'Beta',
+        entry: { $type: 'component', $properties: { b: { $type: 'string', $category: 'content' } } } as Entry,
+      },
     ]);
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
@@ -3594,7 +3586,7 @@ describe('GenerateReviewStep — [i] jump-and-filter (T5b)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    // eslint-disable-next-line no-control-regex
+
     const frame = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').replace(/\s+/g, ' ');
     expect(frame).toMatch(/\[i\][^\n]*focus lineage/);
     expect(frame).toMatch(/\[p\][^\n]*rationale/);
@@ -3896,10 +3888,9 @@ describe('BD3 — formatBreakingChange (pure formatter)', () => {
   });
 
   it('property branch enriched with fullProperties names id, category, and reason', () => {
-    const s = formatBreakingChange(
-      { propertyId: 'colorScheme', reason: 'removed' },
-      { fullProperties: { colorScheme: { type: 'enum', category: 'design', required: true } } } as never,
-    );
+    const s = formatBreakingChange({ propertyId: 'colorScheme', reason: 'removed' }, {
+      fullProperties: { colorScheme: { type: 'enum', category: 'design', required: true } },
+    } as never);
     expect(s).toContain('colorScheme');
     expect(s).toContain('design');
     expect(s).toContain('removed');
@@ -4092,7 +4083,10 @@ describe('GenerateReviewStep — category filters (L8)', () => {
             current: { id: 'a', name: 'Alpha', contentProperties: [], designProperties: [], slots: [] },
             proposed: { $type: 'component', $properties: {} },
             hasPendingDraftChanges: false,
-            changeClassification: { classification: 'breaking', breakingChanges: [{ propertyId: 'x', reason: 'removed' }] },
+            changeClassification: {
+              classification: 'breaking',
+              breakingChanges: [{ propertyId: 'x', reason: 'removed' }],
+            },
           },
         ],
         removed: [],
@@ -4165,9 +4159,7 @@ describe('GenerateReviewStep — category filters (L8)', () => {
 
   it('L11: help panel does not list a Deleted filter entry', async () => {
     const dbMod = await import('../../../../src/session/db.js');
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'Alpha', entry: leaf('Alpha') },
-    ]);
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Alpha', entry: leaf('Alpha') }]);
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
@@ -4205,9 +4197,7 @@ describe('GenerateReviewStep — category filters (L8)', () => {
 
   it('L11: GR bottom legend advertises the full keyset (accept/reject/panels/search/history)', async () => {
     const dbMod = await import('../../../../src/session/db.js');
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'Alpha', entry: leaf('Alpha') },
-    ]);
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Alpha', entry: leaf('Alpha') }]);
     const { lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
@@ -4223,9 +4213,7 @@ describe('GenerateReviewStep — category filters (L8)', () => {
 
   it('L11: GR help panel lists P (not I) for component rationale', async () => {
     const dbMod = await import('../../../../src/session/db.js');
-    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([
-      { key: 'Alpha', entry: leaf('Alpha') },
-    ]);
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Alpha', entry: leaf('Alpha') }]);
     const { lastFrame, stdin } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );

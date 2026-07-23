@@ -1,10 +1,7 @@
 import { render } from 'ink-testing-library';
 import { describe, it, expect } from 'vitest';
 import { LineagePanel } from '../../../../../src/analyze/select/tui/components/LineagePanel.js';
-import type {
-  LineageEntry,
-  LineageJumpable,
-} from '../../../../../src/import/tui/hooks/useLineage.js';
+import type { LineageEntry, LineageJumpable } from '../../../../../src/import/tui/hooks/useLineage.js';
 
 function buildEntries(descendantCount: number): {
   entries: LineageEntry[];
@@ -64,13 +61,7 @@ describe('LineagePanel windowing', () => {
     const width = 34;
     const out =
       render(
-        <LineagePanel
-          focusedComponentKey="InnerA"
-          entries={entries}
-          cursor={0}
-          jumpables={jumpables}
-          width={width}
-        />,
+        <LineagePanel focusedComponentKey="InnerA" entries={entries} cursor={0} jumpables={jumpables} width={width} />,
       ).lastFrame() ?? '';
     const lines = strip(out).split('\n');
     const border = lines.find((l) => l.includes('┌'));
@@ -95,12 +86,7 @@ describe('LineagePanel windowing', () => {
     const small = buildEntries(3);
     const smallOut =
       render(
-        <LineagePanel
-          focusedComponentKey="InnerA"
-          entries={small.entries}
-          cursor={0}
-          jumpables={small.jumpables}
-        />,
+        <LineagePanel focusedComponentKey="InnerA" entries={small.entries} cursor={0} jumpables={small.jumpables} />,
       ).lastFrame() ?? '';
     expect(countEntryLines(smallOut)).toBe(3);
     expect(smallOut).not.toMatch(/more/);

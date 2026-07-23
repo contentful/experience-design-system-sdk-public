@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildFlatDimPredicate,
-  computeFilterKeys,
-  intersectFilterKeys,
-} from '../../../src/import/tui/step-filters.js';
+import { buildFlatDimPredicate, computeFilterKeys, intersectFilterKeys } from '../../../src/import/tui/step-filters.js';
 
 describe('computeFilterKeys', () => {
   const data = {

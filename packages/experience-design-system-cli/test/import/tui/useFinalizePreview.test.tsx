@@ -13,7 +13,12 @@ vi.mock('../../../src/import/tui/runLivePreview.js', async () => {
 });
 
 const previewWithRemoved = (names: string[]): ServerPreviewResponse => ({
-  components: { new: [], changed: [], removed: names.map((n, i) => ({ id: `id-${i}`, name: n })), unchanged: [] },
+  components: {
+    new: [],
+    changed: [],
+    removed: names.map((n, i) => ({ id: `id-${i}`, name: n, contentProperties: [], designProperties: [], slots: [] })),
+    unchanged: [],
+  },
   tokens: { new: [], changed: [], removed: [], unchanged: [] },
   taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
 });
@@ -24,12 +29,7 @@ type HarnessProps = {
   open: boolean;
   cmaToken?: string;
   acceptedKeys?: Set<string>;
-  expose?: (api: {
-    status: string;
-    removedCount: number;
-    scrollOffset: number;
-    scrollBy: (d: number) => void;
-  }) => void;
+  expose?: (api: { status: string; removedCount: number; scrollOffset: number; scrollBy: (d: number) => void }) => void;
 };
 
 function Harness(props: HarnessProps): React.ReactElement {

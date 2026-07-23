@@ -1787,7 +1787,6 @@ describe('FieldEditor - legend documents i and I keys', () => {
   });
 });
 
-
 describe('FieldEditor — INTEG-4401: computeAllowedComponentCandidates (unit)', () => {
   it('excludes candidates whose addition would create a new cycle (Card.header ← X, X.body ← Card ⇒ Card→X)', () => {
     const graph = [
@@ -2051,7 +2050,6 @@ describe('FieldEditor — INTEG-4401: picker render + input (render)', () => {
   });
 });
 
-
 describe('FieldEditor — INTEG-4401: computeAllowedComponentReplacementCandidates (unit)', () => {
   it('excludes self-name and other existing entries, keeps the entry at replaceIndex', () => {
     const graph = [
@@ -2239,14 +2237,7 @@ describe('FieldEditor — INTEG-4401: cycle existing $allowedComponents entries 
   it('regression: ← / → is a no-op when projectSlotGraph is omitted (free-text-only)', async () => {
     const onChange = vi.fn();
     const { stdin } = render(
-      <FieldEditor
-        value={CARD}
-        width={80}
-        height={25}
-        onChange={onChange}
-        onSave={vi.fn()}
-        onDiscard={vi.fn()}
-      />,
+      <FieldEditor value={CARD} width={80} height={25} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
     await navigateToAllowedComponentsRow(stdin);
     onChange.mockClear();

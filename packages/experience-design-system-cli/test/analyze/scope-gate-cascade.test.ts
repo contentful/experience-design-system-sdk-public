@@ -70,26 +70,13 @@ describe('computeCycleAwareAcceptCascade', () => {
       comp('Leaf2'),
     ];
     const units = unitsFor(graph);
-    expect([...computeCycleAwareAcceptCascade('A', graph, units)].sort()).toEqual([
-      'A',
-      'B',
-      'Leaf1',
-      'Leaf2',
-    ]);
+    expect([...computeCycleAwareAcceptCascade('A', graph, units)].sort()).toEqual(['A', 'B', 'Leaf1', 'Leaf2']);
   });
 
   it('accepts ancestor + entire cycle when accepting an ancestor that slots a cycle member', () => {
-    const graph = [
-      comp('Wrapper', [['s', ['A']]]),
-      comp('A', [['s', ['B']]]),
-      comp('B', [['s', ['A']]]),
-    ];
+    const graph = [comp('Wrapper', [['s', ['A']]]), comp('A', [['s', ['B']]]), comp('B', [['s', ['A']]])];
     const units = unitsFor(graph);
-    expect([...computeCycleAwareAcceptCascade('Wrapper', graph, units)].sort()).toEqual([
-      'A',
-      'B',
-      'Wrapper',
-    ]);
+    expect([...computeCycleAwareAcceptCascade('Wrapper', graph, units)].sort()).toEqual(['A', 'B', 'Wrapper']);
   });
 
   it('traverses through nested composite → shared-interior → cycle', () => {
@@ -119,22 +106,14 @@ describe('computeCycleAwareAcceptCascade', () => {
 
 describe('computeCycleAwareRejectCascade', () => {
   it('rejects every member of the cycle + ancestors referencing any member', () => {
-    const graph = [
-      comp('Wrapper', [['s', ['A']]]),
-      comp('A', [['s', ['B']]]),
-      comp('B', [['s', ['A']]]),
-    ];
+    const graph = [comp('Wrapper', [['s', ['A']]]), comp('A', [['s', ['B']]]), comp('B', [['s', ['A']]])];
     const units = unitsFor(graph);
     const { toReject } = computeCycleAwareRejectCascade('A', graph, units);
     expect([...toReject].sort()).toEqual(['A', 'B', 'Wrapper']);
   });
 
   it('rejects non-cycle ancestor alone; leaves cycle members untouched by reject', () => {
-    const graph = [
-      comp('Wrapper', [['s', ['A']]]),
-      comp('A', [['s', ['B']]]),
-      comp('B', [['s', ['A']]]),
-    ];
+    const graph = [comp('Wrapper', [['s', ['A']]]), comp('A', [['s', ['B']]]), comp('B', [['s', ['A']]])];
     const units = unitsFor(graph);
     const { toReject, toDeselect } = computeCycleAwareRejectCascade('Wrapper', graph, units);
     expect(toReject).toEqual(new Set(['Wrapper']));
@@ -142,11 +121,7 @@ describe('computeCycleAwareRejectCascade', () => {
   });
 
   it('non-cycle descendants deselect to undecided when parent is rejected', () => {
-    const graph = [
-      comp('Root', [['s', ['Mid']]]),
-      comp('Mid', [['s', ['Leaf']]]),
-      comp('Leaf'),
-    ];
+    const graph = [comp('Root', [['s', ['Mid']]]), comp('Mid', [['s', ['Leaf']]]), comp('Leaf')];
     const units = unitsFor(graph);
     const { toReject, toDeselect } = computeCycleAwareRejectCascade('Mid', graph, units);
     expect([...toReject].sort()).toEqual(['Mid', 'Root']);
@@ -182,9 +157,6 @@ describe('collectReachableCycleUnits', () => {
       comp('Standalone'),
     ];
     const units = unitsFor(graph);
-    expect([...collectReachableCycleUnits(['Wrapper', 'Standalone'], graph, units)].sort()).toEqual([
-      'A',
-      'B',
-    ]);
+    expect([...collectReachableCycleUnits(['Wrapper', 'Standalone'], graph, units)].sort()).toEqual(['A', 'B']);
   });
 });

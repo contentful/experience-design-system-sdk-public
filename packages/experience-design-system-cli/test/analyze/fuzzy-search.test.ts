@@ -85,10 +85,7 @@ describe('fuzzyFilter', () => {
   });
 
   it('returns matching candidates sorted by descending score', () => {
-    expect(fuzzyFilter('card', ['Hero', 'Card', 'CardGroup', 'Icon'])).toEqual([
-      'Card',
-      'CardGroup',
-    ]);
+    expect(fuzzyFilter('card', ['Hero', 'Card', 'CardGroup', 'Icon'])).toEqual(['Card', 'CardGroup']);
   });
 
   it('excludes candidates that do not match', () => {

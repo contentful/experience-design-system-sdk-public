@@ -36,7 +36,7 @@ function makeHandlers() {
 describe('RunPicker', () => {
   it('renders all runs when there are 1-11 (no Show all button)', async () => {
     const ids = ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF', 'GGG', 'HHH', 'III', 'JJJ', 'KKK'];
-    const runs = ids.map(makeRun);
+    const runs = ids.map((id) => makeRun(id));
     const handlers = makeHandlers();
     const { lastFrame } = render(<RunPicker runs={runs} {...handlers} />);
     const frame = await waitForFrame(
@@ -51,7 +51,7 @@ describe('RunPicker', () => {
 
   it('renders top 10 + Show all when there are 12+', async () => {
     const ids = ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF', 'GGG', 'HHH', 'III', 'JJJ', 'KKK', 'LLL'];
-    const runs = ids.map(makeRun);
+    const runs = ids.map((id) => makeRun(id));
     const handlers = makeHandlers();
     const { lastFrame } = render(<RunPicker runs={runs} {...handlers} />);
     const frame = await waitForFrame(
@@ -67,7 +67,7 @@ describe('RunPicker', () => {
 
   it('expands to show all entries after pressing Enter on Show all', async () => {
     const ids = ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF', 'GGG', 'HHH', 'III', 'JJJ', 'KKK', 'LLL'];
-    const runs = ids.map(makeRun);
+    const runs = ids.map((id) => makeRun(id));
     const handlers = makeHandlers();
     const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
     await waitForFrame(

@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  computeRejectCascade,
-  computeAcceptCascade,
-} from '../../src/analyze/selection-cascade.js';
+import { computeRejectCascade, computeAcceptCascade } from '../../src/analyze/selection-cascade.js';
 import type { ComponentGraphNode } from '../../src/analyze/composite-closure.js';
 
 function comp(name: string, slots: Array<[string, string[]]> = []): ComponentGraphNode {
@@ -23,10 +20,7 @@ describe('computeRejectCascade', () => {
   });
 
   it('bubbles up a simple parent chain', () => {
-    const components = [
-      comp('Article', [['body', ['Card']]]),
-      comp('Card'),
-    ];
+    const components = [comp('Article', [['body', ['Card']]]), comp('Card')];
     expect([...computeRejectCascade('Card', components)].sort()).toEqual(['Article', 'Card']);
   });
 
@@ -39,41 +33,23 @@ describe('computeRejectCascade', () => {
       comp('Section', [['items', ['Card']]]),
       comp('Card'),
     ];
-    expect([...computeRejectCascade('Card', components)].sort()).toEqual([
-      'Card',
-      'Landing',
-      'Section',
-    ]);
+    expect([...computeRejectCascade('Card', components)].sort()).toEqual(['Card', 'Landing', 'Section']);
   });
 
   it('bubbles up to every parent for a shared dep', () => {
-    const components = [
-      comp('Article', [['body', ['Card']]]),
-      comp('Page', [['hero', ['Card']]]),
-      comp('Card'),
-    ];
-    expect([...computeRejectCascade('Card', components)].sort()).toEqual([
-      'Article',
-      'Card',
-      'Page',
-    ]);
+    const components = [comp('Article', [['body', ['Card']]]), comp('Page', [['hero', ['Card']]]), comp('Card')];
+    expect([...computeRejectCascade('Card', components)].sort()).toEqual(['Article', 'Card', 'Page']);
   });
 
   it('terminates on cycles', () => {
-    const components = [
-      comp('A', [['s', ['B']]]),
-      comp('B', [['s', ['A']]]),
-    ];
+    const components = [comp('A', [['s', ['B']]]), comp('B', [['s', ['A']]])];
     const result = computeRejectCascade('A', components);
     expect(result.has('A')).toBe(true);
     expect(result.has('B')).toBe(true);
   });
 
   it('returns just the root when a root is rejected', () => {
-    const components = [
-      comp('Article', [['body', ['Card']]]),
-      comp('Card'),
-    ];
+    const components = [comp('Article', [['body', ['Card']]]), comp('Card')];
     expect([...computeRejectCascade('Article', components)].sort()).toEqual(['Article']);
   });
 });
@@ -85,23 +61,12 @@ describe('computeAcceptCascade', () => {
   });
 
   it('cascades down the closure when accepting a root', () => {
-    const components = [
-      comp('Article', [['body', ['Card']]]),
-      comp('Card', [['icon', ['Icon']]]),
-      comp('Icon'),
-    ];
-    expect([...computeAcceptCascade('Article', components)].sort()).toEqual([
-      'Article',
-      'Card',
-      'Icon',
-    ]);
+    const components = [comp('Article', [['body', ['Card']]]), comp('Card', [['icon', ['Icon']]]), comp('Icon')];
+    expect([...computeAcceptCascade('Article', components)].sort()).toEqual(['Article', 'Card', 'Icon']);
   });
 
   it('does NOT bubble up when accepting a leaf', () => {
-    const components = [
-      comp('Article', [['body', ['Card']]]),
-      comp('Card'),
-    ];
+    const components = [comp('Article', [['body', ['Card']]]), comp('Card')];
     expect([...computeAcceptCascade('Card', components)].sort()).toEqual(['Card']);
   });
 });

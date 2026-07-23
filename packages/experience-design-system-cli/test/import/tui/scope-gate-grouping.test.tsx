@@ -151,10 +151,7 @@ describe('ScopeGateStep — closure-aware selection', () => {
     const onConfirm = vi.fn();
     const { stdin } = render(
       <ScopeGateStep
-        components={[
-          withSlots('Card', 'c0', [{ name: 'body', allowedComponents: ['Text'] }]),
-          withSlots('Text', 'c1'),
-        ]}
+        components={[withSlots('Card', 'c0', [{ name: 'body', allowedComponents: ['Text'] }]), withSlots('Text', 'c1')]}
         onConfirm={onConfirm}
         onQuit={() => {}}
       />,

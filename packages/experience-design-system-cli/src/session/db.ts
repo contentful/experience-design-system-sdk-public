@@ -580,7 +580,7 @@ export function applyToolCalls(
             componentId,
           );
         }
-          if (call.rationale) {
+        if (call.rationale) {
           if (call.rationale.description !== undefined) {
             db.prepare(
               'UPDATE raw_components SET component_description_rationale = ? WHERE session_id = ? AND component_id = ?',

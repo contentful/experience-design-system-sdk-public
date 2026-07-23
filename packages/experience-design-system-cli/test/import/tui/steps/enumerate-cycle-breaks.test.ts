@@ -9,9 +9,7 @@ const comp = (slots: Record<string, string[]>): CDFComponentEntry =>
   ({
     $type: 'component',
     $properties: {},
-    $slots: Object.fromEntries(
-      Object.entries(slots).map(([name, allowed]) => [name, { $allowedComponents: allowed }]),
-    ),
+    $slots: Object.fromEntries(Object.entries(slots).map(([name, allowed]) => [name, { $allowedComponents: allowed }])),
   }) as unknown as CDFComponentEntry;
 
 describe('enumerateCycleBreaks', () => {
@@ -73,9 +71,7 @@ describe('enumerateCycleBreaks', () => {
         { fromComponent: 'A', slotName: 's', toComponent: 'A' },
       ],
     };
-    expect(enumerateCycleBreaks(cycle, components)).toEqual([
-      { fromComponent: 'A', slotName: 's', toComponent: 'A' },
-    ]);
+    expect(enumerateCycleBreaks(cycle, components)).toEqual([{ fromComponent: 'A', slotName: 's', toComponent: 'A' }]);
   });
 });
 

@@ -1,12 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { render } from 'ink-testing-library';
 import React from 'react';
-import {
-  ScopeGateStep,
-  sideColumnLabelStyle,
-} from '../../../src/import/tui/steps/ScopeGateStep.js';
+import { ScopeGateStep, sideColumnLabelStyle } from '../../../src/import/tui/steps/ScopeGateStep.js';
 import { PALETTE } from '../../../src/analyze/select/tui/theme.js';
-
 
 function withStdoutColumns(cols: number): () => void {
   const probe = render(<Empty />);
@@ -114,9 +110,7 @@ describe('sideColumnLabelStyle', () => {
 
 describe('ScopeGateStep — counter strip', () => {
   it('always renders the counter strip with Accepted / Groups / Rejected / Undecided labels', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
-    );
+    const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).toContain('Accepted');
     expect(out).toContain('Groups');
@@ -125,9 +119,7 @@ describe('ScopeGateStep — counter strip', () => {
   });
 
   it('counter values reflect the undecided baseline at mount (nothing pre-accepted)', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
-    );
+    const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).toMatch(/Accepted[^0-9]*0[^0-9]*4/);
     expect(out).toMatch(/Groups[^0-9]*0/);
@@ -151,9 +143,7 @@ describe('ScopeGateStep — counter strip', () => {
 describe('ScopeGateStep — three-column layout (wide terminal)', () => {
   it('renders "Added components" and "Added groups" columns at ≥ 120 cols', () => {
     setWide(160);
-    const { lastFrame } = render(
-      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
-    );
+    const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).toContain('Added components');
     expect(out).toContain('Added groups');
@@ -161,9 +151,7 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
   });
 
   it('omits side columns at narrow terminals (< 120 cols)', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
-    );
+    const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).not.toContain('Added components');
     expect(out).not.toContain('Added groups');
@@ -194,9 +182,7 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
 
   it('legend advertises both Tab and Shift-Tab', () => {
     setWide(160);
-    const { lastFrame } = render(
-      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
-    );
+    const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).toContain('Tab/Shift-Tab');
   });
@@ -324,9 +310,7 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
 describe('ScopeGateStep — T10 side-column borders', () => {
   it('renders single-line borders around columns 2 and 3', () => {
     setWide(160);
-    const { lastFrame } = render(
-      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
-    );
+    const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     const corners = (out.match(/┌/g) ?? []).length;
     expect(corners).toBe(3);
@@ -335,9 +319,7 @@ describe('ScopeGateStep — T10 side-column borders', () => {
   });
 
   it('does NOT add extra borders at narrow terminals (single-column layout)', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
-    );
+    const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     const corners = (out.match(/┌/g) ?? []).length;
     expect(corners).toBe(1);
@@ -347,18 +329,14 @@ describe('ScopeGateStep — T10 side-column borders', () => {
 describe('ScopeGateStep — legend advertises Enter-jump', () => {
   it('shows [Enter] jump to main in three-column layout', () => {
     setWide(160);
-    const { lastFrame } = render(
-      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
-    );
+    const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).toContain('[Enter]');
     expect(out).toContain('jump to main');
   });
 
   it('omits [Enter] jump to main in narrow (single-column) layout', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
-    );
+    const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).not.toContain('jump to main');
   });
@@ -366,18 +344,14 @@ describe('ScopeGateStep — legend advertises Enter-jump', () => {
 
 describe('ScopeGateStep — [L] flat view toggle', () => {
   it('advertises [L] flat in the legend', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
-    );
+    const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).toContain('[L]');
     expect(out).toContain('flat');
   });
 
   it('grouped view (default) renders composite tree with ▾/├─/└─ glyphs', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
-    );
+    const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).toMatch(/▾[^\n]*Card/);
     expect(out).toMatch(/├─ /);
@@ -446,9 +420,7 @@ describe('ScopeGateStep — [L] flat view toggle', () => {
 
 describe('ScopeGateStep — Column 1 flat-tier removal', () => {
   it('does not render the "── All components ──" flat-tier header in Column 1', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />,
-    );
+    const { lastFrame } = render(<ScopeGateStep components={CARD_GRAPH} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).not.toContain('All components');
   });
@@ -513,12 +485,7 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
   it('surfaces the AI-recommended-exclusions hint + [x] goto-banner in wide layout', async () => {
     setWide(160);
     const { lastFrame, stdin } = render(
-      <ScopeGateStep
-        components={AI_FLAGGED_GRAPH}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
+      <ScopeGateStep components={AI_FLAGGED_GRAPH} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const before = lastFrame() ?? '';
     expect(before).toContain('AI recommended exclusions');
@@ -538,18 +505,11 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
   it('renders the per-row [×] AI badge in the main sidebar in wide layout', () => {
     setWide(160);
     const { lastFrame } = render(
-      <ScopeGateStep
-        components={AI_FLAGGED_GRAPH}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
+      <ScopeGateStep components={AI_FLAGGED_GRAPH} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const out = lastFrame() ?? '';
     expect(out).toContain('[×]');
-    const sidebarLine = out
-      .split('\n')
-      .find((line) => line.includes('DebugPanel') && line.includes('[×]'));
+    const sidebarLine = out.split('\n').find((line) => line.includes('DebugPanel') && line.includes('[×]'));
     expect(sidebarLine).toBeDefined();
     expect(out).toContain('AI recommends');
   });
@@ -557,12 +517,7 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
   it('renders [×] on AI-flagged accepted rows in the Added-components column', () => {
     setWide(160);
     const { lastFrame, stdin } = render(
-      <ScopeGateStep
-        components={AI_FLAGGED_GRAPH}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
+      <ScopeGateStep components={AI_FLAGGED_GRAPH} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     stdin.write('/');
     for (const ch of 'DebugPanel') stdin.write(ch);
@@ -596,22 +551,13 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
       { name: 'Text', componentId: 'c1' },
     ];
     const { lastFrame, stdin } = render(
-      <ScopeGateStep
-        components={graph}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
+      <ScopeGateStep components={graph} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     stdin.write('a');
     const out = lastFrame() ?? '';
     const lines = out.split('\n');
     const flaggedGroupLine = lines.find(
-      (line) =>
-        line.includes('Card (1 dep)') &&
-        line.includes('[×]') &&
-        !line.includes('▾') &&
-        !line.includes('▸'),
+      (line) => line.includes('Card (1 dep)') && line.includes('[×]') && !line.includes('▾') && !line.includes('▸'),
     );
     expect(flaggedGroupLine).toBeDefined();
   });
@@ -619,12 +565,7 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
   it('side columns keep column-alignment when a peer row is AI-flagged (4-space placeholder)', () => {
     setWide(160);
     const { lastFrame, stdin } = render(
-      <ScopeGateStep
-        components={AI_FLAGGED_GRAPH}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
+      <ScopeGateStep components={AI_FLAGGED_GRAPH} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     stdin.write('A');
     stdin.write('/');

@@ -35,15 +35,19 @@ describe('import flag inventory completeness', () => {
     const missingFromInventory = parsedFlags.filter((f) => !inventoryFlags.includes(f));
     const extraInInventory = inventoryFlags.filter((f) => !parsedFlags.includes(f));
 
-    expect(missingFromInventory, `flags in command.ts but missing from flags.ts inventory: ${missingFromInventory.join(', ')}`).toEqual([]);
-    expect(extraInInventory, `flags in flags.ts inventory but not found in command.ts: ${extraInInventory.join(', ')}`).toEqual([]);
+    expect(
+      missingFromInventory,
+      `flags in command.ts but missing from flags.ts inventory: ${missingFromInventory.join(', ')}`,
+    ).toEqual([]);
+    expect(
+      extraInInventory,
+      `flags in flags.ts inventory but not found in command.ts: ${extraInInventory.join(', ')}`,
+    ).toEqual([]);
     expect(inventoryFlags).toEqual(parsedFlags);
   });
 
   it('every value flag defines a usable sampleValue', () => {
-    const valueFlagsWithoutSample = IMPORT_FLAGS.filter((f) => f.kind === 'value' && !f.sampleValue).map(
-      (f) => f.flag,
-    );
+    const valueFlagsWithoutSample = IMPORT_FLAGS.filter((f) => f.kind === 'value' && !f.sampleValue).map((f) => f.flag);
     expect(valueFlagsWithoutSample).toEqual([]);
   });
 

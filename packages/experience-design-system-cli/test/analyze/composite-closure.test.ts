@@ -138,11 +138,7 @@ describe('computeClosure', () => {
   });
 
   it('flags cycle even when cycle is downstream of the root', () => {
-    const components = [
-      comp('A', [['s', ['B']]]),
-      comp('B', [['s', ['C']]]),
-      comp('C', [['s', ['B']]]),
-    ];
+    const components = [comp('A', [['s', ['B']]]), comp('B', [['s', ['C']]]), comp('C', [['s', ['B']]])];
     const closure = computeClosure('A', components);
     expect(closure.containsCycle).toBe(true);
   });
@@ -195,20 +191,31 @@ describe('computeAllClosures', () => {
     const components = [comp('A', [['s', ['B']]]), comp('B'), comp('C')];
     const all = computeAllClosures(components);
     expect([...all.keys()].sort()).toEqual(['A', 'C']);
-    expect(all.get('A')!.nodes.map((n) => n.name).sort()).toEqual(['A', 'B']);
+    expect(
+      all
+        .get('A')!
+        .nodes.map((n) => n.name)
+        .sort(),
+    ).toEqual(['A', 'B']);
     expect(all.get('C')!.nodes.map((n) => n.name)).toEqual(['C']);
   });
 
   it('includes shared deps in every root closure that owns them', () => {
-    const components = [
-      comp('R1', [['s', ['Shared']]]),
-      comp('R2', [['s', ['Shared']]]),
-      comp('Shared'),
-    ];
+    const components = [comp('R1', [['s', ['Shared']]]), comp('R2', [['s', ['Shared']]]), comp('Shared')];
     const all = computeAllClosures(components);
     expect([...all.keys()].sort()).toEqual(['R1', 'R2']);
-    expect(all.get('R1')!.nodes.map((n) => n.name).sort()).toEqual(['R1', 'Shared']);
-    expect(all.get('R2')!.nodes.map((n) => n.name).sort()).toEqual(['R2', 'Shared']);
+    expect(
+      all
+        .get('R1')!
+        .nodes.map((n) => n.name)
+        .sort(),
+    ).toEqual(['R1', 'Shared']);
+    expect(
+      all
+        .get('R2')!
+        .nodes.map((n) => n.name)
+        .sort(),
+    ).toEqual(['R2', 'Shared']);
   });
 
   it('respects the selected filter for root discovery', () => {
@@ -253,11 +260,7 @@ describe('findSharedDeps', () => {
   });
 
   it('returns shared deps with sorted root names', () => {
-    const components = [
-      comp('R2', [['s', ['Shared']]]),
-      comp('R1', [['s', ['Shared']]]),
-      comp('Shared'),
-    ];
+    const components = [comp('R2', [['s', ['Shared']]]), comp('R1', [['s', ['Shared']]]), comp('Shared')];
     const all = computeAllClosures(components);
     const shared = findSharedDeps(all);
     expect([...shared.keys()]).toEqual(['Shared']);
@@ -265,11 +268,7 @@ describe('findSharedDeps', () => {
   });
 
   it('does not include a dep that only appears under one root', () => {
-    const components = [
-      comp('R1', [['s', ['OnlyMine']]]),
-      comp('OnlyMine'),
-      comp('R2'),
-    ];
+    const components = [comp('R1', [['s', ['OnlyMine']]]), comp('OnlyMine'), comp('R2')];
     const all = computeAllClosures(components);
     expect(findSharedDeps(all).has('OnlyMine')).toBe(false);
   });

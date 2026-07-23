@@ -15,7 +15,7 @@ function mountProbe(opts: UseOverlayPanelOptions): { current: UseOverlayPanelRes
     return React.createElement(Text, null, '');
   }
   render(React.createElement(Probe));
-  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+
   return ref as { current: UseOverlayPanelResult };
 }
 

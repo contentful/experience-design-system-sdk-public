@@ -2,10 +2,7 @@ import React from 'react';
 import { render } from 'ink-testing-library';
 import { describe, it, expect } from 'vitest';
 import { Text } from 'ink';
-import {
-  useLineage,
-  type UseLineageResult,
-} from '../../../../src/import/tui/hooks/useLineage.js';
+import { useLineage, type UseLineageResult } from '../../../../src/import/tui/hooks/useLineage.js';
 import type { ComponentGraphNode } from '../../../../src/analyze/composite-closure.js';
 
 function makeGraph(): ComponentGraphNode[] {

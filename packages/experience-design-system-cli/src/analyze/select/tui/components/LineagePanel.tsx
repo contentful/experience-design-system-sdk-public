@@ -1,10 +1,7 @@
 import React from 'react';
 import { PALETTE } from '../theme.js';
 import { Text } from 'ink';
-import type {
-  LineageEntry,
-  LineageJumpable,
-} from '../../../../import/tui/hooks/useLineage.js';
+import type { LineageEntry, LineageJumpable } from '../../../../import/tui/hooks/useLineage.js';
 import { GotoBanner, type GotoRow } from './GotoBanner.js';
 
 export interface LineagePanelProps {

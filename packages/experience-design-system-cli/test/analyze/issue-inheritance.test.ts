@@ -1,13 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-  computeRenderStatuses,
-  pickDrillTarget,
-} from '../../src/analyze/issue-inheritance.js';
-import {
-  computeClosure,
-  type ComponentGraphNode,
-  type NodeStatus,
-} from '../../src/analyze/composite-closure.js';
+import { computeRenderStatuses, pickDrillTarget } from '../../src/analyze/issue-inheritance.js';
+import { computeClosure, type ComponentGraphNode, type NodeStatus } from '../../src/analyze/composite-closure.js';
 
 function comp(name: string, slots: Array<[string, string[]]> = []): ComponentGraphNode {
   return {

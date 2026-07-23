@@ -2,10 +2,7 @@ import React from 'react';
 import { render } from 'ink-testing-library';
 import { describe, it, expect } from 'vitest';
 import { Text } from 'ink';
-import {
-  useLineage,
-  type UseLineageResult,
-} from '../../../../src/import/tui/hooks/useLineage.js';
+import { useLineage, type UseLineageResult } from '../../../../src/import/tui/hooks/useLineage.js';
 import type { ComponentGraphNode } from '../../../../src/analyze/composite-closure.js';
 
 // Ink-based renderHook shim: mount a probe component that surfaces the hook
@@ -17,7 +14,7 @@ function useHookProbe<T>(hook: () => T): T {
     return React.createElement(Text, null, '');
   }
   render(React.createElement(Probe));
-  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+
   return captured.current!;
 }
 

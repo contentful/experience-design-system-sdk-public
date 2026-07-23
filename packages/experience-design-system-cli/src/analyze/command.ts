@@ -484,7 +484,9 @@ export function registerAnalyzeCommand(program: Command): void {
               agent: resolverAgent,
               kind: 'parser',
             });
-            const cachedSource = opts.compositionRefresh ? null : lookupCompositionCache(db, parserCacheKey, cacheVersion);
+            const cachedSource = opts.compositionRefresh
+              ? null
+              : lookupCompositionCache(db, parserCacheKey, cacheVersion);
             if (cachedSource !== null) {
               emitCompositionProgress('cache-hit');
               const ran = await runParserInSandbox(cachedSource, {

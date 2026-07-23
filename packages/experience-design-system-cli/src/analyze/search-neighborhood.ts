@@ -1,9 +1,6 @@
 import type { ComponentGraphNode } from './composite-closure.js';
 
-export function computeDirectNeighborhood(
-  matches: Iterable<string>,
-  graph: ComponentGraphNode[],
-): Set<string> {
+export function computeDirectNeighborhood(matches: Iterable<string>, graph: ComponentGraphNode[]): Set<string> {
   const matchSet = new Set(matches);
   const out = new Set<string>(matchSet);
   if (matchSet.size === 0) return out;
@@ -25,10 +22,7 @@ export function computeDirectNeighborhood(
   return out;
 }
 
-export function findAllAncestors(
-  target: string,
-  graph: ComponentGraphNode[],
-): Set<string> {
+export function findAllAncestors(target: string, graph: ComponentGraphNode[]): Set<string> {
   const out = new Set<string>([target]);
   const parentsOf = new Map<string, string[]>();
   for (const node of graph) {

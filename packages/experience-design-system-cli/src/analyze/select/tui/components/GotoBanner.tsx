@@ -44,11 +44,7 @@ function windowStart(rowCount: number, highlightIndex: number, maxRows: number):
   return start;
 }
 
-function defaultRenderRow(
-  row: GotoRow,
-  index: number,
-  isCursor: boolean,
-): React.ReactElement {
+function defaultRenderRow(row: GotoRow, index: number, isCursor: boolean): React.ReactElement {
   return (
     <Text key={index}>
       {isCursor ? (

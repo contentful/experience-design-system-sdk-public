@@ -1,6 +1,11 @@
 import { render } from 'ink-testing-library';
 import { describe, it, expect, vi } from 'vitest';
+import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
 import { FinalizeDialog } from '../../../../src/analyze/select/tui/components/FinalizeDialog.js';
+
+function summary(id: string, name: string): ComponentTypeSummary {
+  return { id, name, contentProperties: [], designProperties: [], slots: [] };
+}
 
 describe('FinalizeDialog', () => {
   it('shows unresolved warning when needsReview > 0', () => {
@@ -66,10 +71,7 @@ describe('FinalizeDialog', () => {
         accepted={3}
         rejected={0}
         needsReview={0}
-        removed={[
-          { id: 'card-1', name: 'Card' },
-          { id: 'hero-1', name: 'Hero' },
-        ]}
+        removed={[summary('card-1', 'Card'), summary('hero-1', 'Hero')]}
         onConfirm={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -95,7 +97,7 @@ describe('FinalizeDialog', () => {
         rejected={0}
         needsReview={0}
         previewStatus="running"
-        removed={[{ id: 'c1', name: 'Card' }]}
+        removed={[summary('c1', 'Card')]}
         onConfirm={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -106,7 +108,7 @@ describe('FinalizeDialog', () => {
   });
 
   it('windows a long removed list and advertises [j/k] scroll', () => {
-    const removed = Array.from({ length: 10 }, (_, i) => ({ id: `c${i}`, name: `Comp${i}` }));
+    const removed = Array.from({ length: 10 }, (_, i) => summary(`c${i}`, `Comp${i}`));
     const { lastFrame } = render(
       <FinalizeDialog
         accepted={1}
@@ -129,7 +131,7 @@ describe('FinalizeDialog', () => {
   });
 
   it('honors removedScrollOffset to reveal later removed entries', () => {
-    const removed = Array.from({ length: 10 }, (_, i) => ({ id: `c${i}`, name: `Comp${i}` }));
+    const removed = Array.from({ length: 10 }, (_, i) => summary(`c${i}`, `Comp${i}`));
     const { lastFrame } = render(
       <FinalizeDialog
         accepted={1}

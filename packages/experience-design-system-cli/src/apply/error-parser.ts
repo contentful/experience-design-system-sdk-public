@@ -1,4 +1,3 @@
-
 export interface ParsedEdsiError {
   /** Server-side error code, if we could extract one. */
   code: string | null;

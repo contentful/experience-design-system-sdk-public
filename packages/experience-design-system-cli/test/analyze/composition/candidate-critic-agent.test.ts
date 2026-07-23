@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  buildDirCriticPrompt,
-  parseDirCriticReply,
-} from '../../../src/analyze/composition/candidate-critic-agent.js';
+import { buildDirCriticPrompt, parseDirCriticReply } from '../../../src/analyze/composition/candidate-critic-agent.js';
 
 describe('buildDirCriticPrompt', () => {
   it('lists the offered directories and asks for a JSON array reply', () => {

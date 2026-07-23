@@ -33,17 +33,11 @@ function cloneSnapshot(snap: HistorySnapshot): HistorySnapshot {
       status: c.status,
     })),
     autoRejected: [...snap.autoRejected],
-    undoSnapshot:
-      snap.undoSnapshot === null
-        ? null
-        : new Map(Array.from(snap.undoSnapshot.entries())),
+    undoSnapshot: snap.undoSnapshot === null ? null : new Map(Array.from(snap.undoSnapshot.entries())),
   };
 }
 
-export function createHistoryStack(
-  seed: HistorySnapshot,
-  maxDepth: number = DEFAULT_MAX_DEPTH,
-): HistoryStack {
+export function createHistoryStack(seed: HistorySnapshot, maxDepth: number = DEFAULT_MAX_DEPTH): HistoryStack {
   const cap = Math.max(1, maxDepth);
   let stack: HistorySnapshot[] = [cloneSnapshot(seed)];
   let cursor = 0;

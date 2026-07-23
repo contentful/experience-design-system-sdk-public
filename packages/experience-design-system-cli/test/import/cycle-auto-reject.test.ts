@@ -31,9 +31,7 @@ describe('computeCycleAutoRejectTargets', () => {
   });
 
   it('returns only the direct participant when it has no ancestors', () => {
-    const graph: ComponentGraphNode[] = [
-      { name: 'Solo', slots: [] },
-    ];
+    const graph: ComponentGraphNode[] = [{ name: 'Solo', slots: [] }];
     const result = computeCycleAutoRejectTargets([{ path: ['Solo', 'Solo'] }], graph);
     expect(result.has('Solo')).toBe(true);
     expect(result.size).toBe(1);

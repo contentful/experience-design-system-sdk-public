@@ -25,10 +25,7 @@ export interface UseLineageResult {
   jumpables: LineageJumpable[];
 }
 
-export function useLineage(
-  focusedKey: string | null,
-  graph: ComponentGraphNode[],
-): UseLineageResult {
+export function useLineage(focusedKey: string | null, graph: ComponentGraphNode[]): UseLineageResult {
   const graphKey = useMemo(() => JSON.stringify(graph), [graph]);
   const stableGraph = useMemo(() => graph, [graphKey]);
 

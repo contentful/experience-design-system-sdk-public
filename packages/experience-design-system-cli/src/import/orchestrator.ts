@@ -425,7 +425,9 @@ export async function runPipeline(
     if (acceptedCycles.length > 0) {
       const report = formatSlotCycleReport(acceptedCycles);
       process.stderr.write(report.join('\n') + '\n');
-      progressWriter('Slot cycle detected. The accepted components contain circular slot references — refusing to save or push.');
+      progressWriter(
+        'Slot cycle detected. The accepted components contain circular slot references — refusing to save or push.',
+      );
       for (const line of report) progressWriter(line);
       steps.push({ step: 'cycle gate', status: 'failed', error: report.join('\n') });
       db.close();
@@ -577,9 +579,7 @@ export async function runPipeline(
       if (opts.autoRejectCycles && extractSessionId) {
         const cycleNames = parseCycleComponentNames(report);
         if (cycleNames.length > 0) {
-          process.stderr.write(
-            `[cycle-retry] Slot cycle detected — excluding ${cycleNames.join(', ')} and retrying\n`,
-          );
+          process.stderr.write(`[cycle-retry] Slot cycle detected — excluding ${cycleNames.join(', ')} and retrying\n`);
           const rejectArgs = [
             'analyze',
             'select',
@@ -644,7 +644,9 @@ export async function runPipeline(
       if (isSlotCycleError(r)) {
         updateStep(db, pushStepId, 'failed', {}, r.stderr);
         progressWriter(`${pushLabel}✗  failed (${(durationMs / 1000).toFixed(1)}s)`);
-        progressWriter('Slot cycle detected. The manifest contains circular slot references that would block the push.');
+        progressWriter(
+          'Slot cycle detected. The manifest contains circular slot references that would block the push.',
+        );
         for (const line of report) progressWriter(line);
         steps.push(
           buildPushStepResult({

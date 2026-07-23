@@ -22,7 +22,7 @@ vi.mock('../../src/session/db.js', () => ({
   getOrCreateSession: vi.fn(() => ({ sessionId: 'test-session-id' })),
   createStep: vi.fn(() => 'test-step-id'),
   updateStep: vi.fn(),
-  findLatestSessionForCommand: (...args: unknown[]) => mockFindLatestSessionForCommand(...args),
+  findLatestSessionForCommand: (...args: unknown[]) => mockFindLatestSessionForCommand(...(args as [])),
   loadCDFComponents: (...args: unknown[]) => mockLoadCDFComponents(...(args as [])),
 }));
 
@@ -121,15 +121,15 @@ describe('runPipeline cycle error', () => {
 describe('parseCycleComponentNames', () => {
   it('parseCycleComponentNames extracts component names from Fix: lines', () => {
     const report = [
-      "Error: manifest:components/slot-cycles — 1 slot dependency cycle(s) detected.",
-      "Cycle 1: A → B → A",
+      'Error: manifest:components/slot-cycles — 1 slot dependency cycle(s) detected.',
+      'Cycle 1: A → B → A',
       "Fix: remove 'B' from A.$slots.children.$allowedComponents",
     ];
     expect(parseCycleComponentNames(report)).toEqual(['B']);
   });
 
   it('parseCycleComponentNames returns [] when no Fix lines present', () => {
-    expect(parseCycleComponentNames(["Error: some other message"])).toEqual([]);
+    expect(parseCycleComponentNames(['Error: some other message'])).toEqual([]);
   });
 });
 
@@ -149,7 +149,6 @@ describe('runPipeline auto-reject-cycles', () => {
       child.stdout = new EventEmitter();
       child.stderr = new EventEmitter();
 
-      const isAnalyzeSelect = args.includes('select') && args.includes('analyze');
       const isPushCall = args.includes('push');
       const isFirstPush = isPushCall && calls.filter((c) => c.includes('push')).length === 1;
 

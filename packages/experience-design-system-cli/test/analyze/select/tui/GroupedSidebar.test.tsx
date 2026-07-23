@@ -16,10 +16,8 @@ import { PALETTE } from '../../../../src/analyze/select/tui/theme.js';
 import type { NodeStatus } from '../../../../src/analyze/composite-closure.js';
 import { buildComponentGraph } from '../../../../src/analyze/slot-graph.js';
 
-const graphOf = (
-  items: GroupedSidebarItem[],
-  opts?: { stripRejectedEdges?: boolean },
-) => buildComponentGraph(items, { stripRejectedEdges: opts?.stripRejectedEdges ?? true });
+const graphOf = (items: GroupedSidebarItem[], opts?: { stripRejectedEdges?: boolean }) =>
+  buildComponentGraph(items, { stripRejectedEdges: opts?.stripRejectedEdges ?? true });
 
 function item(
   key: string,
@@ -33,12 +31,9 @@ function item(
     $type: 'component',
     $properties: Object.fromEntries(
       (opts.properties ?? ['x']).map((p) => [p, { $type: 'text', $category: 'content' }]),
-    ) as CDFComponentEntry['$properties'],
+    ) as unknown as CDFComponentEntry['$properties'],
     $slots: Object.fromEntries(
-      Object.entries(opts.slots ?? {}).map(([slotName, allowed]) => [
-        slotName,
-        { $allowedComponents: allowed },
-      ]),
+      Object.entries(opts.slots ?? {}).map(([slotName, allowed]) => [slotName, { $allowedComponents: allowed }]),
     ),
   };
   return {
@@ -171,11 +166,7 @@ describe('GroupedSidebar', () => {
 
   it('cycle participants render at TOP with ⚠ and an expand glyph', () => {
     const { lastFrame } = renderSidebar({
-      items: [
-        item('Card', { slots: { s: ['Media'] } }),
-        item('Media', { slots: { s: ['Card'] } }),
-        item('Widget'),
-      ],
+      items: [item('Card', { slots: { s: ['Media'] } }), item('Media', { slots: { s: ['Card'] } }), item('Widget')],
       cycleParticipants: new Set(['Card', 'Media']),
     });
     const frame = lastFrame() ?? '';
@@ -225,11 +216,7 @@ describe('GroupedSidebar', () => {
 
   it('shared dep renders under each root with a (shared) marker on 2nd+ occurrence', () => {
     const { lastFrame } = renderSidebar({
-      items: [
-        item('R1', { slots: { s: ['S'] } }),
-        item('R2', { slots: { s: ['S'] } }),
-        item('S'),
-      ],
+      items: [item('R1', { slots: { s: ['S'] } }), item('R2', { slots: { s: ['S'] } }), item('S')],
       expandedGroups: new Set(['R1', 'R2']),
     });
     const frame = lastFrame() ?? '';
@@ -241,10 +228,7 @@ describe('GroupedSidebar', () => {
 
   it('aggregate status: collapsed row shows ✗ when a dep is in error state', () => {
     const { lastFrame } = renderSidebar({
-      items: [
-        item('R1', { slots: { s: ['Bad'] } }),
-        item('Bad', { status: 'error' }),
-      ],
+      items: [item('R1', { slots: { s: ['Bad'] } }), item('Bad', { status: 'error' })],
     });
     const frame = lastFrame() ?? '';
     const r1Line = frame.split('\n').find((l) => l.includes('R1')) ?? '';
@@ -253,10 +237,7 @@ describe('GroupedSidebar', () => {
 
   it('aggregate status: worst-case is ⚠ when only warnings present', () => {
     const { lastFrame } = renderSidebar({
-      items: [
-        item('R1', { slots: { s: ['Warn'] } }),
-        item('Warn', { status: 'warning' }),
-      ],
+      items: [item('R1', { slots: { s: ['Warn'] } }), item('Warn', { status: 'warning' })],
     });
     const frame = lastFrame() ?? '';
     const r1Line = frame.split('\n').find((l) => l.includes('R1')) ?? '';
@@ -278,12 +259,7 @@ describe('GroupedSidebar', () => {
 
   it('showFlatTier: adds header + every non-empty non-cycle component once', () => {
     const { lastFrame } = renderSidebar({
-      items: [
-        item('R1', { slots: { s: ['S'] } }),
-        item('R2', { slots: { s: ['S'] } }),
-        item('S'),
-        item('Standalone'),
-      ],
+      items: [item('R1', { slots: { s: ['S'] } }), item('R2', { slots: { s: ['S'] } }), item('S'), item('Standalone')],
       expandedGroups: new Set(['R1', 'R2']),
       showFlatTier: true,
     });
@@ -336,12 +312,9 @@ describe('GroupedSidebar', () => {
     expect(cLine).toContain('[ ]');
   });
 
-  it('selectionStateByKey: group-root reflects the root\'s own selection state', () => {
+  it("selectionStateByKey: group-root reflects the root's own selection state", () => {
     const { lastFrame } = renderSidebar({
-      items: [
-        item('Card', { slots: { s: ['Heading'] } }),
-        item('Heading'),
-      ],
+      items: [item('Card', { slots: { s: ['Heading'] } }), item('Heading')],
       selectionStateByKey: new Map([
         ['Card', 'accepted'],
         ['Heading', 'rejected'],
@@ -355,11 +328,7 @@ describe('GroupedSidebar', () => {
 
   it('dimPredicate: applies to rows whose key matches; group-roots never dim', () => {
     const { lastFrame } = renderSidebar({
-      items: [
-        item('Card', { slots: { s: ['Heading'] } }),
-        item('Heading'),
-        item('Other'),
-      ],
+      items: [item('Card', { slots: { s: ['Heading'] } }), item('Heading'), item('Other')],
       expandedGroups: new Set(['Card']),
       dimPredicate: (k) => k === 'Card' || k === 'Heading',
     });
@@ -494,10 +463,7 @@ describe('GroupedSidebar', () => {
   describe('cycle rows carry user selection and cursor glyphs', () => {
     it('cycle row renders the user selection glyph when selectionStateByKey is provided', () => {
       const { lastFrame } = renderSidebar({
-        items: [
-          item('Card', { slots: { s: ['Media'] } }),
-          item('Media', { slots: { s: ['Card'] } }),
-        ],
+        items: [item('Card', { slots: { s: ['Media'] } }), item('Media', { slots: { s: ['Card'] } })],
         cycleParticipants: new Set(['Card', 'Media']),
         selectionStateByKey: new Map([
           ['Card', 'accepted'],
@@ -513,10 +479,7 @@ describe('GroupedSidebar', () => {
 
     it('cycle row renders the ▶ cursor glyph when selected + focused', () => {
       const { lastFrame } = renderSidebar({
-        items: [
-          item('Card', { slots: { s: ['Media'] } }),
-          item('Media', { slots: { s: ['Card'] } }),
-        ],
+        items: [item('Card', { slots: { s: ['Media'] } }), item('Media', { slots: { s: ['Card'] } })],
         cycleParticipants: new Set(['Card', 'Media']),
         selectedIdx: 0,
         focused: true,
@@ -638,9 +601,7 @@ describe('GroupedSidebar', () => {
         expandedGroups: new Set(),
         alwaysExpanded: true,
       });
-      const wrapper1ChildRows = rows.filter(
-        (r) => r.kind === 'group-child' && r.rootName === 'Wrapper1',
-      );
+      const wrapper1ChildRows = rows.filter((r) => r.kind === 'group-child' && r.rootName === 'Wrapper1');
       const sharedRow = wrapper1ChildRows.find((r) => r.label.includes('SharedInterior'));
       const innerARow = wrapper1ChildRows.find((r) => r.label.includes('InnerA'));
       expect(sharedRow).toBeDefined();
@@ -677,10 +638,7 @@ describe('GroupedSidebar', () => {
     });
 
     it('cycle-tier row expands into a mini hierarchy under alwaysExpanded (task 35)', () => {
-      const items = [
-        item('NodeA', { slots: { s: ['NodeB'] } }),
-        item('NodeB', { slots: { s: ['NodeA'] } }),
-      ];
+      const items = [item('NodeA', { slots: { s: ['NodeB'] } }), item('NodeB', { slots: { s: ['NodeA'] } })];
       const rows = buildVisibleRows({
         items,
         graph: graphOf(items),
@@ -693,12 +651,8 @@ describe('GroupedSidebar', () => {
       expect(cycleRows[0].label).toContain('▾');
       expect(cycleRows[0].label).toContain('⚠');
       expect(cycleRows[1].label).toContain('▾');
-      const nodeAChildren = rows.filter(
-        (r) => r.kind === 'group-child' && r.rootName === 'NodeA',
-      );
-      const nodeBChildren = rows.filter(
-        (r) => r.kind === 'group-child' && r.rootName === 'NodeB',
-      );
+      const nodeAChildren = rows.filter((r) => r.kind === 'group-child' && r.rootName === 'NodeA');
+      const nodeBChildren = rows.filter((r) => r.kind === 'group-child' && r.rootName === 'NodeB');
       expect(nodeAChildren.length).toBeGreaterThan(0);
       expect(nodeBChildren.length).toBeGreaterThan(0);
       expect(nodeAChildren[0].label).toContain('NodeB');
@@ -720,9 +674,7 @@ describe('GroupedSidebar', () => {
         expandedGroups: new Set(),
         alwaysExpanded: true,
       });
-      const panelChildren = rows.filter(
-        (r) => r.kind === 'group-child' && r.rootName === 'Panel',
-      );
+      const panelChildren = rows.filter((r) => r.kind === 'group-child' && r.rootName === 'Panel');
       const names = panelChildren.map((r) => {
         return r.label;
       });
@@ -735,10 +687,7 @@ describe('GroupedSidebar', () => {
     });
 
     it('cycle-tier rows are collapsed by default when alwaysExpanded is false', () => {
-      const items = [
-        item('NodeA', { slots: { s: ['NodeB'] } }),
-        item('NodeB', { slots: { s: ['NodeA'] } }),
-      ];
+      const items = [item('NodeA', { slots: { s: ['NodeB'] } }), item('NodeB', { slots: { s: ['NodeA'] } })];
       const collapsedRows = buildVisibleRows({
         items,
         graph: graphOf(items),
@@ -759,17 +708,12 @@ describe('GroupedSidebar', () => {
       const nodeBRow = partiallyExpanded.find((r) => r.kind === 'cycle' && r.rootName === 'NodeB');
       expect(nodeARow?.label).toContain('▾');
       expect(nodeBRow?.label).toContain('▸');
-      const nodeAChildren = partiallyExpanded.filter(
-        (r) => r.kind === 'group-child' && r.rootName === 'NodeA',
-      );
+      const nodeAChildren = partiallyExpanded.filter((r) => r.kind === 'group-child' && r.rootName === 'NodeA');
       expect(nodeAChildren.length).toBeGreaterThan(0);
     });
 
     it('cycle-participant is never promoted to a group-root', () => {
-      const items = [
-        item('InnerA', { slots: { s: ['InnerB'] } }),
-        item('InnerB', { slots: { s: ['InnerA'] } }),
-      ];
+      const items = [item('InnerA', { slots: { s: ['InnerB'] } }), item('InnerB', { slots: { s: ['InnerA'] } })];
       const rows = buildVisibleRows({
         items,
         graph: graphOf(items),
@@ -783,10 +727,7 @@ describe('GroupedSidebar', () => {
   });
 
   it('showFlatTier: flat rows are selectable via itemIdx', () => {
-    const items = [
-      item('Card', { slots: { s: ['Heading'] } }),
-      item('Heading'),
-    ];
+    const items = [item('Card', { slots: { s: ['Heading'] } }), item('Heading')];
     const order = visibleItemOrder({
       items,
       graph: graphOf(items),
@@ -835,10 +776,7 @@ describe('visibleItemOrder — navigation contract', () => {
   });
 
   it('flat tier rows are included in navigation order', () => {
-    const items: GroupedSidebarItem[] = [
-      item('Card', { slots: { header: ['Heading'] } }),
-      item('Heading'),
-    ];
+    const items: GroupedSidebarItem[] = [item('Card', { slots: { header: ['Heading'] } }), item('Heading')];
     const order = visibleItemOrder({
       items,
       graph: graphOf(items),
@@ -902,11 +840,7 @@ describe('visibleItemOrder — navigation contract', () => {
 
 describe('buildVisibleRows — flat view mode', () => {
   it('emits one flat row per component, alphabetical, no group nesting', () => {
-    const items = [
-      item('Card', { slots: { body: ['Text'] } }),
-      item('Text'),
-      item('Standalone'),
-    ];
+    const items = [item('Card', { slots: { body: ['Text'] } }), item('Text'), item('Standalone')];
     const rows = buildVisibleRows({
       items,
       graph: graphOf(items),
@@ -919,11 +853,7 @@ describe('buildVisibleRows — flat view mode', () => {
     expect(kinds.has('group-child')).toBe(false);
     expect(kinds.has('standalone')).toBe(false);
     expect(rows.length).toBe(3);
-    expect(rows.map((r) => r.label)).toEqual([
-      'Card (1 dep)',
-      'Standalone',
-      'Text',
-    ]);
+    expect(rows.map((r) => r.label)).toEqual(['Card (1 dep)', 'Standalone', 'Text']);
   });
 
   it('pins cycle participants to the top (alphabetical), then flat rows', () => {
@@ -967,10 +897,7 @@ describe('buildVisibleRows — flat view mode', () => {
 
 describe('buildVisibleRows — cycle member no longer in a cycle', () => {
   it('renders both InnerA and InnerB when InnerA has removed its cycle-forming slot', () => {
-    const items = [
-      item('InnerA', { slots: { s: [] } }),
-      item('InnerB', { slots: { s: ['InnerA'] } }),
-    ];
+    const items = [item('InnerA', { slots: { s: [] } }), item('InnerB', { slots: { s: ['InnerA'] } })];
     const rows = buildVisibleRows({
       items,
       graph: graphOf(items),
@@ -985,10 +912,7 @@ describe('buildVisibleRows — cycle member no longer in a cycle', () => {
   });
 
   it('renders both InnerA and InnerB when cycleParticipants set is STALE (still lists them)', () => {
-    const items = [
-      item('InnerA', { slots: { s: [] } }),
-      item('InnerB', { slots: { s: ['InnerA'] } }),
-    ];
+    const items = [item('InnerA', { slots: { s: [] } }), item('InnerB', { slots: { s: ['InnerA'] } })];
     const rows = buildVisibleRows({
       items,
       graph: graphOf(items),
@@ -1015,17 +939,11 @@ describe('buildVisibleRows — rejected ancestor must not bury its slot targets'
       expandedGroups: new Set(),
       alwaysExpanded: true,
     });
-    const topLevel = rows.filter((r) => r.indent === 0);
-    const topKeys = topLevel.map((r) => r.rootName ?? r.itemIdx).filter(Boolean);
     const innerARows = rows.filter(
-      (r) =>
-        (r.kind === 'standalone' || r.kind === 'group-root' || r.kind === 'flat') &&
-        r.label.includes('InnerA'),
+      (r) => (r.kind === 'standalone' || r.kind === 'group-root' || r.kind === 'flat') && r.label.includes('InnerA'),
     );
     expect(innerARows.length).toBeGreaterThan(0);
-    const innerBLabels = rows
-      .filter((r) => r.label.includes('InnerB'))
-      .map((r) => r.label);
+    const innerBLabels = rows.filter((r) => r.label.includes('InnerB')).map((r) => r.label);
     expect(innerBLabels.some((l) => l.includes('(cycle)'))).toBe(false);
   });
 
@@ -1043,17 +961,13 @@ describe('buildVisibleRows — rejected ancestor must not bury its slot targets'
     });
     const sharedTopLevel = rows.filter(
       (r) =>
-        (r.kind === 'standalone' || r.kind === 'group-root' || r.kind === 'flat') &&
-        r.label.includes('SharedInterior'),
+        (r.kind === 'standalone' || r.kind === 'group-root' || r.kind === 'flat') && r.label.includes('SharedInterior'),
     );
     expect(sharedTopLevel.length).toBeGreaterThan(0);
   });
 
   it('a LIVE composite still groups its live slot target (no over-flattening)', () => {
-    const items = [
-      item('Card', { slots: { body: ['Text'] }, status: 'ok' }),
-      item('Text', { status: 'ok' }),
-    ];
+    const items = [item('Card', { slots: { body: ['Text'] }, status: 'ok' }), item('Text', { status: 'ok' })];
     const rows = buildVisibleRows({
       items,
       graph: graphOf(items),
@@ -1061,17 +975,11 @@ describe('buildVisibleRows — rejected ancestor must not bury its slot targets'
       expandedGroups: new Set(),
       alwaysExpanded: true,
     });
-    const cardRoot = rows.find(
-      (r) => r.kind === 'group-root' && r.label.includes('Card'),
-    );
+    const cardRoot = rows.find((r) => r.kind === 'group-root' && r.label.includes('Card'));
     expect(cardRoot).toBeDefined();
-    const textAsChild = rows.find(
-      (r) => r.kind === 'group-child' && r.label.includes('Text'),
-    );
+    const textAsChild = rows.find((r) => r.kind === 'group-child' && r.label.includes('Text'));
     expect(textAsChild).toBeDefined();
-    const textAsStandalone = rows.find(
-      (r) => r.kind === 'standalone' && r.label.includes('Text'),
-    );
+    const textAsStandalone = rows.find((r) => r.kind === 'standalone' && r.label.includes('Text'));
     expect(textAsStandalone).toBeUndefined();
   });
 });
@@ -1134,11 +1042,7 @@ describe('ADR-0010 scenarios — buildVisibleRows layer', () => {
   });
 
   describe('Scenario B — P → C, C ↔ X (P not in cycle)', () => {
-    const scenarioB = (
-      statusP: NodeStatus,
-      statusC: NodeStatus,
-      statusX: NodeStatus,
-    ): GroupedSidebarItem[] => [
+    const scenarioB = (statusP: NodeStatus, statusC: NodeStatus, statusX: NodeStatus): GroupedSidebarItem[] => [
       item('P', { slots: { s: ['C'] }, status: statusP }),
       item('C', { slots: { s: ['X'] }, status: statusC }),
       item('X', { slots: { s: ['C'] }, status: statusX }),
@@ -1182,11 +1086,7 @@ describe('ADR-0010 scenarios — buildVisibleRows layer', () => {
   });
 
   describe('Scenario C — P ↔ X cycle, P also slots C (C is a leaf, not in any cycle)', () => {
-    const scenarioC = (
-      statusP: NodeStatus,
-      statusX: NodeStatus,
-      statusC: NodeStatus,
-    ): GroupedSidebarItem[] => [
+    const scenarioC = (statusP: NodeStatus, statusX: NodeStatus, statusC: NodeStatus): GroupedSidebarItem[] => [
       item('P', { slots: { s: ['X', 'C'] }, status: statusP }),
       item('X', { slots: { s: ['P'] }, status: statusX }),
       item('C', { status: statusC }),
@@ -1326,9 +1226,7 @@ describe('GroupedSidebar — filterVisibleKeys', () => {
       viewMode: 'grouped',
       graph: graphOf(items),
     });
-    const keys = new Set(
-      rows.filter((r) => r.itemIdx >= 0).map((r) => items[r.itemIdx].key),
-    );
+    const keys = new Set(rows.filter((r) => r.itemIdx >= 0).map((r) => items[r.itemIdx].key));
     expect(keys.has('A')).toBe(true);
     expect(keys.has('B')).toBe(true);
     expect(keys.has('C')).toBe(true);
@@ -1337,11 +1235,7 @@ describe('GroupedSidebar — filterVisibleKeys', () => {
 
   it('cycle-tier row respects filter — cycle members hidden unless in set', () => {
     // X ↔ Y form a cycle; Z is unrelated.
-    const items = [
-      item('X', { slots: { s: ['Y'] } }),
-      item('Y', { slots: { s: ['X'] } }),
-      item('Z'),
-    ];
+    const items = [item('X', { slots: { s: ['Y'] } }), item('Y', { slots: { s: ['X'] } }), item('Z')];
     const rows = buildVisibleRows({
       items,
       cycleParticipants: new Set(['X', 'Y']),
@@ -1422,4 +1316,3 @@ describe('status glyphs are always semantic green/red, never white', () => {
     });
   });
 });
-

@@ -26,8 +26,7 @@ const LEGEND_ROWS = 3;
  * shares the columns row, so the fit constraint while open is simply
  * `FIXED_OVERHEAD + panelBoxHeight <= rows`.
  */
-export const FIXED_OVERHEAD =
-  HEADER_ROWS + COUNTER_STRIP_ROWS + FOCUSED_DETAIL_ROWS + LEGEND_ROWS;
+export const FIXED_OVERHEAD = HEADER_ROWS + COUNTER_STRIP_ROWS + FOCUSED_DETAIL_ROWS + LEGEND_ROWS;
 
 // Panel box rows that are NOT entry rows: top border + header + footer hint +
 // bottom border (+ up to two scroll indicators on large lineages).
@@ -73,11 +72,7 @@ export interface LineageLayout {
  * to fit the sidebar's footprint AND the terminal — never taller than the
  * sidebar was, so opening lineage cannot grow the frame past `rows`.
  */
-export function computeLineageLayout({
-  rows,
-  panelOpen,
-  entryCount,
-}: LineageLayoutInput): LineageLayout {
+export function computeLineageLayout({ rows, panelOpen, entryCount }: LineageLayoutInput): LineageLayout {
   const sidebarVisible = VISIBLE_COUNT;
   if (!panelOpen) {
     return { sidebarVisible, panelMaxRows: MAX_PANEL_ROWS };
@@ -113,16 +108,8 @@ export interface SidebarBudget {
  * (usability) intentionally wins over the fit — a terminal that small can't
  * host the chrome regardless.
  */
-export function computeSidebarBudget({
-  rows,
-  panelOpen,
-  entryCount,
-}: LineageLayoutInput): SidebarBudget {
-  const sidebarVisibleCount = clamp(
-    rows - BASE_CHROME_OVERHEAD,
-    SIDEBAR_MIN,
-    VISIBLE_COUNT,
-  );
+export function computeSidebarBudget({ rows, panelOpen, entryCount }: LineageLayoutInput): SidebarBudget {
+  const sidebarVisibleCount = clamp(rows - BASE_CHROME_OVERHEAD, SIDEBAR_MIN, VISIBLE_COUNT);
   const { panelMaxRows } = computeLineageLayout({ rows, panelOpen, entryCount });
   return { sidebarVisibleCount, panelMaxRows };
 }

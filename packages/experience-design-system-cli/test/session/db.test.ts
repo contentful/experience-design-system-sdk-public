@@ -1033,18 +1033,18 @@ describe('storeCDFComponents + loadCDFComponents', () => {
           },
         ]);
 
-        const componentId = (
-          db
-            .prepare('SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?')
-            .get(sessionId, 'CycleA') as { component_id: string } | undefined
-        )?.component_id;
+        const componentId = (db
+          .prepare('SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?')
+          .get(sessionId, 'CycleA') as { component_id: string } | undefined)!.component_id;
         const slotRows = db
           .prepare('SELECT name FROM raw_slots WHERE session_id = ? AND component_id = ?')
           .all(sessionId, componentId) as Array<{ name: string }>;
         expect(slotRows).toHaveLength(0);
 
         const acRows = db
-          .prepare('SELECT allowed_component FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ?')
+          .prepare(
+            'SELECT allowed_component FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ?',
+          )
           .all(sessionId, componentId) as Array<{ allowed_component: string }>;
         expect(acRows).toHaveLength(0);
         db.close();
@@ -1090,11 +1090,9 @@ describe('storeCDFComponents + loadCDFComponents', () => {
           },
         ]);
 
-        const componentId = (
-          db
-            .prepare('SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?')
-            .get(sessionId, 'Card') as { component_id: string } | undefined
-        )?.component_id;
+        const componentId = (db
+          .prepare('SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?')
+          .get(sessionId, 'Card') as { component_id: string } | undefined)!.component_id;
         const slotRow = db
           .prepare('SELECT name, is_default FROM raw_slots WHERE session_id = ? AND component_id = ? AND name = ?')
           .get(sessionId, componentId, 'children') as { name: string; is_default: number } | undefined;

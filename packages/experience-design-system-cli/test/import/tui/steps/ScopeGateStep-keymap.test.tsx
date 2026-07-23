@@ -22,9 +22,7 @@ describe('ScopeGateStep keymap regression — pre-Feature-3 behavior preserved',
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
     stdin.write('A');
     stdin.write('f');
-    expect(onConfirm.mock.calls[0][0].accepted).toEqual(
-      expect.arrayContaining(['Button', 'Card', 'Junk']),
-    );
+    expect(onConfirm.mock.calls[0][0].accepted).toEqual(expect.arrayContaining(['Button', 'Card', 'Junk']));
     expect(onConfirm.mock.calls[0][0].rejected).toEqual([]);
   });
 
@@ -70,9 +68,7 @@ describe('ScopeGateStep keymap regression — pre-Feature-3 behavior preserved',
     const { stdin } = render(<ScopeGateStep components={FIXTURE} onConfirm={onConfirm} onQuit={() => {}} />);
     stdin.write('Y');
     stdin.write('f');
-    expect(onConfirm.mock.calls[0][0].accepted).toEqual(
-      expect.arrayContaining(['Button', 'Card', 'Junk']),
-    );
+    expect(onConfirm.mock.calls[0][0].accepted).toEqual(expect.arrayContaining(['Button', 'Card', 'Junk']));
   });
 
   it('Enter and n do NOT confirm or quit (pinned non-bindings)', () => {

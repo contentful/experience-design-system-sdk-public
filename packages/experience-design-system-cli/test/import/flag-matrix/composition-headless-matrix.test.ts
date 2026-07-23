@@ -22,7 +22,7 @@ vi.mock('../../../src/session/db.js', () => ({
   getOrCreateSession: vi.fn(() => ({ sessionId: 'test-session-id' })),
   createStep: vi.fn(() => 'test-step-id'),
   updateStep: vi.fn(),
-  findLatestSessionForCommand: (...args: unknown[]) => mockFindLatestSessionForCommand(...args),
+  findLatestSessionForCommand: (...args: unknown[]) => mockFindLatestSessionForCommand(...(args as [])),
   loadCDFComponents: (...args: unknown[]) => mockLoadCDFComponents(...(args as [])),
 }));
 
@@ -97,19 +97,22 @@ describe('flag-matrix: composition flags forwarded through the HEADLESS dispatch
     { name: 'compositionMode unset', opts: {}, expectComposite: false },
   ];
 
-  it.each(modeCells)('$name → --composite presence on the extract subprocess is correct', async ({ opts, expectComposite }) => {
-    const { runPipeline } = await import('../../../src/import/orchestrator.js');
-    const calls: string[][] = [];
-    stubExecFile(calls);
-    await runPipeline(baseOpts(opts), () => {}, 'fake-cli-path');
-    const extractCall = findExtractCall(calls);
-    expect(extractCall).toBeDefined();
-    if (expectComposite) {
-      expect(extractCall).toContain('--composite');
-    } else {
-      expect(extractCall).not.toContain('--composite');
-    }
-  });
+  it.each(modeCells)(
+    '$name → --composite presence on the extract subprocess is correct',
+    async ({ opts, expectComposite }) => {
+      const { runPipeline } = await import('../../../src/import/orchestrator.js');
+      const calls: string[][] = [];
+      stubExecFile(calls);
+      await runPipeline(baseOpts(opts), () => {}, 'fake-cli-path');
+      const extractCall = findExtractCall(calls);
+      expect(extractCall).toBeDefined();
+      if (expectComposite) {
+        expect(extractCall).toContain('--composite');
+      } else {
+        expect(extractCall).not.toContain('--composite');
+      }
+    },
+  );
 
   // ── composition sub-flags × composite mode → each sub-flag forwarded ───────
   const subFlagCells: Array<{ flag: string; assert: (joined: string, call: string[]) => void }> = [
@@ -119,21 +122,31 @@ describe('flag-matrix: composition flags forwarded through the HEADLESS dispatch
     { flag: '--composition-agent-mode', assert: (j) => expect(j).toContain('--composition-agent-mode edges') },
     { flag: '--composition-refresh', assert: (j) => expect(j).toContain('--composition-refresh') },
     { flag: '--generate-map', assert: (j) => expect(j).toContain('--generate-map /tmp/skeleton.json') },
-    { flag: '--prompt', assert: (j, c) => {
-      expect(c.filter((a) => a === '--prompt').length).toBe(1);
-      expect(j).toContain('--prompt composition=./p.md');
-    } },
+    {
+      flag: '--prompt',
+      assert: (j, c) => {
+        expect(c.filter((a) => a === '--prompt').length).toBe(1);
+        expect(j).toContain('--prompt composition=./p.md');
+      },
+    },
   ];
 
-  it.each(subFlagCells)('composition sub-flag $flag is forwarded to analyze extract under composite mode', async ({ assert }) => {
-    const { runPipeline } = await import('../../../src/import/orchestrator.js');
-    const calls: string[][] = [];
-    stubExecFile(calls);
-    await runPipeline(baseOpts({ compositionMode: 'composite', ...COMPOSITE_SUBFLAG_OPTS }), () => {}, 'fake-cli-path');
-    const extractCall = findExtractCall(calls);
-    expect(extractCall).toBeDefined();
-    assert(extractCall!.join(' '), extractCall!);
-  });
+  it.each(subFlagCells)(
+    'composition sub-flag $flag is forwarded to analyze extract under composite mode',
+    async ({ assert }) => {
+      const { runPipeline } = await import('../../../src/import/orchestrator.js');
+      const calls: string[][] = [];
+      stubExecFile(calls);
+      await runPipeline(
+        baseOpts({ compositionMode: 'composite', ...COMPOSITE_SUBFLAG_OPTS }),
+        () => {},
+        'fake-cli-path',
+      );
+      const extractCall = findExtractCall(calls);
+      expect(extractCall).toBeDefined();
+      assert(extractCall!.join(' '), extractCall!);
+    },
+  );
 
   it('inventory composition flags are all represented in the sub-flag matrix', () => {
     const covered = new Set(subFlagCells.map((c) => c.flag));
@@ -159,7 +172,11 @@ describe('flag-matrix: composition flags forwarded through the HEADLESS dispatch
     const { runPipeline } = await import('../../../src/import/orchestrator.js');
     const calls: string[][] = [];
     stubExecFile(calls);
-    await runPipeline(baseOpts({ compositionMode: 'composite', compositionMap: '/tmp/map.json', ...opts }), () => {}, 'fake-cli-path');
+    await runPipeline(
+      baseOpts({ compositionMode: 'composite', compositionMap: '/tmp/map.json', ...opts }),
+      () => {},
+      'fake-cli-path',
+    );
     const extractCall = findExtractCall(calls);
     expect(extractCall).toBeDefined();
     expect(extractCall).toContain('--composite');

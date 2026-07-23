@@ -14,10 +14,7 @@ export interface BuildOptions {
 
 const REJECTED_STATUSES = new Set<string>(['error', 'rejected']);
 
-export function buildComponentGraph(
-  components: SlotGraphInput[],
-  opts?: BuildOptions,
-): ComponentGraphNode[] {
+export function buildComponentGraph(components: SlotGraphInput[], opts?: BuildOptions): ComponentGraphNode[] {
   const stripRejectedEdges = opts?.stripRejectedEdges === true;
 
   return components.map((row) => {
@@ -29,9 +26,7 @@ export function buildComponentGraph(
     const slots = Object.entries(slotDefs).map(([slotName, slotDef]) => ({
       name: slotName,
       allowedComponents: Array.isArray(slotDef?.$allowedComponents)
-        ? (slotDef.$allowedComponents as unknown[]).filter(
-            (v): v is string => typeof v === 'string',
-          )
+        ? (slotDef.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
         : [],
     }));
 

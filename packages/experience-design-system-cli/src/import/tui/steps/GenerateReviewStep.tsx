@@ -66,20 +66,11 @@ import { HelpOverlay, type HelpSection } from '../../../analyze/select/tui/compo
 import { legendEntry } from '../components/LegendEntry.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
 import { formatBreakingChange } from './breaking-change-format.js';
-import {
-  enumerateCycleBreaks,
-  shouldBreakOverlayGoFullScreen,
-  type BreakEdge,
-} from './enumerate-cycle-breaks.js';
+import { enumerateCycleBreaks, shouldBreakOverlayGoFullScreen, type BreakEdge } from './enumerate-cycle-breaks.js';
 import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
 import { computeAutocomplete } from '../autocomplete.js';
 import { resolveGroupRoot } from '../group-collapse.js';
-import {
-  buildFlatDimPredicate,
-  computeFilterKeys,
-  intersectFilterKeys,
-  type FilterCategory,
-} from '../step-filters.js';
+import { buildFlatDimPredicate, computeFilterKeys, intersectFilterKeys, type FilterCategory } from '../step-filters.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -172,9 +163,7 @@ const HELP_SECTIONS: HelpSection[] = [
   },
   {
     title: 'Search',
-    entries: [
-      { keys: '/', label: 'Search' },
-    ],
+    entries: [{ keys: '/', label: 'Search' }],
   },
   {
     title: 'History',
@@ -400,7 +389,11 @@ export function GenerateReviewStep({
       db.close();
     }
     if (cdfComponents.length === 0) {
-      return { entries: [], cycles: [], error: 'No generated definitions found for this session. Try re-running generate.' };
+      return {
+        entries: [],
+        cycles: [],
+        error: 'No generated definitions found for this session. Try re-running generate.',
+      };
     }
     const cycleParticipants = new Set<string>();
     for (const c of cycles) for (const p of c.path) cycleParticipants.add(p);
@@ -504,10 +497,7 @@ export function GenerateReviewStep({
     }
   };
 
-  const componentGraph = useMemo<ComponentGraphNode[]>(
-    () => buildComponentGraph(components),
-    [components],
-  );
+  const componentGraph = useMemo<ComponentGraphNode[]>(() => buildComponentGraph(components), [components]);
   const sidebarGraph = useMemo<ComponentGraphNode[]>(
     () => buildComponentGraph(components, { stripRejectedEdges: true }),
     [components],
@@ -548,9 +538,7 @@ export function GenerateReviewStep({
       if (c.status !== 'rejected') flipped.push(c.key);
     }
     setComponents((prev) =>
-      prev.map((c) =>
-        targets.has(c.key) ? { ...c, status: 'rejected' as ReviewComponentStatus } : c,
-      ),
+      prev.map((c) => (targets.has(c.key) ? { ...c, status: 'rejected' as ReviewComponentStatus } : c)),
     );
     setAutoRejected(flipped.length > 0 ? flipped : [...targets].sort());
     setUndoSnapshot(flipped.length > 0 ? snapshot : null);
@@ -592,7 +580,6 @@ export function GenerateReviewStep({
     if (autoRejectPushedRef.current) return;
     autoRejectPushedRef.current = true;
     pushHistorySnapshot(components, autoRejected, undoSnapshot, 'mount-auto-reject');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRejected]);
 
   const applyHistorySnapshot = (snap: HistorySnapshot): void => {
@@ -668,10 +655,7 @@ export function GenerateReviewStep({
     [breakingChanges],
   );
 
-  const breakingRows = useMemo<BreakingRow[]>(
-    () => buildBreakingRows(breakingChanges),
-    [breakingChanges],
-  );
+  const breakingRows = useMemo<BreakingRow[]>(() => buildBreakingRows(breakingChanges), [breakingChanges]);
 
   const filterVisibleKeys = useMemo<Set<string> | undefined>(() => {
     if (jumpFilterTarget) {
@@ -683,22 +667,12 @@ export function GenerateReviewStep({
     });
     const searchKeys = (() => {
       if (!searchQuery) return undefined;
-      const matches = groupedItemsMemo
-        .map((it) => it.key)
-        .filter((k) => fuzzyMatches(searchQuery, k));
+      const matches = groupedItemsMemo.map((it) => it.key).filter((k) => fuzzyMatches(searchQuery, k));
       if (matches.length === 0) return undefined;
       return computeDirectNeighborhood(matches, sidebarGraph);
     })();
     return intersectFilterKeys(categoryKeys, searchKeys);
-  }, [
-    jumpFilterTarget,
-    activeFilters,
-    cycleView,
-    brokenKeys,
-    searchQuery,
-    groupedItemsMemo,
-    sidebarGraph,
-  ]);
+  }, [jumpFilterTarget, activeFilters, cycleView, brokenKeys, searchQuery, groupedItemsMemo, sidebarGraph]);
 
   const visibleRowsMemo = useMemo<VisibleRow[]>(
     () =>
@@ -719,13 +693,9 @@ export function GenerateReviewStep({
     }
     return out;
   }, [visibleRowsMemo]);
-  const selectedIdx =
-    visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1;
+  const selectedIdx = visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1;
   const focusedComponentKey: string | null = components[selectedIdx]?.key ?? null;
-  const { entries: lineageEntries, jumpables: lineageJumpables } = useLineage(
-    focusedComponentKey,
-    componentGraph,
-  );
+  const { entries: lineageEntries, jumpables: lineageJumpables } = useLineage(focusedComponentKey, componentGraph);
 
   const { sidebarVisibleCount: visibleCount, panelMaxRows } = computeSidebarBudget({
     rows: stdout?.rows ?? FALLBACK_ROWS,
@@ -1111,9 +1081,7 @@ export function GenerateReviewStep({
         return;
       }
       if (key.tab) {
-        setLineageCursor((c) =>
-          lineageJumpables.length === 0 ? 0 : (c + 1) % lineageJumpables.length,
-        );
+        setLineageCursor((c) => (lineageJumpables.length === 0 ? 0 : (c + 1) % lineageJumpables.length));
         return;
       }
       if (key.return) {
@@ -1222,14 +1190,7 @@ export function GenerateReviewStep({
       });
       return;
     }
-    if (
-      input === 'i' &&
-      sidebarFocused &&
-      !key.tab &&
-      !key.ctrl &&
-      !key.meta &&
-      focusedComponentKey
-    ) {
+    if (input === 'i' && sidebarFocused && !key.tab && !key.ctrl && !key.meta && focusedComponentKey) {
       const t = focusedComponentKey;
       setJumpFilterTarget((prev) => (prev === t ? null : t));
       return;
@@ -1372,12 +1333,8 @@ export function GenerateReviewStep({
       return;
     }
     if (input === 'F' || input === 'f') {
-      const acceptedNames = new Set(
-        components.filter((c) => c.status === 'accepted').map((c) => c.key),
-      );
-      const acceptedSubgraph: ComponentGraphNode[] = componentGraph.filter((n) =>
-        acceptedNames.has(n.name),
-      );
+      const acceptedNames = new Set(components.filter((c) => c.status === 'accepted').map((c) => c.key));
+      const acceptedSubgraph: ComponentGraphNode[] = componentGraph.filter((n) => acceptedNames.has(n.name));
       const acceptedCycles = (() => {
         try {
           return findSlotCycles(acceptedSubgraph);
@@ -1399,10 +1356,9 @@ export function GenerateReviewStep({
     if (input === 'L') {
       const currentKey =
         cursorRowIdx >= 0 && cursorRowIdx < visibleRowsMemo.length
-          ? components[visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1]?.key ?? null
+          ? (components[visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1]?.key ?? null)
           : null;
-      const nextView: 'grouped' | 'flat' =
-        columnOneView === 'grouped' ? 'flat' : 'grouped';
+      const nextView: 'grouped' | 'flat' = columnOneView === 'grouped' ? 'flat' : 'grouped';
       const nextRows = buildVisibleRows({
         items: groupedItemsMemo,
         cycleParticipants: cycleView.structural,
@@ -1500,12 +1456,13 @@ export function GenerateReviewStep({
         const positions = selectableRowPositions;
         if (positions.length === 0) return { cursorRowIdx: prev, sidebarScrollOffset: off };
         const pos = positions.indexOf(prev);
-        const currentSelectableIdx = pos >= 0
-          ? pos
-          : Math.max(
-              0,
-              positions.reduce((acc, p, i) => (p <= prev ? i : acc), 0),
-            );
+        const currentSelectableIdx =
+          pos >= 0
+            ? pos
+            : Math.max(
+                0,
+                positions.reduce((acc, p, i) => (p <= prev ? i : acc), 0),
+              );
         const nextSelectableIdx = Math.max(0, currentSelectableIdx - 1);
         const newRow = positions[nextSelectableIdx] ?? prev;
         return { cursorRowIdx: newRow, sidebarScrollOffset: Math.min(off, newRow) };
@@ -1519,12 +1476,13 @@ export function GenerateReviewStep({
         const positions = selectableRowPositions;
         if (positions.length === 0) return { cursorRowIdx: prev, sidebarScrollOffset: off };
         const pos = positions.indexOf(prev);
-        const currentSelectableIdx = pos >= 0
-          ? pos
-          : Math.max(
-              0,
-              positions.reduce((acc, p, i) => (p <= prev ? i : acc), 0),
-            );
+        const currentSelectableIdx =
+          pos >= 0
+            ? pos
+            : Math.max(
+                0,
+                positions.reduce((acc, p, i) => (p <= prev ? i : acc), 0),
+              );
         const nextSelectableIdx = Math.min(positions.length - 1, currentSelectableIdx + 1);
         const newRow = positions[nextSelectableIdx] ?? prev;
         const nextOff = newRow >= off + visibleCount ? newRow - visibleCount + 1 : off;
@@ -1694,7 +1652,9 @@ export function GenerateReviewStep({
       {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
       {showUnsavedWarning && !dialogOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
-          <Text bold color={PALETTE.warning}>Unsaved changes</Text>
+          <Text bold color={PALETTE.warning}>
+            Unsaved changes
+          </Text>
           <Text>You have unsaved edits in the current field editor.</Text>
           <Text> </Text>
           <Text>{'  [Enter]  Save and continue'}</Text>
@@ -1704,7 +1664,9 @@ export function GenerateReviewStep({
       )}
       {showReloadDialog && !dialogOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
-          <Text bold color={PALETTE.warning}>Reload from saved state?</Text>
+          <Text bold color={PALETTE.warning}>
+            Reload from saved state?
+          </Text>
           <Text>Unsaved in-memory changes will be lost.</Text>
           <Text> </Text>
           <Text>{'  [Enter]  Confirm'}</Text>
@@ -1728,7 +1690,9 @@ export function GenerateReviewStep({
       )}
       {breakingChanges.length > 0 && !dialogOpen && (
         <Box paddingX={1}>
-          <Text color={PALETTE.warning}>{`[b] ${breakingChanges.length} breaking change${breakingChanges.length === 1 ? '' : 's'}`}</Text>
+          <Text
+            color={PALETTE.warning}
+          >{`[b] ${breakingChanges.length} breaking change${breakingChanges.length === 1 ? '' : 's'}`}</Text>
         </Box>
       )}
       {breakingPanel.isOpen &&
@@ -1736,9 +1700,7 @@ export function GenerateReviewStep({
         !dialogOpen &&
         (() => {
           const row = breakingRows[breakingCursor];
-          const comp = row
-            ? breakingChanges.find((b) => b.componentName === row.componentName)
-            : undefined;
+          const comp = row ? breakingChanges.find((b) => b.componentName === row.componentName) : undefined;
           if (!comp) return null;
           return (
             <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
@@ -1873,12 +1835,8 @@ export function GenerateReviewStep({
               <Text color={PALETTE.error} bold>
                 {`Cyclic manifest — auto-rejected ${stillRejected.length} component${stillRejected.length === 1 ? '' : 's'}:`}
               </Text>
-              {members.length > 0 && (
-                <Text color={PALETTE.error}>{`  Cycle members: ${members.join(', ')}`}</Text>
-              )}
-              {ancestors.length > 0 && (
-                <Text color={PALETTE.error}>{`  Ancestors: ${ancestors.join(', ')}`}</Text>
-              )}
+              {members.length > 0 && <Text color={PALETTE.error}>{`  Cycle members: ${members.join(', ')}`}</Text>}
+              {ancestors.length > 0 && <Text color={PALETTE.error}>{`  Ancestors: ${ancestors.join(', ')}`}</Text>}
               <Text dimColor>
                 {undoSnapshot
                   ? '  [Ctrl+Z] undo · [r]/[a] manually toggle · [F] continue'
@@ -2099,7 +2057,9 @@ export function GenerateReviewStep({
                 {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
                 <Text dimColor>
                   {sidebarFocused
-                    ? (hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : '')
+                    ? hasGroupRoots
+                      ? '  [Space] expand/collapse group  [E/C] expand/collapse all'
+                      : ''
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
                       : '  [Tab] focus list  (edit fields)'}
@@ -2151,14 +2111,10 @@ export function GenerateReviewStep({
           <Text>
             {`/${searchQuery}`}
             <Text color={PALETTE.info}>{'▎'}</Text>
-            {searchQuery && (
-              <Text dimColor>{`  (${searchMatchCount}/${components.length} matches)`}</Text>
-            )}
+            {searchQuery && <Text dimColor>{`  (${searchMatchCount}/${components.length} matches)`}</Text>}
           </Text>
           {autocompleteCandidates.length > 1 && (
-            <Text dimColor>
-              {`  possibilities: ${autocompleteCandidates.join(' · ').slice(0, 120)}`}
-            </Text>
+            <Text dimColor>{`  possibilities: ${autocompleteCandidates.join(' · ').slice(0, 120)}`}</Text>
           )}
         </Box>
       )}

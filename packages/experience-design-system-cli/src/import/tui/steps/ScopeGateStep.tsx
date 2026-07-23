@@ -8,20 +8,11 @@ import {
   buildVisibleRows,
   type GroupedSidebarItem,
 } from '../../../analyze/select/tui/components/GroupedSidebar.js';
-import {
-  computeAllClosures,
-  type ComponentGraphNode,
-  type NodeStatus,
-} from '../../../analyze/composite-closure.js';
+import { computeAllClosures, type ComponentGraphNode, type NodeStatus } from '../../../analyze/composite-closure.js';
 import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { findSlotCycles, type SlotCycle } from '../../../analyze/cycle-detection.js';
 import { computeAutocomplete } from '../autocomplete.js';
-import {
-  buildFlatDimPredicate,
-  computeFilterKeys,
-  intersectFilterKeys,
-  type FilterCategory,
-} from '../step-filters.js';
+import { buildFlatDimPredicate, computeFilterKeys, intersectFilterKeys, type FilterCategory } from '../step-filters.js';
 import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { computeSidebarBudget, FALLBACK_ROWS } from '../lineage-layout.js';
@@ -40,10 +31,7 @@ import {
   computeCycleAwareRejectCascade,
 } from '../../../analyze/scope-gate-cascade.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
-import {
-  computeDirectNeighborhood,
-  findAllAncestors,
-} from '../../../analyze/search-neighborhood.js';
+import { computeDirectNeighborhood, findAllAncestors } from '../../../analyze/search-neighborhood.js';
 import {
   buildAddedComponentsList,
   buildAddedGroupsList,
@@ -111,9 +99,7 @@ const HELP_SECTIONS: HelpSection[] = [
   },
   {
     title: 'Search',
-    entries: [
-      { keys: '/', label: 'Search' },
-    ],
+    entries: [{ keys: '/', label: 'Search' }],
   },
   {
     title: 'General',
@@ -175,8 +161,11 @@ export function ScopeGateStep({
   const [cyclesCursor, setCyclesCursor] = useState(0);
   const aiRationalePanel = useOverlayPanel({ toggleKey: 'x' });
   const [aiCursor, setAiCursor] = useState(0);
-  const [pendingRejectCascade, setPendingRejectCascade] =
-    useState<{ target: string; ancestors: string[]; descendants: string[] } | null>(null);
+  const [pendingRejectCascade, setPendingRejectCascade] = useState<{
+    target: string;
+    ancestors: string[];
+    descendants: string[];
+  } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [autocompleteCandidates, setAutocompleteCandidates] = useState<string[]>([]);
@@ -210,10 +199,7 @@ export function ScopeGateStep({
     [components],
   );
 
-  const graph: ComponentGraphNode[] = useMemo(
-    () => buildComponentGraph(groupedItems),
-    [groupedItems],
-  );
+  const graph: ComponentGraphNode[] = useMemo(() => buildComponentGraph(groupedItems), [groupedItems]);
 
   const slotCycles = useMemo<SlotCycle[]>(() => {
     try {
@@ -290,9 +276,7 @@ export function ScopeGateStep({
     });
     const searchKeys = (() => {
       if (!searchQuery) return undefined;
-      const matches = groupedItems
-        .map((it) => it.key)
-        .filter((k) => fuzzyMatches(searchQuery, k));
+      const matches = groupedItems.map((it) => it.key).filter((k) => fuzzyMatches(searchQuery, k));
       if (matches.length === 0) return undefined;
       return computeDirectNeighborhood(matches, graph);
     })();
@@ -317,11 +301,8 @@ export function ScopeGateStep({
   const safeCursor = Math.min(cursor, Math.max(0, total - 1));
 
   const currentRow = visibleRows[safeCursor];
-  const currentRowKey =
-    currentRow && currentRow.itemIdx >= 0 ? groupedItems[currentRow.itemIdx]?.key : undefined;
-  const focusedComponent = currentRowKey
-    ? components.find((c) => c.name === currentRowKey)
-    : undefined;
+  const currentRowKey = currentRow && currentRow.itemIdx >= 0 ? groupedItems[currentRow.itemIdx]?.key : undefined;
+  const focusedComponent = currentRowKey ? components.find((c) => c.name === currentRowKey) : undefined;
 
   const selectionStateByKey = useMemo(() => {
     const map = new Map<string, 'accepted' | 'rejected' | 'undecided'>();
@@ -329,7 +310,6 @@ export function ScopeGateStep({
       map.set(c.name, getState(c.name));
     }
     return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [components, userDecisions]);
 
   const aiFlaggedByKey = useMemo(() => {
@@ -349,11 +329,7 @@ export function ScopeGateStep({
   );
 
   const applyReject = (target: string): void => {
-    const { toReject, toDeselect } = computeCycleAwareRejectCascade(
-      target,
-      graph,
-      cycleUnits,
-    );
+    const { toReject, toDeselect } = computeCycleAwareRejectCascade(target, graph, cycleUnits);
     const entries: Array<[string, Decision]> = [];
     for (const n of toReject) entries.push([n, 'rejected']);
     for (const n of toDeselect) entries.push([n, 'undecided']);
@@ -371,11 +347,7 @@ export function ScopeGateStep({
 
   const requestReject = (name: string): void => {
     if (getState(name) === 'rejected') return;
-    const { toReject, toDeselect } = computeCycleAwareRejectCascade(
-      name,
-      graph,
-      cycleUnits,
-    );
+    const { toReject, toDeselect } = computeCycleAwareRejectCascade(name, graph, cycleUnits);
     const ancestors = [...toReject].filter((n) => n !== name).sort();
     const descendants = [...toDeselect].sort();
     if (ancestors.length + descendants.length >= 2) {
@@ -411,10 +383,7 @@ export function ScopeGateStep({
     return { accepted, rejected };
   };
 
-  const { entries: lineageEntries, jumpables: lineageJumpables } = useLineage(
-    focusedComponent?.name ?? null,
-    graph,
-  );
+  const { entries: lineageEntries, jumpables: lineageJumpables } = useLineage(focusedComponent?.name ?? null, graph);
 
   const { sidebarVisibleCount: visibleCount, panelMaxRows } = computeSidebarBudget({
     rows: stdout?.rows ?? FALLBACK_ROWS,
@@ -488,10 +457,7 @@ export function ScopeGateStep({
           return;
         }
         const cursorRow = visibleRows[safeCursor];
-        const cursorItemName =
-          cursorRow && cursorRow.itemIdx >= 0
-            ? groupedItems[cursorRow.itemIdx]?.key
-            : undefined;
+        const cursorItemName = cursorRow && cursorRow.itemIdx >= 0 ? groupedItems[cursorRow.itemIdx]?.key : undefined;
         let jumped = false;
         for (let i = safeCursor; i < visibleRows.length; i++) {
           const r = visibleRows[i];
@@ -731,8 +697,7 @@ export function ScopeGateStep({
     }
     if (input === 'L') {
       const currentKey = currentRowKey;
-      const nextView: 'grouped' | 'flat' =
-        columnOneView === 'grouped' ? 'flat' : 'grouped';
+      const nextView: 'grouped' | 'flat' = columnOneView === 'grouped' ? 'flat' : 'grouped';
       const nextRows = buildVisibleRows({
         items: groupedItems,
         cycleParticipants,
@@ -763,26 +728,16 @@ export function ScopeGateStep({
       return;
     }
     if (input === 'A') {
-      const nonCycle = components
-        .filter((c) => !cycleParticipants.has(c.name))
-        .map((c) => c.name);
+      const nonCycle = components.filter((c) => !cycleParticipants.has(c.name)).map((c) => c.name);
       const anyNotAccepted = nonCycle.some((n) => getState(n) !== 'accepted');
       const target: Decision = anyNotAccepted ? 'accepted' : 'rejected';
       if (target === 'accepted') {
-        const cyclesToInclude = collectReachableCycleUnits(
-          nonCycle,
-          graph,
-          cycleUnits,
-        );
-        const entries: Array<[string, Decision]> = nonCycle.map(
-          (n) => [n, 'accepted'] as [string, Decision],
-        );
+        const cyclesToInclude = collectReachableCycleUnits(nonCycle, graph, cycleUnits);
+        const entries: Array<[string, Decision]> = nonCycle.map((n) => [n, 'accepted'] as [string, Decision]);
         for (const n of cyclesToInclude) entries.push([n, 'accepted']);
         applyDecisions(entries);
       } else {
-        const entries: Array<[string, Decision]> = nonCycle.map(
-          (n) => [n, 'rejected'] as [string, Decision],
-        );
+        const entries: Array<[string, Decision]> = nonCycle.map((n) => [n, 'rejected'] as [string, Decision]);
         for (const c of components) {
           if (cycleParticipants.has(c.name) && getState(c.name) === 'accepted') {
             entries.push([c.name, 'undecided']);
@@ -793,13 +748,9 @@ export function ScopeGateStep({
       return;
     }
     if (input === 'Y') {
-      const seeds = components
-        .filter((c) => !cycleParticipants.has(c.name) && !isAiFlagged(c))
-        .map((c) => c.name);
+      const seeds = components.filter((c) => !cycleParticipants.has(c.name) && !isAiFlagged(c)).map((c) => c.name);
       const cyclesToInclude = collectReachableCycleUnits(seeds, graph, cycleUnits);
-      const entries: Array<[string, Decision]> = seeds.map(
-        (n) => [n, 'accepted'] as [string, Decision],
-      );
+      const entries: Array<[string, Decision]> = seeds.map((n) => [n, 'accepted'] as [string, Decision]);
       for (const n of cyclesToInclude) entries.push([n, 'accepted']);
       applyDecisions(entries);
       return;
@@ -866,11 +817,7 @@ export function ScopeGateStep({
     }
   });
 
-  const includedCount = useMemo(
-    () => components.filter((c) => isIncluded(c.name)).length,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [components, userDecisions],
-  );
+  const includedCount = useMemo(() => components.filter((c) => isIncluded(c.name)).length, [components, userDecisions]);
   const hasAnyAi = components.some(isAiFlagged);
   const aiExcludedCount = components.filter(isAiFlagged).length;
   const aiExcludedWithReasons = components.filter(
@@ -885,8 +832,7 @@ export function ScopeGateStep({
     [aiExcludedWithReasons],
   );
 
-  const selectedItemIdx =
-    currentRow && currentRow.itemIdx >= 0 ? currentRow.itemIdx : -1;
+  const selectedItemIdx = currentRow && currentRow.itemIdx >= 0 ? currentRow.itemIdx : -1;
 
   const nothingIncluded = components.length > 0 && components.every((c) => !isIncluded(c.name));
 
@@ -906,14 +852,8 @@ export function ScopeGateStep({
     [components, closures, selectionStateByKey],
   );
 
-  const safeAddedComponentsCursor = Math.min(
-    addedComponentsCursor,
-    Math.max(0, addedComponents.length - 1),
-  );
-  const safeAddedGroupsCursor = Math.min(
-    addedGroupsCursor,
-    Math.max(0, addedGroups.length - 1),
-  );
+  const safeAddedComponentsCursor = Math.min(addedComponentsCursor, Math.max(0, addedComponents.length - 1));
+  const safeAddedGroupsCursor = Math.min(addedGroupsCursor, Math.max(0, addedGroups.length - 1));
 
   if (showHelp) {
     return <HelpOverlay sections={HELP_SECTIONS} onClose={() => setShowHelp(false)} />;
@@ -929,7 +869,6 @@ export function ScopeGateStep({
 
       <AutoFilterBanner status={aiFilterStatus} progress={aiFilterProgress} error={aiFilterError} />
 
-
       {hasAnyAi && (
         <Box>
           <Text dimColor>
@@ -944,7 +883,8 @@ export function ScopeGateStep({
       {hasCycles && (
         <Box marginTop={1}>
           <Text dimColor>
-            If you must have components with cycles, select them together into the generate step and then use the editor to fix them.
+            If you must have components with cycles, select them together into the generate step and then use the editor
+            to fix them.
           </Text>
         </Box>
       )}
@@ -952,10 +892,9 @@ export function ScopeGateStep({
       {nothingIncluded && (
         <Box marginTop={1}>
           <Text color={PALETTE.warning}>
-            nothing selected — press{' '}
-            <Text color={PALETTE.info}>[Y]</Text> to accept all non-flagged,{' '}
-            <Text color={PALETTE.info}>[A]</Text> to toggle all, or{' '}
-            <Text color={PALETTE.info}>[a]</Text> to accept the highlighted row
+            nothing selected — press <Text color={PALETTE.info}>[Y]</Text> to accept all non-flagged,{' '}
+            <Text color={PALETTE.info}>[A]</Text> to toggle all, or <Text color={PALETTE.info}>[a]</Text> to accept the
+            highlighted row
           </Text>
         </Box>
       )}
@@ -1035,7 +974,11 @@ export function ScopeGateStep({
             ) : (
               <Text color={PALETTE.error}>excluded</Text>
             )}
-            {isAiFlagged(focusedComponent) && <Text color={PALETTE.warning} bold>{' [×]'}</Text>}
+            {isAiFlagged(focusedComponent) && (
+              <Text color={PALETTE.warning} bold>
+                {' [×]'}
+              </Text>
+            )}
           </Text>
           {isAiFlagged(focusedComponent) &&
             focusedComponent.aiReason !== null &&
@@ -1049,7 +992,6 @@ export function ScopeGateStep({
             )}
         </Box>
       )}
-
 
       {cyclesPanelOpen && (
         <Box flexDirection="column" borderStyle="single" borderColor={PALETTE.warning} paddingX={1} marginTop={1}>
@@ -1067,11 +1009,15 @@ export function ScopeGateStep({
             return (
               <Text key={i}>
                 {isCursor ? (
-                  <Text color={PALETTE.info} bold>{'▶'}</Text>
+                  <Text color={PALETTE.info} bold>
+                    {'▶'}
+                  </Text>
                 ) : (
                   <Text> </Text>
                 )}
-                <Text color={PALETTE.warning} inverse={isCursor}>{' ' + label}</Text>
+                <Text color={PALETTE.warning} inverse={isCursor}>
+                  {' ' + label}
+                </Text>
               </Text>
             );
           })}
@@ -1085,14 +1031,10 @@ export function ScopeGateStep({
             {`Rejecting ${pendingRejectCascade.target} will:`}
           </Text>
           {pendingRejectCascade.ancestors.length > 0 && (
-            <Text>
-              {`- Reject ancestors: ${pendingRejectCascade.ancestors.join(', ')}`}
-            </Text>
+            <Text>{`- Reject ancestors: ${pendingRejectCascade.ancestors.join(', ')}`}</Text>
           )}
           {pendingRejectCascade.descendants.length > 0 && (
-            <Text>
-              {`- Deselect descendants: ${pendingRejectCascade.descendants.join(', ')}`}
-            </Text>
+            <Text>{`- Deselect descendants: ${pendingRejectCascade.descendants.join(', ')}`}</Text>
           )}
           <Text dimColor>[y] confirm · [n]/[Esc] cancel</Text>
         </Box>
@@ -1103,14 +1045,10 @@ export function ScopeGateStep({
           <Text>
             {`/${searchQuery}`}
             <Text color={PALETTE.info}>{'▎'}</Text>
-            {searchQuery && (
-              <Text dimColor>{`  (${totalMatches}/${totalComponents} matches)`}</Text>
-            )}
+            {searchQuery && <Text dimColor>{`  (${totalMatches}/${totalComponents} matches)`}</Text>}
           </Text>
           {autocompleteCandidates.length > 1 && (
-            <Text dimColor>
-              {`  possibilities: ${autocompleteCandidates.join(' · ').slice(0, 120)}`}
-            </Text>
+            <Text dimColor>{`  possibilities: ${autocompleteCandidates.join(' · ').slice(0, 120)}`}</Text>
           )}
         </Box>
       )}
@@ -1150,7 +1088,10 @@ export function ScopeGateStep({
         {hasAnyAi && legendEntry('[x]', 'AI exclusions', aiRationalePanel.isOpen)}
         {hasAnyAi && (
           <Text>
-            <Text color={PALETTE.warning} bold>[×]</Text> <Text dimColor>AI recommends excluding</Text>
+            <Text color={PALETTE.warning} bold>
+              [×]
+            </Text>{' '}
+            <Text dimColor>AI recommends excluding</Text>
           </Text>
         )}
       </Box>
@@ -1171,11 +1112,7 @@ function ColumnHeader(props: { title: string; width: number; focused: boolean })
   );
 }
 
-export function sideColumnLabelStyle(input: {
-  isCycle: boolean;
-  isSelected: boolean;
-  focused: boolean;
-}): {
+export function sideColumnLabelStyle(input: { isCycle: boolean; isSelected: boolean; focused: boolean }): {
   nameColor: string | undefined;
   nameBold: boolean;
   nameInverse: boolean;
@@ -1261,64 +1198,61 @@ function AddedComponentsColumn(props: {
         <Text dimColor>(none)</Text>
       ) : (
         <>
-        {window.above > 0 && <Text dimColor>{`↑ ${window.above} more`}</Text>}
-        {entries.slice(window.start, window.end).map((entry, vi) => {
-          const i = window.start + vi;
-          const isSelected = i === cursor;
-          const isCursor = focused && isSelected;
-          const aiFlagged = aiFlaggedByKey?.get(entry.name) === true;
-          const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
-          const style = sideColumnLabelStyle({
-            isCycle: entry.isCycle,
-            isSelected,
-            focused,
-          });
-          return (
-            <React.Fragment key={entry.name}>
-              {showSeparator && (
-                <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>
-              )}
-              <Box>
-                {isCursor ? (
-                  <Text color={PALETTE.info} bold>
-                    {'▶'}
-                  </Text>
-                ) : (
-                  <Text> </Text>
-                )}
-                {reserveAiBadge && (
-                  aiFlagged ? (
-                    <Text color={PALETTE.warning} bold>
-                      {' [×]'}
+          {window.above > 0 && <Text dimColor>{`↑ ${window.above} more`}</Text>}
+          {entries.slice(window.start, window.end).map((entry, vi) => {
+            const i = window.start + vi;
+            const isSelected = i === cursor;
+            const isCursor = focused && isSelected;
+            const aiFlagged = aiFlaggedByKey?.get(entry.name) === true;
+            const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
+            const style = sideColumnLabelStyle({
+              isCycle: entry.isCycle,
+              isSelected,
+              focused,
+            });
+            return (
+              <React.Fragment key={entry.name}>
+                {showSeparator && <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>}
+                <Box>
+                  {isCursor ? (
+                    <Text color={PALETTE.info} bold>
+                      {'▶'}
                     </Text>
                   ) : (
-                    <Text>{'    '}</Text>
-                  )
-                )}
-                {entry.isCycle && (
+                    <Text> </Text>
+                  )}
+                  {reserveAiBadge &&
+                    (aiFlagged ? (
+                      <Text color={PALETTE.warning} bold>
+                        {' [×]'}
+                      </Text>
+                    ) : (
+                      <Text>{'    '}</Text>
+                    ))}
+                  {entry.isCycle && (
+                    <Text
+                      color={isCursor ? PALETTE.inverse : PALETTE.warning}
+                      bold
+                      inverse={isCursor}
+                      underline={style.nameUnderline}
+                    >
+                      {' ⚠'}
+                    </Text>
+                  )}
                   <Text
-                    color={isCursor ? PALETTE.inverse : PALETTE.warning}
-                    bold
-                    inverse={isCursor}
+                    color={style.nameColor}
+                    bold={style.nameBold}
+                    inverse={style.nameInverse}
                     underline={style.nameUnderline}
+                    wrap="truncate"
                   >
-                    {' ⚠'}
+                    {' ' + entry.name}
                   </Text>
-                )}
-                <Text
-                  color={style.nameColor}
-                  bold={style.nameBold}
-                  inverse={style.nameInverse}
-                  underline={style.nameUnderline}
-                  wrap="truncate"
-                >
-                  {' ' + entry.name}
-                </Text>
-              </Box>
-            </React.Fragment>
-          );
-        })}
-        {window.below > 0 && <Text dimColor>{`↓ ${window.below} more`}</Text>}
+                </Box>
+              </React.Fragment>
+            );
+          })}
+          {window.below > 0 && <Text dimColor>{`↓ ${window.below} more`}</Text>}
         </>
       )}
     </Box>
@@ -1350,75 +1284,72 @@ function AddedGroupsColumn(props: {
         <Text dimColor>(none)</Text>
       ) : (
         <>
-        {window.above > 0 && <Text dimColor>{`↑ ${window.above} more`}</Text>}
-        {entries.slice(window.start, window.end).map((g, vi) => {
-          const i = window.start + vi;
-          const isSelected = i === cursor;
-          const isCursor = focused && isSelected;
-          const suffix = ` (${g.depCount} dep${g.depCount === 1 ? '' : 's'})`;
-          const aiFlagged = aiFlaggedByKey?.get(g.name) === true;
-          const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
-          const style = sideColumnLabelStyle({
-            isCycle: g.isCycle,
-            isSelected,
-            focused,
-          });
-          return (
-            <React.Fragment key={g.name}>
-              {showSeparator && (
-                <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>
-              )}
-              <Box>
-                {isCursor ? (
-                  <Text color={PALETTE.info} bold>
-                    {'▶'}
-                  </Text>
-                ) : (
-                  <Text> </Text>
-                )}
-                {reserveAiBadge && (
-                  aiFlagged ? (
-                    <Text color={PALETTE.warning} bold>
-                      {' [×]'}
+          {window.above > 0 && <Text dimColor>{`↑ ${window.above} more`}</Text>}
+          {entries.slice(window.start, window.end).map((g, vi) => {
+            const i = window.start + vi;
+            const isSelected = i === cursor;
+            const isCursor = focused && isSelected;
+            const suffix = ` (${g.depCount} dep${g.depCount === 1 ? '' : 's'})`;
+            const aiFlagged = aiFlaggedByKey?.get(g.name) === true;
+            const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
+            const style = sideColumnLabelStyle({
+              isCycle: g.isCycle,
+              isSelected,
+              focused,
+            });
+            return (
+              <React.Fragment key={g.name}>
+                {showSeparator && <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>}
+                <Box>
+                  {isCursor ? (
+                    <Text color={PALETTE.info} bold>
+                      {'▶'}
                     </Text>
                   ) : (
-                    <Text>{'    '}</Text>
-                  )
-                )}
-                {g.isCycle && (
+                    <Text> </Text>
+                  )}
+                  {reserveAiBadge &&
+                    (aiFlagged ? (
+                      <Text color={PALETTE.warning} bold>
+                        {' [×]'}
+                      </Text>
+                    ) : (
+                      <Text>{'    '}</Text>
+                    ))}
+                  {g.isCycle && (
+                    <Text
+                      color={isCursor ? PALETTE.inverse : PALETTE.warning}
+                      bold
+                      inverse={isCursor}
+                      underline={style.nameUnderline}
+                    >
+                      {' ⚠'}
+                    </Text>
+                  )}
                   <Text
-                    color={isCursor ? PALETTE.inverse : PALETTE.warning}
-                    bold
-                    inverse={isCursor}
+                    color={style.nameColor}
+                    bold={style.nameBold}
+                    inverse={style.nameInverse}
                     underline={style.nameUnderline}
+                    wrap="truncate"
                   >
-                    {' ⚠'}
+                    {' ' + g.name}
                   </Text>
-                )}
-                <Text
-                  color={style.nameColor}
-                  bold={style.nameBold}
-                  inverse={style.nameInverse}
-                  underline={style.nameUnderline}
-                  wrap="truncate"
-                >
-                  {' ' + g.name}
-                </Text>
-                <Text
-                  color={style.suffixColor}
-                  dimColor={style.suffixDim}
-                  inverse={style.suffixInverse}
-                  underline={style.suffixUnderline}
-                  bold={style.nameBold}
-                  wrap="truncate"
-                >
-                  {suffix}
-                </Text>
-              </Box>
-            </React.Fragment>
-          );
-        })}
-        {window.below > 0 && <Text dimColor>{`↓ ${window.below} more`}</Text>}
+                  <Text
+                    color={style.suffixColor}
+                    dimColor={style.suffixDim}
+                    inverse={style.suffixInverse}
+                    underline={style.suffixUnderline}
+                    bold={style.nameBold}
+                    wrap="truncate"
+                  >
+                    {suffix}
+                  </Text>
+                </Box>
+              </React.Fragment>
+            );
+          })}
+          {window.below > 0 && <Text dimColor>{`↓ ${window.below} more`}</Text>}
         </>
       )}
     </Box>

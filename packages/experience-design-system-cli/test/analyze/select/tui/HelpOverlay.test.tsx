@@ -72,10 +72,7 @@ describe('HelpOverlay', () => {
   it('closes on ? or Esc when in sections mode', async () => {
     const onClose = vi.fn();
     const { stdin } = render(
-      <HelpOverlay
-        onClose={onClose}
-        sections={[{ title: 'Navigation', entries: [{ keys: 'j/k', label: 'move' }] }]}
-      />,
+      <HelpOverlay onClose={onClose} sections={[{ title: 'Navigation', entries: [{ keys: 'j/k', label: 'move' }] }]} />,
     );
     stdin.write('\x1b');
     await new Promise((r) => setTimeout(r, 30));

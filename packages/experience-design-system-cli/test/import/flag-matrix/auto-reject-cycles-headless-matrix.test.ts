@@ -21,7 +21,7 @@ vi.mock('../../../src/session/db.js', () => ({
   getOrCreateSession: vi.fn(() => ({ sessionId: 'test-session-id' })),
   createStep: vi.fn(() => 'test-step-id'),
   updateStep: vi.fn(),
-  findLatestSessionForCommand: (...args: unknown[]) => mockFindLatestSessionForCommand(...args),
+  findLatestSessionForCommand: (...args: unknown[]) => mockFindLatestSessionForCommand(...(args as [])),
   loadCDFComponents: (...args: unknown[]) => mockLoadCDFComponents(...(args as [])),
 }));
 

@@ -101,9 +101,7 @@ describe('ScopeGateStep — manual decision wins over streaming AI', () => {
       { name: 'Button', componentId: 'c0' },
       { name: 'Card', componentId: 'c1' },
     ];
-    const { rerender, stdin } = render(
-      <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} />,
-    );
+    const { rerender, stdin } = render(<ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} />);
     stdin.write('a');
     const streamed = [
       { name: 'Button', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: 'AI thinks no' },
@@ -168,7 +166,6 @@ describe('ScopeGateStep — AI reason surfacing on focused row', () => {
     expect(out).toContain('…');
     expect(out).not.toContain('TAILMARKER');
   });
-
 });
 
 describe('ScopeGateStep — legend', () => {

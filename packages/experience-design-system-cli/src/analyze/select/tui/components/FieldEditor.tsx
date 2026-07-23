@@ -161,8 +161,7 @@ function serializeState(state: EditorState, originalJson: string): string {
         wrapperKey = keys[0];
       }
     }
-  } catch {
-  }
+  } catch {}
 
   const $properties: Record<string, CDFPropertyDefinition> = {};
   for (const p of state.props) {
@@ -435,7 +434,9 @@ function PropRow({
             }
             return (
               <Box key={i} gap={1} paddingLeft={2}>
-                <Text color={isActiveCursor ? PALETTE.info : PALETTE.inverse}>{isActiveCursor ? `▶ ${v}` : `  ${v}`}</Text>
+                <Text color={isActiveCursor ? PALETTE.info : PALETTE.inverse}>
+                  {isActiveCursor ? `▶ ${v}` : `  ${v}`}
+                </Text>
               </Box>
             );
           })}
@@ -537,7 +538,9 @@ function SlotRow({
             }
             return (
               <Box key={i} gap={1} paddingLeft={2}>
-                <Text color={isActiveCursor ? PALETTE.info : PALETTE.inverse}>{isActiveCursor ? `▶ ${v}` : `  ${v}`}</Text>
+                <Text color={isActiveCursor ? PALETTE.info : PALETTE.inverse}>
+                  {isActiveCursor ? `▶ ${v}` : `  ${v}`}
+                </Text>
               </Box>
             );
           })}
@@ -1613,7 +1616,12 @@ export function FieldEditor({
   const visibleRowSlice = rows.slice(scrollStart, scrollStart + visibleRows);
 
   return (
-    <Box flexDirection="column" width={width} borderStyle="single" borderColor={hasEmptyProperties ? PALETTE.warning : PALETTE.info}>
+    <Box
+      flexDirection="column"
+      width={width}
+      borderStyle="single"
+      borderColor={hasEmptyProperties ? PALETTE.warning : PALETTE.info}
+    >
       <Text bold color={hasEmptyProperties ? PALETTE.warning : PALETTE.info}>
         {'FIELDS [Ctrl+S save · Esc discard]'}
       </Text>

@@ -51,14 +51,7 @@ const GLYPH_TREE_LAST = '└─';
 const GLYPH_WARN = '⚠';
 const GLYPH_ERROR = '✗';
 
-type RowKind =
-  | 'cycle'
-  | 'empty'
-  | 'group-root'
-  | 'group-child'
-  | 'standalone'
-  | 'flat'
-  | 'flat-header';
+type RowKind = 'cycle' | 'empty' | 'group-root' | 'group-child' | 'standalone' | 'flat' | 'flat-header';
 
 export interface VisibleRow {
   kind: RowKind;
@@ -73,16 +66,10 @@ export interface VisibleRow {
 }
 
 function isEmpty(entry: CDFComponentEntry): boolean {
-  return (
-    Object.keys(entry.$properties ?? {}).length === 0 &&
-    Object.keys(entry.$slots ?? {}).length === 0
-  );
+  return Object.keys(entry.$properties ?? {}).length === 0 && Object.keys(entry.$slots ?? {}).length === 0;
 }
 
-function aggregateGlyphFor(
-  closure: Closure,
-  statusByName: Map<string, NodeStatus>,
-): string | null {
+function aggregateGlyphFor(closure: Closure, statusByName: Map<string, NodeStatus>): string | null {
   let worst: NodeStatus = 'ok';
   for (const node of closure.nodes) {
     const s = statusByName.get(node.name);
@@ -177,9 +164,7 @@ export function buildVisibleRows(props: {
 
   const seenCycleTierChildOccurrence = new Set<string>();
 
-  const computeCycleMemberSubtree = (
-    root: string,
-  ): Array<{ name: string; depth: number; isCycleMember: boolean }> => {
+  const computeCycleMemberSubtree = (root: string): Array<{ name: string; depth: number; isCycleMember: boolean }> => {
     const out: Array<{ name: string; depth: number; isCycleMember: boolean }> = [];
     const visited = new Set<string>([root]);
     const queue: Array<{ name: string; depth: number }> = [{ name: root, depth: 0 }];
@@ -235,9 +220,7 @@ export function buildVisibleRows(props: {
       else seenCycleTierChildOccurrence.add(child.name);
       const childRec = itemByKey.get(child.name);
       const indent = '  '.repeat(Math.max(0, child.depth - 1));
-      const labelName = child.isCycleMember
-        ? `${GLYPH_WARN} ${child.name} (cycle)`
-        : child.name;
+      const labelName = child.isCycleMember ? `${GLYPH_WARN} ${child.name} (cycle)` : child.name;
       rows.push({
         kind: 'group-child',
         key: `cycle-child:${key}:${child.name}`,
@@ -316,7 +299,7 @@ export function buildVisibleRows(props: {
     };
     countInjections(root);
     for (const n of closure.nodes) if (n.name !== root) countInjections(n.name);
-    const depCount = (closure.nodes.length - 1) + injectedCycleCount;
+    const depCount = closure.nodes.length - 1 + injectedCycleCount;
     const expanded = alwaysExpanded ? true : props.expandedGroups.has(root);
     const glyphExpand = expanded ? GLYPH_EXPAND_EXPANDED : GLYPH_EXPAND_COLLAPSED;
     const aggregate = expanded ? null : aggregateGlyphFor(closure, statusByName);
@@ -336,7 +319,7 @@ export function buildVisibleRows(props: {
     const closureChildren = closure.nodes
       .filter((n) => n.name !== root)
       .slice()
-      .sort((a, b) => (a.depth - b.depth) || a.name.localeCompare(b.name));
+      .sort((a, b) => a.depth - b.depth || a.name.localeCompare(b.name));
 
     type ChildRow = {
       name: string;
@@ -383,9 +366,7 @@ export function buildVisibleRows(props: {
       }
       const childRec = itemByKey.get(child.name);
       const indent = '  '.repeat(Math.max(0, child.depth - 1));
-      const labelName = child.isCycleChild
-        ? `${GLYPH_WARN} ${child.name} (cycle)`
-        : child.name;
+      const labelName = child.isCycleChild ? `${GLYPH_WARN} ${child.name} (cycle)` : child.name;
       rows.push({
         kind: 'group-child',
         key: `child:${root}:${child.name}`,
@@ -469,11 +450,11 @@ function rowColor(row: VisibleRow, aggregate?: string | null): string | undefine
   return undefined;
 }
 
-export function labelStyleFor(input: {
-  row: VisibleRow;
-  isCursor: boolean;
-  wouldDim: boolean;
-}): { color: string | undefined; bold: boolean; dim: boolean } {
+export function labelStyleFor(input: { row: VisibleRow; isCursor: boolean; wouldDim: boolean }): {
+  color: string | undefined;
+  bold: boolean;
+  dim: boolean;
+} {
   const { row, isCursor, wouldDim } = input;
   if (isCursor) {
     return { color: PALETTE.info, bold: true, dim: false };
@@ -578,10 +559,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
         const rs = itemName ? renderStatusByKey?.get(itemName) : undefined;
         const badge = itemName ? previewBadge(previewAnnotationByKey?.get(itemName)) : null;
         const showInheritance =
-          rs !== undefined &&
-          row.kind !== 'cycle' &&
-          row.kind !== 'empty' &&
-          row.kind !== 'group-root';
+          rs !== undefined && row.kind !== 'cycle' && row.kind !== 'empty' && row.kind !== 'group-root';
         const supportsSelectionGlyph =
           selectionStateByKey !== undefined &&
           itemName !== undefined &&
@@ -590,9 +568,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
             row.kind === 'group-child' ||
             row.kind === 'flat' ||
             row.kind === 'cycle');
-        const selState = supportsSelectionGlyph
-          ? selectionStateByKey!.get(itemName!) ?? 'undecided'
-          : undefined;
+        const selState = supportsSelectionGlyph ? (selectionStateByKey!.get(itemName!) ?? 'undecided') : undefined;
         const isCycleRow = row.kind === 'cycle';
         const selStyle = selectionGlyphStyleFor(selState, isCycleRow);
         const selGlyph = selStyle.glyph;
@@ -616,10 +592,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
 
         const isSynthetic = row.kind === 'flat-header';
         const isCursor = isSelected && focused;
-        const wouldDim =
-          row.kind === 'flat-header' ||
-          row.sharedSuffix === true ||
-          canDim;
+        const wouldDim = row.kind === 'flat-header' || row.sharedSuffix === true || canDim;
         const labelStyle = labelStyleFor({ row, isCursor, wouldDim });
         const inheritanceStyle = inheritanceGlyphStyleFor({
           status: showInheritance ? rs?.status : undefined,
@@ -643,24 +616,22 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
             ) : (
               <Text> </Text>
             )}
-            {selectionStateByKey !== undefined && (
-              selGlyph && !isSynthetic ? (
+            {selectionStateByKey !== undefined &&
+              (selGlyph && !isSynthetic ? (
                 <Text color={selColor} dimColor={selDim} bold={selBold}>
                   {' ' + selGlyph}
                 </Text>
               ) : (
                 <Text>{'    '}</Text>
-              )
-            )}
-            {aiFlaggedByKey !== undefined && (
-              aiFlagged ? (
+              ))}
+            {aiFlaggedByKey !== undefined &&
+              (aiFlagged ? (
                 <Text color={PALETTE.warning} bold>
                   {' [×]'}
                 </Text>
               ) : (
                 <Text>{'    '}</Text>
-              )
-            )}
+              ))}
             <Text
               color={labelStyle.color}
               bold={labelStyle.bold}
@@ -673,11 +644,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
               {row.label}
             </Text>
             {inheritanceStyle.glyph && (
-              <Text
-                color={inheritanceStyle.color}
-                bold={inheritanceStyle.bold}
-                dimColor={inheritanceStyle.dim}
-              >
+              <Text color={inheritanceStyle.color} bold={inheritanceStyle.bold} dimColor={inheritanceStyle.dim}>
                 {' ' + inheritanceStyle.glyph}
               </Text>
             )}

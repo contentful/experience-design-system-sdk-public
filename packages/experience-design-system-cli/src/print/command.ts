@@ -118,9 +118,7 @@ export function registerPrintCommand(program: Command): void {
           .get(sessionId) as { status: string } | undefined;
         generateStepStatus = stepRow?.status ?? null;
         const rejectedRow = db
-          .prepare(
-            `SELECT COUNT(*) AS n FROM raw_components WHERE session_id = ? AND status = 'generate-rejected'`,
-          )
+          .prepare(`SELECT COUNT(*) AS n FROM raw_components WHERE session_id = ? AND status = 'generate-rejected'`)
           .get(sessionId) as { n: number } | undefined;
         rejectedCount = rejectedRow?.n ?? 0;
       } finally {

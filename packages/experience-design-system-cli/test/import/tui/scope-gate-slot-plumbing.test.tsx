@@ -75,9 +75,7 @@ describe('scope-gate slot plumbing (loader → ScopeGateStep)', () => {
         { name: 'body', allowedComponents: ['Heading'] },
       ]);
 
-      const { lastFrame } = render(
-        <ScopeGateStep components={components} onConfirm={() => {}} onQuit={() => {}} />,
-      );
+      const { lastFrame } = render(<ScopeGateStep components={components} onConfirm={() => {}} onQuit={() => {}} />);
       const out = lastFrame() ?? '';
 
       expect(out).toMatch(/▾ Card \(1 dep\)/);

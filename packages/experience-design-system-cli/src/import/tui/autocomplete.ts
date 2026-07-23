@@ -9,11 +9,7 @@ function longestCommonPrefix(names: string[]): string {
   for (let i = 1; i < names.length; i++) {
     const other = names[i];
     let j = 0;
-    while (
-      j < prefixLen &&
-      j < other.length &&
-      names[0][j].toLowerCase() === other[j].toLowerCase()
-    ) {
+    while (j < prefixLen && j < other.length && names[0][j].toLowerCase() === other[j].toLowerCase()) {
       j++;
     }
     prefixLen = j;

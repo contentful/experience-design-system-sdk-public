@@ -1,9 +1,6 @@
 import { render } from 'ink-testing-library';
 import { describe, it, expect } from 'vitest';
-import {
-  GotoBanner,
-  type GotoRow,
-} from '../../../../../src/analyze/select/tui/components/GotoBanner.js';
+import { GotoBanner, type GotoRow } from '../../../../../src/analyze/select/tui/components/GotoBanner.js';
 import { PALETTE } from '../../../../../src/analyze/select/tui/theme.js';
 
 function buildRows(count: number): GotoRow[] {
@@ -22,18 +19,12 @@ const strip = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, '');
 
 describe('GotoBanner', () => {
   it('renders the title', () => {
-    const out =
-      render(
-        <GotoBanner title="Breaking changes" rows={buildRows(3)} cursor={0} />,
-      ).lastFrame() ?? '';
+    const out = render(<GotoBanner title="Breaking changes" rows={buildRows(3)} cursor={0} />).lastFrame() ?? '';
     expect(out).toContain('Breaking changes');
   });
 
   it('marks the highlighted row by cursor with a ▶ pointer', () => {
-    const out =
-      render(
-        <GotoBanner title="Goto" rows={buildRows(3)} cursor={1} />,
-      ).lastFrame() ?? '';
+    const out = render(<GotoBanner title="Goto" rows={buildRows(3)} cursor={1} />).lastFrame() ?? '';
     const lines = out.split('\n');
     const cursorLine = lines.find((l) => l.includes('Target1'));
     expect(cursorLine).toBeDefined();
@@ -57,10 +48,7 @@ describe('GotoBanner', () => {
 
   it('windows rows to maxRows with ▲/▼ more indicators on overflow', () => {
     const rows = buildRows(40);
-    const out =
-      render(
-        <GotoBanner title="Goto" rows={rows} cursor={39} maxRows={10} />,
-      ).lastFrame() ?? '';
+    const out = render(<GotoBanner title="Goto" rows={rows} cursor={39} maxRows={10} />).lastFrame() ?? '';
     expect(countRowLines(out)).toBeLessThan(40);
     expect(countRowLines(out)).toBeGreaterThan(0);
     expect(out).toContain('Target39');
@@ -69,10 +57,7 @@ describe('GotoBanner', () => {
   });
 
   it('renders every row with no indicators when content fits', () => {
-    const out =
-      render(
-        <GotoBanner title="Goto" rows={buildRows(3)} cursor={0} maxRows={15} />,
-      ).lastFrame() ?? '';
+    const out = render(<GotoBanner title="Goto" rows={buildRows(3)} cursor={0} maxRows={15} />).lastFrame() ?? '';
     expect(countRowLines(out)).toBe(3);
     expect(out).not.toMatch(/more/);
   });
@@ -87,10 +72,7 @@ describe('GotoBanner', () => {
     const children = el.props.children as React.ReactElement[];
     const rowEls = children.flat().filter(Boolean);
     const pointerRow = rowEls.find(
-      (c) =>
-        typeof c === 'object' &&
-        c?.props?.children &&
-        JSON.stringify(c.props.children).includes('▶'),
+      (c) => typeof c === 'object' && c?.props?.children && JSON.stringify(c.props.children).includes('▶'),
     );
     const frame = JSON.stringify(pointerRow);
     expect(frame).toContain(PALETTE.info);
@@ -98,10 +80,7 @@ describe('GotoBanner', () => {
 
   it('constrains the box to an explicit width', () => {
     const width = 34;
-    const out =
-      render(
-        <GotoBanner title="Goto" rows={buildRows(3)} cursor={0} width={width} />,
-      ).lastFrame() ?? '';
+    const out = render(<GotoBanner title="Goto" rows={buildRows(3)} cursor={0} width={width} />).lastFrame() ?? '';
     const lines = strip(out).split('\n');
     const border = lines.find((l) => l.includes('┌'));
     expect(border).toBeDefined();

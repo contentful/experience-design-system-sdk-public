@@ -9,10 +9,7 @@ function entryWithSlots(slots: Record<string, unknown[]>): Entry {
     $type: 'component',
     $properties: {},
     $slots: Object.fromEntries(
-      Object.entries(slots).map(([slotName, allowed]) => [
-        slotName,
-        { $allowedComponents: allowed },
-      ]),
+      Object.entries(slots).map(([slotName, allowed]) => [slotName, { $allowedComponents: allowed }]),
     ),
   } as Entry;
 }
@@ -40,16 +37,12 @@ describe('buildComponentGraph — single-row shapes', () => {
 
   it('emits a slot with allowedComponents: [] when $allowedComponents is []', () => {
     const rows: SlotGraphInput[] = [{ key: 'A', entry: entryWithSlots({ s: [] }) }];
-    expect(buildComponentGraph(rows)).toEqual([
-      { name: 'A', slots: [{ name: 's', allowedComponents: [] }] },
-    ]);
+    expect(buildComponentGraph(rows)).toEqual([{ name: 'A', slots: [{ name: 's', allowedComponents: [] }] }]);
   });
 
   it('emits a slot with a single string allowed target', () => {
     const rows: SlotGraphInput[] = [{ key: 'A', entry: entryWithSlots({ s: ['B'] }) }];
-    expect(buildComponentGraph(rows)).toEqual([
-      { name: 'A', slots: [{ name: 's', allowedComponents: ['B'] }] },
-    ]);
+    expect(buildComponentGraph(rows)).toEqual([{ name: 'A', slots: [{ name: 's', allowedComponents: ['B'] }] }]);
   });
 });
 
@@ -87,22 +80,18 @@ describe('buildComponentGraph — $allowedComponents filtering', () => {
         entry: entryWithSlots({ s: ['B', 42, null, { name: 'nope' }, 'C'] }),
       },
     ];
-    expect(buildComponentGraph(rows)).toEqual([
-      { name: 'A', slots: [{ name: 's', allowedComponents: ['B', 'C'] }] },
-    ]);
+    expect(buildComponentGraph(rows)).toEqual([{ name: 'A', slots: [{ name: 's', allowedComponents: ['B', 'C'] }] }]);
   });
 
   it('coerces a non-array $allowedComponents to an empty list', () => {
     const rows: SlotGraphInput[] = [
       {
         key: 'A',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         entry: { $type: 'component', $properties: {}, $slots: { s: { $allowedComponents: 'nope' } } } as any,
       },
     ];
-    expect(buildComponentGraph(rows)).toEqual([
-      { name: 'A', slots: [{ name: 's', allowedComponents: [] }] },
-    ]);
+    expect(buildComponentGraph(rows)).toEqual([{ name: 'A', slots: [{ name: 's', allowedComponents: [] }] }]);
   });
 });
 
@@ -114,9 +103,7 @@ describe('buildComponentGraph — stripRejectedEdges', () => {
   });
 
   it("emits empty slots when stripRejectedEdges=true and status='error'", () => {
-    expect(buildComponentGraph([rowWith('error')], { stripRejectedEdges: true })).toEqual([
-      { name: 'A', slots: [] },
-    ]);
+    expect(buildComponentGraph([rowWith('error')], { stripRejectedEdges: true })).toEqual([{ name: 'A', slots: [] }]);
   });
 
   it("emits empty slots when stripRejectedEdges=true and status='rejected'", () => {
@@ -160,10 +147,7 @@ describe('buildComponentGraph — stripRejectedEdges', () => {
 
 describe('buildComponentGraph — shape tolerance and purity', () => {
   it('ignores extra properties on the input row', () => {
-    const rows = [
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { key: 'A', entry: entryWithSlots({ s: ['B'] }), status: 'accepted', foo: 42, bar: 'baz' } as any,
-    ];
+    const rows = [{ key: 'A', entry: entryWithSlots({ s: ['B'] }), status: 'accepted', foo: 42, bar: 'baz' } as any];
     expect(buildComponentGraph(rows as SlotGraphInput[])).toEqual([
       { name: 'A', slots: [{ name: 's', allowedComponents: ['B'] }] },
     ]);

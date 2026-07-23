@@ -135,7 +135,9 @@ export function DoneStep({
           <Text dimColor>Your design system is now in Contentful ExO.</Text>
           <Box flexDirection="column" gap={0}>
             <Text dimColor>View it here:</Text>
-            <Text color={PALETTE.info}>{buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId })}</Text>
+            <Text color={PALETTE.info}>
+              {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId })}
+            </Text>
           </Box>
         </Box>
       )}

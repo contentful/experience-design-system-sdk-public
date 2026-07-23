@@ -24,10 +24,7 @@ export function computeFilterKeys(input: {
   return out;
 }
 
-export function intersectFilterKeys(
-  a: Set<string> | undefined,
-  b: Set<string> | undefined,
-): Set<string> | undefined {
+export function intersectFilterKeys(a: Set<string> | undefined, b: Set<string> | undefined): Set<string> | undefined {
   if (a === undefined) return b;
   if (b === undefined) return a;
   const out = new Set<string>();

@@ -24,17 +24,11 @@ describe('findDirectParents', () => {
 
   it('returns the single parent that slots the target', () => {
     const components = [comp('Article', [['body', ['Card']]]), comp('Card')];
-    expect(findDirectParents('Card', components)).toEqual([
-      { parent: 'Article', slotName: 'body' },
-    ]);
+    expect(findDirectParents('Card', components)).toEqual([{ parent: 'Article', slotName: 'body' }]);
   });
 
   it('returns every parent (shared dep case), sorted by parent then slot', () => {
-    const components = [
-      comp('Page', [['hero', ['Card']]]),
-      comp('Article', [['body', ['Card']]]),
-      comp('Card'),
-    ];
+    const components = [comp('Page', [['hero', ['Card']]]), comp('Article', [['body', ['Card']]]), comp('Card')];
     expect(findDirectParents('Card', components)).toEqual([
       { parent: 'Article', slotName: 'body' },
       { parent: 'Page', slotName: 'hero' },
@@ -42,13 +36,8 @@ describe('findDirectParents', () => {
   });
 
   it('returns one entry per (parent, slot) — same slot listing target twice is deduped', () => {
-    const components = [
-      comp('Article', [['body', ['Card', 'Card']]]),
-      comp('Card'),
-    ];
-    expect(findDirectParents('Card', components)).toEqual([
-      { parent: 'Article', slotName: 'body' },
-    ]);
+    const components = [comp('Article', [['body', ['Card', 'Card']]]), comp('Card')];
+    expect(findDirectParents('Card', components)).toEqual([{ parent: 'Article', slotName: 'body' }]);
   });
 
   it('returns two entries when one parent slots the same target in two different slots', () => {
@@ -87,19 +76,12 @@ describe('findAllAncestors', () => {
   });
 
   it('returns every ancestor for a shared dep', () => {
-    const components = [
-      comp('Article', [['body', ['Card']]]),
-      comp('Page', [['hero', ['Card']]]),
-      comp('Card'),
-    ];
+    const components = [comp('Article', [['body', ['Card']]]), comp('Page', [['hero', ['Card']]]), comp('Card')];
     expect([...findAllAncestors('Card', components)].sort()).toEqual(['Article', 'Page']);
   });
 
   it('handles cycles without infinite loop', () => {
-    const components = [
-      comp('A', [['s', ['B']]]),
-      comp('B', [['s', ['A']]]),
-    ];
+    const components = [comp('A', [['s', ['B']]]), comp('B', [['s', ['A']]])];
     expect([...findAllAncestors('A', components)].sort()).toEqual(['B']);
     expect([...findAllAncestors('B', components)].sort()).toEqual(['A']);
   });
@@ -119,20 +101,11 @@ describe('findAllAncestorChains', () => {
   });
 
   it('returns multiple chains when parents diverge', () => {
-    const components = [
-      comp('Article', [['body', ['Card']]]),
-      comp('Page', [['hero', ['Card']]]),
-      comp('Card'),
-    ];
+    const components = [comp('Article', [['body', ['Card']]]), comp('Page', [['hero', ['Card']]]), comp('Card')];
     const chains = findAllAncestorChains('Card', components);
     expect(chains).toHaveLength(2);
-    const asStrings = chains.map((chain) =>
-      chain.map((e) => `${e.from}[${e.slotName}]→${e.to}`).join(' '),
-    );
-    expect(asStrings.sort()).toEqual([
-      'Article[body]→Card',
-      'Page[hero]→Card',
-    ]);
+    const asStrings = chains.map((chain) => chain.map((e) => `${e.from}[${e.slotName}]→${e.to}`).join(' '));
+    expect(asStrings.sort()).toEqual(['Article[body]→Card', 'Page[hero]→Card']);
   });
 
   it('extends chains through the transitive graph', () => {
@@ -150,10 +123,7 @@ describe('findAllAncestorChains', () => {
   });
 
   it('terminates on cycles', () => {
-    const components = [
-      comp('A', [['s', ['B']]]),
-      comp('B', [['s', ['A']]]),
-    ];
+    const components = [comp('A', [['s', ['B']]]), comp('B', [['s', ['A']]])];
     const chains = findAllAncestorChains('A', components);
     expect(chains.length).toBeGreaterThan(0);
     for (const chain of chains) {
@@ -182,11 +152,7 @@ describe('buildAncestorTree', () => {
   });
 
   it('two independent parents → root has 2 leaves', () => {
-    const components = [
-      comp('Article', [['body', ['Card']]]),
-      comp('Page', [['hero', ['Card']]]),
-      comp('Card'),
-    ];
+    const components = [comp('Article', [['body', ['Card']]]), comp('Page', [['hero', ['Card']]]), comp('Card')];
     const tree = buildAncestorTree('Card', components);
     expect(tree.parents.map((p) => p.name)).toEqual(['Article', 'Page']);
     for (const p of tree.parents) {
@@ -239,10 +205,7 @@ describe('buildAncestorTree', () => {
   });
 
   it('cycle (A ↔ B, target = A)', () => {
-    const components = [
-      comp('A', [['s', ['B']]]),
-      comp('B', [['s', ['A']]]),
-    ];
+    const components = [comp('A', [['s', ['B']]]), comp('B', [['s', ['A']]])];
     const tree = buildAncestorTree('A', components);
     expect(tree.parents).toHaveLength(1);
     const b = tree.parents[0];
@@ -275,11 +238,7 @@ describe('renderAncestorTree', () => {
       comp('Card'),
     ];
     const lines = renderAncestorTree(buildAncestorTree('Card', components));
-    expect(lines.map((l) => l.text)).toEqual([
-      'Card',
-      '└─ [items] ← Section',
-      '   └─ [sections] ← Landing',
-    ]);
+    expect(lines.map((l) => l.text)).toEqual(['Card', '└─ [items] ← Section', '   └─ [sections] ← Landing']);
   });
 
   it('shared node label contains (shared)', () => {
@@ -299,10 +258,7 @@ describe('renderAncestorTree', () => {
   });
 
   it('cycle node label contains (cycle ↺)', () => {
-    const components = [
-      comp('A', [['s', ['B']]]),
-      comp('B', [['s', ['A']]]),
-    ];
+    const components = [comp('A', [['s', ['B']]]), comp('B', [['s', ['A']]])];
     const lines = renderAncestorTree(buildAncestorTree('A', components));
     const cycleLine = lines.find((l) => l.text.includes('(cycle ↺)'));
     expect(cycleLine).toBeDefined();
