@@ -57,3 +57,11 @@ export {
 // Pre-classification
 export { preClassifyProp, preClassifyComponent } from './pre-classify.js';
 export type { PreClassification } from './pre-classify.js';
+
+// Shared parse seam (used by the whole-file extractors and the raw-AST dumper)
+export { createExtractionProject, loadTsMorphSourceFiles } from './parse/project-factory.js';
+export type { ExtractionProjectOptions } from './parse/project-factory.js';
+
+// Raw, unfiltered AST dump — literally everything the parsers see, no extraction
+export { dumpRawAst } from './dump/raw-ast.js';
+export type { RawAstDump, RawAstFile, AstParser, TsMorphAstNode } from './dump/raw-ast.js';

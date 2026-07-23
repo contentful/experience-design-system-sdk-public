@@ -1,5 +1,6 @@
 import { basename, dirname, join, resolve } from 'node:path';
 import { Project, Node, SyntaxKind, type SourceFile, type ClassDeclaration } from 'ts-morph';
+import { loadTsMorphSourceFiles } from '../parse/project-factory.js';
 import type {
   RawComponentDefinition,
   RawPropDefinition,
@@ -1046,19 +1047,7 @@ export async function extractWebComponentDefinitions(filePaths: string[]): Promi
     return { components: [], warnings: [] };
   }
 
-  const project = new Project({
-    compilerOptions: {
-      target: 99, // ScriptTarget.ESNext
-      module: 99, // ModuleKind.ESNext
-      moduleResolution: 100, // ModuleResolutionKind.Bundler
-      skipLibCheck: true,
-    },
-    skipAddingFilesFromTsConfig: true,
-  });
-
-  for (const filePath of tsFiles) {
-    project.addSourceFileAtPath(filePath);
-  }
+  const { project } = loadTsMorphSourceFiles(tsFiles, { jsx: false, allowJs: false });
 
   const warnings: string[] = [];
   const components: RawComponentDefinition[] = [];

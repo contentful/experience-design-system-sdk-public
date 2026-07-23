@@ -256,11 +256,13 @@ function mergeSlots(...slotGroups: RawSlotDefinition[][]): RawSlotDefinition[] {
   return merged;
 }
 
-function extractFromAstroFile(filePath: string, source: string): RawComponentDefinition {
-  const name = basename(filePath, '.astro');
-
-  // Split on `---` fences: frontmatter is between first and second `---`
-  // If there is no `---`, the entire file is a template-only component
+/**
+ * Split an `.astro` file on its `---` fences into frontmatter (TS/JS) and
+ * template. If there is no leading fence, the whole file is a template-only
+ * component and `frontmatter` is empty. Exported so the raw-AST dumper can parse
+ * the exact same frontmatter slice the extractor sees.
+ */
+export function sliceAstroSource(source: string): { frontmatter: string; template: string } {
   const fenceIndex = source.startsWith('---') ? 0 : -1;
   let frontmatter = '';
   let template = source;
@@ -272,6 +274,14 @@ function extractFromAstroFile(filePath: string, source: string): RawComponentDef
       template = source.slice(endFenceIndex + 3);
     }
   }
+
+  return { frontmatter, template };
+}
+
+function extractFromAstroFile(filePath: string, source: string): RawComponentDefinition {
+  const name = basename(filePath, '.astro');
+
+  const { frontmatter, template } = sliceAstroSource(source);
 
   const props = frontmatter
     ? mergeProps(extractFallbackPropsFromFrontmatter(frontmatter), extractPropsFromFrontmatter(frontmatter))
