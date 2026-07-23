@@ -3,6 +3,7 @@ import { resolve, join } from 'node:path';
 import { runPipeline } from './orchestrator.js';
 import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { resolveAgent, resolveModel } from './agent-model-resolve.js';
+import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { replayRun, modifyRun } from '../runs/replay-helpers.js';
@@ -47,7 +48,7 @@ export function registerImportCommand(program: Command): void {
     .option('--skip-analyze', 'Skip the analyze step (uses most recent extract session)')
     .option('--skip-generate', 'Skip the generate step (uses most recent generate session)')
     .option('--print', 'Write components.json to --out after generation')
-    .option('--skip-apply', 'Skip pushing to Contentful (stops after generate)')
+    .option('--skip-apply', '(deprecated alias for --no-push) Skip pushing to Contentful')
     .option('--no-cache', 'Re-run all steps even if output already exists')
     .option('--yes', 'Skip interactive confirmation in apply push')
     .option('--verbose', 'Show full agent output and all entity progress')
@@ -63,6 +64,32 @@ export function registerImportCommand(program: Command): void {
       'Print the generate components prompt without invoking the agent. Replaces the legacy --dry-run prompt-print behaviour on this command.',
     )
     .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)')
+    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
+    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
+    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
+    .option(
+      '--composition-agent',
+      'Opt into agentic mapping resolution when deterministic sources find no groups (implies --composite)',
+    )
+    .option(
+      '--composition-refresh',
+      'Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies --composite)',
+    )
+    .option(
+      '--composition-agent-mode <mode>',
+      "Agent mode: 'parser' (agent writes a sandboxed parser, default) or 'edges' (agent lists edges)",
+    )
+    .option(
+      '--generate-map <path>',
+      'Also write a composition-map skeleton from resolved edges during extract (implies --composite)',
+    )
+    .option(
+      '--prompt <stage=value>',
+      'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
+      (v: string, acc: string[]) => [...acc, v],
+      [] as string[],
+    )
+    .option('--auto-reject-cycles', 'Automatically reject components involved in slot cycles and retry')
     .option('--auto-filter', 'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)')
     .option(
       '--no-auto-filter',
@@ -74,7 +101,7 @@ export function registerImportCommand(program: Command): void {
     )
     .option(
       '--no-push',
-      'Run extract → scope-gate → generate → final-review and exit without pushing to Contentful (no credentials prompt; live preview disabled)',
+      'Import without pushing to Contentful. Interactive: runs the full wizard (extract → scope-gate → generate → final-review) and stops before push. Non-interactive (piped/CI): runs headless through generate. No credentials needed either way.',
     )
     .option('--no-save', 'Push without writing components.json / tokens.json to disk (default: save AND push)')
     .option(
@@ -138,6 +165,15 @@ export function registerImportCommand(program: Command): void {
         dryRun?: boolean;
         printPrompt?: boolean;
         autoAcceptScope?: boolean;
+        composite?: boolean;
+        atomic?: boolean;
+        compositionMap?: string;
+        compositionAgent?: boolean;
+        compositionAgentMode?: string;
+        compositionRefresh?: boolean;
+        generateMap?: string;
+        prompt?: string[];
+        autoRejectCycles?: boolean;
         autoFilter?: boolean;
         livePreview?: boolean;
         push?: boolean;
@@ -152,9 +188,34 @@ export function registerImportCommand(program: Command): void {
         saveAsNew?: boolean;
         force?: boolean;
       }) => {
-        // ── --push-from-run handling ───────────────────────────────────────
-        // Push-only replay of a prior run. Mutex checks happen *before* any
-        // side effects (no DB reads, no wizard render).
+        // --modify and --push-from-run resume a recorded session; the composition
+        // mode comes from that run's record, so composition flags on the command
+        // line don't apply. Warn and clear them rather than let them mislead.
+        if (opts.modify !== undefined || opts.pushFromRun !== undefined) {
+          const passedCompositionFlags = [
+            opts.composite ? '--composite' : null,
+            opts.atomic ? '--atomic' : null,
+            opts.compositionMap ? '--composition-map' : null,
+            opts.compositionAgent ? '--composition-agent' : null,
+            opts.compositionAgentMode ? '--composition-agent-mode' : null,
+            opts.compositionRefresh ? '--composition-refresh' : null,
+            opts.generateMap ? '--generate-map' : null,
+          ].filter((f): f is string => f !== null);
+          if (passedCompositionFlags.length > 0) {
+            const entry = opts.modify !== undefined ? '--modify' : '--push-from-run';
+            process.stderr.write(
+              `Note: ${passedCompositionFlags.join(', ')} ignored with ${entry} — composition mode comes from the recorded run.\n`,
+            );
+            opts.composite = undefined;
+            opts.atomic = undefined;
+            opts.compositionMap = undefined;
+            opts.compositionAgent = undefined;
+            opts.compositionAgentMode = undefined;
+            opts.compositionRefresh = undefined;
+            opts.generateMap = undefined;
+          }
+        }
+
         if (opts.pushFromRun !== undefined) {
           if (opts.modify !== undefined) {
             process.stderr.write(
@@ -207,7 +268,6 @@ export function registerImportCommand(program: Command): void {
           }
         }
 
-        // ── --modify handling ──────────────────────────────────────────────
         if (opts.modify !== undefined) {
           if (opts.project !== '.') {
             process.stderr.write(
@@ -263,10 +323,6 @@ export function registerImportCommand(program: Command): void {
           return;
         }
 
-        // ── --raw-tokens validation ─────────────────────────────────────────
-        // The raw-tokens path is a source file the wizard hands to
-        // `generate tokens --raw-tokens <path>`. Validate at parse time so
-        // operators get an immediate error before the wizard renders.
         if (opts.rawTokens !== undefined) {
           if (opts.tokens !== undefined) {
             process.stderr.write(
@@ -294,10 +350,18 @@ export function registerImportCommand(program: Command): void {
         }
         const dryRunForward = promptFlags.forwardDryRun;
 
+        // "Don't push" is one user intent (--no-push); --skip-apply is a
+        // deprecated alias. Interactive runs (TTY) take the wizard and stop
+        // before push; non-interactive runs take the headless pipeline and stop
+        // after generate. Either way no credentials are required.
+        const noPushRequested = opts.push === false || opts.skipApply === true;
+
         const isHeadless =
           opts.skipAnalyze ||
           opts.skipGenerate ||
-          opts.skipApply ||
+          // A "don't push" request on a non-TTY is a headless intent (the wizard
+          // needs a TTY); in a TTY it stays interactive and is NOT headless.
+          (noPushRequested && !process.stdout.isTTY) ||
           !!opts.spaceId ||
           !!opts.environmentId ||
           !!opts.cmaToken ||
@@ -309,7 +373,7 @@ export function registerImportCommand(program: Command): void {
 
         if (!process.stdout.isTTY && !isHeadless && !autoAcceptScope) {
           process.stderr.write(
-            'Error: experiences import is interactive. Pass --auto-accept-scope, or use a headless mode by providing credentials (--space-id, --environment-id, --cma-token) or one of --skip-analyze, --skip-generate, --skip-apply, --yes, --dry-run, --print-prompt.\n',
+            'Error: experiences import is interactive. Pass --auto-accept-scope, or use a headless mode by providing credentials (--space-id, --environment-id, --cma-token) or one of --no-push, --skip-analyze, --skip-generate, --yes, --dry-run, --print-prompt.\n',
           );
           process.exit(1);
           return;
@@ -329,6 +393,14 @@ export function registerImportCommand(program: Command): void {
             initialProjectPath?: string;
             host?: string;
             autoAcceptScope?: boolean;
+            autoRejectCycles?: boolean;
+            compositionMode?: CompositionMode;
+            compositionMap?: string;
+            compositionAgent?: boolean;
+            compositionAgentMode?: string;
+            compositionRefresh?: boolean;
+            generateMap?: string;
+            promptOverrides?: string[];
             noCache?: boolean;
             autoFilter?: boolean;
             livePreview?: boolean;
@@ -343,16 +415,10 @@ export function registerImportCommand(program: Command): void {
             onRunPicked?: (selection: RunPickerSelection) => void;
           };
           const creds = await readExperiencesCredentials();
-          // Parity-audit Q4: resolve --agent / --model overrides against the
-          // stored credentials.json so both flags are functional for the
-          // wizard path. Flag wins, then stored value, then default.
           const resolvedAgent = resolveAgent(opts.agent, creds.agent);
           const resolvedModel = resolveModel(opts.model, creds.agentModel);
+          const resolvedCompositionMode = resolveCompositionMode(opts, creds.compositionMode);
 
-          // ── Run picker decision ─────────────────────────────────────────
-          // When runs.json has prior entries and the operator didn't ask for
-          // a specific entry point, open the wizard with the run picker. The
-          // helper enforces every gate (TTY, conflicting flags, file state).
           const pickerDecision = await shouldShowRunPicker({
             flags: {
               ...(opts.pushFromRun !== undefined ? { pushFromRun: opts.pushFromRun } : {}),
@@ -365,10 +431,6 @@ export function registerImportCommand(program: Command): void {
           });
 
           let pickerSelection: RunPickerSelection | null = null;
-          // Ink `unmount` handle captured after `render(...)` below so the
-          // picker callback can tear down the wizard cleanly. Prior to this
-          // fix the callback did `setImmediate(() => process.exit(0))`, which
-          // killed the process before `dispatchPickerSelection` could run.
           let unmountInk: (() => void) | null = null;
           const pickerProps: {
             initialRuns?: typeof pickerDecision.runs;
@@ -393,10 +455,18 @@ export function registerImportCommand(program: Command): void {
               initialProjectPath: opts.project !== '.' ? resolve(opts.project) : undefined,
               host: opts.host,
               autoAcceptScope,
+              autoRejectCycles: opts.autoRejectCycles ?? false,
+              compositionMode: resolvedCompositionMode,
+              ...(opts.compositionMap ? { compositionMap: opts.compositionMap } : {}),
+              ...(opts.compositionAgent ? { compositionAgent: true } : {}),
+              ...(opts.compositionAgentMode ? { compositionAgentMode: opts.compositionAgentMode } : {}),
+              ...(opts.compositionRefresh ? { compositionRefresh: true } : {}),
+              ...(opts.generateMap ? { generateMap: opts.generateMap } : {}),
+              ...(opts.prompt && opts.prompt.length > 0 ? { promptOverrides: opts.prompt } : {}),
               noCache: opts.cache === false,
               autoFilter: resolveAutoFilter({ autoFilter: opts.autoFilter }, creds.autoFilter),
               livePreview: opts.livePreview !== false,
-              noPush: opts.push === false,
+              noPush: noPushRequested,
               noSave: opts.save === false,
               ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
               ...(opts.onConflict ? { onConflictMode: opts.onConflict } : {}),
@@ -408,10 +478,6 @@ export function registerImportCommand(program: Command): void {
           );
           unmountInk = unmount;
           await waitUntilExit();
-          // ── Picker dispatch ─────────────────────────────────────────────
-          // If the operator picked a run, route into replayRun / modifyRun.
-          // dispatchPickerSelection lives in ./picker-dispatch.ts so this
-          // decision is testable without an Ink runtime.
           if (pickerSelection) {
             await dispatchPickerSelection(
               pickerSelection,
@@ -432,14 +498,16 @@ export function registerImportCommand(program: Command): void {
           return;
         }
 
-        const skipApply = opts.skipApply ?? false;
+        // --no-push (and its deprecated alias --skip-apply) both mean "stop
+        // before the push" on the headless path — so neither requires credentials.
+        const skipApply = noPushRequested;
         const spaceId = opts.spaceId ?? process.env['CONTENTFUL_SPACE_ID'];
         const environmentId = opts.environmentId ?? process.env['CONTENTFUL_ENVIRONMENT_ID'];
         const cmaToken = opts.cmaToken ?? process.env['CONTENTFUL_MANAGEMENT_TOKEN'];
 
         if (!skipApply && (!spaceId || !environmentId || !cmaToken)) {
           process.stderr.write(
-            'Error: --space-id (or CONTENTFUL_SPACE_ID), --environment-id (or CONTENTFUL_ENVIRONMENT_ID), and --cma-token (or CONTENTFUL_MANAGEMENT_TOKEN) are required unless --skip-apply is set.\n',
+            'Error: --space-id (or CONTENTFUL_SPACE_ID), --environment-id (or CONTENTFUL_ENVIRONMENT_ID), and --cma-token (or CONTENTFUL_MANAGEMENT_TOKEN) are required unless --no-push is set.\n',
           );
           process.exit(1);
           return;
@@ -448,10 +516,10 @@ export function registerImportCommand(program: Command): void {
         const projectRoot = resolve(opts.project);
         const outDir = opts.out ? resolve(opts.out) : join(projectRoot, '.contentful');
 
-        // Parity-audit Q4: also honor stored agent/model in headless mode.
         const headlessCreds = await readExperiencesCredentials();
         const headlessAgent = resolveAgent(opts.agent, headlessCreds.agent);
         const headlessModel = resolveModel(opts.model, headlessCreds.agentModel);
+        const headlessCompositionMode = resolveCompositionMode(opts, headlessCreds.compositionMode);
 
         const result = await runPipeline(
           {
@@ -478,6 +546,14 @@ export function registerImportCommand(program: Command): void {
             host: opts.host,
             dryRun: dryRunForward,
             selectPromptPath: opts.selectPromptPath,
+            autoRejectCycles: opts.autoRejectCycles ?? false,
+            compositionMode: headlessCompositionMode,
+            ...(opts.compositionMap ? { compositionMap: opts.compositionMap } : {}),
+            ...(opts.compositionAgent ? { compositionAgent: true } : {}),
+            ...(opts.compositionAgentMode ? { compositionAgentMode: opts.compositionAgentMode } : {}),
+            ...(opts.compositionRefresh ? { compositionRefresh: true } : {}),
+            ...(opts.generateMap ? { generateMap: opts.generateMap } : {}),
+            ...(opts.prompt && opts.prompt.length > 0 ? { promptOverrides: opts.prompt } : {}),
           },
           (line) => process.stderr.write(line + '\n'),
         );

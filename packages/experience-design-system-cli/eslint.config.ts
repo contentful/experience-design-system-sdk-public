@@ -34,7 +34,6 @@ export default defineConfig([
 				},
 			],
 			"prettier/prettier": ["error", { singleQuote: true, printWidth: 120 }],
-			"react-hooks/exhaustive-deps": "off",
 		},
 	},
 	{

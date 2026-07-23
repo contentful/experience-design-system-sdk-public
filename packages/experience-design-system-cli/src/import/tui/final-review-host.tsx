@@ -1,26 +1,23 @@
 import { Box, Text } from 'ink';
+import { PALETTE } from '../../analyze/select/tui/theme.js';
 import React from 'react';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
+import { AtomicGenerateReviewStep } from './steps/AtomicGenerateReviewStep.js';
+import type { CompositionMode } from '../../lib/composition-mode.js';
 
 export type FinalReviewHostProps = {
   extractSessionId: string | null;
   generatedCount: number;
   autoAccept: boolean;
+  compositionMode?: CompositionMode;
   onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
-  // Feature 2 plumbing — passed straight through to GenerateReviewStep.
   livePreview?: boolean;
   spaceId?: string;
   environmentId?: string;
   cmaToken?: string;
   host?: string;
   tokensPath?: string;
-  /**
-   * INTEG-4411 refined: message displayed as an inline banner when the wizard
-   * routes back here after the preview API returned an empty diff (pure
-   * no-op push). Cleared on the next `a` / `A` keystroke inside
-   * GenerateReviewStep.
-   */
   initialFinalizeError?: string | null;
 };
 
@@ -28,6 +25,7 @@ export function FinalReviewHost({
   extractSessionId,
   generatedCount,
   autoAccept,
+  compositionMode = 'atomic',
   onFinalize,
   onQuit,
   livePreview,
@@ -41,7 +39,7 @@ export function FinalReviewHost({
   if (!extractSessionId) {
     return (
       <Box paddingX={2} paddingY={1}>
-        <Text color="red">Error: no session ID — cannot load generated definitions.</Text>
+        <Text color={PALETTE.error}>Error: no session ID — cannot load generated definitions.</Text>
       </Box>
     );
   }
@@ -50,8 +48,13 @@ export function FinalReviewHost({
     return <FinalReviewAutoAccept generatedCount={generatedCount} onFinalize={onFinalize} />;
   }
 
+  // Atomic mode (spec T9): render the pre-composite flat review step. It never
+  // passes projectSlotGraph to FieldEditor and never walks closures/cycles, so
+  // slot-composition editing and every hierarchy affordance stay absent.
+  const StepComponent = compositionMode === 'atomic' ? AtomicGenerateReviewStep : GenerateReviewStep;
+
   return (
-    <GenerateReviewStep
+    <StepComponent
       extractSessionId={extractSessionId}
       onFinalize={onFinalize}
       onQuit={onQuit}
@@ -75,7 +78,6 @@ function FinalReviewAutoAccept({
 }): React.ReactElement {
   React.useEffect(() => {
     onFinalize(generatedCount, 0, 0);
-    // fire once on mount; deps intentionally empty so a re-render with new generatedCount doesn't double-finalize
   }, []);
   return (
     <Box paddingX={2} paddingY={1}>

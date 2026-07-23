@@ -180,6 +180,29 @@ describe('import — skip flags', () => {
     expect(stderr).not.toContain('--cma-token');
   });
 
+  it('--no-push works headless on a non-TTY (piped) without credentials or the interactive error', async () => {
+    // Regression: previously --no-push (unlike --skip-apply) demanded credentials
+    // and/or errored "experiences import is interactive" when stdout was a pipe.
+    // --no-push is now the canonical "don't push" flag and works in both contexts.
+    const { stderr } = await run(
+      ['import', '--skip-analyze', '--skip-generate', '--no-push', '--project', projectDir],
+      baseEnv(),
+    );
+    expect(stderr).not.toContain('--space-id');
+    expect(stderr).not.toContain('--cma-token');
+    expect(stderr).not.toContain('is interactive');
+  });
+
+  it('--no-push and --skip-apply are interchangeable for the credential requirement', async () => {
+    const noPush = await run(
+      ['import', '--skip-analyze', '--skip-generate', '--no-push', '--project', projectDir],
+      baseEnv(),
+    );
+    const skipApply = await run(skipAll(), baseEnv());
+    expect(noPush.code).toBe(skipApply.code);
+    expect(noPush.stderr).not.toContain('--cma-token');
+  });
+
   it('--skip-analyze alone is accepted as a flag', async () => {
     const { stderr, code } = await run(
       ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', projectDir],

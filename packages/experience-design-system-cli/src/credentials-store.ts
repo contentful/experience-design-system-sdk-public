@@ -17,6 +17,12 @@ export type ExperiencesCredentials = {
   autoFilter?: boolean;
   /** Feature: default debug-mode (writes JSONL trace of every decision) for all commands. */
   debug?: boolean;
+  /**
+   * Feature (atomic mode): default composition mode. `atomic` (default) imports
+   * flat components with no embedded-component hierarchy; `composite` opts into
+   * the slot-graph machinery. Resolved `flag > env > this > default`.
+   */
+  compositionMode?: 'composite' | 'atomic';
 };
 
 const CREDENTIALS_DIR = join(homedir(), '.config', 'experiences');
@@ -53,6 +59,9 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
       ...(parsed.generatePromptPath ? { generatePromptPath: parsed.generatePromptPath } : {}),
       ...(typeof parsed.autoFilter === 'boolean' ? { autoFilter: parsed.autoFilter } : {}),
       ...(typeof parsed.debug === 'boolean' ? { debug: parsed.debug } : {}),
+      ...(parsed.compositionMode === 'composite' || parsed.compositionMode === 'atomic'
+        ? { compositionMode: parsed.compositionMode }
+        : {}),
     };
   } catch {
     const host = toConfiguredHost(process.env['EDS_HOST']);
@@ -66,7 +75,17 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
 }
 
 export async function writeExperiencesCredentials(creds: ExperiencesCredentials): Promise<void> {
-  const { host: _host, agent, agentModel, selectPromptPath, generatePromptPath, autoFilter, debug, ...rest } = creds;
+  const {
+    host: _host,
+    agent,
+    agentModel,
+    selectPromptPath,
+    generatePromptPath,
+    autoFilter,
+    debug,
+    compositionMode,
+    ...rest
+  } = creds;
   const host = toConfiguredHost(creds.host);
   await mkdir(CREDENTIALS_DIR, { recursive: true });
   await writeFile(
@@ -81,6 +100,7 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
         ...(generatePromptPath ? { generatePromptPath } : {}),
         ...(typeof autoFilter === 'boolean' ? { autoFilter } : {}),
         ...(typeof debug === 'boolean' ? { debug } : {}),
+        ...(compositionMode === 'composite' || compositionMode === 'atomic' ? { compositionMode } : {}),
       },
       null,
       2,

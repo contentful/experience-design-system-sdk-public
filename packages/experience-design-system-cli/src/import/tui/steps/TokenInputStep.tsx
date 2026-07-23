@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { statSync } from 'node:fs';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
@@ -102,7 +103,7 @@ export function TokenInputStep({ onConfirm, onSkip, onQuit }: TokenInputStepProp
 
       <Box flexDirection="column" marginTop={1} gap={0}>
         <Box gap={1}>
-          <Text color="cyan">?</Text>
+          <Text color={PALETTE.info}>?</Text>
           <Text>Token path (file or directory):</Text>
           <Text>{displayValue}</Text>
         </Box>
@@ -113,7 +114,7 @@ export function TokenInputStep({ onConfirm, onSkip, onQuit }: TokenInputStepProp
         )}
         {error && (
           <Box marginTop={0} flexDirection="column">
-            <Text color="red">✗ {error}</Text>
+            <Text color={PALETTE.error}>✗ {error}</Text>
             {resolvedPath && <Text dimColor> Resolved to: {resolvedPath}</Text>}
           </Box>
         )}

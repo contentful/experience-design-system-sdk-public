@@ -175,7 +175,7 @@ describe('ReactComponentExtractor', () => {
 
     const result = await extractReactComponents([filePath]);
     const card = result.components[0];
-    expect(card.slots).toContainEqual({ name: 'default', isDefault: true });
+    expect(card.slots).toContainEqual({ name: 'children', isDefault: true });
     expect(card.props.find((p) => p.name === 'children')).toBeUndefined();
   });
 
@@ -200,7 +200,7 @@ describe('ReactComponentExtractor', () => {
 
     expect(provider.name).toBe('FormProvider');
     expect(provider.props.find((p) => p.name === 'prefixCls')).toBeDefined();
-    expect(provider.slots).toContainEqual({ name: 'default', isDefault: true });
+    expect(provider.slots).toContainEqual({ name: 'children', isDefault: true });
   });
 
   it('preserves the default slot when opaque props are forwarded through JSX spread', async () => {
@@ -225,7 +225,7 @@ describe('ReactComponentExtractor', () => {
     expect(provider).toBeDefined();
     expect(provider!.props).toEqual([]);
     expect(provider!.slots).toContainEqual({
-      name: 'default',
+      name: 'children',
       isDefault: true,
     });
   });
@@ -339,7 +339,7 @@ describe('ReactComponentExtractor', () => {
         expect.objectContaining({ name: 'id' }),
       ]),
     );
-    expect(slot?.slots).toContainEqual({ name: 'default', isDefault: true });
+    expect(slot?.slots).toContainEqual({ name: 'children', isDefault: true });
   });
 
   it('ignores non-component exports', async () => {
@@ -492,7 +492,7 @@ describe('ReactComponentExtractor', () => {
     expect(group!.props.find((p) => p.name === 'name')?.type).toBe('string');
     expect(group!.props.find((p) => p.name === 'type')?.allowedValues).toEqual(['checkbox', 'radio']);
     expect(group!.props.find((p) => p.name === 'testId')).toBeUndefined();
-    expect(group!.slots).toContainEqual({ name: 'default', isDefault: true });
+    expect(group!.slots).toContainEqual({ name: 'children', isDefault: true });
   });
 
   it('recovers named interface DOM props from forwardRef generic type arguments', async () => {
@@ -900,7 +900,7 @@ describe('ReactComponentExtractor', () => {
     expect(card.props.find((p) => p.name === 'title')?.type).toBe('string');
     expect(card.props.find((p) => p.name === 'onClick')?.type).toBe('() => void');
     expect(card.props.find((p) => p.name === 'size')?.allowedValues).toEqual(['default', 'small']);
-    expect(card.slots).toContainEqual({ name: 'default', isDefault: true });
+    expect(card.slots).toContainEqual({ name: 'children', isDefault: true });
   });
 
   it('covers imported AssetCard-style inherited prop chains', async () => {
@@ -1744,7 +1744,7 @@ describe('ReactComponentExtractor', () => {
 
     expect(provider.name).toBe('ThemeProvider');
     expect(provider.props.find((p) => p.name === 'theme')?.allowedValues).toEqual(['dark', 'light']);
-    expect(provider.slots).toContainEqual({ name: 'default', isDefault: true });
+    expect(provider.slots).toContainEqual({ name: 'children', isDefault: true });
   });
 
   it('falls back to destructured prop names when imported external heritage is unresolved', async () => {
@@ -1808,7 +1808,7 @@ describe('ReactComponentExtractor', () => {
     );
     expect(provider.props.find((p) => p.name === 'disabledSections')).toBeUndefined();
     expect(provider.props.find((p) => p.name === 'level')).toEqual(expect.objectContaining({ required: true }));
-    expect(provider.slots).toContainEqual({ name: 'default', isDefault: true });
+    expect(provider.slots).toContainEqual({ name: 'children', isDefault: true });
   });
 
   it('falls back to body-destructured prop names when imported external heritage is unresolved', async () => {
@@ -1874,7 +1874,7 @@ describe('ReactComponentExtractor', () => {
     expect(provider.props).not.toEqual([]);
     expect(provider.props.find((p) => p.name === 'theme')?.allowedValues).toEqual(['dark', 'light']);
     expect(provider.props.find((p) => p.name === 'className')).toBeDefined();
-    expect(provider.slots).toContainEqual({ name: 'default', isDefault: true });
+    expect(provider.slots).toContainEqual({ name: 'children', isDefault: true });
   });
 
   it('does not widen Pick<AnchorHTMLAttributes> to the full anchor surface', async () => {
@@ -2052,7 +2052,7 @@ describe('ReactComponentExtractor', () => {
 
     expect(end.name).toBe('End');
     expect(end.props).toEqual([]);
-    expect(end.slots).toContainEqual({ name: 'default', isDefault: true });
+    expect(end.slots).toContainEqual({ name: 'children', isDefault: true });
   });
 
   it('expands inherited label attributes and preserves the default slot for direct function props', async () => {
@@ -2085,7 +2085,7 @@ describe('ReactComponentExtractor', () => {
       expect.objectContaining({ type: 'string', required: true }),
     );
     expect(fieldLabel.slots).toContainEqual({
-      name: 'default',
+      name: 'children',
       isDefault: true,
     });
   });
@@ -2121,7 +2121,7 @@ describe('ReactComponentExtractor', () => {
     expect(bubble.props.find((p) => p.name === 'className')).toBeDefined();
     expect(bubble.props.find((p) => p.name === 'id')).toBeDefined();
     expect(bubble.props.find((p) => p.name === 'title')).toBeDefined();
-    expect(bubble.slots).toContainEqual({ name: 'default', isDefault: true });
+    expect(bubble.slots).toContainEqual({ name: 'children', isDefault: true });
   });
 
   it('expands SVGAttributes wrappers for direct function props', async () => {
@@ -2173,7 +2173,7 @@ describe('ReactComponentExtractor', () => {
     expect(alias.name).toBe('PrivateIdAlias');
     expect(alias.props.find((p) => p.name === '_id')).toBeUndefined();
     expect(alias.props.find((p) => p.name === 'id')).toBeUndefined();
-    expect(alias.slots).toContainEqual({ name: 'default', isDefault: true });
+    expect(alias.slots).toContainEqual({ name: 'children', isDefault: true });
   });
 
   it('filters implementation-only underscore aliases when the public prop names are still exposed', async () => {
@@ -2428,7 +2428,6 @@ describe('ReactComponentExtractor', () => {
   });
 
   it('captures sourcePath and per-prop source line ranges (Feature 1)', async () => {
-    // Lines 1 (blank), 2: import, 3: blank, 4: interface open, 5: label, 6: variant, 7: }
     const filePath = await writeFixture(
       'Button.tsx',
       [

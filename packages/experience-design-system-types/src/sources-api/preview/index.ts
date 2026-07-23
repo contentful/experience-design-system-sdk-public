@@ -1,10 +1,17 @@
 import type { CDFComponentEntry } from '../../cdf/index.js';
 import type { DTCGTokenEntry } from '../../dtcg/index.js';
 
-export interface BreakingChange {
+export interface PropertyBreakingChange {
   propertyId: string;
   reason: 'removed' | 'added_required_no_default' | 'type_changed' | 'validation_narrowed';
 }
+
+export interface SlotBreakingChange {
+  slotId: string;
+  reason: 'slot_removed' | 'slot_allowed_components_narrowed';
+}
+
+export type BreakingChange = PropertyBreakingChange | SlotBreakingChange;
 
 export interface ChangeClassification {
   classification: 'breaking' | 'compatible';
@@ -30,6 +37,12 @@ export interface ComponentTypeSummary {
   designProperties: string[];
   slots: string[];
   fullProperties?: Record<string, PropertySummary>;
+  /**
+   * Per-slot `$allowedComponents` on the currently-published version, keyed by
+   * slot name. Optional so consumers that don't populate it get the previous
+   * no-slot-allow-diff behavior. Empty arrays mean "no restrictions" (any).
+   */
+  currentSlotAllowed?: Record<string, string[]>;
 }
 
 export interface DesignTokenSummary {

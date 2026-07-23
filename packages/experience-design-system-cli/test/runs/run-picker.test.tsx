@@ -34,25 +34,24 @@ function makeHandlers() {
 }
 
 describe('RunPicker', () => {
-  it('renders all runs when there are 1-4 (no Show all button)', async () => {
-    const runs = [makeRun('AAA'), makeRun('BBB'), makeRun('CCC'), makeRun('DDD')];
+  it('renders all runs when there are 1-11 (no Show all button)', async () => {
+    const ids = ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF', 'GGG', 'HHH', 'III', 'JJJ', 'KKK'];
+    const runs = ids.map((id) => makeRun(id));
     const handlers = makeHandlers();
     const { lastFrame } = render(<RunPicker runs={runs} {...handlers} />);
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('AAA') && f.includes('DDD'),
+      (f) => f.includes('AAA') && f.includes('KKK'),
       3000,
     );
-    expect(frame).toContain('AAA');
-    expect(frame).toContain('BBB');
-    expect(frame).toContain('CCC');
-    expect(frame).toContain('DDD');
+    for (const id of ids) expect(frame).toContain(id);
     expect(frame).not.toContain('Show all');
     expect(frame).toContain('Start a new run');
   });
 
-  it('renders top 3 + Show all when there are 5+', async () => {
-    const runs = [makeRun('AAA'), makeRun('BBB'), makeRun('CCC'), makeRun('DDD'), makeRun('EEE')];
+  it('renders top 10 + Show all when there are 12+', async () => {
+    const ids = ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF', 'GGG', 'HHH', 'III', 'JJJ', 'KKK', 'LLL'];
+    const runs = ids.map((id) => makeRun(id));
     const handlers = makeHandlers();
     const { lastFrame } = render(<RunPicker runs={runs} {...handlers} />);
     const frame = await waitForFrame(
@@ -60,16 +59,15 @@ describe('RunPicker', () => {
       (f) => f.includes('AAA') && f.includes('Show all'),
       3000,
     );
-    expect(frame).toContain('AAA');
-    expect(frame).toContain('BBB');
-    expect(frame).toContain('CCC');
-    expect(frame).not.toContain('DDD');
-    expect(frame).not.toContain('EEE');
-    expect(frame).toContain('Show all (5)');
+    for (const id of ids.slice(0, 10)) expect(frame).toContain(id);
+    expect(frame).not.toContain('KKK');
+    expect(frame).not.toContain('LLL');
+    expect(frame).toContain('Show all (12)');
   });
 
   it('expands to show all entries after pressing Enter on Show all', async () => {
-    const runs = [makeRun('AAA'), makeRun('BBB'), makeRun('CCC'), makeRun('DDD'), makeRun('EEE')];
+    const ids = ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF', 'GGG', 'HHH', 'III', 'JJJ', 'KKK', 'LLL'];
+    const runs = ids.map((id) => makeRun(id));
     const handlers = makeHandlers();
     const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
     await waitForFrame(
@@ -77,20 +75,14 @@ describe('RunPicker', () => {
       (f) => f.includes('Show all'),
       3000,
     );
-    // Navigate down to the Show all row (after 3 runs) then press Enter.
-    // Default cursor is at index 0; press j 3 times to reach index 3 (Show all).
-    stdin.write('j');
-    stdin.write('j');
-    stdin.write('j');
+    for (let i = 0; i < 10; i++) stdin.write('j');
     stdin.write('\r');
     const expanded = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('DDD') && f.includes('EEE'),
+      (f) => f.includes('KKK') && f.includes('LLL'),
       3000,
     );
-    expect(expanded).toContain('AAA');
-    expect(expanded).toContain('DDD');
-    expect(expanded).toContain('EEE');
+    for (const id of ids) expect(expanded).toContain(id);
     expect(expanded).not.toContain('Show all');
   });
 
@@ -105,7 +97,6 @@ describe('RunPicker', () => {
     );
     stdin.write('j');
     stdin.write('\r');
-    // After selecting a run we move to the "Push or modify?" screen.
     const sub = await waitForFrame(
       () => lastFrame(),
       (f) => /Push or modify/i.test(f),
@@ -113,7 +104,6 @@ describe('RunPicker', () => {
     );
     expect(sub).toMatch(/Push/);
     expect(sub).toMatch(/Modify/);
-    // Default cursor is on Push — pressing Enter routes to push.
     stdin.write('\r');
     expect(handlers.onSelect).toHaveBeenCalledWith({ runId: 'BBB', action: 'push' });
   });
@@ -127,13 +117,13 @@ describe('RunPicker', () => {
       (f) => f.includes('AAA'),
       3000,
     );
-    stdin.write('\r'); // pick AAA
+    stdin.write('\r');
     await waitForFrame(
       () => lastFrame(),
       (f) => /Push or modify/i.test(f),
       3000,
     );
-    stdin.write('j'); // move to Modify
+    stdin.write('j');
     stdin.write('\r');
     expect(handlers.onSelect).toHaveBeenCalledWith({ runId: 'AAA', action: 'modify' });
   });
@@ -147,14 +137,14 @@ describe('RunPicker', () => {
       (f) => f.includes('AAA'),
       3000,
     );
-    stdin.write('\r'); // pick AAA
+    stdin.write('\r');
     await waitForFrame(
       () => lastFrame(),
       (f) => /Push or modify/i.test(f),
       3000,
     );
     stdin.write('j');
-    stdin.write('j'); // navigate to Cancel
+    stdin.write('j');
     stdin.write('\r');
     const back = await waitForFrame(
       () => lastFrame(),
@@ -203,8 +193,6 @@ describe('RunPicker', () => {
       (f) => f.includes('PUSHED') && f.includes('UNPUSHED'),
       3000,
     );
-    // We use local-time formatting so we can't pin the exact hour, but the
-    // date portion is stable and the "pushed" / "not pushed" tag must appear.
     expect(frame).toMatch(/2026-06-25 \d{2}:\d{2}/);
     expect(frame).toMatch(/2026-06-24 \d{2}:\d{2}/);
     expect(frame).toContain('pushed');

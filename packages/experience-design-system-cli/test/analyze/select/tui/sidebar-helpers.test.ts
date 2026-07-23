@@ -3,7 +3,9 @@ import {
   sortComponentsForSidebar,
   statusIcon,
   statusColor,
+  previewBadge,
 } from '../../../../src/analyze/select/tui/components/Sidebar.js';
+import { PALETTE } from '../../../../src/analyze/select/tui/theme.js';
 import type { ReviewComponentSummary } from '../../../../src/analyze/select/types.js';
 
 function makeSummary(overrides: Partial<ReviewComponentSummary> = {}): ReviewComponentSummary {
@@ -53,9 +55,6 @@ describe('sortComponentsForSidebar', () => {
   });
 
   it('within a tier, sorts needs-review components first', () => {
-    // Previously the App.tsx caller did this sort inline before passing to
-    // sortComponentsForSidebar — a double-sort. Pulling the secondary sort
-    // into the helper makes the contract explicit and removes the redundancy.
     const input: ReviewComponentSummary[] = [
       makeSummary({ id: '1', name: 'AlreadyReviewed', status: 'accepted', needsReview: false }),
       makeSummary({ id: '2', name: 'Pending', status: 'needs-review', needsReview: true }),
@@ -63,7 +62,6 @@ describe('sortComponentsForSidebar', () => {
     ];
     const sorted = sortComponentsForSidebar(input);
     expect(sorted[0].id).toBe('2');
-    // Ties broken by input order within the same tier.
     expect(sorted[1].id).toBe('1');
     expect(sorted[2].id).toBe('3');
   });
@@ -86,7 +84,6 @@ describe('sortComponentsForSidebar', () => {
     ];
     const sorted = sortComponentsForSidebar(input);
     expect(sorted[0].id).toBe('2');
-    // Among nulls, input order is preserved.
     expect(sorted[1].id).toBe('1');
     expect(sorted[2].id).toBe('3');
   });
@@ -167,53 +164,58 @@ describe('sortComponentsForSidebar — three-way partition (errors / warnings / 
 });
 
 describe('statusIcon / statusColor — error vs warning vs clean', () => {
-  // Errors override the icon to ⚠ regardless of status (component is structurally
-  // broken). Warnings do NOT override the icon — the user's accept/reject decision
-  // remains visible — but the COLOR is still yellow so the warning cue is preserved.
-  // P1.1 fixed the prior behavior where warnings masked the icon too.
-
   it('warning-only component shows status icon (not ⚠) so user accept/reject decision is visible', () => {
     expect(statusIcon('needs-review', 0, 1)).toBe('·');
-    expect(statusColor('needs-review', 0, 1)).toBe('yellow');
+    expect(statusColor('needs-review', 0, 1)).toBe(PALETTE.warning);
   });
 
   it('warning-only accepted component shows ✓, not ⚠', () => {
     expect(statusIcon('accepted', 0, 1)).toBe('✓');
-    expect(statusColor('accepted', 0, 1)).toBe('yellow');
+    expect(statusColor('accepted', 0, 1)).toBe(PALETTE.warning);
   });
 
   it('warning-only rejected component shows ✗, not ⚠', () => {
     expect(statusIcon('rejected', 0, 1)).toBe('✗');
-    expect(statusColor('rejected', 0, 1)).toBe('yellow');
+    expect(statusColor('rejected', 0, 1)).toBe(PALETTE.warning);
   });
 
   it('warning-only reviewed component shows ~, not ⚠', () => {
     expect(statusIcon('reviewed', 0, 1)).toBe('~');
-    expect(statusColor('reviewed', 0, 1)).toBe('yellow');
+    expect(statusColor('reviewed', 0, 1)).toBe(PALETTE.warning);
   });
 
   it('returns red ⚠ when both errors and warnings present (errors override icon and color)', () => {
     expect(statusIcon('needs-review', 1, 1)).toBe('⚠');
-    expect(statusColor('needs-review', 1, 1)).toBe('red');
+    expect(statusColor('needs-review', 1, 1)).toBe(PALETTE.error);
   });
 
   it('error-only component overrides icon to ⚠ regardless of status (component is structurally broken)', () => {
     expect(statusIcon('needs-review', 1, 0)).toBe('⚠');
-    expect(statusColor('needs-review', 1, 0)).toBe('red');
+    expect(statusColor('needs-review', 1, 0)).toBe(PALETTE.error);
     expect(statusIcon('accepted', 1, 0)).toBe('⚠');
-    expect(statusColor('accepted', 1, 0)).toBe('red');
+    expect(statusColor('accepted', 1, 0)).toBe(PALETTE.error);
     expect(statusIcon('rejected', 1, 0)).toBe('⚠');
     expect(statusIcon('reviewed', 1, 0)).toBe('⚠');
   });
 
-  it('returns clean status icon and color when no validation issues', () => {
+  it('returns clean status icon and palette color when no validation issues', () => {
     expect(statusIcon('accepted', 0, 0)).toBe('✓');
-    expect(statusColor('accepted', 0, 0)).toBe('green');
+    expect(statusColor('accepted', 0, 0)).toBe(PALETTE.success);
     expect(statusIcon('rejected', 0, 0)).toBe('✗');
-    expect(statusColor('rejected', 0, 0)).toBe('red');
+    expect(statusColor('rejected', 0, 0)).toBe(PALETTE.error);
     expect(statusIcon('needs-review', 0, 0)).toBe('·');
-    expect(statusColor('needs-review', 0, 0)).toBe('white');
+    // needs-review maps to muted grey (NOT white) — a neutral status must not
+    // claim the accept/reject affordance.
+    expect(statusColor('needs-review', 0, 0)).toBe(PALETTE.muted);
     expect(statusIcon('reviewed', 0, 0)).toBe('~');
-    expect(statusColor('reviewed', 0, 0)).toBe('yellow');
+    expect(statusColor('reviewed', 0, 0)).toBe(PALETTE.warning);
+  });
+
+  it('previewBadge returns palette hex for each annotation', () => {
+    expect(previewBadge('new')).toMatchObject({ char: '+', color: PALETTE.success });
+    expect(previewBadge('changed')).toMatchObject({ char: '~', color: PALETTE.warning });
+    expect(previewBadge('removed')).toMatchObject({ char: '-', color: PALETTE.error, dim: true });
+    expect(previewBadge('breaking')).toMatchObject({ char: '!', color: PALETTE.error, bold: true });
+    expect(previewBadge(undefined)).toBeNull();
   });
 });

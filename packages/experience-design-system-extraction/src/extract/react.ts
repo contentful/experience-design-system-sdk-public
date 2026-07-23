@@ -23,6 +23,18 @@ import {
   getTypeTargetDeclarations,
 } from './tsx-shared.js';
 import { shouldBeSlot } from './slot-detection.js';
+import { extractAllowedComponentsFromTypeText, extractAllowedComponentsFromJsdoc } from './slot-allowed-components.js';
+
+const REACT_ELEMENT_GENERIC_TEST = /(?:React\.)?ReactElement\s*<\s*[A-Za-z_$][\w$.]*/;
+
+function isReactElementGenericSlotType(typeText: string): boolean {
+  return REACT_ELEMENT_GENERIC_TEST.test(typeText);
+}
+
+type RawSlotDefinitionInternal = RawSlotDefinition & {
+  _rawTypeText?: string;
+  _rawJsdoc?: string;
+};
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
 const PROP_WRAPPER_TYPE_NAMES = new Set(['ExpandProps']);
@@ -278,7 +290,6 @@ function isStencilFile(sourceFile: SourceFile): boolean {
 }
 
 function sourceFileUsesCreateContext(sourceFile: SourceFile): boolean {
-  // Match React.createContext(...) and createContext(...) call expressions
   return sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).some((call) => {
     const expr = call.getExpression();
     const text = expr.getText();
@@ -565,7 +576,6 @@ function extractPropsFromTypeSymbols(
       continue;
     }
 
-    // Skip props that are render props — they become slots
     if (slotNames.has(name)) continue;
 
     const declaration = property.getValueDeclaration() ?? property.getDeclarations()[0];
@@ -1248,7 +1258,7 @@ function extractSlots(type: Type, hasChildren: boolean): RawSlotDefinition[] {
   const slots: RawSlotDefinition[] = [];
 
   if (hasChildren) {
-    slots.push({ name: 'default', isDefault: true });
+    slots.push({ name: 'children', isDefault: true });
   }
 
   for (const property of type.getProperties()) {
@@ -1672,7 +1682,6 @@ function isPureExpandableDomAttributeWrapperTypeNode(typeNode: Node, seen = new 
     }
 
     if (typeName === 'Pick') {
-      // Pick narrows the surface and should not be treated as a transparent wrapper.
       return false;
     }
 
@@ -2126,6 +2135,38 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
     }
   }
 
+  const propsToComponent = new Map<string, string>();
+  const componentNames = new Set<string>();
+  for (const c of components as Array<RawComponentDefinition & { _propsTypeName?: string }>) {
+    componentNames.add(c.name);
+    if (c._propsTypeName) propsToComponent.set(c._propsTypeName, c.name);
+  }
+
+  for (const c of components) {
+    for (const slot of c.slots as RawSlotDefinitionInternal[]) {
+      const found = new Set<string>();
+      if (slot._rawTypeText) {
+        for (const n of extractAllowedComponentsFromTypeText(slot._rawTypeText, {
+          propsToComponent,
+          componentNames,
+        })) {
+          found.add(n);
+        }
+      }
+      if (slot._rawJsdoc) {
+        for (const n of extractAllowedComponentsFromJsdoc(slot._rawJsdoc, componentNames)) {
+          found.add(n);
+        }
+      }
+      delete slot._rawTypeText;
+      delete slot._rawJsdoc;
+      if (found.size > 0) {
+        slot.allowedComponents = [...found].sort();
+      }
+    }
+    delete (c as { _propsTypeName?: string })._propsTypeName;
+  }
+
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
     warnings,
@@ -2253,18 +2294,25 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
 
     const filteredProps = filterImplementationOnlyAliasProps(propsWithDefaults, funcNode);
 
-    // Second pass: expand ReactNode-typed props into slots
     const existingSlotNames = new Set(slots.map((s) => s.name));
-    const expandedSlots: RawSlotDefinition[] = [];
+    const expandedSlots: RawSlotDefinitionInternal[] = [];
     const propsAfterSlotExpansion = filteredProps.filter((prop) => {
-      if (existingSlotNames.has(prop.name)) return true; // already handled
-      if (shouldBeSlot(prop.name, prop.type)) {
-        expandedSlots.push({ name: prop.name, isDefault: false });
+      if (existingSlotNames.has(prop.name)) return true;
+      const isElementSlot = isReactElementGenericSlotType(prop.type);
+      if (shouldBeSlot(prop.name, prop.type) || isElementSlot) {
+        expandedSlots.push({
+          name: prop.name,
+          isDefault: false,
+          ...(isElementSlot ? { _rawTypeText: prop.type } : {}),
+        });
         return false;
       }
       return true;
     });
     const finalSlots = [...slots, ...expandedSlots];
+
+    const propsTypeName = firstParamTypeNode?.getText?.().trim();
+    const propsTypeNameCapture = propsTypeName && /^[A-Za-z_$][\w$]*$/.test(propsTypeName) ? propsTypeName : undefined;
 
     components.push({
       name,
@@ -2274,7 +2322,8 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
       props: propsAfterSlotExpansion,
       slots: finalSlots,
       ...(usesCreateContext && { usesCreateContext: true }),
-    });
+      ...(propsTypeNameCapture ? { _propsTypeName: propsTypeNameCapture } : {}),
+    } as RawComponentDefinition & { _propsTypeName?: string });
   }
 
   return components;

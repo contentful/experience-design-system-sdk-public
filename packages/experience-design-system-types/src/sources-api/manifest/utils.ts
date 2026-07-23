@@ -16,9 +16,14 @@ export function stripUnsupportedSlotFields(entry: CDFComponentEntry): CDFCompone
 export function buildManifest(
   components: Array<{ key: string; entry: CDFComponentEntry }>,
   tokens: DTCGTokenEntry[],
+  opts: { deleteAllComponents?: boolean } = {},
 ): ManifestPayload {
   const manifest: ManifestPayload = {};
-  if (components.length > 0) {
+  // With components, emit them. With none, normally omit the key entirely — but
+  // when `deleteAllComponents` is set, emit an empty-but-present manifest so the
+  // server diffs it as "remove every existing component" (delete-all). An
+  // omitted key is a no-op; a present-empty one is an explicit clear.
+  if (components.length > 0 || opts.deleteAllComponents) {
     const componentsObj: Record<string, unknown> = { $schema: CDF_V1_SCHEMA_URL };
     for (const { key, entry } of components) {
       componentsObj[key] = stripUnsupportedSlotFields(entry);

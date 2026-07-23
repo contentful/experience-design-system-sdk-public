@@ -1,25 +1,20 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { PreviewAnnotation, ReviewComponentSummary, ReviewComponentStatus } from '../../types.js';
+import { PALETTE } from '../theme.js';
 
-/**
- * Pilot-2026-06-23 R2: render a single-character preview-diff badge directly
- * before each component name in the sidebar so operators can scan the diff
- * shape at a glance without opening each row. Returns null for unannotated
- * rows so the row falls back to its existing single-space layout.
- */
 export function previewBadge(
   annotation: PreviewAnnotation | undefined,
 ): { char: string; color: string; bold?: boolean; dim?: boolean } | null {
   switch (annotation) {
     case 'new':
-      return { char: '+', color: 'green' };
+      return { char: '+', color: PALETTE.success };
     case 'changed':
-      return { char: '~', color: 'yellow' };
+      return { char: '~', color: PALETTE.warning };
     case 'removed':
-      return { char: '-', color: 'red', dim: true };
+      return { char: '-', color: PALETTE.error, dim: true };
     case 'breaking':
-      return { char: '!', color: 'red', bold: true };
+      return { char: '!', color: PALETTE.error, bold: true };
     default:
       return null;
   }
@@ -45,7 +40,6 @@ export function statusIcon(
   // warning-only components, so the warning cue is preserved.
   _validationWarningCount: number,
 ): string {
-  // Errors override — a structurally broken component should never render as ✓/✗.
   if (validationErrorCount > 0) return '⚠';
   switch (status) {
     case 'accepted':
@@ -64,17 +58,17 @@ export function statusColor(
   validationErrorCount: number,
   validationWarningCount: number,
 ): string {
-  if (validationErrorCount > 0) return 'red';
-  if (validationWarningCount > 0) return 'yellow';
+  if (validationErrorCount > 0) return PALETTE.error;
+  if (validationWarningCount > 0) return PALETTE.warning;
   switch (status) {
     case 'accepted':
-      return 'green';
+      return PALETTE.success;
     case 'rejected':
-      return 'red';
+      return PALETTE.error;
     case 'reviewed':
-      return 'yellow';
+      return PALETTE.warning;
     case 'needs-review':
-      return 'white';
+      return PALETTE.muted;
   }
 }
 
@@ -83,13 +77,6 @@ function truncateName(name: string, maxLen: number): string {
   return name.slice(0, maxLen) + '…';
 }
 
-/**
- * Sort key for stable secondary ordering within a validation tier:
- * needs-review components first, then by extractionConfidence ascending
- * (lowest confidence first, null treated as highest = last). Used to be
- * applied inline in App.tsx, then this helper sorted again — pulled in
- * here so the sort happens once.
- */
 function withinTierComparator(a: ReviewComponentSummary, b: ReviewComponentSummary): number {
   const aPending = a.needsReview && a.status === 'needs-review' ? 0 : 1;
   const bPending = b.needsReview && b.status === 'needs-review' ? 0 : 1;
@@ -137,9 +124,6 @@ export function Sidebar({
         const icon = statusIcon(component.status, component.validationErrorCount, component.validationWarningCount);
         const color = statusColor(component.status, component.validationErrorCount, component.validationWarningCount);
         const badge = previewBadge(component.previewAnnotation);
-        // Reserve one column for the preview badge regardless of whether this
-        // row has one — keeps name truncation stable across rows so the column
-        // width doesn't jitter as annotations flip in/out.
         const maxNameLen = Math.max(1, width - 5);
         const name = truncateName(component.name, maxNameLen);
 

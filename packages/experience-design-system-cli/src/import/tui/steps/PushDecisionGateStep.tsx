@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 
@@ -10,13 +11,6 @@ type PushDecisionGateStepProps = {
   fileList: string;
   onChoice: (choice: PushDecisionChoice) => void;
   onQuit: () => void;
-  /**
-   * Skip-credentials spec — Task 3. When the operator advanced past the
-   * credentials screen via the skip path, push options are not actually
-   * usable (we never validated a token). Render all three rows for visual
-   * continuity but disable "Save AND push" and "Push only", with the
-   * `(unavailable — credentials skipped)` suffix.
-   */
   pushDisabled?: boolean;
 };
 
@@ -35,9 +29,6 @@ export function PushDecisionGateStep({
   onQuit,
   pushDisabled = false,
 }: PushDecisionGateStepProps): React.ReactElement {
-  // When push is disabled, the cursor defaults to "Save only" (the only
-  // selectable row). When push is enabled, "Save AND push" is the default —
-  // matches the existing scope-gate UX.
   const [cursor, setCursor] = useState(pushDisabled ? SAVE_ONLY_INDEX : 0);
 
   function isSelectable(index: number): boolean {
@@ -67,7 +58,6 @@ export function PushDecisionGateStep({
     }
     if (input === 'j' || key.downArrow) {
       setCursor((c) => {
-        // Walk forward to the next selectable row. If none, stay put.
         for (let i = c + 1; i < OPTIONS.length; i++) {
           if (isSelectable(i)) return i;
         }
@@ -92,7 +82,7 @@ export function PushDecisionGateStep({
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Text color="green">✓ Generation complete</Text>
+      <Text color={PALETTE.success}>✓ Generation complete</Text>
       <Text dimColor>{summary}</Text>
 
       <Box marginTop={1}>
@@ -105,7 +95,7 @@ export function PushDecisionGateStep({
           const disabled = pushDisabled && opt.value !== 'save-only';
           const suffix = disabled ? ' (unavailable — credentials skipped)' : '';
           return (
-            <Text key={opt.value} color={selected ? 'cyan' : undefined} dimColor={disabled}>
+            <Text key={opt.value} color={selected ? PALETTE.info : undefined} dimColor={disabled}>
               {selected ? '›' : ' '} [{opt.shortcut}] {opt.label}
               {suffix}
             </Text>

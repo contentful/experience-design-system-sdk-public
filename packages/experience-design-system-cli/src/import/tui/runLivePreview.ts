@@ -25,6 +25,17 @@ export type RunLivePreviewOptions = {
   host: string;
   generation: number;
   timeoutMs?: number;
+  /** When true and no components are accepted, preview an empty-but-present
+   *  components manifest so the server returns the full delete-all diff
+   *  (every existing component as `removed`) instead of rejecting an empty
+   *  manifest. Lets the final-review UI show what a push would delete. */
+  deleteAllComponents?: boolean;
+  /** Restrict the preview to these component keys (the operator's accepted
+   *  set). Undefined = all generated components in the session. An empty set
+   *  narrows to zero components — pair with `deleteAllComponents` to preview a
+   *  full delete. Lets the Finalize dialog show exactly what the accepted push
+   *  would delete, independent of the session's on-disk generated rows. */
+  acceptedKeys?: ReadonlySet<string>;
 };
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -67,12 +78,19 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
     }
   }
 
+  // Narrow to the accepted set when provided, so the preview reflects exactly
+  // what a push of those components would create/update/remove — the session's
+  // generated rows still include not-yet-reclassified rejects at this point.
+  if (opts.acceptedKeys) {
+    components = components.filter((c) => opts.acceptedKeys!.has(c.key));
+  }
+
   let tokens: import('@contentful/experience-design-system-types').DTCGTokenEntry[] = [];
   if (tokensPath) {
     tokens = await readTokensFromPath('tokens', tokensPath);
   }
 
-  const manifest = buildManifest(components, tokens);
+  const manifest = buildManifest(components, tokens, { deleteAllComponents: opts.deleteAllComponents === true });
 
   const client = new ImportApiClient({ host, cmaToken, spaceId, environmentId });
   const startedAt = Date.now();

@@ -7,6 +7,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 export const REACT_MINIMAL = resolve(HERE, '../../fixtures/projects/react-minimal');
 
 /**
+ * Absolute path to a React fixture whose component graph contains a
+ * NodeA↔NodeB slot cycle. Used by cycle-detection tests (D2-2, D2-3).
+ */
+export const REACT_COMPOSITE_CYCLE = resolve(HERE, '../../fixtures/projects/react-composite-cycle');
+
+/**
  * Absolute path to a React fixture that produces a DUPLICATE_COMPONENT_NAME
  * validation error (two files export a component called `Duplicate`) plus one
  * valid component. Used by `--exclude-invalid` tests.

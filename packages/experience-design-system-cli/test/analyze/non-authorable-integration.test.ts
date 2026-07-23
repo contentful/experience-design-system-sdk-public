@@ -3,8 +3,6 @@ import { preClassifyComponent } from '@contentful/experience-design-system-extra
 import { isNonAuthorableComponent } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../src/types.js';
 
-// Exercises the same composition that command.ts will use:
-//   pre-classify → filter → emit
 function runPipeline(components: RawComponentDefinition[]) {
   const classified = components.map(preClassifyComponent);
   const kept: RawComponentDefinition[] = [];
@@ -29,14 +27,14 @@ describe('analyze pipeline composition: pre-classify → non-authorable filter',
         framework: 'react',
         usesCreateContext: true,
         props: [{ name: 'value', type: 'AbmAccount | null', required: true }],
-        slots: [{ name: 'default', isDefault: true }],
+        slots: [{ name: 'children', isDefault: true }],
       },
       {
         name: 'Accordion',
         source: '/components/Accordion.tsx',
         framework: 'react',
         props: [{ name: 'title', type: 'string', required: true }],
-        slots: [{ name: 'default', isDefault: true }],
+        slots: [{ name: 'children', isDefault: true }],
       },
     ];
     const { kept, skippedWarnings } = runPipeline(input);

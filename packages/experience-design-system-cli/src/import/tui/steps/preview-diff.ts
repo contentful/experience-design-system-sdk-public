@@ -24,7 +24,6 @@ export function computeComponentDiffLines(
   const proposedProps = new Set(Object.keys(proposedProperties));
   const oldProps = current.fullProperties;
 
-  // Added props
   for (const name of [...proposedProps].sort()) {
     if (!currentProps.has(name)) {
       const def = proposedProperties[name]!;
@@ -32,7 +31,6 @@ export function computeComponentDiffLines(
     }
   }
 
-  // Removed props
   for (const name of [...currentProps].sort()) {
     if (!proposedProps.has(name)) {
       if (oldProps?.[name]) {
@@ -44,7 +42,6 @@ export function computeComponentDiffLines(
     }
   }
 
-  // Modified props — compare old vs new definitions
   const handledProps = new Set<string>();
   for (const name of [...currentProps].sort()) {
     if (!proposedProps.has(name)) continue;
@@ -60,9 +57,9 @@ export function computeComponentDiffLines(
     }
   }
 
-  // If no old definitions available, fall back to breaking change reasons
   if (!oldProps && changeClassification?.breakingChanges) {
     for (const bc of changeClassification.breakingChanges) {
+      if (!('propertyId' in bc)) continue;
       if (!currentProps.has(bc.propertyId) || !proposedProps.has(bc.propertyId)) continue;
       if (handledProps.has(bc.propertyId)) continue;
       handledProps.add(bc.propertyId);
@@ -72,10 +69,10 @@ export function computeComponentDiffLines(
     }
   }
 
-  // Slot diffs
   const currentSlots = new Set(current.slots);
-  const proposedSlots = (proposed['$slots'] ?? {}) as Record<string, unknown>;
+  const proposedSlots = (proposed['$slots'] ?? {}) as Record<string, Record<string, unknown>>;
   const proposedSlotNames = new Set(Object.keys(proposedSlots));
+  const currentSlotAllowed = current.currentSlotAllowed ?? {};
   for (const name of [...proposedSlotNames].sort()) {
     if (!currentSlots.has(name)) {
       lines.push({ key: `slot-${name}-add`, color: 'green', text: `+ slot: ${name}` });
@@ -87,7 +84,52 @@ export function computeComponentDiffLines(
     }
   }
 
+  for (const name of [...proposedSlotNames].sort()) {
+    const nextAllowed = normalizeAllowedComponents(proposedSlots[name]?.['$allowedComponents']);
+    const prevAllowed = normalizeAllowedComponents(currentSlotAllowed[name]);
+    const prevExists = currentSlots.has(name);
+
+    if (!prevExists) {
+      if (nextAllowed.length > 0) {
+        lines.push({
+          key: `slot-${name}-allow-new`,
+          color: 'green',
+          text: `+ slot ${name} allowedComponents: [${nextAllowed.join(', ')}]`,
+        });
+      }
+      continue;
+    }
+
+    if (arraysEqual(prevAllowed, nextAllowed)) continue;
+
+    lines.push({
+      key: `slot-${name}-allow-old`,
+      color: 'red',
+      text: `- slot ${name} allowedComponents: [${prevAllowed.join(', ')}]`,
+    });
+    lines.push({
+      key: `slot-${name}-allow-new`,
+      color: 'green',
+      text: `+ slot ${name} allowedComponents: [${nextAllowed.join(', ')}]`,
+    });
+  }
+
   return lines;
+}
+
+function normalizeAllowedComponents(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item === 'string' && item.length > 0) out.push(item);
+  }
+  return out.sort();
+}
+
+function arraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 function normalizeType(type: string): string {

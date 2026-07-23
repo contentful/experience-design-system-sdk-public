@@ -2,19 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'ink-testing-library';
 import { ScopeGateStep } from '../../../src/import/tui/steps/ScopeGateStep.js';
 
-// Pilot-2026-06-25 R2: scope-gate UX overhaul Round 2 tests. Pins the
-// two-section render (AI recommended exclusions on top, Components below),
-// color glyphs replacing word labels, subtle cyan `*` marker replacing the
-// [AI] badge, and manual-decision-wins behavior preserved from Round 1.
-
 const MIXED = [
   { name: 'Button', componentId: 'c0' },
   { name: 'DebugPanel', componentId: 'c1', aiDecision: 'rejected' as const, aiReason: 'internal-only widget' },
   { name: 'Card', componentId: 'c2' },
 ];
 
-describe('ScopeGateStep — two-section render (R2 Task 1)', () => {
-  it('renders all components across the two sections', () => {
+describe('ScopeGateStep — rendering', () => {
+  it('renders every component in the sidebar (no silent drops)', () => {
     const { lastFrame } = render(
       <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
@@ -24,121 +19,16 @@ describe('ScopeGateStep — two-section render (R2 Task 1)', () => {
     expect(out).toContain('Card');
   });
 
-  it('AI-flagged rows render in a top "AI recommended exclusions (N)" section', () => {
+  it('surfaces an AI-recommended-exclusions summary when any component is AI-flagged', () => {
     const { lastFrame } = render(
       <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toMatch(/AI recommended exclusions \(1\)/);
-    expect(out).toMatch(/Components \(2\)/);
-    const lines = out.split('\n');
-    const aiHeaderIdx = lines.findIndex((l) => l.includes('AI recommended exclusions'));
-    const compHeaderIdx = lines.findIndex((l) => l.includes('Components ('));
-    const debugIdx = lines.findIndex((l) => l.includes('DebugPanel'));
-    const buttonIdx = lines.findIndex((l) => l.includes('Button'));
-    expect(aiHeaderIdx).toBeGreaterThan(-1);
-    expect(compHeaderIdx).toBeGreaterThan(aiHeaderIdx);
-    expect(debugIdx).toBeGreaterThan(aiHeaderIdx);
-    expect(debugIdx).toBeLessThan(compHeaderIdx);
-    expect(buttonIdx).toBeGreaterThan(compHeaderIdx);
+    expect(out).toContain('AI recommended exclusions');
+    expect(out).toContain('1');
   });
 
-  it('toggling an AI-flagged row INCLUDED leaves it in the AI section', () => {
-    const { lastFrame, stdin } = render(
-      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
-    );
-    // Cursor starts on DebugPanel (first AI row). Toggle it.
-    stdin.write('a');
-    const out = lastFrame() ?? '';
-    const lines = out.split('\n');
-    const aiHeaderIdx = lines.findIndex((l) => l.includes('AI recommended exclusions'));
-    const compHeaderIdx = lines.findIndex((l) => l.includes('Components ('));
-    const debugIdx = lines.findIndex((l) => l.includes('DebugPanel'));
-    expect(debugIdx).toBeGreaterThan(aiHeaderIdx);
-    expect(debugIdx).toBeLessThan(compHeaderIdx);
-  });
-
-  it('cursor j moves from the last AI row to the first Components row', () => {
-    const { lastFrame, stdin } = render(
-      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
-    );
-    // Cursor starts at first AI row (DebugPanel). One j → first Components row (Button).
-    stdin.write('j');
-    const out = lastFrame() ?? '';
-    const cursorLine = out.split('\n').find((l) => l.includes('›'));
-    expect(cursorLine).toBeTruthy();
-    expect(cursorLine!).toContain('Button');
-  });
-
-  it('AI-rejected rows start as EXCLUDED, AI-accepted/undecided rows start as INCLUDED', () => {
-    const onConfirm = vi.fn();
-    const { stdin } = render(
-      <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
-    );
-    stdin.write('f');
-    const arg = onConfirm.mock.calls[0][0];
-    expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Card']));
-    expect(arg.rejected).toEqual(['DebugPanel']);
-  });
-
-  it('toggling with `a` flips the focused row INCLUDED ↔ EXCLUDED', () => {
-    const onConfirm = vi.fn();
-    const { stdin } = render(
-      <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
-    );
-    // Cursor starts on DebugPanel (AI section, EXCLUDED). One j → Button. `a` excludes.
-    stdin.write('j');
-    stdin.write('a');
-    stdin.write('f');
-    const arg = onConfirm.mock.calls[0][0];
-    expect(arg.rejected).toContain('Button');
-    expect(arg.accepted).not.toContain('Button');
-  });
-});
-
-describe('ScopeGateStep — color glyphs (R2 Task 2)', () => {
-  it('renders [✓] glyph for INCLUDED rows and [✗] for EXCLUDED rows', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
-    );
-    const out = lastFrame() ?? '';
-    expect(out).toContain('[✓]');
-    expect(out).toContain('[✗]');
-  });
-
-  it('emits NO INCLUDED / EXCLUDED word labels', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
-    );
-    const out = lastFrame() ?? '';
-    expect(out).not.toContain('INCLUDED');
-    expect(out).not.toContain('EXCLUDED');
-  });
-
-  it('places the [✓] glyph before included names and [✗] before excluded names', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
-    );
-    const out = lastFrame() ?? '';
-    // DebugPanel is AI-rejected -> red [✗] glyph in front.
-    expect(out).toMatch(/\[✗\][^\n]*DebugPanel/);
-    // Button is an INCLUDED component row -> green [✓] glyph in front.
-    expect(out).toMatch(/\[✓\][^\n]*Button/);
-  });
-});
-
-describe('ScopeGateStep — subtle AI marker + legend key (R2 Task 3)', () => {
-  it('renders a `*` prefix on AI-rejected rows (no [AI] literal)', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
-    );
-    const out = lastFrame() ?? '';
-    expect(out).not.toContain('[AI]');
-    // DebugPanel (AI-rejected) carries a `*` glyph before its name.
-    expect(out).toMatch(/\*[^\n]*DebugPanel/);
-  });
-
-  it('does NOT render `*` on rows the AI did not reject', () => {
+  it('omits the AI-summary line when nothing is AI-flagged', () => {
     const { lastFrame } = render(
       <ScopeGateStep
         components={[
@@ -150,106 +40,88 @@ describe('ScopeGateStep — subtle AI marker + legend key (R2 Task 3)', () => {
       />,
     );
     const out = lastFrame() ?? '';
-    // No row should have a `*` marker before its name when no AI rejection.
-    expect(out).not.toMatch(/\*[^\n]*Button/);
-    expect(out).not.toMatch(/\*[^\n]*Card/);
-  });
-
-  it('legend shows `* originally excluded by AI` when at least one AI row exists', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
-    );
-    const out = lastFrame() ?? '';
-    // Narrow terminal may wrap mid-phrase ("originally" → next line); check
-    // the keywords appear so the legend hint is present in some order.
-    expect(out).toContain('originally');
-    expect(out).toContain('excluded by AI');
-  });
-
-  it('legend omits the `* originally excluded by AI` key when no AI rows exist', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={[{ name: 'Button', componentId: 'c0' }]} onConfirm={() => {}} onQuit={() => {}} />,
-    );
-    const out = lastFrame() ?? '';
-    expect(out).not.toContain('originally excluded by AI');
+    expect(out).not.toContain('AI recommended exclusions');
+    expect(out).not.toContain('[AI]');
   });
 });
 
-describe('ScopeGateStep — persistent AI marker (R2)', () => {
-  it('renders the `*` marker on rows where aiDecision === "rejected"', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
-    );
-    const out = lastFrame() ?? '';
-    // DebugPanel was AI-rejected; cyan `*` glyph in front of its name.
-    expect(out).toMatch(/\*[^\n]*DebugPanel/);
-    expect(out).not.toContain('[AI]');
-  });
-
-  it('keeps the `*` marker after operator toggles the row to INCLUDED', () => {
-    const { lastFrame, stdin } = render(
-      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
-    );
-    // Cursor is on DebugPanel (first AI row). Toggle INCLUDED.
-    stdin.write('a');
-    const out = lastFrame() ?? '';
-    // Marker still visible on DebugPanel even though it's now INCLUDED.
-    expect(out).toMatch(/\*[^\n]*DebugPanel/);
-    expect(out).toMatch(/DebugPanel/);
-  });
-
-  it('does NOT render `*` on rows the AI did not reject', () => {
-    const { lastFrame } = render(
-      <ScopeGateStep components={[{ name: 'Button', componentId: 'c0' }]} onConfirm={() => {}} onQuit={() => {}} />,
-    );
-    const out = lastFrame() ?? '';
-    expect(out).not.toContain('[AI]');
-    expect(out).not.toMatch(/\*[^\n]*Button/);
-  });
-});
-
-describe('ScopeGateStep — manual decision wins over streaming AI (Task 3)', () => {
-  it('row stays in place and INCLUDED when AI later rejects an operator-included row', () => {
+describe('ScopeGateStep — default inclusion (everything undecided)', () => {
+  it('every row starts undecided; f without any interaction partitions everything into rejected', () => {
     const onConfirm = vi.fn();
-    const initial = [
-      { name: 'Button', componentId: 'c0' },
-      { name: 'Card', componentId: 'c1' },
-    ];
-    const { rerender, lastFrame, stdin } = render(
-      <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} />,
+    const { stdin } = render(
+      <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
     );
-    // Operator explicitly toggles Button OFF then ON to mark it as manual-include.
-    stdin.write('a'); // EXCLUDE Button
-    stdin.write('a'); // INCLUDE Button (now in userUnExcluded)
-    // AI streams in a rejection for Button.
-    const streamed = [
-      { name: 'Button', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: 'AI thinks no' },
-      { name: 'Card', componentId: 'c1' },
-    ];
-    rerender(<ScopeGateStep components={streamed} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />);
-    const out = lastFrame() ?? '';
-    // Order preserved (Button first, then Card).
-    const buttonIdx = out.indexOf('Button');
-    const cardIdx = out.indexOf('Card');
-    expect(buttonIdx).toBeGreaterThan(-1);
-    expect(cardIdx).toBeGreaterThan(buttonIdx);
-    // `*` marker appears on Button now.
-    expect(out).toMatch(/\*[^\n]*Button/);
-    // f confirms Button is still in accepted.
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual([]);
+    expect(arg.rejected).toEqual(expect.arrayContaining(['Button', 'Card', 'DebugPanel']));
+  });
+
+  it('[Y] accepts only non-AI-flagged rows; AI-rejects stay undecided → rejected on [f]', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    stdin.write('Y');
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toEqual(expect.arrayContaining(['Button', 'Card']));
+    expect(arg.rejected).toEqual(['DebugPanel']);
+  });
+});
+
+describe('ScopeGateStep — accept semantics', () => {
+  it('[a] on the focused row marks it INCLUDED; [f] partitions accordingly', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(
+      <ScopeGateStep components={MIXED} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    stdin.write('a');
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
     expect(arg.accepted).toContain('Button');
     expect(arg.rejected).not.toContain('Button');
   });
 
-  it('row stays EXCLUDED across re-renders when operator excludes an AI-accepted row', () => {
+  it('focused-row detail line shows `included` after [a]', () => {
+    const { lastFrame, stdin } = render(
+      <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+    );
+    stdin.write('a');
+    const out = lastFrame() ?? '';
+    expect(out).toContain('Button');
+    expect(out).toContain('included');
+  });
+});
+
+describe('ScopeGateStep — manual decision wins over streaming AI', () => {
+  it('operator-accepted row survives a later AI stream update that flags it rejected', () => {
+    const onConfirm = vi.fn();
+    const initial = [
+      { name: 'Button', componentId: 'c0' },
+      { name: 'Card', componentId: 'c1' },
+    ];
+    const { rerender, stdin } = render(<ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} />);
+    stdin.write('a');
+    const streamed = [
+      { name: 'Button', componentId: 'c0', aiDecision: 'rejected' as const, aiReason: 'AI thinks no' },
+      { name: 'Card', componentId: 'c1' },
+    ];
+    rerender(<ScopeGateStep components={streamed} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />);
+    stdin.write('f');
+    const arg = onConfirm.mock.calls[0][0];
+    expect(arg.accepted).toContain('Button');
+    expect(arg.rejected).not.toContain('Button');
+  });
+
+  it('operator-rejected AI-accepted row stays REJECTED across re-renders', () => {
     const onConfirm = vi.fn();
     const initial = [
       { name: 'Button', componentId: 'c0', aiDecision: 'accepted' as const },
       { name: 'Card', componentId: 'c1' },
     ];
     const { rerender, stdin } = render(<ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} />);
-    stdin.write('a'); // Exclude Button.
+    stdin.write('r');
     rerender(<ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />);
     stdin.write('f');
     const arg = onConfirm.mock.calls[0][0];
@@ -257,63 +129,28 @@ describe('ScopeGateStep — manual decision wins over streaming AI (Task 3)', ()
   });
 });
 
-describe('ScopeGateStep — two-section stickiness regressions (R2 Task 4)', () => {
-  it('manual reject on a Components-section row keeps it visible (red) in Components, not moved to AI section', () => {
-    const initial = [
-      { name: 'Button', componentId: 'c0' },
-      { name: 'Card', componentId: 'c1' },
-      { name: 'DebugPanel', componentId: 'c2', aiDecision: 'rejected' as const, aiReason: 'r' },
-    ];
+describe('ScopeGateStep — AI reason surfacing on focused row', () => {
+  it('renders the AI reason as focused-row detail on an AI-flagged row', () => {
     const { lastFrame, stdin } = render(
-      <ScopeGateStep components={initial} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
+      <ScopeGateStep
+        components={[
+          { name: 'Button', componentId: 'c0' },
+          { name: 'DebugPanel', componentId: 'c1', aiDecision: 'rejected', aiReason: 'internal-only widget' },
+        ]}
+        onConfirm={() => {}}
+        onQuit={() => {}}
+        aiFilterStatus="complete"
+      />,
     );
-    // Cursor at DebugPanel (first AI row). j → Button (first Components row).
     stdin.write('j');
-    stdin.write('a'); // Manually exclude Button.
     const out = lastFrame() ?? '';
-    const lines = out.split('\n');
-    const aiHeaderIdx = lines.findIndex((l) => l.includes('AI recommended exclusions'));
-    const compHeaderIdx = lines.findIndex((l) => l.includes('Components ('));
-    const buttonIdx = lines.findIndex((l) => l.includes('Button'));
-    // Button stays in Components section despite being EXCLUDED now.
-    expect(buttonIdx).toBeGreaterThan(compHeaderIdx);
-    expect(aiHeaderIdx).toBeLessThan(compHeaderIdx);
-    // Button row carries the red [✗] glyph.
-    expect(out).toMatch(/\[✗\][^\n]*Button/);
-    // Button does NOT carry the `*` AI marker (it's manual, not AI-driven).
-    expect(out).not.toMatch(/\*[^\n]*Button/);
+    expect(out).toContain('DebugPanel');
+    expect(out).toContain('internal-only widget');
   });
 
-  it('operator delta survives a streaming AI prop update with new rejections (sticky across re-render)', () => {
-    const initial = [
-      { name: 'Button', componentId: 'c0' },
-      { name: 'Card', componentId: 'c1' },
-      { name: 'BadgeIcon', componentId: 'c2', aiDecision: 'rejected' as const, aiReason: 'r1' },
-    ];
-    const onConfirm = vi.fn();
-    const { stdin, rerender } = render(
-      <ScopeGateStep components={initial} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="running" />,
-    );
-    // Cursor at BadgeIcon (first AI row). Toggle INCLUDED.
-    stdin.write('a');
-    const updated = [
-      ...initial,
-      { name: 'DivWrapper', componentId: 'c3', aiDecision: 'rejected' as const, aiReason: 'r2' },
-    ];
-    rerender(<ScopeGateStep components={updated} onConfirm={onConfirm} onQuit={() => {}} aiFilterStatus="complete" />);
-    stdin.write('f');
-    const arg = onConfirm.mock.calls[0][0];
-    expect(arg.accepted).toContain('BadgeIcon');
-    expect(arg.rejected).not.toContain('BadgeIcon');
-    expect(arg.rejected).toContain('DivWrapper');
-  });
-});
-
-describe('ScopeGateStep — focused-row reason wrap + brighter colors (Task 4)', () => {
-  it('renders the full reason on a separate line below the focused AI row', () => {
-    const longReason =
-      'this widget is internal-only and would not make sense as a public design-system primitive because it depends on private context that we do not want to leak into the public API surface';
-    const { lastFrame } = render(
+  it('truncates a long AI reason on the focused-row detail line', () => {
+    const longReason = 'a'.repeat(600) + 'TAILMARKER';
+    const { lastFrame, stdin } = render(
       <ScopeGateStep
         components={[
           { name: 'Button', componentId: 'c0' },
@@ -324,62 +161,35 @@ describe('ScopeGateStep — focused-row reason wrap + brighter colors (Task 4)',
         aiFilterStatus="complete"
       />,
     );
-    // DebugPanel is in the AI section (top); cursor starts there at i=0.
-    const out = lastFrame() ?? '';
-    // Full reason must appear (untruncated).
-    expect(out).toContain('depends on private context');
-    // And on a different line from the row label.
-    const debugLineIdx = out.split('\n').findIndex((line) => line.includes('DebugPanel'));
-    const reasonLineIdx = out.split('\n').findIndex((line) => line.includes('depends on private context'));
-    expect(reasonLineIdx).toBeGreaterThan(debugLineIdx);
-  });
-
-  it('renders truncated inline reason on non-focused AI rows', () => {
-    const longReason = 'a'.repeat(120);
-    const { lastFrame, stdin } = render(
-      <ScopeGateStep
-        components={[
-          { name: 'Other', componentId: 'c0', aiDecision: 'rejected', aiReason: 'short' },
-          { name: 'Button', componentId: 'c1' },
-          { name: 'DebugPanel', componentId: 'c2', aiDecision: 'rejected', aiReason: longReason },
-        ]}
-        onConfirm={() => {}}
-        onQuit={() => {}}
-        aiFilterStatus="complete"
-      />,
-    );
-    // Cursor starts at Other (first AI row). Move down once to put cursor
-    // on DebugPanel? No — we want DebugPanel to be NON-focused so its long
-    // reason is truncated inline. Stay on Other; DebugPanel is second AI row.
-    void stdin;
+    stdin.write('j');
     const out = lastFrame() ?? '';
     expect(out).toContain('…');
-    expect(out).not.toContain('a'.repeat(120));
+    expect(out).not.toContain('TAILMARKER');
   });
 });
 
-describe('ScopeGateStep — legend update (Task 5)', () => {
-  it('legend shows toggle (not reject), continue, quit, toggle-all', () => {
+describe('ScopeGateStep — legend', () => {
+  it('legend advertises accept, reject, lineage, search, continue, quit, toggle-all, accept-non-flagged', () => {
     const { lastFrame } = render(
       <ScopeGateStep components={[{ name: 'Button', componentId: 'c0' }]} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toContain('toggle');
+    expect(out).toContain('accept');
+    expect(out).toContain('reject');
     expect(out).toContain('toggle all');
+    expect(out).toContain('accept non-flagged');
     expect(out).toContain('continue');
     expect(out).toContain('quit');
-    // The `[c]` collapse hint should be gone.
-    expect(out).not.toMatch(/\[c\]/);
-    // No `[r] reject` since `r` is now an alias for toggle.
-    expect(out).not.toMatch(/\[r\][^\n]*reject/i);
+    expect(out).toContain('lineage');
+    expect(out).toContain('search');
   });
 
-  it('shows [s] AI reason only when at least one AI-flagged row exists', () => {
+  it('shows [x] AI exclusions only when at least one AI-flagged row exists', () => {
     const { lastFrame: framePlain } = render(
       <ScopeGateStep components={[{ name: 'Button', componentId: 'c0' }]} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const plainOut = framePlain() ?? '';
-    expect(plainOut).not.toContain('AI reason');
+    expect(plainOut).not.toContain('AI exclusions');
 
     const { lastFrame: frameAi } = render(
       <ScopeGateStep
@@ -393,9 +203,7 @@ describe('ScopeGateStep — legend update (Task 5)', () => {
       />,
     );
     const aiOut = frameAi() ?? '';
-    // `[s]` legend entry present (ink may wrap "AI reason" mid-phrase on
-    // narrow widths, so don't assert the words contiguously).
-    expect(aiOut).toContain('[s]');
-    expect(aiOut).toContain('reason');
+    expect(aiOut).toContain('[x]');
+    expect(aiOut).toContain('AI exclusions');
   });
 });

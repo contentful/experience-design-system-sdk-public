@@ -13,11 +13,15 @@ import {
 import type { CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
 import { ApiError, ImportApiClient } from './api-client.js';
 import { openPipelineDb, loadCDFComponents } from '../session/db.js';
+import { findSlotCycles, suggestCycleBreakEdge, formatCyclePath } from '../analyze/cycle-detection.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
 import { isEmptyPreview } from './preview-utils.js';
 import { ServerPreviewApp, ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
 import { SelectView, makeSelectKey, type SelectableEntity } from './tui/SelectView.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
+import { resolveCompositionMode } from '../lib/composition-mode.js';
+import { stripAllowedComponents } from '../import/strip-allowed-components.js';
+import { readExperiencesCredentials } from '../credentials-store.js';
 
 function die(message: string): never {
   process.stderr.write(`${message}\n`);
@@ -132,6 +136,8 @@ interface SharedImportOptions {
   environmentId?: string;
   cmaToken?: string;
   host?: string;
+  composite?: boolean;
+  atomic?: boolean;
 }
 
 interface PreviewOptions extends SharedImportOptions {
@@ -199,6 +205,21 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
     components = result.components;
   }
 
+  // Atomic mode (spec T8/T12): strip embedded-component composition at the
+  // single serialization boundary, regardless of load path. Normalizing here
+  // (rather than only in loadCDFComponents) also covers hand-authored
+  // `--components` files. Starving `$allowedComponents` at this one point
+  // means slot-cycle detection downstream structurally returns zero.
+  let configMode: 'composite' | 'atomic' | undefined;
+  try {
+    configMode = (await readExperiencesCredentials()).compositionMode;
+  } catch {
+    // Missing credentials.json → resolver falls through to default (atomic).
+  }
+  if (resolveCompositionMode(opts, configMode) === 'atomic') {
+    components = stripAllowedComponents(components);
+  }
+
   let tokens: DTCGTokenEntry[] = [];
   if (opts.tokens) {
     tokens = await readTokensFromPath('--tokens', opts.tokens);
@@ -214,7 +235,55 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   return { components, tokens, client };
 }
 
-// --- Output helpers ---
+export function detectSlotCycles(
+  components: Array<{ key: string; entry: CDFComponentEntry }>,
+): ReturnType<typeof findSlotCycles> {
+  const cycleInput = components.map(({ key, entry }) => ({
+    name: key,
+    slots: Object.entries(entry.$slots ?? {}).map(([slotName, slotDef]) => ({
+      name: slotName,
+      allowedComponents: slotDef.$allowedComponents ?? [],
+    })),
+  }));
+  return findSlotCycles(cycleInput);
+}
+
+export function formatSlotCycleReport(cycles: ReturnType<typeof findSlotCycles>): string[] {
+  const lines: string[] = [];
+  lines.push(
+    `Error: manifest:components/slot-cycles — ${cycles.length} slot dependency cycle(s) detected. Push refused.`,
+  );
+  for (let i = 0; i < cycles.length; i += 1) {
+    const cycle = cycles[i];
+    lines.push(`  Cycle ${i + 1}: ${formatCyclePath(cycle)}`);
+    const suggested = suggestCycleBreakEdge(cycle, cycles);
+    lines.push(
+      `    Fix: remove '${suggested.toComponent}' from ${suggested.fromComponent}.$slots.${suggested.slotName}.$allowedComponents`,
+    );
+  }
+  return lines;
+}
+
+export function assertNoSlotCycles(components: Array<{ key: string; entry: CDFComponentEntry }>): void {
+  const cycles = detectSlotCycles(components);
+  if (cycles.length === 0) return;
+  process.stderr.write(formatSlotCycleReport(cycles).join('\n') + '\n');
+  process.exit(1);
+}
+
+export function extractComponentsFromManifest(
+  manifest: { componentsManifest?: Record<string, unknown> } | null | undefined,
+): Array<{ key: string; entry: CDFComponentEntry }> {
+  const componentsManifest = manifest?.componentsManifest;
+  if (!componentsManifest) return [];
+  const out: Array<{ key: string; entry: CDFComponentEntry }> = [];
+  for (const [key, value] of Object.entries(componentsManifest)) {
+    if (key === '$schema') continue;
+    if (!value || typeof value !== 'object') continue;
+    out.push({ key, entry: value as CDFComponentEntry });
+  }
+  return out;
+}
 
 export function hasBreakingChangesWithImpact(preview: ServerPreviewResponse): boolean {
   const allChanged = [...preview.components.changed, ...preview.tokens.changed];
@@ -291,8 +360,6 @@ function buildApplyOutput(
   };
 }
 
-// --- Selection helpers ---
-
 function getSelectableEntities(preview: ServerPreviewResponse): SelectableEntity[] {
   const entities: SelectableEntity[] = [];
 
@@ -357,8 +424,6 @@ function resolveNonInteractiveSelection(entities: SelectableEntity[], opts: Sele
 
   return selected;
 }
-
-// --- Interactive Select TUI ---
 
 interface SelectAppProps {
   entities: SelectableEntity[];
@@ -429,8 +494,6 @@ function SelectApp({ entities, spaceId, environmentId, onApply }: SelectAppProps
   });
 }
 
-// --- Command registration ---
-
 function collect(val: string, prev: string[]): string[] {
   return [...prev, val];
 }
@@ -440,7 +503,6 @@ export function registerApplyCommand(program: Command): void {
     .command('apply')
     .description('Preview, select, or push design system entities to Contentful ExO');
 
-  // --- apply preview ---
   applyCmd
     .command('preview')
     .description('Show a read-only diff of what apply push would do')
@@ -451,6 +513,8 @@ export function registerApplyCommand(program: Command): void {
     .requiredOption('--environment-id <id>', 'Contentful environment ID')
     .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--host <url>', 'Override API base URL')
+    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
+    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
     .action(async (opts: PreviewOptions) => {
       let inputs: Awaited<ReturnType<typeof resolveSharedInputs>>;
       try {
@@ -498,7 +562,6 @@ export function registerApplyCommand(program: Command): void {
       }
     });
 
-  // --- apply push ---
   applyCmd
     .command('push')
     .description('Write component types and design tokens to Contentful ExO')
@@ -509,6 +572,8 @@ export function registerApplyCommand(program: Command): void {
     .requiredOption('--environment-id <id>', 'Contentful environment ID')
     .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--host <url>', 'Override API base URL')
+    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
+    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
     .option('--yes', 'Skip interactive confirmation')
     .option('--verbose', 'Show all entity progress including skipped/unchanged')
     .option('--force', 'Skip confirmation for breaking changes (for CI)')
@@ -531,6 +596,8 @@ export function registerApplyCommand(program: Command): void {
 
       const { components, tokens, client } = inputs;
 
+      assertNoSlotCycles(components);
+
       try {
         await client.validateToken();
       } catch (e) {
@@ -551,7 +618,6 @@ export function registerApplyCommand(program: Command): void {
       const spaceId = opts.spaceId!;
       const environmentId = opts.environmentId!;
 
-      // --- Dry run: print preview and exit ---
       if (opts.dryRun) {
         if (isTTY) {
           const { waitUntilExit } = render(
@@ -568,7 +634,6 @@ export function registerApplyCommand(program: Command): void {
         process.exit(0);
       }
 
-      // --- Nothing to do: exit early without calling apply ---
       if (isEmptyPreview(preview)) {
         if (isTTY && !opts.yes) {
           process.stderr.write('Nothing to change — design system is up to date.\n');
@@ -580,7 +645,6 @@ export function registerApplyCommand(program: Command): void {
 
       const breakingWithImpact = hasBreakingChangesWithImpact(preview);
 
-      // --- Non-interactive: require --force for breaking changes ---
       if (!isTTY || opts.yes) {
         if (breakingWithImpact && !opts.force) {
           process.stderr.write(
@@ -618,7 +682,6 @@ export function registerApplyCommand(program: Command): void {
         return;
       }
 
-      // --- Interactive (TTY, no --yes) flow ---
       await new Promise<void>((resolvePromise) => {
         const runApply = async (acknowledge: boolean) => {
           instance.rerender(
@@ -703,7 +766,6 @@ export function registerApplyCommand(program: Command): void {
       });
     });
 
-  // --- apply select ---
   applyCmd
     .command('select')
     .description('Select a subset of entities and push to Contentful ExO')
@@ -714,6 +776,8 @@ export function registerApplyCommand(program: Command): void {
     .requiredOption('--environment-id <id>', 'Contentful environment ID')
     .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--host <url>', 'Override API base URL')
+    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
+    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
     .option('--select-all', 'Select all entities without launching TUI')
     .option('--select <pattern>', 'Select entities by ID pattern (repeatable)', collect, [])
     .option('--deselect <pattern>', 'Deselect entities by ID pattern (repeatable)', collect, [])
@@ -736,6 +800,8 @@ export function registerApplyCommand(program: Command): void {
       }
 
       const { components, tokens, client } = inputs;
+
+      assertNoSlotCycles(components);
 
       try {
         await client.validateToken();
@@ -811,7 +877,6 @@ export function registerApplyCommand(program: Command): void {
         return;
       }
 
-      // --- Interactive flow ---
       await new Promise<void>((resolvePromise) => {
         const runSelectApply = async (selectedKeys: Set<string>) => {
           const selectedComponentKeys = new Set<string>();

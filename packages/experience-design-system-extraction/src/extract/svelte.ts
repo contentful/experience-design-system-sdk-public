@@ -13,12 +13,14 @@ import type {
   ExtractorOptions,
 } from '../types.js';
 import { computeExtractionScore, deriveNeedsReview } from './scoring.js';
+import { extractAllowedComponentsFromTypeText } from './slot-allowed-components.js';
+
+type RawSlotDefinitionInternal = RawSlotDefinition & {
+  _rawTypeText?: string;
+};
 
 const SVELTE_EXTRACT_CONCURRENCY = Number(process.env['EDS_EXTRACT_CONCURRENCY'] ?? 0) || os.cpus().length;
 
-// Minimal estree-like types for the bits we read off the Svelte AST.
-// We avoid pulling in @types/estree just for this — the AST nodes we care
-// about have a stable shape across the Svelte 5 series.
 interface AstNode {
   type: string;
   loc?: { start?: { line?: number }; end?: { line?: number } };
@@ -29,12 +31,6 @@ interface Comment {
   value: string;
 }
 
-/**
- * Per-component context captured during the first extraction pass, used by the
- * retry pass to re-run type-member resolution against a richer ts-morph
- * Project. Keyed by .svelte filePath (which also uniquely identifies a
- * component within a single extraction).
- */
 interface RetryContext {
   filePath: string;
   source: string;
@@ -86,32 +82,34 @@ export async function extractSvelteComponents(
 
   const finalWarnings = await maybeRunResolveUnreachableRetry(components, warnings, retryContexts, opts);
 
+  resolveAllowedComponents(components);
+
   return {
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
     warnings: collapseUnresolvedTypeWarnings(finalWarnings),
   };
 }
 
-// ---------------------------------------------------------------------------
-// Resolve-unreachable retry pass (Approach B)
-//
-// After the normal pass, components flagged `props-type-unresolved` get a
-// second look:
-//
-//   Step 1 — tsconfig pass: walk up from projectRoot to the nearest
-//   tsconfig.json and build ONE shared ts-morph Project loaded with that
-//   tsconfig. Re-run resolution per-component. Recovers cases where the type
-//   resolver needed path aliases / baseUrl / a real TS program.
-//
-//   Step 2 — node_modules pass: for components that still won't resolve,
-//   locate the imported package via Node's resolver, find its .d.ts entry,
-//   add it to the shared Project, and retry. Recovers cross-package extends
-//   like skeleton-svelte's `extends Omit<ZagProps, 'id'>` from @zag-js/*.
-//
-// Auto mode triggers only when ≥20% of svelte components in the run share
-// the unresolved-type pattern, so the cost of loading a full TS program is
-// paid only when it's likely to help.
-// ---------------------------------------------------------------------------
+function resolveAllowedComponents(components: RawComponentDefinition[]): void {
+  const propsToComponent = new Map<string, string>();
+  const componentNames = new Set<string>();
+  for (const c of components as Array<RawComponentDefinition & { _propsTypeName?: string }>) {
+    componentNames.add(c.name);
+    if (c._propsTypeName) propsToComponent.set(c._propsTypeName, c.name);
+  }
+
+  for (const c of components as Array<RawComponentDefinition & { _propsTypeName?: string }>) {
+    for (const slot of c.slots as RawSlotDefinitionInternal[]) {
+      const raw = slot._rawTypeText;
+      if (raw) {
+        const found = extractAllowedComponentsFromTypeText(raw, { propsToComponent, componentNames });
+        if (found.length > 0) slot.allowedComponents = found;
+      }
+      delete slot._rawTypeText;
+    }
+    delete c._propsTypeName;
+  }
+}
 
 async function maybeRunResolveUnreachableRetry(
   components: RawComponentDefinition[],
@@ -128,12 +126,10 @@ async function maybeRunResolveUnreachableRetry(
   if (unresolvedCount === 0) return warnings;
 
   if (mode === 'auto') {
-    // Threshold: ≥20% of svelte components in the run.
     const ratio = unresolvedCount / components.length;
     if (ratio < 0.2) return warnings;
   }
 
-  // Step 1 — tsconfig pass.
   const projectRoot = opts?.projectRoot;
   let project: Project | null = null;
   let tsconfigPath: string | null = null;
@@ -146,7 +142,6 @@ async function maybeRunResolveUnreachableRetry(
         tsConfigFilePath: tsconfigPath,
         skipAddingFilesFromTsConfig: false,
         compilerOptions: {
-          // Allow declaration-only resolution and JS sources.
           allowJs: true,
           jsx: ts.JsxEmit.Preserve,
         },
@@ -167,15 +162,10 @@ async function maybeRunResolveUnreachableRetry(
     }
   }
 
-  // Step 2 — node_modules pass for whatever's still unresolved.
   let recoveredViaNodeModules = 0;
   const stillUnresolved = components.filter(isUnresolved);
   if (stillUnresolved.length > 0) {
     if (!project) {
-      // No tsconfig available — fall back to a lightweight project so we still
-      // get the node_modules pass. Force Node module resolution so that
-      // bare-specifier imports (e.g. `fake-svelte-pkg`) inside the synthetic
-      // file find their .d.ts entry on disk.
       project = new Project({
         compilerOptions: {
           strict: false,
@@ -193,8 +183,6 @@ async function maybeRunResolveUnreachableRetry(
       const ctx = retryContexts.get(component.source);
       if (!ctx) continue;
 
-      // Locate the imported types referenced by the user's Props annotation
-      // and add their .d.ts files to the shared project.
       const added = addImportedDeclarationsToProject(project, ctx);
       if (added === 0) continue;
 
@@ -203,12 +191,6 @@ async function maybeRunResolveUnreachableRetry(
     }
   }
 
-  // Only surface the informational summary when the retry actually had
-  // something to work with — i.e. a tsconfig was loaded OR we managed to
-  // recover at least one component via node_modules. Otherwise we'd be
-  // adding a top-level warning that says "we did nothing", which clutters
-  // the output (and breaks the per-component-prefix convention the TUI
-  // relies on for grouping).
   const didMeaningfulWork = !!tsconfigPath || recoveredViaNodeModules > 0;
   if (didMeaningfulWork) {
     const remaining = components.filter(isUnresolved).length;
@@ -226,7 +208,6 @@ async function maybeRunResolveUnreachableRetry(
 
 function findNearestTsconfig(startDir: string): string | null {
   let dir = startDir;
-  // Cap at a reasonable depth to avoid scanning into / on weird inputs.
   for (let i = 0; i < 16; i++) {
     const candidate = join(dir, 'tsconfig.json');
     if (existsSync(candidate)) return candidate;
@@ -237,11 +218,6 @@ function findNearestTsconfig(startDir: string): string | null {
   return null;
 }
 
-/**
- * Re-run resolution for a single component against a shared Project.
- * On success, mutate the component to replace props/slots/reviewReasons and
- * remove the per-component "declared Props type ... resolved to ..." warning.
- */
 async function retryComponentWithProject(
   component: RawComponentDefinition,
   ctx: RetryContext,
@@ -269,28 +245,14 @@ async function retryComponentWithProject(
   }
 
   if (!members || members.length === 0) return false;
-  // If the resolver returned a complete member list — even when it's
-  // Snippet-only — that's a real answer, not a partial one. Apply it and
-  // drop `props-type-unresolved`. Whether the resulting component still
-  // needs review will be decided by the standard heuristics
-  // (no-props-or-slots, infra-fetch, etc.) downstream.
 
   const { props, snippetSlots } = extractFromTypeMembersOnly(members);
-  // Merge any template <slot> entries that survived the original pass — we
-  // can't easily re-derive those without re-parsing the fragment, but the
-  // existing component already has them.
   const templateSlots = component.slots.filter((s) => !snippetSlots.some((ss) => ss.name === s.name));
   const finalSlots = mergeSlots(snippetSlots, templateSlots).slots;
-  // Defensive dedupe: if a name somehow ended up in both buckets (e.g. when ts-morph
-  // returned `any` for a Snippet member and the Snippet detector failed downstream),
-  // the slot wins — slot semantics aren't recoverable from a duplicated prop.
   const slotNames = new Set(finalSlots.map((s) => s.name));
   component.props = props.filter((p) => !slotNames.has(p.name));
   component.slots = finalSlots;
 
-  // Drop `props-type-unresolved` from reasons: the type DID resolve. Other
-  // heuristics (no-props-or-slots, infra-fetch, etc.) decide whether the
-  // recovered component still needs review.
   const remainingReasons = (component.reviewReasons ?? []).filter((r) => r !== 'props-type-unresolved');
   const score = computeExtractionScore(component, {
     additionalIssueCount: remainingReasons.length,
@@ -300,7 +262,6 @@ async function retryComponentWithProject(
   component.reviewReasons = score.reasons;
   component.needsReview = deriveNeedsReview(score.confidence);
 
-  // Remove the per-component unresolved-type warning — recovery is complete.
   const componentName = component.name;
   const idx = warnings.findIndex(
     (w) => w.startsWith(`${componentName}: declared Props type `) && /resolved to /.test(w),
@@ -310,19 +271,8 @@ async function retryComponentWithProject(
   return true;
 }
 
-/**
- * Walk every type reference inside the user's Props annotation, find the
- * matching ImportDeclaration in instance/module scripts, resolve the
- * specifier via Node's resolver, locate sibling .d.ts files, and add them to
- * the shared Project. Returns the number of newly-added files.
- */
 function addImportedDeclarationsToProject(project: Project, ctx: RetryContext): number {
-  // Start with names referenced directly in the annotation (e.g. `Props`).
   const importedNames = collectReferencedTypeNames(ctx.annotation);
-  // Also pull in names referenced from any LOCAL type/interface declaration the
-  // annotation points at — that's where heritage clauses (`extends FakeProps`)
-  // and intersections live, and they're the ones that name the imported type
-  // we actually need to add to the project.
   for (const name of [...importedNames]) {
     const localDecl =
       findLocalTypeDeclaration(ctx.instance, name, ctx.moduleScript) ??
@@ -342,27 +292,17 @@ function addImportedDeclarationsToProject(project: Project, ctx: RetryContext): 
   const req = createRequire(ctx.filePath);
   let added = 0;
   for (const specifier of imports.values()) {
-    if (specifier.startsWith('.')) continue; // already attempted by relative resolver path
+    if (specifier.startsWith('.')) continue;
     const dtsPath = locateDtsForSpecifier(req, specifier, ctx.filePath);
     if (!dtsPath) continue;
     try {
       const sf = project.addSourceFileAtPathIfExists(dtsPath);
       if (sf) added++;
-    } catch {
-      // Ignore — best-effort.
-    }
+    } catch {}
   }
   return added;
 }
 
-/**
- * Walk a TS type-annotation AST (or interface declaration) and gather every
- * referenced type name. Handles:
- *   - TSTypeReference (`Foo`, `Foo<Bar>`)
- *   - TSExpressionWithTypeArguments (the `extends Foo` form on interfaces)
- * That second case is critical: it's how `interface Props extends FakeProps {}`
- * surfaces the imported `FakeProps` name we need to add to the project.
- */
 function collectReferencedTypeNames(node: AstNode): Set<string> {
   const names = new Set<string>();
   walk(node);
@@ -390,10 +330,6 @@ function collectReferencedTypeNames(node: AstNode): Set<string> {
   }
 }
 
-/**
- * For each named identifier in `names`, find the import declaration that
- * brought it into scope and return a map of `localName -> moduleSpecifier`.
- */
 function collectImportSpecifiersForNames(script: AstNode, names: Set<string>): Map<string, string> {
   const out = new Map<string, string>();
   const body = (script['content'] as AstNode | undefined)?.['body'] as AstNode[] | undefined;
@@ -412,14 +348,6 @@ function collectImportSpecifiersForNames(script: AstNode, names: Set<string>): M
   return out;
 }
 
-/**
- * Locate a `.d.ts` file for `specifier` resolved relative to `parentFile`.
- * Tries a few strategies in priority order:
- *   1. `package.json#types` / `package.json#exports.types`
- *   2. sibling `.d.ts` / `.d.mts` next to the resolved JS entry
- *   3. `index.d.ts` / `index.d.mts` in the package root
- * Returns null if nothing resolves (no node_modules, dynamic import, etc.).
- */
 function locateDtsForSpecifier(req: NodeJS.Require, specifier: string, parentFile: string): string | null {
   let resolvedJs: string | null = null;
   try {
@@ -428,7 +356,6 @@ function locateDtsForSpecifier(req: NodeJS.Require, specifier: string, parentFil
     resolvedJs = null;
   }
 
-  // Find the package root (nearest package.json above the resolved file or above the parentFile).
   const seedDir = resolvedJs ? dirname(resolvedJs) : dirname(parentFile);
   const pkgRoot = findPackageRootForSpecifier(seedDir, specifier);
   if (pkgRoot) {
@@ -447,18 +374,14 @@ function locateDtsForSpecifier(req: NodeJS.Require, specifier: string, parentFil
           const candidate = resolve(pkgRoot, exportsTypes);
           if (existsSync(candidate)) return candidate;
         }
-      } catch {
-        // Fall through to sibling probing.
-      }
+      } catch {}
     }
-    // index.d.ts at the package root.
     for (const entry of ['index.d.ts', 'index.d.mts']) {
       const candidate = join(pkgRoot, entry);
       if (existsSync(candidate)) return candidate;
     }
   }
 
-  // Sibling probing next to the resolved JS file.
   if (resolvedJs) {
     const noExt = resolvedJs.replace(/\.(m?js|cjs)$/, '');
     for (const ext of ['.d.ts', '.d.mts']) {
@@ -471,21 +394,15 @@ function locateDtsForSpecifier(req: NodeJS.Require, specifier: string, parentFil
 }
 
 function findPackageRootForSpecifier(seedDir: string, specifier: string): string | null {
-  // For scoped (@x/y) and bare specifiers, the package root is the directory
-  // whose path ends with the specifier under a node_modules tree. Walk up.
   let dir = seedDir;
   for (let i = 0; i < 32; i++) {
     if (existsSync(join(dir, 'package.json'))) {
-      // Check this is the package matching the specifier (best-effort: name field).
       try {
         const pkgRaw = readFileSync(join(dir, 'package.json'), 'utf-8') as string;
         const pkg = JSON.parse(pkgRaw) as { name?: string };
-        // Either exact match or a sub-path import (foo/sub) where pkg.name === 'foo'.
         if (pkg.name === specifier) return dir;
         if (pkg.name && specifier.startsWith(`${pkg.name}/`)) return dir;
-      } catch {
-        // Ignore and continue walking.
-      }
+      } catch {}
     }
     const parent = dirname(dir);
     if (!parent || parent === dir) return null;
@@ -497,12 +414,10 @@ function findPackageRootForSpecifier(seedDir: string, specifier: string): string
 function extractTypesFromExports(exportsField: unknown): string | null {
   if (!exportsField || typeof exportsField !== 'object') return null;
   const exp = exportsField as Record<string, unknown>;
-  // Look for the "." entry first; fall back to top-level types if shape is conditional.
   const root = (exp['.'] ?? exp) as unknown;
   if (!root || typeof root !== 'object') return null;
   const r = root as Record<string, unknown>;
   if (typeof r['types'] === 'string') return r['types'];
-  // Conditional exports: try import → types, default → types.
   for (const key of ['import', 'default', 'node']) {
     const sub = r[key];
     if (sub && typeof sub === 'object') {
@@ -513,18 +428,6 @@ function extractTypesFromExports(exportsField: unknown): string | null {
   return null;
 }
 
-/**
- * When a large fraction of components emit the same `declared Props type ...
- * resolved to ... properties` warning (typical of headless libraries like
- * skeleton-svelte that extend types from external packages we can't reach),
- * replace ALL of them with a single summary line. Per-component
- * reviewReasons + needsReview flags stay intact, so the user can still
- * drill into any individual component to see the issue — we just don't
- * flood the top-level warnings panel with N near-identical lines.
- *
- * Threshold: 3 or more identical-shape warnings. Below that, the literal
- * per-component lines are short enough to keep as-is.
- */
 function collapseUnresolvedTypeWarnings(warnings: string[]): string[] {
   const isUnresolvedWarning = (w: string) => /declared Props type .* resolved to/.test(w);
   const unresolvedCount = warnings.filter(isUnresolvedWarning).length;
@@ -545,8 +448,6 @@ async function extractFromSvelteFile(
   source: string,
 ): Promise<{ component: RawComponentDefinition | null; warnings: string[]; retryContext?: RetryContext }> {
   const warnings: string[] = [];
-  // Derive the component name up front so warning messages can prefix it for
-  // TUI grouping, even when parsing fails.
   const name = getSvelteComponentName(filePath);
 
   let ast: AstNode;
@@ -563,7 +464,6 @@ async function extractFromSvelteFile(
   const moduleScript = ast['module'] as AstNode | undefined;
   const fragment = ast['fragment'] as AstNode | undefined;
 
-  // Detect Svelte 4 export-let syntax — currently unsupported.
   if (instance && hasV4ExportLetProps(instance)) {
     warnings.push(
       `${name}: Svelte 4 export let syntax not yet supported (${filePath}); see INTEG-4267 for v5-only scope and follow-up`,
@@ -571,13 +471,9 @@ async function extractFromSvelteFile(
     return { component: null, warnings };
   }
 
-  // Find the $props() call (Svelte 5 runes).
   const propsCall = instance ? findPropsCall(instance) : null;
-
-  // Snippet import map: localName -> true if it refers to `Snippet` from 'svelte'.
   const snippetLocals = instance ? collectSnippetImportLocals(instance) : new Set<string>();
 
-  // --- Props extraction ---
   let props: RawPropDefinition[] = [];
   let propNamesTreatedAsSnippet = new Set<string>();
   let snippetSlotsFromProps: RawSlotDefinition[] = [];
@@ -599,31 +495,35 @@ async function extractFromSvelteFile(
     warnings.push(...result.warnings);
     if (result.additionalReasons) extractionReasons.push(...result.additionalReasons);
   } else if (instance) {
-    // No $props() call. We've already ruled out v4 above; this means $props was used
-    // but couldn't be located, or the script has no rune-style props at all.
-    // Component still extracted (slots from template may exist).
   } else {
-    // No script block at all — nothing to extract on the props side.
     warnings.push(`${name}: no instance script block (${filePath}); no props extracted`);
   }
 
-  // --- Slot extraction ---
   const templateSlots = fragment ? extractTemplateSlots(fragment) : [];
   const { slots, mixedWarning } = mergeSlots(snippetSlotsFromProps, templateSlots);
   if (mixedWarning) {
     warnings.push(`${name}: mixed Snippet and <slot> usage detected (${filePath}); preferring Snippet entries`);
   }
 
-  const component: RawComponentDefinition = {
+  let propsTypeNameCapture: string | undefined;
+  if (propsCall) {
+    const id = propsCall['id'] as AstNode | undefined;
+    const annotation = (id?.['typeAnnotation'] as AstNode | undefined)?.['typeAnnotation'] as AstNode | undefined;
+    if (annotation?.type === 'TSTypeReference') {
+      const tn = (annotation['typeName'] as AstNode | undefined)?.['name'] as string | undefined;
+      if (tn && /^[A-Za-z_$][\w$]*$/.test(tn)) propsTypeNameCapture = tn;
+    }
+  }
+
+  const component: RawComponentDefinition & { _propsTypeName?: string } = {
     name,
     source: filePath,
     framework: 'svelte',
     props,
     slots,
+    ...(propsTypeNameCapture ? { _propsTypeName: propsTypeNameCapture } : {}),
   };
 
-  // Score & flag review. Forward extraction-time reasons (e.g. props-type-unresolved)
-  // so they count toward the confidence score AND surface in reviewReasons.
   const score = computeExtractionScore(component, {
     additionalIssueCount: extractionReasons.length,
     additionalReasons: extractionReasons,
@@ -634,17 +534,8 @@ async function extractFromSvelteFile(
   // human review even when other heuristics keep confidence above the threshold.
   component.needsReview = deriveNeedsReview(score.confidence) || extractionReasons.includes('props-type-unresolved');
 
-  // Validation issues (EMPTY_COMPONENT_NAME / EMPTY_PROP_NAME / PROP_SLOT_NAME_COLLISION /
-  // DUPLICATE_COMPONENT_NAME / EMPTY_COMPONENT / EMPTY_SLOT_NAME) are populated
-  // centrally by validateExtractedComponents() in analyze/command.ts after all
-  // extractors return — same convention as React, Vue, Astro, Stencil, and
-  // web-components. No per-extractor work needed here.
+  void propNamesTreatedAsSnippet;
 
-  void propNamesTreatedAsSnippet; // currently informational; reserved for future validation
-
-  // Capture context for the resolve-unreachable retry pass. Only meaningful
-  // when extraction actually got back the props-type-unresolved signal AND
-  // we have the annotation node needed to re-run resolution.
   let retryContext: RetryContext | undefined;
   if (extractionReasons.includes('props-type-unresolved') && propsCall && instance) {
     const id = propsCall['id'] as AstNode | undefined;
@@ -664,23 +555,12 @@ async function extractFromSvelteFile(
   return { component, warnings, ...(retryContext ? { retryContext } : {}) };
 }
 
-// ---------------------------------------------------------------------------
-// Component name
-// ---------------------------------------------------------------------------
-
-// Folder names that are pure scaffolding (anatomy / parts conventions popularized
-// by Ark UI, Zag, Skeleton). When a component file sits directly inside one of
-// these, the meaningful namespace is the grandparent directory.
 const ANATOMY_FOLDERS = new Set(['anatomy', 'parts']);
 
 function getSvelteComponentName(filePath: string): string {
   const file = basename(filePath, '.svelte');
   const parentDir = basename(dirname(filePath));
-  // index.svelte → use parent directory name (mirrors index.vue behavior).
   if (file === 'index') return toPascalCase(parentDir);
-
-  // accordion/anatomy/root.svelte → AccordionRoot (avoids massive collisions
-  // when a single library has dozens of components named Root/Item/Trigger).
   if (ANATOMY_FOLDERS.has(parentDir)) {
     const grandparent = basename(dirname(dirname(filePath)));
     if (grandparent && grandparent !== '.' && grandparent !== '/') {
@@ -692,7 +572,6 @@ function getSvelteComponentName(filePath: string): string {
 
 function toPascalCase(s: string): string {
   if (!s) return s;
-  // Already PascalCase? leave it.
   if (/^[A-Z]/.test(s) && !s.includes('-') && !s.includes('_')) return s;
   return s
     .split(/[-_]+/)
@@ -700,10 +579,6 @@ function toPascalCase(s: string): string {
     .map((part) => part[0]!.toUpperCase() + part.slice(1))
     .join('');
 }
-
-// ---------------------------------------------------------------------------
-// Detection helpers
-// ---------------------------------------------------------------------------
 
 function hasV4ExportLetProps(instance: AstNode): boolean {
   const body = (instance['content'] as AstNode | undefined)?.['body'] as AstNode[] | undefined;
@@ -729,7 +604,6 @@ function findPropsCall(instance: AstNode): AstNode | null {
       const callee = init['callee'] as AstNode | undefined;
       if (callee?.type === 'Identifier' && callee['name'] === '$props') {
         if (found === null) found = d;
-        // Multiple $props() calls — first wins; we'll warn from the caller.
       }
     }
   }
@@ -758,16 +632,11 @@ function collectSnippetImportLocals(instance: AstNode): Set<string> {
   return locals;
 }
 
-// ---------------------------------------------------------------------------
-// Props extraction
-// ---------------------------------------------------------------------------
-
 interface PropsCallContext {
   propsCall: AstNode;
   instance: AstNode;
   moduleScript?: AstNode;
   filePath: string;
-  /** Resolved component name; warnings prefix with `${componentName}: …` so the TUI groups them by component. */
   componentName: string;
   source: string;
   snippetLocals: Set<string>;
@@ -778,7 +647,6 @@ interface PropsExtractionResult {
   snippetNames: Set<string>;
   snippetSlots: RawSlotDefinition[];
   warnings: string[];
-  /** Extra extraction-score reasons to merge into the component's reviewReasons. */
   additionalReasons?: string[];
 }
 
@@ -788,17 +656,12 @@ async function extractPropsFromCall(ctx: PropsCallContext): Promise<PropsExtract
   const id = propsCall['id'] as AstNode;
   const idType = id?.type;
 
-  // Decode the type annotation (the right side of `: Props` / `: { ... }`).
   const annotation = (id?.['typeAnnotation'] as AstNode | undefined)?.['typeAnnotation'] as AstNode | undefined;
 
-  // Resolve the type members once (works for both ObjectPattern and Identifier id forms).
   const typeMembers = annotation
     ? await resolveTypeMembers(annotation, ctx.instance, ctx.moduleScript, ctx.filePath, ctx.source)
     : null;
 
-  // Detect "we tried to resolve a real type and got nothing back" — distinct from
-  // the user genuinely typing an empty literal. Surface as both a warning (CLI
-  // stderr / analyze report) and a review reason (TUI / downstream gating).
   const unresolved = classifyUnresolved(annotation, typeMembers, ctx.instance, ctx.moduleScript);
   const additionalReasons: string[] = [];
   if (unresolved) {
@@ -816,7 +679,6 @@ async function extractPropsFromCall(ctx: PropsCallContext): Promise<PropsExtract
   }
 
   if (idType === 'Identifier') {
-    // const props: Props = $props(); — no destructure, no defaults, no per-name binding.
     if (typeMembers && typeMembers.length > 0) {
       return { ...extractFromTypeMembersOnly(typeMembers), warnings, additionalReasons };
     }
@@ -832,17 +694,6 @@ async function extractPropsFromCall(ctx: PropsCallContext): Promise<PropsExtract
   return { props: [], snippetNames: new Set(), snippetSlots: [], warnings, additionalReasons };
 }
 
-/**
- * Classify whether the user's declared Props type failed to resolve usefully.
- *
- * - `'empty'`: the resolver returned no members for a non-trivial annotation.
- * - `'partial-heritage'`: the source declaration has heritage clauses (extends /
- *   intersection in module-script) but the resolver only surfaced Snippet-typed
- *   members — strong signal that one or more parents pointed at unreachable
- *   types (e.g. cross-package node_modules) and were silently dropped.
- * - `null`: nothing to surface — either the user genuinely typed an empty
- *   literal, omitted the annotation, or the resolver returned regular props.
- */
 function classifyUnresolved(
   annotation: AstNode | undefined,
   members: ResolvedTypeMember[] | null,
@@ -852,13 +703,10 @@ function classifyUnresolved(
   if (!annotation) return null;
   if (annotation.type === 'TSTypeLiteral') {
     const litMembers = (annotation['members'] as AstNode[] | undefined) ?? [];
-    if (litMembers.length === 0) return null; // user genuinely typed `{}`
+    if (litMembers.length === 0) return null;
   }
   if (members === null || members.length === 0) return 'empty';
 
-  // Partial-heritage signal: declaration has extends and every surviving member
-  // is Snippet-typed. Real prop interfaces almost never declare every prop as a
-  // Snippet, so this is a strong "something fell off the resolution edge" hint.
   if (annotation.type === 'TSTypeReference') {
     const refName = ((annotation['typeName'] as AstNode | undefined)?.['name'] as string | undefined) ?? null;
     if (refName) {
@@ -887,11 +735,10 @@ interface ResolvedTypeMember {
   name: string;
   optional: boolean;
   typeText: string;
-  /** True if this member's type resolves to the `Snippet` type from 'svelte'. */
+  declaredTypeText?: string;
   isSnippet: boolean;
   allowedValues?: string[];
   description?: string;
-  /** 1-indexed line in the original .svelte file. */
   line?: number;
   endLine?: number;
 }
@@ -903,22 +750,15 @@ async function resolveTypeMembers(
   filePath: string,
   source: string,
 ): Promise<ResolvedTypeMember[] | null> {
-  // Snippet imports may live in either script block; collect from both.
   const snippetLocals = mergeSets(
     collectSnippetImportLocals(instance),
     moduleScript ? collectSnippetImportLocals(moduleScript) : new Set<string>(),
   );
 
-  // Fast path 1: inline type literal with no extends/intersection. The AST already
-  // gives us member-level optional/type/JSDoc; no ts-morph needed.
   if (annotation.type === 'TSTypeLiteral') {
     return readMembersFromTypeLiteral(annotation, snippetLocals);
   }
 
-  // For named refs: try the AST fast path first (inline interface or type literal alias
-  // with no heritage clauses). If that returns >0 members AND the source declaration has
-  // no extends, we trust it. Otherwise fall back to ts-morph type-checker resolution to
-  // pick up extends / Omit / intersection / Partial / generics.
   if (annotation.type === 'TSTypeReference') {
     const refName = ((annotation['typeName'] as AstNode | undefined)?.['name'] as string | undefined) ?? null;
     if (refName) {
@@ -928,9 +768,7 @@ async function resolveTypeMembers(
         if (fastPathMembers.length > 0 && !declarationHasHeritage(local)) {
           return fastPathMembers;
         }
-        // Heritage or empty body — fall through to ts-morph resolution.
       } else {
-        // No local declaration — try import resolution via ts-morph.
         const imported =
           (await resolveImportedTypeMembers(refName, instance, filePath)) ??
           (moduleScript ? await resolveImportedTypeMembers(refName, moduleScript, filePath) : null);
@@ -939,10 +777,6 @@ async function resolveTypeMembers(
     }
   }
 
-  // Slow path: ts-morph type-checker resolution. Materializes the annotation text as
-  // `type __SveltePropsT__ = <annotation>;` inside an in-memory file containing the
-  // combined script bodies, then reads .getType().getProperties(). The TS checker
-  // resolves extends, &, Omit, Pick, Partial, generics — anything TS itself resolves.
   return resolveViaTypeChecker(annotation, instance, moduleScript, filePath, source, snippetLocals);
 }
 
@@ -966,16 +800,10 @@ async function resolveViaTypeChecker(
   const annotationText = sliceSource(source, annotation);
   if (!annotationText) return null;
 
-  // Reconstruct the combined script content: module-script first, then instance.
-  // Both bodies share scope in the synthetic file, which is enough for TS to resolve
-  // local interfaces, type aliases, imports, and heritage clauses across them.
   const moduleText = sliceScriptContent(source, moduleScript);
   const instanceText = sliceScriptContent(source, instance);
   const synthetic = [moduleText, instanceText, `type __SveltePropsT__ = ${annotationText};`].filter(Boolean).join('\n');
 
-  // Reuse the caller-supplied Project if provided (the resolve-unreachable
-  // retry pass shares one Project across all components in the run); otherwise
-  // build a one-off project for this single call.
   const project =
     externalProject ??
     new Project({
@@ -989,7 +817,6 @@ async function resolveViaTypeChecker(
       useInMemoryFileSystem: false,
       skipAddingFilesFromTsConfig: true,
     });
-  // Place the synthetic file alongside the .svelte so relative imports resolve.
   const syntheticPath = `${filePath}.__svelte-props__.ts`;
   let sf: import('ts-morph').SourceFile;
   try {
@@ -1014,7 +841,6 @@ async function resolveViaTypeChecker(
 
     const propType = symbol.getTypeAtLocation(declaration);
     let typeText = propType.getText(declaration);
-    // Strip ` | undefined` for clean output on optional props.
     const optional = symbol.isOptional();
     if (optional) {
       typeText = typeText.replace(/\s*\|\s*undefined$/, '').replace(/^undefined\s*\|\s*/, '');
@@ -1022,14 +848,6 @@ async function resolveViaTypeChecker(
 
     const allowed = extractAllowedValuesFromType(propType);
     const description = readJsDocFromDeclaration(declaration);
-    // Snippet detection — try three signals in order of reliability:
-    //   1. The author's declared type-node text on the property's source declaration.
-    //      This survives even when ts-morph fails to fully resolve a generic
-    //      instantiation and falls back to `any`/`unknown` (intermittent under
-    //      partial type-checker state).
-    //   2. The resolved type's alias-symbol chain — works when ts-morph DID fully
-    //      resolve the type (`Snippet<[T]>` expanded to its call signature).
-    //   3. Text-match on the rendered type. Last-resort fallback.
     const declaredTypeText = readDeclaredTypeNodeText(declaration);
     const isSnippet =
       (declaredTypeText !== null && isSnippetTypeText(declaredTypeText, snippetLocals)) ||
@@ -1040,12 +858,10 @@ async function resolveViaTypeChecker(
       name,
       optional,
       typeText,
+      ...(declaredTypeText ? { declaredTypeText } : {}),
       isSnippet,
       ...(allowed ? { allowedValues: allowed } : {}),
       ...(description ? { description } : {}),
-      // line/endLine: prefer AST-derived location when the source declaration is in our
-      // svelte file. ts-morph's synthetic location refers to the synthetic file and
-      // isn't useful for the user.
     });
   }
   return members;
@@ -1083,14 +899,6 @@ function readJsDocFromDeclaration(decl: import('ts-morph').Node): string | undef
   return undefined;
 }
 
-/**
- * Read the literal text of the property's declared type annotation as the
- * AUTHOR wrote it (e.g. `Snippet<[Attrs]>`), independent of what the TS
- * checker resolved it to. This is critical because ts-morph's checker can
- * intermittently fall back to `any`/`unknown` for cross-package generic
- * instantiations, in which case the symbol-/alias-based detector has nothing
- * to follow. The author's syntactic annotation is stable in either case.
- */
 function readDeclaredTypeNodeText(decl: import('ts-morph').Node): string | null {
   if (Node.isPropertySignature(decl)) {
     return decl.getTypeNode()?.getText() ?? null;
@@ -1099,21 +907,12 @@ function readDeclaredTypeNodeText(decl: import('ts-morph').Node): string | null 
 }
 
 function isSnippetTypeText(typeText: string, snippetLocals: Set<string>): boolean {
-  // Direct match against the local Snippet name (handles aliasing).
   for (const local of snippetLocals) {
     if (typeText === local || typeText.startsWith(`${local}<`)) return true;
   }
-  // Defensive fallback: TS may surface the canonical `Snippet` from the import.
   return typeText === 'Snippet' || typeText.startsWith('Snippet<');
 }
 
-/**
- * Detect Snippet-typed members through ts-morph's symbol/alias chain. This is
- * the reliable path when the type checker has fully expanded a `Snippet<[T]>`
- * into its instantiated form (call signature + parameters), where the literal
- * text no longer contains the word "Snippet". We climb the type's aliasSymbol
- * up to the original declaration and confirm it lives in the `svelte` package.
- */
 type TsMorphType = import('ts-morph').Type;
 function typeRefersToSnippet(propType: TsMorphType): boolean {
   const seen = new Set<TsMorphType>();
@@ -1125,13 +924,8 @@ function typeRefersToSnippet(propType: TsMorphType): boolean {
     if (aliasName === 'Snippet' || symName === 'Snippet') {
       const decl = cursor.getAliasSymbol()?.getDeclarations()[0] ?? cursor.getSymbol()?.getDeclarations()[0];
       const file = decl?.getSourceFile().getFilePath() ?? '';
-      // Accept Snippet from anywhere named "svelte" in the path; users almost
-      // never name an unrelated type "Snippet" in their own code, but the
-      // path check guards against the rare false positive.
       if (file.includes('/svelte/') || file.includes('\\svelte\\') || file === '') return true;
     }
-    // Strip optional `| undefined` and recurse into single-element unions
-    // (covers `Snippet | undefined` etc.).
     if (cursor.isUnion()) {
       const nonUndef: TsMorphType[] = cursor.getUnionTypes().filter((t) => !t.isUndefined() && !t.isNull());
       if (nonUndef.length === 1) {
@@ -1151,10 +945,6 @@ function mergeSets<T>(a: Set<T>, b: Set<T>): Set<T> {
 }
 
 function findLocalTypeDeclaration(instance: AstNode, name: string, module?: AstNode): AstNode | null {
-  // Skeleton-svelte and similar libraries declare the Props interface in
-  // <script lang="ts" module> and consume it in the regular <script>. Look
-  // in both bodies. Type declarations may also be wrapped in
-  // `export { ... }` statements (ExportNamedDeclaration with .declaration).
   for (const script of [instance, module]) {
     const body = (script?.['content'] as AstNode | undefined)?.['body'] as AstNode[] | undefined;
     if (!body) continue;
@@ -1200,7 +990,6 @@ function readPropertySignature(member: AstNode, snippetLocals: Set<string>): Res
   const isSnippet = isSnippetType(typeNode, snippetLocals);
   const allowedValues = collectStringLiteralUnion(typeNode);
 
-  // JSDoc / comments — `leadingComments` may be on the member or on the parent.
   const leading = (member['leadingComments'] as Comment[] | undefined) ?? [];
   const description = extractJsdocText(leading);
 
@@ -1231,7 +1020,7 @@ function collectStringLiteralUnion(typeNode: AstNode | undefined): string[] | un
   if (!members) return undefined;
   const out: string[] = [];
   for (const m of members) {
-    if (m.type !== 'TSLiteralType') return undefined; // not a pure literal union
+    if (m.type !== 'TSLiteralType') return undefined;
     const lit = m['literal'] as AstNode | undefined;
     const v = lit?.['value'];
     if (typeof v !== 'string') return undefined;
@@ -1261,6 +1050,17 @@ function renderType(typeNode: AstNode | undefined): string {
       return 'void';
     case 'TSArrayType': {
       return `${renderType(typeNode['elementType'] as AstNode)}[]`;
+    }
+    case 'TSTupleType': {
+      const elements = (typeNode['elementTypes'] as AstNode[] | undefined) ?? [];
+      const rendered = elements.map((el) => {
+        if (el.type === 'TSNamedTupleMember') {
+          const inner = el['elementType'] as AstNode | undefined;
+          return renderType(inner);
+        }
+        return renderType(el);
+      });
+      return `[${rendered.join(', ')}]`;
     }
     case 'TSUnionType': {
       const members = (typeNode['types'] as AstNode[] | undefined) ?? [];
@@ -1301,7 +1101,6 @@ function extractJsdocText(comments: Comment[]): string | undefined {
   if (!comments.length) return undefined;
   const last = comments[comments.length - 1]!;
   if (last.type !== 'Block') return undefined;
-  // Strip leading * on each line, trim, join.
   const text = last.value
     .split('\n')
     .map((l) => l.replace(/^\s*\*\s?/, '').trim())
@@ -1310,10 +1109,6 @@ function extractJsdocText(comments: Comment[]): string | undefined {
     .trim();
   return text || undefined;
 }
-
-// ---------------------------------------------------------------------------
-// Extraction: ObjectPattern destructure + type-members
-// ---------------------------------------------------------------------------
 
 function extractFromDestructure(
   propsCall: AstNode,
@@ -1354,11 +1149,14 @@ function extractFromDestructure(
 
     if (typeMember?.isSnippet) {
       snippetNames.add(name);
-      snippetSlots.push({
+      const slot: RawSlotDefinitionInternal = {
         name,
         isDefault: name === 'children',
         ...(typeMember.description ? { description: typeMember.description } : {}),
-      });
+      };
+      const authorText = typeMember.declaredTypeText ?? typeMember.typeText;
+      if (authorText) slot._rawTypeText = authorText;
+      snippetSlots.push(slot);
       continue;
     }
 
@@ -1374,19 +1172,6 @@ function extractFromDestructure(
     props.push(propDef);
   }
 
-  // Note: members declared in the type but not destructured are intentionally NOT surfaced
-  // here. With `let { foo, ...rest } = $props()`, only `foo` is bound by name; the rest
-  // are collected into the rest binding and are not individually addressable. Authoring
-  // contract = the destructure list. (Type-members-only path runs separately for the
-  // `const props: Props = $props()` no-destructure case.)
-
-  // Note: a `...rest` element in the destructure is intentionally NOT warned on.
-  // Nearly every Svelte 5 component in real libraries uses rest-spread to pass
-  // arbitrary HTML attributes through to the underlying element, so this would
-  // fire on most components. The downstream pipeline already strips DOM/a11y
-  // pass-through attributes globally (see `project_dsi-dom-prop-exclusion-decision`),
-  // and the named props we DID extract from the destructure are the meaningful
-  // authoring API. Tracking the rest spread isn't useful signal.
   void dropsRest;
 
   return {
@@ -1406,11 +1191,14 @@ function extractFromTypeMembersOnly(typeMembers: ResolvedTypeMember[]): PropsExt
   for (const m of typeMembers) {
     if (m.isSnippet) {
       snippetNames.add(m.name);
-      snippetSlots.push({
+      const slot: RawSlotDefinitionInternal = {
         name: m.name,
         isDefault: m.name === 'children',
         ...(m.description ? { description: m.description } : {}),
-      });
+      };
+      const authorText = m.declaredTypeText ?? m.typeText;
+      if (authorText) slot._rawTypeText = authorText;
+      snippetSlots.push(slot);
       continue;
     }
     const propDef: RawPropDefinition = {
@@ -1463,10 +1251,6 @@ function renderLiteral(node: AstNode | undefined): string | undefined {
   return undefined;
 }
 
-// ---------------------------------------------------------------------------
-// Imported Props resolution via ts-morph (cross-file)
-// ---------------------------------------------------------------------------
-
 async function resolveImportedTypeMembers(
   typeName: string,
   instance: AstNode,
@@ -1516,7 +1300,6 @@ function resolveLocalScriptModule(importingFilePath: string, specifier: string):
   for (const c of candidates) {
     if (existsSync(c) && statSync(c).isFile()) return c;
   }
-  // Fallback: handle `.js` import that maps to a `.ts` source on disk (NodeNext convention)
   if (basePath.endsWith('.js')) {
     const tsPath = `${basePath.slice(0, -'.js'.length)}.ts`;
     if (existsSync(tsPath) && statSync(tsPath).isFile()) return tsPath;
@@ -1538,23 +1321,13 @@ function readMembersFromExternalFile(filePath: string, exportName: string): Reso
   const sf = project.addSourceFileAtPathIfExists(filePath);
   if (!sf) return null;
 
-  // Collect Snippet locals from the resolved file's own imports so that
-  // aliased imports (`import { Snippet as LocalSnippet } from 'svelte'`) are
-  // honored. Mirrors collectSnippetImportLocals() but adapted to ts-morph.
   const snippetLocals = collectSnippetLocalsFromSourceFile(sf);
-
-  // Use getExportedDeclarations() so re-export chains (`export { ... } from './x'`,
-  // `export * from './x'`, named or namespace) resolve transparently. ts-morph
-  // follows them recursively and returns the underlying declaration.
   const exportedDeclarations = sf.getExportedDeclarations();
   const decls = exportedDeclarations.get(exportName);
   if (!decls || decls.length === 0) return null;
 
   for (const decl of decls) {
     if (Node.isInterfaceDeclaration(decl)) {
-      // The declaration may live in a different source file than `sf` if the
-      // export chain walked across files; pull snippet locals from that file
-      // so aliased imports are recognized.
       const declSf = decl.getSourceFile();
       const declLocals = declSf === sf ? snippetLocals : collectSnippetLocalsFromSourceFile(declSf);
       return readInterfaceMembers(decl, declLocals);
@@ -1636,7 +1409,6 @@ function readTypeLiteralMembers(
 }
 
 function extractAllowedValuesFromText(typeText: string): string[] | undefined {
-  // Quick parse of `'a' | 'b' | 'c'`.
   const parts = typeText
     .split('|')
     .map((p) => p.trim())
@@ -1650,10 +1422,6 @@ function extractAllowedValuesFromText(typeText: string): string[] | undefined {
   }
   return out.length > 0 ? out : undefined;
 }
-
-// ---------------------------------------------------------------------------
-// Slot extraction (template <slot> + Snippet props merge)
-// ---------------------------------------------------------------------------
 
 function extractTemplateSlots(fragment: AstNode): RawSlotDefinition[] {
   const slots: RawSlotDefinition[] = [];
@@ -1703,8 +1471,6 @@ function mergeSlots(
   const snippetHasDefault = fromSnippetProps.some((s) => s.isDefault);
   let mixed = false;
   for (const s of fromTemplate) {
-    // Default <slot/> in template is the same surface as a `children: Snippet` prop.
-    // Prefer the Snippet entry when both are present.
     if (s.isDefault && snippetHasDefault) {
       mixed = true;
       continue;

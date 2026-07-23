@@ -1,9 +1,113 @@
 import React, { useState, useMemo } from 'react';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text, useStdout } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import type { ServerPreviewResponse, DesignTokenSummary } from '@contentful/experience-design-system-types';
 import { hasBreakingChangesWithImpact } from '../../../apply/manifest.js';
 import { computeComponentDiffLines } from './preview-diff.js';
+
+export interface PreviewDiffLine {
+  key: string;
+  color: string;
+  text: string;
+}
+
+export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDiffLine[] {
+  const lines: PreviewDiffLine[] = [];
+  const { components, tokens } = preview;
+
+  for (const item of components.new) {
+    const raw = item as unknown as Record<string, unknown>;
+    const name = (raw.key as string) ?? (raw.$name as string) ?? 'unknown';
+    lines.push({ key: `comp-new-${name}`, color: PALETTE.success, text: ` + ${name}` });
+    const slots = (raw.$slots ?? {}) as Record<string, Record<string, unknown>>;
+    for (const slotName of Object.keys(slots).sort()) {
+      lines.push({
+        key: `comp-new-${name}-slot-${slotName}`,
+        color: PALETTE.success,
+        text: `   slot: ${slotName}`,
+      });
+      const allowed = slots[slotName]?.['$allowedComponents'];
+      if (Array.isArray(allowed) && allowed.length > 0) {
+        const names = (allowed as unknown[]).filter((n): n is string => typeof n === 'string');
+        lines.push({
+          key: `comp-new-${name}-slot-${slotName}-allow`,
+          color: PALETTE.success,
+          text: `     allowedComponents: [${names.join(', ')}]`,
+        });
+      }
+    }
+  }
+
+  for (const item of components.removed) {
+    lines.push({ key: `comp-rm-${item.name}`, color: PALETTE.error, text: ` - ${item.name}` });
+  }
+
+  for (const item of components.changed) {
+    lines.push({
+      key: `comp-h-${item.current.name}`,
+      color: PALETTE.warning,
+      text: ` ~ ${item.current.name}${item.hasPendingDraftChanges ? ' ⚡ has pending draft changes' : ''}`,
+    });
+    if (item.changeClassification?.classification === 'breaking') {
+      const reasons = item.changeClassification.breakingChanges
+        .map((bc) => `${'slotId' in bc ? bc.slotId : bc.propertyId}: ${bc.reason}`)
+        .join(', ');
+      lines.push({ key: `comp-b-${item.current.name}`, color: PALETTE.error, text: ` ⚠ BREAKING: ${reasons}` });
+    }
+    const diffLines = computeComponentDiffLines(
+      item.current,
+      item.proposed as unknown as Record<string, unknown>,
+      item.changeClassification,
+    );
+    for (const d of diffLines) {
+      lines.push({ key: `comp-d-${item.current.name}-${d.key}`, color: d.color, text: ` ${d.text}` });
+    }
+    const proposedSlots =
+      ((item.proposed as unknown as Record<string, unknown>)['$slots'] as
+        | Record<string, Record<string, unknown>>
+        | undefined) ?? {};
+    for (const slotName of Object.keys(proposedSlots).sort()) {
+      const allowed = proposedSlots[slotName]?.['$allowedComponents'];
+      if (Array.isArray(allowed) && allowed.length > 0) {
+        const names = (allowed as unknown[]).filter((n): n is string => typeof n === 'string');
+        const key = `comp-d-${item.current.name}-slot-${slotName}-allow-list`;
+        if (!lines.some((l) => l.key === key)) {
+          lines.push({
+            key,
+            color: 'gray',
+            text: `   slot ${slotName} allowedComponents: [${names.join(', ')}]`,
+          });
+        }
+      }
+    }
+  }
+
+  for (const item of tokens.new) {
+    const raw = item as unknown as Record<string, unknown>;
+    const name = (raw.name as string) ?? (raw.path as string) ?? 'unknown';
+    lines.push({ key: `tok-new-${name}`, color: PALETTE.success, text: ` + ${name}` });
+  }
+  for (const item of tokens.removed) {
+    lines.push({ key: `tok-rm-${item.name}`, color: PALETTE.error, text: ` - ${item.name}` });
+  }
+  for (const item of tokens.changed) {
+    const tokenName = (item.current as DesignTokenSummary).name;
+    lines.push({
+      key: `tok-h-${tokenName}`,
+      color: PALETTE.warning,
+      text: ` ~ ${tokenName}${item.hasPendingDraftChanges ? ' ⚡ has pending draft changes' : ''}`,
+    });
+    if (item.changeClassification?.classification === 'breaking') {
+      const reasons = item.changeClassification.breakingChanges
+        .map((bc) => `${'slotId' in bc ? bc.slotId : bc.propertyId}: ${bc.reason}`)
+        .join(', ');
+      lines.push({ key: `tok-b-${tokenName}`, color: PALETTE.error, text: ` ⚠ BREAKING: ${reasons}` });
+    }
+  }
+
+  return lines;
+}
 
 type WizardPreviewStepProps = {
   preview: ServerPreviewResponse;
@@ -37,74 +141,14 @@ export function WizardPreviewStep({
 
   const allDiffLines = useMemo(() => {
     if (!diffExpanded) return [];
-    const lines: Array<{ key: string; element: React.ReactElement }> = [];
-    const { components, tokens } = preview;
-    for (const item of components.new) {
-      const name =
-        ((item as unknown as Record<string, unknown>).key as string) ??
-        ((item as unknown as Record<string, unknown>).$name as string) ??
-        'unknown';
-      lines.push({ key: `comp-new-${name}`, element: <Text color="green"> + {name}</Text> });
-    }
-    for (const item of components.removed) {
-      lines.push({ key: `comp-rm-${item.name}`, element: <Text color="red"> - {item.name}</Text> });
-    }
-    for (const item of components.changed) {
-      lines.push({
-        key: `comp-h-${item.current.name}`,
-        element: (
-          <Text color="yellow">
-            {' '}
-            ~ {item.current.name}
-            {item.hasPendingDraftChanges ? <Text color="yellow"> ⚡ has pending draft changes</Text> : null}
-          </Text>
-        ),
-      });
-      if (item.changeClassification?.classification === 'breaking') {
-        const reasons = item.changeClassification.breakingChanges
-          .map((bc) => `${bc.propertyId}: ${bc.reason}`)
-          .join(', ');
-        lines.push({ key: `comp-b-${item.current.name}`, element: <Text color="red"> ⚠ BREAKING: {reasons}</Text> });
-      }
-      const diffLines = computeComponentDiffLines(
-        item.current,
-        item.proposed as unknown as Record<string, unknown>,
-        item.changeClassification,
-      );
-      for (const d of diffLines) {
-        lines.push({ key: `comp-d-${item.current.name}-${d.key}`, element: <Text color={d.color}> {d.text}</Text> });
-      }
-    }
-    for (const item of tokens.new) {
-      const name =
-        ((item as unknown as Record<string, unknown>).name as string) ??
-        ((item as unknown as Record<string, unknown>).path as string) ??
-        'unknown';
-      lines.push({ key: `tok-new-${name}`, element: <Text color="green"> + {name}</Text> });
-    }
-    for (const item of tokens.removed) {
-      lines.push({ key: `tok-rm-${item.name}`, element: <Text color="red"> - {item.name}</Text> });
-    }
-    for (const item of tokens.changed) {
-      const tokenName = (item.current as DesignTokenSummary).name;
-      lines.push({
-        key: `tok-h-${tokenName}`,
-        element: (
-          <Text color="yellow">
-            {' '}
-            ~ {tokenName}
-            {item.hasPendingDraftChanges ? <Text color="yellow"> ⚡ has pending draft changes</Text> : null}
-          </Text>
-        ),
-      });
-      if (item.changeClassification?.classification === 'breaking') {
-        const reasons = item.changeClassification.breakingChanges
-          .map((bc) => `${bc.propertyId}: ${bc.reason}`)
-          .join(', ');
-        lines.push({ key: `tok-b-${tokenName}`, element: <Text color="red"> ⚠ BREAKING: {reasons}</Text> });
-      }
-    }
-    return lines;
+    return buildPreviewDiffLines(preview).map((line) => ({
+      key: line.key,
+      element: (
+        <Text color={line.color === 'gray' ? undefined : line.color} dimColor={line.color === 'gray'}>
+          {line.text}
+        </Text>
+      ),
+    }));
   }, [diffExpanded, preview]);
 
   const maxScroll = Math.max(0, allDiffLines.length - viewportHeight);
@@ -184,13 +228,13 @@ export function WizardPreviewStep({
               {components.new.length > 0 && (
                 <Box flexDirection="column">
                   <Box gap={1}>
-                    <Text color="green"> ＋</Text>
+                    <Text color={PALETTE.success}> ＋</Text>
                     <Text>{components.new.length} will be created</Text>
                   </Box>
                   {(components.new as unknown as Array<Record<string, unknown>>).map((item, i) => {
                     const name = (item.key as string) ?? (item.$name as string) ?? 'unknown';
                     return (
-                      <Text key={`new-${i}`} color="green">
+                      <Text key={`new-${i}`} color={PALETTE.success}>
                         {' '}
                         + {name}
                       </Text>
@@ -201,13 +245,13 @@ export function WizardPreviewStep({
               {components.changed.length > 0 && (
                 <Box flexDirection="column">
                   <Box gap={1}>
-                    <Text color="yellow"> ～</Text>
+                    <Text color={PALETTE.warning}> ～</Text>
                     <Text>{components.changed.length} will be updated</Text>
                   </Box>
                   {components.changed.map((item, i) => {
                     const isBreaking = item.changeClassification?.classification === 'breaking';
                     return (
-                      <Text key={`chg-${i}`} color={isBreaking ? 'red' : 'yellow'}>
+                      <Text key={`chg-${i}`} color={isBreaking ? PALETTE.error : PALETTE.warning}>
                         {' '}
                         {isBreaking ? '⚠' : '~'} {item.current.name}
                       </Text>
@@ -218,11 +262,11 @@ export function WizardPreviewStep({
               {components.removed.length > 0 && (
                 <Box flexDirection="column">
                   <Box gap={1}>
-                    <Text color="red"> ✗</Text>
+                    <Text color={PALETTE.error}> ✗</Text>
                     <Text>{components.removed.length} will be removed</Text>
                   </Box>
                   {components.removed.map((item, i) => (
-                    <Text key={`rm-${i}`} color="red">
+                    <Text key={`rm-${i}`} color={PALETTE.error}>
                       {' '}
                       ✗ {item.name}
                     </Text>
@@ -247,19 +291,19 @@ export function WizardPreviewStep({
               </Box>
               {tokens.new.length > 0 && (
                 <Box gap={1}>
-                  <Text color="green"> ＋</Text>
+                  <Text color={PALETTE.success}> ＋</Text>
                   <Text>{tokens.new.length} will be created</Text>
                 </Box>
               )}
               {tokens.changed.length > 0 && (
                 <Box gap={1}>
-                  <Text color="yellow"> ～</Text>
+                  <Text color={PALETTE.warning}> ～</Text>
                   <Text>{tokens.changed.length} will be updated</Text>
                 </Box>
               )}
               {tokens.removed.length > 0 && (
                 <Box gap={1}>
-                  <Text color="red"> ✗</Text>
+                  <Text color={PALETTE.error}> ✗</Text>
                   <Text>{tokens.removed.length} will be removed</Text>
                 </Box>
               )}
@@ -303,7 +347,7 @@ export function WizardPreviewStep({
 
       {breakingWithImpact && (
         <Box marginTop={1}>
-          <Text color="red" bold>
+          <Text color={PALETTE.error} bold>
             ⚠ Breaking changes will affect downstream entities. Press Enter to acknowledge and apply.
           </Text>
         </Box>
