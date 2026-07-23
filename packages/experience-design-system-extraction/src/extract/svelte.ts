@@ -374,8 +374,7 @@ function locateDtsForSpecifier(req: NodeJS.Require, specifier: string, parentFil
           const candidate = resolve(pkgRoot, exportsTypes);
           if (existsSync(candidate)) return candidate;
         }
-      } catch {
-      }
+      } catch {}
     }
     for (const entry of ['index.d.ts', 'index.d.mts']) {
       const candidate = join(pkgRoot, entry);
@@ -403,8 +402,7 @@ function findPackageRootForSpecifier(seedDir: string, specifier: string): string
         const pkg = JSON.parse(pkgRaw) as { name?: string };
         if (pkg.name === specifier) return dir;
         if (pkg.name && specifier.startsWith(`${pkg.name}/`)) return dir;
-      } catch {
-      }
+      } catch {}
     }
     const parent = dirname(dir);
     if (!parent || parent === dir) return null;

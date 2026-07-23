@@ -23,7 +23,10 @@ export { extractStencilComponents } from './extract/stencil.js';
 export { extractAstroComponents } from './extract/astro.js';
 export { extractWebComponentDefinitions } from './extract/web-components.js';
 export { extractSvelteComponents } from './extract/svelte.js';
-export { extractAllowedComponentsFromTypeText, extractAllowedComponentsFromJsdoc } from './extract/slot-allowed-components.js';
+export {
+  extractAllowedComponentsFromTypeText,
+  extractAllowedComponentsFromJsdoc,
+} from './extract/slot-allowed-components.js';
 
 // Post-extraction filtering and scoring
 export { isNonAuthorableComponent } from './extract/non-authorable-filter.js';
