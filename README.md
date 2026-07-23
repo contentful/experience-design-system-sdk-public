@@ -1,4 +1,5 @@
 # Experience Design System SDK
+> ⚠️ This feature is in Beta, APIs may be unstable
 
 Contentful Experiences lets you compose pages and layouts from your own design system components. The `@contentful/experience-design-system-cli` imports your design system into Contentful. It extracts Component Type definitions from your local codebase, invokes an AI agent to generate Component Definition Format (CDF) definitions, and pushes them to your Contentful space.
 
