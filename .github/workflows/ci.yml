@@ -220,14 +220,7 @@ jobs:
           node-version: "lts/*"
           registry-url: "https://registry.npmjs.org"  # wires OIDC token as NODE_AUTH_TOKEN
 
-      # The "Install dependencies" step earlier in this job ran
-      # `pnpm config set @contentful:registry https://npm.pkg.github.com`
-      # globally. pnpm resolves a package's registry by scope first, so that
-      # setting silently overrides both publishConfig.registry (mutated below)
-      # and the registry-url wired by setup-node above -- every npmjs.org
-      # publish attempt fails ENEEDAUTH against GitHub Packages using the
-      # npmjs.org OIDC token. Clear the scope override (and its now-unused
-      # auth token) so pnpm falls back to the default registry.
+      # Clears the @contentful scope override set during install, which otherwise beats publishConfig.registry and breaks npmjs.org auth.
       - name: Clear GitHub Packages registry override
         if: github.ref == 'refs/heads/main' && steps.released.outputs.version != ''
         run: |
