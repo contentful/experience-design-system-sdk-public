@@ -64,5 +64,8 @@
   "homepage": "https://github.com/contentful/experience-design-system-sdk-public#readme",
   "bugs": {
     "url": "https://github.com/contentful/experience-design-system-sdk-public/issues"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

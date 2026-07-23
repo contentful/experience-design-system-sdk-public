@@ -223,7 +223,16 @@ jobs:
       - name: Publish to npmjs.org
         if: github.ref == 'refs/heads/main' && steps.released.outputs.version != ''
         run: |
-          pnpm config set @contentful:registry https://registry.npmjs.org
+          # Each package manifest pins publishConfig.registry to GitHub
+          # Packages, and that field overrides both the scoped .npmrc registry
+          # and any --registry flag on publish — so it must be overridden
+          # per-package to retarget npmjs.org. The nx release step above has
+          # already published to GitHub Packages, so mutating the working-tree
+          # manifests here is safe (the checkout is discarded after the job).
+          for pkg in types extraction cli; do
+            npm pkg set publishConfig.registry=https://registry.npmjs.org \
+              --prefix "packages/experience-design-system-$pkg"
+          done
           pnpm --filter @contentful/experience-design-system-types run build
           pnpm --filter @contentful/experience-design-system-extraction run build
           pnpm --filter @contentful/experience-design-system-cli run build
