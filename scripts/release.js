@@ -42,10 +42,13 @@ if (isCanary) {
       tag: 'canary',
       dryRun: false,
       verbose: true,
+      // See below: skip the `npm view` precheck that crashes on a package's
+      // first publish. Each canary build is a unique alpha.N prerelease.
+      firstRelease: true,
     })
 
-    console.log('\n✓ Canary packages published successfully!')
     const allSucceeded = Object.values(publishResults).every((r) => r.code === 0)
+    console.log(allSucceeded ? '\n✓ Canary packages published successfully!' : '\n✗ One or more canary packages failed to publish.')
     process.exit(allSucceeded ? 0 : 1)
   } catch (error) {
     console.error('Canary release failed:', error)
@@ -105,10 +108,16 @@ if (isCanary) {
       dryRun: false,
       verbose: true,
       tag: 'dev',
+      // Skip nx's pre-publish `npm view` check. It throws on empty output
+      // (SyntaxError: Unexpected end of JSON input) the first time a brand-new
+      // package is published, since the package does not yet exist in the
+      // registry. Every dev build has a unique SHA-stamped version, so there is
+      // no risk of a duplicate-version conflict from skipping the check.
+      firstRelease: true,
     })
 
-    console.log('\n✓ Development packages published successfully!')
     const allSucceeded = Object.values(publishResults).every((result) => result.code === 0)
+    console.log(allSucceeded ? '\n✓ Development packages published successfully!' : '\n✗ One or more dev packages failed to publish.')
     process.exit(allSucceeded ? 0 : 1)
   } catch (error) {
     console.error('Error during dev release:', error)
@@ -139,10 +148,23 @@ if (isCanary) {
     console.log(`Version: ${version}`)
     console.log('Running NX release publish...')
 
-    await releasePublish({
+    const publishResults = await releasePublish({
       dryRun: false,
       verbose: true,
+      // See dev path above: skip the `npm view` precheck that crashes on a
+      // package's first publish. Stable versions are conventional-commit bumps,
+      // so each release is a new, non-conflicting version.
+      firstRelease: true,
     })
+
+    // releasePublish resolves even when individual projects fail. Inspect the
+    // per-project exit codes so a failed publish surfaces as a red build
+    // instead of a silent success.
+    const allSucceeded = Object.values(publishResults).every((result) => result.code === 0)
+    if (!allSucceeded) {
+      console.error('One or more packages failed to publish.')
+      process.exit(1)
+    }
 
     console.log('Release complete!')
     process.exit(0)
