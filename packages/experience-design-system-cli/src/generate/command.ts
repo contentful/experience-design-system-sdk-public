@@ -612,7 +612,9 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     process.stdout.write(`renamed-slots: ${totalRenamedSlots}\n`);
 
     if (generated.length === 0 && cachedResults.length === 0) {
-      die(`Error: all ${componentResults.length} component(s) failed to generate — see the per-component errors above.`);
+      die(
+        `Error: all ${componentResults.length} component(s) failed to generate — see the per-component errors above.`,
+      );
     }
   } else if (skill === 'tokens') {
     const noCache = opts.cache === false || process.env.EDS_NO_CACHE === '1';
@@ -754,7 +756,10 @@ function addAgentFlags(cmd: Command): Command {
       '--agent <name>',
       'Agent to use: claude, codex, opencode, cursor (defaults to value saved by experiences setup)',
     )
-    .option('--model <name>', "Model to use (defaults to the agent CLI's own default; override per-agent with EDS_AGENT_MODEL_<AGENT>)")
+    .option(
+      '--model <name>',
+      "Model to use (defaults to the agent CLI's own default; override per-agent with EDS_AGENT_MODEL_<AGENT>)",
+    )
     .option('--verbose', 'Show full agent output including reasoning text')
     .option('--dry-run', 'Print the prompt without invoking the agent')
     .option(

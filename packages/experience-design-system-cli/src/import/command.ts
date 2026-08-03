@@ -26,7 +26,10 @@ export function registerImportCommand(program: Command): void {
       '--agent <name>',
       'Agent to use for generate components (overrides credentials.json; falls back to "claude")',
     )
-    .option('--model <name>', "Model to use for generate components (defaults to the agent CLI's own default; override per-agent with EDS_AGENT_MODEL_<AGENT>)")
+    .option(
+      '--model <name>',
+      "Model to use for generate components (defaults to the agent CLI's own default; override per-agent with EDS_AGENT_MODEL_<AGENT>)",
+    )
     .option('--tokens <path>', 'Path to a DTCG tokens.json file to push alongside generated components')
     .option(
       '--raw-tokens <path>',

@@ -530,10 +530,8 @@ describe('resolveAgentModel', () => {
     }
   });
 
-  it('returns the explicit model when provided', () =>
-    expect(resolveAgentModel('claude', 'opus')).toBe('opus'));
-  it('trims the explicit model', () =>
-    expect(resolveAgentModel('claude', '  opus  ')).toBe('opus'));
+  it('returns the explicit model when provided', () => expect(resolveAgentModel('claude', 'opus')).toBe('opus'));
+  it('trims the explicit model', () => expect(resolveAgentModel('claude', '  opus  ')).toBe('opus'));
   it('falls back to EDS_AGENT_MODEL_<AGENT> when no explicit model', () => {
     process.env.EDS_AGENT_MODEL_CURSOR = 'sonnet-4';
     expect(resolveAgentModel('cursor')).toBe('sonnet-4');
@@ -552,11 +550,7 @@ describe('resolveAgentModel', () => {
 
 describe('checkAgentAuth', () => {
   let dir: string;
-  const ENV_KEYS = [
-    'EDS_AGENT_BINARY_CLAUDE',
-    'EDS_AGENT_BINARY_CODEX',
-    'EDS_AGENT_BINARY_CURSOR',
-  ] as const;
+  const ENV_KEYS = ['EDS_AGENT_BINARY_CLAUDE', 'EDS_AGENT_BINARY_CODEX', 'EDS_AGENT_BINARY_CURSOR'] as const;
   const saved: Record<string, string | undefined> = {};
 
   beforeEach(async () => {
