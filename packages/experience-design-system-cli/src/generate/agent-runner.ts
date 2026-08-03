@@ -521,6 +521,18 @@ export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus>
   });
 }
 
+/**
+ * Build a diagnostic string from a failed agent run, surfacing the agent's own
+ * stderr (or stdout, when stderr is empty) so callers never emit a context-free
+ * "agent failed" (AIS-392 B1). `exitCode === 0` with no output is treated as the
+ * "produced no tool calls" case.
+ */
+export function describeAgentFailure(result: AgentRunResult, maxDetail = 800): string {
+  const base = result.exitCode !== 0 ? `agent exited with code ${result.exitCode}` : 'agent produced no tool calls';
+  const detail = (result.stderr.trim() || result.stdout.trim()).slice(-maxDetail).trim();
+  return detail ? `${base} — ${detail}` : base;
+}
+
 export function extractSentinelOutput(stdout: string): string | null | 'multiple' {
   const START = '<<<EDS_OUTPUT_START>>>';
   const END = '<<<EDS_OUTPUT_END>>>';

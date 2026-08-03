@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   buildArgs,
   checkAgentAuth,
+  describeAgentFailure,
   extractSentinelOutput,
   parseToolCallLines,
   parseTokenToolCallLines,
@@ -626,5 +627,41 @@ describe('buildArgs model handling', () => {
   });
   it('omits the prompt positional when promptViaStdin is true', () => {
     expect(buildArgs('opencode', 'PROMPT', undefined, true)).toEqual(['run']);
+  });
+});
+
+describe('describeAgentFailure', () => {
+  it('includes exit code and stderr tail for a nonzero exit', () => {
+    const msg = describeAgentFailure({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'ERROR: model "claude-3-5-haiku-20241022" is no longer available',
+      timedOut: false,
+    });
+    expect(msg).toContain('agent exited with code 1');
+    expect(msg).toContain('no longer available');
+  });
+
+  it('reports "no tool calls" and falls back to stdout when stderr is empty', () => {
+    const msg = describeAgentFailure({
+      exitCode: 0,
+      stdout: 'I could not classify this component because the props were empty.',
+      stderr: '',
+      timedOut: false,
+    });
+    expect(msg).toContain('agent produced no tool calls');
+    expect(msg).toContain('props were empty');
+  });
+
+  it('truncates long detail to the tail', () => {
+    const long = 'x'.repeat(2000) + 'TAIL_MARKER';
+    const msg = describeAgentFailure({ exitCode: 1, stdout: '', stderr: long, timedOut: false }, 800);
+    expect(msg).toContain('TAIL_MARKER');
+    expect(msg.length).toBeLessThan(900);
+  });
+
+  it('returns the base message alone when there is no stderr/stdout detail', () => {
+    const msg = describeAgentFailure({ exitCode: 127, stdout: '', stderr: '', timedOut: false });
+    expect(msg).toBe('agent exited with code 127');
   });
 });
