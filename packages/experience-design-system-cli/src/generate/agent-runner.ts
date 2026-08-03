@@ -324,8 +324,8 @@ export function resolveBinary(agent: AgentName): string {
 }
 
 /**
- * Default models per agent — cheap/fast picks to control cost when no explicit
- * model is configured. cursor uses `gpt-mini` (verified alias from
+ * Default models per agent — lightweight/fast picks to control cost when no
+ * explicit model is configured. cursor uses `gpt-mini` (verified alias from
  * GetUsableModels; haiku is not available in cursor's model catalog).
  */
 const DEFAULT_MODELS: Record<AgentName, string> = {
@@ -338,8 +338,8 @@ const DEFAULT_MODELS: Record<AgentName, string> = {
 /**
  * Resolve the model for an agent. Explicit flag/creds value wins, then a
  * per-agent `EDS_AGENT_MODEL_<AGENT>` env override (mirrors the
- * `EDS_AGENT_BINARY_<AGENT>` pattern), otherwise the cheap default for that
- * agent.
+ * `EDS_AGENT_BINARY_<AGENT>` pattern), otherwise the lightweight default for
+ * that agent.
  */
 export function resolveAgentModel(agent: AgentName, explicit?: string): string {
   if (explicit && explicit.trim()) return explicit.trim();
@@ -489,7 +489,7 @@ export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus>
 
   // Only Claude exposes `auth status --json`. Non-Claude agents are considered
   // authenticated once their binary is present — never gate them on claude
-  // (AIS-392 B3: Codex-via-Bedrock users were blocked by a claude check).
+  // (e.g. Codex-via-Bedrock users would otherwise be blocked by a claude check).
   if (agent !== 'claude') return 'ok';
 
   // Use `claude auth status` — fast, no API call, works regardless of which
@@ -535,8 +535,9 @@ export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus>
 /**
  * Build a diagnostic string from a failed agent run, surfacing the agent's own
  * stderr (or stdout, when stderr is empty) so callers never emit a context-free
- * "agent failed" (AIS-392 B1). `exitCode === 0` with no output is treated as the
- * "produced no tool calls" case.
+ * "agent failed". Callers only invoke this on a failed run: either a non-zero
+ * exit, or a zero exit that produced no tool calls. A non-zero exit is reported
+ * as such; a zero exit is therefore the "produced no tool calls" case.
  */
 export function describeAgentFailure(result: AgentRunResult, maxDetail = 800): string {
   const base = result.exitCode !== 0 ? `agent exited with code ${result.exitCode}` : 'agent produced no tool calls';
