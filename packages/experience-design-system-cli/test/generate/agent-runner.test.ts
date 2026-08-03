@@ -550,7 +550,12 @@ describe('resolveAgentModel', () => {
 
 describe('checkAgentAuth', () => {
   let dir: string;
-  const ENV_KEYS = ['EDS_AGENT_BINARY_CLAUDE', 'EDS_AGENT_BINARY_CODEX', 'EDS_AGENT_BINARY_CURSOR'] as const;
+  const ENV_KEYS = [
+    'EDS_AGENT_BINARY_CLAUDE',
+    'EDS_AGENT_BINARY_CODEX',
+    'EDS_AGENT_BINARY_OPENCODE',
+    'EDS_AGENT_BINARY_CURSOR',
+  ] as const;
   const saved: Record<string, string | undefined> = {};
 
   beforeEach(async () => {
