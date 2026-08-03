@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  buildArgs,
   extractSentinelOutput,
   parseToolCallLines,
   parseTokenToolCallLines,
   resolveBinary,
+  resolveAgentModel,
 } from '../../src/generate/agent-runner.js';
 
 describe('resolveBinary', () => {
@@ -499,5 +501,76 @@ describe('parseTokenToolCallLines', () => {
     const { calls, warnings } = parseTokenToolCallLines(stdout);
     expect(calls).toHaveLength(2);
     expect(warnings).toHaveLength(1);
+  });
+});
+
+describe('resolveAgentModel', () => {
+  const ENV_KEYS = [
+    'EDS_AGENT_MODEL_CLAUDE',
+    'EDS_AGENT_MODEL_CODEX',
+    'EDS_AGENT_MODEL_OPENCODE',
+    'EDS_AGENT_MODEL_CURSOR',
+  ] as const;
+  const saved: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    for (const k of ENV_KEYS) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  it('returns the explicit model when provided', () =>
+    expect(resolveAgentModel('claude', 'opus')).toBe('opus'));
+  it('trims the explicit model', () =>
+    expect(resolveAgentModel('claude', '  opus  ')).toBe('opus'));
+  it('falls back to EDS_AGENT_MODEL_<AGENT> when no explicit model', () => {
+    process.env.EDS_AGENT_MODEL_CURSOR = 'sonnet-4';
+    expect(resolveAgentModel('cursor')).toBe('sonnet-4');
+  });
+  it('explicit model wins over env', () => {
+    process.env.EDS_AGENT_MODEL_CODEX = 'gpt-x';
+    expect(resolveAgentModel('codex', 'gpt-y')).toBe('gpt-y');
+  });
+  it('returns undefined when neither explicit nor env is set (no stale default)', () =>
+    expect(resolveAgentModel('cursor')).toBeUndefined());
+  it('ignores blank env values', () => {
+    process.env.EDS_AGENT_MODEL_OPENCODE = '   ';
+    expect(resolveAgentModel('opencode')).toBeUndefined();
+  });
+});
+
+describe('buildArgs model handling', () => {
+  it('omits --model for claude when no model is resolved', () => {
+    const args = buildArgs('claude', 'PROMPT');
+    expect(args).not.toContain('--model');
+    expect(args).toEqual(['--print', 'PROMPT']);
+  });
+  it('includes --model for claude when explicitly provided', () => {
+    expect(buildArgs('claude', 'PROMPT', 'opus')).toEqual(['--print', '--model', 'opus', 'PROMPT']);
+  });
+  it('omits --model for cursor when no model is resolved (no hardcoded haiku pin)', () => {
+    expect(buildArgs('cursor', 'PROMPT')).toEqual(['--print', 'PROMPT']);
+  });
+  it('preserves codex sandbox flag and omits --model when none resolved', () => {
+    const args = buildArgs('codex', 'PROMPT');
+    expect(args).toEqual(['exec', '--dangerously-bypass-approvals-and-sandbox', 'PROMPT']);
+  });
+  it('inserts --model before the codex sandbox flag when provided', () => {
+    expect(buildArgs('codex', 'PROMPT', 'gpt-5.5')).toEqual([
+      'exec',
+      '--model',
+      'gpt-5.5',
+      '--dangerously-bypass-approvals-and-sandbox',
+      'PROMPT',
+    ]);
+  });
+  it('omits the prompt positional when promptViaStdin is true', () => {
+    expect(buildArgs('opencode', 'PROMPT', undefined, true)).toEqual(['run']);
   });
 });

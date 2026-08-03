@@ -316,14 +316,6 @@ const AGENT_BINARIES: Record<AgentName, string> = {
   cursor: 'cursor-agent',
 };
 
-// Default to small/fast models for single-component classification — cheap and accurate enough.
-const DEFAULT_MODELS: Record<AgentName, string> = {
-  claude: 'haiku',
-  codex: 'gpt-5.4-mini', // requires OPENAI_API_KEY; ChatGPT account users must pass --model
-  opencode: 'claude-haiku-4-5',
-  cursor: 'claude-3-5-haiku-20241022',
-};
-
 export function resolveBinary(agent: AgentName): string {
   const envKey = `EDS_AGENT_BINARY_${agent.toUpperCase()}`;
   const override = process.env[envKey];
@@ -331,23 +323,37 @@ export function resolveBinary(agent: AgentName): string {
   return AGENT_BINARIES[agent];
 }
 
-function buildArgs(agent: AgentName, prompt: string, model?: string, promptViaStdin = false): string[] {
-  const m = model ?? DEFAULT_MODELS[agent];
+/**
+ * Resolve the model for an agent. Explicit flag/creds value wins, then a
+ * per-agent `EDS_AGENT_MODEL_<AGENT>` env override (mirrors the
+ * `EDS_AGENT_BINARY_<AGENT>` pattern), otherwise undefined so the agent CLI
+ * picks its own default. No hardcoded model pins — they go stale (AIS-392 B2).
+ */
+export function resolveAgentModel(agent: AgentName, explicit?: string): string | undefined {
+  if (explicit && explicit.trim()) return explicit.trim();
+  const override = process.env[`EDS_AGENT_MODEL_${agent.toUpperCase()}`];
+  if (override && override.trim()) return override.trim();
+  return undefined;
+}
+
+export function buildArgs(agent: AgentName, prompt: string, model?: string, promptViaStdin = false): string[] {
+  const m = resolveAgentModel(agent, model);
+  const modelArg = m ? ['--model', m] : [];
   // When the prompt is delivered on stdin, omit it from argv — a large prompt
   // as a command-line argument overflows ARG_MAX (spawn E2BIG). All four CLIs
   // read the prompt from stdin when it isn't passed positionally.
   const promptArg = promptViaStdin ? [] : [prompt];
   switch (agent) {
     case 'claude':
-      return ['--print', '--model', m, ...promptArg];
+      return ['--print', ...modelArg, ...promptArg];
     case 'codex':
       // --dangerously-bypass-approvals-and-sandbox required for non-interactive use
-      return ['exec', '--model', m, '--dangerously-bypass-approvals-and-sandbox', ...promptArg];
+      return ['exec', ...modelArg, '--dangerously-bypass-approvals-and-sandbox', ...promptArg];
     case 'opencode':
-      return ['run', '--model', m, ...promptArg];
+      return ['run', ...modelArg, ...promptArg];
     case 'cursor':
       // cursor-agent uses --print for non-interactive stdout output
-      return ['--print', '--model', m, ...promptArg];
+      return ['--print', ...modelArg, ...promptArg];
   }
 }
 
