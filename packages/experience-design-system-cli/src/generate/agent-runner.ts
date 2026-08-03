@@ -324,21 +324,32 @@ export function resolveBinary(agent: AgentName): string {
 }
 
 /**
+ * Default models per agent — cheap/fast picks to control cost when no explicit
+ * model is configured. cursor uses `gpt-mini` (verified alias from
+ * GetUsableModels; haiku is not available in cursor's model catalog).
+ */
+const DEFAULT_MODELS: Record<AgentName, string> = {
+  claude: 'haiku',
+  codex: 'gpt-5.4-mini', // requires OPENAI_API_KEY; ChatGPT account users must pass --model
+  opencode: 'claude-haiku-4-5',
+  cursor: 'gpt-mini', // cursor alias for gpt-5.4-mini-medium; haiku not in cursor's catalog
+};
+
+/**
  * Resolve the model for an agent. Explicit flag/creds value wins, then a
  * per-agent `EDS_AGENT_MODEL_<AGENT>` env override (mirrors the
- * `EDS_AGENT_BINARY_<AGENT>` pattern), otherwise undefined so the agent CLI
- * picks its own default. No hardcoded model pins — they go stale (AIS-392 B2).
+ * `EDS_AGENT_BINARY_<AGENT>` pattern), otherwise the cheap default for that
+ * agent.
  */
-export function resolveAgentModel(agent: AgentName, explicit?: string): string | undefined {
+export function resolveAgentModel(agent: AgentName, explicit?: string): string {
   if (explicit && explicit.trim()) return explicit.trim();
   const override = process.env[`EDS_AGENT_MODEL_${agent.toUpperCase()}`];
   if (override && override.trim()) return override.trim();
-  return undefined;
+  return DEFAULT_MODELS[agent];
 }
 
 export function buildArgs(agent: AgentName, prompt: string, model?: string, promptViaStdin = false): string[] {
-  const m = resolveAgentModel(agent, model);
-  const modelArg = m ? ['--model', m] : [];
+  const modelArg = ['--model', resolveAgentModel(agent, model)];
   // When the prompt is delivered on stdin, omit it from argv — a large prompt
   // as a command-line argument overflows ARG_MAX (spawn E2BIG). All four CLIs
   // read the prompt from stdin when it isn't passed positionally.

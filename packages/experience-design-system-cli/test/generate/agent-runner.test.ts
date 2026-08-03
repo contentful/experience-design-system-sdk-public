@@ -542,11 +542,11 @@ describe('resolveAgentModel', () => {
     process.env.EDS_AGENT_MODEL_CODEX = 'gpt-x';
     expect(resolveAgentModel('codex', 'gpt-y')).toBe('gpt-y');
   });
-  it('returns undefined when neither explicit nor env is set (no stale default)', () =>
-    expect(resolveAgentModel('cursor')).toBeUndefined());
-  it('ignores blank env values', () => {
+  it('returns the DEFAULT_MODELS entry when neither explicit nor env is set', () =>
+    expect(resolveAgentModel('cursor')).toBe('gpt-mini'));
+  it('ignores blank env values and falls back to default', () => {
     process.env.EDS_AGENT_MODEL_OPENCODE = '   ';
-    expect(resolveAgentModel('opencode')).toBeUndefined();
+    expect(resolveAgentModel('opencode')).toBe('claude-haiku-4-5');
   });
 });
 
@@ -601,22 +601,21 @@ describe('checkAgentAuth', () => {
 });
 
 describe('buildArgs model handling', () => {
-  it('omits --model for claude when no model is resolved', () => {
+  it('uses default model for claude when none provided', () => {
     const args = buildArgs('claude', 'PROMPT');
-    expect(args).not.toContain('--model');
-    expect(args).toEqual(['--print', 'PROMPT']);
+    expect(args).toEqual(['--print', '--model', 'haiku', 'PROMPT']);
   });
-  it('includes --model for claude when explicitly provided', () => {
+  it('includes explicit --model for claude when provided', () => {
     expect(buildArgs('claude', 'PROMPT', 'opus')).toEqual(['--print', '--model', 'opus', 'PROMPT']);
   });
-  it('omits --model for cursor when no model is resolved (no hardcoded haiku pin)', () => {
-    expect(buildArgs('cursor', 'PROMPT')).toEqual(['--print', 'PROMPT']);
+  it('uses gpt-mini default for cursor when no model provided', () => {
+    expect(buildArgs('cursor', 'PROMPT')).toEqual(['--print', '--model', 'gpt-mini', 'PROMPT']);
   });
-  it('preserves codex sandbox flag and omits --model when none resolved', () => {
+  it('preserves codex sandbox flag and uses default model', () => {
     const args = buildArgs('codex', 'PROMPT');
-    expect(args).toEqual(['exec', '--dangerously-bypass-approvals-and-sandbox', 'PROMPT']);
+    expect(args).toEqual(['exec', '--model', 'gpt-5.4-mini', '--dangerously-bypass-approvals-and-sandbox', 'PROMPT']);
   });
-  it('inserts --model before the codex sandbox flag when provided', () => {
+  it('inserts explicit --model before the codex sandbox flag', () => {
     expect(buildArgs('codex', 'PROMPT', 'gpt-5.5')).toEqual([
       'exec',
       '--model',
@@ -626,7 +625,7 @@ describe('buildArgs model handling', () => {
     ]);
   });
   it('omits the prompt positional when promptViaStdin is true', () => {
-    expect(buildArgs('opencode', 'PROMPT', undefined, true)).toEqual(['run']);
+    expect(buildArgs('opencode', 'PROMPT', undefined, true)).toEqual(['run', '--model', 'claude-haiku-4-5']);
   });
 });
 
