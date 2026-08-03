@@ -418,7 +418,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
     )
     .option(
       '--model <name>',
-      "Model to use (defaults to the agent CLI's own default; override per-agent with EDS_AGENT_MODEL_<AGENT>)",
+      'Model to use (defaults to a cheap per-agent model; override with --model or EDS_AGENT_MODEL_<AGENT>)',
     )
     .option('--verbose', 'Show full agent output including reasoning text')
     .option('--dry-run', 'Print the prompt for the first component without invoking the agent')
