@@ -454,14 +454,13 @@ export async function runAgent(options: {
 export type AgentAuthStatus = 'ok' | 'unauthenticated' | 'not-found';
 
 export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus> {
-  if (agent !== 'claude') return 'ok';
-
   const binary = resolveBinary(agent);
 
-  // Verify the binary exists first. When `binary` is an absolute path (e.g.
-  // set via EDS_AGENT_BINARY_CLAUDE=/opt/custom/claude), `which` on some
-  // shells doesn't resolve it — check the filesystem directly for absolute
-  // paths, and fall back to `which` for bare names on $PATH.
+  // Verify the selected agent's binary exists first — for EVERY agent, not
+  // just claude. When `binary` is an absolute path (e.g. set via
+  // EDS_AGENT_BINARY_<AGENT>=/opt/custom/bin), `which` on some shells doesn't
+  // resolve it — check the filesystem directly for absolute paths, and fall
+  // back to `which` for bare names on $PATH.
   const binaryExists = await new Promise<boolean>((resolve) => {
     if (binary.startsWith('/')) {
       import('node:fs/promises').then((fs) =>
@@ -476,6 +475,11 @@ export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus>
     child.on('close', (code) => resolve(code === 0));
   });
   if (!binaryExists) return 'not-found';
+
+  // Only Claude exposes `auth status --json`. Non-Claude agents are considered
+  // authenticated once their binary is present — never gate them on claude
+  // (AIS-392 B3: Codex-via-Bedrock users were blocked by a claude check).
+  if (agent !== 'claude') return 'ok';
 
   // Use `claude auth status` — fast, no API call, works regardless of which
   // auth provider (direct, Bedrock, Vertex) or whether AWS_PROFILE is set.
