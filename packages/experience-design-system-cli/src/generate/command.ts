@@ -39,6 +39,7 @@ import { getRefineArtifactsRoot, getRefineSessionPaths } from '../analyze/select
 import type { ReviewSessionSnapshot } from '../analyze/select/types.js';
 import type { RawComponentDefinition } from '../types.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
+import { addAgentModelOptions } from '../lib/agent-model-options.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -751,15 +752,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
 }
 
 function addAgentFlags(cmd: Command): Command {
-  return cmd
-    .option(
-      '--agent <name>',
-      'Agent to use: claude, codex, opencode, cursor (defaults to value saved by experiences setup)',
-    )
-    .option(
-      '--model <name>',
-      'Model to use (defaults to a lightweight per-agent model; override with EDS_AGENT_MODEL_<AGENT>)',
-    )
+  return addAgentModelOptions(cmd)
     .option('--verbose', 'Show full agent output including reasoning text')
     .option('--dry-run', 'Print the prompt without invoking the agent')
     .option(

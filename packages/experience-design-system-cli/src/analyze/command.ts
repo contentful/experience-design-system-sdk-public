@@ -3,6 +3,7 @@ import { render } from 'ink';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Command } from 'commander';
+import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import {
   extractComponents,
   preClassifyComponent,
@@ -226,7 +227,7 @@ export function registerAnalyzeCommand(program: Command): void {
     .command('analyze')
     .description('Extract component definitions from a project, or correct analysis output');
 
-  analyze
+  const extractCmd = analyze
     .command('extract')
     .description('Extract component definitions from a project')
     .requiredOption('--project <path>', 'Path to the project root')
@@ -253,8 +254,11 @@ export function registerAnalyzeCommand(program: Command): void {
       'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
       (v: string, acc: string[]) => [...acc, v],
       [] as string[],
-    )
-    .option('--agent <name>', 'Coding agent for composition mapping resolution (claude|codex|opencode|cursor)')
+    );
+  addAgentModelOptions(extractCmd, {
+    includeModel: false,
+    agentDescription: 'Coding agent for composition mapping resolution (claude|codex|opencode|cursor)',
+  })
     .option(
       '--composition-agent-mode <mode>',
       "Agent resolution mode: 'parser' (agent writes a sandboxed parser — deterministic, default) or 'edges' (agent lists edges directly)",

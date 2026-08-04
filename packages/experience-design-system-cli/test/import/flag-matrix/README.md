@@ -23,7 +23,7 @@ in both modes. This matrix does.
 
 ## How to add a flag
 
-1. **Add the `.option(...)` to `src/import/command.ts`** as usual.
+1. **Add the `.option(...)` to `src/import/command.ts`** as usual (or to `src/lib/agent-model-options.ts` if the flag is registered via the shared `addAgentModelOptions()` helper — the inventory parser derives flags from both the command and helper sources).
 2. **Run `inventory.test.ts`** — it will FAIL, naming your new flag as
    "in command.ts but missing from flags.ts inventory". That is the red.
 3. **Add a `FlagSpec` entry to `flags.ts`**: set `kind`, a usable `sampleValue`

@@ -3,6 +3,7 @@ import { resolve, join } from 'node:path';
 import { runPipeline } from './orchestrator.js';
 import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { resolveAgent, resolveModel } from './agent-model-resolve.js';
+import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
@@ -14,22 +15,19 @@ import type { RunPickerSelection } from '../runs/run-picker.js';
 import { dispatchPickerSelection } from './picker-dispatch.js';
 
 export function registerImportCommand(program: Command): void {
-  program
+  const cmd = program
     .command('import')
     .description('Run the full pipeline: analyze → select → generate → push')
     .option('--space-id <id>', 'Contentful space ID (required unless --skip-apply)')
     .option('--environment-id <id>', 'Contentful environment ID (required unless --skip-apply)')
     .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--project <path>', 'Path to the project root to analyze', '.')
-    .option('--out <path>', 'Output directory for pipeline artifacts')
-    .option(
-      '--agent <name>',
-      'Agent to use for generate components (overrides credentials.json; falls back to "claude")',
-    )
-    .option(
-      '--model <name>',
+    .option('--out <path>', 'Output directory for pipeline artifacts');
+  addAgentModelOptions(cmd, {
+    agentDescription: 'Agent to use for generate components (overrides credentials.json; falls back to "claude")',
+    modelDescription:
       'Model to use for generate components (defaults to a lightweight per-agent model; override with EDS_AGENT_MODEL_<AGENT>)',
-    )
+  })
     .option('--tokens <path>', 'Path to a DTCG tokens.json file to push alongside generated components')
     .option(
       '--raw-tokens <path>',
