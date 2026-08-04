@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { parseEdsiError, formatParsedEdsiError, stripLambdaLogPrefix } from '../../src/apply/error-parser.js';
+import {
+  formatEdsiError,
+  parseEdsiError,
+  formatParsedEdsiError,
+  stripLambdaLogPrefix,
+} from '../../src/apply/error-parser.js';
 
 describe('parseEdsiError', () => {
   it('parses a plain JSON body with code / message / cycle', () => {
@@ -57,6 +62,47 @@ describe('parseEdsiError', () => {
     const parsed = parseEdsiError(apiErrorMessage);
     expect(parsed.code).toBe('ValidationFailed');
     expect(parsed.message).toBe('nope');
+  });
+
+  it('renders a validation error with an empty path without inventing a component or field', () => {
+    const body = JSON.stringify({
+      sys: { type: 'Error', id: 'ValidationFailed' },
+      message: 'Validation error',
+      details: { errors: [{ name: 'invalid_union', path: [], details: 'Invalid input' }] },
+    });
+
+    const rendered = formatEdsiError(body);
+
+    expect(rendered).toContain('[ValidationFailed]');
+    expect(rendered).toContain('- Invalid input');
+    expect(rendered).toContain('Location: not provided by the server');
+    expect(rendered).toContain('no component or field was identified');
+    expect(rendered).not.toContain('Component:');
+  });
+
+  it('turns a binding pointer failure into a location-aware diagnostic without object coercion', () => {
+    const body =
+      'Unable to save component One or more binding configurations are invalid. Pointer path does not exist for \'[object Object]\': Pointer expression path does not exist in input data type. Default › return GraphQL validation error: Field "Link" of type "Link" must have a selection of subfields. Did you mean "Link { ... }"? Default › resolvers › r_-gxsm8Pv7v › query';
+
+    const rendered = formatEdsiError(body);
+
+    expect(rendered).toContain('[BindingValidationFailed]');
+    expect(rendered).toContain('Pointer expression path does not exist in input data type');
+    expect(rendered).toContain('Field "Link" of type "Link" must have a selection of subfields');
+    expect(rendered).toContain('Default › resolvers › r_-gxsm8Pv7v › query');
+    expect(rendered).toContain('Next action: review the binding');
+    expect(rendered).not.toContain('[object Object]');
+  });
+
+  it('formats a binding failure carried in an operation-item error object', () => {
+    const message =
+      "One or more binding configurations are invalid. Pointer path does not exist for '[object Object]': Pointer expression path does not exist in input data type. Default › resolvers › r_-gxsm8Pv7v › query";
+
+    const rendered = formatEdsiError({ code: 'ValidationFailed', message });
+
+    expect(rendered).toContain('[BindingValidationFailed]');
+    expect(rendered).toContain('Default › resolvers › r_-gxsm8Pv7v › query');
+    expect(rendered).not.toContain('[object Object]');
   });
 
   it('is safe on empty / null input', () => {

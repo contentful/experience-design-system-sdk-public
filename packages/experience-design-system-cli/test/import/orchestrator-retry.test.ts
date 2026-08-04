@@ -65,6 +65,16 @@ describe('isPreviewValidationError', () => {
     ).toBe(false);
   });
 
+  it('recognizes the formatted validation diagnostic while retaining the preview phase', () => {
+    expect(
+      isPreviewValidationError({
+        exitCode: 1,
+        stderr:
+          'Error: preview failed: 422\n[ValidationFailed]\nValidation error\n- variant required (Component: Button; Path: manifest:components/Button/$properties/variant)',
+      }),
+    ).toBe(true);
+  });
+
   it('returns false for a generic non-zero exit with no API error marker', () => {
     expect(
       isPreviewValidationError({
@@ -108,6 +118,18 @@ describe('parseOffendingComponentNames', () => {
 
   it('returns [] for empty string input', () => {
     expect(parseOffendingComponentNames('')).toEqual([]);
+  });
+
+  it('extracts component names from formatted validation diagnostics', () => {
+    const output =
+      '[ValidationFailed]\nValidation error\n- variant required (Component: Button; Path: manifest:components/Button/$properties/variant)\n- label required (Component: Card; Path: manifest:components/Card/$properties/label)';
+    expect(parseOffendingComponentNames(output)).toEqual(['Button', 'Card']);
+  });
+
+  it('does not infer a component from a formatted error without a location', () => {
+    const output =
+      '[ValidationFailed]\nValidation error\n- Invalid input\n  Location: not provided by the server. Review the submitted manifest; no component or field was identified.';
+    expect(parseOffendingComponentNames(output)).toEqual([]);
   });
 
   it('extracts every offender from a realistic large 422 body — full path through ApiError + die()', () => {

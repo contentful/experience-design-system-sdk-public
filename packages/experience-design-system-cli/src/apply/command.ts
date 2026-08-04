@@ -12,6 +12,7 @@ import {
 } from '@contentful/experience-design-system-types';
 import type { CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
 import { ApiError, ImportApiClient } from './api-client.js';
+import { formatEdsiError } from './error-parser.js';
 import { openPipelineDb, loadCDFComponents } from '../session/db.js';
 import { findSlotCycles, suggestCycleBreakEdge, formatCyclePath } from '../analyze/cycle-detection.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
@@ -26,6 +27,14 @@ import { readExperiencesCredentials } from '../credentials-store.js';
 function die(message: string): never {
   process.stderr.write(`${message}\n`);
   process.exit(1);
+}
+
+function formatApiError(error: ApiError, verbose = false): string {
+  const formatted = formatEdsiError(error.body || error.message, { verbose, raw: error.body }) || error.message;
+  const phase = error.message.split('\n', 1)[0];
+  return /^(?:apply|preview|poll) failed: \d+$/.test(phase) && formatted !== phase
+    ? `${phase}\n${formatted}`
+    : formatted;
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -355,7 +364,7 @@ function buildApplyOutput(
       .map((item) => ({
         entityType: item.entityType,
         entityId: item.id,
-        error: item.error,
+        error: formatEdsiError(item.error),
       })),
   };
 }
@@ -520,7 +529,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         inputs = await resolveSharedInputs(opts);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${e.message}`);
+        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
         throw e;
       }
 
@@ -529,7 +538,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         await client.validateToken();
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${e.message}`);
+        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
         const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : '';
         die(`Error: unable to connect to API host${cause ? `: ${cause}` : ''}`);
       }
@@ -540,7 +549,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         preview = await client.previewImport(manifest);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${e.message}`);
+        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
         throw e;
       }
 
@@ -590,7 +599,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         inputs = await resolveSharedInputs(opts);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${e.message}`);
+        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
         throw e;
       }
 
@@ -601,7 +610,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         await client.validateToken();
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${e.message}`);
+        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
         throw e;
       }
 
@@ -611,7 +620,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         preview = await client.previewImport(manifest);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${e.message}`);
+        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
         throw e;
       }
 
@@ -663,7 +672,7 @@ export function registerApplyCommand(program: Command): void {
         try {
           operation = await client.applyImport(manifest, breakingWithImpact || opts.force === true);
         } catch (e) {
-          if (e instanceof ApiError) die(`Error: ${e.message}`);
+          if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
           throw e;
         }
 
@@ -672,7 +681,7 @@ export function registerApplyCommand(program: Command): void {
         try {
           operation = await client.pollOperation(operation.sys.id);
         } catch (e) {
-          if (e instanceof ApiError) die(`Error: ${e.message}`);
+          if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
           throw e;
         }
 
@@ -702,7 +711,7 @@ export function registerApplyCommand(program: Command): void {
                   spaceId,
                   environmentId,
                   status: 'error',
-                  error: e.message,
+                  error: formatApiError(e, opts.verbose),
                 }),
               );
               return;
@@ -728,7 +737,7 @@ export function registerApplyCommand(program: Command): void {
                   spaceId,
                   environmentId,
                   status: 'error',
-                  error: e.message,
+                  error: formatApiError(e, opts.verbose),
                 }),
               );
               return;
@@ -795,7 +804,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         inputs = await resolveSharedInputs(opts);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${e.message}`);
+        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
         throw e;
       }
 
@@ -806,7 +815,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         await client.validateToken();
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${e.message}`);
+        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
         throw e;
       }
 
@@ -816,7 +825,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         preview = await client.previewImport(fullManifest);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${e.message}`);
+        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
         throw e;
       }
 
@@ -858,7 +867,7 @@ export function registerApplyCommand(program: Command): void {
         try {
           operation = await client.applyImport(filteredManifest, hasBreaking || opts.force === true);
         } catch (e) {
-          if (e instanceof ApiError) die(`Error: ${e.message}`);
+          if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
           throw e;
         }
 
@@ -867,7 +876,7 @@ export function registerApplyCommand(program: Command): void {
         try {
           operation = await client.pollOperation(operation.sys.id);
         } catch (e) {
-          if (e instanceof ApiError) die(`Error: ${e.message}`);
+          if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
           throw e;
         }
 
@@ -909,7 +918,7 @@ export function registerApplyCommand(program: Command): void {
                   spaceId,
                   environmentId,
                   status: 'error',
-                  error: e.message,
+                  error: formatApiError(e),
                 }),
               );
               return;
@@ -935,7 +944,7 @@ export function registerApplyCommand(program: Command): void {
                   spaceId,
                   environmentId,
                   status: 'error',
-                  error: e.message,
+                  error: formatApiError(e),
                 }),
               );
               return;

@@ -43,7 +43,7 @@ import { ImportApiClient, ApiError, type PreviewValidationError } from '../../ap
 import { detectSlotCycles, extractComponentsFromManifest, formatSlotCycleReport } from '../../apply/command.js';
 import { findSlotCycles } from '../../analyze/cycle-detection.js';
 import { buildComponentGraph } from '../../analyze/slot-graph.js';
-import { parseEdsiError, formatParsedEdsiError } from '../../apply/error-parser.js';
+import { parseEdsiError, formatEdsiError, formatParsedEdsiError } from '../../apply/error-parser.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
 import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
 import { spawnGenerateChild } from './spawn-generate.js';
@@ -114,6 +114,7 @@ type PushResult = {
   componentTypes: { created: number; updated: number; removed: number; failed: number };
   designTokens: { created: number; updated: number; removed: number; failed: number };
   summary?: { total: number; succeeded: number; failed: number };
+  failures?: Array<{ entityType: string; entityId: string; message: string }>;
 };
 
 type WizardState = {
@@ -1189,7 +1190,11 @@ export function WizardApp({
         update({
           step: 'error',
           errorStep: 'apply preview',
-          errorMessage: e.message,
+          errorMessage:
+            formatParsedEdsiError(parseEdsiError(e.body || e.message), {
+              verbose: process.env['EDSI_VERBOSE_ERRORS'] === '1',
+              raw: e.body,
+            }) || e.message,
           errorAllowCredentialRetry: true,
         });
         return;
@@ -1341,6 +1346,13 @@ export function WizardApp({
             failed: items.filter((i) => i.entityType === 'DesignToken' && i.status === 'failed').length,
           },
           summary: operation.summary,
+          failures: items
+            .filter((item) => item.status === 'failed')
+            .map((item) => ({
+              entityType: item.entityType,
+              entityId: item.id,
+              message: formatEdsiError(item.error),
+            })),
         };
       } else {
         const summary = operation.summary ?? { total: 0, pending: 0, succeeded: 0, failed: 0 };
@@ -2159,6 +2171,7 @@ export function WizardApp({
             componentTypes={state.pushResult.componentTypes}
             designTokens={state.pushResult.designTokens}
             summary={state.pushResult.summary}
+            failures={state.pushResult.failures}
             spaceId={state.spaceId}
             environmentId={state.environmentId}
             host={state.host}

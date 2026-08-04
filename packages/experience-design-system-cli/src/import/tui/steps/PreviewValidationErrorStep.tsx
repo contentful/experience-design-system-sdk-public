@@ -1,6 +1,7 @@
 import React from 'react';
 import { GateStep } from './GateStep.js';
 import type { PreviewValidationError } from '../../../apply/api-client.js';
+import { formatParsedEdsiError } from '../../../apply/error-parser.js';
 
 type PreviewValidationErrorStepProps = {
   errors: PreviewValidationError[];
@@ -19,7 +20,17 @@ export function PreviewValidationErrorStep({
 }: PreviewValidationErrorStepProps): React.ReactElement {
   const uniqueNames = [...new Set(errors.map((e) => e.componentName))];
   const matchedNames = uniqueNames.filter((n) => !missingNames.includes(n));
-  const errorLines = errors.map((e) => `  ${e.componentName}: ${e.message}`).join('\n');
+  const errorLines = errors
+    .map((error) =>
+      formatParsedEdsiError({
+        code: null,
+        message: '',
+        cycle: null,
+        raw: false,
+        diagnostics: [{ message: error.message, component: error.componentName, path: error.path }],
+      }),
+    )
+    .join('\n');
 
   const missingNote =
     missingNames.length > 0

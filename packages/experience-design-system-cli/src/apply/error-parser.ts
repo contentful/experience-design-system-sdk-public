@@ -7,6 +7,15 @@ export interface ParsedEdsiError {
   cycle: string[] | null;
   /** True when the message survived cleaning as-is (no parseable structure). */
   raw: boolean;
+  /** Validation details supplied by the API, normalized for terminal output. */
+  diagnostics?: ErrorDiagnostic[];
+}
+
+export interface ErrorDiagnostic {
+  message: string;
+  component?: string;
+  path?: string;
+  pathMissing?: boolean;
 }
 
 const LAMBDA_LOG_PREFIX_RE =
@@ -39,6 +48,64 @@ function parseObjectLiteralTail(body: string): Pick<ParsedEdsiError, 'code' | 'c
   return { code, cycle };
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function displayValue(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value === null || value === undefined) return null;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+function formatPath(value: unknown): { path?: string; pathMissing?: boolean } {
+  if (typeof value === 'string') return value ? { path: value } : { pathMissing: true };
+  if (Array.isArray(value)) {
+    const parts = value.filter((part): part is string | number => typeof part === 'string' || typeof part === 'number');
+    return parts.length > 0 ? { path: parts.join(' › ') } : { pathMissing: true };
+  }
+  return {};
+}
+
+function componentFromPath(path: string | undefined): string | undefined {
+  if (!path) return undefined;
+  const manifestMatch = path.match(/manifest:components\/([^/›]+)/);
+  if (manifestMatch?.[1]) return manifestMatch[1];
+  const parts = path
+    .split(/[›/]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const componentsIndex = parts.findIndex((part) => part === 'components');
+  return componentsIndex === -1 ? undefined : parts[componentsIndex + 1];
+}
+
+function parseValidationDiagnostics(details: Record<string, unknown>): ErrorDiagnostic[] {
+  if (!Array.isArray(details.errors)) return [];
+  const diagnostics: ErrorDiagnostic[] = [];
+  for (const rawError of details.errors) {
+    const error = asRecord(rawError);
+    if (!error) continue;
+    const location = formatPath(error.path);
+    const component =
+      displayValue(error.component ?? error.componentName ?? error.componentId) ?? componentFromPath(location.path);
+    const message =
+      displayValue(error.message) ??
+      displayValue(error.details) ??
+      displayValue(error.error) ??
+      displayValue(error.name) ??
+      'Validation failed';
+    diagnostics.push({ message, ...location, ...(component ? { component } : {}) });
+  }
+  return diagnostics;
+}
+
 function parseJsonBody(body: string): Partial<ParsedEdsiError> | null {
   let parsed: unknown;
   try {
@@ -46,14 +113,11 @@ function parseJsonBody(body: string): Partial<ParsedEdsiError> | null {
   } catch {
     return null;
   }
-  if (!parsed || typeof parsed !== 'object') return null;
-  const p = parsed as Record<string, unknown>;
-  const details = (p.details && typeof p.details === 'object' ? (p.details as Record<string, unknown>) : {}) as Record<
-    string,
-    unknown
-  >;
+  const p = asRecord(parsed);
+  if (!p) return null;
+  const details = asRecord(p.details) ?? {};
   const pick = (k: string): unknown => (p[k] !== undefined ? p[k] : details[k]);
-  const codeRaw = pick('code');
+  const codeRaw = pick('code') ?? asRecord(p.sys)?.id;
   const messageRaw = pick('message');
   const cycleRaw = pick('cycle');
   const out: Partial<ParsedEdsiError> = {};
@@ -63,7 +127,30 @@ function parseJsonBody(body: string): Partial<ParsedEdsiError> | null {
     const strs = cycleRaw.filter((x): x is string => typeof x === 'string');
     if (strs.length > 0) out.cycle = strs;
   }
+  const diagnostics = parseValidationDiagnostics(details);
+  if (diagnostics.length > 0) out.diagnostics = diagnostics;
   return out;
+}
+
+function parseBindingDiagnostics(body: string): Partial<ParsedEdsiError> | null {
+  if (!/binding configurations are invalid|Pointer path does not exist/i.test(body)) return null;
+
+  const locationMatches = [...body.matchAll(/(?:^|\.\s)([A-Za-z0-9_$-]+(?:\s*›\s*[A-Za-z0-9_$-]+){2,})/g)];
+  const location = locationMatches.at(-1)?.[1];
+  const pointerMessage = body.match(
+    /Pointer path does not exist for '\[object Object\]':\s*(.+?)(?=\.\s*Default\s*›|$)/i,
+  )?.[1];
+  const graphQlMessage = body.match(/return GraphQL validation error:\s*(.+?)(?=\.\s*Default\s*›|$)/i)?.[1];
+  const heading = body.match(/^(.*?)(?=\.?\s*Pointer path does not exist|\.?\s*Default\s*›)/i)?.[1]?.trim();
+  const diagnostics: ErrorDiagnostic[] = [];
+  if (pointerMessage) diagnostics.push({ message: pointerMessage.trim(), ...(location ? { path: location } : {}) });
+  if (graphQlMessage) diagnostics.push({ message: graphQlMessage.trim(), ...(location ? { path: location } : {}) });
+
+  return {
+    code: 'BindingValidationFailed',
+    message: heading || 'One or more binding configurations are invalid.',
+    ...(diagnostics.length > 0 ? { diagnostics } : {}),
+  };
 }
 
 // ApiError.message shape: `${phasePrefix}\n${body}` where phasePrefix looks
@@ -90,12 +177,34 @@ export function parseEdsiError(rawInput: string | undefined | null): ParsedEdsiE
   const cleaned = stripLambdaLogPrefix(body);
 
   const json = parseJsonBody(cleaned) ?? parseJsonBody(body);
+  const bindingFromJson = typeof json?.message === 'string' ? parseBindingDiagnostics(json.message) : null;
+  if (bindingFromJson) {
+    return {
+      code: bindingFromJson.code ?? json?.code ?? null,
+      message: bindingFromJson.message ?? cleaned,
+      cycle: null,
+      raw: false,
+      ...(bindingFromJson.diagnostics ? { diagnostics: bindingFromJson.diagnostics } : {}),
+    };
+  }
   if (json && (json.code || json.message || json.cycle)) {
     return {
       code: json.code ?? null,
       message: json.message ?? (cleaned || prefix),
       cycle: json.cycle ?? null,
       raw: false,
+      ...(json.diagnostics ? { diagnostics: json.diagnostics } : {}),
+    };
+  }
+
+  const binding = parseBindingDiagnostics(cleaned);
+  if (binding) {
+    return {
+      code: binding.code ?? null,
+      message: binding.message ?? cleaned,
+      cycle: null,
+      raw: false,
+      ...(binding.diagnostics ? { diagnostics: binding.diagnostics } : {}),
     };
   }
 
@@ -122,6 +231,26 @@ export function formatParsedEdsiError(parsed: ParsedEdsiError, opts: { verbose?:
   if (parsed.message) {
     lines.push(parsed.message);
   }
+  for (const diagnostic of parsed.diagnostics ?? []) {
+    const context = [
+      diagnostic.component ? `Component: ${diagnostic.component}` : null,
+      diagnostic.path ? `Path: ${diagnostic.path}` : null,
+    ].filter(Boolean);
+    lines.push(`- ${diagnostic.message}${context.length > 0 ? ` (${context.join('; ')})` : ''}`);
+    if (diagnostic.pathMissing) {
+      lines.push(
+        '  Location: not provided by the server. Review the submitted manifest; no component or field was identified.',
+      );
+    }
+  }
+  if (parsed.code === 'BindingValidationFailed') {
+    const location = parsed.diagnostics?.find((diagnostic) => diagnostic.path)?.path;
+    lines.push(
+      location
+        ? `Next action: review the binding at ${location} and correct its pointer or GraphQL selection.`
+        : 'Next action: review the binding pointer and GraphQL selection.',
+    );
+  }
   if (parsed.cycle && parsed.cycle.length > 0) {
     lines.push(`Cycle: ${parsed.cycle.join(' → ')} → ${parsed.cycle[0]}`);
     lines.push('Break the cycle by removing at least one $allowedComponents entry.');
@@ -132,4 +261,10 @@ export function formatParsedEdsiError(parsed: ParsedEdsiError, opts: { verbose?:
     lines.push(opts.raw);
   }
   return lines.filter(Boolean).join('\n');
+}
+
+export function formatEdsiError(raw: unknown, opts: { verbose?: boolean; raw?: string } = {}): string {
+  const input = typeof raw === 'string' ? raw : displayValue(raw);
+  if (!input) return '';
+  return formatParsedEdsiError(parseEdsiError(input), { ...opts, raw: opts.raw ?? input });
 }

@@ -136,18 +136,20 @@ export function parseCycleComponentNames(report: string[]): string[] {
 }
 
 export function isPreviewValidationError(result: { exitCode: number; stderr: string }): boolean {
-  return (
-    result.exitCode !== 0 &&
-    result.stderr.includes(`${PREVIEW_ERROR_PREFIX} 422`) &&
-    result.stderr.includes(VALIDATION_FAILED_CODE)
-  );
+  if (result.exitCode === 0 || !result.stderr.includes(`${PREVIEW_ERROR_PREFIX} 422`)) return false;
+  return result.stderr.includes(VALIDATION_FAILED_CODE) || result.stderr.includes('[ValidationFailed]');
 }
 
 export function parseOffendingComponentNames(output: string): string[] {
   const jsonStart = output.indexOf('{');
-  if (jsonStart === -1) return [];
-  const errors = parsePreviewValidationErrors(output.slice(jsonStart));
-  return [...new Set(errors.map((e) => e.componentName))];
+  if (jsonStart !== -1) {
+    const errors = parsePreviewValidationErrors(output.slice(jsonStart));
+    const names = [...new Set(errors.map((error) => error.componentName))];
+    if (names.length > 0) return names;
+  }
+
+  const names = [...output.matchAll(/Component:\s*([^;\n)]+)/g)].map((match) => match[1].trim()).filter(Boolean);
+  return [...new Set(names)];
 }
 
 export function buildPushStepResult(args: {

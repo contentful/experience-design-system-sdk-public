@@ -44,7 +44,7 @@ describe('PreviewValidationErrorStep — rendering', () => {
     expect(frame).not.toContain('✓ Preview validation failed');
   });
 
-  it('lists each error line with component name and message', async () => {
+  it('lists each error with its component, field path, and message', async () => {
     const handlers = makeHandlers();
     const { lastFrame } = render(
       <PreviewValidationErrorStep errors={[SLOT_ERROR, PROP_ERROR]} missingNames={[]} {...handlers} />,
@@ -56,8 +56,12 @@ describe('PreviewValidationErrorStep — rendering', () => {
       3000,
     );
 
-    expect(frame).toContain('PageLink: Slot id must be a non-empty string');
-    expect(frame).toContain('Button: variant required');
+    expect(frame).toContain('Slot id must be a non-empty string');
+    expect(frame).toContain('Component: PageLink');
+    expect(frame).toMatch(/Path:\s+manifest:components\/PageLink\/\$slots\//);
+    expect(frame).toContain('variant required');
+    expect(frame).toContain('Component: Button');
+    expect(frame).toMatch(/Path: manifest:components\/Button\/\$properties\/variant/);
   });
 
   it('shows the singular component name in the skip label when only one component failed', async () => {
