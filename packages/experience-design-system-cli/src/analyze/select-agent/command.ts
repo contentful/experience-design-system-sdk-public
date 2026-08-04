@@ -1,4 +1,5 @@
 import type { Command } from 'commander';
+import { addAgentModelOptions } from '../../lib/agent-model-options.js';
 import {
   openPipelineDb,
   loadRawComponents,
@@ -407,19 +408,12 @@ async function selectAllComponents(
 }
 
 export function registerAnalyzeSelectAgentCommand(program: Command): void {
-  program
+  const cmd = program
     .command('select-agent')
     .description('Use an AI agent to select components for Contentful Experience Orchestration')
     .option('--session <id>', 'Session ID from analyze extract (defaults to most recent)')
-    .option('--project-root <path>', 'Project root for resolving component source files')
-    .option(
-      '--agent <name>',
-      'Agent to use: claude, codex, opencode, cursor (defaults to value saved by experiences setup)',
-    )
-    .option(
-      '--model <name>',
-      'Model to use (defaults to a lightweight per-agent model; override with EDS_AGENT_MODEL_<AGENT>)',
-    )
+    .option('--project-root <path>', 'Project root for resolving component source files');
+  addAgentModelOptions(cmd)
     .option('--verbose', 'Show full agent output including reasoning text')
     .option('--dry-run', 'Print the prompt for the first component without invoking the agent')
     .option(
