@@ -88,6 +88,19 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('classify_slot');
   });
 
+  it('treats bare name as semantic component data, not a DOM pass-through', async () => {
+    const prompt = await buildPrompt({
+      skill: 'components',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      outDir: '/fake/out',
+    });
+
+    expect(prompt).toContain('`name` — content prop, usually `string`');
+    expect(prompt).toContain('`options`, `value`, `name`, `form`');
+    expect(prompt).not.toContain('`name` (the bare HTML form `name` attribute)');
+  });
+
   it('lists "reason" as a required field on classify_prop with description orthogonality (Feature 1)', async () => {
     const prompt = await buildPrompt({
       skill: 'components',

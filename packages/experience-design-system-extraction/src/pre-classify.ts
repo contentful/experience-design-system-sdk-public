@@ -53,7 +53,6 @@ const DOM_PASS_THROUGH_PROPS = new Set([
   'role',
   'tabIndex',
   'tabindex',
-  'name',
   'htmlFor',
   'for',
   'slot',
@@ -81,6 +80,7 @@ const DOM_PASS_THROUGH_PROPS = new Set([
   'pt',
   'ptOptions',
   'unstyled',
+  'sx',
   // Polymorphic component props — change rendered HTML/component, not marketer-visible behavior
   'as',
   'element',
@@ -220,24 +220,30 @@ export function preClassifyProp(prop: RawPropDefinition): PreClassification | un
  * Applies pre-classification to all props in a component definition.
  * - Leaves existing category values unchanged
  * - Sets category for content/design/state matches
- * - Does NOT set category for 'exclude' results (leaves undefined)
+ * - Removes props that match an exclusion rule so they cannot reach agent classification
  */
 export function preClassifyComponent(component: RawComponentDefinition): RawComponentDefinition {
-  const props = component.props.map((prop) => {
-    // If category is already set, leave unchanged
-    if (prop.category) {
-      return prop;
-    }
-
+  const props = component.props.flatMap((prop) => {
     const result = preClassifyProp(prop);
 
-    // If no result or excluded, leave unchanged
-    if (!result || result.category === 'exclude') {
-      return prop;
+    // Excluded props are developer-facing wiring and must not be included in
+    // the component payload passed to classification or generation, even if a
+    // prior step assigned them a category.
+    if (result?.category === 'exclude') {
+      return [];
+    }
+
+    // If category is already set, leave unchanged
+    if (prop.category) {
+      return [prop];
+    }
+
+    if (!result) {
+      return [prop];
     }
 
     // Set category hint
-    return { ...prop, category: result.category as 'content' | 'design' | 'state' };
+    return [{ ...prop, category: result.category as 'content' | 'design' | 'state' }];
   });
 
   return { ...component, props };

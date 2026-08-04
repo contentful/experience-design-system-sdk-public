@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render } from 'ink-testing-library';
 import { ScopeGateHost } from '../../../src/import/tui/scope-gate-host.js';
 
@@ -38,6 +38,34 @@ describe('ScopeGateHost — compositionMode fork', () => {
     const out = lastFrame() ?? '';
     expect(out).not.toMatch(/Added groups/i);
     expect(out).not.toMatch(/lineage/i);
+  });
+
+  it('surfaces a deterministic review candidate and lets the operator include it', () => {
+    const onConfirm = vi.fn();
+    const { lastFrame, stdin } = render(
+      <ScopeGateHost
+        components={[
+          {
+            name: 'Provider',
+            componentId: 'c0',
+            needsReview: true,
+            aiReason: 'source uses createContext and component has no props',
+          },
+        ]}
+        autoAccept={false}
+        compositionMode="atomic"
+        onConfirm={onConfirm}
+        onQuit={() => {}}
+      />,
+    );
+
+    expect(lastFrame()).toContain('Review flags');
+    expect(lastFrame()).toContain('source uses createContext');
+
+    stdin.write('a');
+    stdin.write('f');
+
+    expect(onConfirm).toHaveBeenCalledWith({ accepted: ['Provider'], rejected: [] });
   });
 
   it('composite mode renders the hierarchy-aware step', () => {
