@@ -14,6 +14,19 @@ function parseOptionFlagsFromSource(source: string): string[] {
     const flagMatch = optionString.match(/--[a-z][a-z-]*/);
     if (flagMatch) flags.add(flagMatch[0]);
   }
+
+  // Also detect flags added via addAgentModelOptions() helper
+  const addAgentModelRe = /addAgentModelOptions\(\s*\w+\s*,\s*\{([^}]*)\}/gs;
+  while ((match = addAgentModelRe.exec(source)) !== null) {
+    const configText = match[1];
+    // Always add --agent
+    flags.add('--agent');
+    // Add --model unless includeModel: false is present (allow both with/without spaces)
+    if (!/includeModel\s*:\s*false/.test(configText)) {
+      flags.add('--model');
+    }
+  }
+
   return [...flags].sort();
 }
 
