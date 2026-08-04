@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { IMPORT_FLAGS } from './flags.js';
 
 const COMMAND_SOURCE = resolve(import.meta.dirname, '../../../src/import/command.ts');
+const AGENT_MODEL_HELPER_SOURCE = resolve(import.meta.dirname, '../../../src/lib/agent-model-options.ts');
 
 function parseOptionFlagsFromSource(source: string): string[] {
   const flags = new Set<string>();
@@ -15,15 +16,24 @@ function parseOptionFlagsFromSource(source: string): string[] {
     if (flagMatch) flags.add(flagMatch[0]);
   }
 
-  // Also detect flags added via addAgentModelOptions() helper
+  // Parse flags from the shared addAgentModelOptions helper by reading its source
+  const helperSource = readFileSync(AGENT_MODEL_HELPER_SOURCE, 'utf8');
+  const helperFlags = new Set<string>();
+  while ((match = optionRe.exec(helperSource)) !== null) {
+    const optionString = match[2];
+    const flagMatch = optionString.match(/--[a-z][a-z-]*/);
+    if (flagMatch) helperFlags.add(flagMatch[0]);
+  }
+
+  // Also detect flags added via addAgentModelOptions() helper in command source
   const addAgentModelRe = /addAgentModelOptions\(\s*\w+\s*,\s*\{([^}]*)\}/gs;
   while ((match = addAgentModelRe.exec(source)) !== null) {
     const configText = match[1];
-    // Always add --agent
-    flags.add('--agent');
-    // Add --model unless includeModel: false is present (allow both with/without spaces)
-    if (!/includeModel\s*:\s*false/.test(configText)) {
-      flags.add('--model');
+    // Add all flags from the helper
+    helperFlags.forEach((flag) => flags.add(flag));
+    // But drop --model if includeModel: false is present (allow both with/without spaces)
+    if (/includeModel\s*:\s*false/.test(configText)) {
+      flags.delete('--model');
     }
   }
 

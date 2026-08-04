@@ -12,6 +12,10 @@ export interface AgentModelOptionsConfig {
   modelDescription?: string;
 }
 
+/**
+ * Register --agent and optionally --model flags to a Commander command, with customizable descriptions.
+ * Pass `includeModel: false` for commands where the model dimension is not applicable (e.g., mapping-resolution agents that select an agent for logic, not model choice).
+ */
 export function addAgentModelOptions(cmd: Command, config: AgentModelOptionsConfig = {}): Command {
   const { agentDescription = AGENT_DESCRIPTION, includeModel = true, modelDescription = MODEL_DESCRIPTION } = config;
 
