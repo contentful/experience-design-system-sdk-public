@@ -7,7 +7,7 @@ import type {
 } from '@contentful/experience-design-system-types';
 import { ServerPreviewView } from './ServerPreviewView.js';
 import { buildPostPushUrl } from '../../lib/contentful-urls.js';
-import { formatEdsiError } from '../error-parser.js';
+import { formatEdsiError } from '../../lib/error-parser.js';
 
 interface ServerPreviewConfirmProps {
   preview: ServerPreviewResponse;

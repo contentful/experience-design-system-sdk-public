@@ -43,7 +43,7 @@ import { ImportApiClient, ApiError, type PreviewValidationError } from '../../ap
 import { detectSlotCycles, extractComponentsFromManifest, formatSlotCycleReport } from '../../apply/command.js';
 import { findSlotCycles } from '../../analyze/cycle-detection.js';
 import { buildComponentGraph } from '../../analyze/slot-graph.js';
-import { parseEdsiError, formatEdsiError, formatParsedEdsiError } from '../../apply/error-parser.js';
+import { parseEdsiError, formatEdsiError, formatParsedEdsiError } from '../../lib/error-parser.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
 import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
 import { spawnGenerateChild } from './spawn-generate.js';

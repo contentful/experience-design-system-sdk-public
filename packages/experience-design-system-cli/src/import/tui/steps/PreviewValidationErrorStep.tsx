@@ -1,7 +1,7 @@
 import React from 'react';
 import { GateStep } from './GateStep.js';
 import type { PreviewValidationError } from '../../../apply/api-client.js';
-import { formatParsedEdsiError } from '../../../apply/error-parser.js';
+import { formatParsedEdsiError } from '../../../lib/error-parser.js';
 
 type PreviewValidationErrorStepProps = {
   errors: PreviewValidationError[];

@@ -3,8 +3,9 @@ import {
   formatEdsiError,
   parseEdsiError,
   formatParsedEdsiError,
+  formatApiError,
   stripLambdaLogPrefix,
-} from '../../src/apply/error-parser.js';
+} from '../../src/lib/error-parser.js';
 
 describe('parseEdsiError', () => {
   it('parses a plain JSON body with code / message / cycle', () => {
@@ -80,6 +81,46 @@ describe('parseEdsiError', () => {
     expect(rendered).not.toContain('Component:');
   });
 
+  it('normalizes every supported validation message field and path shape', () => {
+    const body = JSON.stringify({
+      message: 'Validation error',
+      details: {
+        errors: [
+          { component: 'Button', path: ['props', 0, 'label'], message: 'Label is required' },
+          { componentName: 'Card', path: 'manifest:components/Card/props/title', details: 'Title is invalid' },
+          { componentId: 'Navigation', path: 0, error: 'Index is invalid' },
+          { path: [], name: 'invalid_union' },
+          { path: ['props', Number.NaN, null], unknown: 'ignored' },
+          'not an error object',
+        ],
+      },
+    });
+
+    const rendered = formatEdsiError(body, { verbose: true });
+
+    expect(rendered).toContain('- Label is required (Component: Button; Path: props › 0 › label)');
+    expect(rendered).toContain('- Title is invalid (Component: Card; Path: manifest:components/Card/props/title)');
+    expect(rendered).toContain('- Index is invalid (Component: Navigation; Path: 0)');
+    expect(rendered).toContain('- invalid_union');
+    expect(rendered).toContain('- Validation failed (Path: props)');
+    expect(rendered).toContain('Message field: message');
+    expect(rendered).toContain('Message field: details');
+    expect(rendered).toContain('Message field: error');
+    expect(rendered).toContain('Message field: name');
+    expect(rendered).toContain('Location: not provided by the server');
+  });
+
+  it('derives a component from a manifest path when the response omits one', () => {
+    const body = JSON.stringify({
+      message: 'Validation error',
+      details: {
+        errors: [{ path: 'manifest:components/Hero/props/heading', message: 'Heading is required' }],
+      },
+    });
+
+    expect(formatEdsiError(body)).toContain('Component: Hero');
+  });
+
   it('turns a binding pointer failure into a location-aware diagnostic without object coercion', () => {
     const body =
       'Unable to save component One or more binding configurations are invalid. Pointer path does not exist for \'[object Object]\': Pointer expression path does not exist in input data type. Default › return GraphQL validation error: Field "Link" of type "Link" must have a selection of subfields. Did you mean "Link { ... }"? Default › resolvers › r_-gxsm8Pv7v › query';
@@ -110,6 +151,11 @@ describe('parseEdsiError', () => {
     expect(parseEdsiError(null)).toEqual({ code: null, message: '', cycle: null, raw: true });
     expect(parseEdsiError(undefined)).toEqual({ code: null, message: '', cycle: null, raw: true });
   });
+
+  it('keeps an unrecognized multiline error body intact', () => {
+    const body = 'first line\nsecond line';
+    expect(parseEdsiError(body)).toMatchObject({ message: body, raw: true });
+  });
 });
 
 describe('stripLambdaLogPrefix', () => {
@@ -121,6 +167,10 @@ describe('stripLambdaLogPrefix', () => {
 
   it('is a no-op when no log prefix is present', () => {
     expect(stripLambdaLogPrefix('plain error message')).toBe('plain error message');
+  });
+
+  it('removes Datadog tags even without the Lambda prefix', () => {
+    expect(stripLambdaLogPrefix('[dd.trace_id=123] [dd.span_id=456] plain error message')).toBe('plain error message');
   });
 });
 
@@ -154,5 +204,33 @@ describe('formatParsedEdsiError', () => {
     );
     expect(rendered).toMatch(/--- raw ---/);
     expect(rendered).toMatch(/RAW BODY GOES HERE/);
+  });
+
+  it('does not render the diagnostic source outside verbose output', () => {
+    const error = {
+      code: 'ValidationFailed',
+      message: 'Validation error',
+      cycle: null,
+      raw: false,
+      diagnostics: [{ message: 'Required', messageSource: 'details' as const }],
+    };
+
+    expect(formatParsedEdsiError(error)).not.toContain('Message field:');
+    expect(formatParsedEdsiError(error, { verbose: true })).toContain('Message field: details');
+  });
+});
+
+describe('formatApiError', () => {
+  it('keeps the API phase prefix while formatting the response body', () => {
+    const formatted = formatApiError({
+      message: 'preview failed: 422\n{"code":"ValidationFailed","message":"Invalid component"}',
+      body: '{"code":"ValidationFailed","message":"Invalid component"}',
+    });
+
+    expect(formatted).toBe('preview failed: 422\n[ValidationFailed]\nInvalid component');
+  });
+
+  it('falls back to the original message when no response body is available', () => {
+    expect(formatApiError({ message: 'network unavailable' })).toBe('network unavailable');
   });
 });

@@ -12,7 +12,7 @@ import {
 } from '@contentful/experience-design-system-types';
 import type { CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
 import { ApiError, ImportApiClient } from './api-client.js';
-import { formatEdsiError } from './error-parser.js';
+import { formatApiError, formatEdsiError } from '../lib/error-parser.js';
 import { openPipelineDb, loadCDFComponents } from '../session/db.js';
 import { findSlotCycles, suggestCycleBreakEdge, formatCyclePath } from '../analyze/cycle-detection.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
@@ -27,14 +27,6 @@ import { readExperiencesCredentials } from '../credentials-store.js';
 function die(message: string): never {
   process.stderr.write(`${message}\n`);
   process.exit(1);
-}
-
-function formatApiError(error: ApiError, verbose = false): string {
-  const formatted = formatEdsiError(error.body || error.message, { verbose, raw: error.body }) || error.message;
-  const phase = error.message.split('\n', 1)[0];
-  return /^(?:apply|preview|poll) failed: \d+$/.test(phase) && formatted !== phase
-    ? `${phase}\n${formatted}`
-    : formatted;
 }
 
 async function pathExists(p: string): Promise<boolean> {

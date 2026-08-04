@@ -14,8 +14,18 @@ export interface ParsedEdsiError {
 export interface ErrorDiagnostic {
   message: string;
   component?: string;
-  path?: string;
-  pathMissing?: boolean;
+  /**
+   * A null path means that the API supplied a location but it contained no
+   * usable segments. An undefined path means the API did not provide one.
+   */
+  path?: string | null;
+  /** The API field that supplied the diagnostic message, for verbose output. */
+  messageSource?: 'message' | 'details' | 'error' | 'name';
+}
+
+export interface ApiErrorLike {
+  body?: string;
+  message: string;
 }
 
 const LAMBDA_LOG_PREFIX_RE =
@@ -65,16 +75,20 @@ function displayValue(value: unknown): string | null {
   }
 }
 
-function formatPath(value: unknown): { path?: string; pathMissing?: boolean } {
-  if (typeof value === 'string') return value ? { path: value } : { pathMissing: true };
+function isPathSegment(value: unknown): value is string | number {
+  return typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value));
+}
+
+function formatPath(value: unknown): { path?: string | null } {
+  if (isPathSegment(value)) return String(value) ? { path: String(value) } : { path: null };
   if (Array.isArray(value)) {
-    const parts = value.filter((part): part is string | number => typeof part === 'string' || typeof part === 'number');
-    return parts.length > 0 ? { path: parts.join(' › ') } : { pathMissing: true };
+    const parts = value.filter(isPathSegment);
+    return parts.length > 0 ? { path: parts.join(' › ') } : { path: null };
   }
   return {};
 }
 
-function componentFromPath(path: string | undefined): string | undefined {
+function componentFromPath(path: string | null | undefined): string | undefined {
   if (!path) return undefined;
   const manifestMatch = path.match(/manifest:components\/([^/›]+)/);
   if (manifestMatch?.[1]) return manifestMatch[1];
@@ -86,6 +100,20 @@ function componentFromPath(path: string | undefined): string | undefined {
   return componentsIndex === -1 ? undefined : parts[componentsIndex + 1];
 }
 
+function diagnosticMessage(error: Record<string, unknown>): Pick<ErrorDiagnostic, 'message' | 'messageSource'> {
+  const candidates: Array<[ErrorDiagnostic['messageSource'], unknown]> = [
+    ['message', error.message],
+    ['details', error.details],
+    ['error', error.error],
+    ['name', error.name],
+  ];
+  for (const [messageSource, value] of candidates) {
+    const message = displayValue(value);
+    if (message !== null) return { message, messageSource };
+  }
+  return { message: 'Validation failed' };
+}
+
 function parseValidationDiagnostics(details: Record<string, unknown>): ErrorDiagnostic[] {
   if (!Array.isArray(details.errors)) return [];
   const diagnostics: ErrorDiagnostic[] = [];
@@ -95,13 +123,7 @@ function parseValidationDiagnostics(details: Record<string, unknown>): ErrorDiag
     const location = formatPath(error.path);
     const component =
       displayValue(error.component ?? error.componentName ?? error.componentId) ?? componentFromPath(location.path);
-    const message =
-      displayValue(error.message) ??
-      displayValue(error.details) ??
-      displayValue(error.error) ??
-      displayValue(error.name) ??
-      'Validation failed';
-    diagnostics.push({ message, ...location, ...(component ? { component } : {}) });
+    diagnostics.push({ ...diagnosticMessage(error), ...location, ...(component ? { component } : {}) });
   }
   return diagnostics;
 }
@@ -237,10 +259,13 @@ export function formatParsedEdsiError(parsed: ParsedEdsiError, opts: { verbose?:
       diagnostic.path ? `Path: ${diagnostic.path}` : null,
     ].filter(Boolean);
     lines.push(`- ${diagnostic.message}${context.length > 0 ? ` (${context.join('; ')})` : ''}`);
-    if (diagnostic.pathMissing) {
+    if (diagnostic.path === null) {
       lines.push(
         '  Location: not provided by the server. Review the submitted manifest; no component or field was identified.',
       );
+    }
+    if (opts.verbose && diagnostic.messageSource) {
+      lines.push(`  Message field: ${diagnostic.messageSource}`);
     }
   }
   if (parsed.code === 'BindingValidationFailed') {
@@ -267,4 +292,12 @@ export function formatEdsiError(raw: unknown, opts: { verbose?: boolean; raw?: s
   const input = typeof raw === 'string' ? raw : displayValue(raw);
   if (!input) return '';
   return formatParsedEdsiError(parseEdsiError(input), { ...opts, raw: opts.raw ?? input });
+}
+
+export function formatApiError(error: ApiErrorLike, verbose = false): string {
+  const formatted = formatEdsiError(error.body || error.message, { verbose, raw: error.body }) || error.message;
+  const phase = error.message.split('\n', 1)[0];
+  return /^(?:apply|preview|poll) failed: \d+$/.test(phase) && formatted !== phase
+    ? `${phase}\n${formatted}`
+    : formatted;
 }
