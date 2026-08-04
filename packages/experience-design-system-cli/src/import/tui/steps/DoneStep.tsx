@@ -19,6 +19,7 @@ type DoneStepProps = {
   environmentId: string;
   host?: string;
   runTeaser?: string;
+  failures?: Array<{ entityType: string; entityId: string; message: string }>;
   onExit: () => void;
 };
 
@@ -30,6 +31,7 @@ export function DoneStep({
   environmentId,
   host,
   runTeaser,
+  failures = [],
   onExit,
 }: DoneStepProps): React.ReactElement {
   useImmediateInput((input, key) => {
@@ -119,6 +121,19 @@ export function DoneStep({
               {summary.failed > 0 && <Text color={PALETTE.error}>, {summary.failed} failed</Text>}
             </Box>
           )}
+        </Box>
+      )}
+
+      {failures.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text bold color={PALETTE.error}>
+            Failure details
+          </Text>
+          {failures.map((failure) => (
+            <Text key={`${failure.entityType}:${failure.entityId}`} color={PALETTE.error}>
+              {failure.entityType} {failure.entityId}: {failure.message}
+            </Text>
+          ))}
         </Box>
       )}
 

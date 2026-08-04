@@ -62,4 +62,28 @@ describe('DoneStep', () => {
     const out = lastFrame() ?? '';
     expect(out).not.toContain('removed');
   });
+
+  it('shows formatted server failure details', () => {
+    const { lastFrame } = render(
+      <DoneStep
+        componentTypes={{ created: 0, updated: 0, removed: 0, failed: 1 }}
+        designTokens={ZERO}
+        spaceId="my-space"
+        environmentId="master"
+        failures={[
+          {
+            entityType: 'ComponentType',
+            entityId: 'Button',
+            message:
+              '[BindingValidationFailed]\nPointer expression path does not exist in input data type (Path: Default › resolvers › r_-gxsm8Pv7v › query)',
+          },
+        ]}
+        onExit={() => {}}
+      />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).toContain('Failure details');
+    expect(out).toMatch(/Default › resolvers ›\s+r_-gxsm8Pv7v › query/);
+    expect(out).not.toContain('[object Object]');
+  });
 });

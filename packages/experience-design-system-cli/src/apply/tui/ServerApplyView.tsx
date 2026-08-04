@@ -7,6 +7,7 @@ import type {
 } from '@contentful/experience-design-system-types';
 import { ServerPreviewView } from './ServerPreviewView.js';
 import { buildPostPushUrl } from '../../lib/contentful-urls.js';
+import { formatEdsiError } from '../../lib/error-parser.js';
 
 interface ServerPreviewConfirmProps {
   preview: ServerPreviewResponse;
@@ -156,7 +157,5 @@ export function ServerApplyDone({ operation, spaceId, environmentId, host }: Ser
 }
 
 function formatItemError(error: ApplyOperationItem['error']): string {
-  if (!error) return '';
-  if (typeof error === 'string') return error;
-  return `${error.code}: ${error.message}`;
+  return formatEdsiError(error);
 }
