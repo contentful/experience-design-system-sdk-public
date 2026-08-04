@@ -61,6 +61,8 @@ describe('CLI entry point', () => {
       expect(stdout).toContain('--project <path>');
       expect(stdout).toContain('--dir <path>');
       expect(stdout).not.toContain('--out <path>');
+      expect(stdout).toContain('--agent <name>');
+      expect(stdout).not.toContain('--model');
     });
 
     it('extracts React components and stores them in the pipeline DB', async () => {
