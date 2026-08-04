@@ -1,9 +1,16 @@
+import { mkdtemp, writeFile, rm, chmod } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  buildArgs,
+  checkAgentAuth,
+  describeAgentFailure,
   extractSentinelOutput,
   parseToolCallLines,
   parseTokenToolCallLines,
   resolveBinary,
+  resolveAgentModel,
 } from '../../src/generate/agent-runner.js';
 
 describe('resolveBinary', () => {
@@ -499,5 +506,160 @@ describe('parseTokenToolCallLines', () => {
     const { calls, warnings } = parseTokenToolCallLines(stdout);
     expect(calls).toHaveLength(2);
     expect(warnings).toHaveLength(1);
+  });
+});
+
+describe('resolveAgentModel', () => {
+  const ENV_KEYS = [
+    'EDS_AGENT_MODEL_CLAUDE',
+    'EDS_AGENT_MODEL_CODEX',
+    'EDS_AGENT_MODEL_OPENCODE',
+    'EDS_AGENT_MODEL_CURSOR',
+  ] as const;
+  const saved: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    for (const k of ENV_KEYS) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  it('returns the explicit model when provided', () => expect(resolveAgentModel('claude', 'opus')).toBe('opus'));
+  it('trims the explicit model', () => expect(resolveAgentModel('claude', '  opus  ')).toBe('opus'));
+  it('falls back to EDS_AGENT_MODEL_<AGENT> when no explicit model', () => {
+    process.env.EDS_AGENT_MODEL_CURSOR = 'sonnet-4';
+    expect(resolveAgentModel('cursor')).toBe('sonnet-4');
+  });
+  it('explicit model wins over env', () => {
+    process.env.EDS_AGENT_MODEL_CODEX = 'gpt-x';
+    expect(resolveAgentModel('codex', 'gpt-y')).toBe('gpt-y');
+  });
+  it('returns the DEFAULT_MODELS entry when neither explicit nor env is set', () =>
+    expect(resolveAgentModel('cursor')).toBe('gpt-mini'));
+  it('ignores blank env values and falls back to default', () => {
+    process.env.EDS_AGENT_MODEL_OPENCODE = '   ';
+    expect(resolveAgentModel('opencode')).toBe('claude-haiku-4-5');
+  });
+});
+
+describe('checkAgentAuth', () => {
+  let dir: string;
+  const ENV_KEYS = [
+    'EDS_AGENT_BINARY_CLAUDE',
+    'EDS_AGENT_BINARY_CODEX',
+    'EDS_AGENT_BINARY_OPENCODE',
+    'EDS_AGENT_BINARY_CURSOR',
+  ] as const;
+  const saved: Record<string, string | undefined> = {};
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'auth-check-'));
+    for (const k of ENV_KEYS) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterEach(async () => {
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  async function stub(name: string): Promise<string> {
+    const p = join(dir, name);
+    // Minimal executable that exits 0; must never be invoked for non-claude.
+    await writeFile(p, '#!/usr/bin/env node\nprocess.exit(0);\n');
+    await chmod(p, 0o755);
+    return p;
+  }
+
+  it('returns ok for a present non-claude binary without running claude', async () => {
+    process.env.EDS_AGENT_BINARY_CODEX = await stub('codex');
+    // Point claude at a path that would fail loudly if invoked.
+    process.env.EDS_AGENT_BINARY_CLAUDE = '/nonexistent/claude-should-not-run';
+    await expect(checkAgentAuth('codex')).resolves.toBe('ok');
+  });
+
+  it('returns not-found when a non-claude binary is absent (no silent ok)', async () => {
+    process.env.EDS_AGENT_BINARY_CURSOR = join(dir, 'does-not-exist-cursor');
+    await expect(checkAgentAuth('cursor')).resolves.toBe('not-found');
+  });
+
+  it('returns not-found for claude when the claude binary is absent', async () => {
+    process.env.EDS_AGENT_BINARY_CLAUDE = join(dir, 'does-not-exist-claude');
+    await expect(checkAgentAuth('claude')).resolves.toBe('not-found');
+  });
+});
+
+describe('buildArgs model handling', () => {
+  it('uses default model for claude when none provided', () => {
+    const args = buildArgs('claude', 'PROMPT');
+    expect(args).toEqual(['--print', '--model', 'haiku', 'PROMPT']);
+  });
+  it('includes explicit --model for claude when provided', () => {
+    expect(buildArgs('claude', 'PROMPT', 'opus')).toEqual(['--print', '--model', 'opus', 'PROMPT']);
+  });
+  it('uses gpt-mini default for cursor when no model provided', () => {
+    expect(buildArgs('cursor', 'PROMPT')).toEqual(['--print', '--model', 'gpt-mini', 'PROMPT']);
+  });
+  it('preserves codex sandbox flag and uses default model', () => {
+    const args = buildArgs('codex', 'PROMPT');
+    expect(args).toEqual(['exec', '--model', 'gpt-5.4-mini', '--dangerously-bypass-approvals-and-sandbox', 'PROMPT']);
+  });
+  it('inserts explicit --model before the codex sandbox flag', () => {
+    expect(buildArgs('codex', 'PROMPT', 'gpt-5.5')).toEqual([
+      'exec',
+      '--model',
+      'gpt-5.5',
+      '--dangerously-bypass-approvals-and-sandbox',
+      'PROMPT',
+    ]);
+  });
+  it('omits the prompt positional when promptViaStdin is true', () => {
+    expect(buildArgs('opencode', 'PROMPT', undefined, true)).toEqual(['run', '--model', 'claude-haiku-4-5']);
+  });
+});
+
+describe('describeAgentFailure', () => {
+  it('includes exit code and stderr tail for a nonzero exit', () => {
+    const msg = describeAgentFailure({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'ERROR: model "claude-3-5-haiku-20241022" is no longer available',
+      timedOut: false,
+    });
+    expect(msg).toContain('agent exited with code 1');
+    expect(msg).toContain('no longer available');
+  });
+
+  it('reports "no tool calls" and falls back to stdout when stderr is empty', () => {
+    const msg = describeAgentFailure({
+      exitCode: 0,
+      stdout: 'I could not classify this component because the props were empty.',
+      stderr: '',
+      timedOut: false,
+    });
+    expect(msg).toContain('agent produced no tool calls');
+    expect(msg).toContain('props were empty');
+  });
+
+  it('truncates long detail to the tail', () => {
+    const long = 'x'.repeat(2000) + 'TAIL_MARKER';
+    const msg = describeAgentFailure({ exitCode: 1, stdout: '', stderr: long, timedOut: false }, 800);
+    expect(msg).toContain('TAIL_MARKER');
+    expect(msg.length).toBeLessThan(900);
+  });
+
+  it('returns the base message alone when there is no stderr/stdout detail', () => {
+    const msg = describeAgentFailure({ exitCode: 127, stdout: '', stderr: '', timedOut: false });
+    expect(msg).toBe('agent exited with code 127');
   });
 });

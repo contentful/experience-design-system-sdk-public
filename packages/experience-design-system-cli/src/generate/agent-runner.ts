@@ -316,14 +316,6 @@ const AGENT_BINARIES: Record<AgentName, string> = {
   cursor: 'cursor-agent',
 };
 
-// Default to small/fast models for single-component classification — cheap and accurate enough.
-const DEFAULT_MODELS: Record<AgentName, string> = {
-  claude: 'haiku',
-  codex: 'gpt-5.4-mini', // requires OPENAI_API_KEY; ChatGPT account users must pass --model
-  opencode: 'claude-haiku-4-5',
-  cursor: 'claude-3-5-haiku-20241022',
-};
-
 export function resolveBinary(agent: AgentName): string {
   const envKey = `EDS_AGENT_BINARY_${agent.toUpperCase()}`;
   const override = process.env[envKey];
@@ -331,23 +323,48 @@ export function resolveBinary(agent: AgentName): string {
   return AGENT_BINARIES[agent];
 }
 
-function buildArgs(agent: AgentName, prompt: string, model?: string, promptViaStdin = false): string[] {
-  const m = model ?? DEFAULT_MODELS[agent];
+/**
+ * Default models per agent — lightweight/fast picks to control cost when no
+ * explicit model is configured. cursor uses `gpt-mini` (verified alias from
+ * GetUsableModels; haiku is not available in cursor's model catalog).
+ */
+const DEFAULT_MODELS: Record<AgentName, string> = {
+  claude: 'haiku',
+  codex: 'gpt-5.4-mini', // requires OPENAI_API_KEY; ChatGPT account users must pass --model
+  opencode: 'claude-haiku-4-5',
+  cursor: 'gpt-mini', // cursor alias for gpt-5.4-mini-medium; haiku not in cursor's catalog
+};
+
+/**
+ * Resolve the model for an agent. Explicit flag/creds value wins, then a
+ * per-agent `EDS_AGENT_MODEL_<AGENT>` env override (mirrors the
+ * `EDS_AGENT_BINARY_<AGENT>` pattern), otherwise the lightweight default for
+ * that agent.
+ */
+export function resolveAgentModel(agent: AgentName, explicit?: string): string {
+  if (explicit && explicit.trim()) return explicit.trim();
+  const override = process.env[`EDS_AGENT_MODEL_${agent.toUpperCase()}`];
+  if (override && override.trim()) return override.trim();
+  return DEFAULT_MODELS[agent];
+}
+
+export function buildArgs(agent: AgentName, prompt: string, model?: string, promptViaStdin = false): string[] {
+  const modelArg = ['--model', resolveAgentModel(agent, model)];
   // When the prompt is delivered on stdin, omit it from argv — a large prompt
   // as a command-line argument overflows ARG_MAX (spawn E2BIG). All four CLIs
   // read the prompt from stdin when it isn't passed positionally.
   const promptArg = promptViaStdin ? [] : [prompt];
   switch (agent) {
     case 'claude':
-      return ['--print', '--model', m, ...promptArg];
+      return ['--print', ...modelArg, ...promptArg];
     case 'codex':
       // --dangerously-bypass-approvals-and-sandbox required for non-interactive use
-      return ['exec', '--model', m, '--dangerously-bypass-approvals-and-sandbox', ...promptArg];
+      return ['exec', ...modelArg, '--dangerously-bypass-approvals-and-sandbox', ...promptArg];
     case 'opencode':
-      return ['run', '--model', m, ...promptArg];
+      return ['run', ...modelArg, ...promptArg];
     case 'cursor':
       // cursor-agent uses --print for non-interactive stdout output
-      return ['--print', '--model', m, ...promptArg];
+      return ['--print', ...modelArg, ...promptArg];
   }
 }
 
@@ -448,14 +465,13 @@ export async function runAgent(options: {
 export type AgentAuthStatus = 'ok' | 'unauthenticated' | 'not-found';
 
 export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus> {
-  if (agent !== 'claude') return 'ok';
-
   const binary = resolveBinary(agent);
 
-  // Verify the binary exists first. When `binary` is an absolute path (e.g.
-  // set via EDS_AGENT_BINARY_CLAUDE=/opt/custom/claude), `which` on some
-  // shells doesn't resolve it — check the filesystem directly for absolute
-  // paths, and fall back to `which` for bare names on $PATH.
+  // Verify the selected agent's binary exists first — for EVERY agent, not
+  // just claude. When `binary` is an absolute path (e.g. set via
+  // EDS_AGENT_BINARY_<AGENT>=/opt/custom/bin), `which` on some shells doesn't
+  // resolve it — check the filesystem directly for absolute paths, and fall
+  // back to `which` for bare names on $PATH.
   const binaryExists = await new Promise<boolean>((resolve) => {
     if (binary.startsWith('/')) {
       import('node:fs/promises').then((fs) =>
@@ -470,6 +486,11 @@ export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus>
     child.on('close', (code) => resolve(code === 0));
   });
   if (!binaryExists) return 'not-found';
+
+  // Only Claude exposes `auth status --json`. Non-Claude agents are considered
+  // authenticated once their binary is present — never gate them on claude
+  // (e.g. Codex-via-Bedrock users would otherwise be blocked by a claude check).
+  if (agent !== 'claude') return 'ok';
 
   // Use `claude auth status` — fast, no API call, works regardless of which
   // auth provider (direct, Bedrock, Vertex) or whether AWS_PROFILE is set.
@@ -509,6 +530,19 @@ export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus>
       }
     });
   });
+}
+
+/**
+ * Build a diagnostic string from a failed agent run, surfacing the agent's own
+ * stderr (or stdout, when stderr is empty) so callers never emit a context-free
+ * "agent failed". Callers only invoke this on a failed run: either a non-zero
+ * exit, or a zero exit that produced no tool calls. A non-zero exit is reported
+ * as such; a zero exit is therefore the "produced no tool calls" case.
+ */
+export function describeAgentFailure(result: AgentRunResult, maxDetail = 800): string {
+  const base = result.exitCode !== 0 ? `agent exited with code ${result.exitCode}` : 'agent produced no tool calls';
+  const detail = (result.stderr.trim() || result.stdout.trim()).slice(-maxDetail).trim();
+  return detail ? `${base} — ${detail}` : base;
 }
 
 export function extractSentinelOutput(stdout: string): string | null | 'multiple' {

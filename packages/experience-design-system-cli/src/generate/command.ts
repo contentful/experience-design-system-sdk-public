@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import type { Command } from 'commander';
 import {
   type AgentName,
+  describeAgentFailure,
   parseToolCallLines,
   parseTokenToolCallLines,
   resolveBinary,
@@ -303,14 +304,14 @@ async function runOneComponent(
     }
 
     if (result.exitCode !== 0) {
-      lastError = `agent exited with code ${result.exitCode}`;
+      lastError = describeAgentFailure(result);
       continue;
     }
 
     const { calls, warnings } = parseToolCallLines(result.stdout);
 
     if (calls.length === 0) {
-      lastError = 'agent produced no tool calls';
+      lastError = describeAgentFailure(result);
       continue;
     }
 
@@ -611,7 +612,9 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     process.stdout.write(`renamed-slots: ${totalRenamedSlots}\n`);
 
     if (generated.length === 0 && cachedResults.length === 0) {
-      die('Error: all components failed to generate — check agent output above');
+      die(
+        `Error: all ${componentResults.length} component(s) failed to generate — see the per-component errors above.`,
+      );
     }
   } else if (skill === 'tokens') {
     const noCache = opts.cache === false || process.env.EDS_NO_CACHE === '1';
@@ -753,7 +756,10 @@ function addAgentFlags(cmd: Command): Command {
       '--agent <name>',
       'Agent to use: claude, codex, opencode, cursor (defaults to value saved by experiences setup)',
     )
-    .option('--model <name>', 'Model to use (defaults to a small/fast model per agent)')
+    .option(
+      '--model <name>',
+      'Model to use (defaults to a lightweight per-agent model; override with EDS_AGENT_MODEL_<AGENT>)',
+    )
     .option('--verbose', 'Show full agent output including reasoning text')
     .option('--dry-run', 'Print the prompt without invoking the agent')
     .option(

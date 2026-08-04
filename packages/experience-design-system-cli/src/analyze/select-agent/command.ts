@@ -416,7 +416,10 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
       '--agent <name>',
       'Agent to use: claude, codex, opencode, cursor (defaults to value saved by experiences setup)',
     )
-    .option('--model <name>', 'Model to use (defaults to a small/fast model per agent)')
+    .option(
+      '--model <name>',
+      'Model to use (defaults to a lightweight per-agent model; override with EDS_AGENT_MODEL_<AGENT>)',
+    )
     .option('--verbose', 'Show full agent output including reasoning text')
     .option('--dry-run', 'Print the prompt for the first component without invoking the agent')
     .option(
