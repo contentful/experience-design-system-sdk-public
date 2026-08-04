@@ -1,0 +1,36 @@
+{
+  "name": "experience-design-system-client",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/experience-design-system-client/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {
+    "codegen": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsx bin/generate.ts",
+        "cwd": "packages/experience-design-system-client"
+      },
+      "inputs": ["{projectRoot}/openapi.json"],
+      "outputs": ["{projectRoot}/src/generated"]
+    },
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "packages/experience-design-system-client/dist",
+        "main": "packages/experience-design-system-client/src/index.ts",
+        "tsConfig": "packages/experience-design-system-client/tsconfig.build.json",
+        "assets": []
+      },
+      "dependsOn": ["codegen", "^clean"]
+    },
+    "test": { "executor": "nx:run-commands", "options": { "command": "vitest run", "cwd": "packages/experience-design-system-client" }, "dependsOn": ["build"] },
+    "test:watch": { "executor": "nx:run-commands", "options": { "command": "vitest", "cwd": "packages/experience-design-system-client" }, "dependsOn": ["build"] },
+    "lint": { "executor": "nx:run-commands", "options": { "command": "eslint", "cwd": "packages/experience-design-system-client" }, "dependsOn": ["build"] },
+    "lint:fix": { "executor": "nx:run-commands", "options": { "command": "eslint --fix", "cwd": "packages/experience-design-system-client" }, "dependsOn": ["build"] },
+    "typecheck": { "executor": "nx:run-commands", "options": { "command": "tsc --noEmit", "cwd": "packages/experience-design-system-client" }, "dependsOn": ["build"] },
+    "clean": { "executor": "nx:run-commands", "options": { "command": "rm -rf dist", "cwd": "packages/experience-design-system-client" } },
+    "nx-release-publish": { "executor": "@nx/js:release-publish", "options": { "packageRoot": "packages/experience-design-system-client" }, "dependsOn": ["build"] }
+  }
+}
