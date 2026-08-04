@@ -356,7 +356,9 @@ export function registerAnalyzeCommand(program: Command): void {
         const nonAuthorableReason = retainedForReview ? [`non-authorable:${verdict.reason}`] : [];
         const { confidence, reasons } = computeExtractionScore(component, {
           additionalIssueCount:
-            wrapperConfidenceToIssueCount(inspection.wrapperConfidence) + extractorReasons.length + nonAuthorableReason.length,
+            wrapperConfidenceToIssueCount(inspection.wrapperConfidence) +
+            extractorReasons.length +
+            nonAuthorableReason.length,
           additionalReasons: [...extractorReasons, ...inspection.reviewReasons, ...nonAuthorableReason],
         });
         filteredComponents.push({

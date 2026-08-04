@@ -1490,7 +1490,9 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
     let reviewReasons: string[] = [];
     try {
       const parsed = JSON.parse(r.review_reasons) as unknown;
-      reviewReasons = Array.isArray(parsed) ? parsed.filter((reason): reason is string => typeof reason === 'string') : [];
+      reviewReasons = Array.isArray(parsed)
+        ? parsed.filter((reason): reason is string => typeof reason === 'string')
+        : [];
     } catch {
       // A malformed historical value should not prevent the scope gate from opening.
     }
