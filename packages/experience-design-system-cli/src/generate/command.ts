@@ -7,7 +7,9 @@ import { promisify } from 'node:util';
 import type { Command } from 'commander';
 import {
   type AgentName,
+  AGENT_NAMES,
   describeAgentFailure,
+  isAgentName,
   parseToolCallLines,
   parseTokenToolCallLines,
   resolveBinary,
@@ -43,7 +45,6 @@ import { addAgentModelOptions } from '../lib/agent-model-options.js';
 
 const execFileAsync = promisify(execFile);
 
-const VALID_AGENTS = new Set<string>(['claude', 'codex', 'opencode', 'cursor']);
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 3 * 60 * 1000);
 const DEFAULT_COMPONENT_CONCURRENCY = 10;
 const RETRY_BACKOFF_MS = Number(process.env.EDS_RETRY_BACKOFF_MS ?? 5_000);
@@ -441,12 +442,12 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
   const savedCreds = await readExperiencesCredentials();
   const agentName = opts.agent ?? savedCreds.agent;
   const model = opts.model ?? savedCreds.agentModel;
-  if (!agentName || !VALID_AGENTS.has(agentName)) {
+  if (!agentName || !isAgentName(agentName)) {
     die(
-      `Error: no agent configured. Pass --agent <name> or run experiences setup. Accepted values: claude, codex, opencode, cursor`,
+      `Error: no agent configured. Pass --agent <name> or run experiences setup. Accepted values: ${AGENT_NAMES.join(', ')}`,
     );
   }
-  const agent = agentName as AgentName;
+  const agent = agentName;
 
   // Feature 8: resolve custom-prompt path for `components` (flag wins over
   // saved credentials), validate, and emit the warning banner once at action

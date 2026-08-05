@@ -31,7 +31,7 @@ import {
   storeCompositionCache,
 } from '../session/db.js';
 import { findSlotCycles, suggestCycleBreakEdge } from './cycle-detection.js';
-import { resolveCompositionMode } from '../lib/composition-mode.js';
+import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import { resolveMapping } from './composition/resolve-mapping.js';
 import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
 import { selectCandidateFiles, capCandidatesToPromptBudget } from './composition/candidate-files.js';
@@ -43,7 +43,7 @@ import { runParserInSandbox } from './composition/agent-parser/sandbox.js';
 import { resolveViaAgentParser } from './composition/agent-parser/resolve-via-parser.js';
 import type { RawSlotDefinition } from '../types.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
-import { runAgent, type AgentName } from '../generate/agent-runner.js';
+import { AGENT_NAMES, isAgentName, runAgent, type AgentName } from '../generate/agent-runner.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
 
@@ -157,7 +157,7 @@ export async function collectSourceFiles(
 }
 
 /** Read the persisted default composition mode; missing config is fine. */
-async function safeReadCompositionMode(): Promise<'composite' | 'atomic' | undefined> {
+async function safeReadCompositionMode(): Promise<CompositionMode | undefined> {
   try {
     return (await readExperiencesCredentials()).compositionMode;
   } catch {
@@ -188,11 +188,10 @@ export function componentsToInterchangeMap(
 
 /** Resolve which coding-agent runs mapping resolution: `--agent` flag > env > default. */
 function resolveCompositionAgentName(flagValue?: string): AgentName {
-  const valid: AgentName[] = ['claude', 'codex', 'opencode', 'cursor'];
-  if (flagValue && (valid as string[]).includes(flagValue)) return flagValue as AgentName;
+  if (flagValue && isAgentName(flagValue)) return flagValue;
   const env = process.env['EDS_COMPOSITION_AGENT'];
-  if (env && (valid as string[]).includes(env)) return env as AgentName;
-  return 'claude';
+  if (env && isAgentName(env)) return env;
+  return AGENT_NAMES[0];
 }
 
 /**

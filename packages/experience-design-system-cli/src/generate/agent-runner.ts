@@ -1,7 +1,13 @@
 import { spawn } from 'node:child_process';
 import { getDebugLogger } from '../lib/debug-logger.js';
 
-export type AgentName = 'claude' | 'codex' | 'opencode' | 'cursor';
+export const AGENT_NAMES = ['claude', 'codex', 'opencode', 'cursor'] as const;
+
+export type AgentName = (typeof AGENT_NAMES)[number];
+
+export function isAgentName(value: string): value is AgentName {
+  return (AGENT_NAMES as readonly string[]).includes(value);
+}
 
 export interface AgentRunResult {
   exitCode: number;

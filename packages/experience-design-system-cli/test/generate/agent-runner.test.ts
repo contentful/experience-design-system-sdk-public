@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  AGENT_NAMES,
   buildArgs,
   checkAgentAuth,
   describeAgentFailure,
@@ -11,7 +12,16 @@ import {
   parseTokenToolCallLines,
   resolveBinary,
   resolveAgentModel,
+  isAgentName,
 } from '../../src/generate/agent-runner.js';
+
+describe('agent definitions', () => {
+  it('exposes the canonical agent names and validates against them', () => {
+    expect(AGENT_NAMES).toEqual(['claude', 'codex', 'opencode', 'cursor']);
+    expect(AGENT_NAMES.every(isAgentName)).toBe(true);
+    expect(isAgentName('other')).toBe(false);
+  });
+});
 
 describe('resolveBinary', () => {
   const ENV_KEYS = [

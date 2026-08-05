@@ -3,6 +3,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, it, expect } from 'vitest';
+import { Command } from 'commander';
+import { registerApplyCommand } from '../../src/apply/command.js';
 
 const bin = resolve(import.meta.dirname, '../../bin/cli.js');
 const fixturesDir = resolve(import.meta.dirname, '../fixtures/import');
@@ -32,6 +34,61 @@ function run(
 }
 
 describe('apply command — help', () => {
+  it('keeps each subcommand flag inventory stable when options are registered through helpers', () => {
+    const program = new Command();
+    registerApplyCommand(program);
+    const apply = program.commands.find((command) => command.name() === 'apply');
+    expect(apply).toBeDefined();
+
+    const flags = (name: string) =>
+      apply!.commands
+        .find((command) => command.name() === name)!
+        .options.map((option) => option.long)
+        .sort();
+
+    expect(flags('preview')).toEqual([
+      '--atomic',
+      '--cma-token',
+      '--components',
+      '--composite',
+      '--environment-id',
+      '--host',
+      '--session',
+      '--space-id',
+      '--tokens',
+    ]);
+    expect(flags('push')).toEqual([
+      '--atomic',
+      '--cma-token',
+      '--components',
+      '--composite',
+      '--dry-run',
+      '--environment-id',
+      '--force',
+      '--host',
+      '--session',
+      '--space-id',
+      '--tokens',
+      '--verbose',
+      '--yes',
+    ]);
+    expect(flags('select')).toEqual([
+      '--atomic',
+      '--cma-token',
+      '--components',
+      '--composite',
+      '--deselect',
+      '--environment-id',
+      '--force',
+      '--host',
+      '--select',
+      '--select-all',
+      '--session',
+      '--space-id',
+      '--tokens',
+    ]);
+  });
+
   it('prints apply help', async () => {
     const { stdout, code } = await run(['apply', '--help']);
     expect(code).toBe(0);

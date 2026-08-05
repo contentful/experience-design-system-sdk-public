@@ -20,7 +20,13 @@ import { isEmptyPreview } from './preview-utils.js';
 import { ServerPreviewApp, ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
 import { SelectView, makeSelectKey, type SelectableEntity } from './tui/SelectView.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
-import { resolveCompositionMode } from '../lib/composition-mode.js';
+import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
+import {
+  addArtifactInputOptions,
+  addCompositionOptions,
+  addContentfulTargetOptions,
+  addSelectionOptions,
+} from '../lib/command-options.js';
 import { stripAllowedComponents } from '../import/strip-allowed-components.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 
@@ -211,7 +217,7 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   // (rather than only in loadCDFComponents) also covers hand-authored
   // `--components` files. Starving `$allowedComponents` at this one point
   // means slot-cycle detection downstream structurally returns zero.
-  let configMode: 'composite' | 'atomic' | undefined;
+  let configMode: CompositionMode | undefined;
   try {
     configMode = (await readExperiencesCredentials()).compositionMode;
   } catch {
@@ -495,86 +501,71 @@ function SelectApp({ entities, spaceId, environmentId, onApply }: SelectAppProps
   });
 }
 
-function collect(val: string, prev: string[]): string[] {
-  return [...prev, val];
-}
-
 export function registerApplyCommand(program: Command): void {
   const applyCmd = program
     .command('apply')
     .description('Preview, select, or push design system entities to Contentful ExO');
 
-  applyCmd
-    .command('preview')
-    .description('Show a read-only diff of what apply push would do')
-    .option('--components <path>', 'Path to components.json (CDF)')
-    .option('--tokens <path>', 'Path to tokens.json (DTCG)')
-    .option('--session <id>', 'Pipeline session ID to load generated components from')
-    .requiredOption('--space-id <id>', 'Contentful space ID')
-    .requiredOption('--environment-id <id>', 'Contentful environment ID')
-    .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
-    .option('--host <url>', 'Override API base URL')
-    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
-    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
-    .action(async (opts: PreviewOptions) => {
-      let inputs: Awaited<ReturnType<typeof resolveSharedInputs>>;
-      try {
-        inputs = await resolveSharedInputs(opts);
-      } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
-        throw e;
-      }
+  addCompositionOptions(
+    addContentfulTargetOptions(
+      addArtifactInputOptions(
+        applyCmd.command('preview').description('Show a read-only diff of what apply push would do'),
+      ),
+    ),
+  ).action(async (opts: PreviewOptions) => {
+    let inputs: Awaited<ReturnType<typeof resolveSharedInputs>>;
+    try {
+      inputs = await resolveSharedInputs(opts);
+    } catch (e) {
+      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      throw e;
+    }
 
-      const { components, tokens, client } = inputs;
+    const { components, tokens, client } = inputs;
 
-      try {
-        await client.validateToken();
-      } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
-        const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : '';
-        die(`Error: unable to connect to API host${cause ? `: ${cause}` : ''}`);
-      }
+    try {
+      await client.validateToken();
+    } catch (e) {
+      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : '';
+      die(`Error: unable to connect to API host${cause ? `: ${cause}` : ''}`);
+    }
 
-      const manifest = buildManifest(components, tokens);
+    const manifest = buildManifest(components, tokens);
 
-      let preview: ServerPreviewResponse;
-      try {
-        preview = await client.previewImport(manifest);
-      } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
-        throw e;
-      }
+    let preview: ServerPreviewResponse;
+    try {
+      preview = await client.previewImport(manifest);
+    } catch (e) {
+      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      throw e;
+    }
 
-      const spaceId = opts.spaceId!;
-      const environmentId = opts.environmentId!;
+    const spaceId = opts.spaceId!;
+    const environmentId = opts.environmentId!;
 
-      if (process.stdout.isTTY) {
-        const { waitUntilExit } = render(
-          createElement(ServerPreviewApp, {
-            preview,
-            spaceId,
-            environmentId,
-          }),
-        );
-        await waitUntilExit();
-      } else {
-        process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-        process.exit(0);
-      }
-    });
+    if (process.stdout.isTTY) {
+      const { waitUntilExit } = render(
+        createElement(ServerPreviewApp, {
+          preview,
+          spaceId,
+          environmentId,
+        }),
+      );
+      await waitUntilExit();
+    } else {
+      process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
+      process.exit(0);
+    }
+  });
 
-  applyCmd
-    .command('push')
-    .description('Write component types and design tokens to Contentful ExO')
-    .option('--components <path>', 'Path to components.json (CDF)')
-    .option('--tokens <path>', 'Path to tokens.json (DTCG)')
-    .option('--session <id>', 'Pipeline session ID to load generated components from')
-    .requiredOption('--space-id <id>', 'Contentful space ID')
-    .requiredOption('--environment-id <id>', 'Contentful environment ID')
-    .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
-    .option('--host <url>', 'Override API base URL')
-    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
-    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
+  addCompositionOptions(
+    addContentfulTargetOptions(
+      addArtifactInputOptions(
+        applyCmd.command('push').description('Write component types and design tokens to Contentful ExO'),
+      ),
+    ),
+  )
     .option('--yes', 'Skip interactive confirmation')
     .option('--verbose', 'Show all entity progress including skipped/unchanged')
     .option('--force', 'Skip confirmation for breaking changes (for CI)')
@@ -767,21 +758,15 @@ export function registerApplyCommand(program: Command): void {
       });
     });
 
-  applyCmd
-    .command('select')
-    .description('Select a subset of entities and push to Contentful ExO')
-    .option('--components <path>', 'Path to components.json (CDF)')
-    .option('--tokens <path>', 'Path to tokens.json (DTCG)')
-    .option('--session <id>', 'Pipeline session ID to load generated components from')
-    .requiredOption('--space-id <id>', 'Contentful space ID')
-    .requiredOption('--environment-id <id>', 'Contentful environment ID')
-    .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
-    .option('--host <url>', 'Override API base URL')
-    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
-    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
-    .option('--select-all', 'Select all entities without launching TUI')
-    .option('--select <pattern>', 'Select entities by ID pattern (repeatable)', collect, [])
-    .option('--deselect <pattern>', 'Deselect entities by ID pattern (repeatable)', collect, [])
+  addSelectionOptions(
+    addCompositionOptions(
+      addContentfulTargetOptions(
+        addArtifactInputOptions(
+          applyCmd.command('select').description('Select a subset of entities and push to Contentful ExO'),
+        ),
+      ),
+    ),
+  )
     .option('--force', 'Skip confirmation for breaking changes')
     .action(async (opts: SelectOptions) => {
       const nonInteractive = opts.selectAll || (opts.select ?? []).length > 0 || (opts.deselect ?? []).length > 0;

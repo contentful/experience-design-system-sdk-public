@@ -24,7 +24,7 @@ import { loadReviewInput } from '../select/parser.js';
 import type { ReviewSessionSnapshot } from '../select/types.js';
 import { buildPrompt } from '../../generate/prompt-builder.js';
 import { formatCustomPromptBanner } from '../../generate/command.js';
-import { parseSelectToolCallLines, runAgent } from '../../generate/agent-runner.js';
+import { AGENT_NAMES, isAgentName, parseSelectToolCallLines, runAgent } from '../../generate/agent-runner.js';
 import { access } from 'node:fs/promises';
 import type { AgentName, SelectToolCall } from '../../generate/agent-runner.js';
 import type { RawComponentDefinition } from '../../types.js';
@@ -39,7 +39,6 @@ import {
   formatExclusionWarning,
 } from '@contentful/experience-design-system-extraction';
 
-const VALID_AGENTS = new Set<string>(['claude', 'codex', 'opencode', 'cursor']);
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 3 * 60 * 1000);
 export const DEFAULT_CONCURRENCY = 10;
 export const DEFAULT_BATCH_SIZE = 5;
@@ -466,15 +465,15 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         const savedCreds = await readExperiencesCredentials();
         const agentName = opts.agent ?? savedCreds.agent;
         const model = opts.model ?? savedCreds.agentModel;
-        if (!agentName || !VALID_AGENTS.has(agentName)) {
+        if (!agentName || !isAgentName(agentName)) {
           process.stderr.write(
-            `Error: no agent configured. Pass --agent <name> or run experiences setup. Accepted values: claude, codex, opencode, cursor\n`,
+            `Error: no agent configured. Pass --agent <name> or run experiences setup. Accepted values: ${AGENT_NAMES.join(', ')}\n`,
           );
           process.exit(1);
           return;
         }
 
-        const agent = agentName as AgentName;
+        const agent = agentName;
 
         // Feature 8: validate + announce custom prompt path before any heavy
         // work. Flag wins over saved credentials.

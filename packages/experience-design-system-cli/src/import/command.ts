@@ -5,6 +5,7 @@ import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
+import { addCompositionOptions, isConflictMode, type ConflictMode } from '../lib/command-options.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { replayRun, modifyRun } from '../runs/replay-helpers.js';
@@ -64,9 +65,9 @@ export function registerImportCommand(program: Command): void {
       '--print-prompt',
       'Print the generate components prompt without invoking the agent. Replaces the legacy --dry-run prompt-print behaviour on this command.',
     )
-    .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)')
-    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
-    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
+    .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)');
+  addCompositionOptions(cmd);
+  cmd
     .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
     .option(
       '--composition-agent',
@@ -112,8 +113,8 @@ export function registerImportCommand(program: Command): void {
     .option(
       '--on-conflict <mode>',
       "How to handle existing components.json / tokens.json at the save path: 'overwrite' replaces files, 'skip' writes to a timestamped subdirectory, 'fail' exits non-zero. Skips the wizard's interactive conflict gate when set.",
-      (value: string): string => {
-        if (value !== 'overwrite' && value !== 'skip' && value !== 'fail') {
+      (value: string): ConflictMode => {
+        if (!isConflictMode(value)) {
           process.stderr.write(`Error: invalid --on-conflict value '${value}'. Use one of: overwrite, skip, fail.\n`);
           process.exit(1);
         }
@@ -180,7 +181,7 @@ export function registerImportCommand(program: Command): void {
         push?: boolean;
         save?: boolean;
         outDir?: string;
-        onConflict?: 'overwrite' | 'skip' | 'fail';
+        onConflict?: ConflictMode;
         selectPromptPath?: string;
         generatePromptPath?: string;
         pushFromRun?: string;
@@ -408,7 +409,7 @@ export function registerImportCommand(program: Command): void {
             noPush?: boolean;
             noSave?: boolean;
             outDirOverride?: string;
-            onConflictMode?: 'overwrite' | 'skip' | 'fail';
+            onConflictMode?: ConflictMode;
             selectPromptPath?: string;
             generatePromptPath?: string;
             initialRawTokensPath?: string;
