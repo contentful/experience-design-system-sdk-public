@@ -1,0 +1,54 @@
+{
+  "name": "@contentful/experience-design-system-client",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "module": "./dist/src/index.js",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "node": "./dist/src/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "files": ["dist/"],
+  "scripts": {
+    "codegen": "tsx bin/generate.ts",
+    "build": "nx build experience-design-system-client",
+    "typecheck": "nx typecheck experience-design-system-client",
+    "clean": "nx clean experience-design-system-client",
+    "test": "nx test experience-design-system-client",
+    "test:watch": "nx test:watch experience-design-system-client",
+    "lint": "nx lint experience-design-system-client",
+    "lint:fix": "nx lint:fix experience-design-system-client"
+  },
+  "dependencies": {
+    "@hey-api/client-fetch": "^0.9.0"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "^0.80.1",
+    "@tsconfig/node24": "^24.0.3",
+    "@types/node": "^24.0.3",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "tsx": "^4.20.7",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.52.0",
+    "vitest": "^4.0.16"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/contentful/experience-design-system-sdk-public.git",
+    "directory": "packages/experience-design-system-client"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
