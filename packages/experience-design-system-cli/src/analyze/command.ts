@@ -46,6 +46,7 @@ import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overr
 import { runAgent, type AgentName } from '../generate/agent-runner.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
+import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
 
 interface AnalyzeExtractOptions {
   project: string;
@@ -640,7 +641,7 @@ export function registerAnalyzeCommand(program: Command): void {
         globalWarnings,
       };
 
-      if (process.stdout.isTTY) {
+      if (getInteractiveTerminalSupport().supported) {
         const { waitUntilExit } = render(
           createElement(AnalyzeView, {
             result: analyzeResult,

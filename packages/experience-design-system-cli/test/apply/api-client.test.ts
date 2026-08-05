@@ -7,19 +7,28 @@ import {
   APPLY_ERROR_PREFIX,
 } from '../../src/apply/api-client.js';
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
+import { formatApiError } from '../../src/lib/error-parser.js';
+import * as debugLogger from '../../src/lib/debug-logger.js';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 afterEach(() => {
-  vi.resetAllMocks();
+  vi.restoreAllMocks();
+  mockFetch.mockReset();
 });
 
-function createClient() {
+function createClient(retry?: {
+  maxAttempts?: number;
+  initialDelayMs?: number;
+  maxDelayMs?: number;
+  sleep?: (delayMs: number) => Promise<void>;
+}) {
   return new ImportApiClient({
     cmaToken: 'test-token',
     spaceId: 'space1',
     environmentId: 'master',
+    retry,
   });
 }
 
@@ -176,6 +185,115 @@ describe('ImportApiClient — previewImport', () => {
 
     const client = createClient();
     await expect(client.previewImport({})).rejects.toThrow(ApiError);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a 5xx response and honors Retry-After', async () => {
+    const serverResponse: ServerPreviewResponse = {
+      components: { new: [], changed: [], unchanged: [], removed: [] },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    };
+    const sleep = vi.fn(async () => undefined);
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        headers: new Headers({ 'Retry-After': '1' }),
+        text: () => Promise.resolve('temporarily unavailable'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: () => Promise.resolve(serverResponse),
+      });
+
+    const client = createClient({ maxAttempts: 3, initialDelayMs: 10, maxDelayMs: 20, sleep });
+    await expect(client.previewImport({})).resolves.toEqual(serverResponse);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(1000);
+  });
+
+  it('retries transport failures', async () => {
+    const serverResponse: ServerPreviewResponse = {
+      components: { new: [], changed: [], unchanged: [], removed: [] },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    };
+    const sleep = vi.fn(async () => undefined);
+    mockFetch.mockRejectedValueOnce(new TypeError('connection reset')).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: () => Promise.resolve(serverResponse),
+    });
+
+    const client = createClient({ maxAttempts: 2, initialDelayMs: 25, sleep });
+    await expect(client.previewImport({})).resolves.toEqual(serverResponse);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(25);
+  });
+
+  it('throws an actionable ApiError after retry exhaustion', async () => {
+    const sleep = vi.fn(async () => undefined);
+    mockFetch.mockRejectedValue(new TypeError('socket closed'));
+
+    const client = createClient({ maxAttempts: 3, initialDelayMs: 1, sleep });
+    const error = await client.previewImport({}).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 0 });
+    expect((error as ApiError).body).toContain('failed after 3 attempts');
+    expect((error as ApiError).body).toContain('Check your connection and try again');
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('preserves a structured 5xx body for formatting and records final exhaustion', async () => {
+    const body = JSON.stringify({ sys: { type: 'Error', id: 'ServiceUnavailable' }, message: 'Warming up' });
+    const event = vi.fn();
+    vi.spyOn(debugLogger, 'getDebugLogger').mockReturnValue({ enabled: true, path: null, event });
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 503,
+      headers: new Headers(),
+      text: () => Promise.resolve(body),
+    });
+
+    const client = createClient({ maxAttempts: 2, initialDelayMs: 1, sleep: vi.fn(async () => undefined) });
+    const error = await client.previewImport({}).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).body).toBe(body);
+    expect((error as ApiError).guidance).toContain('failed after 2 attempts');
+    expect(formatApiError(error as ApiError)).toContain('[ServiceUnavailable]');
+    expect(formatApiError(error as ApiError)).toContain('Wait a moment and try again');
+    expect(event).toHaveBeenCalledWith(
+      'apply',
+      'preview.error',
+      expect.objectContaining({ status: 503, reason: 'retry_exhausted', attempt: 2 }),
+    );
+  });
+
+  it('caps exponential retry delays', async () => {
+    const serverResponse: ServerPreviewResponse = {
+      components: { new: [], changed: [], unchanged: [], removed: [] },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    };
+    const sleep = vi.fn(async () => undefined);
+    mockFetch
+      .mockResolvedValueOnce({ ok: false, status: 503, headers: new Headers(), text: () => Promise.resolve('') })
+      .mockResolvedValueOnce({ ok: false, status: 503, headers: new Headers(), text: () => Promise.resolve('') })
+      .mockResolvedValueOnce({ ok: false, status: 503, headers: new Headers(), text: () => Promise.resolve('') })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(serverResponse) });
+
+    const client = createClient({ maxAttempts: 4, initialDelayMs: 10, maxDelayMs: 15, sleep });
+    await client.previewImport({});
+
+    expect(sleep.mock.calls).toEqual([[10], [15], [15]]);
   });
 
   it('does not send x-contentful-organization-id header (server resolves org from space)', async () => {
@@ -284,6 +402,42 @@ describe('ImportApiClient — applyImport', () => {
 
     const client = createClient();
     await expect(client.applyImport({ componentsManifest: { Button: {} } }, false)).rejects.toThrow(ApiError);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a 5xx because the POST may have started an operation', async () => {
+    const body = JSON.stringify({ sys: { type: 'Error', id: 'ServiceUnavailable' }, message: 'Warming up' });
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 503,
+      headers: new Headers({ 'Retry-After': '1' }),
+      text: () => Promise.resolve(body),
+    });
+
+    const client = createClient({ maxAttempts: 3, sleep: vi.fn(async () => undefined) });
+    const error = await client.applyImport({}, false).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).body).toBe(body);
+    expect((error as ApiError).guidance).toContain('was not retried');
+    expect((error as ApiError).guidance).toContain('could create a duplicate');
+    expect((error as ApiError).guidance).toContain('Check for an existing operation');
+    expect(formatApiError(error as ApiError)).toContain('[ServiceUnavailable]');
+    expect(formatApiError(error as ApiError)).toContain('was not retried');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a transport failure because the POST outcome is unknown', async () => {
+    mockFetch.mockRejectedValue(new TypeError('connection reset'));
+
+    const client = createClient({ maxAttempts: 3, sleep: vi.fn(async () => undefined) });
+    const error = await client.applyImport({}, false).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 0 });
+    expect((error as ApiError).body).toContain('outcome is unknown');
+    expect((error as ApiError).body).toContain('could start a duplicate operation');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -390,6 +544,90 @@ describe('ImportApiClient — pollOperation', () => {
 
     const client = createClient();
     await expect(client.pollOperation('op-1')).rejects.toThrow(ApiError);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a 5xx poll response before returning the operation', async () => {
+    const finalOp: ApplyOperationResponse = {
+      sys: {
+        type: 'ApplyOperation',
+        id: 'op-1',
+        status: 'succeeded',
+        createdAt: '2026-01-01T00:00:00Z',
+        createdBy: { sys: { type: 'Link', linkType: 'User', id: 'user-1' } },
+      },
+      summary: { total: 1, pending: 0, succeeded: 1, failed: 0 },
+    };
+    const sleep = vi.fn(async () => undefined);
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        headers: new Headers(),
+        text: () => Promise.resolve('bad gateway'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        json: () => Promise.resolve(finalOp),
+      });
+
+    const client = createClient({ maxAttempts: 2, initialDelayMs: 15, sleep });
+    await expect(client.pollOperation('op-1', { maxAttempts: 1 })).resolves.toEqual(finalOp);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(15);
+  });
+
+  it('retries a transport failure while polling', async () => {
+    const finalOp: ApplyOperationResponse = {
+      sys: {
+        type: 'ApplyOperation',
+        id: 'op-1',
+        status: 'succeeded',
+        createdAt: '2026-01-01T00:00:00Z',
+        createdBy: { sys: { type: 'Link', linkType: 'User', id: 'user-1' } },
+      },
+      summary: { total: 1, pending: 0, succeeded: 1, failed: 0 },
+    };
+    const sleep = vi.fn(async () => undefined);
+    mockFetch.mockRejectedValueOnce(new TypeError('network unavailable')).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: () => Promise.resolve(finalOp),
+    });
+
+    const client = createClient({ maxAttempts: 2, initialDelayMs: 5, sleep });
+    await expect(client.pollOperation('op-1', { maxAttempts: 1 })).resolves.toEqual(finalOp);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(5);
+  });
+
+  it('preserves a structured poll body and records final exhaustion', async () => {
+    const body = JSON.stringify({ sys: { type: 'Error', id: 'ServiceUnavailable' }, message: 'Still warming up' });
+    const event = vi.fn();
+    vi.spyOn(debugLogger, 'getDebugLogger').mockReturnValue({ enabled: true, path: null, event });
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 503,
+      headers: new Headers(),
+      text: () => Promise.resolve(body),
+    });
+
+    const client = createClient({ maxAttempts: 2, initialDelayMs: 1, sleep: vi.fn(async () => undefined) });
+    const error = await client.pollOperation('op-1', { maxAttempts: 1 }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).body).toBe(body);
+    expect(formatApiError(error as ApiError)).toContain('[ServiceUnavailable]');
+    expect(event).toHaveBeenCalledWith(
+      'apply',
+      'poll.error',
+      expect.objectContaining({ operationId: 'op-1', status: 503, reason: 'retry_exhausted', attempt: 2 }),
+    );
   });
 });
 

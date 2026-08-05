@@ -24,7 +24,16 @@ vi.mock('../../../src/apply/api-client.js', () => ({
     validateToken = vi.fn().mockResolvedValue(undefined);
     pollOperation = vi.fn();
   },
-  ApiError: class ApiError extends Error {},
+  ApiError: class ApiError extends Error {
+    constructor(
+      message: string,
+      public readonly status: number,
+      public readonly body: string,
+      public readonly guidance?: string,
+    ) {
+      super(message);
+    }
+  },
 }));
 
 vi.mock('../../../src/generate/agent-runner.js', () => ({
@@ -79,7 +88,10 @@ const mockExit = vi
 let WizardApp: typeof import('../../../src/import/tui/WizardApp.js').WizardApp;
 
 beforeEach(async () => {
-  previewImportMock.mockClear();
+  previewImportMock.mockReset().mockResolvedValue({
+    components: { new: [], changed: [], removed: [], unchanged: [] },
+    tokens: { new: [], changed: [], removed: [], unchanged: [] },
+  });
   const mod = await import('../../../src/import/tui/WizardApp.js');
   WizardApp = mod.WizardApp;
 });
@@ -127,5 +139,38 @@ describe('WizardApp push-from-picker entry', () => {
     // The effect fires after mount; give the microtask + async chain a tick.
     await new Promise((r) => setTimeout(r, 100));
     expect(previewImportMock).toHaveBeenCalled();
+  });
+
+  it('shows retry-exhaustion guidance when preview remains unavailable', async () => {
+    const { ApiError } = await import('../../../src/apply/api-client.js');
+    previewImportMock.mockRejectedValueOnce(
+      new ApiError(
+        'preview failed: 503',
+        503,
+        JSON.stringify({ sys: { id: 'ServiceUnavailable' }, message: 'Warming up' }),
+        'The preview request failed after 3 attempts. Wait a moment and try again.',
+      ),
+    );
+
+    const { lastFrame } = render(
+      <WizardApp
+        initialProjectPath="/tmp/push-from-picker-retry-error"
+        seedExtractSessionId="e1"
+        seedGenerateSessionId="g1"
+        initialStep="push-from-picker"
+        initialSpaceId="sp"
+        initialEnvironmentId="env"
+        initialCmaToken="tok"
+      />,
+    );
+
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (value) => value.includes('failed after 3 attempts'),
+      3000,
+    );
+    expect(frame).toContain('Wait a moment and try again');
+    expect(frame).toContain('ServiceUnavailable');
+    expect(frame.match(/failed after 3 attempts/g)).toHaveLength(1);
   });
 });
