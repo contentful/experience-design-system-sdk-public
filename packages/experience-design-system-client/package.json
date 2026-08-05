@@ -1,5 +1,5 @@
 {
-  "name": "@contentful/experience-design-system-types",
+  "name": "@contentful/experience-design-system-client",
   "version": "2.16.1",
   "license": "MIT",
   "type": "module",
@@ -21,24 +21,26 @@
     "dist/"
   ],
   "scripts": {
-    "build": "nx build experience-design-system-types",
-    "typecheck": "nx typecheck experience-design-system-types",
-    "clean": "nx clean experience-design-system-types",
-    "test": "nx test experience-design-system-types",
-    "test:watch": "nx test:watch experience-design-system-types",
-    "lint": "nx lint experience-design-system-types",
-    "lint:fix": "nx lint:fix experience-design-system-types"
+    "codegen": "tsx bin/generate.ts",
+    "build": "nx build experience-design-system-client",
+    "typecheck": "nx typecheck experience-design-system-client",
+    "clean": "nx clean experience-design-system-client",
+    "test": "nx test experience-design-system-client",
+    "test:watch": "nx test:watch experience-design-system-client",
+    "lint": "nx lint experience-design-system-client",
+    "lint:fix": "nx lint:fix experience-design-system-client"
   },
   "dependencies": {
-    "ajv": "^8.17.1",
-    "zod": "^4.3.6"
+    "@hey-api/client-fetch": "^0.9.0"
   },
   "devDependencies": {
+    "@hey-api/openapi-ts": "^0.80.1",
     "@tsconfig/node24": "^24.0.3",
     "@types/node": "^24.0.3",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
+    "tsx": "^4.20.7",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.52.0",
     "vitest": "^4.0.16"
@@ -46,11 +48,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/contentful/experience-design-system-sdk-public.git",
-    "directory": "packages/experience-design-system-types"
-  },
-  "homepage": "https://github.com/contentful/experience-design-system-sdk-public#readme",
-  "bugs": {
-    "url": "https://github.com/contentful/experience-design-system-sdk-public/issues"
+    "directory": "packages/experience-design-system-client"
   },
   "engines": {
     "node": ">=24"

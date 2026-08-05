@@ -10,6 +10,7 @@ import { formatDiagnostics } from './validate/validators/format-errors.js';
 import { ValidateView } from './validate/tui/ValidateView.js';
 import type { ValidateViewEntry } from './validate/tui/ValidateView.js';
 import type { DTCGTokenGroupNode } from '@contentful/experience-design-system-types';
+import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
 
 function die(message: string): never {
   process.stderr.write(`${message}\n`);
@@ -242,7 +243,7 @@ export function registerPrintCommand(program: Command): void {
       const failed = viewResults.some((r) => !r.valid);
       const exitCode = failed ? 1 : 0;
 
-      if (process.stdout.isTTY) {
+      if (getInteractiveTerminalSupport().supported) {
         const { waitUntilExit } = render(
           createElement(ValidateView, {
             results: viewResults,

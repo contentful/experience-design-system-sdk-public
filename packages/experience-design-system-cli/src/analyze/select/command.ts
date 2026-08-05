@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { createElement } from 'react';
 import { render } from 'ink';
 import type { Command } from 'commander';
+import { requireInteractiveTerminal } from '../../lib/terminal-capabilities.js';
 import { getRefineArtifactsRoot, ensureRefineSession, getRefineSessionPaths, saveReviewState } from './persistence.js';
 import { loadReviewInput } from './parser.js';
 import { App } from './tui/App.js';
@@ -575,10 +576,9 @@ export function registerAnalyzeEditCommand(program: Command): void {
           return;
         }
 
-        if (!process.stdout.isTTY) {
-          process.stderr.write('Error: analyze select requires an interactive terminal\n');
-          process.exit(1);
-        }
+        requireInteractiveTerminal({
+          alternative: 'pass `--accept-all`, `--select-all`, `--reject`, `--deselect`, `--select`, or `--patch`',
+        });
 
         if (process.stdout.columns !== undefined && process.stdout.columns < 60) {
           process.stderr.write(`Error: terminal too narrow (${process.stdout.columns} cols). Resize to 60+ columns.\n`);

@@ -25,6 +25,7 @@ export interface ErrorDiagnostic {
 
 export interface ApiErrorLike {
   body?: string;
+  guidance?: string;
   message: string;
 }
 
@@ -297,7 +298,7 @@ export function formatEdsiError(raw: unknown, opts: { verbose?: boolean; raw?: s
 export function formatApiError(error: ApiErrorLike, verbose = false): string {
   const formatted = formatEdsiError(error.body || error.message, { verbose, raw: error.body }) || error.message;
   const phase = error.message.split('\n', 1)[0];
-  return /^(?:apply|preview|poll) failed: \d+$/.test(phase) && formatted !== phase
-    ? `${phase}\n${formatted}`
-    : formatted;
+  const withPhase =
+    /^(?:apply|preview|poll) failed: \d+$/.test(phase) && formatted !== phase ? `${phase}\n${formatted}` : formatted;
+  return error.guidance ? `${withPhase}\n${error.guidance}` : withPhase;
 }

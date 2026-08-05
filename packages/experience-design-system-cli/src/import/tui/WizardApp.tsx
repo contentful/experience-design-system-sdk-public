@@ -43,7 +43,7 @@ import { ImportApiClient, ApiError, type PreviewValidationError } from '../../ap
 import { detectSlotCycles, extractComponentsFromManifest, formatSlotCycleReport } from '../../apply/command.js';
 import { findSlotCycles } from '../../analyze/cycle-detection.js';
 import { buildComponentGraph } from '../../analyze/slot-graph.js';
-import { parseEdsiError, formatEdsiError, formatParsedEdsiError } from '../../lib/error-parser.js';
+import { formatApiError, formatEdsiError } from '../../lib/error-parser.js';
 import { handlePreview422, applySkipValidationErrors, clearedValidationErrorState } from './wizard-422-helpers.js';
 import { parseGenerateStderrChunk, type GenerateProgressState } from './wizard-generate-progress.js';
 import { spawnGenerateChild } from './spawn-generate.js';
@@ -1187,14 +1187,11 @@ export function WizardApp({
           });
           return;
         }
+        const formatted = formatApiError(e, process.env['EDSI_VERBOSE_ERRORS'] === '1');
         update({
           step: 'error',
           errorStep: 'apply preview',
-          errorMessage:
-            formatParsedEdsiError(parseEdsiError(e.body || e.message), {
-              verbose: process.env['EDSI_VERBOSE_ERRORS'] === '1',
-              raw: e.body,
-            }) || e.message,
+          errorMessage: formatted,
           errorAllowCredentialRetry: true,
         });
         return;
@@ -1378,12 +1375,7 @@ export function WizardApp({
     } catch (e) {
       let msg: string;
       if (e instanceof ApiError) {
-        const parsed = parseEdsiError(e.body || e.message);
-        msg = formatParsedEdsiError(parsed, {
-          verbose: process.env['EDSI_VERBOSE_ERRORS'] === '1',
-          raw: e.body,
-        });
-        if (!msg) msg = e.message;
+        msg = formatApiError(e, process.env['EDSI_VERBOSE_ERRORS'] === '1');
       } else if (e instanceof Error) {
         msg = e.message;
       } else {

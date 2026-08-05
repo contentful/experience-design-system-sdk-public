@@ -27,6 +27,43 @@ export interface ApiClientOptions {
   cmaToken: string;
   spaceId: string;
   environmentId: string;
+  retry?: {
+    maxAttempts?: number;
+    initialDelayMs?: number;
+    maxDelayMs?: number;
+    sleep?: (delayMs: number) => Promise<void>;
+  };
+}
+
+interface RetryOptions {
+  maxAttempts: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+  sleep: (delayMs: number) => Promise<void>;
+}
+
+const MAX_RETRY_AFTER_MS = 60_000;
+
+function defaultSleep(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+function isTransientStatus(status: number): boolean {
+  return status >= 500 && status <= 599;
+}
+
+function retryAfterMs(response: Response): number | undefined {
+  const value = response.headers?.get('retry-after')?.trim();
+  if (!value) return undefined;
+
+  const seconds = Number(value);
+  const delayMs = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now();
+  if (!Number.isFinite(delayMs) || delayMs < 0 || delayMs > MAX_RETRY_AFTER_MS) return undefined;
+  return Math.round(delayMs);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error && error.message ? error.message : String(error);
 }
 
 // Cap on the body slice appended to ApiError.message. Bumped from 1000 →
@@ -44,6 +81,7 @@ export class ApiError extends Error {
     message: string,
     public readonly status: number,
     public readonly body: string,
+    public readonly guidance?: string,
   ) {
     super(message);
     if (body) {
@@ -156,12 +194,20 @@ export class ImportApiClient {
   private token: string;
   private spaceId: string;
   private environmentId: string;
+  private retry: RetryOptions;
 
   constructor(opts: ApiClientOptions) {
     this.host = toApiHost(opts.host);
     this.token = opts.cmaToken;
     this.spaceId = opts.spaceId;
     this.environmentId = opts.environmentId;
+    const initialDelayMs = Math.max(0, opts.retry?.initialDelayMs ?? 250);
+    this.retry = {
+      maxAttempts: Math.max(1, Math.floor(opts.retry?.maxAttempts ?? 3)),
+      initialDelayMs,
+      maxDelayMs: Math.max(initialDelayMs, opts.retry?.maxDelayMs ?? 2000),
+      sleep: opts.retry?.sleep ?? defaultSleep,
+    };
   }
 
   private base(): string {
@@ -174,6 +220,83 @@ export class ImportApiClient {
       'Content-Type': 'application/json',
       'X-Contentful-User-Agent': buildUserAgent(),
     };
+  }
+
+  private async fetchWithRetry(
+    phase: 'preview' | 'poll',
+    url: string,
+    init: RequestInit,
+    context: Record<string, unknown> = {},
+  ): Promise<Response> {
+    const debug = getDebugLogger();
+    const errorPrefix = phase === 'preview' ? PREVIEW_ERROR_PREFIX : 'poll failed:';
+    const startedAt = Date.now();
+
+    for (let attempt = 1; attempt <= this.retry.maxAttempts; attempt++) {
+      try {
+        const response = await fetch(url, init);
+        if (!isTransientStatus(response.status)) return response;
+
+        const body = await response.text();
+        if (attempt === this.retry.maxAttempts) {
+          const guidance =
+            `The ${phase} request failed after ${attempt} attempts because the service remained unavailable. ` +
+            'Wait a moment and try again.';
+          debug.event('apply', `${phase}.error`, {
+            ...context,
+            attempt,
+            maxAttempts: this.retry.maxAttempts,
+            status: response.status,
+            reason: 'retry_exhausted',
+            durationMs: Date.now() - startedAt,
+            bodyHead: body.slice(0, 2000),
+          });
+          throw new ApiError(`${errorPrefix} ${response.status}`, response.status, body, guidance);
+        }
+
+        const backoffMs = Math.min(this.retry.initialDelayMs * 2 ** (attempt - 1), this.retry.maxDelayMs);
+        const delayMs = retryAfterMs(response) ?? backoffMs;
+        debug.event('apply', `${phase}.retry`, {
+          ...context,
+          attempt,
+          maxAttempts: this.retry.maxAttempts,
+          status: response.status,
+          reason: 'http_5xx',
+          delayMs,
+        });
+        await this.retry.sleep(delayMs);
+      } catch (error) {
+        if (error instanceof ApiError) throw error;
+
+        if (attempt === this.retry.maxAttempts) {
+          const body =
+            `The request failed after ${attempt} attempts because of a network error: ${errorMessage(error)}. ` +
+            'Check your connection and try again.';
+          debug.event('apply', `${phase}.error`, {
+            ...context,
+            attempt,
+            maxAttempts: this.retry.maxAttempts,
+            status: 0,
+            reason: 'transport_retry_exhausted',
+            durationMs: Date.now() - startedAt,
+          });
+          throw new ApiError(`${errorPrefix} 0`, 0, body);
+        }
+
+        const delayMs = Math.min(this.retry.initialDelayMs * 2 ** (attempt - 1), this.retry.maxDelayMs);
+        debug.event('apply', `${phase}.retry`, {
+          ...context,
+          attempt,
+          maxAttempts: this.retry.maxAttempts,
+          status: 0,
+          reason: 'transport_error',
+          delayMs,
+        });
+        await this.retry.sleep(delayMs);
+      }
+    }
+
+    throw new Error('Retry attempts exhausted');
   }
 
   async validateToken(): Promise<void> {
@@ -198,7 +321,7 @@ export class ImportApiClient {
       componentCount: (manifest as { components?: unknown[] }).components?.length ?? 0,
       tokenCount: (manifest as { designTokens?: unknown[] }).designTokens?.length ?? 0,
     });
-    const res = await fetch(url, {
+    const res = await this.fetchWithRetry('preview', url, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify(manifest),
@@ -222,19 +345,35 @@ export class ImportApiClient {
     const debug = getDebugLogger();
     const startedAt = Date.now();
     debug.event('apply', 'apply.request', { url, acknowledgeBreakingChanges });
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify({ ...manifest, acknowledgeBreakingChanges }),
-    });
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify({ ...manifest, acknowledgeBreakingChanges }),
+      });
+    } catch (error) {
+      const body =
+        `The apply request was not retried because its outcome is unknown and retrying could start a duplicate operation. ` +
+        `Check for an existing operation before trying again. Cause: ${errorMessage(error)}`;
+      debug.event('apply', 'apply.error', {
+        status: 0,
+        durationMs: Date.now() - startedAt,
+        reason: 'transport_error_not_retried',
+      });
+      throw new ApiError(`${APPLY_ERROR_PREFIX} 0`, 0, body);
+    }
     if (!res.ok) {
       const body = await res.text();
+      const guidance = isTransientStatus(res.status)
+        ? 'The apply request was not retried because the server may already have started an operation and retrying could create a duplicate. Check for an existing operation before trying again.'
+        : undefined;
       debug.event('apply', 'apply.error', {
         status: res.status,
         durationMs: Date.now() - startedAt,
         bodyHead: body.slice(0, 2000),
       });
-      throw new ApiError(`${APPLY_ERROR_PREFIX} ${res.status}`, res.status, body);
+      throw new ApiError(`${APPLY_ERROR_PREFIX} ${res.status}`, res.status, body, guidance);
     }
     const parsed = (await res.json()) as ApplyOperationResponse;
     debug.event('apply', 'apply.accepted', {
@@ -261,10 +400,15 @@ export class ImportApiClient {
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const url = `${this.base()}/design_systems/imports/apply/${encodeURIComponent(operationId)}`;
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: this.headers(),
-      });
+      const res = await this.fetchWithRetry(
+        'poll',
+        url,
+        {
+          method: 'GET',
+          headers: this.headers(),
+        },
+        { operationId },
+      );
       if (!res.ok) {
         throw new ApiError(`poll failed: ${res.status}`, res.status, await res.text());
       }

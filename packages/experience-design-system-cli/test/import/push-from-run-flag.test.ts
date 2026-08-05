@@ -67,6 +67,11 @@ vi.mock('../../src/runs/replay-helpers.js', () => ({
   modifyRun: mockModifyRun,
 }));
 
+vi.mock('../../src/lib/terminal-capabilities.js', () => ({
+  getInteractiveTerminalSupport: () => ({ supported: true }),
+  requireInteractiveTerminal: vi.fn(),
+}));
+
 import { Command } from 'commander';
 import { registerImportCommand } from '../../src/import/command.js';
 

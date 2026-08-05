@@ -15,6 +15,7 @@ import { resolvePromptFlags } from './print-prompt.js';
 import { shouldShowRunPicker } from '../runs/run-picker-mount.js';
 import type { RunPickerSelection } from '../runs/run-picker.js';
 import { dispatchPickerSelection } from './picker-dispatch.js';
+import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
 
 export function registerImportCommand(program: Command): void {
   const cmd = program
@@ -191,6 +192,8 @@ export function registerImportCommand(program: Command): void {
         saveAsNew?: boolean;
         force?: boolean;
       }) => {
+        const interactiveTerminalSupported = getInteractiveTerminalSupport().supported;
+
         // --modify and --push-from-run resume a recorded session; the composition
         // mode comes from that run's record, so composition flags on the command
         // line don't apply. Warn and clear them rather than let them mislead.
@@ -260,7 +263,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
               ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
               ...(opts.host ? { host: opts.host } : {}),
-              interactive: !!process.stdout.isTTY,
+              interactive: interactiveTerminalSupported,
               ...(opts.force ? { force: true } : {}),
             });
             return;
@@ -284,6 +287,9 @@ export function registerImportCommand(program: Command): void {
             process.exit(1);
             return;
           }
+          requireInteractiveTerminal({
+            alternative: 'start a fresh headless import with `--yes` and the required credentials',
+          });
           try {
             await modifyRun({
               runIdOrPath: opts.modify,
@@ -364,7 +370,7 @@ export function registerImportCommand(program: Command): void {
           opts.skipGenerate ||
           // A "don't push" request on a non-TTY is a headless intent (the wizard
           // needs a TTY); in a TTY it stays interactive and is NOT headless.
-          (noPushRequested && !process.stdout.isTTY) ||
+          (noPushRequested && !interactiveTerminalSupported) ||
           !!opts.spaceId ||
           !!opts.environmentId ||
           !!opts.cmaToken ||
@@ -374,15 +380,13 @@ export function registerImportCommand(program: Command): void {
 
         const autoAcceptScope = opts.autoAcceptScope ?? false;
 
-        if (!process.stdout.isTTY && !isHeadless && !autoAcceptScope) {
-          process.stderr.write(
-            'Error: experiences import is interactive. Pass --auto-accept-scope, or use a headless mode by providing credentials (--space-id, --environment-id, --cma-token) or one of --no-push, --skip-analyze, --skip-generate, --yes, --dry-run, --print-prompt.\n',
-          );
-          process.exit(1);
-          return;
+        if (!interactiveTerminalSupported && !isHeadless && !autoAcceptScope) {
+          requireInteractiveTerminal({
+            alternative: 'use headless flags such as `--yes` with credentials, or `--no-push --auto-accept-scope`',
+          });
         }
 
-        if (process.stdout.isTTY && !isHeadless) {
+        if (interactiveTerminalSupported && !isHeadless) {
           const { render } = await import('ink');
           const { createElement } = await import('react');
           const { WizardApp } = await import('./tui/WizardApp.js');
@@ -489,7 +493,6 @@ export function registerImportCommand(program: Command): void {
                 ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
                 ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
                 ...(opts.host ? { host: opts.host } : {}),
-                interactive: !!process.stdout.isTTY,
                 ...(opts.outDir ? { outDir: opts.outDir } : {}),
                 ...(opts.overwrite ? { overwrite: true } : {}),
                 ...(opts.saveAsNew ? { saveAsNew: true } : {}),

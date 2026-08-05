@@ -29,6 +29,7 @@ import {
 } from '../lib/command-options.js';
 import { stripAllowedComponents } from '../import/strip-allowed-components.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
+import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
 
 function die(message: string): never {
   process.stderr.write(`${message}\n`);
@@ -542,7 +543,7 @@ export function registerApplyCommand(program: Command): void {
     const spaceId = opts.spaceId!;
     const environmentId = opts.environmentId!;
 
-    if (process.stdout.isTTY) {
+    if (getInteractiveTerminalSupport().supported) {
       const { waitUntilExit } = render(
         createElement(ServerPreviewApp, {
           preview,
@@ -567,7 +568,7 @@ export function registerApplyCommand(program: Command): void {
     .option('--force', 'Skip confirmation for breaking changes (for CI)')
     .option('--dry-run', 'Run preview only without applying')
     .action(async (opts: ApplyOptions) => {
-      const isTTY = process.stdout.isTTY;
+      const isTTY = getInteractiveTerminalSupport().supported;
 
       if (!isTTY && !opts.yes) {
         process.stderr.write('Error: apply push requires --yes in non-interactive mode\n');
@@ -764,10 +765,10 @@ export function registerApplyCommand(program: Command): void {
     .action(async (opts: SelectOptions) => {
       const nonInteractive = opts.selectAll || (opts.select ?? []).length > 0 || (opts.deselect ?? []).length > 0;
 
-      if (!nonInteractive && !process.stdout.isTTY) {
-        die(
-          'Error: apply select requires an interactive terminal unless --select-all, --select, or --deselect is provided',
-        );
+      if (!nonInteractive) {
+        requireInteractiveTerminal({
+          alternative: 'pass `--select-all`, `--select`, or `--deselect`',
+        });
       }
 
       let inputs: Awaited<ReturnType<typeof resolveSharedInputs>>;
