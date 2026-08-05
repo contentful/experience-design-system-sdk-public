@@ -361,7 +361,7 @@ describe('ExperiencesCredentials.compositionMode round-trip', () => {
     expect((await readExperiencesCredentials()).compositionMode).toBeUndefined();
   });
 
-  it.each(['composite', 'atomic'])('writes accepted mode %s', async (compositionMode) => {
+  it.each(['composite', 'atomic'] as const)('writes accepted mode %s', async (compositionMode) => {
     mockMkdir.mockResolvedValue(undefined);
     mockWriteFile.mockResolvedValue(undefined);
 
