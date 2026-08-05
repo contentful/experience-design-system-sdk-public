@@ -491,7 +491,6 @@ export function registerImportCommand(program: Command): void {
                 ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
                 ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
                 ...(opts.host ? { host: opts.host } : {}),
-                interactive: true,
                 ...(opts.outDir ? { outDir: opts.outDir } : {}),
                 ...(opts.overwrite ? { overwrite: true } : {}),
                 ...(opts.saveAsNew ? { saveAsNew: true } : {}),
