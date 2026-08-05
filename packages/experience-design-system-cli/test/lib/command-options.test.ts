@@ -5,10 +5,6 @@ import {
   addCompositionOptions,
   addContentfulTargetOptions,
   addSelectionOptions,
-  COMPOSITION_MODES,
-  CONFLICT_MODES,
-  isCompositionMode,
-  isConflictMode,
 } from '../../src/lib/command-options.js';
 
 function options(command: Command) {
@@ -21,21 +17,6 @@ function options(command: Command) {
 }
 
 describe('command option builders', () => {
-  it('defines composition modes as runtime values', () => {
-    expect(COMPOSITION_MODES).toEqual(['composite', 'atomic']);
-    expect(isCompositionMode('composite')).toBe(true);
-    expect(isCompositionMode('atomic')).toBe(true);
-    expect(isCompositionMode('flat')).toBe(false);
-  });
-
-  it('defines and validates conflict modes as runtime values', () => {
-    expect(CONFLICT_MODES).toEqual(['overwrite', 'skip', 'fail']);
-    expect(isConflictMode('overwrite')).toBe(true);
-    expect(isConflictMode('skip')).toBe(true);
-    expect(isConflictMode('fail')).toBe(true);
-    expect(isConflictMode('replace')).toBe(false);
-  });
-
   it('registers artifact inputs with their existing help text', () => {
     const command = addArtifactInputOptions(new Command());
     expect(options(command)).toEqual([

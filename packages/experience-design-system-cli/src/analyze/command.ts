@@ -43,7 +43,8 @@ import { runParserInSandbox } from './composition/agent-parser/sandbox.js';
 import { resolveViaAgentParser } from './composition/agent-parser/resolve-via-parser.js';
 import type { RawSlotDefinition } from '../types.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
-import { AGENT_NAMES, isAgentName, runAgent, type AgentName } from '../generate/agent-runner.js';
+import { DEFAULT_AGENT_NAME, isAgentName } from '../lib/agent-names.js';
+import { runAgent, type AgentName } from '../generate/agent-runner.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
 
@@ -191,7 +192,7 @@ function resolveCompositionAgentName(flagValue?: string): AgentName {
   if (flagValue && isAgentName(flagValue)) return flagValue;
   const env = process.env['EDS_COMPOSITION_AGENT'];
   if (env && isAgentName(env)) return env;
-  return AGENT_NAMES[0];
+  return DEFAULT_AGENT_NAME;
 }
 
 /**

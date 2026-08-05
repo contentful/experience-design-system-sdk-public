@@ -1,6 +1,10 @@
-import { isCompositionMode, type CompositionMode } from './command-options.js';
+export const COMPOSITION_MODES = ['composite', 'atomic'] as const;
 
-export type { CompositionMode } from './command-options.js';
+export type CompositionMode = (typeof COMPOSITION_MODES)[number];
+
+export function isCompositionMode(value: string): value is CompositionMode {
+  return (COMPOSITION_MODES as readonly string[]).includes(value);
+}
 
 /**
  * Options that, when present, IMPLY composite mode — passing any of them is a
@@ -47,6 +51,6 @@ export function resolveCompositionMode(
     if (isCompositionMode(v)) return v;
   }
 
-  if (configMode && isCompositionMode(configMode)) return configMode;
+  if (configMode) return configMode;
   return 'atomic';
 }

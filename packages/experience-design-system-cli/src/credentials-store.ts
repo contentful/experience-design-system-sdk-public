@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { toConfiguredHost } from './host-utils.js';
-import { isCompositionMode, type CompositionMode } from './lib/command-options.js';
+import { isCompositionMode, type CompositionMode } from './lib/composition-mode.js';
 
 export type ExperiencesCredentials = {
   spaceId: string;

@@ -506,13 +506,11 @@ export function registerApplyCommand(program: Command): void {
     .command('apply')
     .description('Preview, select, or push design system entities to Contentful ExO');
 
-  addCompositionOptions(
-    addContentfulTargetOptions(
-      addArtifactInputOptions(
-        applyCmd.command('preview').description('Show a read-only diff of what apply push would do'),
-      ),
-    ),
-  ).action(async (opts: PreviewOptions) => {
+  const previewCmd = applyCmd.command('preview').description('Show a read-only diff of what apply push would do');
+  addArtifactInputOptions(previewCmd);
+  addContentfulTargetOptions(previewCmd);
+  addCompositionOptions(previewCmd);
+  previewCmd.action(async (opts: PreviewOptions) => {
     let inputs: Awaited<ReturnType<typeof resolveSharedInputs>>;
     try {
       inputs = await resolveSharedInputs(opts);
@@ -559,13 +557,11 @@ export function registerApplyCommand(program: Command): void {
     }
   });
 
-  addCompositionOptions(
-    addContentfulTargetOptions(
-      addArtifactInputOptions(
-        applyCmd.command('push').description('Write component types and design tokens to Contentful ExO'),
-      ),
-    ),
-  )
+  const pushCmd = applyCmd.command('push').description('Write component types and design tokens to Contentful ExO');
+  addArtifactInputOptions(pushCmd);
+  addContentfulTargetOptions(pushCmd);
+  addCompositionOptions(pushCmd);
+  pushCmd
     .option('--yes', 'Skip interactive confirmation')
     .option('--verbose', 'Show all entity progress including skipped/unchanged')
     .option('--force', 'Skip confirmation for breaking changes (for CI)')
@@ -758,15 +754,12 @@ export function registerApplyCommand(program: Command): void {
       });
     });
 
-  addSelectionOptions(
-    addCompositionOptions(
-      addContentfulTargetOptions(
-        addArtifactInputOptions(
-          applyCmd.command('select').description('Select a subset of entities and push to Contentful ExO'),
-        ),
-      ),
-    ),
-  )
+  const selectCmd = applyCmd.command('select').description('Select a subset of entities and push to Contentful ExO');
+  addArtifactInputOptions(selectCmd);
+  addContentfulTargetOptions(selectCmd);
+  addCompositionOptions(selectCmd);
+  addSelectionOptions(selectCmd);
+  selectCmd
     .option('--force', 'Skip confirmation for breaking changes')
     .action(async (opts: SelectOptions) => {
       const nonInteractive = opts.selectAll || (opts.select ?? []).length > 0 || (opts.deselect ?? []).length > 0;

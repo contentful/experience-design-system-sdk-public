@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   AGENT_NAMES,
+  DEFAULT_AGENT_NAME,
   buildArgs,
   checkAgentAuth,
   describeAgentFailure,
@@ -18,6 +19,7 @@ import {
 describe('agent definitions', () => {
   it('exposes the canonical agent names and validates against them', () => {
     expect(AGENT_NAMES).toEqual(['claude', 'codex', 'opencode', 'cursor']);
+    expect(DEFAULT_AGENT_NAME).toBe('claude');
     expect(AGENT_NAMES.every(isAgentName)).toBe(true);
     expect(isAgentName('other')).toBe(false);
   });

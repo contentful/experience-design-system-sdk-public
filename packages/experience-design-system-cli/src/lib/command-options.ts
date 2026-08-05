@@ -1,21 +1,5 @@
 import type { Command } from 'commander';
 
-export const COMPOSITION_MODES = ['composite', 'atomic'] as const;
-
-export type CompositionMode = (typeof COMPOSITION_MODES)[number];
-
-export function isCompositionMode(value: string): value is CompositionMode {
-  return (COMPOSITION_MODES as readonly string[]).includes(value);
-}
-
-export const CONFLICT_MODES = ['overwrite', 'skip', 'fail'] as const;
-
-export type ConflictMode = (typeof CONFLICT_MODES)[number];
-
-export function isConflictMode(value: string): value is ConflictMode {
-  return (CONFLICT_MODES as readonly string[]).includes(value);
-}
-
 export function addArtifactInputOptions(cmd: Command): Command {
   return cmd
     .option('--components <path>', 'Path to components.json (CDF)')

@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { AGENT_NAMES } from '../generate/agent-runner.js';
+import { AGENT_NAMES } from './agent-names.js';
 
 export const AGENT_DESCRIPTION = `Agent to use: ${AGENT_NAMES.join(', ')} (defaults to value saved by experiences setup)`;
 
