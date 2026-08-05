@@ -43,6 +43,10 @@ describe('resolveCompositionMode (flag > env > config > default)', () => {
     expect(resolveCompositionMode({}, 'composite')).toBe('composite');
   });
 
+  it('ignores an invalid persisted config value', () => {
+    expect(resolveCompositionMode({}, 'flat' as never)).toBe('atomic');
+  });
+
   it('ignores an empty or unknown env value', () => {
     process.env[ENV] = '';
     expect(resolveCompositionMode({}, undefined)).toBe('atomic');

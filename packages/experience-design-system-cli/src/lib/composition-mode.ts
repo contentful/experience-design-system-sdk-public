@@ -51,6 +51,6 @@ export function resolveCompositionMode(
     if (isCompositionMode(v)) return v;
   }
 
-  if (configMode) return configMode;
+  if (configMode && isCompositionMode(configMode)) return configMode;
   return 'atomic';
 }

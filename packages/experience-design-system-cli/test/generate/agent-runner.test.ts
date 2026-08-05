@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   AGENT_NAMES,
-  DEFAULT_AGENT_NAME,
   buildArgs,
   checkAgentAuth,
   describeAgentFailure,
@@ -15,6 +14,7 @@ import {
   resolveAgentModel,
   isAgentName,
 } from '../../src/generate/agent-runner.js';
+import { DEFAULT_AGENT_NAME } from '../../src/lib/agent-names.js';
 
 describe('agent definitions', () => {
   it('exposes the canonical agent names and validates against them', () => {
