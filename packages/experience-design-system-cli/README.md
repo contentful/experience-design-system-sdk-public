@@ -444,7 +444,9 @@ Wizard run history is separate: `~/.config/experiences/runs.json`.
 - 80+ columns recommended for full sidebar + detail view
 - 120+ columns required to show the source code panel in `analyze select`
 - `NO_COLOR=1` suppresses all ANSI color output
-- Windows: supported via Ink v4; known limitations with older ConEmu and cmd.exe
+- Interactive views require both stdin and stdout to be TTYs and stdin to support raw mode. Read-only views fall back to plain or JSON output when those capabilities are unavailable; commands that require input stop with the relevant non-interactive flags in the error message.
+- On Windows, use Windows Terminal with PowerShell. Older ConEmu and cmd.exe hosts may not provide the raw-mode support the interactive UI needs.
+- To avoid the interactive UI, use the command's non-interactive options: `import --yes` (with credentials) or `import --no-push --auto-accept-scope`, `analyze select --select-all`, `apply select --select-all`, and `apply push --yes`.
 
 ---
 
