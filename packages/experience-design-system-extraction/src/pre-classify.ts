@@ -142,6 +142,13 @@ export function preClassifyProp(prop: RawPropDefinition): PreClassification | un
     return { category: 'exclude' };
   }
 
+  // `name` is overloaded: form controls forward it to the DOM, while icons,
+  // flags, and animations often use it as an authorable semantic selector.
+  // Exclude only when the extractor retained concrete DOM provenance.
+  if (name === 'name' && prop.domAttribute) {
+    return { category: 'exclude' };
+  }
+
   // Rule 7: String literal union
   if (isStringLiteralUnion(type)) {
     return { category: 'design', cdfTypeHint: 'enum' };
@@ -233,17 +240,21 @@ export function preClassifyComponent(component: RawComponentDefinition): RawComp
       return [];
     }
 
+    // Provenance is extraction-only evidence. Do not add it to the payload
+    // presented to downstream agents.
+    const { domAttribute: _domAttribute, ...authorableProp } = prop;
+
     // If category is already set, leave unchanged
     if (prop.category) {
-      return [prop];
+      return [authorableProp];
     }
 
     if (!result) {
-      return [prop];
+      return [authorableProp];
     }
 
     // Set category hint
-    return [{ ...prop, category: result.category as 'content' | 'design' | 'state' }];
+    return [{ ...authorableProp, category: result.category as 'content' | 'design' | 'state' }];
   });
 
   return { ...component, props };

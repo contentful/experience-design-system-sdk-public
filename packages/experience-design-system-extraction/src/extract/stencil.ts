@@ -1,4 +1,4 @@
-import { Project, Node, type SourceFile, type ClassDeclaration } from 'ts-morph';
+import { Project, Node, SyntaxKind, type SourceFile, type ClassDeclaration } from 'ts-morph';
 import type {
   RawComponentDefinition,
   RawPropDefinition,
@@ -59,8 +59,48 @@ function extractAllowedValues(typeText: string): string[] | undefined {
   return values.length >= 2 ? values : undefined;
 }
 
+function isIntrinsicJsxElement(tagName: string): boolean {
+  // Stencil custom elements include a hyphen. Lowercase, unqualified tags are
+  // therefore the conservative syntactic form for intrinsic JSX elements.
+  return /^[a-z][A-Za-z0-9]*$/.test(tagName);
+}
+
+function collectIntrinsicDomAttributeProps(classDecl: ClassDeclaration, propNames: Set<string>): Set<string> {
+  const domAttributeProps = new Set<string>();
+  const renderMethod = classDecl.getMethod('render');
+  if (!renderMethod) return domAttributeProps;
+
+  for (const attribute of renderMethod.getDescendantsOfKind(SyntaxKind.JsxAttribute)) {
+    const openingElement = attribute.getFirstAncestorByKind(SyntaxKind.JsxOpeningElement);
+    const selfClosingElement = attribute.getFirstAncestorByKind(SyntaxKind.JsxSelfClosingElement);
+    const tagName = openingElement?.getTagNameNode().getText() ?? selfClosingElement?.getTagNameNode().getText();
+    const attributeName = attribute.getNameNode().getText();
+    if (!tagName || !propNames.has(attributeName) || !isIntrinsicJsxElement(tagName)) {
+      continue;
+    }
+
+    const initializer = attribute.getInitializer();
+    if (!initializer || !Node.isJsxExpression(initializer)) continue;
+    const expression = initializer.getExpression();
+    if (!expression || !Node.isPropertyAccessExpression(expression)) continue;
+    if (!Node.isThisExpression(expression.getExpression())) continue;
+    if (expression.getName() !== attributeName) continue;
+
+    domAttributeProps.add(attributeName);
+  }
+
+  return domAttributeProps;
+}
+
 function extractProps(classDecl: ClassDeclaration): RawPropDefinition[] {
   const props: RawPropDefinition[] = [];
+  const propNames = new Set(
+    classDecl
+      .getProperties()
+      .filter((property) => hasDecorator(property, 'Prop'))
+      .map((property) => property.getName()),
+  );
+  const intrinsicDomAttributeProps = collectIntrinsicDomAttributeProps(classDecl, propNames);
 
   for (const property of classDecl.getProperties()) {
     if (!hasDecorator(property, 'Prop')) continue;
@@ -120,6 +160,7 @@ function extractProps(classDecl: ClassDeclaration): RawPropDefinition[] {
       ...(defaultValue !== undefined && { defaultValue }),
       ...(description && { description }),
       ...(allowedValues && { allowedValues }),
+      ...(intrinsicDomAttributeProps.has(name) && { domAttribute: true }),
       sourceStartLine: property.getStartLineNumber(),
       sourceEndLine: property.getEndLineNumber(),
     });

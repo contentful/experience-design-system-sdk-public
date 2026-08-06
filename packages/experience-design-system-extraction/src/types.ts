@@ -18,6 +18,13 @@ export interface RawPropDefinition {
   name: string;
   type: string;
   required: boolean;
+  /**
+   * True when extraction can prove that the prop is forwarded to the
+   * same-named attribute on an intrinsic DOM element. This distinguishes
+   * overloaded names such as the form attribute `name` from semantic props
+   * that select visible content (for example an icon or flag name).
+   */
+  domAttribute?: boolean;
   category?: 'content' | 'design' | 'state';
   defaultValue?: string;
   allowedValues?: string[];
