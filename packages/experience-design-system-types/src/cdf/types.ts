@@ -1,27 +1,34 @@
-import type { CDFPropertyType, CDFPropertyCategory } from './vocabularies.js';
+import * as z from 'zod/mini';
+import { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
 
-export interface CDFPropertyDefinition {
-  $type: CDFPropertyType;
-  $category: CDFPropertyCategory;
-  $description?: string;
-  $required?: boolean;
-  $default?: unknown;
-  $values?: string[];
-  '$token.kind'?: string;
-}
+export const CDFPropertyDefinitionSchema = z.strictObject({
+  $type: z.enum(CDF_PROPERTY_TYPES),
+  $category: z.enum(CDF_PROPERTY_CATEGORIES),
+  $description: z.optional(z.string()),
+  $required: z.optional(z.boolean()),
+  $default: z.optional(z.any()),
+  $values: z.optional(z.array(z.string())),
+  '$token.kind': z.optional(z.string()),
+});
 
-export interface CDFSlotDefinition {
-  $description?: string;
-  $allowedComponents?: string[];
-  $required?: boolean;
-}
+export type CDFPropertyDefinition = z.infer<typeof CDFPropertyDefinitionSchema>;
 
-export interface CDFComponentEntry {
-  $type: 'component';
-  $description?: string;
-  $properties: Record<string, CDFPropertyDefinition>;
-  $slots?: Record<string, CDFSlotDefinition>;
-}
+export const CDFSlotDefinitionSchema = z.strictObject({
+  $description: z.optional(z.string()),
+  $allowedComponents: z.optional(z.array(z.string())),
+  $required: z.optional(z.boolean()),
+});
+
+export type CDFSlotDefinition = z.infer<typeof CDFSlotDefinitionSchema>;
+
+export const CDFComponentEntrySchema = z.strictObject({
+  $type: z.literal('component'),
+  $description: z.optional(z.string()),
+  $properties: z.record(z.string(), CDFPropertyDefinitionSchema),
+  $slots: z.optional(z.record(z.string(), CDFSlotDefinitionSchema)),
+});
+
+export type CDFComponentEntry = z.infer<typeof CDFComponentEntrySchema>;
 
 export type CDFGroupOrComponent = CDFComponentEntry | CDFGroup;
 
