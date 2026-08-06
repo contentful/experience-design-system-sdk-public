@@ -96,6 +96,8 @@ describe('apply push / select — viewUrl emission (Gap 4)', () => {
     const payload = JSON.parse(stdout);
     expect(typeof payload.viewUrl).toBe('string');
     expect(payload.viewUrl).toMatch(/^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/components$/);
+    expect(typeof payload.tokensUrl).toBe('string');
+    expect(payload.tokensUrl).toMatch(/^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/design_tokens$/);
   });
 
   it('non-TTY apply select JSON summary includes viewUrl', async () => {
@@ -119,6 +121,8 @@ describe('apply push / select — viewUrl emission (Gap 4)', () => {
     const payload = JSON.parse(stdout);
     expect(typeof payload.viewUrl).toBe('string');
     expect(payload.viewUrl).toMatch(/^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/components$/);
+    expect(typeof payload.tokensUrl).toBe('string');
+    expect(payload.tokensUrl).toMatch(/^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/design_tokens$/);
   });
 
   it('non-TTY apply preview JSON output does NOT include viewUrl', async () => {
@@ -140,6 +144,7 @@ describe('apply push / select — viewUrl emission (Gap 4)', () => {
     expect(code).toBe(0);
     const payload = JSON.parse(stdout);
     expect(payload).not.toHaveProperty('viewUrl');
+    expect(payload).not.toHaveProperty('tokensUrl');
   });
 
   it('interactive ServerApplyDone renders the view URL on success', () => {
@@ -163,6 +168,7 @@ describe('apply push / select — viewUrl emission (Gap 4)', () => {
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('https://app.contentful.com/spaces/test-space/environments/master/views/components');
+    expect(frame).toContain('https://app.contentful.com/spaces/test-space/environments/master/views/design_tokens');
   });
 
   it('interactive ServerApplyDone formats object-form binding failures', () => {

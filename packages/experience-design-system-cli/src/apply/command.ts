@@ -352,6 +352,7 @@ function buildApplyOutput(
     componentTypes: countByAction(componentItems),
     designTokens: countByAction(tokenItems),
     viewUrl: buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId }),
+    tokensUrl: buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId, view: 'design_tokens' }),
     failures: items
       .filter((item) => item.status === 'failed')
       .map((item) => ({

@@ -154,6 +154,12 @@ export function DoneStep({
               {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId })}
             </Text>
           </Box>
+          <Box flexDirection="column" gap={0}>
+            <Text dimColor>View your design tokens here:</Text>
+            <Text color={PALETTE.info}>
+              {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId, view: 'design_tokens' })}
+            </Text>
+          </Box>
         </Box>
       )}
 

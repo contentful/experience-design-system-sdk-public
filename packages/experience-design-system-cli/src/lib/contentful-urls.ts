@@ -6,8 +6,8 @@
  * formatter so the wizard, `apply push`, and `apply select` all emit the same
  * URL shape.
  *
- * Path: `/views/components` (modern path; the legacy `/exo/components` was
- * replaced in INTEG-4227).
+ * Paths: `/views/components` (modern path; the legacy `/exo/components` was
+ * replaced in INTEG-4227) and `/views/design_tokens` (added in INTEG-4611).
  *
  * Host mapping: api.contentful.com → app.contentful.com,
  *               api.flinkly.com    → app.flinkly.com,
@@ -16,10 +16,13 @@
  * spec, "Gap 4 URL host mapping" risk note).
  */
 
+export type PostPushView = 'components' | 'design_tokens';
+
 export interface BuildPostPushUrlInput {
   host: string;
   spaceId: string;
   environmentId: string;
+  view?: PostPushView;
 }
 
 function normalizeHost(host: string): string {
@@ -41,10 +44,11 @@ export function apiHostToAppHost(host: string): string {
 
 /**
  * Build the Contentful webapp URL operators see after a successful push.
- * Matches the wizard `done` step's existing output byte-for-byte for
- * `api.contentful.com`.
+ * Defaults to the components view; pass `view: 'design_tokens'` for the
+ * design tokens management view. Matches the wizard `done` step's existing
+ * output byte-for-byte for `api.contentful.com`.
  */
-export function buildPostPushUrl({ host, spaceId, environmentId }: BuildPostPushUrlInput): string {
+export function buildPostPushUrl({ host, spaceId, environmentId, view = 'components' }: BuildPostPushUrlInput): string {
   const appHost = apiHostToAppHost(host);
-  return `https://${appHost}/spaces/${spaceId}/environments/${environmentId}/views/components`;
+  return `https://${appHost}/spaces/${spaceId}/environments/${environmentId}/views/${view}`;
 }

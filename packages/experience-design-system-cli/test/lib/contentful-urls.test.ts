@@ -68,3 +68,60 @@ describe('buildPostPushUrl', () => {
     ).toBe(wizardUrl);
   });
 });
+
+describe('buildPostPushUrl with view: "design_tokens"', () => {
+  it('maps api.contentful.com → app.contentful.com', () => {
+    expect(
+      buildPostPushUrl({
+        host: 'api.contentful.com',
+        spaceId: 'space-1',
+        environmentId: 'master',
+        view: 'design_tokens',
+      }),
+    ).toBe('https://app.contentful.com/spaces/space-1/environments/master/views/design_tokens');
+  });
+
+  it('maps api.flinkly.com → app.flinkly.com', () => {
+    expect(
+      buildPostPushUrl({
+        host: 'api.flinkly.com',
+        spaceId: 'space-2',
+        environmentId: 'staging',
+        view: 'design_tokens',
+      }),
+    ).toBe('https://app.flinkly.com/spaces/space-2/environments/staging/views/design_tokens');
+  });
+
+  it('maps api.quirely.com → app.quirely.com', () => {
+    expect(
+      buildPostPushUrl({
+        host: 'api.quirely.com',
+        spaceId: 'space-3',
+        environmentId: 'preview',
+        view: 'design_tokens',
+      }),
+    ).toBe('https://app.quirely.com/spaces/space-3/environments/preview/views/design_tokens');
+  });
+
+  it('passes through unknown hosts that do not match the api. prefix', () => {
+    expect(
+      buildPostPushUrl({
+        host: 'localhost:3000',
+        spaceId: 'space-x',
+        environmentId: 'master',
+        view: 'design_tokens',
+      }),
+    ).toBe('https://localhost:3000/spaces/space-x/environments/master/views/design_tokens');
+  });
+
+  it('strips https:// prefix and trailing slashes from host input', () => {
+    expect(
+      buildPostPushUrl({
+        host: 'https://api.contentful.com/',
+        spaceId: 'space-1',
+        environmentId: 'master',
+        view: 'design_tokens',
+      }),
+    ).toBe('https://app.contentful.com/spaces/space-1/environments/master/views/design_tokens');
+  });
+});
