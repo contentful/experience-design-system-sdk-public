@@ -1,5 +1,5 @@
 import { appendRun, type RunRecord } from '../../runs/store.js';
-import { resolveSavePath, type OnConflictMode } from '../../runs/save-path-resolver.js';
+import { resolveSavePath, type ConflictMode } from '../../runs/save-path-resolver.js';
 
 /**
  * Wizard save-flow orchestration helpers (Task 4 / spec part 1+2).
@@ -19,7 +19,7 @@ export type PlanSaveFlowInput = {
    * path interactively. When provided alongside an override, the conflict
    * gate is bypassed and the mode is applied via `resolveSavePath`.
    */
-  onConflict?: OnConflictMode | undefined;
+  onConflict?: ConflictMode | undefined;
 };
 
 export type PlanSaveFlowOutput =

@@ -3,6 +3,8 @@
  * up the real Ink wizard. The production implementation lives here.
  */
 
+import type { CompositionMode } from '../lib/composition-mode.js';
+
 export type ModifyLauncherInput = {
   extractSessionId: string;
   generateSessionId: string | null;
@@ -16,7 +18,7 @@ export type ModifyLauncherInput = {
   saveMode: 'overwrite' | 'new' | 'prompt';
   /** Composition mode from the run record, so the modify wizard resumes in the
    *  same mode. Omitted → the wizard's default (`atomic`). */
-  compositionMode?: 'composite' | 'atomic';
+  compositionMode?: CompositionMode;
   outDirOverride?: string;
   /** Pre-fill space id (from the run record's pushedTo). */
   initialSpaceId?: string;
@@ -43,7 +45,7 @@ export async function launchModifyWizard(input: ModifyLauncherInput): Promise<vo
     initialEnvironmentId?: string;
     initialHost?: string;
     initialCmaToken?: string;
-    compositionMode?: 'composite' | 'atomic';
+    compositionMode?: CompositionMode;
   };
   // Modify entry: re-open the wizard with the prior run's sessions seeded so
   // extract + generate are skipped. The wizard short-circuits to `initialStep`

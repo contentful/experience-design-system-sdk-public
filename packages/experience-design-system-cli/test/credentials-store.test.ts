@@ -335,3 +335,59 @@ describe('ExperiencesCredentials.autoFilter round-trip', () => {
     expect(written).not.toHaveProperty('autoFilter');
   });
 });
+
+describe('ExperiencesCredentials.compositionMode round-trip', () => {
+  it('keeps only values accepted by the canonical composition mode guard', async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({
+        spaceId: 'abc',
+        environmentId: 'master',
+        cmaToken: 'tok',
+        compositionMode: 'composite',
+      }),
+    );
+
+    expect((await readExperiencesCredentials()).compositionMode).toBe('composite');
+
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({
+        spaceId: 'abc',
+        environmentId: 'master',
+        cmaToken: 'tok',
+        compositionMode: 'flat',
+      }),
+    );
+
+    expect((await readExperiencesCredentials()).compositionMode).toBeUndefined();
+  });
+
+  it.each(['composite', 'atomic'] as const)('writes accepted mode %s', async (compositionMode) => {
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+
+    await writeExperiencesCredentials({
+      spaceId: 'space1',
+      environmentId: 'master',
+      cmaToken: 'token',
+      compositionMode,
+    });
+
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
+    expect(written.compositionMode).toBe(compositionMode);
+  });
+
+  it('omits an invalid composition mode when writing credentials', async () => {
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+
+    await writeExperiencesCredentials({
+      spaceId: 'space1',
+      environmentId: 'master',
+      cmaToken: 'token',
+      compositionMode: 'flat' as never,
+    });
+
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
+    expect(written).not.toHaveProperty('compositionMode');
+  });
+});

@@ -1,9 +1,16 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { resolveCompositionMode } from '../../src/lib/composition-mode.js';
+import { COMPOSITION_MODES, isCompositionMode, resolveCompositionMode } from '../../src/lib/composition-mode.js';
 
 const ENV = 'EXPERIENCES_COMPOSITION_MODE';
 
 describe('resolveCompositionMode (flag > env > config > default)', () => {
+  it('defines runtime values used for composition-mode validation', () => {
+    expect(COMPOSITION_MODES).toEqual(['composite', 'atomic']);
+    expect(isCompositionMode('composite')).toBe(true);
+    expect(isCompositionMode('atomic')).toBe(true);
+    expect(isCompositionMode('flat')).toBe(false);
+  });
+
   afterEach(() => {
     delete process.env[ENV];
   });
@@ -34,6 +41,10 @@ describe('resolveCompositionMode (flag > env > config > default)', () => {
 
   it('persisted config beats default', () => {
     expect(resolveCompositionMode({}, 'composite')).toBe('composite');
+  });
+
+  it('ignores an invalid persisted config value', () => {
+    expect(resolveCompositionMode({}, 'flat' as never)).toBe('atomic');
   });
 
   it('ignores an empty or unknown env value', () => {

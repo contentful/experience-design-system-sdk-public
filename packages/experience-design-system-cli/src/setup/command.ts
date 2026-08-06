@@ -15,6 +15,7 @@ import {
 import { promptAutoFilterPreference } from './auto-filter-prompt.js';
 import { promptDebugModePreference } from './debug-mode-prompt.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
+import type { AgentName } from '../generate/agent-runner.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -386,7 +387,7 @@ async function setupBuild(repoRoot: string): Promise<boolean> {
 
 // ── Step 4: agent CLI ─────────────────────────────────────────────────────────
 
-const AGENT_DEFS: Array<{ name: string; binary: string; installHint: string }> = [
+const AGENT_DEFS: Array<{ name: string; binary: AgentName; installHint: string }> = [
   { name: 'Claude Code', binary: 'claude', installHint: 'npm install -g @anthropic-ai/claude-code && claude login' },
   { name: 'OpenAI Codex', binary: 'codex', installHint: 'npm install -g @openai/codex  (requires OPENAI_API_KEY)' },
   { name: 'OpenCode', binary: 'opencode', installHint: 'npm install -g opencode-ai && opencode auth' },
@@ -423,7 +424,7 @@ async function promptCodexModel(): Promise<string | undefined> {
   return undefined;
 }
 
-async function setupAgent(): Promise<{ agent: string | undefined; agentModel: string | undefined }> {
+async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel: string | undefined }> {
   section('Step 4: Coding agent (claude, codex, or opencode)', '[required]');
   info('experiences import uses a coding agent to generate component definitions.');
   info('');
