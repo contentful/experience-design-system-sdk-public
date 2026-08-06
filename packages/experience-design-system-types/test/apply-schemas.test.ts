@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import * as z from 'zod/mini';
-import { CDFComponentEntrySchema, CDFPropertyDefinitionSchema, CDFSlotDefinitionSchema } from '../src/cdf/index.js';
-import { DTCGTokenEntrySchema } from '../src/dtcg/index.js';
+import { CDFComponentSchema, CDFPropertySchema, CDFSlotSchema } from '../src/cdf/index.js';
+import { DTCGTokenSchema } from '../src/dtcg/index.js';
 
-describe('CDFPropertyDefinitionSchema', () => {
+describe('CDFPropertySchema', () => {
   it('accepts a minimal content property', () => {
-    const result = z.safeParse(CDFPropertyDefinitionSchema, {
+    const result = z.safeParse(CDFPropertySchema, {
       $type: 'string',
       $category: 'content',
     });
@@ -13,7 +13,7 @@ describe('CDFPropertyDefinitionSchema', () => {
   });
 
   it('accepts the number property type', () => {
-    const result = z.safeParse(CDFPropertyDefinitionSchema, {
+    const result = z.safeParse(CDFPropertySchema, {
       $type: 'number',
       $category: 'content',
     });
@@ -21,7 +21,7 @@ describe('CDFPropertyDefinitionSchema', () => {
   });
 
   it('rejects an unknown $type', () => {
-    const result = z.safeParse(CDFPropertyDefinitionSchema, {
+    const result = z.safeParse(CDFPropertySchema, {
       $type: 'not-a-real-type',
       $category: 'content',
     });
@@ -29,7 +29,7 @@ describe('CDFPropertyDefinitionSchema', () => {
   });
 
   it('rejects unknown keys (strict object)', () => {
-    const result = z.safeParse(CDFPropertyDefinitionSchema, {
+    const result = z.safeParse(CDFPropertySchema, {
       $type: 'string',
       $category: 'content',
       extra: 'nope',
@@ -38,21 +38,21 @@ describe('CDFPropertyDefinitionSchema', () => {
   });
 });
 
-describe('CDFSlotDefinitionSchema', () => {
+describe('CDFSlotSchema', () => {
   it('accepts an empty slot definition', () => {
-    const result = z.safeParse(CDFSlotDefinitionSchema, {});
+    const result = z.safeParse(CDFSlotSchema, {});
     expect(result.success).toBe(true);
   });
 
   it('accepts allowedComponents', () => {
-    const result = z.safeParse(CDFSlotDefinitionSchema, { $allowedComponents: ['Button'] });
+    const result = z.safeParse(CDFSlotSchema, { $allowedComponents: ['Button'] });
     expect(result.success).toBe(true);
   });
 });
 
-describe('CDFComponentEntrySchema', () => {
+describe('CDFComponentSchema', () => {
   it('accepts a minimal component entry', () => {
-    const result = z.safeParse(CDFComponentEntrySchema, {
+    const result = z.safeParse(CDFComponentSchema, {
       $type: 'component',
       $properties: {
         label: { $type: 'string', $category: 'content' },
@@ -62,7 +62,7 @@ describe('CDFComponentEntrySchema', () => {
   });
 
   it('accepts a component with slots', () => {
-    const result = z.safeParse(CDFComponentEntrySchema, {
+    const result = z.safeParse(CDFComponentSchema, {
       $type: 'component',
       $properties: {},
       $slots: { children: { $allowedComponents: ['Card'] } },
@@ -71,14 +71,14 @@ describe('CDFComponentEntrySchema', () => {
   });
 
   it('rejects a definition missing $properties', () => {
-    const result = z.safeParse(CDFComponentEntrySchema, { $type: 'component' });
+    const result = z.safeParse(CDFComponentSchema, { $type: 'component' });
     expect(result.success).toBe(false);
   });
 });
 
-describe('DTCGTokenEntrySchema', () => {
+describe('DTCGTokenSchema', () => {
   it('accepts a valid design token entry', () => {
-    const result = z.safeParse(DTCGTokenEntrySchema, {
+    const result = z.safeParse(DTCGTokenSchema, {
       path: 'color.brand.primary',
       $type: 'color',
       $value: '#000000',
@@ -87,7 +87,7 @@ describe('DTCGTokenEntrySchema', () => {
   });
 
   it('rejects a boolean $type (not a design-token vocabulary member)', () => {
-    const result = z.safeParse(DTCGTokenEntrySchema, {
+    const result = z.safeParse(DTCGTokenSchema, {
       path: 'flag.enabled',
       $type: 'boolean',
       $value: true,

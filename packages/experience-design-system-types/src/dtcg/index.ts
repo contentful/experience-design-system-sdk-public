@@ -1,6 +1,6 @@
 export { DESIGN_TOKEN_TYPES, type DesignTokenType } from './token-types.js';
 export {
-  DTCGTokenEntrySchema,
+  DTCGTokenSchema,
   type DTCGTokenEntry,
   type DTCGTokenGroup,
   type DTCGTokenNode,
