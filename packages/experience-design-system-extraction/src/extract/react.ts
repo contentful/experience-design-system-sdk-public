@@ -22,6 +22,8 @@ import {
   getTypeReferenceName,
   getTypeTargetDeclarations,
   getValueTargetDeclarations,
+  getJsxTagNameNode,
+  isIntrinsicJsxElement,
 } from './tsx-shared.js';
 import { shouldBeSlot } from './slot-detection.js';
 import { extractAllowedComponentsFromTypeText, extractAllowedComponentsFromJsdoc } from './slot-allowed-components.js';
@@ -1232,18 +1234,6 @@ function getComponentIdentity(func: FunctionLike): string {
   return `${func.getSourceFile().getFilePath()}:${func.getStart()}`;
 }
 
-function getJsxTagNameNode(node: Node): Node | undefined {
-  const openingElement = node.getFirstAncestorByKind(SyntaxKind.JsxOpeningElement);
-  const selfClosingElement = node.getFirstAncestorByKind(SyntaxKind.JsxSelfClosingElement);
-  return openingElement?.getTagNameNode() ?? selfClosingElement?.getTagNameNode();
-}
-
-function isIntrinsicJsxElement(tagName: string): boolean {
-  // Custom elements include a hyphen. Lowercase, unqualified tags are
-  // therefore the conservative syntactic form for intrinsic JSX elements.
-  return /^[a-z][A-Za-z0-9]*$/.test(tagName);
-}
-
 function resolveForwardedComponentIdentity(tagNameNode: Node): string | undefined {
   if (!Node.isIdentifier(tagNameNode)) return undefined;
 
@@ -1253,6 +1243,45 @@ function resolveForwardedComponentIdentity(tagNameNode: Node): string | undefine
   }
 
   return undefined;
+}
+
+/**
+ * Declarations that are rebound somewhere in the body, so their initializer no
+ * longer describes the value that reaches JSX.
+ */
+function collectReboundDeclarations(body: Node | undefined): Set<Node> {
+  const rebound = new Set<Node>();
+  const recordTarget = (target: Node): void => {
+    if (Node.isIdentifier(target)) {
+      rebound.add(getDeclarationIdentity(target));
+      return;
+    }
+    if (
+      (Node.isPropertyAccessExpression(target) || Node.isElementAccessExpression(target)) &&
+      Node.isIdentifier(target.getExpression())
+    ) {
+      rebound.add(getDeclarationIdentity(target.getExpression()));
+    }
+  };
+
+  for (const assignment of body?.getDescendantsOfKind(SyntaxKind.BinaryExpression) ?? []) {
+    // Covers `=` and every compound form (`+=`, `??=`, `>>>=`, ...).
+    const operator = assignment.getOperatorToken().getKind();
+    if (operator < SyntaxKind.FirstAssignment || operator > SyntaxKind.LastAssignment) continue;
+    recordTarget(assignment.getLeft());
+  }
+  // Only `++`/`--` rebind the operand. Reading a prop through `!`, `-`, `+`, or
+  // `~` leaves the alias intact, so those operators must not invalidate it.
+  for (const update of body?.getDescendantsOfKind(SyntaxKind.PrefixUnaryExpression) ?? []) {
+    const operator = update.getOperatorToken();
+    if (operator !== SyntaxKind.PlusPlusToken && operator !== SyntaxKind.MinusMinusToken) continue;
+    recordTarget(update.getOperand());
+  }
+  for (const update of body?.getDescendantsOfKind(SyntaxKind.PostfixUnaryExpression) ?? []) {
+    recordTarget(update.getOperand());
+  }
+
+  return rebound;
 }
 
 /** Trace only statically resolvable, component-local prop dataflow into JSX. */
@@ -1346,52 +1375,10 @@ function collectPropDataflow(
   else if (Node.isObjectBindingPattern(paramNameNode)) addBindings(paramNameNode, fullPropsShape);
 
   const body = func.getBody();
-  const invalidatedAliases = new Set<Node>();
-  const invalidateAssignmentTarget = (target: Node): void => {
-    if (Node.isIdentifier(target)) invalidatedAliases.add(getDeclarationIdentity(target));
-    if (Node.isPropertyAccessExpression(target) && Node.isIdentifier(target.getExpression())) {
-      invalidatedAliases.add(getDeclarationIdentity(target.getExpression()));
-    }
-    if (Node.isElementAccessExpression(target) && Node.isIdentifier(target.getExpression())) {
-      invalidatedAliases.add(getDeclarationIdentity(target.getExpression()));
-    }
-  };
-  const assignmentOperators = new Set([
-    '=',
-    '+=',
-    '-=',
-    '*=',
-    '/=',
-    '%=',
-    '**=',
-    '&&=',
-    '||=',
-    '??=',
-    '<<=',
-    '>>=',
-    '>>>=',
-    '&=',
-    '|=',
-    '^=',
-  ]);
-  for (const assignment of body?.getDescendantsOfKind(SyntaxKind.BinaryExpression) ?? []) {
-    if (assignmentOperators.has(assignment.getOperatorToken().getText())) {
-      invalidateAssignmentTarget(assignment.getLeft());
-    }
-  }
-  // Only `++`/`--` rebind the operand. Reading a prop through `!`, `-`, `+`, or
-  // `~` leaves the alias intact, so those operators must not invalidate it.
-  for (const update of body?.getDescendantsOfKind(SyntaxKind.PrefixUnaryExpression) ?? []) {
-    const operator = update.getOperatorToken();
-    if (operator !== SyntaxKind.PlusPlusToken && operator !== SyntaxKind.MinusMinusToken) continue;
-    invalidateAssignmentTarget(update.getOperand());
-  }
-  for (const update of body?.getDescendantsOfKind(SyntaxKind.PostfixUnaryExpression) ?? []) {
-    invalidateAssignmentTarget(update.getOperand());
-  }
-  for (const alias of invalidatedAliases) {
-    valueAliases.delete(alias);
-    objectAliases.delete(alias);
+  const reboundDeclarations = collectReboundDeclarations(body);
+  for (const declaration of reboundDeclarations) {
+    valueAliases.delete(declaration);
+    objectAliases.delete(declaration);
   }
 
   for (const declaration of body?.getDescendantsOfKind(SyntaxKind.VariableDeclaration) ?? []) {
@@ -1401,7 +1388,7 @@ function collectPropDataflow(
     const declarationName = declaration.getNameNode();
     if (Node.isIdentifier(declarationName)) {
       const aliasDeclaration = getDeclarationIdentity(declarationName);
-      if (invalidatedAliases.has(aliasDeclaration)) continue;
+      if (reboundDeclarations.has(aliasDeclaration)) continue;
       const sourceProp = resolveValue(initializer);
       if (sourceProp) valueAliases.set(aliasDeclaration, sourceProp);
       const sourceShape = resolveObject(initializer);
@@ -1411,7 +1398,7 @@ function collectPropDataflow(
       if (sourceShape) {
         const hasInvalidatedBinding = declarationName
           .getElements()
-          .some((element) => invalidatedAliases.has(getDeclarationIdentity(element.getNameNode())));
+          .some((element) => reboundDeclarations.has(getDeclarationIdentity(element.getNameNode())));
         if (!hasInvalidatedBinding) addBindings(declarationName, sourceShape);
       }
     }
@@ -2378,7 +2365,7 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
   }
 
   const warnings: string[] = [];
-  const components: RawComponentDefinition[] = [];
+  const components: RawComponentDefinitionInternal[] = [];
 
   for (const filePath of componentFiles) {
     try {
@@ -2396,7 +2383,7 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
 
   const propsToComponent = new Map<string, string>();
   const componentNames = new Set<string>();
-  for (const c of components as RawComponentDefinitionInternal[]) {
+  for (const c of components) {
     componentNames.add(c.name);
     if (c._propsTypeName) propsToComponent.set(c._propsTypeName, c.name);
   }
@@ -2423,20 +2410,19 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
         slot.allowedComponents = [...found].sort();
       }
     }
-    delete (c as RawComponentDefinitionInternal)._propsTypeName;
   }
 
   // Propagate DOM provenance only through actual component-to-component JSX
   // forwarding edges. Shared declarations alone never transfer provenance.
   const componentsByIdentity = new Map(
-    (components as RawComponentDefinitionInternal[])
+    components
       .filter((component) => component._componentIdentity)
       .map((component) => [component._componentIdentity!, component]),
   );
   let changed = true;
   while (changed) {
     changed = false;
-    for (const component of components as RawComponentDefinitionInternal[]) {
+    for (const component of components) {
       for (const edge of component._propForwardingEdges ?? []) {
         const target = componentsByIdentity.get(edge.targetComponentIdentity);
         const targetProp = target?.props.find((prop) => prop.name === edge.targetProp);
@@ -2448,8 +2434,9 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
       }
     }
   }
-  for (const component of components as RawComponentDefinitionInternal[]) {
+  for (const component of components) {
     delete component._componentIdentity;
+    delete component._propsTypeName;
     delete component._propForwardingEdges;
   }
 
@@ -2459,8 +2446,8 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
   };
 }
 
-function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComponentDefinition[] {
-  const components: RawComponentDefinition[] = [];
+function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComponentDefinitionInternal[] {
+  const components: RawComponentDefinitionInternal[] = [];
   const exported = sourceFile.getExportedDeclarations();
   const usesCreateContext = sourceFileUsesCreateContext(sourceFile);
 
@@ -2614,7 +2601,7 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
       _componentIdentity: getComponentIdentity(funcNode),
       ...(propsTypeNameCapture ? { _propsTypeName: propsTypeNameCapture } : {}),
       ...(propDataflow.componentEdges.length > 0 ? { _propForwardingEdges: propDataflow.componentEdges } : {}),
-    } as RawComponentDefinitionInternal);
+    });
   }
 
   return components;

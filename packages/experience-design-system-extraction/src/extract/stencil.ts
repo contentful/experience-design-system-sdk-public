@@ -5,6 +5,7 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
 } from '../types.js';
+import { getJsxTagNameNode, isIntrinsicJsxElement } from './tsx-shared.js';
 
 function isStencilFile(sourceFile: SourceFile): boolean {
   return sourceFile.getImportDeclarations().some((imp) => imp.getModuleSpecifierValue() === '@stencil/core');
@@ -59,21 +60,13 @@ function extractAllowedValues(typeText: string): string[] | undefined {
   return values.length >= 2 ? values : undefined;
 }
 
-function isIntrinsicJsxElement(tagName: string): boolean {
-  // Stencil custom elements include a hyphen. Lowercase, unqualified tags are
-  // therefore the conservative syntactic form for intrinsic JSX elements.
-  return /^[a-z][A-Za-z0-9]*$/.test(tagName);
-}
-
 function collectIntrinsicDomAttributeProps(classDecl: ClassDeclaration, propNames: Set<string>): Set<string> {
   const domAttributeProps = new Set<string>();
   const renderMethod = classDecl.getMethod('render');
   if (!renderMethod) return domAttributeProps;
 
   for (const attribute of renderMethod.getDescendantsOfKind(SyntaxKind.JsxAttribute)) {
-    const openingElement = attribute.getFirstAncestorByKind(SyntaxKind.JsxOpeningElement);
-    const selfClosingElement = attribute.getFirstAncestorByKind(SyntaxKind.JsxSelfClosingElement);
-    const tagName = openingElement?.getTagNameNode().getText() ?? selfClosingElement?.getTagNameNode().getText();
+    const tagName = getJsxTagNameNode(attribute)?.getText();
     const attributeName = attribute.getNameNode().getText();
     if (!tagName || !propNames.has(attributeName) || !isIntrinsicJsxElement(tagName)) {
       continue;
