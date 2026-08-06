@@ -18,7 +18,7 @@ import {
   detectSaveConflict,
   buildTimestampedSubdir,
   resolveSavePath,
-  type OnConflictMode,
+  type ConflictMode,
 } from '../../runs/save-path-resolver.js';
 import { appendRun } from '../../runs/store.js';
 import { buildSourceFingerprint, buildSavedFingerprint } from '../../runs/fingerprint.js';
@@ -299,7 +299,7 @@ export type WizardAppProps = {
   noPush?: boolean;
   noSave?: boolean;
   outDirOverride?: string;
-  onConflictMode?: OnConflictMode;
+  onConflictMode?: ConflictMode;
   selectPromptPath?: string;
   generatePromptPath?: string;
   seedExtractSessionId?: string;

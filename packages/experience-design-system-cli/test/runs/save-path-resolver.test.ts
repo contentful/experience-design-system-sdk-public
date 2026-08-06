@@ -9,10 +9,26 @@ vi.mock('node:fs/promises', async () => {
   return { ...actual, access: mockAccess };
 });
 
-import { detectSaveConflict, buildTimestampedSubdir, resolveSavePath } from '../../src/runs/save-path-resolver.js';
+import {
+  CONFLICT_MODES,
+  detectSaveConflict,
+  buildTimestampedSubdir,
+  isConflictMode,
+  resolveSavePath,
+} from '../../src/runs/save-path-resolver.js';
 
 beforeEach(() => {
   vi.resetAllMocks();
+});
+
+describe('conflict modes', () => {
+  it('defines runtime values used for conflict-mode validation', () => {
+    expect(CONFLICT_MODES).toEqual(['overwrite', 'skip', 'fail']);
+    expect(isConflictMode('overwrite')).toBe(true);
+    expect(isConflictMode('skip')).toBe(true);
+    expect(isConflictMode('fail')).toBe(true);
+    expect(isConflictMode('replace')).toBe(false);
+  });
 });
 
 describe('detectSaveConflict', () => {

@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
+import { AGENT_NAMES } from './agent-names.js';
 
-export const AGENT_DESCRIPTION =
-  'Agent to use: claude, codex, opencode, cursor (defaults to value saved by experiences setup)';
+export const AGENT_DESCRIPTION = `Agent to use: ${AGENT_NAMES.join(', ')} (defaults to value saved by experiences setup)`;
 
 export const MODEL_DESCRIPTION =
   'Model to use (defaults to a lightweight per-agent model; override with EDS_AGENT_MODEL_<AGENT>)';

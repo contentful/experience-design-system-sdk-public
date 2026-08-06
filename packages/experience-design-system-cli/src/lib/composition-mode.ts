@@ -1,4 +1,10 @@
-export type CompositionMode = 'composite' | 'atomic';
+export const COMPOSITION_MODES = ['composite', 'atomic'] as const;
+
+export type CompositionMode = (typeof COMPOSITION_MODES)[number];
+
+export function isCompositionMode(value: string): value is CompositionMode {
+  return (COMPOSITION_MODES as readonly string[]).includes(value);
+}
 
 /**
  * Options that, when present, IMPLY composite mode — passing any of them is a
@@ -42,10 +48,9 @@ export function resolveCompositionMode(
   const env = process.env['EXPERIENCES_COMPOSITION_MODE'];
   if (env !== undefined && env !== '') {
     const v = env.toLowerCase();
-    if (v === 'composite') return 'composite';
-    if (v === 'atomic') return 'atomic';
+    if (isCompositionMode(v)) return v;
   }
 
-  if (configMode === 'composite' || configMode === 'atomic') return configMode;
+  if (configMode && isCompositionMode(configMode)) return configMode;
   return 'atomic';
 }
