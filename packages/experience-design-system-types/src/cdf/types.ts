@@ -30,16 +30,9 @@ export const CDFComponentSchema = z.strictObject({
 
 export type CDFComponentEntry = z.infer<typeof CDFComponentSchema>;
 
-export type CDFGroupOrComponent = CDFComponentEntry | CDFGroup;
-
-export interface CDFGroup {
-  $description?: string;
-  [key: string]: CDFGroupOrComponent | string | undefined;
-}
-
 export interface CDFFile {
   $schema: string;
-  [key: string]: CDFGroupOrComponent | string | undefined;
+  [key: string]: unknown;
 }
 
 export interface CDFValidationError {
