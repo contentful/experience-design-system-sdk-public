@@ -388,6 +388,116 @@ describe('ReactComponentExtractor', () => {
     );
   });
 
+  it('keeps DOM provenance when a forwarded alias is read through a negation guard', async () => {
+    const filePath = await writeFixture(
+      'GuardedAlias.tsx',
+      `
+      import React from 'react';
+
+      interface Props { name: string }
+
+      export function GuardedAlias(props: Props) {
+        const inputName = props.name;
+        if (!inputName) return null;
+        return <input name={inputName} />;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([filePath]);
+    const guarded = result.components.find((component) => component.name === 'GuardedAlias');
+
+    expect(guarded?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(preClassifyComponent(guarded!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+  });
+
+  it('keeps DOM provenance when an unrelated prop is negated on the same element', async () => {
+    const filePath = await writeFixture(
+      'NegatedSibling.tsx',
+      `
+      import React from 'react';
+
+      interface Props { name: string; disabled?: boolean }
+
+      export function NegatedSibling(props: Props) {
+        return <input name={props.name} readOnly={!props.disabled} />;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([filePath]);
+    const negated = result.components.find((component) => component.name === 'NegatedSibling');
+
+    expect(negated?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(preClassifyComponent(negated!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+  });
+
+  it('keeps DOM provenance when the props object is negated before a spread forward', async () => {
+    const filePath = await writeFixture(
+      'NegatedSpread.tsx',
+      `
+      import React from 'react';
+
+      interface Props { name: string; enabled?: boolean }
+
+      export function NegatedSpread(props: Props) {
+        if (!props.enabled) return null;
+        return <input {...props} />;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([filePath]);
+    const spread = result.components.find((component) => component.name === 'NegatedSpread');
+
+    expect(spread?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(preClassifyComponent(spread!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+  });
+
+  it('drops DOM provenance when an alias is rebound by an increment', async () => {
+    const filePath = await writeFixture(
+      'MutatedTabIndex.tsx',
+      `
+      import React from 'react';
+
+      interface Props { tabIndex: number }
+
+      export function MutatedTabIndex(props: Props) {
+        let index = props.tabIndex;
+        ++index;
+        return <input tabIndex={index} />;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([filePath]);
+    const mutated = result.components.find((component) => component.name === 'MutatedTabIndex');
+
+    expect(mutated?.props.find((prop) => prop.name === 'tabIndex')?.domAttribute).toBeUndefined();
+  });
+
+  it('marks props synthesized from a DOM attribute surface as DOM provenance', async () => {
+    const filePath = await writeFixture(
+      'StyledField.tsx',
+      `
+      import React, { type InputHTMLAttributes } from 'react';
+      import styled from 'styled-components';
+
+      const StyledInput = styled.input\`color: red;\`;
+
+      export function StyledField(props: InputHTMLAttributes<HTMLInputElement>) {
+        return <StyledInput {...props} />;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([filePath]);
+    const styled = result.components.find((component) => component.name === 'StyledField');
+
+    expect(styled?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(preClassifyComponent(styled!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+  });
+
   it('extracts props from TypeScript interface', async () => {
     const filePath = await writeFixture(
       'Button.tsx',

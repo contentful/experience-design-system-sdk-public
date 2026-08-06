@@ -1379,7 +1379,11 @@ function collectPropDataflow(
       invalidateAssignmentTarget(assignment.getLeft());
     }
   }
+  // Only `++`/`--` rebind the operand. Reading a prop through `!`, `-`, `+`, or
+  // `~` leaves the alias intact, so those operators must not invalidate it.
   for (const update of body?.getDescendantsOfKind(SyntaxKind.PrefixUnaryExpression) ?? []) {
+    const operator = update.getOperatorToken();
+    if (operator !== SyntaxKind.PlusPlusToken && operator !== SyntaxKind.MinusMinusToken) continue;
     invalidateAssignmentTarget(update.getOperand());
   }
   for (const update of body?.getDescendantsOfKind(SyntaxKind.PostfixUnaryExpression) ?? []) {
@@ -2047,7 +2051,10 @@ function getDomAttributeSurface(
     propsByName.set(prop.name, prop);
   }
 
-  return [...propsByName.values()].map((prop) => ({ ...prop }));
+  // Every prop on these surfaces is a DOM attribute by construction, so the
+  // provenance is known here without tracing the implementation. Copy each prop
+  // so that later provenance propagation cannot mutate the shared surface table.
+  return [...propsByName.values()].map((prop) => ({ ...prop, domAttribute: true }));
 }
 
 function hasSyntheticDomChildren(typeNode: Node | undefined): boolean {
