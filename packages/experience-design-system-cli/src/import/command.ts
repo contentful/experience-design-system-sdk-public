@@ -5,7 +5,7 @@ import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
-import { addCompositionOptions } from '../lib/command-options.js';
+import { addAllowDeletionsOption, addCompositionOptions } from '../lib/command-options.js';
 import { isConflictMode, type ConflictMode } from '../runs/save-path-resolver.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
@@ -69,6 +69,7 @@ export function registerImportCommand(program: Command): void {
     )
     .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)');
   addCompositionOptions(cmd);
+  addAllowDeletionsOption(cmd);
   cmd
     .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
     .option(
@@ -142,10 +143,6 @@ export function registerImportCommand(program: Command): void {
     .option('--overwrite', "Only valid with --modify: save back to the run's recorded savePath")
     .option('--save-as-new', 'Only valid with --modify: always save to a new path (prompts for one)')
     .option('--force', 'Bypass staleness checks when paired with --push-from-run or --modify.')
-    .option(
-      '--allow-deletions',
-      'Allow the push to delete remote ComponentTypes/DesignTokens missing from the manifest (default: skip them)',
-    )
     .action(
       async (opts: {
         spaceId?: string;
