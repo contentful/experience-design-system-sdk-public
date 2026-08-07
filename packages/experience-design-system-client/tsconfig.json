@@ -12,6 +12,7 @@
     "noEmitOnError": true,
     "noErrorTruncation": true,
     "pretty": true,
+    "declaration": true,
     "strict": true,
     "esModuleInterop": true,
     "noEmit": true
