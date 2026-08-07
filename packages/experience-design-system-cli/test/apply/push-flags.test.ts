@@ -17,7 +17,7 @@ const MOCK_ROUTES = {
     sys: { type: 'Environment', id: 'master' },
   },
   'POST /spaces/test-space/environments/master/design_systems/imports/preview': {
-    components: { new: [], changed: [], removed: [], unchanged: [] },
+    components: { new: [{ id: 'comp-1' }], changed: [], removed: [], unchanged: [] },
     tokens: { new: [], changed: [], removed: [], unchanged: [] },
     taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
   },
@@ -237,8 +237,31 @@ describe('apply push — flag variations', () => {
 
   // ── --allow-deletions ────────────────────────────────────────────────────
 
-  it('--allow-deletions flag is accepted and exits 0', async () => {
-    const { code } = await runCliWithEnv([...baseArgs(), '--allow-deletions'], baseEnv());
+  it('sends allowDeletions: true in the apply body when --allow-deletions is passed', async () => {
+    const requestsBefore = server.requests.length;
+    const args = [...baseArgs(), '--allow-deletions'];
+    const { code } = await runCliWithEnv(args, baseEnv());
     expect(code).toBe(0);
+
+    const applyRequest = server.requests
+      .slice(requestsBefore)
+      .filter((r) => r.method === 'POST' && r.url.includes('/design_systems/imports/apply'))
+      .at(-1);
+    expect(applyRequest).toBeDefined();
+    expect((applyRequest!.body as { allowDeletions?: boolean }).allowDeletions).toBe(true);
+  });
+
+  it('sends allowDeletions: false in the apply body when --allow-deletions is omitted', async () => {
+    const requestsBefore = server.requests.length;
+    const args = baseArgs();
+    const { code } = await runCliWithEnv(args, baseEnv());
+    expect(code).toBe(0);
+
+    const applyRequest = server.requests
+      .slice(requestsBefore)
+      .filter((r) => r.method === 'POST' && r.url.includes('/design_systems/imports/apply'))
+      .at(-1);
+    expect(applyRequest).toBeDefined();
+    expect((applyRequest!.body as { allowDeletions?: boolean }).allowDeletions).toBe(false);
   });
 });
