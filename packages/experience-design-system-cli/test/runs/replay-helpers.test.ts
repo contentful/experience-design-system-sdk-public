@@ -228,9 +228,7 @@ describe('replayRun (push-only)', () => {
       cmaToken: 'tok',
       allowDeletions: true,
     });
-    expect(mockPushRunSession).toHaveBeenCalledWith(
-      expect.objectContaining({ allowDeletions: true }),
-    );
+    expect(mockPushRunSession).toHaveBeenCalledWith(expect.objectContaining({ allowDeletions: true }));
   });
 
   it('does not pass allowDeletions when flag is not set', async () => {
@@ -487,9 +485,7 @@ describe('modifyRun', () => {
   it('forwards allowDeletions to launchModifyWizard when flag is set', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun());
     await modifyRun({ runIdOrPath: '01HXYZ', allowDeletions: true });
-    expect(mockLaunchWizard).toHaveBeenCalledWith(
-      expect.objectContaining({ allowDeletions: true }),
-    );
+    expect(mockLaunchWizard).toHaveBeenCalledWith(expect.objectContaining({ allowDeletions: true }));
   });
 
   it('does not pass allowDeletions to launchModifyWizard when flag is not set', async () => {
