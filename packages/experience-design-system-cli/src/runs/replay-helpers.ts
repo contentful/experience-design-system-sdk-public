@@ -166,6 +166,8 @@ export type ModifyRunOptions = {
   outDir?: string;
   /** When true, bypass the source/saved-file staleness check. */
   force?: boolean;
+  /** From `--allow-deletions` flag. Forwarded through the modify wizard's push step. */
+  allowDeletions?: boolean;
 };
 
 /**
@@ -215,5 +217,6 @@ export async function modifyRun(opts: ModifyRunOptions): Promise<void> {
     ...(mergedEnvironmentId ? { initialEnvironmentId: mergedEnvironmentId } : {}),
     ...(mergedHost ? { initialHost: mergedHost } : {}),
     ...(mergedCmaToken ? { initialCmaToken: mergedCmaToken } : {}),
+    ...(opts.allowDeletions !== undefined ? { allowDeletions: opts.allowDeletions } : {}),
   });
 }

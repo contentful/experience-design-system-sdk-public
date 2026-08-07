@@ -303,6 +303,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.saveAsNew ? { saveAsNew: true } : {}),
               ...(opts.outDir ? { outDir: opts.outDir } : {}),
               ...(opts.force ? { force: true } : {}),
+              ...(opts.allowDeletions ? { allowDeletions: true } : {}),
             });
             return;
           } catch (err) {
