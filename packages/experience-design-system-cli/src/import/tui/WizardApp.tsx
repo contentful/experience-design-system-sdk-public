@@ -1219,6 +1219,7 @@ export function WizardApp({
     cmaToken: string,
     host: string,
     acknowledgeBreakingChanges: boolean,
+    allowDeletions: boolean,
     preview?: ServerPreviewResponse | null,
   ) => {
     if (shouldRefusePush(state)) {
@@ -2067,7 +2068,8 @@ export function WizardApp({
             environmentId={state.environmentId}
             stepNumber={totalSteps}
             totalSteps={totalSteps}
-            onConfirm={(acknowledge) => {
+            initialAllowDeletions={allowDeletions}
+            onConfirm={(acknowledge, deleteMissing) => {
               void runPush(
                 state.manifest!,
                 state.spaceId,
@@ -2075,6 +2077,7 @@ export function WizardApp({
                 state.cmaToken,
                 state.host,
                 acknowledge,
+                deleteMissing,
                 state.serverPreview,
               );
             }}

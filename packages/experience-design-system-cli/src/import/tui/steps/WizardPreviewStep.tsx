@@ -115,7 +115,8 @@ type WizardPreviewStepProps = {
   environmentId: string;
   stepNumber: number;
   totalSteps: number;
-  onConfirm: (acknowledge: boolean) => void;
+  initialAllowDeletions?: boolean;
+  onConfirm: (acknowledge: boolean, allowDeletions: boolean) => void;
   onEdit?: () => void;
   onSaveFiles?: () => void;
   onQuit: () => void;
@@ -127,6 +128,7 @@ export function WizardPreviewStep({
   environmentId,
   stepNumber,
   totalSteps,
+  initialAllowDeletions = false,
   onConfirm,
   onEdit,
   onSaveFiles,
@@ -135,6 +137,7 @@ export function WizardPreviewStep({
   const breakingWithImpact = hasBreakingChangesWithImpact(preview);
   const [diffExpanded, setDiffExpanded] = useState(false);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [allowDeletions, setAllowDeletions] = useState(initialAllowDeletions);
   const { stdout } = useStdout();
   const terminalRows = stdout?.rows ?? 40;
   const viewportHeight = Math.max(terminalRows - 14, 10);
@@ -152,10 +155,15 @@ export function WizardPreviewStep({
   }, [diffExpanded, preview]);
 
   const maxScroll = Math.max(0, allDiffLines.length - viewportHeight);
+  const removedCount = preview.components.removed.length + preview.tokens.removed.length;
 
   useImmediateInput((input, key) => {
     if (key.return) {
-      onConfirm(breakingWithImpact);
+      onConfirm(breakingWithImpact, allowDeletions);
+      return;
+    }
+    if ((input === 'x' || input === 'X') && removedCount > 0) {
+      setAllowDeletions((prev) => !prev);
       return;
     }
     if (input === 'd' || input === 'D') {
@@ -262,13 +270,19 @@ export function WizardPreviewStep({
               {components.removed.length > 0 && (
                 <Box flexDirection="column">
                   <Box gap={1}>
-                    <Text color={PALETTE.error}> ✗</Text>
-                    <Text>{components.removed.length} will be removed</Text>
+                    <Text color={allowDeletions ? PALETTE.error : PALETTE.warning}>{allowDeletions ? ' ✗' : ' ⊘'}</Text>
+                    <Text>
+                      {components.removed.length} will be {allowDeletions ? 'deleted' : 'skipped'}
+                    </Text>
                   </Box>
                   {components.removed.map((item, i) => (
-                    <Text key={`rm-${i}`} color={PALETTE.error}>
+                    <Text
+                      key={`rm-${i}`}
+                      color={allowDeletions ? PALETTE.error : PALETTE.warning}
+                      dimColor={!allowDeletions}
+                    >
                       {' '}
-                      ✗ {item.name}
+                      {allowDeletions ? '✗' : '⊘'} {item.name}
                     </Text>
                   ))}
                 </Box>
@@ -303,8 +317,10 @@ export function WizardPreviewStep({
               )}
               {tokens.removed.length > 0 && (
                 <Box gap={1}>
-                  <Text color={PALETTE.error}> ✗</Text>
-                  <Text>{tokens.removed.length} will be removed</Text>
+                  <Text color={allowDeletions ? PALETTE.error : PALETTE.warning}>{allowDeletions ? ' ✗' : ' ⊘'}</Text>
+                  <Text>
+                    {tokens.removed.length} will be {allowDeletions ? 'deleted' : 'skipped'}
+                  </Text>
                 </Box>
               )}
               {tokens.unchanged.length > 0 && (
@@ -353,12 +369,26 @@ export function WizardPreviewStep({
         </Box>
       )}
 
+      {allowDeletions && removedCount > 0 && (
+        <Box marginTop={1}>
+          <Text color={PALETTE.error} bold>
+            ⚠ {removedCount} missing {removedCount === 1 ? 'entity' : 'entities'} will be permanently deleted. Press
+            Enter to confirm.
+          </Text>
+        </Box>
+      )}
+
       <Box gap={3} marginTop={1}>
         <Text dimColor>[Enter] Push to Contentful</Text>
         <Text dimColor>[d] {diffExpanded ? 'Hide' : 'Show'} diff</Text>
         {diffExpanded && <Text dimColor>[j/k] Scroll [f/b] Page</Text>}
         {onEdit && <Text dimColor>[e] Edit definitions</Text>}
         {onSaveFiles && <Text dimColor>[s] Save files instead</Text>}
+        {removedCount > 0 && (
+          <Text dimColor>
+            [x] {allowDeletions ? '[✓]' : '[ ]'} Also delete {removedCount} {removedCount === 1 ? 'entity' : 'entities'}
+          </Text>
+        )}
         <Text dimColor>[q] Cancel</Text>
       </Box>
     </Box>
