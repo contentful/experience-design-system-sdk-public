@@ -34,6 +34,8 @@ export type ReplayRunOptions = {
   interactive?: boolean;
   /** When true, bypass the source/saved-file staleness check. */
   force?: boolean;
+  /** From `--allow-deletions` flag. Forwarded verbatim to the pushed session's apply request. */
+  allowDeletions?: boolean;
   /**
    * Test seam: replace the interactive prompt with a deterministic resolver.
    * The CLI surface never sets this; only used by tests.
@@ -124,6 +126,7 @@ export async function replayRun(opts: ReplayRunOptions): Promise<void> {
     environmentId,
     cmaToken,
     ...(host ? { host } : {}),
+    ...(opts.allowDeletions ? { allowDeletions: true } : {}),
   });
   if (!result.ok) {
     throw new Error(result.error);
@@ -140,6 +143,7 @@ export async function replayRun(opts: ReplayRunOptions): Promise<void> {
       environmentId,
       cmaToken,
       ...(host ? { host } : {}),
+      ...(opts.allowDeletions ? { allowDeletions: true } : {}),
     });
     if (!tokenResult.ok) {
       throw new Error(tokenResult.error);

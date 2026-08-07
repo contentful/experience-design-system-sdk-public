@@ -142,6 +142,10 @@ export function registerImportCommand(program: Command): void {
     .option('--overwrite', "Only valid with --modify: save back to the run's recorded savePath")
     .option('--save-as-new', 'Only valid with --modify: always save to a new path (prompts for one)')
     .option('--force', 'Bypass staleness checks when paired with --push-from-run or --modify.')
+    .option(
+      '--allow-deletions',
+      'Allow the push to delete remote ComponentTypes/DesignTokens missing from the manifest (default: skip them)',
+    )
     .action(
       async (opts: {
         spaceId?: string;
@@ -191,6 +195,7 @@ export function registerImportCommand(program: Command): void {
         overwrite?: boolean;
         saveAsNew?: boolean;
         force?: boolean;
+        allowDeletions?: boolean;
       }) => {
         const interactiveTerminalSupported = getInteractiveTerminalSupport().supported;
 
@@ -265,6 +270,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.host ? { host: opts.host } : {}),
               interactive: interactiveTerminalSupported,
               ...(opts.force ? { force: true } : {}),
+              ...(opts.allowDeletions ? { allowDeletions: true } : {}),
             });
             return;
           } catch (err) {
@@ -418,6 +424,7 @@ export function registerImportCommand(program: Command): void {
             selectPromptPath?: string;
             generatePromptPath?: string;
             initialRawTokensPath?: string;
+            allowDeletions?: boolean;
             initialRuns?: typeof pickerDecision.runs;
             onRunPicked?: (selection: RunPickerSelection) => void;
           };
@@ -480,6 +487,7 @@ export function registerImportCommand(program: Command): void {
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
               ...(opts.rawTokens ? { initialRawTokensPath: resolve(opts.rawTokens) } : {}),
+              allowDeletions: opts.allowDeletions === true,
               ...pickerProps,
             }),
           );
@@ -553,6 +561,7 @@ export function registerImportCommand(program: Command): void {
             dryRun: dryRunForward,
             selectPromptPath: opts.selectPromptPath,
             autoRejectCycles: opts.autoRejectCycles ?? false,
+            allowDeletions: opts.allowDeletions ?? false,
             compositionMode: headlessCompositionMode,
             ...(opts.compositionMap ? { compositionMap: opts.compositionMap } : {}),
             ...(opts.compositionAgent ? { compositionAgent: true } : {}),
