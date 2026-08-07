@@ -38,6 +38,7 @@
     "lint:fix": "nx lint:fix experience-design-system-cli"
   },
   "dependencies": {
+    "@contentful/experience-design-system-client": "workspace:*",
     "@contentful/experience-design-system-extraction": "workspace:*",
     "@contentful/experience-design-system-types": "workspace:*",
     "commander": "^13.1.0",
