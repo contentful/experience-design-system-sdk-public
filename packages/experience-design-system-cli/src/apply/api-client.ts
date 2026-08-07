@@ -395,12 +395,17 @@ export class ImportApiClient {
     return sanitizePreviewResponse(parsed);
   }
 
-  async applyImport(manifest: ManifestPayload, acknowledgeBreakingChanges: boolean): Promise<ApplyOperationResponse> {
+  async applyImport(
+    manifest: ManifestPayload,
+    options: { acknowledgeBreakingChanges: boolean; allowDeletions?: boolean },
+  ): Promise<ApplyOperationResponse> {
+    const { acknowledgeBreakingChanges, allowDeletions = false } = options;
     const debug = getDebugLogger();
     const startedAt = Date.now();
     debug.event('apply', 'apply.request', {
       url: `${this.base()}/design_systems/imports/apply`,
       acknowledgeBreakingChanges,
+      allowDeletions,
     });
     let result: Awaited<ReturnType<typeof designSystemImportApply<false>>>;
     try {
@@ -408,7 +413,7 @@ export class ImportApiClient {
         baseUrl: this.host,
         headers: this.headers(),
         path: { spaceId: this.spaceId, environmentId: this.environmentId },
-        body: { ...manifest, acknowledgeBreakingChanges },
+        body: { ...manifest, acknowledgeBreakingChanges, allowDeletions },
         parseAs: 'json',
       });
     } catch (error) {
