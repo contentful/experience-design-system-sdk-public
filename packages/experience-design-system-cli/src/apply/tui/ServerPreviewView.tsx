@@ -11,6 +11,7 @@ interface ServerPreviewViewProps {
   preview: ServerPreviewResponse;
   spaceId: string;
   environmentId: string;
+  allowDeletions: boolean;
 }
 
 function BreakingBadge({ item }: { item: ChangedEntity<ComponentTypeSummary, CDFComponentEntry> }) {
@@ -36,7 +37,12 @@ function DraftWarning({ hasDraft }: { hasDraft: boolean }) {
   return <Text color="yellow"> ⚡ has pending draft changes</Text>;
 }
 
-export function ServerPreviewView({ preview, spaceId, environmentId }: ServerPreviewViewProps): React.ReactElement {
+export function ServerPreviewView({
+  preview,
+  spaceId,
+  environmentId,
+  allowDeletions,
+}: ServerPreviewViewProps): React.ReactElement {
   const { components, tokens } = preview;
   const totalComponents =
     components.new.length + components.changed.length + components.unchanged.length + components.removed.length;
@@ -54,7 +60,10 @@ export function ServerPreviewView({ preview, spaceId, environmentId }: ServerPre
           <Text bold> Component Types ({totalComponents} total)</Text>
           <Text color="green"> ❆ {components.new.length} to create</Text>
           <Text color="yellow"> ~ {components.changed.length} to update</Text>
-          <Text color="red"> ✗ {components.removed.length} to remove</Text>
+          <Text color={allowDeletions ? 'red' : 'yellow'}>
+            {' '}
+            {allowDeletions ? '✗' : '⊘'} {components.removed.length} to {allowDeletions ? 'delete' : 'skip'}
+          </Text>
           <Text dimColor> · {components.unchanged.length} unchanged</Text>
           {components.changed.map((item, i) => (
             <Box key={i} flexDirection="column">
@@ -74,7 +83,10 @@ export function ServerPreviewView({ preview, spaceId, environmentId }: ServerPre
           <Text bold> Design Tokens ({totalTokens} total)</Text>
           <Text color="green"> ❆ {tokens.new.length} to create</Text>
           <Text color="yellow"> ~ {tokens.changed.length} to update</Text>
-          <Text color="red"> ✗ {tokens.removed.length} to remove</Text>
+          <Text color={allowDeletions ? 'red' : 'yellow'}>
+            {' '}
+            {allowDeletions ? '✗' : '⊘'} {tokens.removed.length} to {allowDeletions ? 'delete' : 'skip'}
+          </Text>
           <Text dimColor> · {tokens.unchanged.length} unchanged</Text>
           {tokens.changed
             .filter((t) => t.hasPendingDraftChanges)

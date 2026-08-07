@@ -14,6 +14,7 @@ interface ServerPreviewConfirmProps {
   spaceId: string;
   environmentId: string;
   breakingWithImpact: boolean;
+  allowDeletions: boolean;
   onConfirm: (acknowledge: boolean) => void;
   onCancel: () => void;
 }
@@ -23,6 +24,7 @@ export function ServerPreviewConfirm({
   spaceId,
   environmentId,
   breakingWithImpact,
+  allowDeletions,
   onConfirm,
   onCancel,
 }: ServerPreviewConfirmProps): React.ReactElement {
@@ -31,14 +33,28 @@ export function ServerPreviewConfirm({
     if (key.escape || input === 'q') onCancel();
   });
 
+  const removedCount = preview.components.removed.length + preview.tokens.removed.length;
+
   return (
     <Box flexDirection="column">
-      <ServerPreviewView preview={preview} spaceId={spaceId} environmentId={environmentId} />
+      <ServerPreviewView
+        preview={preview}
+        spaceId={spaceId}
+        environmentId={environmentId}
+        allowDeletions={allowDeletions}
+      />
       <Box paddingX={2} flexDirection="column">
         {breakingWithImpact && (
           <Text color="red" bold>
             {' '}
             ⚠ Breaking changes will affect downstream entities. Press Enter to acknowledge and apply.
+          </Text>
+        )}
+        {allowDeletions && removedCount > 0 && (
+          <Text color="red" bold>
+            {' '}
+            ⚠ {removedCount} missing {removedCount === 1 ? 'entity' : 'entities'} will be permanently deleted. Press
+            Enter to confirm.
           </Text>
         )}
         <Text>
@@ -54,14 +70,27 @@ interface ServerPreviewAppProps {
   preview: ServerPreviewResponse;
   spaceId: string;
   environmentId: string;
+  allowDeletions: boolean;
 }
 
-export function ServerPreviewApp({ preview, spaceId, environmentId }: ServerPreviewAppProps): React.ReactElement {
+export function ServerPreviewApp({
+  preview,
+  spaceId,
+  environmentId,
+  allowDeletions,
+}: ServerPreviewAppProps): React.ReactElement {
   useInput((input, key) => {
     if (key.escape || input === 'q') process.exit(0);
   });
 
-  return <ServerPreviewView preview={preview} spaceId={spaceId} environmentId={environmentId} />;
+  return (
+    <ServerPreviewView
+      preview={preview}
+      spaceId={spaceId}
+      environmentId={environmentId}
+      allowDeletions={allowDeletions}
+    />
+  );
 }
 
 interface ServerApplyProgressProps {

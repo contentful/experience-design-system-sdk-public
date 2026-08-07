@@ -552,6 +552,7 @@ export function registerApplyCommand(program: Command): void {
           preview,
           spaceId,
           environmentId,
+          allowDeletions: false,
         }),
       );
       await waitUntilExit();
@@ -618,6 +619,7 @@ export function registerApplyCommand(program: Command): void {
               preview,
               spaceId,
               environmentId,
+              allowDeletions: opts.allowDeletions === true,
             }),
           );
           await waitUntilExit();
@@ -752,6 +754,7 @@ export function registerApplyCommand(program: Command): void {
             spaceId,
             environmentId,
             breakingWithImpact,
+            allowDeletions: opts.allowDeletions === true,
             onConfirm: (acknowledge: boolean) => {
               void runApply(acknowledge);
             },
