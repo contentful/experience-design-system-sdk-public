@@ -157,6 +157,7 @@ interface ApplyOptions extends SharedImportOptions {
   verbose?: boolean;
   force?: boolean;
   dryRun?: boolean;
+  allowDeletions?: boolean;
 }
 
 interface SelectOptions extends SharedImportOptions {
@@ -164,6 +165,7 @@ interface SelectOptions extends SharedImportOptions {
   select?: string[];
   deselect?: string[];
   force?: boolean;
+  allowDeletions?: boolean;
 }
 
 async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
@@ -567,6 +569,10 @@ export function registerApplyCommand(program: Command): void {
     .option('--verbose', 'Show all entity progress including skipped/unchanged')
     .option('--force', 'Skip confirmation for breaking changes (for CI)')
     .option('--dry-run', 'Run preview only without applying')
+    .option(
+      '--allow-deletions',
+      'Allow the push to delete remote ComponentTypes/DesignTokens missing from the manifest (default: skip them)',
+    )
     .action(async (opts: ApplyOptions) => {
       const isTTY = getInteractiveTerminalSupport().supported;
 
@@ -650,7 +656,10 @@ export function registerApplyCommand(program: Command): void {
 
         let operation: ApplyOperationResponse;
         try {
-          operation = await client.applyImport(manifest, breakingWithImpact || opts.force === true);
+          operation = await client.applyImport(manifest, {
+            acknowledgeBreakingChanges: breakingWithImpact || opts.force === true,
+            allowDeletions: opts.allowDeletions === true,
+          });
         } catch (e) {
           if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
           throw e;
@@ -683,7 +692,10 @@ export function registerApplyCommand(program: Command): void {
 
           let operation: ApplyOperationResponse;
           try {
-            operation = await client.applyImport(manifest, acknowledge);
+            operation = await client.applyImport(manifest, {
+              acknowledgeBreakingChanges: acknowledge,
+              allowDeletions: opts.allowDeletions === true,
+            });
           } catch (e) {
             if (e instanceof ApiError) {
               instance.rerender(
@@ -760,7 +772,13 @@ export function registerApplyCommand(program: Command): void {
   addContentfulTargetOptions(selectCmd);
   addCompositionOptions(selectCmd);
   addSelectionOptions(selectCmd);
-  selectCmd.option('--force', 'Skip confirmation for breaking changes').action(async (opts: SelectOptions) => {
+  selectCmd
+    .option('--force', 'Skip confirmation for breaking changes')
+    .option(
+      '--allow-deletions',
+      'Allow the push to delete remote ComponentTypes/DesignTokens missing from the manifest (default: skip them)',
+    )
+    .action(async (opts: SelectOptions) => {
     const nonInteractive = opts.selectAll || (opts.select ?? []).length > 0 || (opts.deselect ?? []).length > 0;
 
     if (!nonInteractive) {
@@ -834,7 +852,10 @@ export function registerApplyCommand(program: Command): void {
 
       let operation: ApplyOperationResponse;
       try {
-        operation = await client.applyImport(filteredManifest, hasBreaking || opts.force === true);
+        operation = await client.applyImport(filteredManifest, {
+          acknowledgeBreakingChanges: hasBreaking || opts.force === true,
+          allowDeletions: opts.allowDeletions === true,
+        });
       } catch (e) {
         if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
         throw e;
@@ -879,7 +900,10 @@ export function registerApplyCommand(program: Command): void {
 
         let operation: ApplyOperationResponse;
         try {
-          operation = await client.applyImport(filteredManifest, hasBreaking);
+          operation = await client.applyImport(filteredManifest, {
+            acknowledgeBreakingChanges: hasBreaking,
+            allowDeletions: opts.allowDeletions === true,
+          });
         } catch (e) {
           if (e instanceof ApiError) {
             instance.rerender(

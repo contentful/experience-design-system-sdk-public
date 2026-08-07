@@ -234,4 +234,11 @@ describe('apply push — flag variations', () => {
     });
     expect(code).toBe(0);
   });
+
+  // ── --allow-deletions ────────────────────────────────────────────────────
+
+  it('--allow-deletions flag is accepted and exits 0', async () => {
+    const { code } = await runCliWithEnv([...baseArgs(), '--allow-deletions'], baseEnv());
+    expect(code).toBe(0);
+  });
 });
