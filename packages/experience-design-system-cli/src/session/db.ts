@@ -1079,13 +1079,7 @@ export function loadRawComponents(
       source: c.source,
       framework: c.framework as RawComponentDefinition['framework'],
       extractionConfidence: c.extraction_confidence ?? null,
-      reviewReasons: (() => {
-        try {
-          return JSON.parse(c.review_reasons ?? '[]') as string[];
-        } catch {
-          return [];
-        }
-      })(),
+      reviewReasons: parseReviewReasons(c.review_reasons),
       needsReview: Boolean(c.needs_review),
       sourcePath: c.source_path ?? undefined,
       props: (propsByComponent.get(c.component_id) ?? []).map((p): RawPropDefinition => {
@@ -1159,6 +1153,16 @@ export function renameEmptySlots(
   }
 
   return { renames, warnings };
+}
+
+function parseReviewReasons(raw: string | null | undefined): string[] {
+  try {
+    const parsed = JSON.parse(raw ?? '[]') as unknown;
+    return Array.isArray(parsed) ? parsed.filter((reason): reason is string => typeof reason === 'string') : [];
+  } catch {
+    // A malformed historical value should not prevent callers from loading.
+    return [];
+  }
 }
 
 function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
@@ -1487,15 +1491,7 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
   const allowedBySlot = groupBy(allowedRows, (a) => `${a.component_id}::${a.slot_name}`);
 
   return rows.map((r) => {
-    let reviewReasons: string[] = [];
-    try {
-      const parsed = JSON.parse(r.review_reasons) as unknown;
-      reviewReasons = Array.isArray(parsed)
-        ? parsed.filter((reason): reason is string => typeof reason === 'string')
-        : [];
-    } catch {
-      // A malformed historical value should not prevent the scope gate from opening.
-    }
+    const reviewReasons = parseReviewReasons(r.review_reasons);
     const nonAuthorableReason = reviewReasons.find((reason) => reason.startsWith('non-authorable:'));
 
     return {
