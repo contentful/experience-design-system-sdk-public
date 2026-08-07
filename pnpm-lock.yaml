@@ -38,6 +38,9 @@ importers:
 
   packages/experience-design-system-cli:
     dependencies:
+      '@contentful/experience-design-system-client':
+        specifier: workspace:*
+        version: link:../experience-design-system-client
       '@contentful/experience-design-system-extraction':
         specifier: workspace:*
         version: link:../experience-design-system-extraction
