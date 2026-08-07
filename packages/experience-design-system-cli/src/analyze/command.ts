@@ -329,10 +329,10 @@ export function registerAnalyzeCommand(program: Command): void {
         const verdict = isNonAuthorableComponent(component);
         const keepDespiteZeroSurface =
           verdict.skip && verdict.reason === 'component has no props and no slots' && inspection.keepDespiteZeroSurface;
+        const retainedForReview = verdict.skip && !keepDespiteZeroSurface;
 
-        if (verdict.skip && !keepDespiteZeroSurface) {
-          filterWarnings.push(`Skipped non-authorable component: ${component.name} (${verdict.reason})`);
-          continue;
+        if (retainedForReview) {
+          filterWarnings.push(`${component.name}: requires operator review (${verdict.reason})`);
         }
 
         if (keepDespiteZeroSurface) {
@@ -354,9 +354,13 @@ export function registerAnalyzeCommand(program: Command): void {
         // from the Svelte parser) by merging them into the post-processing recompute.
         // Without this, recomputing here clobbers the per-extractor signal.
         const extractorReasons = component.reviewReasons ?? [];
+        const nonAuthorableReason = retainedForReview ? [`non-authorable:${verdict.reason}`] : [];
         const { confidence, reasons } = computeExtractionScore(component, {
-          additionalIssueCount: wrapperConfidenceToIssueCount(inspection.wrapperConfidence) + extractorReasons.length,
-          additionalReasons: [...extractorReasons, ...inspection.reviewReasons],
+          additionalIssueCount:
+            wrapperConfidenceToIssueCount(inspection.wrapperConfidence) +
+            extractorReasons.length +
+            nonAuthorableReason.length,
+          additionalReasons: [...extractorReasons, ...inspection.reviewReasons, ...nonAuthorableReason],
         });
         filteredComponents.push({
           ...component,
@@ -366,6 +370,7 @@ export function registerAnalyzeCommand(program: Command): void {
             deriveNeedsReview(confidence) ||
             inspection.wrapperConfidence >= 4 ||
             inspection.keepDespiteZeroSurface ||
+            retainedForReview ||
             // An extractor-level type-resolution failure is a strong signal regardless
             // of the otherwise-derived confidence threshold; force review.
             extractorReasons.includes('props-type-unresolved') ||

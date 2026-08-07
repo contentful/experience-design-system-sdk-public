@@ -52,8 +52,7 @@ export function AtomicScopeGateStep({
   const isIncluded = (row: ScopeComponent): boolean => {
     if (userExcluded.has(row.name)) return false;
     if (userUnExcluded.has(row.name)) return true;
-    // INTEG-4318: exclude on 'rejected' AND 'failed'.
-    return row.aiDecision !== 'rejected' && row.aiDecision !== 'failed';
+    return !isAiFlagged(row);
   };
 
   const partition = (): { accepted: string[]; rejected: string[] } => {
@@ -211,7 +210,7 @@ export function AtomicScopeGateStep({
 
       {reasonPanelOpen && flatList[cursor] !== undefined && isAiFlagged(flatList[cursor]!) && (
         <Box flexDirection="column" borderStyle="single" borderColor={PALETTE.border} paddingX={1} marginTop={1}>
-          <Text dimColor bold>{`AI rejection reason: ${flatList[cursor]!.name}`}</Text>
+          <Text dimColor bold>{`Review reason: ${flatList[cursor]!.name}`}</Text>
           <Text>{flatList[cursor].aiReason ?? '<no reason given>'}</Text>
           <Text dimColor>[s] close · [Esc] close</Text>
         </Box>
@@ -237,7 +236,7 @@ export function AtomicScopeGateStep({
             const showAiHeader = aiList.length > 0 && i === 0;
             const showComponentsHeader = componentsList.length > 0 && i === aiList.length;
             const header = showAiHeader ? (
-              <Text key={`hdr-ai-${i}`} bold>{`AI recommended exclusions (${aiList.length})`}</Text>
+              <Text key={`hdr-ai-${i}`} bold>{`Review flags (${aiList.length})`}</Text>
             ) : showComponentsHeader ? (
               <Text key={`hdr-comp-${i}`} bold>{`Components (${componentsList.length})`}</Text>
             ) : null;
@@ -299,12 +298,12 @@ export function AtomicScopeGateStep({
         </Text>
         {hasAnyAi && (
           <Text>
-            <Text color={PALETTE.info}>[s]</Text> <Text dimColor>AI reason</Text>
+            <Text color={PALETTE.info}>[s]</Text> <Text dimColor>review reason</Text>
           </Text>
         )}
         {hasAnyAi && (
           <Text>
-            <Text color={PALETTE.info}>*</Text> <Text dimColor>originally excluded by AI</Text>
+            <Text color={PALETTE.info}>*</Text> <Text dimColor>requires review</Text>
           </Text>
         )}
       </Box>

@@ -24,7 +24,7 @@ describe('ScopeGateStep — rendering', () => {
       <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toContain('AI recommended exclusions');
+    expect(out).toContain('Review flags');
     expect(out).toContain('1');
   });
 
@@ -40,7 +40,7 @@ describe('ScopeGateStep — rendering', () => {
       />,
     );
     const out = lastFrame() ?? '';
-    expect(out).not.toContain('AI recommended exclusions');
+    expect(out).not.toContain('Review flags');
     expect(out).not.toContain('[AI]');
   });
 });
@@ -184,12 +184,12 @@ describe('ScopeGateStep — legend', () => {
     expect(out).toContain('search');
   });
 
-  it('shows [x] AI exclusions only when at least one AI-flagged row exists', () => {
+  it('shows [x] review flags only when at least one flagged row exists', () => {
     const { lastFrame: framePlain } = render(
       <ScopeGateStep components={[{ name: 'Button', componentId: 'c0' }]} onConfirm={() => {}} onQuit={() => {}} />,
     );
     const plainOut = framePlain() ?? '';
-    expect(plainOut).not.toContain('AI exclusions');
+    expect(plainOut).not.toContain('review flags');
 
     const { lastFrame: frameAi } = render(
       <ScopeGateStep
@@ -204,6 +204,6 @@ describe('ScopeGateStep — legend', () => {
     );
     const aiOut = frameAi() ?? '';
     expect(aiOut).toContain('[x]');
-    expect(aiOut).toContain('AI exclusions');
+    expect(aiOut).toContain('review flags');
   });
 });

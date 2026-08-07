@@ -126,4 +126,35 @@ describe('loadScopeComponents', () => {
       expect(result.map((r) => r.name)).toEqual(['Button', 'Card']);
     });
   });
+
+  it('surfaces deterministic exclusion candidates as review flags with their reason', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, {
+        command: 'analyze extract',
+        inputPath: '/proj',
+      });
+      storeRawComponents(
+        db,
+        sessionId,
+        [
+          {
+            ...makeComponent('Provider'),
+            needsReview: true,
+            reviewReasons: ['non-authorable:source uses createContext and component has no props'],
+          },
+        ],
+        { status: 'extracted' },
+      );
+
+      const [component] = loadScopeComponents(db, sessionId);
+      db.close();
+
+      expect(component).toMatchObject({
+        name: 'Provider',
+        needsReview: true,
+        aiReason: 'source uses createContext and component has no props',
+      });
+    });
+  });
 });

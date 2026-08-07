@@ -46,6 +46,7 @@ export type ScopeComponent = {
   componentId: string;
   aiDecision?: 'accepted' | 'rejected' | 'failed' | null;
   aiReason?: string | null;
+  needsReview?: boolean;
   slots?: Array<{ name: string; allowedComponents: string[] }>;
 };
 
@@ -94,7 +95,7 @@ const HELP_SECTIONS: HelpSection[] = [
     title: 'Panels',
     entries: [
       { keys: 'c', label: 'Cycle list' },
-      { keys: 'x', label: 'AI exclusions' },
+      { keys: 'x', label: 'Review flags' },
     ],
   },
   {
@@ -872,7 +873,7 @@ export function ScopeGateStep({
       {hasAnyAi && (
         <Box>
           <Text dimColor>
-            {`AI recommended exclusions (${aiExcludedCount})`}
+            {`Review flags (${aiExcludedCount})`}
             {aiRows.length > 0 && <Text color={PALETTE.info}>{' — [x] review & jump'}</Text>}
           </Text>
         </Box>
@@ -902,7 +903,7 @@ export function ScopeGateStep({
       <Box flexDirection="row">
         {aiRationalePanel.isOpen ? (
           <GotoBanner
-            title={`AI recommended exclusions (${aiExcludedCount})`}
+            title={`Review flags (${aiExcludedCount})`}
             rows={aiRows}
             cursor={aiCursor}
             maxRows={panelMaxRows}
@@ -1085,13 +1086,13 @@ export function ScopeGateStep({
         {legendEntry('[q]', 'quit')}
         {columnPlan.layout === 'three-column' && legendEntry('[Tab/Shift-Tab]', 'switch column')}
         {columnPlan.layout === 'three-column' && legendEntry('[Enter]', 'jump to main')}
-        {hasAnyAi && legendEntry('[x]', 'AI exclusions', aiRationalePanel.isOpen)}
+        {hasAnyAi && legendEntry('[x]', 'review flags', aiRationalePanel.isOpen)}
         {hasAnyAi && (
           <Text>
             <Text color={PALETTE.warning} bold>
               [×]
             </Text>{' '}
-            <Text dimColor>AI recommends excluding</Text>
+            <Text dimColor>requires review</Text>
           </Text>
         )}
       </Box>

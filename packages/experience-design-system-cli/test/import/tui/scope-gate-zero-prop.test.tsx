@@ -18,7 +18,7 @@ describe('zero-prop component preserved through auto-filter (Feature 3 regressio
     const out = lastFrame() ?? '';
     expect(out).toContain('OpaqueWidget');
     expect(out).not.toContain('[AI]');
-    expect(out).toMatch(/AI recommended exclusions/);
+    expect(out).toMatch(/Review flags/);
   });
 
   it('routes a zero-prop AI-accepted component into the main list', () => {
