@@ -147,7 +147,7 @@ For each `RawPropDefinition`, apply in order:
 
 1. **Framework / DOM / accessibility pass-through?** → `exclude_prop`. These are escape hatches for developers, not configurable surfaces for marketers. Exposing them in the ExO editor adds noise that obscures the props that actually carry intent. Always exclude:
    - Framework internals: `ref`, `innerRef`, event handlers (any `onSomething`), `testId`, `data-testid`, `key`
-   - DOM pass-through: `className`, `class`, `classes`, `classNames`, `rootClassName`, `prefixCls`, `style`, `styles`, `id`, `role`, `tabIndex`, `name` (the bare HTML form `name` attribute), `htmlFor`, `for`, `slot`, `is`, `lang`, `dir`, `hidden`, `draggable`, `spellCheck`, `contentEditable`, `inputMode`, `autoComplete`, `autoFocus`, `translate`, `part`, `exportparts`
+   - DOM pass-through: `className`, `class`, `classes`, `classNames`, `rootClassName`, `prefixCls`, `style`, `styles`, `id`, `role`, `tabIndex`, `htmlFor`, `for`, `slot`, `is`, `lang`, `dir`, `hidden`, `draggable`, `spellCheck`, `contentEditable`, `inputMode`, `autoComplete`, `autoFocus`, `translate`, `part`, `exportparts`
    - Accessibility pass-through: any `aria-*` or `ariaSomething` prop (including bare `aria` as an aria-attributes object), `aria-label`, `aria-hidden`, `aria-describedby`, `aria-controls`
    - Data attributes: any `data-*` prop
    - **Polymorphic component props**: `as`, `element`, `component` (when typed as an HTML tag string or component reference) — these change rendered HTML, not marketer-visible behavior
@@ -157,6 +157,7 @@ For each `RawPropDefinition`, apply in order:
    - `icon` / `leftIcon` / `rightIcon` / `prefixIcon` / `suffixIcon` — slot or `string` (icon name); see slot guidance below
    - `items` / `options` / `actions` / `links` — usually array content; if the element shape is simple, classify as `string` (comma-separated names/IDs) and note in `description`. Only exclude when elements are deep nested objects with no flat representation.
    - `value` (the bare prop, not `modelValue`) — content prop, usually `string` (or `enum` if from a fixed set). Note: Vue's `modelValue` / `modelModifiers` are excluded by pre-classify because they're v-model framework wiring.
+   - `name` — content prop, usually `string`. Treat it as semantic component data, not as a DOM pass-through.
    - `form` (when not the literal `<form>` HTML attribute) — typically content; classify as `string` unless it's a complex form-config object
    - `inputId` / `componentId` — these CAN be content (anchor IDs, marketer-set tracking refs). Classify as `string`, `cdf_category: "content"` when the type is a plain string. Only exclude if the prop is clearly internal (e.g. typed as a generated React ID).
    - `accessibleNameRef` / `accessibleDescriptionRef` (web components) — these are ID references for a11y wiring; classify as `string`, `cdf_category: "state"` (behavioral wiring, not design or content).
@@ -397,7 +398,7 @@ Before emitting any tool calls, verify:
 5. Every `cdf_type: "token"` has `token_kind` (or a warning in `description` if lookup failed)
 6. No `cdf_type: "link"` — all href/url props use `string`
 7. `required` values are JSON booleans, not strings
-8. Framework, DOM, accessibility, and data-* pass-through props are excluded — `className`/`classes`/`classNames`/`rootClassName`/`prefixCls`, `style`, `id`, `role`, `tabIndex`, `name` (bare HTML form attribute), `aria-*` (and bare `aria`), `data-*`, polymorphic `as`/`element`/`component`, framework theming `dt`/`pt`/`ptOptions`/`unstyled`/`sx`. Discrete positional/geometric props (`top`, `bottom`, `left`, `right`, `rotation`, etc.) ARE classified as `string` design props. Common semantic props (`icon`, `items`, `actions`, `options`, `value`, `form`, `inputId`, `componentId`) are NOT excluded — classify them per their content/design/state nature.
+8. Framework, DOM, accessibility, and data-* pass-through props are excluded — `className`/`classes`/`classNames`/`rootClassName`/`prefixCls`, `style`, `id`, `role`, `tabIndex`, `aria-*` (and bare `aria`), `data-*`, polymorphic `as`/`element`/`component`, framework theming `dt`/`pt`/`ptOptions`/`unstyled`/`sx`. Discrete positional/geometric props (`top`, `bottom`, `left`, `right`, `rotation`, etc.) ARE classified as `string` design props. Common semantic props (`icon`, `items`, `actions`, `options`, `value`, `name`, `form`, `inputId`, `componentId`) are NOT excluded — classify them per their content/design/state nature.
 9. No `cdf_type: "link"` used — `link` is reserved and rejected by the CLI parser
 10. No `cdf_type: "number"` used — this is not a supported type; use `"string"` with numeric defaults. `cdf_type: "boolean"` IS valid — use it for boolean toggle props.
 11. `classify_component` includes a `rationale` object with all three sub-fields (`rationale.description`, `rationale.props`, `rationale.slots`) populated as non-empty strings.

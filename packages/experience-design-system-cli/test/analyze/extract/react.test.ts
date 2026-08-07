@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { extractReactComponents } from '@contentful/experience-design-system-extraction';
+import { extractReactComponents, preClassifyComponent } from '@contentful/experience-design-system-extraction';
 
 let tempDir: string;
 
@@ -22,6 +22,482 @@ async function writeFixture(filename: string, content: string): Promise<string> 
 }
 
 describe('ReactComponentExtractor', () => {
+  it('does not treat standards-compliant custom elements as intrinsic DOM provenance', async () => {
+    const filePath = await writeFixture(
+      'CustomElementName.tsx',
+      `
+      import React from 'react';
+
+      interface Props { name: string }
+
+      export function NativeInput(props: Props) {
+        return <input name={props.name} />;
+      }
+
+      export function CustomAnimation(props: Props) {
+        return <sl-animation name={props.name} />;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([filePath]);
+    const nativeInput = result.components.find((component) => component.name === 'NativeInput');
+    const customAnimation = result.components.find((component) => component.name === 'CustomAnimation');
+
+    expect(nativeInput?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(customAnimation?.props.find((prop) => prop.name === 'name')?.domAttribute).toBeUndefined();
+    expect(preClassifyComponent(customAnimation!).props).toContainEqual(
+      expect.objectContaining({ name: 'name', category: 'content' }),
+    );
+  });
+
+  it('keeps DOM provenance local when input and semantic components share the same props declaration', async () => {
+    const sharedPropsPath = await writeFixture(
+      'SharedProps.ts',
+      `
+      export interface SharedProps {
+        name: string;
+        label?: string;
+      }
+    `,
+    );
+    const inputPath = await writeFixture(
+      'SharedInput.tsx',
+      `
+      import React from 'react';
+      import type { SharedProps } from './SharedProps';
+
+      export function SharedInput(props: SharedProps) {
+        return <input {...props} />;
+      }
+    `,
+    );
+    const semanticPath = await writeFixture(
+      'SharedSemanticName.tsx',
+      `
+      import React from 'react';
+      import type { SharedProps } from './SharedProps';
+
+      export function SharedSemanticName({ name }: SharedProps) {
+        return <span>{name}</span>;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([sharedPropsPath, inputPath, semanticPath]);
+    const input = result.components.find((component) => component.name === 'SharedInput');
+    const semantic = result.components.find((component) => component.name === 'SharedSemanticName');
+
+    expect(input?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(semantic?.props.find((prop) => prop.name === 'name')?.domAttribute).toBeUndefined();
+    expect(preClassifyComponent(input!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+    expect(preClassifyComponent(semantic!).props).toContainEqual(
+      expect.objectContaining({ name: 'name', category: 'content' }),
+    );
+  });
+
+  it('recognizes bounded React prop aliases and rejects unresolved or mismatched forwarding', async () => {
+    const filePath = await writeFixture(
+      'NameForwarding.tsx',
+      `
+      import React from 'react';
+
+      interface Props { name: string; label?: string }
+
+      export function DirectAttribute(props: Props) {
+        return <input name={props.name} />;
+      }
+
+      export function TypedSpread(props: Props) {
+        return <input {...props} />;
+      }
+
+      export function ValueAlias(props: Props) {
+        const inputName = props.name;
+        return <input name={inputName} />;
+      }
+
+      export function ObjectAlias(props: Props) {
+        const inputProps = props;
+        return <input {...inputProps} />;
+      }
+
+      export function ObjectLiteralAlias(props: Props) {
+        const inputProps = { name: props.name };
+        return <input {...inputProps} />;
+      }
+
+      export function BlockShadowedAlias(props: Props) {
+        const inputName = props.name;
+        {
+          const inputName = 'internal';
+          return <input name={inputName} />;
+        }
+      }
+
+      export function ReassignedValueAlias(props: Props) {
+        let inputName = props.name;
+        inputName = 'internal';
+        return <input name={inputName} />;
+      }
+
+      export function ReassignedObjectAlias(props: Props) {
+        let inputProps = props;
+        inputProps = { name: 'internal' };
+        return <input {...inputProps} />;
+      }
+
+      export function RenamedBinding(props: Props) {
+        const { name: inputName } = props;
+        return <input name={inputName} />;
+      }
+
+      export function ElementAccess(props: Props) {
+        return <input name={props['name']} />;
+      }
+
+      export function SemanticOnly(props: Props) {
+        return <span>{props.name}</span>;
+      }
+
+      export function MismatchedAttribute(props: Props) {
+        return <input id={props.name} />;
+      }
+
+      export function DynamicElementAccess(props: Props) {
+        const key: keyof Props = 'name';
+        return <input name={props[key]} />;
+      }
+
+      export function ShadowedNestedProps(props: Props) {
+        const renderInput = (props: Props) => <input name={props.name} />;
+        return <span>{props.name}{renderInput({ name: 'internal' })}</span>;
+      }
+
+      export function SemanticChild({ name }: Props) {
+        return <span>{name}</span>;
+      }
+
+      export function CustomComponentOnly(props: Props) {
+        return <SemanticChild {...props} />;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([filePath]);
+    const positiveNames = [
+      'DirectAttribute',
+      'TypedSpread',
+      'ValueAlias',
+      'ObjectAlias',
+      'ObjectLiteralAlias',
+      'RenamedBinding',
+      'ElementAccess',
+    ];
+    const negativeNames = [
+      'SemanticOnly',
+      'MismatchedAttribute',
+      'DynamicElementAccess',
+      'ShadowedNestedProps',
+      'BlockShadowedAlias',
+      'ReassignedValueAlias',
+      'ReassignedObjectAlias',
+      'CustomComponentOnly',
+    ];
+
+    for (const componentName of positiveNames) {
+      const component = result.components.find((candidate) => candidate.name === componentName);
+      expect(component?.props.find((prop) => prop.name === 'name')?.domAttribute, componentName).toBe(true);
+    }
+    for (const componentName of negativeNames) {
+      const component = result.components.find((candidate) => candidate.name === componentName);
+      expect(component?.props.find((prop) => prop.name === 'name')?.domAttribute, componentName).toBeUndefined();
+    }
+  });
+
+  it('follows aliased imports by declaration identity when component display names collide', async () => {
+    const nativeInputPath = await writeFixture(
+      'native-input.tsx',
+      `
+      import React from 'react';
+
+      export interface Props { name: string }
+
+      export function Input(props: Props) {
+        return <input name={props.name} />;
+      }
+    `,
+    );
+    const semanticInputPath = await writeFixture(
+      'semantic-input.tsx',
+      `
+      import React from 'react';
+
+      export interface Props { name: string }
+
+      export function Input({ name }: Props) {
+        return <span>{name}</span>;
+      }
+    `,
+    );
+    const wrapperPath = await writeFixture(
+      'wrappers.tsx',
+      `
+      import React from 'react';
+      import { Input as NativeInput, type Props as NativeInputProps } from './native-input';
+      import { Input as SemanticInput, type Props as SemanticInputProps } from './semantic-input';
+
+      export function NativeInputWrapper(props: NativeInputProps) {
+        return <NativeInput {...props} />;
+      }
+
+      export function SemanticInputWrapper(props: SemanticInputProps) {
+        return <SemanticInput {...props} />;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([nativeInputPath, semanticInputPath, wrapperPath]);
+    const nativeWrapper = result.components.find((component) => component.name === 'NativeInputWrapper');
+    const semanticWrapper = result.components.find((component) => component.name === 'SemanticInputWrapper');
+
+    expect(nativeWrapper?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(semanticWrapper?.props.find((prop) => prop.name === 'name')?.domAttribute).toBeUndefined();
+  });
+
+  it('does not infer DOM evidence from an inherited wrapper without intrinsic forwarding', async () => {
+    const filePath = await writeFixture(
+      'SemanticButton.tsx',
+      `
+      import React, { type ButtonHTMLAttributes } from 'react';
+
+      interface SemanticButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+        name: string;
+      }
+
+      export function SemanticButton({ name }: SemanticButtonProps) {
+        return <span>{name}</span>;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([filePath]);
+    const button = result.components[0];
+
+    expect(button.props.find((prop) => prop.name === 'name')?.domAttribute).toBeUndefined();
+    expect(preClassifyComponent(button).props).toContainEqual(
+      expect.objectContaining({ name: 'name', category: 'content' }),
+    );
+  });
+
+  it('propagates intrinsic form-name provenance through a Forma 36-style Switch wrapper', async () => {
+    const baseInputTypesPath = await writeFixture(
+      'BaseInputTypes.ts',
+      `
+      export interface BaseInputInternalProps {
+        name?: string;
+        label?: string;
+        value?: string;
+      }
+    `,
+    );
+    const coreTypesPath = await writeFixture(
+      'CoreTypes.ts',
+      `
+      import type { ComponentPropsWithoutRef, ElementType } from 'react';
+
+      type Overwrite<T, U> = Omit<T, keyof U> & U;
+
+      export type PropsWithHTMLElement<
+        P,
+        E extends ElementType,
+        OmitAdditionalProps extends PropertyKey = never,
+      > = Overwrite<Omit<ComponentPropsWithoutRef<E>, OmitAdditionalProps>, P>;
+    `,
+    );
+    const baseCheckboxTypesPath = await writeFixture(
+      'BaseCheckboxTypes.ts',
+      `
+      import type { BaseInputInternalProps } from './BaseInputTypes';
+
+      export interface BaseCheckboxInternalProps extends Omit<BaseInputInternalProps, 'value'> {
+        checked?: boolean;
+      }
+    `,
+    );
+    const baseCheckboxPath = await writeFixture(
+      'BaseCheckbox.tsx',
+      `
+      import React from 'react';
+      import type { PropsWithHTMLElement } from './CoreTypes';
+      import type { BaseCheckboxInternalProps } from './BaseCheckboxTypes';
+
+      export type BaseCheckboxProps = PropsWithHTMLElement<BaseCheckboxInternalProps, 'label', 'htmlFor'>;
+
+      export function BaseCheckbox({ name, label, checked }: BaseCheckboxProps) {
+        return <input name={name} aria-label={label} checked={checked} readOnly />;
+      }
+    `,
+    );
+    const switchPath = await writeFixture(
+      'Switch.tsx',
+      `
+      import React from 'react';
+      import { BaseCheckbox, type BaseCheckboxProps } from './BaseCheckbox';
+
+      export type SwitchProps = Omit<BaseCheckboxProps, 'checked'>;
+
+      export function Switch(props: SwitchProps) {
+        return <BaseCheckbox {...props} />;
+      }
+    `,
+    );
+    const flagPath = await writeFixture(
+      'Flag.tsx',
+      `
+      import React from 'react';
+
+      interface FlagProps {
+        name: string;
+      }
+
+      export function Flag({ name }: FlagProps) {
+        return <span>{name}</span>;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([
+      baseInputTypesPath,
+      coreTypesPath,
+      baseCheckboxTypesPath,
+      baseCheckboxPath,
+      switchPath,
+      flagPath,
+    ]);
+    const baseCheckbox = result.components.find((component) => component.name === 'BaseCheckbox');
+    const switchComponent = result.components.find((component) => component.name === 'Switch');
+    const flag = result.components.find((component) => component.name === 'Flag');
+
+    expect(baseCheckbox?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(switchComponent?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(flag?.props.find((prop) => prop.name === 'name')?.domAttribute).toBeUndefined();
+    expect(preClassifyComponent(switchComponent!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+    expect(preClassifyComponent(flag!).props).toContainEqual(
+      expect.objectContaining({ name: 'name', category: 'content' }),
+    );
+  });
+
+  it('keeps DOM provenance when a forwarded alias is read through a negation guard', async () => {
+    const filePath = await writeFixture(
+      'GuardedAlias.tsx',
+      `
+      import React from 'react';
+
+      interface Props { name: string }
+
+      export function GuardedAlias(props: Props) {
+        const inputName = props.name;
+        if (!inputName) return null;
+        return <input name={inputName} />;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([filePath]);
+    const guarded = result.components.find((component) => component.name === 'GuardedAlias');
+
+    expect(guarded?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(preClassifyComponent(guarded!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+  });
+
+  it('keeps DOM provenance when an unrelated prop is negated on the same element', async () => {
+    const filePath = await writeFixture(
+      'NegatedSibling.tsx',
+      `
+      import React from 'react';
+
+      interface Props { name: string; disabled?: boolean }
+
+      export function NegatedSibling(props: Props) {
+        return <input name={props.name} readOnly={!props.disabled} />;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([filePath]);
+    const negated = result.components.find((component) => component.name === 'NegatedSibling');
+
+    expect(negated?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(preClassifyComponent(negated!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+  });
+
+  it('keeps DOM provenance when the props object is negated before a spread forward', async () => {
+    const filePath = await writeFixture(
+      'NegatedSpread.tsx',
+      `
+      import React from 'react';
+
+      interface Props { name: string; enabled?: boolean }
+
+      export function NegatedSpread(props: Props) {
+        if (!props.enabled) return null;
+        return <input {...props} />;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([filePath]);
+    const spread = result.components.find((component) => component.name === 'NegatedSpread');
+
+    expect(spread?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(preClassifyComponent(spread!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+  });
+
+  it('drops DOM provenance when an alias is rebound by an increment', async () => {
+    const filePath = await writeFixture(
+      'MutatedTabIndex.tsx',
+      `
+      import React from 'react';
+
+      interface Props { tabIndex: number }
+
+      export function MutatedTabIndex(props: Props) {
+        let index = props.tabIndex;
+        ++index;
+        return <input tabIndex={index} />;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([filePath]);
+    const mutated = result.components.find((component) => component.name === 'MutatedTabIndex');
+
+    expect(mutated?.props.find((prop) => prop.name === 'tabIndex')?.domAttribute).toBeUndefined();
+  });
+
+  it('marks props synthesized from a DOM attribute surface as DOM provenance', async () => {
+    const filePath = await writeFixture(
+      'StyledField.tsx',
+      `
+      import React, { type InputHTMLAttributes } from 'react';
+      import styled from 'styled-components';
+
+      const StyledInput = styled.input\`color: red;\`;
+
+      export function StyledField(props: InputHTMLAttributes<HTMLInputElement>) {
+        return <StyledInput {...props} />;
+      }
+    `,
+    );
+
+    const result = await extractReactComponents([filePath]);
+    const styled = result.components.find((component) => component.name === 'StyledField');
+
+    expect(styled?.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(preClassifyComponent(styled!).props.find((prop) => prop.name === 'name')).toBeUndefined();
+  });
+
   it('extracts props from TypeScript interface', async () => {
     const filePath = await writeFixture(
       'Button.tsx',
@@ -596,6 +1072,8 @@ describe('ReactComponentExtractor', () => {
     expect(fieldSet.props.find((p) => p.name === 'className')).toBeDefined();
     expect(fieldSet.props.find((p) => p.name === 'id')).toBeDefined();
     expect(fieldSet.props.find((p) => p.name === 'title')).toBeDefined();
+    expect(fieldSet.props.find((p) => p.name === 'name')?.domAttribute).toBe(true);
+    expect(preClassifyComponent(fieldSet).props.find((p) => p.name === 'name')).toBeUndefined();
   });
 
   it('recovers DOM props for scoped forwardRef wrappers around primitive children', async () => {

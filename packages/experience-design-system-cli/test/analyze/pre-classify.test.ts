@@ -107,8 +107,15 @@ describe('preClassifyProp', () => {
       });
     });
 
-    it('excludes name (HTML form name attribute)', () => {
+    it('keeps semantic bare name without DOM provenance', () => {
       expect(preClassifyProp(makeProp({ name: 'name', type: 'string' }))).toEqual({
+        category: 'content',
+        cdfTypeHint: 'string',
+      });
+    });
+
+    it('excludes a form-control name when extraction proves DOM provenance', () => {
+      expect(preClassifyProp(makeProp({ name: 'name', type: 'string', domAttribute: true }))).toEqual({
         category: 'exclude',
       });
     });
@@ -188,8 +195,14 @@ describe('preClassifyProp', () => {
       });
     });
 
+    it('excludes the sx framework styling escape hatch', () => {
+      expect(preClassifyProp(makeProp({ name: 'sx', type: 'SxProps' }))).toEqual({
+        category: 'exclude',
+      });
+    });
+
     it('does NOT exclude unrelated names that contain "name"', () => {
-      // "fileName" is a content prop — only the bare "name" attribute is excluded
+      // "fileName" is a content prop, like the semantic bare "name" prop.
       expect(preClassifyProp(makeProp({ name: 'fileName', type: 'string' }))?.category).not.toBe('exclude');
     });
 
@@ -445,7 +458,7 @@ describe('preClassifyComponent', () => {
     expect(result.props[0].category).toBe('design');
   });
 
-  it('does NOT set category for excluded props', () => {
+  it('removes excluded props from the classification payload', () => {
     const component: RawComponentDefinition = {
       ...baseComponent,
       props: [
@@ -456,9 +469,97 @@ describe('preClassifyComponent', () => {
     };
 
     const result = preClassifyComponent(component);
-    expect(result.props[0].category).toBeUndefined();
-    expect(result.props[1].category).toBeUndefined();
-    expect(result.props[2].category).toBeUndefined();
+    expect(result.props).toEqual([]);
+  });
+
+  it('removes DOM and a11y pass-through props while preserving semantic props', () => {
+    const component: RawComponentDefinition = {
+      ...baseComponent,
+      props: [
+        makeProp({ name: 'className', type: 'string' }),
+        makeProp({ name: 'aria-label', type: 'string' }),
+        makeProp({ name: 'data-testid', type: 'string' }),
+        makeProp({ name: 'sx', type: 'SxProps' }),
+        makeProp({ name: 'label', type: 'string' }),
+        makeProp({ name: 'name', type: 'string' }),
+        makeProp({ name: 'variant', type: "'primary' | 'secondary'" }),
+      ],
+    };
+
+    const result = preClassifyComponent(component);
+
+    expect(result.props).toEqual([
+      expect.objectContaining({ name: 'label', category: 'content' }),
+      expect.objectContaining({ name: 'name', category: 'content' }),
+      expect.objectContaining({ name: 'variant', category: 'design' }),
+    ]);
+  });
+
+  it.each(['react', 'vue', 'stencil', 'web-component'] as const)(
+    'uses provenance rather than framework-specific name heuristics for %s',
+    (framework) => {
+      const formControl: RawComponentDefinition = {
+        ...baseComponent,
+        name: 'FormControl',
+        framework,
+        props: [
+          makeProp({ name: 'name', type: 'string', domAttribute: true }),
+          makeProp({ name: 'label', type: 'string' }),
+        ],
+      };
+      const semanticSelector: RawComponentDefinition = {
+        ...baseComponent,
+        name: 'VisibleAsset',
+        framework,
+        props: [makeProp({ name: 'name', type: 'string' })],
+      };
+
+      expect(preClassifyComponent(formControl).props.map((prop) => prop.name)).toEqual(['label']);
+      expect(preClassifyComponent(semanticSelector).props).toEqual([
+        expect.objectContaining({ name: 'name', category: 'content' }),
+      ]);
+    },
+  );
+
+  it.each(['PFlag', 'Icon', 'Animation'])('retains the semantic name selector on %s', (name) => {
+    const component: RawComponentDefinition = {
+      ...baseComponent,
+      name,
+      props: [makeProp({ name: 'name', type: 'string' })],
+    };
+
+    expect(preClassifyComponent(component).props).toEqual([
+      expect.objectContaining({ name: 'name', category: 'content' }),
+    ]);
+  });
+
+  it('removes excluded props even if they were pre-categorized', () => {
+    const component: RawComponentDefinition = {
+      ...baseComponent,
+      props: [
+        makeProp({ name: 'className', type: 'string', category: 'design' }),
+        makeProp({ name: 'aria-label', type: 'string', category: 'content' }),
+        makeProp({ name: 'data-testid', type: 'string', category: 'state' }),
+        makeProp({ name: 'sx', type: 'SxProps', category: 'design' }),
+        makeProp({ name: 'label', type: 'string', category: 'content' }),
+      ],
+    };
+
+    expect(preClassifyComponent(component).props).toEqual([
+      expect.objectContaining({ name: 'label', category: 'content' }),
+    ]);
+  });
+
+  it('does not expose extraction provenance in the downstream classification payload', () => {
+    const component: RawComponentDefinition = {
+      ...baseComponent,
+      props: [makeProp({ name: 'href', type: 'string', domAttribute: true })],
+    };
+
+    const result = preClassifyComponent(component);
+
+    expect(result.props[0]).not.toHaveProperty('domAttribute');
+    expect(result.props).toEqual([expect.objectContaining({ name: 'href', category: 'content' })]);
   });
 
   it('returns undefined category for complex types', () => {

@@ -12,6 +12,10 @@ describe('ai-flag policy', () => {
       expect(isAiFlagged({ aiDecision: 'failed' })).toBe(true);
     });
 
+    it('flags deterministic review candidates even when no AI decision exists', () => {
+      expect(isAiFlagged({ needsReview: true })).toBe(true);
+    });
+
     it('does not flag accepted rows', () => {
       expect(isAiFlagged({ aiDecision: 'accepted' })).toBe(false);
     });
@@ -31,6 +35,7 @@ describe('ai-flag policy', () => {
     it('excludes flagged rows by default', () => {
       expect(isDefaultIncluded({ aiDecision: 'rejected' })).toBe(false);
       expect(isDefaultIncluded({ aiDecision: 'failed' })).toBe(false);
+      expect(isDefaultIncluded({ needsReview: true })).toBe(false);
     });
   });
 });

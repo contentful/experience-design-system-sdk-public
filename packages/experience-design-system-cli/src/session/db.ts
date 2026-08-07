@@ -1079,13 +1079,7 @@ export function loadRawComponents(
       source: c.source,
       framework: c.framework as RawComponentDefinition['framework'],
       extractionConfidence: c.extraction_confidence ?? null,
-      reviewReasons: (() => {
-        try {
-          return JSON.parse(c.review_reasons ?? '[]') as string[];
-        } catch {
-          return [];
-        }
-      })(),
+      reviewReasons: parseReviewReasons(c.review_reasons),
       needsReview: Boolean(c.needs_review),
       sourcePath: c.source_path ?? undefined,
       props: (propsByComponent.get(c.component_id) ?? []).map((p): RawPropDefinition => {
@@ -1159,6 +1153,16 @@ export function renameEmptySlots(
   }
 
   return { renames, warnings };
+}
+
+function parseReviewReasons(raw: string | null | undefined): string[] {
+  try {
+    const parsed = JSON.parse(raw ?? '[]') as unknown;
+    return Array.isArray(parsed) ? parsed.filter((reason): reason is string => typeof reason === 'string') : [];
+  } catch {
+    // A malformed historical value should not prevent callers from loading.
+    return [];
+  }
 }
 
 function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
@@ -1443,13 +1447,14 @@ export type ScopeComponentRow = {
   componentId: string;
   aiDecision: 'accepted' | 'rejected' | null;
   aiReason: string | null;
+  needsReview: boolean;
   slots: Array<{ name: string; allowedComponents: string[] }>;
 };
 
 export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeComponentRow[] {
   const rows = db
     .prepare(
-      `SELECT name, component_id, status, reject_reason FROM raw_components
+      `SELECT name, component_id, status, reject_reason, review_reasons, needs_review FROM raw_components
        WHERE session_id = ? AND status IN ('extracted', 'accepted', 'rejected')
        ORDER BY name`,
     )
@@ -1458,6 +1463,8 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
     component_id: string;
     status: string;
     reject_reason: string | null;
+    review_reasons: string;
+    needs_review: number;
   }>;
 
   if (rows.length === 0) return [];
@@ -1483,16 +1490,22 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
   const slotsByComponent = groupBy(slotRows, (s) => s.component_id);
   const allowedBySlot = groupBy(allowedRows, (a) => `${a.component_id}::${a.slot_name}`);
 
-  return rows.map((r) => ({
-    name: r.name,
-    componentId: r.component_id,
-    aiDecision: r.status === 'accepted' ? 'accepted' : r.status === 'rejected' ? 'rejected' : null,
-    aiReason: r.reject_reason,
-    slots: (slotsByComponent.get(r.component_id) ?? []).map((s) => ({
-      name: s.name,
-      allowedComponents: (allowedBySlot.get(`${r.component_id}::${s.name}`) ?? []).map((a) => a.allowed_component),
-    })),
-  }));
+  return rows.map((r) => {
+    const reviewReasons = parseReviewReasons(r.review_reasons);
+    const nonAuthorableReason = reviewReasons.find((reason) => reason.startsWith('non-authorable:'));
+
+    return {
+      name: r.name,
+      componentId: r.component_id,
+      aiDecision: r.status === 'accepted' ? 'accepted' : r.status === 'rejected' ? 'rejected' : null,
+      aiReason: r.reject_reason ?? nonAuthorableReason?.slice('non-authorable:'.length) ?? null,
+      needsReview: Boolean(r.needs_review),
+      slots: (slotsByComponent.get(r.component_id) ?? []).map((s) => ({
+        name: s.name,
+        allowedComponents: (allowedBySlot.get(`${r.component_id}::${s.name}`) ?? []).map((a) => a.allowed_component),
+      })),
+    };
+  });
 }
 
 export function applyScopeDecisions(

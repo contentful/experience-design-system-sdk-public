@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { Node, Project, type SourceFile, type Type } from 'ts-morph';
+import { Node, Project, SyntaxKind, type SourceFile, type Type } from 'ts-morph';
 import ts from 'typescript';
 
 type WorkspacePackageManifest = {
@@ -22,6 +22,21 @@ export function extractAllowedValues(type: Type): string[] | undefined {
     .map((t) => t.getLiteralValueOrThrow() as string);
 
   return literals.length >= 2 ? literals.sort() : undefined;
+}
+
+/**
+ * Custom elements include a hyphen. Lowercase, unqualified tags are therefore
+ * the conservative syntactic form for intrinsic JSX elements.
+ */
+export function isIntrinsicJsxElement(tagName: string): boolean {
+  return /^[a-z][A-Za-z0-9]*$/.test(tagName);
+}
+
+/** The tag name of the JSX element that owns an attribute or spread. */
+export function getJsxTagNameNode(node: Node): Node | undefined {
+  const openingElement = node.getFirstAncestorByKind(SyntaxKind.JsxOpeningElement);
+  const selfClosingElement = node.getFirstAncestorByKind(SyntaxKind.JsxSelfClosingElement);
+  return openingElement?.getTagNameNode() ?? selfClosingElement?.getTagNameNode();
 }
 
 export function getNodeDefinitions(node: Node): { getDeclarationNode(): Node | undefined }[] {

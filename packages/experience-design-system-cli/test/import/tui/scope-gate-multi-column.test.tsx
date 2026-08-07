@@ -488,7 +488,7 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
       <ScopeGateStep components={AI_FLAGGED_GRAPH} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const before = lastFrame() ?? '';
-    expect(before).toContain('AI recommended exclusions');
+    expect(before).toContain('Review flags');
     expect(before).toContain('[x]');
     expect(before).toContain('Added components');
     expect(before).toContain('Added groups');
@@ -511,7 +511,7 @@ describe('ScopeGateStep — AI suggestions (three-column layout)', () => {
     expect(out).toContain('[×]');
     const sidebarLine = out.split('\n').find((line) => line.includes('DebugPanel') && line.includes('[×]'));
     expect(sidebarLine).toBeDefined();
-    expect(out).toContain('AI recommends');
+    expect(out).toContain('requires review');
   });
 
   it('renders [×] on AI-flagged accepted rows in the Added-components column', () => {

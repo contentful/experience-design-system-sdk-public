@@ -125,7 +125,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toContain('AI recommended exclusions');
+    expect(out).toContain('Review flags');
     expect(out).toContain('2');
     expect(out).toContain('BadgeIcon');
     expect(out).toContain('DivWrapper');
@@ -140,7 +140,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       <ScopeGateStep components={allAccepted} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
     );
     const out = lastFrame() ?? '';
-    expect(out).not.toContain('AI recommended exclusions');
+    expect(out).not.toContain('Review flags');
     expect(out).not.toContain('[AI]');
     expect(out).not.toContain('AI filtering');
   });
@@ -763,7 +763,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
           aiFilterProgress={{ done: 0, total: 3 }}
         />,
       );
-      expect(lastFrame() ?? '').not.toContain('AI recommended exclusions');
+      expect(lastFrame() ?? '').not.toContain('Review flags');
 
       const updated = [
         { name: 'Button', componentId: 'c0' },
@@ -772,7 +772,7 @@ describe('ScopeGateStep — AI-decision surfacing', () => {
       ];
       rerender(<ScopeGateStep components={updated} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />);
       const frame = lastFrame() ?? '';
-      expect(frame).toContain('AI recommended exclusions');
+      expect(frame).toContain('Review flags');
       expect(frame).toContain('low semantic value');
     });
 
@@ -1705,7 +1705,7 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
         <ScopeGateStep components={MIXED} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
       const out = stripAnsi(lastFrame() ?? '');
-      expect(out).toContain('AI recommended exclusions');
+      expect(out).toContain('Review flags');
       expect(out).toContain('[x]');
       expect(out).not.toContain('no semantic content');
     });
@@ -1770,12 +1770,12 @@ describe('ScopeGateStep — ADR-0010 scenarios', () => {
       const { lastFrame, stdin } = render(
         <ScopeGateStep components={clean} onConfirm={() => {}} onQuit={() => {}} aiFilterStatus="complete" />,
       );
-      expect(stripAnsi(lastFrame() ?? '')).not.toContain('AI recommended exclusions');
+      expect(stripAnsi(lastFrame() ?? '')).not.toContain('Review flags');
       stdin.write('x');
       await new Promise((r) => setTimeout(r, 30));
       const out = stripAnsi(lastFrame() ?? '');
       expect(out).toContain('Alpha');
-      expect(out).not.toContain('AI recommended exclusions');
+      expect(out).not.toContain('Review flags');
     });
   });
 

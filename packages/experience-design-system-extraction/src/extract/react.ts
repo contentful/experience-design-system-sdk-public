@@ -21,6 +21,9 @@ import {
   getNodeDefinitions,
   getTypeReferenceName,
   getTypeTargetDeclarations,
+  getValueTargetDeclarations,
+  getJsxTagNameNode,
+  isIntrinsicJsxElement,
 } from './tsx-shared.js';
 import { shouldBeSlot } from './slot-detection.js';
 import { extractAllowedComponentsFromTypeText, extractAllowedComponentsFromJsdoc } from './slot-allowed-components.js';
@@ -34,6 +37,18 @@ function isReactElementGenericSlotType(typeText: string): boolean {
 type RawSlotDefinitionInternal = RawSlotDefinition & {
   _rawTypeText?: string;
   _rawJsdoc?: string;
+};
+
+type PropForwardingEdge = {
+  sourceProp: string;
+  targetComponentIdentity: string;
+  targetProp: string;
+};
+
+type RawComponentDefinitionInternal = RawComponentDefinition & {
+  _componentIdentity?: string;
+  _propsTypeName?: string;
+  _propForwardingEdges?: PropForwardingEdge[];
 };
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
@@ -1194,6 +1209,234 @@ function filterImplementationOnlyAliasProps(props: RawPropDefinition[], func: Fu
   });
 }
 
+type PropDataflow = {
+  intrinsicDomProps: Set<string>;
+  componentEdges: PropForwardingEdge[];
+};
+
+type PropObjectShape = Map<string, string>;
+
+function getDeclarationIdentity(node: Node): Node {
+  if (Node.isIdentifier(node)) {
+    const parent = node.getParent();
+    if (
+      (Node.isVariableDeclaration(parent) || Node.isBindingElement(parent) || Node.isParameterDeclaration(parent)) &&
+      parent.getNameNode() === node
+    ) {
+      return parent;
+    }
+  }
+
+  return getNodeDefinitions(node)[0]?.getDeclarationNode() ?? node;
+}
+
+function getComponentIdentity(func: FunctionLike): string {
+  return `${func.getSourceFile().getFilePath()}:${func.getStart()}`;
+}
+
+function resolveForwardedComponentIdentity(tagNameNode: Node): string | undefined {
+  if (!Node.isIdentifier(tagNameNode)) return undefined;
+
+  for (const declaration of getValueTargetDeclarations(tagNameNode)) {
+    const func = resolveFunctionNode(declaration);
+    if (func) return getComponentIdentity(func);
+  }
+
+  return undefined;
+}
+
+/**
+ * Declarations that are rebound somewhere in the body, so their initializer no
+ * longer describes the value that reaches JSX.
+ */
+function collectReboundDeclarations(body: Node | undefined): Set<Node> {
+  const rebound = new Set<Node>();
+  const recordTarget = (target: Node): void => {
+    if (Node.isIdentifier(target)) {
+      rebound.add(getDeclarationIdentity(target));
+      return;
+    }
+    if (
+      (Node.isPropertyAccessExpression(target) || Node.isElementAccessExpression(target)) &&
+      Node.isIdentifier(target.getExpression())
+    ) {
+      rebound.add(getDeclarationIdentity(target.getExpression()));
+    }
+  };
+
+  for (const assignment of body?.getDescendantsOfKind(SyntaxKind.BinaryExpression) ?? []) {
+    // Covers `=` and every compound form (`+=`, `??=`, `>>>=`, ...).
+    const operator = assignment.getOperatorToken().getKind();
+    if (operator < SyntaxKind.FirstAssignment || operator > SyntaxKind.LastAssignment) continue;
+    recordTarget(assignment.getLeft());
+  }
+  // Only `++`/`--` rebind the operand. Reading a prop through `!`, `-`, `+`, or
+  // `~` leaves the alias intact, so those operators must not invalidate it.
+  for (const update of body?.getDescendantsOfKind(SyntaxKind.PrefixUnaryExpression) ?? []) {
+    const operator = update.getOperatorToken();
+    if (operator !== SyntaxKind.PlusPlusToken && operator !== SyntaxKind.MinusMinusToken) continue;
+    recordTarget(update.getOperand());
+  }
+  for (const update of body?.getDescendantsOfKind(SyntaxKind.PostfixUnaryExpression) ?? []) {
+    recordTarget(update.getOperand());
+  }
+
+  return rebound;
+}
+
+/** Trace only statically resolvable, component-local prop dataflow into JSX. */
+function collectPropDataflow(
+  func: FunctionLike,
+  param: ParameterDeclaration,
+  availablePropNames: Set<string>,
+): PropDataflow {
+  const valueAliases = new Map<Node, string>();
+  const objectAliases = new Map<Node, PropObjectShape>();
+  const fullPropsShape = new Map([...availablePropNames].map((name) => [name, name]));
+  const belongsToComponentFunction = (node: Node): boolean =>
+    node.getFirstAncestor(
+      (ancestor) =>
+        Node.isFunctionDeclaration(ancestor) || Node.isArrowFunction(ancestor) || Node.isFunctionExpression(ancestor),
+    ) === func;
+
+  const resolveValue = (expression: Node | undefined): string | undefined => {
+    if (!expression) return undefined;
+    if (Node.isParenthesizedExpression(expression)) return resolveValue(expression.getExpression());
+    if (Node.isIdentifier(expression)) return valueAliases.get(getDeclarationIdentity(expression));
+    if (Node.isPropertyAccessExpression(expression)) {
+      const object = expression.getExpression();
+      return Node.isIdentifier(object)
+        ? objectAliases.get(getDeclarationIdentity(object))?.get(expression.getName())
+        : undefined;
+    }
+    if (Node.isElementAccessExpression(expression)) {
+      const argument = expression.getArgumentExpression();
+      if (!argument || (!Node.isStringLiteral(argument) && !Node.isNoSubstitutionTemplateLiteral(argument))) {
+        return undefined;
+      }
+      const object = expression.getExpression();
+      return Node.isIdentifier(object)
+        ? objectAliases.get(getDeclarationIdentity(object))?.get(argument.getLiteralText())
+        : undefined;
+    }
+    return undefined;
+  };
+
+  const resolveObject = (expression: Node | undefined): PropObjectShape | undefined => {
+    if (!expression) return undefined;
+    if (Node.isParenthesizedExpression(expression)) return resolveObject(expression.getExpression());
+    if (Node.isIdentifier(expression)) return objectAliases.get(getDeclarationIdentity(expression));
+    if (!Node.isObjectLiteralExpression(expression)) return undefined;
+
+    const shape: PropObjectShape = new Map();
+    for (const property of expression.getProperties()) {
+      if (Node.isSpreadAssignment(property)) {
+        const spreadShape = resolveObject(property.getExpression());
+        for (const [targetProp, sourceProp] of spreadShape ?? []) shape.set(targetProp, sourceProp);
+      } else if (Node.isShorthandPropertyAssignment(property)) {
+        const sourceProp = resolveValue(property.getNameNode());
+        if (sourceProp) shape.set(property.getName(), sourceProp);
+      } else if (Node.isPropertyAssignment(property)) {
+        const propertyNameNode = property.getNameNode();
+        if (!Node.isIdentifier(propertyNameNode) && !Node.isStringLiteral(propertyNameNode)) continue;
+        const sourceProp = resolveValue(property.getInitializer());
+        if (sourceProp) shape.set(property.getName(), sourceProp);
+      }
+    }
+    return shape;
+  };
+
+  const addBindings = (pattern: import('ts-morph').ObjectBindingPattern, sourceShape: PropObjectShape): void => {
+    const omittedProps = new Set(
+      pattern
+        .getElements()
+        .filter((element) => !element.getDotDotDotToken())
+        .map((element) => element.getPropertyNameNode()?.getText() ?? element.getNameNode().getText()),
+    );
+
+    for (const element of pattern.getElements()) {
+      const localName = element.getNameNode();
+      if (!Node.isIdentifier(localName)) continue;
+      if (element.getDotDotDotToken()) {
+        objectAliases.set(
+          getDeclarationIdentity(localName),
+          new Map([...sourceShape].filter(([targetProp]) => !omittedProps.has(targetProp))),
+        );
+        continue;
+      }
+      const targetProp = element.getPropertyNameNode()?.getText() ?? localName.getText();
+      const sourceProp = sourceShape.get(targetProp);
+      if (sourceProp) valueAliases.set(getDeclarationIdentity(localName), sourceProp);
+    }
+  };
+
+  const paramNameNode = param.getNameNode();
+  if (Node.isIdentifier(paramNameNode)) objectAliases.set(getDeclarationIdentity(paramNameNode), fullPropsShape);
+  else if (Node.isObjectBindingPattern(paramNameNode)) addBindings(paramNameNode, fullPropsShape);
+
+  const body = func.getBody();
+  const reboundDeclarations = collectReboundDeclarations(body);
+  for (const declaration of reboundDeclarations) {
+    valueAliases.delete(declaration);
+    objectAliases.delete(declaration);
+  }
+
+  for (const declaration of body?.getDescendantsOfKind(SyntaxKind.VariableDeclaration) ?? []) {
+    if (!belongsToComponentFunction(declaration)) continue;
+
+    const initializer = declaration.getInitializer();
+    const declarationName = declaration.getNameNode();
+    if (Node.isIdentifier(declarationName)) {
+      const aliasDeclaration = getDeclarationIdentity(declarationName);
+      if (reboundDeclarations.has(aliasDeclaration)) continue;
+      const sourceProp = resolveValue(initializer);
+      if (sourceProp) valueAliases.set(aliasDeclaration, sourceProp);
+      const sourceShape = resolveObject(initializer);
+      if (sourceShape) objectAliases.set(aliasDeclaration, new Map(sourceShape));
+    } else if (Node.isObjectBindingPattern(declarationName)) {
+      const sourceShape = resolveObject(initializer);
+      if (sourceShape) {
+        const hasInvalidatedBinding = declarationName
+          .getElements()
+          .some((element) => reboundDeclarations.has(getDeclarationIdentity(element.getNameNode())));
+        if (!hasInvalidatedBinding) addBindings(declarationName, sourceShape);
+      }
+    }
+  }
+
+  const intrinsicDomProps = new Set<string>();
+  const componentEdges: PropForwardingEdge[] = [];
+  const recordForwarding = (tagNameNode: Node, targetProp: string, sourceProp: string): void => {
+    const tagName = tagNameNode.getText();
+    if (isIntrinsicJsxElement(tagName)) {
+      if (targetProp === sourceProp) intrinsicDomProps.add(sourceProp);
+      return;
+    }
+    const targetComponentIdentity = resolveForwardedComponentIdentity(tagNameNode);
+    if (targetComponentIdentity) componentEdges.push({ sourceProp, targetComponentIdentity, targetProp });
+  };
+
+  for (const attribute of func.getDescendantsOfKind(SyntaxKind.JsxAttribute)) {
+    if (!belongsToComponentFunction(attribute)) continue;
+    const tagNameNode = getJsxTagNameNode(attribute);
+    if (!tagNameNode) continue;
+    const initializer = attribute.getInitializer();
+    if (!initializer || !Node.isJsxExpression(initializer)) continue;
+    const sourceProp = resolveValue(initializer.getExpression());
+    if (sourceProp) recordForwarding(tagNameNode, attribute.getNameNode().getText(), sourceProp);
+  }
+
+  for (const spread of func.getDescendantsOfKind(SyntaxKind.JsxSpreadAttribute)) {
+    if (!belongsToComponentFunction(spread)) continue;
+    const tagNameNode = getJsxTagNameNode(spread);
+    if (!tagNameNode) continue;
+    const shape = resolveObject(spread.getExpression());
+    for (const [targetProp, sourceProp] of shape ?? []) recordForwarding(tagNameNode, targetProp, sourceProp);
+  }
+
+  return { intrinsicDomProps, componentEdges };
+}
+
 function extractDestructuredBindingFallbackProps(
   func: FunctionLike,
   param: ParameterDeclaration,
@@ -1795,7 +2038,10 @@ function getDomAttributeSurface(
     propsByName.set(prop.name, prop);
   }
 
-  return [...propsByName.values()];
+  // Every prop on these surfaces is a DOM attribute by construction, so the
+  // provenance is known here without tracing the implementation. Copy each prop
+  // so that later provenance propagation cannot mutate the shared surface table.
+  return [...propsByName.values()].map((prop) => ({ ...prop, domAttribute: true }));
 }
 
 function hasSyntheticDomChildren(typeNode: Node | undefined): boolean {
@@ -2119,7 +2365,7 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
   }
 
   const warnings: string[] = [];
-  const components: RawComponentDefinition[] = [];
+  const components: RawComponentDefinitionInternal[] = [];
 
   for (const filePath of componentFiles) {
     try {
@@ -2137,7 +2383,7 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
 
   const propsToComponent = new Map<string, string>();
   const componentNames = new Set<string>();
-  for (const c of components as Array<RawComponentDefinition & { _propsTypeName?: string }>) {
+  for (const c of components) {
     componentNames.add(c.name);
     if (c._propsTypeName) propsToComponent.set(c._propsTypeName, c.name);
   }
@@ -2164,7 +2410,34 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
         slot.allowedComponents = [...found].sort();
       }
     }
-    delete (c as { _propsTypeName?: string })._propsTypeName;
+  }
+
+  // Propagate DOM provenance only through actual component-to-component JSX
+  // forwarding edges. Shared declarations alone never transfer provenance.
+  const componentsByIdentity = new Map(
+    components
+      .filter((component) => component._componentIdentity)
+      .map((component) => [component._componentIdentity!, component]),
+  );
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const component of components) {
+      for (const edge of component._propForwardingEdges ?? []) {
+        const target = componentsByIdentity.get(edge.targetComponentIdentity);
+        const targetProp = target?.props.find((prop) => prop.name === edge.targetProp);
+        const sourceProp = component.props.find((prop) => prop.name === edge.sourceProp);
+        if (targetProp?.domAttribute && sourceProp && !sourceProp.domAttribute) {
+          sourceProp.domAttribute = true;
+          changed = true;
+        }
+      }
+    }
+  }
+  for (const component of components) {
+    delete component._componentIdentity;
+    delete component._propsTypeName;
+    delete component._propForwardingEdges;
   }
 
   return {
@@ -2173,8 +2446,8 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
   };
 }
 
-function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComponentDefinition[] {
-  const components: RawComponentDefinition[] = [];
+function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComponentDefinitionInternal[] {
+  const components: RawComponentDefinitionInternal[] = [];
   const exported = sourceFile.getExportedDeclarations();
   const usesCreateContext = sourceFileUsesCreateContext(sourceFile);
 
@@ -2292,7 +2565,10 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
       };
     });
 
-    const filteredProps = filterImplementationOnlyAliasProps(propsWithDefaults, funcNode);
+    const propDataflow = collectPropDataflow(funcNode, params[0], new Set(propsWithDefaults.map((prop) => prop.name)));
+    const filteredProps = filterImplementationOnlyAliasProps(propsWithDefaults, funcNode).map((prop) =>
+      propDataflow.intrinsicDomProps.has(prop.name) ? { ...prop, domAttribute: true } : prop,
+    );
 
     const existingSlotNames = new Set(slots.map((s) => s.name));
     const expandedSlots: RawSlotDefinitionInternal[] = [];
@@ -2322,8 +2598,10 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
       props: propsAfterSlotExpansion,
       slots: finalSlots,
       ...(usesCreateContext && { usesCreateContext: true }),
+      _componentIdentity: getComponentIdentity(funcNode),
       ...(propsTypeNameCapture ? { _propsTypeName: propsTypeNameCapture } : {}),
-    } as RawComponentDefinition & { _propsTypeName?: string });
+      ...(propDataflow.componentEdges.length > 0 ? { _propForwardingEdges: propDataflow.componentEdges } : {}),
+    });
   }
 
   return components;

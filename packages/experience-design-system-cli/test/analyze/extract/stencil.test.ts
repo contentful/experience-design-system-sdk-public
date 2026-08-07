@@ -2,7 +2,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { extractStencilComponents } from '@contentful/experience-design-system-extraction';
+import { extractStencilComponents, preClassifyComponent } from '@contentful/experience-design-system-extraction';
 
 let tempDir: string;
 
@@ -21,6 +21,64 @@ async function writeFixture(filename: string, content: string): Promise<string> 
 }
 
 describe('StencilComponentExtractor', () => {
+  it('marks concrete intrinsic name forwarding as DOM provenance while retaining semantic names', async () => {
+    const filePath = await writeFixture(
+      'name-provenance.tsx',
+      `
+      import { Component, Prop, h } from '@stencil/core';
+
+      @Component({ tag: 'ion-input', shadow: true })
+      export class IonInput {
+        @Prop() public name?: string;
+        render() { return <input name={this.name} />; }
+      }
+
+      @Component({ tag: 'p-input-email', shadow: true })
+      export class PInputEmail {
+        @Prop() public name?: string;
+        render() { return <input name={this.name} type="email" />; }
+      }
+
+      @Component({ tag: 'p-flag', shadow: true })
+      export class PFlag {
+        @Prop() public name!: string;
+        render() { return <span>{this.name}</span>; }
+      }
+
+      @Component({ tag: 'p-mismatched-name', shadow: true })
+      export class MismatchedName {
+        @Prop() public name!: string;
+        render() { return <input id={this.name} />; }
+      }
+
+      @Component({ tag: 'p-semantic-name', shadow: true })
+      export class SemanticName {
+        @Prop() public name!: string;
+        render() { return <strong>{this.name}</strong>; }
+      }
+    `,
+    );
+
+    const result = await extractStencilComponents([filePath]);
+    const ionInput = result.components.find((component) => component.name === 'IonInput')!;
+    const pInputEmail = result.components.find((component) => component.name === 'PInputEmail')!;
+    const pFlag = result.components.find((component) => component.name === 'PFlag')!;
+    const mismatchedName = result.components.find((component) => component.name === 'PMismatchedName')!;
+    const semanticName = result.components.find((component) => component.name === 'PSemanticName')!;
+
+    expect(ionInput.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(pInputEmail.props.find((prop) => prop.name === 'name')?.domAttribute).toBe(true);
+    expect(preClassifyComponent(ionInput).props.find((prop) => prop.name === 'name')).toBeUndefined();
+    expect(preClassifyComponent(pInputEmail).props.find((prop) => prop.name === 'name')).toBeUndefined();
+
+    for (const component of [pFlag, mismatchedName, semanticName]) {
+      expect(component.props.find((prop) => prop.name === 'name')?.domAttribute, component.name).toBeUndefined();
+      expect(preClassifyComponent(component).props).toContainEqual(
+        expect.objectContaining({ name: 'name', category: 'content' }),
+      );
+    }
+  });
+
   it('extracts props from @Prop() decorators with defaults', async () => {
     const filePath = await writeFixture(
       'button.tsx',

@@ -6,20 +6,25 @@ import type { RawComponentDefinition } from '../../src/types.js';
 function runPipeline(components: RawComponentDefinition[]) {
   const classified = components.map(preClassifyComponent);
   const kept: RawComponentDefinition[] = [];
-  const skippedWarnings: string[] = [];
+  const reviewWarnings: string[] = [];
   for (const c of classified) {
     const verdict = isNonAuthorableComponent(c);
     if (verdict.skip) {
-      skippedWarnings.push(`Skipped non-authorable component: ${c.name} (${verdict.reason})`);
-      continue;
+      reviewWarnings.push(`${c.name}: requires operator review (${verdict.reason})`);
+      kept.push({
+        ...c,
+        needsReview: true,
+        reviewReasons: [...(c.reviewReasons ?? []), `non-authorable:${verdict.reason}`],
+      });
+    } else {
+      kept.push(c);
     }
-    kept.push(c);
   }
-  return { kept, skippedWarnings };
+  return { kept, reviewWarnings };
 }
 
 describe('analyze pipeline composition: pre-classify → non-authorable filter', () => {
-  it('drops AbmProvider and keeps Accordion', () => {
+  it('retains deterministic exclusion candidates for operator review', () => {
     const input: RawComponentDefinition[] = [
       {
         name: 'AbmProvider',
@@ -37,9 +42,13 @@ describe('analyze pipeline composition: pre-classify → non-authorable filter',
         slots: [{ name: 'children', isDefault: true }],
       },
     ];
-    const { kept, skippedWarnings } = runPipeline(input);
-    expect(kept.map((c) => c.name)).toEqual(['Accordion']);
-    expect(skippedWarnings).toHaveLength(1);
-    expect(skippedWarnings[0]).toMatch(/AbmProvider/);
+    const { kept, reviewWarnings } = runPipeline(input);
+    expect(kept.map((c) => c.name)).toEqual(['AbmProvider', 'Accordion']);
+    expect(kept[0]).toMatchObject({
+      needsReview: true,
+      reviewReasons: [expect.stringContaining('non-authorable:')],
+    });
+    expect(reviewWarnings).toHaveLength(1);
+    expect(reviewWarnings[0]).toMatch(/AbmProvider/);
   });
 });
