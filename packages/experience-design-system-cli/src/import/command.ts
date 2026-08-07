@@ -5,6 +5,8 @@ import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
+import { addCompositionOptions } from '../lib/command-options.js';
+import { isConflictMode, type ConflictMode } from '../runs/save-path-resolver.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { replayRun, modifyRun } from '../runs/replay-helpers.js';
@@ -13,6 +15,7 @@ import { resolvePromptFlags } from './print-prompt.js';
 import { shouldShowRunPicker } from '../runs/run-picker-mount.js';
 import type { RunPickerSelection } from '../runs/run-picker.js';
 import { dispatchPickerSelection } from './picker-dispatch.js';
+import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
 
 export function registerImportCommand(program: Command): void {
   const cmd = program
@@ -64,9 +67,9 @@ export function registerImportCommand(program: Command): void {
       '--print-prompt',
       'Print the generate components prompt without invoking the agent. Replaces the legacy --dry-run prompt-print behaviour on this command.',
     )
-    .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)')
-    .option('--composite', 'Import embedded-component hierarchy (opt in; default is atomic)')
-    .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)')
+    .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)');
+  addCompositionOptions(cmd);
+  cmd
     .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
     .option(
       '--composition-agent',
@@ -112,8 +115,8 @@ export function registerImportCommand(program: Command): void {
     .option(
       '--on-conflict <mode>',
       "How to handle existing components.json / tokens.json at the save path: 'overwrite' replaces files, 'skip' writes to a timestamped subdirectory, 'fail' exits non-zero. Skips the wizard's interactive conflict gate when set.",
-      (value: string): string => {
-        if (value !== 'overwrite' && value !== 'skip' && value !== 'fail') {
+      (value: string): ConflictMode => {
+        if (!isConflictMode(value)) {
           process.stderr.write(`Error: invalid --on-conflict value '${value}'. Use one of: overwrite, skip, fail.\n`);
           process.exit(1);
         }
@@ -180,7 +183,7 @@ export function registerImportCommand(program: Command): void {
         push?: boolean;
         save?: boolean;
         outDir?: string;
-        onConflict?: 'overwrite' | 'skip' | 'fail';
+        onConflict?: ConflictMode;
         selectPromptPath?: string;
         generatePromptPath?: string;
         pushFromRun?: string;
@@ -189,6 +192,8 @@ export function registerImportCommand(program: Command): void {
         saveAsNew?: boolean;
         force?: boolean;
       }) => {
+        const interactiveTerminalSupported = getInteractiveTerminalSupport().supported;
+
         // --modify and --push-from-run resume a recorded session; the composition
         // mode comes from that run's record, so composition flags on the command
         // line don't apply. Warn and clear them rather than let them mislead.
@@ -258,7 +263,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
               ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
               ...(opts.host ? { host: opts.host } : {}),
-              interactive: !!process.stdout.isTTY,
+              interactive: interactiveTerminalSupported,
               ...(opts.force ? { force: true } : {}),
             });
             return;
@@ -282,6 +287,9 @@ export function registerImportCommand(program: Command): void {
             process.exit(1);
             return;
           }
+          requireInteractiveTerminal({
+            alternative: 'start a fresh headless import with `--yes` and the required credentials',
+          });
           try {
             await modifyRun({
               runIdOrPath: opts.modify,
@@ -362,7 +370,7 @@ export function registerImportCommand(program: Command): void {
           opts.skipGenerate ||
           // A "don't push" request on a non-TTY is a headless intent (the wizard
           // needs a TTY); in a TTY it stays interactive and is NOT headless.
-          (noPushRequested && !process.stdout.isTTY) ||
+          (noPushRequested && !interactiveTerminalSupported) ||
           !!opts.spaceId ||
           !!opts.environmentId ||
           !!opts.cmaToken ||
@@ -372,15 +380,13 @@ export function registerImportCommand(program: Command): void {
 
         const autoAcceptScope = opts.autoAcceptScope ?? false;
 
-        if (!process.stdout.isTTY && !isHeadless && !autoAcceptScope) {
-          process.stderr.write(
-            'Error: experiences import is interactive. Pass --auto-accept-scope, or use a headless mode by providing credentials (--space-id, --environment-id, --cma-token) or one of --no-push, --skip-analyze, --skip-generate, --yes, --dry-run, --print-prompt.\n',
-          );
-          process.exit(1);
-          return;
+        if (!interactiveTerminalSupported && !isHeadless && !autoAcceptScope) {
+          requireInteractiveTerminal({
+            alternative: 'use headless flags such as `--yes` with credentials, or `--no-push --auto-accept-scope`',
+          });
         }
 
-        if (process.stdout.isTTY && !isHeadless) {
+        if (interactiveTerminalSupported && !isHeadless) {
           const { render } = await import('ink');
           const { createElement } = await import('react');
           const { WizardApp } = await import('./tui/WizardApp.js');
@@ -408,7 +414,7 @@ export function registerImportCommand(program: Command): void {
             noPush?: boolean;
             noSave?: boolean;
             outDirOverride?: string;
-            onConflictMode?: 'overwrite' | 'skip' | 'fail';
+            onConflictMode?: ConflictMode;
             selectPromptPath?: string;
             generatePromptPath?: string;
             initialRawTokensPath?: string;
@@ -487,7 +493,6 @@ export function registerImportCommand(program: Command): void {
                 ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
                 ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
                 ...(opts.host ? { host: opts.host } : {}),
-                interactive: !!process.stdout.isTTY,
                 ...(opts.outDir ? { outDir: opts.outDir } : {}),
                 ...(opts.overwrite ? { overwrite: true } : {}),
                 ...(opts.saveAsNew ? { saveAsNew: true } : {}),

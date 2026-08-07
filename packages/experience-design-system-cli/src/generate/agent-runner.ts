@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import { getDebugLogger } from '../lib/debug-logger.js';
+import type { AgentName } from '../lib/agent-names.js';
 
-export type AgentName = 'claude' | 'codex' | 'opencode' | 'cursor';
+export { AGENT_NAMES, isAgentName, type AgentName } from '../lib/agent-names.js';
 
 export interface AgentRunResult {
   exitCode: number;

@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { toConfiguredHost } from './host-utils.js';
+import { isCompositionMode, type CompositionMode } from './lib/composition-mode.js';
 
 export type ExperiencesCredentials = {
   spaceId: string;
@@ -22,7 +23,7 @@ export type ExperiencesCredentials = {
    * flat components with no embedded-component hierarchy; `composite` opts into
    * the slot-graph machinery. Resolved `flag > env > this > default`.
    */
-  compositionMode?: 'composite' | 'atomic';
+  compositionMode?: CompositionMode;
 };
 
 const CREDENTIALS_DIR = join(homedir(), '.config', 'experiences');
@@ -59,7 +60,7 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
       ...(parsed.generatePromptPath ? { generatePromptPath: parsed.generatePromptPath } : {}),
       ...(typeof parsed.autoFilter === 'boolean' ? { autoFilter: parsed.autoFilter } : {}),
       ...(typeof parsed.debug === 'boolean' ? { debug: parsed.debug } : {}),
-      ...(parsed.compositionMode === 'composite' || parsed.compositionMode === 'atomic'
+      ...(typeof parsed.compositionMode === 'string' && isCompositionMode(parsed.compositionMode)
         ? { compositionMode: parsed.compositionMode }
         : {}),
     };
@@ -100,7 +101,7 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
         ...(generatePromptPath ? { generatePromptPath } : {}),
         ...(typeof autoFilter === 'boolean' ? { autoFilter } : {}),
         ...(typeof debug === 'boolean' ? { debug } : {}),
-        ...(compositionMode === 'composite' || compositionMode === 'atomic' ? { compositionMode } : {}),
+        ...(compositionMode && isCompositionMode(compositionMode) ? { compositionMode } : {}),
       },
       null,
       2,

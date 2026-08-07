@@ -1,6 +1,14 @@
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 
+export const CONFLICT_MODES = ['overwrite', 'skip', 'fail'] as const;
+
+export type ConflictMode = (typeof CONFLICT_MODES)[number];
+
+export function isConflictMode(value: string): value is ConflictMode {
+  return (CONFLICT_MODES as readonly string[]).includes(value);
+}
+
 /**
  * The set of files the wizard / CLI may overwrite in the save directory.
  * Centralised so conflict detection and conflict reporting stay in lock-step.
@@ -58,11 +66,9 @@ export function buildTimestampedSubdir(base: string, now: Date = new Date()): st
  * - `skip`      — write to a timestamped subdir under the requested path.
  * - `fail`      — refuse to write; surface the conflicting filenames.
  */
-export type OnConflictMode = 'overwrite' | 'skip' | 'fail';
-
 export type ResolveSavePathOptions = {
   /** When provided, applies the chosen mode automatically (no interactive gate). */
-  onConflict?: OnConflictMode;
+  onConflict?: ConflictMode;
   /** Injected for deterministic tests; falls back to `new Date()`. */
   now?: Date;
 };

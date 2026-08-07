@@ -14,7 +14,7 @@ in both modes. This matrix does.
 | File | Role |
 |------|------|
 | `flags.ts` | Source-of-truth inventory: every import flag + metadata (`kind`, `sampleValue`, `modes`, `incompatibleWith`, `forcesHeadless`, …). |
-| `inventory.test.ts` | **Trip-wire.** Parses `.option(...)` calls out of `src/import/command.ts` (multi-line tolerant) and asserts the parsed set EXACTLY equals the inventory keys. Also checks value flags have samples and incompatibilities are symmetric. |
+| `inventory.test.ts` | **Trip-wire.** Registers the real import command and asserts its flags EXACTLY equal the inventory keys. Also checks value flags have samples and incompatibilities are symmetric. |
 | `composition-headless-matrix.test.ts` | Behavioral: composition flags × mode, composition sub-flags forwarded to the spawned `analyze extract`, composition × headless-trigger flags, and save/push forks. Uses the `execFile`-mock pattern to inspect forwarded subprocess argv. |
 | `auto-reject-cycles-headless-matrix.test.ts` | Behavioral: `--auto-reject-cycles` × `{--composite, --no-push, on/off}` in the headless dispatcher. |
 | `incompatible-pairs.test.ts` | Behavioral: every declared incompatible pair REJECTS (exit 1 + right message) via the real CLI subprocess. Includes a coverage guard that fails if a declared `incompatibleWith` edge lacks a rejection cell. |
@@ -23,9 +23,9 @@ in both modes. This matrix does.
 
 ## How to add a flag
 
-1. **Add the `.option(...)` to `src/import/command.ts`** as usual (or to `src/lib/agent-model-options.ts` if the flag is registered via the shared `addAgentModelOptions()` helper — the inventory parser derives flags from both the command and helper sources).
+1. **Add the `.option(...)` to `src/import/command.ts`** as usual, or to a shared builder in `src/lib/` when the flag is shared across commands. The inventory test registers the real command, so flags are tracked regardless of where they are declared.
 2. **Run `inventory.test.ts`** — it will FAIL, naming your new flag as
-   "in command.ts but missing from flags.ts inventory". That is the red.
+   "registered flags missing from flags.ts inventory". That is the red.
 3. **Add a `FlagSpec` entry to `flags.ts`**: set `kind`, a usable `sampleValue`
    for value flags (must not error before mode dispatch, e.g.
    `--composition-agent-mode parser`, `--on-conflict overwrite`), the `modes`

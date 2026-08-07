@@ -21,6 +21,7 @@ export interface ChangeClassification {
 export interface DownstreamImpact {
   affectedFragments: number;
   affectedExperiences: number;
+  referencedByFragment?: boolean;
 }
 
 export interface PropertySummary {
@@ -43,12 +44,13 @@ export interface ComponentTypeSummary {
    * no-slot-allow-diff behavior. Empty arrays mean "no restrictions" (any).
    */
   currentSlotAllowed?: Record<string, string[]>;
+  deleteBlocked?: { reason: 'fragment-referenced' };
 }
 
 export interface DesignTokenSummary {
   id: string;
   name: string;
-  kind: string;
+  type: string;
 }
 
 export interface TaxonomySummary {
