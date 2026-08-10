@@ -18,6 +18,7 @@ const EMPTY_PREVIEW_ROUTES = {
     components: { new: [], changed: [], removed: [], unchanged: [] },
     tokens: { new: [], changed: [], removed: [], unchanged: [] },
     taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
+    suppressedDeletions: { components: 0, tokens: 0 },
   },
   'POST /spaces/test-space/environments/master/design_systems/imports/apply': {
     sys: { id: 'op-1', status: 'queued' },
@@ -41,6 +42,7 @@ const PREVIEW_WITH_ENTITIES_ROUTES = {
     },
     tokens: { new: [], changed: [], removed: [], unchanged: [] },
     taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
+    suppressedDeletions: { components: 0, tokens: 0 },
   },
 };
 
@@ -64,6 +66,7 @@ const PREVIEW_WITH_BREAKING_ROUTES = {
     },
     tokens: { new: [], changed: [], removed: [], unchanged: [] },
     taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
+    suppressedDeletions: { components: 0, tokens: 0 },
   },
 };
 

@@ -35,7 +35,9 @@ export function createMockCMAServer(responses: Record<string, unknown> = {}): Pr
 
       requests.push({ method, url, body });
 
-      const key = `${method} ${url}`;
+      // Strip query string for matching, but keep full URL in requests log
+      const urlPath = url?.split('?')[0] || '';
+      const key = `${method} ${urlPath}`;
       const responseBody = merged[key];
 
       if (responseBody !== undefined) {

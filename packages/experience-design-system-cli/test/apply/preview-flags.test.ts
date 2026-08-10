@@ -19,6 +19,7 @@ const MOCK_ROUTES = {
     components: { new: [], changed: [], removed: [], unchanged: [] },
     tokens: { new: [], changed: [], removed: [], unchanged: [] },
     taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
+    suppressedDeletions: { components: 0, tokens: 0 },
   },
 };
 
