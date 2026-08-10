@@ -9,7 +9,7 @@ export type CliResult = { stdout: string; stderr: string; code: number };
 export function runCli(args: string[], timeout = 15000): Promise<CliResult> {
   return new Promise((res) => {
     execFile(nodeExe, [bin, ...args], { timeout }, (error, stdout, stderr) => {
-      const code = error?.status ?? error?.code ?? 0;
+      const code = error?.code ?? 0;
       res({ stdout, stderr, code: typeof code === 'string' ? parseInt(code, 10) : code });
     });
   });
@@ -18,7 +18,7 @@ export function runCli(args: string[], timeout = 15000): Promise<CliResult> {
 export function runCliWithEnv(args: string[], env: Record<string, string>, timeout = 15000): Promise<CliResult> {
   return new Promise((res) => {
     execFile(nodeExe, [bin, ...args], { env: { ...process.env, ...env }, timeout }, (error, stdout, stderr) => {
-      const code = error?.status ?? error?.code ?? 0;
+      const code = error?.code ?? 0;
       res({ stdout, stderr, code: typeof code === 'string' ? parseInt(code, 10) : code });
     });
   });
