@@ -2,16 +2,18 @@ import type { ServerPreviewResponse } from '@contentful/experience-design-system
 
 /**
  * True when a preview response describes zero server-side changes across
- * every diff bucket (components, tokens, taxonomies). Used by:
+ * every diff bucket (components, tokens, taxonomies) AND no suppressedDeletions.
+ * Used by:
  *   - `experiences apply` (CLI): short-circuit the confirm-and-push step.
  *   - `experiences import` wizard: block finalize when the resulting push
  *     would be a pure no-op (INTEG-4411 refined guard).
  *
  * A push that produces ANY entry in ANY bucket — including a rejection that
- * removes a server-side component — is NOT empty.
+ * removes a server-side component — is NOT empty. Similarly, a preview with
+ * ANY suppressedDeletions (when fetched with allowDeletions: false) is NOT empty.
  */
 export function isEmptyPreview(preview: ServerPreviewResponse): boolean {
-  const { components, tokens, taxonomies } = preview;
+  const { components, tokens, taxonomies, suppressedDeletions } = preview;
   return (
     components.new.length === 0 &&
     components.changed.length === 0 &&
@@ -21,6 +23,8 @@ export function isEmptyPreview(preview: ServerPreviewResponse): boolean {
     tokens.removed.length === 0 &&
     taxonomies.new.length === 0 &&
     taxonomies.changed.length === 0 &&
-    taxonomies.removed.length === 0
+    taxonomies.removed.length === 0 &&
+    (suppressedDeletions?.components ?? 0) === 0 &&
+    (suppressedDeletions?.tokens ?? 0) === 0
   );
 }

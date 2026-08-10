@@ -214,7 +214,7 @@ export function WizardPreviewStep({
   const { components, tokens } = preview;
   const hasComponents = components.new.length + components.changed.length + components.removed.length > 0;
   const hasTokens = tokens.new.length + tokens.changed.length + tokens.removed.length > 0;
-  const hasAnything = hasComponents || hasTokens;
+  const hasAnything = hasComponents || hasTokens || suppressedCount > 0;
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
