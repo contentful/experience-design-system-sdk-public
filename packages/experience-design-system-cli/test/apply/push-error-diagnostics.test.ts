@@ -18,7 +18,8 @@ describe('apply push — actionable preview diagnostics', () => {
   beforeAll(async () => {
     await new Promise<void>((resolveServer) => {
       server = createServer((req, res) => {
-        if (req.method === 'POST' && req.url?.endsWith('/design_systems/imports/preview')) {
+        const pathname = req.url?.split('?')[0];
+        if (req.method === 'POST' && pathname?.endsWith('/design_systems/imports/preview')) {
           res.writeHead(422, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(validationBody));
           return;
