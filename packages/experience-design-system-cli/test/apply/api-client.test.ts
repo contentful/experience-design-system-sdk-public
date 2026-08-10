@@ -275,9 +275,7 @@ describe('ImportApiClient — previewImport', () => {
     const request = mockFetch.mock.calls[0][0] as Request;
     expect(request.method).toBe('POST');
     const requestUrl = new URL(request.url);
-    expect(requestUrl.pathname).toBe(
-      '/spaces/space1/environments/master/design_systems/imports/preview',
-    );
+    expect(requestUrl.pathname).toBe('/spaces/space1/environments/master/design_systems/imports/preview');
     expect(requestUrl.searchParams.get('allowDeletions')).toBe('false');
     await expect(request.text()).resolves.toBe(JSON.stringify({ componentsManifest: { Button: {} } }));
   });

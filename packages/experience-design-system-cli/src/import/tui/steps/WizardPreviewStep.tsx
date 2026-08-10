@@ -162,8 +162,7 @@ export function WizardPreviewStep({
 
   const maxScroll = Math.max(0, allDiffLines.length - viewportHeight);
   const removedCount = preview.components.removed.length + preview.tokens.removed.length;
-  const suppressedCount =
-    (preview.suppressedDeletions?.components ?? 0) + (preview.suppressedDeletions?.tokens ?? 0);
+  const suppressedCount = (preview.suppressedDeletions?.components ?? 0) + (preview.suppressedDeletions?.tokens ?? 0);
 
   useImmediateInput((input, key) => {
     if (key.return) {
@@ -344,8 +343,8 @@ export function WizardPreviewStep({
             <Box gap={1}>
               <Text color={PALETTE.warning}> ⊘</Text>
               <Text>
-                {suppressedCount} {suppressedCount === 1 ? 'entity' : 'entities'} skipped (rerun with
-                --allow-deletions to remove {suppressedCount === 1 ? 'it' : 'them'})
+                {suppressedCount} {suppressedCount === 1 ? 'entity' : 'entities'} skipped (rerun with --allow-deletions
+                to remove {suppressedCount === 1 ? 'it' : 'them'})
               </Text>
             </Box>
           )}
