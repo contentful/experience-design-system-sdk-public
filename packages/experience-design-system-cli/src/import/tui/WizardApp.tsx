@@ -1089,7 +1089,7 @@ export function WizardApp({
         tokens = await readTokensFromPath('tokens', tokensPath);
       }
       let manifest = buildManifest(components, tokens, { deleteAllComponents: allowEmptyDeleteAllRef.current });
-      let preview = await client.previewImport(manifest);
+      let preview = await client.previewImport(manifest, allowDeletions);
 
       if (extractSessionId) {
         let needsRepreview = false;
@@ -1118,7 +1118,7 @@ export function WizardApp({
           if (needsRepreview) {
             components = loadCDFComponents(db, extractSessionId);
             manifest = buildManifest(components, tokens, { deleteAllComponents: allowEmptyDeleteAllRef.current });
-            preview = await client.previewImport(manifest);
+            preview = await client.previewImport(manifest, allowDeletions);
           }
         } finally {
           db.close();
@@ -1840,6 +1840,7 @@ export function WizardApp({
             host={state.host}
             tokensPath={state.tokensPath}
             initialFinalizeError={state.finalizeErrorBanner}
+            allowDeletions={allowDeletions}
             onFinalize={(accepted, rejected, unresolved) => {
               process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`);
               let acceptedCount = accepted;

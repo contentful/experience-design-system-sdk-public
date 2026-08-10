@@ -364,13 +364,14 @@ export class ImportApiClient {
     throw new ApiError(`preflight failed: ${res.status}`, res.status, body);
   }
 
-  async previewImport(manifest: ManifestPayload): Promise<ServerPreviewResponse> {
+  async previewImport(manifest: ManifestPayload, allowDeletions = false): Promise<ServerPreviewResponse> {
     const debug = getDebugLogger();
     const startedAt = Date.now();
     debug.event('apply', 'preview.request', {
       url: `${this.base()}/design_systems/imports/preview`,
       componentCount: (manifest as { components?: unknown[] }).components?.length ?? 0,
       tokenCount: (manifest as { designTokens?: unknown[] }).designTokens?.length ?? 0,
+      allowDeletions,
     });
     const result = await this.requestWithRetry('preview', PREVIEW_ERROR_PREFIX, () =>
       designSystemImportSourcelessPreview({
@@ -378,6 +379,11 @@ export class ImportApiClient {
         headers: this.headers(),
         path: { spaceId: this.spaceId, environmentId: this.environmentId },
         body: manifest,
+        // The generated query type only declares `access_token` — the backend
+        // reads `allowDeletions` off the raw query string with no OpenAPI
+        // parameter declared for it. Cast narrowly here rather than widening
+        // the generated type for an undocumented param.
+        query: { allowDeletions: String(allowDeletions) } as unknown as { access_token?: string },
         parseAs: 'json',
       }),
     );

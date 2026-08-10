@@ -261,6 +261,7 @@ describe('ImportApiClient — previewImport', () => {
       components: { new: [], changed: [], unchanged: [], removed: [] },
       tokens: { new: [], changed: [], unchanged: [], removed: [] },
       taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+      suppressedDeletions: { components: 0, tokens: 0 },
     };
     mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
 
@@ -273,9 +274,11 @@ describe('ImportApiClient — previewImport', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const request = mockFetch.mock.calls[0][0] as Request;
     expect(request.method).toBe('POST');
-    expect(request.url).toBe(
-      'https://api.contentful.com/spaces/space1/environments/master/design_systems/imports/preview',
+    const requestUrl = new URL(request.url);
+    expect(requestUrl.pathname).toBe(
+      '/spaces/space1/environments/master/design_systems/imports/preview',
     );
+    expect(requestUrl.searchParams.get('allowDeletions')).toBe('false');
     await expect(request.text()).resolves.toBe(JSON.stringify({ componentsManifest: { Button: {} } }));
   });
 
@@ -292,6 +295,7 @@ describe('ImportApiClient — previewImport', () => {
       components: { new: [], changed: [], unchanged: [], removed: [] },
       tokens: { new: [], changed: [], unchanged: [], removed: [] },
       taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+      suppressedDeletions: { components: 0, tokens: 0 },
     };
     const sleep = vi.fn(async () => undefined);
     mockFetch
@@ -310,6 +314,7 @@ describe('ImportApiClient — previewImport', () => {
       components: { new: [], changed: [], unchanged: [], removed: [] },
       tokens: { new: [], changed: [], unchanged: [], removed: [] },
       taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+      suppressedDeletions: { components: 0, tokens: 0 },
     };
     const sleep = vi.fn(async () => undefined);
     mockFetch
@@ -363,6 +368,7 @@ describe('ImportApiClient — previewImport', () => {
       components: { new: [], changed: [], unchanged: [], removed: [] },
       tokens: { new: [], changed: [], unchanged: [], removed: [] },
       taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+      suppressedDeletions: { components: 0, tokens: 0 },
     };
     const sleep = vi.fn(async () => undefined);
     mockFetch
@@ -382,6 +388,7 @@ describe('ImportApiClient — previewImport', () => {
       components: { new: [], changed: [], unchanged: [], removed: [] },
       tokens: { new: [], changed: [], unchanged: [], removed: [] },
       taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+      suppressedDeletions: { components: 0, tokens: 0 },
     };
     mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
 
@@ -417,6 +424,7 @@ describe('ImportApiClient — previewImport', () => {
       },
       tokens: { new: [], changed: [], unchanged: [], removed: [] },
       taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+      suppressedDeletions: { components: 0, tokens: 0 },
     };
     mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
 
@@ -427,6 +435,38 @@ describe('ImportApiClient — previewImport', () => {
       { propertyId: 'variant', reason: 'removed' },
       { slotId: 'footer', reason: 'slot_removed' },
     ]);
+  });
+
+  it('sends allowDeletions=true in the preview request query string when passed', async () => {
+    const serverResponse: ServerPreviewResponse = {
+      components: { new: [], changed: [], unchanged: [], removed: [] },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+      suppressedDeletions: { components: 0, tokens: 0 },
+    };
+    mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
+
+    const client = createClient();
+    await client.previewImport({ componentsManifest: { Button: {} } }, true);
+    const request = mockFetch.mock.calls[0][0] as Request;
+    const requestUrl = new URL(request.url);
+    expect(requestUrl.searchParams.get('allowDeletions')).toBe('true');
+  });
+
+  it('defaults to allowDeletions=false in the preview request query string when omitted', async () => {
+    const serverResponse: ServerPreviewResponse = {
+      components: { new: [], changed: [], unchanged: [], removed: [] },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+      suppressedDeletions: { components: 0, tokens: 0 },
+    };
+    mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
+
+    const client = createClient();
+    await client.previewImport({ componentsManifest: { Button: {} } });
+    const request = mockFetch.mock.calls[0][0] as Request;
+    const requestUrl = new URL(request.url);
+    expect(requestUrl.searchParams.get('allowDeletions')).toBe('false');
   });
 });
 

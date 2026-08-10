@@ -603,7 +603,7 @@ export function registerApplyCommand(program: Command): void {
 
       let preview: ServerPreviewResponse;
       try {
-        preview = await client.previewImport(manifest);
+        preview = await client.previewImport(manifest, opts.allowDeletions === true);
       } catch (e) {
         if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
         throw e;
@@ -806,7 +806,7 @@ export function registerApplyCommand(program: Command): void {
 
     let preview: ServerPreviewResponse;
     try {
-      preview = await client.previewImport(fullManifest);
+      preview = await client.previewImport(fullManifest, opts.allowDeletions === true);
     } catch (e) {
       if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
       throw e;
