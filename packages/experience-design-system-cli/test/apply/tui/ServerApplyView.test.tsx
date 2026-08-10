@@ -67,33 +67,46 @@ describe('ServerPreviewConfirm — deletion confirmation', () => {
     expect(frame).not.toContain('permanently deleted');
   });
 
-  it('shows the deletion toggle hint when the preview was fetched with allowDeletions: true and something is removed', () => {
-    const { lastFrame } = render(
+  it('lets the user opt out of a deletion that was fetched with allowDeletions: true', async () => {
+    const { onConfirm, onCancel } = makeHandlers();
+    const { lastFrame, stdin } = render(
       <ServerPreviewConfirm
         preview={previewWithRemoved()}
         spaceId="space"
         environmentId="master"
         breakingWithImpact={false}
         allowDeletions={true}
-        {...makeHandlers()}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
       />,
     );
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('[x] [✓] Also delete 1 entity');
+    await new Promise(setImmediate); // let useInput's useEffect subscription flush
+    stdin.write('x');
+    await new Promise(setImmediate);
+    expect(lastFrame() ?? '').not.toContain('permanently deleted');
+    stdin.write('\r');
+    await new Promise(setImmediate);
+    expect(onConfirm).toHaveBeenCalledWith(false, false);
   });
 
-  it('does not show the deletion toggle hint when the preview was fetched with allowDeletions: false', () => {
-    const { lastFrame } = render(
+  it('does not wire up the toggle when the preview was fetched with allowDeletions: false', async () => {
+    const { onConfirm, onCancel } = makeHandlers();
+    const { stdin } = render(
       <ServerPreviewConfirm
         preview={previewWithRemoved()}
         spaceId="space"
         environmentId="master"
         breakingWithImpact={false}
         allowDeletions={false}
-        {...makeHandlers()}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
       />,
     );
-    const frame = lastFrame() ?? '';
-    expect(frame).not.toContain('[x]');
+    await new Promise(setImmediate);
+    stdin.write('x');
+    await new Promise(setImmediate);
+    stdin.write('\r');
+    await new Promise(setImmediate);
+    expect(onConfirm).toHaveBeenCalledWith(false, false);
   });
 });
