@@ -115,7 +115,10 @@ type WizardPreviewStepProps = {
   environmentId: string;
   stepNumber: number;
   totalSteps: number;
-  initialAllowDeletions?: boolean;
+  /** The value the preview was actually fetched with — not a hint. When
+   *  `false`, the server never returned removed entities, so there is
+   *  nothing to render item-by-item or toggle over. */
+  allowDeletions?: boolean;
   onConfirm: (acknowledge: boolean, allowDeletions: boolean) => void;
   onEdit?: () => void;
   onSaveFiles?: () => void;
@@ -128,7 +131,7 @@ export function WizardPreviewStep({
   environmentId,
   stepNumber,
   totalSteps,
-  initialAllowDeletions = false,
+  allowDeletions: fetchedAllowDeletions = false,
   onConfirm,
   onEdit,
   onSaveFiles,
@@ -137,7 +140,10 @@ export function WizardPreviewStep({
   const breakingWithImpact = hasBreakingChangesWithImpact(preview);
   const [diffExpanded, setDiffExpanded] = useState(false);
   const [scrollOffset, setScrollOffset] = useState(0);
-  const [allowDeletions, setAllowDeletions] = useState(initialAllowDeletions);
+  // Local state exists only to let the user opt OUT of a deletion the fetch
+  // already surfaced — it can never turn true when the fetch used false,
+  // because there's nothing in `preview` to reveal in that case.
+  const [allowDeletions, setAllowDeletions] = useState(fetchedAllowDeletions);
   const { stdout } = useStdout();
   const terminalRows = stdout?.rows ?? 40;
   const viewportHeight = Math.max(terminalRows - 14, 10);
@@ -156,13 +162,15 @@ export function WizardPreviewStep({
 
   const maxScroll = Math.max(0, allDiffLines.length - viewportHeight);
   const removedCount = preview.components.removed.length + preview.tokens.removed.length;
+  const suppressedCount =
+    (preview.suppressedDeletions?.components ?? 0) + (preview.suppressedDeletions?.tokens ?? 0);
 
   useImmediateInput((input, key) => {
     if (key.return) {
       onConfirm(breakingWithImpact, allowDeletions);
       return;
     }
-    if ((input === 'x' || input === 'X') && removedCount > 0) {
+    if ((input === 'x' || input === 'X') && fetchedAllowDeletions && removedCount > 0) {
       setAllowDeletions((prev) => !prev);
       return;
     }
@@ -332,6 +340,16 @@ export function WizardPreviewStep({
             </Box>
           )}
 
+          {!fetchedAllowDeletions && suppressedCount > 0 && (
+            <Box gap={1}>
+              <Text color={PALETTE.warning}> ⊘</Text>
+              <Text>
+                {suppressedCount} {suppressedCount === 1 ? 'entity' : 'entities'} skipped (rerun with
+                --allow-deletions to remove {suppressedCount === 1 ? 'it' : 'them'})
+              </Text>
+            </Box>
+          )}
+
           {diffExpanded && allDiffLines.length > 0 && (
             <Box flexDirection="column" marginTop={1}>
               <Text dimColor>{'─'.repeat(40)}</Text>
@@ -384,7 +402,7 @@ export function WizardPreviewStep({
         {diffExpanded && <Text dimColor>[j/k] Scroll [f/b] Page</Text>}
         {onEdit && <Text dimColor>[e] Edit definitions</Text>}
         {onSaveFiles && <Text dimColor>[s] Save files instead</Text>}
-        {removedCount > 0 && (
+        {fetchedAllowDeletions && removedCount > 0 && (
           <Text dimColor>
             [x] {allowDeletions ? '[✓]' : '[ ]'} Also delete {removedCount} {removedCount === 1 ? 'entity' : 'entities'}
           </Text>

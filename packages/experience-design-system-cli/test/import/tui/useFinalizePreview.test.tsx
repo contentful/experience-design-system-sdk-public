@@ -21,6 +21,7 @@ const previewWithRemoved = (names: string[]): ServerPreviewResponse => ({
   },
   tokens: { new: [], changed: [], removed: [], unchanged: [] },
   taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
+  suppressedDeletions: { components: 0, tokens: 0 },
 });
 
 let useFinalizePreview: typeof import('../../../src/import/tui/useFinalizePreview.js').useFinalizePreview;

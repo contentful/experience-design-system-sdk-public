@@ -2069,7 +2069,7 @@ export function WizardApp({
             environmentId={state.environmentId}
             stepNumber={totalSteps}
             totalSteps={totalSteps}
-            initialAllowDeletions={allowDeletions}
+            allowDeletions={allowDeletions}
             onConfirm={(acknowledge, deleteMissing) => {
               void runPush(
                 state.manifest!,

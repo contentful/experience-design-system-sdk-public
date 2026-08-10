@@ -8,10 +8,17 @@ function emptyPreview(): ServerPreviewResponse {
     components: { new: [], changed: [], unchanged: [], removed: [] },
     tokens: { new: [], changed: [], unchanged: [], removed: [] },
     taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    suppressedDeletions: { components: 0, tokens: 0 },
   };
 }
 
-function previewWithRemovedComponent(): ServerPreviewResponse {
+function previewWithSuppressedDeletion(): ServerPreviewResponse {
+  const preview = emptyPreview();
+  preview.suppressedDeletions = { components: 1, tokens: 0 };
+  return preview;
+}
+
+function previewWithFetchedRemoval(): ServerPreviewResponse {
   const preview = emptyPreview();
   preview.components.removed = [{ name: 'OrphanedCard' } as ServerPreviewResponse['components']['removed'][number]];
   return preview;
@@ -60,8 +67,8 @@ describe('buildPreviewDiffLines', () => {
 });
 
 describe('WizardPreviewStep — deletion confirmation', () => {
-  it('renders removed entities as skipped by default, with no deletion warning', () => {
-    const preview = previewWithRemovedComponent();
+  it('renders the suppressed-count line and no toggle hint when the preview was fetched with allowDeletions: false', () => {
+    const preview = previewWithSuppressedDeletion();
     const { lastFrame } = render(
       <WizardPreviewStep
         preview={preview}
@@ -73,13 +80,12 @@ describe('WizardPreviewStep — deletion confirmation', () => {
       />,
     );
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('will be skipped');
+    expect(frame).toContain('1 entity skipped');
     expect(frame).not.toContain('will be deleted');
-    expect(frame).not.toContain('permanently deleted');
-    expect(frame).toContain('Also delete 1');
+    expect(frame).not.toContain('Also delete');
   });
 
-  it('omits the deletion toggle hint when nothing is removed', () => {
+  it('omits both the removal list and the suppressed-count line when nothing was suppressed', () => {
     const { lastFrame } = render(
       <WizardPreviewStep
         preview={emptyPreview()}
@@ -91,11 +97,49 @@ describe('WizardPreviewStep — deletion confirmation', () => {
       />,
     );
     const frame = lastFrame() ?? '';
+    expect(frame).not.toContain('skipped');
     expect(frame).not.toContain('Also delete');
   });
 
-  it('pressing x toggles to delete wording and shows the deletion warning', () => {
-    const preview = previewWithRemovedComponent();
+  it('renders the full removal list and a toggle hint when fetched with allowDeletions: true', () => {
+    const preview = previewWithFetchedRemoval();
+    const { lastFrame } = render(
+      <WizardPreviewStep
+        preview={preview}
+        spaceId="space"
+        environmentId="master"
+        stepNumber={1}
+        totalSteps={1}
+        allowDeletions
+        {...makeHandlers()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('will be deleted');
+    expect(frame).toContain('Also delete 1');
+  });
+
+  it('pressing x opts OUT of a deletion that was fetched with allowDeletions: true', () => {
+    const preview = previewWithFetchedRemoval();
+    const { lastFrame, stdin } = render(
+      <WizardPreviewStep
+        preview={preview}
+        spaceId="space"
+        environmentId="master"
+        stepNumber={1}
+        totalSteps={1}
+        allowDeletions
+        {...makeHandlers()}
+      />,
+    );
+    stdin.write('x');
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('will be skipped');
+    expect(frame).not.toContain('will be deleted');
+  });
+
+  it('pressing x is a no-op when the preview was fetched with allowDeletions: false, even with a suppressed count', () => {
+    const preview = previewWithSuppressedDeletion();
     const { lastFrame, stdin } = render(
       <WizardPreviewStep
         preview={preview}
@@ -108,30 +152,11 @@ describe('WizardPreviewStep — deletion confirmation', () => {
     );
     stdin.write('x');
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('will be deleted');
-    expect(frame).not.toContain('will be skipped');
-    expect(frame).toContain('permanently deleted');
+    expect(frame).not.toContain('will be deleted');
   });
 
-  it('starts with delete wording when initialAllowDeletions is true', () => {
-    const preview = previewWithRemovedComponent();
-    const { lastFrame } = render(
-      <WizardPreviewStep
-        preview={preview}
-        spaceId="space"
-        environmentId="master"
-        stepNumber={1}
-        totalSteps={1}
-        initialAllowDeletions
-        {...makeHandlers()}
-      />,
-    );
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('will be deleted');
-  });
-
-  it('passes the current deletion choice to onConfirm on Enter', () => {
-    const preview = previewWithRemovedComponent();
+  it('passes the current (possibly opted-out) deletion choice to onConfirm on Enter', () => {
+    const preview = previewWithFetchedRemoval();
     const onConfirm = vi.fn();
     const { stdin } = render(
       <WizardPreviewStep
@@ -140,20 +165,22 @@ describe('WizardPreviewStep — deletion confirmation', () => {
         environmentId="master"
         stepNumber={1}
         totalSteps={1}
+        allowDeletions
         onConfirm={onConfirm}
         onQuit={() => {}}
       />,
     );
     stdin.write('x');
     stdin.write('\r');
-    expect(onConfirm).toHaveBeenCalledWith(false, true);
+    expect(onConfirm).toHaveBeenCalledWith(false, false);
   });
 
-  it('x is a no-op when there is nothing removed', () => {
+  it('onConfirm always reports false when the preview was fetched with allowDeletions: false', () => {
+    const preview = previewWithSuppressedDeletion();
     const onConfirm = vi.fn();
     const { stdin } = render(
       <WizardPreviewStep
-        preview={emptyPreview()}
+        preview={preview}
         spaceId="space"
         environmentId="master"
         stepNumber={1}
