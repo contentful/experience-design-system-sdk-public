@@ -8,6 +8,7 @@ function previewWithRemoved(): ServerPreviewResponse {
     components: { new: [], changed: [], unchanged: [], removed: [{ name: 'OrphanedCard' }] },
     tokens: { new: [], changed: [], unchanged: [], removed: [] },
     taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    suppressedDeletions: { components: 0, tokens: 0 },
   } as unknown as ServerPreviewResponse;
 }
 
@@ -64,5 +65,35 @@ describe('ServerPreviewConfirm — deletion confirmation', () => {
     );
     const frame = lastFrame() ?? '';
     expect(frame).not.toContain('permanently deleted');
+  });
+
+  it('shows the deletion toggle hint when the preview was fetched with allowDeletions: true and something is removed', () => {
+    const { lastFrame } = render(
+      <ServerPreviewConfirm
+        preview={previewWithRemoved()}
+        spaceId="space"
+        environmentId="master"
+        breakingWithImpact={false}
+        allowDeletions={true}
+        {...makeHandlers()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('[x] [✓] Also delete 1 entity');
+  });
+
+  it('does not show the deletion toggle hint when the preview was fetched with allowDeletions: false', () => {
+    const { lastFrame } = render(
+      <ServerPreviewConfirm
+        preview={previewWithRemoved()}
+        spaceId="space"
+        environmentId="master"
+        breakingWithImpact={false}
+        allowDeletions={false}
+        {...makeHandlers()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toContain('[x]');
   });
 });

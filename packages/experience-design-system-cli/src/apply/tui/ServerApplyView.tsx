@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type {
   ServerPreviewResponse,
@@ -14,8 +14,9 @@ interface ServerPreviewConfirmProps {
   spaceId: string;
   environmentId: string;
   breakingWithImpact: boolean;
+  /** The value the preview was actually fetched with. */
   allowDeletions: boolean;
-  onConfirm: (acknowledge: boolean) => void;
+  onConfirm: (acknowledge: boolean, allowDeletions: boolean) => void;
   onCancel: () => void;
 }
 
@@ -24,16 +25,24 @@ export function ServerPreviewConfirm({
   spaceId,
   environmentId,
   breakingWithImpact,
-  allowDeletions,
+  allowDeletions: fetchedAllowDeletions,
   onConfirm,
   onCancel,
 }: ServerPreviewConfirmProps): React.ReactElement {
+  const [allowDeletions, setAllowDeletions] = useState(fetchedAllowDeletions);
+  const removedCount = preview.components.removed.length + preview.tokens.removed.length;
+
   useInput((input, key) => {
-    if (key.return) onConfirm(breakingWithImpact);
+    if (key.return) {
+      onConfirm(breakingWithImpact, allowDeletions);
+      return;
+    }
+    if ((input === 'x' || input === 'X') && fetchedAllowDeletions && removedCount > 0) {
+      setAllowDeletions((prev) => !prev);
+      return;
+    }
     if (key.escape || input === 'q') onCancel();
   });
-
-  const removedCount = preview.components.removed.length + preview.tokens.removed.length;
 
   return (
     <Box flexDirection="column">
@@ -55,6 +64,13 @@ export function ServerPreviewConfirm({
             {' '}
             ⚠ {removedCount} missing {removedCount === 1 ? 'entity' : 'entities'} will be permanently deleted. Press
             Enter to confirm.
+          </Text>
+        )}
+        {fetchedAllowDeletions && removedCount > 0 && (
+          <Text dimColor>
+            {' '}
+            [x] {allowDeletions ? '[✓]' : '[ ]'} Also delete {removedCount}{' '}
+            {removedCount === 1 ? 'entity' : 'entities'}
           </Text>
         )}
         <Text>

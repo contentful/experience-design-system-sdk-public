@@ -8,6 +8,7 @@ function previewWithRemoved(): ServerPreviewResponse {
     components: { new: [], changed: [], unchanged: [], removed: [{ name: 'OrphanedCard' }] },
     tokens: { new: [], changed: [], unchanged: [], removed: [{ name: 'orphaned-token' }] },
     taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    suppressedDeletions: { components: 0, tokens: 0 },
   } as unknown as ServerPreviewResponse;
 }
 
@@ -33,5 +34,19 @@ describe('ServerPreviewView — skip vs delete rendering', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toContain('to delete');
     expect(frame).not.toContain('to skip');
+  });
+
+  it('renders the suppressed-count line when allowDeletions is false and something was suppressed', () => {
+    const preview = {
+      components: { new: [], changed: [], unchanged: [], removed: [] },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+      suppressedDeletions: { components: 2, tokens: 1 },
+    } as unknown as ServerPreviewResponse;
+    const { lastFrame } = render(
+      <ServerPreviewView preview={preview} spaceId="space" environmentId="master" allowDeletions={false} />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('3 entities skipped');
   });
 });

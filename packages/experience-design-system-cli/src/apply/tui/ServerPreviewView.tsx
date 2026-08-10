@@ -100,6 +100,20 @@ export function ServerPreviewView({
         </Box>
       )}
 
+      {!allowDeletions &&
+        ((preview.suppressedDeletions?.components ?? 0) + (preview.suppressedDeletions?.tokens ?? 0)) > 0 && (
+          <Box marginTop={1}>
+            <Text color="yellow">
+              {' '}
+              ⊘ {(preview.suppressedDeletions?.components ?? 0) + (preview.suppressedDeletions?.tokens ?? 0)}{' '}
+              {(preview.suppressedDeletions?.components ?? 0) + (preview.suppressedDeletions?.tokens ?? 0) === 1
+                ? 'entity'
+                : 'entities'}{' '}
+              skipped (rerun with --allow-deletions to remove them)
+            </Text>
+          </Box>
+        )}
+
       <Text dimColor> Press Q to exit.</Text>
     </Box>
   );

@@ -41,9 +41,9 @@ describe('isEmptyPreview', () => {
     expect(isEmptyPreview(preview)).toBe(false);
   });
 
-  it('handles undefined suppressedDeletions gracefully', () => {
+  it('handles suppressedDeletions with zero values gracefully', () => {
     const preview = emptyPreview();
-    preview.suppressedDeletions = undefined;
+    preview.suppressedDeletions = { components: 0, tokens: 0 };
     expect(isEmptyPreview(preview)).toBe(true);
   });
 });

@@ -681,7 +681,7 @@ export function registerApplyCommand(program: Command): void {
       }
 
       await new Promise<void>((resolvePromise) => {
-        const runApply = async (acknowledge: boolean) => {
+        const runApply = async (acknowledge: boolean, applyDeletions: boolean) => {
           instance.rerender(
             createElement(ServerApplyProgress, {
               spaceId,
@@ -694,7 +694,7 @@ export function registerApplyCommand(program: Command): void {
           try {
             operation = await client.applyImport(manifest, {
               acknowledgeBreakingChanges: acknowledge,
-              allowDeletions: opts.allowDeletions === true,
+              allowDeletions: applyDeletions,
             });
           } catch (e) {
             if (e instanceof ApiError) {
@@ -755,8 +755,8 @@ export function registerApplyCommand(program: Command): void {
             environmentId,
             breakingWithImpact,
             allowDeletions: opts.allowDeletions === true,
-            onConfirm: (acknowledge: boolean) => {
-              void runApply(acknowledge);
+            onConfirm: (acknowledge: boolean, applyDeletions: boolean) => {
+              void runApply(acknowledge, applyDeletions);
             },
             onCancel: () => {
               process.exit(0);
