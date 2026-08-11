@@ -4,10 +4,11 @@ This file tells AI coding agents what they need to know to be productive in this
 
 ## Repo at a Glance
 
-Nx monorepo with four packages:
+Nx monorepo with five packages:
 
 - `packages/experience-design-system-cli` — the CLI and TUI (the main package)
 - `packages/experience-design-system-extraction` — component extraction engine (ts-morph, framework parsers); a runtime dependency of the CLI
+- `packages/experience-design-system-generation` — agent-invocation and skill-prompt engine; a runtime dependency of the CLI's `generate` command
 - `packages/experience-design-system-client` — generated API client for the Experience Design System Integrations API (from `openapi.json` via `@hey-api/openapi-ts`); a runtime dependency of the CLI's `apply` command
 - `packages/experience-design-system-types` — shared types, schemas, validation
 

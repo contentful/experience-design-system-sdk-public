@@ -31,6 +31,7 @@ pnpm typecheck
 packages/
   experience-design-system-cli/         # CLI + TUI
   experience-design-system-extraction/  # Component extraction engine (ts-morph, per-framework parsers)
+  experience-design-system-generation/  # Agent-invocation and skill-prompt engine (used by `generate`)
   experience-design-system-client/      # Generated API client (from openapi.json), used by `apply`
   experience-design-system-types/       # Shared types and schemas
 .github/workflows/                      # CI/CD pipelines
@@ -172,7 +173,7 @@ All CI runs via GitHub Actions (`.github/workflows/ci.yml`):
 | `lint` | push to main/canary, PR to main, merge group | ESLint + Prettier via `pnpm affected:lint` |
 | `test` | push to main/canary, PR to main, merge group | Vitest + TypeScript compile via `pnpm affected:test` |
 | `test-summary` | always, after `lint`/`test` | Fails the check if either upstream job failed — a single required status for branch protection |
-| `release` | push to main, push to canary, or any PR | Runs `pnpm release` (see Release Process below). Behavior branches internally on `GITHUB_REF` — this is one job, not separate prod/dev jobs |
+| `release` | push to main (excluding automation-bot commits), push to canary (excluding dependabot and automation-bot commits), or any PR targeting main | Runs `pnpm release` (see Release Process below). Behavior branches internally on `GITHUB_REF` — this is one job, not separate prod/dev jobs |
 
 A second workflow, `.github/workflows/release-guard.yml`, runs on PR open/sync/reopen and merge-group events. It does not itself gate anything — release concurrency is already serialized by the `release` job's `concurrency.group` in `ci.yml` — but it gives PRs a named check to point at.
 

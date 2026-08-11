@@ -2,12 +2,13 @@
 
 ## Overview
 
-The Experience Design System SDK is an Nx monorepo that ships four packages:
+The Experience Design System SDK is an Nx monorepo that ships five packages:
 
 | Package | Purpose |
 |---|---|
 | `@contentful/experience-design-system-cli` | CLI + TUI for extracting, reviewing, generating, validating, and pushing design system component definitions |
 | `@contentful/experience-design-system-extraction` | Component extraction engine (ts-morph, per-framework parsers); a runtime dependency of the CLI |
+| `@contentful/experience-design-system-generation` | Agent-invocation and skill-prompt engine; a runtime dependency of the CLI's `generate` command |
 | `@contentful/experience-design-system-client` | Generated API client for the Experience Design System Integrations API (from `openapi.json`); a runtime dependency of the CLI's `apply` command |
 | `@contentful/experience-design-system-types` | Shared TypeScript types, Zod schemas, and validation logic for CDF and DTCG formats |
 
@@ -63,11 +64,16 @@ A separate JSON file at `~/.config/experiences/runs.json` records each successfu
 - `commander` — CLI argument parsing and help text
 - `node:sqlite` (`DatabaseSync`) — built-in Node.js synchronous SQLite for pipeline session state
 - `@contentful/experience-design-system-extraction` — component extraction engine
+- `@contentful/experience-design-system-generation` — agent-invocation and skill-prompt engine used by `generate`
 - `@contentful/experience-design-system-client` — generated API client used by `apply`
 
 ### `experience-design-system-extraction`
 
 Component extraction engine: per-framework parsers (React, Vue, Astro, Stencil, Web Components) built on ts-morph, plus prop pre-classification. Consumed by the CLI's `analyze extract` command.
+
+### `experience-design-system-generation`
+
+Agent-invocation (`agent-invoker.ts`, `agent-runner.ts`), skill-prompt building (`prompt-builder.ts`), and progress reporting for coding-agent subprocesses. Consumed by the CLI's `generate components` and `generate tokens` commands — this is where the sentinel-marker-vs-tool-call-line output protocol described under "The Generate Command" below actually lives now.
 
 ### `experience-design-system-client`
 
