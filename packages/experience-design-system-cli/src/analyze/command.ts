@@ -43,11 +43,16 @@ import { runParserInSandbox } from './composition/agent-parser/sandbox.js';
 import { resolveViaAgentParser } from './composition/agent-parser/resolve-via-parser.js';
 import type { RawSlotDefinition } from '../types.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
-import { DEFAULT_AGENT_NAME, isAgentName } from '../lib/agent-names.js';
-import { runAgent, type AgentName } from '../generate/agent-runner.js';
+import {
+  DEFAULT_AGENT_NAME,
+  isAgentName,
+  runAgent,
+  type AgentName,
+} from '@contentful/experience-design-system-generation';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
+import { getDebugLogger } from '../lib/debug-logger.js';
 
 interface AnalyzeExtractOptions {
   project: string;
@@ -457,9 +462,9 @@ export function registerAnalyzeCommand(program: Command): void {
             const res = await runAgent({
               agent: resolverAgent,
               prompt,
-              interactive: false,
               timeoutMs: 120_000,
               promptViaStdin: true,
+              onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
             });
             lastAgentExitCode = res.exitCode;
             if (res.exitCode !== 0 && res.stderr.trim()) {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildPrompt } from '../../src/generate/prompt-builder.js';
+import { buildPrompt } from '../src/prompt-builder.js';
 
 const INLINE_COMPONENTS = JSON.stringify([
   {
@@ -24,17 +24,6 @@ describe('buildPrompt', () => {
     });
     expect(prompt).toContain('AUTONOMOUS mode');
     expect(prompt).toContain('do not pause to ask for confirmation');
-  });
-
-  it('interactive preamble does not include autonomous override', async () => {
-    const prompt = await buildPrompt({
-      skill: 'components',
-      mode: 'interactive',
-      rawComponentsInline: INLINE_COMPONENTS,
-      outDir: '/fake/out',
-    });
-    expect(prompt).toContain('INTERACTIVE mode');
-    expect(prompt).not.toContain('do not pause');
   });
 
   it('injects inline raw components JSON into the prompt', async () => {

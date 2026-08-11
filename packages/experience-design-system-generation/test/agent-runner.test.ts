@@ -13,8 +13,8 @@ import {
   resolveBinary,
   resolveAgentModel,
   isAgentName,
-} from '../../src/generate/agent-runner.js';
-import { DEFAULT_AGENT_NAME } from '../../src/lib/agent-names.js';
+  DEFAULT_AGENT_NAME,
+} from '../src/agent-runner.js';
 
 describe('agent definitions', () => {
   it('exposes the canonical agent names and validates against them', () => {

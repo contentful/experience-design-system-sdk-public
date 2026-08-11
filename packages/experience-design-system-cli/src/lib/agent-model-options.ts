@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { AGENT_NAMES } from './agent-names.js';
+import { AGENT_NAMES } from '@contentful/experience-design-system-generation';
 
 export const AGENT_DESCRIPTION = `Agent to use: ${AGENT_NAMES.join(', ')} (defaults to value saved by experiences setup)`;
 

@@ -8,16 +8,20 @@ import type { Command } from 'commander';
 import {
   type AgentName,
   AGENT_NAMES,
+  createLocalCliAgentInvoker,
   describeAgentFailure,
+  formatCustomPromptBanner,
+  formatGenerateProgressLine,
   isAgentName,
   parseToolCallLines,
   parseTokenToolCallLines,
   resolveBinary,
-  runAgent,
-} from './agent-runner.js';
+  resolveSkillPath,
+  buildPrompt,
+  type Skill,
+} from '@contentful/experience-design-system-generation';
 import { OutputFormatter, c } from '../output/format.js';
-import { formatGenerateProgressLine } from './progress.js';
-import { type Skill, buildPrompt, resolveSkillPath } from './prompt-builder.js';
+import { getDebugLogger } from '../lib/debug-logger.js';
 import { GenerateView } from './tui/GenerateView.js';
 import type { GenerateViewResult } from './tui/GenerateView.js';
 import { registerGenerateEditCommand } from './edit/command.js';
@@ -63,18 +67,9 @@ interface GenerateSubcommandOptions {
   generatePromptPath?: string;
 }
 
-/**
- * Feature 8: render the warning banner shown when a custom skill prompt is
- * active. Always cites the bundled invariants that the override bypasses so
- * the operator cannot miss it.
- */
-export function formatCustomPromptBanner(skill: 'components' | 'select', path: string): string {
-  return (
-    `WARNING: Custom prompt active for ${skill}: ${path}\n` +
-    `  Bundled invariants (utility-wrapper rejection, description content rules) do NOT apply.\n` +
-    `  You are responsible for the prompt's correctness.\n`
-  );
-}
+const invoker = createLocalCliAgentInvoker({
+  onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
+});
 
 function die(message: string): never {
   process.stderr.write(`${message}\n`);
@@ -277,11 +272,10 @@ async function runOneComponent(
     const formatter = new OutputFormatter(verbose, (s) => {
       outputBuf += s;
     });
-    const result = await runAgent({
+    const result = await invoker.invoke({
       agent,
       model,
       prompt,
-      interactive: false,
       timeoutMs: DEFAULT_TIMEOUT_MS,
       onOutput: (chunk) => formatter.push(chunk),
     });
@@ -687,11 +681,10 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         outDir: process.cwd(),
       });
 
-      const result = await runAgent({
+      const result = await invoker.invoke({
         agent,
         model,
         prompt,
-        interactive: false,
         timeoutMs: DEFAULT_TIMEOUT_MS * 5,
       });
 

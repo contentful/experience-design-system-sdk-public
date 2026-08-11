@@ -65,7 +65,7 @@ import { FinalReviewHost } from './final-review-host.js';
 import type { CompositionMode } from '../../lib/composition-mode.js';
 import { runScopeGate } from './runScopeGate.js';
 import { buildAutoFilterErrorTail } from './auto-filter-error.js';
-import { checkAgentAuth, type AgentName } from '../../generate/agent-runner.js';
+import { checkAgentAuth, type AgentName } from '@contentful/experience-design-system-generation';
 import { normalizePath } from '../path-utils.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
 import { writeExperiencesCredentials } from '../../credentials-store.js';

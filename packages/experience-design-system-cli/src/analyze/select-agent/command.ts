@@ -22,17 +22,24 @@ import {
 } from '../select/persistence.js';
 import { loadReviewInput } from '../select/parser.js';
 import type { ReviewSessionSnapshot } from '../select/types.js';
-import { buildPrompt } from '../../generate/prompt-builder.js';
-import { formatCustomPromptBanner } from '../../generate/command.js';
-import { AGENT_NAMES, isAgentName, parseSelectToolCallLines, runAgent } from '../../generate/agent-runner.js';
+import {
+  AGENT_NAMES,
+  buildPrompt,
+  createLocalCliAgentInvoker,
+  formatCustomPromptBanner,
+  isAgentName,
+  parseSelectToolCallLines,
+  type AgentName,
+  type SelectToolCall,
+} from '@contentful/experience-design-system-generation';
 import { access } from 'node:fs/promises';
-import type { AgentName, SelectToolCall } from '../../generate/agent-runner.js';
 import type { RawComponentDefinition } from '../../types.js';
 import { readExperiencesCredentials } from '../../credentials-store.js';
 import { OutputFormatter, c } from '../../output/format.js';
 import { buildRepoContextIndex, buildSelectionContext, type SelectionContext } from './context-builder.js';
 import { runShowRationale } from './show-rationale.js';
 import { isAbsolute, resolve } from 'node:path';
+import { getDebugLogger } from '../../lib/debug-logger.js';
 import {
   validateExtractedComponents,
   shouldExcludeDueToValidation,
@@ -42,6 +49,10 @@ import {
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 3 * 60 * 1000);
 export const DEFAULT_CONCURRENCY = 10;
 export const DEFAULT_BATCH_SIZE = 5;
+
+const invoker = createLocalCliAgentInvoker({
+  onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
+});
 
 function resolveBatchSize(): number {
   const raw = process.env.EDS_SELECT_BATCH_SIZE;
@@ -178,11 +189,10 @@ async function selectBatch(
     outputBuf += s;
   });
 
-  const result = await runAgent({
+  const result = await invoker.invoke({
     agent,
     model,
     prompt,
-    interactive: false,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     onOutput: (chunk) => formatter.push(chunk),
   });
