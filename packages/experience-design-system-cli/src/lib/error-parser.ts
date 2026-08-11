@@ -277,6 +277,11 @@ export function formatParsedEdsiError(parsed: ParsedEdsiError, opts: { verbose?:
         : 'Next action: review the binding pointer and GraphQL selection.',
     );
   }
+  if (parsed.code === 'AccessDenied') {
+    lines.push(
+      'Next action: this operation requires DesignToken and Component permissions in this environment. Ask a Contentful admin to grant both on your role.',
+    );
+  }
   if (parsed.cycle && parsed.cycle.length > 0) {
     lines.push(`Cycle: ${parsed.cycle.join(' → ')} → ${parsed.cycle[0]}`);
     lines.push('Break the cycle by removing at least one $allowedComponents entry.');

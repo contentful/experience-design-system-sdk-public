@@ -233,4 +233,17 @@ describe('formatApiError', () => {
   it('falls back to the original message when no response body is available', () => {
     expect(formatApiError({ message: 'network unavailable' })).toBe('network unavailable');
   });
+
+  it('surfaces an actionable next step for AccessDenied responses from the APS gate', () => {
+    const body = '{"sys":{"type":"Error","id":"AccessDenied"},"message":"Access denied"}';
+    const formatted = formatApiError({
+      message: `apply failed: 403\n${body}`,
+      body,
+    });
+
+    expect(formatted).toContain('[AccessDenied]');
+    expect(formatted).toContain('Access denied');
+    expect(formatted).toContain('DesignToken and Component permissions');
+    expect(formatted).toContain('Ask a Contentful admin');
+  });
 });
