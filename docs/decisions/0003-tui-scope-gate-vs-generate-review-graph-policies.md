@@ -35,7 +35,7 @@ In `composite` mode the DSI TUI runs two review screens against the same slot-de
 Over time this divergence has been implemented as scattered rules across four files (`selection-cascade.ts`, `scope-gate-cascade.ts`, `GenerateReviewStep.tsx`, `ScopeGateStep.tsx`) plus a fourth graph re-derivation inside `GroupedSidebar.tsx.itemsToGraph`. Each place independently decides what to filter, what to cascade, and how to interpret component state. This has produced:
 
 - Silent drift bugs (an ancestor-visibility bug — a rejected ancestor's slot edges dominated the sidebar tier layout because `itemsToGraph` didn't honor `status`).
-- Load-bearing subtleties documented in prose (§C.1 "two-graph split") but not encoded as types or invariants.
+- Load-bearing subtleties documented only in prose — the "two-graph split" described under Cycle policy below — but not encoded as types or invariants.
 - Confusion about what "rejected" means (won't-scope-in vs. won't-ship — the two steps mean different things by the same word).
 
 We need a canonical rule set the code can conform to, and a shared graph-building seam so tier / cycle / closure decisions come from ONE source per step.
@@ -68,7 +68,7 @@ We need a canonical rule set the code can conform to, and a shared graph-buildin
 |---|---|---|
 | Cycles allowed? | YES — expected. User scopes cyclic components in so the editor can fix them. | NO — must be resolved before push. |
 | Auto-reject at mount? | No | Yes — every cycle participant + every transitive ancestor that slots one → `rejected`. `[u]` restores the pre-mount snapshot once. |
-| Push-safety filtering | Not applicable (no push at scope-gate). Cycle detection runs on the full graph, drives sidebar `(cycle)` badges + guidance banner. | **Two-graph split (§C.1):** *unfiltered* graph drives sidebar structure (badges, `[c]` panel, closure walk); *filtered* graph (`status !== 'rejected'`) drives push-safety (top banner, `slotCycles` state, `[F]` gate). |
+| Push-safety filtering | Not applicable (no push at scope-gate). Cycle detection runs on the full graph, drives sidebar `(cycle)` badges + guidance banner. | **Two-graph split:** *unfiltered* graph drives sidebar structure (badges, `[c]` panel, closure walk); *filtered* graph (`status !== 'rejected'`) drives push-safety (top banner, `slotCycles` state, `[F]` gate). These are two live views over the same underlying graph, not two separately maintained graphs — see "Consolidate" under Part 3 for how they're kept in sync. |
 | Advance gate | Any non-empty accepted set advances. Cycles do NOT block. | `[F]` blocks if the accepted subset contains any cycle. Only fixes: reject enough members to break the cycle, or edit slots to break it structurally. |
 
 **Edit affordance:**
@@ -109,7 +109,7 @@ Three topology scenarios that surfaced ambiguity. Frozen behavior. **All three a
 - Both steps consume it. `GroupedSidebar.itemsToGraph` accepts a pre-built graph as a prop OR reuses the same builder — no independent re-derivation from `entry.$slots`.
 - The two-graph split in GenerateReview becomes an explicit typed shape (e.g. `type CycleView = { pushBlocking: SlotCycle[]; structural: Set<string> }`) with named consumers on each field, so no downstream reader has to remember "the filtered one is for push-safety."
 
-**Not to touch (per handoff §G):**
+**Not to touch (pinned scope — these primitives are correct as-is and out of bounds for this refactor):**
 
 - `analyze/composite-closure.ts`
 - `analyze/cycle-detection.ts`

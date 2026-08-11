@@ -1,7 +1,12 @@
-# ADR-0001: Ship DesignToken/ComponentType `source` field with Link, migrate to ResourceLink later
+# ADR 0001: Ship DesignToken/ComponentType `source` field with Link, migrate to ResourceLink later
 
-**Date:** 2026-05-07
-**Status:** Accepted
+## Status
+
+Accepted
+
+## Date
+
+2026-05-07
 
 ## Original ADR number
 

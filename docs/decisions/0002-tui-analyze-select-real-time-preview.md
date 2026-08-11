@@ -19,7 +19,7 @@ The `exo import` wizard includes an interactive analyze-select TUI editor where 
 The preview pipeline works as follows:
 1. `loadCDFComponents(db, sessionId)` reads props with `WHERE cdf_type IS NOT NULL`
 2. Builds a CDF manifest from those props
-3. Sends the manifest to the the preview backend's endpoint
+3. Sends the manifest to the preview backend's endpoint
 4. Server compares against existing entities and classifies changes
 
 Two distinct bugs prevented real-time preview feedback:
@@ -43,9 +43,9 @@ This affects the common first-import workflow: components exist on the server (p
 
 ## Decision
 
-Two complementary fixes:
+Two complementary changes:
 
-### Fix 1: Preserve CDF columns across editor saves (`preserveCDF`)
+### Preserve CDF columns across editor saves (`preserveCDF`)
 
 Add a `preserveCDF` option to `storeRawComponents`. When enabled, the function snapshots existing CDF classification data before the DELETE and restores it for props that still exist after re-insert. Only props where the UPDATE actually matched (i.e., the prop still exists) get their allowed values restored — preventing FK constraint violations for renamed/removed props.
 
@@ -53,7 +53,7 @@ Add a `preserveCDF` option to `storeRawComponents`. When enabled, the function s
 
 **Scope**: Only the editor's Ctrl+S path uses `preserveCDF: true`.
 
-### Fix 2: Raw prop fallback in `loadCDFComponents`
+### Raw prop fallback in `loadCDFComponents`
 
 When a generated component has zero CDF-classified props, `loadCDFComponents` now falls back to loading raw props and synthesizing minimal CDF entries:
 - `$category` comes from the raw `category` column (default: `'content'`)
@@ -66,8 +66,8 @@ This ensures the manifest always includes prop names and categories, which is al
 
 ### Combined behavior
 
-| Scenario | Fix 1 (preserveCDF) | Fix 2 (raw fallback) | Result |
-|----------|---------------------|---------------------|--------|
+| Scenario | `preserveCDF` | Raw fallback | Result |
+|----------|---------------|--------------|--------|
 | Prior generate exists, user edits | Preserves CDF through saves | Not triggered (CDF exists) | Accurate annotations |
 | No prior generate, user removes prop | N/A (nothing to preserve) | Provides prop names to manifest | Server detects removal as breaking |
 | No prior generate, user adds prop | N/A | New prop visible immediately via raw data | Server detects new prop |
@@ -102,7 +102,7 @@ Rejected because:
 
 ## What this does NOT solve
 
-- **`required: false → true` detection**: The server-side change classifier does NOT detect this as breaking (it only flags prop removal, type change, validation narrowing, and required-without-default on new props). This is a separate gap in the the preview backend's change-classifier.
+- **`required: false → true` detection**: The server-side change classifier does NOT detect this as breaking (it only flags prop removal, type change, validation narrowing, and required-without-default on new props). This is a separate gap in the preview backend's change-classifier.
 - **Type-level diff accuracy without generate**: The raw fallback synthesizes approximate types. If a prop's raw type is `'primary' | 'secondary'` and the stored entity has type `enum`, the comparison works (prop name is present). But if the user changes the raw type and expects a "type changed" annotation, it won't fire until after `generate` produces accurate CDF types.
 
 ## Consequences
