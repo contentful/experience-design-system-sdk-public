@@ -13,8 +13,7 @@
         "main": "packages/experience-design-system-generation/src/index.ts",
         "tsConfig": "packages/experience-design-system-generation/tsconfig.build.json",
         "assets": []
-      },
-      "dependsOn": []
+      }
     },
     "typecheck": {
       "executor": "nx:run-commands",
