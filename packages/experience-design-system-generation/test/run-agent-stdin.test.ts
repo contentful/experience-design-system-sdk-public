@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, writeFile, rm, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { runAgent } from '../../src/generate/agent-runner.js';
+import { runAgent } from '../src/agent-runner.js';
 
 // A stub "claude" that echoes argv on the ARGV line and its stdin on the STDIN
 // line, so we can assert where the prompt was delivered.
@@ -37,7 +37,6 @@ describe('runAgent promptViaStdin', () => {
     const res = await runAgent({
       agent: 'claude',
       prompt: BIG,
-      interactive: false,
       timeoutMs: 20_000,
       promptViaStdin: true,
     });

@@ -3,7 +3,7 @@ import type { CompositionEdge } from './interchange-schema.js';
 /**
  * Lenient JSONL parser for the composition-mapping agent's tool-call output
  * (spec T4). Mirrors `parseSelectToolCallLines` / `parseToolCallLines` in
- * `src/generate/agent-runner.ts`: one JSON object per line, each with a `tool`
+ * `@contentful/experience-design-system-generation`'s `agent-runner.ts`: one JSON object per line, each with a `tool`
  * field from a fixed allowlist. A line that fails JSON.parse or validation is
  * DROPPED into `warnings[]` (with a reason) and parsing CONTINUES — no retry,
  * no throw. Non-`{` prose and blank lines are skipped silently.

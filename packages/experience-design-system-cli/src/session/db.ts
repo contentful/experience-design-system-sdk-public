@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { generateSessionId } from './session-id.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types.js';
 import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
-import type { ToolCall, TokenToolCall } from '../generate/agent-runner.js';
+import type { ToolCall, TokenToolCall } from '@contentful/experience-design-system-generation';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
 import type { SlotCycle, SlotEdge } from '../analyze/cycle-detection.js';
 
@@ -2238,7 +2238,7 @@ export async function getCliCacheVersion(): Promise<string> {
   if (_cliCacheVersionCache) return _cliCacheVersionCache;
   try {
     const { hashContent } = await import('./cache-keys.js');
-    const { resolveSkillPath } = await import('../generate/prompt-builder.js');
+    const { resolveSkillPath } = await import('@contentful/experience-design-system-generation');
     const skills: Array<'components' | 'tokens' | 'select'> = ['components', 'tokens', 'select'];
     const parts: string[] = [];
     for (const s of skills) {

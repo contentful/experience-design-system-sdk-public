@@ -25,7 +25,6 @@
   "files": [
     "bin/",
     "dist/",
-    "skills/",
     "prompts/"
   ],
   "scripts": {
@@ -40,6 +39,7 @@
   "dependencies": {
     "@contentful/experience-design-system-client": "workspace:*",
     "@contentful/experience-design-system-extraction": "workspace:*",
+    "@contentful/experience-design-system-generation": "workspace:*",
     "@contentful/experience-design-system-types": "workspace:*",
     "commander": "^13.1.0",
     "ink": "^4.4.1",

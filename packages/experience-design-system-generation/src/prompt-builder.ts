@@ -5,7 +5,20 @@ import { fileURLToPath } from 'node:url';
 
 /** `components` — classify component props; `tokens` — classify design tokens; `select` — decide whether a component belongs in Contentful Experience Orchestration */
 export type Skill = 'components' | 'tokens' | 'select';
-export type Mode = 'autonomous' | 'interactive';
+export type Mode = 'autonomous';
+
+/**
+ * Render the warning banner shown when a custom skill prompt is active.
+ * Always cites the bundled invariants that the override bypasses so the
+ * operator cannot miss it.
+ */
+export function formatCustomPromptBanner(skill: 'components' | 'select', path: string): string {
+  return (
+    `WARNING: Custom prompt active for ${skill}: ${path}\n` +
+    `  Bundled invariants (utility-wrapper rejection, description content rules) do NOT apply.\n` +
+    `  You are responsible for the prompt's correctness.\n`
+  );
+}
 
 export interface PromptOptions {
   skill: Skill;
@@ -33,12 +46,6 @@ const SKILL_FILES: Record<Skill, string> = {
   components: 'generate-components.md',
   tokens: 'generate-tokens.md',
   select: 'select-components.md',
-};
-
-const OUTPUT_FILES: Record<Skill, string> = {
-  components: 'components.json',
-  tokens: 'tokens.json',
-  select: 'select.json',
 };
 
 export async function buildPrompt(options: PromptOptions): Promise<string> {
@@ -100,10 +107,7 @@ function inferFenceLang(filename: string | undefined): string {
 }
 
 function buildPreamble(options: PromptOptions): string {
-  const { skill, mode, rawComponentsInline, rawTokensInline, rawTokensFilename, tokensInline, tokenMapInline, outDir } =
-    options;
-  const outputFile = OUTPUT_FILES[skill];
-  const outputPath = join(resolve(outDir), outputFile);
+  const { skill, rawComponentsInline, rawTokensInline, rawTokensFilename, tokensInline, tokenMapInline } = options;
 
   const sections: string[] = [];
 
@@ -124,24 +128,13 @@ function buildPreamble(options: PromptOptions): string {
 
   const inputBlock = sections.length > 0 ? `\n\n${sections.join('\n\n')}` : '';
 
-  if (mode === 'autonomous') {
-    if (skill === 'components') {
-      return buildComponentsAutonomousPreamble(inputBlock);
-    }
-    if (skill === 'select') {
-      return buildSelectAutonomousPreamble(inputBlock);
-    }
-    return buildTokensAutonomousPreamble(inputBlock);
-  } else {
-    return `You are running as part of the experience-design-system-cli generate pipeline in INTERACTIVE mode. The developer is present and will answer your questions.
-
-Your task: follow the skill instructions below, working collaboratively with the developer. Ask for confirmation on category corrections, prop exclusions, and grouping choices as the skill instructs.
-
-All input data is provided inline below — do not read any additional files.${inputBlock}
-
-Output:
-Write the final ${outputFile} directly to: ${outputPath}`;
+  if (skill === 'components') {
+    return buildComponentsAutonomousPreamble(inputBlock);
   }
+  if (skill === 'select') {
+    return buildSelectAutonomousPreamble(inputBlock);
+  }
+  return buildTokensAutonomousPreamble(inputBlock);
 }
 
 function buildComponentsAutonomousPreamble(inputBlock: string): string {

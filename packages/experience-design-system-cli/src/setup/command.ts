@@ -15,7 +15,7 @@ import {
 import { promptAutoFilterPreference } from './auto-filter-prompt.js';
 import { promptDebugModePreference } from './debug-mode-prompt.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
-import type { AgentName } from '../generate/agent-runner.js';
+import type { AgentName } from '@contentful/experience-design-system-generation';
 
 const execFileAsync = promisify(execFile);
 
