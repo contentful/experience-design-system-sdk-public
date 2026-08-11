@@ -2,11 +2,13 @@
 
 ## Overview
 
-The Experience Design System SDK is an Nx monorepo that ships two packages:
+The Experience Design System SDK is an Nx monorepo that ships four packages:
 
 | Package | Purpose |
 |---|---|
 | `@contentful/experience-design-system-cli` | CLI + TUI for extracting, reviewing, generating, validating, and pushing design system component definitions |
+| `@contentful/experience-design-system-extraction` | Component extraction engine (ts-morph, per-framework parsers); a runtime dependency of the CLI |
+| `@contentful/experience-design-system-client` | Generated API client for the Experience Design System Integrations API (from `openapi.json`); a runtime dependency of the CLI's `apply` command |
 | `@contentful/experience-design-system-types` | Shared TypeScript types, Zod schemas, and validation logic for CDF and DTCG formats |
 
 The CLI is the developer-facing ingestion tool in the design system import pipeline. A developer runs it against their component library to produce curated, validated artifacts, then pushes them directly into Contentful Experience Orchestration (ExO) from their terminal.
@@ -55,11 +57,21 @@ A separate JSON file at `~/.config/experiences/runs.json` records each successfu
 ### `experience-design-system-cli`
 
 **Key dependencies:**
-- `typescript` — runtime dependency; the CLI compiles customer source files at analysis time. See `docs/adr/2026-04-22-typescript-as-runtime-dependency.md`.
+- `typescript` — runtime dependency; the CLI compiles customer source files at analysis time.
 - `ts-morph` — TypeScript compiler API wrapper; all static analysis goes through this
 - `ink` — React for the terminal; all TUI components are standard React functional components
 - `commander` — CLI argument parsing and help text
 - `node:sqlite` (`DatabaseSync`) — built-in Node.js synchronous SQLite for pipeline session state
+- `@contentful/experience-design-system-extraction` — component extraction engine
+- `@contentful/experience-design-system-client` — generated API client used by `apply`
+
+### `experience-design-system-extraction`
+
+Component extraction engine: per-framework parsers (React, Vue, Astro, Stencil, Web Components) built on ts-morph, plus prop pre-classification. Consumed by the CLI's `analyze extract` command.
+
+### `experience-design-system-client`
+
+Generated TypeScript client for the Experience Design System Integrations API, generated from `openapi.json` via `@hey-api/openapi-ts`. Consumed by the CLI's `apply` command for `GET`/`PUT` calls against component types and design tokens.
 
 ### `experience-design-system-types`
 
@@ -285,11 +297,11 @@ sequenceDiagram
     participant AnEdit as analyze edit
     participant GC as generate components
     participant Agent as Coding agent<br/>(subprocess)
-    participant Val as validate
+    participant Val as print validate
     participant AP as apply push
     participant CMS as Contentful ExO
 
-    Dev->>AE: eds analyze extract --project ./src
+    Dev->>AE: experiences analyze extract --project ./src
     AE->>DB: INSERT sessions (id, ...)
     AE->>DB: INSERT steps (command='analyze extract', status='pending')
     AE->>AE: Walk source files, run extractors
@@ -297,27 +309,27 @@ sequenceDiagram
     AE->>DB: UPDATE steps SET status='complete'
     AE-->>Dev: stdout: session=<id>
 
-    Dev->>AnEdit: eds analyze edit [--session <id>]
+    Dev->>AnEdit: experiences analyze edit [--session <id>]
     AnEdit->>DB: SELECT raw_components WHERE session_id=?
     AnEdit-->>Dev: Launch TUI (accept / reject / edit props)
     Dev-->>AnEdit: Finalize decisions
     AnEdit->>DB: UPDATE raw_components SET status='accepted'/'rejected'
 
-    Dev->>GC: eds generate components --agent claude [--session <id>]
+    Dev->>GC: experiences generate components --agent claude [--session <id>]
     GC->>DB: SELECT raw_components WHERE status='accepted'
     GC->>GC: Build prompt (inline JSON)
     GC->>Agent: spawn subprocess (stdin closed)
-    Agent-->>GC: stdout: <<<EDS_OUTPUT_START>>> ... <<<EDS_OUTPUT_END>>>
+    Agent-->>GC: stdout: one JSON tool-call object per line
     GC->>GC: validateCDF(output)
     GC->>DB: UPDATE raw_components SET status='generated', description=?
     GC->>DB: UPDATE raw_props SET cdf_type=?, cdf_category=?
     GC->>GC: Write components.json to disk
     GC-->>Dev: stdout: Wrote components.json
 
-    Dev->>Val: eds validate --components components.json
+    Dev->>Val: experiences print validate --components components.json
     Val-->>Dev: Exit 0 (valid) or exit 1 + errors
 
-    Dev->>AP: eds apply push --components components.json --space-id ... --yes
+    Dev->>AP: experiences apply push --components components.json --space-id ... --yes
     AP->>CMS: GET /component_types, GET /design_tokens (prefetch)
     AP->>AP: Diff local vs remote → new / changed / unchanged / conflict
     AP-->>Dev: Confirmation prompt (skipped with --yes)
@@ -341,21 +353,21 @@ sequenceDiagram
     participant GC as generate components<br/>(subprocess)
     participant AP as apply push<br/>(subprocess)
 
-    Dev->>Orch: eds import --project ./src --agent claude --space-id ...
+    Dev->>Orch: experiences import --project ./src --agent claude --space-id ...
 
-    Orch->>AE: execFile eds analyze extract --project ./src
+    Orch->>AE: execFile experiences analyze extract --project ./src
     AE-->>Orch: stdout: session=<id>
     Orch->>Orch: Parse session=<id> from stdout
 
     alt edit flags present (--accept-all / --reject / --patch)
-        Orch->>AnEdit: execFile eds analyze edit --session <id> [flags]
+        Orch->>AnEdit: execFile experiences analyze edit --session <id> [flags]
         AnEdit-->>Orch: exit 0
     end
 
-    Orch->>GC: execFile eds generate components --agent claude --session <id> --out .contentful/
+    Orch->>GC: execFile experiences generate components --agent claude --session <id> --out .contentful/
     GC-->>Orch: exit 0
 
-    Orch->>AP: execFile eds apply push --components .contentful/components.json --yes ...
+    Orch->>AP: execFile experiences apply push --components .contentful/components.json --yes ...
     AP-->>Orch: exit 0
 
     Orch-->>Dev: Pipeline complete
@@ -399,7 +411,7 @@ RawComponentDefinition
 
 ### DOM attribute prop surfacing
 
-React components commonly extend `HTMLAttributes<T>`, `ButtonHTMLAttributes<T>`, `SVGProps<T>`, etc. Full TypeScript expansion produces hundreds of props. The extractor uses a curated allowlist (`EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES`) to restrict which props are surfaced. See `docs/adr/2026-04-22-dom-attribute-prop-surfacing-strategy.md`.
+React components commonly extend `HTMLAttributes<T>`, `ButtonHTMLAttributes<T>`, `SVGProps<T>`, etc. Full TypeScript expansion produces hundreds of props. The extractor uses a curated allowlist (`EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES`) to restrict which props are surfaced.
 
 ### Deduplication
 
@@ -417,11 +429,11 @@ React components commonly extend `HTMLAttributes<T>`, `ButtonHTMLAttributes<T>`,
 - **Skill file** — `skills/generate-components-source.md` or `skills/generate-tokens-source.md`; shipped with the package and located at runtime by walking up from the compiled output
 - **Runtime preamble** — sets mode (autonomous/interactive), embeds raw component data inline as JSON, lists optional file paths, and instructs the agent on the output protocol
 
-**Output protocol (autonomous mode):** the agent prints its result between `<<<EDS_OUTPUT_START>>>` and `<<<EDS_OUTPUT_END>>>` sentinel markers. `extractSentinelOutput()` handles extraction and detects multiple-block errors.
+**Output protocol:** the agent emits one JSON tool-call object per line to stdout (no sentinel markers). `parseToolCallLines()` in `agent-runner.ts` handles line-by-line parsing. (An earlier sentinel-block protocol, `extractSentinelOutput()`, still exists in the codebase but is dead code — nothing in the live pipeline calls it.)
 
 **Raw components are passed inline, not as a file path.** The session database is read before the prompt is built, and the JSON array is embedded directly in the prompt text. This removes any file system coupling between `analyze extract` and `generate components`.
 
-Do not use agent SDKs or APIs — the generate command invokes agents as subprocesses only. See `docs/adr/`.
+Do not use agent SDKs or APIs — the generate command invokes agents as subprocesses only. This is a firm constraint.
 
 ---
 

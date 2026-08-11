@@ -4,10 +4,11 @@ This file tells AI coding agents what they need to know to be productive in this
 
 ## Repo at a Glance
 
-Nx monorepo with three packages:
+Nx monorepo with four packages:
 
 - `packages/experience-design-system-cli` — the CLI and TUI (the main package)
 - `packages/experience-design-system-extraction` — component extraction engine (ts-morph, framework parsers); a runtime dependency of the CLI
+- `packages/experience-design-system-client` — generated API client for the Experience Design System Integrations API (from `openapi.json` via `@hey-api/openapi-ts`); a runtime dependency of the CLI's `apply` command
 - `packages/experience-design-system-types` — shared types, schemas, validation
 
 The CLI extracts React/Vue/Astro/Stencil/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
@@ -74,7 +75,7 @@ pnpm -F @contentful/experience-design-system-cli clean && pnpm build
 - All packages use `"type": "module"` — ESM only. Use `.js` extensions in import paths even when the source is `.ts`.
 - `tsconfig.json` has `"jsx": "react-jsx"` — Ink components work without any extra config.
 - Ink v4 is ESM-only. Do not add `require()` calls.
-- `typescript` is a **runtime** dependency of the CLI (it compiles customer code at analysis time). See `docs/adr/2026-04-22-typescript-as-runtime-dependency.md`.
+- `typescript` is a **runtime** dependency of the CLI (it compiles customer code at analysis time).
 
 ## Pipeline Session Database
 
@@ -89,7 +90,7 @@ The session layer lives in `src/session/db.ts`:
 - `storeRawComponents(db, sessionId, components)` — idempotent DELETE+INSERT; replaces all raw components for the session
 - `loadRawComponents(db, sessionId)` — returns `RawComponentDefinition[]` from the session
 
-**Do not write intermediary JSON files.** All data between `analyze extract` and `generate components` flows through the session DB. This is a firm constraint — see `docs/adr/2026-05-03-pipeline-intermediary-data-in-sqlite.md`.
+**Do not write intermediary JSON files.** All data between `analyze extract` and `generate components` flows through the session DB. This is a firm constraint.
 
 **`DatabaseSync` synchronous write invariant:** all multi-statement operations use explicit `BEGIN`/`COMMIT`/`ROLLBACK`. SIGINT and crash cannot produce partially-written state. Do not add async alternatives to this path.
 
@@ -99,8 +100,8 @@ In tests, set `EDS_PIPELINE_DB_PATH` to a temp path to avoid polluting the devel
 
 `src/analyze/extract/react.ts` is the most complex file (~2500 lines). Before editing it:
 
-1. Understand the DOM attribute prop surfacing strategy — `docs/adr/2026-04-22-dom-attribute-prop-surfacing-strategy.md`
-2. Understand how SVGProps is handled — `docs/adr/2026-04-22-svgprops-as-expandable-dom-wrapper.md`
+1. Understand the DOM attribute prop surfacing strategy — see "DOM attribute prop surfacing" in `ARCHITECTURE.md`
+2. Understand how SVGProps is handled — it is one of the curated DOM attribute wrapper types (`EXPANDABLE_DOM_ATTRIBUTE_TYPE_NAMES`)
 
 Key invariant: **never call `getType().getProperties()` on a type that extends a DOM attribute wrapper** — this produces hundreds of inflated props. Use `extractPropsFromInterfaceDeclaration` (which restricts to own-declared members) or `getSyntheticDomAttributeProps` (which uses the curated allowlist).
 
@@ -126,7 +127,7 @@ The output protocol for `generate components` and `generate tokens`: the agent e
 
 The output protocol for `analyze select-agent`: the agent emits exactly one JSON object on a single line — either `{"tool":"select_component",...}` or `{"tool":"reject_component",...}`. `parseSelectToolCallLines()` in `agent-runner.ts` handles parsing.
 
-**Do not use agent SDKs or APIs** — the generate command invokes agents as subprocesses only. This is a firm constraint — see `docs/adr/`.
+**Do not use agent SDKs or APIs** — the generate command invokes agents as subprocesses only. This is a firm constraint.
 
 ## The Analyze Select-Agent Command
 
@@ -146,7 +147,7 @@ The skill file `skills/select-components.md` provides detailed instructions and 
 
 `src/apply/` contains:
 
-- `command.ts` — registers `apply` with `preview` + `push` + `select` subcommands (renamed from `import` — see `docs/adr/2026-05-03-apply-command-rename-and-non-interactive-flags.md`)
+- `command.ts` — registers `apply` with `preview` + `push` + `select` subcommands (renamed from `import`)
 - `api-client.ts` — `ImportApiClient` with `listComponentTypes()`, `listDesignTokens()`, `putComponentType()`, `putDesignToken()`; all fetch-based, no SDK dependency
 - `cdf-mapper.ts` — `mapCDFComponent(key, entry, viewports)` → `ComponentTypeBody`; `designProperties` outer keys are **viewport IDs**, not design property names
 - `dtcg-mapper.ts` — `mapDTCGToken(entry)` → `DesignTokenBody`; returns `{ error }` for unknown `$type` values
@@ -231,16 +232,4 @@ Valid types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `ci`, `
 
 ## Architecture Decisions
 
-All significant technical decisions are documented in `docs/adr/`. Read the relevant ADR before changing:
-
-- CLI build output path → `2026-04-22-cli-package-build-output-path.md`
-- Why `typescript` is a runtime dep → `2026-04-22-typescript-as-runtime-dependency.md`
-- DOM prop allowlist strategy → `2026-04-22-dom-attribute-prop-surfacing-strategy.md`
-- SVGProps handling → `2026-04-22-svgprops-as-expandable-dom-wrapper.md`
-- Directory structure rationale → `2026-04-22-domain-driven-cli-directory-structure.md`
-- Why TUI instead of web UI → `2026-04-22-terminal-tui-over-web-ui.md`
-- Generate subcommands replacing `--skill` flag → `2026-05-02-generate-subcommands-replace-skill-flag.md`
-- Unified pipeline session in SQLite → `2026-05-02-unified-pipeline-session-sqlite.md`
-- `apply` rename and non-interactive flags → `2026-05-03-apply-command-rename-and-non-interactive-flags.md`
-- `import` as pipeline orchestrator → `2026-05-03-import-as-pipeline-orchestrator.md`
-- Intermediary data in SQLite (no JSON files) → `2026-05-03-pipeline-intermediary-data-in-sqlite.md`
+Formal ADRs for this package live in `docs/decisions/` — read the relevant one before changing a major boundary (entity reference model, TUI review flow, composite/atomic graph policies). Other technical constraints called out above (the runtime dependency on `typescript`, the DOM prop allowlist strategy, no-intermediary-JSON-files, the `apply` command shape) are firm constraints documented inline in the sections above, not in separate ADR files.
