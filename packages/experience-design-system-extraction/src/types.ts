@@ -41,6 +41,14 @@ export interface RawSlotDefinition {
   isDefault: boolean;
   description?: string;
   allowedComponents?: string[];
+  /**
+   * Component names implied by usage evidence (a runtime type-predicate
+   * function, a `.type === Component` identity check, or direct JSX
+   * instantiation) rather than a declared slot contract. Kept separate from
+   * `allowedComponents` so downstream provenance stays honest — this is a
+   * lower-trust signal that a declared contract always overrides.
+   */
+  structuralAllowedComponents?: string[];
 }
 
 export interface RawComponentDefinition {
