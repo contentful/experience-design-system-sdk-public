@@ -25,7 +25,6 @@ const NON_EMPTY_ROUTES = {
     },
     tokens: { new: [], changed: [], removed: [], unchanged: [] },
     taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
-    suppressedDeletions: { components: 0, tokens: 0 },
   },
   'POST /spaces/test-space/environments/master/design_systems/imports/apply': {
     sys: { id: 'op-1', status: 'queued' },
@@ -50,7 +49,6 @@ const EMPTY_PREVIEW_ROUTES = {
     components: { new: [], changed: [], removed: [], unchanged: [] },
     tokens: { new: [], changed: [], removed: [], unchanged: [] },
     taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
-    suppressedDeletions: { components: 0, tokens: 0 },
   },
 };
 

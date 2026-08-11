@@ -162,7 +162,6 @@ export function WizardPreviewStep({
 
   const maxScroll = Math.max(0, allDiffLines.length - viewportHeight);
   const removedCount = preview.components.removed.length + preview.tokens.removed.length;
-  const suppressedCount = (preview.suppressedDeletions?.components ?? 0) + (preview.suppressedDeletions?.tokens ?? 0);
 
   useImmediateInput((input, key) => {
     if (key.return) {
@@ -213,7 +212,7 @@ export function WizardPreviewStep({
   const { components, tokens } = preview;
   const hasComponents = components.new.length + components.changed.length + components.removed.length > 0;
   const hasTokens = tokens.new.length + tokens.changed.length + tokens.removed.length > 0;
-  const hasAnything = hasComponents || hasTokens || suppressedCount > 0;
+  const hasAnything = hasComponents || hasTokens;
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
@@ -339,16 +338,6 @@ export function WizardPreviewStep({
             </Box>
           )}
 
-          {!fetchedAllowDeletions && suppressedCount > 0 && (
-            <Box gap={1}>
-              <Text color={PALETTE.warning}> ⊘</Text>
-              <Text>
-                {suppressedCount} {suppressedCount === 1 ? 'entity' : 'entities'} skipped (rerun with --allow-deletions
-                to remove {suppressedCount === 1 ? 'it' : 'them'})
-              </Text>
-            </Box>
-          )}
-
           {diffExpanded && allDiffLines.length > 0 && (
             <Box flexDirection="column" marginTop={1}>
               <Text dimColor>{'─'.repeat(40)}</Text>
@@ -368,6 +357,13 @@ export function WizardPreviewStep({
         </>
       ) : (
         <Text dimColor>Nothing to push — everything is already up to date.</Text>
+      )}
+
+      {!fetchedAllowDeletions && (
+        <Box gap={1}>
+          <Text color={PALETTE.warning}> ⊘</Text>
+          <Text>Deletions are hidden by default — rerun with --allow-deletions to see them.</Text>
+        </Box>
       )}
 
       <Box gap={1} marginTop={1}>

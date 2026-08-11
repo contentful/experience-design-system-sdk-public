@@ -8,7 +8,6 @@ function previewWithRemoved(): ServerPreviewResponse {
     components: { new: [], changed: [], unchanged: [], removed: [{ name: 'OrphanedCard' }] },
     tokens: { new: [], changed: [], unchanged: [], removed: [] },
     taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
-    suppressedDeletions: { components: 0, tokens: 0 },
   } as unknown as ServerPreviewResponse;
 }
 

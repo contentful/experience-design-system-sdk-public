@@ -9020,30 +9020,13 @@
                         "removed"
                       ],
                       "additionalProperties": false
-                    },
-                    "suppressedDeletions": {
-                      "type": "object",
-                      "properties": {
-                        "components": {
-                          "type": "number"
-                        },
-                        "tokens": {
-                          "type": "number"
-                        }
-                      },
-                      "required": [
-                        "components",
-                        "tokens"
-                      ],
-                      "additionalProperties": false
                     }
                   },
                   "required": [
                     "source",
                     "components",
                     "tokens",
-                    "taxonomies",
-                    "suppressedDeletions"
+                    "taxonomies"
                   ],
                   "additionalProperties": false
                 }
@@ -10734,29 +10717,12 @@
                         "removed"
                       ],
                       "additionalProperties": false
-                    },
-                    "suppressedDeletions": {
-                      "type": "object",
-                      "properties": {
-                        "components": {
-                          "type": "number"
-                        },
-                        "tokens": {
-                          "type": "number"
-                        }
-                      },
-                      "required": [
-                        "components",
-                        "tokens"
-                      ],
-                      "additionalProperties": false
                     }
                   },
                   "required": [
                     "components",
                     "tokens",
-                    "taxonomies",
-                    "suppressedDeletions"
+                    "taxonomies"
                   ],
                   "additionalProperties": false
                 }

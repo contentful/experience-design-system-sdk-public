@@ -74,14 +74,8 @@ export interface EntityDiffGroup<TCurrent, TProposed> {
   removed: TCurrent[];
 }
 
-export interface SuppressedDeletions {
-  components: number;
-  tokens: number;
-}
-
 export interface ServerPreviewResponse {
   components: EntityDiffGroup<ComponentTypeSummary, CDFComponentEntry>;
   tokens: EntityDiffGroup<DesignTokenSummary, DTCGTokenEntry>;
   taxonomies: EntityDiffGroup<TaxonomySummary, TaxonomySummary>;
-  suppressedDeletions: SuppressedDeletions;
 }

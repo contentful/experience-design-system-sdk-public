@@ -378,12 +378,7 @@ export class ImportApiClient {
         baseUrl: this.host,
         headers: this.headers(),
         path: { spaceId: this.spaceId, environmentId: this.environmentId },
-        body: manifest,
-        // The generated query type only declares `access_token` — the backend
-        // reads `allowDeletions` off the raw query string with no OpenAPI
-        // parameter declared for it. Cast narrowly here rather than widening
-        // the generated type for an undocumented param.
-        query: { allowDeletions: String(allowDeletions) } as unknown as { access_token?: string },
+        body: { ...manifest, allowDeletions },
         parseAs: 'json',
       }),
     );

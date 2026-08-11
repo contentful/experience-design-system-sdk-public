@@ -8,14 +8,7 @@ function emptyPreview(): ServerPreviewResponse {
     components: { new: [], changed: [], unchanged: [], removed: [] },
     tokens: { new: [], changed: [], unchanged: [], removed: [] },
     taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
-    suppressedDeletions: { components: 0, tokens: 0 },
   };
-}
-
-function previewWithSuppressedDeletion(): ServerPreviewResponse {
-  const preview = emptyPreview();
-  preview.suppressedDeletions = { components: 1, tokens: 0 };
-  return preview;
 }
 
 function previewWithFetchedRemoval(): ServerPreviewResponse {
@@ -67,25 +60,7 @@ describe('buildPreviewDiffLines', () => {
 });
 
 describe('WizardPreviewStep — deletion confirmation', () => {
-  it('renders the suppressed-count line and no toggle hint when the preview was fetched with allowDeletions: false', () => {
-    const preview = previewWithSuppressedDeletion();
-    const { lastFrame } = render(
-      <WizardPreviewStep
-        preview={preview}
-        spaceId="space"
-        environmentId="master"
-        stepNumber={1}
-        totalSteps={1}
-        {...makeHandlers()}
-      />,
-    );
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('1 entity skipped');
-    expect(frame).not.toContain('will be deleted');
-    expect(frame).not.toContain('Also delete');
-  });
-
-  it('omits both the removal list and the suppressed-count line when nothing was suppressed', () => {
+  it('renders the hidden-deletions hint and no toggle hint when the preview was fetched with allowDeletions: false', () => {
     const { lastFrame } = render(
       <WizardPreviewStep
         preview={emptyPreview()}
@@ -97,8 +72,25 @@ describe('WizardPreviewStep — deletion confirmation', () => {
       />,
     );
     const frame = lastFrame() ?? '';
-    expect(frame).not.toContain('skipped');
+    expect(frame).toContain('Deletions are hidden by default');
+    expect(frame).not.toContain('will be deleted');
     expect(frame).not.toContain('Also delete');
+  });
+
+  it('does not render the hidden-deletions hint when fetched with allowDeletions: true', () => {
+    const { lastFrame } = render(
+      <WizardPreviewStep
+        preview={emptyPreview()}
+        spaceId="space"
+        environmentId="master"
+        stepNumber={1}
+        totalSteps={1}
+        allowDeletions
+        {...makeHandlers()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toContain('Deletions are hidden by default');
   });
 
   it('renders the full removal list and a toggle hint when fetched with allowDeletions: true', () => {
@@ -138,11 +130,10 @@ describe('WizardPreviewStep — deletion confirmation', () => {
     expect(frame).not.toContain('will be deleted');
   });
 
-  it('pressing x is a no-op when the preview was fetched with allowDeletions: false, even with a suppressed count', () => {
-    const preview = previewWithSuppressedDeletion();
+  it('pressing x is a no-op when the preview was fetched with allowDeletions: false', () => {
     const { lastFrame, stdin } = render(
       <WizardPreviewStep
-        preview={preview}
+        preview={emptyPreview()}
         spaceId="space"
         environmentId="master"
         stepNumber={1}
@@ -176,11 +167,10 @@ describe('WizardPreviewStep — deletion confirmation', () => {
   });
 
   it('onConfirm always reports false when the preview was fetched with allowDeletions: false', () => {
-    const preview = previewWithSuppressedDeletion();
     const onConfirm = vi.fn();
     const { stdin } = render(
       <WizardPreviewStep
-        preview={preview}
+        preview={emptyPreview()}
         spaceId="space"
         environmentId="master"
         stepNumber={1}
