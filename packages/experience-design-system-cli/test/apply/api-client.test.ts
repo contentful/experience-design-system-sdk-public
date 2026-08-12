@@ -49,20 +49,23 @@ function textResponse(status: number, body: string, headers: Record<string, stri
 }
 
 describe('ImportApiClient — validateToken', () => {
-  it('calls GET /users/me to verify the token', async () => {
+  it('calls GET /users/me and then GET /design_systems/preflight', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       status: 200,
       headers: new Headers(),
       json: () => Promise.resolve({ sys: { type: 'User', id: 'user-1' } }),
-      text: () => Promise.resolve(''),
+      text: () => Promise.resolve('{"ok":true,"action":"apply","resources":["Component","DesignToken"]}'),
     });
 
     const client = createClient();
     await client.validateToken();
 
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(mockFetch.mock.calls[0][0]).toBe('https://api.contentful.com/users/me');
+    expect(mockFetch.mock.calls[1][0]).toBe(
+      'https://api.contentful.com/spaces/space1/environments/master/design_systems/preflight',
+    );
   });
 
   it('throws ApiError on 401', async () => {
@@ -160,6 +163,95 @@ describe('ImportApiClient — validateToken', () => {
 
     const callHeaders = mockFetch.mock.calls[0][1].headers;
     expect(callHeaders['X-Contentful-User-Agent']).toMatch(/^app contentful\.experience-design-system-cli\//);
+  });
+
+  describe('preflight branch', () => {
+    function mockUsersMeOkThen(preflightResponse: Response | Partial<Response>) {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          json: () => Promise.resolve({ sys: { type: 'User', id: 'user-1' } }),
+          text: () => Promise.resolve(''),
+        })
+        .mockResolvedValueOnce(preflightResponse);
+    }
+
+    it('throws AccessDenied when preflight returns 403', async () => {
+      mockUsersMeOkThen({
+        ok: false,
+        status: 403,
+        headers: new Headers(),
+        text: () =>
+          Promise.resolve(JSON.stringify({ sys: { type: 'Error', id: 'AccessDenied' }, message: 'Access denied' })),
+      } as unknown as Response);
+
+      const client = createClient();
+      const err = await client.validateToken().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      const rendered = formatApiError(err as ApiError);
+      expect(rendered).toContain('[AccessDenied]');
+      expect(rendered).toContain('DesignToken and Component permissions');
+    });
+
+    it('throws NotFound when preflight returns 404 with a NotFound envelope', async () => {
+      mockUsersMeOkThen({
+        ok: false,
+        status: 404,
+        headers: new Headers(),
+        text: () =>
+          Promise.resolve(
+            JSON.stringify({ sys: { type: 'Error', id: 'NotFound' }, message: 'The resource could not be found.' }),
+          ),
+      } as unknown as Response);
+
+      const client = createClient();
+      const err = await client.validateToken().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      const rendered = formatApiError(err as ApiError);
+      expect(rendered).toContain('[NotFound]');
+      expect(rendered).toContain('DesignToken or Component');
+    });
+
+    it('passes silently when preflight returns 404 from a legacy backend (no NotFound envelope)', async () => {
+      mockUsersMeOkThen({
+        ok: false,
+        status: 404,
+        headers: new Headers(),
+        text: () => Promise.resolve('Not Found'),
+      } as unknown as Response);
+
+      const client = createClient();
+      await expect(client.validateToken()).resolves.toBeUndefined();
+    });
+
+    it('passes silently when preflight returns 5xx (backend flake)', async () => {
+      mockUsersMeOkThen({
+        ok: false,
+        status: 503,
+        headers: new Headers(),
+        text: () => Promise.resolve('service unavailable'),
+      } as unknown as Response);
+
+      const client = createClient();
+      await expect(client.validateToken()).resolves.toBeUndefined();
+    });
+
+    it('passes silently when preflight fetch throws (network error)', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          json: () => Promise.resolve({ sys: { type: 'User', id: 'user-1' } }),
+          text: () => Promise.resolve(''),
+        })
+        .mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+      const client = createClient();
+      await expect(client.validateToken()).resolves.toBeUndefined();
+    });
   });
 });
 

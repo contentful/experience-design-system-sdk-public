@@ -187,6 +187,17 @@ function sanitizePreviewResponse(res: ServerPreviewResponse): ServerPreviewRespo
   return res;
 }
 
+function isApsDenialBody(body: string): boolean {
+  if (!body) return false;
+  try {
+    const parsed = JSON.parse(body) as { sys?: { id?: unknown } };
+    const id = parsed?.sys?.id;
+    return id === 'NotFound' || id === 'AccessDenied';
+  } catch {
+    return false;
+  }
+}
+
 async function request(url: string, options: RequestInit & { token: string }): Promise<Response> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${options.token}`,
@@ -324,6 +335,33 @@ export class ImportApiClient {
     if (!res.ok) {
       throw new ApiError(`unexpected error validating token: ${res.status}`, res.status, await res.text());
     }
+    await this.checkPreflight();
+  }
+
+  // Probe the sources-api preflight endpoint to catch APS-denied users up-front,
+  // rather than letting them run a full apply flow that only fails at the write.
+  // The endpoint gates Component + DesignToken permissions and returns:
+  //   200 → user has apply permissions, proceed
+  //   403 { sys.id: AccessDenied } → user lacks write; surface via error-parser
+  //   404 { sys.id: NotFound }     → user lacks read (APS hides existence)
+  //   404 without a NotFound envelope → older backend deployment; treat as pass
+  //   5xx / network                → backend flake; treat as pass, do not block
+  async checkPreflight(): Promise<void> {
+    const url = `${this.host}/spaces/${this.spaceId}/environments/${this.environmentId}/design_systems/preflight`;
+    let res: Response;
+    try {
+      res = await request(url, { token: this.token });
+    } catch {
+      return; // network error — don't block; the real call will surface it
+    }
+
+    if (res.ok) return;
+    if (res.status >= 500) return; // backend flake — don't block
+
+    const body = await res.text();
+    if (res.status === 404 && !isApsDenialBody(body)) return; // legacy backend without the endpoint
+
+    throw new ApiError(`preflight failed: ${res.status}`, res.status, body);
   }
 
   async previewImport(manifest: ManifestPayload): Promise<ServerPreviewResponse> {

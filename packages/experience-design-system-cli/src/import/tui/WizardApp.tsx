@@ -992,9 +992,13 @@ export function WizardApp({
       update({ credentialsValidating: false });
       await advanceAfterCredentialsValidated();
     } catch (e) {
-      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403 || e.status === 404)) {
         cancelGeneratePrefetch();
-        update({ step: 'credentials', credentialsValidating: false, credentialsError: e.message });
+        update({
+          step: 'credentials',
+          credentialsValidating: false,
+          credentialsError: formatApiError(e, process.env['EDSI_VERBOSE_ERRORS'] === '1'),
+        });
         return;
       }
       const msg = e instanceof Error ? e.message : 'Credential check failed';
