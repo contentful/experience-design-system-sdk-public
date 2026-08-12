@@ -284,7 +284,7 @@ export function formatParsedEdsiError(parsed: ParsedEdsiError, opts: { verbose?:
   }
   if (parsed.code === 'NotFound') {
     lines.push(
-      'Next action: verify the resource id is correct. If it should exist, your role may lack read permission on DesignToken or Component — the API returns 404 to hide resources you cannot see.',
+      'Next action: verify the resource id is correct. If it should exist, your role may lack read permission on DesignToken or Component.',
     );
   }
   if (parsed.cycle && parsed.cycle.length > 0) {

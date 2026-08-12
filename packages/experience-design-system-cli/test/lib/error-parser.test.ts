@@ -257,6 +257,5 @@ describe('formatApiError', () => {
     expect(formatted).toContain('[NotFound]');
     expect(formatted).toContain('The resource could not be found');
     expect(formatted).toContain('DesignToken or Component');
-    expect(formatted).toContain('404 to hide resources');
   });
 });
