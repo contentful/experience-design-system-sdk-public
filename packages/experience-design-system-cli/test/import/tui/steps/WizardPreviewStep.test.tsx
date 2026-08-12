@@ -74,7 +74,7 @@ describe('WizardPreviewStep — deletion confirmation', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Deletions are hidden by default');
     expect(frame).not.toContain('will be deleted');
-    expect(frame).not.toContain('Also delete');
+    expect(frame).not.toContain('Allow deletions');
   });
 
   it('does not render the hidden-deletions hint when fetched with allowDeletions: true', () => {
@@ -108,7 +108,7 @@ describe('WizardPreviewStep — deletion confirmation', () => {
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('will be deleted');
-    expect(frame).toContain('Also delete 1');
+    expect(frame).toContain('Allow deletions');
   });
 
   it('pressing x opts OUT of a deletion that was fetched with allowDeletions: true', () => {

@@ -69,7 +69,7 @@ export function ServerPreviewConfirm({
         {fetchedAllowDeletions && removedCount > 0 && (
           <Text dimColor>
             {' '}
-            [x] {allowDeletions ? '[✓]' : '[ ]'} Also delete {removedCount} {removedCount === 1 ? 'entity' : 'entities'}
+            [x] {allowDeletions ? '[✓]' : '[ ]'} Allow deletions
           </Text>
         )}
         <Text>
