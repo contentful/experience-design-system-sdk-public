@@ -67,7 +67,7 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@tsconfig/node24':
-        specifier: ^24.0.3
+        specifier: ^24.0.4
         version: 24.0.4
       '@types/node':
         specifier: ^24.0.3
@@ -104,7 +104,7 @@ importers:
         specifier: ^0.80.1
         version: 0.80.18(typescript@5.9.3)
       '@tsconfig/node24':
-        specifier: ^24.0.3
+        specifier: ^24.0.4
         version: 24.0.4
       '@types/node':
         specifier: ^24.0.3
@@ -147,7 +147,7 @@ importers:
         version: 5.9.3
     devDependencies:
       '@tsconfig/node24':
-        specifier: ^24.0.3
+        specifier: ^24.0.4
         version: 24.0.4
       '@types/node':
         specifier: ^24.0.3
@@ -175,7 +175,7 @@ importers:
         version: link:../experience-design-system-types
     devDependencies:
       '@tsconfig/node24':
-        specifier: ^24.0.3
+        specifier: ^24.0.4
         version: 24.0.4
       '@types/node':
         specifier: ^24.0.3
@@ -206,7 +206,7 @@ importers:
         version: 4.3.6
     devDependencies:
       '@tsconfig/node24':
-        specifier: ^24.0.3
+        specifier: ^24.0.4
         version: 24.0.4
       '@types/node':
         specifier: ^24.0.3
@@ -2364,6 +2364,7 @@ packages:
   git-raw-commits@5.0.1:
     resolution: {integrity: sha512-Y+csSm2GD/PCSh6Isd/WiMjNAydu0VBiG9J7EdQsNA5P9uXvLayqjmTsNlK5Gs9IhblFZqOU0yid5Il5JPoLiQ==}
     engines: {node: '>=18'}
+    deprecated: Deprecated and no longer maintained. Use @conventional-changelog/git-client instead.
     hasBin: true
 
   glob-parent@6.0.2:
