@@ -163,7 +163,12 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
       });
       expect(runAgentFn).not.toHaveBeenCalled();
       expect(res.edges).toEqual([
-        expect.objectContaining({ parent: 'Accordion', child: 'AccordionItem', slot: 'header', provenance: 'manifest' }),
+        expect.objectContaining({
+          parent: 'Accordion',
+          child: 'AccordionItem',
+          slot: 'header',
+          provenance: 'manifest',
+        }),
       ]);
       expect(res.conflicts).toEqual([
         expect.objectContaining({ parent: 'Accordion', child: 'AccordionItem', winner: 'manifest', loser: 'doc' }),
@@ -189,9 +194,7 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
           provenance: 'typed-slot',
         }),
       ]);
-      expect(res.conflicts).toEqual([
-        expect.objectContaining({ winner: 'typed-slot', loser: 'manifest' }),
-      ]);
+      expect(res.conflicts).toEqual([expect.objectContaining({ winner: 'typed-slot', loser: 'manifest' })]);
     });
 
     it('doc-provenance evidence alone suppresses the agent for the parent it covers', async () => {

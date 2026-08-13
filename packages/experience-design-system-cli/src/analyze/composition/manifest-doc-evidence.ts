@@ -52,7 +52,9 @@ export function collectManifestEdges(files: CandidateFile[], componentNames: Rea
 
     const component = root.component;
     const rawParentName =
-      typeof component === 'object' && component !== null && typeof (component as Record<string, unknown>).name === 'string'
+      typeof component === 'object' &&
+      component !== null &&
+      typeof (component as Record<string, unknown>).name === 'string'
         ? ((component as Record<string, unknown>).name as string)
         : undefined;
     if (!rawParentName) continue;

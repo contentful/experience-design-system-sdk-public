@@ -67,7 +67,7 @@ describe('collectManifestEdges (deterministic Figma manifest.json parse — no L
     expect(edges).toEqual([]);
   });
 
-  it('drops the whole file when the manifest\'s own component name is not a known component', () => {
+  it("drops the whole file when the manifest's own component name is not a known component", () => {
     const edges = collectManifestEdges(
       [{ path: 'x/manifest.json', content: manifestFixture({ component: { name: 'unknown-thing' } }) }],
       COMPONENT_NAMES,
@@ -107,11 +107,11 @@ const REAL_SHAPE_AGENTS_MD = [
   '',
   '| Prop | Notes |',
   '| --- | --- |',
-  "| **`Slot`** | **`children`** — **`BlueAccordionItem`** only (**`preferredValues`** in manifest) |",
-  "| **`RichText::formatting`** on items | Not on this shell — see **`blue-accordion-item`** |",
+  '| **`Slot`** | **`children`** — **`BlueAccordionItem`** only (**`preferredValues`** in manifest) |',
+  '| **`RichText::formatting`** on items | Not on this shell — see **`blue-accordion-item`** |',
   '',
   '## Enforce',
-  "Direct **`BlueAccordionItem`** children only.",
+  'Direct **`BlueAccordionItem`** children only.',
 ].join('\n');
 
 describe('collectAgentsDocEdges (deterministic AGENTS.md parse — no LLM)', () => {
@@ -127,7 +127,7 @@ describe('collectAgentsDocEdges (deterministic AGENTS.md parse — no LLM)', () 
   });
 
   it('does not extract a bare cross-reference mention with no composition keyword on the line', () => {
-    const doc = "See **`BlueAccordionItem`** for the item-level component.";
+    const doc = 'See **`BlueAccordionItem`** for the item-level component.';
     const edges = collectAgentsDocEdges(
       [{ path: '/repo/blue-accordion/AGENTS.md', content: doc }],
       components,
