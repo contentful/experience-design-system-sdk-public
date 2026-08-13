@@ -33,7 +33,7 @@
     "@contentful/experience-design-system-types": "workspace:*"
   },
   "devDependencies": {
-    "@tsconfig/node24": "^24.0.3",
+    "@tsconfig/node24": "^24.0.4",
     "@types/node": "^24.0.3",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
