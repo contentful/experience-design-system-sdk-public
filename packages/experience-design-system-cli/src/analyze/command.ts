@@ -72,17 +72,45 @@ interface AnalyzeExtractOptions {
 
 const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
 /**
- * Deliberately narrow allowlist, NOT a blanket `.json`/`.md` extension (that
- * would sweep in package.json, tsconfig.json, README.md, lockfiles — noisy
- * and a bigger untrusted-content surface for no signal). Each name here is a
- * known deterministic-evidence convention (see manifest-doc-evidence.ts);
- * their content is never inlined into an LLM prompt for parsing this signal.
+ * `.json`/`.md` are scanned too (Figma `manifest.json`, `AGENTS.md`-style
+ * docs, and other design/composition-adjacent files we don't yet have a name
+ * for) — gated by a denylist rather than an allowlist, so coverage isn't
+ * capped at a couple of exact filenames. Their content is never inlined into
+ * an LLM prompt by virtue of being scanned here; that's a separate gate (see
+ * `selectCandidateFiles` in candidate-files.ts) which still only admits files
+ * matching its own name/content-marker heuristics. Deterministic parsing
+ * (manifest-doc-evidence.ts) reads this full set directly, with no LLM
+ * involved, which is the actual prompt-injection safeguard for that signal.
  */
-const ALLOWLISTED_FILE_NAMES = new Set(['manifest.json', 'AGENTS.md']);
+const DENYLIST_GATED_EXTENSIONS = new Set(['.json', '.md']);
+const DENYLISTED_EXACT_FILE_NAMES = new Set([
+  'package.json',
+  'package-lock.json',
+  'npm-shrinkwrap.json',
+  'nx.json',
+  'project.json',
+  'turbo.json',
+  'lerna.json',
+  'jsconfig.json',
+]);
+/** Config-file families that vary by suffix (`tsconfig.build.json`, `.eslintrc.cjs.json`, ...) plus common repo docs. */
+const DENYLISTED_FILE_NAME_PATTERNS = [
+  /^tsconfig(\..+)?\.json$/,
+  /^\.?eslintrc(\..+)?\.json$/,
+  /^\.?prettierrc(\..+)?\.json$/,
+  /^(readme|changelog|contributing|code_of_conduct|license|security)(\..+)?\.md$/i,
+];
+function isDenylistedNoiseFile(name: string): boolean {
+  return DENYLISTED_EXACT_FILE_NAMES.has(name) || DENYLISTED_FILE_NAME_PATTERNS.some((pattern) => pattern.test(name));
+}
 const IGNORED_DIRECTORY_NAMES = new Set([
+  '.changeset',
   '.git',
+  '.github',
+  '.idea',
   '.next',
   '.nuxt',
+  '.vscode',
   'build',
   'coverage',
   'demo',
@@ -153,8 +181,9 @@ export async function collectSourceFiles(
       }
 
       const extension = entry.name.slice(entry.name.lastIndexOf('.'));
-      const isAllowlistedName = ALLOWLISTED_FILE_NAMES.has(entry.name);
-      if (!isAllowlistedName && (!SCANNED_FILE_EXTENSIONS.has(extension) || entry.name.endsWith('.d.ts'))) {
+      const isCodeFile = SCANNED_FILE_EXTENSIONS.has(extension) && !entry.name.endsWith('.d.ts');
+      const isNoiseGatedFile = DENYLIST_GATED_EXTENSIONS.has(extension) && !isDenylistedNoiseFile(entry.name);
+      if (!isCodeFile && !isNoiseGatedFile) {
         continue;
       }
 
