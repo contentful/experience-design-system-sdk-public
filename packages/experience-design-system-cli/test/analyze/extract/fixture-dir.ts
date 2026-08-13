@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { beforeEach, afterEach } from 'vitest';
 
 export function useFixtureDir(prefix: string): {
@@ -19,7 +19,10 @@ export function useFixtureDir(prefix: string): {
 
   return {
     writeFixture: async (filename: string, content: string) => {
-      const filePath = join(tempDir, filename);
+      const filePath = resolve(tempDir, filename);
+      if (filePath !== resolve(tempDir) && !filePath.startsWith(resolve(tempDir) + sep)) {
+        throw new Error(`fixture path escapes tempDir: ${filename}`);
+      }
       await mkdir(join(filePath, '..'), { recursive: true });
       await writeFile(filePath, content);
       return filePath;
