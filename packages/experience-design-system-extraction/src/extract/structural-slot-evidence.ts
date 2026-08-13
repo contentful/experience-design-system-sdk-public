@@ -1,4 +1,11 @@
-import { Node, SyntaxKind, type FunctionDeclaration, type ArrowFunction, type FunctionExpression, type SourceFile } from 'ts-morph';
+import {
+  Node,
+  SyntaxKind,
+  type FunctionDeclaration,
+  type ArrowFunction,
+  type FunctionExpression,
+  type SourceFile,
+} from 'ts-morph';
 import { extractAllowedComponentsFromTypeText, type AllowedComponentsContext } from './slot-allowed-components.js';
 import { isIntrinsicJsxElement } from './tsx-shared.js';
 

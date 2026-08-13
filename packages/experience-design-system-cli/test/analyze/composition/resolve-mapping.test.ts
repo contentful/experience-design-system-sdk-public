@@ -110,9 +110,7 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
       expect(res.edges).toEqual([
         expect.objectContaining({ parent: 'Accordion', child: 'AccordionItem', provenance: 'structural' }),
       ]);
-      expect(res.components.find((c) => c.name === 'Accordion')!.slots[0].allowedComponents).toEqual([
-        'AccordionItem',
-      ]);
+      expect(res.components.find((c) => c.name === 'Accordion')!.slots[0].allowedComponents).toEqual(['AccordionItem']);
     });
 
     it('a declared typed-slot contract wins when it disagrees with structural evidence about which slot holds the same child', async () => {
