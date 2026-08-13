@@ -68,9 +68,14 @@ export function collectRuntimeTypeCheckComponentReferences(
 
     const candidateFromTypeAccess = (typeAccessSide: Node, otherSide: Node): string | undefined => {
       if (!Node.isPropertyAccessExpression(typeAccessSide) || typeAccessSide.getName() !== 'type') return undefined;
-      if (!Node.isIdentifier(otherSide)) return undefined;
-      const name = otherSide.getText();
-      if (!componentNames.has(name) || !localBindings.has(name)) return undefined;
+      if (!Node.isIdentifier(otherSide) && !Node.isPropertyAccessExpression(otherSide)) return undefined;
+
+      const name = otherSide.getText().split('.').pop();
+      if (!name || !componentNames.has(name)) return undefined;
+
+      const baseIdentifier = Node.isPropertyAccessExpression(otherSide) ? otherSide.getExpression() : otherSide;
+      if (!Node.isIdentifier(baseIdentifier) || !localBindings.has(baseIdentifier.getText())) return undefined;
+
       return name;
     };
 
@@ -87,6 +92,8 @@ function collectLocallyBoundNames(sourceFile: SourceFile): Set<string> {
   for (const imp of sourceFile.getImportDeclarations()) {
     const defaultImport = imp.getDefaultImport();
     if (defaultImport) names.add(defaultImport.getText());
+    const namespaceImport = imp.getNamespaceImport();
+    if (namespaceImport) names.add(namespaceImport.getText());
     for (const named of imp.getNamedImports()) {
       names.add((named.getAliasNode() ?? named.getNameNode()).getText());
     }

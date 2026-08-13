@@ -1,25 +1,8 @@
-import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { extractReactComponents } from '@contentful/experience-design-system-extraction';
+import { useFixtureDir } from './fixture-dir.js';
 
-let tempDir: string;
-
-beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), 'structural-evidence-test-'));
-});
-
-afterEach(async () => {
-  await rm(tempDir, { recursive: true, force: true });
-});
-
-async function writeFixture(filename: string, content: string): Promise<string> {
-  const filePath = join(tempDir, filename);
-  await mkdir(join(filePath, '..'), { recursive: true });
-  await writeFile(filePath, content);
-  return filePath;
-}
+const { writeFixture } = useFixtureDir('structural-evidence-test-');
 
 describe('structural slot evidence — signal B (runtime `.type ===` identity check)', () => {
   it('finds the child component without a type-predicate function', async () => {
@@ -43,6 +26,38 @@ describe('structural slot evidence — signal B (runtime `.type ===` identity ch
     );
 
     const result = await extractReactComponents([filePath]);
+    const tabList = result.components.find((c) => c.name === 'TabList');
+    const childrenSlot = tabList!.slots.find((s) => s.name === 'children');
+    expect(childrenSlot!.allowedComponents ?? []).toEqual([]);
+    expect(childrenSlot!.structuralAllowedComponents).toEqual(['Tab']);
+  });
+
+  it('resolves a qualified identifier (namespace-import.Component) on the right-hand side of the check', async () => {
+    const tabPath = await writeFixture(
+      'tab.tsx',
+      `
+      export interface TabProps { label: string }
+      export function Tab({ label }: TabProps) {
+        return <div>{label}</div>;
+      }
+      `,
+    );
+    const filePath = await writeFixture(
+      'qualified-runtime-check.tsx',
+      `
+      import { isValidElement, type ReactNode } from 'react';
+      import * as Tabs from './tab';
+
+      export interface TabListProps { children?: ReactNode }
+      export function TabList({ children }: TabListProps) {
+        const items = Array.isArray(children) ? children : [children];
+        const valid = items.filter((child) => isValidElement(child) && child.type === Tabs.Tab);
+        return <div>{valid}</div>;
+      }
+      `,
+    );
+
+    const result = await extractReactComponents([tabPath, filePath]);
     const tabList = result.components.find((c) => c.name === 'TabList');
     const childrenSlot = tabList!.slots.find((s) => s.name === 'children');
     expect(childrenSlot!.allowedComponents ?? []).toEqual([]);
