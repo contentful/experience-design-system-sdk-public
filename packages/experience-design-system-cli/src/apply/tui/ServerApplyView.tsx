@@ -67,10 +67,7 @@ export function ServerPreviewConfirm({
           </Text>
         )}
         {fetchedAllowDeletions && removedCount > 0 && (
-          <Text dimColor>
-            {' '}
-            [x] {allowDeletions ? '[✓]' : '[ ]'} Allow deletions
-          </Text>
+          <Text dimColor> [x] {allowDeletions ? '[✓]' : '[ ]'} Allow deletions</Text>
         )}
         <Text>
           {' '}

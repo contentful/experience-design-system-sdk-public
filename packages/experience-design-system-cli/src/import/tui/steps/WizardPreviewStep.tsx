@@ -398,9 +398,7 @@ export function WizardPreviewStep({
         {onEdit && <Text dimColor>[e] Edit definitions</Text>}
         {onSaveFiles && <Text dimColor>[s] Save files instead</Text>}
         {fetchedAllowDeletions && removedCount > 0 && (
-          <Text dimColor>
-            [x] {allowDeletions ? '[✓]' : '[ ]'} Allow deletions
-          </Text>
+          <Text dimColor>[x] {allowDeletions ? '[✓]' : '[ ]'} Allow deletions</Text>
         )}
         <Text dimColor>[q] Cancel</Text>
       </Box>
