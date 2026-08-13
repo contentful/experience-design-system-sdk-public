@@ -16,7 +16,9 @@ export type ResolveMappingResult = {
  * Orchestrate composition-map acquisition (spec T2) and enrichment (T7).
  *
  * Sources by rank: user map (1) > typed-slot / "code slots" (2) > structural
- * usage evidence (3) > adapter-resolved / extraEdges (4) > agent (5).
+ * usage evidence (3) > manifest (4) > doc (5) > adapter-resolved / extraEdges
+ * (6) > agent (7). Manifest/doc edges are computed deterministically outside
+ * this function (see manifest-doc-evidence.ts) and joined via `extraEdges`.
  * ALL sources — including the code slots already on the incoming components —
  * are fed into one ranked merge and unioned; non-conflicting edges from every
  * source survive, and on a conflict (same parent+child, different slot) the
@@ -85,7 +87,9 @@ export async function resolveMapping(input: {
     collected.push(...groupsToEdges(input.userMap, 'user'));
   }
 
-  // Externally pre-resolved edges (e.g. adapter-authored parser, rank 4).
+  // Externally pre-resolved edges — manifest (4), doc (5), adapter-authored
+  // parser (6) — each edge carries its own provenance, so this loop is rank-
+  // agnostic; the merge below sorts it out.
   if (input.extraEdges) {
     collected.push(...input.extraEdges);
   }
@@ -94,7 +98,7 @@ export async function resolveMapping(input: {
   const coveredParents = new Set(collected.map((e) => e.parent));
   const residueParents = input.components.map((c) => c.name).filter((n) => !coveredParents.has(n));
 
-  // Rank 5 — agent. Runs when enabled AND (forced OR there is residue).
+  // Rank 7 — agent. Runs when enabled AND (forced OR there is residue).
   const shouldRunAgent = (input.useAgent || input.forceAgent) && (input.forceAgent || residueParents.length > 0);
   if (shouldRunAgent) {
     const prompt = input.buildPrompt

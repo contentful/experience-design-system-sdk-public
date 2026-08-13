@@ -130,6 +130,24 @@ describe('collectSourceFiles', () => {
     }
   });
 
+  it('includes allowlisted manifest.json and AGENTS.md files despite the extension filter', async () => {
+    await touch('blue-accordion/design/manifest.json');
+    await touch('blue-accordion/AGENTS.md');
+    await touch('blue-accordion/BlueAccordion.tsx');
+    // A same-extension file NOT on the allowlist stays excluded — this is a
+    // narrow basename allowlist, not a blanket `.json`/`.md` widening.
+    await touch('package.json');
+    await touch('README.md');
+
+    const files = await collectSourceFiles(tempDir);
+    const names = files.map((f) => basename(f));
+
+    expect(names).toContain('manifest.json');
+    expect(names).toContain('AGENTS.md');
+    expect(names).not.toContain('package.json');
+    expect(names).not.toContain('README.md');
+  });
+
   it('scans sibling directories in parallel (no blocking between siblings)', async () => {
     // Create N sibling directories each with one file. Parallel scan should
     // complete in roughly the time of one directory read, not N sequential reads.

@@ -38,6 +38,7 @@ import { selectCandidateFiles, capCandidatesToPromptBudget } from './composition
 import { critiqueCandidates } from './composition/candidate-critic.js';
 import { buildDirCriticPrompt, parseDirCriticReply } from './composition/candidate-critic-agent.js';
 import { buildCompositionInputHash } from './composition/composition-cache-key.js';
+import { collectManifestDocEdges } from './composition/manifest-doc-evidence.js';
 import type { InterchangeMap, CompositionEdge } from './composition/interchange-schema.js';
 import { runParserInSandbox } from './composition/agent-parser/sandbox.js';
 import { resolveViaAgentParser } from './composition/agent-parser/resolve-via-parser.js';
@@ -70,6 +71,14 @@ interface AnalyzeExtractOptions {
 }
 
 const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
+/**
+ * Deliberately narrow allowlist, NOT a blanket `.json`/`.md` extension (that
+ * would sweep in package.json, tsconfig.json, README.md, lockfiles — noisy
+ * and a bigger untrusted-content surface for no signal). Each name here is a
+ * known deterministic-evidence convention (see manifest-doc-evidence.ts);
+ * their content is never inlined into an LLM prompt for parsing this signal.
+ */
+const ALLOWLISTED_FILE_NAMES = new Set(['manifest.json', 'AGENTS.md']);
 const IGNORED_DIRECTORY_NAMES = new Set([
   '.git',
   '.next',
@@ -144,7 +153,8 @@ export async function collectSourceFiles(
       }
 
       const extension = entry.name.slice(entry.name.lastIndexOf('.'));
-      if (!SCANNED_FILE_EXTENSIONS.has(extension) || entry.name.endsWith('.d.ts')) {
+      const isAllowlistedName = ALLOWLISTED_FILE_NAMES.has(entry.name);
+      if (!isAllowlistedName && (!SCANNED_FILE_EXTENSIONS.has(extension) || entry.name.endsWith('.d.ts'))) {
         continue;
       }
 
@@ -547,6 +557,13 @@ export function registerAnalyzeCommand(program: Command): void {
             for (const e of parserEdges) process.stderr.write(`[composition-debug]   edge ${e.parent} -> ${e.child}\n`);
           }
 
+          // Manifest (Figma `manifest.json`)/doc (`AGENTS.md`) evidence — rank
+          // 4/5, deterministic (no LLM), runs over the FULL file set
+          // regardless of composition mode/agent settings since it's cheap
+          // and code/design-adjacent rather than agent-derived.
+          const manifestDocEdges = collectManifestDocEdges(runtimeFiles, validatedComponents, componentNameSet);
+          const extraEdges = [...(parserEdges ?? []), ...manifestDocEdges];
+
           // Edge-emission cache (used for both explicit edges-mode and the
           // parser-mode fallback). Keyed on prompt files + agent identity — the
           // agent emits edges directly from what it reads in the prompt.
@@ -559,7 +576,7 @@ export function registerAnalyzeCommand(program: Command): void {
           const result = await resolveMapping({
             components: validatedComponents,
             ...(userMap ? { userMap } : {}),
-            ...(parserEdges ? { extraEdges: parserEdges } : {}),
+            ...(extraEdges.length > 0 ? { extraEdges } : {}),
             useAgent: useEdgeEmission,
             forceAgent: sources.forceAgent && useEdgeEmission,
             files: promptFiles,
