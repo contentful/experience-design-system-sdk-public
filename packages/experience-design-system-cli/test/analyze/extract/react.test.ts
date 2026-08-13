@@ -1,25 +1,9 @@
-import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { extractReactComponents, preClassifyComponent } from '@contentful/experience-design-system-extraction';
+import { useFixtureDir } from './fixture-dir.js';
 
-let tempDir: string;
-
-beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), 'extract-test-'));
-});
-
-afterEach(async () => {
-  await rm(tempDir, { recursive: true, force: true });
-});
-
-async function writeFixture(filename: string, content: string): Promise<string> {
-  const filePath = join(tempDir, filename);
-  await mkdir(join(filePath, '..'), { recursive: true });
-  await writeFile(filePath, content);
-  return filePath;
-}
+const { writeFixture, getTempDir } = useFixtureDir('extract-test-');
 
 describe('ReactComponentExtractor', () => {
   it('does not treat standards-compliant custom elements as intrinsic DOM provenance', async () => {
@@ -1568,8 +1552,8 @@ describe('ReactComponentExtractor', () => {
 
     const result = await extractReactComponents([
       filePath,
-      join(tempDir, 'packages/icon/src/index.ts'),
-      join(tempDir, 'packages/icon/src/internal-generated-icon-props.ts'),
+      join(getTempDir(), 'packages/icon/src/index.ts'),
+      join(getTempDir(), 'packages/icon/src/internal-generated-icon-props.ts'),
     ]);
     const packageIconButton = result.components[0];
 
@@ -1671,9 +1655,9 @@ describe('ReactComponentExtractor', () => {
 
     const result = await extractReactComponents([
       filePath,
-      join(tempDir, 'packages/icon/src/index.ts'),
-      join(tempDir, 'packages/icon/src/internal-generated-icon-props.ts'),
-      join(tempDir, 'packages/core/src/index.ts'),
+      join(getTempDir(), 'packages/icon/src/index.ts'),
+      join(getTempDir(), 'packages/icon/src/internal-generated-icon-props.ts'),
+      join(getTempDir(), 'packages/core/src/index.ts'),
     ]);
     const assetIcon = result.components[0];
 
@@ -1858,13 +1842,13 @@ describe('ReactComponentExtractor', () => {
 
     const result = await extractReactComponents([
       filePath,
-      join(tempDir, 'packages/icon/src/index.ts'),
-      join(tempDir, 'packages/icon/src/utils/index.ts'),
-      join(tempDir, 'packages/icon/src/utils/generateIconComponent.tsx'),
-      join(tempDir, 'packages/icon/src/Icon.tsx'),
-      join(tempDir, 'packages/core/src/types.ts'),
-      join(tempDir, 'packages/core/src/Primitive/Primitive.tsx'),
-      join(tempDir, 'packages/core/src/index.ts'),
+      join(getTempDir(), 'packages/icon/src/index.ts'),
+      join(getTempDir(), 'packages/icon/src/utils/index.ts'),
+      join(getTempDir(), 'packages/icon/src/utils/generateIconComponent.tsx'),
+      join(getTempDir(), 'packages/icon/src/Icon.tsx'),
+      join(getTempDir(), 'packages/core/src/types.ts'),
+      join(getTempDir(), 'packages/core/src/Primitive/Primitive.tsx'),
+      join(getTempDir(), 'packages/core/src/index.ts'),
     ]);
     const assetIcon = result.components[0];
 
@@ -1962,8 +1946,8 @@ describe('ReactComponentExtractor', () => {
 
     const result = await extractReactComponents([
       filePath,
-      join(tempDir, 'packages/core/src/Primitive/Primitive.tsx'),
-      join(tempDir, 'packages/core/src/index.ts'),
+      join(getTempDir(), 'packages/core/src/Primitive/Primitive.tsx'),
+      join(getTempDir(), 'packages/core/src/index.ts'),
     ]);
     const opaquePolymorphic = result.components[0];
 

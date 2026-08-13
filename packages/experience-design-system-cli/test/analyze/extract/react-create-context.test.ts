@@ -1,25 +1,8 @@
-import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { extractReactComponents } from '@contentful/experience-design-system-extraction';
+import { useFixtureDir } from './fixture-dir.js';
 
-let tempDir: string;
-
-beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), 'extract-create-context-test-'));
-});
-
-afterEach(async () => {
-  await rm(tempDir, { recursive: true, force: true });
-});
-
-async function writeFixture(filename: string, content: string): Promise<string> {
-  const filePath = join(tempDir, filename);
-  await mkdir(join(filePath, '..'), { recursive: true });
-  await writeFile(filePath, content);
-  return filePath;
-}
+const { writeFixture } = useFixtureDir('extract-create-context-test-');
 
 describe('extractReactComponents — usesCreateContext flag', () => {
   it('marks components in files that call React.createContext', async () => {
