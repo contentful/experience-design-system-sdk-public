@@ -1,9 +1,24 @@
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { extractReactComponents, preClassifyComponent } from '@contentful/experience-design-system-extraction';
+import {
+  extractReactComponents,
+  preClassifyComponent,
+  type RawComponentDefinition,
+} from '@contentful/experience-design-system-extraction';
 import { useFixtureDir } from './fixture-dir.js';
 
 const { writeFixture, getTempDir } = useFixtureDir('extract-test-');
+
+function expectAssetIconCommonProps(component: RawComponentDefinition, sizeValues: string[]): void {
+  expect(component.props.find((prop) => prop.name === 'type')?.allowedValues).toEqual(['asset', 'icon']);
+  expect(component.props.find((prop) => prop.name === 'className')).toEqual(
+    expect.objectContaining({ type: 'string', required: false }),
+  );
+  expect(component.props.find((prop) => prop.name === 'testId')).toEqual(
+    expect.objectContaining({ type: 'string', required: false }),
+  );
+  expect(component.props.find((prop) => prop.name === 'size')?.allowedValues).toEqual(sizeValues);
+}
 
 describe('ReactComponentExtractor', () => {
   it('does not treat standards-compliant custom elements as intrinsic DOM provenance', async () => {
@@ -1483,14 +1498,7 @@ describe('ReactComponentExtractor', () => {
     expect(assetIcon.props.find((p) => p.name === 'illustration')).toBeUndefined();
     expect(assetIcon.props.find((p) => p.name === 'ref')).toBeUndefined();
     expect(assetIcon.props.find((p) => p.name === 'children')).toBeUndefined();
-    expect(assetIcon.props.find((p) => p.name === 'type')?.allowedValues).toEqual(['asset', 'icon']);
-    expect(assetIcon.props.find((p) => p.name === 'className')).toEqual(
-      expect.objectContaining({ type: 'string', required: false }),
-    );
-    expect(assetIcon.props.find((p) => p.name === 'testId')).toEqual(
-      expect.objectContaining({ type: 'string', required: false }),
-    );
-    expect(assetIcon.props.find((p) => p.name === 'size')?.allowedValues).toEqual(['large', 'medium', 'small']);
+    expectAssetIconCommonProps(assetIcon, ['large', 'medium', 'small']);
   });
 
   it('recovers omitted props from a package-exported icon type', async () => {
@@ -1662,14 +1670,7 @@ describe('ReactComponentExtractor', () => {
     const assetIcon = result.components[0];
 
     expect(assetIcon.name).toBe('AssetIcon');
-    expect(assetIcon.props.find((p) => p.name === 'type')?.allowedValues).toEqual(['asset', 'icon']);
-    expect(assetIcon.props.find((p) => p.name === 'className')).toEqual(
-      expect.objectContaining({ type: 'string', required: false }),
-    );
-    expect(assetIcon.props.find((p) => p.name === 'testId')).toEqual(
-      expect.objectContaining({ type: 'string', required: false }),
-    );
-    expect(assetIcon.props.find((p) => p.name === 'size')?.allowedValues).toEqual(['large', 'medium', 'small']);
+    expectAssetIconCommonProps(assetIcon, ['large', 'medium', 'small']);
     expect(assetIcon.props.find((p) => p.name === 'illustration')).toBeUndefined();
     expect(assetIcon.props.find((p) => p.name === 'ref')).toBeUndefined();
     expect(assetIcon.props.find((p) => p.name === 'name')).toBeUndefined();
@@ -1853,14 +1854,7 @@ describe('ReactComponentExtractor', () => {
     const assetIcon = result.components[0];
 
     expect(assetIcon.name).toBe('AssetIcon');
-    expect(assetIcon.props.find((p) => p.name === 'type')?.allowedValues).toEqual(['asset', 'icon']);
-    expect(assetIcon.props.find((p) => p.name === 'className')).toEqual(
-      expect.objectContaining({ type: 'string', required: false }),
-    );
-    expect(assetIcon.props.find((p) => p.name === 'testId')).toEqual(
-      expect.objectContaining({ type: 'string', required: false }),
-    );
-    expect(assetIcon.props.find((p) => p.name === 'size')?.allowedValues).toEqual(['medium', 'small', 'tiny']);
+    expectAssetIconCommonProps(assetIcon, ['medium', 'small', 'tiny']);
     expect(assetIcon.props.find((p) => p.name === 'paddingLeft')?.allowedValues).toEqual([
       'large',
       'medium',
