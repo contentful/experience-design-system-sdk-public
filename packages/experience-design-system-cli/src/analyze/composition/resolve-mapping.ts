@@ -15,7 +15,8 @@ export type ResolveMappingResult = {
 /**
  * Orchestrate composition-map acquisition (spec T2) and enrichment (T7).
  *
- * Sources by rank: user map (1) > typed-slot / "code slots" (2) > agent (4).
+ * Sources by rank: user map (1) > typed-slot / "code slots" (2) > structural
+ * usage evidence (3) > adapter-resolved / extraEdges (4) > agent (5).
  * ALL sources — including the code slots already on the incoming components —
  * are fed into one ranked merge and unioned; non-conflicting edges from every
  * source survive, and on a conflict (same parent+child, different slot) the
@@ -66,12 +67,25 @@ export async function resolveMapping(input: {
     }
   }
 
+  // Rank 3 — structural usage evidence (runtime type-predicate, `.type ===`
+  // identity check, or direct JSX nesting — see structural-slot-evidence.ts).
+  // Lower trust than a declared slot contract, but still code-derived, so it
+  // outranks the agent and suppresses a redundant agent run when it alone
+  // covers a parent.
+  for (const c of input.components) {
+    for (const slot of c.slots) {
+      for (const child of slot.structuralAllowedComponents ?? []) {
+        collected.push({ parent: c.name, child, slot: slot.name, provenance: 'structural' });
+      }
+    }
+  }
+
   // Rank 1 — user-provided map.
   if (input.userMap) {
     collected.push(...groupsToEdges(input.userMap, 'user'));
   }
 
-  // Externally pre-resolved edges (e.g. agent-authored parser, rank 3).
+  // Externally pre-resolved edges (e.g. adapter-authored parser, rank 4).
   if (input.extraEdges) {
     collected.push(...input.extraEdges);
   }
@@ -80,7 +94,7 @@ export async function resolveMapping(input: {
   const coveredParents = new Set(collected.map((e) => e.parent));
   const residueParents = input.components.map((c) => c.name).filter((n) => !coveredParents.has(n));
 
-  // Rank 4 — agent. Runs when enabled AND (forced OR there is residue).
+  // Rank 5 — agent. Runs when enabled AND (forced OR there is residue).
   const shouldRunAgent = (input.useAgent || input.forceAgent) && (input.forceAgent || residueParents.length > 0);
   if (shouldRunAgent) {
     const prompt = input.buildPrompt

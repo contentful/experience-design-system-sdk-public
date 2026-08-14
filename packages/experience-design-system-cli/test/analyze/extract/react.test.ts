@@ -1,24 +1,23 @@
-import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { extractReactComponents, preClassifyComponent } from '@contentful/experience-design-system-extraction';
+import { describe, it, expect } from 'vitest';
+import {
+  extractReactComponents,
+  preClassifyComponent,
+  type RawComponentDefinition,
+} from '@contentful/experience-design-system-extraction';
+import { useFixtureDir } from './fixture-dir.js';
 
-let tempDir: string;
+const { writeFixture, getTempDir } = useFixtureDir('extract-test-');
 
-beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), 'extract-test-'));
-});
-
-afterEach(async () => {
-  await rm(tempDir, { recursive: true, force: true });
-});
-
-async function writeFixture(filename: string, content: string): Promise<string> {
-  const filePath = join(tempDir, filename);
-  await mkdir(join(filePath, '..'), { recursive: true });
-  await writeFile(filePath, content);
-  return filePath;
+function expectAssetIconCommonProps(component: RawComponentDefinition, sizeValues: string[]): void {
+  expect(component.props.find((prop) => prop.name === 'type')?.allowedValues).toEqual(['asset', 'icon']);
+  expect(component.props.find((prop) => prop.name === 'className')).toEqual(
+    expect.objectContaining({ type: 'string', required: false }),
+  );
+  expect(component.props.find((prop) => prop.name === 'testId')).toEqual(
+    expect.objectContaining({ type: 'string', required: false }),
+  );
+  expect(component.props.find((prop) => prop.name === 'size')?.allowedValues).toEqual(sizeValues);
 }
 
 describe('ReactComponentExtractor', () => {
@@ -1499,14 +1498,7 @@ describe('ReactComponentExtractor', () => {
     expect(assetIcon.props.find((p) => p.name === 'illustration')).toBeUndefined();
     expect(assetIcon.props.find((p) => p.name === 'ref')).toBeUndefined();
     expect(assetIcon.props.find((p) => p.name === 'children')).toBeUndefined();
-    expect(assetIcon.props.find((p) => p.name === 'type')?.allowedValues).toEqual(['asset', 'icon']);
-    expect(assetIcon.props.find((p) => p.name === 'className')).toEqual(
-      expect.objectContaining({ type: 'string', required: false }),
-    );
-    expect(assetIcon.props.find((p) => p.name === 'testId')).toEqual(
-      expect.objectContaining({ type: 'string', required: false }),
-    );
-    expect(assetIcon.props.find((p) => p.name === 'size')?.allowedValues).toEqual(['large', 'medium', 'small']);
+    expectAssetIconCommonProps(assetIcon, ['large', 'medium', 'small']);
   });
 
   it('recovers omitted props from a package-exported icon type', async () => {
@@ -1568,8 +1560,8 @@ describe('ReactComponentExtractor', () => {
 
     const result = await extractReactComponents([
       filePath,
-      join(tempDir, 'packages/icon/src/index.ts'),
-      join(tempDir, 'packages/icon/src/internal-generated-icon-props.ts'),
+      join(getTempDir(), 'packages/icon/src/index.ts'),
+      join(getTempDir(), 'packages/icon/src/internal-generated-icon-props.ts'),
     ]);
     const packageIconButton = result.components[0];
 
@@ -1671,21 +1663,14 @@ describe('ReactComponentExtractor', () => {
 
     const result = await extractReactComponents([
       filePath,
-      join(tempDir, 'packages/icon/src/index.ts'),
-      join(tempDir, 'packages/icon/src/internal-generated-icon-props.ts'),
-      join(tempDir, 'packages/core/src/index.ts'),
+      join(getTempDir(), 'packages/icon/src/index.ts'),
+      join(getTempDir(), 'packages/icon/src/internal-generated-icon-props.ts'),
+      join(getTempDir(), 'packages/core/src/index.ts'),
     ]);
     const assetIcon = result.components[0];
 
     expect(assetIcon.name).toBe('AssetIcon');
-    expect(assetIcon.props.find((p) => p.name === 'type')?.allowedValues).toEqual(['asset', 'icon']);
-    expect(assetIcon.props.find((p) => p.name === 'className')).toEqual(
-      expect.objectContaining({ type: 'string', required: false }),
-    );
-    expect(assetIcon.props.find((p) => p.name === 'testId')).toEqual(
-      expect.objectContaining({ type: 'string', required: false }),
-    );
-    expect(assetIcon.props.find((p) => p.name === 'size')?.allowedValues).toEqual(['large', 'medium', 'small']);
+    expectAssetIconCommonProps(assetIcon, ['large', 'medium', 'small']);
     expect(assetIcon.props.find((p) => p.name === 'illustration')).toBeUndefined();
     expect(assetIcon.props.find((p) => p.name === 'ref')).toBeUndefined();
     expect(assetIcon.props.find((p) => p.name === 'name')).toBeUndefined();
@@ -1858,25 +1843,18 @@ describe('ReactComponentExtractor', () => {
 
     const result = await extractReactComponents([
       filePath,
-      join(tempDir, 'packages/icon/src/index.ts'),
-      join(tempDir, 'packages/icon/src/utils/index.ts'),
-      join(tempDir, 'packages/icon/src/utils/generateIconComponent.tsx'),
-      join(tempDir, 'packages/icon/src/Icon.tsx'),
-      join(tempDir, 'packages/core/src/types.ts'),
-      join(tempDir, 'packages/core/src/Primitive/Primitive.tsx'),
-      join(tempDir, 'packages/core/src/index.ts'),
+      join(getTempDir(), 'packages/icon/src/index.ts'),
+      join(getTempDir(), 'packages/icon/src/utils/index.ts'),
+      join(getTempDir(), 'packages/icon/src/utils/generateIconComponent.tsx'),
+      join(getTempDir(), 'packages/icon/src/Icon.tsx'),
+      join(getTempDir(), 'packages/core/src/types.ts'),
+      join(getTempDir(), 'packages/core/src/Primitive/Primitive.tsx'),
+      join(getTempDir(), 'packages/core/src/index.ts'),
     ]);
     const assetIcon = result.components[0];
 
     expect(assetIcon.name).toBe('AssetIcon');
-    expect(assetIcon.props.find((p) => p.name === 'type')?.allowedValues).toEqual(['asset', 'icon']);
-    expect(assetIcon.props.find((p) => p.name === 'className')).toEqual(
-      expect.objectContaining({ type: 'string', required: false }),
-    );
-    expect(assetIcon.props.find((p) => p.name === 'testId')).toEqual(
-      expect.objectContaining({ type: 'string', required: false }),
-    );
-    expect(assetIcon.props.find((p) => p.name === 'size')?.allowedValues).toEqual(['medium', 'small', 'tiny']);
+    expectAssetIconCommonProps(assetIcon, ['medium', 'small', 'tiny']);
     expect(assetIcon.props.find((p) => p.name === 'paddingLeft')?.allowedValues).toEqual([
       'large',
       'medium',
@@ -1962,8 +1940,8 @@ describe('ReactComponentExtractor', () => {
 
     const result = await extractReactComponents([
       filePath,
-      join(tempDir, 'packages/core/src/Primitive/Primitive.tsx'),
-      join(tempDir, 'packages/core/src/index.ts'),
+      join(getTempDir(), 'packages/core/src/Primitive/Primitive.tsx'),
+      join(getTempDir(), 'packages/core/src/index.ts'),
     ]);
     const opaquePolymorphic = result.components[0];
 

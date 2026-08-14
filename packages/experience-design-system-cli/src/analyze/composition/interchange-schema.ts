@@ -12,7 +12,7 @@
  * This module owns both shapes and the converters between them.
  */
 
-export type EdgeProvenance = 'user' | 'typed-slot' | `adapter:${string}` | 'agent';
+export type EdgeProvenance = 'user' | 'typed-slot' | 'structural' | `adapter:${string}` | 'agent';
 
 export type CompositionEdge = {
   parent: string;
