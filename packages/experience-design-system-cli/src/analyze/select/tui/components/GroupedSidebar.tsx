@@ -396,7 +396,9 @@ export function buildVisibleRows(props: {
   const sharedLeafNames = [...sharedDeps.keys()]
     .filter((name) => (nodeByName.get(name)?.slots.length ?? 0) === 0)
     .sort();
+  const seenStandaloneNames = new Set(standaloneRoots);
   for (const name of sharedLeafNames) {
+    if (seenStandaloneNames.has(name)) continue;
     const rec = itemByKey.get(name);
     if (!rec) continue;
     rows.push({

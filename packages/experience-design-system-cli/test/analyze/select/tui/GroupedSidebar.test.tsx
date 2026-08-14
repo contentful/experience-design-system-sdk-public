@@ -241,6 +241,7 @@ describe('GroupedSidebar', () => {
     expect(standaloneS!.sharedSuffix).toBe(true);
     const sItem = items.findIndex((i) => i.key === 'S');
     expect(standaloneS!.itemIdx).toBe(sItem);
+    expect(rows.filter((r) => r.kind === 'standalone' && r.itemIdx === sItem)).toHaveLength(1);
   });
 
   it('shared dep that itself has slots (a shared composite, not a leaf) does NOT get a synthetic standalone row', () => {
