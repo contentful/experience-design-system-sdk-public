@@ -38,6 +38,7 @@ import { selectCandidateFiles, capCandidatesToPromptBudget } from './composition
 import { critiqueCandidates } from './composition/candidate-critic.js';
 import { buildDirCriticPrompt, parseDirCriticReply } from './composition/candidate-critic-agent.js';
 import { buildCompositionInputHash } from './composition/composition-cache-key.js';
+import { collectManifestDocEdges } from './composition/manifest-doc-evidence.js';
 import type { InterchangeMap, CompositionEdge } from './composition/interchange-schema.js';
 import { runParserInSandbox } from './composition/agent-parser/sandbox.js';
 import { resolveViaAgentParser } from './composition/agent-parser/resolve-via-parser.js';
@@ -70,10 +71,46 @@ interface AnalyzeExtractOptions {
 }
 
 const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
+/**
+ * `.json`/`.md` are scanned too (Figma `manifest.json`, `AGENTS.md`-style
+ * docs, and other design/composition-adjacent files we don't yet have a name
+ * for) — gated by a denylist rather than an allowlist, so coverage isn't
+ * capped at a couple of exact filenames. Their content is never inlined into
+ * an LLM prompt by virtue of being scanned here; that's a separate gate (see
+ * `selectCandidateFiles` in candidate-files.ts) which still only admits files
+ * matching its own name/content-marker heuristics. Deterministic parsing
+ * (manifest-doc-evidence.ts) reads this full set directly, with no LLM
+ * involved, which is the actual prompt-injection safeguard for that signal.
+ */
+const DENYLIST_GATED_EXTENSIONS = new Set(['.json', '.md']);
+const DENYLISTED_EXACT_FILE_NAMES = new Set([
+  'package.json',
+  'package-lock.json',
+  'npm-shrinkwrap.json',
+  'nx.json',
+  'project.json',
+  'turbo.json',
+  'lerna.json',
+  'jsconfig.json',
+]);
+/** Config-file families that vary by suffix (`tsconfig.build.json`, `.eslintrc.cjs.json`, ...) plus common repo docs. */
+const DENYLISTED_FILE_NAME_PATTERNS = [
+  /^tsconfig(\..+)?\.json$/,
+  /^\.?eslintrc(\..+)?\.json$/,
+  /^\.?prettierrc(\..+)?\.json$/,
+  /^(readme|changelog|contributing|code_of_conduct|license|security)(\..+)?\.md$/i,
+];
+function isDenylistedNoiseFile(name: string): boolean {
+  return DENYLISTED_EXACT_FILE_NAMES.has(name) || DENYLISTED_FILE_NAME_PATTERNS.some((pattern) => pattern.test(name));
+}
 const IGNORED_DIRECTORY_NAMES = new Set([
+  '.changeset',
   '.git',
+  '.github',
+  '.idea',
   '.next',
   '.nuxt',
+  '.vscode',
   'build',
   'coverage',
   'demo',
@@ -144,7 +181,9 @@ export async function collectSourceFiles(
       }
 
       const extension = entry.name.slice(entry.name.lastIndexOf('.'));
-      if (!SCANNED_FILE_EXTENSIONS.has(extension) || entry.name.endsWith('.d.ts')) {
+      const isCodeFile = SCANNED_FILE_EXTENSIONS.has(extension) && !entry.name.endsWith('.d.ts');
+      const isNoiseGatedFile = DENYLIST_GATED_EXTENSIONS.has(extension) && !isDenylistedNoiseFile(entry.name);
+      if (!isCodeFile && !isNoiseGatedFile) {
         continue;
       }
 
@@ -547,6 +586,13 @@ export function registerAnalyzeCommand(program: Command): void {
             for (const e of parserEdges) process.stderr.write(`[composition-debug]   edge ${e.parent} -> ${e.child}\n`);
           }
 
+          // Manifest (Figma `manifest.json`)/doc (`AGENTS.md`) evidence — rank
+          // 4/5, deterministic (no LLM), runs over the FULL file set
+          // regardless of composition mode/agent settings since it's cheap
+          // and code/design-adjacent rather than agent-derived.
+          const manifestDocEdges = collectManifestDocEdges(runtimeFiles, validatedComponents, componentNameSet);
+          const extraEdges = [...(parserEdges ?? []), ...manifestDocEdges];
+
           // Edge-emission cache (used for both explicit edges-mode and the
           // parser-mode fallback). Keyed on prompt files + agent identity — the
           // agent emits edges directly from what it reads in the prompt.
@@ -559,7 +605,7 @@ export function registerAnalyzeCommand(program: Command): void {
           const result = await resolveMapping({
             components: validatedComponents,
             ...(userMap ? { userMap } : {}),
-            ...(parserEdges ? { extraEdges: parserEdges } : {}),
+            ...(extraEdges.length > 0 ? { extraEdges } : {}),
             useAgent: useEdgeEmission,
             forceAgent: sources.forceAgent && useEdgeEmission,
             files: promptFiles,
