@@ -214,7 +214,7 @@ describe('GroupedSidebar', () => {
     expect(standaloneIdx).toBeGreaterThan(rootIdx);
   });
 
-  it('shared dep renders under each root with a (shared) marker on 2nd+ occurrence', () => {
+  it('shared dep renders under each root with a (shared) marker on 2nd+ occurrence, plus its own standalone row', () => {
     const { lastFrame } = renderSidebar({
       items: [item('R1', { slots: { s: ['S'] } }), item('R2', { slots: { s: ['S'] } }), item('S')],
       expandedGroups: new Set(['R1', 'R2']),
@@ -222,8 +222,42 @@ describe('GroupedSidebar', () => {
     const frame = lastFrame() ?? '';
     const lines = frame.split('\n');
     const sLines = lines.filter((l) => /\bS\b/.test(l));
-    expect(sLines.length).toBe(2);
+    expect(sLines.length).toBe(3);
     expect(frame).toContain('(shared)');
+  });
+
+  it('shared leaf with zero slots of its own gets its own standalone row (not just nested "(shared)" children)', () => {
+    const items = [item('R1', { slots: { s: ['S'] } }), item('R2', { slots: { s: ['S'] } }), item('S')];
+    const rows = buildVisibleRows({
+      items,
+      graph: graphOf(items),
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(),
+    });
+    const standaloneS = rows.find((r) => r.key === 'shared-standalone:S');
+    expect(standaloneS).toBeDefined();
+    expect(standaloneS!.kind).toBe('standalone');
+    expect(standaloneS!.label).toBe('S (shared)');
+    expect(standaloneS!.sharedSuffix).toBe(true);
+    const sItem = items.findIndex((i) => i.key === 'S');
+    expect(standaloneS!.itemIdx).toBe(sItem);
+    expect(rows.filter((r) => r.kind === 'standalone' && r.itemIdx === sItem)).toHaveLength(1);
+  });
+
+  it('shared dep that itself has slots (a shared composite, not a leaf) does NOT get a synthetic standalone row', () => {
+    const items = [
+      item('R1', { slots: { s: ['Mid'] } }),
+      item('R2', { slots: { s: ['Mid'] } }),
+      item('Mid', { slots: { s: ['Leaf'] } }),
+      item('Leaf'),
+    ];
+    const rows = buildVisibleRows({
+      items,
+      graph: graphOf(items),
+      cycleParticipants: new Set(),
+      expandedGroups: new Set(),
+    });
+    expect(rows.find((r) => r.key === 'shared-standalone:Mid')).toBeUndefined();
   });
 
   it('aggregate status: collapsed row shows ✗ when a dep is in error state', () => {
@@ -526,7 +560,7 @@ describe('GroupedSidebar', () => {
         expandedGroups: new Set(['R1', 'R2']),
       });
       const sIdx = items.findIndex((i) => i.key === 'S');
-      expect(order.filter((i) => i === sIdx).length).toBe(2);
+      expect(order.filter((i) => i === sIdx).length).toBe(3);
 
       const { lastFrame } = renderSidebar({
         items,
