@@ -286,12 +286,13 @@ export function formatSlotCycleReport(cycles: ReturnType<typeof findSlotCycles>)
   return lines;
 }
 
-export function assertNoSlotCycles(components: Array<{ key: string; entry: CDFComponentEntry }>): void {
+export async function assertNoSlotCycles(
+  components: Array<{ key: string; entry: CDFComponentEntry }>,
+): Promise<void> {
   const cycles = detectSlotCycles(components);
   if (cycles.length === 0) return;
   process.stderr.write(formatSlotCycleReport(cycles).join('\n') + '\n');
-  void exitWithAnalytics(1);
-  throw new Error('exit');
+  await exitWithAnalytics(1);
 }
 
 export function extractComponentsFromManifest(
@@ -612,7 +613,7 @@ export function registerApplyCommand(program: Command): void {
         environment_key: environmentId,
       });
 
-      assertNoSlotCycles(components);
+      await assertNoSlotCycles(components);
 
       try {
         await client.validateToken();
@@ -812,7 +813,7 @@ export function registerApplyCommand(program: Command): void {
 
     const { components, tokens, client } = inputs;
 
-    assertNoSlotCycles(components);
+    await assertNoSlotCycles(components);
 
     try {
       await client.validateToken();
