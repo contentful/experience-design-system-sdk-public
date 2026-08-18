@@ -286,9 +286,7 @@ export function formatSlotCycleReport(cycles: ReturnType<typeof findSlotCycles>)
   return lines;
 }
 
-export async function assertNoSlotCycles(
-  components: Array<{ key: string; entry: CDFComponentEntry }>,
-): Promise<void> {
+export async function assertNoSlotCycles(components: Array<{ key: string; entry: CDFComponentEntry }>): Promise<void> {
   const cycles = detectSlotCycles(components);
   if (cycles.length === 0) return;
   process.stderr.write(formatSlotCycleReport(cycles).join('\n') + '\n');
