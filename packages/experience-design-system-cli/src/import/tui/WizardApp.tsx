@@ -310,6 +310,7 @@ export type WizardAppProps = {
   initialRawTokensPath?: string;
   initialRuns?: RunRecord[];
   onRunPicked?: (selection: RunPickerSelection) => void;
+  allowDeletions?: boolean;
 };
 
 export function WizardApp({
@@ -347,6 +348,7 @@ export function WizardApp({
   initialRawTokensPath,
   initialRuns,
   onRunPicked,
+  allowDeletions = false,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -1087,7 +1089,7 @@ export function WizardApp({
         tokens = await readTokensFromPath('tokens', tokensPath);
       }
       let manifest = buildManifest(components, tokens, { deleteAllComponents: allowEmptyDeleteAllRef.current });
-      let preview = await client.previewImport(manifest);
+      let preview = await client.previewImport(manifest, allowDeletions);
 
       if (extractSessionId) {
         let needsRepreview = false;
@@ -1116,7 +1118,7 @@ export function WizardApp({
           if (needsRepreview) {
             components = loadCDFComponents(db, extractSessionId);
             manifest = buildManifest(components, tokens, { deleteAllComponents: allowEmptyDeleteAllRef.current });
-            preview = await client.previewImport(manifest);
+            preview = await client.previewImport(manifest, allowDeletions);
           }
         } finally {
           db.close();
@@ -1217,6 +1219,7 @@ export function WizardApp({
     cmaToken: string,
     host: string,
     acknowledgeBreakingChanges: boolean,
+    allowDeletions: boolean,
     preview?: ServerPreviewResponse | null,
   ) => {
     if (shouldRefusePush(state)) {
@@ -1262,7 +1265,7 @@ export function WizardApp({
         environmentId,
         host: resolvedHost,
       });
-      let operation = await client.applyImport(manifest, acknowledgeBreakingChanges);
+      let operation = await client.applyImport(manifest, { acknowledgeBreakingChanges, allowDeletions });
       try {
         logStep({
           applyResponse: {
@@ -1837,6 +1840,7 @@ export function WizardApp({
             host={state.host}
             tokensPath={state.tokensPath}
             initialFinalizeError={state.finalizeErrorBanner}
+            allowDeletions={allowDeletions}
             onFinalize={(accepted, rejected, unresolved) => {
               process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`);
               let acceptedCount = accepted;
@@ -2065,7 +2069,8 @@ export function WizardApp({
             environmentId={state.environmentId}
             stepNumber={totalSteps}
             totalSteps={totalSteps}
-            onConfirm={(acknowledge) => {
+            allowDeletions={allowDeletions}
+            onConfirm={(acknowledge, deleteMissing) => {
               void runPush(
                 state.manifest!,
                 state.spaceId,
@@ -2073,6 +2078,7 @@ export function WizardApp({
                 state.cmaToken,
                 state.host,
                 acknowledge,
+                deleteMissing,
                 state.serverPreview,
               );
             }}

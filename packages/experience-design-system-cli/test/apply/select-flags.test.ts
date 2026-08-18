@@ -388,4 +388,67 @@ describe('apply select — flag variations', () => {
     expect(code).not.toBe(0);
     expect(stderr).toMatch(/interactive terminal|--select-all|--select|--deselect/i);
   });
+
+  // ── --allow-deletions ────────────────────────────────────────────────────
+
+  it('sends allowDeletions: true in the apply body when --allow-deletions is passed', async () => {
+    const requestsBefore = entityServer.requests.length;
+    const { code } = await runCliWithEnv(
+      [
+        'apply',
+        'select',
+        '--components',
+        componentsPath,
+        '--space-id',
+        'test-space',
+        '--environment-id',
+        'master',
+        '--cma-token',
+        'test-token',
+        '--select-all',
+        '--allow-deletions',
+        '--host',
+        entityServer.url,
+      ],
+      baseEnv(),
+    );
+    expect(code).toBe(0);
+
+    const applyRequest = entityServer.requests
+      .slice(requestsBefore)
+      .filter((r) => r.method === 'POST' && r.url.includes('/design_systems/imports/apply'))
+      .at(-1);
+    expect(applyRequest).toBeDefined();
+    expect((applyRequest!.body as { allowDeletions?: boolean }).allowDeletions).toBe(true);
+  });
+
+  it('sends allowDeletions: false in the apply body when --allow-deletions is omitted', async () => {
+    const requestsBefore = entityServer.requests.length;
+    const { code } = await runCliWithEnv(
+      [
+        'apply',
+        'select',
+        '--components',
+        componentsPath,
+        '--space-id',
+        'test-space',
+        '--environment-id',
+        'master',
+        '--cma-token',
+        'test-token',
+        '--select-all',
+        '--host',
+        entityServer.url,
+      ],
+      baseEnv(),
+    );
+    expect(code).toBe(0);
+
+    const applyRequest = entityServer.requests
+      .slice(requestsBefore)
+      .filter((r) => r.method === 'POST' && r.url.includes('/design_systems/imports/apply'))
+      .at(-1);
+    expect(applyRequest).toBeDefined();
+    expect((applyRequest!.body as { allowDeletions?: boolean }).allowDeletions).toBe(false);
+  });
 });

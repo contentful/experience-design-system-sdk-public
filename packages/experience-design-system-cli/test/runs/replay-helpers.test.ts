@@ -219,6 +219,45 @@ describe('replayRun (push-only)', () => {
     expect(mockPushRunSession).toHaveBeenCalledTimes(1);
   });
 
+  it('forwards allowDeletions: true to pushRunSession when flag is set', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun());
+    await replayRun({
+      runIdOrPath: '01HXYZ',
+      spaceId: 'sp',
+      environmentId: 'env',
+      cmaToken: 'tok',
+      allowDeletions: true,
+    });
+    expect(mockPushRunSession).toHaveBeenCalledWith(expect.objectContaining({ allowDeletions: true }));
+  });
+
+  it('does not pass allowDeletions when flag is not set', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun());
+    await replayRun({
+      runIdOrPath: '01HXYZ',
+      spaceId: 'sp',
+      environmentId: 'env',
+      cmaToken: 'tok',
+    });
+    const call = mockPushRunSession.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(call['allowDeletions']).toBeUndefined();
+  });
+
+  it('forwards allowDeletions: true to both component and token push sessions', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun({ tokenSessionId: 't1' }));
+    await replayRun({
+      runIdOrPath: '01HXYZ',
+      spaceId: 'sp',
+      environmentId: 'env',
+      cmaToken: 'tok',
+      allowDeletions: true,
+    });
+    expect(mockPushRunSession).toHaveBeenCalledTimes(2);
+    const calls = mockPushRunSession.mock.calls;
+    expect((calls[0]![0] as { allowDeletions?: boolean }).allowDeletions).toBe(true);
+    expect((calls[1]![0] as { allowDeletions?: boolean }).allowDeletions).toBe(true);
+  });
+
   it('surfaces the tokens-push error and does not update the run record', async () => {
     mockGetRun.mockResolvedValueOnce(sampleRun({ tokenSessionId: 't1' }));
     mockPushRunSession
@@ -441,5 +480,18 @@ describe('modifyRun', () => {
     });
     await modifyRun({ runIdOrPath: '01HXYZ' });
     expect(mockLaunchWizard).toHaveBeenCalledWith(expect.objectContaining({ initialCmaToken: 'stored-token' }));
+  });
+
+  it('forwards allowDeletions to launchModifyWizard when flag is set', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun());
+    await modifyRun({ runIdOrPath: '01HXYZ', allowDeletions: true });
+    expect(mockLaunchWizard).toHaveBeenCalledWith(expect.objectContaining({ allowDeletions: true }));
+  });
+
+  it('does not pass allowDeletions to launchModifyWizard when flag is not set', async () => {
+    mockGetRun.mockResolvedValueOnce(sampleRun());
+    await modifyRun({ runIdOrPath: '01HXYZ' });
+    const call = mockLaunchWizard.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(call['allowDeletions']).toBeUndefined();
   });
 });

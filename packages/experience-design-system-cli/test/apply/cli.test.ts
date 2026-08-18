@@ -58,6 +58,7 @@ describe('apply command — help', () => {
       '--tokens',
     ]);
     expect(flags('push')).toEqual([
+      '--allow-deletions',
       '--atomic',
       '--cma-token',
       '--components',
@@ -73,6 +74,7 @@ describe('apply command — help', () => {
       '--yes',
     ]);
     expect(flags('select')).toEqual([
+      '--allow-deletions',
       '--atomic',
       '--cma-token',
       '--components',

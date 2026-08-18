@@ -379,20 +379,21 @@ export class ImportApiClient {
     throw new ApiError(`preflight failed: ${res.status}`, res.status, body);
   }
 
-  async previewImport(manifest: ManifestPayload): Promise<ServerPreviewResponse> {
+  async previewImport(manifest: ManifestPayload, allowDeletions = false): Promise<ServerPreviewResponse> {
     const debug = getDebugLogger();
     const startedAt = Date.now();
     debug.event('apply', 'preview.request', {
       url: `${this.base()}/design_systems/imports/preview`,
       componentCount: (manifest as { components?: unknown[] }).components?.length ?? 0,
       tokenCount: (manifest as { designTokens?: unknown[] }).designTokens?.length ?? 0,
+      allowDeletions,
     });
     const result = await this.requestWithRetry('preview', PREVIEW_ERROR_PREFIX, () =>
       designSystemImportSourcelessPreview({
         baseUrl: this.host,
         headers: this.headers(),
         path: { spaceId: this.spaceId, environmentId: this.environmentId },
-        body: manifest,
+        body: { ...manifest, allowDeletions },
         parseAs: 'json',
       }),
     );
@@ -410,12 +411,17 @@ export class ImportApiClient {
     return sanitizePreviewResponse(parsed);
   }
 
-  async applyImport(manifest: ManifestPayload, acknowledgeBreakingChanges: boolean): Promise<ApplyOperationResponse> {
+  async applyImport(
+    manifest: ManifestPayload,
+    options: { acknowledgeBreakingChanges: boolean; allowDeletions?: boolean },
+  ): Promise<ApplyOperationResponse> {
+    const { acknowledgeBreakingChanges, allowDeletions = false } = options;
     const debug = getDebugLogger();
     const startedAt = Date.now();
     debug.event('apply', 'apply.request', {
       url: `${this.base()}/design_systems/imports/apply`,
       acknowledgeBreakingChanges,
+      allowDeletions,
     });
     let result: Awaited<ReturnType<typeof designSystemImportApply<false>>>;
     try {
@@ -423,7 +429,7 @@ export class ImportApiClient {
         baseUrl: this.host,
         headers: this.headers(),
         path: { spaceId: this.spaceId, environmentId: this.environmentId },
-        body: { ...manifest, acknowledgeBreakingChanges },
+        body: { ...manifest, acknowledgeBreakingChanges, allowDeletions },
         parseAs: 'json',
       });
     } catch (error) {

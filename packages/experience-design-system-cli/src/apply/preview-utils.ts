@@ -8,7 +8,11 @@ import type { ServerPreviewResponse } from '@contentful/experience-design-system
  *     would be a pure no-op (INTEG-4411 refined guard).
  *
  * A push that produces ANY entry in ANY bucket — including a rejection that
- * removes a server-side component — is NOT empty.
+ * removes a server-side component — is NOT empty. Note the server hides
+ * removals entirely (empty removed[]) unless the preview was fetched with
+ * allowDeletions: true, so "empty" here also correctly describes a preview
+ * with pending-but-hidden deletions: pushing without --allow-deletions is a
+ * genuine no-op in that case too, since the apply gate hides them the same way.
  */
 export function isEmptyPreview(preview: ServerPreviewResponse): boolean {
   const { components, tokens, taxonomies } = preview;

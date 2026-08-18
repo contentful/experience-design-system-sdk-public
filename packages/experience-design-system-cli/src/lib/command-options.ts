@@ -31,3 +31,10 @@ export function addSelectionOptions(cmd: Command): Command {
     .option('--select <pattern>', 'Select entities by ID pattern (repeatable)', collectOptionValue, [])
     .option('--deselect <pattern>', 'Deselect entities by ID pattern (repeatable)', collectOptionValue, []);
 }
+
+export function addAllowDeletionsOption(cmd: Command): Command {
+  return cmd.option(
+    '--allow-deletions',
+    'Allow the push to delete remote ComponentTypes/DesignTokens missing from the manifest (default: skip them)',
+  );
+}

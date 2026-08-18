@@ -22,6 +22,7 @@ import { SelectView, makeSelectKey, type SelectableEntity } from './tui/SelectVi
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import {
+  addAllowDeletionsOption,
   addArtifactInputOptions,
   addCompositionOptions,
   addContentfulTargetOptions,
@@ -169,6 +170,7 @@ interface ApplyOptions extends SharedImportOptions {
   verbose?: boolean;
   force?: boolean;
   dryRun?: boolean;
+  allowDeletions?: boolean;
 }
 
 interface SelectOptions extends SharedImportOptions {
@@ -176,6 +178,7 @@ interface SelectOptions extends SharedImportOptions {
   select?: string[];
   deselect?: string[];
   force?: boolean;
+  allowDeletions?: boolean;
 }
 
 async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
@@ -568,6 +571,7 @@ export function registerApplyCommand(program: Command): void {
           preview,
           spaceId,
           environmentId,
+          allowDeletions: false,
         }),
       );
       await waitUntilExit();
@@ -581,6 +585,7 @@ export function registerApplyCommand(program: Command): void {
   addArtifactInputOptions(pushCmd);
   addContentfulTargetOptions(pushCmd);
   addCompositionOptions(pushCmd);
+  addAllowDeletionsOption(pushCmd);
   pushCmd
     .option('--yes', 'Skip interactive confirmation')
     .option('--verbose', 'Show all entity progress including skipped/unchanged')
@@ -625,7 +630,7 @@ export function registerApplyCommand(program: Command): void {
 
       let preview: ServerPreviewResponse;
       try {
-        preview = await client.previewImport(manifest);
+        preview = await client.previewImport(manifest, opts.allowDeletions === true);
       } catch (e) {
         if (e instanceof ApiError)
           return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
@@ -641,6 +646,7 @@ export function registerApplyCommand(program: Command): void {
               preview,
               spaceId,
               environmentId,
+              allowDeletions: opts.allowDeletions === true,
             }),
           );
           await waitUntilExit();
@@ -677,7 +683,10 @@ export function registerApplyCommand(program: Command): void {
 
         let operation: ApplyOperationResponse;
         try {
-          operation = await client.applyImport(manifest, breakingWithImpact || opts.force === true);
+          operation = await client.applyImport(manifest, {
+            acknowledgeBreakingChanges: breakingWithImpact || opts.force === true,
+            allowDeletions: opts.allowDeletions === true,
+          });
         } catch (e) {
           if (e instanceof ApiError)
             return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
@@ -703,7 +712,7 @@ export function registerApplyCommand(program: Command): void {
       }
 
       await new Promise<void>((resolvePromise) => {
-        const runApply = async (acknowledge: boolean) => {
+        const runApply = async (acknowledge: boolean, applyDeletions: boolean) => {
           instance.rerender(
             createElement(ServerApplyProgress, {
               spaceId,
@@ -714,7 +723,10 @@ export function registerApplyCommand(program: Command): void {
 
           let operation: ApplyOperationResponse;
           try {
-            operation = await client.applyImport(manifest, acknowledge);
+            operation = await client.applyImport(manifest, {
+              acknowledgeBreakingChanges: acknowledge,
+              allowDeletions: applyDeletions,
+            });
           } catch (e) {
             if (e instanceof ApiError) {
               instance.rerender(
@@ -774,8 +786,9 @@ export function registerApplyCommand(program: Command): void {
             spaceId,
             environmentId,
             breakingWithImpact,
-            onConfirm: (acknowledge: boolean) => {
-              void runApply(acknowledge);
+            allowDeletions: opts.allowDeletions === true,
+            onConfirm: (acknowledge: boolean, applyDeletions: boolean) => {
+              void runApply(acknowledge, applyDeletions);
             },
             onCancel: () => {
               void exitWithAnalytics(0);
@@ -792,6 +805,7 @@ export function registerApplyCommand(program: Command): void {
   addContentfulTargetOptions(selectCmd);
   addCompositionOptions(selectCmd);
   addSelectionOptions(selectCmd);
+  addAllowDeletionsOption(selectCmd);
   selectCmd.option('--force', 'Skip confirmation for breaking changes').action(async (opts: SelectOptions) => {
     const nonInteractive = opts.selectAll || (opts.select ?? []).length > 0 || (opts.deselect ?? []).length > 0;
 
@@ -824,7 +838,7 @@ export function registerApplyCommand(program: Command): void {
 
     let preview: ServerPreviewResponse;
     try {
-      preview = await client.previewImport(fullManifest);
+      preview = await client.previewImport(fullManifest, opts.allowDeletions === true);
     } catch (e) {
       if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
@@ -871,7 +885,10 @@ export function registerApplyCommand(program: Command): void {
 
       let operation: ApplyOperationResponse;
       try {
-        operation = await client.applyImport(filteredManifest, hasBreaking || opts.force === true);
+        operation = await client.applyImport(filteredManifest, {
+          acknowledgeBreakingChanges: hasBreaking || opts.force === true,
+          allowDeletions: opts.allowDeletions === true,
+        });
       } catch (e) {
         if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
         throw e;
@@ -917,7 +934,10 @@ export function registerApplyCommand(program: Command): void {
 
         let operation: ApplyOperationResponse;
         try {
-          operation = await client.applyImport(filteredManifest, hasBreaking);
+          operation = await client.applyImport(filteredManifest, {
+            acknowledgeBreakingChanges: hasBreaking,
+            allowDeletions: opts.allowDeletions === true,
+          });
         } catch (e) {
           if (e instanceof ApiError) {
             instance.rerender(

@@ -28,6 +28,8 @@ export type ModifyLauncherInput = {
   initialHost?: string;
   /** Pre-fill CMA token (from credentials.json / env). */
   initialCmaToken?: string;
+  /** From `--allow-deletions` flag. Forwarded to wizard's push step. */
+  allowDeletions?: boolean;
 };
 
 export async function launchModifyWizard(input: ModifyLauncherInput): Promise<void> {
@@ -46,6 +48,7 @@ export async function launchModifyWizard(input: ModifyLauncherInput): Promise<vo
     initialHost?: string;
     initialCmaToken?: string;
     compositionMode?: CompositionMode;
+    allowDeletions?: boolean;
   };
   // Modify entry: re-open the wizard with the prior run's sessions seeded so
   // extract + generate are skipped. The wizard short-circuits to `initialStep`
@@ -67,6 +70,7 @@ export async function launchModifyWizard(input: ModifyLauncherInput): Promise<vo
   if (input.initialEnvironmentId) props.initialEnvironmentId = input.initialEnvironmentId;
   if (input.initialHost) props.initialHost = input.initialHost;
   if (input.initialCmaToken) props.initialCmaToken = input.initialCmaToken;
+  if (input.allowDeletions !== undefined) props.allowDeletions = input.allowDeletions;
   const { waitUntilExit } = render(createElement<WizardProps>(WizardApp, props));
   await waitUntilExit();
 }

@@ -273,10 +273,11 @@ describe('ImportApiClient — previewImport', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const request = mockFetch.mock.calls[0][0] as Request;
     expect(request.method).toBe('POST');
-    expect(request.url).toBe(
-      'https://api.contentful.com/spaces/space1/environments/master/design_systems/imports/preview',
+    const requestUrl = new URL(request.url);
+    expect(requestUrl.pathname).toBe('/spaces/space1/environments/master/design_systems/imports/preview');
+    await expect(request.text()).resolves.toBe(
+      JSON.stringify({ componentsManifest: { Button: {} }, allowDeletions: false }),
     );
-    await expect(request.text()).resolves.toBe(JSON.stringify({ componentsManifest: { Button: {} } }));
   });
 
   it('throws ApiError on non-200 response', async () => {
@@ -428,10 +429,40 @@ describe('ImportApiClient — previewImport', () => {
       { slotId: 'footer', reason: 'slot_removed' },
     ]);
   });
+
+  it('sends allowDeletions=true in the preview request body when passed', async () => {
+    const serverResponse: ServerPreviewResponse = {
+      components: { new: [], changed: [], unchanged: [], removed: [] },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    };
+    mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
+
+    const client = createClient();
+    await client.previewImport({ componentsManifest: { Button: {} } }, true);
+    const request = mockFetch.mock.calls[0][0] as Request;
+    const callBody = JSON.parse(await request.text());
+    expect(callBody.allowDeletions).toBe(true);
+  });
+
+  it('defaults to allowDeletions=false in the preview request body when omitted', async () => {
+    const serverResponse: ServerPreviewResponse = {
+      components: { new: [], changed: [], unchanged: [], removed: [] },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    };
+    mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
+
+    const client = createClient();
+    await client.previewImport({ componentsManifest: { Button: {} } });
+    const request = mockFetch.mock.calls[0][0] as Request;
+    const callBody = JSON.parse(await request.text());
+    expect(callBody.allowDeletions).toBe(false);
+  });
 });
 
 describe('ImportApiClient — applyImport', () => {
-  it('sends POST with manifest + acknowledgeBreakingChanges and returns 202 response', async () => {
+  it('sends POST with manifest + acknowledgeBreakingChanges + allowDeletions and returns 202 response', async () => {
     const opResponse: ApplyOperationResponse = {
       sys: {
         type: 'ApplyOperation',
@@ -445,12 +476,37 @@ describe('ImportApiClient — applyImport', () => {
     mockFetch.mockResolvedValue(jsonResponse(202, opResponse));
 
     const client = createClient();
-    const result = await client.applyImport({ componentsManifest: { Button: {} } }, true);
+    const result = await client.applyImport(
+      { componentsManifest: { Button: {} } },
+      { acknowledgeBreakingChanges: true, allowDeletions: true },
+    );
 
     expect(result).toEqual(opResponse);
     const request = mockFetch.mock.calls[0][0] as Request;
     const callBody = JSON.parse(await request.text());
     expect(callBody.acknowledgeBreakingChanges).toBe(true);
+    expect(callBody.allowDeletions).toBe(true);
+  });
+
+  it('defaults allowDeletions to false in the request body when omitted', async () => {
+    const opResponse: ApplyOperationResponse = {
+      sys: {
+        type: 'ApplyOperation',
+        id: 'op-2',
+        status: 'queued',
+        createdAt: '2026-01-01T00:00:00Z',
+        createdBy: { sys: { type: 'Link', linkType: 'User', id: 'user-1' } },
+      },
+      summary: { total: 1, pending: 1, succeeded: 0, failed: 0 },
+    };
+    mockFetch.mockResolvedValue(jsonResponse(202, opResponse));
+
+    const client = createClient();
+    await client.applyImport({ componentsManifest: { Button: {} } }, { acknowledgeBreakingChanges: false });
+
+    const request = mockFetch.mock.calls[0][0] as Request;
+    const callBody = JSON.parse(await request.text());
+    expect(callBody.allowDeletions).toBe(false);
   });
 
   it('throws ApiError with gate details on 422', async () => {
@@ -466,7 +522,9 @@ describe('ImportApiClient — applyImport', () => {
     );
 
     const client = createClient();
-    await expect(client.applyImport({ componentsManifest: { Button: {} } }, false)).rejects.toThrow(ApiError);
+    await expect(
+      client.applyImport({ componentsManifest: { Button: {} } }, { acknowledgeBreakingChanges: false }),
+    ).rejects.toThrow(ApiError);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -475,7 +533,9 @@ describe('ImportApiClient — applyImport', () => {
     mockFetch.mockResolvedValue(textResponse(503, body, { 'Retry-After': '1' }));
 
     const client = createClient({ maxAttempts: 3, sleep: vi.fn(async () => undefined) });
-    const error = await client.applyImport({}, false).catch((caught: unknown) => caught);
+    const error = await client
+      .applyImport({}, { acknowledgeBreakingChanges: false })
+      .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).body).toBe(body);
@@ -491,7 +551,9 @@ describe('ImportApiClient — applyImport', () => {
     mockFetch.mockRejectedValue(new TypeError('connection reset'));
 
     const client = createClient({ maxAttempts: 3, sleep: vi.fn(async () => undefined) });
-    const error = await client.applyImport({}, false).catch((caught: unknown) => caught);
+    const error = await client
+      .applyImport({}, { acknowledgeBreakingChanges: false })
+      .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status: 0 });
@@ -796,7 +858,7 @@ describe('phase-prefix constants — orchestrator contract', () => {
 
     const client = createClient();
     try {
-      await client.applyImport({}, false);
+      await client.applyImport({}, { acknowledgeBreakingChanges: false });
     } catch (e) {
       expect(e).toBeInstanceOf(ApiError);
       expect((e as ApiError).message).toMatch(new RegExp(`^${APPLY_ERROR_PREFIX}`));
