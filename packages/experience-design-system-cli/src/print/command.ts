@@ -15,7 +15,7 @@ import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js
 
 async function die(message: string): Promise<never> {
   process.stderr.write(`${message}\n`);
-  await exitWithAnalytics(1);
+  return exitWithAnalytics(1);
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -40,7 +40,7 @@ async function resolveSession(
     const sessionId = sessionFlag ?? findLatestSessionForCommand(db, command);
     if (!sessionId) {
       const hint = command === 'generate components' ? 'generate components' : 'generate tokens';
-      await die(`Error: no completed ${hint} session found. Run ${hint} first, or pass --session <id>.`);
+      return await die(`Error: no completed ${hint} session found. Run ${hint} first, or pass --session <id>.`);
     }
     return sessionId;
   } finally {

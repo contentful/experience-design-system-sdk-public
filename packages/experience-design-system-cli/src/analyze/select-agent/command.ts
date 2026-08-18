@@ -83,7 +83,7 @@ async function resolveSessionId(sessionFlag: string | undefined): Promise<string
       process.stderr.write(
         'Error: no completed analyze extract session found. Run analyze extract first, or pass --session <id>.\n',
       );
-      await exitWithAnalytics(1);
+      return await exitWithAnalytics(1);
     }
     return row.id;
   } finally {

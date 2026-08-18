@@ -8,6 +8,7 @@ export async function exitWithAnalytics(code: number, fields: CommandFailure = {
   else await failActiveCommand({ exit_code: code, ...fields });
   await flushAnalytics();
   process.exit(code);
+  throw new Error('unreachable');
 }
 
 export function failureFromApiError(error: ApiError): CommandFailure {

@@ -495,18 +495,18 @@ export async function runPipeline(
         'Error: --space-id, --environment-id, and --cma-token are required for apply push. Use --skip-apply to skip.\n',
       );
       db.close();
-      await exitWithAnalytics(1);
+      return await exitWithAnalytics(1);
     }
 
-    const pushArgs = [
+    const pushArgs: string[] = [
       'apply',
       'push',
       '--space-id',
-      opts.spaceId,
+      opts.spaceId!,
       '--environment-id',
-      opts.environmentId,
+      opts.environmentId!,
       '--cma-token',
-      opts.cmaToken,
+      opts.cmaToken!,
     ];
 
     if (extractSessionId) {

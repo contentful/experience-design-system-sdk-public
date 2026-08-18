@@ -41,7 +41,7 @@ import type { CommandFailure } from '../analytics/index.js';
 
 async function die(message: string, fields: CommandFailure = {}): Promise<never> {
   process.stderr.write(`${message}\n`);
-  await exitWithAnalytics(1, fields);
+  return exitWithAnalytics(1, fields);
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -59,12 +59,12 @@ async function readJsonFile(flag: string, p: string): Promise<unknown> {
   try {
     text = await readFile(p, 'utf8');
   } catch {
-    await die(`Error: file not found: ${p} (from ${flag})`);
+    return await die(`Error: file not found: ${p} (from ${flag})`);
   }
   try {
-    return JSON.parse(text!);
+    return JSON.parse(text);
   } catch {
-    await die(`Error: ${flag} is not valid JSON: ${p}`);
+    return await die(`Error: ${flag} is not valid JSON: ${p}`);
   }
 }
 
