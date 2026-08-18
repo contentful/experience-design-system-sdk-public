@@ -13,8 +13,9 @@ import {
 import { detectSlotCycles, formatSlotCycleReport } from '../apply/command.js';
 import { PREVIEW_ERROR_PREFIX, VALIDATION_FAILED_CODE, parsePreviewValidationErrors } from '../apply/api-client.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
-import { getDebugLogger, debugEnvForSubprocess } from '../lib/debug-logger.js';
-import { bindAnalyticsSession, emitSessionStarted } from '../analytics/index.js';
+import { getDebugLogger } from '../lib/debug-logger.js';
+import { bindAnalyticsSession, emitSessionStarted, exitWithAnalytics } from '../analytics/index.js';
+import { pipelineSubprocessEnv } from '../analytics/env.js';
 import type { CompositionMode } from '../lib/composition-mode.js';
 
 export interface PipelineOptions {
@@ -76,6 +77,7 @@ function findCliPath(): string {
 async function runStep(
   args: string[],
   cliPath: string,
+  analyticsSessionId: string,
   env: NodeJS.ProcessEnv = {},
   streamStderr = false,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
@@ -84,7 +86,7 @@ async function runStep(
   debug.event('import', 'subprocess.spawn', { cliPath, args });
   return new Promise((res) => {
     const child = execFile('node', [cliPath, ...args], {
-      env: debugEnvForSubprocess({ ...process.env, ...env, EDS_IMPORT_PIPELINE: '1' }),
+      env: pipelineSubprocessEnv({ ...process.env, ...env }, analyticsSessionId),
     });
 
     let stdout = '';
@@ -254,7 +256,7 @@ export async function runPipeline(
       for (const p of opts.promptOverrides ?? []) analyzeArgs.push('--prompt', p);
       if (opts.agent) analyzeArgs.push('--agent', opts.agent);
     }
-    const r = await runStep(analyzeArgs, cliPath);
+    const r = await runStep(analyzeArgs, cliPath, sessionId);
     const durationMs = Date.now() - t0;
 
     if (r.exitCode !== 0) {
@@ -325,7 +327,7 @@ export async function runPipeline(
       }
     }
 
-    const rEdit = await runStep(editArgs, cliPath, { FORCE_COLOR: '1' }, useAgentSelect);
+    const rEdit = await runStep(editArgs, cliPath, sessionId, { FORCE_COLOR: '1' }, useAgentSelect);
     const editDurationMs = Date.now() - t0Edit;
 
     if (rEdit.exitCode !== 0) {
@@ -383,7 +385,7 @@ export async function runPipeline(
       extractSession: extractSessionId ?? '',
     });
     const t0 = Date.now();
-    const r = await runStep(generateArgs, cliPath, { FORCE_COLOR: '1' }, true);
+    const r = await runStep(generateArgs, cliPath, sessionId, { FORCE_COLOR: '1' }, true);
     const durationMs = Date.now() - t0;
 
     if (r.exitCode !== 0) {
@@ -451,7 +453,7 @@ export async function runPipeline(
       out: componentsPath,
     });
     const t0 = Date.now();
-    const r = await runStep(printArgs, cliPath);
+    const r = await runStep(printArgs, cliPath, sessionId);
     const durationMs = Date.now() - t0;
 
     if (r.exitCode !== 0) {
@@ -493,7 +495,7 @@ export async function runPipeline(
         'Error: --space-id, --environment-id, and --cma-token are required for apply push. Use --skip-apply to skip.\n',
       );
       db.close();
-      process.exit(1);
+      await exitWithAnalytics(1);
     }
 
     const pushArgs = [
@@ -523,7 +525,7 @@ export async function runPipeline(
       components: componentsPath,
     });
     const t0 = Date.now();
-    let r = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
+    let r = await runStep(pushArgs, cliPath, sessionId, { FORCE_COLOR: '1' }, true);
 
     const excludedByRetry: string[] = [];
     let validationRetryCount = 0;
@@ -544,10 +546,10 @@ export async function runPipeline(
         '--exclude-components',
         offenders.join(','),
       ];
-      const rejectResult = await runStep(rejectArgs, cliPath);
+      const rejectResult = await runStep(rejectArgs, cliPath, sessionId);
       if (rejectResult.exitCode !== 0) break;
 
-      r = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
+      r = await runStep(pushArgs, cliPath, sessionId, { FORCE_COLOR: '1' }, true);
       validationRetryCount++;
     }
 
@@ -595,10 +597,10 @@ export async function runPipeline(
             '--exclude-components',
             cycleNames.join(','),
           ];
-          const rejectResult = await runStep(rejectArgs, cliPath);
+          const rejectResult = await runStep(rejectArgs, cliPath, sessionId);
           if (rejectResult.exitCode === 0) {
             const retryT0 = Date.now();
-            const retryR = await runStep(pushArgs, cliPath, { FORCE_COLOR: '1' }, true);
+            const retryR = await runStep(pushArgs, cliPath, sessionId, { FORCE_COLOR: '1' }, true);
             const retryDurationMs = Date.now() - t0 + (Date.now() - retryT0);
 
             if (isSlotCycleError(retryR)) {

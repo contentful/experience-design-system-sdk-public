@@ -40,6 +40,7 @@ import { buildRepoContextIndex, buildSelectionContext, type SelectionContext } f
 import { runShowRationale } from './show-rationale.js';
 import { isAbsolute, resolve } from 'node:path';
 import { getDebugLogger } from '../../lib/debug-logger.js';
+import { bindAnalyticsSessionId, enrichCommandResult } from '../../analytics/index.js';
 import {
   validateExtractedComponents,
   shouldExcludeDueToValidation,
@@ -507,6 +508,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         }
 
         const sessionId = resolveSessionId(opts.session);
+        await bindAnalyticsSessionId(sessionId);
         const selectionRoot = resolveProjectRoot(sessionId, opts.projectRoot);
 
         const db = openPipelineDb();
@@ -729,6 +731,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           stepDb.close();
         }
 
+        enrichCommandResult({ accepted_component_count: accepted.length });
         process.stderr.write(
           `Accepted: ${accepted.length}  Rejected: ${rejected.length}  Needs review: ${unresolved.length}\n`,
         );

@@ -3,6 +3,7 @@ import type { DsiCliCommand } from './types.js';
 const COMMAND_MAP: Record<string, DsiCliCommand> = {
   'analyze extract': 'analyze_extract',
   'analyze select': 'analyze_select',
+  'analyze select-agent': 'analyze_select',
   'generate components': 'generate_components',
   'generate tokens': 'generate_tokens',
   'generate edit': 'generate_edit',

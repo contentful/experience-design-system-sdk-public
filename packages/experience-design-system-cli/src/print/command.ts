@@ -11,6 +11,7 @@ import { ValidateView } from './validate/tui/ValidateView.js';
 import type { ValidateViewEntry } from './validate/tui/ValidateView.js';
 import type { DTCGTokenGroupNode } from '@contentful/experience-design-system-types';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
+import { bindAnalyticsSessionId } from '../analytics/index.js';
 
 function die(message: string): never {
   process.stderr.write(`${message}\n`);
@@ -105,6 +106,7 @@ export function registerPrintCommand(program: Command): void {
       await assertOutIsNotDirectory(outPath);
 
       const sessionId = resolveSession(opts.session, 'generate components');
+      await bindAnalyticsSessionId(sessionId);
 
       const db = openPipelineDb();
       let components: ReturnType<typeof loadCDFComponents>;
@@ -180,6 +182,7 @@ export function registerPrintCommand(program: Command): void {
       await assertOutIsNotDirectory(outPath);
 
       const sessionId = resolveSession(opts.session, 'generate tokens');
+      await bindAnalyticsSessionId(sessionId);
 
       const db = openPipelineDb();
       let result: ReturnType<typeof loadDTCGTokens>;

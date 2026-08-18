@@ -16,6 +16,7 @@ import {
 } from '@contentful/experience-design-system-extraction';
 import type { PreviewValidationError } from '../../apply/api-client.js';
 import type { ExtractionValidationIssue } from '../../types.js';
+import { bindAnalyticsSessionId, enrichCommandResult, exitWithAnalytics } from '../../analytics/index.js';
 
 type RefineCommandOptions = {
   session?: string;
@@ -139,6 +140,7 @@ async function runNonInteractive(
     }
     const accepted = snapshot.components.filter((c) => c.status === 'accepted').length;
     const rejected = snapshot.components.filter((c) => c.status === 'rejected').length + (names.length || 0);
+    enrichCommandResult({ accepted_component_count: accepted });
     process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}\n`);
     return;
   }
@@ -172,7 +174,7 @@ async function runNonInteractive(
         'Re-run with --exclude-invalid to auto-reject these components, or run analyze select interactively to fix them.',
       );
       process.stderr.write(lines.join('\n') + '\n');
-      process.exit(1);
+      await exitWithAnalytics(1);
       return;
     }
   }
@@ -287,6 +289,7 @@ async function runNonInteractive(
     }
   }
 
+  enrichCommandResult({ accepted_component_count: accepted.length });
   process.stderr.write(`Accepted: ${accepted.length}  Rejected: ${rejected.length}\n`);
 }
 
@@ -487,6 +490,7 @@ export function registerAnalyzeEditCommand(program: Command): void {
         excludeComponents,
       }: RefineCommandOptions) => {
         const sessionId = resolveSessionId(sessionFlag);
+        await bindAnalyticsSessionId(sessionId);
 
         const db = openPipelineDb();
         let rawComponentCount = 0;

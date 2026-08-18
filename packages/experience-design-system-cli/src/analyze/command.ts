@@ -53,7 +53,7 @@ import {
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
-import { bindAnalyticsSession, emitSessionStarted, enrichCommandResult } from '../analytics/index.js';
+import { bindAnalyticsSessionId, emitSessionStarted, enrichCommandResult, exitWithAnalytics, isPipelineAnalyticsChild } from '../analytics/index.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
 
 interface AnalyzeExtractOptions {
@@ -358,8 +358,10 @@ export function registerAnalyzeCommand(program: Command): void {
         inputPath: projectRoot,
         outDir,
       });
-      await bindAnalyticsSession(sessionId);
-      await emitSessionStarted('analyze_extract');
+      await bindAnalyticsSessionId(sessionId);
+      if (!isPipelineAnalyticsChild()) {
+        await emitSessionStarted('analyze_extract');
+      }
       const stepId = createStep(db, sessionId, 'analyze extract', {
         project: projectRoot,
       });
@@ -705,7 +707,7 @@ export function registerAnalyzeCommand(program: Command): void {
         const { waitUntilExit } = render(
           createElement(AnalyzeView, {
             result: analyzeResult,
-            onExit: () => process.exit(0),
+            onExit: () => void exitWithAnalytics(0),
           }),
         );
         await waitUntilExit();
@@ -733,7 +735,7 @@ export function registerAnalyzeCommand(program: Command): void {
         }
         process.stderr.write(summaryLines.join('\n') + '\n');
 
-        process.exit(0);
+        await exitWithAnalytics(0);
       }
     });
 

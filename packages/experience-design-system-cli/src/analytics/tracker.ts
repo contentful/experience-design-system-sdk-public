@@ -1,7 +1,8 @@
 import { cliVersion, trackEvent } from './client.js';
-import { generateSessionId } from '../session/session-id.js';
+import { IMPORT_PIPELINE_ENV } from './constants.js';
 import { normalizeCommand } from './normalize.js';
 import { getOsName } from './os.js';
+import { resolveAnalyticsSessionId } from './session.js';
 import type { CommandCompletion, CommandContext, CommandFailure, DsiCliCommand, EntryCommand } from './types.js';
 
 type PendingCommand = {
@@ -18,7 +19,7 @@ let sessionId: string | undefined;
 let sessionStartedEmitted = false;
 
 function isPipelineStep(): boolean {
-  return process.env.EDS_IMPORT_PIPELINE === '1';
+  return process.env[IMPORT_PIPELINE_ENV] === '1';
 }
 
 function buildBaseProps(command: DsiCliCommand): Record<string, unknown> {
@@ -52,9 +53,9 @@ export function noteCommandStart(commandChain: string): void {
   };
 }
 
-/** Bind a session id, minting one when the command has no pipeline session. */
+/** Bind a session id, preferring a pipeline parent id when present. */
 export async function bindAnalyticsSessionId(sessionId: string | undefined, context?: CommandContext): Promise<string> {
-  const id = sessionId ?? generateSessionId();
+  const id = resolveAnalyticsSessionId(sessionId);
   await bindAnalyticsSession(id, context);
   return id;
 }
@@ -99,6 +100,7 @@ export async function emitSessionStarted(entryCommand: EntryCommand): Promise<vo
       os_name: getOsName(),
     },
     sessionId,
+    { flush: true },
   );
   await emitInvokedIfReady();
 }
@@ -114,6 +116,7 @@ async function emitInvokedIfReady(): Promise<void> {
       ...pending.context,
     },
     sessionId,
+    { flush: true },
   );
 }
 
@@ -133,6 +136,7 @@ export async function completeActiveCommand(): Promise<void> {
       duration_ms: durationMs,
     },
     sessionId,
+    { flush: true },
   );
 }
 
@@ -153,47 +157,12 @@ export async function failActiveCommand(fields: CommandFailure = {}): Promise<vo
       duration_ms: durationMs,
     },
     sessionId,
+    { flush: true },
   );
-}
-
-let exitHookRegistered = false;
-
-/** Best-effort terminal event when the process exits without a clean postAction hook. */
-export function registerAnalyticsExitHook(): void {
-  if (exitHookRegistered) return;
-  exitHookRegistered = true;
-
-  process.on('exit', (code) => {
-    if (!pending || pending.terminalEmitted || !sessionId || !pending.invoked) return;
-
-    const durationMs = Date.now() - pending.startedAt;
-    const outcome = code === 0 ? 'ok' : code === 130 ? 'interrupted' : 'error';
-    const event = code === 0 ? 'dsi_cli_command_completed' : 'dsi_cli_command_failed';
-    const props =
-      code === 0
-        ? {
-            ...buildBaseProps(pending.command),
-            ...pending.context,
-            ...pending.completion,
-            outcome: 'ok',
-            duration_ms: durationMs,
-          }
-        : {
-            ...buildBaseProps(pending.command),
-            ...pending.context,
-            outcome: outcome === 'interrupted' ? 'interrupted' : 'error',
-            duration_ms: durationMs,
-            exit_code: code,
-          };
-
-    // Synchronous best-effort — async flush cannot run on 'exit'.
-    void trackEvent(event, props, sessionId);
-  });
 }
 
 export function resetAnalyticsStateForTests(): void {
   pending = null;
   sessionId = undefined;
   sessionStartedEmitted = false;
-  exitHookRegistered = false;
 }

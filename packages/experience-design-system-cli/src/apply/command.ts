@@ -32,16 +32,17 @@ import { readExperiencesCredentials } from '../credentials-store.js';
 import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
 import {
   bindAnalyticsSessionId,
-  completeActiveCommand,
-  failActiveCommand,
+  exitWithAnalytics,
+  failureFromApiError,
   recordApplyOutcome,
   recordContentfulContext,
 } from '../analytics/index.js';
+import type { CommandFailure } from '../analytics/index.js';
 
-function die(message: string): never {
-  void failActiveCommand({ exit_code: 1 });
+function die(message: string, fields: CommandFailure = {}): never {
   process.stderr.write(`${message}\n`);
-  process.exit(1);
+  void exitWithAnalytics(1, fields);
+  throw new Error('exit');
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -284,7 +285,8 @@ export function assertNoSlotCycles(components: Array<{ key: string; entry: CDFCo
   const cycles = detectSlotCycles(components);
   if (cycles.length === 0) return;
   process.stderr.write(formatSlotCycleReport(cycles).join('\n') + '\n');
-  process.exit(1);
+  void exitWithAnalytics(1);
+  throw new Error('exit');
 }
 
 export function extractComponentsFromManifest(
@@ -524,7 +526,7 @@ export function registerApplyCommand(program: Command): void {
     try {
       inputs = await resolveSharedInputs(opts);
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
@@ -539,7 +541,7 @@ export function registerApplyCommand(program: Command): void {
     try {
       await client.validateToken();
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : '';
       die(`Error: unable to connect to API host${cause ? `: ${cause}` : ''}`);
     }
@@ -550,7 +552,7 @@ export function registerApplyCommand(program: Command): void {
     try {
       preview = await client.previewImport(manifest);
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
@@ -567,7 +569,7 @@ export function registerApplyCommand(program: Command): void {
       await waitUntilExit();
     } else {
       process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-      process.exit(0);
+      await exitWithAnalytics(0);
     }
   });
 
@@ -585,14 +587,14 @@ export function registerApplyCommand(program: Command): void {
 
       if (!isTTY && !opts.yes) {
         process.stderr.write('Error: apply push requires --yes in non-interactive mode\n');
-        process.exit(1);
+        await exitWithAnalytics(1);
       }
 
       let inputs: Awaited<ReturnType<typeof resolveSharedInputs>>;
       try {
         inputs = await resolveSharedInputs(opts);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
+        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -609,7 +611,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         await client.validateToken();
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
+        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -619,9 +621,11 @@ export function registerApplyCommand(program: Command): void {
       try {
         preview = await client.previewImport(manifest);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
+        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
         throw e;
       }
+
+      recordContentfulContext(client, spaceId, environmentId);
 
       if (opts.dryRun) {
         if (isTTY) {
@@ -636,7 +640,7 @@ export function registerApplyCommand(program: Command): void {
         } else {
           process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
         }
-        process.exit(0);
+        await exitWithAnalytics(0);
       }
 
       if (isEmptyPreview(preview)) {
@@ -645,7 +649,7 @@ export function registerApplyCommand(program: Command): void {
         } else {
           process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
         }
-        process.exit(0);
+        await exitWithAnalytics(0);
       }
 
       const breakingWithImpact = hasBreakingChangesWithImpact(preview);
@@ -656,7 +660,7 @@ export function registerApplyCommand(program: Command): void {
             'Error: breaking changes with downstream impact detected. Use --force to acknowledge.\n',
           );
           process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-          process.exit(1);
+          await exitWithAnalytics(1);
         }
 
         const verbose = opts.verbose ?? false;
@@ -668,7 +672,7 @@ export function registerApplyCommand(program: Command): void {
         try {
           operation = await client.applyImport(manifest, breakingWithImpact || opts.force === true);
         } catch (e) {
-          if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
+          if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
           throw e;
         }
 
@@ -677,7 +681,7 @@ export function registerApplyCommand(program: Command): void {
         try {
           operation = await client.pollOperation(operation.sys.id);
         } catch (e) {
-          if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
+          if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
           throw e;
         }
 
@@ -685,9 +689,7 @@ export function registerApplyCommand(program: Command): void {
         recordApplyOutcome(client, spaceId, environmentId, operation);
         process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
         const exitCode = operation.sys.status === 'succeeded' ? 0 : 1;
-        if (exitCode === 0) await completeActiveCommand();
-        else await failActiveCommand({ exit_code: exitCode });
-        process.exit(exitCode);
+        await exitWithAnalytics(exitCode);
         return;
       }
 
@@ -766,7 +768,7 @@ export function registerApplyCommand(program: Command): void {
               void runApply(acknowledge);
             },
             onCancel: () => {
-              process.exit(0);
+              void exitWithAnalytics(0);
             },
           }),
         );
@@ -793,7 +795,7 @@ export function registerApplyCommand(program: Command): void {
     try {
       inputs = await resolveSharedInputs(opts);
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
@@ -804,7 +806,7 @@ export function registerApplyCommand(program: Command): void {
     try {
       await client.validateToken();
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
@@ -814,17 +816,22 @@ export function registerApplyCommand(program: Command): void {
     try {
       preview = await client.previewImport(fullManifest);
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
     const spaceId = opts.spaceId!;
     const environmentId = opts.environmentId!;
+    await bindAnalyticsSessionId(opts.session, {
+      space_key: spaceId,
+      environment_key: environmentId,
+    });
+    recordContentfulContext(client, spaceId, environmentId);
     const entities = getSelectableEntities(preview);
 
     if (entities.length === 0) {
       process.stderr.write('Nothing to change — design system is up to date.\n');
-      process.exit(0);
+      await exitWithAnalytics(0);
     }
 
     if (nonInteractive) {
@@ -832,7 +839,7 @@ export function registerApplyCommand(program: Command): void {
 
       if (selectedKeys.size === 0) {
         process.stderr.write('No entities matched selection criteria.\n');
-        process.exit(0);
+        await exitWithAnalytics(0);
       }
 
       const selectedComponentKeys = new Set<string>();
@@ -849,14 +856,14 @@ export function registerApplyCommand(program: Command): void {
 
       if (hasBreaking && !opts.force) {
         process.stderr.write('Error: selection includes breaking changes. Use --force to acknowledge.\n');
-        process.exit(1);
+        await exitWithAnalytics(1);
       }
 
       let operation: ApplyOperationResponse;
       try {
         operation = await client.applyImport(filteredManifest, hasBreaking || opts.force === true);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -865,13 +872,14 @@ export function registerApplyCommand(program: Command): void {
       try {
         operation = await client.pollOperation(operation.sys.id);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
         throw e;
       }
 
       const summary = buildApplyOutput(operation, spaceId, environmentId, opts.host);
+      recordApplyOutcome(client, spaceId, environmentId, operation);
       process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
-      process.exit(operation.sys.status === 'succeeded' ? 0 : 1);
+      await exitWithAnalytics(operation.sys.status === 'succeeded' ? 0 : 1);
       return;
     }
 

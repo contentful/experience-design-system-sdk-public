@@ -41,6 +41,5 @@ export type CommandFailure = CommandContext & {
   error_name?: string;
   error_code?: string;
   http_status_code?: number;
-  x_contentful_request_id?: string;
   exit_code?: number;
 };

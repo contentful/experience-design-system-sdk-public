@@ -12,7 +12,7 @@ import { registerImportCommand } from './import/command.js';
 import { registerSetupCommand } from './setup/command.js';
 import { registerRunsCommand } from './runs/ls-command.js';
 import { beginCommand } from './lib/debug-preamble.js';
-import { completeActiveCommand, noteCommandStart, registerAnalyticsExitHook } from './analytics/index.js';
+import { completeActiveCommand, flushAnalytics, noteCommandStart } from './analytics/index.js';
 
 const require = createRequire(import.meta.url);
 
@@ -91,7 +91,6 @@ export function createProgram(): Command {
     'Write a JSONL trace of every decision to ~/.contentful/experience-design-system-cli/debug/',
   );
   program.option('--no-debug', 'Force debug logging off (overrides EDSI_DEBUG and persisted setup preference)');
-  registerAnalyticsExitHook();
 
   program.hook('preAction', async (_thisCommand, actionCommand) => {
     // Merge opts from actionCommand and all ancestors — root-level --debug
@@ -115,6 +114,7 @@ export function createProgram(): Command {
 
   program.hook('postAction', async () => {
     await completeActiveCommand();
+    await flushAnalytics();
   });
 
   return program;

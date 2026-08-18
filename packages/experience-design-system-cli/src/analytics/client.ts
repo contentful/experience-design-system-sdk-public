@@ -7,6 +7,8 @@ const pkg = require('../../package.json') as { version: string };
 // Anonymous usage telemetry for the CLI. Disabled when DISABLE_ANALYTICS is set
 // or when no write key is configured. Never blocks command execution.
 
+let analyticsClient: Analytics | null = null;
+
 export function cliVersion(): string {
   return pkg.version;
 }
@@ -20,29 +22,52 @@ function resolveWriteKey(): string | undefined {
   return key.length > 0 ? key : undefined;
 }
 
+function getClient(): Analytics | null {
+  if (!analyticsEnabled()) return null;
+  const writeKey = resolveWriteKey();
+  if (!writeKey) return null;
+  if (!analyticsClient) {
+    analyticsClient = new Analytics({ writeKey });
+    analyticsClient.on('error', () => {
+      /* never block the CLI on telemetry errors */
+    });
+  }
+  return analyticsClient;
+}
+
 export async function trackEvent(
   event: string,
   properties: Record<string, unknown>,
   anonymousId: string,
+  options?: { flush?: boolean },
 ): Promise<void> {
-  if (!analyticsEnabled()) return;
-
-  const writeKey = resolveWriteKey();
-  if (!writeKey) return;
+  const client = getClient();
+  if (!client) return;
 
   try {
-    const client = new Analytics({ writeKey });
-    client.on('error', () => {
-      /* never block the CLI on telemetry errors */
-    });
     client.track({
       event,
       properties,
       anonymousId,
       timestamp: new Date(),
     });
-    await client.closeAndFlush();
+    if (options?.flush) await flushAnalytics();
   } catch {
     // Telemetry must never affect CLI exit codes or output.
   }
+}
+
+export async function flushAnalytics(): Promise<void> {
+  if (!analyticsClient) return;
+  try {
+    await analyticsClient.closeAndFlush();
+  } catch {
+    // Swallow — telemetry must never affect CLI behavior.
+  } finally {
+    analyticsClient = null;
+  }
+}
+
+export function resetAnalyticsClientForTests(): void {
+  analyticsClient = null;
 }
