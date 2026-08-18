@@ -128,6 +128,7 @@ async function runNonInteractive(opts: GenerateEditOptions, skill: string): Prom
 }
 
 export function registerGenerateEditCommand(parent: Command, skill: string): void {
+  // TODO(analytics): bindAnalyticsSessionId when generate edit ships — tracked in schema as generate_edit.
   parent
     .command('edit')
     .description(`Review and correct generate ${skill} output before pushing`)

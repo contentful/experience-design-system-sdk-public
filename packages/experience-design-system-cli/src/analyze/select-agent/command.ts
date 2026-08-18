@@ -40,7 +40,7 @@ import { buildRepoContextIndex, buildSelectionContext, type SelectionContext } f
 import { runShowRationale } from './show-rationale.js';
 import { isAbsolute, resolve } from 'node:path';
 import { getDebugLogger } from '../../lib/debug-logger.js';
-import { bindAnalyticsSessionId, enrichCommandResult } from '../../analytics/index.js';
+import { bindAnalyticsSessionId, enrichCommandResult, exitWithAnalytics } from '../../analytics/index.js';
 import {
   validateExtractedComponents,
   shouldExcludeDueToValidation,
@@ -63,7 +63,7 @@ function resolveBatchSize(): number {
   return Math.floor(n);
 }
 
-function resolveSessionId(sessionFlag: string | undefined): string {
+async function resolveSessionId(sessionFlag: string | undefined): Promise<string> {
   if (sessionFlag) return sessionFlag;
 
   const db = openPipelineDb();
@@ -83,7 +83,7 @@ function resolveSessionId(sessionFlag: string | undefined): string {
       process.stderr.write(
         'Error: no completed analyze extract session found. Run analyze extract first, or pass --session <id>.\n',
       );
-      process.exit(1);
+      await exitWithAnalytics(1);
     }
     return row.id;
   } finally {
@@ -468,7 +468,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             process.stderr.write(`Error: ${message}\n`);
-            process.exit(1);
+            await exitWithAnalytics(1);
             return;
           }
         }
@@ -480,7 +480,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           process.stderr.write(
             `Error: no agent configured. Pass --agent <name> or run experiences setup. Accepted values: ${AGENT_NAMES.join(', ')}\n`,
           );
-          process.exit(1);
+          await exitWithAnalytics(1);
           return;
         }
 
@@ -496,7 +496,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
             .catch(() => false);
           if (!exists) {
             process.stderr.write(`Error: custom prompt path not found: ${resolvedPath}\n`);
-            process.exit(1);
+            await exitWithAnalytics(1);
             return;
           }
           if (!selectPromptPath.toLowerCase().endsWith('.md')) {
@@ -507,7 +507,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           process.stderr.write(formatCustomPromptBanner('select', resolvedPath));
         }
 
-        const sessionId = resolveSessionId(opts.session);
+        const sessionId = await resolveSessionId(opts.session);
         await bindAnalyticsSessionId(sessionId);
         const selectionRoot = resolveProjectRoot(sessionId, opts.projectRoot);
 
@@ -523,7 +523,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
 
         if (rawComponents.length === 0) {
           process.stderr.write(`Error: session '${sessionId}' has no raw components. Run analyze extract first.\n`);
-          process.exit(1);
+          await exitWithAnalytics(1);
           return;
         }
 
@@ -550,7 +550,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           lines.push('');
           lines.push('Re-run with --exclude-invalid to auto-reject these components, or fix them in source first.');
           process.stderr.write(lines.join('\n') + '\n');
-          process.exit(1);
+          await exitWithAnalytics(1);
           return;
         }
 
@@ -587,7 +587,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
             process.stderr.write(
               'No valid components to preview — all components were excluded due to validation errors.\n',
             );
-            process.exit(0);
+            await exitWithAnalytics(0);
             return;
           }
           const first = selectionCandidates[0]!;
@@ -599,7 +599,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
             skillPathOverride: selectPromptPath ? resolve(selectPromptPath) : undefined,
           });
           process.stdout.write(prompt + '\n');
-          process.exit(0);
+          await exitWithAnalytics(0);
           return;
         }
 
@@ -676,7 +676,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           process.stderr.write(
             `Error: unable to initialize select session.\n${error instanceof Error ? error.message : String(error)}\n`,
           );
-          process.exit(1);
+          await exitWithAnalytics(1);
           return;
         }
 

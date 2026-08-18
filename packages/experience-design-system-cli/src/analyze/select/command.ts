@@ -226,13 +226,13 @@ async function runNonInteractive(
       const parsed = JSON.parse(raw) as unknown;
       if (!Array.isArray(parsed)) {
         process.stderr.write(`Error: --patch file must be a JSON array of patch operations: ${opts.patch}\n`);
-        process.exit(1);
+        await exitWithAnalytics(1);
         return;
       }
       patchOps = parsed as PatchOperation[];
     } catch {
       process.stderr.write(`Error: cannot read or parse --patch file: ${opts.patch}\n`);
-      process.exit(1);
+      await exitWithAnalytics(1);
       return;
     }
 
@@ -427,7 +427,7 @@ export async function rejectComponentsByName(
   await saveReviewState(paths.statePath, { ...snapshot, components });
 }
 
-function resolveSessionId(sessionFlag: string | undefined): string {
+async function resolveSessionId(sessionFlag: string | undefined): Promise<string> {
   if (sessionFlag) return sessionFlag;
 
   const db = openPipelineDb();
@@ -447,7 +447,7 @@ function resolveSessionId(sessionFlag: string | undefined): string {
       process.stderr.write(
         'Error: no completed analyze extract session found. Run analyze extract first, or pass --session <id>.\n',
       );
-      process.exit(1);
+      await exitWithAnalytics(1);
     }
     return row.id;
   } finally {
@@ -489,7 +489,7 @@ export function registerAnalyzeEditCommand(program: Command): void {
         excludeInvalid,
         excludeComponents,
       }: RefineCommandOptions) => {
-        const sessionId = resolveSessionId(sessionFlag);
+        const sessionId = await resolveSessionId(sessionFlag);
         await bindAnalyticsSessionId(sessionId);
 
         const db = openPipelineDb();
@@ -502,7 +502,7 @@ export function registerAnalyzeEditCommand(program: Command): void {
 
         if (rawComponentCount === 0) {
           process.stderr.write(`Error: session '${sessionId}' has no raw components. Run analyze extract first.\n`);
-          process.exit(1);
+          await exitWithAnalytics(1);
           return;
         }
 
@@ -531,7 +531,7 @@ export function registerAnalyzeEditCommand(program: Command): void {
           process.stderr.write(
             `Error: unable to initialize refine session.\n${error instanceof Error ? error.message : String(error)}\n`,
           );
-          process.exit(1);
+          await exitWithAnalytics(1);
           return;
         }
 
@@ -586,7 +586,7 @@ export function registerAnalyzeEditCommand(program: Command): void {
 
         if (process.stdout.columns !== undefined && process.stdout.columns < 60) {
           process.stderr.write(`Error: terminal too narrow (${process.stdout.columns} cols). Resize to 60+ columns.\n`);
-          process.exit(1);
+          await exitWithAnalytics(1);
         }
 
         const { waitUntilExit } = render(

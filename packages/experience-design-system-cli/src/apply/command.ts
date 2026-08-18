@@ -39,10 +39,9 @@ import {
 } from '../analytics/index.js';
 import type { CommandFailure } from '../analytics/index.js';
 
-function die(message: string, fields: CommandFailure = {}): never {
+async function die(message: string, fields: CommandFailure = {}): Promise<never> {
   process.stderr.write(`${message}\n`);
-  void exitWithAnalytics(1, fields);
-  throw new Error('exit');
+  await exitWithAnalytics(1, fields);
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -52,7 +51,7 @@ async function pathExists(p: string): Promise<boolean> {
 }
 
 async function assertFileExists(flag: string, p: string): Promise<void> {
-  if (!(await pathExists(p))) die(`Error: file not found: ${p} (from ${flag})`);
+  if (!(await pathExists(p))) await die(`Error: file not found: ${p} (from ${flag})`);
 }
 
 async function readJsonFile(flag: string, p: string): Promise<unknown> {
@@ -60,12 +59,12 @@ async function readJsonFile(flag: string, p: string): Promise<unknown> {
   try {
     text = await readFile(p, 'utf8');
   } catch {
-    die(`Error: file not found: ${p} (from ${flag})`);
+    await die(`Error: file not found: ${p} (from ${flag})`);
   }
   try {
     return JSON.parse(text!);
   } catch {
-    die(`Error: ${flag} is not valid JSON: ${p}`);
+    await die(`Error: ${flag} is not valid JSON: ${p}`);
   }
 }
 
@@ -107,11 +106,11 @@ export async function readTokensFromPath(flag: string, p: string): Promise<DTCGT
   try {
     s = await stat(p);
   } catch {
-    die(`Error: file not found: ${p} (from ${flag})`);
+    await die(`Error: file not found: ${p} (from ${flag})`);
   }
   if (s!.isDirectory()) {
     const files = await collectJsonFiles(p);
-    if (files.length === 0) die(`Error: no .json files found in directory: ${p} (from ${flag})`);
+    if (files.length === 0) await die(`Error: no .json files found in directory: ${p} (from ${flag})`);
     const merged: Record<string, unknown> = {};
     for (const file of files.sort()) {
       let text: string;
@@ -132,16 +131,16 @@ export async function readTokensFromPath(flag: string, p: string): Promise<DTCGT
     }
     const { valid, errors } = validateDTCG(merged);
     if (!valid)
-      die(`Error: ${flag} contains invalid token types:\n${errors.map((e) => `  ${e.path}: ${e.message}`).join('\n')}`);
+      await die(`Error: ${flag} contains invalid token types:\n${errors.map((e) => `  ${e.path}: ${e.message}`).join('\n')}`);
     return flattenDTCG(merged, '');
   }
   const raw = await readJsonFile(flag, p);
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-    die(`Error: ${flag} is not valid JSON: expected an object`);
+    await die(`Error: ${flag} is not valid JSON: expected an object`);
   }
   const { valid, errors } = validateDTCG(raw as Record<string, unknown>);
   if (!valid)
-    die(`Error: ${flag} contains invalid token types:\n${errors.map((e) => `  ${e.path}: ${e.message}`).join('\n')}`);
+    await die(`Error: ${flag} contains invalid token types:\n${errors.map((e) => `  ${e.path}: ${e.message}`).join('\n')}`);
   return flattenDTCG(raw as Record<string, unknown>, '');
 }
 
@@ -181,23 +180,23 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   client: ImportApiClient;
 }> {
   if (!opts.components && !opts.tokens && !opts.session) {
-    die('Error: at least one of --components, --tokens, or --session is required');
+    await die('Error: at least one of --components, --tokens, or --session is required');
   }
 
   if (opts.session && opts.components) {
-    die('Error: --session and --components are mutually exclusive');
+    await die('Error: --session and --components are mutually exclusive');
   }
 
   const spaceId = opts.spaceId ?? process.env.CONTENTFUL_SPACE_ID;
   const environmentId = opts.environmentId ?? process.env.CONTENTFUL_ENVIRONMENT_ID;
-  if (!spaceId) die('Error: --space-id is required (or set CONTENTFUL_SPACE_ID)');
-  if (!environmentId) die('Error: --environment-id is required (or set CONTENTFUL_ENVIRONMENT_ID)');
+  if (!spaceId) await die('Error: --space-id is required (or set CONTENTFUL_SPACE_ID)');
+  if (!environmentId) await die('Error: --environment-id is required (or set CONTENTFUL_ENVIRONMENT_ID)');
   opts.spaceId = spaceId;
   opts.environmentId = environmentId;
 
   const cmaToken = opts.cmaToken ?? process.env.CONTENTFUL_MANAGEMENT_TOKEN;
   if (!cmaToken) {
-    die('Error: CMA token is required. Pass --cma-token or set CONTENTFUL_MANAGEMENT_TOKEN');
+    await die('Error: CMA token is required. Pass --cma-token or set CONTENTFUL_MANAGEMENT_TOKEN');
   }
 
   if (opts.components) await assertFileExists('--components', opts.components);
@@ -211,13 +210,13 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
       db.close();
     }
     if (components.length === 0) {
-      die(`Error: session '${opts.session}' has no generated components. Run generate components first.`);
+      await die(`Error: session '${opts.session}' has no generated components. Run generate components first.`);
     }
   } else if (opts.components) {
     const raw = await readJsonFile('--components', opts.components);
     const result = validateCDF(raw);
     if (!result.valid) {
-      die(`Error: --components failed schema validation: ${result.errors.map((e) => e.message).join(', ')}`);
+      await die(`Error: --components failed schema validation: ${result.errors.map((e) => e.message).join(', ')}`);
     }
     components = result.components;
   }
@@ -526,7 +525,7 @@ export function registerApplyCommand(program: Command): void {
     try {
       inputs = await resolveSharedInputs(opts);
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
+      if (e instanceof ApiError) await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
@@ -541,9 +540,9 @@ export function registerApplyCommand(program: Command): void {
     try {
       await client.validateToken();
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
+      if (e instanceof ApiError) await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : '';
-      die(`Error: unable to connect to API host${cause ? `: ${cause}` : ''}`);
+      await die(`Error: unable to connect to API host${cause ? `: ${cause}` : ''}`);
     }
 
     const manifest = buildManifest(components, tokens);
@@ -552,7 +551,7 @@ export function registerApplyCommand(program: Command): void {
     try {
       preview = await client.previewImport(manifest);
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
+      if (e instanceof ApiError) await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
@@ -594,7 +593,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         inputs = await resolveSharedInputs(opts);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
+        if (e instanceof ApiError) await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -611,7 +610,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         await client.validateToken();
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
+        if (e instanceof ApiError) await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -621,7 +620,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         preview = await client.previewImport(manifest);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
+        if (e instanceof ApiError) await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -672,7 +671,7 @@ export function registerApplyCommand(program: Command): void {
         try {
           operation = await client.applyImport(manifest, breakingWithImpact || opts.force === true);
         } catch (e) {
-          if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
+          if (e instanceof ApiError) await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
           throw e;
         }
 
@@ -681,7 +680,7 @@ export function registerApplyCommand(program: Command): void {
         try {
           operation = await client.pollOperation(operation.sys.id);
         } catch (e) {
-          if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
+          if (e instanceof ApiError) await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
           throw e;
         }
 
@@ -747,6 +746,7 @@ export function registerApplyCommand(program: Command): void {
             throw e;
           }
 
+          recordApplyOutcome(client, spaceId, environmentId, operation);
           instance.rerender(
             createElement(ServerApplyDone, {
               operation,
@@ -795,7 +795,7 @@ export function registerApplyCommand(program: Command): void {
     try {
       inputs = await resolveSharedInputs(opts);
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
+      if (e instanceof ApiError) await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
@@ -806,7 +806,7 @@ export function registerApplyCommand(program: Command): void {
     try {
       await client.validateToken();
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
+      if (e instanceof ApiError) await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
@@ -816,7 +816,7 @@ export function registerApplyCommand(program: Command): void {
     try {
       preview = await client.previewImport(fullManifest);
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
+      if (e instanceof ApiError) await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
@@ -863,7 +863,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         operation = await client.applyImport(filteredManifest, hasBreaking || opts.force === true);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
+        if (e instanceof ApiError) await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -872,7 +872,7 @@ export function registerApplyCommand(program: Command): void {
       try {
         operation = await client.pollOperation(operation.sys.id);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
+        if (e instanceof ApiError) await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -949,6 +949,7 @@ export function registerApplyCommand(program: Command): void {
           throw e;
         }
 
+        recordApplyOutcome(client, spaceId, environmentId, operation);
         instance.rerender(
           createElement(ServerApplyDone, {
             operation,

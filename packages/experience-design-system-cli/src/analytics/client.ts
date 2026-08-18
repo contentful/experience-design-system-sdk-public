@@ -57,6 +57,9 @@ export async function trackEvent(
   }
 }
 
+// CLI processes are short-lived — we flush (and recreate the client) after each
+// event so terminal telemetry survives process.exit. Do not "optimize" this into
+// a deferred batch flush on process exit; Node will not await async exit hooks.
 export async function flushAnalytics(): Promise<void> {
   if (!analyticsClient) return;
   try {
