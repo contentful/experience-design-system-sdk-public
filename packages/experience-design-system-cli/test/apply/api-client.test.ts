@@ -468,17 +468,13 @@ describe('ImportApiClient — applyImport', () => {
       },
       summary: { total: 1, pending: 1, succeeded: 0, failed: 0 },
     };
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 202,
-      json: () => Promise.resolve(opResponse),
-      text: () => Promise.resolve(JSON.stringify(opResponse)),
-    });
+    mockFetch.mockResolvedValue(jsonResponse(202, opResponse));
 
     const client = createClient();
     await client.applyImport({ componentsManifest: { Button: {} } }, { acknowledgeBreakingChanges: false });
 
-    const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    const request = mockFetch.mock.calls[0][0] as Request;
+    const callBody = JSON.parse(await request.text());
     expect(callBody.allowDeletions).toBe(false);
   });
 
