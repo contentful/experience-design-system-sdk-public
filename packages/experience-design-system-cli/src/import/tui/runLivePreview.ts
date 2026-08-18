@@ -36,6 +36,9 @@ export type RunLivePreviewOptions = {
    *  full delete. Lets the Finalize dialog show exactly what the accepted push
    *  would delete, independent of the session's on-disk generated rows. */
   acceptedKeys?: ReadonlySet<string>;
+  /** Forwarded verbatim to `previewImport`. Governs whether the response
+   *  includes removed entities or a suppressed-count summary instead. */
+  allowDeletions?: boolean;
 };
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -101,7 +104,10 @@ export async function runLivePreview(opts: RunLivePreviewOptions): Promise<LiveP
   });
 
   try {
-    const response = (await Promise.race([client.previewImport(manifest), timeoutPromise])) as ServerPreviewResponse;
+    const response = (await Promise.race([
+      client.previewImport(manifest, opts.allowDeletions === true),
+      timeoutPromise,
+    ])) as ServerPreviewResponse;
     if (process.env['EDS_VERBOSE']) {
       const durationMs = Date.now() - startedAt;
       try {

@@ -552,6 +552,7 @@ export function registerApplyCommand(program: Command): void {
           preview,
           spaceId,
           environmentId,
+          allowDeletions: false,
         }),
       );
       await waitUntilExit();
@@ -602,7 +603,7 @@ export function registerApplyCommand(program: Command): void {
 
       let preview: ServerPreviewResponse;
       try {
-        preview = await client.previewImport(manifest);
+        preview = await client.previewImport(manifest, opts.allowDeletions === true);
       } catch (e) {
         if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
         throw e;
@@ -618,6 +619,7 @@ export function registerApplyCommand(program: Command): void {
               preview,
               spaceId,
               environmentId,
+              allowDeletions: opts.allowDeletions === true,
             }),
           );
           await waitUntilExit();
@@ -679,7 +681,7 @@ export function registerApplyCommand(program: Command): void {
       }
 
       await new Promise<void>((resolvePromise) => {
-        const runApply = async (acknowledge: boolean) => {
+        const runApply = async (acknowledge: boolean, applyDeletions: boolean) => {
           instance.rerender(
             createElement(ServerApplyProgress, {
               spaceId,
@@ -692,7 +694,7 @@ export function registerApplyCommand(program: Command): void {
           try {
             operation = await client.applyImport(manifest, {
               acknowledgeBreakingChanges: acknowledge,
-              allowDeletions: opts.allowDeletions === true,
+              allowDeletions: applyDeletions,
             });
           } catch (e) {
             if (e instanceof ApiError) {
@@ -752,8 +754,9 @@ export function registerApplyCommand(program: Command): void {
             spaceId,
             environmentId,
             breakingWithImpact,
-            onConfirm: (acknowledge: boolean) => {
-              void runApply(acknowledge);
+            allowDeletions: opts.allowDeletions === true,
+            onConfirm: (acknowledge: boolean, applyDeletions: boolean) => {
+              void runApply(acknowledge, applyDeletions);
             },
             onCancel: () => {
               process.exit(0);
@@ -803,7 +806,7 @@ export function registerApplyCommand(program: Command): void {
 
     let preview: ServerPreviewResponse;
     try {
-      preview = await client.previewImport(fullManifest);
+      preview = await client.previewImport(fullManifest, opts.allowDeletions === true);
     } catch (e) {
       if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
       throw e;

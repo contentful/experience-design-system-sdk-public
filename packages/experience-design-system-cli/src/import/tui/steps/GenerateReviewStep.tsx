@@ -89,6 +89,7 @@ type GenerateReviewStepProps = {
   host?: string;
   tokensPath?: string;
   initialFinalizeError?: string | null;
+  allowDeletions?: boolean;
 };
 
 export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
@@ -251,6 +252,7 @@ export function GenerateReviewStep({
   host = '',
   tokensPath = '',
   initialFinalizeError = null,
+  allowDeletions = false,
 }: GenerateReviewStepProps): React.ReactElement {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
@@ -360,9 +362,8 @@ export function GenerateReviewStep({
     cmaToken,
     host,
     onResult: handleLivePreviewResult,
-    // With nothing accepted, preview the delete-all diff so the review UI shows
-    // which existing components a push would remove (instead of an empty preview).
     deleteAllComponents: acceptedCountForPreview === 0,
+    allowDeletions,
   });
 
   const SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
@@ -442,6 +443,7 @@ export function GenerateReviewStep({
     cmaToken,
     host,
     acceptedKeys: new Set(components.filter((c) => c.status === 'accepted').map((c) => c.key)),
+    allowDeletions,
   });
 
   const handleFinalizeConfirm = () => {

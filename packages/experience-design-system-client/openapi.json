@@ -11800,6 +11800,9 @@
                                 "definition": {
                                   "type": "object",
                                   "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
                                     "$type": {
                                       "type": "string",
                                       "enum": [
@@ -11820,11 +11823,11 @@
                                               "string",
                                               "richtext",
                                               "number",
+                                              "boolean",
                                               "media",
                                               "link",
                                               "enum",
-                                              "token",
-                                              "boolean"
+                                              "token"
                                             ]
                                           },
                                           "$category": {
@@ -11879,15 +11882,12 @@
                                         },
                                         "additionalProperties": false
                                       }
-                                    },
-                                    "key": {
-                                      "type": "string"
                                     }
                                   },
                                   "required": [
+                                    "key",
                                     "$type",
-                                    "$properties",
-                                    "key"
+                                    "$properties"
                                   ],
                                   "additionalProperties": false
                                 }
@@ -11966,9 +11966,15 @@
                                     "Component"
                                   ]
                                 },
+                                "id": {
+                                  "type": "string"
+                                },
                                 "definition": {
                                   "type": "object",
                                   "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
                                     "$type": {
                                       "type": "string",
                                       "enum": [
@@ -11989,11 +11995,11 @@
                                               "string",
                                               "richtext",
                                               "number",
+                                              "boolean",
                                               "media",
                                               "link",
                                               "enum",
-                                              "token",
-                                              "boolean"
+                                              "token"
                                             ]
                                           },
                                           "$category": {
@@ -12048,26 +12054,20 @@
                                         },
                                         "additionalProperties": false
                                       }
-                                    },
-                                    "key": {
-                                      "type": "string"
                                     }
                                   },
                                   "required": [
+                                    "key",
                                     "$type",
-                                    "$properties",
-                                    "key"
+                                    "$properties"
                                   ],
                                   "additionalProperties": false
-                                },
-                                "id": {
-                                  "type": "string"
                                 }
                               },
                               "required": [
                                 "entityType",
-                                "definition",
-                                "id"
+                                "id",
+                                "definition"
                               ],
                               "additionalProperties": false
                             },
@@ -12079,6 +12079,9 @@
                                   "enum": [
                                     "DesignToken"
                                   ]
+                                },
+                                "id": {
+                                  "type": "string"
                                 },
                                 "definition": {
                                   "type": "object",
@@ -12115,15 +12118,12 @@
                                     "$value"
                                   ],
                                   "additionalProperties": false
-                                },
-                                "id": {
-                                  "type": "string"
                                 }
                               },
                               "required": [
                                 "entityType",
-                                "definition",
-                                "id"
+                                "id",
+                                "definition"
                               ],
                               "additionalProperties": false
                             }
