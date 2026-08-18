@@ -681,7 +681,7 @@ export function registerApplyCommand(program: Command): void {
           operation = await client.applyImport(manifest, breakingWithImpact || opts.force === true);
         } catch (e) {
           if (e instanceof ApiError)
-          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
+            return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
           throw e;
         }
 
@@ -691,7 +691,7 @@ export function registerApplyCommand(program: Command): void {
           operation = await client.pollOperation(operation.sys.id);
         } catch (e) {
           if (e instanceof ApiError)
-          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
+            return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
           throw e;
         }
 
