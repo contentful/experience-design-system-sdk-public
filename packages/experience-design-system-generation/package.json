@@ -1,6 +1,6 @@
 {
   "name": "@contentful/experience-design-system-generation",
-  "version": "2.22.0",
+  "version": "2.23.0",
   "description": "Agent-invocation and skill-prompt engine for the Contentful Experience Design System SDK",
   "license": "MIT",
   "type": "module",
