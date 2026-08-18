@@ -47,6 +47,7 @@ export type PushSessionOptions = {
   environmentId: string;
   cmaToken: string;
   host?: string;
+  allowDeletions?: boolean;
 };
 
 /**
@@ -70,6 +71,9 @@ export async function pushRunSession(opts: PushSessionOptions): Promise<PushSess
   ];
   if (opts.host) {
     args.push('--host', opts.host);
+  }
+  if (opts.allowDeletions) {
+    args.push('--allow-deletions');
   }
   const r = await runCli(args);
   if (r.exitCode === 0) return { ok: true };

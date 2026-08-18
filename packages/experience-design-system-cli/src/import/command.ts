@@ -5,7 +5,7 @@ import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
-import { addCompositionOptions } from '../lib/command-options.js';
+import { addAllowDeletionsOption, addCompositionOptions } from '../lib/command-options.js';
 import { isConflictMode, type ConflictMode } from '../runs/save-path-resolver.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
@@ -69,6 +69,7 @@ export function registerImportCommand(program: Command): void {
     )
     .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)');
   addCompositionOptions(cmd);
+  addAllowDeletionsOption(cmd);
   cmd
     .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
     .option(
@@ -191,6 +192,7 @@ export function registerImportCommand(program: Command): void {
         overwrite?: boolean;
         saveAsNew?: boolean;
         force?: boolean;
+        allowDeletions?: boolean;
       }) => {
         const interactiveTerminalSupported = getInteractiveTerminalSupport().supported;
 
@@ -265,6 +267,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.host ? { host: opts.host } : {}),
               interactive: interactiveTerminalSupported,
               ...(opts.force ? { force: true } : {}),
+              ...(opts.allowDeletions ? { allowDeletions: true } : {}),
             });
             return;
           } catch (err) {
@@ -297,6 +300,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.saveAsNew ? { saveAsNew: true } : {}),
               ...(opts.outDir ? { outDir: opts.outDir } : {}),
               ...(opts.force ? { force: true } : {}),
+              ...(opts.allowDeletions ? { allowDeletions: true } : {}),
             });
             return;
           } catch (err) {
@@ -418,6 +422,7 @@ export function registerImportCommand(program: Command): void {
             selectPromptPath?: string;
             generatePromptPath?: string;
             initialRawTokensPath?: string;
+            allowDeletions?: boolean;
             initialRuns?: typeof pickerDecision.runs;
             onRunPicked?: (selection: RunPickerSelection) => void;
           };
@@ -480,6 +485,7 @@ export function registerImportCommand(program: Command): void {
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
               ...(opts.rawTokens ? { initialRawTokensPath: resolve(opts.rawTokens) } : {}),
+              allowDeletions: opts.allowDeletions === true,
               ...pickerProps,
             }),
           );
@@ -553,6 +559,7 @@ export function registerImportCommand(program: Command): void {
             dryRun: dryRunForward,
             selectPromptPath: opts.selectPromptPath,
             autoRejectCycles: opts.autoRejectCycles ?? false,
+            allowDeletions: opts.allowDeletions ?? false,
             compositionMode: headlessCompositionMode,
             ...(opts.compositionMap ? { compositionMap: opts.compositionMap } : {}),
             ...(opts.compositionAgent ? { compositionAgent: true } : {}),

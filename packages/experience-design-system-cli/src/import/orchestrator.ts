@@ -43,6 +43,7 @@ export interface PipelineOptions {
   selectPromptPath?: string;
   /** When true, auto-reject cycle participants and retry push instead of surfacing an error. */
   autoRejectCycles?: boolean;
+  allowDeletions?: boolean;
   compositionMode?: CompositionMode;
   compositionMap?: string;
   compositionAgent?: boolean;
@@ -512,6 +513,7 @@ export async function runPipeline(
     if (opts.viewports) pushArgs.push('--viewports', opts.viewports);
     if (opts.host) pushArgs.push('--host', opts.host);
     if (opts.verbose) pushArgs.push('--verbose');
+    if (opts.allowDeletions) pushArgs.push('--allow-deletions');
     pushArgs.push('--yes');
 
     const pushStepId = createStep(db, sessionId, 'apply push', {

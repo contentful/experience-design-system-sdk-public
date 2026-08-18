@@ -8191,6 +8191,29 @@
           }
         ],
         "operationId": "DesignSystemImport.create",
+        "requestBody": {
+          "description": "Body",
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "allowDeletions": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "200",
@@ -9913,6 +9936,9 @@
                   "tokensManifest": {
                     "type": "object",
                     "additionalProperties": {}
+                  },
+                  "allowDeletions": {
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": false
@@ -11744,6 +11770,9 @@
                         "additionalProperties": {}
                       },
                       "acknowledgeBreakingChanges": {
+                        "type": "boolean"
+                      },
+                      "allowDeletions": {
                         "type": "boolean"
                       }
                     },

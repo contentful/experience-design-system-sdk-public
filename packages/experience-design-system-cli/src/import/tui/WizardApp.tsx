@@ -310,6 +310,7 @@ export type WizardAppProps = {
   initialRawTokensPath?: string;
   initialRuns?: RunRecord[];
   onRunPicked?: (selection: RunPickerSelection) => void;
+  allowDeletions?: boolean;
 };
 
 export function WizardApp({
@@ -347,6 +348,7 @@ export function WizardApp({
   initialRawTokensPath,
   initialRuns,
   onRunPicked,
+  allowDeletions = false,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -1262,7 +1264,7 @@ export function WizardApp({
         environmentId,
         host: resolvedHost,
       });
-      let operation = await client.applyImport(manifest, acknowledgeBreakingChanges);
+      let operation = await client.applyImport(manifest, { acknowledgeBreakingChanges, allowDeletions });
       try {
         logStep({
           applyResponse: {
