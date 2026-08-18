@@ -12,6 +12,7 @@ import { registerImportCommand } from './import/command.js';
 import { registerSetupCommand } from './setup/command.js';
 import { registerRunsCommand } from './runs/ls-command.js';
 import { beginCommand } from './lib/debug-preamble.js';
+import { completeActiveCommand, noteCommandStart, registerAnalyticsExitHook } from './analytics/index.js';
 
 const require = createRequire(import.meta.url);
 
@@ -90,6 +91,8 @@ export function createProgram(): Command {
     'Write a JSONL trace of every decision to ~/.contentful/experience-design-system-cli/debug/',
   );
   program.option('--no-debug', 'Force debug logging off (overrides EDSI_DEBUG and persisted setup preference)');
+  registerAnalyticsExitHook();
+
   program.hook('preAction', async (_thisCommand, actionCommand) => {
     // Merge opts from actionCommand and all ancestors — root-level --debug
     // set alongside a subcommand ends up on the root command's opts, not the
@@ -105,7 +108,13 @@ export function createProgram(): Command {
     // Build a `command` label out of the actual subcommand chain (e.g. "apply push").
     const chain: string[] = [];
     for (let c: Command | null = actionCommand; c && c.parent; c = c.parent) chain.unshift(c.name());
-    await beginCommand(chain.join(' ') || actionCommand.name(), { ...(debug !== undefined ? { debug } : {}) });
+    const commandChain = chain.join(' ') || actionCommand.name();
+    noteCommandStart(commandChain);
+    await beginCommand(commandChain, { ...(debug !== undefined ? { debug } : {}) });
+  });
+
+  program.hook('postAction', async () => {
+    await completeActiveCommand();
   });
 
   return program;

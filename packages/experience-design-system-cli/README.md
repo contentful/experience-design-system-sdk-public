@@ -450,6 +450,29 @@ Wizard run history is separate: `~/.config/experiences/runs.json`.
 
 ---
 
+## Usage data
+
+The CLI collects **anonymous usage data** to help us understand which commands are used and where the import workflow succeeds or fails. This data does **not** include your source code, file paths, credentials, prompts, or any content you author.
+
+What may be included:
+
+- Command name and duration
+- CLI, Node.js, and operating-system version
+- Anonymous session identifiers that link steps within a single import run
+- Structural counts (for example, how many components were extracted or accepted)
+- Space and environment IDs you pass on the command line
+- Contentful request IDs from API responses (to correlate failures with server logs)
+
+You can turn this off at any time:
+
+```bash
+DISABLE_ANALYTICS=1 experiences import --project ./my-app
+```
+
+Setting `DISABLE_ANALYTICS` to any value disables collection for that invocation.
+
+---
+
 ## Development
 
 ```bash

@@ -41,6 +41,7 @@
     "@contentful/experience-design-system-extraction": "workspace:*",
     "@contentful/experience-design-system-generation": "workspace:*",
     "@contentful/experience-design-system-types": "workspace:*",
+    "@segment/analytics-node": "^3.0.0",
     "commander": "^13.1.0",
     "ink": "^4.4.1",
     "react": "^18.3.1",

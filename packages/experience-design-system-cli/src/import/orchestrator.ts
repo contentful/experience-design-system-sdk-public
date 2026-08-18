@@ -14,6 +14,7 @@ import { detectSlotCycles, formatSlotCycleReport } from '../apply/command.js';
 import { PREVIEW_ERROR_PREFIX, VALIDATION_FAILED_CODE, parsePreviewValidationErrors } from '../apply/api-client.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
 import { getDebugLogger, debugEnvForSubprocess } from '../lib/debug-logger.js';
+import { bindAnalyticsSession, emitSessionStarted } from '../analytics/index.js';
 import type { CompositionMode } from '../lib/composition-mode.js';
 
 export interface PipelineOptions {
@@ -83,7 +84,7 @@ async function runStep(
   debug.event('import', 'subprocess.spawn', { cliPath, args });
   return new Promise((res) => {
     const child = execFile('node', [cliPath, ...args], {
-      env: debugEnvForSubprocess({ ...process.env, ...env }),
+      env: debugEnvForSubprocess({ ...process.env, ...env, EDS_IMPORT_PIPELINE: '1' }),
     });
 
     let stdout = '';
@@ -200,6 +201,10 @@ export async function runPipeline(
     inputPath: projectRoot,
     outDir,
   });
+  await bindAnalyticsSession(sessionId, {
+    ...(opts.spaceId ? { space_key: opts.spaceId, environment_key: opts.environmentId } : {}),
+  });
+  await emitSessionStarted('import');
 
   progressWriter(`Experience Design System CLI — Pipeline Import`);
   progressWriter(`Project:     ${projectRoot}`);

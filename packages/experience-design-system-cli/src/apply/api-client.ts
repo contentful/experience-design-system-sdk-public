@@ -220,6 +220,16 @@ export class ImportApiClient {
   private spaceId: string;
   private environmentId: string;
   private retry: RetryOptions;
+  private lastRequestId?: string;
+
+  getLastRequestId(): string | undefined {
+    return this.lastRequestId;
+  }
+
+  private noteRequestId(response: Response): void {
+    const requestId = response.headers.get('x-contentful-request-id');
+    if (requestId) this.lastRequestId = requestId;
+  }
 
   constructor(opts: ApiClientOptions) {
     this.host = toApiHost(opts.host);
@@ -289,7 +299,10 @@ export class ImportApiClient {
         continue;
       }
 
-      if (!isTransientStatus(result.response.status)) return result;
+      if (!isTransientStatus(result.response.status)) {
+        this.noteRequestId(result.response);
+        return result;
+      }
 
       if (attempt === this.retry.maxAttempts) {
         const body = stringifyError(result.error);
@@ -329,6 +342,7 @@ export class ImportApiClient {
     // false positives that don't apply to the design-systems API authorization path.
     const url = `${this.host}/users/me`;
     const res = await request(url, { token: this.token });
+    this.noteRequestId(res);
     if (res.status === 401) {
       throw new ApiError('CMA token is invalid or revoked', res.status, await res.text());
     }
@@ -354,6 +368,7 @@ export class ImportApiClient {
     } catch {
       return; // network error — don't block; the real call will surface it
     }
+    this.noteRequestId(res);
 
     if (res.ok) return;
     if (res.status >= 500) return; // backend flake — don't block

@@ -53,6 +53,7 @@ import {
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
+import { bindAnalyticsSession, emitSessionStarted, enrichCommandResult } from '../analytics/index.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
 
 interface AnalyzeExtractOptions {
@@ -357,6 +358,8 @@ export function registerAnalyzeCommand(program: Command): void {
         inputPath: projectRoot,
         outDir,
       });
+      await bindAnalyticsSession(sessionId);
+      await emitSessionStarted('analyze_extract');
       const stepId = createStep(db, sessionId, 'analyze extract', {
         project: projectRoot,
       });
@@ -667,6 +670,7 @@ export function registerAnalyzeCommand(program: Command): void {
         sourceFiles.map((f) => relative(projectRoot, f)),
       );
       updateStep(db, stepId, 'complete', { sessionId });
+      enrichCommandResult({ extracted_component_count: validatedComponents.length });
       db.close();
 
       const allWarnings = [...extraction.warnings, ...filterWarnings];

@@ -30,8 +30,16 @@ import {
 import { stripAllowedComponents } from '../import/strip-allowed-components.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
+import {
+  bindAnalyticsSessionId,
+  completeActiveCommand,
+  failActiveCommand,
+  recordApplyOutcome,
+  recordContentfulContext,
+} from '../analytics/index.js';
 
 function die(message: string): never {
+  void failActiveCommand({ exit_code: 1 });
   process.stderr.write(`${message}\n`);
   process.exit(1);
 }
@@ -521,6 +529,12 @@ export function registerApplyCommand(program: Command): void {
     }
 
     const { components, tokens, client } = inputs;
+    const spaceId = opts.spaceId!;
+    const environmentId = opts.environmentId!;
+    await bindAnalyticsSessionId(opts.session, {
+      space_key: spaceId,
+      environment_key: environmentId,
+    });
 
     try {
       await client.validateToken();
@@ -540,8 +554,7 @@ export function registerApplyCommand(program: Command): void {
       throw e;
     }
 
-    const spaceId = opts.spaceId!;
-    const environmentId = opts.environmentId!;
+    recordContentfulContext(client, spaceId, environmentId);
 
     if (getInteractiveTerminalSupport().supported) {
       const { waitUntilExit } = render(
@@ -584,6 +597,12 @@ export function registerApplyCommand(program: Command): void {
       }
 
       const { components, tokens, client } = inputs;
+      const spaceId = opts.spaceId!;
+      const environmentId = opts.environmentId!;
+      await bindAnalyticsSessionId(opts.session, {
+        space_key: spaceId,
+        environment_key: environmentId,
+      });
 
       assertNoSlotCycles(components);
 
@@ -603,9 +622,6 @@ export function registerApplyCommand(program: Command): void {
         if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
         throw e;
       }
-
-      const spaceId = opts.spaceId!;
-      const environmentId = opts.environmentId!;
 
       if (opts.dryRun) {
         if (isTTY) {
@@ -666,8 +682,12 @@ export function registerApplyCommand(program: Command): void {
         }
 
         const summary = buildApplyOutput(operation, spaceId, environmentId, opts.host);
+        recordApplyOutcome(client, spaceId, environmentId, operation);
         process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
-        process.exit(operation.sys.status === 'succeeded' ? 0 : 1);
+        const exitCode = operation.sys.status === 'succeeded' ? 0 : 1;
+        if (exitCode === 0) await completeActiveCommand();
+        else await failActiveCommand({ exit_code: exitCode });
+        process.exit(exitCode);
         return;
       }
 
