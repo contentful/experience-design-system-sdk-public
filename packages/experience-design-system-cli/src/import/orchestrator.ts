@@ -14,7 +14,7 @@ import { detectSlotCycles, formatSlotCycleReport } from '../apply/command.js';
 import { PREVIEW_ERROR_PREFIX, VALIDATION_FAILED_CODE, parsePreviewValidationErrors } from '../apply/api-client.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
-import { bindAnalyticsSession, emitSessionStarted, exitWithAnalytics } from '../analytics/index.js';
+import { bindAnalyticsSession, emitSessionStarted } from '../analytics/index.js';
 import { pipelineSubprocessEnv } from '../analytics/env.js';
 import type { CompositionMode } from '../lib/composition-mode.js';
 
@@ -495,7 +495,7 @@ export async function runPipeline(
         'Error: --space-id, --environment-id, and --cma-token are required for apply push. Use --skip-apply to skip.\n',
       );
       db.close();
-      return await exitWithAnalytics(1);
+      process.exit(1);
     }
 
     const pushArgs: string[] = [

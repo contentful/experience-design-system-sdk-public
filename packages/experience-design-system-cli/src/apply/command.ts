@@ -220,7 +220,9 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
     const raw = await readJsonFile('--components', opts.components);
     const result = validateCDF(raw);
     if (!result.valid) {
-      return await die(`Error: --components failed schema validation: ${result.errors.map((e) => e.message).join(', ')}`);
+      return await die(
+        `Error: --components failed schema validation: ${result.errors.map((e) => e.message).join(', ')}`,
+      );
     }
     components = result.components;
   }
@@ -597,7 +599,8 @@ export function registerApplyCommand(program: Command): void {
       try {
         inputs = await resolveSharedInputs(opts);
       } catch (e) {
-        if (e instanceof ApiError) return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
+        if (e instanceof ApiError)
+          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -614,7 +617,8 @@ export function registerApplyCommand(program: Command): void {
       try {
         await client.validateToken();
       } catch (e) {
-        if (e instanceof ApiError) return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
+        if (e instanceof ApiError)
+          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -624,7 +628,8 @@ export function registerApplyCommand(program: Command): void {
       try {
         preview = await client.previewImport(manifest);
       } catch (e) {
-        if (e instanceof ApiError) return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
+        if (e instanceof ApiError)
+          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -675,7 +680,8 @@ export function registerApplyCommand(program: Command): void {
         try {
           operation = await client.applyImport(manifest, breakingWithImpact || opts.force === true);
         } catch (e) {
-          if (e instanceof ApiError) return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
+          if (e instanceof ApiError)
+          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
           throw e;
         }
 
@@ -684,7 +690,8 @@ export function registerApplyCommand(program: Command): void {
         try {
           operation = await client.pollOperation(operation.sys.id);
         } catch (e) {
-          if (e instanceof ApiError) return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
+          if (e instanceof ApiError)
+          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
           throw e;
         }
 

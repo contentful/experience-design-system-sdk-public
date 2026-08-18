@@ -11,9 +11,6 @@ export function analyticsEnvForSubprocess(env: NodeJS.ProcessEnv, analyticsSessi
 }
 
 /** Debug + pipeline analytics env for orchestrator subprocesses. */
-export function pipelineSubprocessEnv(
-  env: NodeJS.ProcessEnv,
-  analyticsSessionId: string,
-): NodeJS.ProcessEnv {
+export function pipelineSubprocessEnv(env: NodeJS.ProcessEnv, analyticsSessionId: string): NodeJS.ProcessEnv {
   return analyticsEnvForSubprocess(debugEnvForSubprocess(env), analyticsSessionId);
 }

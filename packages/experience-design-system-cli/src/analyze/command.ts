@@ -53,7 +53,13 @@ import {
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { buildAnalyzeViewRows, partitionGlobalWarnings } from './build-analyze-view-rows.js';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
-import { bindAnalyticsSessionId, emitSessionStarted, enrichCommandResult, exitWithAnalytics, isPipelineAnalyticsChild } from '../analytics/index.js';
+import {
+  bindAnalyticsSessionId,
+  emitSessionStarted,
+  enrichCommandResult,
+  exitWithAnalytics,
+  isPipelineAnalyticsChild,
+} from '../analytics/index.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
 
 interface AnalyzeExtractOptions {
