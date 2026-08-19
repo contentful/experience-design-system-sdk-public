@@ -31,10 +31,18 @@ import {
 import { stripAllowedComponents } from '../import/strip-allowed-components.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
+import {
+  bindAnalyticsSessionId,
+  exitWithAnalytics,
+  failureFromApiError,
+  recordApplyOutcome,
+  recordContentfulContext,
+} from '../analytics/index.js';
+import type { CommandFailure } from '../analytics/index.js';
 
-function die(message: string): never {
+async function die(message: string, fields: CommandFailure = {}): Promise<never> {
   process.stderr.write(`${message}\n`);
-  process.exit(1);
+  return exitWithAnalytics(1, fields);
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -44,7 +52,7 @@ async function pathExists(p: string): Promise<boolean> {
 }
 
 async function assertFileExists(flag: string, p: string): Promise<void> {
-  if (!(await pathExists(p))) die(`Error: file not found: ${p} (from ${flag})`);
+  if (!(await pathExists(p))) return await die(`Error: file not found: ${p} (from ${flag})`);
 }
 
 async function readJsonFile(flag: string, p: string): Promise<unknown> {
@@ -52,12 +60,12 @@ async function readJsonFile(flag: string, p: string): Promise<unknown> {
   try {
     text = await readFile(p, 'utf8');
   } catch {
-    die(`Error: file not found: ${p} (from ${flag})`);
+    return await die(`Error: file not found: ${p} (from ${flag})`);
   }
   try {
-    return JSON.parse(text!);
+    return JSON.parse(text);
   } catch {
-    die(`Error: ${flag} is not valid JSON: ${p}`);
+    return await die(`Error: ${flag} is not valid JSON: ${p}`);
   }
 }
 
@@ -99,11 +107,11 @@ export async function readTokensFromPath(flag: string, p: string): Promise<DTCGT
   try {
     s = await stat(p);
   } catch {
-    die(`Error: file not found: ${p} (from ${flag})`);
+    return await die(`Error: file not found: ${p} (from ${flag})`);
   }
-  if (s!.isDirectory()) {
+  if (s.isDirectory()) {
     const files = await collectJsonFiles(p);
-    if (files.length === 0) die(`Error: no .json files found in directory: ${p} (from ${flag})`);
+    if (files.length === 0) return await die(`Error: no .json files found in directory: ${p} (from ${flag})`);
     const merged: Record<string, unknown> = {};
     for (const file of files.sort()) {
       let text: string;
@@ -124,16 +132,20 @@ export async function readTokensFromPath(flag: string, p: string): Promise<DTCGT
     }
     const { valid, errors } = validateDTCG(merged);
     if (!valid)
-      die(`Error: ${flag} contains invalid token types:\n${errors.map((e) => `  ${e.path}: ${e.message}`).join('\n')}`);
+      return await die(
+        `Error: ${flag} contains invalid token types:\n${errors.map((e) => `  ${e.path}: ${e.message}`).join('\n')}`,
+      );
     return flattenDTCG(merged, '');
   }
   const raw = await readJsonFile(flag, p);
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-    die(`Error: ${flag} is not valid JSON: expected an object`);
+    return await die(`Error: ${flag} is not valid JSON: expected an object`);
   }
   const { valid, errors } = validateDTCG(raw as Record<string, unknown>);
   if (!valid)
-    die(`Error: ${flag} contains invalid token types:\n${errors.map((e) => `  ${e.path}: ${e.message}`).join('\n')}`);
+    return await die(
+      `Error: ${flag} contains invalid token types:\n${errors.map((e) => `  ${e.path}: ${e.message}`).join('\n')}`,
+    );
   return flattenDTCG(raw as Record<string, unknown>, '');
 }
 
@@ -175,23 +187,23 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
   client: ImportApiClient;
 }> {
   if (!opts.components && !opts.tokens && !opts.session) {
-    die('Error: at least one of --components, --tokens, or --session is required');
+    return await die('Error: at least one of --components, --tokens, or --session is required');
   }
 
   if (opts.session && opts.components) {
-    die('Error: --session and --components are mutually exclusive');
+    return await die('Error: --session and --components are mutually exclusive');
   }
 
   const spaceId = opts.spaceId ?? process.env.CONTENTFUL_SPACE_ID;
   const environmentId = opts.environmentId ?? process.env.CONTENTFUL_ENVIRONMENT_ID;
-  if (!spaceId) die('Error: --space-id is required (or set CONTENTFUL_SPACE_ID)');
-  if (!environmentId) die('Error: --environment-id is required (or set CONTENTFUL_ENVIRONMENT_ID)');
+  if (!spaceId) return await die('Error: --space-id is required (or set CONTENTFUL_SPACE_ID)');
+  if (!environmentId) return await die('Error: --environment-id is required (or set CONTENTFUL_ENVIRONMENT_ID)');
   opts.spaceId = spaceId;
   opts.environmentId = environmentId;
 
   const cmaToken = opts.cmaToken ?? process.env.CONTENTFUL_MANAGEMENT_TOKEN;
   if (!cmaToken) {
-    die('Error: CMA token is required. Pass --cma-token or set CONTENTFUL_MANAGEMENT_TOKEN');
+    return await die('Error: CMA token is required. Pass --cma-token or set CONTENTFUL_MANAGEMENT_TOKEN');
   }
 
   if (opts.components) await assertFileExists('--components', opts.components);
@@ -205,13 +217,15 @@ async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
       db.close();
     }
     if (components.length === 0) {
-      die(`Error: session '${opts.session}' has no generated components. Run generate components first.`);
+      return await die(`Error: session '${opts.session}' has no generated components. Run generate components first.`);
     }
   } else if (opts.components) {
     const raw = await readJsonFile('--components', opts.components);
     const result = validateCDF(raw);
     if (!result.valid) {
-      die(`Error: --components failed schema validation: ${result.errors.map((e) => e.message).join(', ')}`);
+      return await die(
+        `Error: --components failed schema validation: ${result.errors.map((e) => e.message).join(', ')}`,
+      );
     }
     components = result.components;
   }
@@ -275,11 +289,11 @@ export function formatSlotCycleReport(cycles: ReturnType<typeof findSlotCycles>)
   return lines;
 }
 
-export function assertNoSlotCycles(components: Array<{ key: string; entry: CDFComponentEntry }>): void {
+export async function assertNoSlotCycles(components: Array<{ key: string; entry: CDFComponentEntry }>): Promise<void> {
   const cycles = detectSlotCycles(components);
   if (cycles.length === 0) return;
   process.stderr.write(formatSlotCycleReport(cycles).join('\n') + '\n');
-  process.exit(1);
+  await exitWithAnalytics(1);
 }
 
 export function extractComponentsFromManifest(
@@ -520,18 +534,24 @@ export function registerApplyCommand(program: Command): void {
     try {
       inputs = await resolveSharedInputs(opts);
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
     const { components, tokens, client } = inputs;
+    const spaceId = opts.spaceId!;
+    const environmentId = opts.environmentId!;
+    await bindAnalyticsSessionId(opts.session, {
+      space_key: spaceId,
+      environment_key: environmentId,
+    });
 
     try {
       await client.validateToken();
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : '';
-      die(`Error: unable to connect to API host${cause ? `: ${cause}` : ''}`);
+      return await die(`Error: unable to connect to API host${cause ? `: ${cause}` : ''}`);
     }
 
     const manifest = buildManifest(components, tokens);
@@ -540,12 +560,11 @@ export function registerApplyCommand(program: Command): void {
     try {
       preview = await client.previewImport(manifest);
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
-    const spaceId = opts.spaceId!;
-    const environmentId = opts.environmentId!;
+    recordContentfulContext(client, spaceId, environmentId);
 
     if (getInteractiveTerminalSupport().supported) {
       const { waitUntilExit } = render(
@@ -559,7 +578,7 @@ export function registerApplyCommand(program: Command): void {
       await waitUntilExit();
     } else {
       process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-      process.exit(0);
+      await exitWithAnalytics(0);
     }
   });
 
@@ -578,25 +597,33 @@ export function registerApplyCommand(program: Command): void {
 
       if (!isTTY && !opts.yes) {
         process.stderr.write('Error: apply push requires --yes in non-interactive mode\n');
-        process.exit(1);
+        await exitWithAnalytics(1);
       }
 
       let inputs: Awaited<ReturnType<typeof resolveSharedInputs>>;
       try {
         inputs = await resolveSharedInputs(opts);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
+        if (e instanceof ApiError)
+          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
         throw e;
       }
 
       const { components, tokens, client } = inputs;
+      const spaceId = opts.spaceId!;
+      const environmentId = opts.environmentId!;
+      await bindAnalyticsSessionId(opts.session, {
+        space_key: spaceId,
+        environment_key: environmentId,
+      });
 
-      assertNoSlotCycles(components);
+      await assertNoSlotCycles(components);
 
       try {
         await client.validateToken();
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
+        if (e instanceof ApiError)
+          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -606,12 +633,12 @@ export function registerApplyCommand(program: Command): void {
       try {
         preview = await client.previewImport(manifest, opts.allowDeletions === true);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
+        if (e instanceof ApiError)
+          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
         throw e;
       }
 
-      const spaceId = opts.spaceId!;
-      const environmentId = opts.environmentId!;
+      recordContentfulContext(client, spaceId, environmentId);
 
       if (opts.dryRun) {
         if (isTTY) {
@@ -627,7 +654,7 @@ export function registerApplyCommand(program: Command): void {
         } else {
           process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
         }
-        process.exit(0);
+        await exitWithAnalytics(0);
       }
 
       if (isEmptyPreview(preview)) {
@@ -636,7 +663,7 @@ export function registerApplyCommand(program: Command): void {
         } else {
           process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
         }
-        process.exit(0);
+        await exitWithAnalytics(0);
       }
 
       const breakingWithImpact = hasBreakingChangesWithImpact(preview);
@@ -647,7 +674,7 @@ export function registerApplyCommand(program: Command): void {
             'Error: breaking changes with downstream impact detected. Use --force to acknowledge.\n',
           );
           process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-          process.exit(1);
+          await exitWithAnalytics(1);
         }
 
         const verbose = opts.verbose ?? false;
@@ -662,7 +689,8 @@ export function registerApplyCommand(program: Command): void {
             allowDeletions: opts.allowDeletions === true,
           });
         } catch (e) {
-          if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
+          if (e instanceof ApiError)
+            return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
           throw e;
         }
 
@@ -671,13 +699,16 @@ export function registerApplyCommand(program: Command): void {
         try {
           operation = await client.pollOperation(operation.sys.id);
         } catch (e) {
-          if (e instanceof ApiError) die(`Error: ${formatApiError(e, opts.verbose)}`);
+          if (e instanceof ApiError)
+            return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
           throw e;
         }
 
         const summary = buildApplyOutput(operation, spaceId, environmentId, opts.host);
+        recordApplyOutcome(client, spaceId, environmentId, operation);
         process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
-        process.exit(operation.sys.status === 'succeeded' ? 0 : 1);
+        const exitCode = operation.sys.status === 'succeeded' ? 0 : 1;
+        await exitWithAnalytics(exitCode);
         return;
       }
 
@@ -738,6 +769,7 @@ export function registerApplyCommand(program: Command): void {
             throw e;
           }
 
+          recordApplyOutcome(client, spaceId, environmentId, operation);
           instance.rerender(
             createElement(ServerApplyDone, {
               operation,
@@ -760,7 +792,7 @@ export function registerApplyCommand(program: Command): void {
               void runApply(acknowledge, applyDeletions);
             },
             onCancel: () => {
-              process.exit(0);
+              void exitWithAnalytics(0);
             },
           }),
         );
@@ -788,18 +820,18 @@ export function registerApplyCommand(program: Command): void {
     try {
       inputs = await resolveSharedInputs(opts);
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
     const { components, tokens, client } = inputs;
 
-    assertNoSlotCycles(components);
+    await assertNoSlotCycles(components);
 
     try {
       await client.validateToken();
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
@@ -809,17 +841,22 @@ export function registerApplyCommand(program: Command): void {
     try {
       preview = await client.previewImport(fullManifest, opts.allowDeletions === true);
     } catch (e) {
-      if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
       throw e;
     }
 
     const spaceId = opts.spaceId!;
     const environmentId = opts.environmentId!;
+    await bindAnalyticsSessionId(opts.session, {
+      space_key: spaceId,
+      environment_key: environmentId,
+    });
+    recordContentfulContext(client, spaceId, environmentId);
     const entities = getSelectableEntities(preview);
 
     if (entities.length === 0) {
       process.stderr.write('Nothing to change — design system is up to date.\n');
-      process.exit(0);
+      await exitWithAnalytics(0);
     }
 
     if (nonInteractive) {
@@ -827,7 +864,7 @@ export function registerApplyCommand(program: Command): void {
 
       if (selectedKeys.size === 0) {
         process.stderr.write('No entities matched selection criteria.\n');
-        process.exit(0);
+        await exitWithAnalytics(0);
       }
 
       const selectedComponentKeys = new Set<string>();
@@ -844,7 +881,7 @@ export function registerApplyCommand(program: Command): void {
 
       if (hasBreaking && !opts.force) {
         process.stderr.write('Error: selection includes breaking changes. Use --force to acknowledge.\n');
-        process.exit(1);
+        await exitWithAnalytics(1);
       }
 
       let operation: ApplyOperationResponse;
@@ -854,7 +891,7 @@ export function registerApplyCommand(program: Command): void {
           allowDeletions: opts.allowDeletions === true,
         });
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+        if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
         throw e;
       }
 
@@ -863,13 +900,14 @@ export function registerApplyCommand(program: Command): void {
       try {
         operation = await client.pollOperation(operation.sys.id);
       } catch (e) {
-        if (e instanceof ApiError) die(`Error: ${formatApiError(e)}`);
+        if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
         throw e;
       }
 
       const summary = buildApplyOutput(operation, spaceId, environmentId, opts.host);
+      recordApplyOutcome(client, spaceId, environmentId, operation);
       process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
-      process.exit(operation.sys.status === 'succeeded' ? 0 : 1);
+      await exitWithAnalytics(operation.sys.status === 'succeeded' ? 0 : 1);
       return;
     }
 
@@ -942,6 +980,7 @@ export function registerApplyCommand(program: Command): void {
           throw e;
         }
 
+        recordApplyOutcome(client, spaceId, environmentId, operation);
         instance.rerender(
           createElement(ServerApplyDone, {
             operation,

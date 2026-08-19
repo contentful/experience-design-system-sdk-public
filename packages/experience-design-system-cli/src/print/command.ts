@@ -11,10 +11,11 @@ import { ValidateView } from './validate/tui/ValidateView.js';
 import type { ValidateViewEntry } from './validate/tui/ValidateView.js';
 import type { DTCGTokenGroupNode } from '@contentful/experience-design-system-types';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
+import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js';
 
-function die(message: string): never {
+async function die(message: string): Promise<never> {
   process.stderr.write(`${message}\n`);
-  process.exit(1);
+  return exitWithAnalytics(1);
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -26,17 +27,20 @@ async function pathExists(p: string): Promise<boolean> {
 async function assertOutIsNotDirectory(outPath: string): Promise<void> {
   if (await pathExists(outPath)) {
     const s = await stat(outPath);
-    if (s.isDirectory()) die(`Error: --out must be a file path, not a directory: ${outPath}`);
+    if (s.isDirectory()) await die(`Error: --out must be a file path, not a directory: ${outPath}`);
   }
 }
 
-function resolveSession(sessionFlag: string | undefined, command: 'generate components' | 'generate tokens'): string {
+async function resolveSession(
+  sessionFlag: string | undefined,
+  command: 'generate components' | 'generate tokens',
+): Promise<string> {
   const db = openPipelineDb();
   try {
     const sessionId = sessionFlag ?? findLatestSessionForCommand(db, command);
     if (!sessionId) {
       const hint = command === 'generate components' ? 'generate components' : 'generate tokens';
-      die(`Error: no completed ${hint} session found. Run ${hint} first, or pass --session <id>.`);
+      return await die(`Error: no completed ${hint} session found. Run ${hint} first, or pass --session <id>.`);
     }
     return sessionId;
   } finally {
@@ -104,7 +108,8 @@ export function registerPrintCommand(program: Command): void {
       const outPath = resolve(opts.out);
       await assertOutIsNotDirectory(outPath);
 
-      const sessionId = resolveSession(opts.session, 'generate components');
+      const sessionId = await resolveSession(opts.session, 'generate components');
+      await bindAnalyticsSessionId(sessionId);
 
       const db = openPipelineDb();
       let components: ReturnType<typeof loadCDFComponents>;
@@ -132,14 +137,14 @@ export function registerPrintCommand(program: Command): void {
           // component was rejected or left unresolved. This is a legitimate
           // "clear the space" intent, but it's destructive, so require --allow-empty.
           if (!opts.allowEmpty) {
-            die(
+            await die(
               `Error: all ${rejectedCount} generated component${rejectedCount === 1 ? ' was' : 's were'} rejected or left unresolved at final review in session '${sessionId}', so there is nothing to save. Accept at least one component (press [a] on a row, or [A] to accept all), or pass --allow-empty to write an empty manifest that will DELETE all components from the target space on push.`,
             );
           }
           // Fall through: write an empty-but-present components manifest so a
           // subsequent push removes every component from the target space.
         } else {
-          die(`Error: no generated components in session '${sessionId}'. Run generate components first.`);
+          await die(`Error: no generated components in session '${sessionId}'. Run generate components first.`);
         }
       }
 
@@ -179,7 +184,8 @@ export function registerPrintCommand(program: Command): void {
       const outPath = resolve(opts.out);
       await assertOutIsNotDirectory(outPath);
 
-      const sessionId = resolveSession(opts.session, 'generate tokens');
+      const sessionId = await resolveSession(opts.session, 'generate tokens');
+      await bindAnalyticsSessionId(sessionId);
 
       const db = openPipelineDb();
       let result: ReturnType<typeof loadDTCGTokens>;
@@ -190,7 +196,7 @@ export function registerPrintCommand(program: Command): void {
       }
 
       if (result.tokens.length === 0) {
-        die(`Error: no generated tokens in session '${sessionId}'. Run generate tokens first.`);
+        await die(`Error: no generated tokens in session '${sessionId}'. Run generate tokens first.`);
       }
 
       const tree = rebuildDTCGTree(result.groups, result.tokens);
@@ -213,7 +219,7 @@ export function registerPrintCommand(program: Command): void {
         process.stderr.write(
           'Error: at least one of --components or --tokens is required.\n\nUsage: print validate [--components <path>] [--tokens <path>]\n',
         );
-        process.exit(1);
+        await exitWithAnalytics(1);
       }
 
       const viewResults: ValidateViewEntry[] = [];
@@ -247,7 +253,7 @@ export function registerPrintCommand(program: Command): void {
         const { waitUntilExit } = render(
           createElement(ValidateView, {
             results: viewResults,
-            onExit: () => process.exit(exitCode),
+            onExit: () => void exitWithAnalytics(exitCode),
           }),
         );
         await waitUntilExit();
@@ -262,7 +268,7 @@ export function registerPrintCommand(program: Command): void {
           )
           .join('\n\n');
         process.stdout.write(output + '\n');
-        process.exit(exitCode);
+        await exitWithAnalytics(exitCode);
       }
     });
 }

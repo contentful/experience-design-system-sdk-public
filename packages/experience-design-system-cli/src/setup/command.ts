@@ -14,6 +14,7 @@ import {
 } from '../credentials-store.js';
 import { promptAutoFilterPreference } from './auto-filter-prompt.js';
 import { promptDebugModePreference } from './debug-mode-prompt.js';
+import { promptAnalyticsPreference } from './analytics-prompt.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import type { AgentName } from '@contentful/experience-design-system-generation';
 
@@ -709,6 +710,21 @@ async function setupQoL(profilePath: string): Promise<void> {
   if (debugChoice !== (debugCreds.debug ?? false)) {
     await writeExperiencesCredentials({ ...debugCreds, debug: debugChoice });
     ok(`Debug logging default set to ${debugChoice ? 'ON' : 'OFF'}`);
+  } else {
+    dim('     unchanged');
+  }
+  info('');
+
+  // 6d.1: Analytics opt-out
+  info('');
+  info('Anonymous usage analytics — helps us see which commands are used and where imports');
+  info('succeed or fail. Never includes source code, file paths, credentials, or authored content.');
+  info('Disabling here persists the opt-out; it will not silently re-enable later. See README > Usage data.');
+  const analyticsCreds = await readExperiencesCredentials();
+  const analyticsDisabled = await promptAnalyticsPreference((q) => prompt(q), analyticsCreds.analyticsDisabled);
+  if (analyticsDisabled !== (analyticsCreds.analyticsDisabled ?? false)) {
+    await writeExperiencesCredentials({ ...analyticsCreds, analyticsDisabled });
+    ok(`Analytics ${analyticsDisabled ? 'disabled' : 'enabled'}`);
   } else {
     dim('     unchanged');
   }

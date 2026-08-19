@@ -23,10 +23,10 @@ describe('atomic strip → slot-cycle detection', () => {
     expect(detectSlotCycles(cyclic).length).toBeGreaterThan(0);
   });
 
-  it('the same graph has zero cycles after the atomic strip', () => {
+  it('the same graph has zero cycles after the atomic strip', async () => {
     const stripped = stripAllowedComponents(cyclic);
     expect(detectSlotCycles(stripped)).toHaveLength(0);
-    expect(() => assertNoSlotCycles(stripped)).not.toThrow();
+    await expect(assertNoSlotCycles(stripped)).resolves.toBeUndefined();
   });
 
   it('preserves the slot structure while dropping the composition link', () => {
