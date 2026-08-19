@@ -454,9 +454,15 @@ export function replaceRawPropTokenPaths(
   db.exec('BEGIN');
   try {
     deletePaths.run(sessionId, componentId, propName, kind);
-    paths.forEach((path, position) => {
-      insertPath.run(sessionId, componentId, propName, kind, position, path);
-    });
+    if (paths.length === 0) {
+      // Row absence means the mapping has never been recorded. Keep an explicit
+      // marker for an empty mapping so it can round-trip distinctly.
+      insertPath.run(sessionId, componentId, propName, kind, -1, '');
+    } else {
+      paths.forEach((path, position) => {
+        insertPath.run(sessionId, componentId, propName, kind, position, path);
+      });
+    }
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
@@ -482,6 +488,7 @@ export function loadRawPropTokenPaths(db: DatabaseSync, sessionId: string): RawP
 
   const groups: RawPropTokenPathGroup[] = [];
   for (const row of rows) {
+    const isEmptyMapping = row.position === -1 && row.path === '';
     const previous = groups.at(-1);
     if (
       previous &&
@@ -489,14 +496,14 @@ export function loadRawPropTokenPaths(db: DatabaseSync, sessionId: string): RawP
       previous.propName === row.prop_name &&
       previous.kind === row.kind
     ) {
-      previous.paths.push(row.path);
+      if (!isEmptyMapping) previous.paths.push(row.path);
       continue;
     }
     groups.push({
       componentId: row.component_id,
       propName: row.prop_name,
       kind: row.kind,
-      paths: [row.path],
+      paths: isEmptyMapping ? [] : [row.path],
     });
   }
 

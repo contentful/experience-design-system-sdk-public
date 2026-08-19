@@ -262,13 +262,14 @@ describe('raw prop token paths', () => {
       ]);
       replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.text.default']);
       replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'set', ['color.brand.tertiary']);
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', []);
 
       expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
         {
           componentId,
           propName: 'variant',
           kind: 'allowed',
-          paths: ['color.text.default'],
+          paths: [],
         },
         {
           componentId,
@@ -284,8 +285,8 @@ describe('raw prop token paths', () => {
              WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = ?
              ORDER BY position`,
           )
-          .all(sessionId, componentId, 'variant', 'set'),
-      ).toEqual([{ position: 0, path: 'color.brand.tertiary' }]);
+          .all(sessionId, componentId, 'variant', 'allowed'),
+      ).toEqual([{ position: -1, path: '' }]);
       db.close();
     });
   });
