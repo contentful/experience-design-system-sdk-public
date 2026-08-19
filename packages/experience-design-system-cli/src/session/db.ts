@@ -1327,6 +1327,23 @@ export function storeCDFComponents(
     `INSERT INTO raw_slot_allowed_components (session_id, component_id, slot_name, allowed_component, position)
      VALUES (?, ?, ?, ?, ?)`,
   );
+  const deleteTokenPaths = db.prepare(
+    `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = ?`,
+  );
+  const insertTokenPath = db.prepare(
+    `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, position, path)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+  // Absence of rows already means "mapping never ran", so a persisted-but-empty $token.allowed
+  // needs a sentinel row (position -1, empty path) to stay distinguishable on read-back.
+  const writeTokenPaths = (componentId: string, propName: string, kind: 'set' | 'allowed', paths: string[]) => {
+    deleteTokenPaths.run(sessionId, componentId, propName, kind);
+    if (paths.length === 0) {
+      insertTokenPath.run(sessionId, componentId, propName, kind, -1, '');
+    } else {
+      paths.forEach((path, position) => insertTokenPath.run(sessionId, componentId, propName, kind, position, path));
+    }
+  };
   const deleteSlots = db.prepare(`DELETE FROM raw_slots WHERE session_id = ? AND component_id = ?`);
   const deleteSlotAllowedComponents = db.prepare(
     `DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ?`,
@@ -1362,6 +1379,10 @@ export function storeCDFComponents(
           if (prop.$values && prop.$values.length > 0) {
             deleteAllowedValues.run(sessionId, componentId, propName);
             prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
+          }
+          if (prop['$token.sets'] !== undefined) writeTokenPaths(componentId, propName, 'set', prop['$token.sets']);
+          if (prop['$token.allowed'] !== undefined) {
+            writeTokenPaths(componentId, propName, 'allowed', prop['$token.allowed']);
           }
         }
 
@@ -1415,6 +1436,10 @@ export function storeCDFComponents(
           );
           if (prop.$values && prop.$values.length > 0) {
             prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
+          }
+          if (prop['$token.sets'] !== undefined) writeTokenPaths(componentId, propName, 'set', prop['$token.sets']);
+          if (prop['$token.allowed'] !== undefined) {
+            writeTokenPaths(componentId, propName, 'allowed', prop['$token.allowed']);
           }
         }
 
@@ -1513,10 +1538,27 @@ export function loadCDFComponents(
     allowed_component: string;
   }>;
 
+  const tokenPaths = db
+    .prepare(
+      `SELECT component_id, prop_name, kind, position, path
+       FROM raw_prop_token_paths WHERE session_id = ? ORDER BY component_id, prop_name, kind, position`,
+    )
+    .all(sessionId) as Array<{
+    component_id: string;
+    prop_name: string;
+    kind: 'set' | 'allowed';
+    position: number;
+    path: string;
+  }>;
+
   const propsByComponent = groupBy(props, (p) => p.component_id);
   const allowedValuesByProp = groupBy(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
   const slotsByComponent = groupBy(slots, (s) => s.component_id);
   const allowedComponentsBySlot = groupBy(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
+  const tokenPathsByPropAndKind = groupBy(tokenPaths, (t) => `${t.component_id}::${t.prop_name}::${t.kind}`);
+  // A single sentinel row (position -1, empty path) means the mapping ran but produced no paths.
+  const toTokenPaths = (rows: typeof tokenPaths | undefined): string[] | undefined =>
+    rows === undefined ? undefined : rows.length === 1 && rows[0].position === -1 ? [] : rows.map((r) => r.path);
 
   return components.map(({ component_id, name, description }) => {
     const compProps = propsByComponent.get(component_id) ?? [];
@@ -1540,6 +1582,10 @@ export function loadCDFComponents(
       if (p.description !== null) propDef.$description = p.description;
       if (av && av.length > 0) propDef.$values = av.map((v) => v.value);
       if (p.cdf_token_kind !== null) propDef['$token.kind'] = p.cdf_token_kind;
+      const sets = toTokenPaths(tokenPathsByPropAndKind.get(`${component_id}::${p.name}::set`));
+      if (sets !== undefined) propDef['$token.sets'] = sets;
+      const allowed = toTokenPaths(tokenPathsByPropAndKind.get(`${component_id}::${p.name}::allowed`));
+      if (allowed !== undefined) propDef['$token.allowed'] = allowed;
       $properties[p.name] = propDef;
     }
 
