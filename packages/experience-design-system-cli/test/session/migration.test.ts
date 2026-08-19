@@ -122,7 +122,9 @@ describe('runMigrationIfNeeded', () => {
       runMigrationIfNeeded(db);
       runMigrationIfNeeded(db); // second call — should be a no-op
 
-      const migRows = db.prepare('SELECT COUNT(*) AS n FROM migrations').get() as { n: number };
+      const migRows = db.prepare("SELECT COUNT(*) AS n FROM migrations WHERE name = 'v1_import_and_reviews'").get() as {
+        n: number;
+      };
       expect(migRows.n).toBe(1); // only one migration row inserted
       db.close();
     });
