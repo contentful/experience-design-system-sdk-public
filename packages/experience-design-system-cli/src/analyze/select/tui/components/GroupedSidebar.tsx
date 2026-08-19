@@ -392,6 +392,25 @@ export function buildVisibleRows(props: {
     });
   }
 
+  const nodeByName = new Map(subgraph.map((n) => [n.name, n]));
+  const sharedLeafNames = [...sharedDeps.keys()]
+    .filter((name) => (nodeByName.get(name)?.slots.length ?? 0) === 0)
+    .sort();
+  const seenStandaloneNames = new Set(standaloneRoots);
+  for (const name of sharedLeafNames) {
+    if (seenStandaloneNames.has(name)) continue;
+    const rec = itemByKey.get(name);
+    if (!rec) continue;
+    rows.push({
+      kind: 'standalone',
+      key: `shared-standalone:${name}`,
+      label: `${name} (shared)`,
+      indent: 0,
+      sharedSuffix: true,
+      itemIdx: rec.idx,
+    });
+  }
+
   if (showFlatTier) {
     const flatNames = otherKeys.slice().sort();
     if (flatNames.length > 0) {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type {
   ServerPreviewResponse,
@@ -14,7 +14,9 @@ interface ServerPreviewConfirmProps {
   spaceId: string;
   environmentId: string;
   breakingWithImpact: boolean;
-  onConfirm: (acknowledge: boolean) => void;
+  /** The value the preview was actually fetched with. */
+  allowDeletions: boolean;
+  onConfirm: (acknowledge: boolean, allowDeletions: boolean) => void;
   onCancel: () => void;
 }
 
@@ -23,23 +25,49 @@ export function ServerPreviewConfirm({
   spaceId,
   environmentId,
   breakingWithImpact,
+  allowDeletions: fetchedAllowDeletions,
   onConfirm,
   onCancel,
 }: ServerPreviewConfirmProps): React.ReactElement {
+  const [allowDeletions, setAllowDeletions] = useState(fetchedAllowDeletions);
+  const removedCount = preview.components.removed.length + preview.tokens.removed.length;
+
   useInput((input, key) => {
-    if (key.return) onConfirm(breakingWithImpact);
+    if (key.return) {
+      onConfirm(breakingWithImpact, allowDeletions);
+      return;
+    }
+    if ((input === 'x' || input === 'X') && fetchedAllowDeletions && removedCount > 0) {
+      setAllowDeletions((prev) => !prev);
+      return;
+    }
     if (key.escape || input === 'q') onCancel();
   });
 
   return (
     <Box flexDirection="column">
-      <ServerPreviewView preview={preview} spaceId={spaceId} environmentId={environmentId} />
+      <ServerPreviewView
+        preview={preview}
+        spaceId={spaceId}
+        environmentId={environmentId}
+        allowDeletions={allowDeletions}
+      />
       <Box paddingX={2} flexDirection="column">
         {breakingWithImpact && (
           <Text color="red" bold>
             {' '}
             ⚠ Breaking changes will affect downstream entities. Press Enter to acknowledge and apply.
           </Text>
+        )}
+        {allowDeletions && removedCount > 0 && (
+          <Text color="red" bold>
+            {' '}
+            ⚠ {removedCount} missing {removedCount === 1 ? 'entity' : 'entities'} will be permanently deleted. Press
+            Enter to confirm.
+          </Text>
+        )}
+        {fetchedAllowDeletions && removedCount > 0 && (
+          <Text dimColor> [x] {allowDeletions ? '[✓]' : '[ ]'} Allow deletions</Text>
         )}
         <Text>
           {' '}
@@ -54,14 +82,27 @@ interface ServerPreviewAppProps {
   preview: ServerPreviewResponse;
   spaceId: string;
   environmentId: string;
+  allowDeletions: boolean;
 }
 
-export function ServerPreviewApp({ preview, spaceId, environmentId }: ServerPreviewAppProps): React.ReactElement {
+export function ServerPreviewApp({
+  preview,
+  spaceId,
+  environmentId,
+  allowDeletions,
+}: ServerPreviewAppProps): React.ReactElement {
   useInput((input, key) => {
     if (key.escape || input === 'q') process.exit(0);
   });
 
-  return <ServerPreviewView preview={preview} spaceId={spaceId} environmentId={environmentId} />;
+  return (
+    <ServerPreviewView
+      preview={preview}
+      spaceId={spaceId}
+      environmentId={environmentId}
+      allowDeletions={allowDeletions}
+    />
+  );
 }
 
 interface ServerApplyProgressProps {

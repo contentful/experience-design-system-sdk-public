@@ -214,6 +214,7 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--host <url>`                    | `https://api.contentful.com`           | Override API base URL                                                                                        |
 | `--on-conflict <mode>`            | _(prompt via `<SaveConflictGate>`)_    | Headless conflict resolution when a file already exists at the save path: `overwrite`, `skip`, or `fail`. Bypasses the wizard's interactive save-conflict gate. Mutex with `--no-save`. |
 | `--print-prompt`                  | —                                      | Print the generate prompt to stdout and exit. Replaces the prompt-print semantics of `--dry-run`.            |
+| `--allow-deletions`               | off (non-destructive)                  | Allow the push to delete remote ComponentTypes/DesignTokens missing from the manifest. Default skips them instead of deleting. Without this flag, preview responses suppress the removed-entity list and return a count instead; interactive confirm screens show an opt-out toggle (never opt-in) only when the flag is passed. Forwarded to headless subprocess pushes and `--push-from-run`. |
 | `--dry-run`                       | _(deprecated)_                         | Deprecated alias for `--print-prompt`. Emits a stderr deprecation notice; prompt-print semantics will be removed in a future release. |
 
 ### Run-picker at wizard start
@@ -418,7 +419,7 @@ experiences apply select  --space-id <id> --environment-id <env> --session <id>
 experiences apply push    --space-id <id> --environment-id <env> --session <id> [--yes]
 ```
 
-Shared flags: `--components`, `--tokens`, `--session`, `--space-id`, `--environment-id`, `--cma-token`, `--host`, `--viewports`. `apply preview` adds `--include-unchanged`. `apply select` adds `--select-all`, `--select`, `--deselect`, `--force`. `apply push` adds `--yes`, `--verbose`, `--force`, `--dry-run`.
+Shared flags: `--components`, `--tokens`, `--session`, `--space-id`, `--environment-id`, `--cma-token`, `--host`, `--viewports`. `apply preview` adds `--include-unchanged`. `apply select` adds `--select-all`, `--select`, `--deselect`, `--force`, `--allow-deletions`. `apply push` adds `--yes`, `--verbose`, `--force`, `--dry-run`, `--allow-deletions`. By default, remote ComponentTypes and DesignTokens missing from the pushed manifest are skipped, not deleted; pass `--allow-deletions` to restore the prior delete behavior.
 
 Design tokens are written first (component types may reference token kinds). Each entity write is recorded in the session database atomically — interrupted pushes resume from where they left off.
 

@@ -4,6 +4,11 @@ import type {
   ApplyOperationResponse,
   BreakingChange,
 } from '@contentful/experience-design-system-types';
+import {
+  designSystemImportSourcelessPreview,
+  designSystemImportApply,
+  designSystemImportGetOperation,
+} from '@contentful/experience-design-system-client';
 import { DEFAULT_API_HOST, toApiHost } from '../host-utils.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
 import { buildUserAgent } from '../lib/user-agent.js';
@@ -64,6 +69,15 @@ function retryAfterMs(response: Response): number | undefined {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message ? error.message : String(error);
+}
+
+// The generated client parses non-2xx bodies to JSON internally (unlike a raw
+// fetch(), which hands back the raw body string). Re-serializing here keeps
+// ApiError's `body: string` contract and parsePreviewValidationErrors'
+// `JSON.parse` unchanged for callers, at the cost of a harmless double-parse
+// on error paths only.
+function stringifyError(error: unknown): string {
+  return typeof error === 'string' ? error : JSON.stringify(error ?? {});
 }
 
 // Cap on the body slice appended to ApiError.message. Bumped from 1000 →
@@ -173,6 +187,17 @@ function sanitizePreviewResponse(res: ServerPreviewResponse): ServerPreviewRespo
   return res;
 }
 
+function isApsDenialBody(body: string): boolean {
+  if (!body) return false;
+  try {
+    const parsed = JSON.parse(body) as { sys?: { id?: unknown } };
+    const id = parsed?.sys?.id;
+    return id === 'NotFound' || id === 'AccessDenied';
+  } catch {
+    return false;
+  }
+}
+
 async function request(url: string, options: RequestInit & { token: string }): Promise<Response> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${options.token}`,
@@ -222,52 +247,20 @@ export class ImportApiClient {
     };
   }
 
-  private async fetchWithRetry(
+  private async requestWithRetry<TData, TError>(
     phase: 'preview' | 'poll',
-    url: string,
-    init: RequestInit,
+    errorPrefix: string,
+    makeCall: () => Promise<{ data?: TData; error?: TError; response: Response }>,
     context: Record<string, unknown> = {},
-  ): Promise<Response> {
+  ): Promise<{ data?: TData; error?: TError; response: Response }> {
     const debug = getDebugLogger();
-    const errorPrefix = phase === 'preview' ? PREVIEW_ERROR_PREFIX : 'poll failed:';
     const startedAt = Date.now();
 
     for (let attempt = 1; attempt <= this.retry.maxAttempts; attempt++) {
+      let result: { data?: TData; error?: TError; response: Response };
       try {
-        const response = await fetch(url, init);
-        if (!isTransientStatus(response.status)) return response;
-
-        const body = await response.text();
-        if (attempt === this.retry.maxAttempts) {
-          const guidance =
-            `The ${phase} request failed after ${attempt} attempts because the service remained unavailable. ` +
-            'Wait a moment and try again.';
-          debug.event('apply', `${phase}.error`, {
-            ...context,
-            attempt,
-            maxAttempts: this.retry.maxAttempts,
-            status: response.status,
-            reason: 'retry_exhausted',
-            durationMs: Date.now() - startedAt,
-            bodyHead: body.slice(0, 2000),
-          });
-          throw new ApiError(`${errorPrefix} ${response.status}`, response.status, body, guidance);
-        }
-
-        const backoffMs = Math.min(this.retry.initialDelayMs * 2 ** (attempt - 1), this.retry.maxDelayMs);
-        const delayMs = retryAfterMs(response) ?? backoffMs;
-        debug.event('apply', `${phase}.retry`, {
-          ...context,
-          attempt,
-          maxAttempts: this.retry.maxAttempts,
-          status: response.status,
-          reason: 'http_5xx',
-          delayMs,
-        });
-        await this.retry.sleep(delayMs);
+        result = await makeCall();
       } catch (error) {
-        if (error instanceof ApiError) throw error;
-
         if (attempt === this.retry.maxAttempts) {
           const body =
             `The request failed after ${attempt} attempts because of a network error: ${errorMessage(error)}. ` +
@@ -293,7 +286,39 @@ export class ImportApiClient {
           delayMs,
         });
         await this.retry.sleep(delayMs);
+        continue;
       }
+
+      if (!isTransientStatus(result.response.status)) return result;
+
+      if (attempt === this.retry.maxAttempts) {
+        const body = stringifyError(result.error);
+        const guidance =
+          `The ${phase} request failed after ${attempt} attempts because the service remained unavailable. ` +
+          'Wait a moment and try again.';
+        debug.event('apply', `${phase}.error`, {
+          ...context,
+          attempt,
+          maxAttempts: this.retry.maxAttempts,
+          status: result.response.status,
+          reason: 'retry_exhausted',
+          durationMs: Date.now() - startedAt,
+          bodyHead: body.slice(0, 2000),
+        });
+        throw new ApiError(`${errorPrefix} ${result.response.status}`, result.response.status, body, guidance);
+      }
+
+      const backoffMs = Math.min(this.retry.initialDelayMs * 2 ** (attempt - 1), this.retry.maxDelayMs);
+      const delayMs = retryAfterMs(result.response) ?? backoffMs;
+      debug.event('apply', `${phase}.retry`, {
+        ...context,
+        attempt,
+        maxAttempts: this.retry.maxAttempts,
+        status: result.response.status,
+        reason: 'http_5xx',
+        delayMs,
+      });
+      await this.retry.sleep(delayMs);
     }
 
     throw new Error('Retry attempts exhausted');
@@ -310,47 +335,87 @@ export class ImportApiClient {
     if (!res.ok) {
       throw new ApiError(`unexpected error validating token: ${res.status}`, res.status, await res.text());
     }
+    await this.checkPreflight();
   }
 
-  async previewImport(manifest: ManifestPayload): Promise<ServerPreviewResponse> {
-    const url = `${this.base()}/design_systems/imports/preview`;
+  // Probe the sources-api preflight endpoint to catch APS-denied users up-front,
+  // rather than letting them run a full apply flow that only fails at the write.
+  // The endpoint gates Component + DesignToken permissions and returns:
+  //   200 → user has apply permissions, proceed
+  //   403 { sys.id: AccessDenied } → user lacks write; surface via error-parser
+  //   404 { sys.id: NotFound }     → user lacks read (APS hides existence)
+  //   404 without a NotFound envelope → older backend deployment; treat as pass
+  //   5xx / network                → backend flake; treat as pass, do not block
+  async checkPreflight(): Promise<void> {
+    const url = `${this.host}/spaces/${this.spaceId}/environments/${this.environmentId}/design_systems/preflight`;
+    let res: Response;
+    try {
+      res = await request(url, { token: this.token });
+    } catch {
+      return; // network error — don't block; the real call will surface it
+    }
+
+    if (res.ok) return;
+    if (res.status >= 500) return; // backend flake — don't block
+
+    const body = await res.text();
+    if (res.status === 404 && !isApsDenialBody(body)) return; // legacy backend without the endpoint
+
+    throw new ApiError(`preflight failed: ${res.status}`, res.status, body);
+  }
+
+  async previewImport(manifest: ManifestPayload, allowDeletions = false): Promise<ServerPreviewResponse> {
     const debug = getDebugLogger();
     const startedAt = Date.now();
     debug.event('apply', 'preview.request', {
-      url,
+      url: `${this.base()}/design_systems/imports/preview`,
       componentCount: (manifest as { components?: unknown[] }).components?.length ?? 0,
       tokenCount: (manifest as { designTokens?: unknown[] }).designTokens?.length ?? 0,
+      allowDeletions,
     });
-    const res = await this.fetchWithRetry('preview', url, {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify(manifest),
-    });
-    if (!res.ok) {
-      const body = await res.text();
+    const result = await this.requestWithRetry('preview', PREVIEW_ERROR_PREFIX, () =>
+      designSystemImportSourcelessPreview({
+        baseUrl: this.host,
+        headers: this.headers(),
+        path: { spaceId: this.spaceId, environmentId: this.environmentId },
+        body: { ...manifest, allowDeletions },
+        parseAs: 'json',
+      }),
+    );
+    if (!result.response.ok) {
+      const body = stringifyError(result.error);
       debug.event('apply', 'preview.error', {
-        status: res.status,
+        status: result.response.status,
         durationMs: Date.now() - startedAt,
         bodyHead: body.slice(0, 2000),
       });
-      throw new ApiError(`${PREVIEW_ERROR_PREFIX} ${res.status}`, res.status, body);
+      throw new ApiError(`${PREVIEW_ERROR_PREFIX} ${result.response.status}`, result.response.status, body);
     }
-    const parsed = (await res.json()) as ServerPreviewResponse;
-    debug.event('apply', 'preview.ok', { status: res.status, durationMs: Date.now() - startedAt });
+    const parsed = result.data as unknown as ServerPreviewResponse;
+    debug.event('apply', 'preview.ok', { status: result.response.status, durationMs: Date.now() - startedAt });
     return sanitizePreviewResponse(parsed);
   }
 
-  async applyImport(manifest: ManifestPayload, acknowledgeBreakingChanges: boolean): Promise<ApplyOperationResponse> {
-    const url = `${this.base()}/design_systems/imports/apply`;
+  async applyImport(
+    manifest: ManifestPayload,
+    options: { acknowledgeBreakingChanges: boolean; allowDeletions?: boolean },
+  ): Promise<ApplyOperationResponse> {
+    const { acknowledgeBreakingChanges, allowDeletions = false } = options;
     const debug = getDebugLogger();
     const startedAt = Date.now();
-    debug.event('apply', 'apply.request', { url, acknowledgeBreakingChanges });
-    let res: Response;
+    debug.event('apply', 'apply.request', {
+      url: `${this.base()}/design_systems/imports/apply`,
+      acknowledgeBreakingChanges,
+      allowDeletions,
+    });
+    let result: Awaited<ReturnType<typeof designSystemImportApply<false>>>;
     try {
-      res = await fetch(url, {
-        method: 'POST',
+      result = await designSystemImportApply<false>({
+        baseUrl: this.host,
         headers: this.headers(),
-        body: JSON.stringify({ ...manifest, acknowledgeBreakingChanges }),
+        path: { spaceId: this.spaceId, environmentId: this.environmentId },
+        body: { ...manifest, acknowledgeBreakingChanges, allowDeletions },
+        parseAs: 'json',
       });
     } catch (error) {
       const body =
@@ -363,21 +428,21 @@ export class ImportApiClient {
       });
       throw new ApiError(`${APPLY_ERROR_PREFIX} 0`, 0, body);
     }
-    if (!res.ok) {
-      const body = await res.text();
-      const guidance = isTransientStatus(res.status)
+    if (!result.response.ok) {
+      const body = stringifyError(result.error);
+      const guidance = isTransientStatus(result.response.status)
         ? 'The apply request was not retried because the server may already have started an operation and retrying could create a duplicate. Check for an existing operation before trying again.'
         : undefined;
       debug.event('apply', 'apply.error', {
-        status: res.status,
+        status: result.response.status,
         durationMs: Date.now() - startedAt,
         bodyHead: body.slice(0, 2000),
       });
-      throw new ApiError(`${APPLY_ERROR_PREFIX} ${res.status}`, res.status, body, guidance);
+      throw new ApiError(`${APPLY_ERROR_PREFIX} ${result.response.status}`, result.response.status, body, guidance);
     }
-    const parsed = (await res.json()) as ApplyOperationResponse;
+    const parsed = result.data as unknown as ApplyOperationResponse;
     debug.event('apply', 'apply.accepted', {
-      status: res.status,
+      status: result.response.status,
       operationId: parsed.sys?.id,
       durationMs: Date.now() - startedAt,
     });
@@ -399,20 +464,26 @@ export class ImportApiClient {
     const terminalStatuses = new Set(['succeeded', 'partial', 'failed']);
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const url = `${this.base()}/design_systems/imports/apply/${encodeURIComponent(operationId)}`;
-      const res = await this.fetchWithRetry(
+      const result = await this.requestWithRetry(
         'poll',
-        url,
-        {
-          method: 'GET',
-          headers: this.headers(),
-        },
+        'poll failed:',
+        () =>
+          designSystemImportGetOperation({
+            baseUrl: this.host,
+            headers: this.headers(),
+            path: { spaceId: this.spaceId, environmentId: this.environmentId, operationId },
+            parseAs: 'json',
+          }),
         { operationId },
       );
-      if (!res.ok) {
-        throw new ApiError(`poll failed: ${res.status}`, res.status, await res.text());
+      if (!result.response.ok) {
+        throw new ApiError(
+          `poll failed: ${result.response.status}`,
+          result.response.status,
+          stringifyError(result.error),
+        );
       }
-      const op = (await res.json()) as ApplyOperationResponse;
+      const op = result.data as unknown as ApplyOperationResponse;
       opts.onProgress?.(op);
       getDebugLogger().event('apply', 'poll.tick', {
         operationId,

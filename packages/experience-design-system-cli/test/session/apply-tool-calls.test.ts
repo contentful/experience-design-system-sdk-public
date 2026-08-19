@@ -13,7 +13,7 @@ import {
   loadDTCGTokens,
 } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
-import type { ToolCall, TokenToolCall } from '../../src/generate/agent-runner.js';
+import type { ToolCall, TokenToolCall } from '@contentful/experience-design-system-generation';
 
 const tempDirs: string[] = [];
 

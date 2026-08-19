@@ -27,6 +27,11 @@ import {
 } from './tsx-shared.js';
 import { shouldBeSlot } from './slot-detection.js';
 import { extractAllowedComponentsFromTypeText, extractAllowedComponentsFromJsdoc } from './slot-allowed-components.js';
+import {
+  collectTypePredicateComponentReferences,
+  collectRuntimeTypeCheckComponentReferences,
+  collectRenderedComponentReferences,
+} from './structural-slot-evidence.js';
 
 const REACT_ELEMENT_GENERIC_TEST = /(?:React\.)?ReactElement\s*<\s*[A-Za-z_$][\w$.]*/;
 
@@ -49,6 +54,7 @@ type RawComponentDefinitionInternal = RawComponentDefinition & {
   _componentIdentity?: string;
   _propsTypeName?: string;
   _propForwardingEdges?: PropForwardingEdge[];
+  _funcNode?: FunctionLike;
 };
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
@@ -2412,6 +2418,44 @@ export async function extractReactComponents(filePaths: string[]): Promise<Compo
     }
   }
 
+  // Structural evidence (usage, not a declared slot contract) — see
+  // structural-slot-evidence.ts. Only fills slots the typed-slot pass above
+  // found nothing for; a declared contract always takes precedence. File-wide
+  // signals (type-predicate functions, `.type === Component` identity checks)
+  // are computed once per file and shared across every component in it, since
+  // they aren't tied to one specific slot.
+  const structuralByFile = new Map<string, string[]>();
+  const structuralNamesForFile = (filePath: string): string[] => {
+    const cached = structuralByFile.get(filePath);
+    if (cached) return cached;
+    const sourceFile = project.getSourceFile(filePath);
+    if (!sourceFile) return [];
+    const ctx = { propsToComponent, componentNames };
+    const found = new Set<string>([
+      ...collectTypePredicateComponentReferences(sourceFile, ctx),
+      ...collectRuntimeTypeCheckComponentReferences(sourceFile, componentNames),
+    ]);
+    const names = [...found].sort();
+    structuralByFile.set(filePath, names);
+    return names;
+  };
+
+  for (const c of components) {
+    const fromFile = structuralNamesForFile(c.source);
+    const fromRender = c._funcNode ? collectRenderedComponentReferences(c._funcNode, componentNames, c.name) : [];
+    const structural = new Set([...fromFile, ...fromRender]);
+    if (structural.size === 0) continue;
+
+    for (const slot of c.slots as RawSlotDefinitionInternal[]) {
+      if (slot.allowedComponents && slot.allowedComponents.length > 0) continue;
+      slot.structuralAllowedComponents = [...structural].sort();
+    }
+  }
+
+  for (const c of components) {
+    delete c._funcNode;
+  }
+
   // Propagate DOM provenance only through actual component-to-component JSX
   // forwarding edges. Shared declarations alone never transfer provenance.
   const componentsByIdentity = new Map(
@@ -2599,6 +2643,7 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
       slots: finalSlots,
       ...(usesCreateContext && { usesCreateContext: true }),
       _componentIdentity: getComponentIdentity(funcNode),
+      _funcNode: funcNode,
       ...(propsTypeNameCapture ? { _propsTypeName: propsTypeNameCapture } : {}),
       ...(propDataflow.componentEdges.length > 0 ? { _propForwardingEdges: propDataflow.componentEdges } : {}),
     });

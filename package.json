@@ -43,13 +43,13 @@
     "**/package.json": "./scripts/update-lockfile.sh"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.3.0",
-    "@commitlint/config-conventional": "^20.3.0",
+    "@commitlint/cli": "^20.5.3",
+    "@commitlint/config-conventional": "^20.5.3",
     "@nx/js": "^22.3.3",
     "@nx/workspace": "^22.3.3",
-    "conventional-changelog-conventionalcommits": "^9.0.0",
+    "conventional-changelog-conventionalcommits": "^9.3.1",
     "husky": "^9.1.7",
-    "lint-staged": "^16.2.7",
+    "lint-staged": "^16.4.0",
     "nx": "^22.3.3",
     "semver": "^7.7.3"
   },

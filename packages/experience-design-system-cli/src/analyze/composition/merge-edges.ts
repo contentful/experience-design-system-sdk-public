@@ -2,13 +2,30 @@ import type { CompositionEdge, EdgeProvenance } from './interchange-schema.js';
 
 /**
  * Provenance rank (spec T2). Lower number = higher trust = wins conflicts.
- *   1 user  >  2 typed-slot  >  3 adapter:*  >  4 agent
+ *   1 user  >  2 typed-slot  >  3 structural  >  4 manifest  >  5 doc  >
+ *   6 adapter:*  >  7 agent
+ *
+ * `structural` sits just below a declared slot contract: it's usage evidence
+ * (a runtime type-predicate function, a `.type === Component` identity check,
+ * direct JSX instantiation — see `structural-slot-evidence.ts`) rather than a
+ * typed generic or explicit marker, so a declared contract always overrides
+ * it on conflict, but it still outranks the LLM agent.
+ *
+ * `manifest` (Figma-generated `manifest.json` SLOT declarations) and `doc`
+ * (component `AGENTS.md` prose) are both deterministically parsed — no LLM
+ * ever reads their content for this signal — but they describe design intent
+ * rather than the shipped code, so they sit below code-derived evidence.
+ * `manifest` outranks `doc` since it's structured/systematic; free-form
+ * prose is the least verifiable of the code-adjacent signals.
  */
 function rank(p: EdgeProvenance): number {
   if (p === 'user') return 1;
   if (p === 'typed-slot') return 2;
-  if (p.startsWith('adapter:')) return 3;
-  return 4; // agent
+  if (p === 'structural') return 3;
+  if (p === 'manifest') return 4;
+  if (p === 'doc') return 5;
+  if (p.startsWith('adapter:')) return 6;
+  return 7; // agent
 }
 
 export type EdgeConflict = {

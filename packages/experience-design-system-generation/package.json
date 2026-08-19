@@ -1,0 +1,56 @@
+{
+  "name": "@contentful/experience-design-system-generation",
+  "version": "2.24.0",
+  "description": "Agent-invocation and skill-prompt engine for the Contentful Experience Design System SDK",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "node": "./dist/src/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "files": [
+    "dist/",
+    "skills/"
+  ],
+  "scripts": {
+    "build": "nx build experience-design-system-generation",
+    "typecheck": "nx typecheck experience-design-system-generation",
+    "clean": "nx clean experience-design-system-generation",
+    "test": "nx test experience-design-system-generation",
+    "lint": "nx lint experience-design-system-generation",
+    "lint:fix": "nx lint:fix experience-design-system-generation"
+  },
+  "dependencies": {
+    "@contentful/experience-design-system-types": "workspace:*"
+  },
+  "devDependencies": {
+    "@tsconfig/node24": "^24.0.4",
+    "@types/node": "^24.0.3",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.0.16"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/contentful/experience-design-system-sdk-public.git",
+    "directory": "packages/experience-design-system-generation"
+  },
+  "homepage": "https://github.com/contentful/experience-design-system-sdk-public#readme",
+  "bugs": {
+    "url": "https://github.com/contentful/experience-design-system-sdk-public/issues"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

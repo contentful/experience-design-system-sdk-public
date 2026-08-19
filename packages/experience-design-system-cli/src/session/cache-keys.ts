@@ -10,7 +10,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { resolveSkillPath, type Skill } from '../generate/prompt-builder.js';
+import { resolveSkillPath, type Skill } from '@contentful/experience-design-system-generation';
 
 /** sha256 hex of a string. Stable across runs. */
 export function hashContent(content: string): string {

@@ -101,7 +101,10 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
       );
       if (!manifest.componentsManifest) manifest.componentsManifest = {};
       const client = new ImportApiClient({ cmaToken, spaceId, environmentId });
-      const preview: ServerPreviewResponse = await client.previewImport(manifest);
+      // This preview is display-only (component-picker annotations); it never
+      // triggers an apply, so always request the full diff to keep the
+      // existing "removed" annotation working.
+      const preview: ServerPreviewResponse = await client.previewImport(manifest, true);
 
       const annotations: Record<string, PreviewAnnotation> = {};
       for (const item of preview.components.new) {

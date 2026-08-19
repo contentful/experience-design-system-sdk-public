@@ -1,8 +1,7 @@
 import { spawn } from 'node:child_process';
-import { getDebugLogger } from '../lib/debug-logger.js';
-import type { AgentName } from '../lib/agent-names.js';
+import type { AgentName } from './agent-names.js';
 
-export { AGENT_NAMES, isAgentName, type AgentName } from '../lib/agent-names.js';
+export { AGENT_NAMES, DEFAULT_AGENT_NAME, isAgentName, type AgentName } from './agent-names.js';
 
 export interface AgentRunResult {
   exitCode: number;
@@ -349,6 +348,8 @@ export function resolveAgentModel(agent: AgentName, explicit?: string): string {
   return DEFAULT_MODELS[agent];
 }
 
+export type AgentDebugEvent = (name: string, payload?: Record<string, unknown>) => void;
+
 export function buildArgs(agent: AgentName, prompt: string, model?: string, promptViaStdin = false): string[] {
   const modelArg = ['--model', resolveAgentModel(agent, model)];
   // When the prompt is delivered on stdin, omit it from argv — a large prompt
@@ -372,30 +373,29 @@ export function buildArgs(agent: AgentName, prompt: string, model?: string, prom
 export async function runAgent(options: {
   agent: AgentName;
   prompt: string;
-  interactive: boolean;
   timeoutMs: number;
   model?: string;
   onOutput?: (chunk: string) => void;
   /**
    * Deliver the prompt on stdin instead of as an argv positional. Required for
    * large prompts (e.g. the composition resolver inlining candidate files),
-   * which overflow ARG_MAX when passed as an argument. Non-interactive only.
+   * which overflow ARG_MAX when passed as an argument.
    */
   promptViaStdin?: boolean;
+  /** Optional debug-event sink; callers own how/where events get logged. */
+  onDebugEvent?: AgentDebugEvent;
 }): Promise<AgentRunResult> {
-  const { agent, prompt, interactive, timeoutMs, model, onOutput, promptViaStdin } = options;
+  const { agent, prompt, timeoutMs, model, onOutput, promptViaStdin, onDebugEvent } = options;
 
   const binary = resolveBinary(agent);
-  const useStdin = !!promptViaStdin && !interactive;
+  const useStdin = !!promptViaStdin;
   const args = buildArgs(agent, prompt, model, useStdin);
 
-  const debug = getDebugLogger();
   const startedAt = Date.now();
-  debug.event('agent', 'run.start', {
+  onDebugEvent?.('run.start', {
     agent,
     binary,
     model,
-    interactive,
     timeoutMs,
     promptLen: prompt.length,
     promptHead: prompt.slice(0, 500),
@@ -403,20 +403,18 @@ export async function runAgent(options: {
 
   return new Promise((resolve) => {
     const child = spawn(binary, args, {
-      stdio: interactive ? 'inherit' : ['pipe', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
-    if (!interactive) {
-      if (useStdin && child.stdin) {
-        // Guard against EPIPE: the child may close stdin before we finish
-        // writing (fast exit, or it stops reading). Swallow the write error —
-        // the child's own exit code/stderr is the source of truth.
-        child.stdin.on('error', () => {});
-        child.stdin.write(prompt, () => {
-          child.stdin?.end();
-        });
-      } else {
+    if (useStdin && child.stdin) {
+      // Guard against EPIPE: the child may close stdin before we finish
+      // writing (fast exit, or it stops reading). Swallow the write error —
+      // the child's own exit code/stderr is the source of truth.
+      child.stdin.on('error', () => {});
+      child.stdin.write(prompt, () => {
         child.stdin?.end();
-      }
+      });
+    } else {
+      child.stdin?.end();
     }
 
     let stdout = '';
@@ -428,16 +426,14 @@ export async function runAgent(options: {
       child.kill('SIGTERM');
     }, timeoutMs);
 
-    if (!interactive) {
-      child.stdout?.on('data', (chunk: Buffer) => {
-        const text = chunk.toString();
-        stdout += text;
-        onOutput?.(text);
-      });
-      child.stderr?.on('data', (chunk: Buffer) => {
-        stderr += chunk.toString();
-      });
-    }
+    child.stdout?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      stdout += text;
+      onOutput?.(text);
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
 
     child.on('close', (code, signal) => {
       clearTimeout(timer);
@@ -447,7 +443,7 @@ export async function runAgent(options: {
         stderr,
         timedOut,
       };
-      debug.event('agent', 'run.end', {
+      onDebugEvent?.('run.end', {
         agent,
         model,
         durationMs: Date.now() - startedAt,

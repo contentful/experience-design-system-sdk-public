@@ -130,6 +130,61 @@ describe('collectSourceFiles', () => {
     }
   });
 
+  it('includes .json/.md files not on the noise denylist', async () => {
+    await touch('blue-accordion/design/manifest.json');
+    await touch('blue-accordion/AGENTS.md');
+    await touch('blue-accordion/BlueAccordion.tsx');
+    await touch('some-other-config.json');
+    await touch('docs/component-notes.md');
+
+    const files = await collectSourceFiles(tempDir);
+    const names = files.map((f) => basename(f));
+
+    expect(names).toContain('manifest.json');
+    expect(names).toContain('AGENTS.md');
+    expect(names).toContain('some-other-config.json');
+    expect(names).toContain('component-notes.md');
+  });
+
+  it('excludes known-noisy package/tooling manifests and repo docs by name', async () => {
+    await touch('package.json');
+    await touch('package-lock.json');
+    await touch('tsconfig.json');
+    await touch('tsconfig.build.json');
+    await touch('nx.json');
+    await touch('README.md');
+    await touch('CHANGELOG.md');
+    await touch('src/Card.tsx');
+
+    const files = await collectSourceFiles(tempDir);
+    const names = files.map((f) => basename(f));
+
+    expect(names).not.toContain('package.json');
+    expect(names).not.toContain('package-lock.json');
+    expect(names).not.toContain('tsconfig.json');
+    expect(names).not.toContain('tsconfig.build.json');
+    expect(names).not.toContain('nx.json');
+    expect(names).not.toContain('README.md');
+    expect(names).not.toContain('CHANGELOG.md');
+    expect(names.some((n) => n.endsWith('Card.tsx'))).toBe(true);
+  });
+
+  it('excludes .changeset, .github, .vscode, and .idea directories', async () => {
+    await touch('.changeset/some-change.md');
+    await touch('.github/PULL_REQUEST_TEMPLATE.md');
+    await touch('.vscode/settings.json');
+    await touch('.idea/workspace.json');
+    await touch('src/Card.tsx');
+
+    const files = await collectSourceFiles(tempDir);
+
+    expect(files.some((f) => f.includes('.changeset'))).toBe(false);
+    expect(files.some((f) => f.includes('.github'))).toBe(false);
+    expect(files.some((f) => f.includes('.vscode'))).toBe(false);
+    expect(files.some((f) => f.includes('.idea'))).toBe(false);
+    expect(files.some((f) => f.endsWith('Card.tsx'))).toBe(true);
+  });
+
   it('scans sibling directories in parallel (no blocking between siblings)', async () => {
     // Create N sibling directories each with one file. Parallel scan should
     // complete in roughly the time of one directory read, not N sequential reads.

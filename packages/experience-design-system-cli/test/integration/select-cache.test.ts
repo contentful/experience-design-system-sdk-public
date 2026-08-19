@@ -26,7 +26,7 @@ import {
   type CacheFixture,
   type ScriptedAgent,
 } from './cache-harness.js';
-import { resolveSkillPath } from '../../src/generate/prompt-builder.js';
+import { resolveSkillPath } from '@contentful/experience-design-system-generation';
 import { readFileSync } from 'node:fs';
 
 const SELECT_ARGS = (fix: CacheFixture, extra: string[] = []): string[] => [

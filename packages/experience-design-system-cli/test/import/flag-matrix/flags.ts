@@ -370,4 +370,12 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
     notes: 'Bypasses staleness checks; paired with --push-from-run or --modify.',
   },
+  {
+    flag: '--allow-deletions',
+    kind: 'boolean',
+    modes: ['pty', 'headless'],
+    incompatibleWith: [],
+    notes:
+      'Forwarded to apply push (interactive wizard, headless subprocess, and --push-from-run). Default is non-destructive: missing remote entities are skipped, not deleted.',
+  },
 ];

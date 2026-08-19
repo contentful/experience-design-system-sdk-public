@@ -92,6 +92,126 @@ describe('resolveMapping (T2 acquisition + routing orchestration)', () => {
     expect(res.components).toHaveLength(COMPONENTS.length);
   });
 
+  describe('structural provenance (blue-accordion case: usage evidence, no declared slot contract)', () => {
+    const structuralSlot = (allowed: string[]): RawSlotDefinition => ({
+      name: 'children',
+      isDefault: true,
+      structuralAllowedComponents: allowed,
+    });
+
+    it('surfaces as a rank-3 structural edge and suppresses the agent', async () => {
+      const runAgentFn = vi.fn();
+      const res = await resolveMapping({
+        components: [comp('Accordion', [structuralSlot(['AccordionItem'])]), comp('AccordionItem')],
+        files: [{ path: 'm.ts', content: 'withParentType' }],
+        runAgentFn,
+      });
+      expect(runAgentFn).not.toHaveBeenCalled();
+      expect(res.edges).toEqual([
+        expect.objectContaining({ parent: 'Accordion', child: 'AccordionItem', provenance: 'structural' }),
+      ]);
+      expect(res.components.find((c) => c.name === 'Accordion')!.slots[0].allowedComponents).toEqual(['AccordionItem']);
+    });
+
+    it('a declared typed-slot contract wins when it disagrees with structural evidence about which slot holds the same child', async () => {
+      // Same child (AccordionItem), placed in different slots by each source
+      // — a genuine slot-placement conflict (spec: same parent+child key,
+      // disagreeing slot). Declared contract (typed-slot, rank 2) must win
+      // over usage evidence (structural, rank 3).
+      const runAgentFn = vi.fn();
+      const res = await resolveMapping({
+        components: [
+          comp('Accordion', [
+            { name: 'header', isDefault: false, allowedComponents: ['AccordionItem'] },
+            structuralSlot(['AccordionItem']),
+          ]),
+          comp('AccordionItem'),
+        ],
+        files: [],
+        runAgentFn,
+      });
+      expect(res.edges).toEqual([
+        expect.objectContaining({
+          parent: 'Accordion',
+          child: 'AccordionItem',
+          slot: 'header',
+          provenance: 'typed-slot',
+        }),
+      ]);
+      expect(res.conflicts).toEqual([
+        expect.objectContaining({
+          parent: 'Accordion',
+          child: 'AccordionItem',
+          winner: 'typed-slot',
+          loser: 'structural',
+        }),
+      ]);
+    });
+  });
+
+  describe('manifest/doc provenance ranking (extraEdges from manifest-doc-evidence.ts)', () => {
+    it('manifest (rank 4) wins a slot-placement conflict against doc (rank 5)', async () => {
+      const runAgentFn = vi.fn();
+      const res = await resolveMapping({
+        components: [comp('Accordion', [{ name: 'header', isDefault: false }, dslot()]), comp('AccordionItem')],
+        files: [],
+        extraEdges: [
+          { parent: 'Accordion', child: 'AccordionItem', slot: 'header', provenance: 'manifest' },
+          { parent: 'Accordion', child: 'AccordionItem', slot: 'children', provenance: 'doc' },
+        ],
+        runAgentFn,
+      });
+      expect(runAgentFn).not.toHaveBeenCalled();
+      expect(res.edges).toEqual([
+        expect.objectContaining({
+          parent: 'Accordion',
+          child: 'AccordionItem',
+          slot: 'header',
+          provenance: 'manifest',
+        }),
+      ]);
+      expect(res.conflicts).toEqual([
+        expect.objectContaining({ parent: 'Accordion', child: 'AccordionItem', winner: 'manifest', loser: 'doc' }),
+      ]);
+    });
+
+    it('a declared typed-slot contract wins over manifest evidence on a slot-placement conflict', async () => {
+      const runAgentFn = vi.fn();
+      const res = await resolveMapping({
+        components: [
+          comp('Accordion', [{ name: 'header', isDefault: false, allowedComponents: ['AccordionItem'] }, dslot()]),
+          comp('AccordionItem'),
+        ],
+        files: [],
+        extraEdges: [{ parent: 'Accordion', child: 'AccordionItem', slot: 'children', provenance: 'manifest' }],
+        runAgentFn,
+      });
+      expect(res.edges).toEqual([
+        expect.objectContaining({
+          parent: 'Accordion',
+          child: 'AccordionItem',
+          slot: 'header',
+          provenance: 'typed-slot',
+        }),
+      ]);
+      expect(res.conflicts).toEqual([expect.objectContaining({ winner: 'typed-slot', loser: 'manifest' })]);
+    });
+
+    it('doc-provenance evidence alone suppresses the agent for the parent it covers', async () => {
+      const runAgentFn = vi.fn();
+      const res = await resolveMapping({
+        components: [comp('Accordion', [dslot()]), comp('AccordionItem')],
+        files: [{ path: 'm.ts', content: 'withParentType' }],
+        extraEdges: [{ parent: 'Accordion', child: 'AccordionItem', provenance: 'doc' }],
+        runAgentFn,
+      });
+      expect(runAgentFn).not.toHaveBeenCalled();
+      expect(res.edges).toEqual([
+        expect.objectContaining({ parent: 'Accordion', child: 'AccordionItem', provenance: 'doc' }),
+      ]);
+    });
+  });
+
   describe('promptOverride', () => {
     it('injects the custom instruction while keeping the output contract + names', async () => {
       let seenPrompt = '';

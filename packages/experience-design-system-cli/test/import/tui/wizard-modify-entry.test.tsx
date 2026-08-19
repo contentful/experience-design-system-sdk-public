@@ -19,7 +19,7 @@ vi.mock('../../../src/apply/api-client.js', () => ({
   ApiError: class ApiError extends Error {},
 }));
 
-vi.mock('../../../src/generate/agent-runner.js', () => ({
+vi.mock('@contentful/experience-design-system-generation', () => ({
   checkAgentAuth: vi.fn().mockResolvedValue('authenticated'),
 }));
 
