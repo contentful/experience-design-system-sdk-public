@@ -33,7 +33,6 @@ export function apiHostToAppHost(host: string): string {
   return normalized.replace(/^api\./, 'app.');
 }
 
-
 export function buildPostPushUrl({ host, spaceId, environmentId, view = 'components' }: BuildPostPushUrlInput): string {
   const appHost = apiHostToAppHost(host);
   return `https://${appHost}/spaces/${spaceId}/environments/${environmentId}/views/${view}`;
