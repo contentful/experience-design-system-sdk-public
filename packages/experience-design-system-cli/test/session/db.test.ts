@@ -38,6 +38,7 @@ import type {
   DTCGTokenGroup,
   ComponentTypeSummary,
 } from '@contentful/experience-design-system-types';
+import { CDF_V1_SCHEMA_URL, validateCDF } from '@contentful/experience-design-system-types';
 
 const tempDirs: string[] = [];
 
@@ -1181,6 +1182,251 @@ describe('storeCDFComponents + loadCDFComponents', () => {
         expect(loaded[0]?.entry.$slots?.['children']?.$allowedComponents).toEqual(['A']);
         db.close();
       });
+    });
+  });
+});
+
+describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
+  const RAW: RawComponentDefinition[] = [
+    {
+      name: 'Button',
+      source: 'src/Button.tsx',
+      framework: 'react',
+      props: [
+        { name: 'label', type: 'string', required: true, category: 'content' },
+        {
+          name: 'variant',
+          type: "'primary' | 'secondary'",
+          required: false,
+          category: 'design',
+          allowedValues: ['primary', 'secondary'],
+        },
+      ],
+      slots: [{ name: 'icon', isDefault: false, description: 'Optional icon' }],
+    },
+  ];
+
+  const CDF_COMPONENTS: Array<{ key: string; entry: CDFComponentEntry }> = [
+    {
+      key: 'Button',
+      entry: {
+        $type: 'component',
+        $description: 'A button component',
+        $properties: {
+          label: { $type: 'string', $category: 'content', $required: true },
+          variant: { $type: 'token', $category: 'design', $values: ['primary', 'secondary'] },
+        },
+        $slots: {
+          icon: { $description: 'Optional icon' },
+        },
+      },
+    },
+  ];
+
+  it('attaches $token.sets and $token.allowed on token-typed props', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'Button',
+          entry: {
+            $type: 'component',
+            $properties: {
+              variant: {
+                $type: 'token',
+                $category: 'design',
+                '$token.kind': 'color',
+                '$token.sets': ['color.brand.primary', 'color.brand.secondary'],
+                '$token.allowed': ['color.brand.primary'],
+              },
+            },
+          },
+        },
+      ]);
+
+      const loaded = loadCDFComponents(db, sessionId);
+      expect(loaded[0]?.entry.$properties['variant']?.['$token.sets']).toEqual([
+        'color.brand.primary',
+        'color.brand.secondary',
+      ]);
+      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual(['color.brand.primary']);
+      expect(
+        validateCDF({
+          $schema: CDF_V1_SCHEMA_URL,
+          ...Object.fromEntries(loaded.map(({ key, entry }) => [key, entry])),
+        }).valid,
+      ).toBe(true);
+      db.close();
+    });
+  });
+
+  it('omits $token.sets and $token.allowed entirely when no mapping was ever run', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeCDFComponents(db, sessionId, CDF_COMPONENTS);
+
+      const loaded = loadCDFComponents(db, sessionId);
+      expect(loaded[0]?.entry.$properties['variant']).not.toHaveProperty('$token.sets');
+      expect(loaded[0]?.entry.$properties['variant']).not.toHaveProperty('$token.allowed');
+      db.close();
+    });
+  });
+
+  it('emits an empty $token.allowed array when that is what was persisted (unrestricted, distinct from absent)', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'Button',
+          entry: {
+            $type: 'component',
+            $properties: {
+              variant: { $type: 'token', $category: 'design', '$token.allowed': [] },
+            },
+          },
+        },
+      ]);
+
+      const loaded = loadCDFComponents(db, sessionId);
+      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual([]);
+      expect(loaded[0]?.entry.$properties['variant']).not.toHaveProperty('$token.sets');
+      db.close();
+    });
+  });
+
+  it('produces byte-identical output to today for a session with no mappings', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, RAW);
+      storeCDFComponents(db, sessionId, CDF_COMPONENTS);
+
+      const loaded = loadCDFComponents(db, sessionId);
+      expect(loaded).toEqual([
+        {
+          key: 'Button',
+          entry: {
+            $type: 'component',
+            $description: 'A button component',
+            $properties: {
+              label: { $type: 'string', $category: 'content', $required: true },
+              variant: { $type: 'token', $category: 'design', $values: ['primary', 'secondary'] },
+            },
+            $slots: {
+              icon: { $description: 'Optional icon' },
+            },
+          },
+        },
+      ]);
+      db.close();
+    });
+  });
+
+  it('round-trips both fields through an import --modify replay and re-print', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      const cdfWithMappings: Array<{ key: string; entry: CDFComponentEntry }> = [
+        {
+          key: 'Button',
+          entry: {
+            $type: 'component',
+            $properties: {
+              variant: {
+                $type: 'token',
+                $category: 'design',
+                '$token.sets': ['color.brand.primary'],
+                '$token.allowed': [],
+              },
+            },
+          },
+        },
+      ];
+
+      storeCDFComponents(db, sessionId, cdfWithMappings);
+      const printed = loadCDFComponents(db, sessionId);
+
+      const componentId = (db
+        .prepare('SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?')
+        .get(sessionId, 'Button') as { component_id: string } | undefined)!.component_id;
+      const rows = db
+        .prepare(
+          `SELECT kind, position, path FROM raw_prop_token_paths
+           WHERE session_id = ? AND component_id = ? AND prop_name = ? ORDER BY kind, position`,
+        )
+        .all(sessionId, componentId, 'variant');
+      expect(rows).toEqual([
+        { kind: 'allowed', position: -1, path: '' },
+        { kind: 'set', position: 0, path: 'color.brand.primary' },
+      ]);
+
+      // Reimport the printed CDF verbatim, as `import --modify` would replay it.
+      storeCDFComponents(db, sessionId, printed);
+      const reprinted = loadCDFComponents(db, sessionId);
+      expect(reprinted).toEqual(printed);
+    });
+  });
+
+  it('keeps path ordering stable across repeated loads', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'Button',
+          entry: {
+            $type: 'component',
+            $properties: {
+              variant: {
+                $type: 'token',
+                $category: 'design',
+                '$token.sets': ['color.brand.tertiary', 'color.brand.primary', 'color.brand.secondary'],
+              },
+            },
+          },
+        },
+      ]);
+
+      const first = loadCDFComponents(db, sessionId);
+      const second = loadCDFComponents(db, sessionId);
+      expect(first[0]?.entry.$properties['variant']?.['$token.sets']).toEqual([
+        'color.brand.tertiary',
+        'color.brand.primary',
+        'color.brand.secondary',
+      ]);
+      expect(second).toEqual(first);
+      db.close();
+    });
+  });
+
+  it('omits mappings stored for a non-token property', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'Button',
+          entry: {
+            $type: 'component',
+            $properties: {
+              variant: {
+                $type: 'enum',
+                $category: 'design',
+                '$token.sets': ['color.brand.primary'],
+                '$token.allowed': ['color.brand.primary'],
+              },
+            },
+          },
+        },
+      ]);
+
+      const loaded = loadCDFComponents(db, sessionId);
+      expect(loaded[0]?.entry.$properties.variant).not.toHaveProperty('$token.sets');
+      expect(loaded[0]?.entry.$properties.variant).not.toHaveProperty('$token.allowed');
+      db.close();
     });
   });
 });
