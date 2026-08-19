@@ -46,6 +46,7 @@ import type { ReviewSessionSnapshot } from '../analyze/select/types.js';
 import type { RawComponentDefinition } from '../types.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
+import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -73,7 +74,8 @@ const invoker = createLocalCliAgentInvoker({
 
 function die(message: string): never {
   process.stderr.write(`${message}\n`);
-  process.exit(1);
+  void exitWithAnalytics(1);
+  throw new Error('exit');
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -410,7 +412,8 @@ function resolveSessionId(sessionFlag: string | undefined): string {
       process.stderr.write(
         'Error: no completed analyze extract session found. Run analyze extract first, or pass --session <id>.\n',
       );
-      process.exit(1);
+      void exitWithAnalytics(1);
+      throw new Error('exit');
     }
     return row.id;
   } finally {
@@ -480,6 +483,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
   let allComponents: RawComponentWithId[] | undefined;
   if (skill === 'components') {
     sessionId = resolveSessionId(opts.session);
+    await bindAnalyticsSessionId(sessionId);
     const acceptedNames = await loadAcceptedNames(sessionId);
     const db = openPipelineDb();
     try {
@@ -542,7 +546,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       skillPathOverride: generatePromptPath,
     });
     process.stdout.write(prompt + '\n');
-    process.exit(0);
+    await exitWithAnalytics(0);
   }
 
   const binary = resolveBinary(agent);
@@ -552,7 +556,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       skill,
       sessionId: sessionId ?? '',
     });
-    process.exit(1);
+    await exitWithAnalytics(1);
   }
 
   if (skill === 'components' && allComponents && sessionId) {
@@ -644,6 +648,9 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         }
       }
 
+      sessionId = resolvedSessionId;
+      await bindAnalyticsSessionId(resolvedSessionId);
+
       const tokenPromptHash = await hashPromptForSkill('tokens');
       // Check cache before invoking agent
       if (!noCache) {
@@ -659,12 +666,12 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
           const viewResult: GenerateViewResult = { skill, agent, sessionId: sessionId ?? '' };
           if (process.stdout.isTTY) {
             const { waitUntilExit } = render(
-              createElement(GenerateView, { result: viewResult, onExit: () => process.exit(0) }),
+              createElement(GenerateView, { result: viewResult, onExit: () => void exitWithAnalytics(0) }),
             );
             await waitUntilExit();
           } else {
             process.stdout.write(`generate complete\nskill: ${skill}\nagent: ${agent}\nsession=${sessionId ?? ''}\n`);
-            process.exit(0);
+            await exitWithAnalytics(0);
           }
           return;
         }
@@ -705,7 +712,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
             `Run with --dry-run to inspect the prompt.\n\n` +
             `Agent output:\n${result.stdout}\n`,
         );
-        process.exit(1);
+        await exitWithAnalytics(1);
       }
 
       if (tokenWarnings.length > 0) {
@@ -735,13 +742,13 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     const { waitUntilExit } = render(
       createElement(GenerateView, {
         result: viewResult,
-        onExit: () => process.exit(0),
+        onExit: () => void exitWithAnalytics(0),
       }),
     );
     await waitUntilExit();
   } else {
     process.stdout.write(`generate complete\nskill: ${skill}\nagent: ${agent}\nsession=${sessionId ?? ''}\n`);
-    process.exit(0);
+    await exitWithAnalytics(0);
   }
 }
 

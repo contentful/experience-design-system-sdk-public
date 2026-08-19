@@ -336,6 +336,66 @@ describe('ExperiencesCredentials.autoFilter round-trip', () => {
   });
 });
 
+describe('ExperiencesCredentials.analyticsDisabled round-trip', () => {
+  it('returns analyticsDisabled undefined when the field is absent from the file', async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({
+        spaceId: 'abc',
+        environmentId: 'master',
+        cmaToken: 'tok',
+      }),
+    );
+
+    const creds = await readExperiencesCredentials();
+
+    expect(creds.analyticsDisabled).toBeUndefined();
+  });
+
+  it('reads analyticsDisabled:true from the file', async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({
+        spaceId: 'abc',
+        environmentId: 'master',
+        cmaToken: 'tok',
+        analyticsDisabled: true,
+      }),
+    );
+
+    const creds = await readExperiencesCredentials();
+
+    expect(creds.analyticsDisabled).toBe(true);
+  });
+
+  it('writes analyticsDisabled:true when set', async () => {
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+
+    await writeExperiencesCredentials({
+      spaceId: 'space1',
+      environmentId: 'master',
+      cmaToken: 'token',
+      analyticsDisabled: true,
+    });
+
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
+    expect(written.analyticsDisabled).toBe(true);
+  });
+
+  it('omits analyticsDisabled from the written JSON when undefined', async () => {
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+
+    await writeExperiencesCredentials({
+      spaceId: 'space1',
+      environmentId: 'master',
+      cmaToken: 'token',
+    });
+
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
+    expect(written).not.toHaveProperty('analyticsDisabled');
+  });
+});
+
 describe('ExperiencesCredentials.compositionMode round-trip', () => {
   it('keeps only values accepted by the canonical composition mode guard', async () => {
     mockReadFile.mockResolvedValue(

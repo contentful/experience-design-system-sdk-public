@@ -18,7 +18,7 @@ describe('assertNoSlotCycles — pre-push hard block (INTEG-4401)', () => {
     expect(() => assertNoSlotCycles(components)).not.toThrow();
   });
 
-  it('exits with a manifest:components error message when cycles are present', () => {
+  it('exits with a manifest:components error message when cycles are present', async () => {
     const components: Array<{ key: string; entry: CDFComponentEntry }> = [
       {
         key: 'CycleA',
@@ -42,7 +42,7 @@ describe('assertNoSlotCycles — pre-push hard block (INTEG-4401)', () => {
       throw new Error(`process.exit called with ${code}`);
     }) as never);
 
-    expect(() => assertNoSlotCycles(components)).toThrow(/process\.exit called with 1/);
+    await expect(assertNoSlotCycles(components)).rejects.toThrow(/process\.exit called with 1/);
     const written = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
     expect(written).toMatch(/slot dependency cycle/);
     expect(written).toMatch(/manifest:components\/slot-cycles/);

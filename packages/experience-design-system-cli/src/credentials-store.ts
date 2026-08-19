@@ -18,6 +18,8 @@ export type ExperiencesCredentials = {
   autoFilter?: boolean;
   /** Feature: default debug-mode (writes JSONL trace of every decision) for all commands. */
   debug?: boolean;
+  /** Persisted opt-out for anonymous CLI usage analytics, set via `experiences setup`. */
+  analyticsDisabled?: boolean;
   /**
    * Feature (atomic mode): default composition mode. `atomic` (default) imports
    * flat components with no embedded-component hierarchy; `composite` opts into
@@ -60,6 +62,7 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
       ...(parsed.generatePromptPath ? { generatePromptPath: parsed.generatePromptPath } : {}),
       ...(typeof parsed.autoFilter === 'boolean' ? { autoFilter: parsed.autoFilter } : {}),
       ...(typeof parsed.debug === 'boolean' ? { debug: parsed.debug } : {}),
+      ...(typeof parsed.analyticsDisabled === 'boolean' ? { analyticsDisabled: parsed.analyticsDisabled } : {}),
       ...(typeof parsed.compositionMode === 'string' && isCompositionMode(parsed.compositionMode)
         ? { compositionMode: parsed.compositionMode }
         : {}),
@@ -84,6 +87,7 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
     generatePromptPath,
     autoFilter,
     debug,
+    analyticsDisabled,
     compositionMode,
     ...rest
   } = creds;
@@ -101,6 +105,7 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
         ...(generatePromptPath ? { generatePromptPath } : {}),
         ...(typeof autoFilter === 'boolean' ? { autoFilter } : {}),
         ...(typeof debug === 'boolean' ? { debug } : {}),
+        ...(typeof analyticsDisabled === 'boolean' ? { analyticsDisabled } : {}),
         ...(compositionMode && isCompositionMode(compositionMode) ? { compositionMode } : {}),
       },
       null,
