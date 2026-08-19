@@ -189,6 +189,11 @@ export function ServerApplyDone({ operation, spaceId, environmentId, host }: Ser
           <Text> </Text>
           <Text dimColor> View your design system:</Text>
           <Text color="cyan"> {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId })}</Text>
+          <Text dimColor> View your design tokens:</Text>
+          <Text color="cyan">
+            {' '}
+            {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId, view: 'design_tokens' })}
+          </Text>
         </Box>
       )}
       <Text> </Text>

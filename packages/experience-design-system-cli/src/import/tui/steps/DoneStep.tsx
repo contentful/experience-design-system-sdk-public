@@ -149,9 +149,15 @@ export function DoneStep({
         <Box flexDirection="column" gap={1} marginTop={1}>
           <Text dimColor>Your design system is now in Contentful ExO.</Text>
           <Box flexDirection="column" gap={0}>
-            <Text dimColor>View it here:</Text>
+            <Text dimColor>View your components here:</Text>
             <Text color={PALETTE.info}>
               {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId })}
+            </Text>
+          </Box>
+          <Box flexDirection="column" gap={0}>
+            <Text dimColor>View your design tokens here:</Text>
+            <Text color={PALETTE.info}>
+              {buildPostPushUrl({ host: host ?? 'api.contentful.com', spaceId, environmentId, view: 'design_tokens' })}
             </Text>
           </Box>
         </Box>

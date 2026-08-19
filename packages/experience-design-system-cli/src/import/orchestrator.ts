@@ -721,8 +721,15 @@ export async function runPipeline(
       spaceId: opts.spaceId,
       environmentId: opts.environmentId,
     });
+    const tokensUrl = buildPostPushUrl({
+      host: opts.host ?? 'api.contentful.com',
+      spaceId: opts.spaceId,
+      environmentId: opts.environmentId,
+      view: 'design_tokens',
+    });
     progressWriter('');
     progressWriter(`View your design system:  ${viewUrl}`);
+    progressWriter(`View your design tokens:  ${tokensUrl}`);
   }
 
   db.close();
