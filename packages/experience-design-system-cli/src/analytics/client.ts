@@ -8,13 +8,21 @@ const pkg = require('../../package.json') as { version: string };
 // or when no write key is configured. Never blocks command execution.
 
 let analyticsClient: Analytics | null = null;
+let persistedDisabled = false;
 
 export function cliVersion(): string {
   return pkg.version;
 }
 
+// Set once per invocation from the persisted `experiences setup` preference
+// (credentials.json `analyticsDisabled`). Sticky-off: once set, DISABLE_ANALYTICS
+// has nothing left to override — see setPersistedAnalyticsDisabled callers.
+export function setPersistedAnalyticsDisabled(disabled: boolean): void {
+  persistedDisabled = disabled;
+}
+
 export function analyticsEnabled(): boolean {
-  return !process.env.DISABLE_ANALYTICS && Boolean(resolveWriteKey());
+  return !persistedDisabled && !process.env.DISABLE_ANALYTICS && Boolean(resolveWriteKey());
 }
 
 function resolveWriteKey(): string | undefined {
@@ -73,4 +81,5 @@ export async function flushAnalytics(): Promise<void> {
 
 export function resetAnalyticsClientForTests(): void {
   analyticsClient = null;
+  persistedDisabled = false;
 }

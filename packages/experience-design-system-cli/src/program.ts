@@ -12,7 +12,13 @@ import { registerImportCommand } from './import/command.js';
 import { registerSetupCommand } from './setup/command.js';
 import { registerRunsCommand } from './runs/ls-command.js';
 import { beginCommand } from './lib/debug-preamble.js';
-import { completeActiveCommand, flushAnalytics, noteCommandStart } from './analytics/index.js';
+import {
+  completeActiveCommand,
+  flushAnalytics,
+  noteCommandStart,
+  setPersistedAnalyticsDisabled,
+} from './analytics/index.js';
+import { readExperiencesCredentials } from './credentials-store.js';
 
 const require = createRequire(import.meta.url);
 
@@ -108,6 +114,8 @@ export function createProgram(): Command {
     const chain: string[] = [];
     for (let c: Command | null = actionCommand; c && c.parent; c = c.parent) chain.unshift(c.name());
     const commandChain = chain.join(' ') || actionCommand.name();
+    const { analyticsDisabled } = await readExperiencesCredentials();
+    setPersistedAnalyticsDisabled(analyticsDisabled ?? false);
     noteCommandStart(commandChain);
     await beginCommand(commandChain, { ...(debug !== undefined ? { debug } : {}) });
   });

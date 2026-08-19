@@ -464,13 +464,16 @@ What may be included:
 - Space and environment IDs you pass on the command line
 - Contentful request IDs from API responses (to correlate failures with server logs)
 
-You can turn this off at any time:
+You can turn this off two ways:
 
-```bash
-DISABLE_ANALYTICS=1 experiences import --project ./my-app
-```
+- Persistently: run `experiences setup` and answer "yes" at the analytics prompt. This writes an opt-out to `~/.config/experiences/credentials.json` that persists across invocations until you change it again — it will not silently re-enable itself.
+- Per invocation:
 
-Setting `DISABLE_ANALYTICS` to any value disables collection for that invocation.
+  ```bash
+  DISABLE_ANALYTICS=1 experiences import --project ./my-app
+  ```
+
+  Setting `DISABLE_ANALYTICS` to any value disables collection for that invocation. This is additive with the persisted opt-out — it can only disable, never re-enable, collection that setup has turned off.
 
 ---
 
