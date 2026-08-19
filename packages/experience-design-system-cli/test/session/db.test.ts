@@ -38,6 +38,7 @@ import type {
   DTCGTokenGroup,
   ComponentTypeSummary,
 } from '@contentful/experience-design-system-types';
+import { CDF_V1_SCHEMA_URL, validateCDF } from '@contentful/experience-design-system-types';
 
 const tempDirs: string[] = [];
 
@@ -1213,7 +1214,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
         $description: 'A button component',
         $properties: {
           label: { $type: 'string', $category: 'content', $required: true },
-          variant: { $type: 'enum', $category: 'design', $values: ['primary', 'secondary'] },
+          variant: { $type: 'token', $category: 'design', $values: ['primary', 'secondary'] },
         },
         $slots: {
           icon: { $description: 'Optional icon' },
@@ -1233,11 +1234,11 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
             $type: 'component',
             $properties: {
               variant: {
-                $type: 'enum',
+                $type: 'token',
                 $category: 'design',
                 '$token.kind': 'color',
                 '$token.sets': ['color.brand.primary', 'color.brand.secondary'],
-                '$token.allowed': ['color.text.default'],
+                '$token.allowed': ['color.brand.primary'],
               },
             },
           },
@@ -1249,7 +1250,13 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
         'color.brand.primary',
         'color.brand.secondary',
       ]);
-      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual(['color.text.default']);
+      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual(['color.brand.primary']);
+      expect(
+        validateCDF({
+          $schema: CDF_V1_SCHEMA_URL,
+          ...Object.fromEntries(loaded.map(({ key, entry }) => [key, entry])),
+        }).valid,
+      ).toBe(true);
       db.close();
     });
   });
@@ -1277,7 +1284,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
           entry: {
             $type: 'component',
             $properties: {
-              variant: { $type: 'enum', $category: 'design', '$token.allowed': [] },
+              variant: { $type: 'token', $category: 'design', '$token.allowed': [] },
             },
           },
         },
@@ -1306,7 +1313,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
             $description: 'A button component',
             $properties: {
               label: { $type: 'string', $category: 'content', $required: true },
-              variant: { $type: 'enum', $category: 'design', $values: ['primary', 'secondary'] },
+              variant: { $type: 'token', $category: 'design', $values: ['primary', 'secondary'] },
             },
             $slots: {
               icon: { $description: 'Optional icon' },
@@ -1329,7 +1336,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
             $type: 'component',
             $properties: {
               variant: {
-                $type: 'enum',
+                $type: 'token',
                 $category: 'design',
                 '$token.sets': ['color.brand.primary'],
                 '$token.allowed': [],
@@ -1374,7 +1381,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
             $type: 'component',
             $properties: {
               variant: {
-                $type: 'enum',
+                $type: 'token',
                 $category: 'design',
                 '$token.sets': ['color.brand.tertiary', 'color.brand.primary', 'color.brand.secondary'],
               },
@@ -1391,6 +1398,34 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
         'color.brand.secondary',
       ]);
       expect(second).toEqual(first);
+      db.close();
+    });
+  });
+
+  it('omits mappings stored for a non-token property', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'Button',
+          entry: {
+            $type: 'component',
+            $properties: {
+              variant: {
+                $type: 'enum',
+                $category: 'design',
+                '$token.sets': ['color.brand.primary'],
+                '$token.allowed': ['color.brand.primary'],
+              },
+            },
+          },
+        },
+      ]);
+
+      const loaded = loadCDFComponents(db, sessionId);
+      expect(loaded[0]?.entry.$properties.variant).not.toHaveProperty('$token.sets');
+      expect(loaded[0]?.entry.$properties.variant).not.toHaveProperty('$token.allowed');
       db.close();
     });
   });
