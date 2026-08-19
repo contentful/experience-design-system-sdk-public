@@ -28,6 +28,8 @@ import {
   copyTokensFromCache,
   renameEmptySlots,
   loadScopeComponents,
+  replaceRawPropTokenPaths,
+  loadRawPropTokenPaths,
 } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 import type {
@@ -209,6 +211,82 @@ describe('openPipelineDb', () => {
         .get('s1', 'c1') as { reject_reason: string | null };
       expect(row.reject_reason).toBeNull();
       db2.close();
+    });
+  });
+
+  it('migrates legacy databases with no raw_prop_token_paths table exactly once', async () => {
+    await withTempDb((dbPath) => {
+      const initial = openPipelineDb(dbPath);
+      initial.exec('DROP TABLE raw_prop_token_paths');
+      initial.prepare('DELETE FROM migrations WHERE name = ?').run('001-raw-prop-token-paths');
+      initial.close();
+
+      const migrated = openPipelineDb(dbPath);
+      const tables = migrated
+        .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'raw_prop_token_paths'`)
+        .all() as Array<{ name: string }>;
+      expect(tables).toHaveLength(1);
+      expect(
+        migrated.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('001-raw-prop-token-paths'),
+      ).toEqual({ count: 1 });
+      migrated.close();
+
+      const reopened = openPipelineDb(dbPath);
+      expect(
+        reopened.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('001-raw-prop-token-paths'),
+      ).toEqual({ count: 1 });
+      reopened.close();
+    });
+  });
+});
+
+describe('raw prop token paths', () => {
+  it('replaces paths per prop and kind, then loads ordered groups', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Button',
+          source: 'src/Button.tsx',
+          framework: 'react',
+          props: [{ name: 'variant', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
+
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'set', [
+        'color.brand.primary',
+        'color.brand.secondary',
+      ]);
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.text.default']);
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'set', ['color.brand.tertiary']);
+
+      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
+        {
+          componentId,
+          propName: 'variant',
+          kind: 'allowed',
+          paths: ['color.text.default'],
+        },
+        {
+          componentId,
+          propName: 'variant',
+          kind: 'set',
+          paths: ['color.brand.tertiary'],
+        },
+      ]);
+      expect(
+        db
+          .prepare(
+            `SELECT position, path FROM raw_prop_token_paths
+             WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = ?
+             ORDER BY position`,
+          )
+          .all(sessionId, componentId, 'variant', 'set'),
+      ).toEqual([{ position: 0, path: 'color.brand.tertiary' }]);
+      db.close();
     });
   });
 });
