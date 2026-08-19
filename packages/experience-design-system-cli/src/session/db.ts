@@ -1582,10 +1582,12 @@ export function loadCDFComponents(
       if (p.description !== null) propDef.$description = p.description;
       if (av && av.length > 0) propDef.$values = av.map((v) => v.value);
       if (p.cdf_token_kind !== null) propDef['$token.kind'] = p.cdf_token_kind;
-      const sets = toTokenPaths(tokenPathsByPropAndKind.get(`${component_id}::${p.name}::set`));
-      if (sets !== undefined) propDef['$token.sets'] = sets;
-      const allowed = toTokenPaths(tokenPathsByPropAndKind.get(`${component_id}::${p.name}::allowed`));
-      if (allowed !== undefined) propDef['$token.allowed'] = allowed;
+      if (p.cdf_type === 'token' && p.cdf_category === 'design') {
+        const sets = toTokenPaths(tokenPathsByPropAndKind.get(`${component_id}::${p.name}::set`));
+        if (sets !== undefined) propDef['$token.sets'] = sets;
+        const allowed = toTokenPaths(tokenPathsByPropAndKind.get(`${component_id}::${p.name}::allowed`));
+        if (allowed !== undefined) propDef['$token.allowed'] = allowed;
+      }
       $properties[p.name] = propDef;
     }
 
