@@ -90,6 +90,7 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 - Every slot must produce exactly one `classify_slot` call.
 - Emit `classify_component` once at the start (required). The `description` field is **required** — always provide a brief description of the component's purpose.
 - `values` is required for `cdf_type: "enum"` — must be a non-empty string array.
+- **Do NOT include `values` for `cdf_type: "token"`.** Token restriction is handled by the separate `map tokens` step (`$token.allowed`), not by `values` — emitting `values` on a token prop here would conflict with that step's output. Omit the field entirely for token props.
 - `token_kind` is required for `cdf_type: "token"` — must be a DTCG `$type` string, e.g. `"color"`.
 - `required` must be a JSON boolean (`true`/`false`), not a string.
 - `description` on `classify_prop` is customer-facing — keep it short and subject to the description content rules below.
@@ -395,7 +396,7 @@ Before emitting any tool calls, verify:
 2. Every slot has exactly one `classify_slot` call
 3. `classify_component` is emitted exactly once
 4. Every `cdf_type: "enum"` has a non-empty `values` array
-5. Every `cdf_type: "token"` has `token_kind` (or a warning in `description` if lookup failed)
+5. Every `cdf_type: "token"` has `token_kind` (or a warning in `description` if lookup failed) and does NOT have `values` set
 6. No `cdf_type: "link"` — all href/url props use `string`
 7. `required` values are JSON booleans, not strings
 8. Framework, DOM, accessibility, and data-* pass-through props are excluded — `className`/`classes`/`classNames`/`rootClassName`/`prefixCls`, `style`, `id`, `role`, `tabIndex`, `aria-*` (and bare `aria`), `data-*`, polymorphic `as`/`element`/`component`, framework theming `dt`/`pt`/`ptOptions`/`unstyled`/`sx`. Discrete positional/geometric props (`top`, `bottom`, `left`, `right`, `rotation`, etc.) ARE classified as `string` design props. Common semantic props (`icon`, `items`, `actions`, `options`, `value`, `name`, `form`, `inputId`, `componentId`) are NOT excluded — classify them per their content/design/state nature.
