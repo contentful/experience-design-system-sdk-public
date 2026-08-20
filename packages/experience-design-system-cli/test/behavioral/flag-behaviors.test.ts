@@ -178,7 +178,7 @@ describe('--no-cache bypasses cached component results', () => {
     const component = loadedComponents[0]!;
     const inputHash = computeComponentInputHash(component);
     // Seed with the actual bundled-prompt hash so the cache lookup in the CLI matches.
-    const seedPromptHash = await hashPromptForSkill('components');
+    const seedPromptHash = await hashPromptForSkill('components', 'claude', undefined);
     storeCache(db, inputHash, 'component', component.component_id, priorSession, false, seedPromptHash);
     db.close();
 
@@ -243,7 +243,7 @@ describe('--no-cache bypasses cached component results', () => {
     const component = loadedComponents[0]!;
     const inputHash = computeComponentInputHash(component);
     // Seed with the actual bundled-prompt hash so the cache lookup in the CLI matches.
-    const seedPromptHash = await hashPromptForSkill('components');
+    const seedPromptHash = await hashPromptForSkill('components', 'claude', undefined);
     storeCache(db, inputHash, 'component', component.component_id, priorSession, false, seedPromptHash);
     db.close();
 
@@ -252,6 +252,55 @@ describe('--no-cache bypasses cached component results', () => {
     // With --no-cache flag: agent IS invoked (cache bypassed)
     const result = await runCliWithEnv(
       ['generate', 'components', '--agent', 'claude', '--session', extractSession, '--no-cache'],
+      { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1', EDS_RETRY_BACKOFF_MS: '0', ...envPatch },
+    );
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain('1/1 components');
+    expect(result.stderr).not.toContain('cached)');
+  });
+
+  it('a cache entry seeded under a different --model is not reused — the agent is invoked', async () => {
+    // Regression test for INTEG-4753: the cache key must fold in agent/model,
+    // or switching --model on a component that already has a cache entry
+    // silently returns the old result instead of invoking the agent.
+    const dbDir = await createTempDir('model-cache-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+
+    const db = openPipelineDb(dbPath);
+    const { sessionId: extractSession } = getOrCreateSession(db, 'new', undefined, {
+      command: 'analyze extract',
+    });
+    storeRawComponents(db, extractSession, SINGLE_COMPONENT);
+
+    const { sessionId: priorSession } = getOrCreateSession(db, 'new', undefined, {
+      command: 'generate components',
+    });
+    storeCDFComponents(db, priorSession, [
+      {
+        key: 'FlagTestButton',
+        entry: {
+          $type: 'component',
+          $description: 'Cached version',
+          $properties: {
+            label: { $type: 'string', $category: 'content', $required: true },
+          },
+        },
+      },
+    ]);
+
+    const loadedComponents = loadRawComponents(db, extractSession);
+    const component = loadedComponents[0]!;
+    const inputHash = computeComponentInputHash(component);
+    // Seed the cache as if a prior run used --model model-a.
+    const seedPromptHash = await hashPromptForSkill('components', 'claude', 'model-a');
+    storeCache(db, inputHash, 'component', component.component_id, priorSession, false, seedPromptHash);
+    db.close();
+
+    const { envPatch } = await makeFakeAgent();
+
+    // Re-run with a different --model: must miss the cache and invoke the agent.
+    const result = await runCliWithEnv(
+      ['generate', 'components', '--agent', 'claude', '--model', 'model-b', '--session', extractSession],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1', EDS_RETRY_BACKOFF_MS: '0', ...envPatch },
     );
     expect(result.code).toBe(0);

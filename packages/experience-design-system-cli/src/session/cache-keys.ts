@@ -29,13 +29,22 @@ export async function hashFile(filePath: string): Promise<string> {
  * generation_cache so cache entries invalidate when the prompt itself changes
  * (including bundled-skill updates across CLI versions).
  *
+ * Also folds in the resolved agent and model: a cache hit must not stand in
+ * for an agent run that was never made with the currently requested
+ * agent/model, or `--agent`/`--model` overrides would appear to be ignored
+ * whenever a prior cache entry already exists for the same input/prompt.
+ *
  * @param skill — which skill (matches resolveSkillPath in prompt-builder)
+ * @param agent — resolved agent name for this run
+ * @param model — resolved model for this run (undefined resolves to the agent's default)
  * @param skillPathOverride — optional absolute/relative path to a custom prompt
  */
-export async function hashPromptForSkill(skill: Skill, skillPathOverride?: string): Promise<string> {
-  if (skillPathOverride) {
-    return hashFile(resolve(skillPathOverride));
-  }
-  const bundled = resolveSkillPath(skill);
-  return hashFile(bundled);
+export async function hashPromptForSkill(
+  skill: Skill,
+  agent: string,
+  model: string | undefined,
+  skillPathOverride?: string,
+): Promise<string> {
+  const promptHash = skillPathOverride ? await hashFile(resolve(skillPathOverride)) : await hashFile(resolveSkillPath(skill));
+  return hashContent(`${promptHash}|${agent}|${model ?? ''}`);
 }

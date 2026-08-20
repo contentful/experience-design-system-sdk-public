@@ -312,7 +312,7 @@ async function selectAllComponents(
   let cliVersion = '';
   if (!cacheConfig.noCache) {
     try {
-      promptHash = await hashPromptForSkill('select', skillPathOverride);
+      promptHash = await hashPromptForSkill('select', agent, model, skillPathOverride);
       cliVersion = await getCliCacheVersion();
       const db = openPipelineDb(cacheConfig.dbPath);
       try {
