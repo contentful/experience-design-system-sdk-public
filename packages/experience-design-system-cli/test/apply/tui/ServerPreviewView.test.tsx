@@ -35,19 +35,6 @@ describe('ServerPreviewView — skip vs delete rendering', () => {
     expect(frame).not.toContain('to skip');
   });
 
-  it('renders the hidden-deletions hint when allowDeletions is false', () => {
-    const preview = {
-      components: { new: [], changed: [], unchanged: [], removed: [] },
-      tokens: { new: [], changed: [], unchanged: [], removed: [] },
-      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
-    } as unknown as ServerPreviewResponse;
-    const { lastFrame } = render(
-      <ServerPreviewView preview={preview} spaceId="space" environmentId="master" allowDeletions={false} />,
-    );
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Deletions are hidden by default');
-  });
-
   it('does not render the hidden-deletions hint when allowDeletions is true', () => {
     const preview = {
       components: { new: [], changed: [], unchanged: [], removed: [] },

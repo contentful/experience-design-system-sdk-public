@@ -100,12 +100,6 @@ export function ServerPreviewView({
         </Box>
       )}
 
-      {!allowDeletions && (
-        <Box marginTop={1}>
-          <Text color="yellow"> ⊘ Deletions are hidden by default — rerun with --allow-deletions to see them.</Text>
-        </Box>
-      )}
-
       <Text dimColor> Press Q to exit.</Text>
     </Box>
   );

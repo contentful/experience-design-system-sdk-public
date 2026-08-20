@@ -359,13 +359,6 @@ export function WizardPreviewStep({
         <Text dimColor>Nothing to push — everything is already up to date.</Text>
       )}
 
-      {!fetchedAllowDeletions && (
-        <Box gap={1}>
-          <Text color={PALETTE.warning}> ⊘</Text>
-          <Text>Deletions are hidden by default — rerun with --allow-deletions to see them.</Text>
-        </Box>
-      )}
-
       <Box gap={1} marginTop={1}>
         <Text dimColor>Space:</Text>
         <Text>{spaceId}</Text>
