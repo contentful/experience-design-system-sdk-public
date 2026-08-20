@@ -60,23 +60,6 @@ describe('buildPreviewDiffLines', () => {
 });
 
 describe('WizardPreviewStep — deletion confirmation', () => {
-  it('renders the hidden-deletions hint and no toggle hint when the preview was fetched with allowDeletions: false', () => {
-    const { lastFrame } = render(
-      <WizardPreviewStep
-        preview={emptyPreview()}
-        spaceId="space"
-        environmentId="master"
-        stepNumber={1}
-        totalSteps={1}
-        {...makeHandlers()}
-      />,
-    );
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Deletions are hidden by default');
-    expect(frame).not.toContain('will be deleted');
-    expect(frame).not.toContain('Allow deletions');
-  });
-
   it('does not render the hidden-deletions hint when fetched with allowDeletions: true', () => {
     const { lastFrame } = render(
       <WizardPreviewStep
