@@ -331,13 +331,14 @@ Do NOT write any files or emit any JSON blobs. Instead, emit one JSON object per
 The one tool call you may emit:
 
 \`\`\`
-{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_sets":["colors.brand"],"token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"<reason>"}
+{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_sets":["colors.brand.primary","colors.brand.secondary","colors.brand.tertiary"],"token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"<reason>"}
 \`\`\`
 
 Rules:
 - Emit exactly one JSON object per line. No multi-line JSON. No markdown fences around the lines.
 - Only emit a call for a prop that appears in the "Generated CDF so far" section — those are already confirmed design-category, token-typed props.
-- Every path in \`token_sets\` and \`token_allowed\` must exist in the "Token path index" section. Never invent a path. If a path you'd otherwise suggest is missing from the index, omit it rather than guessing.
+- \`token_sets\` and \`token_allowed\` are flat lists of individual **leaf** token paths — never a group/prefix path. The "Token path index" contains one entry per leaf token only; a path like \`colors.brand\` that groups \`colors.brand.primary\`/\`colors.brand.secondary\` does NOT itself appear in the index and must never be emitted. If a prop's relevant set is "the brand colors," enumerate every leaf under that group that appears in the index (e.g. \`colors.brand.primary\`, \`colors.brand.secondary\`, \`colors.brand.tertiary\`), not the group name.
+- Every path in \`token_sets\` and \`token_allowed\` must exist verbatim in the "Token path index" section. Never invent a path. If a path you'd otherwise suggest is missing from the index, omit it rather than guessing.
 - \`token_allowed\` must be a subset of \`token_sets\`.
 - Restriction requires evidence: a union/enum-shaped prop type, a default value, or an explicit comment in the component source. Omit \`token_allowed\` entirely when you have no such evidence — do not include it as a placeholder.
 - An empty \`token_allowed\` array is a deliberate, evidenced claim that nothing in \`token_sets\` is restricted (everything is allowed) — only emit it when you actually reviewed the evidence and found no restriction, not as a default.
