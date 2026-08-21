@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { generateSessionId } from './session-id.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types.js';
 import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
-import type { ToolCall, TokenToolCall } from '@contentful/experience-design-system-generation';
+import type { ToolCall, TokenToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
 import type { SlotCycle, SlotEdge } from '../analyze/cycle-detection.js';
 
@@ -22,6 +22,7 @@ export type CommandName =
   | 'apply push'
   | 'print components'
   | 'print tokens'
+  | 'map tokens'
   | 'import';
 
 export interface SessionRow {
@@ -163,7 +164,7 @@ CREATE TABLE IF NOT EXISTS raw_tokens (
 
 CREATE TABLE IF NOT EXISTS generation_cache (
   input_hash        TEXT NOT NULL,
-  entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set')),
+  entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set', 'token_mapping')),
   entity_id         TEXT NOT NULL,
   source_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   human_edited      INTEGER NOT NULL DEFAULT 0 CHECK (human_edited IN (0, 1)),
@@ -357,7 +358,7 @@ function applyDbMigrations(db: DatabaseSync): void {
     db.exec(`
       CREATE TABLE generation_cache (
         input_hash        TEXT NOT NULL,
-        entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set')),
+        entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set', 'token_mapping')),
         entity_id         TEXT NOT NULL,
         source_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
         human_edited      INTEGER NOT NULL DEFAULT 0 CHECK (human_edited IN (0, 1)),
@@ -383,7 +384,7 @@ function applyDbMigrations(db: DatabaseSync): void {
       db.exec(`
         CREATE TABLE generation_cache__new (
           input_hash        TEXT NOT NULL,
-          entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set')),
+          entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set', 'token_mapping')),
           entity_id         TEXT NOT NULL,
           source_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
           human_edited      INTEGER NOT NULL DEFAULT 0 CHECK (human_edited IN (0, 1)),
@@ -398,6 +399,41 @@ function applyDbMigrations(db: DatabaseSync): void {
           FROM generation_cache;
         DROP TABLE generation_cache;
         ALTER TABLE generation_cache__new RENAME TO generation_cache;
+        CREATE INDEX IF NOT EXISTS idx_generation_cache_entity  ON generation_cache(entity_type, entity_id);
+        CREATE INDEX IF NOT EXISTS idx_generation_cache_session ON generation_cache(source_session_id);
+      `);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+
+  const genCacheTableSql = db
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'generation_cache'`)
+    .get() as { sql: string } | undefined;
+  const hasTokenMappingEntityType = genCacheTableSql?.sql.includes("'token_mapping'") ?? true;
+  if (!hasTokenMappingEntityType) {
+    db.exec('BEGIN');
+    try {
+      db.exec(`
+        CREATE TABLE generation_cache__new2 (
+          input_hash        TEXT NOT NULL,
+          entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set', 'token_mapping')),
+          entity_id         TEXT NOT NULL,
+          source_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          human_edited      INTEGER NOT NULL DEFAULT 0 CHECK (human_edited IN (0, 1)),
+          created_at        TEXT NOT NULL,
+          updated_at        TEXT NOT NULL,
+          prompt_hash       TEXT NOT NULL DEFAULT '',
+          PRIMARY KEY (input_hash, prompt_hash, entity_type, entity_id)
+        );
+        INSERT INTO generation_cache__new2
+          (input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash)
+          SELECT input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash
+          FROM generation_cache;
+        DROP TABLE generation_cache;
+        ALTER TABLE generation_cache__new2 RENAME TO generation_cache;
         CREATE INDEX IF NOT EXISTS idx_generation_cache_entity  ON generation_cache(entity_type, entity_id);
         CREATE INDEX IF NOT EXISTS idx_generation_cache_session ON generation_cache(source_session_id);
       `);
@@ -1232,6 +1268,15 @@ export function loadRawComponents(
   );
 }
 
+export function loadComponentSourceRefs(db: DatabaseSync, sessionId: string): ComponentSourceRef[] {
+  const rows = db
+    .prepare(
+      `SELECT name, source, source_path FROM raw_components WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
+    )
+    .all(sessionId) as Array<{ name: string; source: string; source_path: string | null }>;
+  return rows.map((r) => ({ component: r.name, sourcePath: r.source_path ?? r.source }));
+}
+
 export function renameEmptySlots(
   db: DatabaseSync,
   sessionId: string,
@@ -2051,9 +2096,11 @@ function mapServerTypeToCDFType(serverType: string): string | null {
   }
 }
 
+export type CacheEntityType = 'component' | 'token_set' | 'token_mapping';
+
 export interface CacheEntry {
   inputHash: string;
-  entityType: 'component' | 'token_set';
+  entityType: CacheEntityType;
   entityId: string;
   sourceSessionId: string;
   humanEdited: boolean;
@@ -2084,10 +2131,48 @@ export function computeTokenInputHash(rawTokenContent: string): string {
   return createHash('sha256').update(rawTokenContent.trim()).digest('hex');
 }
 
+export function computeMapTokensInputHash(db: DatabaseSync, sessionId: string): string {
+  const props = db
+    .prepare(
+      `SELECT rc.name AS component_name, rp.name AS prop_name, rp.cdf_token_kind
+       FROM raw_props rp
+       JOIN raw_components rc ON rc.session_id = rp.session_id AND rc.component_id = rp.component_id
+       WHERE rp.session_id = ? AND rp.cdf_type = 'token' AND rp.cdf_category = 'design'
+       ORDER BY rc.name, rp.name`,
+    )
+    .all(sessionId) as Array<{ component_name: string; prop_name: string; cdf_token_kind: string | null }>;
+
+  const tokens = db
+    .prepare(`SELECT path, type FROM raw_tokens WHERE session_id = ? ORDER BY path`)
+    .all(sessionId) as Array<{ path: string; type: string }>;
+
+  const payload = {
+    props: props.map((p) => ({ component: p.component_name, prop: p.prop_name, tokenKind: p.cdf_token_kind })),
+    tokens,
+  };
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+export function countMappableTokenProps(db: DatabaseSync, sessionId: string): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM raw_props WHERE session_id = ? AND cdf_type = 'token' AND cdf_category = 'design'`,
+    )
+    .get(sessionId) as { count: number };
+  return row.count;
+}
+
+export function countRawTokens(db: DatabaseSync, sessionId: string): number {
+  const row = db.prepare(`SELECT COUNT(*) AS count FROM raw_tokens WHERE session_id = ?`).get(sessionId) as {
+    count: number;
+  };
+  return row.count;
+}
+
 export function lookupCache(
   db: DatabaseSync,
   inputHash: string,
-  entityType: 'component' | 'token_set',
+  entityType: CacheEntityType,
   entityId: string,
   promptHash: string = '',
 ): CacheEntry | null {
@@ -2112,7 +2197,7 @@ export function lookupCache(
   if (!row) return null;
   return {
     inputHash: row.input_hash,
-    entityType: row.entity_type as 'component' | 'token_set',
+    entityType: row.entity_type as CacheEntityType,
     entityId: row.entity_id,
     sourceSessionId: row.source_session_id,
     humanEdited: row.human_edited === 1,
@@ -2124,7 +2209,7 @@ export function lookupCache(
 
 export function lookupCacheByEntity(
   db: DatabaseSync,
-  entityType: 'component' | 'token_set',
+  entityType: CacheEntityType,
   entityId: string,
 ): CacheEntry | null {
   const row = db
@@ -2149,7 +2234,7 @@ export function lookupCacheByEntity(
   if (!row) return null;
   return {
     inputHash: row.input_hash,
-    entityType: row.entity_type as 'component' | 'token_set',
+    entityType: row.entity_type as CacheEntityType,
     entityId: row.entity_id,
     sourceSessionId: row.source_session_id,
     humanEdited: row.human_edited === 1,
@@ -2162,7 +2247,7 @@ export function lookupCacheByEntity(
 export function storeCache(
   db: DatabaseSync,
   inputHash: string,
-  entityType: 'component' | 'token_set',
+  entityType: CacheEntityType,
   entityId: string,
   sourceSessionId: string,
   humanEdited: boolean,
@@ -2398,6 +2483,73 @@ export function copyTokensFromCache(db: DatabaseSync, sourceSessionId: string, t
     db.exec('ROLLBACK');
     throw e;
   }
+}
+
+export function copyMapTokensFromCache(db: DatabaseSync, sourceSessionId: string, targetSessionId: string): number {
+  const now = new Date().toISOString();
+  let copiedCount = 0;
+  db.exec('BEGIN');
+  try {
+    const sourceRows = db
+      .prepare(
+        `SELECT rc.name AS component_name, rptp.prop_name, rptp.kind, rptp.position, rptp.path
+         FROM raw_prop_token_paths rptp
+         JOIN raw_components rc ON rc.session_id = rptp.session_id AND rc.component_id = rptp.component_id
+         WHERE rptp.session_id = ?
+         ORDER BY rc.name, rptp.prop_name, rptp.kind, rptp.position`,
+      )
+      .all(sourceSessionId) as Array<{
+      component_name: string;
+      prop_name: string;
+      kind: 'set' | 'allowed';
+      position: number;
+      path: string;
+    }>;
+
+    const targetComponents = db
+      .prepare(`SELECT component_id, name FROM raw_components WHERE session_id = ?`)
+      .all(targetSessionId) as Array<{ component_id: string; name: string }>;
+    const targetIdByName = new Map(targetComponents.map((c) => [c.name, c.component_id]));
+
+    const targetProps = new Set(
+      (
+        db.prepare(`SELECT component_id, name FROM raw_props WHERE session_id = ?`).all(targetSessionId) as Array<{
+          component_id: string;
+          name: string;
+        }>
+      ).map((p) => `${p.component_id}::${p.name}`),
+    );
+
+    const insertPath = db.prepare(
+      `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, position, path)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    );
+    const clearedKinds = new Set<string>();
+    const copiedProps = new Set<string>();
+    for (const row of sourceRows) {
+      const targetComponentId = targetIdByName.get(row.component_name);
+      if (!targetComponentId) continue;
+      if (!targetProps.has(`${targetComponentId}::${row.prop_name}`)) continue;
+
+      const kindKey = `${targetComponentId}::${row.prop_name}::${row.kind}`;
+      if (!clearedKinds.has(kindKey)) {
+        clearedKinds.add(kindKey);
+        db.prepare(
+          `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = ?`,
+        ).run(targetSessionId, targetComponentId, row.prop_name, row.kind);
+      }
+      insertPath.run(targetSessionId, targetComponentId, row.prop_name, row.kind, row.position, row.path);
+      copiedProps.add(`${targetComponentId}::${row.prop_name}`);
+    }
+    copiedCount = copiedProps.size;
+
+    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, targetSessionId);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  return copiedCount;
 }
 
 let _cliCacheVersionCache: string | null = null;

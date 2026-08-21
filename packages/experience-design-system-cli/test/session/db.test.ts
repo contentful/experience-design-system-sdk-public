@@ -30,6 +30,11 @@ import {
   loadScopeComponents,
   replaceRawPropTokenPaths,
   loadRawPropTokenPaths,
+  computeMapTokensInputHash,
+  countMappableTokenProps,
+  countRawTokens,
+  loadComponentSourceRefs,
+  copyMapTokensFromCache,
 } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 import type {
@@ -2332,6 +2337,189 @@ describe('generation cache', () => {
       expect(loaded.groups).toHaveLength(1);
       expect(loaded.groups[0]?.path).toBe('color');
       expect(loaded.groups[0]?.$description).toBe('Brand colors');
+      db.close();
+    });
+  });
+
+  it('migrates generation_cache to allow entity_type "token_mapping" on pre-existing databases, preserving rows', async () => {
+    await withTempDb((dbPath) => {
+      const initial = openPipelineDb(dbPath);
+      initial.exec(`
+        DROP TABLE generation_cache;
+        CREATE TABLE generation_cache (
+          input_hash        TEXT NOT NULL,
+          entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set')),
+          entity_id         TEXT NOT NULL,
+          source_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          human_edited      INTEGER NOT NULL DEFAULT 0 CHECK (human_edited IN (0, 1)),
+          created_at        TEXT NOT NULL,
+          updated_at        TEXT NOT NULL,
+          prompt_hash       TEXT NOT NULL DEFAULT '',
+          PRIMARY KEY (input_hash, prompt_hash, entity_type, entity_id)
+        );
+      `);
+      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
+      storeCache(initial, 'hash-a', 'component', 'comp-1', sessionId, false, 'prompt-a');
+      initial.close();
+
+      const migrated = openPipelineDb(dbPath);
+      const rows = migrated.prepare('SELECT entity_type, entity_id FROM generation_cache').all() as Array<{
+        entity_type: string;
+        entity_id: string;
+      }>;
+      expect(rows).toEqual([{ entity_type: 'component', entity_id: 'comp-1' }]);
+
+      expect(() =>
+        storeCache(migrated, 'hash-b', 'token_mapping', '__map_tokens__', sessionId, false, 'prompt-b'),
+      ).not.toThrow();
+      expect(lookupCache(migrated, 'hash-b', 'token_mapping', '__map_tokens__', 'prompt-b')?.entityType).toBe(
+        'token_mapping',
+      );
+      migrated.close();
+    });
+  });
+
+  it('computeMapTokensInputHash is stable for identical design-token props and tokens, and changes when either changes', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [{ name: 'bgColor', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'Card',
+          entry: {
+            $type: 'component',
+            $properties: { bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' } },
+          },
+        },
+      ]);
+      storeDTCGTokens(db, sessionId, [], [{ path: 'colors.brand.primary', $type: 'color', $value: '#00f' }]);
+
+      const hash1 = computeMapTokensInputHash(db, sessionId);
+      const hash2 = computeMapTokensInputHash(db, sessionId);
+      expect(hash1).toBe(hash2);
+      expect(hash1).toHaveLength(64);
+
+      storeDTCGTokens(
+        db,
+        sessionId,
+        [],
+        [
+          { path: 'colors.brand.primary', $type: 'color', $value: '#00f' },
+          { path: 'colors.brand.secondary', $type: 'color', $value: '#0f0' },
+        ],
+      );
+      expect(computeMapTokensInputHash(db, sessionId)).not.toBe(hash1);
+      db.close();
+    });
+  });
+
+  it('countMappableTokenProps and countRawTokens report zero on a session with none, and the real counts otherwise', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [
+            { name: 'bgColor', type: 'string', required: false },
+            { name: 'label', type: 'string', required: true },
+          ],
+          slots: [],
+        },
+      ]);
+      expect(countMappableTokenProps(db, sessionId)).toBe(0);
+      expect(countRawTokens(db, sessionId)).toBe(0);
+
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'Card',
+          entry: {
+            $type: 'component',
+            $properties: {
+              bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+              label: { $type: 'string', $category: 'content' },
+            },
+          },
+        },
+      ]);
+      storeDTCGTokens(db, sessionId, [], [{ path: 'colors.brand.primary', $type: 'color', $value: '#00f' }]);
+      expect(countMappableTokenProps(db, sessionId)).toBe(1);
+      expect(countRawTokens(db, sessionId)).toBe(1);
+      db.close();
+    });
+  });
+
+  it('loadComponentSourceRefs returns generated components with their source path, falling back to source', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        { name: 'Card', source: 'src/Card.tsx', framework: 'react', props: [], slots: [] },
+      ]);
+      storeCDFComponents(db, sessionId, [{ key: 'Card', entry: { $type: 'component', $properties: {} } }]);
+      expect(loadComponentSourceRefs(db, sessionId)).toEqual([{ component: 'Card', sourcePath: 'src/Card.tsx' }]);
+      db.close();
+    });
+  });
+
+  it('copyMapTokensFromCache copies matching-by-name components and skips props absent in the target session', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId: sourceId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sourceId, [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [{ name: 'bgColor', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      const sourceComponentId = loadRawComponents(db, sourceId)[0].component_id;
+      replaceRawPropTokenPaths(db, sourceId, sourceComponentId, 'bgColor', 'set', [
+        'colors.surface.default',
+        'colors.surface.raised',
+      ]);
+      replaceRawPropTokenPaths(db, sourceId, sourceComponentId, 'bgColor', 'allowed', ['colors.surface.default']);
+
+      const { sessionId: targetId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, targetId, [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [{ name: 'bgColor', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+
+      const copied = copyMapTokensFromCache(db, sourceId, targetId);
+      expect(copied).toBe(1);
+
+      const targetComponentId = loadRawComponents(db, targetId)[0].component_id;
+      const groups = loadRawPropTokenPaths(db, targetId);
+      // loadRawPropTokenPaths orders groups by (component_id, prop_name, kind, position); 'allowed'
+      // sorts before 'set' alphabetically, so that's the order groups come back in here too.
+      expect(groups).toEqual([
+        { componentId: targetComponentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] },
+        {
+          componentId: targetComponentId,
+          propName: 'bgColor',
+          kind: 'set',
+          paths: ['colors.surface.default', 'colors.surface.raised'],
+        },
+      ]);
       db.close();
     });
   });
