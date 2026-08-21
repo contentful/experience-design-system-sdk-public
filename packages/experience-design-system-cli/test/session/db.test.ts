@@ -2513,6 +2513,57 @@ describe('generation cache', () => {
     });
   });
 
+  it('loadComponentSourceRefs inlines the content of files the source file relatively imports', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Avatar.tsx');
+      const stylesPath = join(dir, 'Avatar.styles.ts');
+      const utilsPath = join(dir, 'utils.ts');
+      await writeFile(
+        componentPath,
+        `import { getAvatarStyles } from './Avatar.styles';\nimport { type ColorVariant } from './utils';\nimport { unresolvable } from '@contentful/f36-core';\n`,
+      );
+      await writeFile(stylesPath, 'export const getAvatarStyles = () => ({});');
+      await writeFile(utilsPath, 'export const avatarColorMap = { primary: "blue500" };');
+
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        { name: 'Avatar', source: componentPath, framework: 'react', props: [], slots: [] },
+      ]);
+      storeCDFComponents(db, sessionId, [{ key: 'Avatar', entry: { $type: 'component', $properties: {} } }]);
+
+      const [ref] = await loadComponentSourceRefs(db, sessionId);
+      expect(ref.siblingFiles).toEqual(
+        expect.arrayContaining([
+          { path: stylesPath, content: 'export const getAvatarStyles = () => ({});' },
+          { path: utilsPath, content: 'export const avatarColorMap = { primary: "blue500" };' },
+        ]),
+      );
+      expect(ref.siblingFiles).toHaveLength(2);
+      db.close();
+    });
+  });
+
+  it('loadComponentSourceRefs omits siblingFiles when the source file has no relative imports', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Card.tsx');
+      await writeFile(componentPath, "import { css } from '@emotion/css';\nexport const Card = () => null;");
+
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        { name: 'Card', source: componentPath, framework: 'react', props: [], slots: [] },
+      ]);
+      storeCDFComponents(db, sessionId, [{ key: 'Card', entry: { $type: 'component', $properties: {} } }]);
+
+      const [ref] = await loadComponentSourceRefs(db, sessionId);
+      expect(ref.siblingFiles).toBeUndefined();
+      db.close();
+    });
+  });
+
   it('copyMapTokensFromCache copies matching-by-name components and skips props absent in the target session', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
