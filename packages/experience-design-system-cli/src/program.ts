@@ -8,6 +8,7 @@ import { registerGenerateCommand } from './generate/command.js';
 import { registerApplyCommand } from './apply/command.js';
 import { registerSessionCommand } from './session/command.js';
 import { registerPrintCommand } from './print/command.js';
+import { registerMapTokensCommand } from './map-tokens/command.js';
 import { registerImportCommand } from './import/command.js';
 import { registerSetupCommand } from './setup/command.js';
 import { registerRunsCommand } from './runs/ls-command.js';
@@ -80,6 +81,7 @@ export function createProgram(): Command {
   registerAnalyzeCommand(program);
   registerGenerateCommand(program);
   registerPrintCommand(program);
+  registerMapTokensCommand(program);
   registerApplyCommand(program);
   registerSessionCommand(program);
   registerImportCommand(program);
