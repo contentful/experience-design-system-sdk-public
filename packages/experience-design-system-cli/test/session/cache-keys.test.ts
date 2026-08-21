@@ -56,12 +56,12 @@ describe('cache-keys', () => {
 
   describe('hashPromptForSkill', () => {
     it('hashes the bundled select skill file when no override is provided', async () => {
-      const h = await hashPromptForSkill('select');
+      const h = await hashPromptForSkill('select', 'claude', undefined);
       expect(h).toMatch(/^[0-9a-f]{64}$/);
     });
 
     it('hashes the bundled components skill file', async () => {
-      const h = await hashPromptForSkill('components');
+      const h = await hashPromptForSkill('components', 'claude', undefined);
       expect(h).toMatch(/^[0-9a-f]{64}$/);
     });
 
@@ -69,10 +69,27 @@ describe('cache-keys', () => {
       const d = await tmp();
       const p = join(d, 'custom.md');
       await writeFile(p, 'custom prompt content totally different', 'utf8');
-      const bundledHash = await hashPromptForSkill('select');
-      const overrideHash = await hashPromptForSkill('select', p);
+      const bundledHash = await hashPromptForSkill('select', 'claude', undefined);
+      const overrideHash = await hashPromptForSkill('select', 'claude', undefined, p);
       expect(overrideHash).not.toBe(bundledHash);
-      expect(overrideHash).toBe(hashContent('custom prompt content totally different'));
+    });
+
+    it('returns a different hash for a different agent', async () => {
+      const claudeHash = await hashPromptForSkill('select', 'claude', undefined);
+      const codexHash = await hashPromptForSkill('select', 'codex', undefined);
+      expect(claudeHash).not.toBe(codexHash);
+    });
+
+    it('returns a different hash for a different model', async () => {
+      const defaultHash = await hashPromptForSkill('select', 'claude', undefined);
+      const opusHash = await hashPromptForSkill('select', 'claude', 'opus');
+      expect(defaultHash).not.toBe(opusHash);
+    });
+
+    it('is stable for the same skill/agent/model', async () => {
+      const a = await hashPromptForSkill('components', 'codex', 'gpt-5.4-mini');
+      const b = await hashPromptForSkill('components', 'codex', 'gpt-5.4-mini');
+      expect(a).toBe(b);
     });
   });
 });

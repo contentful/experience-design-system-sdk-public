@@ -563,7 +563,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     const db = openPipelineDb();
     let componentResults: ComponentRunResult[];
     try {
-      const promptHash = await hashPromptForSkill('components', generatePromptPath);
+      const promptHash = await hashPromptForSkill('components', agent, model, generatePromptPath);
       componentResults = await runAllComponents(
         agent,
         model,
@@ -651,7 +651,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       sessionId = resolvedSessionId;
       await bindAnalyticsSessionId(resolvedSessionId);
 
-      const tokenPromptHash = await hashPromptForSkill('tokens');
+      const tokenPromptHash = await hashPromptForSkill('tokens', agent, model);
       // Check cache before invoking agent
       if (!noCache) {
         const tokenCached = lookupCache(db, tokenInputHash, 'token_set', '__tokens__', tokenPromptHash);
