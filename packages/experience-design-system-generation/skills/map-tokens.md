@@ -36,7 +36,7 @@ If no token path index is provided, there is nothing to map — do not emit any 
 
 Your suggestions become two additive, optional CDF fields on a design-category token prop:
 
-- `$token.sets` — `string[]` of dot-notation token paths naming the semantically relevant set(s) this prop draws from (e.g. `["colors.brand"]` for a background-color prop).
+- `$token.sets` — `string[]` of dot-notation **leaf** token paths naming the semantically relevant set this prop draws from (e.g. `["colors.brand.primary", "colors.brand.secondary", "colors.brand.tertiary"]` for a background-color prop that draws from the brand color group). Every entry must be an individual leaf path that appears verbatim in the token path index — **never a group/prefix path** like `"colors.brand"`. The token path index contains one entry per leaf token only, so a group name will never match it.
 - `$token.allowed` — `string[]`, a subset of `$token.sets`. When present and non-empty, it is the restricted list a marketer may pick from. An empty array is a deliberate claim that everything in `$token.sets` is allowed. When the field is absent entirely, no restriction assessment was made.
 
 Both fields are CDF-only in this step — nothing here writes to the Contentful Experience Orchestration API.
@@ -48,7 +48,7 @@ Both fields are CDF-only in this step — nothing here writes to the Contentful 
 For each design-category, token-typed prop shown in the "Generated CDF so far" section:
 
 1. **Look for a `tokenReference`** in the component source (a CSS custom property or design-token reference near the prop's usage). If found, resolve it against the token path index and treat the result as high-confidence evidence for both `token_sets` and, if the reference is exact, `token_allowed`. Never contradict an existing `tokenReference`.
-2. **Determine `token_sets`.** Infer the semantically relevant token set from the prop's name, its DTCG `$type` (via `$token.kind`), and the component source. A background-color prop maps to a color set (e.g. `colors.brand` or `colors.surface`); a spacing prop maps to a spacing set. Only include paths that exist in the token path index.
+2. **Determine `token_sets`.** Infer the semantically relevant token group from the prop's name, its DTCG `$type` (via `$token.kind`), and the component source — e.g. a background-color prop maps to a color group (`colors.brand`, `colors.surface`), a spacing prop maps to a spacing group. Then enumerate **every leaf path under that group that exists in the token path index** (e.g. `colors.surface.default`, `colors.surface.raised`) and list those individually in `token_sets`. Never emit the group name itself — the token path index has no entry for it.
 3. **Look for restriction evidence** in the component source:
    - A union or enum-shaped prop type (e.g. `'primary' | 'secondary'`) that maps to specific named tokens
    - A default value that resolves to a specific token
@@ -67,14 +67,14 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 **One tool call:**
 
 ```
-{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_sets":["colors.brand"],"token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"<reason>"}
+{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_sets":["colors.brand.primary","colors.brand.secondary","colors.brand.tertiary"],"token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"<reason>"}
 ```
 
 **Rules:**
 
 - Emit exactly one JSON object per line. No multi-line JSON.
 - Only emit a call for a prop that appears in the "Generated CDF so far" section.
-- Every path in `token_sets` and `token_allowed` must exist in the token path index. Never invent a path — if you can't find one, omit it.
+- Every path in `token_sets` and `token_allowed` must be an individual **leaf** path that exists verbatim in the token path index. Never emit a group/prefix path (e.g. `colors.brand`) — the index has no entry for groups, only leaves. Never invent a path — if you can't find one, omit it.
 - `token_allowed` must be a subset of `token_sets`.
 - `token_allowed` is optional — omit it when there is no restriction evidence.
 - An empty `token_allowed` array is valid and means "evidenced as unrestricted" — only emit it deliberately.
@@ -97,8 +97,8 @@ Token path index includes `colors.surface.default`, `colors.surface.raised`, `co
 Component source shows `bgColor` used generically with no union type or default hinting at a specific token.
 
 ```
-bgColor is a background color token prop — likely draws from the surface color set
-{"tool":"map_token_prop","component":"Card","prop":"bgColor","token_sets":["colors.surface"],"description":"Background color surface for the card container"}
+bgColor is a background color token prop — likely draws from the surface color group; enumerating its leaves from the token path index
+{"tool":"map_token_prop","component":"Card","prop":"bgColor","token_sets":["colors.surface.default","colors.surface.raised"],"description":"Background color surface for the card container"}
 ```
 
 ### Prop with restriction evidence (union type)
@@ -111,8 +111,8 @@ interface ButtonProps {
 ```
 
 ```
-variantColor is restricted to two specific tokens via the union type and the comment
-{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_sets":["colors.brand"],"token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"Restricted to primary/secondary per the component's variant union type"}
+variantColor is restricted to two specific tokens via the union type and the comment; token_sets enumerates all brand leaves from the token path index, token_allowed narrows to the evidenced pair
+{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_sets":["colors.brand.primary","colors.brand.secondary","colors.brand.tertiary"],"token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"Restricted to primary/secondary per the component's variant union type"}
 ```
 
 ### Prop with an existing `tokenReference` — high-confidence, must not contradict
@@ -120,8 +120,8 @@ variantColor is restricted to two specific tokens via the union type and the com
 Component source shows `background-color: var(--bg-primary)`, and `--bg-primary` resolves via the sidecar convention to `colors.bg.primary` (present in the token path index).
 
 ```
-bgColor resolves via tokenReference to colors.bg.primary — treating as high-confidence, not contradicting
-{"tool":"map_token_prop","component":"Panel","prop":"bgColor","token_sets":["colors.bg"],"token_allowed":["colors.bg.primary"],"description":"tokenReference --bg-primary resolves to colors.bg.primary"}
+bgColor resolves via tokenReference to colors.bg.primary — treating as high-confidence, not contradicting; token_sets still enumerates the bg group's leaves from the token path index
+{"tool":"map_token_prop","component":"Panel","prop":"bgColor","token_sets":["colors.bg.primary","colors.bg.secondary"],"token_allowed":["colors.bg.primary"],"description":"tokenReference --bg-primary resolves to colors.bg.primary"}
 ```
 
 ### No plausible token set — skip
@@ -143,7 +143,7 @@ A `borderWidth` token prop where the token path index contains no dimension/bord
 Before emitting any tool calls, verify:
 
 1. Every `map_token_prop` call targets a prop that appears in the "Generated CDF so far" section.
-2. Every path in `token_sets` and `token_allowed` exists in the token path index.
+2. Every path in `token_sets` and `token_allowed` is a leaf path that exists verbatim in the token path index — no group/prefix paths.
 3. `token_allowed`, when present, is a subset of `token_sets`.
 4. No call has an empty `token_sets`.
 5. `token_allowed` is omitted (not an empty array) unless you positively verified there is no restriction.
@@ -151,4 +151,4 @@ Before emitting any tool calls, verify:
 
 ## CRITICAL: No hallucinated paths
 
-Never emit a path in `token_sets` or `token_allowed` that does not appear in the token path index. An invented path is worse than no suggestion at all — it will be silently dropped downstream with a warning, but it also signals the mapping cannot be trusted. When in doubt, omit rather than guess.
+Never emit a path in `token_sets` or `token_allowed` that does not appear verbatim in the token path index. This includes group/prefix paths (e.g. `colors.brand`, `colors.surface`) — the index only ever contains leaf tokens, so a group name will never match and will be silently dropped downstream with a warning. If the relevant set is a whole group, enumerate its individual leaves instead of naming the group. An invented or group-level path is worse than no suggestion at all — it also signals the mapping cannot be trusted. When in doubt, omit rather than guess.
