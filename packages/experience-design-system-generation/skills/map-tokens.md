@@ -14,7 +14,7 @@ All input is embedded inline in the prompt before this file:
 
 - **Generated CDF so far** — design-category, token-typed props only, grouped by component. Every prop shown here already has `$type: "token"` and `$category: "design"`; you do not need to re-verify either.
 - **Token path index** — a flat array of `{ "path": "<dot.notation.path>", "type": "<DTCG $type>" }` covering every leaf token in the library. **No `$value` is included** — the mapping decision only needs paths and their DTCG type, not their concrete values.
-- **Component source references** — `{ "component": "<name>", "sourcePath": "<file path>" }` pairs, so you can look for `tokenReference` usage, union/enum-shaped prop types, default values, or comments that indicate a restriction.
+- **Component source references** — the real file text for each component (bounded/truncated), rendered inline as a fenced code block, so you can look for `tokenReference` usage, union/enum-shaped prop types, default values, or comments that indicate a restriction. **You have no filesystem access and no tools — `sourcePath` is a citation label only, never something to open.** When a component's source couldn't be read (moved/deleted since extraction), it's listed separately by path with no code block; for those, infer `token_sets` from the prop name and `$token.kind` alone and never emit `token_allowed` for them.
 
 ```typescript
 interface TokenPathIndexEntry {
@@ -25,6 +25,7 @@ interface TokenPathIndexEntry {
 interface ComponentSourceRef {
   component: string;
   sourcePath: string;
+  content: string | null;   // real file text, bounded — null when unreadable
 }
 ```
 
