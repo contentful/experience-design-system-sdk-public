@@ -26,7 +26,7 @@ export function setPersistedAnalyticsDisabled(disabled: boolean): void {
 }
 
 export function analyticsEnabled(): boolean {
-  return !persistedDisabled && !process.env.DISABLE_ANALYTICS && Boolean(resolveWriteKey());
+  return !persistedDisabled && !process.env.DISABLE_ANALYTICS;
 }
 
 // SEGMENT_WRITE_KEY overrides the default so engineers can point a local run at

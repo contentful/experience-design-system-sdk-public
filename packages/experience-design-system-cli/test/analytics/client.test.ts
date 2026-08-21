@@ -20,6 +20,8 @@ import {
   trackEvent,
 } from '../../src/analytics/client.js';
 
+// Duplicated from client.ts on purpose: importing the constant would assert it
+// against itself, so a rotation must be an explicit change here too.
 const PUBLIC_WRITE_KEY = '6DmxiEPN3SV1vbRTTMcNqDzCvkfwT06N';
 
 describe('analyticsEnabled', () => {
