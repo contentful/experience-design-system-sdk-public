@@ -121,7 +121,7 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
     const generatedCdf = Object.fromEntries(cdfEntries.map((c) => [c.key, c.entry]));
     const { groups, tokens } = loadDTCGTokens(db, sessionId);
     const tokenTree = rebuildDTCGTree(groups, tokens) as TokenTree;
-    const componentSourceRefs = loadComponentSourceRefs(db, sessionId);
+    const componentSourceRefs = await loadComponentSourceRefs(db, sessionId);
 
     if (opts.printPrompt) {
       const prompt = await buildPrompt({

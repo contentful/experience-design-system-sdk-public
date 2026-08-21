@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
@@ -1261,13 +1262,43 @@ export function loadRawComponents(
   );
 }
 
-export function loadComponentSourceRefs(db: DatabaseSync, sessionId: string): ComponentSourceRef[] {
+// Mirrors analyze/select-agent/context-builder.ts's MAX_COMPONENT_SOURCE_CHARS
+// convention for bounding inlined source in an agent prompt.
+const MAX_COMPONENT_SOURCE_CHARS = 8_000;
+
+function truncateSource(text: string): string {
+  if (text.length <= MAX_COMPONENT_SOURCE_CHARS) return text;
+  return text.slice(0, MAX_COMPONENT_SOURCE_CHARS) + '\n/* truncated */';
+}
+
+// Reads and inlines real file content here, at the last point this pipeline
+// has local filesystem access — the map-tokens/generate-components agent
+// invocations are deliberately filesystem-free (stdout-only tool-call
+// protocol), so a bare path is useless to them. Read failures (file moved or
+// deleted since extraction) resolve to `content: null`, not a thrown error —
+// callers fall back to inferring from the prop name and $token.kind alone.
+export async function loadComponentSourceRefs(
+  db: DatabaseSync,
+  sessionId: string,
+): Promise<ComponentSourceRef[]> {
   const rows = db
     .prepare(
       `SELECT name, source, source_path FROM raw_components WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
     )
     .all(sessionId) as Array<{ name: string; source: string; source_path: string | null }>;
-  return rows.map((r) => ({ component: r.name, sourcePath: r.source_path ?? r.source }));
+
+  return Promise.all(
+    rows.map(async (r) => {
+      const sourcePath = r.source_path ?? r.source;
+      let content: string | null = null;
+      try {
+        content = truncateSource(await readFile(sourcePath, 'utf8'));
+      } catch {
+        // File no longer exists or unreadable — leave content null.
+      }
+      return { component: r.name, sourcePath, content };
+    }),
+  );
 }
 
 export function renameEmptySlots(

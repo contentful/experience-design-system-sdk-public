@@ -243,7 +243,14 @@ describe('buildPrompt', () => {
         },
       },
     };
-    const SOURCE_REFS = [{ component: 'Card', sourcePath: 'src/Card.tsx' }];
+    const SOURCE_REFS = [{ component: 'Card', sourcePath: 'src/Card.tsx', content: null }];
+    const SOURCE_REFS_WITH_CONTENT = [
+      {
+        component: 'Card',
+        sourcePath: 'src/Card.tsx',
+        content: "export function Card({ bgColor }) {\n  return <div style={{ background: bgColor }} />;\n}",
+      },
+    ];
 
     it('autonomous preamble includes map_token_prop tool-call protocol', async () => {
       const prompt = await buildPrompt({
@@ -289,7 +296,7 @@ describe('buildPrompt', () => {
       expect(prompt).not.toContain('#0066ff');
     });
 
-    it('includes component source references when provided', async () => {
+    it('falls back to a path-only listing when content could not be read', async () => {
       const prompt = await buildPrompt({
         skill: 'map-tokens',
         mode: 'autonomous',
@@ -298,8 +305,23 @@ describe('buildPrompt', () => {
         componentSourceRefs: SOURCE_REFS,
         outDir: '/fake/out',
       });
-      expect(prompt).toContain('Component source references');
+      expect(prompt).toContain('Component source unavailable for');
       expect(prompt).toContain('src/Card.tsx');
+    });
+
+    it('inlines real file content as a fenced code block, not just the path', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        componentSourceRefs: SOURCE_REFS_WITH_CONTENT,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('### Component source references');
+      expect(prompt).toContain('```tsx');
+      expect(prompt).toContain('background: bgColor');
+      expect(prompt).not.toContain('Component source unavailable for');
     });
 
     it('omits sections entirely when there is no token data', async () => {
@@ -310,7 +332,8 @@ describe('buildPrompt', () => {
       });
       expect(prompt).not.toContain('design-category token props only (JSON)');
       expect(prompt).not.toContain('Token path index — path and $type only');
-      expect(prompt).not.toContain('Component source references (JSON)');
+      expect(prompt).not.toContain('### Component source references');
+      expect(prompt).not.toContain('Component source unavailable for');
     });
 
     it('omits the generated-CDF section when no props are design-category tokens', async () => {

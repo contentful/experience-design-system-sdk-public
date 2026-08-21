@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   openPipelineDb,
@@ -2454,15 +2454,55 @@ describe('generation cache', () => {
     });
   });
 
-  it('loadComponentSourceRefs returns generated components with their source path, falling back to source', async () => {
-    await withTempDb((dbPath) => {
+  it('loadComponentSourceRefs returns generated components with their source path, falling back to source, and null content when the file is unreadable', async () => {
+    await withTempDb(async (dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
       storeRawComponents(db, sessionId, [
         { name: 'Card', source: 'src/Card.tsx', framework: 'react', props: [], slots: [] },
       ]);
       storeCDFComponents(db, sessionId, [{ key: 'Card', entry: { $type: 'component', $properties: {} } }]);
-      expect(loadComponentSourceRefs(db, sessionId)).toEqual([{ component: 'Card', sourcePath: 'src/Card.tsx' }]);
+      expect(await loadComponentSourceRefs(db, sessionId)).toEqual([
+        { component: 'Card', sourcePath: 'src/Card.tsx', content: null },
+      ]);
+      db.close();
+    });
+  });
+
+  it('loadComponentSourceRefs inlines real file content when the source file exists on disk', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Card.tsx');
+      await writeFile(componentPath, 'export const Card = () => null;');
+
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        { name: 'Card', source: componentPath, framework: 'react', props: [], slots: [] },
+      ]);
+      storeCDFComponents(db, sessionId, [{ key: 'Card', entry: { $type: 'component', $properties: {} } }]);
+      expect(await loadComponentSourceRefs(db, sessionId)).toEqual([
+        { component: 'Card', sourcePath: componentPath, content: 'export const Card = () => null;' },
+      ]);
+      db.close();
+    });
+  });
+
+  it('loadComponentSourceRefs truncates content past the size cap', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Big.tsx');
+      await writeFile(componentPath, 'x'.repeat(9_000));
+
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        { name: 'Big', source: componentPath, framework: 'react', props: [], slots: [] },
+      ]);
+      storeCDFComponents(db, sessionId, [{ key: 'Big', entry: { $type: 'component', $properties: {} } }]);
+      const [ref] = await loadComponentSourceRefs(db, sessionId);
+      expect(ref.content?.endsWith('/* truncated */')).toBe(true);
+      expect(ref.content?.length).toBe(8_000 + '\n/* truncated */'.length);
       db.close();
     });
   });
