@@ -197,6 +197,44 @@ describe('map tokens command', () => {
     db.close();
   });
 
+  it('does not cache a run that applies zero mappings, so a later session still invokes the agent', async () => {
+    const dbDir = await createTempDir('map-tokens-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const sessionA = await seedGeneratedSession(dbPath, true);
+
+    const first = await run(['map', 'tokens', '--session', sessionA, '--agent', 'claude'], {
+      dbPath,
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-wrong-category.mjs'),
+    });
+    expect(first.code).toBe(0);
+
+    const db = openPipelineDb(dbPath);
+    const cacheRows = db
+      .prepare(`SELECT * FROM generation_cache WHERE entity_type = 'token_mapping'`)
+      .all();
+    expect(cacheRows).toEqual([]);
+    db.close();
+
+    const sessionB = await seedGeneratedSession(dbPath, true);
+    // Must supply a fakeAgentScript — if a (poisoned) cache hit short-circuited this run, `which claude`
+    // would fail and the process would die non-zero, since no agent script is set up here.
+    const second = await run(['map', 'tokens', '--session', sessionB, '--agent', 'claude'], {
+      dbPath,
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
+    });
+    expect(second.code).toBe(0);
+    expect(second.stdout).toContain('map tokens complete');
+
+    const db2 = openPipelineDb(dbPath);
+    const componentId = loadRawComponents(db2, sessionB)[0].component_id;
+    const groups = loadRawPropTokenPaths(db2, sessionB);
+    expect(groups.find((g) => g.componentId === componentId && g.kind === 'set')?.paths).toEqual([
+      'colors.surface.default',
+      'colors.surface.raised',
+    ]);
+    db2.close();
+  });
+
   it('records a step row with inputs and outputs', async () => {
     const dbDir = await createTempDir('map-tokens-db-');
     const dbPath = join(dbDir, 'pipeline.db');

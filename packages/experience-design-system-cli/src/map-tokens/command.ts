@@ -186,7 +186,7 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
     const { calls, warnings: parseWarnings } = parseMapTokenPropToolCallLines(result.stdout);
     const { applied, warnings } = applyMapTokenPropCalls(db, sessionId, calls, parseWarnings);
 
-    if (!noCache) {
+    if (!noCache && applied > 0) {
       storeCache(db, inputHash, 'token_mapping', '__map_tokens__', sessionId, false, promptHash);
     }
 
