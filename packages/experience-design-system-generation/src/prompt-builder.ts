@@ -16,11 +16,15 @@ export type Mode = 'autonomous';
  * agent a path and expecting it to open the file. `null` when the file
  * couldn't be read (moved/deleted since extraction) — callers fall back to
  * inferring from the prop name and $token.kind alone in that case.
+ * `siblingFiles` carries the content of files the source file relatively
+ * imports (e.g. a co-located `.styles.ts`) — token-resolution logic often
+ * lives one hop away from the component file itself.
  */
 export interface ComponentSourceRef {
   component: string;
   sourcePath: string;
   content: string | null;
+  siblingFiles?: Array<{ path: string; content: string }>;
 }
 
 interface CDFPropertyLike {
@@ -245,10 +249,14 @@ function buildPreamble(options: PromptOptions): string {
     const withContent = componentSourceRefs.filter((ref) => ref.content != null);
     const withoutContent = componentSourceRefs.filter((ref) => ref.content == null);
     if (withContent.length > 0) {
-      const blocks = withContent.map(
-        (ref) =>
-          `#### ${ref.component} (\`${ref.sourcePath}\`)\n\`\`\`${inferFenceLang(ref.sourcePath)}\n${ref.content}\n\`\`\``,
-      );
+      const blocks = withContent.map((ref) => {
+        const mainBlock = `#### ${ref.component} (\`${ref.sourcePath}\`)\n\`\`\`${inferFenceLang(ref.sourcePath)}\n${ref.content}\n\`\`\``;
+        const siblingBlocks = (ref.siblingFiles ?? []).map(
+          (sibling) =>
+            `##### ${ref.component} — imported file \`${sibling.path}\`\n\`\`\`${inferFenceLang(sibling.path)}\n${sibling.content}\n\`\`\``,
+        );
+        return [mainBlock, ...siblingBlocks].join('\n\n');
+      });
       sections.push(`### Component source references\n\n${blocks.join('\n\n')}`);
     }
     if (withoutContent.length > 0) {

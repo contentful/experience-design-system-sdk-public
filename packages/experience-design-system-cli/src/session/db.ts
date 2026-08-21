@@ -1265,10 +1265,74 @@ export function loadRawComponents(
 // Mirrors analyze/select-agent/context-builder.ts's MAX_COMPONENT_SOURCE_CHARS
 // convention for bounding inlined source in an agent prompt.
 const MAX_COMPONENT_SOURCE_CHARS = 8_000;
+// Mirrors analyze/select-agent/context-builder.ts's MAX_SIBLING_FILES /
+// MAX_SIBLING_SNIPPET_CHARS conventions — small, purpose-built duplicate
+// rather than importing that module's SelectionContext machinery, which is
+// built for a different command (analyze select-agent).
+const MAX_SIBLING_FILES = 5;
+const MAX_SIBLING_SNIPPET_CHARS = 1_200;
+const RELATIVE_IMPORT_PATTERN = /from\s+['"](\.[^'"]+)['"]/g;
+const SIBLING_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
 
-function truncateSource(text: string): string {
-  if (text.length <= MAX_COMPONENT_SOURCE_CHARS) return text;
-  return text.slice(0, MAX_COMPONENT_SOURCE_CHARS) + '\n/* truncated */';
+function truncateSource(text: string, maxChars: number = MAX_COMPONENT_SOURCE_CHARS): string {
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars) + '\n/* truncated */';
+}
+
+function extractRelativeImportPaths(sourceText: string): string[] {
+  const specifiers = new Set<string>();
+  for (const match of sourceText.matchAll(RELATIVE_IMPORT_PATTERN)) {
+    if (match[1]) specifiers.add(match[1]);
+  }
+  return [...specifiers];
+}
+
+// Tries the specifier as a file directly, then with each known extension,
+// then as a directory's index file — same resolution order as Node's own
+// extension-less relative import resolution.
+async function resolveRelativeImport(specifier: string, fromDir: string): Promise<string | undefined> {
+  const basePath = resolve(fromDir, specifier);
+  const candidates = [
+    basePath,
+    ...SIBLING_FILE_EXTENSIONS.map((ext) => `${basePath}${ext}`),
+    ...SIBLING_FILE_EXTENSIONS.map((ext) => resolve(basePath, `index${ext}`)),
+  ];
+  for (const candidate of candidates) {
+    try {
+      await readFile(candidate, 'utf8');
+      return candidate;
+    } catch {
+      // Not this candidate — try the next.
+    }
+  }
+  return undefined;
+}
+
+// Loads the content of files the component's source file relatively imports
+// (e.g. a co-located `.styles.ts`), bounded to MAX_SIBLING_FILES. Token
+// resolution logic (e.g. a variant-to-token map) often lives one hop away
+// from the component file itself, not in it.
+async function loadSiblingFiles(
+  sourceText: string,
+  sourcePath: string,
+): Promise<Array<{ path: string; content: string }>> {
+  const specifiers = extractRelativeImportPaths(sourceText);
+  const fromDir = dirname(sourcePath);
+  const siblings: Array<{ path: string; content: string }> = [];
+
+  for (const specifier of specifiers) {
+    if (siblings.length >= MAX_SIBLING_FILES) break;
+    const resolvedPath = await resolveRelativeImport(specifier, fromDir);
+    if (!resolvedPath) continue;
+    try {
+      const content = truncateSource(await readFile(resolvedPath, 'utf8'), MAX_SIBLING_SNIPPET_CHARS);
+      siblings.push({ path: resolvedPath, content });
+    } catch {
+      // Resolved but became unreadable between the resolve check and this read — skip it.
+    }
+  }
+
+  return siblings;
 }
 
 // Reads and inlines real file content here, at the last point this pipeline
@@ -1291,12 +1355,17 @@ export async function loadComponentSourceRefs(
     rows.map(async (r) => {
       const sourcePath = r.source_path ?? r.source;
       let content: string | null = null;
+      let siblingFiles: Array<{ path: string; content: string }> = [];
       try {
-        content = truncateSource(await readFile(sourcePath, 'utf8'));
+        const rawText = await readFile(sourcePath, 'utf8');
+        content = truncateSource(rawText);
+        siblingFiles = await loadSiblingFiles(rawText, sourcePath);
       } catch {
         // File no longer exists or unreadable — leave content null.
       }
-      return { component: r.name, sourcePath, content };
+      return siblingFiles.length > 0
+        ? { component: r.name, sourcePath, content, siblingFiles }
+        : { component: r.name, sourcePath, content };
     }),
   );
 }

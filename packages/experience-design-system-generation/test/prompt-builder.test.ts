@@ -324,6 +324,27 @@ describe('buildPrompt', () => {
       expect(prompt).not.toContain('Component source unavailable for');
     });
 
+    it('inlines sibling files alongside the main component source', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        componentSourceRefs: [
+          {
+            ...SOURCE_REFS_WITH_CONTENT[0],
+            siblingFiles: [
+              { path: 'src/Card.styles.ts', content: 'export const cardColorMap = { primary: "blue500" };' },
+            ],
+          },
+        ],
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('src/Card.styles.ts');
+      expect(prompt).toContain('cardColorMap');
+      expect(prompt).toContain('```ts');
+    });
+
     it('omits sections entirely when there is no token data', async () => {
       const prompt = await buildPrompt({
         skill: 'map-tokens',
