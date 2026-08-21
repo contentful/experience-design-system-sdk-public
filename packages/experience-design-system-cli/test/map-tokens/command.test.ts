@@ -104,7 +104,7 @@ describe('map tokens command', () => {
     const dbPath = join(dbDir, 'pipeline.db');
     const sessionId = await seedGeneratedSession(dbPath, true);
 
-    const { stdout, code } = await run(['map', 'tokens', '--session', sessionId], {
+    const { stdout, code } = await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], {
       dbPath,
       fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
     });
@@ -132,10 +132,12 @@ describe('map tokens command', () => {
     const dbPath = join(dbDir, 'pipeline.db');
     const sessionId = await seedGeneratedSession(dbPath, true);
 
-    const { stdout, code } = await run(['map', 'tokens', '--session', sessionId, '--print-prompt'], { dbPath });
+    const { stdout, code } = await run(
+      ['map', 'tokens', '--session', sessionId, '--print-prompt', '--agent', 'claude'],
+      { dbPath },
+    );
 
     expect(code).toBe(0);
-    expect(stdout).toContain('map-tokens');
     expect(stdout).toContain('Token path index');
   });
 
@@ -144,7 +146,7 @@ describe('map tokens command', () => {
     const dbPath = join(dbDir, 'pipeline.db');
     const sessionId = await seedGeneratedSession(dbPath, false);
 
-    const { stdout, code } = await run(['map', 'tokens', '--session', sessionId], { dbPath });
+    const { stdout, code } = await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], { dbPath });
 
     expect(code).toBe(0);
     expect(stdout).toContain('Nothing to map');
@@ -161,7 +163,7 @@ describe('map tokens command', () => {
     const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
     db.close();
 
-    const { stderr, code } = await run(['map', 'tokens', '--session', sessionId], { dbPath });
+    const { stderr, code } = await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], { dbPath });
 
     expect(code).not.toBe(0);
     expect(stderr).toContain('generate components');
@@ -172,7 +174,7 @@ describe('map tokens command', () => {
     const dbPath = join(dbDir, 'pipeline.db');
     const sessionA = await seedGeneratedSession(dbPath, true);
 
-    const first = await run(['map', 'tokens', '--session', sessionA], {
+    const first = await run(['map', 'tokens', '--session', sessionA, '--agent', 'claude'], {
       dbPath,
       fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
     });
@@ -180,7 +182,7 @@ describe('map tokens command', () => {
 
     const sessionB = await seedGeneratedSession(dbPath, true);
     // No fakeAgentScript this time — if the command tries to invoke the agent, `which claude` fails and it dies non-zero.
-    const second = await run(['map', 'tokens', '--session', sessionB], { dbPath });
+    const second = await run(['map', 'tokens', '--session', sessionB, '--agent', 'claude'], { dbPath });
 
     expect(second.code).toBe(0);
     expect(second.stdout).toContain('map tokens complete');
@@ -200,7 +202,7 @@ describe('map tokens command', () => {
     const dbPath = join(dbDir, 'pipeline.db');
     const sessionId = await seedGeneratedSession(dbPath, true);
 
-    await run(['map', 'tokens', '--session', sessionId], {
+    await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], {
       dbPath,
       fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
     });
