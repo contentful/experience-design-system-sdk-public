@@ -5,7 +5,6 @@ import { promisify } from 'node:util';
 import type { Command } from 'commander';
 import {
   AGENT_NAMES,
-  DEFAULT_AGENT_NAME,
   buildPrompt,
   createLocalCliAgentInvoker,
   describeAgentFailure,
@@ -79,9 +78,9 @@ async function renderResult(result: MapTokensViewResult): Promise<void> {
 
 async function runMapTokens(opts: MapTokensOptions): Promise<void> {
   const savedCreds = await readExperiencesCredentials();
-  const agentName = opts.agent ?? savedCreds.agent ?? DEFAULT_AGENT_NAME;
+  const agentName = opts.agent ?? savedCreds.agent;
   const model = opts.model ?? savedCreds.agentModel;
-  if (!isAgentName(agentName)) {
+  if (!agentName || !isAgentName(agentName)) {
     die(
       `Error: no agent configured. Pass --agent <name> or run experiences setup. Accepted values: ${AGENT_NAMES.join(', ')}`,
     );
@@ -133,7 +132,7 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
         componentSourceRefs,
         outDir: process.cwd(),
       });
-      process.stdout.write(`--- map-tokens prompt ---\n${prompt}\n`);
+      process.stdout.write(prompt + '\n');
       await exitWithAnalytics(0);
       return;
     }
