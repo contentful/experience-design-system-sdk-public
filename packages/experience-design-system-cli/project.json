@@ -17,8 +17,7 @@
           "rm -rf packages/experience-design-system-cli/dist",
           "rm -rf packages/experience-design-system-cli/skills",
           "cp -r packages/experience-design-system-generation/skills packages/experience-design-system-cli/skills",
-          "nx run experience-design-system-cli:compile",
-          "cp packages/experience-design-system-cli/package.json packages/experience-design-system-cli/dist/package.json"
+          "nx run experience-design-system-cli:compile"
         ]
       },
       "dependsOn": ["^build"]
