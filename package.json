@@ -45,6 +45,7 @@
   "devDependencies": {
     "@commitlint/cli": "^20.5.3",
     "@commitlint/config-conventional": "^20.5.3",
+    "@nx/esbuild": "22.6.0",
     "@nx/js": "^22.3.3",
     "@nx/workspace": "^22.3.3",
     "conventional-changelog-conventionalcommits": "^9.3.1",
