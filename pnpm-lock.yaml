@@ -70,8 +70,8 @@ importers:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
       svelte:
-        specifier: ^5.56.4
-        version: 5.56.4(@typescript-eslint/types@8.67.0)
+        specifier: ^5.56.9
+        version: 5.56.10(@typescript-eslint/types@8.67.0)
       ts-morph:
         specifier: ^27.0.2
         version: 27.0.2
@@ -159,8 +159,8 @@ importers:
         specifier: ^3.5.31
         version: 3.5.32
       svelte:
-        specifier: ^5.56.4
-        version: 5.56.4(@typescript-eslint/types@8.67.0)
+        specifier: ^5.56.9
+        version: 5.56.10(@typescript-eslint/types@8.67.0)
       ts-morph:
         specifier: ^27.0.2
         version: 27.0.2
@@ -3372,8 +3372,8 @@ packages:
     resolution: {integrity: sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w==}
     engines: {node: '>= 0.4'}
 
-  svelte@5.56.4:
-    resolution: {integrity: sha512-/d0QHehmRuJW8gVz395MTkPcPozxzdjBMBE8oEYGz8O3b9KTMzzQ9ZHJQLuFKOHOPQbU6kx/X4iid/EBBzH7iw==}
+  svelte@5.56.10:
+    resolution: {integrity: sha512-Lcxbj8I/KAbpY+VjtY4ENQBV0dDCipfGAhqb51XQZ67CIQqXgsv/8dPkbILaj4Fb6/b6JAEM/PIVbILXgDQy2g==}
     engines: {node: '>=18'}
 
   symbol-tree@3.2.4:
@@ -7196,7 +7196,7 @@ snapshots:
 
   supports-preserve-symlinks-flag@1.0.0: {}
 
-  svelte@5.56.4(@typescript-eslint/types@8.67.0):
+  svelte@5.56.10(@typescript-eslint/types@8.67.0):
     dependencies:
       '@jridgewell/remapping': 2.3.5
       '@jridgewell/sourcemap-codec': 1.5.5
