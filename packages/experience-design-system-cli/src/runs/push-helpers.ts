@@ -1,25 +1,8 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { findCliPath } from '../lib/cli-path.js';
 
 export type PushSessionResult = { ok: true } | { ok: false; error: string };
-
-/**
- * Resolve the package's CLI binary. Duplicates the walk from export-helpers
- * so push-helpers can be imported independently.
- */
-function findCliPath(): string {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (let i = 0; i < 8; i++) {
-    const candidate = join(dir, 'bin', 'cli.js');
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return join(fileURLToPath(import.meta.url), '..', '..', '..', '..', 'bin', 'cli.js');
-}
 
 function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const cliPath = findCliPath();
