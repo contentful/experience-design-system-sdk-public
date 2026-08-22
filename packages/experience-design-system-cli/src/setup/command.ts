@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { appendFile, readFile, access } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
@@ -16,6 +16,7 @@ import { promptAutoFilterPreference } from './auto-filter-prompt.js';
 import { promptDebugModePreference } from './debug-mode-prompt.js';
 import { promptAnalyticsPreference } from './analytics-prompt.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
+import { findPkgRoot } from '../lib/cli-path.js';
 import type { AgentName } from '@contentful/experience-design-system-generation';
 
 const execFileAsync = promisify(execFile);
@@ -916,7 +917,7 @@ export function registerSetupCommand(program: Command): void {
     .action(async (opts: { skipBuild?: boolean; skipAgent?: boolean }) => {
       process.stderr.write('\x1b[1mexperiences doctor\x1b[0m — checking your environment\n');
 
-      const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+      const pkgRoot = findPkgRoot();
 
       const results: { name: string; ok: boolean; required: boolean }[] = [];
 
@@ -993,7 +994,7 @@ export function registerSetupCommand(program: Command): void {
         process.stdout.write('\n\x1b[1mexperiences setup\x1b[0m — interactive setup wizard\n');
         process.stdout.write('Sets up everything you need to run \x1b[1mexperiences import\x1b[0m.\n');
 
-        const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+        const pkgRoot = findPkgRoot();
         const repoRoot = join(pkgRoot, '..', '..');
         const profilePath = await detectShellProfile();
 

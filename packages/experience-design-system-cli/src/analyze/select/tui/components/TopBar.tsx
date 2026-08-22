@@ -1,11 +1,13 @@
-import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import React from 'react';
 import { Box, Text } from 'ink';
+import { findPkgRoot } from '../../../../lib/cli-path.js';
 
-// createRequire is needed because this is an ESM package — require() doesn't
-// exist natively, but it's the simplest way to read a JSON file at runtime.
-const _require = createRequire(import.meta.url);
-const VERSION: string = (_require('../../../../../package.json') as { version: string }).version;
+// Read via findPkgRoot() rather than a hardcoded-depth require — this file's
+// depth under dist/ changes once the CLI is bundled into a single dist/src/index.js.
+const VERSION: string = (JSON.parse(readFileSync(join(findPkgRoot(), 'package.json'), 'utf8')) as { version: string })
+  .version;
 
 type TopBarProps = {
   subcommand: string;

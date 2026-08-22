@@ -1,8 +1,13 @@
-import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Analytics } from '@segment/analytics-node';
+import { findPkgRoot } from '../lib/cli-path.js';
 
-const require = createRequire(import.meta.url);
-const pkg = require('../../package.json') as { version: string };
+// Read via findPkgRoot() rather than a hardcoded-depth require — this file's
+// depth under dist/ changes once the CLI is bundled into a single dist/src/index.js.
+const pkg = JSON.parse(readFileSync(join(findPkgRoot(), 'package.json'), 'utf8')) as {
+  version: string;
+};
 
 // Anonymous usage telemetry for the CLI. Disabled when DISABLE_ANALYTICS is set
 // or when the setup preference opts out. Never blocks command execution.

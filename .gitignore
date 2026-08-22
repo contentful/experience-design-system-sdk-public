@@ -3,6 +3,10 @@
 **/dist
 **/built
 
+# generated build-time copy of generation's skills/ (see cli's build target);
+# generation's own packages/experience-design-system-generation/skills/ stays tracked
+packages/experience-design-system-cli/skills/
+
 # misc
 *.log
 **/*.DS_Store

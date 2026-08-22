@@ -1,7 +1,7 @@
-import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
 import { registerAnalyzeCommand } from './analyze/command.js';
 import { registerGenerateCommand } from './generate/command.js';
@@ -19,10 +19,13 @@ import {
   setPersistedAnalyticsDisabled,
 } from './analytics/index.js';
 import { readExperiencesCredentials } from './credentials-store.js';
+import { findPkgRoot } from './lib/cli-path.js';
 
-const require = createRequire(import.meta.url);
-
-const pkg = require('../package.json') as { version: string };
+// Read via findPkgRoot() rather than a hardcoded-depth require — this file's
+// depth under dist/ changes once the CLI is bundled into a single dist/src/index.js.
+const pkg = JSON.parse(readFileSync(join(findPkgRoot(), 'package.json'), 'utf8')) as {
+  version: string;
+};
 
 type SpawnedChild = {
   on(event: 'error', listener: (err: unknown) => void): unknown;

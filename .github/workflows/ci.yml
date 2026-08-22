@@ -236,14 +236,11 @@ jobs:
           # per-package to retarget npmjs.org. The nx release step above has
           # already published to GitHub Packages, so mutating the working-tree
           # manifests here is safe (the checkout is discarded after the job).
-          for pkg in types extraction cli; do
+          for pkg in types cli; do
             npm pkg set publishConfig.registry=https://registry.npmjs.org \
               --prefix "packages/experience-design-system-$pkg"
           done
           pnpm --filter @contentful/experience-design-system-types run build
-          pnpm --filter @contentful/experience-design-system-extraction run build
           pnpm --filter @contentful/experience-design-system-cli run build
-          # extraction must publish before cli, which pins it as a dependency
-          pnpm --filter @contentful/experience-design-system-types publish --access public --no-git-checks
-          pnpm --filter @contentful/experience-design-system-extraction publish --access public --no-git-checks
-          pnpm --filter @contentful/experience-design-system-cli publish --access public --no-git-checks
+          pnpm --filter @contentful/experience-design-system-types publish --access public --no-git-checks --@contentful:registry=https://registry.npmjs.org
+          pnpm --filter @contentful/experience-design-system-cli publish --access public --no-git-checks --@contentful:registry=https://registry.npmjs.org

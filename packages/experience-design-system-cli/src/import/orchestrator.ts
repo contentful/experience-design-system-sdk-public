@@ -1,6 +1,5 @@
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import {
   openPipelineDb,
@@ -17,6 +16,7 @@ import { getDebugLogger } from '../lib/debug-logger.js';
 import { bindAnalyticsSession, emitSessionStarted } from '../analytics/index.js';
 import { pipelineSubprocessEnv } from '../analytics/env.js';
 import type { CompositionMode } from '../lib/composition-mode.js';
+import { findCliPath } from '../lib/cli-path.js';
 
 export interface PipelineOptions {
   project: string;
@@ -69,10 +69,6 @@ export interface PipelineResult {
   project: string;
   steps: StepResult[];
   cycleError?: { report: string[] };
-}
-
-function findCliPath(): string {
-  return join(fileURLToPath(import.meta.url), '..', '..', '..', '..', 'bin', 'cli.js');
 }
 
 async function runStep(

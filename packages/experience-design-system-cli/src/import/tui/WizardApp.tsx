@@ -5,7 +5,6 @@ import { join, resolve } from 'node:path';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { access, readFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import { execFile, spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { buildRunTeaserLine } from './run-teaser.js';
@@ -81,6 +80,7 @@ import {
   resolveCycleGateAction,
 } from './wizard-state-transitions.js';
 import { computeCycleAutoRejectTargets } from '../cycle-auto-reject.js';
+import { findCliPath } from '../../lib/cli-path.js';
 
 type WizardStep =
   | 'run-picker'
@@ -177,10 +177,6 @@ type WizardState = {
    *  components manifest so the target space's components are all deleted. */
   allowEmptyDeleteAll: boolean;
 };
-
-function findCliPath(): string {
-  return join(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..', 'bin', 'cli.js');
-}
 
 export function buildSelectAgentArgs(opts: {
   sessionId: string;
