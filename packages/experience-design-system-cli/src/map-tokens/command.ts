@@ -96,16 +96,18 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       );
     }
 
-    const hasGenerateStep = db
-      .prepare(`SELECT 1 FROM steps WHERE session_id = ? AND command = 'generate components' AND status = 'complete'`)
-      .get(sessionId);
-    if (!hasGenerateStep) {
+    await bindAnalyticsSessionId(sessionId);
+
+    // Whether the session was auto-resolved (which already required a completed
+    // "generate components" step) or passed explicitly via --session, what actually
+    // matters is that the session has real generated CDF component data to map
+    // tokens onto — so verify that directly instead of re-checking the steps table.
+    const cdfEntries = loadCDFComponents(db, sessionId);
+    if (cdfEntries.length === 0) {
       die(
-        `Error: session '${sessionId}' has not completed generate components. Run generate components first, or pass a different --session.`,
+        `Error: no generated components in session '${sessionId}'. Run generate components first, or pass a different --session.`,
       );
     }
-
-    await bindAnalyticsSessionId(sessionId);
 
     const mappablePropCount = countMappableTokenProps(db, sessionId);
     const tokenCount = countRawTokens(db, sessionId);
@@ -117,7 +119,6 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       return;
     }
 
-    const cdfEntries = loadCDFComponents(db, sessionId);
     const generatedCdf = Object.fromEntries(cdfEntries.map((c) => [c.key, c.entry]));
     const { groups, tokens } = loadDTCGTokens(db, sessionId);
     const tokenTree = rebuildDTCGTree(groups, tokens) as TokenTree;

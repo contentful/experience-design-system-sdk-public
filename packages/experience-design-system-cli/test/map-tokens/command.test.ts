@@ -75,6 +75,38 @@ async function seedGeneratedSession(dbPath: string, withTokens: boolean): Promis
   return sessionId;
 }
 
+async function seedGeneratedSessionWithoutStep(dbPath: string): Promise<string> {
+  const db = openPipelineDb(dbPath);
+  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+  storeRawComponents(db, sessionId, RAW);
+  storeCDFComponents(db, sessionId, [
+    {
+      key: 'Card',
+      entry: {
+        $type: 'component',
+        $properties: {
+          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+          label: { $type: 'string', $category: 'content' },
+        },
+      },
+    },
+  ]);
+  storeDTCGTokens(
+    db,
+    sessionId,
+    [],
+    [
+      { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
+      { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
+    ],
+  );
+  // Deliberately no createStep/updateStep call for 'generate components' — this
+  // mirrors a real standalone run, since `generate components` never records
+  // that step itself.
+  db.close();
+  return sessionId;
+}
+
 async function run(
   args: string[],
   opts: { dbPath: string; fakeAgentScript?: string },
@@ -167,6 +199,29 @@ describe('map tokens command', () => {
 
     expect(code).not.toBe(0);
     expect(stderr).toContain('generate components');
+  });
+
+  it('an explicit --session with generated CDF components succeeds even without a recorded generate components step', async () => {
+    const dbDir = await createTempDir('map-tokens-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const sessionId = await seedGeneratedSessionWithoutStep(dbPath);
+
+    const { stdout, code } = await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], {
+      dbPath,
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
+    });
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('map tokens complete');
+
+    const db = openPipelineDb(dbPath);
+    const componentId = loadRawComponents(db, sessionId)[0].component_id;
+    const groups = loadRawPropTokenPaths(db, sessionId);
+    expect(groups.find((g) => g.componentId === componentId && g.kind === 'set')?.paths).toEqual([
+      'colors.surface.default',
+      'colors.surface.raised',
+    ]);
+    db.close();
   });
 
   it('a cache hit skips the agent invocation and copies the prior mapping', async () => {
