@@ -216,6 +216,34 @@ describe('applyMapTokenPropCalls', () => {
     });
   });
 
+  it('rejects a call whose token_allowed is not a subset of token_sets, persisting nothing', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      seedSession(db, sessionId);
+
+      const result = applyMapTokenPropCalls(
+        db,
+        sessionId,
+        [
+          {
+            tool: 'map_token_prop',
+            component: 'Card',
+            prop: 'bgColor',
+            token_sets: ['colors.surface.default'],
+            token_allowed: ['colors.brand.primary'],
+          },
+        ],
+        [],
+      );
+
+      expect(result.applied).toBe(0);
+      expect(result.warnings.some((w) => w.includes('token_allowed is not a subset of token_sets'))).toBe(true);
+      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([]);
+      db.close();
+    });
+  });
+
   it('rejects a call targeting an unknown component, with a warning', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);

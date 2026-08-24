@@ -77,6 +77,13 @@ export function applyMapTokenPropCalls(
           warnings.push(`map_token_prop '${call.component}.${call.prop}': dropped unknown token path '${path}'`);
         }
       }
+
+      if (!filteredAllowed.every((path) => filteredSets.includes(path))) {
+        warnings.push(
+          `map_token_prop '${call.component}.${call.prop}': token_allowed is not a subset of token_sets — skipped`,
+        );
+        continue;
+      }
     }
 
     replaceRawPropTokenPaths(db, sessionId, component.component_id, call.prop, 'set', filteredSets);
