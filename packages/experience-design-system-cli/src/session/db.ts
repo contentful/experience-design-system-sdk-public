@@ -1341,6 +1341,19 @@ async function loadSiblingFiles(
 // protocol), so a bare path is useless to them. Read failures (file moved or
 // deleted since extraction) resolve to `content: null`, not a thrown error —
 // callers fall back to inferring from the prop name and $token.kind alone.
+export async function loadComponentSourceRef(name: string, sourcePath: string): Promise<ComponentSourceRef> {
+  let content: string | null = null;
+  let siblingFiles: Array<{ path: string; content: string }> = [];
+  try {
+    const rawText = await readFile(sourcePath, 'utf8');
+    content = truncateSource(rawText);
+    siblingFiles = await loadSiblingFiles(rawText, sourcePath);
+  } catch {
+    // File no longer exists or unreadable — leave content null.
+  }
+  return siblingFiles.length > 0 ? { component: name, sourcePath, content, siblingFiles } : { component: name, sourcePath, content };
+}
+
 export async function loadComponentSourceRefs(
   db: DatabaseSync,
   sessionId: string,
@@ -1351,23 +1364,7 @@ export async function loadComponentSourceRefs(
     )
     .all(sessionId) as Array<{ name: string; source: string; source_path: string | null }>;
 
-  return Promise.all(
-    rows.map(async (r) => {
-      const sourcePath = r.source_path ?? r.source;
-      let content: string | null = null;
-      let siblingFiles: Array<{ path: string; content: string }> = [];
-      try {
-        const rawText = await readFile(sourcePath, 'utf8');
-        content = truncateSource(rawText);
-        siblingFiles = await loadSiblingFiles(rawText, sourcePath);
-      } catch {
-        // File no longer exists or unreadable — leave content null.
-      }
-      return siblingFiles.length > 0
-        ? { component: r.name, sourcePath, content, siblingFiles }
-        : { component: r.name, sourcePath, content };
-    }),
-  );
+  return Promise.all(rows.map((r) => loadComponentSourceRef(r.name, r.source_path ?? r.source)));
 }
 
 export function renameEmptySlots(

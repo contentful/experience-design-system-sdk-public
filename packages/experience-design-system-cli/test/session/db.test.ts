@@ -34,6 +34,7 @@ import {
   countMappableTokenProps,
   countRawTokens,
   loadComponentSourceRefs,
+  loadComponentSourceRef,
   copyMapTokensFromCache,
 } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
@@ -2555,6 +2556,24 @@ describe('generation cache', () => {
       const [ref] = await loadComponentSourceRefs(db, sessionId);
       expect(ref.siblingFiles).toBeUndefined();
       db.close();
+    });
+  });
+
+  it('loadComponentSourceRef inlines a sibling file for a single component without any DB/session setup', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Avatar.tsx');
+      const utilsPath = join(dir, 'utils.ts');
+      await writeFile(componentPath, `import { avatarColorMap } from './utils';\n`);
+      await writeFile(utilsPath, 'export const avatarColorMap = { primary: "blue500" };');
+
+      const ref = await loadComponentSourceRef('Avatar', componentPath);
+      expect(ref).toEqual({
+        component: 'Avatar',
+        sourcePath: componentPath,
+        content: `import { avatarColorMap } from './utils';\n`,
+        siblingFiles: [{ path: utilsPath, content: 'export const avatarColorMap = { primary: "blue500" };' }],
+      });
     });
   });
 
