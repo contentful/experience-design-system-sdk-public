@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, it, expect } from 'vitest';
@@ -404,5 +404,40 @@ describe('import — project path flag', () => {
     // The pipeline may fail, but it should not be due to an unknown option
     expect(stderr).not.toContain("unknown option '--project'");
     expect(code).not.toBe(0);
+  });
+});
+
+describe('import — ~ expansion for --project and --raw-tokens', () => {
+  const REAL_PROJECT_DIR = resolve(import.meta.dirname, '../fixtures/analyze/project');
+
+  it('--raw-tokens ~/tokens.json does not report a false file-not-found', async () => {
+    const fakeHome = await createTempDir('fake-home-');
+    await writeFile(join(fakeHome, 'tokens.json'), '{}');
+
+    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '~/tokens.json'], {
+      ...baseEnv(),
+      HOME: fakeHome,
+    });
+
+    expect(stderr).not.toContain('--raw-tokens: file not found');
+    expect(code).toBe(0);
+  });
+
+  it('--project ~/myproj resolves against $HOME, not a literal ~ directory', async () => {
+    const fakeHome = await createTempDir('fake-home-');
+    await symlink(REAL_PROJECT_DIR, join(fakeHome, 'myproj'));
+    const freshDbPath = join(await createTempDir('project-tilde-db-'), 'pipeline.db');
+
+    const { stdout, code } = await run(
+      ['import', '--project', '~/myproj', '--skip-generate', '--skip-apply'],
+      { EDS_PIPELINE_DB_PATH: freshDbPath, NODE_NO_WARNINGS: '1', HOME: fakeHome },
+      30000,
+    );
+
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout) as { steps: Array<{ step: string; status: string; detail?: { components?: number } }> };
+    const extractStep = result.steps.find((s) => s.step === 'analyze extract');
+    expect(extractStep?.status).toBe('complete');
+    expect(extractStep?.detail?.components ?? 0).toBeGreaterThanOrEqual(1);
   });
 });

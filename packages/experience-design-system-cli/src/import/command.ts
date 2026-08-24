@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { resolve, join } from 'node:path';
+import { normalizePath } from './path-utils.js';
 import { runPipeline } from './orchestrator.js';
 import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { resolveAgent, resolveModel } from './agent-model-resolve.js';
@@ -346,7 +347,7 @@ export function registerImportCommand(program: Command): void {
           }
           const { access } = await import('node:fs/promises');
           try {
-            await access(opts.rawTokens);
+            await access(normalizePath(opts.rawTokens));
           } catch {
             process.stderr.write(`Error: --raw-tokens: file not found: ${opts.rawTokens}\n`);
             process.exit(1);
@@ -464,7 +465,7 @@ export function registerImportCommand(program: Command): void {
               initialHost: toConfiguredHost(opts.host ?? creds.host) ?? DEFAULT_CONFIGURED_HOST,
               initialAgent: resolvedAgent,
               ...(resolvedModel ? { initialModel: resolvedModel } : {}),
-              initialProjectPath: opts.project !== '.' ? resolve(opts.project) : undefined,
+              initialProjectPath: opts.project !== '.' ? normalizePath(opts.project) : undefined,
               host: opts.host,
               autoAcceptScope,
               autoRejectCycles: opts.autoRejectCycles ?? false,
@@ -484,7 +485,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.onConflict ? { onConflictMode: opts.onConflict } : {}),
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
-              ...(opts.rawTokens ? { initialRawTokensPath: resolve(opts.rawTokens) } : {}),
+              ...(opts.rawTokens ? { initialRawTokensPath: normalizePath(opts.rawTokens) } : {}),
               allowDeletions: opts.allowDeletions === true,
               ...pickerProps,
             }),
@@ -525,7 +526,7 @@ export function registerImportCommand(program: Command): void {
           return;
         }
 
-        const projectRoot = resolve(opts.project);
+        const projectRoot = normalizePath(opts.project);
         const outDir = opts.out ? resolve(opts.out) : join(projectRoot, '.contentful');
 
         const headlessCreds = await readExperiencesCredentials();
