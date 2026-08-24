@@ -42,7 +42,7 @@ function run(
     execFile(
       'node',
       [bin, ...args],
-      { env: { ...process.env, NODE_NO_WARNINGS: '1', ...env }, timeout },
+      { env: { ...process.env, DISABLE_ANALYTICS: '1', NODE_NO_WARNINGS: '1', ...env }, timeout },
       (error, stdout, stderr) => {
         res({ stdout, stderr, code: error?.code ? Number(error.code) : 0 });
       },
