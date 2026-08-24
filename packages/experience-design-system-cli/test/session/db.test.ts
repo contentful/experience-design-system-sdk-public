@@ -2100,7 +2100,7 @@ describe('generation cache', () => {
     expect(computeComponentInputHash(base)).not.toBe(computeComponentInputHash(modified));
   });
 
-  it('computeComponentInputHash ignores LLM-mutated fields (description, required, defaultValue, allowedValues, tokenReference)', () => {
+  it('computeComponentInputHash ignores LLM-mutated fields (description, required, defaultValue, allowedValues, tokenName)', () => {
     const base = {
       component_id: 'abc123',
       name: 'Button',
@@ -2119,7 +2119,7 @@ describe('generation cache', () => {
           description: 'LLM-written description',
           defaultValue: 'Submit',
           allowedValues: ['Submit', 'Cancel'],
-          tokenReference: 'tokens.label',
+          tokenName: 'tokens.label',
         },
       ],
       slots: [

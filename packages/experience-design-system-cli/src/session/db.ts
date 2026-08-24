@@ -996,7 +996,7 @@ export function storeRawComponents(
           prop.category ?? null,
           prop.defaultValue ?? null,
           prop.description ?? null,
-          prop.tokenReference ?? null,
+          prop.tokenName ?? null,
           i,
           prop.sourceStartLine ?? null,
           prop.sourceEndLine ?? null,
@@ -1212,7 +1212,7 @@ export function loadRawComponents(
         if (p.category !== null) prop.category = p.category as RawPropDefinition['category'];
         if (p.default_value !== null) prop.defaultValue = p.default_value;
         if (p.description !== null) prop.description = p.description;
-        if (p.token_reference !== null) prop.tokenReference = p.token_reference;
+        if (p.token_reference !== null) prop.tokenName = p.token_reference;
         if (av && av.length > 0) prop.allowedValues = av.map((v) => v.value);
         if (p.source_start_line !== null) prop.sourceStartLine = p.source_start_line;
         if (p.source_end_line !== null) prop.sourceEndLine = p.source_end_line;
@@ -1334,8 +1334,11 @@ export function storeCDFComponents(
     `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, position, path)
      VALUES (?, ?, ?, ?, ?, ?)`,
   );
-  // Absence of rows already means "mapping never ran", so a persisted-but-empty $token.allowed
-  // needs a sentinel row (position -1, empty path) to stay distinguishable on read-back.
+  // On read-back, "no rows" means the mapping never ran (undefined) and must stay distinct from
+  // "mapping ran, found zero token paths" (an empty array). Since an empty `paths` writes zero
+  // rows either way, insert one sentinel row (position -1, empty path) to mark the latter case.
+  // (loadCDFComponents can be called before this prop is ever mapped — e.g. from `print` or
+  // `apply` right after `generate components` — so the undefined/[] distinction is real.)
   const writeTokenPaths = (componentId: string, propName: string, kind: 'set' | 'allowed', paths: string[]) => {
     deleteTokenPaths.run(sessionId, componentId, propName, kind);
     if (paths.length === 0) {
