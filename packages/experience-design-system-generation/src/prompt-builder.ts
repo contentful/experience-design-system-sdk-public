@@ -342,7 +342,7 @@ Rules:
 - \`token_allowed\` must be a subset of \`token_sets\`.
 - Restriction requires evidence: a union/enum-shaped prop type, a default value, or an explicit comment in the component source. Omit \`token_allowed\` entirely when you have no such evidence — do not include it as a placeholder.
 - An empty \`token_allowed\` array is a deliberate, evidenced claim that nothing in \`token_sets\` is restricted (everything is allowed) — only emit it when you actually reviewed the evidence and found no restriction, not as a default.
-- If the prop's source shows an existing \`tokenReference\` (a CSS custom property or design-token reference), treat it as high-confidence evidence and never contradict it in \`token_sets\` or \`token_allowed\`.
+- If the prop's source shows an existing \`tokenName\` (a CSS custom property or design-token reference), treat it as high-confidence evidence and never contradict it in \`token_sets\` or \`token_allowed\`.
 - No \`$value\` is provided in this step — do not reason about specific token values, only paths and \`$type\`.
 - You may emit prose lines (not starting with \`{\`) anywhere — they are ignored by the parser and serve as your reasoning log.
 - If a prop has no plausible token set in the provided index, skip it entirely — do not emit a call with an empty \`token_sets\`.`;
