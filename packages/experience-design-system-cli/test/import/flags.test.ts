@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile, symlink } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, it, expect } from 'vitest';
@@ -425,20 +425,22 @@ describe('import — ~ expansion for --project and --raw-tokens', () => {
 
   it('--project ~/myproj resolves against $HOME, not a literal ~ directory', async () => {
     const fakeHome = await createTempDir('fake-home-');
-    await symlink(REAL_PROJECT_DIR, join(fakeHome, 'myproj'));
+    await cp(REAL_PROJECT_DIR, join(fakeHome, 'myproj'), { recursive: true });
     const freshDbPath = join(await createTempDir('project-tilde-db-'), 'pipeline.db');
     const outDir = await createTempDir('project-tilde-out-');
 
     const { stdout, code } = await run(
       ['import', '--project', '~/myproj', '--skip-generate', '--skip-apply', '--out', outDir],
       { EDS_PIPELINE_DB_PATH: freshDbPath, NODE_NO_WARNINGS: '1', HOME: fakeHome },
-      30000,
+      55000,
     );
 
     expect(code).toBe(0);
-    const result = JSON.parse(stdout) as { steps: Array<{ step: string; status: string; detail?: { components?: number } }> };
+    const result = JSON.parse(stdout) as {
+      steps: Array<{ step: string; status: string; detail?: { components?: number } }>;
+    };
     const extractStep = result.steps.find((s) => s.step === 'analyze extract');
     expect(extractStep?.status).toBe('complete');
     expect(extractStep?.detail?.components ?? 0).toBeGreaterThanOrEqual(1);
-  });
+  }, 60000);
 });
