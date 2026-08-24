@@ -269,12 +269,6 @@ describe('raw prop token paths', () => {
         {
           componentId,
           propName: 'variant',
-          kind: 'allowed',
-          paths: [],
-        },
-        {
-          componentId,
-          propName: 'variant',
           kind: 'set',
           paths: ['color.brand.tertiary'],
         },
@@ -287,7 +281,7 @@ describe('raw prop token paths', () => {
              ORDER BY position`,
           )
           .all(sessionId, componentId, 'variant', 'allowed'),
-      ).toEqual([{ position: -1, path: '' }]);
+      ).toEqual([]);
       db.close();
     });
   });
@@ -1274,7 +1268,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
     });
   });
 
-  it('emits an empty $token.allowed array when that is what was persisted (unrestricted, distinct from absent)', async () => {
+  it('collapses a persisted empty $token.allowed to absent, same as never mapped', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -1291,7 +1285,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
       ]);
 
       const loaded = loadCDFComponents(db, sessionId);
-      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual([]);
+      expect(loaded[0]?.entry.$properties['variant']).not.toHaveProperty('$token.allowed');
       expect(loaded[0]?.entry.$properties['variant']).not.toHaveProperty('$token.sets');
       db.close();
     });
@@ -1325,7 +1319,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
     });
   });
 
-  it('round-trips both fields through an import --modify replay and re-print', async () => {
+  it('round-trips $token.sets, and collapses an empty $token.allowed to absent, through an import --modify replay and re-print', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -1358,10 +1352,10 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
            WHERE session_id = ? AND component_id = ? AND prop_name = ? ORDER BY kind, position`,
         )
         .all(sessionId, componentId, 'variant');
-      expect(rows).toEqual([
-        { kind: 'allowed', position: -1, path: '' },
-        { kind: 'set', position: 0, path: 'color.brand.primary' },
-      ]);
+      // An empty $token.allowed writes zero rows — no sentinel — so it reads back as absent,
+      // identical to "never mapped": nothing currently distinguishes the two.
+      expect(rows).toEqual([{ kind: 'set', position: 0, path: 'color.brand.primary' }]);
+      expect(printed[0]?.entry.$properties['variant']).not.toHaveProperty('$token.allowed');
 
       // Reimport the printed CDF verbatim, as `import --modify` would replay it.
       storeCDFComponents(db, sessionId, printed);

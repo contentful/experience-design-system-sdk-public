@@ -454,15 +454,9 @@ export function replaceRawPropTokenPaths(
   db.exec('BEGIN');
   try {
     deletePaths.run(sessionId, componentId, propName, kind);
-    if (paths.length === 0) {
-      // Row absence means the mapping has never been recorded. Keep an explicit
-      // marker for an empty mapping so it can round-trip distinctly.
-      insertPath.run(sessionId, componentId, propName, kind, -1, '');
-    } else {
-      paths.forEach((path, position) => {
-        insertPath.run(sessionId, componentId, propName, kind, position, path);
-      });
-    }
+    paths.forEach((path, position) => {
+      insertPath.run(sessionId, componentId, propName, kind, position, path);
+    });
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
@@ -488,7 +482,6 @@ export function loadRawPropTokenPaths(db: DatabaseSync, sessionId: string): RawP
 
   const groups: RawPropTokenPathGroup[] = [];
   for (const row of rows) {
-    const isEmptyMapping = row.position === -1 && row.path === '';
     const previous = groups.at(-1);
     if (
       previous &&
@@ -496,14 +489,14 @@ export function loadRawPropTokenPaths(db: DatabaseSync, sessionId: string): RawP
       previous.propName === row.prop_name &&
       previous.kind === row.kind
     ) {
-      if (!isEmptyMapping) previous.paths.push(row.path);
+      previous.paths.push(row.path);
       continue;
     }
     groups.push({
       componentId: row.component_id,
       propName: row.prop_name,
       kind: row.kind,
-      paths: isEmptyMapping ? [] : [row.path],
+      paths: [row.path],
     });
   }
 
@@ -1334,18 +1327,9 @@ export function storeCDFComponents(
     `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, position, path)
      VALUES (?, ?, ?, ?, ?, ?)`,
   );
-  // On read-back, "no rows" means the mapping never ran (undefined) and must stay distinct from
-  // "mapping ran, found zero token paths" (an empty array). Since an empty `paths` writes zero
-  // rows either way, insert one sentinel row (position -1, empty path) to mark the latter case.
-  // (loadCDFComponents can be called before this prop is ever mapped — e.g. from `print` or
-  // `apply` right after `generate components` — so the undefined/[] distinction is real.)
   const writeTokenPaths = (componentId: string, propName: string, kind: 'set' | 'allowed', paths: string[]) => {
     deleteTokenPaths.run(sessionId, componentId, propName, kind);
-    if (paths.length === 0) {
-      insertTokenPath.run(sessionId, componentId, propName, kind, -1, '');
-    } else {
-      paths.forEach((path, position) => insertTokenPath.run(sessionId, componentId, propName, kind, position, path));
-    }
+    paths.forEach((path, position) => insertTokenPath.run(sessionId, componentId, propName, kind, position, path));
   };
   const deleteSlots = db.prepare(`DELETE FROM raw_slots WHERE session_id = ? AND component_id = ?`);
   const deleteSlotAllowedComponents = db.prepare(
@@ -1559,9 +1543,8 @@ export function loadCDFComponents(
   const slotsByComponent = groupBy(slots, (s) => s.component_id);
   const allowedComponentsBySlot = groupBy(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
   const tokenPathsByPropAndKind = groupBy(tokenPaths, (t) => `${t.component_id}::${t.prop_name}::${t.kind}`);
-  // A single sentinel row (position -1, empty path) means the mapping ran but produced no paths.
   const toTokenPaths = (rows: typeof tokenPaths | undefined): string[] | undefined =>
-    rows === undefined ? undefined : rows.length === 1 && rows[0].position === -1 ? [] : rows.map((r) => r.path);
+    rows === undefined ? undefined : rows.map((r) => r.path);
 
   return components.map(({ component_id, name, description }) => {
     const compProps = propsByComponent.get(component_id) ?? [];
