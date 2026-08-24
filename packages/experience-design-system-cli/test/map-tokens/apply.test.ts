@@ -125,7 +125,7 @@ describe('applyMapTokenPropCalls', () => {
     });
   });
 
-  it('persists an empty token_allowed as an explicit, distinguishable empty set', async () => {
+  it('persists an empty token_allowed the same as an omitted one — both mean unrestricted', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -146,12 +146,11 @@ describe('applyMapTokenPropCalls', () => {
         [],
       );
 
+      // An explicit empty token_allowed and an omitted one both mean "unrestricted" — neither
+      // writes an 'allowed' row, so there's nothing to distinguish on read-back.
       const groups = loadRawPropTokenPaths(db, sessionId);
-      const allowedGroup = groups.find((g) => g.kind === 'allowed');
-      expect(allowedGroup?.paths).toEqual([]);
+      expect(groups.find((g) => g.kind === 'allowed')).toBeUndefined();
 
-      // Omitting token_allowed on a second, different prop leaves no 'allowed' row at all —
-      // distinguishing "never assessed" from "assessed and empty".
       applyMapTokenPropCalls(
         db,
         sessionId,
@@ -159,7 +158,7 @@ describe('applyMapTokenPropCalls', () => {
         [],
       );
       const groupsAfter = loadRawPropTokenPaths(db, sessionId);
-      expect(groupsAfter.find((g) => g.kind === 'allowed')?.paths).toEqual([]);
+      expect(groupsAfter.find((g) => g.kind === 'allowed')).toBeUndefined();
       db.close();
     });
   });
