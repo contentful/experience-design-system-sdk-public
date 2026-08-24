@@ -63,8 +63,9 @@ function validatePropertyTokenConstraints(
     return;
   }
 
-  if (allowed !== undefined && sets !== undefined) {
-    const offending = allowed.filter((tokenPath) => !sets.includes(tokenPath));
+  if (allowed !== undefined) {
+    const effectiveSets = sets ?? [];
+    const offending = allowed.filter((tokenPath) => !effectiveSets.includes(tokenPath));
     if (offending.length > 0) {
       errors.push({
         path: `${path}/$token.allowed`,

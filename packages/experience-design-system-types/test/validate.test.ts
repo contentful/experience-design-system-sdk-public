@@ -304,6 +304,44 @@ describe('validateCDF', () => {
       expect(result.errors[0].message).toContain('color.brand.rogue');
     });
 
+    it('rejects a non-empty $token.allowed when $token.sets is entirely absent', () => {
+      const result = validateCDF({
+        $schema: CDF_V1_SCHEMA_URL,
+        Button: {
+          $type: 'component',
+          $properties: {
+            bgColor: {
+              $type: 'token',
+              $category: 'design',
+              '$token.allowed': ['color.brand.rogue'],
+            },
+          },
+        },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].path).toBe('/Button/$properties/bgColor/$token.allowed');
+      expect(result.errors[0].message).toContain('color.brand.rogue');
+    });
+
+    it('accepts an empty $token.allowed when $token.sets is entirely absent', () => {
+      const result = validateCDF({
+        $schema: CDF_V1_SCHEMA_URL,
+        Button: {
+          $type: 'component',
+          $properties: {
+            bgColor: {
+              $type: 'token',
+              $category: 'design',
+              '$token.allowed': [],
+            },
+          },
+        },
+      });
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
     it('rejects $token.sets on a property whose $type is not token', () => {
       const result = validateCDF({
         $schema: CDF_V1_SCHEMA_URL,
@@ -352,6 +390,7 @@ describe('validateCDF', () => {
               $type: 'token',
               $category: 'design',
               $values: ['color.brand.primary', 'color.brand.secondary'],
+              '$token.sets': ['color.brand.primary'],
               '$token.allowed': ['color.brand.primary'],
             },
           },
