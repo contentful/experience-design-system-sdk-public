@@ -427,9 +427,10 @@ describe('import — ~ expansion for --project and --raw-tokens', () => {
     const fakeHome = await createTempDir('fake-home-');
     await symlink(REAL_PROJECT_DIR, join(fakeHome, 'myproj'));
     const freshDbPath = join(await createTempDir('project-tilde-db-'), 'pipeline.db');
+    const outDir = await createTempDir('project-tilde-out-');
 
     const { stdout, code } = await run(
-      ['import', '--project', '~/myproj', '--skip-generate', '--skip-apply'],
+      ['import', '--project', '~/myproj', '--skip-generate', '--skip-apply', '--out', outDir],
       { EDS_PIPELINE_DB_PATH: freshDbPath, NODE_NO_WARNINGS: '1', HOME: fakeHome },
       30000,
     );

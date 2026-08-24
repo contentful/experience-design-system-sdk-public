@@ -107,10 +107,35 @@ describe('raw-tokens-only import with no --project', () => {
     // It should instead move on to the save flow (path-prompt step).
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Directory not found') || f.includes('Save') || f.includes('save'),
+      (f) => f.includes('Directory not found') || f.includes('Save to'),
       3000,
     );
 
     expect(frame).not.toContain('Directory not found');
+    expect(frame).toContain('Save to');
+    // Confirms a real, non-empty default outDir was computed for the
+    // raw-tokens-only path (rather than the '' that used to reach here).
+    expect(frame).toContain('.contentful');
+  });
+
+  it('routes to the credentials step (not path-validation) when noPush is not set', async () => {
+    // Same raw-tokens-only scenario, but without the noPush shortcut — this
+    // exercises the `else { update({ step: 'credentials' }) }` branch.
+    const { lastFrame } = render(<WizardApp initialRawTokensPath="/tmp/fake-raw-tokens.json" />);
+
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Generating token definitions'),
+      3000,
+    );
+
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Directory not found') || f.includes('Space ID'),
+      3000,
+    );
+
+    expect(frame).not.toContain('Directory not found');
+    expect(frame).toContain('Space ID');
   });
 });

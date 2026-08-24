@@ -599,7 +599,14 @@ export function WizardApp({
       // No --project was ever provided (raw-tokens-only run) — there is no
       // directory to validate. Take the same branch PathValidationStep's
       // own "skip components" path takes.
-      update({ tokensPath, tokenSessionId, tokenCount, skipComponents: true, acceptedCount: 0 });
+      update({
+        tokensPath,
+        tokenSessionId,
+        tokenCount,
+        skipComponents: true,
+        acceptedCount: 0,
+        outDir: state.outDir || join(process.cwd(), '.contentful'),
+      });
       if (noPush) {
         void startSaveFlow();
       } else {
