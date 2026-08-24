@@ -429,11 +429,16 @@ describe('import — ~ expansion for --project and --raw-tokens', () => {
     const freshDbPath = join(await createTempDir('project-tilde-db-'), 'pipeline.db');
     const outDir = await createTempDir('project-tilde-out-');
 
-    const { stdout, code } = await run(
+    const { stdout, stderr, code } = await run(
       ['import', '--project', '~/myproj', '--skip-generate', '--skip-apply', '--out', outDir],
       { EDS_PIPELINE_DB_PATH: freshDbPath, NODE_NO_WARNINGS: '1', HOME: fakeHome },
       55000,
     );
+
+    // TEMP DIAGNOSTIC — remove before merge.
+    console.error('DIAG code=', code);
+    console.error('DIAG stdout=', JSON.stringify(stdout));
+    console.error('DIAG stderr=', JSON.stringify(stderr));
 
     expect(code).toBe(0);
     const result = JSON.parse(stdout) as {
