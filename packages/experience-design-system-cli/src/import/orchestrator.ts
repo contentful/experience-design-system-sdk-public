@@ -468,6 +468,15 @@ export async function runPipeline(
         status: 'skipped',
         reason: 'no tokens in session',
       });
+    } else if (rMapTokens.stdout.includes('cached')) {
+      updateStep(db, mapTokensStepId, 'complete', { cached: 'true' });
+      progressWriter(`${mapTokensLabel}✓  cached  (${(mapTokensDurationMs / 1000).toFixed(1)}s)`);
+      steps.push({
+        step: 'map tokens',
+        status: 'complete',
+        durationMs: mapTokensDurationMs,
+        detail: { cached: true },
+      });
     } else {
       const appliedMatch = /(\d+) mapping\(s\) applied/.exec(rMapTokens.stdout);
       const applied = appliedMatch ? Number(appliedMatch[1]) : 0;

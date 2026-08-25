@@ -466,6 +466,35 @@ describe('runPipeline — map tokens step', () => {
     expect(result.steps.find((s) => s.step === 'apply push')?.status).toBe('complete');
   });
 
+  it('marks map tokens as complete (not "0 applied") when the map-tokens step was served from cache', async () => {
+    const dir = await makeTempDir('orch-map-tokens-cached-');
+
+    const cliPath = await makeFakeCli(dir, {
+      'analyze extract': { stdout: 'session=extract-session\n', stderr: 'Extracted 1 component\n' },
+      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
+      'generate components': { stdout: 'session=extract-session\n', stderr: 'Done: 1/1 components\n' },
+      'map tokens': {
+        stdout: 'map tokens complete\nagent: claude\nsession=extract-session\ncached\n',
+      },
+      'apply push': {
+        stdout: JSON.stringify({
+          componentTypes: { created: 1, updated: 0, failed: 0 },
+          designTokens: { created: 0, updated: 0, failed: 0 },
+        }),
+      },
+    });
+
+    const result = await runPipeline({ ...baseOpts({ out: dir }), project: dir }, () => {}, cliPath);
+
+    const mapStep = result.steps.find((s) => s.step === 'map tokens');
+    expect(mapStep?.status).toBe('complete');
+    // Must not misreport a cache hit as zero mappings applied.
+    expect(mapStep?.detail).not.toEqual({ applied: 0 });
+
+    // Rest of the pipeline must still proceed
+    expect(result.steps.find((s) => s.step === 'apply push')?.status).toBe('complete');
+  });
+
   it('fails the pipeline when map tokens exits non-zero', async () => {
     const dir = await makeTempDir('orch-map-tokens-fail-');
 
