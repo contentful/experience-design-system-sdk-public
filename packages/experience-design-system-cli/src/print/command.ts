@@ -48,7 +48,7 @@ async function resolveSession(
   }
 }
 
-function rebuildDTCGTree(
+export function rebuildDTCGTree(
   groups: Array<{ path: string; $description?: string }>,
   tokens: Array<{ path: string; $type: string; $value: unknown; $description?: string }>,
 ): Record<string, unknown> {

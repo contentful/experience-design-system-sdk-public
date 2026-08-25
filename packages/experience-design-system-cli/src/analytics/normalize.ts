@@ -7,6 +7,7 @@ const COMMAND_MAP: Record<string, DsiCliCommand> = {
   'generate components': 'generate_components',
   'generate tokens': 'generate_tokens',
   'generate edit': 'generate_edit',
+  'map tokens': 'map_tokens',
   'apply preview': 'apply_preview',
   'apply select': 'apply_select',
   'apply push': 'apply_push',
