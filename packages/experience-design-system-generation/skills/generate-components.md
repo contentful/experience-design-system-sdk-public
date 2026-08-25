@@ -29,6 +29,7 @@ All input is embedded inline in the prompt before this file:
 - **Raw component data** — `RawComponentDefinition[]` (one component for this run)
 - **DTCG token data** — full token tree, if provided
 - **Token-name sidecar** — raw CSS custom property name → DTCG dot-notation path, if provided
+- **Component source references** — the real file text for the component's own source, plus up to 5 relatively-imported sibling files (e.g. a co-located `.styles.ts` or `utils.ts`), if provided. Use this when `tokenName` is empty — see "Source-derived tokenName" below. **You have no filesystem access and no tools — `sourcePath` is a citation label only, never something to open.**
 
 ```typescript
 interface RawPropDefinition {
@@ -165,12 +166,13 @@ For each `RawPropDefinition`, apply in order:
    - `eventDetails` / similar telemetry props — `cdf_category: "state"`.
 3. **Positional/geometric design prop?** (`top`, `bottom`, `left`, `right`, `rotation`, `offset`, `zIndex`) → `classify_prop`, `cdf_type: "string"`, `cdf_category: "design"`.
 4. **Has `tokenName`?** → `cdf_type: "token"`, resolve `token_kind` via sidecar lookup (see below). This overrides all other heuristics.
-5. **Union of string literals** (e.g. `'a' | 'b' | 'c'`)? → `cdf_type: "enum"`, extract literals into `values`.
-6. **Raw type is `string`** and prop name is `href`, `url`, or clearly a URL? → `cdf_type: "string"`, `cdf_category: "content"`.
-7. **Raw type is `string` / `number` / `boolean`?** → For `boolean`, use `cdf_type: "boolean"` with `default: true` or `false` (native boolean). For `number`, use `cdf_type: "string"` with `default` as the numeric value as a string (e.g. `"0"`). For `string`, use `cdf_type: "string"`.
-8. **Media/image type** (`ImageProps`, `MediaSource`, asset types)? → `cdf_type: "media"`.
-9. **Rich text / markup** (`ReactNode` used as content, HTML string)? → `cdf_type: "richtext"`.
-10. **Complex type — resolve before excluding** (see below).
+5. **No `tokenName`, but Component source references show token-linkage evidence?** (e.g. a variant→token lookup object defined in the component's own file or a sibling file — see "Source-derived tokenName" below) → derive a `tokenName` from that evidence and classify as `cdf_type: "token"` per the Token-aware mapping rules. This also overrides the heuristics below — do not fall through to enum just because the raw type is a string union once source evidence of a token map is found.
+6. **Union of string literals** (e.g. `'a' | 'b' | 'c'`)? → `cdf_type: "enum"`, extract literals into `values`.
+7. **Raw type is `string`** and prop name is `href`, `url`, or clearly a URL? → `cdf_type: "string"`, `cdf_category: "content"`.
+8. **Raw type is `string` / `number` / `boolean`?** → For `boolean`, use `cdf_type: "boolean"` with `default: true` or `false` (native boolean). For `number`, use `cdf_type: "string"` with `default` as the numeric value as a string (e.g. `"0"`). For `string`, use `cdf_type: "string"`.
+9. **Media/image type** (`ImageProps`, `MediaSource`, asset types)? → `cdf_type: "media"`.
+10. **Rich text / markup** (`ReactNode` used as content, HTML string)? → `cdf_type: "richtext"`.
+11. **Complex type — resolve before excluding** (see below).
 
 ---
 
@@ -263,6 +265,27 @@ tokenName: "tokens.blue500"
 If `tokenName` is not found in the sidecar → `cdf_type: "token"`, omit `token_kind`, add `description: "WARNING: tokenName not found in sidecar — token_kind unknown"`.
 
 If token data was not provided and `tokenName` is present → `cdf_type: "token"`, omit `token_kind`, add `description: "WARNING: no token data supplied — token_kind unknown"`.
+
+### Source-derived tokenName (no structured `tokenName` field)
+
+`RawPropDefinition.tokenName` only captures token linkage the static extractor found in the component's *own* file. Real design systems frequently define the variant→token lookup one file away — e.g. a co-located `.styles.ts` or a shared `utils.ts` — which the extractor doesn't see. When `tokenName` is empty, check the **Component source references** section (the component's own file, then each sibling file) for evidence such as:
+
+- A lookup object keyed by the prop's allowed values, whose entries are design-token references rather than raw literals — a DTCG dot-path (`"color.blue.500"`), a flat/dotted JS reference (`tokens.blue500`), a CSS custom property (`var(--color-blue-500)`), or a bare token name (`"blue500"`)
+- A direct `tokens.xxx` / `var(--xxx)` reference inline in the render logic, keyed off the prop's value
+
+If found, treat the resolved reference for the prop's current/default value as its `tokenName` and apply the lookup rules above (sidecar → token tree). Note in `description` which file the evidence came from (e.g. `"token linkage found in utils.ts's avatarColorMap"`) so the developer can verify it.
+
+If the source shows only raw literal values (hex colors, pixel values) with no token reference anywhere — that's a real enum/string prop, not a token. Don't force a token classification without an actual token reference in evidence.
+
+Example:
+```
+colorVariant: 'primary' | 'secondary' | 'tertiary', tokenName absent
+Component source references — utils.ts:
+  export const avatarColorMap = { primary: 'color.blue.500', secondary: 'color.gray.500', tertiary: 'color.green.500' };
+  → derived tokenName for the default value ('primary'): "color.blue.500"
+  → token data: color.blue.500.$type → "color"
+  → tool call: {"tool":"classify_prop","prop":"colorVariant","cdf_type":"token","cdf_category":"design","token_kind":"color","description":"Color variant linked via avatarColorMap in utils.ts (color.blue.500 for the default 'primary' value)"}
+```
 
 ---
 

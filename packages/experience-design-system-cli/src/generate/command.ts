@@ -28,6 +28,7 @@ import { registerGenerateEditCommand } from './edit/command.js';
 import {
   openPipelineDb,
   loadRawComponents,
+  loadComponentSourceRef,
   applyToolCalls,
   applyTokenToolCalls,
   computeComponentInputHash,
@@ -254,6 +255,7 @@ async function runOneComponent(
     null,
     2,
   );
+  const sourceRef = await loadComponentSourceRef(component.name, component.sourcePath ?? component.source);
   const prompt = await buildPrompt({
     skill: 'components',
     mode: 'autonomous',
@@ -262,6 +264,7 @@ async function runOneComponent(
     tokenMapInline,
     outDir: process.cwd(),
     componentName: component.name,
+    componentSourceRefs: [sourceRef],
     skillPathOverride,
   });
 
@@ -534,6 +537,9 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
           2,
         )
       : undefined;
+    const sampleSourceRef = sampleComponent
+      ? await loadComponentSourceRef(sampleComponent.name, sampleComponent.sourcePath ?? sampleComponent.source)
+      : undefined;
     const prompt = await buildPrompt({
       skill,
       mode: 'autonomous',
@@ -543,6 +549,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       tokensInline,
       tokenMapInline,
       outDir: process.cwd(),
+      componentSourceRefs: sampleSourceRef ? [sampleSourceRef] : undefined,
       skillPathOverride: generatePromptPath,
     });
     process.stdout.write(prompt + '\n');

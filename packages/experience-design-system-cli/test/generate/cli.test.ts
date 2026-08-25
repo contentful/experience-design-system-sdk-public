@@ -234,6 +234,43 @@ describe('generate components — --dry-run', () => {
     expect(stdout).toContain('AUTONOMOUS mode');
     expect(stdout).toContain('classify_prop');
   });
+
+  it('inlines a sibling file so token linkage defined outside the component file is visible to the classify prompt', async () => {
+    const srcDir = await createTempDir('gen-dry-run-src-');
+    const componentPath = join(srcDir, 'Avatar.tsx');
+    const utilsPath = join(srcDir, 'utils.ts');
+    await writeFile(componentPath, `import { avatarColorMap } from './utils';\n`);
+    await writeFile(utilsPath, 'export const avatarColorMap = { primary: "blue500" };');
+
+    const dbDir = await createTempDir('gen-dry-run-sibling-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const sid = await seedDb(dbPath, [
+      {
+        name: 'Avatar',
+        source: componentPath,
+        framework: 'react',
+        props: [{ name: 'colorVariant', type: 'string', required: false, category: 'design' }],
+        slots: [],
+      },
+    ]);
+
+    const env = { ...process.env, EDS_PIPELINE_DB_PATH: dbPath };
+    const { stdout, code } = await new Promise<{
+      stdout: string;
+      stderr: string;
+      code: number | null;
+    }>((res) => {
+      execFile(
+        'node',
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid, '--dry-run'],
+        { env },
+        (err, stdout, stderr) => res({ stdout, stderr, code: err?.code ? Number(err.code) : 0 }),
+      );
+    });
+    expect(code).toBe(0);
+    expect(stdout).toContain('Component source references');
+    expect(stdout).toContain('export const avatarColorMap = { primary: "blue500" };');
+  });
 });
 
 describe('generate components — agent binary not found', () => {
