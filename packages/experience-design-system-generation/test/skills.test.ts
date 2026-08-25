@@ -122,6 +122,66 @@ describe('generate-components.md', () => {
     expect(content).toContain('validate --components');
     expect(content).toMatch(/iterate|loop|re-run|repeat/i);
   });
+
+  it('stops emitting values for token-typed props', async () => {
+    const content = await readSkill('generate-components.md');
+    expect(content).toMatch(/do not include.*values.*cdf_type.*token/i);
+    expect(content).toMatch(/\$token\.allowed/);
+  });
+});
+
+describe('map-tokens.md', () => {
+  it('exists', async () => {
+    await expect(readSkill('map-tokens.md')).resolves.toBeDefined();
+  });
+
+  it('includes all required sections', async () => {
+    const content = await readSkill('map-tokens.md');
+    for (const section of REQUIRED_SECTIONS) {
+      expect(content, `missing section: ${section}`).toMatch(new RegExp(`#.*${section}`, 'i'));
+    }
+  });
+
+  it('describes the $token.sets and $token.allowed target fields', async () => {
+    const content = await readSkill('map-tokens.md');
+    expect(content).toContain('$token.sets');
+    expect(content).toContain('$token.allowed');
+  });
+
+  it('documents the map_token_prop tool call', async () => {
+    const content = await readSkill('map-tokens.md');
+    expect(content).toContain('map_token_prop');
+    expect(content).toContain('token_sets');
+    expect(content).toContain('token_allowed');
+  });
+
+  it('requires token_allowed to be a subset of token_sets', async () => {
+    const content = await readSkill('map-tokens.md');
+    expect(content).toMatch(/subset/i);
+  });
+
+  it('forbids hallucinated paths not in the token path index', async () => {
+    const content = await readSkill('map-tokens.md');
+    expect(content).toMatch(/never invent a path|no hallucinated paths/i);
+  });
+
+  it('instructs omitting token_allowed without restriction evidence', async () => {
+    const content = await readSkill('map-tokens.md');
+    expect(content).toMatch(/omit.*token_allowed|token_allowed.*omit/i);
+    expect(content).toMatch(/evidence/i);
+  });
+
+  it('treats an existing tokenName as high-confidence evidence', async () => {
+    const content = await readSkill('map-tokens.md');
+    expect(content).toMatch(/tokenName/);
+    expect(content).toMatch(/high-confidence/i);
+    expect(content).toMatch(/never contradict/i);
+  });
+
+  it('contains no CLI-specific or local filesystem instructions', async () => {
+    const content = await readSkill('map-tokens.md');
+    expect(content).not.toMatch(/run this command|read the file at|open the file/i);
+  });
 });
 
 describe('packaging', () => {
