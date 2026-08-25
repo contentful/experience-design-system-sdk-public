@@ -216,6 +216,152 @@ describe('buildPrompt', () => {
     });
   });
 
+  describe('map-tokens skill', () => {
+    const GENERATED_CDF = {
+      Card: {
+        $type: 'component',
+        $properties: {
+          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+          title: { $type: 'string', $category: 'content' },
+        },
+      },
+      Widget: {
+        $type: 'component',
+        $properties: {
+          label: { $type: 'string', $category: 'content' },
+        },
+      },
+    };
+    const TOKEN_TREE = {
+      colors: {
+        surface: {
+          default: { $type: 'color', $value: '#ffffff' },
+          raised: { $type: 'color', $value: '#f5f5f5' },
+        },
+        brand: {
+          primary: { $type: 'color', $value: '#0066ff' },
+        },
+      },
+    };
+    const SOURCE_REFS = [{ component: 'Card', sourcePath: 'src/Card.tsx' }];
+
+    it('autonomous preamble includes map_token_prop tool-call protocol', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        componentSourceRefs: SOURCE_REFS,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('map_token_prop');
+      expect(prompt).toContain('token_sets');
+      expect(prompt).toContain('token_allowed');
+      expect(prompt).toContain('AUTONOMOUS mode');
+    });
+
+    it('includes only design-category token-typed props from the generated CDF', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('bgColor');
+      expect(prompt).toContain('Card');
+      expect(prompt).not.toContain('"title"');
+      expect(prompt).not.toContain('Widget');
+    });
+
+    it('flattens the token tree to a path + $type index with no $value', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('{"path":"colors.surface.default","type":"color"}');
+      expect(prompt).toContain('{"path":"colors.brand.primary","type":"color"}');
+      expect(prompt).toContain('Token path index');
+      expect(prompt).not.toContain('#ffffff');
+      expect(prompt).not.toContain('#0066ff');
+    });
+
+    it('includes component source references when provided', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        componentSourceRefs: SOURCE_REFS,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('Component source references');
+      expect(prompt).toContain('src/Card.tsx');
+    });
+
+    it('omits sections entirely when there is no token data', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        outDir: '/fake/out',
+      });
+      expect(prompt).not.toContain('design-category token props only (JSON)');
+      expect(prompt).not.toContain('Token path index — path and $type only');
+      expect(prompt).not.toContain('Component source references (JSON)');
+    });
+
+    it('omits the generated-CDF section when no props are design-category tokens', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: {
+          Widget: { $type: 'component', $properties: { label: { $type: 'string', $category: 'content' } } },
+        },
+        outDir: '/fake/out',
+      });
+      expect(prompt).not.toContain('design-category token props only (JSON)');
+    });
+
+    it('requires evidence before restricting: no default token_allowed placeholder', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toMatch(/omit.*token_allowed.*entirely|token_allowed.*entirely.*when/i);
+      expect(prompt).toMatch(/subset/i);
+    });
+
+    it('instructs never contradicting an existing tokenName', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('tokenName');
+      expect(prompt).toMatch(/never contradict/i);
+    });
+
+    it('includes skill file content', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('## Purpose');
+      expect(prompt).toContain('Map Tokens');
+    });
+  });
+
   it('tokens autonomous preamble includes tool-call protocol instructions', async () => {
     const rawTokensInline = JSON.stringify([
       { name: '--color-primary', value: '#0066ff', source: 'css', inferredKind: 'color', ambiguous: false },
