@@ -1,7 +1,5 @@
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
+import { readWizardAppSource } from './support/wizard-app-source';
 
 /**
  * Regression tests: after the operator types new credentials into the
@@ -18,12 +16,9 @@ import { describe, it, expect } from 'vitest';
  * mismatch.
  */
 
-const here = dirname(fileURLToPath(import.meta.url));
-const wizardAppPath = resolve(here, '../../../src/import/tui/WizardApp.tsx');
-
 describe('WizardApp — validated credentials sync into state', () => {
   it('validateCredentials writes the newly-entered spaceId/environmentId/cmaToken/host into state after validateToken succeeds', async () => {
-    const src = await readFile(wizardAppPath, 'utf8');
+    const src = await readWizardAppSource();
     const idx = src.indexOf('const validateCredentials');
     expect(idx).toBeGreaterThan(-1);
     const chunk = src.slice(idx, idx + 1200);
@@ -43,7 +38,7 @@ describe('WizardApp — validated credentials sync into state', () => {
   });
 
   it('does not leave the validated credentials stranded in an unread ref', async () => {
-    const src = await readFile(wizardAppPath, 'utf8');
+    const src = await readWizardAppSource();
     // Pre-fix, a dead `credentialsRef` captured the typed credentials but
     // nothing downstream ever read `credentialsRef.current`, so state
     // (and therefore the actual push) stayed on the stale values.
