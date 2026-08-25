@@ -307,6 +307,91 @@ export function parseTokenToolCallLines(stdout: string): ParsedTokenToolCalls {
   return { calls, warnings };
 }
 
+// --- Map-tokens tool calls ---
+
+export interface MapTokenPropCall {
+  tool: 'map_token_prop';
+  component: string;
+  prop: string;
+  token_sets: string[];
+  /** Subset of token_sets. Omitted = no restriction assessed; [] = evidenced as unrestricted. */
+  token_allowed?: string[];
+  description?: string;
+}
+
+export interface ParsedMapTokenPropToolCalls {
+  calls: MapTokenPropCall[];
+  warnings: string[];
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === 'string');
+}
+
+export function parseMapTokenPropToolCallLines(stdout: string): ParsedMapTokenPropToolCalls {
+  const calls: MapTokenPropCall[] = [];
+  const warnings: string[] = [];
+
+  for (const raw of stdout.split('\n')) {
+    const line = raw.trim();
+    if (!line.startsWith('{')) continue;
+
+    let obj: unknown;
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      warnings.push(`unparseable line: ${line.slice(0, 120)}`);
+      continue;
+    }
+
+    if (typeof obj !== 'object' || obj === null || !('tool' in obj)) continue;
+    const rec = obj as Record<string, unknown>;
+
+    if (rec.tool !== 'map_token_prop') continue; // not a map-tokens call — skip silently
+
+    if (typeof rec.component !== 'string' || !rec.component) {
+      warnings.push('map_token_prop missing component — skipped');
+      continue;
+    }
+    if (typeof rec.prop !== 'string' || !rec.prop) {
+      warnings.push(`map_token_prop '${rec.component}': missing prop — skipped`);
+      continue;
+    }
+    if (!isStringArray(rec.token_sets) || rec.token_sets.length === 0) {
+      warnings.push(`map_token_prop '${rec.component}.${String(rec.prop)}': missing or empty token_sets — skipped`);
+      continue;
+    }
+    const tokenSets = rec.token_sets;
+
+    let tokenAllowed: string[] | undefined;
+    if (rec.token_allowed !== undefined) {
+      if (!isStringArray(rec.token_allowed)) {
+        warnings.push(`map_token_prop '${rec.component}.${rec.prop}': token_allowed must be a string array — skipped`);
+        continue;
+      }
+      if (!rec.token_allowed.every((p) => tokenSets.includes(p))) {
+        warnings.push(
+          `map_token_prop '${rec.component}.${rec.prop}': token_allowed is not a subset of token_sets — skipped`,
+        );
+        continue;
+      }
+      tokenAllowed = rec.token_allowed;
+    }
+
+    const call: MapTokenPropCall = {
+      tool: 'map_token_prop',
+      component: rec.component,
+      prop: rec.prop,
+      token_sets: tokenSets,
+    };
+    if (tokenAllowed !== undefined) call.token_allowed = tokenAllowed;
+    if (typeof rec.description === 'string') call.description = rec.description;
+    calls.push(call);
+  }
+
+  return { calls, warnings };
+}
+
 // --- Agent invocation ---
 
 const AGENT_BINARIES: Record<AgentName, string> = {
