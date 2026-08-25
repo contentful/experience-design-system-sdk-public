@@ -39,7 +39,7 @@ interface RawPropDefinition {
   allowedValues?: string[];
   defaultValue?: string;
   description?: string;
-  tokenReference?: string;  // raw token name, e.g. "--brand-primary"
+  tokenName?: string;  // raw token name, e.g. "--brand-primary"
 }
 
 interface RawSlotDefinition {
@@ -163,7 +163,7 @@ For each `RawPropDefinition`, apply in order:
    - `accessibleNameRef` / `accessibleDescriptionRef` (web components) — these are ID references for a11y wiring; classify as `string`, `cdf_category: "state"` (behavioral wiring, not design or content).
    - `eventDetails` / similar telemetry props — `cdf_category: "state"`.
 3. **Positional/geometric design prop?** (`top`, `bottom`, `left`, `right`, `rotation`, `offset`, `zIndex`) → `classify_prop`, `cdf_type: "string"`, `cdf_category: "design"`.
-4. **Has `tokenReference`?** → `cdf_type: "token"`, resolve `token_kind` via sidecar lookup (see below). This overrides all other heuristics.
+4. **Has `tokenName`?** → `cdf_type: "token"`, resolve `token_kind` via sidecar lookup (see below). This overrides all other heuristics.
 5. **Union of string literals** (e.g. `'a' | 'b' | 'c'`)? → `cdf_type: "enum"`, extract literals into `values`.
 6. **Raw type is `string`** and prop name is `href`, `url`, or clearly a URL? → `cdf_type: "string"`, `cdf_category: "content"`.
 7. **Raw type is `string` / `number` / `boolean`?** → For `boolean`, use `cdf_type: "boolean"` with `default: true` or `false` (native boolean). For `number`, use `cdf_type: "string"` with `default` as the numeric value as a string (e.g. `"0"`). For `string`, use `cdf_type: "string"`.
@@ -235,23 +235,23 @@ Rules for nested objects:
 
 ## Token-aware mapping
 
-When `tokenReference` is present, classify with `cdf_type: "token"`. The `token_kind` field becomes `$token.kind` in the CDF output (a DTCG `$type` string, e.g. `"color"`).
+When `tokenName` is present, classify with `cdf_type: "token"`. The `token_kind` field becomes `$token.kind` in the CDF output (a DTCG `$type` string, e.g. `"color"`).
 
-1. Look up `tokenReference` in the inline token-name sidecar → get the DTCG dot-notation path
+1. Look up `tokenName` in the inline token-name sidecar → get the DTCG dot-notation path
 2. Traverse that path in the inline DTCG token data to reach the leaf token
 3. Use the leaf's `$type` (e.g. `"color"`) as `token_kind`
 
 Example:
 ```
-tokenReference: "--brand-primary"
+tokenName: "--brand-primary"
   → sidecar["--brand-primary"] → "colors.brand.primary"
   → token data: colors.brand.primary.$type → "color"
   → tool call: {"tool":"classify_prop","prop":"bgColor","cdf_type":"token","cdf_category":"design","token_kind":"color","description":"..."}
 ```
 
-If `tokenReference` is not found in the sidecar → `cdf_type: "token"`, omit `token_kind`, add `description: "WARNING: tokenReference not found in sidecar — token_kind unknown"`.
+If `tokenName` is not found in the sidecar → `cdf_type: "token"`, omit `token_kind`, add `description: "WARNING: tokenName not found in sidecar — token_kind unknown"`.
 
-If token data was not provided and `tokenReference` is present → `cdf_type: "token"`, omit `token_kind`, add `description: "WARNING: no token data supplied — token_kind unknown"`.
+If token data was not provided and `tokenName` is present → `cdf_type: "token"`, omit `token_kind`, add `description: "WARNING: no token data supplied — token_kind unknown"`.
 
 ---
 
@@ -366,7 +366,7 @@ inferring likely values: ["h1", "h2", "h3", "h4", "h5", "h6"] — documenting in
 ### Token-linked prop
 
 ```
-bgColor has tokenReference "--bg-primary" — looking up sidecar
+bgColor has tokenName "--bg-primary" — looking up sidecar
 {"tool":"classify_prop","prop":"bgColor","cdf_type":"token","cdf_category":"design","token_kind":"color","description":"Background color token linked via --bg-primary → colors.bg.primary"}
 ```
 
@@ -383,7 +383,7 @@ href is a URL string — cdf_type string (not link), category content
 
 - **Prop with unresolvable type** (generics, intersection, callback) → `exclude_prop` with reason `"complex type — not representable in CDF"`.
 - **Component with zero classified props after exclusions** → still emit `classify_component`. The DB entry will have an empty `$properties` object.
-- **tokenReference present but not in sidecar** → `cdf_type: "token"`, omit `token_kind`, add `description` warning.
+- **tokenName present but not in sidecar** → `cdf_type: "token"`, omit `token_kind`, add `description` warning.
 - **Slot not in DB** → skipped with a warning; does not abort the run.
 - **Prop not in DB** → skipped with a warning; does not abort the run.
 
