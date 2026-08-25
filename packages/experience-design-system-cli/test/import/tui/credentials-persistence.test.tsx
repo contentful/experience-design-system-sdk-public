@@ -3,6 +3,12 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
+const wizardAppPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../src/import/tui/WizardApp.tsx');
+
+function readWizardAppSource(): Promise<string> {
+  return readFile(wizardAppPath, 'utf8');
+}
+
 /**
  * Regression tests for INTEG-4410: credentials edited via `experiences setup`
  * or via the wizard's credentials step must always be persisted to
@@ -17,12 +23,9 @@ import { describe, it, expect } from 'vitest';
  * (disk-wins-over-env precedence).
  */
 
-const here = dirname(fileURLToPath(import.meta.url));
-const wizardAppPath = resolve(here, '../../../src/import/tui/WizardApp.tsx');
-
 describe('WizardApp — credentials always persisted (INTEG-4410)', () => {
   it('binds CredentialsStep.onContinue to a handler that writes credentials to disk', async () => {
-    const src = await readFile(wizardAppPath, 'utf8');
+    const src = await readWizardAppSource();
     const idx = src.indexOf('<CredentialsStep');
     expect(idx).toBeGreaterThan(-1);
     const end = src.indexOf('/>', idx);
@@ -35,7 +38,7 @@ describe('WizardApp — credentials always persisted (INTEG-4410)', () => {
   });
 
   it('confirmCredentials writes to disk before validating', async () => {
-    const src = await readFile(wizardAppPath, 'utf8');
+    const src = await readWizardAppSource();
     const idx = src.indexOf('const confirmCredentials');
     expect(idx).toBeGreaterThan(-1);
     const chunk = src.slice(idx, idx + 800);
