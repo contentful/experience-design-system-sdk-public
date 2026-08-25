@@ -496,6 +496,8 @@ The wizard's AI auto-filter (auto-invocation of `analyze select-agent` before sc
 2. Optionally `analyze select --session <id>` (with `--select-all`, `--select`, `--deselect`, or `--reject`) — or `analyze select-agent` by default
 3. `generate components --agent <name> --session <id>`
 4. `apply push --components <components.json> --space-id ... --environment-id ... --yes`
+4. `map tokens --session <id> --agent <name>` — suggests `$token.allowed` for generated design-token props; skippable via `--skip-map-tokens`
+5. `apply push --components <components.json> --space-id ... --environment-id ... --yes`
 
 Headless mode is entered when any of `--auto-accept-scope`, `--skip-analyze`, `--skip-generate`, `--skip-apply`, `--yes`, `--dry-run`, or a credential flag is set. In non-TTY without one of those flags, the command exits 1 with a fail-loud message.
 
