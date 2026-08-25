@@ -356,11 +356,6 @@ export function WizardApp({
     logInit.current = true;
   }
 
-  const credentialsRef = useRef<{
-    spaceId: string;
-    environmentId: string;
-    cmaToken: string;
-  } | null>(null);
   const sessionRef = useRef<{
     extractSessionId: string | null;
     tokensPath: string;
@@ -949,7 +944,6 @@ export function WizardApp({
 
   const advanceWithCredentials = (spaceId: string, environmentId: string, cmaToken: string, host: string) => {
     const resolvedHost = resolveWizardHost(host);
-    credentialsRef.current = { spaceId, environmentId, cmaToken };
     void validateCredentials(spaceId, environmentId, cmaToken, resolvedHost);
   };
 
@@ -987,7 +981,7 @@ export function WizardApp({
         host: resolvedHost,
       });
       await client.validateToken();
-      update({ credentialsValidating: false });
+      update({ spaceId, environmentId, cmaToken, host: resolvedHost, credentialsValidating: false });
       await advanceAfterCredentialsValidated();
     } catch (e) {
       if (e instanceof ApiError && (e.status === 401 || e.status === 403 || e.status === 404)) {
