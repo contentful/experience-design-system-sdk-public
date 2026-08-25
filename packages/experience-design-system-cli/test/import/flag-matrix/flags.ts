@@ -154,14 +154,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     kind: 'boolean',
     modes: ['headless'],
     incompatibleWith: [],
-    notes: 'Alias: --no-map-tokens.',
-  },
-  {
-    flag: '--no-map-tokens',
-    kind: 'boolean',
-    modes: ['headless'],
-    incompatibleWith: [],
-    notes: 'Alias: --skip-map-tokens.',
   },
   {
     flag: '--no-cache',
