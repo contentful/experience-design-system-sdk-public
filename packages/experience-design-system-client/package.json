@@ -1,6 +1,6 @@
 {
   "name": "@contentful/experience-design-system-client",
-  "version": "2.26.2",
+  "version": "2.26.3",
   "license": "MIT",
   "type": "module",
   "module": "./dist/src/index.js",
