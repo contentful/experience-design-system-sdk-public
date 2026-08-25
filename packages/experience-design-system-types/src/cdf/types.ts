@@ -43,8 +43,14 @@ export interface CDFValidationError {
   actual?: string;
 }
 
+export interface CDFValidationWarning {
+  path: string;
+  message: string;
+}
+
 export interface CDFValidationResult {
   valid: boolean;
   errors: CDFValidationError[];
+  warnings: CDFValidationWarning[];
   components: Array<{ key: string; entry: CDFComponentEntry }>;
 }

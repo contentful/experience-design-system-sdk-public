@@ -9,4 +9,5 @@ export {
   type CDFPropertyDefinition,
   type CDFSlotDefinition,
   type CDFValidationError,
+  type CDFValidationWarning,
 } from './types.js';
