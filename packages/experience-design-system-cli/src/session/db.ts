@@ -227,6 +227,41 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
 }
 
 function applyDbMigrations(db: DatabaseSync): void {
+  const migrations = [
+    {
+      name: '001-raw-prop-token-paths',
+      sql: `
+        CREATE TABLE IF NOT EXISTS raw_prop_token_paths (
+          session_id   TEXT NOT NULL,
+          component_id TEXT NOT NULL,
+          prop_name    TEXT NOT NULL,
+          kind         TEXT NOT NULL CHECK (kind IN ('set', 'allowed')),
+          position     INTEGER NOT NULL,
+          path         TEXT NOT NULL,
+          PRIMARY KEY (session_id, component_id, prop_name, kind, position),
+          FOREIGN KEY (session_id, component_id, prop_name)
+            REFERENCES raw_props(session_id, component_id, name) ON DELETE CASCADE
+        );
+      `,
+    },
+  ];
+
+  const hasAppliedMigration = db.prepare('SELECT 1 FROM migrations WHERE name = ?');
+  const recordMigration = db.prepare('INSERT INTO migrations (name, applied_at) VALUES (?, ?)');
+  for (const migration of migrations) {
+    if (hasAppliedMigration.get(migration.name)) continue;
+
+    db.exec('BEGIN');
+    try {
+      db.exec(migration.sql);
+      recordMigration.run(migration.name, new Date().toISOString());
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+
   const cols = db.prepare('PRAGMA table_info(raw_slots)').all() as Array<{
     name: string;
   }>;
@@ -388,6 +423,91 @@ function applyDbMigrations(db: DatabaseSync): void {
       );
     `);
   }
+}
+
+export type RawPropTokenPathKind = 'set' | 'allowed';
+
+export interface RawPropTokenPathGroup {
+  componentId: string;
+  propName: string;
+  kind: RawPropTokenPathKind;
+  paths: string[];
+}
+
+export function replaceRawPropTokenPaths(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  propName: string,
+  kind: RawPropTokenPathKind,
+  paths: string[],
+): void {
+  const deletePaths = db.prepare(
+    `DELETE FROM raw_prop_token_paths
+     WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = ?`,
+  );
+  const insertPath = db.prepare(
+    `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, position, path)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+
+  db.exec('BEGIN');
+  try {
+    deletePaths.run(sessionId, componentId, propName, kind);
+    if (paths.length === 0) {
+      // Row absence means the mapping has never been recorded. Keep an explicit
+      // marker for an empty mapping so it can round-trip distinctly.
+      insertPath.run(sessionId, componentId, propName, kind, -1, '');
+    } else {
+      paths.forEach((path, position) => {
+        insertPath.run(sessionId, componentId, propName, kind, position, path);
+      });
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
+export function loadRawPropTokenPaths(db: DatabaseSync, sessionId: string): RawPropTokenPathGroup[] {
+  const rows = db
+    .prepare(
+      `SELECT component_id, prop_name, kind, position, path
+       FROM raw_prop_token_paths
+       WHERE session_id = ?
+       ORDER BY component_id, prop_name, kind, position`,
+    )
+    .all(sessionId) as Array<{
+    component_id: string;
+    prop_name: string;
+    kind: RawPropTokenPathKind;
+    position: number;
+    path: string;
+  }>;
+
+  const groups: RawPropTokenPathGroup[] = [];
+  for (const row of rows) {
+    const isEmptyMapping = row.position === -1 && row.path === '';
+    const previous = groups.at(-1);
+    if (
+      previous &&
+      previous.componentId === row.component_id &&
+      previous.propName === row.prop_name &&
+      previous.kind === row.kind
+    ) {
+      if (!isEmptyMapping) previous.paths.push(row.path);
+      continue;
+    }
+    groups.push({
+      componentId: row.component_id,
+      propName: row.prop_name,
+      kind: row.kind,
+      paths: isEmptyMapping ? [] : [row.path],
+    });
+  }
+
+  return groups;
 }
 
 export interface ApplyToolCallsResult {
