@@ -590,6 +590,25 @@ export function WizardApp({
       return;
     }
     const tokenCount = parsePrintTokensCount(r.stdout);
+    if (!state.projectPath) {
+      // No --project was ever provided (raw-tokens-only run) — there is no
+      // directory to validate. Take the same branch PathValidationStep's
+      // own "skip components" path takes.
+      update({
+        tokensPath,
+        tokenSessionId,
+        tokenCount,
+        skipComponents: true,
+        acceptedCount: 0,
+        outDir: state.outDir || join(process.cwd(), '.contentful'),
+      });
+      if (noPush) {
+        void startSaveFlow();
+      } else {
+        update({ step: 'credentials' });
+      }
+      return;
+    }
     update({ step: 'path-validation', tokensPath, tokenSessionId, tokenCount });
   };
 
