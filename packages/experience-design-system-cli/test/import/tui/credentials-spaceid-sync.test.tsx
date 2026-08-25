@@ -1,5 +1,13 @@
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { readWizardAppSource } from './support/wizard-app-source.js';
+
+const wizardAppPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../src/import/tui/WizardApp.tsx');
+
+function readWizardAppSource(): Promise<string> {
+  return readFile(wizardAppPath, 'utf8');
+}
 
 /**
  * Regression tests: after the operator types new credentials into the
