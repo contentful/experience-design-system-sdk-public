@@ -9,6 +9,8 @@ export const CDFPropertySchema = z.strictObject({
   $default: z.optional(z.any()),
   $values: z.optional(z.array(z.string())),
   '$token.kind': z.optional(z.string()),
+  '$token.sets': z.optional(z.array(z.string())),
+  '$token.allowed': z.optional(z.array(z.string())),
 });
 
 export type CDFPropertyDefinition = z.infer<typeof CDFPropertySchema>;
@@ -42,8 +44,14 @@ export interface CDFValidationError {
   actual?: string;
 }
 
+export interface CDFValidationWarning {
+  path: string;
+  message: string;
+}
+
 export interface CDFValidationResult {
   valid: boolean;
   errors: CDFValidationError[];
+  warnings: CDFValidationWarning[];
   components: Array<{ key: string; entry: CDFComponentEntry }>;
 }
