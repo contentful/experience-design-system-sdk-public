@@ -7,10 +7,24 @@ import { fileURLToPath } from 'node:url';
 export type Skill = 'components' | 'tokens' | 'select' | 'map-tokens';
 export type Mode = 'autonomous';
 
-/** A component name paired with the source file path it was extracted from, for token-mapping evidence. */
+/**
+ * A component name paired with the source file it was extracted from, for
+ * token-mapping evidence. `content` is the real file text (bounded, see
+ * MAX_COMPONENT_SOURCE_CHARS) — this pipeline is agent-fs-free by design (see
+ * generate-components.md's "you do not write any files"), so the caller must
+ * read the file itself and inline the text here rather than handing the
+ * agent a path and expecting it to open the file. `null` when the file
+ * couldn't be read (moved/deleted since extraction) — callers fall back to
+ * inferring from the prop name and $token.kind alone in that case.
+ * `siblingFiles` carries the content of files the source file relatively
+ * imports (e.g. a co-located `.styles.ts`) — token-resolution logic often
+ * lives one hop away from the component file itself.
+ */
 export interface ComponentSourceRef {
   component: string;
   sourcePath: string;
+  content: string | null;
+  siblingFiles?: Array<{ path: string; content: string }>;
 }
 
 interface CDFPropertyLike {
@@ -138,6 +152,11 @@ function inferFenceLang(filename: string | undefined): string {
     ts: 'ts',
     mts: 'ts',
     cts: 'ts',
+    tsx: 'tsx',
+    jsx: 'jsx',
+    vue: 'vue',
+    svelte: 'svelte',
+    astro: 'astro',
     scss: 'scss',
     sass: 'scss',
     css: 'css',
@@ -227,7 +246,24 @@ function buildPreamble(options: PromptOptions): string {
     }
   }
   if (componentSourceRefs && componentSourceRefs.length > 0) {
-    sections.push(`Component source references (JSON):\n\`\`\`json\n${JSON.stringify(componentSourceRefs)}\n\`\`\``);
+    const withContent = componentSourceRefs.filter((ref) => ref.content != null);
+    const withoutContent = componentSourceRefs.filter((ref) => ref.content == null);
+    if (withContent.length > 0) {
+      const blocks = withContent.map((ref) => {
+        const mainBlock = `#### ${ref.component} (\`${ref.sourcePath}\`)\n\`\`\`${inferFenceLang(ref.sourcePath)}\n${ref.content}\n\`\`\``;
+        const siblingBlocks = (ref.siblingFiles ?? []).map(
+          (sibling) =>
+            `##### ${ref.component} — imported file \`${sibling.path}\`\n\`\`\`${inferFenceLang(sibling.path)}\n${sibling.content}\n\`\`\``,
+        );
+        return [mainBlock, ...siblingBlocks].join('\n\n');
+      });
+      sections.push(`### Component source references\n\n${blocks.join('\n\n')}`);
+    }
+    if (withoutContent.length > 0) {
+      sections.push(
+        `Component source unavailable for (JSON) — infer from prop name and $token.kind alone for these:\n\`\`\`json\n${JSON.stringify(withoutContent.map((ref) => ({ component: ref.component, sourcePath: ref.sourcePath })))}\n\`\`\``,
+      );
+    }
   }
 
   const inputBlock = sections.length > 0 ? `\n\n${sections.join('\n\n')}` : '';
