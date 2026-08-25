@@ -246,8 +246,8 @@ describe('runPipeline — tokens flag', () => {
 });
 
 describe('runPipeline — step count in progress output', () => {
-  it('shows 4 total steps when print is false', async () => {
-    const dir = await makeTempDir('orch-4steps-');
+  it('shows 5 total steps when print is false', async () => {
+    const dir = await makeTempDir('orch-5steps-');
 
     const cliPath = await makeFakeCli(dir, {
       'analyze extract': { stdout: 'session=s1\n', stderr: 'Extracted 1 component\n' },
@@ -265,11 +265,11 @@ describe('runPipeline — step count in progress output', () => {
     await runPipeline({ ...baseOpts({ out: dir }), project: dir }, (line) => lines.push(line), cliPath);
 
     const stepLines = lines.filter((l) => l.includes('Step '));
-    expect(stepLines.every((l) => l.includes('/4'))).toBe(true);
+    expect(stepLines.every((l) => l.includes('/5'))).toBe(true);
   });
 
-  it('shows 5 total steps when print is true', async () => {
-    const dir = await makeTempDir('orch-5steps-');
+  it('shows 6 total steps when print is true', async () => {
+    const dir = await makeTempDir('orch-6steps-');
 
     const cliPath = await makeFakeCli(dir, {
       'analyze extract': { stdout: 'session=s1\n', stderr: 'Extracted 1 component\n' },
@@ -288,7 +288,7 @@ describe('runPipeline — step count in progress output', () => {
     await runPipeline({ ...baseOpts({ out: dir, print: true }), project: dir }, (line) => lines.push(line), cliPath);
 
     const stepLines = lines.filter((l) => l.includes('Step '));
-    expect(stepLines.every((l) => l.includes('/5'))).toBe(true);
+    expect(stepLines.every((l) => l.includes('/6'))).toBe(true);
   });
 });
 
@@ -369,5 +369,118 @@ describe('runPipeline — verbose flag propagation', () => {
     const pushCall = calls.find((c) => c[0] === 'apply' && c[1] === 'push');
     expect(genCall).not.toContain('--verbose');
     expect(pushCall).not.toContain('--verbose');
+  });
+});
+
+describe('runPipeline — map tokens step', () => {
+  it('runs map tokens between generate components and apply push, with the extract session', async () => {
+    const dir = await makeTempDir('orch-map-tokens-');
+    const restoreDb = useTestDb(dir);
+
+    const cliPath = await makeFakeCli(dir, {
+      'analyze extract': { stdout: 'session=extract-session\n', stderr: 'Extracted 1 component\n' },
+      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
+      'generate components': { stdout: 'session=extract-session\n', stderr: 'Done: 1/1 components\n' },
+      'map tokens': { stdout: 'map tokens complete\nagent: claude\nsession=extract-session\n3 mapping(s) applied\n' },
+      'apply push': {
+        stdout: JSON.stringify({
+          componentTypes: { created: 1, updated: 0, failed: 0 },
+          designTokens: { created: 0, updated: 0, failed: 0 },
+        }),
+      },
+    });
+
+    const result = await runPipeline({ ...baseOpts({ out: dir }), project: dir }, () => {}, cliPath);
+    restoreDb();
+
+    const calls = await readCalls(dir);
+    const mapCall = calls.find((c) => c[0] === 'map' && c[1] === 'tokens');
+    expect(mapCall).toBeDefined();
+    expect(mapCall).toContain('--session');
+    expect(mapCall).toContain('extract-session');
+
+    const mapStep = result.steps.find((s) => s.step === 'map tokens');
+    expect(mapStep?.status).toBe('complete');
+    expect(mapStep?.detail).toEqual({ applied: 3 });
+
+    // Ordering: map tokens must come after generate components and before apply push
+    const stepNames = result.steps.map((s) => s.step);
+    expect(stepNames.indexOf('map tokens')).toBeGreaterThan(stepNames.indexOf('generate components'));
+    expect(stepNames.indexOf('map tokens')).toBeLessThan(stepNames.indexOf('apply push'));
+  });
+
+  it('skips map tokens when opts.skipMapTokens is true', async () => {
+    const dir = await makeTempDir('orch-skip-map-tokens-');
+
+    const cliPath = await makeFakeCli(dir, {
+      'analyze extract': { stdout: 'session=s1\n', stderr: 'Extracted 1 component\n' },
+      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
+      'generate components': { stdout: 'session=s2\n', stderr: 'Done: 1/1 components\n' },
+      'apply push': {
+        stdout: JSON.stringify({
+          componentTypes: { created: 1, updated: 0, failed: 0 },
+          designTokens: { created: 0, updated: 0, failed: 0 },
+        }),
+      },
+    });
+
+    const result = await runPipeline(
+      { ...baseOpts({ out: dir, skipMapTokens: true }), project: dir },
+      () => {},
+      cliPath,
+    );
+
+    const calls = await readCalls(dir);
+    expect(calls.find((c) => c[0] === 'map' && c[1] === 'tokens')).toBeUndefined();
+
+    const mapStep = result.steps.find((s) => s.step === 'map tokens');
+    expect(mapStep?.status).toBe('skipped');
+    expect(mapStep?.reason).toBe('--skip-map-tokens');
+  });
+
+  it('marks map tokens as skipped (not failed) when the session has nothing to map', async () => {
+    const dir = await makeTempDir('orch-nothing-to-map-');
+
+    const cliPath = await makeFakeCli(dir, {
+      'analyze extract': { stdout: 'session=s1\n', stderr: 'Extracted 1 component\n' },
+      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
+      'generate components': { stdout: 'session=s2\n', stderr: 'Done: 1/1 components\n' },
+      'map tokens': {
+        stdout: "Nothing to map: session 's2' has 0 design-token prop(s) and 0 token(s). Nothing written.\n",
+      },
+      'apply push': {
+        stdout: JSON.stringify({
+          componentTypes: { created: 1, updated: 0, failed: 0 },
+          designTokens: { created: 0, updated: 0, failed: 0 },
+        }),
+      },
+    });
+
+    const result = await runPipeline({ ...baseOpts({ out: dir }), project: dir }, () => {}, cliPath);
+
+    const mapStep = result.steps.find((s) => s.step === 'map tokens');
+    expect(mapStep?.status).toBe('skipped');
+    expect(mapStep?.reason).toBe('no tokens in session');
+
+    // Rest of the pipeline must still proceed
+    expect(result.steps.find((s) => s.step === 'apply push')?.status).toBe('complete');
+  });
+
+  it('fails the pipeline when map tokens exits non-zero', async () => {
+    const dir = await makeTempDir('orch-map-tokens-fail-');
+
+    const cliPath = await makeFakeCli(dir, {
+      'analyze extract': { stdout: 'session=s1\n', stderr: 'Extracted 1 component\n' },
+      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
+      'generate components': { stdout: 'session=s2\n', stderr: 'Done: 1/1 components\n' },
+      'map tokens': { stderr: 'Error: map tokens agent failed\n', exitCode: 1 },
+    });
+
+    const result = await runPipeline({ ...baseOpts({ out: dir }), project: dir }, () => {}, cliPath);
+
+    const mapStep = result.steps.find((s) => s.step === 'map tokens');
+    expect(mapStep?.status).toBe('failed');
+    // Pipeline stops — apply push never runs
+    expect(result.steps.find((s) => s.step === 'apply push')).toBeUndefined();
   });
 });
