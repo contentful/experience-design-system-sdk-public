@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readWizardAppSource } from './support/wizard-app-source';
+import { readWizardAppSource } from './support/wizard-app-source.js';
 
 /**
  * Regression tests for INTEG-4410: credentials edited via `experiences setup`

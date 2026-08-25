@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readWizardAppSource } from './support/wizard-app-source';
+import { readWizardAppSource } from './support/wizard-app-source.js';
 
 /**
  * Regression tests: after the operator types new credentials into the
