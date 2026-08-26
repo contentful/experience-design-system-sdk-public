@@ -226,6 +226,8 @@ jobs:
         run: |
           pnpm config delete @contentful:registry
           pnpm config delete -- //npm.pkg.github.com/:_authToken
+          pnpm config delete @contentful:registry --location project
+          pnpm config delete -- //npm.pkg.github.com/:_authToken --location project
 
       - name: Publish to npmjs.org
         if: github.ref == 'refs/heads/main' && steps.released.outputs.version != ''
