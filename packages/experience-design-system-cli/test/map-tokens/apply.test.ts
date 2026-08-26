@@ -8,7 +8,6 @@ import {
   storeRawComponents,
   loadRawComponents,
   storeCDFComponents,
-  storeDTCGTokens,
   loadRawPropTokenPaths,
 } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
@@ -41,7 +40,8 @@ const RAW: RawComponentDefinition[] = [
   },
 ];
 
-/** Seeds a Card component with bgColor classified as a design-category token prop. */
+/** Seeds a Card component with bgColor classified as a design-category token prop
+ *  whose closed variant list ($values) is ['default', 'raised', 'primary']. */
 function seedSession(db: Parameters<typeof storeRawComponents>[0], sessionId: string): void {
   storeRawComponents(db, sessionId, RAW);
   storeCDFComponents(db, sessionId, [
@@ -50,22 +50,17 @@ function seedSession(db: Parameters<typeof storeRawComponents>[0], sessionId: st
       entry: {
         $type: 'component',
         $properties: {
-          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+          bgColor: {
+            $type: 'token',
+            $category: 'design',
+            '$token.kind': 'color',
+            $values: ['default', 'raised', 'primary'],
+          },
           label: { $type: 'string', $category: 'content' },
         },
       },
     },
   ]);
-  storeDTCGTokens(
-    db,
-    sessionId,
-    [],
-    [
-      { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
-      { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
-      { path: 'colors.brand.primary', $type: 'color', $value: '#00f' },
-    ],
-  );
 }
 
 describe('applyMapTokenPropCalls', () => {
@@ -81,7 +76,7 @@ describe('applyMapTokenPropCalls', () => {
           tool: 'map_token_prop',
           component: 'Card',
           prop: 'bgColor',
-          token_sets: ['colors.surface.default', 'colors.surface.raised'],
+          token_sets: ['default', 'raised'],
         },
       ];
       const result = applyMapTokenPropCalls(db, sessionId, calls, []);
@@ -92,7 +87,7 @@ describe('applyMapTokenPropCalls', () => {
           componentId,
           propName: 'bgColor',
           kind: 'set',
-          paths: ['colors.surface.default', 'colors.surface.raised'],
+          paths: ['default', 'raised'],
         },
       ]);
       db.close();
@@ -111,15 +106,15 @@ describe('applyMapTokenPropCalls', () => {
           tool: 'map_token_prop',
           component: 'Card',
           prop: 'bgColor',
-          token_sets: ['colors.surface.default', 'colors.surface.raised'],
-          token_allowed: ['colors.surface.default'],
+          token_sets: ['default', 'raised'],
+          token_allowed: ['default'],
         },
       ];
       applyMapTokenPropCalls(db, sessionId, calls, []);
 
       expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
-        { componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] },
-        { componentId, propName: 'bgColor', kind: 'set', paths: ['colors.surface.default', 'colors.surface.raised'] },
+        { componentId, propName: 'bgColor', kind: 'allowed', paths: ['default'] },
+        { componentId, propName: 'bgColor', kind: 'set', paths: ['default', 'raised'] },
       ]);
       db.close();
     });
@@ -139,7 +134,7 @@ describe('applyMapTokenPropCalls', () => {
             tool: 'map_token_prop',
             component: 'Card',
             prop: 'bgColor',
-            token_sets: ['colors.surface.default'],
+            token_sets: ['default'],
             token_allowed: [],
           },
         ],
@@ -154,7 +149,7 @@ describe('applyMapTokenPropCalls', () => {
       applyMapTokenPropCalls(
         db,
         sessionId,
-        [{ tool: 'map_token_prop', component: 'Card', prop: 'bgColor', token_sets: ['colors.surface.raised'] }],
+        [{ tool: 'map_token_prop', component: 'Card', prop: 'bgColor', token_sets: ['raised'] }],
         [],
       );
       const groupsAfter = loadRawPropTokenPaths(db, sessionId);
@@ -163,7 +158,7 @@ describe('applyMapTokenPropCalls', () => {
     });
   });
 
-  it('drops paths not present in raw_tokens with a warning, keeps valid ones', async () => {
+  it("drops values not present in the prop's own $values with a warning, keeps valid ones", async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -178,22 +173,22 @@ describe('applyMapTokenPropCalls', () => {
             tool: 'map_token_prop',
             component: 'Card',
             prop: 'bgColor',
-            token_sets: ['colors.surface.default', 'colors.hallucinated.path'],
+            token_sets: ['default', 'hallucinated'],
           },
         ],
         [],
       );
 
       expect(result.applied).toBe(1);
-      expect(result.warnings.some((w) => w.includes('colors.hallucinated.path'))).toBe(true);
+      expect(result.warnings.some((w) => w.includes('hallucinated'))).toBe(true);
       expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
-        { componentId, propName: 'bgColor', kind: 'set', paths: ['colors.surface.default'] },
+        { componentId, propName: 'bgColor', kind: 'set', paths: ['default'] },
       ]);
       db.close();
     });
   });
 
-  it('skips the call and persists nothing when every token_sets path is unknown', async () => {
+  it('skips the call and persists nothing when every token_sets value is unknown', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -202,13 +197,13 @@ describe('applyMapTokenPropCalls', () => {
       const result = applyMapTokenPropCalls(
         db,
         sessionId,
-        [{ tool: 'map_token_prop', component: 'Card', prop: 'bgColor', token_sets: ['colors.hallucinated.path'] }],
+        [{ tool: 'map_token_prop', component: 'Card', prop: 'bgColor', token_sets: ['hallucinated'] }],
         [],
       );
 
       expect(result.applied).toBe(0);
       expect(result.warnings).toHaveLength(2);
-      expect(result.warnings[0]).toMatch(/dropped unknown token path/);
+      expect(result.warnings[0]).toMatch(/dropped unknown value/);
       expect(result.warnings[1]).toMatch(/no valid token_sets remain/);
       expect(loadRawPropTokenPaths(db, sessionId)).toEqual([]);
       db.close();
@@ -229,8 +224,8 @@ describe('applyMapTokenPropCalls', () => {
             tool: 'map_token_prop',
             component: 'Card',
             prop: 'bgColor',
-            token_sets: ['colors.surface.default'],
-            token_allowed: ['colors.brand.primary'],
+            token_sets: ['default'],
+            token_allowed: ['primary'],
           },
         ],
         [],
@@ -252,7 +247,7 @@ describe('applyMapTokenPropCalls', () => {
       const result = applyMapTokenPropCalls(
         db,
         sessionId,
-        [{ tool: 'map_token_prop', component: 'Nonexistent', prop: 'bgColor', token_sets: ['colors.surface.default'] }],
+        [{ tool: 'map_token_prop', component: 'Nonexistent', prop: 'bgColor', token_sets: ['default'] }],
         [],
       );
 
@@ -277,7 +272,7 @@ describe('applyMapTokenPropCalls', () => {
             tool: 'map_token_prop',
             component: 'Card',
             prop: 'nonexistentProp',
-            token_sets: ['colors.surface.default'],
+            token_sets: ['default'],
           },
         ],
         [],
@@ -298,7 +293,7 @@ describe('applyMapTokenPropCalls', () => {
       const result = applyMapTokenPropCalls(
         db,
         sessionId,
-        [{ tool: 'map_token_prop', component: 'Card', prop: 'label', token_sets: ['colors.surface.default'] }],
+        [{ tool: 'map_token_prop', component: 'Card', prop: 'label', token_sets: ['default'] }],
         [],
       );
 
@@ -319,12 +314,12 @@ describe('applyMapTokenPropCalls', () => {
         db,
         sessionId,
         [
-          { tool: 'map_token_prop', component: 'Card', prop: 'label', token_sets: ['colors.surface.default'] },
+          { tool: 'map_token_prop', component: 'Card', prop: 'label', token_sets: ['default'] },
           {
             tool: 'map_token_prop',
             component: 'Card',
             prop: 'bgColor',
-            token_sets: ['colors.surface.default'],
+            token_sets: ['default'],
           },
         ],
         ['unparseable line: {bad'],
@@ -333,6 +328,48 @@ describe('applyMapTokenPropCalls', () => {
       expect(result.applied).toBe(1);
       expect(result.warnings[0]).toBe('unparseable line: {bad');
       expect(result.warnings).toHaveLength(2);
+      db.close();
+    });
+  });
+
+  it('scopes valid values per prop — a value valid for one prop does not leak into another', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [
+            { name: 'bgColor', type: 'string', required: false, category: 'design' },
+            { name: 'borderColor', type: 'string', required: false, category: 'design' },
+          ],
+          slots: [],
+        },
+      ]);
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'Card',
+          entry: {
+            $type: 'component',
+            $properties: {
+              bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color', $values: ['default'] },
+              borderColor: { $type: 'token', $category: 'design', '$token.kind': 'color', $values: ['primary'] },
+            },
+          },
+        },
+      ]);
+
+      const result = applyMapTokenPropCalls(
+        db,
+        sessionId,
+        [{ tool: 'map_token_prop', component: 'Card', prop: 'bgColor', token_sets: ['primary'] }],
+        [],
+      );
+
+      expect(result.applied).toBe(0);
+      expect(result.warnings[0]).toMatch(/dropped unknown value 'primary'/);
       db.close();
     });
   });

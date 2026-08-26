@@ -21,15 +21,12 @@ export function applyMapTokenPropCalls(
   const warnings = [...incomingWarnings];
   let applied = 0;
 
-  const validTokenPaths = new Set(
-    (db.prepare('SELECT path FROM raw_tokens WHERE session_id = ?').all(sessionId) as Array<{ path: string }>).map(
-      (r) => r.path,
-    ),
-  );
-
   const findComponent = db.prepare('SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?');
   const findProp = db.prepare(
     'SELECT cdf_type, cdf_category FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?',
+  );
+  const findAllowedValues = db.prepare(
+    'SELECT value FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ? AND prop_name = ?',
   );
 
   for (const call of calls) {
@@ -53,12 +50,18 @@ export function applyMapTokenPropCalls(
       continue;
     }
 
+    const validValues = new Set(
+      (findAllowedValues.all(sessionId, component.component_id, call.prop) as Array<{ value: string }>).map(
+        (r) => r.value,
+      ),
+    );
+
     const filteredSets: string[] = [];
-    for (const path of call.token_sets) {
-      if (validTokenPaths.has(path)) {
-        filteredSets.push(path);
+    for (const value of call.token_sets) {
+      if (validValues.has(value)) {
+        filteredSets.push(value);
       } else {
-        warnings.push(`map_token_prop '${call.component}.${call.prop}': dropped unknown token path '${path}'`);
+        warnings.push(`map_token_prop '${call.component}.${call.prop}': dropped unknown value '${value}'`);
       }
     }
 
@@ -70,15 +73,15 @@ export function applyMapTokenPropCalls(
     let filteredAllowed: string[] | undefined;
     if (call.token_allowed !== undefined) {
       filteredAllowed = [];
-      for (const path of call.token_allowed) {
-        if (validTokenPaths.has(path)) {
-          filteredAllowed.push(path);
+      for (const value of call.token_allowed) {
+        if (validValues.has(value)) {
+          filteredAllowed.push(value);
         } else {
-          warnings.push(`map_token_prop '${call.component}.${call.prop}': dropped unknown token path '${path}'`);
+          warnings.push(`map_token_prop '${call.component}.${call.prop}': dropped unknown value '${value}'`);
         }
       }
 
-      if (!filteredAllowed.every((path) => filteredSets.includes(path))) {
+      if (!filteredAllowed.every((value) => filteredSets.includes(value))) {
         warnings.push(
           `map_token_prop '${call.component}.${call.prop}': token_allowed is not a subset of token_sets — skipped`,
         );

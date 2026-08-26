@@ -239,6 +239,7 @@ function applyDbMigrations(db: DatabaseSync): void {
           prop_name    TEXT NOT NULL,
           kind         TEXT NOT NULL CHECK (kind IN ('set', 'allowed')),
           position     INTEGER NOT NULL,
+          -- Variant names copied from the prop's own $values, not DTCG token paths.
           path         TEXT NOT NULL,
           PRIMARY KEY (session_id, component_id, prop_name, kind, position),
           FOREIGN KEY (session_id, component_id, prop_name)
