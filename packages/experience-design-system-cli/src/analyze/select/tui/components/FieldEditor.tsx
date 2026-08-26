@@ -171,7 +171,7 @@ function serializeState(state: EditorState, originalJson: string): string {
     };
     if (p.required) def.$required = true;
     if (p.description) def.$description = p.description;
-    if (p.type === 'enum' && p.values.length > 0) def.$values = p.values;
+    if ((p.type === 'enum' || p.type === 'token') && p.values.length > 0) def.$values = p.values;
     if (p.type === 'token' && p.tokenKind) def['$token.kind'] = p.tokenKind;
     if (p.default !== null) {
       if (p.type === 'boolean' && typeof p.default === 'boolean') {
@@ -411,7 +411,7 @@ function PropRow({
         </Box>
       )}
 
-      {selected && prop.type === 'enum' && (
+      {selected && (prop.type === 'enum' || prop.type === 'token') && (
         <Box paddingLeft={2} flexDirection="column">
           <Box>
             <Text dimColor>values:</Text>
@@ -615,7 +615,7 @@ type SlotField = 'required' | 'description' | 'allowedComponents';
 function propFields(prop: PropState): PropField[] {
   const fields: PropField[] = ['type', 'category', 'required'];
   if (prop.type === 'token') fields.push('tokenKind');
-  if (prop.type === 'enum') fields.push('values');
+  if (prop.type === 'enum' || prop.type === 'token') fields.push('values');
   if (prop.type !== 'richtext' && prop.type !== 'media' && prop.type !== 'link') {
     fields.push('default');
   }
@@ -1263,7 +1263,7 @@ export function FieldEditor({
           : options[(idx + 1) % options.length];
         const updated = { ...currentProp, type: next as PropState['type'] };
         if (next !== 'token') updated.tokenKind = '';
-        if (next !== 'enum') updated.values = [];
+        if (next !== 'enum' && next !== 'token') updated.values = [];
         const nextProps = props.map((p, i) => (i === propIdx ? updated : p));
         commit({ ...editorState, props: nextProps });
         return;
