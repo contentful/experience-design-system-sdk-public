@@ -221,11 +221,15 @@ jobs:
           registry-url: "https://registry.npmjs.org"  # wires OIDC token as NODE_AUTH_TOKEN
 
       # Clears the @contentful scope override set during install, which otherwise beats publishConfig.registry and breaks npmjs.org auth.
+      # Without --location project this only touches the global pnpm config — the repo's
+      # committed .npmrc still pins @contentful:registry to GitHub Packages and wins.
       - name: Clear GitHub Packages registry override
         if: github.ref == 'refs/heads/main' && steps.released.outputs.version != ''
         run: |
           pnpm config delete @contentful:registry
           pnpm config delete -- //npm.pkg.github.com/:_authToken
+          pnpm config delete @contentful:registry --location project
+          pnpm config delete -- //npm.pkg.github.com/:_authToken --location project
 
       - name: Publish to npmjs.org
         if: github.ref == 'refs/heads/main' && steps.released.outputs.version != ''
