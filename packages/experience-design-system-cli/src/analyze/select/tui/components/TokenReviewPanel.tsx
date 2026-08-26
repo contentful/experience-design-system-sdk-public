@@ -34,6 +34,8 @@ export type TokenReviewPanelProps = {
   editing: boolean;
   editCursor: number;
   editSelection: Set<string>;
+  /** Whether `[u]` can restore the most recently dismissed prop on this component. */
+  canUndoDismiss: boolean;
   width: number;
   height: number;
   active: boolean;
@@ -47,6 +49,7 @@ export function TokenReviewPanel({
   editing,
   editCursor,
   editSelection,
+  canUndoDismiss,
   width,
   height,
   active,
@@ -108,7 +111,11 @@ export function TokenReviewPanel({
         );
       })}
       <Text> </Text>
-      <Text dimColor>{'[↑/↓] move  [a] accept  [x] dismiss  [Enter] edit allowed  [Esc] close'}</Text>
+      <Text dimColor>
+        {'[↑/↓] move  [a] accept  [x] dismiss  [Enter] edit allowed  ' +
+          (canUndoDismiss ? '[u] undo  ' : '') +
+          '[Esc] close'}
+      </Text>
     </Box>
   );
 }

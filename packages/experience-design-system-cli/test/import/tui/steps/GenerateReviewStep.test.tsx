@@ -4750,4 +4750,61 @@ describe('GenerateReviewStep — token review actions', () => {
       'colors.surface.raised',
     ]);
   });
+
+  it('[u] restores a dismissed prop\'s pre-dismiss $token.sets/$token.allowed', async () => {
+    const dbModule = await import('../../../../src/session/db.js');
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('x'); // dismiss bgColor
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/\[u\] undo/);
+    stdin.write('u');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('bgColor');
+    expect(frame).not.toMatch(/\[u\] undo/); // single-slot memory consumed by the undo
+    const lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
+    const entry = lastCall![2][0].entry;
+    expect(entry.$properties.bgColor['$token.sets']).toEqual(['colors.surface.default', 'colors.surface.raised']);
+    expect(entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default']);
+  });
+
+  it('[u] does nothing when nothing has been dismissed', async () => {
+    const dbModule = await import('../../../../src/session/db.js');
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    const callsBefore = vi.mocked(dbModule.storeCDFComponents).mock.calls.length;
+    stdin.write('u');
+    await tick();
+    expect(vi.mocked(dbModule.storeCDFComponents).mock.calls.length).toBe(callsBefore);
+    expect(lastFrame() ?? '').not.toMatch(/\[u\] undo/);
+  });
+
+  it('dismissing a second prop discards the pending undo for the first (single-slot memory)', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('x'); // dismiss bgColor (row 0)
+    await tick();
+    stdin.write('x'); // now on borderColor (bgColor's row is gone); dismiss it too
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/\[u\] undo/);
+    stdin.write('u');
+    await tick();
+    const afterUndo = lastFrame() ?? '';
+    expect(afterUndo).toContain('borderColor');
+    expect(afterUndo).not.toContain('bgColor');
+  });
 });
