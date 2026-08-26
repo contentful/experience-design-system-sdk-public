@@ -1,0 +1,36 @@
+# Backstage documentation
+# https://backstage.io/docs/features/software-catalog/descriptor-format/
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: experience-design-system-sdk-public
+  title: Experience Design System SDK
+  description: |
+    Public CLI and SDK for importing a design system's component library into
+    Contentful Experiences: extracts Component Type definitions from a local
+    codebase, invokes a coding agent to generate Component Definition Format
+    (CDF) definitions, and pushes them to a Contentful space.
+  annotations:
+    github.com/project-slug: contentful/experience-design-system-sdk-public
+    contentful.com/ci-alert-slack: prd-extensibility-alerts
+  tags:
+    - typescript
+    - cli
+    - sdk
+    - design-system
+    - monorepo
+  links:
+    - url: https://github.com/contentful/experience-design-system-sdk-public
+      title: GitHub Repository
+      icon: github
+    - url: https://www.npmjs.com/package/@contentful/experience-design-system-cli
+      title: '@contentful/experience-design-system-cli (npm)'
+      icon: npm
+    - url: https://www.npmjs.com/package/@contentful/experience-design-system-types
+      title: '@contentful/experience-design-system-types (npm)'
+      icon: npm
+spec:
+  type: library
+  lifecycle: experimental
+  owner: team-marketplace
+  system: extensibility-platform
