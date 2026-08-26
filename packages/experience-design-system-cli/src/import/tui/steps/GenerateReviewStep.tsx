@@ -43,6 +43,12 @@ import { formatCyclePathSegments, findSlotCycles, suggestCycleBreakEdge } from '
 import { followCycleScroll } from '../cycle-panel-scroll.js';
 import { RationalePanel, type RationaleRow } from '../../../analyze/select/tui/components/RationalePanel.js';
 import { ComponentRationalePanel } from '../../../analyze/select/tui/components/ComponentRationalePanel.js';
+import {
+  TokenReviewPanel,
+  collectTokenSuggestions,
+  type TokenPropSuggestion,
+  type TokenReviewDecision,
+} from '../../../analyze/select/tui/components/TokenReviewPanel.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
 import type { PreviewAnnotation, ReviewComponentStatus } from '../../../analyze/select/types.js';
 import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
@@ -279,10 +285,21 @@ export function GenerateReviewStep({
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
   const [removedBannerCollapsed, setRemovedBannerCollapsed] = useState(false);
   const removedBannerDefaultedRef = useRef(false);
-  const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>('none');
+  const [panelOpen, setPanelOpen] = useState<
+    'none' | 'prop-rationale' | 'component-rationale' | 'source' | 'token-review'
+  >('none');
   const [panelScrollOffset, setPanelScrollOffset] = useState(0);
   const [textEntryActive, setTextEntryActive] = useState(false);
   const [componentRationale, setComponentRationale] = useState<ComponentRationale | null>(null);
+  // Token review panel (INTEG-4779): per-prop pending/accepted decision state,
+  // scoped to this review session only — mirrors component-level accept/reject,
+  // which also never persists mid-review. Reset whenever the selected
+  // component changes so a fresh component starts with everything pending.
+  const [tokenReviewRow, setTokenReviewRow] = useState(0);
+  const [tokenReviewEditing, setTokenReviewEditing] = useState(false);
+  const [tokenReviewEditCursor, setTokenReviewEditCursor] = useState(0);
+  const [tokenReviewEditSelection, setTokenReviewEditSelection] = useState<Set<string>>(new Set());
+  const [tokenReviewDecisions, setTokenReviewDecisions] = useState<Record<string, TokenReviewDecision>>({});
   const pendingGRef = useRef(false);
   const [slotCycles, setSlotCycles] = useState<StoredSlotCycle[]>([]);
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
@@ -734,6 +751,14 @@ export function GenerateReviewStep({
   }, [selectedIdx, components, extractSessionId]);
 
   useEffect(() => {
+    setTokenReviewRow(0);
+    setTokenReviewEditing(false);
+    setTokenReviewEditCursor(0);
+    setTokenReviewEditSelection(new Set());
+    setTokenReviewDecisions({});
+  }, [selectedIdx]);
+
+  useEffect(() => {
     const current = components[selectedIdx];
     if (!current) {
       setComponentRationale(null);
@@ -916,6 +941,56 @@ export function GenerateReviewStep({
     setComponents(next);
     recomputeCycles(next);
     pushHistorySnapshot(next, autoRejected, undoSnapshot, 'reject-cascade');
+  };
+
+  const currentTokenSuggestions = (): TokenPropSuggestion[] => {
+    const current = components[selectedIdx];
+    return current ? collectTokenSuggestions(current.entry) : [];
+  };
+
+  const persistTokenFields = (propName: string, fields: { sets?: string[]; allowed?: string[] }): void => {
+    const current = components[selectedIdx];
+    if (!current) return;
+    const prop = current.entry.$properties[propName];
+    if (!prop) return;
+    const nextProp = { ...prop };
+    if (fields.sets !== undefined) nextProp['$token.sets'] = fields.sets;
+    if (fields.allowed !== undefined) nextProp['$token.allowed'] = fields.allowed;
+    const nextEntry: CDFComponentEntry = {
+      ...current.entry,
+      $properties: { ...current.entry.$properties, [propName]: nextProp },
+    };
+    const next = components.map((c, i) => (i === selectedIdx ? { ...c, entry: nextEntry } : c));
+    setComponents(next);
+    const db = openPipelineDb();
+    try {
+      storeCDFComponents(db, extractSessionId, [{ key: current.key, entry: nextEntry }]);
+    } finally {
+      db.close();
+    }
+    livePreviewHook.trigger();
+    pushHistorySnapshot(next, autoRejected, undoSnapshot, `token-review:${propName}`);
+  };
+
+  const handleTokenAccept = (s: TokenPropSuggestion): void => {
+    persistTokenFields(s.propName, { sets: s.sets, allowed: s.allowed });
+    setTokenReviewDecisions((prev) => ({ ...prev, [s.propName]: 'accepted' }));
+  };
+
+  const handleTokenDismiss = (s: TokenPropSuggestion): void => {
+    persistTokenFields(s.propName, { sets: [], allowed: [] });
+    setTokenReviewDecisions((prev) => {
+      const next = { ...prev };
+      delete next[s.propName];
+      return next;
+    });
+  };
+
+  const handleTokenEditSave = (s: TokenPropSuggestion): void => {
+    const allowed = s.sets.filter((p) => tokenReviewEditSelection.has(p));
+    persistTokenFields(s.propName, { allowed });
+    setTokenReviewDecisions((prev) => ({ ...prev, [s.propName]: 'accepted' }));
+    setTokenReviewEditing(false);
   };
 
   const dialogOpen = showFinalize || showQuit;
@@ -1198,6 +1273,80 @@ export function GenerateReviewStep({
       return;
     }
 
+    // Token review panel (INTEG-4779): needs its own keymap branch, entered
+    // before the generic `panelOpen !== 'none'` scroll/toggle block below,
+    // since that block's Esc/toggle logic doesn't know about edit sub-mode
+    // or accept/dismiss.
+    if (panelOpen === 'token-review') {
+      const suggestions = currentTokenSuggestions();
+      const row = suggestions[tokenReviewRow];
+
+      if (tokenReviewEditing) {
+        if (row) {
+          if (key.upArrow || input === 'k') {
+            setTokenReviewEditCursor((c) => Math.max(0, c - 1));
+            return;
+          }
+          if (key.downArrow || input === 'j') {
+            setTokenReviewEditCursor((c) => Math.min(row.sets.length - 1, c + 1));
+            return;
+          }
+          if (input === ' ' || key.return) {
+            const path = row.sets[tokenReviewEditCursor];
+            setTokenReviewEditSelection((prev) => {
+              const next = new Set(prev);
+              if (next.has(path)) next.delete(path);
+              else next.add(path);
+              return next;
+            });
+            return;
+          }
+          if (key.ctrl && input === 's') {
+            handleTokenEditSave(row);
+            return;
+          }
+        }
+        if (key.escape) {
+          setTokenReviewEditing(false);
+          return;
+        }
+        return;
+      }
+
+      if (key.upArrow || input === 'k') {
+        setTokenReviewRow((r) => Math.max(0, r - 1));
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        setTokenReviewRow((r) => Math.min(Math.max(0, suggestions.length - 1), r + 1));
+        return;
+      }
+      if (input === 'a' && row) {
+        handleTokenAccept(row);
+        return;
+      }
+      if (input === 'x' && row) {
+        handleTokenDismiss(row);
+        setTokenReviewRow((r) => Math.min(r, Math.max(0, suggestions.length - 2)));
+        return;
+      }
+      if (key.return && row) {
+        setTokenReviewEditCursor(0);
+        setTokenReviewEditSelection(new Set(row.allowed));
+        setTokenReviewEditing(true);
+        return;
+      }
+      if (key.escape) {
+        setPanelOpen('none');
+        return;
+      }
+      if (input === 't') {
+        setPanelOpen('none');
+        return;
+      }
+      return;
+    }
+
     if (panelOpen !== 'none') {
       const PANEL_HEIGHT_LOCAL = 12;
       const next = computeNextScrollOffset(panelScrollOffset, input, key, 9999, PANEL_HEIGHT_LOCAL);
@@ -1258,6 +1407,11 @@ export function GenerateReviewStep({
       if (input === 's') {
         setPanelOpen('source');
         setPanelScrollOffset(() => 0);
+        return;
+      }
+      if (input === 't' && currentTokenSuggestions().length > 0) {
+        setPanelOpen('token-review');
+        setTokenReviewRow(0);
         return;
       }
     }
@@ -1997,6 +2151,19 @@ export function GenerateReviewStep({
                       </Box>
                     );
                   })()
+                ) : panelOpen === 'token-review' ? (
+                  <TokenReviewPanel
+                    componentName={selected.key}
+                    suggestions={currentTokenSuggestions()}
+                    decisions={tokenReviewDecisions}
+                    selectedRow={tokenReviewRow}
+                    editing={tokenReviewEditing}
+                    editCursor={tokenReviewEditCursor}
+                    editSelection={tokenReviewEditSelection}
+                    width={panelWidth}
+                    height={PANEL_HEIGHT}
+                    active={true}
+                  />
                 ) : showJson ? (
                   <JsonPanel
                     label="GENERATED DEFINITION (read-only)"
@@ -2141,6 +2308,7 @@ export function GenerateReviewStep({
           {legendEntry('[p]', 'prop rationale', panelOpen === 'prop-rationale')}
           {legendEntry('[P]', 'component rationale', panelOpen === 'component-rationale')}
           {legendEntry('[s]', 'source', panelOpen === 'source')}
+          {currentTokenSuggestions().length > 0 && legendEntry('[t]', 'token review', panelOpen === 'token-review')}
           {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
           {breakingChanges.length > 0 && legendEntry('[b]', 'see breaking changes', breakingPanel.isOpen)}
           {removedComponents.length > 0 &&

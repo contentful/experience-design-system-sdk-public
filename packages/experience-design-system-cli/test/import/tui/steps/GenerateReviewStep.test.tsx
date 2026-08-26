@@ -11,6 +11,13 @@ const SAMPLE_ENTRY = {
       $description: 'Visual style',
       $values: ['primary', 'secondary'],
     },
+    bgColor: {
+      $type: 'token' as const,
+      $category: 'design' as const,
+      '$token.kind': 'color',
+      '$token.sets': ['colors.surface.default', 'colors.surface.raised'],
+      '$token.allowed': ['colors.surface.default'],
+    },
   },
 };
 
@@ -4617,5 +4624,101 @@ describe('GenerateReviewStep — [d] toggles removed-components banner (A2-2)', 
     await tick();
     const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
     expect(frame).toMatch(/\[d\] to expand\/collapse/);
+  });
+});
+
+describe('GenerateReviewStep — token review panel', () => {
+  it('shows the [t] token review hint when the selected component has a suggestion', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/\[t\] token review/);
+  });
+
+  it('opens the token review panel on [t] and lists the suggested prop', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/TOKEN REVIEW/i);
+    expect(frame).toContain('bgColor');
+    expect(frame).toContain('colors.surface.default');
+  });
+
+  it('closes the panel on Esc', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    // Match the panel header specifically (with the em dash) — the footer
+    // legend's "[t] token review" hint is lowercase but still matches a
+    // case-insensitive /TOKEN REVIEW/ check, so it can't distinguish
+    // panel-open from panel-closed on its own.
+    expect(lastFrame() ?? '').toMatch(/TOKEN REVIEW —/i);
+    stdin.write('\x1b');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/TOKEN REVIEW —/i);
+  });
+});
+
+describe('GenerateReviewStep — token review actions', () => {
+  beforeEach(() => {
+    hookReturnOverride = null;
+  });
+
+  it('accept persists $token.sets/$token.allowed via storeCDFComponents and triggers live preview', async () => {
+    const dbModule = await import('../../../../src/session/db.js');
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('a');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/✓ bgColor/);
+    expect(dbModule.storeCDFComponents).toHaveBeenCalled();
+    expect(triggerSpy).toHaveBeenCalled();
+  });
+
+  it('dismiss clears both fields and does not affect other props', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('x');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/no token suggestions for this component/i);
+  });
+
+  it('edit constrains selection to paths already in $token.sets, then Ctrl+S persists the narrowed allowed list', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('\r'); // Enter → edit mode
+    await tick();
+    let frame = lastFrame() ?? '';
+    expect(frame).toContain('colors.surface.default');
+    expect(frame).toContain('colors.surface.raised');
+    stdin.write('j'); // move to colors.surface.raised
+    await tick();
+    stdin.write(' '); // toggle it into the allowed selection
+    await tick();
+    stdin.write('\x13'); // Ctrl+S
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/✓ bgColor/);
   });
 });
