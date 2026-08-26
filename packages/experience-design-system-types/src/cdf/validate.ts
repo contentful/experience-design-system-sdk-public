@@ -35,6 +35,7 @@ function validatePropertyTokenConstraints(
   prop: Record<string, unknown>,
   errors: CDFValidationError[],
 ): void {
+  const values = prop['$values'] as string[] | undefined;
   const sets = prop['$token.sets'] as string[] | undefined;
   const allowed = prop['$token.allowed'] as string[] | undefined;
   if (sets === undefined && allowed === undefined) return;
@@ -56,13 +57,27 @@ function validatePropertyTokenConstraints(
     return;
   }
 
-  if (allowed !== undefined) {
-    const effectiveSets = sets ?? [];
-    const offending = allowed.filter((tokenPath) => !effectiveSets.includes(tokenPath));
-    if (offending.length > 0) {
+  // sets ⊆ values — only enforced when $values is present, so CDF files
+  // predating this field (or hand-authored without it) still validate.
+  if (sets !== undefined && values !== undefined) {
+    const offendingSets = sets.filter((v) => !values.includes(v));
+    if (offendingSets.length > 0) {
+      errors.push({
+        path: `${path}/$token.sets`,
+        message: `"$token.sets" must be a subset of "$values"; not found in $values: ${offendingSets.join(', ')}`,
+      });
+    }
+  }
+
+  // allowed ⊆ sets — only enforced when $token.sets is present. A
+  // $token.allowed with no $token.sets sibling is the no-token-file
+  // degradation path, not a divergence to flag.
+  if (allowed !== undefined && sets !== undefined) {
+    const offendingAllowed = allowed.filter((v) => !sets.includes(v));
+    if (offendingAllowed.length > 0) {
       errors.push({
         path: `${path}/$token.allowed`,
-        message: `"$token.allowed" must be a subset of "$token.sets"; not found in $token.sets: ${offending.join(', ')}`,
+        message: `"$token.allowed" must be a subset of "$token.sets"; not found in $token.sets: ${offendingAllowed.join(', ')}`,
       });
     }
   }

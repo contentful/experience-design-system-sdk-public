@@ -236,8 +236,8 @@ describe('validateCDF', () => {
             bgColor: {
               $type: 'token',
               $category: 'design',
-              '$token.sets': ['color.brand.primary', 'color.brand.secondary'],
-              '$token.allowed': ['color.brand.primary'],
+              '$token.sets': ['primary', 'secondary'],
+              '$token.allowed': ['primary'],
             },
           },
         },
@@ -256,7 +256,7 @@ describe('validateCDF', () => {
             bgColor: {
               $type: 'token',
               $category: 'design',
-              '$token.sets': 'color.brand.primary',
+              '$token.sets': 'primary',
             },
           },
         },
@@ -274,7 +274,7 @@ describe('validateCDF', () => {
             bgColor: {
               $type: 'token',
               $category: 'design',
-              '$token.allowed': 'color.brand.primary',
+              '$token.allowed': 'primary',
             },
           },
         },
@@ -283,7 +283,7 @@ describe('validateCDF', () => {
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('rejects $token.allowed entries that are not a subset of $token.sets, naming the offending paths', () => {
+    it('rejects $token.allowed entries that are not a subset of $token.sets, naming the offending values', () => {
       const result = validateCDF({
         $schema: CDF_V1_SCHEMA_URL,
         Button: {
@@ -292,8 +292,8 @@ describe('validateCDF', () => {
             bgColor: {
               $type: 'token',
               $category: 'design',
-              '$token.sets': ['color.brand.primary'],
-              '$token.allowed': ['color.brand.primary', 'color.brand.rogue'],
+              '$token.sets': ['primary'],
+              '$token.allowed': ['primary', 'rogue'],
             },
           },
         },
@@ -301,10 +301,10 @@ describe('validateCDF', () => {
       expect(result.valid).toBe(false);
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0].path).toBe('/Button/$properties/bgColor/$token.allowed');
-      expect(result.errors[0].message).toContain('color.brand.rogue');
+      expect(result.errors[0].message).toContain('rogue');
     });
 
-    it('rejects a non-empty $token.allowed when $token.sets is entirely absent', () => {
+    it('accepts a non-empty $token.allowed when $token.sets is entirely absent — the no-token-file degradation path', () => {
       const result = validateCDF({
         $schema: CDF_V1_SCHEMA_URL,
         Button: {
@@ -313,15 +313,13 @@ describe('validateCDF', () => {
             bgColor: {
               $type: 'token',
               $category: 'design',
-              '$token.allowed': ['color.brand.rogue'],
+              '$token.allowed': ['primary'],
             },
           },
         },
       });
-      expect(result.valid).toBe(false);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].path).toBe('/Button/$properties/bgColor/$token.allowed');
-      expect(result.errors[0].message).toContain('color.brand.rogue');
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
     });
 
     it('accepts an empty $token.allowed when $token.sets is entirely absent', () => {
@@ -351,7 +349,7 @@ describe('validateCDF', () => {
             label: {
               $type: 'string',
               $category: 'design',
-              '$token.sets': ['color.brand.primary'],
+              '$token.sets': ['primary'],
             },
           },
         },
@@ -370,7 +368,7 @@ describe('validateCDF', () => {
             label: {
               $type: 'token',
               $category: 'content',
-              '$token.allowed': ['color.brand.primary'],
+              '$token.allowed': ['primary'],
             },
           },
         },
@@ -389,8 +387,8 @@ describe('validateCDF', () => {
             bgColor: {
               $type: 'token',
               $category: 'design',
-              $values: ['color.brand.primary'],
-              '$token.sets': ['color.brand.primary', 'color.brand.secondary'],
+              $values: ['primary', 'secondary'],
+              '$token.sets': ['primary', 'secondary'],
               '$token.allowed': [],
             },
           },
@@ -400,7 +398,7 @@ describe('validateCDF', () => {
       expect(result.errors).toHaveLength(0);
     });
 
-    it('does not compare $values against $token.allowed', () => {
+    it('does not compare $values against $token.allowed directly', () => {
       const result = validateCDF({
         $schema: CDF_V1_SCHEMA_URL,
         Button: {
@@ -409,9 +407,48 @@ describe('validateCDF', () => {
             bgColor: {
               $type: 'token',
               $category: 'design',
-              $values: ['color.brand.primary', 'color.brand.secondary'],
-              '$token.sets': ['color.brand.primary'],
-              '$token.allowed': ['color.brand.primary'],
+              $values: ['primary', 'secondary'],
+              '$token.sets': ['primary'],
+              '$token.allowed': ['primary'],
+            },
+          },
+        },
+      });
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('rejects $token.sets entries not present in $values when $values is provided', () => {
+      const result = validateCDF({
+        $schema: CDF_V1_SCHEMA_URL,
+        Button: {
+          $type: 'component',
+          $properties: {
+            bgColor: {
+              $type: 'token',
+              $category: 'design',
+              $values: ['primary', 'secondary'],
+              '$token.sets': ['primary', 'tertiary'],
+            },
+          },
+        },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].path).toBe('/Button/$properties/bgColor/$token.sets');
+      expect(result.errors[0].message).toContain('tertiary');
+    });
+
+    it('does not require $token.sets to be a subset of $values when $values is absent', () => {
+      const result = validateCDF({
+        $schema: CDF_V1_SCHEMA_URL,
+        Button: {
+          $type: 'component',
+          $properties: {
+            bgColor: {
+              $type: 'token',
+              $category: 'design',
+              '$token.sets': ['primary', 'secondary'],
             },
           },
         },
