@@ -252,6 +252,29 @@ describe('buildPrompt', () => {
       },
     ];
 
+    it("passes each prop's $values through into the filtered generated-CDF section", async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: {
+          Card: {
+            $type: 'component',
+            $properties: {
+              bgColor: {
+                $type: 'token',
+                $category: 'design',
+                '$token.kind': 'color',
+                $values: ['primary', 'secondary', 'tertiary'],
+              },
+              title: { $type: 'string', $category: 'content' },
+            },
+          },
+        },
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('"$values":["primary","secondary","tertiary"]');
+    });
+
     it('autonomous preamble includes map_token_prop tool-call protocol', async () => {
       const prompt = await buildPrompt({
         skill: 'map-tokens',
