@@ -51,7 +51,7 @@ import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js
 
 const execFileAsync = promisify(execFile);
 
-const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 3 * 60 * 1000);
+const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 const DEFAULT_COMPONENT_CONCURRENCY = 10;
 const RETRY_BACKOFF_MS = Number(process.env.EDS_RETRY_BACKOFF_MS ?? 5_000);
 

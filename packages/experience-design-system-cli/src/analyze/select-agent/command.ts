@@ -47,7 +47,7 @@ import {
   formatExclusionWarning,
 } from '@contentful/experience-design-system-extraction';
 
-const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 3 * 60 * 1000);
+const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 export const DEFAULT_CONCURRENCY = 10;
 export const DEFAULT_BATCH_SIZE = 5;
 
