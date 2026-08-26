@@ -70,7 +70,7 @@ export function TokenReviewPanel({
           const focused = i === editCursor;
           return (
             <Box key={path}>
-              <Text color={focused ? PALETTE.info : undefined} bold={focused}>
+              <Text color={focused ? PALETTE.info : undefined} bold={focused} dimColor={!active}>
                 {`  [${checked ? 'x' : ' '}] ${path}`}
               </Text>
             </Box>
@@ -98,7 +98,7 @@ export function TokenReviewPanel({
         return (
           <Box key={s.propName} flexDirection="column">
             <Box>
-              <Text color={focused ? PALETTE.info : undefined} bold={focused}>
+              <Text color={focused ? PALETTE.info : undefined} bold={focused} dimColor={!active}>
                 {`${decision === 'accepted' ? '✓' : '○'} ${s.propName}`}
               </Text>
             </Box>
