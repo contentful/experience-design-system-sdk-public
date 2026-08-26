@@ -52,7 +52,12 @@ async function seedGeneratedSession(dbPath: string, withTokens: boolean): Promis
       entry: {
         $type: 'component',
         $properties: {
-          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+          bgColor: {
+            $type: 'token',
+            $category: 'design',
+            '$token.kind': 'color',
+            $values: ['default', 'raised'],
+          },
           label: { $type: 'string', $category: 'content' },
         },
       },
@@ -85,7 +90,12 @@ async function seedGeneratedSessionWithoutStep(dbPath: string): Promise<string> 
       entry: {
         $type: 'component',
         $properties: {
-          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+          bgColor: {
+            $type: 'token',
+            $category: 'design',
+            '$token.kind': 'color',
+            $values: ['default', 'raised'],
+          },
           label: { $type: 'string', $category: 'content' },
         },
       },
@@ -148,12 +158,12 @@ describe('map tokens command', () => {
     const componentId = loadRawComponents(db, sessionId)[0].component_id;
     const groups = loadRawPropTokenPaths(db, sessionId);
     expect(groups).toEqual([
-      { componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] },
+      { componentId, propName: 'bgColor', kind: 'allowed', paths: ['default'] },
       {
         componentId,
         propName: 'bgColor',
         kind: 'set',
-        paths: ['colors.surface.default', 'colors.surface.raised'],
+        paths: ['default', 'raised'],
       },
     ]);
     db.close();
@@ -218,8 +228,8 @@ describe('map tokens command', () => {
     const componentId = loadRawComponents(db, sessionId)[0].component_id;
     const groups = loadRawPropTokenPaths(db, sessionId);
     expect(groups.find((g) => g.componentId === componentId && g.kind === 'set')?.paths).toEqual([
-      'colors.surface.default',
-      'colors.surface.raised',
+      'default',
+      'raised',
     ]);
     db.close();
   });
@@ -246,8 +256,8 @@ describe('map tokens command', () => {
     const componentId = loadRawComponents(db, sessionB)[0].component_id;
     const groups = loadRawPropTokenPaths(db, sessionB);
     expect(groups.find((g) => g.componentId === componentId && g.kind === 'set')?.paths).toEqual([
-      'colors.surface.default',
-      'colors.surface.raised',
+      'default',
+      'raised',
     ]);
     db.close();
   });
@@ -284,8 +294,8 @@ describe('map tokens command', () => {
     const componentId = loadRawComponents(db2, sessionB)[0].component_id;
     const groups = loadRawPropTokenPaths(db2, sessionB);
     expect(groups.find((g) => g.componentId === componentId && g.kind === 'set')?.paths).toEqual([
-      'colors.surface.default',
-      'colors.surface.raised',
+      'default',
+      'raised',
     ]);
     db2.close();
   });
