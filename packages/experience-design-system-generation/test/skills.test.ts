@@ -123,9 +123,10 @@ describe('generate-components.md', () => {
     expect(content).toMatch(/iterate|loop|re-run|repeat/i);
   });
 
-  it('stops emitting values for token-typed props', async () => {
+  it('emits values for token-typed props with a closed set of variants', async () => {
     const content = await readSkill('generate-components.md');
-    expect(content).toMatch(/do not include.*values.*cdf_type.*token/i);
+    expect(content).not.toMatch(/do not include.*values.*cdf_type.*token/i);
+    expect(content).toMatch(/also include.*values.*cdf_type.*token/i);
     expect(content).toMatch(/\$token\.allowed/);
   });
 });
