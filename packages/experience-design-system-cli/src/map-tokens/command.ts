@@ -40,7 +40,7 @@ import type { MapTokensViewResult } from './tui/MapTokensView.js';
 
 const execFileAsync = promisify(execFile);
 
-const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 3 * 60 * 1000);
+const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
 interface MapTokensOptions {
   session?: string;
