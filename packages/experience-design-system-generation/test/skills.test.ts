@@ -161,9 +161,9 @@ describe('map-tokens.md', () => {
     expect(content).toMatch(/subset/i);
   });
 
-  it('forbids hallucinated paths not in the token path index', async () => {
+  it("forbids hallucinated values not in the prop's own $values", async () => {
     const content = await readSkill('map-tokens.md');
-    expect(content).toMatch(/never invent a path|no hallucinated paths/i);
+    expect(content).toMatch(/never invent a value|no hallucinated values/i);
   });
 
   it('instructs omitting token_allowed without restriction evidence', async () => {

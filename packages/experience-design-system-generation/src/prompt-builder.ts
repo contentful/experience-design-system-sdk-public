@@ -356,7 +356,7 @@ Rules:
 function buildMapTokensAutonomousPreamble(inputBlock: string): string {
   return `You are running as part of the experience-design-system-cli generate pipeline in AUTONOMOUS mode. The developer is not present to answer questions.
 
-Context: The components below already have design-category, token-typed props (\`$token.kind\` set). Your task is to suggest, for each such prop, which token set from the design library it draws from (\`token_sets\`) and, when there is concrete evidence, which subset of that set a marketer may actually choose from (\`token_allowed\`). Apply all judgment calls yourself — do not pause to ask for confirmation.
+Context: The components below already have design-category, token-typed props (\`$token.kind\` set) with a closed list of variant names in \`$values\`. Your task is to suggest, for each such prop, which of its own \`$values\` entries actually resolve to a real design token (\`token_sets\`) — subsets of the prop's own $values, not DTCG token paths — and, when there is concrete evidence, which further-restricted subset a marketer may actually choose from (\`token_allowed\`). Apply all judgment calls yourself — do not pause to ask for confirmation.
 
 All input data is provided inline below — do not read any additional files.${inputBlock}
 
@@ -367,21 +367,22 @@ Do NOT write any files or emit any JSON blobs. Instead, emit one JSON object per
 The one tool call you may emit:
 
 \`\`\`
-{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_sets":["colors.brand.primary","colors.brand.secondary","colors.brand.tertiary"],"token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"<reason>"}
+{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_sets":["primary","secondary","tertiary"],"token_allowed":["primary","secondary"],"description":"<reason>"}
 \`\`\`
 
 Rules:
 - Emit exactly one JSON object per line. No multi-line JSON. No markdown fences around the lines.
 - Only emit a call for a prop that appears in the "Generated CDF so far" section — those are already confirmed design-category, token-typed props.
-- \`token_sets\` and \`token_allowed\` are flat lists of individual **leaf** token paths — never a group/prefix path. The "Token path index" contains one entry per leaf token only; a path like \`colors.brand\` that groups \`colors.brand.primary\`/\`colors.brand.secondary\` does NOT itself appear in the index and must never be emitted. If a prop's relevant set is "the brand colors," enumerate every leaf under that group that appears in the index (e.g. \`colors.brand.primary\`, \`colors.brand.secondary\`, \`colors.brand.tertiary\`), not the group name.
-- Every path in \`token_sets\` and \`token_allowed\` must exist verbatim in the "Token path index" section. Never invent a path. If a path you'd otherwise suggest is missing from the index, omit it rather than guessing.
+- \`token_sets\` and \`token_allowed\` are subsets of the prop's own \`$values\` — never a DTCG token path. Every entry must exist verbatim in that prop's \`$values\` array. Never invent a value; if a value you'd otherwise suggest isn't in \`$values\`, omit it rather than guessing.
+- The "Token path index" is evidence, not the source of the vocabulary: use it (plus the token-name sidecar and component source, including any variant→token resolution map defined there) to decide which of the prop's \`$values\` entries actually resolve to a real design token — a value with no matching token in the index does not belong in \`token_sets\`.
 - \`token_allowed\` must be a subset of \`token_sets\`.
-- Restriction requires evidence: a union/enum-shaped prop type, a default value, or an explicit comment in the component source. Omit \`token_allowed\` entirely when you have no such evidence — do not include it as a placeholder.
+- Restriction requires evidence: a default value, an explicit comment in the component source, or a resolution map that only covers a subset of \`$values\`. Omit \`token_allowed\` entirely when you have no such evidence — do not include it as a placeholder.
 - An empty \`token_allowed\` array is a deliberate, evidenced claim that nothing in \`token_sets\` is restricted (everything is allowed) — only emit it when you actually reviewed the evidence and found no restriction, not as a default.
-- If the prop's source shows an existing \`tokenName\` (a CSS custom property or design-token reference), treat it as high-confidence evidence and never contradict it in \`token_sets\` or \`token_allowed\`.
-- No \`$value\` is provided in this step — do not reason about specific token values, only paths and \`$type\`.
+- If the prop's source shows an existing \`tokenName\` or resolution-map entry, treat it as high-confidence evidence and never contradict it in \`token_sets\` or \`token_allowed\`.
+- No \`$value\` is provided in this step — do not reason about specific token values, only which \`$values\` entries resolve to a token path and its \`$type\`.
 - You may emit prose lines (not starting with \`{\`) anywhere — they are ignored by the parser and serve as your reasoning log.
-- If a prop has no plausible token set in the provided index, skip it entirely — do not emit a call with an empty \`token_sets\`.`;
+- If no token document was supplied for this run, omit \`token_sets\` entirely for every prop and explain why in a prose line rather than guessing which \`$values\` entries are token-backed.
+- If none of a prop's \`$values\` resolve to a real token, skip it entirely — do not emit a call with an empty \`token_sets\`.`;
 }
 
 function buildTokensAutonomousPreamble(inputBlock: string): string {

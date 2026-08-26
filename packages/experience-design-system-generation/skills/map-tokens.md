@@ -2,7 +2,7 @@
 
 ## Purpose
 
-For every design-category, token-typed prop already present in the generated CDF, suggest the token set it draws from (`token_sets`) and, when there is concrete evidence, the restricted subset a marketer may actually choose from (`token_allowed`). Output one JSON tool call per line to stdout. The CLI reads your stdout and writes each decision directly to the pipeline database — you do not write any files.
+For every design-category, token-typed prop already present in the generated CDF, suggest which of that prop's own `$values` (its closed list of variant names) actually resolve to a real design token (`token_sets`) and, when there is concrete evidence, the further-restricted subset a marketer may actually choose from (`token_allowed`). Output one JSON tool call per line to stdout. The CLI reads your stdout and writes each decision directly to the pipeline database — you do not write any files.
 
 This is a narrow, focused step. It does not re-classify props, re-derive categories, or touch anything that isn't already a design-category `token` prop.
 
@@ -12,9 +12,9 @@ This is a narrow, focused step. It does not re-classify props, re-derive categor
 
 All input is embedded inline in the prompt before this file:
 
-- **Generated CDF so far** — design-category, token-typed props only, grouped by component. Every prop shown here already has `$type: "token"` and `$category: "design"`; you do not need to re-verify either.
-- **Token path index** — a flat array of `{ "path": "<dot.notation.path>", "type": "<DTCG $type>" }` covering every leaf token in the library. **No `$value` is included** — the mapping decision only needs paths and their DTCG type, not their concrete values.
-- **Component source references** — the real file text for each component (bounded/truncated), rendered inline as a fenced code block, so you can look for `tokenName` usage, union/enum-shaped prop types, default values, or comments that indicate a restriction. **You have no filesystem access and no tools — `sourcePath` is a citation label only, never something to open.** When a component's source couldn't be read (moved/deleted since extraction), it's listed separately by path with no code block; for those, infer `token_sets` from the prop name and `$token.kind` alone and never emit `token_allowed` for them.
+- **Generated CDF so far** — design-category, token-typed props only, grouped by component. Every prop shown here already has `$type: "token"` and `$category: "design"`, and (when the component was classified with a closed set of named variants) a `$values` array — the closed list of variant names you are choosing a subset of. You do not need to re-verify `$type`/`$category`.
+- **Token path index** — a flat array of `{ "path": "<dot.notation.path>", "type": "<DTCG $type>" }` covering every leaf token in the library. **No `$value` is included.** This is evidence, not vocabulary: use it (together with the component source and any resolution map found there) to decide *which* of a prop's `$values` entries are actually backed by a real token — never as a list to pull output values from.
+- **Component source references** — the real file text for each component (bounded/truncated), rendered inline as a fenced code block, so you can look for `tokenName` usage, a variant→token resolution map (e.g. an object literal in a co-located `.styles.ts`/`utils.ts` mapping `"primary"` → a token path), union/enum-shaped prop types, default values, or comments that indicate a restriction. **You have no filesystem access and no tools — `sourcePath` is a citation label only, never something to open.** When a component's source couldn't be read (moved/deleted since extraction), it's listed separately by path with no code block; for those, infer `token_sets` from the prop name, `$token.kind`, and `$values` alone, and never emit `token_allowed` for them.
 
 ```typescript
 interface TokenPathIndexEntry {
@@ -29,7 +29,7 @@ interface ComponentSourceRef {
 }
 ```
 
-If no token path index is provided, there is nothing to map — do not emit any tool calls.
+If no token path index is provided, there is no evidence to check `$values` entries against — omit `token_sets` entirely for every prop and say so in a prose line. Do not guess which values are token-backed.
 
 ---
 
@@ -37,8 +37,8 @@ If no token path index is provided, there is nothing to map — do not emit any 
 
 Your suggestions become two additive, optional CDF fields on a design-category token prop:
 
-- `$token.sets` — `string[]` of dot-notation **leaf** token paths naming the semantically relevant set this prop draws from (e.g. `["colors.brand.primary", "colors.brand.secondary", "colors.brand.tertiary"]` for a background-color prop that draws from the brand color group). Every entry must be an individual leaf path that appears verbatim in the token path index — **never a group/prefix path** like `"colors.brand"`. The token path index contains one entry per leaf token only, so a group name will never match it.
-- `$token.allowed` — `string[]`, a subset of `$token.sets`. When present and non-empty, it is the restricted list a marketer may pick from. An empty array is a deliberate claim that everything in `$token.sets` is allowed. When the field is absent entirely, no restriction assessment was made.
+- `$token.sets` — `string[]`, a **subset of that prop's own `$values`**. Each entry is a variant name copied verbatim from `$values` that you've confirmed resolves to a real design token (via a `tokenName`/resolution-map hit, or by matching the prop's likely semantic group in the token path index). Never a DTCG token path — the token path index is where you look *up* evidence, not where you copy output values *from*.
+- `$token.allowed` — `string[]`, a subset of `$token.sets`. When present and non-empty, it is the further-restricted list a marketer may pick from (e.g. this specific component instance only exposes two of the three token-backed variants). An empty array is a deliberate claim that everything in `$token.sets` is allowed. When the field is absent entirely, no restriction assessment was made.
 
 Both fields are CDF-only in this step — nothing here writes to the Contentful Experience Orchestration API.
 
@@ -48,16 +48,15 @@ Both fields are CDF-only in this step — nothing here writes to the Contentful 
 
 For each design-category, token-typed prop shown in the "Generated CDF so far" section:
 
-1. **Look for a `tokenName`** in the component source (a CSS custom property or design-token reference near the prop's usage). If found, resolve it against the token path index and treat the result as high-confidence evidence for both `token_sets` and, if the reference is exact, `token_allowed`. Never contradict an existing `tokenName`.
-2. **Determine `token_sets`.** Infer the semantically relevant token group from the prop's name, its DTCG `$type` (via `$token.kind`), and the component source — e.g. a background-color prop maps to a color group (`colors.brand`, `colors.surface`), a spacing prop maps to a spacing group. Then enumerate **every leaf path under that group that exists in the token path index** (e.g. `colors.surface.default`, `colors.surface.raised`) and list those individually in `token_sets`. Never emit the group name itself — the token path index has no entry for it.
-3. **Look for restriction evidence** in the component source:
-   - A union or enum-shaped prop type (e.g. `'primary' | 'secondary'`) that maps to specific named tokens
-   - A default value that resolves to a specific token
-   - An explicit comment calling out which tokens are valid
-   
+1. **Read the prop's `$values`.** This is the closed list of variant names you are choosing a subset of. If `$values` is absent or empty, skip the prop entirely — there is nothing to restrict.
+2. **Look for a `tokenName` or a resolution map** in the component source (a CSS custom property, a design-token reference near the prop's usage, or an object literal like `avatarColorMap` in a co-located sibling file mapping variant names to token paths). If found, resolve each of the prop's `$values` entries through it and treat a hit as high-confidence evidence that value belongs in `token_sets`. Never contradict an existing `tokenName`/resolution-map entry.
+3. **Determine `token_sets`.** For each entry in `$values`, decide whether it resolves to a real token — via the resolution map from step 2, or by matching the prop's likely semantic group (inferred from the prop name and `$token.kind`) against the token path index. Include in `token_sets` only the `$values` entries you've confirmed are token-backed; every entry must exist verbatim in `$values`. Never invent a name not already in `$values`, and never emit a DTCG path in place of a variant name.
+4. **Look for restriction evidence** in the component source beyond the prop's own type shape — a default value that resolves to a specific token, an explicit comment calling out which variants are valid in this component, or a resolution map that only covers a subset of `$values`.
+
    If you find such evidence, emit `token_allowed` as the evidenced subset of `token_sets`.
-4. **No restriction evidence?** Omit `token_allowed` entirely. Do not emit an empty array as a placeholder — an empty array means you positively verified there is no restriction, not that you didn't look.
-5. **No plausible token set at all?** Skip the prop — do not emit a call with an empty `token_sets`.
+5. **No restriction evidence?** Omit `token_allowed` entirely. Do not emit an empty array as a placeholder — an empty array means you positively verified there is no restriction, not that you didn't look.
+6. **No token document supplied for this run** (the token path index is empty or absent)? Omit `token_sets` entirely and explain why in a prose line — do not guess which of the prop's `$values` might be token-backed. This mirrors how `token_kind` is already handled during classification when no token data is available.
+7. **None of the prop's `$values` resolve to a real token?** Skip the prop — do not emit a call with an empty `token_sets`.
 
 ---
 
@@ -68,75 +67,84 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 **One tool call:**
 
 ```
-{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_sets":["colors.brand.primary","colors.brand.secondary","colors.brand.tertiary"],"token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"<reason>"}
+{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_sets":["primary","secondary","tertiary"],"token_allowed":["primary","secondary"],"description":"<reason>"}
 ```
 
 **Rules:**
 
 - Emit exactly one JSON object per line. No multi-line JSON.
 - Only emit a call for a prop that appears in the "Generated CDF so far" section.
-- Every path in `token_sets` and `token_allowed` must be an individual **leaf** path that exists verbatim in the token path index. Never emit a group/prefix path (e.g. `colors.brand`) — the index has no entry for groups, only leaves. Never invent a path — if you can't find one, omit it.
+- Every value in `token_sets` and `token_allowed` must exist verbatim in that prop's own `$values` array. Never emit a DTCG path — the token path index is evidence for *which* values are token-backed, not a source of output values. Never invent a value — if you can't confirm one of the prop's `$values` entries resolves to a token, omit it rather than guessing.
 - `token_allowed` must be a subset of `token_sets`.
 - `token_allowed` is optional — omit it when there is no restriction evidence.
 - An empty `token_allowed` array is valid and means "evidenced as unrestricted" — only emit it deliberately.
 - `description` is a short internal rationale for the developer reviewing the import — not customer-facing copy.
-- No `$value` is available in this step. Reason from paths and `$type` only.
+- No `$value` is available in this step. Reason from the prop's own `$values`, the token path index's paths and `$type`s, and the component source only.
 
 ---
 
 ## Examples
 
-### Prop with a clear token set, no restriction evidence
+### Prop with a clear resolution map, no restriction evidence
 
 Generated CDF shows:
 ```json
-{"Card": {"$properties": {"bgColor": {"$type": "token", "$category": "design", "$token.kind": "color"}}}}
+{"Avatar": {"$properties": {"colorVariant": {"$type": "token", "$category": "design", "$token.kind": "color", "$values": ["primary", "secondary", "tertiary"]}}}}
 ```
 
-Token path index includes `colors.surface.default`, `colors.surface.raised`, `colors.brand.primary`.
-
-Component source shows `bgColor` used generically with no union type or default hinting at a specific token.
-
-```
-bgColor is a background color token prop — likely draws from the surface color group; enumerating its leaves from the token path index
-{"tool":"map_token_prop","component":"Card","prop":"bgColor","token_sets":["colors.surface.default","colors.surface.raised"],"description":"Background color surface for the card container"}
-```
-
-### Prop with restriction evidence (union type)
-
-Component source:
+A sibling file `utils.ts` defines:
 ```ts
-interface ButtonProps {
-  variantColor: 'primary' | 'secondary'; // maps to --brand-primary / --brand-secondary
+export const avatarColorMap = {
+  primary: 'colors.brand.primary',
+  secondary: 'colors.brand.secondary',
+  tertiary: 'colors.brand.tertiary',
+};
+```
+
+Token path index includes `colors.brand.primary`, `colors.brand.secondary`, `colors.brand.tertiary`.
+
+```
+colorVariant's three $values all resolve via avatarColorMap to leaf tokens present in the token path index — all three are token-backed; no evidence narrows which the marketer can actually pick
+{"tool":"map_token_prop","component":"Avatar","prop":"colorVariant","token_sets":["primary","secondary","tertiary"],"description":"Color variant resolved via avatarColorMap in utils.ts"}
+```
+
+### Prop with restriction evidence (default value)
+
+Same `Avatar.colorVariant` as above, but the component source shows:
+```ts
+interface AvatarProps {
+  colorVariant?: 'primary' | 'secondary' | 'tertiary'; // default 'primary' — 'tertiary' reserved for internal use, not exposed in this instance
 }
 ```
 
 ```
-variantColor is restricted to two specific tokens via the union type and the comment; token_sets enumerates all brand leaves from the token path index, token_allowed narrows to the evidenced pair
-{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_sets":["colors.brand.primary","colors.brand.secondary","colors.brand.tertiary"],"token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"Restricted to primary/secondary per the component's variant union type"}
+All three values are token-backed per avatarColorMap, but the comment restricts marketer choice to primary/secondary
+{"tool":"map_token_prop","component":"Avatar","prop":"colorVariant","token_sets":["primary","secondary","tertiary"],"token_allowed":["primary","secondary"],"description":"tertiary reserved for internal use per component source comment"}
 ```
 
-### Prop with an existing `tokenName` — high-confidence, must not contradict
+### No token document supplied — degrade, don't guess
 
-Component source shows `background-color: var(--bg-primary)`, and `--bg-primary` resolves via the sidecar convention to `colors.bg.primary` (present in the token path index).
+Generated CDF shows a design-category token prop with `$values`, but no "Token path index" section is present in this prompt at all.
 
 ```
-bgColor resolves via tokenName to colors.bg.primary — treating as high-confidence, not contradicting; token_sets still enumerates the bg group's leaves from the token path index
-{"tool":"map_token_prop","component":"Panel","prop":"bgColor","token_sets":["colors.bg.primary","colors.bg.secondary"],"token_allowed":["colors.bg.primary"],"description":"tokenName --bg-primary resolves to colors.bg.primary"}
+No token path index was supplied this run — omitting token_sets for colorVariant rather than guessing which values are token-backed
 ```
 
-### No plausible token set — skip
+(No tool call emitted for this prop.)
 
-A `borderWidth` token prop where the token path index contains no dimension/border tokens at all: skip it. Emit no tool call, optionally a prose line explaining why.
+### None of the values resolve to a token — skip
+
+A `borderStyle` token prop with `$values: ["solid", "dashed"]`, where the token path index contains no border-style tokens at all and no resolution map is found in the source: skip it. Emit no tool call, optionally a prose line explaining why.
 
 ---
 
 ## Edge cases
 
-- **No token path index provided** — emit no tool calls; there is nothing to map against.
-- **Prop already has `token_allowed` from a `tokenName` exact match** — still emit `token_sets` alongside it; don't emit `token_allowed` without `token_sets`.
-- **Ambiguous restriction (comment mentions "some" tokens but doesn't name them)** — treat as no evidence; omit `token_allowed`.
-- **Component source file missing or unreadable** — fall back to inferring `token_sets` from the prop name and `$token.kind` alone; never emit `token_allowed` without source evidence.
+- **No token path index / token document provided** — omit `token_sets` entirely for every prop, with a prose line explaining why; there is no evidence to check `$values` against.
+- **Prop already has `token_allowed` from a `tokenName`/resolution-map exact match** — still emit `token_sets` alongside it; don't emit `token_allowed` without `token_sets`.
+- **Ambiguous restriction (comment mentions "some" variants but doesn't name them)** — treat as no evidence; omit `token_allowed`.
+- **Component source file missing or unreadable** — fall back to inferring `token_sets` from the prop name, `$token.kind`, and `$values` alone; never emit `token_allowed` without source evidence.
+- **None of a prop's `$values` resolve to a real token** — skip the prop entirely; do not emit a call with an empty `token_sets`.
 - **Prop not in the pipeline database** — skipped with a warning by the CLI; does not abort the run.
 
 ## Validation step — Pre-emit checklist
@@ -144,12 +152,13 @@ A `borderWidth` token prop where the token path index contains no dimension/bord
 Before emitting any tool calls, verify:
 
 1. Every `map_token_prop` call targets a prop that appears in the "Generated CDF so far" section.
-2. Every path in `token_sets` and `token_allowed` is a leaf path that exists verbatim in the token path index — no group/prefix paths.
+2. Every value in `token_sets` and `token_allowed` exists verbatim in that prop's own `$values` array — never a DTCG path, never invented.
 3. `token_allowed`, when present, is a subset of `token_sets`.
 4. No call has an empty `token_sets`.
 5. `token_allowed` is omitted (not an empty array) unless you positively verified there is no restriction.
-6. No existing `tokenName` is contradicted.
+6. No existing `tokenName` or resolution-map entry is contradicted.
+7. `token_sets` is omitted entirely — with a prose explanation — when no token document was supplied for this run.
 
-## CRITICAL: No hallucinated paths
+## CRITICAL: No hallucinated values
 
-Never emit a path in `token_sets` or `token_allowed` that does not appear verbatim in the token path index. This includes group/prefix paths (e.g. `colors.brand`, `colors.surface`) — the index only ever contains leaf tokens, so a group name will never match and will be silently dropped downstream with a warning. If the relevant set is a whole group, enumerate its individual leaves instead of naming the group. An invented or group-level path is worse than no suggestion at all — it also signals the mapping cannot be trusted. When in doubt, omit rather than guess.
+Never emit a value in `token_sets` or `token_allowed` that does not appear verbatim in the target prop's own `$values` array. `$values` is a closed list — you are choosing a subset of it, never inventing a new name and never substituting a DTCG path for a variant name. An invented or out-of-vocabulary value is worse than no suggestion at all — it also signals the mapping cannot be trusted. When in doubt, omit rather than guess.

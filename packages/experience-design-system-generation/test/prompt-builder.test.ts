@@ -416,6 +416,18 @@ describe('buildPrompt', () => {
       expect(prompt).toMatch(/never contradict/i);
     });
 
+    it("describes token_sets/token_allowed as a subset of the prop's own \$values, not DTCG paths", async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toMatch(/subsets? of the prop's own \$values/i);
+      expect(prompt).not.toMatch(/leaf token paths?/i);
+    });
+
     it('includes skill file content', async () => {
       const prompt = await buildPrompt({
         skill: 'map-tokens',
