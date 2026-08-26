@@ -158,6 +158,15 @@ export function AtomicGenerateReviewStep({
   const [tokenReviewEditCursor, setTokenReviewEditCursor] = useState(0);
   const [tokenReviewEditSelection, setTokenReviewEditSelection] = useState<Set<string>>(new Set());
   const [tokenReviewDecisions, setTokenReviewDecisions] = useState<Record<string, TokenReviewDecision>>({});
+  // Single-slot memory for `[u]` undo of the most recent dismiss on this
+  // component — an overwrite, not a history stack: dismissing a second prop
+  // (or navigating away, via the reset effect below) discards any pending undo.
+  const [lastDismissed, setLastDismissed] = useState<{
+    propName: string;
+    sets: string[];
+    allowed: string[];
+    decision: TokenReviewDecision;
+  } | null>(null);
   // Tracks the first `g` of a potential `gg` double-tap (jumps to top in
   // JSON-view + panel-focused state). Reset on any non-`g` key.
   const pendingGRef = useRef(false);
@@ -328,6 +337,7 @@ export function AtomicGenerateReviewStep({
     setTokenReviewEditCursor(0);
     setTokenReviewEditSelection(new Set());
     setTokenReviewDecisions({});
+    setLastDismissed(null);
   }, [selectedIdx]);
 
   // Load component-level rationale for the selected component (drives the
@@ -487,12 +497,25 @@ export function AtomicGenerateReviewStep({
   };
 
   const handleTokenDismiss = (s: TokenPropSuggestion): void => {
+    setLastDismissed({
+      propName: s.propName,
+      sets: s.sets,
+      allowed: s.allowed,
+      decision: tokenReviewDecisions[s.propName] ?? 'pending',
+    });
     persistTokenFields(s.propName, { sets: [], allowed: [] });
     setTokenReviewDecisions((prev) => {
       const next = { ...prev };
       delete next[s.propName];
       return next;
     });
+  };
+
+  const handleTokenUndoDismiss = (): void => {
+    if (!lastDismissed) return;
+    persistTokenFields(lastDismissed.propName, { sets: lastDismissed.sets, allowed: lastDismissed.allowed });
+    setTokenReviewDecisions((prev) => ({ ...prev, [lastDismissed.propName]: lastDismissed.decision }));
+    setLastDismissed(null);
   };
 
   const handleTokenEditSave = (s: TokenPropSuggestion): void => {
@@ -625,6 +648,10 @@ export function AtomicGenerateReviewStep({
       if (input === 'x' && row) {
         handleTokenDismiss(row);
         setTokenReviewRow((r) => Math.min(r, Math.max(0, suggestions.length - 2)));
+        return;
+      }
+      if (input === 'u' && lastDismissed) {
+        handleTokenUndoDismiss();
         return;
       }
       if (key.return && row) {
@@ -1089,6 +1116,7 @@ export function AtomicGenerateReviewStep({
                     editing={tokenReviewEditing}
                     editCursor={tokenReviewEditCursor}
                     editSelection={tokenReviewEditSelection}
+                    canUndoDismiss={lastDismissed !== null}
                     width={panelWidth}
                     height={PANEL_HEIGHT}
                     active={true}

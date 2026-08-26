@@ -57,6 +57,7 @@ describe('TokenReviewPanel — list mode', () => {
         editing={false}
         editCursor={0}
         editSelection={new Set()}
+        canUndoDismiss={false}
         width={60}
         height={20}
         active={true}
@@ -80,6 +81,7 @@ describe('TokenReviewPanel — list mode', () => {
         editing={false}
         editCursor={0}
         editSelection={new Set()}
+        canUndoDismiss={false}
         width={60}
         height={20}
         active={true}
@@ -99,6 +101,7 @@ describe('TokenReviewPanel — list mode', () => {
         editing={false}
         editCursor={0}
         editSelection={new Set()}
+        canUndoDismiss={false}
         width={60}
         height={20}
         active={true}
@@ -108,6 +111,44 @@ describe('TokenReviewPanel — list mode', () => {
     expect(out).toMatch(/\[a\] accept/);
     expect(out).toMatch(/\[x\] dismiss/);
     expect(out).toMatch(/\[Enter\] edit/);
+  });
+
+  it('omits the [u] undo hint when nothing can be restored', () => {
+    const { lastFrame } = render(
+      <TokenReviewPanel
+        componentName="Card"
+        suggestions={suggestions}
+        decisions={{}}
+        selectedRow={0}
+        editing={false}
+        editCursor={0}
+        editSelection={new Set()}
+        canUndoDismiss={false}
+        width={60}
+        height={20}
+        active={true}
+      />,
+    );
+    expect(lastFrame() ?? '').not.toMatch(/\[u\] undo/);
+  });
+
+  it('shows the [u] undo hint when a dismissed prop can be restored', () => {
+    const { lastFrame } = render(
+      <TokenReviewPanel
+        componentName="Card"
+        suggestions={suggestions}
+        decisions={{}}
+        selectedRow={0}
+        editing={false}
+        editCursor={0}
+        editSelection={new Set()}
+        canUndoDismiss={true}
+        width={60}
+        height={20}
+        active={true}
+      />,
+    );
+    expect(lastFrame() ?? '').toMatch(/\[u\] undo/);
   });
 });
 
@@ -126,6 +167,7 @@ describe('TokenReviewPanel — edit mode', () => {
         editing={true}
         editCursor={0}
         editSelection={new Set(['colors.surface.default'])}
+        canUndoDismiss={false}
         width={60}
         height={20}
         active={true}
