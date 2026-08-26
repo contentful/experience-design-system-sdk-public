@@ -12,7 +12,6 @@ metadata:
     (CDF) definitions, and pushes them to a Contentful space.
   annotations:
     github.com/project-slug: contentful/experience-design-system-sdk-public
-    contentful.com/ci-alert-slack: prd-extensibility-alerts
   tags:
     - typescript
     - cli
