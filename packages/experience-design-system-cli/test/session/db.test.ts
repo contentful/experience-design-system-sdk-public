@@ -1687,7 +1687,7 @@ describe('seedCDFFromPreviewResponse', () => {
 });
 
 describe('backfillUnclassifiedProps', () => {
-  it('does not override props excluded by the AI generation step', async () => {
+  it('does not override props already classified as unattached (state) by the AI generation step', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -1725,19 +1725,25 @@ describe('backfillUnclassifiedProps', () => {
       backfillUnclassifiedProps(db, sessionId);
 
       const props = db
-        .prepare(`SELECT name, cdf_type FROM raw_props WHERE session_id = ? AND component_id = ?`)
-        .all(sessionId, comp.component_id) as Array<{ name: string; cdf_type: string | null }>;
+        .prepare(`SELECT name, cdf_type, cdf_category FROM raw_props WHERE session_id = ? AND component_id = ?`)
+        .all(sessionId, comp.component_id) as Array<{
+        name: string;
+        cdf_type: string | null;
+        cdf_category: string | null;
+      }>;
 
       const titleProp = props.find((p) => p.name === 'title');
       const refProp = props.find((p) => p.name === 'internalRef');
 
       expect(titleProp?.cdf_type).toBe('string');
-      expect(refProp?.cdf_type).toBe('excluded');
+      expect(refProp?.cdf_type).toBe('string');
+      expect(refProp?.cdf_category).toBe('state');
 
       const loaded = loadCDFComponents(db, sessionId);
       expect(loaded).toHaveLength(1);
       expect(Object.keys(loaded[0]!.entry.$properties)).toContain('title');
-      expect(Object.keys(loaded[0]!.entry.$properties)).not.toContain('internalRef');
+      expect(Object.keys(loaded[0]!.entry.$properties)).toContain('internalRef');
+      expect(loaded[0]!.entry.$properties['internalRef']?.$category).toBe('state');
       db.close();
     });
   });

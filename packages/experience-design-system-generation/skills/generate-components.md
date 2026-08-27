@@ -66,27 +66,27 @@ It is correct approximately 80% of the time for simple props. You should:
 
 ## Target schema
 
-The CLI assembles your output into CDF (Component Definition Format), a JSON schema with `$schema: "https://contentful.com/schemas/cdf/v1"`. Each component you classify produces a CDF component entry (`$type: "component"`) in the pipeline database. Properties carry `$category` (`content`, `design`, or `state`) and a `$type`. You do not produce this JSON directly — emit tool calls and the CLI writes the DB columns.
+The CLI assembles your output into CDF (Component Definition Format), a JSON schema with `$schema: "https://contentful.com/schemas/cdf/v1"`. Each component you classify produces a CDF component entry (`$type: "component"`) in the pipeline database. Properties carry `$category` (`content`, `design`, or `state`) and a `$type`. Every prop you're given ends up in the CDF — there is no "excluded" output. You do not produce this JSON directly — emit tool calls and the CLI writes the DB columns.
 
 ## Output protocol
 
 Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not starting with `{` are treated as prose and ignored by the parser — use them freely for reasoning.
 
-**Four tool calls:**
+**Three tool calls:**
 
 ```
-{"tool":"classify_component","description":"<required: one-sentence description of the component>","rationale":{"description":"<why this component is classified this way>","props":"<why these props were chosen / excluded>","slots":"<why these slots were chosen / excluded>"}}
+{"tool":"classify_component","description":"<required: one-sentence description of the component>","rationale":{"description":"<why this component is classified this way>","props":"<why these props were classified the way they were, including which ones were made unattached and why>","slots":"<why these slots were chosen / excluded>"}}
 
 {"tool":"classify_prop","prop":"<propName>","cdf_type":"<type>","cdf_category":"<category>","required":<bool>,"description":"<short customer-facing description>","reason":"<full internal rationale; not customer-facing>","values":["a","b"],"token_kind":"color","default":"<value>"}
-
-{"tool":"exclude_prop","prop":"<propName>","reason":"<why excluded>"}
 
 {"tool":"classify_slot","slot":"<slotName>","required":<bool>,"allowed_components":["ComponentName"],"description":"<short customer-facing description>","rationale":"<why this slot was kept / its role>"}
 ```
 
+**`exclude_prop` no longer exists.** Every prop — including framework internals, DOM/accessibility pass-through, and props with no clean flat representation — must produce a `classify_prop` call. Props that are not marketer-configurable are classified with `cdf_category: "state"` instead of being dropped: they still ship in the CDF (visible in review, editable if someone wants to override the category), but stay unattached from the content/design editing surfaces by default. See "Valid cdf_category values" below for exactly what falls into `state`.
+
 **Rules:**
 - Emit exactly one JSON object per line. No multi-line JSON.
-- Every prop in the input must produce exactly one call: `classify_prop` OR `exclude_prop`.
+- Every prop in the input must produce exactly one `classify_prop` call. There is no drop path — a prop you can't meaningfully type still gets `cdf_type: "string"`, `cdf_category: "state"`, with the reasoning in `reason`.
 - Every slot must produce exactly one `classify_slot` call.
 - Emit `classify_component` once at the start (required). The `description` field is **required** — always provide a brief description of the component's purpose.
 - `values` is required for `cdf_type: "enum"` — must be a non-empty string array.
@@ -135,7 +135,7 @@ Exactly **6** valid types:
 |---|---|
 | `content` | Data the component *displays* — what a copywriter or editor fills in: text, labels, headings, body copy, rich text, images, media, URLs, link targets, counts, locale |
 | `design` | Values that control *how the component looks* — what a designer sets: color, size (sm/md/lg), variant (primary/secondary/ghost), layout orientation, alignment, background, visual toggles (imageOnLeft, enableEffect), design tokens |
-| `state` | Runtime behavioral or interactive flags — not visible in the editor's design or content panel: disabled, loading, expanded, isOpen, isSearchVisible, preview, identifiers used for analytics/tracking (componentId, sectionKey, componentName) |
+| `state` | Two groups, both unattached from the content/design editing surfaces by default: (1) runtime behavioral or interactive flags — disabled, loading, expanded, isOpen, isSearchVisible, preview, identifiers used for analytics/tracking (componentId, sectionKey, componentName); (2) props that aren't marketer-configurable at all — framework internals, DOM/accessibility pass-through, callbacks, refs, and any type with no clean flat representation. Group (2) is where `exclude_prop` calls used to go — classify them here instead of dropping them. |
 
 The pre-classified `category` in the raw input is a starting point — correct it when it is wrong. Contentful uses this category to decide where the property appears in the editor UI, so accuracy matters.
 
@@ -145,21 +145,21 @@ The pre-classified `category` in the raw input is a starting point — correct i
 
 For each `RawPropDefinition`, apply in order:
 
-1. **Framework / DOM / accessibility pass-through?** → `exclude_prop`. These are escape hatches for developers, not configurable surfaces for marketers. Exposing them in the ExO editor adds noise that obscures the props that actually carry intent. Always exclude:
+1. **Framework / DOM / accessibility pass-through?** → `classify_prop`, `cdf_type: "string"` (or `"boolean"` if the raw type is boolean), `cdf_category: "state"`. These are escape hatches for developers, not configurable surfaces for marketers — unattaching them keeps the ExO editor's content/design panels free of noise, without dropping them from the CDF. Always route here:
    - Framework internals: `ref`, `innerRef`, event handlers (any `onSomething`), `testId`, `data-testid`, `key`
    - DOM pass-through: `className`, `class`, `classes`, `classNames`, `rootClassName`, `prefixCls`, `style`, `styles`, `id`, `role`, `tabIndex`, `htmlFor`, `for`, `slot`, `is`, `lang`, `dir`, `hidden`, `draggable`, `spellCheck`, `contentEditable`, `inputMode`, `autoComplete`, `autoFocus`, `translate`, `part`, `exportparts`
    - Accessibility pass-through: any `aria-*` or `ariaSomething` prop (including bare `aria` as an aria-attributes object), `aria-label`, `aria-hidden`, `aria-describedby`, `aria-controls`
    - Data attributes: any `data-*` prop
    - **Polymorphic component props**: `as`, `element`, `component` (when typed as an HTML tag string or component reference) — these change rendered HTML, not marketer-visible behavior
    - **Framework theming / pass-through escape hatches**: PrimeVue's `dt` / `pt` / `ptOptions` / `unstyled`, MUI/Chakra-style `sx`, anything explicitly typed as a developer "override" / "passthrough" object
-   - **Important caveat**: only exclude when the prop is one of these *as the bare HTML attribute or framework-internal pass-through*. Compound names like `fileName`, `displayName`, `dataset`, `dataSource`, `roleDescription`, `idLabel` are not pass-through — classify them normally.
-2. **Common semantic props — DO classify, do not exclude.** The LLM has been over-excluding these because they sound like framework internals; they are not. Classify each per the rest of this tree:
+   - **Important caveat**: only route here when the prop is one of these *as the bare HTML attribute or framework-internal pass-through*. Compound names like `fileName`, `displayName`, `dataset`, `dataSource`, `roleDescription`, `idLabel` are not pass-through — classify them normally.
+2. **Common semantic props — classify per their real nature, not as unattached.** The LLM has been over-routing these into `state` because they sound like framework internals; they are not. Classify each per the rest of this tree:
    - `icon` / `leftIcon` / `rightIcon` / `prefixIcon` / `suffixIcon` — slot or `string` (icon name); see slot guidance below
-   - `items` / `options` / `actions` / `links` — usually array content; if the element shape is simple, classify as `string` (comma-separated names/IDs) and note in `description`. Only exclude when elements are deep nested objects with no flat representation.
-   - `value` (the bare prop, not `modelValue`) — content prop, usually `string` (or `enum` if from a fixed set). Note: Vue's `modelValue` / `modelModifiers` are excluded by pre-classify because they're v-model framework wiring.
+   - `items` / `options` / `actions` / `links` — usually array content; if the element shape is simple, classify as `string` (comma-separated names/IDs) and note in `description`. Only fall back to `cdf_category: "state"` when elements are deep nested objects with no flat representation.
+   - `value` (the bare prop, not `modelValue`) — content prop, usually `string` (or `enum` if from a fixed set). Note: Vue's `modelValue` / `modelModifiers` are pre-classified as pass-through because they're v-model framework wiring — keep them in `state`.
    - `name` — content prop, usually `string`. Treat it as semantic component data, not as a DOM pass-through.
    - `form` (when not the literal `<form>` HTML attribute) — typically content; classify as `string` unless it's a complex form-config object
-   - `inputId` / `componentId` — these CAN be content (anchor IDs, marketer-set tracking refs). Classify as `string`, `cdf_category: "content"` when the type is a plain string. Only exclude if the prop is clearly internal (e.g. typed as a generated React ID).
+   - `inputId` / `componentId` — these CAN be content (anchor IDs, marketer-set tracking refs). Classify as `string`, `cdf_category: "content"` when the type is a plain string. Only fall back to `state` if the prop is clearly internal (e.g. typed as a generated React ID).
    - `accessibleNameRef` / `accessibleDescriptionRef` (web components) — these are ID references for a11y wiring; classify as `string`, `cdf_category: "state"` (behavioral wiring, not design or content).
    - `eventDetails` / similar telemetry props — `cdf_category: "state"`.
 3. **Positional/geometric design prop?** (`top`, `bottom`, `left`, `right`, `rotation`, `offset`, `zIndex`) → `classify_prop`, `cdf_type: "string"`, `cdf_category: "design"`.
@@ -169,13 +169,13 @@ For each `RawPropDefinition`, apply in order:
 7. **Raw type is `string` / `number` / `boolean`?** → For `boolean`, use `cdf_type: "boolean"` with `default: true` or `false` (native boolean). For `number`, use `cdf_type: "string"` with `default` as the numeric value as a string (e.g. `"0"`). For `string`, use `cdf_type: "string"`.
 8. **Media/image type** (`ImageProps`, `MediaSource`, asset types)? → `cdf_type: "media"`.
 9. **Rich text / markup** (`ReactNode` used as content, HTML string)? → `cdf_type: "richtext"`.
-10. **Complex type — resolve before excluding** (see below).
+10. **Complex type — resolve before falling back to unattached** (see below).
 
 ---
 
-## Resolving complex types — do not exclude without reasoning
+## Resolving complex types — do not fall back to unattached without reasoning
 
-A prop with a complex TypeScript type is **not automatically excluded**. Many props that appear complex carry real marketer-configurable information. Before excluding, ask: *"Could a marketer set this value in Contentful?"* If yes, classify it.
+A prop with a complex TypeScript type is **not automatically unattached**. Many props that appear complex carry real marketer-configurable information. Before falling back to `cdf_category: "state"`, ask: *"Could a marketer set this value in Contentful?"* If yes, classify it as `content` or `design`.
 
 **Common resolvable patterns:**
 
@@ -184,25 +184,25 @@ A prop with a complex TypeScript type is **not automatically excluded**. Many pr
 | `'primary' \| 'secondary' \| 'ghost'` (union of literals) | → `enum`, extract `values` |
 | `HeadingSize` / `ButtonVariant` / any named type that is clearly a finite set of visual options | → `enum`, infer likely values from the prop name and context (e.g. `['sm', 'md', 'lg']` for size, `['primary', 'secondary']` for variant). Document your inference in `description`. |
 | `Variant` / `variant` prop | Usually a visual design variant. → `enum`, `cdf_category: "design"`. Infer values from context. |
-| `Section[]` / array of custom items where the structure is unclear | → `exclude_prop` only if the array elements are complex objects with no obvious flat representation. If items are simple (title, label, id), consider representing as `string` (a comma-separated IDs or keys) or note in `description` why. |
-| `ExperienceConfiguration<Variant>` / deep generic | Personalization config — → `exclude_prop`, reason: `"personalization configuration — framework internal"` |
-| `React.Dispatch<...>` / setter | State setter — → `exclude_prop`, reason: `"React state setter — framework internal"` |
-| `React.RefObject<...>` / `ref` | → `exclude_prop`, reason: `"ref — framework internal"` |
-| `() => void` / callback | → `exclude_prop`, reason: `"callback function — framework internal"` |
+| `Section[]` / array of custom items where the structure is unclear | → `string`, `cdf_category: "state"` only if the array elements are complex objects with no obvious flat representation. If items are simple (title, label, id), consider representing as `string` (a comma-separated IDs or keys) or note in `description` why. |
+| `ExperienceConfiguration<Variant>` / deep generic | Personalization config — → `string`, `cdf_category: "state"`, reason: `"personalization configuration — framework internal"` |
+| `React.Dispatch<...>` / setter | State setter — → `string`, `cdf_category: "state"`, reason: `"React state setter — framework internal"` |
+| `React.RefObject<...>` / `ref` | → `string`, `cdf_category: "state"`, reason: `"ref — framework internal"` |
+| `() => void` / callback | → `string`, `cdf_category: "state"`, reason: `"callback function — framework internal"` |
 | `ReactNode` used as a slot-like prop (children, `icon`, `footer`) | → classify as a `slot` if it represents an injectable area, or `richtext` if it is inline markup content |
 | `boolean` with a name like `hideChevron`, `imageOnLeft`, `enableBackgroundColorEffect` | → `boolean`, `cdf_category: "design"`, `default: true` or `false` — these control visual appearance |
 | `boolean` with a name like `preview`, `hideContentForPersonalization` | → `boolean`, `cdf_category: "state"`, `default: false` — these control behavior |
 | `string` used as a `componentId`, `sectionKey`, `componentName` | → `string`, `cdf_category: "state"` — these are identifiers for tracking/lookup |
 | `string` locale (e.g. `locale: string`) | → `string`, `cdf_category: "state"` — locale is a behavioral/routing value |
 
-**When to finally exclude:**
+**When to fall back to `cdf_category: "state"` on a complex type (never drop the prop):**
 - The type is a callback signature or event handler
 - The type is a React ref
 - The type is a React state setter (`Dispatch`)
 - The type is a deep generic used for personalization/A-B testing platform config (e.g. `ExperienceConfiguration<T>`)
 - The type is an array of rich objects where no flat representation makes sense for a marketer
 
-If you exclude a prop that could have been classified, the marketer loses the ability to configure it in Contentful. Prefer classifying with a reasonable inference over excluding.
+In every one of these cases you still emit `classify_prop` — pick `cdf_type: "boolean"` when the raw type is boolean, otherwise `cdf_type: "string"` — with `cdf_category: "state"` and the reasoning in `reason`. If you classify a prop as `state` when it could have carried real content or design meaning, the marketer loses the ability to configure it in Contentful. Prefer classifying with a reasonable inference over falling back to `state`.
 
 ---
 
@@ -228,8 +228,8 @@ Rules for nested objects:
 - Flatten to max depth 2 (e.g., `item_nested_deep` is acceptable, deeper is not)
 - Each leaf field gets its own classify_prop call with underscore-joined name
 - Apply the same classification rules as top-level props
-- If the object has > 10 fields, classify the most important 10 and exclude the rest
-- If the object type cannot be resolved (opaque generic, imported interface without visible fields), exclude the parent prop with reason "opaque nested type"
+- If the object has > 10 fields, classify the most important 10 normally and classify the rest `cdf_type: "string"`, `cdf_category: "state"` (still one call per field — never fewer calls than fields)
+- If the object type cannot be resolved (opaque generic, imported interface without visible fields), classify the parent prop `cdf_type: "string"`, `cdf_category: "state"`, reason: "opaque nested type"
 
 ---
 
@@ -307,17 +307,17 @@ Input:
 Output:
 ```
 Starting Button classification — 5 props, 1 slot
-{"tool":"classify_component","description":"Primary action button with variant and state support","rationale":{"description":"Button is an atom — a single interactive control that triggers an action. It carries a label, a small set of visual variants, and a disabled flag, which is the minimal surface a marketer needs to configure a call-to-action.","props":"Kept label (content), variant (enum, design), disabled (boolean, state), and className (string, design escape hatch). Excluded onClick because it is an event handler — framework-internal and not configurable in Contentful.","slots":"Kept the icon slot as optional because the button renders correctly without it and the icon is purely decorative."}}
+{"tool":"classify_component","description":"Primary action button with variant and state support","rationale":{"description":"Button is an atom — a single interactive control that triggers an action. It carries a label, a small set of visual variants, and a disabled flag, which is the minimal surface a marketer needs to configure a call-to-action.","props":"Kept label (content), variant (enum, design), disabled (boolean, state), and className (string, design escape hatch). Classified onClick as unattached (state) because it is an event handler — framework-internal and not configurable in Contentful.","slots":"Kept the icon slot as optional because the button renders correctly without it and the icon is purely decorative."}}
 label is a required string content prop
 {"tool":"classify_prop","prop":"label","cdf_type":"string","cdf_category":"content","required":true,"description":"Button label text"}
 variant is a string union — enum type, category design
 {"tool":"classify_prop","prop":"variant","cdf_type":"enum","cdf_category":"design","required":false,"values":["primary","secondary","ghost"],"default":"primary","description":"Visual variant"}
 disabled is a boolean state prop — raw category says design, correcting to state
 {"tool":"classify_prop","prop":"disabled","cdf_type":"boolean","cdf_category":"state","required":false,"default":false,"description":"Disables the button"}
-onClick is an event handler — framework internal
-{"tool":"exclude_prop","prop":"onClick","reason":"event handler — framework internal"}
+onClick is an event handler — framework internal, unattached rather than dropped
+{"tool":"classify_prop","prop":"onClick","cdf_type":"string","cdf_category":"state","required":false,"description":"Not exposed for content or design editing.","reason":"event handler — framework internal"}
 className is a DOM pass-through — developers wire CSS, marketers never set this
-{"tool":"exclude_prop","prop":"className","reason":"DOM pass-through — not a marketer-configurable surface"}
+{"tool":"classify_prop","prop":"className","cdf_type":"string","cdf_category":"state","required":false,"description":"Not exposed for content or design editing.","reason":"DOM pass-through — not a marketer-configurable surface"}
 icon slot is clearly optional (decorative leading icon)
 {"tool":"classify_slot","slot":"icon","required":false,"description":"Optional leading icon","rationale":"Icon is a decorative leading glyph — optional because the button reads cleanly without it, but kept as a slot so marketers can inject a brand-specific icon component when desired."}
 ```
@@ -381,8 +381,8 @@ href is a URL string — cdf_type string (not link), category content
 
 ## Edge cases
 
-- **Prop with unresolvable type** (generics, intersection, callback) → `exclude_prop` with reason `"complex type — not representable in CDF"`.
-- **Component with zero classified props after exclusions** → still emit `classify_component`. The DB entry will have an empty `$properties` object.
+- **Prop with unresolvable type** (generics, intersection, callback) → `classify_prop`, `cdf_type: "string"`, `cdf_category: "state"`, reason `"complex type — not representable in CDF"`.
+- **Component with zero content/design props** → still emit `classify_component`, and still emit one `classify_prop` per prop even if every single one lands in `state`. The `$properties` object is never empty as long as the component has props.
 - **tokenReference present but not in sidecar** → `cdf_type: "token"`, omit `token_kind`, add `description` warning.
 - **Slot not in DB** → skipped with a warning; does not abort the run.
 - **Prop not in DB** → skipped with a warning; does not abort the run.
@@ -391,14 +391,14 @@ href is a URL string — cdf_type string (not link), category content
 
 Before emitting any tool calls, verify:
 
-1. Every prop in the input has exactly one `classify_prop` or `exclude_prop` call
+1. Every prop in the input has exactly one `classify_prop` call
 2. Every slot has exactly one `classify_slot` call
 3. `classify_component` is emitted exactly once
 4. Every `cdf_type: "enum"` has a non-empty `values` array
 5. Every `cdf_type: "token"` has `token_kind` (or a warning in `description` if lookup failed)
 6. No `cdf_type: "link"` — all href/url props use `string`
 7. `required` values are JSON booleans, not strings
-8. Framework, DOM, accessibility, and data-* pass-through props are excluded — `className`/`classes`/`classNames`/`rootClassName`/`prefixCls`, `style`, `id`, `role`, `tabIndex`, `aria-*` (and bare `aria`), `data-*`, polymorphic `as`/`element`/`component`, framework theming `dt`/`pt`/`ptOptions`/`unstyled`/`sx`. Discrete positional/geometric props (`top`, `bottom`, `left`, `right`, `rotation`, etc.) ARE classified as `string` design props. Common semantic props (`icon`, `items`, `actions`, `options`, `value`, `name`, `form`, `inputId`, `componentId`) are NOT excluded — classify them per their content/design/state nature.
+8. Framework, DOM, accessibility, and data-* pass-through props are classified `cdf_category: "state"` (unattached), not dropped — `className`/`classes`/`classNames`/`rootClassName`/`prefixCls`, `style`, `id`, `role`, `tabIndex`, `aria-*` (and bare `aria`), `data-*`, polymorphic `as`/`element`/`component`, framework theming `dt`/`pt`/`ptOptions`/`unstyled`/`sx`. Discrete positional/geometric props (`top`, `bottom`, `left`, `right`, `rotation`, etc.) ARE classified as `string` design props. Common semantic props (`icon`, `items`, `actions`, `options`, `value`, `name`, `form`, `inputId`, `componentId`) are NOT routed to `state` by default — classify them per their content/design/state nature.
 9. No `cdf_type: "link"` used — `link` is reserved and rejected by the CLI parser
 10. No `cdf_type: "number"` used — this is not a supported type; use `"string"` with numeric defaults. `cdf_type: "boolean"` IS valid — use it for boolean toggle props.
 11. `classify_component` includes a `rationale` object with all three sub-fields (`rationale.description`, `rationale.props`, `rationale.slots`) populated as non-empty strings.
@@ -417,9 +417,9 @@ Re-run or re-iterate on any components flagged by warnings until the output pass
 
 ## CRITICAL: Zero-output is a failure
 
-You MUST produce at least one classify_prop call for this component. A response with zero
-classify_prop/exclude_prop calls means the component will be pushed with no configurable
-properties — this is never acceptable.
+You MUST produce exactly one classify_prop call per input prop for this component. A response
+with zero classify_prop calls means the component will be pushed with no properties at all —
+this is never acceptable.
 
 If you are genuinely uncertain about every prop, classify each as:
 {"tool":"classify_prop","prop":"<name>","cdf_type":"string","cdf_category":"content","required":false,"description":"Uncertain classification — review recommended"}

@@ -185,7 +185,7 @@ describe('applyToolCalls — classify_prop', () => {
     });
   });
 
-  it('nulls out cdf_type for excluded props', async () => {
+  it('classifies excluded props into the unattached (state) bucket instead of dropping them', async () => {
     await withTempDb((dbPath) => {
       const { db, sessionId, componentId } = setupSession(dbPath);
       applyToolCalls(
@@ -207,11 +207,43 @@ describe('applyToolCalls — classify_prop', () => {
 
       const prop = db
         .prepare(
-          `SELECT cdf_type, cdf_category FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'className'`,
+          `SELECT cdf_type, cdf_category, required FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'className'`,
+        )
+        .get(sessionId, componentId) as { cdf_type: string | null; cdf_category: string | null; required: number };
+      expect(prop.cdf_type).toBe('string');
+      expect(prop.cdf_category).toBe('state');
+      expect(prop.required).toBe(0);
+      db.close();
+    });
+  });
+
+  it('preserves boolean type when converting an excluded boolean prop to unattached', async () => {
+    await withTempDb((dbPath) => {
+      const { db, sessionId, componentId } = setupSession(dbPath);
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Button',
+        [
+          { tool: 'classify_component' },
+          { tool: 'exclude_prop', prop: 'label', reason: '' },
+          { tool: 'exclude_prop', prop: 'variant', reason: '' },
+          { tool: 'exclude_prop', prop: 'disabled', reason: 'not needed' },
+          { tool: 'exclude_prop', prop: 'className', reason: '' },
+          { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
+          { tool: 'classify_slot', slot: 'icon' },
+        ],
+        [],
+      );
+
+      const prop = db
+        .prepare(
+          `SELECT cdf_type, cdf_category FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'disabled'`,
         )
         .get(sessionId, componentId) as { cdf_type: string | null; cdf_category: string | null };
-      expect(prop.cdf_type).toBe('excluded');
-      expect(prop.cdf_category).toBeNull();
+      expect(prop.cdf_type).toBe('boolean');
+      expect(prop.cdf_category).toBe('state');
       db.close();
     });
   });
@@ -439,7 +471,7 @@ describe('applyToolCalls — loadCDFComponents integration', () => {
       expect(entry.entry.$properties['variant']?.$values).toEqual(['primary', 'secondary']);
       expect(entry.entry.$properties['disabled']?.$category).toBe('state');
       expect(entry.entry.$properties['bgColor']?.$type).toBe('token');
-      expect(entry.entry.$properties['className']).toBeUndefined();
+      expect(entry.entry.$properties['className']?.$category).toBe('state');
       expect(entry.entry.$slots?.['icon']?.$required).toBeUndefined();
       expect(entry.entry.$slots?.['icon']?.$allowedComponents).toEqual(['Icon']);
       db.close();
