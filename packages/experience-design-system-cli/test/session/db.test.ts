@@ -294,6 +294,243 @@ describe('raw prop token paths', () => {
   });
 });
 
+describe('applyToolCalls clears the other property type on reclassification', () => {
+  it('clears raw_prop_token_paths when a prop moves from token to enum', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Badge',
+          source: 'src/Badge.tsx',
+          framework: 'react',
+          props: [{ name: 'variant', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
+
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [{ tool: 'classify_prop', prop: 'variant', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' }],
+        [],
+      );
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.blue.500']);
+
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [
+          {
+            tool: 'classify_prop',
+            prop: 'variant',
+            cdf_type: 'enum',
+            cdf_category: 'design',
+            values: ['primary', 'secondary'],
+          },
+        ],
+        [],
+      );
+
+      expect(loadRawPropTokenPaths(db, sessionId).filter((g) => g.componentId === componentId)).toEqual([]);
+      db.close();
+    });
+  });
+
+  it('drops values supplied on a token classify_prop call and warns', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Badge',
+          source: 'src/Badge.tsx',
+          framework: 'react',
+          props: [{ name: 'bgColor', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
+
+      const result = applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [
+          {
+            tool: 'classify_prop',
+            prop: 'bgColor',
+            cdf_type: 'token',
+            cdf_category: 'design',
+            token_kind: 'color',
+            values: ['primary', 'secondary'],
+          },
+        ],
+        [],
+      );
+
+      // The classification stands — only the vocabulary is refused.
+      expect(result.classified).toBe(1);
+      expect(result.warnings.join('\n')).toContain('dropped 2 values on a token property');
+      const stored = db
+        .prepare(`SELECT value FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ?`)
+        .all(sessionId, componentId);
+      expect(stored).toEqual([]);
+      db.close();
+    });
+  });
+
+  it('still stores values for a non-token classify_prop call', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Badge',
+          source: 'src/Badge.tsx',
+          framework: 'react',
+          props: [{ name: 'variant', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
+
+      const result = applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [
+          {
+            tool: 'classify_prop',
+            prop: 'variant',
+            cdf_type: 'enum',
+            cdf_category: 'design',
+            values: ['primary', 'secondary'],
+          },
+        ],
+        [],
+      );
+
+      expect(result.warnings).toEqual([]);
+      const stored = db
+        .prepare(
+          `SELECT value FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ? ORDER BY position`,
+        )
+        .all(sessionId, componentId) as Array<{ value: string }>;
+      expect(stored.map((r) => r.value)).toEqual(['primary', 'secondary']);
+      db.close();
+    });
+  });
+
+  it('clears raw_prop_allowed_values when a prop moves from enum to token', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Badge',
+          source: 'src/Badge.tsx',
+          framework: 'react',
+          props: [{ name: 'variant', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
+
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [
+          {
+            tool: 'classify_prop',
+            prop: 'variant',
+            cdf_type: 'enum',
+            cdf_category: 'design',
+            values: ['primary', 'secondary'],
+          },
+        ],
+        [],
+      );
+
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [{ tool: 'classify_prop', prop: 'variant', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' }],
+        [],
+      );
+
+      const [{ entry }] = loadCDFComponents(db, sessionId);
+      expect(entry.$properties.variant.$values).toBeUndefined();
+      const remaining = db
+        .prepare('SELECT COUNT(*) AS count FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ?')
+        .get(sessionId, componentId) as { count: number };
+      expect(remaining.count).toBe(0);
+      db.close();
+    });
+  });
+
+  it('does not disturb existing token paths when a prop is reclassified but stays token', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Badge',
+          source: 'src/Badge.tsx',
+          framework: 'react',
+          props: [{ name: 'variant', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
+
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [{ tool: 'classify_prop', prop: 'variant', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' }],
+        [],
+      );
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.blue.500']);
+
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [
+          {
+            tool: 'classify_prop',
+            prop: 'variant',
+            cdf_type: 'token',
+            cdf_category: 'design',
+            token_kind: 'color',
+            description: 'updated description',
+          },
+        ],
+        [],
+      );
+
+      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
+        { componentId, propName: 'variant', kind: 'allowed', paths: ['color.blue.500'] },
+      ]);
+      db.close();
+    });
+  });
+});
+
 describe('loadScopeComponents (Feature 3)', () => {
   it('returns components with aiDecision/aiReason derived from status + reject_reason', async () => {
     await withTempDb((dbPath) => {

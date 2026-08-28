@@ -708,6 +708,9 @@ export function applyToolCalls(
   const deleteAllowedValues = db.prepare(
     `DELETE FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
   );
+  const deleteTokenPaths = db.prepare(
+    `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = 'allowed'`,
+  );
   const insertAllowedValue = db.prepare(
     `INSERT OR IGNORE INTO raw_prop_allowed_values (session_id, component_id, prop_name, value, position)
      VALUES (?, ?, ?, ?, ?)`,
@@ -771,9 +774,25 @@ export function applyToolCalls(
           warnings.push(`${componentName}: classify_prop '${call.prop}' — prop not found, skipped`);
           continue;
         }
-        if (call.values && call.values.length > 0) {
+        if (call.cdf_type === 'token') {
+          // A token property's options list is design token paths, written by
+          // map tokens. An enum vocabulary is not part of that definition,
+          // whether it is left over from a prior classification or supplied on
+          // this very call against the tool contract — so it is dropped either
+          // way, and the caller is told when it was asked for explicitly.
           deleteAllowedValues.run(sessionId, componentId, call.prop);
-          call.values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, call.prop, v, i));
+          if (call.values && call.values.length > 0) {
+            const count = call.values.length;
+            warnings.push(
+              `${componentName}: classify_prop '${call.prop}' — dropped ${count} value${count === 1 ? '' : 's'} on a token property; its options list is $token.allowed, not $values`,
+            );
+          }
+        } else {
+          deleteTokenPaths.run(sessionId, componentId, call.prop);
+          if (call.values && call.values.length > 0) {
+            deleteAllowedValues.run(sessionId, componentId, call.prop);
+            call.values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, call.prop, v, i));
+          }
         }
         if (call.default !== undefined) {
           const storedDefault = typeof call.default === 'boolean' ? String(call.default) : call.default;
