@@ -66,7 +66,7 @@ It is correct approximately 80% of the time for simple props. You should:
 
 ## Target schema
 
-The CLI assembles your output into CDF (Component Definition Format), a JSON schema with `$schema: "https://contentful.com/schemas/cdf/v1"`. Each component you classify produces a CDF component entry (`$type: "component"`) in the pipeline database. Properties carry `$category` (`content`, `design`, or `state`) and a `$type`. Every prop you're given ends up in the CDF — there is no "excluded" output. You do not produce this JSON directly — emit tool calls and the CLI writes the DB columns.
+The CLI assembles your output into CDF (Component Definition Format), a JSON schema with `$schema: "https://contentful.com/schemas/cdf/v1"`. Each component you classify produces a CDF component entry (`$type: "component"`) in the pipeline database. Properties carry `$category` (`content`, `design`, or `state`) and a `$type`. You do not produce this JSON directly — emit tool calls and the CLI writes the DB columns.
 
 ## Output protocol
 
@@ -82,7 +82,7 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 {"tool":"classify_slot","slot":"<slotName>","required":<bool>,"allowed_components":["ComponentName"],"description":"<short customer-facing description>","rationale":"<why this slot was kept / its role>"}
 ```
 
-**`exclude_prop` no longer exists.** Every prop — including framework internals, DOM/accessibility pass-through, and props with no clean flat representation — must produce a `classify_prop` call. Props that are not marketer-configurable are classified with `cdf_category: "state"` instead of being dropped: they still ship in the CDF (visible in review, editable if someone wants to override the category), but stay unattached from the content/design editing surfaces by default. See "Valid cdf_category values" below for exactly what falls into `state`.
+Every prop — including framework internals, DOM/accessibility pass-through, and props with no clean flat representation — must produce a `classify_prop` call. Props that are not marketer-configurable are classified with `cdf_category: "state"`: they still ship in the CDF (visible in review, editable if someone wants to override the category), but stay unattached from the content/design editing surfaces by default. See "Valid cdf_category values" below for exactly what falls into `state`.
 
 **Rules:**
 - Emit exactly one JSON object per line. No multi-line JSON.
@@ -135,7 +135,7 @@ Exactly **6** valid types:
 |---|---|
 | `content` | Data the component *displays* — what a copywriter or editor fills in: text, labels, headings, body copy, rich text, images, media, URLs, link targets, counts, locale |
 | `design` | Values that control *how the component looks* — what a designer sets: color, size (sm/md/lg), variant (primary/secondary/ghost), layout orientation, alignment, background, visual toggles (imageOnLeft, enableEffect), design tokens |
-| `state` | Two groups, both unattached from the content/design editing surfaces by default: (1) runtime behavioral or interactive flags — disabled, loading, expanded, isOpen, isSearchVisible, preview, identifiers used for analytics/tracking (componentId, sectionKey, componentName); (2) props that aren't marketer-configurable at all — framework internals, DOM/accessibility pass-through, callbacks, refs, and any type with no clean flat representation. Group (2) is where `exclude_prop` calls used to go — classify them here instead of dropping them. |
+| `state` | Two groups, both unattached from the content/design editing surfaces by default: (1) runtime behavioral or interactive flags — disabled, loading, expanded, isOpen, isSearchVisible, preview, identifiers used for analytics/tracking (componentId, sectionKey, componentName); (2) props that aren't marketer-configurable at all — framework internals, DOM/accessibility pass-through, callbacks, refs, and any type with no clean flat representation. |
 
 The pre-classified `category` in the raw input is a starting point — correct it when it is wrong. Contentful uses this category to decide where the property appears in the editor UI, so accuracy matters.
 

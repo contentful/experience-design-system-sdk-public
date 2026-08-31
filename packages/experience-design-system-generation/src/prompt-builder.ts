@@ -167,7 +167,7 @@ The three tool calls you may emit are:
 
 Rules:
 - Emit exactly one JSON object per line. No multi-line JSON. No markdown fences around the lines.
-- Every prop in the input must have exactly one classify_prop call. There is no exclude call — a prop that isn't marketer-configurable still gets classify_prop with cdf_category "state" instead of being dropped.
+- Every prop in the input must have exactly one classify_prop call.
 - Every slot in the input must have exactly one classify_slot call.
 - Valid cdf_type values: string, richtext, media, enum, token, boolean
 - Valid cdf_category values: content, design, state

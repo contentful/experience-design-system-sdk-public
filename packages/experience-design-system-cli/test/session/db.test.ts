@@ -1717,7 +1717,15 @@ describe('backfillUnclassifiedProps', () => {
         'Widget',
         [
           { tool: 'classify_prop', prop: 'title', cdf_type: 'string', cdf_category: 'content' },
-          { tool: 'exclude_prop', prop: 'internalRef', reason: 'internal implementation detail' },
+          {
+            tool: 'classify_prop',
+            prop: 'internalRef',
+            cdf_type: 'string',
+            cdf_category: 'state',
+            required: false,
+            description: 'Not exposed for content or design editing.',
+            reason: 'internal implementation detail',
+          },
         ],
         [],
       );

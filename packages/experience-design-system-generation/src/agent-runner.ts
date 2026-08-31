@@ -26,12 +26,6 @@ export interface ClassifyPropCall {
   reason?: string;
 }
 
-export interface ExcludePropCall {
-  tool: 'exclude_prop';
-  prop: string;
-  reason: string;
-}
-
 export interface ClassifyComponentCall {
   tool: 'classify_component';
   description?: string;
@@ -57,7 +51,7 @@ export interface ClassifySlotCall {
   rationale?: string;
 }
 
-export type ToolCall = ClassifyPropCall | ExcludePropCall | ClassifyComponentCall | ClassifySlotCall;
+export type ToolCall = ClassifyPropCall | ClassifyComponentCall | ClassifySlotCall;
 
 // --- Select tool calls ---
 
@@ -156,7 +150,7 @@ export interface ParsedToolCalls {
   warnings: string[];
 }
 
-const VALID_TOOL_NAMES = new Set(['classify_prop', 'exclude_prop', 'classify_component', 'classify_slot']);
+const VALID_TOOL_NAMES = new Set(['classify_prop', 'classify_component', 'classify_slot']);
 const VALID_TOKEN_TOOL_NAMES = new Set(['set_token', 'set_group']);
 const VALID_CDF_TYPES = new Set(['string', 'richtext', 'media', 'enum', 'token', 'boolean']);
 const VALID_CATEGORIES = new Set(['content', 'design', 'state']);
@@ -215,16 +209,6 @@ export function parseToolCallLines(stdout: string): ParsedToolCalls {
       if (typeof rec.default === 'string' || typeof rec.default === 'boolean') call.default = rec.default;
       if (typeof rec.reason === 'string') call.reason = rec.reason;
       calls.push(call);
-    } else if (tool === 'exclude_prop') {
-      if (typeof rec.prop !== 'string' || !rec.prop) {
-        warnings.push('exclude_prop missing prop name — skipped');
-        continue;
-      }
-      calls.push({
-        tool: 'exclude_prop',
-        prop: rec.prop,
-        reason: typeof rec.reason === 'string' ? rec.reason : '',
-      });
     } else if (tool === 'classify_component') {
       const call: ClassifyComponentCall = { tool: 'classify_component' };
       if (typeof rec.description === 'string') call.description = rec.description;

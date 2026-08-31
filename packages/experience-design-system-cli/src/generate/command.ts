@@ -163,7 +163,6 @@ function printFallbackInstructions(options: { agent: string; skill: Skill; sessi
 interface ComponentRunResult {
   componentName: string;
   classified: number;
-  excluded: number;
   slots: number;
   warnings: string[];
   failed: boolean;
@@ -198,7 +197,6 @@ async function runOneComponent(
       return {
         componentName: component.name,
         classified: 0,
-        excluded: 0,
         slots: 0,
         warnings: [],
         failed: false,
@@ -214,7 +212,6 @@ async function runOneComponent(
       return {
         componentName: component.name,
         classified: 0,
-        excluded: 0,
         slots: 0,
         warnings: [`${component.name}: source changed but human edits preserved`],
         failed: false,
@@ -292,7 +289,6 @@ async function runOneComponent(
       return {
         componentName: component.name,
         classified: 0,
-        excluded: 0,
         slots: 0,
         warnings: [],
         failed: true,
@@ -321,7 +317,6 @@ async function runOneComponent(
     return {
       componentName: component.name,
       classified: applied.classified,
-      excluded: applied.excluded,
       slots: applied.slots,
       warnings: applied.warnings,
       failed: false,
@@ -332,7 +327,6 @@ async function runOneComponent(
   return {
     componentName: component.name,
     classified: 0,
-    excluded: 0,
     slots: 0,
     warnings: [],
     failed: true,
@@ -597,7 +591,6 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     }
 
     const totalClassified = generated.reduce((s, r) => s + r.classified, 0);
-    const totalExcluded = generated.reduce((s, r) => s + r.excluded, 0);
     const totalRenamedSlots = componentResults.reduce((s, r) => s + r.renamedSlotsCount, 0);
     const allOk = failed.length === 0;
     const cachedNote = cachedResults.length > 0 ? c.dim(`  (${cachedResults.length} cached)`) : '';
@@ -605,7 +598,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       (allOk ? c.green('✓') : c.yellow('⚠')) +
         `  ${generated.length + cachedResults.length}/${componentResults.length} components` +
         cachedNote +
-        c.dim(`  ${totalClassified} classified, ${totalExcluded} unattached`) +
+        c.dim(`  ${totalClassified} classified`) +
         '\n',
     );
     // Machine-parseable summary on stdout for the wizard / orchestrator.

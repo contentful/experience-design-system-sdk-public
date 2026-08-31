@@ -30,11 +30,6 @@ function formatToolCall(obj: Record<string, unknown>): string | null {
       const cat = String(obj['cdf_category'] ?? '');
       return `    ${c.green('+')}  ${prop}  ${c.dim(`${type}  ${cat}`)}`;
     }
-    case 'exclude_prop': {
-      const prop = String(obj['prop'] ?? '');
-      const reason = typeof obj['reason'] === 'string' ? obj['reason'] : '';
-      return `    ${c.dim('–')}  ${prop}  ${c.dim(reason)}`;
-    }
     case 'classify_slot': {
       const slot = String(obj['slot'] ?? '');
       const desc = typeof obj['description'] === 'string' ? obj['description'] : '';
