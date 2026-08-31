@@ -139,7 +139,7 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
     }
 
     const noCache = opts.cache === false || process.env.EDS_NO_CACHE === '1';
-    const promptHash = await hashPromptForSkill('map-tokens');
+    const promptHash = await hashPromptForSkill('map-tokens', agent, model);
     const inputHash = computeMapTokensInputHash(db, sessionId);
 
     if (!noCache) {
