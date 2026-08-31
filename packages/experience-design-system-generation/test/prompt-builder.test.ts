@@ -73,8 +73,8 @@ describe('buildPrompt', () => {
       outDir: '/fake/out',
     });
     expect(prompt).toContain('classify_prop');
+    expect(prompt).toContain('exclude_prop');
     expect(prompt).toContain('classify_slot');
-    expect(prompt).not.toContain('"tool":"exclude_prop"');
   });
 
   it('treats bare name as semantic component data, not a DOM pass-through', async () => {
