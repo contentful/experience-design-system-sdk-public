@@ -1,6 +1,7 @@
 // CDF (Component Definition Format) exports
 export {
   validateCDF,
+  buildTokenTypeIndex,
   parseCDFComponents,
   CDF_V1_SCHEMA_URL,
   CDF_PROPERTY_TYPES,
@@ -8,6 +9,8 @@ export {
   CDFComponentSchema,
   CDFPropertySchema,
   CDFSlotSchema,
+  type CDFValidationOptions,
+  type TokenTypeIndex,
   type CDFComponentEntry,
   type CDFPropertyDefinition,
   type CDFSlotDefinition,

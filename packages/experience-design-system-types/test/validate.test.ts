@@ -226,45 +226,7 @@ describe('validateCDF', () => {
     expect(result.components).toHaveLength(1);
   });
 
-  describe('$token.sets and $token.allowed', () => {
-    it('accepts a token property with $token.sets and $token.allowed', () => {
-      const result = validateCDF({
-        $schema: CDF_V1_SCHEMA_URL,
-        Button: {
-          $type: 'component',
-          $properties: {
-            bgColor: {
-              $type: 'token',
-              $category: 'design',
-              '$token.sets': ['color.brand.primary', 'color.brand.secondary'],
-              '$token.allowed': ['color.brand.primary'],
-            },
-          },
-        },
-      });
-      expect(result.valid).toBe(true);
-      expect(result.errors).toHaveLength(0);
-      expect(result.components).toHaveLength(1);
-    });
-
-    it('rejects a non-array $token.sets value', () => {
-      const result = validateCDF({
-        $schema: CDF_V1_SCHEMA_URL,
-        Button: {
-          $type: 'component',
-          $properties: {
-            bgColor: {
-              $type: 'token',
-              $category: 'design',
-              '$token.sets': 'color.brand.primary',
-            },
-          },
-        },
-      });
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-    });
-
+  describe('$token.allowed', () => {
     it('rejects a non-array $token.allowed value', () => {
       const result = validateCDF({
         $schema: CDF_V1_SCHEMA_URL,
@@ -274,6 +236,7 @@ describe('validateCDF', () => {
             bgColor: {
               $type: 'token',
               $category: 'design',
+              '$token.kind': 'color',
               '$token.allowed': 'color.brand.primary',
             },
           },
@@ -281,84 +244,6 @@ describe('validateCDF', () => {
       });
       expect(result.valid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
-    });
-
-    it('rejects $token.allowed entries that are not a subset of $token.sets, naming the offending paths', () => {
-      const result = validateCDF({
-        $schema: CDF_V1_SCHEMA_URL,
-        Button: {
-          $type: 'component',
-          $properties: {
-            bgColor: {
-              $type: 'token',
-              $category: 'design',
-              '$token.sets': ['color.brand.primary'],
-              '$token.allowed': ['color.brand.primary', 'color.brand.rogue'],
-            },
-          },
-        },
-      });
-      expect(result.valid).toBe(false);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].path).toBe('/Button/$properties/bgColor/$token.allowed');
-      expect(result.errors[0].message).toContain('color.brand.rogue');
-    });
-
-    it('rejects a non-empty $token.allowed when $token.sets is entirely absent', () => {
-      const result = validateCDF({
-        $schema: CDF_V1_SCHEMA_URL,
-        Button: {
-          $type: 'component',
-          $properties: {
-            bgColor: {
-              $type: 'token',
-              $category: 'design',
-              '$token.allowed': ['color.brand.rogue'],
-            },
-          },
-        },
-      });
-      expect(result.valid).toBe(false);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].path).toBe('/Button/$properties/bgColor/$token.allowed');
-      expect(result.errors[0].message).toContain('color.brand.rogue');
-    });
-
-    it('accepts an empty $token.allowed when $token.sets is entirely absent', () => {
-      const result = validateCDF({
-        $schema: CDF_V1_SCHEMA_URL,
-        Button: {
-          $type: 'component',
-          $properties: {
-            bgColor: {
-              $type: 'token',
-              $category: 'design',
-              '$token.allowed': [],
-            },
-          },
-        },
-      });
-      expect(result.valid).toBe(true);
-      expect(result.errors).toHaveLength(0);
-    });
-
-    it('rejects $token.sets on a property whose $type is not token', () => {
-      const result = validateCDF({
-        $schema: CDF_V1_SCHEMA_URL,
-        Button: {
-          $type: 'component',
-          $properties: {
-            label: {
-              $type: 'string',
-              $category: 'design',
-              '$token.sets': ['color.brand.primary'],
-            },
-          },
-        },
-      });
-      expect(result.valid).toBe(false);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].path).toBe('/Button/$properties/label/$token.sets');
     });
 
     it('rejects $token.allowed on a property whose $category is not design', () => {
@@ -370,6 +255,7 @@ describe('validateCDF', () => {
             label: {
               $type: 'token',
               $category: 'content',
+              '$token.kind': 'color',
               '$token.allowed': ['color.brand.primary'],
             },
           },
@@ -380,7 +266,7 @@ describe('validateCDF', () => {
       expect(result.errors[0].path).toBe('/Button/$properties/label/$token.allowed');
     });
 
-    it('treats an empty $token.allowed array as valid and unrestricted', () => {
+    it('rejects empty $token.allowed array', () => {
       const result = validateCDF({
         $schema: CDF_V1_SCHEMA_URL,
         Button: {
@@ -389,9 +275,87 @@ describe('validateCDF', () => {
             bgColor: {
               $type: 'token',
               $category: 'design',
-              $values: ['color.brand.primary'],
-              '$token.sets': ['color.brand.primary', 'color.brand.secondary'],
+              '$token.kind': 'color',
               '$token.allowed': [],
+            },
+          },
+        },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].path).toBe('/Button/$properties/bgColor/$token.allowed');
+    });
+
+    it('accepts a token property with $token.kind and $token.allowed', () => {
+      const result = validateCDF({
+        $schema: CDF_V1_SCHEMA_URL,
+        Button: {
+          $type: 'component',
+          $properties: {
+            bgColor: {
+              $type: 'token',
+              $category: 'design',
+              '$token.kind': 'color',
+              '$token.allowed': ['color.brand.primary', 'color.brand.secondary'],
+            },
+          },
+        },
+      });
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+      expect(result.components).toHaveLength(1);
+    });
+
+    it('rejects $token.allowed without $token.kind', () => {
+      const result = validateCDF({
+        $schema: CDF_V1_SCHEMA_URL,
+        Button: {
+          $type: 'component',
+          $properties: {
+            bgColor: {
+              $type: 'token',
+              $category: 'design',
+              '$token.allowed': ['color.brand.primary'],
+            },
+          },
+        },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].path).toBe('/Button/$properties/bgColor/$token.allowed');
+    });
+
+    it('rejects $values on a token property', () => {
+      const result = validateCDF({
+        $schema: CDF_V1_SCHEMA_URL,
+        Button: {
+          $type: 'component',
+          $properties: {
+            bgColor: {
+              $type: 'token',
+              $category: 'design',
+              '$token.kind': 'color',
+              $values: ['color.brand.primary', 'color.brand.secondary'],
+            },
+          },
+        },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].path).toBe('/Button/$properties/bgColor/$values');
+    });
+
+    it('accepts $token.allowed unverified when no token document is supplied', () => {
+      const result = validateCDF({
+        $schema: CDF_V1_SCHEMA_URL,
+        Button: {
+          $type: 'component',
+          $properties: {
+            bgColor: {
+              $type: 'token',
+              $category: 'design',
+              '$token.kind': 'color',
+              '$token.allowed': ['color.brand.primary', 'not.a.real.token'],
             },
           },
         },
@@ -400,7 +364,7 @@ describe('validateCDF', () => {
       expect(result.errors).toHaveLength(0);
     });
 
-    it('does not compare $values against $token.allowed', () => {
+    it('rejects a $token.sets property — it is no longer part of the format', () => {
       const result = validateCDF({
         $schema: CDF_V1_SCHEMA_URL,
         Button: {
@@ -409,15 +373,96 @@ describe('validateCDF', () => {
             bgColor: {
               $type: 'token',
               $category: 'design',
-              $values: ['color.brand.primary', 'color.brand.secondary'],
+              '$token.kind': 'color',
               '$token.sets': ['color.brand.primary'],
+            },
+          },
+        },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('$token.allowed against a token document', () => {
+    const TOKENS = {
+      color: {
+        brand: {
+          primary: { $type: 'color', $value: '#00f' },
+          secondary: { $type: 'color', $value: '#0ff' },
+        },
+      },
+      space: { md: { $type: 'dimension', $value: '8px' } },
+    };
+
+    const withAllowed = (allowed: string[], kind = 'color') => ({
+      $schema: CDF_V1_SCHEMA_URL,
+      Button: {
+        $type: 'component',
+        $properties: {
+          bgColor: {
+            $type: 'token',
+            $category: 'design',
+            '$token.kind': kind,
+            '$token.allowed': allowed,
+          },
+        },
+      },
+    });
+
+    it('accepts entries that exist with a matching $type', () => {
+      const result = validateCDF(withAllowed(['color.brand.primary', 'color.brand.secondary']), { tokens: TOKENS });
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('rejects an entry absent from the token document', () => {
+      const result = validateCDF(withAllowed(['color.brand.primary', 'color.brand.ghost']), { tokens: TOKENS });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].path).toBe('/Button/$properties/bgColor/$token.allowed');
+      expect(result.errors[0].message).toContain('color.brand.ghost');
+      expect(result.errors[0].message).toContain('absent from the token document');
+    });
+
+    it('rejects an entry whose $type does not match $token.kind', () => {
+      const result = validateCDF(withAllowed(['space.md']), { tokens: TOKENS });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].message).toContain('space.md (dimension)');
+      expect(result.errors[0].message).toContain('is not "color"');
+    });
+
+    it('reports a missing entry and a mismatched entry separately', () => {
+      const result = validateCDF(withAllowed(['space.md', 'color.brand.ghost']), { tokens: TOKENS });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(2);
+    });
+
+    it('accepts a group-typed leaf it cannot resolve rather than reporting a mismatch', () => {
+      const groupTyped = { color: { $type: 'color', brand: { primary: { $value: '#00f' } } } };
+      const result = validateCDF(withAllowed(['color.brand.primary']), { tokens: groupTyped });
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('rejects $token.allowed on a non-token property', () => {
+      const result = validateCDF({
+        $schema: CDF_V1_SCHEMA_URL,
+        Button: {
+          $type: 'component',
+          $properties: {
+            label: {
+              $type: 'enum',
+              $category: 'design',
+              $values: ['primary', 'secondary'],
               '$token.allowed': ['color.brand.primary'],
             },
           },
         },
       });
-      expect(result.valid).toBe(true);
-      expect(result.errors).toHaveLength(0);
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
     });
   });
 });

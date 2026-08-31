@@ -9,7 +9,6 @@ export const CDFPropertySchema = z.strictObject({
   $default: z.optional(z.any()),
   $values: z.optional(z.array(z.string())),
   '$token.kind': z.optional(z.string()),
-  '$token.sets': z.optional(z.array(z.string())),
   '$token.allowed': z.optional(z.array(z.string())),
 });
 
