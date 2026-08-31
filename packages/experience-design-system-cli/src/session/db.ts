@@ -1026,7 +1026,7 @@ export function storeRawComponents(
           prop.category ?? null,
           prop.defaultValue ?? null,
           prop.description ?? null,
-          prop.tokenName ?? null,
+          prop.tokenReference ?? null,
           i,
           prop.sourceStartLine ?? null,
           prop.sourceEndLine ?? null,
@@ -1242,7 +1242,7 @@ export function loadRawComponents(
         if (p.category !== null) prop.category = p.category as RawPropDefinition['category'];
         if (p.default_value !== null) prop.defaultValue = p.default_value;
         if (p.description !== null) prop.description = p.description;
-        if (p.token_reference !== null) prop.tokenName = p.token_reference;
+        if (p.token_reference !== null) prop.tokenReference = p.token_reference;
         if (av && av.length > 0) prop.allowedValues = av.map((v) => v.value);
         if (p.source_start_line !== null) prop.sourceStartLine = p.source_start_line;
         if (p.source_end_line !== null) prop.sourceEndLine = p.source_end_line;

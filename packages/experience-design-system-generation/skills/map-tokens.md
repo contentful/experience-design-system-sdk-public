@@ -14,7 +14,7 @@ All input is embedded inline in the prompt before this file:
 
 - **Generated CDF so far** — design-category, token-typed props only, grouped by component. Every prop shown here already has `$type: "token"` and `$category: "design"`; you do not need to re-verify either.
 - **Token path index** — a flat array of `{ "path": "<dot.notation.path>", "type": "<DTCG $type>" }` covering every leaf token in the library. **No `$value` is included** — the mapping decision only needs paths and their DTCG type, not their concrete values.
-- **Component source references** — the real file text for each component (bounded/truncated), rendered inline as a fenced code block, so you can look for `tokenName` usage, union/enum-shaped prop types, default values, or comments that indicate a restriction. **You have no filesystem access and no tools — `sourcePath` is a citation label only, never something to open.** When a component's source couldn't be read (moved/deleted since extraction), it's listed separately by path with no code block; for those, infer `token_sets` from the prop name and `$token.kind` alone and never emit `token_allowed` for them.
+- **Component source references** — the real file text for each component (bounded/truncated), rendered inline as a fenced code block, so you can look for `tokenReference` usage, union/enum-shaped prop types, default values, or comments that indicate a restriction. **You have no filesystem access and no tools — `sourcePath` is a citation label only, never something to open.** When a component's source couldn't be read (moved/deleted since extraction), it's listed separately by path with no code block; for those, infer `token_sets` from the prop name and `$token.kind` alone and never emit `token_allowed` for them.
 
 ```typescript
 interface TokenPathIndexEntry {
@@ -48,7 +48,7 @@ Both fields are CDF-only in this step — nothing here writes to the Contentful 
 
 For each design-category, token-typed prop shown in the "Generated CDF so far" section:
 
-1. **Look for a `tokenName`** in the component source (a CSS custom property or design-token reference near the prop's usage). If found, resolve it against the token path index and treat the result as high-confidence evidence for both `token_sets` and, if the reference is exact, `token_allowed`. Never contradict an existing `tokenName`.
+1. **Look for a `tokenReference`** in the component source (a CSS custom property or design-token reference near the prop's usage). If found, resolve it against the token path index and treat the result as high-confidence evidence for both `token_sets` and, if the reference is exact, `token_allowed`. Never contradict an existing `tokenReference`.
 2. **Determine `token_sets`.** Infer the semantically relevant token group from the prop's name, its DTCG `$type` (via `$token.kind`), and the component source — e.g. a background-color prop maps to a color group (`colors.brand`, `colors.surface`), a spacing prop maps to a spacing group. Then enumerate **every leaf path under that group that exists in the token path index** (e.g. `colors.surface.default`, `colors.surface.raised`) and list those individually in `token_sets`. Never emit the group name itself — the token path index has no entry for it.
 3. **Look for restriction evidence** in the component source:
    - A union or enum-shaped prop type (e.g. `'primary' | 'secondary'`) that maps to specific named tokens
@@ -116,13 +116,13 @@ variantColor is restricted to two specific tokens via the union type and the com
 {"tool":"map_token_prop","component":"Button","prop":"variantColor","token_sets":["colors.brand.primary","colors.brand.secondary","colors.brand.tertiary"],"token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"Restricted to primary/secondary per the component's variant union type"}
 ```
 
-### Prop with an existing `tokenName` — high-confidence, must not contradict
+### Prop with an existing `tokenReference` — high-confidence, must not contradict
 
 Component source shows `background-color: var(--bg-primary)`, and `--bg-primary` resolves via the sidecar convention to `colors.bg.primary` (present in the token path index).
 
 ```
-bgColor resolves via tokenName to colors.bg.primary — treating as high-confidence, not contradicting; token_sets still enumerates the bg group's leaves from the token path index
-{"tool":"map_token_prop","component":"Panel","prop":"bgColor","token_sets":["colors.bg.primary","colors.bg.secondary"],"token_allowed":["colors.bg.primary"],"description":"tokenName --bg-primary resolves to colors.bg.primary"}
+bgColor resolves via tokenReference to colors.bg.primary — treating as high-confidence, not contradicting; token_sets still enumerates the bg group's leaves from the token path index
+{"tool":"map_token_prop","component":"Panel","prop":"bgColor","token_sets":["colors.bg.primary","colors.bg.secondary"],"token_allowed":["colors.bg.primary"],"description":"tokenReference --bg-primary resolves to colors.bg.primary"}
 ```
 
 ### No plausible token set — skip
@@ -134,7 +134,7 @@ A `borderWidth` token prop where the token path index contains no dimension/bord
 ## Edge cases
 
 - **No token path index provided** — emit no tool calls; there is nothing to map against.
-- **Prop already has `token_allowed` from a `tokenName` exact match** — still emit `token_sets` alongside it; don't emit `token_allowed` without `token_sets`.
+- **Prop already has `token_allowed` from a `tokenReference` exact match** — still emit `token_sets` alongside it; don't emit `token_allowed` without `token_sets`.
 - **Ambiguous restriction (comment mentions "some" tokens but doesn't name them)** — treat as no evidence; omit `token_allowed`.
 - **Component source file missing or unreadable** — fall back to inferring `token_sets` from the prop name and `$token.kind` alone; never emit `token_allowed` without source evidence.
 - **Prop not in the pipeline database** — skipped with a warning by the CLI; does not abort the run.
@@ -148,7 +148,7 @@ Before emitting any tool calls, verify:
 3. `token_allowed`, when present, is a subset of `token_sets`.
 4. No call has an empty `token_sets`.
 5. `token_allowed` is omitted (not an empty array) unless you positively verified there is no restriction.
-6. No existing `tokenName` is contradicted.
+6. No existing `tokenReference` is contradicted.
 
 ## CRITICAL: No hallucinated paths
 

@@ -381,7 +381,7 @@ describe('buildPrompt', () => {
       expect(prompt).toMatch(/subset/i);
     });
 
-    it('instructs never contradicting an existing tokenName', async () => {
+    it('instructs never contradicting an existing tokenReference', async () => {
       const prompt = await buildPrompt({
         skill: 'map-tokens',
         mode: 'autonomous',
@@ -389,7 +389,7 @@ describe('buildPrompt', () => {
         tokenTree: TOKEN_TREE,
         outDir: '/fake/out',
       });
-      expect(prompt).toContain('tokenName');
+      expect(prompt).toContain('tokenReference');
       expect(prompt).toMatch(/never contradict/i);
     });
 
