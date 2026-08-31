@@ -22,7 +22,6 @@ export type {
   ClassifyComponentCall,
   ClassifyPropCall,
   ClassifySlotCall,
-  ExcludePropCall,
   ParsedSelectToolCalls,
   ParsedTokenToolCalls,
   ParsedToolCalls,

@@ -41,6 +41,20 @@ const BUTTON_COMPONENT: RawComponentDefinition = {
   slots: [{ name: 'icon', isDefault: false, description: 'Optional icon' }],
 };
 
+// Shorthand for a prop classified into 'state' and left unattached from
+// content/design editing surfaces.
+function unattached(prop: string, type: string, reason: string): ToolCall {
+  return {
+    tool: 'classify_prop',
+    prop,
+    cdf_type: type,
+    cdf_category: 'state',
+    required: false,
+    description: 'Not exposed for content or design editing.',
+    reason,
+  };
+}
+
 function setupSession(dbPath: string) {
   const db = openPipelineDb(dbPath);
   const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -65,16 +79,15 @@ describe('applyToolCalls — classify_prop', () => {
           required: true,
           description: 'Button label',
         },
-        { tool: 'exclude_prop', prop: 'variant', reason: 'not needed' },
-        { tool: 'exclude_prop', prop: 'disabled', reason: 'not needed' },
-        { tool: 'exclude_prop', prop: 'className', reason: 'framework internal' },
-        { tool: 'exclude_prop', prop: 'bgColor', reason: 'not needed' },
+        unattached('variant', 'string', 'not needed'),
+        unattached('disabled', 'boolean', 'not needed'),
+        unattached('className', 'string', 'framework internal'),
+        unattached('bgColor', 'string', 'not needed'),
         { tool: 'classify_slot', slot: 'icon', required: false },
       ];
 
       const result = applyToolCalls(db, sessionId, componentId, 'Button', calls, []);
-      expect(result.classified).toBe(1);
-      expect(result.excluded).toBe(4);
+      expect(result.classified).toBe(5);
       expect(result.slots).toBe(1);
       expect(result.warnings).toHaveLength(0);
 
@@ -97,10 +110,10 @@ describe('applyToolCalls — classify_prop', () => {
         [
           { tool: 'classify_component' },
           { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content', required: true },
-          { tool: 'exclude_prop', prop: 'variant', reason: '' },
-          { tool: 'exclude_prop', prop: 'disabled', reason: '' },
-          { tool: 'exclude_prop', prop: 'className', reason: '' },
-          { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
+          unattached('variant', 'string', ''),
+          unattached('disabled', 'boolean', ''),
+          unattached('className', 'string', ''),
+          unattached('bgColor', 'string', ''),
           { tool: 'classify_slot', slot: 'icon' },
         ],
         [],
@@ -128,7 +141,7 @@ describe('applyToolCalls — classify_prop', () => {
         'Button',
         [
           { tool: 'classify_component' },
-          { tool: 'exclude_prop', prop: 'label', reason: '' },
+          unattached('label', 'string', ''),
           {
             tool: 'classify_prop',
             prop: 'variant',
@@ -136,9 +149,9 @@ describe('applyToolCalls — classify_prop', () => {
             cdf_category: 'design',
             values: ['primary', 'secondary'],
           },
-          { tool: 'exclude_prop', prop: 'disabled', reason: '' },
-          { tool: 'exclude_prop', prop: 'className', reason: '' },
-          { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
+          unattached('disabled', 'boolean', ''),
+          unattached('className', 'string', ''),
+          unattached('bgColor', 'string', ''),
           { tool: 'classify_slot', slot: 'icon' },
         ],
         [],
@@ -164,10 +177,10 @@ describe('applyToolCalls — classify_prop', () => {
         'Button',
         [
           { tool: 'classify_component' },
-          { tool: 'exclude_prop', prop: 'label', reason: '' },
-          { tool: 'exclude_prop', prop: 'variant', reason: '' },
-          { tool: 'exclude_prop', prop: 'disabled', reason: '' },
-          { tool: 'exclude_prop', prop: 'className', reason: '' },
+          unattached('label', 'string', ''),
+          unattached('variant', 'string', ''),
+          unattached('disabled', 'boolean', ''),
+          unattached('className', 'string', ''),
           { tool: 'classify_prop', prop: 'bgColor', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' },
           { tool: 'classify_slot', slot: 'icon' },
         ],
@@ -185,7 +198,7 @@ describe('applyToolCalls — classify_prop', () => {
     });
   });
 
-  it('nulls out cdf_type for excluded props', async () => {
+  it('classifies a boolean prop into the unattached (state) bucket, preserving its type', async () => {
     await withTempDb((dbPath) => {
       const { db, sessionId, componentId } = setupSession(dbPath);
       applyToolCalls(
@@ -195,23 +208,32 @@ describe('applyToolCalls — classify_prop', () => {
         'Button',
         [
           { tool: 'classify_component' },
-          { tool: 'exclude_prop', prop: 'label', reason: 'not needed' },
-          { tool: 'exclude_prop', prop: 'variant', reason: '' },
-          { tool: 'exclude_prop', prop: 'disabled', reason: '' },
-          { tool: 'exclude_prop', prop: 'className', reason: 'framework internal' },
-          { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
+          unattached('label', 'string', ''),
+          unattached('variant', 'string', ''),
+          unattached('disabled', 'boolean', 'not needed'),
+          unattached('className', 'string', 'framework internal'),
+          unattached('bgColor', 'string', ''),
           { tool: 'classify_slot', slot: 'icon' },
         ],
         [],
       );
 
-      const prop = db
+      const disabledProp = db
         .prepare(
-          `SELECT cdf_type, cdf_category FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'className'`,
+          `SELECT cdf_type, cdf_category FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'disabled'`,
         )
         .get(sessionId, componentId) as { cdf_type: string | null; cdf_category: string | null };
-      expect(prop.cdf_type).toBe('excluded');
-      expect(prop.cdf_category).toBeNull();
+      expect(disabledProp.cdf_type).toBe('boolean');
+      expect(disabledProp.cdf_category).toBe('state');
+
+      const classNameProp = db
+        .prepare(
+          `SELECT cdf_type, cdf_category, required FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'className'`,
+        )
+        .get(sessionId, componentId) as { cdf_type: string | null; cdf_category: string | null; required: number };
+      expect(classNameProp.cdf_type).toBe('string');
+      expect(classNameProp.cdf_category).toBe('state');
+      expect(classNameProp.required).toBe(0);
       db.close();
     });
   });
@@ -227,17 +249,17 @@ describe('applyToolCalls — classify_prop', () => {
         [
           { tool: 'classify_component' },
           { tool: 'classify_prop', prop: 'nonExistentProp', cdf_type: 'string', cdf_category: 'content' },
-          { tool: 'exclude_prop', prop: 'label', reason: '' },
-          { tool: 'exclude_prop', prop: 'variant', reason: '' },
-          { tool: 'exclude_prop', prop: 'disabled', reason: '' },
-          { tool: 'exclude_prop', prop: 'className', reason: '' },
-          { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
+          unattached('label', 'string', ''),
+          unattached('variant', 'string', ''),
+          unattached('disabled', 'boolean', ''),
+          unattached('className', 'string', ''),
+          unattached('bgColor', 'string', ''),
           { tool: 'classify_slot', slot: 'icon' },
         ],
         [],
       );
 
-      expect(result.classified).toBe(0);
+      expect(result.classified).toBe(5);
       expect(result.warnings).toHaveLength(1);
       expect(result.warnings[0]).toMatch(/nonExistentProp.*not found/);
       db.close();
@@ -256,11 +278,11 @@ describe('applyToolCalls — classify_slot', () => {
         'Button',
         [
           { tool: 'classify_component' },
-          { tool: 'exclude_prop', prop: 'label', reason: '' },
-          { tool: 'exclude_prop', prop: 'variant', reason: '' },
-          { tool: 'exclude_prop', prop: 'disabled', reason: '' },
-          { tool: 'exclude_prop', prop: 'className', reason: '' },
-          { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
+          unattached('label', 'string', ''),
+          unattached('variant', 'string', ''),
+          unattached('disabled', 'boolean', ''),
+          unattached('className', 'string', ''),
+          unattached('bgColor', 'string', ''),
           { tool: 'classify_slot', slot: 'icon', required: false, description: 'Optional leading icon' },
         ],
         [],
@@ -287,11 +309,11 @@ describe('applyToolCalls — classify_slot', () => {
         'Button',
         [
           { tool: 'classify_component' },
-          { tool: 'exclude_prop', prop: 'label', reason: '' },
-          { tool: 'exclude_prop', prop: 'variant', reason: '' },
-          { tool: 'exclude_prop', prop: 'disabled', reason: '' },
-          { tool: 'exclude_prop', prop: 'className', reason: '' },
-          { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
+          unattached('label', 'string', ''),
+          unattached('variant', 'string', ''),
+          unattached('disabled', 'boolean', ''),
+          unattached('className', 'string', ''),
+          unattached('bgColor', 'string', ''),
           { tool: 'classify_slot', slot: 'icon', required: false, allowed_components: ['Icon', 'Svg'] },
         ],
         [],
@@ -317,11 +339,11 @@ describe('applyToolCalls — classify_slot', () => {
         'Button',
         [
           { tool: 'classify_component' },
-          { tool: 'exclude_prop', prop: 'label', reason: '' },
-          { tool: 'exclude_prop', prop: 'variant', reason: '' },
-          { tool: 'exclude_prop', prop: 'disabled', reason: '' },
-          { tool: 'exclude_prop', prop: 'className', reason: '' },
-          { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
+          unattached('label', 'string', ''),
+          unattached('variant', 'string', ''),
+          unattached('disabled', 'boolean', ''),
+          unattached('className', 'string', ''),
+          unattached('bgColor', 'string', ''),
           { tool: 'classify_slot', slot: 'icon' },
         ],
         [],
@@ -345,11 +367,11 @@ describe('applyToolCalls — classify_slot', () => {
         'Button',
         [
           { tool: 'classify_component' },
-          { tool: 'exclude_prop', prop: 'label', reason: '' },
-          { tool: 'exclude_prop', prop: 'variant', reason: '' },
-          { tool: 'exclude_prop', prop: 'disabled', reason: '' },
-          { tool: 'exclude_prop', prop: 'className', reason: '' },
-          { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
+          unattached('label', 'string', ''),
+          unattached('variant', 'string', ''),
+          unattached('disabled', 'boolean', ''),
+          unattached('className', 'string', ''),
+          unattached('bgColor', 'string', ''),
           { tool: 'classify_slot', slot: 'nonExistentSlot', required: true },
         ],
         [],
@@ -374,11 +396,11 @@ describe('applyToolCalls — classify_component', () => {
         'Button',
         [
           { tool: 'classify_component', description: 'Primary action button' },
-          { tool: 'exclude_prop', prop: 'label', reason: '' },
-          { tool: 'exclude_prop', prop: 'variant', reason: '' },
-          { tool: 'exclude_prop', prop: 'disabled', reason: '' },
-          { tool: 'exclude_prop', prop: 'className', reason: '' },
-          { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
+          unattached('label', 'string', ''),
+          unattached('variant', 'string', ''),
+          unattached('disabled', 'boolean', ''),
+          unattached('className', 'string', ''),
+          unattached('bgColor', 'string', ''),
           { tool: 'classify_slot', slot: 'icon' },
         ],
         [],
@@ -415,7 +437,7 @@ describe('applyToolCalls — loadCDFComponents integration', () => {
           },
           { tool: 'classify_prop', prop: 'disabled', cdf_type: 'boolean', cdf_category: 'state', required: false },
           { tool: 'classify_prop', prop: 'bgColor', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' },
-          { tool: 'exclude_prop', prop: 'className', reason: 'framework internal' },
+          unattached('className', 'string', 'framework internal'),
           {
             tool: 'classify_slot',
             slot: 'icon',
@@ -439,7 +461,7 @@ describe('applyToolCalls — loadCDFComponents integration', () => {
       expect(entry.entry.$properties['variant']?.$values).toEqual(['primary', 'secondary']);
       expect(entry.entry.$properties['disabled']?.$category).toBe('state');
       expect(entry.entry.$properties['bgColor']?.$type).toBe('token');
-      expect(entry.entry.$properties['className']).toBeUndefined();
+      expect(entry.entry.$properties['className']?.$category).toBe('state');
       expect(entry.entry.$slots?.['icon']?.$required).toBeUndefined();
       expect(entry.entry.$slots?.['icon']?.$allowedComponents).toEqual(['Icon']);
       db.close();
@@ -458,10 +480,10 @@ describe('applyToolCalls — loadCDFComponents integration', () => {
           { tool: 'classify_component' },
           { tool: 'classify_prop', prop: 'label', cdf_type: 'string', cdf_category: 'content' },
           { tool: 'classify_prop', prop: 'ghost', cdf_type: 'string', cdf_category: 'content' },
-          { tool: 'exclude_prop', prop: 'variant', reason: '' },
-          { tool: 'exclude_prop', prop: 'disabled', reason: '' },
-          { tool: 'exclude_prop', prop: 'className', reason: '' },
-          { tool: 'exclude_prop', prop: 'bgColor', reason: '' },
+          unattached('variant', 'string', ''),
+          unattached('disabled', 'boolean', ''),
+          unattached('className', 'string', ''),
+          unattached('bgColor', 'string', ''),
           { tool: 'classify_slot', slot: 'icon' },
         ],
         ['pre-existing warning from parse'],
@@ -652,22 +674,6 @@ describe('applyToolCalls — rationale persistence (Feature 1)', () => {
         .prepare(`SELECT rationale FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?`)
         .get(sessionId, componentId, 'label') as { rationale: string | null };
       expect(row.rationale).toBe('inferred from PropertySignature with literal string type');
-      db.close();
-    });
-  });
-
-  it('persists exclude_prop reason to raw_props.rationale', async () => {
-    await withTempDb((dbPath) => {
-      const { db, sessionId, componentId } = setupSession(dbPath);
-      const calls: ToolCall[] = [
-        { tool: 'exclude_prop', prop: 'className', reason: 'framework internal — not authorable' },
-      ];
-      applyToolCalls(db, sessionId, componentId, 'Button', calls, []);
-
-      const row = db
-        .prepare(`SELECT rationale FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?`)
-        .get(sessionId, componentId, 'className') as { rationale: string | null };
-      expect(row.rationale).toBe('framework internal — not authorable');
       db.close();
     });
   });

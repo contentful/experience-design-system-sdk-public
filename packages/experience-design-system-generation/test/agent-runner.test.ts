@@ -112,7 +112,7 @@ describe('parseToolCallLines', () => {
         'Starting Button classification',
         '{"tool":"classify_component"}',
         'this is a reasoning note',
-        '{"tool":"exclude_prop","prop":"className","reason":"framework internal"}',
+        '{"tool":"classify_prop","prop":"className","cdf_type":"string","cdf_category":"state"}',
       ].join('\n');
       const { calls, warnings } = parseToolCallLines(stdout);
       expect(calls).toHaveLength(2);
@@ -281,27 +281,6 @@ describe('parseToolCallLines', () => {
     });
   });
 
-  describe('exclude_prop', () => {
-    it('parses exclude_prop with reason', () => {
-      const { calls, warnings } = parseToolCallLines(
-        '{"tool":"exclude_prop","prop":"className","reason":"CSS class — framework internal"}',
-      );
-      expect(warnings).toHaveLength(0);
-      expect(calls[0]).toEqual({ tool: 'exclude_prop', prop: 'className', reason: 'CSS class — framework internal' });
-    });
-
-    it('uses empty string when reason is missing', () => {
-      const { calls } = parseToolCallLines('{"tool":"exclude_prop","prop":"ref"}');
-      expect(calls[0]).toMatchObject({ tool: 'exclude_prop', prop: 'ref', reason: '' });
-    });
-
-    it('rejects missing prop name', () => {
-      const { calls, warnings } = parseToolCallLines('{"tool":"exclude_prop","reason":"no name"}');
-      expect(calls).toHaveLength(0);
-      expect(warnings[0]).toMatch(/missing prop name/);
-    });
-  });
-
   describe('classify_slot', () => {
     it('parses a minimal classify_slot', () => {
       const { calls } = parseToolCallLines('{"tool":"classify_slot","slot":"icon"}');
@@ -356,6 +335,12 @@ describe('parseToolCallLines', () => {
       expect(warnings[0]).toMatch(/unknown tool/);
     });
 
+    it('warns on exclude_prop as an unknown/removed tool', () => {
+      const { calls, warnings } = parseToolCallLines('{"tool":"exclude_prop","prop":"className","reason":"x"}');
+      expect(calls).toHaveLength(0);
+      expect(warnings[0]).toMatch(/unknown tool.*exclude_prop/);
+    });
+
     it('silently skips objects without a tool field', () => {
       const { calls, warnings } = parseToolCallLines('{"foo":"bar"}');
       expect(calls).toHaveLength(0);
@@ -373,8 +358,8 @@ describe('parseToolCallLines', () => {
         '{"tool":"classify_prop","prop":"variant","cdf_type":"enum","cdf_category":"design","values":["primary","secondary"]}',
         'disabled is a state prop, correcting category',
         '{"tool":"classify_prop","prop":"disabled","cdf_type":"string","cdf_category":"state","required":false,"default":"false"}',
-        '{"tool":"exclude_prop","prop":"className","reason":"framework internal"}',
-        '{"tool":"exclude_prop","prop":"onClick","reason":"event handler"}',
+        '{"tool":"classify_prop","prop":"className","cdf_type":"string","cdf_category":"state","required":false}',
+        '{"tool":"classify_prop","prop":"onClick","cdf_type":"string","cdf_category":"state","required":false}',
         '{"tool":"classify_slot","slot":"icon","required":false,"description":"Optional icon"}',
       ].join('\n');
 
@@ -390,8 +375,8 @@ describe('parseToolCallLines', () => {
         values: ['primary', 'secondary'],
       });
       expect(calls[3]).toMatchObject({ tool: 'classify_prop', prop: 'disabled', cdf_category: 'state' });
-      expect(calls[4]).toMatchObject({ tool: 'exclude_prop', prop: 'className' });
-      expect(calls[5]).toMatchObject({ tool: 'exclude_prop', prop: 'onClick' });
+      expect(calls[4]).toMatchObject({ tool: 'classify_prop', prop: 'className', cdf_category: 'state' });
+      expect(calls[5]).toMatchObject({ tool: 'classify_prop', prop: 'onClick', cdf_category: 'state' });
       expect(calls[6]).toMatchObject({ tool: 'classify_slot', slot: 'icon', required: false });
     });
 

@@ -392,7 +392,6 @@ function applyDbMigrations(db: DatabaseSync): void {
 
 export interface ApplyToolCallsResult {
   classified: number;
-  excluded: number;
   slots: number;
   warnings: string[];
 }
@@ -540,15 +539,10 @@ export function applyToolCalls(
   const now = new Date().toISOString();
   const warnings = [...incomingWarnings];
   let classified = 0;
-  let excluded = 0;
   let slots = 0;
 
   const updateProp = db.prepare(
     `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?, rationale = ?
-     WHERE session_id = ? AND component_id = ? AND name = ?`,
-  );
-  const clearProp = db.prepare(
-    `UPDATE raw_props SET cdf_type = 'excluded', cdf_category = NULL, cdf_token_kind = NULL, rationale = ?
      WHERE session_id = ? AND component_id = ? AND name = ?`,
   );
   const deleteAllowedValues = db.prepare(
@@ -628,9 +622,6 @@ export function applyToolCalls(
           ).run(storedDefault, sessionId, componentId, call.prop);
         }
         classified++;
-      } else if (call.tool === 'exclude_prop') {
-        clearProp.run(call.reason || null, sessionId, componentId, call.prop);
-        excluded++;
       } else if (call.tool === 'classify_slot') {
         const slotRequired = call.required !== undefined ? (call.required ? 1 : 0) : 1;
         const slotChanges = updateSlot.run(
@@ -672,7 +663,7 @@ export function applyToolCalls(
     throw e;
   }
 
-  return { classified, excluded, slots, warnings };
+  return { classified, slots, warnings };
 }
 
 export interface MatchHints {
@@ -1341,6 +1332,8 @@ export function loadCDFComponents(
 
   const props = db
     .prepare(
+      // Guards against stale rows in session DBs persisted before props
+      // were guaranteed to always be classified into content/design/state.
       `SELECT component_id, name, required, default_value, description,
               cdf_type, cdf_category, cdf_token_kind, position
        FROM raw_props
