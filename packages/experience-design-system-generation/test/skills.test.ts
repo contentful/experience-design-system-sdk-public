@@ -171,9 +171,9 @@ describe('map-tokens.md', () => {
     expect(content).toMatch(/evidence/i);
   });
 
-  it('treats an existing tokenName as high-confidence evidence', async () => {
+  it('treats an existing tokenReference as high-confidence evidence', async () => {
     const content = await readSkill('map-tokens.md');
-    expect(content).toMatch(/tokenName/);
+    expect(content).toMatch(/tokenReference/);
     expect(content).toMatch(/high-confidence/i);
     expect(content).toMatch(/never contradict/i);
   });

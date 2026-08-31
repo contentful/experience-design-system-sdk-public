@@ -29,7 +29,7 @@ export interface RawPropDefinition {
   defaultValue?: string;
   allowedValues?: string[];
   description?: string;
-  tokenName?: string;
+  tokenReference?: string;
   /** 1-indexed source line where this prop's declaration begins; relative to RawComponentDefinition.source. */
   sourceStartLine?: number;
   /** 1-indexed inclusive source line where this prop's declaration ends; relative to RawComponentDefinition.source. */
