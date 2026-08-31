@@ -206,11 +206,11 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
 export function registerMapTokensCommand(program: Command): void {
   const map = program
     .command('map')
-    .description('Suggest token sets and restrictions for generated design-token props');
+    .description('Suggest token restrictions for generated design-token props');
 
   const tokensCmd = map
     .command('tokens')
-    .description('Invoke a coding agent to suggest $token.sets/$token.allowed for design-category token props')
+    .description('Invoke a coding agent to suggest $token.allowed for design-category token props')
     .option('--session <id>', 'Session ID from generate components (defaults to most recent)')
     .option('--print-prompt', 'Print the prompt without invoking the agent')
     .option('--no-cache', 'Bypass the map-tokens cache and force a re-run');

@@ -147,15 +147,7 @@ describe('map tokens command', () => {
     const db = openPipelineDb(dbPath);
     const componentId = loadRawComponents(db, sessionId)[0].component_id;
     const groups = loadRawPropTokenPaths(db, sessionId);
-    expect(groups).toEqual([
-      { componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] },
-      {
-        componentId,
-        propName: 'bgColor',
-        kind: 'set',
-        paths: ['colors.surface.default', 'colors.surface.raised'],
-      },
-    ]);
+    expect(groups).toEqual([{ componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] }]);
     db.close();
   });
 
@@ -217,9 +209,8 @@ describe('map tokens command', () => {
     const db = openPipelineDb(dbPath);
     const componentId = loadRawComponents(db, sessionId)[0].component_id;
     const groups = loadRawPropTokenPaths(db, sessionId);
-    expect(groups.find((g) => g.componentId === componentId && g.kind === 'set')?.paths).toEqual([
+    expect(groups.find((g) => g.componentId === componentId && g.kind === 'allowed')?.paths).toEqual([
       'colors.surface.default',
-      'colors.surface.raised',
     ]);
     db.close();
   });
@@ -245,9 +236,8 @@ describe('map tokens command', () => {
     const db = openPipelineDb(dbPath);
     const componentId = loadRawComponents(db, sessionB)[0].component_id;
     const groups = loadRawPropTokenPaths(db, sessionB);
-    expect(groups.find((g) => g.componentId === componentId && g.kind === 'set')?.paths).toEqual([
+    expect(groups.find((g) => g.componentId === componentId && g.kind === 'allowed')?.paths).toEqual([
       'colors.surface.default',
-      'colors.surface.raised',
     ]);
     db.close();
   });
@@ -283,9 +273,8 @@ describe('map tokens command', () => {
     const db2 = openPipelineDb(dbPath);
     const componentId = loadRawComponents(db2, sessionB)[0].component_id;
     const groups = loadRawPropTokenPaths(db2, sessionB);
-    expect(groups.find((g) => g.componentId === componentId && g.kind === 'set')?.paths).toEqual([
+    expect(groups.find((g) => g.componentId === componentId && g.kind === 'allowed')?.paths).toEqual([
       'colors.surface.default',
-      'colors.surface.raised',
     ]);
     db2.close();
   });

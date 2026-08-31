@@ -21,15 +21,22 @@ export function applyMapTokenPropCalls(
   const warnings = [...incomingWarnings];
   let applied = 0;
 
-  const validTokenPaths = new Set(
-    (db.prepare('SELECT path FROM raw_tokens WHERE session_id = ?').all(sessionId) as Array<{ path: string }>).map(
-      (r) => r.path,
-    ),
+  // Keyed by token type: a restriction may only name tokens of the target
+  // property's own $token.kind. Checking against every path in the session
+  // would let a dimension token land on a colour property, which then fails
+  // CDF validation with no obvious way back for whoever runs the pipeline.
+  const tokenTypeByPath = new Map(
+    (
+      db.prepare('SELECT path, type FROM raw_tokens WHERE session_id = ?').all(sessionId) as Array<{
+        path: string;
+        type: string;
+      }>
+    ).map((r) => [r.path, r.type]),
   );
 
   const findComponent = db.prepare('SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?');
   const findProp = db.prepare(
-    'SELECT cdf_type, cdf_category FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?',
+    'SELECT cdf_type, cdf_category, cdf_token_kind FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?',
   );
 
   for (const call of calls) {
@@ -40,7 +47,7 @@ export function applyMapTokenPropCalls(
     }
 
     const prop = findProp.get(sessionId, component.component_id, call.prop) as
-      | { cdf_type: string | null; cdf_category: string | null }
+      | { cdf_type: string | null; cdf_category: string | null; cdf_token_kind: string | null }
       | undefined;
     if (!prop) {
       warnings.push(`map_token_prop '${call.component}.${call.prop}': unknown prop — skipped`);
@@ -53,43 +60,39 @@ export function applyMapTokenPropCalls(
       continue;
     }
 
-    const filteredSets: string[] = [];
-    for (const path of call.token_sets) {
-      if (validTokenPaths.has(path)) {
-        filteredSets.push(path);
-      } else {
-        warnings.push(`map_token_prop '${call.component}.${call.prop}': dropped unknown token path '${path}'`);
-      }
-    }
-
-    if (filteredSets.length === 0) {
-      warnings.push(`map_token_prop '${call.component}.${call.prop}': no valid token_sets remain — skipped`);
+    const existing = db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM raw_prop_token_paths
+          WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = 'allowed'`,
+      )
+      .get(sessionId, component.component_id, call.prop) as { count: number };
+    if (existing.count > 0) {
+      warnings.push(
+        `map_token_prop '${call.component}.${call.prop}': already bound from source evidence — skipped`,
+      );
       continue;
     }
 
-    let filteredAllowed: string[] | undefined;
-    if (call.token_allowed !== undefined) {
-      filteredAllowed = [];
-      for (const path of call.token_allowed) {
-        if (validTokenPaths.has(path)) {
-          filteredAllowed.push(path);
-        } else {
-          warnings.push(`map_token_prop '${call.component}.${call.prop}': dropped unknown token path '${path}'`);
-        }
-      }
-
-      if (!filteredAllowed.every((path) => filteredSets.includes(path))) {
+    const filteredAllowed: string[] = [];
+    for (const path of call.token_allowed) {
+      const tokenType = tokenTypeByPath.get(path);
+      if (tokenType === undefined) {
+        warnings.push(`map_token_prop '${call.component}.${call.prop}': dropped unknown token path '${path}'`);
+      } else if (prop.cdf_token_kind !== null && tokenType !== prop.cdf_token_kind) {
         warnings.push(
-          `map_token_prop '${call.component}.${call.prop}': token_allowed is not a subset of token_sets — skipped`,
+          `map_token_prop '${call.component}.${call.prop}': dropped '${path}' — it is a ${tokenType} token, but the property's $token.kind is ${prop.cdf_token_kind}`,
         );
-        continue;
+      } else {
+        filteredAllowed.push(path);
       }
     }
 
-    replaceRawPropTokenPaths(db, sessionId, component.component_id, call.prop, 'set', filteredSets);
-    if (filteredAllowed !== undefined) {
-      replaceRawPropTokenPaths(db, sessionId, component.component_id, call.prop, 'allowed', filteredAllowed);
+    if (filteredAllowed.length === 0) {
+      warnings.push(`map_token_prop '${call.component}.${call.prop}': no valid token_allowed remain — skipped`);
+      continue;
     }
+
+    replaceRawPropTokenPaths(db, sessionId, component.component_id, call.prop, 'allowed', filteredAllowed);
     applied++;
   }
 
