@@ -128,6 +128,12 @@ describe('generate-components.md', () => {
     expect(content).toMatch(/do not include.*values.*cdf_type.*token/i);
     expect(content).toMatch(/\$token\.allowed/);
   });
+
+  it('states the cardinality rule for the two token-evidence signals', async () => {
+    const content = await readSkill('generate-components.md');
+    expect(content).toMatch(/cardinality/i);
+    expect(content).toMatch(/one token target/i);
+  });
 });
 
 describe('map-tokens.md', () => {
@@ -142,22 +148,27 @@ describe('map-tokens.md', () => {
     }
   });
 
-  it('describes the $token.sets and $token.allowed target fields', async () => {
+  it('describes the $token.allowed target field', async () => {
     const content = await readSkill('map-tokens.md');
-    expect(content).toContain('$token.sets');
     expect(content).toContain('$token.allowed');
+    expect(content).not.toContain('$token.sets');
   });
 
-  it('documents the map_token_prop tool call', async () => {
+  it('documents the map_token_prop tool call, token_allowed only', async () => {
     const content = await readSkill('map-tokens.md');
     expect(content).toContain('map_token_prop');
-    expect(content).toContain('token_sets');
     expect(content).toContain('token_allowed');
+    expect(content).not.toMatch(/\btoken_sets\b/);
   });
 
-  it('requires token_allowed to be a subset of token_sets', async () => {
+  it('scopes candidates to the prop\'s $token.kind', async () => {
     const content = await readSkill('map-tokens.md');
-    expect(content).toMatch(/subset/i);
+    expect(content).toMatch(/\$token\.kind/);
+  });
+
+  it('only narrows props that arrive without an existing token list', async () => {
+    const content = await readSkill('map-tokens.md');
+    expect(content).toMatch(/without an existing|no existing token (list|allowed)|already (has|arrived)/i);
   });
 
   it('forbids hallucinated paths not in the token path index', async () => {
@@ -165,9 +176,9 @@ describe('map-tokens.md', () => {
     expect(content).toMatch(/never invent a path|no hallucinated paths/i);
   });
 
-  it('instructs omitting token_allowed without restriction evidence', async () => {
+  it('instructs emitting nothing without restriction evidence', async () => {
     const content = await readSkill('map-tokens.md');
-    expect(content).toMatch(/omit.*token_allowed|token_allowed.*omit/i);
+    expect(content).toMatch(/emit nothing/i);
     expect(content).toMatch(/evidence/i);
   });
 

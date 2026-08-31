@@ -90,8 +90,8 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 - Every prop in the input must produce exactly one call: `classify_prop` OR `exclude_prop`.
 - Every slot must produce exactly one `classify_slot` call.
 - Emit `classify_component` once at the start (required). The `description` field is **required** — always provide a brief description of the component's purpose.
-- `values` is required for `cdf_type: "enum"` — must be a non-empty string array.
-- **Do NOT include `values` for `cdf_type: "token"`.** Token restriction is handled by the separate `map tokens` step (`$token.allowed`), not by `values` — emitting `values` on a token prop here would conflict with that step's output. Omit the field entirely for token props.
+- `values` is required for `cdf_type: "enum"` — must be a non-empty string array of the variant names the prop accepts.
+- **Do NOT include `values` for `cdf_type: "token"`.** The two property types carry different kinds of list. An `enum` prop's list holds *variant names* the component accepts (`"primary"`, `"secondary"`). A `token` prop's list holds *design token paths* (`"color.brand.primary"`), produced by the separate token-mapping step (`$token.allowed`) — never by you. Emitting `values` on a token prop makes the definition invalid.
 - `token_kind` is required for `cdf_type: "token"` — must be a DTCG `$type` string, e.g. `"color"`.
 - `required` must be a JSON boolean (`true`/`false`), not a string.
 - `description` on `classify_prop` is customer-facing — keep it short and subject to the description content rules below.
@@ -131,6 +131,31 @@ Exactly **6** valid types:
 
 ---
 
+### `enum` versus `token`
+
+Both describe a closed set of choices, but the *contents* differ, and that is the whole distinction:
+
+| | What the list holds | Example |
+|---|---|---|
+| `enum` | Variant names the component accepts | `["primary", "secondary", "ghost"]` |
+| `token` | Design token paths the prop may bind to | `["color.brand.primary", "color.brand.neutral"]` |
+
+A prop is a `token` prop when its values resolve, through the component's own
+code, to entries in the design system's token document — for example a
+`Record<Variant, Token>` map, a `switch` returning `tokens.*`, or a
+`var(--…)` custom property. The prop still *accepts* variant names; what makes
+it token-backed is what those names *resolve to*.
+
+Your classification is authoritative in both directions — nothing downstream
+re-derives or overrides it. `map tokens` does run two non-mutating, advisory
+checks against the real token document: a warning when a `token` prop's values
+only partially resolve (or don't resolve at all), and an informational note
+when an `enum` prop happens to be fully token-backed. Neither changes the
+prop's type. When the evidence is genuinely absent, prefer `enum` and say so
+in `reason`.
+
+---
+
 ## Valid cdf_category values
 
 | cdf_category | Use case |
@@ -165,14 +190,26 @@ For each `RawPropDefinition`, apply in order:
    - `accessibleNameRef` / `accessibleDescriptionRef` (web components) — these are ID references for a11y wiring; classify as `string`, `cdf_category: "state"` (behavioral wiring, not design or content).
    - `eventDetails` / similar telemetry props — `cdf_category: "state"`.
 3. **Positional/geometric design prop?** (`top`, `bottom`, `left`, `right`, `rotation`, `offset`, `zIndex`) → `classify_prop`, `cdf_type: "string"`, `cdf_category: "design"`.
-4. **Has `tokenReference`?** → `cdf_type: "token"`, resolve `token_kind` via sidecar lookup (see below). This overrides all other heuristics.
-5. **No `tokenReference`, but Component source references show token-linkage evidence?** (e.g. a variant→token lookup object defined in the component's own file or a sibling file — see "Source-derived tokenReference" below) → derive a `tokenReference` from that evidence and classify as `cdf_type: "token"` per the Token-aware mapping rules. This also overrides the heuristics below — do not fall through to enum just because the raw type is a string union once source evidence of a token map is found.
-6. **Union of string literals** (e.g. `'a' | 'b' | 'c'`)? → `cdf_type: "enum"`, extract literals into `values`.
-7. **Raw type is `string`** and prop name is `href`, `url`, or clearly a URL? → `cdf_type: "string"`, `cdf_category: "content"`.
-8. **Raw type is `string` / `number` / `boolean`?** → For `boolean`, use `cdf_type: "boolean"` with `default: true` or `false` (native boolean). For `number`, use `cdf_type: "string"` with `default` as the numeric value as a string (e.g. `"0"`). For `string`, use `cdf_type: "string"`.
-9. **Media/image type** (`ImageProps`, `MediaSource`, asset types)? → `cdf_type: "media"`.
-10. **Rich text / markup** (`ReactNode` used as content, HTML string)? → `cdf_type: "richtext"`.
-11. **Complex type — resolve before excluding** (see below).
+4. **Union of string literals** (e.g. `'a' | 'b' | 'c'`)? → `cdf_type: "enum"`, extract literals into `values`. This applies even when Component source references show each literal resolving to a design token internally (see "Source-derived tokenReference" below) — a resolved token map is evidence about the component's internals, not its interface.
+5. **Token-backed or enum-shaped?** A prop being token-backed is evidence about the component's internals, not about its public interface. Decide on the interface:
+
+   * The prop accepts **names the design system interprets itself** (`primary`, `warning`, `sm`, `muted`) — even when each name maps 1:1 to a design token inside the component's own style file → `cdf_type: "enum"`, put the names in `values`. Do **not** emit `token_kind`.
+   * The prop accepts a **design-token reference supplied directly by the caller**, with no vocabulary of its own (`backgroundColor`, `borderColor`, `padding`, `gap`, `maxWidth` on a primitive layout component) → `cdf_type: "token"`, resolve `token_kind` via sidecar lookup. Do **not** emit `values`.
+
+   A `tokenReference` on the raw prop no longer overrides other heuristics. If the prop also has `allowedValues` of friendly names, the friendly names win and the prop is an `enum`.
+
+   **Cardinality is the tell.** `tokenReference` is a single-value field — it can only ever assert "this prop links to one token." A prop's *values* resolving to several distinct token targets (a `Record<Variant, Token>`, a `switch`, found via the "Source-derived tokenReference" evidence below) is a different, stronger signal, and it points the other way: one token target is the shape of a genuine token prop; many distinct token targets means the prop is a selector *over* tokens, which makes it an enum. Do not treat a bare `tokenReference` on the raw prop as if it were multi-value resolution evidence — it never is one.
+
+   An `enum` design property is stored and delivered as a plain string, so the component receives `variant="primary"` — the value its own code branches on. A token-typed property is stored as a token reference and is resolved to the token's value before it reaches the component, so the component would receive `variant="#0059c8"` and match no branch. Classify by what the component's prop signature accepts.
+
+   Token classification has a second, independent cost beyond the render contract: `modeling-workspace`'s content-type-to-design-property mapping deliberately excludes every DTCG token type as unreachable from a content-type field's value, while a `String` design property (what an `enum` prop compiles to) is reachable from a `Symbol`/`Text` field. A variant prop classified `token` is not just delivered a value its own code can't branch on — it becomes permanently ineligible for content-type field mapping in the upgrade workspace. This is a platform constraint, not a preference, and it holds regardless of how cleanly the prop's values resolve to tokens internally.
+
+   Genuine token props are most common on primitive layout and surface components — a `Box`, `Stack`, `Flex`, or `Section` that exposes raw `padding`, `gap`, `margin`, `backgroundColor`, `borderColor`, or `maxWidth`. Curated design-system components with named variant APIs (`Button`, `Tag`, `Badge`, `Avatar`, `Notification`) are almost always `enum`. If a design system has no layout primitives, it may legitimately produce zero token-typed props.
+6. **Raw type is `string`** and prop name is `href`, `url`, or clearly a URL? → `cdf_type: "string"`, `cdf_category: "content"`.
+7. **Raw type is `string` / `number` / `boolean`?** → For `boolean`, use `cdf_type: "boolean"` with `default: true` or `false` (native boolean). For `number`, use `cdf_type: "string"` with `default` as the numeric value as a string (e.g. `"0"`). For `string`, use `cdf_type: "string"`.
+8. **Media/image type** (`ImageProps`, `MediaSource`, asset types)? → `cdf_type: "media"`.
+9. **Rich text / markup** (`ReactNode` used as content, HTML string)? → `cdf_type: "richtext"`.
+10. **Complex type — resolve before excluding** (see below).
 
 ---
 
@@ -238,7 +275,7 @@ Rules for nested objects:
 
 ## Token-aware mapping
 
-When `tokenReference` is present, classify with `cdf_type: "token"` — **regardless of what the reference string looks like.** `tokenReference` is not limited to CSS-custom-property syntax; a flat/dotted JS-style name (`"tokens.blue500"`), a bare token name (`"blue500"`), or any other design-system-specific convention all count equally. Any non-empty `tokenReference` value triggers this rule.
+A `tokenReference` establishes *which token kind applies* once a prop is classified as `cdf_type: "token"` per the decision tree above — it does not by itself decide enum vs. token. Once a prop is classified as `token`, resolve `token_kind` from its `tokenReference` — **regardless of what the reference string looks like.** `tokenReference` is not limited to CSS-custom-property syntax; a flat/dotted JS-style name (`"tokens.blue500"`), a bare token name (`"blue500"`), or any other design-system-specific convention all count equally. Any non-empty `tokenReference` value on a token-classified prop triggers this lookup.
 
 The `token_kind` field becomes `$token.kind` in the CDF output (a DTCG `$type` string, e.g. `"color"`).
 
@@ -259,7 +296,7 @@ Example (flat/dotted JS reference — same rule, different syntax):
 tokenReference: "tokens.blue500"
   → sidecar["tokens.blue500"] → "blue500"
   → token data: blue500.$type → "color"
-  → tool call: {"tool":"classify_prop","prop":"colorVariant","cdf_type":"token","cdf_category":"design","token_kind":"color","description":"..."}
+  → tool call: {"tool":"classify_prop","prop":"borderColor","cdf_type":"token","cdf_category":"design","token_kind":"color","description":"..."}
 ```
 
 If `tokenReference` is not found in the sidecar → `cdf_type: "token"`, omit `token_kind`, add `description: "WARNING: tokenReference not found in sidecar — token_kind unknown"`.
@@ -274,18 +311,20 @@ If token data was not provided and `tokenReference` is present → `cdf_type: "t
 - A direct `tokens.xxx` / `var(--xxx)` reference inline in the render logic, keyed off the prop's value
 - A `switch` statement or `if`/`else if` chain branching on the prop's value, where one or more branches resolve to a `tokens.*`, `var(--...)`, or DTCG-path reference — this is equally valid evidence as an object-literal lookup map. Don't require the resolution to be a plain object; a switch/if chain that ends in a token reference is the same signal in a different syntax.
 
-If found, treat the resolved reference for the prop's current/default value as its `tokenReference` and apply the lookup rules above (sidecar → token tree). Note in `description` which file the evidence came from (e.g. `"token linkage found in utils.ts's avatarColorMap"`) so the developer can verify it.
+**This evidence describes the component's internals, not its interface — it does not override rule 5 of the decision tree.** A `Record<Variant, Token>` keyed by ordinary variant names (e.g. `{ neutral: tokens.gray300, positive: tokens.green300 }`) is still a variant→token resolution map, but the prop's signature accepts the variant *name*, not the token. That is exactly the enum case in rule 5: classify as `enum` with the names in `values` (see the PillNext example below), and do not derive a `tokenReference` for it.
+
+Only derive a `tokenReference` from this evidence — and classify `cdf_type: "token"` — when the prop has **no vocabulary of its own**: a raw `string`/layout prop with no `allowedValues` and no literal union, where the source shows the value flowing straight through to a token with nothing for the component to branch on. In that case, note in `description` which file the evidence came from (e.g. `"token linkage found in utils.ts's backgroundMap"`) so the developer can verify it.
 
 If the source shows only raw literal values (hex colors, pixel values) with no token reference anywhere — that's a real enum/string prop, not a token. Don't force a token classification without an actual token reference in evidence.
 
-Example:
+**Canonical example — a named variant backed by tokens is still `enum`:**
+
 ```
-colorVariant: 'primary' | 'secondary' | 'tertiary', tokenReference absent
-Component source references — utils.ts:
-  export const avatarColorMap = { primary: 'color.blue.500', secondary: 'color.gray.500', tertiary: 'color.green.500' };
-  → derived tokenReference for the default value ('primary'): "color.blue.500"
-  → token data: color.blue.500.$type → "color"
-  → tool call: {"tool":"classify_prop","prop":"colorVariant","cdf_type":"token","cdf_category":"design","token_kind":"color","description":"Color variant linked via avatarColorMap in utils.ts (color.blue.500 for the default 'primary' value)"}
+Tag.variant has allowedValues ["primary","secondary","warning","negative"] and PillNext.styles.ts
+maps each one to a token (primary→tokens.blue100, warning→tokens.orange100, ...). The mapping is
+internal to the design system — Tag's prop signature accepts the name, not the token. Classifying
+as enum so the author picks "primary" and the component receives "primary".
+{"tool":"classify_prop","prop":"variant","cdf_type":"enum","cdf_category":"design","required":false,"values":["primary","secondary","warning","negative"],"default":"primary","description":"Visual variant","reason":"Fully token-backed internally, but the component consumes the variant name. Token classification would deliver a resolved color the component cannot branch on."}
 ```
 
 ---
@@ -408,8 +447,8 @@ bgColor has tokenReference "--bg-primary" — looking up sidecar
 ### Token-linked prop (non-CSS-var reference shape)
 
 ```
-colorVariant has tokenReference "tokens.blue500" — not a CSS custom property, but still a tokenReference — looking up sidecar
-{"tool":"classify_prop","prop":"colorVariant","cdf_type":"token","cdf_category":"design","token_kind":"color","description":"Color variant linked via tokens.blue500"}
+borderColor (on a Box layout primitive) has tokenReference "tokens.blue500" — not a CSS custom property, but still a tokenReference — looking up sidecar
+{"tool":"classify_prop","prop":"borderColor","cdf_type":"token","cdf_category":"design","token_kind":"color","description":"Border color linked via tokens.blue500"}
 ```
 
 ### href prop
@@ -437,7 +476,7 @@ Before emitting any tool calls, verify:
 2. Every slot has exactly one `classify_slot` call
 3. `classify_component` is emitted exactly once
 4. Every `cdf_type: "enum"` has a non-empty `values` array
-5. Every `cdf_type: "token"` has `token_kind` (or a warning in `description` if lookup failed) and does NOT have `values` set
+5. Every `cdf_type: "token"` has `token_kind` (or a warning in `description` if lookup failed) and does **not** have `values` set
 6. No `cdf_type: "link"` — all href/url props use `string`
 7. `required` values are JSON booleans, not strings
 8. Framework, DOM, accessibility, and data-* pass-through props are excluded — `className`/`classes`/`classNames`/`rootClassName`/`prefixCls`, `style`, `id`, `role`, `tabIndex`, `aria-*` (and bare `aria`), `data-*`, polymorphic `as`/`element`/`component`, framework theming `dt`/`pt`/`ptOptions`/`unstyled`/`sx`. Discrete positional/geometric props (`top`, `bottom`, `left`, `right`, `rotation`, etc.) ARE classified as `string` design props. Common semantic props (`icon`, `items`, `actions`, `options`, `value`, `name`, `form`, `inputId`, `componentId`) are NOT excluded — classify them per their content/design/state nature.
@@ -446,6 +485,8 @@ Before emitting any tool calls, verify:
 11. `classify_component` includes a `rationale` object with all three sub-fields (`rationale.description`, `rationale.props`, `rationale.slots`) populated as non-empty strings.
 12. Every `classify_slot` includes a non-empty `rationale` string.
 13. `rationale.description` follows the same "Description content rules" as `description` — no internal initiative names (`INTEG-*`, `EDSI`, `DSI`, `M1`, `M2`, wave/phase references, etc.).
+14. Every `cdf_type: "token"` prop has no `values`, and its accepted values are token references rather than friendly names.
+15. Every prop whose values are friendly names is `enum` with a non-empty `values` array, even when each name resolves to a design token internally.
 
 After the run completes, the developer can validate the pipeline output with:
 
