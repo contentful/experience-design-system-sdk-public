@@ -131,53 +131,6 @@ async function run(
   });
 }
 
-async function seedSessionWithUnresolvedTokenProp(dbPath: string): Promise<string> {
-  const dir = await createTempDir('map-tokens-warn-src-');
-  const stylesPath = join(dir, 'Card.styles.ts');
-  const cardPath = join(dir, 'Card.tsx');
-  await writeFile(
-    stylesPath,
-    "export const variantStyles = { surface: 'colors.surface.default', accent: '#ff00ff' };\n",
-    'utf8',
-  );
-  await writeFile(
-    cardPath,
-    "import { variantStyles } from './Card.styles';\n\nexport function Card(props: { bgColor: string }) {\n  return variantStyles[props.bgColor];\n}\n",
-    'utf8',
-  );
-
-  const db = openPipelineDb(dbPath);
-  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-  storeRawComponents(db, sessionId, [
-    {
-      name: 'Card',
-      source: cardPath,
-      sourcePath: cardPath,
-      framework: 'react',
-      props: [{ name: 'bgColor', type: 'string', required: false, category: 'design' }],
-      slots: [],
-    },
-  ]);
-  storeCDFComponents(db, sessionId, [
-    {
-      key: 'Card',
-      entry: {
-        $type: 'component',
-        $properties: { bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' } },
-      },
-    },
-  ]);
-  storeDTCGTokens(db, sessionId, [], [{ path: 'colors.surface.default', $type: 'color', $value: '#fff' }]);
-
-  const componentId = loadRawComponents(db, sessionId)[0].component_id;
-  db.prepare(
-    `INSERT INTO raw_prop_allowed_values (session_id, component_id, prop_name, position, value) VALUES (?, ?, 'bgColor', 0, 'surface'), (?, ?, 'bgColor', 1, 'accent')`,
-  ).run(sessionId, componentId, sessionId, componentId);
-
-  db.close();
-  return sessionId;
-}
-
 async function seedSessionWithTokenBackedEnumProp(dbPath: string): Promise<string> {
   const dir = await createTempDir('map-tokens-annotate-src-');
   const stylesPath = join(dir, 'Pill.styles.ts');
@@ -232,61 +185,6 @@ async function seedSessionWithTokenBackedEnumProp(dbPath: string): Promise<strin
   );
 
   // storeCDFComponents already writes raw_prop_allowed_values from $values above.
-
-  db.close();
-  return sessionId;
-}
-
-async function seedSessionWithFlatAccessorTokenProp(dbPath: string): Promise<string> {
-  const dir = await createTempDir('map-tokens-flat-accessor-src-');
-  const stylesPath = join(dir, 'Card.styles.ts');
-  const cardPath = join(dir, 'Card.tsx');
-  await writeFile(
-    stylesPath,
-    "export const variantStyles = { surface: tokens.surfaceColor, accent: tokens.accentColor };\n",
-    'utf8',
-  );
-  await writeFile(
-    cardPath,
-    "import { variantStyles } from './Card.styles';\n\nexport function Card(props: { bgColor: string }) {\n  return variantStyles[props.bgColor];\n}\n",
-    'utf8',
-  );
-
-  const db = openPipelineDb(dbPath);
-  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-  storeRawComponents(db, sessionId, [
-    {
-      name: 'Card',
-      source: cardPath,
-      sourcePath: cardPath,
-      framework: 'react',
-      props: [{ name: 'bgColor', type: 'string', required: false, category: 'design' }],
-      slots: [],
-    },
-  ]);
-  storeCDFComponents(db, sessionId, [
-    {
-      key: 'Card',
-      entry: {
-        $type: 'component',
-        $properties: { bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' } },
-      },
-    },
-  ]);
-  storeDTCGTokens(
-    db,
-    sessionId,
-    [],
-    [
-      { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
-      { path: 'colors.accent.default', $type: 'color', $value: '#f0f' },
-    ],
-  );
-
-  const componentId = loadRawComponents(db, sessionId)[0].component_id;
-  db.prepare(
-    `INSERT INTO raw_prop_allowed_values (session_id, component_id, prop_name, position, value) VALUES (?, ?, 'bgColor', 0, 'surface'), (?, ?, 'bgColor', 1, 'accent')`,
-  ).run(sessionId, componentId, sessionId, componentId);
 
   db.close();
   return sessionId;
@@ -461,22 +359,6 @@ describe('map tokens command', () => {
     db.close();
   });
 
-  it('warns to stderr when a token-classified prop resolves only partially, using the real session token tree', async () => {
-    const dbDir = await createTempDir('map-tokens-db-');
-    const dbPath = join(dbDir, 'pipeline.db');
-    const sessionId = await seedSessionWithUnresolvedTokenProp(dbPath);
-
-    const { stderr, code } = await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], {
-      dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-empty.mjs'),
-    });
-
-    expect(code).toBe(0);
-    expect(stderr).toContain('WARNING: token binding');
-    expect(stderr).toContain('1 of 2');
-    expect(stderr).toContain('accent');
-  });
-
   it('surfaces a token-backed-enum annotation without reclassifying the prop', async () => {
     const dbDir = await createTempDir('map-tokens-db-');
     const dbPath = join(dbDir, 'pipeline.db');
@@ -499,42 +381,4 @@ describe('map tokens command', () => {
     expect(variant?.$values).toEqual(['surface', 'raised']);
   });
 
-  it('warns that nothing resolves for a flat JS accessor style without --token-map', async () => {
-    const dbDir = await createTempDir('map-tokens-db-');
-    const dbPath = join(dbDir, 'pipeline.db');
-    const sessionId = await seedSessionWithFlatAccessorTokenProp(dbPath);
-
-    const { stderr, code } = await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], {
-      dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-empty.mjs'),
-    });
-
-    expect(code).toBe(0);
-    expect(stderr).toContain('WARNING: token binding');
-    expect(stderr).toContain('none of its 2 values resolve');
-  });
-
-  it('resolves a flat JS accessor style when --token-map supplies the sidecar', async () => {
-    const dbDir = await createTempDir('map-tokens-db-');
-    const dbPath = join(dbDir, 'pipeline.db');
-    const sessionId = await seedSessionWithFlatAccessorTokenProp(dbPath);
-
-    const tokenMapPath = join(dbDir, 'token-map.json');
-    await writeFile(
-      tokenMapPath,
-      JSON.stringify({
-        'tokens.surfaceColor': 'colors.surface.default',
-        'tokens.accentColor': 'colors.accent.default',
-      }),
-      'utf8',
-    );
-
-    const { stderr, code } = await run(
-      ['map', 'tokens', '--session', sessionId, '--agent', 'claude', '--token-map', tokenMapPath],
-      { dbPath, fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-empty.mjs') },
-    );
-
-    expect(code).toBe(0);
-    expect(stderr).not.toContain('WARNING: token binding');
-  });
 });

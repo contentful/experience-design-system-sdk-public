@@ -35,9 +35,7 @@ import {
 import { hashPromptForSkill } from '../session/cache-keys.js';
 import { rebuildDTCGTree } from '../print/command.js';
 import { applyMapTokenPropCalls } from './apply.js';
-import { warnUnresolvedTokenBindings } from './token-binding-warning.js';
 import { computeTokenBackedEnumAnnotations } from './token-backed-enum-annotations.js';
-import { getDebugLogger } from '../lib/debug-logger.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js';
@@ -205,15 +203,6 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       process.stdout.write(prompt + '\n');
       await exitWithAnalytics(0);
       return;
-    }
-
-    const { warnings: tokenBindingWarnings } = await warnUnresolvedTokenBindings(db, sessionId, {
-      tokensInline: JSON.stringify(tokenTree),
-      tokenMapInline,
-    });
-    for (const warning of tokenBindingWarnings) {
-      process.stderr.write(`WARNING: ${warning}\n`);
-      getDebugLogger().event('other', 'token-binding.warning', { message: warning });
     }
 
     const tokenBackedAnnotations = (await computeTokenBackedEnumAnnotations(db, sessionId, tokenTree, sidecar)).map(
