@@ -565,6 +565,59 @@ export function loadRawPropTokenPaths(db: DatabaseSync, sessionId: string): RawP
   return groups;
 }
 
+export interface TokenBindingCandidate {
+  componentId: string;
+  componentName: string;
+  propName: string;
+  cdfType: string | null;
+  values: string[];
+  sourcePath: string | null;
+}
+
+// Reads every design-category prop the classifier has already touched,
+// regardless of the component's status — the advisory token-binding checks
+// run once per whole session, after all per-component tool calls have landed.
+// `source_path` is an override set on some components; `source` historically
+// doubles as the on-disk path when it isn't. Mirrors the fallback pattern
+// used elsewhere in this file (loadComponentSourceRefs, loadComponentReviewMetadata).
+export function loadTokenBindingCandidates(db: DatabaseSync, sessionId: string): TokenBindingCandidate[] {
+  const rows = db
+    .prepare(
+      `SELECT p.component_id, c.name AS component_name,
+              COALESCE(c.source_path, c.source) AS source_path,
+              p.name AS prop_name, p.cdf_type
+         FROM raw_props p
+         JOIN raw_components c ON c.session_id = p.session_id AND c.component_id = p.component_id
+        WHERE p.session_id = ? AND p.cdf_category = 'design'
+        ORDER BY c.name, p.position`,
+    )
+    .all(sessionId) as Array<{
+    component_id: string;
+    component_name: string;
+    source_path: string | null;
+    prop_name: string;
+    cdf_type: string | null;
+  }>;
+
+  const values = db
+    .prepare(
+      `SELECT component_id, prop_name, value FROM raw_prop_allowed_values
+        WHERE session_id = ? ORDER BY component_id, prop_name, position`,
+    )
+    .all(sessionId) as Array<{ component_id: string; prop_name: string; value: string }>;
+
+  const byProp = groupBy(values, (v) => `${v.component_id}::${v.prop_name}`);
+
+  return rows.map((r) => ({
+    componentId: r.component_id,
+    componentName: r.component_name,
+    propName: r.prop_name,
+    cdfType: r.cdf_type,
+    sourcePath: r.source_path,
+    values: (byProp.get(`${r.component_id}::${r.prop_name}`) ?? []).map((v) => v.value),
+  }));
+}
+
 export interface ApplyToolCallsResult {
   classified: number;
   excluded: number;
@@ -1426,7 +1479,7 @@ async function resolveImportSpecifiers(sourceText: string, fromDir: string): Pro
 // walked exactly once. Returns the count of resolved candidates dropped
 // once the inlining cap was hit, so callers can surface that truncation to
 // the classifier instead of silently dropping evidence.
-async function loadSiblingFiles(
+export async function loadSiblingFiles(
   sourceText: string,
   sourcePath: string,
 ): Promise<{ siblings: Array<{ path: string; content: string }>; truncatedCount: number }> {
@@ -1462,9 +1515,7 @@ async function loadSiblingFiles(
     frontier = nextFrontier;
   }
 
-  const siblings = discovered
-    .slice(0, MAX_SIBLING_FILES)
-    .map((d) => ({ path: d.path, content: truncateSource(d.content, MAX_SIBLING_SNIPPET_CHARS) }));
+  const siblings = discovered.slice(0, MAX_SIBLING_FILES).map((d) => ({ path: d.path, content: d.content }));
   const truncatedCount = Math.max(0, discovered.length - MAX_SIBLING_FILES);
 
   return { siblings, truncatedCount };
@@ -1483,7 +1534,16 @@ export async function loadComponentSourceRef(name: string, sourcePath: string): 
   try {
     const rawText = await readFile(sourcePath, 'utf8');
     content = truncateSource(rawText);
-    ({ siblings: siblingFiles, truncatedCount: truncatedSiblingCount } = await loadSiblingFiles(rawText, sourcePath));
+    ({ siblings: siblingFiles, truncatedCount: truncatedSiblingCount } = await loadSiblingFiles(
+      rawText,
+      sourcePath,
+    ));
+    // The classifier prompt gets a bounded snippet; the advisory token-binding
+    // checks read the same files untruncated.
+    siblingFiles = siblingFiles.map((s) => ({
+      path: s.path,
+      content: truncateSource(s.content, MAX_SIBLING_SNIPPET_CHARS),
+    }));
   } catch {
     // File no longer exists or unreadable — leave content null.
   }
