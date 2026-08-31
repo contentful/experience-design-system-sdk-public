@@ -238,6 +238,9 @@ function applyDbMigrations(db: DatabaseSync): void {
           session_id   TEXT NOT NULL,
           component_id TEXT NOT NULL,
           prop_name    TEXT NOT NULL,
+          -- DTCG token paths for the prop. Only 'allowed' rows are written or
+          -- read going forward; 'set' remains a valid value only so existing
+          -- sessions with legacy rows keep loading without a migration.
           kind         TEXT NOT NULL CHECK (kind IN ('set', 'allowed')),
           position     INTEGER NOT NULL,
           path         TEXT NOT NULL,
@@ -1605,7 +1608,6 @@ export function storeCDFComponents(
             deleteAllowedValues.run(sessionId, componentId, propName);
             prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
           }
-          if (prop['$token.sets'] !== undefined) writeTokenPaths(componentId, propName, 'set', prop['$token.sets']);
           if (prop['$token.allowed'] !== undefined) {
             writeTokenPaths(componentId, propName, 'allowed', prop['$token.allowed']);
           }
@@ -1662,7 +1664,6 @@ export function storeCDFComponents(
           if (prop.$values && prop.$values.length > 0) {
             prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
           }
-          if (prop['$token.sets'] !== undefined) writeTokenPaths(componentId, propName, 'set', prop['$token.sets']);
           if (prop['$token.allowed'] !== undefined) {
             writeTokenPaths(componentId, propName, 'allowed', prop['$token.allowed']);
           }
@@ -1804,13 +1805,19 @@ export function loadCDFComponents(
         }
       }
       if (p.description !== null) propDef.$description = p.description;
-      if (av && av.length > 0) propDef.$values = av.map((v) => v.value);
+      const isTokenProp = p.cdf_type === 'token' && p.cdf_category === 'design';
+      // A token prop's options list is design token paths, written below. Its
+      // extracted variant names stay in the session as scoping input only.
+      if (!isTokenProp && av && av.length > 0) propDef.$values = av.map((v) => v.value);
       if (p.cdf_token_kind !== null) propDef['$token.kind'] = p.cdf_token_kind;
-      if (p.cdf_type === 'token' && p.cdf_category === 'design') {
-        const sets = toTokenPaths(tokenPathsByPropAndKind.get(`${component_id}::${p.name}::set`));
-        if (sets !== undefined) propDef['$token.sets'] = sets;
+      if (isTokenProp) {
+        // Only the author-restricted subset is carried. The full universe of
+        // tokens a property may bind to is every token whose $type matches its
+        // $token.kind — a consumer holding the token document derives that in
+        // one filter, so serialising it per property would duplicate the whole
+        // token list once for every property that shares a kind.
         const allowed = toTokenPaths(tokenPathsByPropAndKind.get(`${component_id}::${p.name}::allowed`));
-        if (allowed !== undefined) propDef['$token.allowed'] = allowed;
+        if (allowed !== undefined && allowed.length > 0) propDef['$token.allowed'] = allowed;
       }
       $properties[p.name] = propDef;
     }

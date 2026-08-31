@@ -225,7 +225,7 @@ export function registerPrintCommand(program: Command): void {
       const viewResults: ValidateViewEntry[] = [];
 
       if (opts.components) {
-        const r = await validateCDFFile(opts.components);
+        const r = await validateCDFFile(opts.components, opts.tokens);
         viewResults.push({
           filePath: opts.components,
           format: 'CDF v1',
