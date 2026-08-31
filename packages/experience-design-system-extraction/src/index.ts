@@ -61,3 +61,17 @@ export {
 // Pre-classification
 export { preClassifyProp, preClassifyComponent } from './pre-classify.js';
 export type { PreClassification } from './pre-classify.js';
+
+// Token binding and resolution
+export {
+  buildTokenIndex,
+  resolveTokenReference,
+  findValueTokenReferences,
+  proveTokenBinding,
+  type SourceFile,
+  type TokenIndex,
+  type TokenIndexEntry,
+  type TokenSidecar,
+  type TokenBindingInput,
+  type TokenBindingResult,
+} from './token-binding.js';
