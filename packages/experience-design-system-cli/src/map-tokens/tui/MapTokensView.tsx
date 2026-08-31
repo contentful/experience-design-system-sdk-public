@@ -6,7 +6,6 @@ export interface MapTokensViewResult {
   sessionId: string;
   applied: number;
   cached: boolean;
-  tokenBackedAnnotations: string[];
 }
 
 interface MapTokensViewProps {
@@ -41,17 +40,6 @@ export function MapTokensView({ result, onExit }: MapTokensViewProps): React.Rea
           <Text>{summary}</Text>
         </Text>
       </Box>
-      {result.tokenBackedAnnotations.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text dimColor>token-backed enum props (informational, not reclassified):</Text>
-          {result.tokenBackedAnnotations.map((line) => (
-            <Text key={line} dimColor>
-              {'  '}
-              {line}
-            </Text>
-          ))}
-        </Box>
-      )}
       <Box marginTop={1}>
         <Text dimColor>Run </Text>
         <Text>experience-design-system-cli print components</Text>

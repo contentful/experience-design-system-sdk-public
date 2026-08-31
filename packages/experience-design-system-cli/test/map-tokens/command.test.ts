@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { chmod, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -13,7 +13,6 @@ import {
   updateStep,
   loadRawPropTokenPaths,
   loadRawComponents,
-  loadCDFComponents,
 } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 
@@ -129,65 +128,6 @@ async function run(
       res({ stdout, stderr, code });
     });
   });
-}
-
-async function seedSessionWithTokenBackedEnumProp(dbPath: string): Promise<string> {
-  const dir = await createTempDir('map-tokens-annotate-src-');
-  const stylesPath = join(dir, 'Pill.styles.ts');
-  const pillPath = join(dir, 'Pill.tsx');
-  await writeFile(
-    stylesPath,
-    "export const variantStyles = { surface: 'colors.surface.default', raised: 'colors.surface.raised' };\n",
-    'utf8',
-  );
-  await writeFile(
-    pillPath,
-    "import { variantStyles } from './Pill.styles';\n\nexport function Pill(props: { variant: string }) {\n  return variantStyles[props.variant];\n}\n",
-    'utf8',
-  );
-
-  const db = openPipelineDb(dbPath);
-  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-  storeRawComponents(db, sessionId, [
-    {
-      name: 'Pill',
-      source: pillPath,
-      sourcePath: pillPath,
-      framework: 'react',
-      props: [
-        { name: 'variant', type: 'string', required: false, category: 'design' },
-        { name: 'radius', type: 'string', required: false, category: 'design' },
-      ],
-      slots: [],
-    },
-  ]);
-  storeCDFComponents(db, sessionId, [
-    {
-      key: 'Pill',
-      entry: {
-        $type: 'component',
-        $properties: {
-          variant: { $type: 'enum', $category: 'design', $values: ['surface', 'raised'] },
-          radius: { $type: 'token', $category: 'design', '$token.kind': 'dimension' },
-        },
-      },
-    },
-  ]);
-  storeDTCGTokens(
-    db,
-    sessionId,
-    [],
-    [
-      { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
-      { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
-      { path: 'spacing.small', $type: 'dimension', $value: '4px' },
-    ],
-  );
-
-  // storeCDFComponents already writes raw_prop_allowed_values from $values above.
-
-  db.close();
-  return sessionId;
 }
 
 describe('map tokens command', () => {
@@ -358,27 +298,4 @@ describe('map tokens command', () => {
     expect(JSON.parse(step?.outputs ?? '{}')).toHaveProperty('applied');
     db.close();
   });
-
-  it('surfaces a token-backed-enum annotation without reclassifying the prop', async () => {
-    const dbDir = await createTempDir('map-tokens-db-');
-    const dbPath = join(dbDir, 'pipeline.db');
-    const sessionId = await seedSessionWithTokenBackedEnumProp(dbPath);
-
-    const { stdout, code } = await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], {
-      dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-empty.mjs'),
-    });
-
-    expect(code).toBe(0);
-    expect(stdout).toContain('Pill.variant');
-    expect(stdout).toContain('2/2');
-
-    const db = openPipelineDb(dbPath);
-    const stored = loadCDFComponents(db, sessionId);
-    db.close();
-    const variant = stored.find((c) => c.key === 'Pill')?.entry.$properties['variant'];
-    expect(variant?.$type).toBe('enum');
-    expect(variant?.$values).toEqual(['surface', 'raised']);
-  });
-
 });

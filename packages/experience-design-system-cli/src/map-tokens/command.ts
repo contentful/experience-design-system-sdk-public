@@ -1,11 +1,8 @@
 import { createElement } from 'react';
 import { render } from 'ink';
-import { access, readFile, readdir, stat } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Command } from 'commander';
-import type { TokenSidecar } from '@contentful/experience-design-system-extraction';
 import {
   AGENT_NAMES,
   buildPrompt,
@@ -35,7 +32,6 @@ import {
 import { hashPromptForSkill } from '../session/cache-keys.js';
 import { rebuildDTCGTree } from '../print/command.js';
 import { applyMapTokenPropCalls } from './apply.js';
-import { computeTokenBackedEnumAnnotations } from './token-backed-enum-annotations.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js';
@@ -52,7 +48,6 @@ interface MapTokensOptions {
   model?: string;
   printPrompt?: boolean;
   cache?: boolean;
-  tokenMap?: string;
 }
 
 function die(message: string): never {
@@ -70,56 +65,6 @@ async function assertBinaryInPath(binary: string): Promise<boolean> {
   }
 }
 
-async function pathExists(p: string): Promise<boolean> {
-  return access(p)
-    .then(() => true)
-    .catch(() => false);
-}
-
-async function assertFileExists(flag: string, p: string): Promise<void> {
-  if (!(await pathExists(p))) die(`Error: file not found: ${p} (from ${flag})`);
-}
-
-async function readFileInline(path: string | undefined): Promise<string | undefined> {
-  if (!path) return undefined;
-  const resolved = resolve(path);
-  let s;
-  try {
-    s = await stat(resolved);
-  } catch {
-    return undefined;
-  }
-  if (!s.isDirectory()) return readFile(resolved, 'utf8');
-  // Directory: collect and concatenate all JSON files
-  const files: string[] = [];
-  async function walk(dir: string) {
-    let entries: string[];
-    try {
-      entries = await readdir(dir);
-    } catch {
-      return;
-    }
-    for (const entry of entries.sort()) {
-      const full = join(dir, entry);
-      let es;
-      try {
-        es = await stat(full);
-      } catch {
-        continue;
-      }
-      if (es.isDirectory()) {
-        await walk(full);
-      } else if (entry.endsWith('.json')) {
-        files.push(full);
-      }
-    }
-  }
-  await walk(resolved);
-  if (files.length === 0) return undefined;
-  const parts = await Promise.all(files.map((f) => readFile(f, 'utf8').catch(() => '')));
-  return parts.filter(Boolean).join('\n\n');
-}
-
 async function renderResult(result: MapTokensViewResult): Promise<void> {
   if (process.stdout.isTTY) {
     const { waitUntilExit } = render(createElement(MapTokensView, { result, onExit: () => void exitWithAnalytics(0) }));
@@ -127,23 +72,11 @@ async function renderResult(result: MapTokensViewResult): Promise<void> {
   } else {
     const summary = result.cached ? 'cached' : `${result.applied} mapping(s) applied`;
     process.stdout.write(`map tokens complete\nagent: ${result.agent}\nsession=${result.sessionId}\n${summary}\n`);
-    for (const line of result.tokenBackedAnnotations) process.stdout.write(`  ${line}\n`);
     await exitWithAnalytics(0);
   }
 }
 
 async function runMapTokens(opts: MapTokensOptions): Promise<void> {
-  if (opts.tokenMap) await assertFileExists('--token-map', opts.tokenMap);
-  const tokenMapInline = await readFileInline(opts.tokenMap);
-  let sidecar: TokenSidecar = {};
-  if (tokenMapInline !== undefined) {
-    try {
-      sidecar = JSON.parse(tokenMapInline) as TokenSidecar;
-    } catch {
-      process.stderr.write('WARNING: could not parse --token-map as JSON — proceeding without a sidecar\n');
-    }
-  }
-
   const savedCreds = await readExperiencesCredentials();
   const agentName = opts.agent ?? savedCreds.agent;
   const model = opts.model ?? savedCreds.agentModel;
@@ -205,10 +138,6 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       return;
     }
 
-    const tokenBackedAnnotations = (await computeTokenBackedEnumAnnotations(db, sessionId, tokenTree, sidecar)).map(
-      (a) => `${a.component}.${a.prop}: ${a.resolved}/${a.total} values resolve to design tokens`,
-    );
-
     const noCache = opts.cache === false || process.env.EDS_NO_CACHE === '1';
     const promptHash = await hashPromptForSkill('map-tokens', agent, model);
     const inputHash = computeMapTokensInputHash(db, sessionId);
@@ -219,7 +148,7 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
         const appliedFromCache = copyMapTokensFromCache(db, cached.sourceSessionId, sessionId);
         const stepId = createStep(db, sessionId, 'map tokens', { agent, model: model ?? '' });
         updateStep(db, stepId, 'complete', { cached: 'true', applied: String(appliedFromCache) });
-        await renderResult({ agent, sessionId, applied: appliedFromCache, cached: true, tokenBackedAnnotations });
+        await renderResult({ agent, sessionId, applied: appliedFromCache, cached: true });
         return;
       }
     }
@@ -268,24 +197,21 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       process.stderr.write(`Warnings:\n${warnings.map((w) => `  ${w}`).join('\n')}\n`);
     }
 
-    await renderResult({ agent, sessionId, applied, cached: false, tokenBackedAnnotations });
+    await renderResult({ agent, sessionId, applied, cached: false });
   } finally {
     db.close();
   }
 }
 
 export function registerMapTokensCommand(program: Command): void {
-  const map = program
-    .command('map')
-    .description('Suggest token restrictions for generated design-token props');
+  const map = program.command('map').description('Suggest token restrictions for generated design-token props');
 
   const tokensCmd = map
     .command('tokens')
     .description('Invoke a coding agent to suggest $token.allowed for design-category token props')
     .option('--session <id>', 'Session ID from generate components (defaults to most recent)')
     .option('--print-prompt', 'Print the prompt without invoking the agent')
-    .option('--no-cache', 'Bypass the map-tokens cache and force a re-run')
-    .option('--token-map <path>', 'Path to token-name-map.json sidecar');
+    .option('--no-cache', 'Bypass the map-tokens cache and force a re-run');
 
   addAgentModelOptions(tokensCmd).action(async (opts: MapTokensOptions) => {
     await runMapTokens(opts);
