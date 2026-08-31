@@ -207,13 +207,13 @@ describe('applyMapTokenPropCalls', () => {
     });
   });
 
-  it('skips a prop that already has a proven binding, leaving it untouched', async () => {
+  it("leaves a reviewer's restriction untouched", async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
       seedSession(db, sessionId);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', 'allowed', ['colors.brand.primary']);
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', 'allowed', ['colors.brand.primary'], 'review');
 
       const result = applyMapTokenPropCalls(
         db,
@@ -223,10 +223,54 @@ describe('applyMapTokenPropCalls', () => {
       );
 
       expect(result.applied).toBe(0);
-      expect(result.warnings.join('\n')).toContain('already bound from source evidence');
+      expect(result.warnings.join('\n')).toContain('a reviewer already set this restriction');
       expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
         { componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.brand.primary'] },
       ]);
+      db.close();
+    });
+  });
+
+  it('revises its own previous suggestion on a re-run', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      seedSession(db, sessionId);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', 'allowed', ['colors.brand.primary'], 'agent');
+
+      const result = applyMapTokenPropCalls(
+        db,
+        sessionId,
+        [{ tool: 'map_token_prop', component: 'Card', prop: 'bgColor', token_allowed: ['colors.surface.default'] }],
+        [],
+      );
+
+      expect(result).toEqual({ applied: 1, warnings: [] });
+      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
+        { componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] },
+      ]);
+      db.close();
+    });
+  });
+
+  it('records its own writes as agent-sourced, so a later run can revise them', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      seedSession(db, sessionId);
+
+      applyMapTokenPropCalls(
+        db,
+        sessionId,
+        [{ tool: 'map_token_prop', component: 'Card', prop: 'bgColor', token_allowed: ['colors.surface.default'] }],
+        [],
+      );
+
+      const sources = db
+        .prepare(`SELECT DISTINCT source FROM raw_prop_token_paths WHERE session_id = ?`)
+        .all(sessionId) as Array<{ source: string }>;
+      expect(sources).toEqual([{ source: 'agent' }]);
       db.close();
     });
   });

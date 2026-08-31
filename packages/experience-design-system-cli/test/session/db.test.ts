@@ -222,6 +222,43 @@ describe('openPipelineDb', () => {
     });
   });
 
+  it('backfills raw_prop_token_paths.source as agent on a database that predates the column', async () => {
+    await withTempDb((dbPath) => {
+      const initial = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(initial, sessionId, [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [{ name: 'bgColor', type: 'string', required: false, category: 'design' }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(initial, sessionId)[0].component_id;
+
+      // Simulate the pre-provenance shape and leave a row behind in it.
+      initial.exec('ALTER TABLE raw_prop_token_paths DROP COLUMN source');
+      initial
+        .prepare(
+          `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, position, path)
+           VALUES (?, ?, 'bgColor', 'allowed', 0, 'colors.surface.default')`,
+        )
+        .run(sessionId, componentId);
+      initial.close();
+
+      const migrated = openPipelineDb(dbPath);
+      const cols = migrated.prepare('PRAGMA table_info(raw_prop_token_paths)').all() as Array<{ name: string }>;
+      expect(cols.map((c) => c.name)).toContain('source');
+      // A row written before the review editor could set its own list can only
+      // have come from map tokens, so 'agent' is the correct backfill.
+      expect(
+        migrated.prepare(`SELECT source FROM raw_prop_token_paths WHERE prop_name = 'bgColor'`).get(),
+      ).toEqual({ source: 'agent' });
+      migrated.close();
+    });
+  });
+
   it('migrates legacy databases with no raw_prop_token_paths table exactly once', async () => {
     await withTempDb((dbPath) => {
       const initial = openPipelineDb(dbPath);
@@ -267,10 +304,10 @@ describe('raw prop token paths', () => {
       replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'set', [
         'color.brand.primary',
         'color.brand.secondary',
-      ]);
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.text.default']);
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'set', ['color.brand.tertiary']);
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', []);
+      ], 'agent');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.text.default'], 'agent');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'set', ['color.brand.tertiary'], 'agent');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', [], 'agent');
 
       expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
         {
@@ -318,7 +355,7 @@ describe('applyToolCalls clears the other property type on reclassification', ()
         [{ tool: 'classify_prop', prop: 'variant', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' }],
         [],
       );
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.blue.500']);
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.blue.500'], 'agent');
 
       applyToolCalls(
         db,
@@ -503,7 +540,7 @@ describe('applyToolCalls clears the other property type on reclassification', ()
         [{ tool: 'classify_prop', prop: 'variant', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' }],
         [],
       );
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.blue.500']);
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.blue.500'], 'agent');
 
       applyToolCalls(
         db,
@@ -1762,7 +1799,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
       replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', [
         'color.blue.500',
         'color.red.500',
-      ]);
+      ], 'agent');
       db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND component_id = ?`).run(
         sessionId,
         componentId,
@@ -3047,8 +3084,8 @@ describe('generation cache', () => {
       replaceRawPropTokenPaths(db, sourceId, sourceComponentId, 'bgColor', 'set', [
         'colors.surface.default',
         'colors.surface.raised',
-      ]);
-      replaceRawPropTokenPaths(db, sourceId, sourceComponentId, 'bgColor', 'allowed', ['colors.surface.default']);
+      ], 'agent');
+      replaceRawPropTokenPaths(db, sourceId, sourceComponentId, 'bgColor', 'allowed', ['colors.surface.default'], 'agent');
 
       const { sessionId: targetId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
       storeRawComponents(db, targetId, [
