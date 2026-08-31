@@ -322,6 +322,56 @@ describe('parseToolCallLines', () => {
     });
   });
 
+  describe('trailing content after a complete object', () => {
+    // Observed in a real run: the agent emitted a valid classify_component
+    // object followed by one stray quote. JSON.parse rejects the whole line, so
+    // the component's description and rationale were discarded even though a
+    // complete object was available from position 0.
+    it('recovers a call when a stray character follows the object', () => {
+      const line =
+        '{"tool":"classify_prop","prop":"margin","cdf_type":"enum","cdf_category":"design","values":["none","spacingXs"]}"';
+      const { calls, warnings } = parseToolCallLines(line);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ tool: 'classify_prop', prop: 'margin', cdf_type: 'enum' });
+      expect(warnings.join(' ')).toMatch(/trailing/i);
+    });
+
+    it('recovers a call when prose follows the object', () => {
+      const { calls } = parseToolCallLines(
+        '{"tool":"classify_prop","prop":"label","cdf_type":"string","cdf_category":"content"} — the button caption',
+      );
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ tool: 'classify_prop', prop: 'label' });
+    });
+
+    it('recovers every object when two are emitted on one line', () => {
+      const { calls } = parseToolCallLines(
+        '{"tool":"classify_prop","prop":"a","cdf_type":"string","cdf_category":"content"}{"tool":"classify_prop","prop":"b","cdf_type":"string","cdf_category":"content"}',
+      );
+      expect(calls).toHaveLength(2);
+      expect(calls.map((c) => (c as { prop: string }).prop)).toEqual(['a', 'b']);
+    });
+
+    it('is not fooled by braces inside string values', () => {
+      const line = '{"tool":"classify_component","description":"renders `<Text>{title}</Text>` as a fallback"}';
+      const { calls, warnings } = parseToolCallLines(line);
+      expect(calls).toHaveLength(1);
+      expect(warnings).toHaveLength(0);
+    });
+
+    it('handles an escaped quote before the closing brace', () => {
+      const { calls } = parseToolCallLines('{"tool":"classify_component","description":"a \\"quoted\\" word"}');
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ description: 'a "quoted" word' });
+    });
+
+    it('still drops and warns when the object itself is incomplete', () => {
+      const { calls, warnings } = parseToolCallLines('{"tool":"classify_prop","prop":"margin"');
+      expect(calls).toHaveLength(0);
+      expect(warnings[0]).toMatch(/unparseable line/);
+    });
+  });
+
   describe('unknown / malformed lines', () => {
     it('warns on unparseable JSON', () => {
       const { calls, warnings } = parseToolCallLines('{broken json}');
