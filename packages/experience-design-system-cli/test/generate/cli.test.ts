@@ -271,6 +271,105 @@ describe('generate components — --dry-run', () => {
     expect(stdout).toContain('Component source references');
     expect(stdout).toContain('export const avatarColorMap = { primary: "blue500" };');
   });
+
+  it('inlines a sibling file with a plain-semantic-name Record lookup, not just token-looking string keys', async () => {
+    const srcDir = await createTempDir('gen-dry-run-pillnext-src-');
+    const componentPath = join(srcDir, 'PillNext.tsx');
+    const stylesPath = join(srcDir, 'PillNext.styles.ts');
+    await writeFile(componentPath, `import { variantStyles } from './PillNext.styles';\n`);
+    await writeFile(
+      stylesPath,
+      [
+        'export const variantStyles = {',
+        '  neutral: { background: tokens.gray300 },',
+        '  positive: { background: tokens.green300 },',
+        '  negative: { background: tokens.red300 },',
+        '  warning: { background: tokens.yellow300 },',
+        '};',
+      ].join('\n'),
+    );
+
+    const dbDir = await createTempDir('gen-dry-run-pillnext-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const sid = await seedDb(dbPath, [
+      {
+        name: 'PillNext',
+        source: componentPath,
+        framework: 'react',
+        props: [
+          {
+            name: 'variant',
+            type: "'neutral' | 'positive' | 'negative' | 'warning'",
+            required: false,
+            category: 'design',
+          },
+        ],
+        slots: [],
+      },
+    ]);
+
+    const env = { ...process.env, EDS_PIPELINE_DB_PATH: dbPath };
+    const { stdout, code } = await new Promise<{
+      stdout: string;
+      stderr: string;
+      code: number | null;
+    }>((res) => {
+      execFile(
+        'node',
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid, '--dry-run'],
+        { env },
+        (err, stdout, stderr) => res({ stdout, stderr, code: err?.code ? Number(err.code) : 0 }),
+      );
+    });
+    expect(code).toBe(0);
+    expect(stdout).toContain('Component source references');
+    expect(stdout).toContain('imported file');
+    expect(stdout).toContain('variantStyles');
+    expect(stdout).toContain('tokens.gray300');
+  });
+
+  it('inlines a second-hop sibling reached through a first-hop sibling component (Tag re-exporting PillNext.variant)', async () => {
+    const srcDir = await createTempDir('gen-dry-run-tag-src-');
+    const tagPath = join(srcDir, 'Tag.tsx');
+    const pillNextPath = join(srcDir, 'PillNext.tsx');
+    const pillNextStylesPath = join(srcDir, 'PillNext.styles.ts');
+    await writeFile(tagPath, `import { PillNext } from './PillNext';\n`);
+    await writeFile(pillNextPath, `import { tagVariantResolutionMap } from './PillNext.styles';\n`);
+    await writeFile(
+      pillNextStylesPath,
+      'export const tagVariantResolutionMap = { alpha: tokens.zzzSecondHopMarkerColor901, beta: tokens.zzzSecondHopMarkerColor902 };',
+    );
+
+    const dbDir = await createTempDir('gen-dry-run-tag-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const sid = await seedDb(dbPath, [
+      {
+        name: 'Tag',
+        source: tagPath,
+        framework: 'react',
+        props: [{ name: 'variant', type: "'alpha' | 'beta'", required: false, category: 'design' }],
+        slots: [],
+      },
+    ]);
+
+    const env = { ...process.env, EDS_PIPELINE_DB_PATH: dbPath };
+    const { stdout, code } = await new Promise<{
+      stdout: string;
+      stderr: string;
+      code: number | null;
+    }>((res) => {
+      execFile(
+        'node',
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid, '--dry-run'],
+        { env },
+        (err, stdout, stderr) => res({ stdout, stderr, code: err?.code ? Number(err.code) : 0 }),
+      );
+    });
+    expect(code).toBe(0);
+    expect(stdout).toContain('Component source references');
+    expect(stdout).toContain('tagVariantResolutionMap');
+    expect(stdout).toContain('zzzSecondHopMarkerColor901');
+  });
 });
 
 describe('generate components — agent binary not found', () => {

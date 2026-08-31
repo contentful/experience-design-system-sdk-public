@@ -29,7 +29,7 @@ All input is embedded inline in the prompt before this file:
 - **Raw component data** — `RawComponentDefinition[]` (one component for this run)
 - **DTCG token data** — full token tree, if provided
 - **Token-name sidecar** — raw CSS custom property name → DTCG dot-notation path, if provided
-- **Component source references** — the real file text for the component's own source, plus up to 5 relatively-imported sibling files (e.g. a co-located `.styles.ts` or `utils.ts`), if provided. Use this when `tokenReference` is empty — see "Source-derived tokenReference" below. **You have no filesystem access and no tools — `sourcePath` is a citation label only, never something to open.**
+- **Component source references** — the real file text for the component's own source, plus up to 5 sibling files (e.g. a co-located `.styles.ts` or `utils.ts`, or a file reached transitively through another sibling — such as a re-exported component's own styles module), if provided. Use this when `tokenReference` is empty — see "Source-derived tokenReference" below. **You have no filesystem access and no tools — `sourcePath` is a citation label only, never something to open.**
 
 ```typescript
 interface RawPropDefinition {
@@ -272,6 +272,7 @@ If token data was not provided and `tokenReference` is present → `cdf_type: "t
 
 - A lookup object keyed by the prop's allowed values, whose entries are design-token references rather than raw literals — a DTCG dot-path (`"color.blue.500"`), a flat/dotted JS reference (`tokens.blue500`), a CSS custom property (`var(--color-blue-500)`), or a bare token name (`"blue500"`)
 - A direct `tokens.xxx` / `var(--xxx)` reference inline in the render logic, keyed off the prop's value
+- A `switch` statement or `if`/`else if` chain branching on the prop's value, where one or more branches resolve to a `tokens.*`, `var(--...)`, or DTCG-path reference — this is equally valid evidence as an object-literal lookup map. Don't require the resolution to be a plain object; a switch/if chain that ends in a token reference is the same signal in a different syntax.
 
 If found, treat the resolved reference for the prop's current/default value as its `tokenReference` and apply the lookup rules above (sidecar → token tree). Note in `description` which file the evidence came from (e.g. `"token linkage found in utils.ts's avatarColorMap"`) so the developer can verify it.
 

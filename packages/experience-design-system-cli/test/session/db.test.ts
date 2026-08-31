@@ -2577,6 +2577,73 @@ describe('generation cache', () => {
     });
   });
 
+  it('loadComponentSourceRef inlines a second-hop sibling reached through a first-hop sibling component', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const tagPath = join(dir, 'Tag.tsx');
+      const pillNextPath = join(dir, 'PillNext.tsx');
+      const pillNextStylesPath = join(dir, 'PillNext.styles.ts');
+      await writeFile(tagPath, `import { PillNext } from './PillNext';\n`);
+      await writeFile(pillNextPath, `import { variantStyles } from './PillNext.styles';\n`);
+      await writeFile(
+        pillNextStylesPath,
+        'export const variantStyles = { neutral: tokens.gray300, positive: tokens.green300 };',
+      );
+
+      const ref = await loadComponentSourceRef('Tag', tagPath);
+      expect(ref.siblingFiles).toEqual(
+        expect.arrayContaining([
+          { path: pillNextPath, content: `import { variantStyles } from './PillNext.styles';\n` },
+          {
+            path: pillNextStylesPath,
+            content: 'export const variantStyles = { neutral: tokens.gray300, positive: tokens.green300 };',
+          },
+        ]),
+      );
+      expect(ref.siblingFiles).toHaveLength(2);
+    });
+  });
+
+  it('loadComponentSourceRef does not hang or duplicate a file when siblings import each other in a cycle', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const aPath = join(dir, 'A.tsx');
+      const bPath = join(dir, 'B.ts');
+      await writeFile(aPath, `import { b } from './B';\n`);
+      await writeFile(bPath, `import { a } from './A';\nexport const b = 1;\n`);
+
+      const ref = await loadComponentSourceRef('A', aPath);
+      expect(ref.siblingFiles).toEqual([{ path: bPath, content: `import { a } from './A';\nexport const b = 1;\n` }]);
+    });
+  });
+
+  it('loadComponentSourceRef caps inlined siblings at 5 and reports the rest as truncated when discovery spans two hops', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const rootPath = join(dir, 'Root.tsx');
+      const hop1Paths = ['H1a', 'H1b', 'H1c'].map((name) => join(dir, `${name}.ts`));
+      const hop2Paths = ['H2a', 'H2b', 'H2c'].map((name) => join(dir, `${name}.ts`));
+
+      await writeFile(
+        rootPath,
+        hop1Paths.map((_, i) => `import { x${i} } from './H1${['a', 'b', 'c'][i]}';\n`).join(''),
+      );
+      for (let i = 0; i < hop1Paths.length; i++) {
+        await writeFile(
+          hop1Paths[i],
+          `import { y${i} } from './H2${['a', 'b', 'c'][i]}';\nexport const x${i} = ${i};\n`,
+        );
+      }
+      for (let i = 0; i < hop2Paths.length; i++) {
+        await writeFile(hop2Paths[i], `export const y${i} = ${i};\n`);
+      }
+
+      const ref = await loadComponentSourceRef('Root', rootPath);
+      expect(ref.siblingFiles).toHaveLength(5);
+      expect(ref.truncatedSiblingCount).toBe(1);
+    });
+  });
+
   it('copyMapTokensFromCache copies matching-by-name components and skips props absent in the target session', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
