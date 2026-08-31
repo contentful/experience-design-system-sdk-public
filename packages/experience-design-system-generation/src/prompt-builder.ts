@@ -29,6 +29,13 @@ export interface ComponentSourceRef {
   content: string | null;
   siblingFiles?: Array<{ path: string; content: string }>;
   truncatedSiblingCount?: number;
+  /**
+   * Properties that none of the loaded source shows being read. Computed over
+   * the untruncated files, so it stays accurate even where the snippets below
+   * are cut short. Absent when there was no source to scan — that is not the
+   * same claim as "nothing is read".
+   */
+  unconsumedProps?: string[];
 }
 
 interface CDFPropertyLike {
@@ -265,7 +272,13 @@ function buildPreamble(options: PromptOptions): string {
                 `##### ${ref.component} — +${ref.truncatedSiblingCount} more imported file${ref.truncatedSiblingCount === 1 ? '' : 's'} not shown (evidence may be incomplete)`,
               ]
             : [];
-        return [mainBlock, ...siblingBlocks, ...truncationNote].join('\n\n');
+        const unconsumedNote =
+          ref.unconsumedProps && ref.unconsumedProps.length > 0
+            ? [
+                `##### ${ref.component} — declared but never read: ${ref.unconsumedProps.join(', ')}\n\nThese property names appear in no read position anywhere in the files above, checked untruncated. The component does nothing with their values, so there is no evidence they carry a design token — classify each as \`enum\` or \`string\`, never \`token\`.`,
+              ]
+            : [];
+        return [mainBlock, ...siblingBlocks, ...truncationNote, ...unconsumedNote].join('\n\n');
       });
       sections.push(`### Component source references\n\n${blocks.join('\n\n')}`);
     }
