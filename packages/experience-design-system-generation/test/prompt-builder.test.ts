@@ -324,6 +324,33 @@ describe('buildPrompt', () => {
       expect(prompt).not.toContain('Component source unavailable for');
     });
 
+    // A computed signal that never reaches the prompt cannot change a
+    // classification. Assert the rendered text, not just the field.
+    it('renders the declared-but-never-read properties into the prompt', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        componentSourceRefs: [{ ...SOURCE_REFS_WITH_CONTENT[0], unconsumedProps: ['margin', 'marginTop'] }],
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('declared but never read: margin, marginTop');
+      expect(prompt).toContain('never `token`');
+    });
+
+    it('omits the declared-but-never-read note when every property is read', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        componentSourceRefs: [{ ...SOURCE_REFS_WITH_CONTENT[0], unconsumedProps: [] }],
+        outDir: '/fake/out',
+      });
+      expect(prompt).not.toContain('declared but never read');
+    });
+
     it('inlines sibling files alongside the main component source', async () => {
       const prompt = await buildPrompt({
         skill: 'map-tokens',

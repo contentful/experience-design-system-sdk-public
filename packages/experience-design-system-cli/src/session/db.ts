@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { dirname, resolve, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import { generateSessionId } from './session-id.js';
+import { findUnconsumedProps } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types.js';
 import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
 import type { ToolCall, TokenToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
@@ -1429,7 +1430,17 @@ async function resolveImportSpecifiers(sourceText: string, fromDir: string): Pro
 async function loadSiblingFiles(
   sourceText: string,
   sourcePath: string,
-): Promise<{ siblings: Array<{ path: string; content: string }>; truncatedCount: number }> {
+): Promise<{
+  siblings: Array<{ path: string; content: string }>;
+  truncatedCount: number;
+  /**
+   * Every file the walk resolved, untruncated and including those dropped by
+   * the inlining cap. The prompt gets `siblings`; evidence scans get this, so a
+   * property is never reported unread merely because its use fell outside a
+   * snippet budget.
+   */
+  scanned: Array<{ path: string; content: string }>;
+}> {
   const visited = new Set<string>([resolve(sourcePath)]);
   const discovered: Array<{ path: string; content: string }> = [];
 
@@ -1467,7 +1478,7 @@ async function loadSiblingFiles(
     .map((d) => ({ path: d.path, content: truncateSource(d.content, MAX_SIBLING_SNIPPET_CHARS) }));
   const truncatedCount = Math.max(0, discovered.length - MAX_SIBLING_FILES);
 
-  return { siblings, truncatedCount };
+  return { siblings, truncatedCount, scanned: discovered };
 }
 
 // Reads and inlines real file content here, at the last point this pipeline
@@ -1476,20 +1487,37 @@ async function loadSiblingFiles(
 // protocol), so a bare path is useless to them. Read failures (file moved or
 // deleted since extraction) resolve to `content: null`, not a thrown error —
 // callers fall back to inferring from the prop name and $token.kind alone.
-export async function loadComponentSourceRef(name: string, sourcePath: string): Promise<ComponentSourceRef> {
+export async function loadComponentSourceRef(
+  name: string,
+  sourcePath: string,
+  propNames: string[] = [],
+): Promise<ComponentSourceRef> {
   let content: string | null = null;
   let siblingFiles: Array<{ path: string; content: string }> = [];
   let truncatedSiblingCount = 0;
+  let unconsumedProps: string[] = [];
   try {
     const rawText = await readFile(sourcePath, 'utf8');
     content = truncateSource(rawText);
-    ({ siblings: siblingFiles, truncatedCount: truncatedSiblingCount } = await loadSiblingFiles(rawText, sourcePath));
+    let scanned: Array<{ path: string; content: string }>;
+    ({
+      siblings: siblingFiles,
+      truncatedCount: truncatedSiblingCount,
+      scanned,
+    } = await loadSiblingFiles(rawText, sourcePath));
+    if (propNames.length > 0) {
+      unconsumedProps = findUnconsumedProps(propNames, [
+        { path: sourcePath, text: rawText },
+        ...scanned.map((s) => ({ path: s.path, text: s.content })),
+      ]);
+    }
   } catch {
     // File no longer exists or unreadable — leave content null.
   }
   const ref: ComponentSourceRef = { component: name, sourcePath, content };
   if (siblingFiles.length > 0) ref.siblingFiles = siblingFiles;
   if (truncatedSiblingCount > 0) ref.truncatedSiblingCount = truncatedSiblingCount;
+  if (unconsumedProps.length > 0) ref.unconsumedProps = unconsumedProps;
   return ref;
 }
 
