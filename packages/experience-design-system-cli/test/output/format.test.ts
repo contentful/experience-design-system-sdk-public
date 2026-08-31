@@ -31,6 +31,18 @@ describe('OutputFormatter — tool-call lines', () => {
     expect(out).toContain('content');
   });
 
+  it('formats exclude_prop as a visible – line', () => {
+    const lines: string[] = [];
+    const f = new OutputFormatter(false, (s) => lines.push(s));
+    f.push('{"tool":"exclude_prop","prop":"className","reason":"framework internal"}\n');
+    f.flush();
+    expect(lines).toHaveLength(1);
+    const out = strip(lines[0]!);
+    expect(out).toContain('–');
+    expect(out).toContain('className');
+    expect(out).toContain('framework internal');
+  });
+
   it('formats classify_slot as a visible ◈ line', () => {
     const lines: string[] = [];
     const f = new OutputFormatter(false, (s) => lines.push(s));
@@ -85,10 +97,10 @@ describe('OutputFormatter — chunking', () => {
     const lines: string[] = [];
     const f = new OutputFormatter(false, (s) => lines.push(s));
     // Send half a JSON line then the rest
-    f.push('{"tool":"classify_pr');
+    f.push('{"tool":"exclude_pro');
     // Nothing emitted yet
     expect(lines).toHaveLength(0);
-    f.push('op","prop":"foo","cdf_type":"string","cdf_category":"state"}\n');
+    f.push('p","prop":"foo","reason":"bar"}\n');
     expect(lines).toHaveLength(1);
     expect(strip(lines[0]!)).toContain('foo');
   });
@@ -98,7 +110,7 @@ describe('OutputFormatter — chunking', () => {
     const f = new OutputFormatter(false, (s) => lines.push(s));
     f.push(
       '{"tool":"classify_prop","prop":"a","cdf_type":"string","cdf_category":"content"}\n' +
-        '{"tool":"classify_prop","prop":"b","cdf_type":"string","cdf_category":"state"}\n',
+        '{"tool":"exclude_prop","prop":"b","reason":"internal"}\n',
     );
     f.flush();
     expect(lines).toHaveLength(2);
@@ -107,7 +119,7 @@ describe('OutputFormatter — chunking', () => {
   it('flushes remaining buffer content', () => {
     const lines: string[] = [];
     const f = new OutputFormatter(false, (s) => lines.push(s));
-    f.push('{"tool":"classify_prop","prop":"x","cdf_type":"string","cdf_category":"state"}'); // no trailing newline
+    f.push('{"tool":"exclude_prop","prop":"x","reason":"test"}'); // no trailing newline
     expect(lines).toHaveLength(0);
     f.flush();
     expect(lines).toHaveLength(1);

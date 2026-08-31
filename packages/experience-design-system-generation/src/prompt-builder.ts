@@ -155,26 +155,28 @@ All input data is provided inline below — do not read any additional files.${i
 
 Do NOT write any files or emit any JSON blobs. Instead, emit one JSON object per line to stdout for each classification decision. The CLI reads your stdout line by line and writes each decision directly to the pipeline database.
 
-The three tool calls you may emit are:
+The four tool calls you may emit are:
 
 \`\`\`
 {"tool":"classify_component","description":"<optional component-level description>","rationale":{"description":"<why this component is classified the way it is>","props":"<why these props were chosen>","slots":"<why these slots were chosen>"}}
 
 {"tool":"classify_prop","prop":"<propName>","cdf_type":"<type>","cdf_category":"<category>","required":<bool>,"description":"<short customer-facing description>","reason":"<full internal rationale; not customer-facing>","values":["a","b"],"token_kind":"color","default":"<value>"}
 
+{"tool":"exclude_prop","prop":"<propName>","reason":"<why excluded>"}
+
 {"tool":"classify_slot","slot":"<slotName>","required":<bool>,"allowed_components":["ComponentName"],"description":"<reason>","rationale":"<why this slot was kept in the catalog>"}
 \`\`\`
 
 Rules:
 - Emit exactly one JSON object per line. No multi-line JSON. No markdown fences around the lines.
-- Every prop in the input must have exactly one classify_prop call.
+- Every prop in the input must have exactly one call: either classify_prop or exclude_prop.
 - Every slot in the input must have exactly one classify_slot call.
 - Valid cdf_type values: string, richtext, media, enum, token, boolean
 - Valid cdf_category values: content, design, state
 - For enum type, always include "values" (non-empty string array).
 - For token type, always include "token_kind" (DTCG \$type, e.g. "color").
 - href and URL props → cdf_type "string", cdf_category "content". Do NOT use cdf_type "link" — it is not valid.
-- Framework internals (ref, event handlers, test IDs) → classify_prop, cdf_type "string" (or "boolean" if the raw type is boolean), cdf_category "state".
+- Framework internals (ref, event handlers, test IDs) → exclude_prop.
 - CSS design props (className, style, styles, positional/geometric props: top, bottom, left, right, rotation, offset, etc.) → classify_prop, cdf_type: "string", cdf_category: "design".
 - On classify_component, "rationale" fields are operator-facing (read-only) but may surface in customer-facing exports. The "rationale.description" field is subject to the description content rules in the skill prompt (no internal initiative names). "rationale.props" and "rationale.slots" describe your reasoning about scope; "classify_slot.rationale" explains why each slot was kept.
 - On classify_prop, "reason" is REQUIRED and is the LLM's internal rationale — shown to the developer reviewing the import, never to end-users. "description" is the customer-facing copy and is subject to the description content rules in the skill prompt. Keep them distinct: "description" is short and customer-facing; "reason" explains your reasoning in detail.
