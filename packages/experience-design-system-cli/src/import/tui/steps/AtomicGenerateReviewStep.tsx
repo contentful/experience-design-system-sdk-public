@@ -92,6 +92,9 @@ export function sortComponentsForSidebar<T extends { key: string; entry: CDFComp
 const VISIBLE_COUNT = 20;
 const PANEL_HEIGHT = 22;
 
+/** $category values hidden from the read-only JSON panel unless `showHiddenProps` is on. */
+const HIDDEN_PROP_CATEGORIES = new Set(['state', 'unattached']);
+
 export function AtomicGenerateReviewStep({
   extractSessionId,
   onFinalize,
@@ -118,6 +121,7 @@ export function AtomicGenerateReviewStep({
   const [showQuit, setShowQuit] = useState(false);
   // FieldEditor is the default editor. JSON view is an opt-in read-only toggle.
   const [showJson, setShowJson] = useState(false);
+  const [showHiddenProps, setShowHiddenProps] = useState(false);
   const [draftValue, setDraftValue] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   // INTEG-4411: inline banner shown when the operator tries to finalize
@@ -655,6 +659,11 @@ export function AtomicGenerateReviewStep({
       pendingGRef.current = false;
       return;
     }
+    if (input === 'H') {
+      setShowHiddenProps((prev) => !prev);
+      pendingGRef.current = false;
+      return;
+    }
 
     if (key.upArrow || input === 'k') {
       // Pilot-2026-06-23 bug: rapid k/j bursts could lose cursor position
@@ -706,6 +715,26 @@ export function AtomicGenerateReviewStep({
 
   const selected = components[selectedIdx] ?? null;
   const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
+  // The read-only JSON panel hides state/unattached props by default (toggle: 'H'). This is a
+  // display-only view built from `selectedJson`, not a replacement for it — the FieldEditor form
+  // below still consumes the unfiltered `selectedJson` so editing/saving never drops those props.
+  const visibleJsonPanelValue =
+    selected && !showHiddenProps
+      ? JSON.stringify(
+          {
+            [selected.key]: {
+              ...selected.entry,
+              $properties: Object.fromEntries(
+                Object.entries(selected.entry.$properties ?? {}).filter(
+                  ([, def]) => !HIDDEN_PROP_CATEGORIES.has(def.$category),
+                ),
+              ),
+            },
+          },
+          null,
+          2,
+        )
+      : selectedJson;
 
   // A component with zero classified $properties is a real defensibility issue —
   // it can't be pushed to Contentful (no fields). Surface it in the sidebar via
@@ -927,7 +956,7 @@ export function AtomicGenerateReviewStep({
                 ) : showJson ? (
                   <JsonPanel
                     label="GENERATED DEFINITION (read-only)"
-                    value={selectedJson}
+                    value={visibleJsonPanelValue}
                     scrollOffset={jsonScrollOffset}
                     width={panelWidth}
                     height={PANEL_HEIGHT}
@@ -973,6 +1002,8 @@ export function AtomicGenerateReviewStep({
                   {sidebarFocused
                     ? '  [a] accept  [r] reject  [A] accept all  [i] prop rationale  [I] component rationale  [s] source  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
+                      '  [H] ' +
+                      (showHiddenProps ? 'hide state/unattached' : 'show state/unattached') +
                       '  [^z] undo  [^y] redo  [^r] reload  [F] finalize  [e/Tab] focus panel' +
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       '  [q] quit'

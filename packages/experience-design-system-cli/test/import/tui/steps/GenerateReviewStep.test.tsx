@@ -137,6 +137,63 @@ describe('GenerateReviewStep — form by default (Fix 1)', () => {
   });
 });
 
+describe('GenerateReviewStep — hide state/unattached props from JSON panel by default (Task 4)', () => {
+  type Entry = import('@contentful/experience-design-system-types').CDFComponentEntry;
+
+  const CATEGORIZED_ENTRY: Entry = {
+    $type: 'component',
+    $properties: {
+      label: { $type: 'string', $category: 'content' },
+      variant: { $type: 'enum', $category: 'design', $values: ['primary', 'secondary'] },
+      isDisabled: { $type: 'boolean', $category: 'state' },
+      className: { $type: 'string', $category: 'unattached', $required: false },
+    },
+  };
+
+  it('hides state and unattached props from the JSON panel by default, and reveals them on H', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Button', entry: CATEGORIZED_ENTRY }]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('J');
+    await tick();
+
+    const defaultFrame = lastFrame() ?? '';
+    expect(defaultFrame).toMatch(/GENERATED DEFINITION \(read-only\)/);
+    expect(defaultFrame).toMatch(/label/);
+    expect(defaultFrame).toMatch(/variant/);
+    expect(defaultFrame).not.toMatch(/isDisabled/);
+    expect(defaultFrame).not.toMatch(/className/);
+
+    stdin.write('H');
+    await tick();
+
+    const revealedFrame = lastFrame() ?? '';
+    expect(revealedFrame).toMatch(/label/);
+    expect(revealedFrame).toMatch(/variant/);
+    expect(revealedFrame).toMatch(/isDisabled/);
+    expect(revealedFrame).toMatch(/className/);
+  });
+
+  it('hint shows "show state/unattached" / "hide state/unattached" labels reflecting the H toggle', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Button', entry: CATEGORIZED_ENTRY }]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    let frame = lastFrame() ?? '';
+    expect(frame).toMatch(/\[H\] show state\/unattached/);
+
+    stdin.write('H');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toMatch(/\[H\] hide state\/unattached/);
+  });
+});
+
 describe('GenerateReviewStep — sidebar↔panel cross-key (Bug 1)', () => {
   it('initial hint shows [e/Tab] focus panel when sidebar is focused', async () => {
     const { lastFrame } = render(

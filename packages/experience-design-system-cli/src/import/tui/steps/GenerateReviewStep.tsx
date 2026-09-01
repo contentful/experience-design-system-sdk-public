@@ -113,6 +113,9 @@ export function sortComponentsForSidebar<T extends { key: string; entry: CDFComp
 
 const PANEL_HEIGHT = 22;
 
+/** $category values hidden from the read-only JSON panel unless `showHiddenProps` is on. */
+const HIDDEN_PROP_CATEGORIES = new Set(['state', 'unattached']);
+
 const HELP_SECTIONS: HelpSection[] = [
   {
     title: 'Navigation',
@@ -271,6 +274,7 @@ export function GenerateReviewStep({
   const [showFinalize, setShowFinalize] = useState(false);
   const [showQuit, setShowQuit] = useState(false);
   const [showJson, setShowJson] = useState(false);
+  const [showHiddenProps, setShowHiddenProps] = useState(false);
   const [draftValue, setDraftValue] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [finalizeError, setFinalizeError] = useState<string | null>(initialFinalizeError);
@@ -1436,6 +1440,11 @@ export function GenerateReviewStep({
       pendingGRef.current = false;
       return;
     }
+    if (input === 'H') {
+      setShowHiddenProps((prev) => !prev);
+      pendingGRef.current = false;
+      return;
+    }
 
     if (key.return) {
       const current = components[selectedIdx];
@@ -1590,6 +1599,26 @@ export function GenerateReviewStep({
 
   const selected = components[selectedIdx] ?? null;
   const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
+  // The read-only JSON panel hides state/unattached props by default (toggle: 'H'). This is a
+  // display-only view built from `selectedJson`, not a replacement for it — the FieldEditor form
+  // below still consumes the unfiltered `selectedJson` so editing/saving never drops those props.
+  const visibleJsonPanelValue =
+    selected && !showHiddenProps
+      ? JSON.stringify(
+          {
+            [selected.key]: {
+              ...selected.entry,
+              $properties: Object.fromEntries(
+                Object.entries(selected.entry.$properties ?? {}).filter(
+                  ([, def]) => !HIDDEN_PROP_CATEGORIES.has(def.$category),
+                ),
+              ),
+            },
+          },
+          null,
+          2,
+        )
+      : selectedJson;
 
   const isEmpty = (c: CdfReviewEntry): boolean =>
     Object.keys(c.entry.$properties).length === 0 && Object.keys(c.entry.$slots ?? {}).length === 0;
@@ -2000,7 +2029,7 @@ export function GenerateReviewStep({
                 ) : showJson ? (
                   <JsonPanel
                     label="GENERATED DEFINITION (read-only)"
-                    value={selectedJson}
+                    value={visibleJsonPanelValue}
                     scrollOffset={jsonScrollOffset}
                     width={panelWidth}
                     height={PANEL_HEIGHT}
@@ -2142,6 +2171,7 @@ export function GenerateReviewStep({
           {legendEntry('[P]', 'component rationale', panelOpen === 'component-rationale')}
           {legendEntry('[s]', 'source', panelOpen === 'source')}
           {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
+          {legendEntry('[H]', showHiddenProps ? 'hide state/unattached' : 'show state/unattached', showHiddenProps)}
           {breakingChanges.length > 0 && legendEntry('[b]', 'see breaking changes', breakingPanel.isOpen)}
           {removedComponents.length > 0 &&
             legendEntry('[d]', removedBannerCollapsed ? 'show removed' : 'hide removed', !removedBannerCollapsed)}
