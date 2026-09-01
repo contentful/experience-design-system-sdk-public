@@ -50,6 +50,61 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
+// Every real openPipelineDb() call already runs the raw_props "unattached" migration
+// (it's triggered by inspecting sqlite_master's stored DDL for the table, not by a
+// database-version flag), so a brand-new temp db is migrated during its very first
+// open. To exercise the migration against genuine pre-existing data — the scenario
+// that matters for a developer's persistent ~/.contentful pipeline.db — tests seed
+// data through the normal migrated schema, then use this helper to rebuild raw_props
+// back under the old 3-value cdf_category CHECK (mirroring the production migration's
+// own rebuild idiom, just inverted), before closing and reopening via openPipelineDb
+// to trigger the real migration against that legacy-shaped data.
+function rebuildRawPropsWithoutUnattached(db: ReturnType<typeof openPipelineDb>): void {
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE raw_props_legacy (
+        session_id        TEXT NOT NULL,
+        component_id      TEXT NOT NULL,
+        name              TEXT NOT NULL,
+        type              TEXT NOT NULL,
+        required          INTEGER NOT NULL CHECK (required IN (0, 1)),
+        category          TEXT CHECK (category IN ('content', 'design', 'state')),
+        default_value     TEXT,
+        description       TEXT,
+        token_reference   TEXT,
+        position          INTEGER NOT NULL,
+        cdf_type          TEXT,
+        cdf_category      TEXT CHECK (cdf_category IN ('content', 'design', 'state')),
+        cdf_token_kind    TEXT,
+        rationale         TEXT,
+        source_start_line INTEGER,
+        source_end_line   INTEGER,
+        PRIMARY KEY (session_id, component_id, name),
+        FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
+      );
+
+      INSERT INTO raw_props_legacy
+        (session_id, component_id, name, type, required, category, default_value,
+         description, token_reference, position, cdf_type, cdf_category, cdf_token_kind,
+         rationale, source_start_line, source_end_line)
+      SELECT
+        session_id, component_id, name, type, required, category, default_value,
+        description, token_reference, position, cdf_type, cdf_category, cdf_token_kind,
+        rationale, source_start_line, source_end_line
+      FROM raw_props;
+
+      DROP TABLE raw_props;
+      ALTER TABLE raw_props_legacy RENAME TO raw_props;
+      CREATE INDEX IF NOT EXISTS idx_raw_props_session ON raw_props(session_id, component_id);
+    `);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
 describe('openPipelineDb', () => {
   it('creates pipeline.db at the specified path and schema tables exist', async () => {
     await withTempDb((dbPath) => {
@@ -209,6 +264,149 @@ describe('openPipelineDb', () => {
         .get('s1', 'c1') as { reject_reason: string | null };
       expect(row.reject_reason).toBeNull();
       db2.close();
+    });
+  });
+
+  it('migrates raw_props to allow cdf_category = "unattached" and preserves existing rows', async () => {
+    await withTempDb((dbPath) => {
+      const initial = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(initial, sessionId, [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [{ name: 'bgColor', type: 'string', required: false, category: 'design' }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(initial, sessionId)[0]!.component_id;
+      initial
+        .prepare(
+          `UPDATE raw_props SET cdf_type = 'string', cdf_category = 'design', required = 0
+           WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`,
+        )
+        .run(sessionId, componentId);
+
+      // Simulate a database created before this migration shipped.
+      rebuildRawPropsWithoutUnattached(initial);
+      initial.close();
+
+      const migrated = openPipelineDb(dbPath);
+
+      // The new value is now legal.
+      expect(() =>
+        migrated
+          .prepare(
+            `UPDATE raw_props SET cdf_category = 'unattached' WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`,
+          )
+          .run(sessionId, componentId),
+      ).not.toThrow();
+
+      // A row written before the migration under the old constraint survived the rebuild.
+      const row = migrated
+        .prepare(`SELECT cdf_type FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`)
+        .get(sessionId, componentId) as { cdf_type: string };
+      expect(row.cdf_type).toBe('string');
+
+      // Foreign keys into raw_props still resolve after the table rebuild.
+      const fkCheck = migrated.prepare('PRAGMA foreign_key_check').all();
+      expect(fkCheck).toHaveLength(0);
+
+      migrated.close();
+    });
+  });
+
+  it('unattached-category migration is idempotent across opens', async () => {
+    await withTempDb((dbPath) => {
+      const db1 = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db1, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db1, sessionId, [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [{ name: 'bgColor', type: 'string', required: false, category: 'design' }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(db1, sessionId)[0]!.component_id;
+      db1
+        .prepare(
+          `UPDATE raw_props SET cdf_type = 'string', cdf_category = 'unattached', required = 0
+           WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`,
+        )
+        .run(sessionId, componentId);
+      db1.close();
+
+      // Reopening an already-migrated database must not re-run the rebuild or lose data.
+      const db2 = openPipelineDb(dbPath);
+      const row = db2
+        .prepare(
+          `SELECT cdf_type, cdf_category FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`,
+        )
+        .get(sessionId, componentId) as { cdf_type: string; cdf_category: string };
+      expect(row).toEqual({ cdf_type: 'string', cdf_category: 'unattached' });
+
+      const cols = db2.prepare('PRAGMA table_info(raw_props)').all() as Array<{ name: string }>;
+      expect(cols.filter((c) => c.name === 'cdf_category')).toHaveLength(1);
+      db2.close();
+    });
+  });
+
+  it('backfills legacy excluded props (cdf_type = "excluded") into the unattached shape', async () => {
+    await withTempDb((dbPath) => {
+      const initial = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(initial, sessionId, [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [
+            { name: 'onClick', type: '() => void', required: false, category: 'design' },
+            { name: 'disabled', type: 'boolean', required: false, category: 'design' },
+          ],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(initial, sessionId)[0]!.component_id;
+      // Simulate rows left over from before this migration by a dev's in-flight session:
+      // clearProp used to write cdf_type = 'excluded', cdf_category = NULL.
+      initial
+        .prepare(
+          `UPDATE raw_props SET cdf_type = 'excluded', cdf_category = NULL, rationale = 'event handler'
+           WHERE session_id = ? AND component_id = ? AND name = 'onClick'`,
+        )
+        .run(sessionId, componentId);
+      initial
+        .prepare(
+          `UPDATE raw_props SET cdf_type = 'excluded', cdf_category = NULL, rationale = 'internal flag'
+           WHERE session_id = ? AND component_id = ? AND name = 'disabled'`,
+        )
+        .run(sessionId, componentId);
+
+      rebuildRawPropsWithoutUnattached(initial);
+      initial.close();
+
+      const migrated = openPipelineDb(dbPath);
+      const rows = migrated
+        .prepare(
+          `SELECT name, cdf_type, cdf_category, required, rationale FROM raw_props
+           WHERE session_id = ? AND component_id = ? ORDER BY name`,
+        )
+        .all(sessionId, componentId) as Array<{
+        name: string;
+        cdf_type: string;
+        cdf_category: string;
+        required: number;
+        rationale: string;
+      }>;
+      expect(rows).toEqual([
+        { name: 'disabled', cdf_type: 'boolean', cdf_category: 'unattached', required: 0, rationale: 'internal flag' },
+        { name: 'onClick', cdf_type: 'string', cdf_category: 'unattached', required: 0, rationale: 'event handler' },
+      ]);
+      migrated.close();
     });
   });
 });
@@ -1732,12 +1930,15 @@ describe('backfillUnclassifiedProps', () => {
       const refProp = props.find((p) => p.name === 'internalRef');
 
       expect(titleProp?.cdf_type).toBe('string');
-      expect(refProp?.cdf_type).toBe('excluded');
+      expect(refProp?.cdf_type).toBe('string');
 
       const loaded = loadCDFComponents(db, sessionId);
       expect(loaded).toHaveLength(1);
       expect(Object.keys(loaded[0]!.entry.$properties)).toContain('title');
-      expect(Object.keys(loaded[0]!.entry.$properties)).not.toContain('internalRef');
+      expect(loaded[0]!.entry.$properties.internalRef).toMatchObject({
+        $type: 'string',
+        $category: 'unattached',
+      });
       db.close();
     });
   });

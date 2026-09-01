@@ -185,7 +185,7 @@ describe('applyToolCalls — classify_prop', () => {
     });
   });
 
-  it('nulls out cdf_type for excluded props', async () => {
+  it('classifies excluded props as unattached instead of dropping them', async () => {
     await withTempDb((dbPath) => {
       const { db, sessionId, componentId } = setupSession(dbPath);
       applyToolCalls(
@@ -210,8 +210,8 @@ describe('applyToolCalls — classify_prop', () => {
           `SELECT cdf_type, cdf_category FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'className'`,
         )
         .get(sessionId, componentId) as { cdf_type: string | null; cdf_category: string | null };
-      expect(prop.cdf_type).toBe('excluded');
-      expect(prop.cdf_category).toBeNull();
+      expect(prop.cdf_type).toBe('string');
+      expect(prop.cdf_category).toBe('unattached');
       db.close();
     });
   });
@@ -439,7 +439,7 @@ describe('applyToolCalls — loadCDFComponents integration', () => {
       expect(entry.entry.$properties['variant']?.$values).toEqual(['primary', 'secondary']);
       expect(entry.entry.$properties['disabled']?.$category).toBe('state');
       expect(entry.entry.$properties['bgColor']?.$type).toBe('token');
-      expect(entry.entry.$properties['className']).toBeUndefined();
+      expect(entry.entry.$properties['className']).toMatchObject({ $type: 'string', $category: 'unattached' });
       expect(entry.entry.$slots?.['icon']?.$required).toBeUndefined();
       expect(entry.entry.$slots?.['icon']?.$allowedComponents).toEqual(['Icon']);
       db.close();
@@ -469,6 +469,58 @@ describe('applyToolCalls — loadCDFComponents integration', () => {
 
       expect(result.warnings).toContain('pre-existing warning from parse');
       expect(result.warnings.some((w) => w.includes('ghost'))).toBe(true);
+      db.close();
+    });
+  });
+});
+
+describe('applyToolCalls: exclude_prop classifies as unattached (INTEG-4798)', () => {
+  it('marks an excluded string prop as $category unattached instead of dropping it', async () => {
+    await withTempDb((dbPath) => {
+      const { db, sessionId, componentId } = setupSession(dbPath);
+
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Button',
+        [{ tool: 'exclude_prop', prop: 'className', reason: 'DOM pass-through — not marketer-configurable' }],
+        [],
+      );
+
+      // applyToolCalls itself sets raw_components.status = 'generated', so
+      // loadCDFComponents already sees this component — no separate store step needed.
+      // $required is only ever set (to true) on a truthy value — loadCDFComponents
+      // omits it entirely rather than writing $required: false — so an unattached
+      // prop (always required: false, per clearProp) simply has no $required key.
+      const [{ entry }] = loadCDFComponents(db, sessionId);
+      expect(entry.$properties.className).toMatchObject({
+        $type: 'string',
+        $category: 'unattached',
+      });
+      expect(entry.$properties.className?.$required).toBeUndefined();
+      db.close();
+    });
+  });
+
+  it('marks an excluded boolean prop with cdf_type boolean', async () => {
+    await withTempDb((dbPath) => {
+      const { db, sessionId, componentId } = setupSession(dbPath);
+
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Button',
+        [{ tool: 'exclude_prop', prop: 'disabled', reason: 'internal implementation detail' }],
+        [],
+      );
+
+      const [{ entry }] = loadCDFComponents(db, sessionId);
+      expect(entry.$properties.disabled).toMatchObject({
+        $type: 'boolean',
+        $category: 'unattached',
+      });
       db.close();
     });
   });
