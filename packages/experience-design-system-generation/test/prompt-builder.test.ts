@@ -281,7 +281,7 @@ describe('buildPrompt', () => {
       expect(prompt).not.toContain('Widget');
     });
 
-    it('flattens the token tree to a path + $type index with no $value', async () => {
+    it('flattens the token tree to one path · type line per candidate, no $value', async () => {
       const prompt = await buildPrompt({
         skill: 'map-tokens',
         mode: 'autonomous',
@@ -289,11 +289,113 @@ describe('buildPrompt', () => {
         tokenTree: TOKEN_TREE,
         outDir: '/fake/out',
       });
-      expect(prompt).toContain('{"path":"colors.surface.default","type":"color"}');
-      expect(prompt).toContain('{"path":"colors.brand.primary","type":"color"}');
+      expect(prompt).toContain('colors.surface.default · color');
+      expect(prompt).toContain('colors.brand.primary · color');
       expect(prompt).toContain('Token path index');
       expect(prompt).not.toContain('#ffffff');
       expect(prompt).not.toContain('#0066ff');
+    });
+
+    it('kind-scopes the candidate list per property, excluding tokens of other kinds', async () => {
+      const cdf = {
+        Card: {
+          $type: 'component',
+          $properties: {
+            bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+          },
+        },
+      };
+      const tree = {
+        colors: { brand: { primary: { $type: 'color', $value: '#0066ff' } } },
+        spacing: { md: { $type: 'dimension', $value: '16px' } },
+      };
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: cdf,
+        tokenTree: tree,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('color candidates only');
+      expect(prompt).toContain('colors.brand.primary · color');
+      expect(prompt).not.toContain('spacing.md · dimension');
+      expect(prompt).not.toContain('Token path index — full tree');
+    });
+
+    it('falls back to the full, unscoped tree for a prop with no $token.kind', async () => {
+      const cdf = {
+        Card: {
+          $type: 'component',
+          $properties: {
+            bgColor: { $type: 'token', $category: 'design' },
+          },
+        },
+      };
+      const tree = {
+        colors: { brand: { primary: { $type: 'color', $value: '#0066ff' } } },
+        spacing: { md: { $type: 'dimension', $value: '16px' } },
+      };
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: cdf,
+        tokenTree: tree,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('full tree');
+      expect(prompt).toContain('colors.brand.primary · color');
+      expect(prompt).toContain('spacing.md · dimension');
+    });
+
+    it('renders a separate scoped section per distinct $token.kind, plus the full-tree fallback when mixed', async () => {
+      const cdf = {
+        Card: {
+          $type: 'component',
+          $properties: {
+            bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+            gap: { $type: 'token', $category: 'design', '$token.kind': 'dimension' },
+            unscopedProp: { $type: 'token', $category: 'design' },
+          },
+        },
+      };
+      const tree = {
+        colors: { brand: { primary: { $type: 'color', $value: '#0066ff' } } },
+        spacing: { md: { $type: 'dimension', $value: '16px' } },
+      };
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: cdf,
+        tokenTree: tree,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('color candidates only');
+      expect(prompt).toContain('dimension candidates only');
+      expect(prompt).toContain('full tree');
+      const colorIdx = prompt.indexOf('color candidates only');
+      const dimensionIdx = prompt.indexOf('dimension candidates only');
+      expect(colorIdx).toBeGreaterThanOrEqual(0);
+      expect(dimensionIdx).toBeGreaterThan(colorIdx);
+    });
+
+    it('produces an identical prompt across repeated calls with the same input (deterministic ordering)', async () => {
+      const cdf = {
+        Widget: {
+          $type: 'component',
+          $properties: {
+            gap: { $type: 'token', $category: 'design', '$token.kind': 'dimension' },
+            color: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+          },
+        },
+      };
+      const tree = {
+        spacing: { md: { $type: 'dimension', $value: '16px' }, sm: { $type: 'dimension', $value: '8px' } },
+        colors: { brand: { primary: { $type: 'color', $value: '#0066ff' } } },
+      };
+      const buildOnce = () =>
+        buildPrompt({ skill: 'map-tokens', mode: 'autonomous', generatedCdf: cdf, tokenTree: tree, outDir: '/fake/out' });
+      const [first, second] = await Promise.all([buildOnce(), buildOnce()]);
+      expect(first).toEqual(second);
     });
 
     it('falls back to a path-only listing when content could not be read', async () => {
@@ -392,7 +494,7 @@ describe('buildPrompt', () => {
         outDir: '/fake/out',
       });
       expect(prompt).not.toContain('design-category token props only (JSON)');
-      expect(prompt).not.toContain('Token path index — path and $type only');
+      expect(prompt).not.toContain('Token path index —');
       expect(prompt).not.toContain('### Component source references');
       expect(prompt).not.toContain('Component source unavailable for');
     });
