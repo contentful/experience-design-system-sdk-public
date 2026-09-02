@@ -261,13 +261,18 @@ function applyDbMigrations(db: DatabaseSync): void {
     db.exec('ALTER TABLE raw_props ADD COLUMN source_end_line INTEGER');
   }
 
-  const rawPropsDdl = db
-    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'raw_props'`)
-    .get() as { sql: string } | undefined;
+  const rawPropsDdl = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'raw_props'`).get() as
+    | { sql: string }
+    | undefined;
   if (rawPropsDdl && !rawPropsDdl.sql.includes(`'unattached'`)) {
-    db.exec('BEGIN');
+    // raw_prop_allowed_values references raw_props with ON DELETE CASCADE.
+    // Disable enforcement before replacing the parent table so those rows
+    // survive the temporary DROP TABLE and resolve again after the rename.
+    db.exec('PRAGMA foreign_keys = OFF');
     try {
-      db.exec(`
+      db.exec('BEGIN');
+      try {
+        db.exec(`
         CREATE TABLE raw_props__new (
           session_id        TEXT NOT NULL,
           component_id      TEXT NOT NULL,
@@ -312,10 +317,13 @@ function applyDbMigrations(db: DatabaseSync): void {
             required = 0
         WHERE cdf_type = 'excluded';
       `);
-      db.exec('COMMIT');
-    } catch (e) {
-      db.exec('ROLLBACK');
-      throw e;
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+    } finally {
+      db.exec('PRAGMA foreign_keys = ON');
     }
   }
 

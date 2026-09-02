@@ -60,9 +60,11 @@ afterEach(async () => {
 // own rebuild idiom, just inverted), before closing and reopening via openPipelineDb
 // to trigger the real migration against that legacy-shaped data.
 function rebuildRawPropsWithoutUnattached(db: ReturnType<typeof openPipelineDb>): void {
-  db.exec('BEGIN');
+  db.exec('PRAGMA foreign_keys = OFF');
   try {
-    db.exec(`
+    db.exec('BEGIN');
+    try {
+      db.exec(`
       CREATE TABLE raw_props_legacy (
         session_id        TEXT NOT NULL,
         component_id      TEXT NOT NULL,
@@ -98,10 +100,13 @@ function rebuildRawPropsWithoutUnattached(db: ReturnType<typeof openPipelineDb>)
       ALTER TABLE raw_props_legacy RENAME TO raw_props;
       CREATE INDEX IF NOT EXISTS idx_raw_props_session ON raw_props(session_id, component_id);
     `);
-    db.exec('COMMIT');
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
   }
 }
 
@@ -276,7 +281,15 @@ describe('openPipelineDb', () => {
           name: 'Card',
           source: 'src/Card.tsx',
           framework: 'react',
-          props: [{ name: 'bgColor', type: 'string', required: false, category: 'design' }],
+          props: [
+            {
+              name: 'bgColor',
+              type: "'light' | 'dark'",
+              required: false,
+              category: 'design',
+              allowedValues: ['light', 'dark'],
+            },
+          ],
           slots: [],
         },
       ]);
@@ -308,6 +321,15 @@ describe('openPipelineDb', () => {
         .prepare(`SELECT cdf_type FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`)
         .get(sessionId, componentId) as { cdf_type: string };
       expect(row.cdf_type).toBe('string');
+
+      // A dependent value list must also survive replacing its parent table.
+      const allowedValues = migrated
+        .prepare(
+          `SELECT value FROM raw_prop_allowed_values
+           WHERE session_id = ? AND component_id = ? AND prop_name = ? ORDER BY position`,
+        )
+        .all(sessionId, componentId, 'bgColor') as Array<{ value: string }>;
+      expect(allowedValues.map(({ value }) => value)).toEqual(['light', 'dark']);
 
       // Foreign keys into raw_props still resolve after the table rebuild.
       const fkCheck = migrated.prepare('PRAGMA foreign_key_check').all();

@@ -155,4 +155,48 @@ describe('AtomicGenerateReviewStep — hide state/unattached props from JSON pan
     frame = lastFrame() ?? '';
     expect(frame).toMatch(/\[H\] hide state\/unattached/);
   });
+
+  it('scrolls the filtered JSON and resets its position when hidden props are toggled', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    const entry: Entry = {
+      $type: 'component',
+      $properties: {
+        label: { $type: 'string', $category: 'content' },
+        ...Object.fromEntries(
+          Array.from({ length: 40 }, (_, index) => [
+            `hidden${index}`,
+            { $type: 'string' as const, $category: 'state' as const },
+          ]),
+        ),
+      },
+    };
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Button', entry }]);
+    const { lastFrame, stdin } = renderStep();
+    await tick();
+
+    stdin.write('J');
+    await tick();
+    stdin.write('\t');
+    await tick();
+    stdin.write('G');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/label/);
+
+    stdin.write('\t');
+    await tick();
+    stdin.write('H');
+    await tick();
+    stdin.write('\t');
+    await tick();
+    stdin.write('G');
+    await tick();
+    stdin.write('\t');
+    await tick();
+    stdin.write('H');
+    await tick();
+
+    const resetFrame = lastFrame() ?? '';
+    expect(resetFrame).toMatch(/label/);
+    expect(resetFrame).not.toMatch(/hidden0/);
+  });
 });

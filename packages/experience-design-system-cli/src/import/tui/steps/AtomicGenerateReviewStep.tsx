@@ -35,6 +35,7 @@ import { useLivePreview } from '../useLivePreview.js';
 import { useFinalizePreview } from '../useFinalizePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
+import { getReviewJsonPanelValue } from './review-json-panel.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -91,9 +92,6 @@ export function sortComponentsForSidebar<T extends { key: string; entry: CDFComp
 
 const VISIBLE_COUNT = 20;
 const PANEL_HEIGHT = 22;
-
-/** $category values hidden from the read-only JSON panel unless `showHiddenProps` is on. */
-const HIDDEN_PROP_CATEGORIES = new Set(['state', 'unattached']);
 
 export function AtomicGenerateReviewStep({
   extractSessionId,
@@ -584,11 +582,11 @@ export function AtomicGenerateReviewStep({
     }
 
     // JSON view + panel focused: own j/k/arrows/PageUp/PageDown/Ctrl+u/d/gg/G
-    // for scrolling. Computed against the live `selectedJson` so the
-    // viewport math matches what JsonPanel renders.
+    // for scrolling. Compute from the same filtered value passed to JsonPanel
+    // so the viewport math matches what the operator sees.
     if (!sidebarFocused && showJson) {
       const current = components[selectedIdx];
-      const currentJson = current ? JSON.stringify({ [current.key]: current.entry }, null, 2) : '';
+      const currentJson = getReviewJsonPanelValue(current ?? null, showHiddenProps);
       const totalLines = currentJson.split('\n').length;
       const maxOffset = Math.max(0, totalLines - PANEL_HEIGHT);
 
@@ -661,6 +659,7 @@ export function AtomicGenerateReviewStep({
     }
     if (input === 'H') {
       setShowHiddenProps((prev) => !prev);
+      setJsonScrollOffset(0);
       pendingGRef.current = false;
       return;
     }
@@ -715,26 +714,9 @@ export function AtomicGenerateReviewStep({
 
   const selected = components[selectedIdx] ?? null;
   const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
-  // The read-only JSON panel hides state/unattached props by default (toggle: 'H'). This is a
-  // display-only view built from `selectedJson`, not a replacement for it — the FieldEditor form
-  // below still consumes the unfiltered `selectedJson` so editing/saving never drops those props.
-  const visibleJsonPanelValue =
-    selected && !showHiddenProps
-      ? JSON.stringify(
-          {
-            [selected.key]: {
-              ...selected.entry,
-              $properties: Object.fromEntries(
-                Object.entries(selected.entry.$properties ?? {}).filter(
-                  ([, def]) => !HIDDEN_PROP_CATEGORIES.has(def.$category),
-                ),
-              ),
-            },
-          },
-          null,
-          2,
-        )
-      : selectedJson;
+  // This display-only projection leaves the FieldEditor on selectedJson, so
+  // switching the panel view never drops hidden properties from manual edits.
+  const visibleJsonPanelValue = getReviewJsonPanelValue(selected, showHiddenProps);
 
   // A component with zero classified $properties is a real defensibility issue —
   // it can't be pushed to Contentful (no fields). Surface it in the sidebar via

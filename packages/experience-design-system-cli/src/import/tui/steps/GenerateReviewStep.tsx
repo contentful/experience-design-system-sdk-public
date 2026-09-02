@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
+import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { Box, Text, useStdout } from 'ink';
 import type {
   BreakingChange,
@@ -112,9 +113,6 @@ export function sortComponentsForSidebar<T extends { key: string; entry: CDFComp
 }
 
 const PANEL_HEIGHT = 22;
-
-/** $category values hidden from the read-only JSON panel unless `showHiddenProps` is on. */
-const HIDDEN_PROP_CATEGORIES = new Set(['state', 'unattached']);
 
 const HELP_SECTIONS: HelpSection[] = [
   {
@@ -1291,7 +1289,7 @@ export function GenerateReviewStep({
 
     if (!sidebarFocused && showJson) {
       const current = components[selectedIdx];
-      const currentJson = current ? JSON.stringify({ [current.key]: current.entry }, null, 2) : '';
+      const currentJson = getReviewJsonPanelValue(current ?? null, showHiddenProps);
       const totalLines = currentJson.split('\n').length;
       const maxOffset = Math.max(0, totalLines - PANEL_HEIGHT);
 
@@ -1442,6 +1440,7 @@ export function GenerateReviewStep({
     }
     if (input === 'H') {
       setShowHiddenProps((prev) => !prev);
+      setJsonScrollOffset(0);
       pendingGRef.current = false;
       return;
     }
@@ -1599,26 +1598,9 @@ export function GenerateReviewStep({
 
   const selected = components[selectedIdx] ?? null;
   const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
-  // The read-only JSON panel hides state/unattached props by default (toggle: 'H'). This is a
-  // display-only view built from `selectedJson`, not a replacement for it — the FieldEditor form
-  // below still consumes the unfiltered `selectedJson` so editing/saving never drops those props.
-  const visibleJsonPanelValue =
-    selected && !showHiddenProps
-      ? JSON.stringify(
-          {
-            [selected.key]: {
-              ...selected.entry,
-              $properties: Object.fromEntries(
-                Object.entries(selected.entry.$properties ?? {}).filter(
-                  ([, def]) => !HIDDEN_PROP_CATEGORIES.has(def.$category),
-                ),
-              ),
-            },
-          },
-          null,
-          2,
-        )
-      : selectedJson;
+  // This display-only projection leaves the FieldEditor on selectedJson, so
+  // switching the panel view never drops hidden properties from manual edits.
+  const visibleJsonPanelValue = getReviewJsonPanelValue(selected, showHiddenProps);
 
   const isEmpty = (c: CdfReviewEntry): boolean =>
     Object.keys(c.entry.$properties).length === 0 && Object.keys(c.entry.$slots ?? {}).length === 0;
