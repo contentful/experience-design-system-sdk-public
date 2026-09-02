@@ -41,7 +41,7 @@ const STUB_AGENT = resolve(HERE, 'stub-agent.mjs');
 
 const DEFAULT_CLI_BIN = resolve(
   PKG_ROOT,
-  '../../bin/cli.js',
+  '../../packages/experience-design-system-cli/bin/cli.js',
 );
 
 /**

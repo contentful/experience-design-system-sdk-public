@@ -53,7 +53,7 @@ server.registerTool(
         .describe('argv to pass to the CLI, e.g. ["import"]'),
       cwd: z.string().optional().describe('Working directory'),
       env: z
-        .record(z.string())
+        .record(z.string(), z.string())
         .optional()
         .describe('Extra env vars merged onto process.env'),
       stub_agents: z
