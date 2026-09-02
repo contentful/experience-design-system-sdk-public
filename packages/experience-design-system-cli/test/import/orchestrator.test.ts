@@ -4,6 +4,14 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, it, expect } from 'vitest';
 import { runPipeline } from '../../src/import/orchestrator.js';
 import type { PipelineOptions } from '../../src/import/orchestrator.js';
+import {
+  createStep,
+  getOrCreateSession,
+  openPipelineDb,
+  storeCDFComponents,
+  storeRawComponents,
+  updateStep,
+} from '../../src/session/db.js';
 
 const tempDirs: string[] = [];
 
@@ -373,6 +381,49 @@ describe('runPipeline — verbose flag propagation', () => {
 });
 
 describe('runPipeline — map tokens step', () => {
+  it('maps a reused generated session even when the import session is distinct', async () => {
+    const dir = await makeTempDir('orch-reused-generated-session-');
+    const restoreDb = useTestDb(dir);
+    const db = openPipelineDb(join(dir, 'pipeline.db'));
+    const { sessionId: extractSessionId } = getOrCreateSession(db, 'new', undefined, {
+      command: 'analyze extract',
+    });
+    const extractStepId = createStep(db, extractSessionId, 'analyze extract', {});
+    updateStep(db, extractStepId, 'complete', {});
+    storeRawComponents(db, extractSessionId, [
+      { name: 'Button', source: 'src/Button.tsx', framework: 'react', props: [], slots: [] },
+    ]);
+    storeCDFComponents(db, extractSessionId, [{ key: 'Button', entry: { $type: 'component', $properties: {} } }]);
+    db.close();
+
+    const cliPath = await makeFakeCli(dir, {
+      'map tokens': {
+        stdout: `map tokens complete\nagent: claude\nsession=${extractSessionId}\n1 mapping(s) applied\n`,
+      },
+    });
+
+    const result = await runPipeline(
+      {
+        ...baseOpts({ skipAnalyze: true, skipGenerate: true, skipApply: true }),
+        project: dir,
+        out: dir,
+      },
+      () => {},
+      cliPath,
+    );
+    restoreDb();
+
+    expect(result.session).not.toBe(extractSessionId);
+    const calls = await readCalls(dir);
+    const mapCall = calls.find((c) => c[0] === 'map' && c[1] === 'tokens');
+    expect(mapCall).toBeDefined();
+    expect(mapCall).toContain(extractSessionId);
+    expect(result.steps.find((s) => s.step === 'map tokens')).toMatchObject({
+      status: 'complete',
+      detail: { applied: 1 },
+    });
+  });
+
   it('runs map tokens between generate components and apply push, with the extract session', async () => {
     const dir = await makeTempDir('orch-map-tokens-');
     const restoreDb = useTestDb(dir);

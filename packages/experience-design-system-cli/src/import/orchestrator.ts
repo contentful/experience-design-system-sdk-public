@@ -420,6 +420,7 @@ export async function runPipeline(
   }
 
   const mapTokensLabel = stepLabel('Mapping design tokens');
+  const hasGeneratedComponents = extractSessionId !== null && loadCDFComponents(db, extractSessionId).length > 0;
   if (opts.skipMapTokens) {
     progressWriter(`${mapTokensLabel}–  skipped (--skip-map-tokens)`);
     steps.push({
@@ -427,12 +428,13 @@ export async function runPipeline(
       status: 'skipped',
       reason: '--skip-map-tokens',
     });
-  } else if (!extractSessionId) {
-    progressWriter(`${mapTokensLabel}–  skipped (no extract session)`);
+  } else if (!extractSessionId || (opts.skipGenerate && !hasGeneratedComponents)) {
+    const reason = extractSessionId ? 'no generated components' : 'no extract session';
+    progressWriter(`${mapTokensLabel}–  skipped (${reason})`);
     steps.push({
       step: 'map tokens',
       status: 'skipped',
-      reason: 'no extract session',
+      reason,
     });
   } else {
     const mapTokensArgs = ['map', 'tokens', '--session', extractSessionId, '--agent', opts.agent];
