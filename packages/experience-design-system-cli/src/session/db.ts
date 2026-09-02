@@ -1645,8 +1645,10 @@ export function storeCDFComponents(
             deleteAllowedValues.run(sessionId, componentId, propName);
             prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
           }
-          if (prop['$token.allowed'] !== undefined) {
-            writeTokenPaths(componentId, propName, 'allowed', prop['$token.allowed']);
+          if (prop.$type === 'token' && prop.$category === 'design') {
+            // Reconcile the persisted mapping even when the property omits
+            // the field: omission is the dismiss/unrestricted state.
+            writeTokenPaths(componentId, propName, 'allowed', prop['$token.allowed'] ?? []);
           }
         }
 
@@ -1701,8 +1703,8 @@ export function storeCDFComponents(
           if (prop.$values && prop.$values.length > 0) {
             prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
           }
-          if (prop['$token.allowed'] !== undefined) {
-            writeTokenPaths(componentId, propName, 'allowed', prop['$token.allowed']);
+          if (prop.$type === 'token' && prop.$category === 'design') {
+            writeTokenPaths(componentId, propName, 'allowed', prop['$token.allowed'] ?? []);
           }
         }
 

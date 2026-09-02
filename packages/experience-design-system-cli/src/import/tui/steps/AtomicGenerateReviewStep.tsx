@@ -149,7 +149,7 @@ export function AtomicGenerateReviewStep({
   const [panelScrollOffset, setPanelScrollOffset] = useState(0);
   const [textEntryActive, setTextEntryActive] = useState(false);
   const [componentRationale, setComponentRationale] = useState<ComponentRationale | null>(null);
-  // Token review panel (INTEG-4779): per-prop pending/accepted decision state,
+  // Token review panel: per-prop pending/accepted decision state,
   // scoped to this review session only — mirrors component-level accept/reject,
   // which also never persists mid-review. Reset whenever the selected
   // component changes so a fresh component starts with everything pending.
@@ -163,7 +163,6 @@ export function AtomicGenerateReviewStep({
   // (or navigating away, via the reset effect below) discards any pending undo.
   const [lastDismissed, setLastDismissed] = useState<{
     propName: string;
-    sets: string[];
     allowed: string[];
     decision: TokenReviewDecision;
   } | null>(null);
@@ -465,14 +464,14 @@ export function AtomicGenerateReviewStep({
     return current ? collectTokenSuggestions(current.entry) : [];
   };
 
-  const persistTokenFields = (propName: string, fields: { sets?: string[]; allowed?: string[] }): void => {
+  const persistTokenFields = (propName: string, allowed: string[] | undefined): void => {
     const current = components[selectedIdx];
     if (!current) return;
     const prop = current.entry.$properties[propName];
     if (!prop) return;
     const nextProp = { ...prop };
-    if (fields.sets !== undefined) nextProp['$token.sets'] = fields.sets;
-    if (fields.allowed !== undefined) nextProp['$token.allowed'] = fields.allowed;
+    if (allowed === undefined) delete nextProp['$token.allowed'];
+    else nextProp['$token.allowed'] = allowed;
     const nextEntry: CDFComponentEntry = {
       ...current.entry,
       $properties: { ...current.entry.$properties, [propName]: nextProp },
@@ -492,18 +491,17 @@ export function AtomicGenerateReviewStep({
   };
 
   const handleTokenAccept = (s: TokenPropSuggestion): void => {
-    persistTokenFields(s.propName, { sets: s.sets, allowed: s.allowed });
+    persistTokenFields(s.propName, s.allowed);
     setTokenReviewDecisions((prev) => ({ ...prev, [s.propName]: 'accepted' }));
   };
 
   const handleTokenDismiss = (s: TokenPropSuggestion): void => {
     setLastDismissed({
       propName: s.propName,
-      sets: s.sets,
       allowed: s.allowed,
       decision: tokenReviewDecisions[s.propName] ?? 'pending',
     });
-    persistTokenFields(s.propName, { sets: [], allowed: [] });
+    persistTokenFields(s.propName, undefined);
     setTokenReviewDecisions((prev) => {
       const next = { ...prev };
       delete next[s.propName];
@@ -513,14 +511,15 @@ export function AtomicGenerateReviewStep({
 
   const handleTokenUndoDismiss = (): void => {
     if (!lastDismissed) return;
-    persistTokenFields(lastDismissed.propName, { sets: lastDismissed.sets, allowed: lastDismissed.allowed });
+    persistTokenFields(lastDismissed.propName, lastDismissed.allowed);
     setTokenReviewDecisions((prev) => ({ ...prev, [lastDismissed.propName]: lastDismissed.decision }));
     setLastDismissed(null);
   };
 
   const handleTokenEditSave = (s: TokenPropSuggestion): void => {
-    const allowed = s.sets.filter((p) => tokenReviewEditSelection.has(p));
-    persistTokenFields(s.propName, { allowed });
+    const allowed = s.paths.filter((p) => tokenReviewEditSelection.has(p));
+    if (allowed.length === 0) return;
+    persistTokenFields(s.propName, allowed);
     setTokenReviewDecisions((prev) => ({ ...prev, [s.propName]: 'accepted' }));
     setTokenReviewEditing(false);
   };
@@ -593,7 +592,7 @@ export function AtomicGenerateReviewStep({
       return;
     }
 
-    // Token review panel (INTEG-4779): needs its own keymap branch, entered
+    // Token review panel needs its own keymap branch, entered
     // before the generic `panelOpen !== 'none'` scroll/toggle block below,
     // since that block's Esc/toggle logic doesn't know about edit sub-mode
     // or accept/dismiss.
@@ -608,13 +607,14 @@ export function AtomicGenerateReviewStep({
             return;
           }
           if (key.downArrow || input === 'j') {
-            setTokenReviewEditCursor((c) => Math.min(row.sets.length - 1, c + 1));
+            setTokenReviewEditCursor((c) => Math.min(row.paths.length - 1, c + 1));
             return;
           }
           if (input === ' ' || key.return) {
-            const path = row.sets[tokenReviewEditCursor];
+            const path = row.paths[tokenReviewEditCursor];
             setTokenReviewEditSelection((prev) => {
               const next = new Set(prev);
+              if (next.has(path) && next.size === 1) return next;
               if (next.has(path)) next.delete(path);
               else next.add(path);
               return next;

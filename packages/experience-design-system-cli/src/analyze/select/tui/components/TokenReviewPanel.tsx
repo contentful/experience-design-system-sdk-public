@@ -5,22 +5,24 @@ import { PALETTE } from '../theme.js';
 
 export type TokenPropSuggestion = {
   propName: string;
-  sets: string[];
+  paths: string[];
   allowed: string[];
 };
 
 /**
- * Design-token props on `entry` that carry a $token.sets suggestion to review.
- * A prop with cdf_type 'token' but no $token.sets yet (map tokens hasn't run,
- * or found nothing to suggest) is excluded — there is nothing to review.
+ * Design-token props on `entry` that carry a non-empty $token.allowed
+ * suggestion to review. The initial allowed list is the editable candidate
+ * list; once it is narrowed or dismissed, the prop is no longer a suggestion.
  */
 export function collectTokenSuggestions(entry: CDFComponentEntry): TokenPropSuggestion[] {
   return Object.entries(entry.$properties)
-    .filter(([, def]) => def.$type === 'token' && def.$category === 'design' && (def['$token.sets']?.length ?? 0) > 0)
+    .filter(
+      ([, def]) => def.$type === 'token' && def.$category === 'design' && (def['$token.allowed']?.length ?? 0) > 0,
+    )
     .map(([propName, def]) => ({
       propName,
-      sets: def['$token.sets'] ?? [],
-      allowed: def['$token.allowed'] ?? [],
+      paths: def['$token.allowed'] ?? [],
+      allowed: [...(def['$token.allowed'] ?? [])],
     }));
 }
 
@@ -66,9 +68,9 @@ export function TokenReviewPanel({
         borderColor={active ? PALETTE.inverse : undefined}
       >
         <Text bold dimColor={!active}>{`TOKEN REVIEW — ${componentName} · ${current.propName} (edit allowed)`}</Text>
-        <Text dimColor>{'restriction must come from $token.sets — select which paths are allowed'}</Text>
+        <Text dimColor>{'select which suggested paths remain allowed'}</Text>
         <Text> </Text>
-        {current.sets.map((path, i) => {
+        {current.paths.map((path, i) => {
           const checked = editSelection.has(path);
           const focused = i === editCursor;
           return (
@@ -105,8 +107,8 @@ export function TokenReviewPanel({
                 {`${decision === 'accepted' ? '✓' : '○'} ${s.propName}`}
               </Text>
             </Box>
-            <Text dimColor>{`  set: ${s.sets.join(', ')}`}</Text>
-            <Text dimColor>{`  allowed: ${s.allowed.length > 0 ? s.allowed.join(', ') : '(none)'}`}</Text>
+            <Text dimColor>{`  suggested: ${s.paths.join(', ')}`}</Text>
+            <Text dimColor>{`  allowed: ${s.allowed.join(', ')}`}</Text>
           </Box>
         );
       })}

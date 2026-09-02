@@ -1,6 +1,9 @@
 import { render } from 'ink-testing-library';
 import { describe, it, expect } from 'vitest';
-import { collectTokenSuggestions, TokenReviewPanel } from '../../../../../src/analyze/select/tui/components/TokenReviewPanel.js';
+import {
+  collectTokenSuggestions,
+  TokenReviewPanel,
+} from '../../../../../src/analyze/select/tui/components/TokenReviewPanel.js';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 
 const ENTRY: CDFComponentEntry = {
@@ -10,8 +13,7 @@ const ENTRY: CDFComponentEntry = {
       $type: 'token',
       $category: 'design',
       '$token.kind': 'color',
-      '$token.sets': ['colors.surface.default', 'colors.surface.raised'],
-      '$token.allowed': ['colors.surface.default'],
+      '$token.allowed': ['colors.surface.default', 'colors.surface.raised'],
     },
     label: { $type: 'string', $category: 'content' },
     borderColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
@@ -19,32 +21,40 @@ const ENTRY: CDFComponentEntry = {
 };
 
 describe('collectTokenSuggestions', () => {
-  it('returns only design-token props that carry a $token.sets suggestion', () => {
+  it('returns only design-token props that carry a non-empty $token.allowed suggestion', () => {
     expect(collectTokenSuggestions(ENTRY)).toEqual([
-      { propName: 'bgColor', sets: ['colors.surface.default', 'colors.surface.raised'], allowed: ['colors.surface.default'] },
+      {
+        propName: 'bgColor',
+        paths: ['colors.surface.default', 'colors.surface.raised'],
+        allowed: ['colors.surface.default', 'colors.surface.raised'],
+      },
     ]);
   });
 
-  it('excludes design-token props with no $token.sets (nothing suggested yet)', () => {
+  it('excludes design-token props with no $token.allowed (nothing suggested yet)', () => {
     const only = collectTokenSuggestions(ENTRY);
     expect(only.find((s) => s.propName === 'borderColor')).toBeUndefined();
   });
 
-  it('defaults allowed to an empty array when $token.allowed is absent', () => {
+  it('excludes a token prop when $token.allowed is absent', () => {
     const entry: CDFComponentEntry = {
       $type: 'component',
       $properties: {
-        fg: { $type: 'token', $category: 'design', '$token.sets': ['colors.text.default'] },
+        fg: { $type: 'token', $category: 'design' },
       },
     };
-    expect(collectTokenSuggestions(entry)).toEqual([{ propName: 'fg', sets: ['colors.text.default'], allowed: [] }]);
+    expect(collectTokenSuggestions(entry)).toEqual([]);
   });
 });
 
 describe('TokenReviewPanel — list mode', () => {
   const suggestions = [
-    { propName: 'bgColor', sets: ['colors.surface.default', 'colors.surface.raised'], allowed: ['colors.surface.default'] },
-    { propName: 'textColor', sets: ['colors.text.default'], allowed: [] },
+    {
+      propName: 'bgColor',
+      paths: ['colors.surface.default', 'colors.surface.raised'],
+      allowed: ['colors.surface.default'],
+    },
+    { propName: 'textColor', paths: ['colors.text.default'], allowed: ['colors.text.default'] },
   ];
 
   it('renders header with component name and one row per suggestion', () => {
@@ -154,10 +164,14 @@ describe('TokenReviewPanel — list mode', () => {
 
 describe('TokenReviewPanel — edit mode', () => {
   const suggestions = [
-    { propName: 'bgColor', sets: ['colors.surface.default', 'colors.surface.raised', 'colors.brand.primary'], allowed: ['colors.surface.default'] },
+    {
+      propName: 'bgColor',
+      paths: ['colors.surface.default', 'colors.surface.raised', 'colors.brand.primary'],
+      allowed: ['colors.surface.default'],
+    },
   ];
 
-  it('renders every path in $token.sets as a checkbox row, checked iff in editSelection', () => {
+  it('renders every suggested path as a checkbox row, checked iff in editSelection', () => {
     const { lastFrame } = render(
       <TokenReviewPanel
         componentName="Card"

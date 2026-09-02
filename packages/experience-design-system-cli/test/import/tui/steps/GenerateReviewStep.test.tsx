@@ -15,15 +15,13 @@ const SAMPLE_ENTRY = {
       $type: 'token' as const,
       $category: 'design' as const,
       '$token.kind': 'color',
-      '$token.sets': ['colors.surface.default', 'colors.surface.raised'],
-      '$token.allowed': ['colors.surface.default'],
+      '$token.allowed': ['colors.surface.default', 'colors.surface.raised'],
     },
     borderColor: {
       $type: 'token' as const,
       $category: 'design' as const,
       '$token.kind': 'color',
-      '$token.sets': ['colors.border.subtle', 'colors.border.strong'],
-      '$token.allowed': ['colors.border.subtle'],
+      '$token.allowed': ['colors.border.subtle', 'colors.border.strong'],
     },
   },
 };
@@ -4679,7 +4677,7 @@ describe('GenerateReviewStep — token review actions', () => {
     hookReturnOverride = null;
   });
 
-  it('accept persists $token.sets/$token.allowed via storeCDFComponents and triggers live preview', async () => {
+  it('accept persists $token.allowed unchanged via storeCDFComponents and triggers live preview', async () => {
     const dbModule = await import('../../../../src/session/db.js');
     const { stdin, lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
@@ -4694,11 +4692,10 @@ describe('GenerateReviewStep — token review actions', () => {
     expect(triggerSpy).toHaveBeenCalled();
     const lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
     const entry = lastCall![2][0].entry;
-    expect(entry.$properties.bgColor['$token.sets']).toEqual(['colors.surface.default', 'colors.surface.raised']);
-    expect(entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default']);
+    expect(entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default', 'colors.surface.raised']);
   });
 
-  it('dismiss clears both fields and does not affect other props', async () => {
+  it('dismiss omits $token.allowed and does not affect other props', async () => {
     const dbModule = await import('../../../../src/session/db.js');
     const { stdin, lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
@@ -4713,13 +4710,11 @@ describe('GenerateReviewStep — token review actions', () => {
     expect(frame).toContain('borderColor');
     const lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
     const entry = lastCall![2][0].entry;
-    expect(entry.$properties.bgColor['$token.sets']).toEqual([]);
-    expect(entry.$properties.bgColor['$token.allowed']).toEqual([]);
-    expect(entry.$properties.borderColor['$token.sets']).toEqual(['colors.border.subtle', 'colors.border.strong']);
-    expect(entry.$properties.borderColor['$token.allowed']).toEqual(['colors.border.subtle']);
+    expect(entry.$properties.bgColor).not.toHaveProperty('$token.allowed');
+    expect(entry.$properties.borderColor['$token.allowed']).toEqual(['colors.border.subtle', 'colors.border.strong']);
   });
 
-  it('edit constrains selection to paths already in $token.sets, then Ctrl+S persists the narrowed allowed list', async () => {
+  it('edit narrows the suggested paths, then Ctrl+S persists the narrowed allowed list', async () => {
     const dbModule = await import('../../../../src/session/db.js');
     const { stdin, lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
@@ -4734,7 +4729,7 @@ describe('GenerateReviewStep — token review actions', () => {
     expect(frame).toContain('colors.surface.raised');
     stdin.write('j'); // move to colors.surface.raised
     await tick();
-    stdin.write(' '); // toggle it into the allowed selection
+    stdin.write(' '); // remove it from the allowed selection
     await tick();
     stdin.write('\x13'); // Ctrl+S
     await tick();
@@ -4742,16 +4737,10 @@ describe('GenerateReviewStep — token review actions', () => {
     expect(frame).toMatch(/✓ bgColor/);
     const lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
     const entry = lastCall![2][0].entry;
-    // Starts with editSelection = {colors.surface.default} (from $token.allowed);
-    // toggling colors.surface.raised on adds it rather than replacing it, so the
-    // saved allowed list ends up with both paths.
-    expect(entry.$properties.bgColor['$token.allowed']).toEqual([
-      'colors.surface.default',
-      'colors.surface.raised',
-    ]);
+    expect(entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default']);
   });
 
-  it('[u] restores a dismissed prop\'s pre-dismiss $token.sets/$token.allowed', async () => {
+  it("[u] restores a dismissed prop's pre-dismiss $token.allowed", async () => {
     const dbModule = await import('../../../../src/session/db.js');
     const { stdin, lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
@@ -4769,8 +4758,7 @@ describe('GenerateReviewStep — token review actions', () => {
     expect(frame).not.toMatch(/\[u\] undo/); // single-slot memory consumed by the undo
     const lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
     const entry = lastCall![2][0].entry;
-    expect(entry.$properties.bgColor['$token.sets']).toEqual(['colors.surface.default', 'colors.surface.raised']);
-    expect(entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default']);
+    expect(entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default', 'colors.surface.raised']);
   });
 
   it('[u] does nothing when nothing has been dismissed', async () => {
