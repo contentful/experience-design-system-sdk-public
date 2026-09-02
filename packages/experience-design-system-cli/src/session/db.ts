@@ -265,9 +265,6 @@ function applyDbMigrations(db: DatabaseSync): void {
     | { sql: string }
     | undefined;
   if (rawPropsDdl && !rawPropsDdl.sql.includes(`'unattached'`)) {
-    // raw_prop_allowed_values references raw_props with ON DELETE CASCADE.
-    // Disable enforcement before replacing the parent table so those rows
-    // survive the temporary DROP TABLE and resolve again after the rename.
     db.exec('PRAGMA foreign_keys = OFF');
     try {
       db.exec('BEGIN');
@@ -308,9 +305,6 @@ function applyDbMigrations(db: DatabaseSync): void {
         ALTER TABLE raw_props__new RENAME TO raw_props;
         CREATE INDEX IF NOT EXISTS idx_raw_props_session ON raw_props(session_id, component_id);
 
-        -- Rows written by a pre-migration exclude_prop still say cdf_type = 'excluded'
-        -- with cdf_category = NULL. Backfill them into the new unattached shape so an
-        -- in-flight local session doesn't end up with an unprintable half-migrated row.
         UPDATE raw_props
         SET cdf_category = 'unattached',
             cdf_type = CASE WHEN type = 'boolean' THEN 'boolean' ELSE 'string' END,

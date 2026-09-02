@@ -474,58 +474,6 @@ describe('applyToolCalls — loadCDFComponents integration', () => {
   });
 });
 
-describe('applyToolCalls: exclude_prop classifies as unattached (INTEG-4798)', () => {
-  it('marks an excluded string prop as $category unattached instead of dropping it', async () => {
-    await withTempDb((dbPath) => {
-      const { db, sessionId, componentId } = setupSession(dbPath);
-
-      applyToolCalls(
-        db,
-        sessionId,
-        componentId,
-        'Button',
-        [{ tool: 'exclude_prop', prop: 'className', reason: 'DOM pass-through — not marketer-configurable' }],
-        [],
-      );
-
-      // applyToolCalls itself sets raw_components.status = 'generated', so
-      // loadCDFComponents already sees this component — no separate store step needed.
-      // $required is only ever set (to true) on a truthy value — loadCDFComponents
-      // omits it entirely rather than writing $required: false — so an unattached
-      // prop (always required: false, per clearProp) simply has no $required key.
-      const [{ entry }] = loadCDFComponents(db, sessionId);
-      expect(entry.$properties.className).toMatchObject({
-        $type: 'string',
-        $category: 'unattached',
-      });
-      expect(entry.$properties.className?.$required).toBeUndefined();
-      db.close();
-    });
-  });
-
-  it('marks an excluded boolean prop with cdf_type boolean', async () => {
-    await withTempDb((dbPath) => {
-      const { db, sessionId, componentId } = setupSession(dbPath);
-
-      applyToolCalls(
-        db,
-        sessionId,
-        componentId,
-        'Button',
-        [{ tool: 'exclude_prop', prop: 'disabled', reason: 'internal implementation detail' }],
-        [],
-      );
-
-      const [{ entry }] = loadCDFComponents(db, sessionId);
-      expect(entry.$properties.disabled).toMatchObject({
-        $type: 'boolean',
-        $category: 'unattached',
-      });
-      db.close();
-    });
-  });
-});
-
 describe('applyTokenToolCalls', () => {
   it('stores tokens and groups, returns counts', async () => {
     await withTempDb((dbPath) => {

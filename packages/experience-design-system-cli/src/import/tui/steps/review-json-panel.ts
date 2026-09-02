@@ -7,12 +7,6 @@ type ReviewJsonComponent = {
 
 const HIDDEN_PROP_CATEGORIES = new Set(['state', 'unattached']);
 
-/**
- * Builds the exact JSON string rendered by the read-only review panel.
- *
- * The FieldEditor intentionally continues to use the unfiltered component
- * definition so toggling the panel never changes what an operator can save.
- */
 export function getReviewJsonPanelValue(selected: ReviewJsonComponent | null, showHiddenProps: boolean): string {
   if (!selected) return '';
 

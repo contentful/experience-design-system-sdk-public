@@ -581,9 +581,7 @@ export function AtomicGenerateReviewStep({
       return;
     }
 
-    // JSON view + panel focused: own j/k/arrows/PageUp/PageDown/Ctrl+u/d/gg/G
-    // for scrolling. Compute from the same filtered value passed to JsonPanel
-    // so the viewport math matches what the operator sees.
+    // JSON view + panel focused: own j/k/arrows/PageUp/PageDown/Ctrl+u/d/gg/G for scrolling.
     if (!sidebarFocused && showJson) {
       const current = components[selectedIdx];
       const currentJson = getReviewJsonPanelValue(current ?? null, showHiddenProps);
@@ -714,8 +712,6 @@ export function AtomicGenerateReviewStep({
 
   const selected = components[selectedIdx] ?? null;
   const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
-  // This display-only projection leaves the FieldEditor on selectedJson, so
-  // switching the panel view never drops hidden properties from manual edits.
   const visibleJsonPanelValue = getReviewJsonPanelValue(selected, showHiddenProps);
 
   // A component with zero classified $properties is a real defensibility issue —

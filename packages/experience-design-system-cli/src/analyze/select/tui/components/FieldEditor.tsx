@@ -51,7 +51,6 @@ type FieldEditorProps = {
   onDirtyChange?: (isDirty: boolean) => void;
   discardTrigger?: number;
   initialFocusTarget?: { kind: 'prop' | 'slot'; name: string };
-  /** Hide non-importable property categories from the form without removing them from its saved state. */
   showHiddenProps?: boolean;
 };
 

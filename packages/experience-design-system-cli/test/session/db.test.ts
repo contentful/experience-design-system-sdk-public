@@ -50,15 +50,6 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
-// Every real openPipelineDb() call already runs the raw_props "unattached" migration
-// (it's triggered by inspecting sqlite_master's stored DDL for the table, not by a
-// database-version flag), so a brand-new temp db is migrated during its very first
-// open. To exercise the migration against genuine pre-existing data — the scenario
-// that matters for a developer's persistent ~/.contentful pipeline.db — tests seed
-// data through the normal migrated schema, then use this helper to rebuild raw_props
-// back under the old 3-value cdf_category CHECK (mirroring the production migration's
-// own rebuild idiom, just inverted), before closing and reopening via openPipelineDb
-// to trigger the real migration against that legacy-shaped data.
 function rebuildRawPropsWithoutUnattached(db: ReturnType<typeof openPipelineDb>): void {
   db.exec('PRAGMA foreign_keys = OFF');
   try {
@@ -301,13 +292,11 @@ describe('openPipelineDb', () => {
         )
         .run(sessionId, componentId);
 
-      // Simulate a database created before this migration shipped.
       rebuildRawPropsWithoutUnattached(initial);
       initial.close();
 
       const migrated = openPipelineDb(dbPath);
 
-      // The new value is now legal.
       expect(() =>
         migrated
           .prepare(
@@ -316,13 +305,11 @@ describe('openPipelineDb', () => {
           .run(sessionId, componentId),
       ).not.toThrow();
 
-      // A row written before the migration under the old constraint survived the rebuild.
       const row = migrated
         .prepare(`SELECT cdf_type FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`)
         .get(sessionId, componentId) as { cdf_type: string };
       expect(row.cdf_type).toBe('string');
 
-      // A dependent value list must also survive replacing its parent table.
       const allowedValues = migrated
         .prepare(
           `SELECT value FROM raw_prop_allowed_values
@@ -331,7 +318,6 @@ describe('openPipelineDb', () => {
         .all(sessionId, componentId, 'bgColor') as Array<{ value: string }>;
       expect(allowedValues.map(({ value }) => value)).toEqual(['light', 'dark']);
 
-      // Foreign keys into raw_props still resolve after the table rebuild.
       const fkCheck = migrated.prepare('PRAGMA foreign_key_check').all();
       expect(fkCheck).toHaveLength(0);
 
@@ -361,7 +347,6 @@ describe('openPipelineDb', () => {
         .run(sessionId, componentId);
       db1.close();
 
-      // Reopening an already-migrated database must not re-run the rebuild or lose data.
       const db2 = openPipelineDb(dbPath);
       const row = db2
         .prepare(
@@ -393,8 +378,6 @@ describe('openPipelineDb', () => {
         },
       ]);
       const componentId = loadRawComponents(initial, sessionId)[0]!.component_id;
-      // Simulate rows left over from before this migration by a dev's in-flight session:
-      // clearProp used to write cdf_type = 'excluded', cdf_category = NULL.
       initial
         .prepare(
           `UPDATE raw_props SET cdf_type = 'excluded', cdf_category = NULL, rationale = 'event handler'

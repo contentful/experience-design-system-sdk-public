@@ -1598,8 +1598,6 @@ export function GenerateReviewStep({
 
   const selected = components[selectedIdx] ?? null;
   const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
-  // This display-only projection leaves the FieldEditor on selectedJson, so
-  // switching the panel view never drops hidden properties from manual edits.
   const visibleJsonPanelValue = getReviewJsonPanelValue(selected, showHiddenProps);
 
   const isEmpty = (c: CdfReviewEntry): boolean =>
