@@ -341,25 +341,13 @@ Rules:
 - Valid cdf_category values: content, design, state
 - For enum type, always include \`values\` (non-empty string array of the variant names the prop accepts).
 - For token type, always include \`token_kind\` (DTCG \$type, e.g. "color"). **Never emit \`values\` for \`cdf_type: "token"\` props** — an enum prop's list holds variant names; a token prop's list holds design token paths, produced separately and never by you. Emitting \`values\` on a token prop makes the definition invalid.
-- Named visual variants (primary/secondary/sm/lg) → enum with "values", even when each name maps 1:1 to a design token inside the component's own styles. The component consumes the name; a resolved token value would match no branch.
-- Cardinality is the tell: one token target is evidence the prop IS the token (→ token, no friendly vocabulary of its own — padding/gap/backgroundColor on layout primitives). Many distinct token targets means the prop SELECTS among tokens by name (→ enum).
 - Never emit both "values" and "token_kind" on one prop.
 - href and URL props → cdf_type "string", cdf_category "content". Do NOT use cdf_type "link" — it is not valid.
 - Framework internals (ref, event handlers, test IDs) → exclude_prop.
 - CSS design props (className, style, styles, positional/geometric props: top, bottom, left, right, rotation, offset, etc.) → classify_prop, cdf_type: "string", cdf_category: "design".
 - On classify_component, "rationale" fields are operator-facing (read-only) but may surface in customer-facing exports. The "rationale.description" field is subject to the description content rules in the skill prompt (no internal initiative names). "rationale.props" and "rationale.slots" describe your reasoning about scope; "classify_slot.rationale" explains why each slot was kept.
 - On classify_prop, "reason" is REQUIRED and is the LLM's internal rationale — shown to the developer reviewing the import, never to end-users. "description" is the customer-facing copy and is subject to the description content rules in the skill prompt. Keep them distinct: "description" is short and customer-facing; "reason" explains your reasoning in detail.
-- You may emit prose lines (not starting with {) anywhere — they are ignored by the parser and serve as your reasoning log.
-
-## \`enum\` versus \`token\`
-
-Both describe a closed set of choices, but the *contents* differ:
-- **enum**: The list holds *variant names* the component accepts (e.g., \`["primary", "secondary", "ghost"]\`). Emit \`values\` with these names.
-- **token**: The list holds *design token paths* the prop may bind to (e.g., \`["color.brand.primary", "color.brand.neutral"]\`). This list is produced separately — never by you. Do not include \`values\` for \`cdf_type: "token"\` props.
-
-A prop is token-backed when its values resolve, through the component's own code, to entries in the design system's token document — e.g., a \`Record<Variant, Token>\` map, a \`switch\` returning \`tokens.*\`, or a \`var(--…)\` custom property. The prop still *accepts* variant names; what makes it token-backed is what those names *resolve to*.
-
-When evidence is absent, prefer \`enum\` and note that in your "reason" field.`;
+- You may emit prose lines (not starting with {) anywhere — they are ignored by the parser and serve as your reasoning log.`;
 }
 
 function buildSelectAutonomousPreamble(inputBlock: string): string {
