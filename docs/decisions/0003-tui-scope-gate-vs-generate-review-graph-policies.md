@@ -8,6 +8,8 @@ Revised 2026-07-15: added the `compositionMode` axis (`composite | atomic`, defa
 
 Revised 2026-08-11: the resolution precedence has since grown a step. An explicit `--atomic` flag was added for symmetry with `--composite`, and passing any composition-source option (`--composition-map`, `--composition-agent`, `--composition-refresh`, `--generate-map`) now implies composite without a separate `--composite` flag. Current precedence is `explicit flag > implied composition-source option > env > persisted config > default`, with `--atomic` winning over an implied source if both are present. See `lib/composition-mode.ts`. This does not change the composite/atomic behavior matrix below — only how the mode is selected.
 
+Revised 2026-09-02: import now conditionally runs `map tokens` after component generation and before final review. The phase appears only when the generated session contains design-category token properties and a token universe; `--skip-map-tokens` bypasses it. Mapping persists only `$token.allowed` restrictions in the generated-component session, so final review and `--modify` operate on the same state.
+
 ## Date
 
 2026-07-10 (revised 2026-07-15)
@@ -31,6 +33,8 @@ In `composite` mode the DSI TUI runs two review screens against the same slot-de
 
 - **ScopeGateStep** — pre-generation. User is scoping WHICH components to send to AI generation. Read-only source. Cycles are EXPECTED — sending cyclic components to generate is how the user gets them fixed.
 - **GenerateReviewStep** — post-generation. User is reviewing / editing AI-generated CDF definitions before push. Full editor. Cycles MUST be resolved (edit or reject) before push — the API rejects cyclic manifests.
+
+The import pipeline places token mapping between generation and GenerateReview. It is not a separate review gate: it adds advisory `$token.allowed` restrictions to generated design-token properties before the operator sees the final editor. When the run has no mappable properties or no tokens, the phase is skipped and the ScopeGate → GenerateReview behavior remains unchanged.
 
 Over time this divergence has been implemented as scattered rules across four files (`selection-cascade.ts`, `scope-gate-cascade.ts`, `GenerateReviewStep.tsx`, `ScopeGateStep.tsx`) plus a fourth graph re-derivation inside `GroupedSidebar.tsx.itemsToGraph`. Each place independently decides what to filter, what to cascade, and how to interpret component state. This has produced:
 

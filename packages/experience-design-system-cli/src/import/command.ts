@@ -416,6 +416,7 @@ export function registerImportCommand(program: Command): void {
             generateMap?: string;
             promptOverrides?: string[];
             noCache?: boolean;
+            skipMapTokens?: boolean;
             autoFilter?: boolean;
             livePreview?: boolean;
             noPush?: boolean;
@@ -479,6 +480,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.generateMap ? { generateMap: opts.generateMap } : {}),
               ...(opts.prompt && opts.prompt.length > 0 ? { promptOverrides: opts.prompt } : {}),
               noCache: opts.cache === false,
+              skipMapTokens: opts.skipMapTokens ?? false,
               autoFilter: resolveAutoFilter({ autoFilter: opts.autoFilter }, creds.autoFilter),
               livePreview: opts.livePreview !== false,
               noPush: noPushRequested,

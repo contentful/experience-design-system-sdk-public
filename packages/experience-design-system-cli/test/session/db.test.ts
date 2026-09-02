@@ -2824,6 +2824,45 @@ describe('generation cache', () => {
     });
   });
 
+  it('makes a distinct token session available to a generated component session', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId: tokenSession } = getOrCreateSession(db, 'new', undefined, { command: 'generate tokens' });
+      storeDTCGTokens(db, tokenSession, [], [{ path: 'color.primary', $type: 'color', $value: '#ff0000' }]);
+
+      const { sessionId: componentSession } = getOrCreateSession(db, 'new', undefined, {
+        command: 'generate components',
+      });
+      storeRawComponents(db, componentSession, [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [{ name: 'color', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      storeCDFComponents(db, componentSession, [
+        {
+          key: 'Card',
+          entry: {
+            $type: 'component',
+            $properties: {
+              color: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+            },
+          },
+        },
+      ]);
+
+      expect(countRawTokens(db, componentSession)).toBe(0);
+      copyTokensFromCache(db, tokenSession, componentSession);
+      expect(countMappableTokenProps(db, componentSession)).toBe(1);
+      expect(countRawTokens(db, componentSession)).toBe(1);
+      expect(loadDTCGTokens(db, componentSession).tokens[0]?.path).toBe('color.primary');
+      db.close();
+    });
+  });
+
   it('migrates generation_cache to allow entity_type "token_mapping" on pre-existing databases, preserving rows', async () => {
     await withTempDb((dbPath) => {
       const initial = openPipelineDb(dbPath);

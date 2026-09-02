@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildGenerateComponentsArgs } from '../../../src/import/tui/WizardApp.js';
+import {
+  buildGenerateComponentsArgs,
+  buildMapTokensArgs,
+  shouldRunMapTokens,
+} from '../../../src/import/tui/WizardApp.js';
 
 describe('wizard generate-components cache', () => {
   it('defaults to cache-on (no --no-cache flag)', () => {
@@ -44,5 +48,35 @@ describe('wizard generate-components cache', () => {
     });
     expect(explicit).not.toContain('--no-cache');
     expect(omitted).not.toContain('--no-cache');
+  });
+});
+
+describe('wizard map-tokens step', () => {
+  it('builds the map tokens command with the generated session and agent', () => {
+    expect(
+      buildMapTokensArgs({
+        sessionId: 'generated-session',
+        agent: 'claude',
+        model: 'model-a',
+        noCache: true,
+      }),
+    ).toEqual([
+      'map',
+      'tokens',
+      '--session',
+      'generated-session',
+      '--agent',
+      'claude',
+      '--model',
+      'model-a',
+      '--no-cache',
+    ]);
+  });
+
+  it('requires both mappable props and raw tokens before invoking the agent', () => {
+    expect(shouldRunMapTokens({ mappablePropCount: 1, rawTokenCount: 1 })).toBe(true);
+    expect(shouldRunMapTokens({ mappablePropCount: 0, rawTokenCount: 1 })).toBe(false);
+    expect(shouldRunMapTokens({ mappablePropCount: 1, rawTokenCount: 0 })).toBe(false);
+    expect(shouldRunMapTokens({ mappablePropCount: 0, rawTokenCount: 0 })).toBe(false);
   });
 });
