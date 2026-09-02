@@ -60,6 +60,52 @@ async function navigateToValuesField(stdin: { write: (data: string) => void }): 
 }
 
 describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
+  it('hides state and unattached props without removing them from a visible-prop save', async () => {
+    const value = JSON.stringify({
+      Button: {
+        $type: 'component',
+        $properties: {
+          label: { $type: 'string', $category: 'content' },
+          isDisabled: { $type: 'boolean', $category: 'state' },
+          className: { $type: 'string', $category: 'unattached' },
+        },
+      },
+    });
+    const onChange = vi.fn();
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={value}
+        width={80}
+        height={20}
+        showHiddenProps={false}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+
+    expect(lastFrame() ?? '').toContain('label');
+    expect(lastFrame() ?? '').not.toContain('isDisabled');
+    expect(lastFrame() ?? '').not.toContain('className');
+
+    stdin.write('\r');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('\x1b[B');
+    await tick();
+    stdin.write('X');
+    await tick();
+
+    const savedValue = onChange.mock.calls.at(-1)?.[0] as string;
+    expect(savedValue).toContain('isDisabled');
+    expect(savedValue).toContain('className');
+  });
+
   it('mounts at the row level with NO field auto-active', () => {
     const { lastFrame } = render(
       <FieldEditor

@@ -142,6 +142,23 @@ describe('AtomicGenerateReviewStep — hide state/unattached props from JSON pan
     expect(revealedFrame).toMatch(/className/);
   });
 
+  it('toggles state and unattached props in the FieldEditor with H', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Button', entry: CATEGORIZED_ENTRY }]);
+    const { lastFrame, stdin } = renderStep();
+    await tick();
+
+    expect(lastFrame() ?? '').toMatch(/FIELDS/);
+    expect(lastFrame() ?? '').not.toMatch(/isDisabled/);
+    expect(lastFrame() ?? '').not.toMatch(/className/);
+
+    stdin.write('H');
+    await tick();
+
+    expect(lastFrame() ?? '').toMatch(/isDisabled/);
+    expect(lastFrame() ?? '').toMatch(/className/);
+  });
+
   it('footer legend shows "show state/unattached" / "hide state/unattached" labels reflecting the H toggle', async () => {
     const dbMod = await import('../../../../src/session/db.js');
     vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Button', entry: CATEGORIZED_ENTRY }]);

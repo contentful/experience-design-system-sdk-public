@@ -2025,6 +2025,7 @@ export function GenerateReviewStep({
                         : selected.key
                     }
                     value={draftValue || selectedJson}
+                    showHiddenProps={showHiddenProps}
                     width={panelWidth}
                     height={PANEL_HEIGHT}
                     active={!sidebarFocused}

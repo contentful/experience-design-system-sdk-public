@@ -51,6 +51,8 @@ type FieldEditorProps = {
   onDirtyChange?: (isDirty: boolean) => void;
   discardTrigger?: number;
   initialFocusTarget?: { kind: 'prop' | 'slot'; name: string };
+  /** Hide non-importable property categories from the form without removing them from its saved state. */
+  showHiddenProps?: boolean;
 };
 
 type FocusLevel = 'section' | 'prop' | 'slot' | 'field' | 'componentDescription';
@@ -752,6 +754,7 @@ export function FieldEditor({
   onDirtyChange,
   discardTrigger,
   initialFocusTarget,
+  showHiddenProps = true,
 }: FieldEditorProps): React.ReactElement {
   const { state: initialState, error: parseError } = parseToState(value);
 
@@ -840,6 +843,14 @@ export function FieldEditor({
 
   const props = editorState.props;
   const slots = editorState.slots;
+  const visiblePropIndexes = React.useMemo(
+    () =>
+      props.flatMap((prop, index) =>
+        showHiddenProps || (prop.category !== 'state' && prop.category !== 'unattached') ? [index] : [],
+      ),
+    [props, showHiddenProps],
+  );
+  const visiblePropPosition = visiblePropIndexes.indexOf(propIdx);
 
   const textEntryActive =
     (focusLevel === 'field' && activeField === 'description') ||
@@ -853,6 +864,23 @@ export function FieldEditor({
 
   const currentProp = props[propIdx] ?? null;
   const currentSlot = slots[slotIdx] ?? null;
+
+  React.useEffect(() => {
+    if (showHiddenProps || inSlots || inComponentDesc || visiblePropPosition >= 0) return;
+
+    if (visiblePropIndexes.length > 0) {
+      setPropIdx(visiblePropIndexes[0]!);
+      return;
+    }
+    if (slots.length > 0) {
+      setInSlots(true);
+      setSlotIdx(0);
+      setFocusLevel('slot');
+      return;
+    }
+    setInComponentDesc(true);
+    setFocusLevel('componentDescription');
+  }, [inComponentDesc, inSlots, showHiddenProps, slots.length, visiblePropIndexes, visiblePropPosition]);
 
   const commit = (next: EditorState) => {
     setEditorState(next);
@@ -1102,8 +1130,8 @@ export function FieldEditor({
 
     if (focusLevel === 'prop') {
       if (key.upArrow || input === 'k') {
-        if (propIdx > 0) {
-          setPropIdx(propIdx - 1);
+        if (visiblePropPosition > 0) {
+          setPropIdx(visiblePropIndexes[visiblePropPosition - 1]!);
         } else {
           setFocusLevel('componentDescription');
           setInSlots(false);
@@ -1112,8 +1140,8 @@ export function FieldEditor({
         return;
       }
       if (key.downArrow || input === 'j') {
-        if (propIdx < props.length - 1) {
-          setPropIdx(propIdx + 1);
+        if (visiblePropPosition >= 0 && visiblePropPosition < visiblePropIndexes.length - 1) {
+          setPropIdx(visiblePropIndexes[visiblePropPosition + 1]!);
         } else if (slots.length > 0) {
           setInSlots(true);
           setSlotIdx(0);
@@ -1135,9 +1163,9 @@ export function FieldEditor({
         return;
       }
       if (key.downArrow || input === 'j') {
-        if (props.length > 0) {
+        if (visiblePropIndexes.length > 0) {
           setFocusLevel('prop');
-          setPropIdx(0);
+          setPropIdx(visiblePropIndexes[0]!);
           setInSlots(false);
           setInComponentDesc(false);
         } else if (slots.length > 0) {
@@ -1161,9 +1189,9 @@ export function FieldEditor({
       if (key.upArrow || input === 'k') {
         if (slotIdx > 0) {
           setSlotIdx(slotIdx - 1);
-        } else if (props.length > 0) {
+        } else if (visiblePropIndexes.length > 0) {
           setInSlots(false);
-          setPropIdx(props.length - 1);
+          setPropIdx(visiblePropIndexes[visiblePropIndexes.length - 1]!);
           setFocusLevel('prop');
         }
         return;
@@ -1596,9 +1624,9 @@ export function FieldEditor({
 
   const rows: Row[] = [];
   rows.push({ kind: 'component-description' });
-  if (props.length > 0) {
-    rows.push({ kind: 'header', label: `── PROPERTIES (${props.length}) `, section: 'properties' });
-    props.forEach((_, i) => rows.push({ kind: 'prop', idx: i }));
+  if (visiblePropIndexes.length > 0) {
+    rows.push({ kind: 'header', label: `── PROPERTIES (${visiblePropIndexes.length}) `, section: 'properties' });
+    visiblePropIndexes.forEach((idx) => rows.push({ kind: 'prop', idx }));
   }
   if (slots.length > 0) {
     rows.push({ kind: 'header', label: `── SLOTS (${slots.length}) `, section: 'slots' });
