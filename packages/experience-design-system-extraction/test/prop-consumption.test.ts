@@ -62,6 +62,43 @@ describe('isPropConsumed — bare shorthand forwarding', () => {
     expect(isPropConsumed('margin', file('function Box({ margin, padding }) { return null; }'))).toBe(true);
   });
 
+  it('finds defaulted bindings in a type-annotated arrow parameter', () => {
+    const text = `export const SkeletonImage = ({
+      // preserve the default when omitted
+      radiusX = tokens.borderRadiusSmall,
+      /* keep the second binding explicit */
+      radiusY = tokens.borderRadiusSmall,
+    }: Props): JSX.Element => null;`;
+    expect(findUnconsumedProps(['radiusX', 'radiusY'], file(text))).toEqual([]);
+  });
+
+  it('finds defaulted bindings in a type-annotated function parameter', () => {
+    const text = `function Box({ margin = tokens.spacingSmall }: Props) {
+      return null;
+    }`;
+    expect(findUnconsumedProps(['margin'], file(text))).toEqual([]);
+  });
+
+  it('does not treat nested default object keys as bindings', () => {
+    const text = 'const Box = ({ options = { margin: 0 } }: Props) => null;';
+    expect(findUnconsumedProps(['margin'], file(text))).toEqual(['margin']);
+  });
+
+  it('does not treat commented-out function signatures as bindings', () => {
+    const blockComment = '/* function Box({ margin = 0 }: Props) {} */';
+    const lineComment = '// const Box = ({ margin = 0 }: Props) => null;';
+    expect(isPropConsumed('margin', file(blockComment))).toBe(false);
+    expect(isPropConsumed('margin', file(lineComment))).toBe(false);
+  });
+
+  it('does not treat a declaration-only function signature as a binding', () => {
+    const text = `type Box = ({ margin = 0 }: Props) => void;
+      interface BoxComponent {
+        render({ margin = 0 }: Props): void;
+      }`;
+    expect(isPropConsumed('margin', file(text))).toBe(false);
+  });
+
   it('finds the prop forwarded on into a call', () => {
     expect(isPropConsumed('margin', file('getSpacingStyles({ margin, marginTop });'))).toBe(true);
   });

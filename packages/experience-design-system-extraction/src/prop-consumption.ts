@@ -1,3 +1,5 @@
+import ts from 'typescript';
+
 /**
  * Detects whether a design property is actually read by the component that
  * declares it.
@@ -62,6 +64,45 @@ function hasPropsDestructuring(name: string, text: string): boolean {
   return false;
 }
 
+/** Collect direct property names from executable function parameter patterns. */
+function getFunctionParameterBindings(text: string): Set<string> {
+  const sourceFile = ts.createSourceFile('prop-consumption.tsx', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const bindings = new Set<string>();
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isFunctionLike(node)) {
+      const functionLike = node as ts.FunctionLikeDeclaration;
+      if (functionLike.body) {
+        for (const parameter of functionLike.parameters) {
+          if (!ts.isObjectBindingPattern(parameter.name)) continue;
+          for (const element of parameter.name.elements) {
+            const propertyName = element.propertyName ?? element.name;
+            if (ts.isIdentifier(propertyName)) bindings.add(propertyName.text);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return bindings;
+}
+
+function isPropConsumedInSources(
+  name: string,
+  sources: SourceFile[],
+  functionParameterBindings: ReadonlySet<string>,
+): boolean {
+  return sources.some(
+    (source) =>
+      hasMemberAccess(name, source.text) ||
+      hasPropsDestructuring(name, source.text) ||
+      functionParameterBindings.has(name) ||
+      hasBareShorthand(name, source.text),
+  );
+}
+
 /**
  * A bare shorthand entry in any brace block — `{ margin, padding }`. This
  * covers a destructured function parameter and a property forwarded on into a
@@ -95,12 +136,11 @@ function hasBareShorthand(name: string, text: string): boolean {
 /** True when any supplied source shows the property being read. */
 export function isPropConsumed(name: string, sources: SourceFile[]): boolean {
   if (!name) return false;
-  return sources.some(
-    (source) =>
-      hasMemberAccess(name, source.text) ||
-      hasPropsDestructuring(name, source.text) ||
-      hasBareShorthand(name, source.text),
-  );
+  const functionParameterBindings = new Set<string>();
+  for (const source of sources) {
+    for (const binding of getFunctionParameterBindings(source.text)) functionParameterBindings.add(binding);
+  }
+  return isPropConsumedInSources(name, sources, functionParameterBindings);
 }
 
 /**
@@ -113,5 +153,11 @@ export function isPropConsumed(name: string, sources: SourceFile[]): boolean {
 export function findUnconsumedProps(propNames: string[], sources: SourceFile[]): string[] {
   const readable = sources.filter((source) => source.text.trim().length > 0);
   if (readable.length === 0) return [];
-  return propNames.filter((name) => name.length > 0 && !isPropConsumed(name, readable));
+  const functionParameterBindings = new Set<string>();
+  for (const source of readable) {
+    for (const binding of getFunctionParameterBindings(source.text)) functionParameterBindings.add(binding);
+  }
+  return propNames.filter(
+    (name) => name.length > 0 && !isPropConsumedInSources(name, readable, functionParameterBindings),
+  );
 }
