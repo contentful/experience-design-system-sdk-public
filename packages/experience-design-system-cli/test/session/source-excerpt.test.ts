@@ -56,12 +56,7 @@ describe('excerptAroundNames', () => {
     expect(result.usesNotShown).toEqual(['padding']);
   });
 
-  // In a source file the declaration comes first and the use comes last:
-  // `fontColor?: ColorTokens` in the props interface, then a default in the
-  // destructuring, then `color: tokens[fontColor]` in the style. Under a tight
-  // budget the use is the line that decides classification, so later windows
-  // must be kept in preference to earlier ones.
-  it('prefers the last occurrence of a name over its declaration when the budget cannot hold both', () => {
+  it('prefers the last occurrence of a name over its declaration without falsely reporting it cut', () => {
     const text = [
       'export interface TextProps {',
       '  fontColor?: ColorTokens;',
@@ -75,22 +70,6 @@ describe('excerptAroundNames', () => {
     const result = excerptAroundNames(text, ['fontColor'], 100, 1);
     expect(result.content).toContain('color: tokens[fontColor],');
     expect(result.content).not.toContain('fontColor?: ColorTokens;');
-  });
-
-  // The note exists to say "the line that decides this prop is missing". A
-  // cut declaration while the use is shown is not that, so it must not fire.
-  it('does not report a name whose last occurrence is shown even when an earlier one was cut', () => {
-    const text = [
-      'export interface TextProps {',
-      '  fontColor?: ColorTokens;',
-      '}',
-      filler(40, 'const between'),
-      'const styles = css({',
-      '  color: tokens[fontColor],',
-      '});',
-    ].join('\n');
-    const result = excerptAroundNames(text, ['fontColor'], 100, 1);
-    expect(result.content).toContain('color: tokens[fontColor],');
     expect(result.usesNotShown).toEqual([]);
   });
 
