@@ -3017,8 +3017,6 @@ describe('generation cache', () => {
       expect(ref.siblingFiles?.[0].content).not.toContain('before0 = 0');
       expect(ref.siblingFiles?.[0].content.length).toBeLessThanOrEqual(1_200 + '\n/* truncated */'.length);
       expect(ref.usesNotShown).toBeUndefined();
-      // The component forwards everything through a rest spread, so nothing is unread.
-      expect(ref.unconsumedProps).toBeUndefined();
     });
   });
 

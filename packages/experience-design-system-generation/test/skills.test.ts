@@ -129,10 +129,10 @@ describe('generate-components.md', () => {
     expect(content).toMatch(/\$token\.allowed/);
   });
 
-  it('states the cardinality rule for the two token-evidence signals', async () => {
+  it('states that a variant-to-token lookup map is evidence for enum, not token', async () => {
     const content = await readSkill('generate-components.md');
-    expect(content).toMatch(/cardinality/i);
-    expect(content).toMatch(/one token target/i);
+    expect(content).toMatch(/lookup map from variant names to tokens is evidence \*\*for\*\* `enum`/);
+    expect(content).toMatch(/Q1 answering yes/);
   });
 });
 

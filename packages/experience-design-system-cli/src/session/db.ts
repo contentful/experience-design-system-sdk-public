@@ -3,10 +3,8 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
-import { dirname, resolve, sep } from 'node:path';
-import { createRequire } from 'node:module';
+import { dirname, resolve } from 'node:path';
 import { generateSessionId } from './session-id.js';
-import { findUnconsumedProps } from '@contentful/experience-design-system-extraction';
 import { excerptAroundNames } from './source-excerpt.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types.js';
 import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
@@ -1329,27 +1327,11 @@ const MAX_SIBLING_DEPTH = 2;
 // re-exports, each of which would otherwise be walked for a second hop.
 const MAX_SIBLING_CANDIDATES_EXPLORED = 25;
 const RELATIVE_IMPORT_PATTERN = /from\s+['"](\.[^'"]+)['"]/g;
-// Scoped package specifiers (`@scope/name` or `@scope/name/subpath`) — the
-// shape internal workspace packages conventionally use (e.g. a shared
-// `@contentful/f36-tokens`-style utils package). Bare unscoped specifiers
-// (`react`, `lodash`) are intentionally not matched here: they are almost
-// never the shared internal variant-to-token maps this is looking for, and
-// resolving every bare import would mean walking node_modules for every
-// third-party dependency a component happens to import.
-const WORKSPACE_IMPORT_PATTERN = /from\s+['"](@[^'"/]+\/[^'"]+)['"]/g;
 const SIBLING_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
 
 function extractRelativeImportPaths(sourceText: string): string[] {
   const specifiers = new Set<string>();
   for (const match of sourceText.matchAll(RELATIVE_IMPORT_PATTERN)) {
-    if (match[1]) specifiers.add(match[1]);
-  }
-  return [...specifiers];
-}
-
-function extractWorkspaceImportSpecifiers(sourceText: string): string[] {
-  const specifiers = new Set<string>();
-  for (const match of sourceText.matchAll(WORKSPACE_IMPORT_PATTERN)) {
     if (match[1]) specifiers.add(match[1]);
   }
   return [...specifiers];
@@ -1376,46 +1358,24 @@ async function resolveRelativeImport(specifier: string, fromDir: string): Promis
   return undefined;
 }
 
-// Resolves a scoped bare specifier via Node's own module resolution
-// (node_modules lookup, package.json main/exports, symlink-following),
-// then filters the result down to internal *workspace* packages only.
-// A monorepo workspace package (pnpm/yarn workspaces) resolves through a
-// node_modules symlink to source living outside any node_modules tree
-// (e.g. `packages/utils/src/index.ts`); a real external dependency resolves
-// to a path still inside a node_modules tree (hoisted, or a pnpm
-// `.pnpm/<pkg>@<version>/node_modules/<pkg>` store). Skipping the latter
-// avoids inlining arbitrary third-party package internals as "evidence".
-async function resolveWorkspaceImport(specifier: string, fromDir: string): Promise<string | undefined> {
-  try {
-    const require = createRequire(resolve(fromDir, 'noop.cjs'));
-    const resolved = require.resolve(specifier);
-    if (resolved.split(sep).includes('node_modules')) return undefined;
-    return resolved;
-  } catch {
-    return undefined;
-  }
-}
-
-// Resolves every relative and workspace-package specifier a file imports,
-// relative-import specifiers first (matches prior single-hop ordering).
+// Resolves every relative specifier a file imports, in source order. Bare
+// package specifiers (`react`, `@scope/pkg`) are deliberately not followed:
+// on a monorepo they resolve to built `dist/` bundles, which fill sibling
+// slots with minified output rather than the source line a classifier can
+// cite.
 async function resolveImportSpecifiers(sourceText: string, fromDir: string): Promise<string[]> {
   const resolvedPaths: string[] = [];
   for (const specifier of extractRelativeImportPaths(sourceText)) {
     const resolvedPath = await resolveRelativeImport(specifier, fromDir);
     if (resolvedPath) resolvedPaths.push(resolvedPath);
   }
-  for (const specifier of extractWorkspaceImportSpecifiers(sourceText)) {
-    const resolvedPath = await resolveWorkspaceImport(specifier, fromDir);
-    if (resolvedPath) resolvedPaths.push(resolvedPath);
-  }
   return resolvedPaths;
 }
 
-// Loads the content of files the component's source file imports — either
-// directly, or transitively through a sibling that is itself imported
-// (bounded by MAX_SIBLING_DEPTH) — both relatively (e.g. a co-located
-// `.styles.ts`) and via an internal workspace package (e.g. a shared
-// `@scope/utils` map). Token resolution logic (e.g. a variant-to-token map)
+// Loads the content of files the component's source file relatively imports
+// — either directly (e.g. a co-located `.styles.ts`), or transitively through
+// a sibling that is itself imported (bounded by MAX_SIBLING_DEPTH). Token
+// resolution logic (e.g. a variant-to-token map)
 // sometimes lives behind a component that re-exports another component's
 // prop rather than beside the component being classified, so a single hop
 // of resolution can miss it. Breadth-first with a visited-set: a component
@@ -1432,13 +1392,6 @@ async function loadSiblingFiles(
   truncatedCount: number;
   /** Prop names with at least one use that fell outside a sibling's excerpt budget. */
   usesNotShown: string[];
-  /**
-   * Every file the walk resolved, untruncated and including those dropped by
-   * the inlining cap. The prompt gets `siblings`; evidence scans get this, so a
-   * property is never reported unread merely because its use fell outside a
-   * snippet budget.
-   */
-  scanned: Array<{ path: string; content: string }>;
 }> {
   const visited = new Set<string>([resolve(sourcePath)]);
   const discovered: Array<{ path: string; content: string }> = [];
@@ -1487,7 +1440,6 @@ async function loadSiblingFiles(
     siblings,
     truncatedCount,
     usesNotShown: propNames.filter((name) => usesNotShown.has(name)),
-    scanned: discovered,
   };
 }
 
@@ -1505,35 +1457,25 @@ export async function loadComponentSourceRef(
   let content: string | null = null;
   let siblingFiles: Array<{ path: string; content: string }> = [];
   let truncatedSiblingCount = 0;
-  let unconsumedProps: string[] = [];
   const usesNotShown = new Set<string>();
   try {
     const rawText = await readFile(sourcePath, 'utf8');
     const mainExcerpt = excerptAroundNames(rawText, propNames, MAX_COMPONENT_SOURCE_CHARS);
     content = mainExcerpt.content;
     for (const name of mainExcerpt.usesNotShown) usesNotShown.add(name);
-    let scanned: Array<{ path: string; content: string }>;
     let siblingUsesNotShown: string[];
     ({
       siblings: siblingFiles,
       truncatedCount: truncatedSiblingCount,
       usesNotShown: siblingUsesNotShown,
-      scanned,
     } = await loadSiblingFiles(rawText, sourcePath, propNames));
     for (const name of siblingUsesNotShown) usesNotShown.add(name);
-    if (propNames.length > 0) {
-      unconsumedProps = findUnconsumedProps(propNames, [
-        { path: sourcePath, text: rawText },
-        ...scanned.map((s) => ({ path: s.path, text: s.content })),
-      ]);
-    }
   } catch {
     // File no longer exists or unreadable — leave content null.
   }
   const ref: ComponentSourceRef = { component: name, sourcePath, content };
   if (siblingFiles.length > 0) ref.siblingFiles = siblingFiles;
   if (truncatedSiblingCount > 0) ref.truncatedSiblingCount = truncatedSiblingCount;
-  if (unconsumedProps.length > 0) ref.unconsumedProps = unconsumedProps;
   const notShown = propNames.filter((name) => usesNotShown.has(name));
   if (notShown.length > 0) ref.usesNotShown = notShown;
   return ref;

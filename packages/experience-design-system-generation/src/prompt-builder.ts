@@ -30,13 +30,6 @@ export interface ComponentSourceRef {
   siblingFiles?: Array<{ path: string; content: string }>;
   truncatedSiblingCount?: number;
   /**
-   * Properties that none of the loaded source shows being read. Computed over
-   * the untruncated files, so it stays accurate even where the snippets below
-   * are cut short. Absent when there was no source to scan — that is not the
-   * same claim as "nothing is read".
-   */
-  unconsumedProps?: string[];
-  /**
    * Properties with at least one use that fell outside the excerpt budget of
    * the file it sits in. The reader cannot see that use, so its absence is a
    * gap in the evidence, not evidence of absence.
@@ -278,19 +271,13 @@ function buildPreamble(options: PromptOptions): string {
                 `##### ${ref.component} — +${ref.truncatedSiblingCount} more imported file${ref.truncatedSiblingCount === 1 ? '' : 's'} not shown (evidence may be incomplete)`,
               ]
             : [];
-        const unconsumedNote =
-          ref.unconsumedProps && ref.unconsumedProps.length > 0
-            ? [
-                `##### ${ref.component} — declared but no read found: ${ref.unconsumedProps.join(', ')}\n\nThe scanner found no direct read of these names in the files above, checked untruncated. It recognises \`props.x\`, \`const { x } = props\`, a destructured parameter, \`{ x }\` shorthand, and a rest spread that forwards the remaining props — a value read by bracket access or reached through a framework accessor is not detected. Treat this as absence of consumption evidence, not proof the component ignores the value. It means \`token\` cannot be earned for these — there is no citable interpolation — so a listed design prop is \`enum\` or \`string\`. Classify non-design props on their own merits (media, slot, content) as usual.`,
-              ]
-            : [];
         const notShownNote =
           ref.usesNotShown && ref.usesNotShown.length > 0
             ? [
                 `##### ${ref.component} — uses not shown: ${ref.usesNotShown.join(', ')}\n\nThe files above are excerpts, and each of these properties has at least one use that fell outside the excerpt budget. Treat their consumption as unknown, not absent: do not classify them \`token\` on what is shown, and do not conclude they are unread.`,
               ]
             : [];
-        return [mainBlock, ...siblingBlocks, ...truncationNote, ...unconsumedNote, ...notShownNote].join('\n\n');
+        return [mainBlock, ...siblingBlocks, ...truncationNote, ...notShownNote].join('\n\n');
       });
       sections.push(`### Component source references\n\n${blocks.join('\n\n')}`);
     }
@@ -327,8 +314,6 @@ Context: You are classifying a React component for **Contentful Experience Orche
 - **content**: the data a content editor fills in (text, images, URLs, rich text)
 - **state**: runtime behavioral flags (disabled, loading, expanded, identifiers)
 
-For props with complex TypeScript types (named types, enums): reason from the prop name and type name to classify them. Do not automatically exclude a prop just because its type is a named reference — infer the likely values and classify it as enum if it controls appearance.
-
 Your task: classify every prop and slot in the component below. Apply all judgment calls yourself — do not pause to ask for confirmation. Include a "description" field on each tool call to document your reasoning so the developer can review it afterward.
 
 All input data is provided inline below — do not read any additional files.${inputBlock}
@@ -361,8 +346,6 @@ Rules:
 - \`enum\` vs \`token\` is decided by three questions answered in order from the source shown — never from the TypeScript type. Q1: does the component look the value up, switch on it, or have a vocabulary for it (\`tokens[x]\`, \`switch (variant)\`, \`allowedValues\`)? yes → \`enum\`, stop.
 - Q2: is the value written straight into a style or attribute (\`rx={radius}\`, \`padding: \${padding}\`)? no → not \`token\`, apply the type rules.
 - Q3: is there a design-token reference at that use — a \`tokens.*\` parameter default, a \`tokenReference\`, an inline \`tokens.*\` / \`var(--*)\`? yes → \`token\` (cite both lines in "reason"); no → \`string\`. "Ambiguity resolves to \`enum\`" applies only when Q1–Q3 cannot be answered from the source shown.
-- href and URL props → cdf_type "string", cdf_category "content". Do NOT use cdf_type "link" — it is not valid.
-- Framework internals (ref, event handlers, test IDs) → exclude_prop.
 - CSS design props (className, style, styles, positional/geometric props: top, bottom, left, right, rotation, offset, etc.) → classify_prop, cdf_type: "string", cdf_category: "design".
 - On classify_component, "rationale" fields are operator-facing (read-only) but may surface in customer-facing exports. The "rationale.description" field is subject to the description content rules in the skill prompt (no internal initiative names). "rationale.props" and "rationale.slots" describe your reasoning about scope; "classify_slot.rationale" explains why each slot was kept.
 - On classify_prop, "reason" is REQUIRED and is the LLM's internal rationale — shown to the developer reviewing the import, never to end-users. "description" is the customer-facing copy and is subject to the description content rules in the skill prompt. Keep them distinct: "description" is short and customer-facing; "reason" explains your reasoning in detail.

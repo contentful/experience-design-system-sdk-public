@@ -61,7 +61,3 @@ export {
 // Pre-classification
 export { preClassifyProp, preClassifyComponent } from './pre-classify.js';
 export type { PreClassification } from './pre-classify.js';
-
-// Property consumption evidence
-export { findUnconsumedProps, isPropConsumed } from './prop-consumption.js';
-export type { SourceFile } from './prop-consumption.js';

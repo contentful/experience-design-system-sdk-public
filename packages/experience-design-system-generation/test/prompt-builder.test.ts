@@ -324,24 +324,6 @@ describe('buildPrompt', () => {
       expect(prompt).not.toContain('Component source unavailable for');
     });
 
-    // A computed signal that never reaches the prompt cannot change a
-    // classification. Assert the rendered text, not just the field.
-    it('renders the declared-but-never-read properties into the prompt', async () => {
-      const prompt = await buildPrompt({
-        skill: 'map-tokens',
-        mode: 'autonomous',
-        generatedCdf: GENERATED_CDF,
-        tokenTree: TOKEN_TREE,
-        componentSourceRefs: [{ ...SOURCE_REFS_WITH_CONTENT[0], unconsumedProps: ['margin', 'marginTop'] }],
-        outDir: '/fake/out',
-      });
-      expect(prompt).toContain('declared but no read found: margin, marginTop');
-      expect(prompt).toContain('`token` cannot be earned');
-      // The note must not overclaim: the scanner has blind spots, and saying so
-      // is what stops the classifier treating the list as proof of non-use.
-      expect(prompt).toContain('absence of consumption evidence');
-    });
-
     // Silent truncation at the use site is what turned genuine token props
     // into enums. Stating it lets the classifier treat the gap as unknown.
     it('renders the props whose uses were cut by the snippet budget', async () => {
@@ -380,18 +362,6 @@ describe('buildPrompt', () => {
       });
       expect(mapTokens).toContain('emit nothing for their props');
       expect(mapTokens).not.toContain('$token.kind alone');
-    });
-
-    it('omits the declared-but-never-read note when every property is read', async () => {
-      const prompt = await buildPrompt({
-        skill: 'map-tokens',
-        mode: 'autonomous',
-        generatedCdf: GENERATED_CDF,
-        tokenTree: TOKEN_TREE,
-        componentSourceRefs: [{ ...SOURCE_REFS_WITH_CONTENT[0], unconsumedProps: [] }],
-        outDir: '/fake/out',
-      });
-      expect(prompt).not.toContain('declared but no read found');
     });
 
     it('inlines sibling files alongside the main component source', async () => {
