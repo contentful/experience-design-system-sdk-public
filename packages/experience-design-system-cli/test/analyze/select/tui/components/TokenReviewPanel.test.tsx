@@ -26,9 +26,25 @@ describe('collectTokenSuggestions', () => {
       {
         propName: 'bgColor',
         paths: ['colors.surface.default', 'colors.surface.raised'],
+        suggested: ['colors.surface.default', 'colors.surface.raised'],
         allowed: ['colors.surface.default', 'colors.surface.raised'],
       },
     ]);
+  });
+
+  it('includes every token whose type matches the property kind', () => {
+    expect(
+      collectTokenSuggestions(ENTRY, [
+        { path: 'colors.surface.default', kind: 'color' },
+        { path: 'colors.brand.primary', kind: 'color' },
+        { path: 'spacing.small', kind: 'dimension' },
+      ])[0],
+    ).toEqual({
+      propName: 'bgColor',
+      paths: ['colors.surface.default', 'colors.brand.primary', 'colors.surface.raised'],
+      suggested: ['colors.surface.default', 'colors.surface.raised'],
+      allowed: ['colors.surface.default', 'colors.surface.raised'],
+    });
   });
 
   it('excludes design-token props with no $token.allowed (nothing suggested yet)', () => {
@@ -52,9 +68,15 @@ describe('TokenReviewPanel — list mode', () => {
     {
       propName: 'bgColor',
       paths: ['colors.surface.default', 'colors.surface.raised'],
+      suggested: ['colors.surface.default', 'colors.surface.raised'],
       allowed: ['colors.surface.default'],
     },
-    { propName: 'textColor', paths: ['colors.text.default'], allowed: ['colors.text.default'] },
+    {
+      propName: 'textColor',
+      paths: ['colors.text.default'],
+      suggested: ['colors.text.default'],
+      allowed: ['colors.text.default'],
+    },
   ];
 
   it('renders header with component name and one row per suggestion', () => {
@@ -62,12 +84,10 @@ describe('TokenReviewPanel — list mode', () => {
       <TokenReviewPanel
         componentName="Card"
         suggestions={suggestions}
-        decisions={{}}
         selectedRow={0}
         editing={false}
         editCursor={0}
         editSelection={new Set()}
-        canUndoDismiss={false}
         width={60}
         height={20}
         active={true}
@@ -81,24 +101,25 @@ describe('TokenReviewPanel — list mode', () => {
     expect(out).toContain('colors.surface.default');
   });
 
-  it('marks an accepted row distinctly from a pending one', () => {
+  it('renders each prop name and keeps suggested separate from allowed', () => {
     const { lastFrame } = render(
       <TokenReviewPanel
         componentName="Card"
         suggestions={suggestions}
-        decisions={{ bgColor: 'accepted' }}
         selectedRow={0}
         editing={false}
         editCursor={0}
         editSelection={new Set()}
-        canUndoDismiss={false}
         width={60}
         height={20}
         active={true}
       />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toMatch(/✓/);
+    expect(out).toContain('bgColor');
+    expect(out).toContain('textColor');
+    expect(out).toContain('suggested: colors.surface.default, colors.surface.raised');
+    expect(out).toContain('allowed: colors.surface.default');
   });
 
   it('highlights the selected row and shows the keyboard legend', () => {
@@ -106,59 +127,19 @@ describe('TokenReviewPanel — list mode', () => {
       <TokenReviewPanel
         componentName="Card"
         suggestions={suggestions}
-        decisions={{}}
         selectedRow={1}
         editing={false}
         editCursor={0}
         editSelection={new Set()}
-        canUndoDismiss={false}
         width={60}
         height={20}
         active={true}
       />,
     );
     const out = lastFrame() ?? '';
-    expect(out).toMatch(/\[a\] accept/);
-    expect(out).toMatch(/\[x\] dismiss/);
-    expect(out).toMatch(/\[Enter\] edit/);
-  });
-
-  it('omits the [u] undo hint when nothing can be restored', () => {
-    const { lastFrame } = render(
-      <TokenReviewPanel
-        componentName="Card"
-        suggestions={suggestions}
-        decisions={{}}
-        selectedRow={0}
-        editing={false}
-        editCursor={0}
-        editSelection={new Set()}
-        canUndoDismiss={false}
-        width={60}
-        height={20}
-        active={true}
-      />,
-    );
-    expect(lastFrame() ?? '').not.toMatch(/\[u\] undo/);
-  });
-
-  it('shows the [u] undo hint when a dismissed prop can be restored', () => {
-    const { lastFrame } = render(
-      <TokenReviewPanel
-        componentName="Card"
-        suggestions={suggestions}
-        decisions={{}}
-        selectedRow={0}
-        editing={false}
-        editCursor={0}
-        editSelection={new Set()}
-        canUndoDismiss={true}
-        width={60}
-        height={20}
-        active={true}
-      />,
-    );
-    expect(lastFrame() ?? '').toMatch(/\[u\] undo/);
+    expect(out).toMatch(/\[Enter\] edit allowed/);
+    expect(out).toMatch(/\[Esc\] close/);
+    expect(out).not.toMatch(/accept|dismiss|undo/);
   });
 });
 
@@ -167,6 +148,7 @@ describe('TokenReviewPanel — edit mode', () => {
     {
       propName: 'bgColor',
       paths: ['colors.surface.default', 'colors.surface.raised', 'colors.brand.primary'],
+      suggested: ['colors.surface.default', 'colors.surface.raised'],
       allowed: ['colors.surface.default'],
     },
   ];
@@ -176,12 +158,10 @@ describe('TokenReviewPanel — edit mode', () => {
       <TokenReviewPanel
         componentName="Card"
         suggestions={suggestions}
-        decisions={{}}
         selectedRow={0}
         editing={true}
         editCursor={0}
         editSelection={new Set(['colors.surface.default'])}
-        canUndoDismiss={false}
         width={60}
         height={20}
         active={true}

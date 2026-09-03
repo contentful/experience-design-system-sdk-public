@@ -36,6 +36,12 @@ vi.mock('../../../../src/session/db.js', () => ({
     { key: 'Button', entry: SAMPLE_ENTRY },
     { key: 'Card', entry: { $type: 'component', $properties: {} } },
   ]),
+  loadDTCGTokens: vi.fn().mockReturnValue({ groups: [], tokens: [
+    { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
+    { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
+    { path: 'colors.brand.primary', $type: 'color', $value: '#00f' },
+    { path: 'spacing.small', $type: 'dimension', $value: '4px' },
+  ] }),
   storeCDFComponents: vi.fn(),
   loadComponentReviewMetadata: vi.fn().mockReturnValue({
     sourcePath: '/repo/src/Button.tsx',
@@ -170,127 +176,63 @@ describe('AtomicGenerateReviewStep — token review panel', () => {
   });
 });
 
-describe('AtomicGenerateReviewStep — token review actions', () => {
-  it('accept persists $token.allowed unchanged via storeCDFComponents and triggers live preview', async () => {
-    const dbModule = await import('../../../../src/session/db.js');
-    hookReturnOverride = { trigger: triggerSpy, status: 'idle', disabled: false };
-
+describe('AtomicGenerateReviewStep — token review editing', () => {
+  it('shows and opens token review after Tab focuses the prop list', async () => {
     const { stdin, lastFrame } = renderStep();
     await tick();
-    stdin.write('j'); // Card (empty) is selected first; move to Button.
+    stdin.write('j');
     await tick();
+    stdin.write('\t');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/\[t\] token review/);
     stdin.write('t');
     await tick();
-    stdin.write('a');
-    await tick();
-    expect(lastFrame() ?? '').toMatch(/✓ bgColor/);
-    expect(dbModule.storeCDFComponents).toHaveBeenCalled();
-    expect(triggerSpy).toHaveBeenCalled();
-    const lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
-    const entry = lastCall![2][0].entry;
-    expect(entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default', 'colors.surface.raised']);
+    expect(lastFrame() ?? '').toMatch(/TOKEN REVIEW —/i);
   });
 
-  it('dismiss omits $token.allowed and does not affect other props', async () => {
+  it('edits all compatible tokens, persists a non-empty subset, and keeps suggested unchanged', async () => {
     const dbModule = await import('../../../../src/session/db.js');
     const { stdin, lastFrame } = renderStep();
     await tick();
-    stdin.write('j'); // Card (empty) is selected first; move to Button.
+    stdin.write('j');
     await tick();
     stdin.write('t');
     await tick();
-    stdin.write('x'); // dismiss bgColor — borderColor's suggestion should survive untouched.
-    await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).not.toContain('bgColor');
-    expect(frame).toContain('borderColor');
-    const lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
-    const entry = lastCall![2][0].entry;
-    expect(entry.$properties.bgColor).not.toHaveProperty('$token.allowed');
-    expect(entry.$properties.borderColor['$token.allowed']).toEqual(['colors.border.subtle', 'colors.border.strong']);
-  });
-
-  it('edit narrows the suggested paths, then Ctrl+S persists the narrowed allowed list', async () => {
-    const dbModule = await import('../../../../src/session/db.js');
-    const { stdin, lastFrame } = renderStep();
-    await tick();
-    stdin.write('j'); // Card (empty) is selected first; move to Button.
-    await tick();
-    stdin.write('t');
-    await tick();
-    stdin.write('\r'); // Enter → edit mode
+    stdin.write('\r');
     await tick();
     let frame = lastFrame() ?? '';
-    expect(frame).toContain('colors.surface.default');
-    expect(frame).toContain('colors.surface.raised');
-    stdin.write('j'); // move to colors.surface.raised
+    expect(frame).toContain('colors.brand.primary');
+    expect(frame).not.toContain('spacing.small');
+    stdin.write('j');
     await tick();
-    stdin.write(' '); // remove it from the allowed selection
+    stdin.write(' ');
     await tick();
-    stdin.write('\x13'); // Ctrl+S
+    stdin.write('k');
+    await tick();
+    stdin.write(' ');
+    await tick();
+    stdin.write('\x13');
     await tick();
     frame = lastFrame() ?? '';
-    expect(frame).toMatch(/✓ bgColor/);
+    expect(frame).toContain('suggested: colors.surface.default, colors.surface.raised');
+    expect(frame).toContain('allowed: colors.surface.default');
     const lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
-    const entry = lastCall![2][0].entry;
-    expect(entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default']);
+    expect(lastCall![2][0].entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default']);
   });
 
-  it("[u] restores a dismissed prop's pre-dismiss $token.allowed", async () => {
+  it('does not accept or dismiss when those legacy keys are pressed', async () => {
     const dbModule = await import('../../../../src/session/db.js');
     const { stdin, lastFrame } = renderStep();
     await tick();
-    stdin.write('j'); // Card (empty) is selected first; move to Button.
-    await tick();
-    stdin.write('t');
-    await tick();
-    stdin.write('x'); // dismiss bgColor
-    await tick();
-    expect(lastFrame() ?? '').toMatch(/\[u\] undo/);
-    stdin.write('u');
-    await tick();
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('bgColor');
-    expect(frame).not.toMatch(/\[u\] undo/); // single-slot memory consumed by the undo
-    const lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
-    const entry = lastCall![2][0].entry;
-    expect(entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default', 'colors.surface.raised']);
-  });
-
-  it('[u] does nothing when nothing has been dismissed', async () => {
-    const dbModule = await import('../../../../src/session/db.js');
-    const { stdin, lastFrame } = renderStep();
-    await tick();
-    stdin.write('j'); // Card (empty) is selected first; move to Button.
+    stdin.write('j');
     await tick();
     stdin.write('t');
     await tick();
     const callsBefore = vi.mocked(dbModule.storeCDFComponents).mock.calls.length;
-    stdin.write('u');
+    stdin.write('a');
+    stdin.write('x');
     await tick();
     expect(vi.mocked(dbModule.storeCDFComponents).mock.calls.length).toBe(callsBefore);
-    expect(lastFrame() ?? '').not.toMatch(/\[u\] undo/);
-  });
-
-  it('dismissing a second prop discards the pending undo for the first (single-slot memory)', async () => {
-    const { stdin, lastFrame } = renderStep();
-    await tick();
-    stdin.write('j'); // Card (empty) is selected first; move to Button.
-    await tick();
-    stdin.write('t');
-    await tick();
-    stdin.write('x'); // dismiss bgColor (row 0)
-    await tick();
-    stdin.write('x'); // now on borderColor (bgColor's row is gone); dismiss it too
-    await tick();
-    const frame = lastFrame() ?? '';
-    // Undo hint still shows (borderColor is now the pending undo), but pressing
-    // [u] can only restore the most recent dismiss (borderColor), not bgColor.
-    expect(frame).toMatch(/\[u\] undo/);
-    stdin.write('u');
-    await tick();
-    const afterUndo = lastFrame() ?? '';
-    expect(afterUndo).toContain('borderColor');
-    expect(afterUndo).not.toContain('bgColor');
+    expect(lastFrame() ?? '').toContain('bgColor');
   });
 });

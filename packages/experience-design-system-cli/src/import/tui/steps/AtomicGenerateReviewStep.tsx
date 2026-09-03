@@ -15,6 +15,7 @@ import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediat
 import {
   openPipelineDb,
   loadCDFComponents,
+  loadDTCGTokens,
   storeCDFComponents,
   loadComponentReviewMetadata,
   loadComponentRationale,
@@ -27,7 +28,7 @@ import {
   TokenReviewPanel,
   collectTokenSuggestions,
   type TokenPropSuggestion,
-  type TokenReviewDecision,
+  type TokenReviewToken,
 } from '../../../analyze/select/tui/components/TokenReviewPanel.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
 import type {
@@ -149,23 +150,12 @@ export function AtomicGenerateReviewStep({
   const [panelScrollOffset, setPanelScrollOffset] = useState(0);
   const [textEntryActive, setTextEntryActive] = useState(false);
   const [componentRationale, setComponentRationale] = useState<ComponentRationale | null>(null);
-  // Token review panel: per-prop pending/accepted decision state,
-  // scoped to this review session only — mirrors component-level accept/reject,
-  // which also never persists mid-review. Reset whenever the selected
-  // component changes so a fresh component starts with everything pending.
   const [tokenReviewRow, setTokenReviewRow] = useState(0);
   const [tokenReviewEditing, setTokenReviewEditing] = useState(false);
   const [tokenReviewEditCursor, setTokenReviewEditCursor] = useState(0);
   const [tokenReviewEditSelection, setTokenReviewEditSelection] = useState<Set<string>>(new Set());
-  const [tokenReviewDecisions, setTokenReviewDecisions] = useState<Record<string, TokenReviewDecision>>({});
-  // Single-slot memory for `[u]` undo of the most recent dismiss on this
-  // component — an overwrite, not a history stack: dismissing a second prop
-  // (or navigating away, via the reset effect below) discards any pending undo.
-  const [lastDismissed, setLastDismissed] = useState<{
-    propName: string;
-    allowed: string[];
-    decision: TokenReviewDecision;
-  } | null>(null);
+  const [availableTokens, setAvailableTokens] = useState<TokenReviewToken[]>([]);
+  const tokenReviewSuggestedRef = useRef(new Map<string, string[]>());
   // Tracks the first `g` of a potential `gg` double-tap (jumps to top in
   // JSON-view + panel-focused state). Reset on any non-`g` key.
   const pendingGRef = useRef(false);
@@ -207,32 +197,35 @@ export function AtomicGenerateReviewStep({
   }, [livePreviewHook.status]);
   const livePreviewSpinner = SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length];
 
-  const loadEntries = (): { entries: CdfReviewEntry[]; error: string | null } => {
+  const loadEntries = (): { entries: CdfReviewEntry[]; tokens: TokenReviewToken[]; error: string | null } => {
     const db = openPipelineDb();
     let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }>;
+    let tokens: TokenReviewToken[] = [];
     try {
       cdfComponents = loadCDFComponents(db, extractSessionId);
+      tokens = loadDTCGTokens(db, extractSessionId).tokens.map((token) => ({ path: token.path, kind: token.$type }));
     } finally {
       db.close();
     }
     if (cdfComponents.length === 0) {
-      return { entries: [], error: 'No generated definitions found for this session. Try re-running generate.' };
+      return { entries: [], tokens: [], error: 'No generated definitions found for this session. Try re-running generate.' };
     }
     const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
       key,
       entry,
       status: 'needs-review',
     }));
-    return { entries: sortComponentsForSidebar(reviewEntries), error: null };
+    return { entries: sortComponentsForSidebar(reviewEntries), tokens, error: null };
   };
 
   useEffect(() => {
     try {
-      const { entries, error } = loadEntries();
+      const { entries, tokens, error } = loadEntries();
       if (error) {
         setLoadError(error);
       } else {
         setComponents(entries);
+        setAvailableTokens(tokens);
       }
     } catch (e: unknown) {
       setLoadError(String(e));
@@ -281,12 +274,13 @@ export function AtomicGenerateReviewStep({
 
   const reloadFromSave = (): void => {
     try {
-      const { entries, error } = loadEntries();
+      const { entries, tokens, error } = loadEntries();
       if (error) {
         setLoadError(error);
         return;
       }
       setComponents(entries);
+      setAvailableTokens(tokens);
       historyRef.current?.reset({
         components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
         autoRejected: [],
@@ -335,8 +329,6 @@ export function AtomicGenerateReviewStep({
     setTokenReviewEditing(false);
     setTokenReviewEditCursor(0);
     setTokenReviewEditSelection(new Set());
-    setTokenReviewDecisions({});
-    setLastDismissed(null);
   }, [selectedIdx]);
 
   // Load component-level rationale for the selected component (drives the
@@ -461,17 +453,22 @@ export function AtomicGenerateReviewStep({
 
   const currentTokenSuggestions = (): TokenPropSuggestion[] => {
     const current = components[selectedIdx];
-    return current ? collectTokenSuggestions(current.entry) : [];
+    if (!current) return [];
+    return collectTokenSuggestions(current.entry, availableTokens).map((suggestion) => {
+      const snapshotKey = `${current.key}::${suggestion.propName}`;
+      const suggested = tokenReviewSuggestedRef.current.get(snapshotKey) ?? [...suggestion.suggested];
+      tokenReviewSuggestedRef.current.set(snapshotKey, suggested);
+      return { ...suggestion, suggested };
+    });
   };
 
-  const persistTokenFields = (propName: string, allowed: string[] | undefined): void => {
+  const persistTokenFields = (propName: string, allowed: string[]): void => {
     const current = components[selectedIdx];
     if (!current) return;
     const prop = current.entry.$properties[propName];
     if (!prop) return;
     const nextProp = { ...prop };
-    if (allowed === undefined) delete nextProp['$token.allowed'];
-    else nextProp['$token.allowed'] = allowed;
+    nextProp['$token.allowed'] = allowed;
     const nextEntry: CDFComponentEntry = {
       ...current.entry,
       $properties: { ...current.entry.$properties, [propName]: nextProp },
@@ -490,37 +487,10 @@ export function AtomicGenerateReviewStep({
     livePreviewHook.trigger();
   };
 
-  const handleTokenAccept = (s: TokenPropSuggestion): void => {
-    persistTokenFields(s.propName, s.allowed);
-    setTokenReviewDecisions((prev) => ({ ...prev, [s.propName]: 'accepted' }));
-  };
-
-  const handleTokenDismiss = (s: TokenPropSuggestion): void => {
-    setLastDismissed({
-      propName: s.propName,
-      allowed: s.allowed,
-      decision: tokenReviewDecisions[s.propName] ?? 'pending',
-    });
-    persistTokenFields(s.propName, undefined);
-    setTokenReviewDecisions((prev) => {
-      const next = { ...prev };
-      delete next[s.propName];
-      return next;
-    });
-  };
-
-  const handleTokenUndoDismiss = (): void => {
-    if (!lastDismissed) return;
-    persistTokenFields(lastDismissed.propName, lastDismissed.allowed);
-    setTokenReviewDecisions((prev) => ({ ...prev, [lastDismissed.propName]: lastDismissed.decision }));
-    setLastDismissed(null);
-  };
-
   const handleTokenEditSave = (s: TokenPropSuggestion): void => {
     const allowed = s.paths.filter((p) => tokenReviewEditSelection.has(p));
     if (allowed.length === 0) return;
     persistTokenFields(s.propName, allowed);
-    setTokenReviewDecisions((prev) => ({ ...prev, [s.propName]: 'accepted' }));
     setTokenReviewEditing(false);
   };
 
@@ -592,10 +562,8 @@ export function AtomicGenerateReviewStep({
       return;
     }
 
-    // Token review panel needs its own keymap branch, entered
-    // before the generic `panelOpen !== 'none'` scroll/toggle block below,
-    // since that block's Esc/toggle logic doesn't know about edit sub-mode
-    // or accept/dismiss.
+    // Token review panel needs its own keymap branch, entered before the
+    // generic panel scroll/toggle block below.
     if (panelOpen === 'token-review') {
       const suggestions = currentTokenSuggestions();
       const row = suggestions[tokenReviewRow];
@@ -639,19 +607,6 @@ export function AtomicGenerateReviewStep({
       }
       if (key.downArrow || input === 'j') {
         setTokenReviewRow((r) => Math.min(Math.max(0, suggestions.length - 1), r + 1));
-        return;
-      }
-      if (input === 'a' && row) {
-        handleTokenAccept(row);
-        return;
-      }
-      if (input === 'x' && row) {
-        handleTokenDismiss(row);
-        setTokenReviewRow((r) => Math.min(r, Math.max(0, suggestions.length - 2)));
-        return;
-      }
-      if (input === 'u' && lastDismissed) {
-        handleTokenUndoDismiss();
         return;
       }
       if (key.return && row) {
@@ -1111,12 +1066,10 @@ export function AtomicGenerateReviewStep({
                   <TokenReviewPanel
                     componentName={selected.key}
                     suggestions={currentTokenSuggestions()}
-                    decisions={tokenReviewDecisions}
                     selectedRow={tokenReviewRow}
                     editing={tokenReviewEditing}
                     editCursor={tokenReviewEditCursor}
                     editSelection={tokenReviewEditSelection}
-                    canUndoDismiss={lastDismissed !== null}
                     width={panelWidth}
                     height={PANEL_HEIGHT}
                     active={true}
@@ -1167,7 +1120,9 @@ export function AtomicGenerateReviewStep({
                 )}
                 {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
                 <Text dimColor>
-                  {sidebarFocused
+                  {panelOpen === 'token-review'
+                    ? '  [↑/↓] move  [Enter] edit allowed  [Esc] close'
+                    : sidebarFocused
                     ? '  [a] accept  [r] reject  [A] accept all  [i] prop rationale  [I] component rationale  [s] source  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
                       (currentTokenSuggestions().length > 0 ? '  [t] token review' : '') +
@@ -1176,7 +1131,8 @@ export function AtomicGenerateReviewStep({
                       '  [q] quit'
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
-                      : '  [Tab] focus list  (edit fields)'}
+                      : '  [Tab] focus list  (edit fields)' +
+                        (currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
                   {livePreviewHook.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
                   {livePreviewHook.disabled && <Text>{'  · live preview disabled'}</Text>}
                 </Text>

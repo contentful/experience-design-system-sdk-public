@@ -46,6 +46,22 @@ const STRING_COMPONENT = JSON.stringify(
   2,
 );
 
+const TOKEN_COMPONENT = JSON.stringify({
+  Card: {
+    $type: 'component',
+    $properties: {
+      color: {
+        $type: 'token',
+        $category: 'design',
+        '$token.kind': 'color',
+        '$token.allowed': ['colors.surface.default'],
+        $default: 'colors.surface.default',
+        $description: 'Surface color',
+      },
+    },
+  },
+});
+
 const tick = () => new Promise((r) => setTimeout(r, 30));
 
 async function navigateToValuesField(stdin: { write: (data: string) => void }): Promise<void> {
@@ -2466,5 +2482,27 @@ describe('FieldEditor — BD4 initialFocusTarget', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toContain('ALPHA_DESC');
     expect(frame).not.toContain('CHARLIE_DESC');
+  });
+
+  it('shows the allowed field and its token-review instruction in field edit mode', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={TOKEN_COMPONENT}
+        width={100}
+        height={20}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(lastFrame() ?? '').toContain('allowed: colors.surface.default');
+    stdin.write('\r');
+    await tick();
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j');
+    stdin.write('j');
+    await tick();
+    expect(lastFrame() ?? '').toContain('press [t] to edit allowed tokens');
   });
 });

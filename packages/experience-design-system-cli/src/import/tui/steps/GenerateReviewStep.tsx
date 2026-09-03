@@ -30,6 +30,7 @@ import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediat
 import {
   openPipelineDb,
   loadCDFComponents,
+  loadDTCGTokens,
   storeCDFComponents,
   loadComponentReviewMetadata,
   loadComponentRationale,
@@ -47,7 +48,7 @@ import {
   TokenReviewPanel,
   collectTokenSuggestions,
   type TokenPropSuggestion,
-  type TokenReviewDecision,
+  type TokenReviewToken,
 } from '../../../analyze/select/tui/components/TokenReviewPanel.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
 import type { PreviewAnnotation, ReviewComponentStatus } from '../../../analyze/select/types.js';
@@ -291,23 +292,12 @@ export function GenerateReviewStep({
   const [panelScrollOffset, setPanelScrollOffset] = useState(0);
   const [textEntryActive, setTextEntryActive] = useState(false);
   const [componentRationale, setComponentRationale] = useState<ComponentRationale | null>(null);
-  // Token review panel: per-prop pending/accepted decision state,
-  // scoped to this review session only — mirrors component-level accept/reject,
-  // which also never persists mid-review. Reset whenever the selected
-  // component changes so a fresh component starts with everything pending.
   const [tokenReviewRow, setTokenReviewRow] = useState(0);
   const [tokenReviewEditing, setTokenReviewEditing] = useState(false);
   const [tokenReviewEditCursor, setTokenReviewEditCursor] = useState(0);
   const [tokenReviewEditSelection, setTokenReviewEditSelection] = useState<Set<string>>(new Set());
-  const [tokenReviewDecisions, setTokenReviewDecisions] = useState<Record<string, TokenReviewDecision>>({});
-  // Single-slot memory for `[u]` undo of the most recent dismiss on this
-  // component — an overwrite, not a history stack: dismissing a second prop
-  // (or navigating away, via the reset effect below) discards any pending undo.
-  const [lastDismissed, setLastDismissed] = useState<{
-    propName: string;
-    allowed: string[];
-    decision: TokenReviewDecision;
-  } | null>(null);
+  const [availableTokens, setAvailableTokens] = useState<TokenReviewToken[]>([]);
+  const tokenReviewSuggestedRef = useRef(new Map<string, string[]>());
   const pendingGRef = useRef(false);
   const [slotCycles, setSlotCycles] = useState<StoredSlotCycle[]>([]);
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
@@ -403,14 +393,17 @@ export function GenerateReviewStep({
   const loadSessionState = (): {
     entries: CdfReviewEntry[];
     cycles: StoredSlotCycle[];
+    tokens: TokenReviewToken[];
     error: string | null;
   } => {
     const db = openPipelineDb();
     let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }> = [];
     let cycles: StoredSlotCycle[] = [];
+    let tokens: TokenReviewToken[] = [];
     try {
       cdfComponents = loadCDFComponents(db, extractSessionId);
       cycles = loadSlotCycles(db, extractSessionId);
+      tokens = loadDTCGTokens(db, extractSessionId).tokens.map((token) => ({ path: token.path, kind: token.$type }));
     } finally {
       db.close();
     }
@@ -418,6 +411,7 @@ export function GenerateReviewStep({
       return {
         entries: [],
         cycles: [],
+        tokens: [],
         error: 'No generated definitions found for this session. Try re-running generate.',
       };
     }
@@ -431,19 +425,21 @@ export function GenerateReviewStep({
     return {
       entries: sortComponentsForSidebar(reviewEntries, cycleParticipants),
       cycles,
+      tokens,
       error: null,
     };
   };
 
   useEffect(() => {
     try {
-      const { entries, cycles, error } = loadSessionState();
+      const { entries, cycles, tokens, error } = loadSessionState();
       if (error) {
         setLoadError(error);
         setLoading(false);
         return;
       }
       setSlotCycles(cycles);
+      setAvailableTokens(tokens);
       setComponents(entries);
       setLoading(false);
     } catch (e: unknown) {
@@ -635,12 +631,13 @@ export function GenerateReviewStep({
 
   const reloadFromSave = (): void => {
     try {
-      const { entries, cycles, error } = loadSessionState();
+      const { entries, cycles, tokens, error } = loadSessionState();
       if (error) {
         setLoadError(error);
         return;
       }
       setSlotCycles(cycles);
+      setAvailableTokens(tokens);
       setComponents(entries);
       const reloadGraph = buildComponentGraph(entries);
       const reloadClosures = computeAllClosures(reloadGraph);
@@ -763,8 +760,6 @@ export function GenerateReviewStep({
     setTokenReviewEditing(false);
     setTokenReviewEditCursor(0);
     setTokenReviewEditSelection(new Set());
-    setTokenReviewDecisions({});
-    setLastDismissed(null);
   }, [selectedIdx]);
 
   useEffect(() => {
@@ -954,17 +949,22 @@ export function GenerateReviewStep({
 
   const currentTokenSuggestions = (): TokenPropSuggestion[] => {
     const current = components[selectedIdx];
-    return current ? collectTokenSuggestions(current.entry) : [];
+    if (!current) return [];
+    return collectTokenSuggestions(current.entry, availableTokens).map((suggestion) => {
+      const snapshotKey = `${current.key}::${suggestion.propName}`;
+      const suggested = tokenReviewSuggestedRef.current.get(snapshotKey) ?? [...suggestion.suggested];
+      tokenReviewSuggestedRef.current.set(snapshotKey, suggested);
+      return { ...suggestion, suggested };
+    });
   };
 
-  const persistTokenFields = (propName: string, allowed: string[] | undefined): void => {
+  const persistTokenFields = (propName: string, allowed: string[]): void => {
     const current = components[selectedIdx];
     if (!current) return;
     const prop = current.entry.$properties[propName];
     if (!prop) return;
     const nextProp = { ...prop };
-    if (allowed === undefined) delete nextProp['$token.allowed'];
-    else nextProp['$token.allowed'] = allowed;
+    nextProp['$token.allowed'] = allowed;
     const nextEntry: CDFComponentEntry = {
       ...current.entry,
       $properties: { ...current.entry.$properties, [propName]: nextProp },
@@ -981,37 +981,10 @@ export function GenerateReviewStep({
     pushHistorySnapshot(next, autoRejected, undoSnapshot, `token-review:${propName}`);
   };
 
-  const handleTokenAccept = (s: TokenPropSuggestion): void => {
-    persistTokenFields(s.propName, s.allowed);
-    setTokenReviewDecisions((prev) => ({ ...prev, [s.propName]: 'accepted' }));
-  };
-
-  const handleTokenDismiss = (s: TokenPropSuggestion): void => {
-    setLastDismissed({
-      propName: s.propName,
-      allowed: s.allowed,
-      decision: tokenReviewDecisions[s.propName] ?? 'pending',
-    });
-    persistTokenFields(s.propName, undefined);
-    setTokenReviewDecisions((prev) => {
-      const next = { ...prev };
-      delete next[s.propName];
-      return next;
-    });
-  };
-
-  const handleTokenUndoDismiss = (): void => {
-    if (!lastDismissed) return;
-    persistTokenFields(lastDismissed.propName, lastDismissed.allowed);
-    setTokenReviewDecisions((prev) => ({ ...prev, [lastDismissed.propName]: lastDismissed.decision }));
-    setLastDismissed(null);
-  };
-
   const handleTokenEditSave = (s: TokenPropSuggestion): void => {
     const allowed = s.paths.filter((p) => tokenReviewEditSelection.has(p));
     if (allowed.length === 0) return;
     persistTokenFields(s.propName, allowed);
-    setTokenReviewDecisions((prev) => ({ ...prev, [s.propName]: 'accepted' }));
     setTokenReviewEditing(false);
   };
 
@@ -1295,10 +1268,8 @@ export function GenerateReviewStep({
       return;
     }
 
-    // Token review panel needs its own keymap branch, entered
-    // before the generic `panelOpen !== 'none'` scroll/toggle block below,
-    // since that block's Esc/toggle logic doesn't know about edit sub-mode
-    // or accept/dismiss.
+    // Token review panel needs its own keymap branch, entered before the
+    // generic panel scroll/toggle block below.
     if (panelOpen === 'token-review') {
       const suggestions = currentTokenSuggestions();
       const row = suggestions[tokenReviewRow];
@@ -1342,19 +1313,6 @@ export function GenerateReviewStep({
       }
       if (key.downArrow || input === 'j') {
         setTokenReviewRow((r) => Math.min(Math.max(0, suggestions.length - 1), r + 1));
-        return;
-      }
-      if (input === 'a' && row) {
-        handleTokenAccept(row);
-        return;
-      }
-      if (input === 'x' && row) {
-        handleTokenDismiss(row);
-        setTokenReviewRow((r) => Math.min(r, Math.max(0, suggestions.length - 2)));
-        return;
-      }
-      if (input === 'u' && lastDismissed) {
-        handleTokenUndoDismiss();
         return;
       }
       if (key.return && row) {
@@ -2182,12 +2140,10 @@ export function GenerateReviewStep({
                   <TokenReviewPanel
                     componentName={selected.key}
                     suggestions={currentTokenSuggestions()}
-                    decisions={tokenReviewDecisions}
                     selectedRow={tokenReviewRow}
                     editing={tokenReviewEditing}
                     editCursor={tokenReviewEditCursor}
                     editSelection={tokenReviewEditSelection}
-                    canUndoDismiss={lastDismissed !== null}
                     width={panelWidth}
                     height={PANEL_HEIGHT}
                     active={true}
@@ -2253,13 +2209,16 @@ export function GenerateReviewStep({
                 )}
                 {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
                 <Text dimColor>
-                  {sidebarFocused
+                  {panelOpen === 'token-review'
+                    ? '  [↑/↓] move  [Enter] edit allowed  [Esc] close'
+                    : sidebarFocused
                     ? hasGroupRoots
                       ? '  [Space] expand/collapse group  [E/C] expand/collapse all'
                       : ''
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
-                      : '  [Tab] focus list  (edit fields)'}
+                      : '  [Tab] focus list  (edit fields)' +
+                        (currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
                   {livePreviewHook.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
                   {livePreviewHook.disabled && <Text>{'  · live preview disabled'}</Text>}
                 </Text>
@@ -2322,6 +2281,14 @@ export function GenerateReviewStep({
       )}
       {!dialogOpen && sidebarFocused && (
         <Box columnGap={2} flexWrap="wrap">
+          {panelOpen === 'token-review' ? (
+            <>
+              {legendEntry('[↑/↓]', 'move')}
+              {legendEntry('[Enter]', 'edit allowed')}
+              {legendEntry('[Esc]', 'close')}
+            </>
+          ) : (
+            <>
           {legendEntry('[j/k]', 'move')}
           {legendEntry('[a]', 'accept')}
           {legendEntry('[r]', 'reject')}
@@ -2336,7 +2303,7 @@ export function GenerateReviewStep({
           {legendEntry('[p]', 'prop rationale', panelOpen === 'prop-rationale')}
           {legendEntry('[P]', 'component rationale', panelOpen === 'component-rationale')}
           {legendEntry('[s]', 'source', panelOpen === 'source')}
-          {currentTokenSuggestions().length > 0 && legendEntry('[t]', 'token review', panelOpen === 'token-review')}
+          {currentTokenSuggestions().length > 0 && legendEntry('[t]', 'token review')}
           {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
           {breakingChanges.length > 0 && legendEntry('[b]', 'see breaking changes', breakingPanel.isOpen)}
           {removedComponents.length > 0 &&
@@ -2348,6 +2315,8 @@ export function GenerateReviewStep({
           {legendEntry('[Ctrl+R]', 'reload')}
           {legendEntry('[?]', 'help')}
           {legendEntry('[q]', 'quit')}
+            </>
+          )}
         </Box>
       )}
       {!dialogOpen && (

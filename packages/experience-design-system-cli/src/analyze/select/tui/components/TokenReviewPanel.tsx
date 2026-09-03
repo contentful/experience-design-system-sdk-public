@@ -5,39 +5,58 @@ import { PALETTE } from '../theme.js';
 
 export type TokenPropSuggestion = {
   propName: string;
+  /** Every token path compatible with this property's token kind(s). */
   paths: string[];
+  /** The allowed list captured when this review flow first saw the prop. */
+  suggested: string[];
+  /** The current editable allowed subset. */
   allowed: string[];
+};
+
+export type TokenReviewToken = {
+  path: string;
+  kind: string;
 };
 
 /**
  * Design-token props on `entry` that carry a non-empty $token.allowed
- * suggestion to review. The initial allowed list is the editable candidate
- * list; once it is narrowed or dismissed, the prop is no longer a suggestion.
+ * suggestion to review. `paths` is the full compatible token universe when a
+ * token catalog is available; `allowed` remains the current subset.
  */
-export function collectTokenSuggestions(entry: CDFComponentEntry): TokenPropSuggestion[] {
+export function collectTokenSuggestions(
+  entry: CDFComponentEntry,
+  availableTokens: TokenReviewToken[] = [],
+): TokenPropSuggestion[] {
   return Object.entries(entry.$properties)
     .filter(
       ([, def]) => def.$type === 'token' && def.$category === 'design' && (def['$token.allowed']?.length ?? 0) > 0,
     )
-    .map(([propName, def]) => ({
-      propName,
-      paths: def['$token.allowed'] ?? [],
-      allowed: [...(def['$token.allowed'] ?? [])],
-    }));
+    .map(([propName, def]) => {
+      const allowed = [...(def['$token.allowed'] ?? [])];
+      const rawKind = (def as { '$token.kind'?: unknown })['$token.kind'];
+      const kinds = Array.isArray(rawKind)
+        ? rawKind.filter((kind): kind is string => typeof kind === 'string')
+        : typeof rawKind === 'string'
+          ? rawKind
+              .split(',')
+              .map((kind) => kind.trim())
+              .filter(Boolean)
+          : [];
+      const compatible = availableTokens
+        .filter((token) => kinds.includes(token.kind))
+        .map((token) => token.path);
+      const paths = [...new Set([...compatible, ...allowed])];
+      return { propName, paths, suggested: [...allowed], allowed };
+    });
 }
-
-export type TokenReviewDecision = 'pending' | 'accepted';
 
 export type TokenReviewPanelProps = {
   componentName: string;
   suggestions: TokenPropSuggestion[];
-  decisions: Record<string, TokenReviewDecision>;
   selectedRow: number;
   editing: boolean;
   editCursor: number;
   editSelection: Set<string>;
-  /** Whether `[u]` can restore the most recently dismissed prop on this component. */
-  canUndoDismiss: boolean;
   width: number;
   height: number;
   active: boolean;
@@ -46,12 +65,10 @@ export type TokenReviewPanelProps = {
 export function TokenReviewPanel({
   componentName,
   suggestions,
-  decisions,
   selectedRow,
   editing,
   editCursor,
   editSelection,
-  canUndoDismiss,
   width,
   height,
   active,
@@ -68,7 +85,7 @@ export function TokenReviewPanel({
         borderColor={active ? PALETTE.inverse : undefined}
       >
         <Text bold dimColor={!active}>{`TOKEN REVIEW — ${componentName} · ${current.propName} (edit allowed)`}</Text>
-        <Text dimColor>{'select which suggested paths remain allowed'}</Text>
+        <Text dimColor>{'select which tokens are allowed'}</Text>
         <Text> </Text>
         {current.paths.map((path, i) => {
           const checked = editSelection.has(path);
@@ -98,26 +115,21 @@ export function TokenReviewPanel({
       <Text bold dimColor={!active}>{`TOKEN REVIEW — ${componentName}`}</Text>
       {suggestions.length === 0 && <Text dimColor>{'(no token suggestions for this component)'}</Text>}
       {suggestions.map((s, i) => {
-        const decision = decisions[s.propName] ?? 'pending';
         const focused = i === selectedRow;
         return (
           <Box key={s.propName} flexDirection="column">
             <Box>
               <Text color={focused ? PALETTE.info : undefined} bold={focused} dimColor={!active}>
-                {`${decision === 'accepted' ? '✓' : '○'} ${s.propName}`}
+                {`${focused ? '▶' : ' '} ${s.propName}`}
               </Text>
             </Box>
-            <Text dimColor>{`  suggested: ${s.paths.join(', ')}`}</Text>
+            <Text dimColor>{`  suggested: ${s.suggested.join(', ')}`}</Text>
             <Text dimColor>{`  allowed: ${s.allowed.join(', ')}`}</Text>
           </Box>
         );
       })}
       <Text> </Text>
-      <Text dimColor>
-        {'[↑/↓] move  [a] accept  [x] dismiss  [Enter] edit allowed  ' +
-          (canUndoDismiss ? '[u] undo  ' : '') +
-          '[Esc] close'}
-      </Text>
+      <Text dimColor>{'[↑/↓] move  [Enter] edit allowed  [Esc] close'}</Text>
     </Box>
   );
 }
