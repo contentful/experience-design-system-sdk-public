@@ -86,19 +86,6 @@ type CdfReviewEntry = {
   status: ReviewComponentStatus;
 };
 
-function tokenRestrictionsChanged(
-  previous: CDFComponentEntry | undefined,
-  next: CDFComponentEntry,
-): boolean {
-  const restrictions = (entry: CDFComponentEntry | undefined): string =>
-    JSON.stringify(
-      Object.entries(entry?.$properties ?? {})
-        .filter(([, prop]) => prop.$type === 'token' && prop.$category === 'design')
-        .map(([name, prop]) => [name, prop['$token.allowed'] ?? []]),
-    );
-  return restrictions(previous) !== restrictions(next);
-}
-
 type GenerateReviewStepProps = {
   extractSessionId: string;
   tokenSessionId?: string | null;
@@ -639,18 +626,6 @@ export function GenerateReviewStep({
       entry: c.entry,
       status: c.status,
     }));
-    const currentByKey = new Map(components.map((c) => [c.key, c.entry]));
-    const tokenEntries = snap.components
-      .filter(({ key, entry }) => tokenRestrictionsChanged(currentByKey.get(key), entry))
-      .map(({ key, entry }) => ({ key, entry }));
-    if (tokenEntries.length > 0) {
-      const db = openPipelineDb();
-      try {
-        storeCDFComponents(db, extractSessionId, tokenEntries);
-      } finally {
-        db.close();
-      }
-    }
     setComponents(restored);
     setAutoRejected(snap.autoRejected);
     setUndoSnapshot(snap.undoSnapshot);
@@ -1004,8 +979,7 @@ export function GenerateReviewStep({
     const prop = current.entry.$properties[propName];
     if (!prop) return;
     const nextProp = { ...prop };
-    if (allowed.length > 0) nextProp['$token.allowed'] = allowed;
-    else delete nextProp['$token.allowed'];
+    nextProp['$token.allowed'] = allowed;
     const nextEntry: CDFComponentEntry = {
       ...current.entry,
       $properties: { ...current.entry.$properties, [propName]: nextProp },
@@ -1024,6 +998,7 @@ export function GenerateReviewStep({
 
   const handleTokenEditSave = (s: TokenPropSuggestion): void => {
     const allowed = s.paths.filter((p) => tokenReviewEditSelection.has(p));
+    if (allowed.length === 0) return;
     persistTokenFields(s.propName, allowed);
     setTokenReviewEditing(false);
   };
@@ -1326,6 +1301,7 @@ export function GenerateReviewStep({
             const path = row.paths[tokenReviewEditCursor];
             setTokenReviewEditSelection((prev) => {
               const next = new Set(prev);
+              if (next.has(path) && next.size === 1) return next;
               if (next.has(path)) next.delete(path);
               else next.add(path);
               return next;

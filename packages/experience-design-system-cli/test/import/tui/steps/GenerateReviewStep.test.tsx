@@ -4736,64 +4736,16 @@ describe('GenerateReviewStep — token review editing', () => {
     await tick();
     stdin.write(' ');
     await tick();
+    stdin.write('k');
+    await tick();
+    stdin.write(' ');
+    await tick();
     stdin.write('\x13');
     await tick();
     frame = lastFrame() ?? '';
     expect(frame).toContain('suggested: colors.surface.default, colors.surface.raised');
     expect(frame).toContain('allowed: colors.surface.default');
     const lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
-    expect(lastCall![2][0].entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default']);
-  });
-
-  it('allows clearing all allowed tokens and persists the omission', async () => {
-    const dbModule = await import('../../../../src/session/db.js');
-    const { stdin, lastFrame } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    stdin.write('t');
-    await tick();
-    stdin.write('\r');
-    await tick();
-    stdin.write(' ');
-    await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write(' ');
-    await tick();
-    stdin.write('\x13');
-    await tick();
-    expect(lastFrame() ?? '').toContain('allowed:');
-    const lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
-    expect(lastCall![2][0].entry.$properties.bgColor['$token.allowed']).toBeUndefined();
-  });
-
-  it('persists token restrictions restored by undo and redo', async () => {
-    const dbModule = await import('../../../../src/session/db.js');
-    const { stdin } = render(
-      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
-    );
-    await tick();
-    stdin.write('t');
-    await tick();
-    stdin.write('\r');
-    await tick();
-    stdin.write('j');
-    await tick();
-    stdin.write(' ');
-    await tick();
-    stdin.write('\x13');
-    await tick();
-    stdin.write('\x1a');
-    await tick();
-    let lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
-    expect(lastCall![2][0].entry.$properties.bgColor['$token.allowed']).toEqual([
-      'colors.surface.default',
-      'colors.surface.raised',
-    ]);
-    stdin.write('\x19');
-    await tick();
-    lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
     expect(lastCall![2][0].entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default']);
   });
 
