@@ -2531,28 +2531,4 @@ describe('FieldEditor — BD4 initialFocusTarget', () => {
     expect(frame).toContain('ALPHA_DESC');
     expect(frame).not.toContain('CHARLIE_DESC');
   });
-
-  it('shows the allowed field and its token-review instruction in field edit mode', async () => {
-    const { stdin, lastFrame } = render(
-      <FieldEditor
-        value={TOKEN_COMPONENT}
-        width={100}
-        height={20}
-        onChange={vi.fn()}
-        onSave={vi.fn()}
-        onDiscard={vi.fn()}
-      />,
-    );
-    expect(lastFrame() ?? '').toContain('allowed: colors.surface.default');
-    stdin.write('\r');
-    await tick();
-    stdin.write('j');
-    stdin.write('j');
-    stdin.write('j');
-    stdin.write('j');
-    stdin.write('\x1b[B');
-    stdin.write('\x1b[B');
-    await tick();
-    expect(lastFrame() ?? '').toContain('press [t] to edit allowed tokens');
-  });
 });

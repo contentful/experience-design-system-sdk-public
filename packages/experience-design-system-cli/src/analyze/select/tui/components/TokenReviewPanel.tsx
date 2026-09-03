@@ -5,11 +5,8 @@ import { PALETTE } from '../theme.js';
 
 export type TokenPropSuggestion = {
   propName: string;
-  /** Every token path compatible with this property's token kind(s). */
   paths: string[];
-  /** The allowed list captured when this review flow first saw the prop. */
   suggested: string[];
-  /** The current editable allowed subset. */
   allowed: string[];
 };
 

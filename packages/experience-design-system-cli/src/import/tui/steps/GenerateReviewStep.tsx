@@ -1283,8 +1283,6 @@ export function GenerateReviewStep({
       return;
     }
 
-    // Token review panel needs its own keymap branch, entered before the
-    // generic panel scroll/toggle block below.
     if (panelOpen === 'token-review') {
       const suggestions = currentTokenSuggestions();
       const row = suggestions[tokenReviewRow];

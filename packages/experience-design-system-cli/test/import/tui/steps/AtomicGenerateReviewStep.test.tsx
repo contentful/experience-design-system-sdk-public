@@ -155,9 +155,6 @@ describe('AtomicGenerateReviewStep — token review panel', () => {
   it('shows the [t] token review hint only when the selected component has a suggestion', async () => {
     const { stdin, lastFrame } = renderStep();
     await tick();
-    // sortComponentsForSidebar puts the empty Card ahead of Button in the
-    // warning tier, so Card (no suggestion) is selected first — move down
-    // one row to Button, which carries the bgColor suggestion.
     stdin.write('j');
     await tick();
     expect(lastFrame() ?? '').toMatch(/\[t\] token review/);
@@ -166,7 +163,7 @@ describe('AtomicGenerateReviewStep — token review panel', () => {
   it('opens the token review panel on [t] and lists the suggested prop', async () => {
     const { stdin, lastFrame } = renderStep();
     await tick();
-    stdin.write('j'); // Card (empty) is selected first; move to Button.
+    stdin.write('j');
     await tick();
     stdin.write('t');
     await tick();
@@ -179,9 +176,6 @@ describe('AtomicGenerateReviewStep — token review panel', () => {
   it('closes the panel on Esc', async () => {
     const { stdin, lastFrame } = renderStep();
     await tick();
-    // Card (empty) is selected first and has no token suggestion — 't' is a
-    // no-op there, which would make this assertion pass vacuously. Move to
-    // Button first so the panel actually opens before we verify Esc closes it.
     stdin.write('j');
     await tick();
     stdin.write('t');

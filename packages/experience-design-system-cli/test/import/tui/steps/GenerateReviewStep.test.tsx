@@ -4682,10 +4682,6 @@ describe('GenerateReviewStep — token review panel', () => {
     await tick();
     stdin.write('t');
     await tick();
-    // Match the panel header specifically (with the em dash) — the footer
-    // legend's "[t] token review" hint is lowercase but still matches a
-    // case-insensitive /TOKEN REVIEW/ check, so it can't distinguish
-    // panel-open from panel-closed on its own.
     expect(lastFrame() ?? '').toMatch(/TOKEN REVIEW —/i);
     stdin.write('\x1b');
     await tick();
