@@ -343,6 +343,31 @@ describe('parseToolCallLines', () => {
     });
   });
 
+  describe('trailing content after a complete object', () => {
+    it('recovers a call when a stray character follows the object', () => {
+      const line =
+        '{"tool":"classify_prop","prop":"margin","cdf_type":"enum","cdf_category":"design","values":["none","spacingXs"]}"';
+      const { calls, warnings } = parseToolCallLines(line);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ tool: 'classify_prop', prop: 'margin', cdf_type: 'enum' });
+      expect(warnings).toEqual(['ignored trailing content after JSON: "']);
+    });
+
+    it('handles braces and escaped quotes inside string values', () => {
+      const line = '{"tool":"classify_component","description":"renders `<Text>{title}</Text>` and a \\"quote\\""}';
+      const { calls, warnings } = parseToolCallLines(line);
+      expect(calls).toHaveLength(1);
+      expect(warnings).toHaveLength(0);
+      expect(calls[0]).toMatchObject({ description: 'renders `<Text>{title}</Text>` and a "quote"' });
+    });
+
+    it('still drops and warns when the object itself is incomplete', () => {
+      const { calls, warnings } = parseToolCallLines('{"tool":"classify_prop","prop":"margin"');
+      expect(calls).toHaveLength(0);
+      expect(warnings[0]).toMatch(/unparseable line/);
+    });
+  });
+
   describe('unknown / malformed lines', () => {
     it('warns on unparseable JSON', () => {
       const { calls, warnings } = parseToolCallLines('{broken json}');
