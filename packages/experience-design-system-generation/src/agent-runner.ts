@@ -78,75 +78,27 @@ export interface ParsedSelectToolCalls {
 
 const VALID_SELECT_TOOL_NAMES = new Set(['select_component', 'reject_component']);
 
-/**
- * Scans one line for the complete JSON objects it contains.
- *
- * The agents are asked for one object per line and mostly comply, but a line
- * that carries anything after a valid object used to lose the whole tool call:
- * `JSON.parse` is all-or-nothing, so a single stray character discarded a
- * fully-formed classification. Scanning for balanced objects and parsing each
- * one keeps the call and reports the leftovers instead.
- *
- * Every candidate still goes through `JSON.parse`, so nothing is reconstructed
- * or guessed — an object that is genuinely malformed is still rejected.
- */
-function scanJsonObjects(line: string): {
-  objects: Array<Record<string, unknown>>;
-  trailing: string;
-  malformed: boolean;
-} {
-  const objects: Array<Record<string, unknown>> = [];
-  let i = 0;
+function findJsonObjectEnd(line: string): number {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
 
-  while (i < line.length) {
-    while (i < line.length && /\s/.test(line[i]!)) i++;
-    if (i >= line.length) break;
-    if (line[i] !== '{') return { objects, trailing: line.slice(i), malformed: objects.length === 0 };
-
-    // Walk to the matching brace, ignoring braces inside string literals so a
-    // description such as "renders `<Text>{title}</Text>`" cannot end the
-    // object early.
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-    let end = -1;
-    for (let j = i; j < line.length; j++) {
-      const ch = line[j]!;
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-      if (ch === '\\') {
-        if (inString) escaped = true;
-        continue;
-      }
-      if (ch === '"') {
-        inString = !inString;
-        continue;
-      }
-      if (inString) continue;
-      if (ch === '{') depth++;
-      else if (ch === '}') {
-        depth--;
-        if (depth === 0) {
-          end = j;
-          break;
-        }
-      }
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!;
+    if (escaped) {
+      escaped = false;
+    } else if (ch === '\\' && inString) {
+      escaped = true;
+    } else if (ch === '"') {
+      inString = !inString;
+    } else if (!inString && ch === '{') {
+      depth++;
+    } else if (!inString && ch === '}' && --depth === 0) {
+      return i;
     }
-    if (end === -1) return { objects, trailing: '', malformed: true };
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(line.slice(i, end + 1));
-    } catch {
-      return { objects, trailing: '', malformed: true };
-    }
-    if (typeof parsed === 'object' && parsed !== null) objects.push(parsed as Record<string, unknown>);
-    i = end + 1;
   }
 
-  return { objects, trailing: '', malformed: false };
+  return -1;
 }
 
 /**
@@ -164,16 +116,24 @@ function readToolCallObjects(stdout: string): {
     const line = raw.trim();
     if (!line.startsWith('{')) continue;
 
-    const { objects: found, trailing, malformed } = scanJsonObjects(line);
-    if (malformed) {
+    const end = findJsonObjectEnd(line);
+    if (end === -1) {
       warnings.push(`unparseable line: ${line.slice(0, 120)}`);
       continue;
     }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line.slice(0, end + 1));
+    } catch {
+      warnings.push(`unparseable line: ${line.slice(0, 120)}`);
+      continue;
+    }
+    const trailing = line.slice(end + 1);
     if (trailing.trim()) {
       warnings.push(`ignored trailing content after JSON: ${trailing.trim().slice(0, 120)}`);
     }
-    for (const obj of found) {
-      if ('tool' in obj) objects.push(obj);
+    if (typeof parsed === 'object' && parsed !== null && 'tool' in parsed) {
+      objects.push(parsed as Record<string, unknown>);
     }
   }
 
