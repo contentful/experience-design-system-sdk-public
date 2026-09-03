@@ -33,12 +33,18 @@ vi.mock('../../../../src/session/db.js', () => ({
     close: vi.fn(),
   }),
   loadCDFComponents: vi.fn().mockReturnValue([{ key: 'Button', entry: SAMPLE_ENTRY }]),
-  loadDTCGTokens: vi.fn().mockReturnValue({ groups: [], tokens: [
-    { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
-    { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
-    { path: 'colors.brand.primary', $type: 'color', $value: '#00f' },
-    { path: 'spacing.small', $type: 'dimension', $value: '4px' },
-  ] }),
+  loadDTCGTokens: vi.fn((_db: unknown, sessionId: string) => ({
+    groups: [],
+    tokens: [
+      { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
+      { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
+      { path: 'colors.brand.primary', $type: 'color', $value: '#00f' },
+      ...(sessionId === 'token-session'
+        ? [{ path: 'colors.brand.secondary', $type: 'color', $value: '#0f0' }]
+        : []),
+      { path: 'spacing.small', $type: 'dimension', $value: '4px' },
+    ],
+  })),
   storeCDFComponents: vi.fn(),
   loadSlotCycles: vi.fn().mockReturnValue([]),
   storeSlotCycles: vi.fn(),
@@ -52,6 +58,13 @@ vi.mock('../../../../src/session/db.js', () => ({
     props: [{ name: 'variant', category: 'content', description: 'Visual style', rationale: 'enum visual variant' }],
     slots: [],
   }),
+}));
+
+vi.mock('../../../../src/apply/manifest.js', () => ({
+  readTokensFromPath: vi.fn().mockResolvedValue([
+    { path: 'colors.file.only', $type: 'color', $value: '#0f0' },
+    { path: 'spacing.file.only', $type: 'dimension', $value: '8px' },
+  ]),
 }));
 
 const triggerSpy = vi.fn();
@@ -4720,6 +4733,44 @@ describe('GenerateReviewStep — token review editing', () => {
     expect(frame).toContain('allowed: colors.surface.default');
     const lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
     expect(lastCall![2][0].entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default']);
+  });
+
+  it('loads the full compatible catalog from tokenSessionId', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        tokenSessionId="token-session"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+      />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('colors.brand.secondary');
+    expect(frame).not.toContain('spacing.small');
+  });
+
+  it('loads the full compatible catalog from tokensPath when reusing existing tokens', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        tokensPath="/project/.contentful/tokens.json"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+      />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('colors.file.only');
+    expect(frame).not.toContain('spacing.file.only');
   });
 
   it('does not accept or dismiss when those legacy keys are pressed', async () => {

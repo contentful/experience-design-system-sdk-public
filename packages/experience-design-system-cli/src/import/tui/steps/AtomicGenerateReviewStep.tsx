@@ -12,6 +12,7 @@ import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
 import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
 import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import { readTokensFromPath } from '../../../apply/manifest.js';
 import {
   openPipelineDb,
   loadCDFComponents,
@@ -51,6 +52,7 @@ type CdfReviewEntry = {
 
 type GenerateReviewStepProps = {
   extractSessionId: string;
+  tokenSessionId?: string | null;
   onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
   /**
@@ -101,6 +103,7 @@ const PANEL_HEIGHT = 22;
 
 export function AtomicGenerateReviewStep({
   extractSessionId,
+  tokenSessionId,
   onFinalize,
   onQuit,
   livePreview = true,
@@ -203,7 +206,10 @@ export function AtomicGenerateReviewStep({
     let tokens: TokenReviewToken[] = [];
     try {
       cdfComponents = loadCDFComponents(db, extractSessionId);
-      tokens = loadDTCGTokens(db, extractSessionId).tokens.map((token) => ({ path: token.path, kind: token.$type }));
+      tokens = loadDTCGTokens(db, tokenSessionId ?? extractSessionId).tokens.map((token) => ({
+        path: token.path,
+        kind: token.$type,
+      }));
     } finally {
       db.close();
     }
@@ -219,20 +225,31 @@ export function AtomicGenerateReviewStep({
   };
 
   useEffect(() => {
-    try {
-      const { entries, tokens, error } = loadEntries();
-      if (error) {
-        setLoadError(error);
-      } else {
+    let disposed = false;
+    void (async () => {
+      try {
+        const { entries, tokens, error } = loadEntries();
+        if (error) {
+          if (!disposed) setLoadError(error);
+          return;
+        }
+        const catalog =
+          tokenSessionId || !tokensPath
+            ? tokens
+            : (await readTokensFromPath('tokens', tokensPath)).map((token) => ({ path: token.path, kind: token.$type }));
+        if (disposed) return;
         setComponents(entries);
-        setAvailableTokens(tokens);
+        setAvailableTokens(catalog);
+      } catch (e: unknown) {
+        if (!disposed) setLoadError(String(e));
+      } finally {
+        if (!disposed) setLoading(false);
       }
-    } catch (e: unknown) {
-      setLoadError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    })();
+    return () => {
+      disposed = true;
+    };
+  }, [extractSessionId, tokenSessionId, tokensPath]);
 
   // Seed the undo/redo history once components are loaded.
   useEffect(() => {

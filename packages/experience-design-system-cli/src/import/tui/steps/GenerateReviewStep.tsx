@@ -27,6 +27,7 @@ import {
 } from '../../../analyze/select/tui/components/removed-components-text.js';
 import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import { readTokensFromPath } from '../../../apply/manifest.js';
 import {
   openPipelineDb,
   loadCDFComponents,
@@ -87,6 +88,7 @@ type CdfReviewEntry = {
 
 type GenerateReviewStepProps = {
   extractSessionId: string;
+  tokenSessionId?: string | null;
   onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
   livePreview?: boolean;
@@ -250,6 +252,7 @@ export function deriveBreakingChanges(response: ServerPreviewResponse): Breaking
 
 export function GenerateReviewStep({
   extractSessionId,
+  tokenSessionId,
   onFinalize,
   onQuit,
   livePreview = true,
@@ -403,7 +406,10 @@ export function GenerateReviewStep({
     try {
       cdfComponents = loadCDFComponents(db, extractSessionId);
       cycles = loadSlotCycles(db, extractSessionId);
-      tokens = loadDTCGTokens(db, extractSessionId).tokens.map((token) => ({ path: token.path, kind: token.$type }));
+      tokens = loadDTCGTokens(db, tokenSessionId ?? extractSessionId).tokens.map((token) => ({
+        path: token.path,
+        kind: token.$type,
+      }));
     } finally {
       db.close();
     }
@@ -431,22 +437,32 @@ export function GenerateReviewStep({
   };
 
   useEffect(() => {
-    try {
-      const { entries, cycles, tokens, error } = loadSessionState();
-      if (error) {
-        setLoadError(error);
-        setLoading(false);
-        return;
+    let disposed = false;
+    void (async () => {
+      try {
+        const { entries, cycles, tokens, error } = loadSessionState();
+        if (error) {
+          if (!disposed) setLoadError(error);
+          return;
+        }
+        const catalog =
+          tokenSessionId || !tokensPath
+            ? tokens
+            : (await readTokensFromPath('tokens', tokensPath)).map((token) => ({ path: token.path, kind: token.$type }));
+        if (disposed) return;
+        setSlotCycles(cycles);
+        setAvailableTokens(catalog);
+        setComponents(entries);
+      } catch (e: unknown) {
+        if (!disposed) setLoadError(String(e));
+      } finally {
+        if (!disposed) setLoading(false);
       }
-      setSlotCycles(cycles);
-      setAvailableTokens(tokens);
-      setComponents(entries);
-      setLoading(false);
-    } catch (e: unknown) {
-      setLoadError(String(e));
-      setLoading(false);
-    }
-  }, []);
+    })();
+    return () => {
+      disposed = true;
+    };
+  }, [extractSessionId, tokenSessionId, tokensPath]);
 
   useEffect(() => {
     if (loading) return;

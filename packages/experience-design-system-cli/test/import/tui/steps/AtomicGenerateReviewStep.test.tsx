@@ -36,18 +36,31 @@ vi.mock('../../../../src/session/db.js', () => ({
     { key: 'Button', entry: SAMPLE_ENTRY },
     { key: 'Card', entry: { $type: 'component', $properties: {} } },
   ]),
-  loadDTCGTokens: vi.fn().mockReturnValue({ groups: [], tokens: [
-    { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
-    { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
-    { path: 'colors.brand.primary', $type: 'color', $value: '#00f' },
-    { path: 'spacing.small', $type: 'dimension', $value: '4px' },
-  ] }),
+  loadDTCGTokens: vi.fn((_db: unknown, sessionId: string) => ({
+    groups: [],
+    tokens: [
+      { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
+      { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
+      { path: 'colors.brand.primary', $type: 'color', $value: '#00f' },
+      ...(sessionId === 'token-session'
+        ? [{ path: 'colors.brand.secondary', $type: 'color', $value: '#0f0' }]
+        : []),
+      { path: 'spacing.small', $type: 'dimension', $value: '4px' },
+    ],
+  })),
   storeCDFComponents: vi.fn(),
   loadComponentReviewMetadata: vi.fn().mockReturnValue({
     sourcePath: '/repo/src/Button.tsx',
     componentSource: 'export const Button = () => <button/>;\nconst x = 1;\n',
   }),
   loadComponentRationale: vi.fn().mockReturnValue(null),
+}));
+
+vi.mock('../../../../src/apply/manifest.js', () => ({
+  readTokensFromPath: vi.fn().mockResolvedValue([
+    { path: 'colors.file.only', $type: 'color', $value: '#0f0' },
+    { path: 'spacing.file.only', $type: 'dimension', $value: '8px' },
+  ]),
 }));
 
 const triggerSpy = vi.fn();
@@ -77,9 +90,15 @@ async function tick() {
   await new Promise((r) => setTimeout(r, 30));
 }
 
-function renderStep() {
+function renderStep(tokenSessionId?: string) {
   return render(
-    <AtomicGenerateReviewStep extractSessionId="s1" onFinalize={() => {}} onQuit={() => {}} livePreview={false} />,
+    <AtomicGenerateReviewStep
+      extractSessionId="s1"
+      {...(tokenSessionId ? { tokenSessionId } : {})}
+      onFinalize={() => {}}
+      onQuit={() => {}}
+      livePreview={false}
+    />,
   );
 }
 
@@ -218,6 +237,42 @@ describe('AtomicGenerateReviewStep — token review editing', () => {
     expect(frame).toContain('allowed: colors.surface.default');
     const lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
     expect(lastCall![2][0].entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default']);
+  });
+
+  it('loads the full compatible catalog from tokenSessionId', async () => {
+    const { stdin, lastFrame } = renderStep('token-session');
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('colors.brand.secondary');
+    expect(frame).not.toContain('spacing.small');
+  });
+
+  it('loads the full compatible catalog from tokensPath when reusing existing tokens', async () => {
+    const { stdin, lastFrame } = render(
+      <AtomicGenerateReviewStep
+        extractSessionId="s1"
+        tokensPath="/project/.contentful/tokens.json"
+        onFinalize={() => {}}
+        onQuit={() => {}}
+        livePreview={false}
+      />,
+    );
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('colors.file.only');
+    expect(frame).not.toContain('spacing.file.only');
   });
 
   it('does not accept or dismiss when those legacy keys are pressed', async () => {

@@ -32,7 +32,7 @@ export function collectTokenSuggestions(
       ([, def]) => def.$type === 'token' && def.$category === 'design' && (def['$token.allowed']?.length ?? 0) > 0,
     )
     .map(([propName, def]) => {
-      const allowed = [...(def['$token.allowed'] ?? [])];
+      const persistedAllowed = [...(def['$token.allowed'] ?? [])];
       const rawKind = (def as { '$token.kind'?: unknown })['$token.kind'];
       const kinds = Array.isArray(rawKind)
         ? rawKind.filter((kind): kind is string => typeof kind === 'string')
@@ -45,7 +45,10 @@ export function collectTokenSuggestions(
       const compatible = availableTokens
         .filter((token) => kinds.includes(token.kind))
         .map((token) => token.path);
-      const paths = [...new Set([...compatible, ...allowed])];
+      const compatiblePaths = new Set(compatible);
+      const allowed =
+        availableTokens.length > 0 ? persistedAllowed.filter((path) => compatiblePaths.has(path)) : persistedAllowed;
+      const paths = availableTokens.length > 0 ? compatible : allowed;
       return { propName, paths, suggested: [...allowed], allowed };
     });
 }

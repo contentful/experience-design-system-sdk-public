@@ -37,6 +37,7 @@ describe('collectTokenSuggestions', () => {
       collectTokenSuggestions(ENTRY, [
         { path: 'colors.surface.default', kind: 'color' },
         { path: 'colors.brand.primary', kind: 'color' },
+        { path: 'colors.surface.raised', kind: 'color' },
         { path: 'spacing.small', kind: 'dimension' },
       ])[0],
     ).toEqual({
@@ -45,6 +46,35 @@ describe('collectTokenSuggestions', () => {
       suggested: ['colors.surface.default', 'colors.surface.raised'],
       allowed: ['colors.surface.default', 'colors.surface.raised'],
     });
+  });
+
+  it('excludes persisted allowed paths that do not match the property kind when a catalog is available', () => {
+    const entry: CDFComponentEntry = {
+      $type: 'component',
+      $properties: {
+        bgColor: {
+          $type: 'token',
+          $category: 'design',
+          '$token.kind': 'color',
+          '$token.allowed': ['colors.surface.default', 'spacing.small'],
+        },
+      },
+    };
+
+    expect(
+      collectTokenSuggestions(entry, [
+        { path: 'colors.surface.default', kind: 'color' },
+        { path: 'colors.brand.primary', kind: 'color' },
+        { path: 'spacing.small', kind: 'dimension' },
+      ]),
+    ).toEqual([
+      {
+        propName: 'bgColor',
+        paths: ['colors.surface.default', 'colors.brand.primary'],
+        suggested: ['colors.surface.default'],
+        allowed: ['colors.surface.default'],
+      },
+    ]);
   });
 
   it('excludes design-token props with no $token.allowed (nothing suggested yet)', () => {

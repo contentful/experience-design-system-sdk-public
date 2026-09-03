@@ -242,6 +242,32 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     expect(frame).toMatch(/Type to edit/);
     expect(frame).toContain('Hero title');
   });
+
+  it('places allowed after description and shows its blue edit affordance', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={TOKEN_COMPONENT}
+        width={100}
+        height={25}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    stdin.write('\r');
+    await tick();
+    for (let i = 0; i < 6; i += 1) {
+      stdin.write('\x1b[B');
+      await tick();
+    }
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('press [t] to edit allowed tokens');
+    expect(frame).toContain('╭');
+
+    stdin.write('\x1b[B');
+    await tick();
+    expect(lastFrame() ?? '').not.toContain('press [t] to edit allowed tokens');
+  });
 });
 
 describe('FieldEditor — flat enum-values (Fix 3)', () => {
@@ -2502,6 +2528,8 @@ describe('FieldEditor — BD4 initialFocusTarget', () => {
     stdin.write('j');
     stdin.write('j');
     stdin.write('j');
+    stdin.write('\x1b[B');
+    stdin.write('\x1b[B');
     await tick();
     expect(lastFrame() ?? '').toContain('press [t] to edit allowed tokens');
   });

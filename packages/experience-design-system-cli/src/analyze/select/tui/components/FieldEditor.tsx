@@ -405,10 +405,12 @@ function PropRow({
       )}
 
       {selected && prop.type === 'token' && prop.category === 'design' && (
-        <Box paddingLeft={2} gap={1}>
+        <Box paddingLeft={2} flexDirection="row" gap={1}>
           <Text dimColor>allowed:</Text>
           {activeField === 'allowed' ? (
-            <Text dimColor>press [t] to edit allowed tokens</Text>
+            <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
+              <Text dimColor>press [t] to edit allowed tokens</Text>
+            </Box>
           ) : (
             <Text color={prop.allowed.length > 0 ? PALETTE.info : undefined} dimColor={prop.allowed.length === 0}>
               {prop.allowed.length > 0 ? prop.allowed.join(', ') : '(any)'}
@@ -634,13 +636,13 @@ function propFields(prop: PropState): PropField[] {
   const fields: PropField[] = ['type', 'category', 'required'];
   if (prop.type === 'token') {
     fields.push('tokenKind');
-    if (prop.category === 'design') fields.push('allowed');
   }
   if (prop.type === 'enum') fields.push('values');
   if (prop.type !== 'richtext' && prop.type !== 'media' && prop.type !== 'link') {
     fields.push('default');
   }
   fields.push('description');
+  if (prop.type === 'token' && prop.category === 'design') fields.push('allowed');
   return fields;
 }
 const SLOT_FIELDS: SlotField[] = ['required', 'allowedComponents', 'description'];
