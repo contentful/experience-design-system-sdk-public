@@ -268,6 +268,28 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     await tick();
     expect(lastFrame() ?? '').not.toContain('press [t] to edit allowed tokens');
   });
+
+  it('sets design token defaults when a prop is converted to token', async () => {
+    const onChange = vi.fn();
+    const { stdin, lastFrame } = render(
+      <FieldEditor value={STRING_COMPONENT} width={100} height={25} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    stdin.write('\r');
+    await tick();
+    for (let i = 0; i < 6; i += 1) {
+      stdin.write('\x1b[C');
+      await tick();
+    }
+    for (let i = 0; i < 6; i += 1) {
+      stdin.write('\x1b[B');
+      await tick();
+    }
+    expect(lastFrame() ?? '').toContain('press [t] to edit allowed tokens');
+    const updated = onChange.mock.calls.at(-1)?.[0] as string;
+    expect(updated).toContain('"$type": "token"');
+    expect(updated).toContain('"$category": "design"');
+    expect(updated).toContain('"$token.kind": "color"');
+  });
 });
 
 describe('FieldEditor — flat enum-values (Fix 3)', () => {

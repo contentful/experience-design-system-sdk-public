@@ -19,18 +19,23 @@ export type TokenReviewToken = {
 };
 
 /**
- * Design-token props on `entry` that carry a non-empty $token.allowed
- * suggestion to review. `paths` is the full compatible token universe when a
- * token catalog is available; `allowed` remains the current subset.
+ * Design-token props on `entry` with a declared token kind. `paths` is the
+ * full compatible token universe when a token catalog is available; `allowed`
+ * remains the current subset.
  */
 export function collectTokenSuggestions(
   entry: CDFComponentEntry,
   availableTokens: TokenReviewToken[] = [],
 ): TokenPropSuggestion[] {
   return Object.entries(entry.$properties)
-    .filter(
-      ([, def]) => def.$type === 'token' && def.$category === 'design' && (def['$token.allowed']?.length ?? 0) > 0,
-    )
+    .filter(([, def]) => {
+      const rawKind = (def as { '$token.kind'?: unknown })['$token.kind'];
+      return (
+        def.$type === 'token' &&
+        def.$category === 'design' &&
+        (typeof rawKind === 'string' || Array.isArray(rawKind))
+      );
+    })
     .map(([propName, def]) => {
       const persistedAllowed = [...(def['$token.allowed'] ?? [])];
       const rawKind = (def as { '$token.kind'?: unknown })['$token.kind'];
@@ -83,6 +88,10 @@ export function TokenReviewPanel({
     const maxStart = Math.max(0, current.paths.length - visibleCount);
     const scrollStart = Math.max(0, Math.min(editCursor - Math.floor(visibleCount / 2), maxStart));
     const visiblePaths = current.paths.slice(scrollStart, scrollStart + visibleCount);
+    const rangeLabel =
+      current.paths.length === 0
+        ? 'no compatible tokens'
+        : `${scrollStart + 1}-${scrollStart + visiblePaths.length} of ${current.paths.length}`;
     return (
       <Box
         flexDirection="column"
@@ -95,9 +104,10 @@ export function TokenReviewPanel({
           {`TOKEN REVIEW — ${componentName} · ${current.propName} (edit allowed)`}
         </Text>
         <Text dimColor wrap="truncate">
-          {`select which tokens are allowed (${scrollStart + 1}-${scrollStart + visiblePaths.length} of ${current.paths.length})`}
+          {`select which tokens are allowed (${rangeLabel})`}
         </Text>
         <Text> </Text>
+        {current.paths.length === 0 && <Text dimColor>{'(no compatible tokens found for this token kind)'}</Text>}
         {visiblePaths.map((path, i) => {
           const pathIndex = scrollStart + i;
           const checked = editSelection.has(path);

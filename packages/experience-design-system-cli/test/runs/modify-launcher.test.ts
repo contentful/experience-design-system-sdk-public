@@ -134,6 +134,20 @@ describe('launchModifyWizard prop wiring', () => {
     expect(captured.props?.['seedTokenSessionId']).toBeUndefined();
   });
 
+  it('threads tokensPath as seedTokensPath when set', async () => {
+    await launchModifyWizard({
+      extractSessionId: 'e1',
+      generateSessionId: 'g1',
+      tokenSessionId: 't1',
+      tokensPath: '/p/dist/tokens.json',
+      projectPath: '/p',
+      savePath: '/p/dist',
+      entryStep: 'final-review',
+      saveMode: 'prompt',
+    });
+    expect(captured.props?.['seedTokensPath']).toBe('/p/dist/tokens.json');
+  });
+
   it('threads creds from initialSpaceId / initialEnvironmentId / initialHost when provided', async () => {
     await launchModifyWizard({
       extractSessionId: 'e1',

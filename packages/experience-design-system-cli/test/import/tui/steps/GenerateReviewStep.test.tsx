@@ -63,6 +63,8 @@ vi.mock('../../../../src/session/db.js', () => ({
 vi.mock('../../../../src/apply/manifest.js', () => ({
   readTokensFromPath: vi.fn().mockResolvedValue([
     { path: 'colors.file.only', $type: 'color', $value: '#0f0' },
+    { path: 'radius.file.small', $type: 'dimension', $value: '2px' },
+    { path: 'radius.file.large', $type: 'dimension', $value: '8px' },
     { path: 'spacing.file.only', $type: 'dimension', $value: '8px' },
   ]),
 }));
@@ -4692,6 +4694,22 @@ describe('GenerateReviewStep — token review panel', () => {
 });
 
 describe('GenerateReviewStep — token review editing', () => {
+  it('shows token review after a prop is manually converted to token', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('\r');
+    await tick();
+    for (let i = 0; i < 6; i += 1) {
+      stdin.write('\x1b[C');
+      await tick();
+    }
+    stdin.write('\x13');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/\[t\] token review/);
+  });
+
   it('shows and opens token review after Tab focuses the prop list', async () => {
     const { stdin, lastFrame } = render(
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
@@ -4771,6 +4789,26 @@ describe('GenerateReviewStep — token review editing', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toContain('colors.file.only');
     expect(frame).not.toContain('spacing.file.only');
+  });
+
+  it('prefers the complete tokensPath catalog over the token session', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        tokenSessionId="token-session"
+        tokensPath="/project/.contentful/tokens.json"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+      />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('colors.file.only');
+    expect(frame).not.toContain('colors.brand.secondary');
   });
 
   it('does not accept or dismiss when those legacy keys are pressed', async () => {

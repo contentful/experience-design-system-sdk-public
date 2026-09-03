@@ -59,6 +59,8 @@ vi.mock('../../../../src/session/db.js', () => ({
 vi.mock('../../../../src/apply/manifest.js', () => ({
   readTokensFromPath: vi.fn().mockResolvedValue([
     { path: 'colors.file.only', $type: 'color', $value: '#0f0' },
+    { path: 'radius.file.small', $type: 'dimension', $value: '2px' },
+    { path: 'radius.file.large', $type: 'dimension', $value: '8px' },
     { path: 'spacing.file.only', $type: 'dimension', $value: '8px' },
   ]),
 }));
@@ -273,6 +275,29 @@ describe('AtomicGenerateReviewStep — token review editing', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toContain('colors.file.only');
     expect(frame).not.toContain('spacing.file.only');
+  });
+
+  it('prefers the complete tokensPath catalog over the token session', async () => {
+    const { stdin, lastFrame } = render(
+      <AtomicGenerateReviewStep
+        extractSessionId="s1"
+        tokenSessionId="token-session"
+        tokensPath="/project/.contentful/tokens.json"
+        onFinalize={() => {}}
+        onQuit={() => {}}
+        livePreview={false}
+      />,
+    );
+    await tick();
+    stdin.write('j');
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('colors.file.only');
+    expect(frame).not.toContain('colors.brand.secondary');
   });
 
   it('does not accept or dismiss when those legacy keys are pressed', async () => {

@@ -233,10 +233,9 @@ export function AtomicGenerateReviewStep({
           if (!disposed) setLoadError(error);
           return;
         }
-        const catalog =
-          tokenSessionId || !tokensPath
-            ? tokens
-            : (await readTokensFromPath('tokens', tokensPath)).map((token) => ({ path: token.path, kind: token.$type }));
+        const catalog = tokensPath
+          ? (await readTokensFromPath('tokens', tokensPath)).map((token) => ({ path: token.path, kind: token.$type }))
+          : tokens;
         if (disposed) return;
         setComponents(entries);
         setAvailableTokens(catalog);
@@ -586,7 +585,7 @@ export function AtomicGenerateReviewStep({
       const row = suggestions[tokenReviewRow];
 
       if (tokenReviewEditing) {
-        if (row) {
+        if (row && row.paths.length > 0) {
           if (key.upArrow || input === 'k') {
             setTokenReviewEditCursor((c) => Math.max(0, c - 1));
             return;

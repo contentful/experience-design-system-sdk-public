@@ -21,13 +21,19 @@ const ENTRY: CDFComponentEntry = {
 };
 
 describe('collectTokenSuggestions', () => {
-  it('returns only design-token props that carry a non-empty $token.allowed suggestion', () => {
+  it('returns design-token props with a declared token kind', () => {
     expect(collectTokenSuggestions(ENTRY)).toEqual([
       {
         propName: 'bgColor',
         paths: ['colors.surface.default', 'colors.surface.raised'],
         suggested: ['colors.surface.default', 'colors.surface.raised'],
         allowed: ['colors.surface.default', 'colors.surface.raised'],
+      },
+      {
+        propName: 'borderColor',
+        paths: [],
+        suggested: [],
+        allowed: [],
       },
     ]);
   });
@@ -77,9 +83,27 @@ describe('collectTokenSuggestions', () => {
     ]);
   });
 
-  it('excludes design-token props with no $token.allowed (nothing suggested yet)', () => {
-    const only = collectTokenSuggestions(ENTRY);
-    expect(only.find((s) => s.propName === 'borderColor')).toBeUndefined();
+  it('includes a token prop with no allowed paths so manually converted props can be reviewed', () => {
+    const entry: CDFComponentEntry = {
+      $type: 'component',
+      $properties: {
+        radiusX: { $type: 'token', $category: 'design', '$token.kind': 'dimension' },
+      },
+    };
+    expect(
+      collectTokenSuggestions(entry, [
+        { path: 'radius.small', kind: 'dimension' },
+        { path: 'radius.large', kind: 'dimension' },
+        { path: 'colors.brand.primary', kind: 'color' },
+      ]),
+    ).toEqual([
+      {
+        propName: 'radiusX',
+        paths: ['radius.small', 'radius.large'],
+        suggested: [],
+        allowed: [],
+      },
+    ]);
   });
 
   it('excludes a token prop when $token.allowed is absent', () => {
@@ -261,5 +285,24 @@ describe('TokenReviewPanel — edit mode', () => {
     expect(out).toContain('[↑/↓] move  [Space] toggle');
     expect(out).toContain('[Ctrl+S] save  [Esc] cancel');
     expect(out.split('\n')).toHaveLength(12);
+  });
+
+  it('explains when no catalog token is compatible with the selected kind', () => {
+    const { lastFrame } = render(
+      <TokenReviewPanel
+        componentName="Card"
+        suggestions={[{ propName: 'radiusX', paths: [], suggested: [], allowed: [] }]}
+        selectedRow={0}
+        editing={true}
+        editCursor={0}
+        editSelection={new Set()}
+        width={60}
+        height={20}
+        active={true}
+      />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).toContain('no compatible tokens');
+    expect(out).toContain('no compatible tokens found for this token kind');
   });
 });

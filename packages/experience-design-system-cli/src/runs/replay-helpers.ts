@@ -207,6 +207,7 @@ export async function modifyRun(opts: ModifyRunOptions): Promise<void> {
     extractSessionId: run.extractSessionId,
     generateSessionId: run.generateSessionId,
     tokenSessionId: run.tokenSessionId,
+    tokensPath: run.tokensPath,
     projectPath: run.projectPath,
     savePath: run.savePath,
     entryStep: 'final-review',

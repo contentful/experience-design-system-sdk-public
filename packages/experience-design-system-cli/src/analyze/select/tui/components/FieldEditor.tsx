@@ -1285,7 +1285,12 @@ export function FieldEditor({
           ? options[(idx - 1 + options.length) % options.length]
           : options[(idx + 1) % options.length];
         const updated = { ...currentProp, type: next as PropState['type'] };
-        if (next !== 'token') updated.tokenKind = '';
+        if (next === 'token') {
+          updated.category = 'design';
+          updated.tokenKind ||= DESIGN_TOKEN_TYPES[0] ?? '';
+        } else {
+          updated.tokenKind = '';
+        }
         if (next !== 'enum') updated.values = [];
         const nextProps = props.map((p, i) => (i === propIdx ? updated : p));
         commit({ ...editorState, props: nextProps });

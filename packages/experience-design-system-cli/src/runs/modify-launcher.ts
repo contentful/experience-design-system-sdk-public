@@ -12,6 +12,8 @@ export type ModifyLauncherInput = {
    *  generated. Forwarded to the wizard so the modify entry pre-loads
    *  tokens alongside the extract/generate sessions. */
   tokenSessionId?: string | null;
+  /** Absolute path to the complete DTCG token catalog written for this run. */
+  tokensPath?: string | null;
   projectPath: string;
   savePath: string;
   entryStep: 'scope-gate' | 'final-review';
@@ -42,6 +44,7 @@ export async function launchModifyWizard(input: ModifyLauncherInput): Promise<vo
     seedExtractSessionId?: string;
     seedGenerateSessionId?: string;
     seedTokenSessionId?: string;
+    seedTokensPath?: string;
     initialStep?: 'scope-gate' | 'final-review';
     initialSpaceId?: string;
     initialEnvironmentId?: string;
@@ -63,6 +66,7 @@ export async function launchModifyWizard(input: ModifyLauncherInput): Promise<vo
   };
   if (input.generateSessionId) props.seedGenerateSessionId = input.generateSessionId;
   if (input.tokenSessionId) props.seedTokenSessionId = input.tokenSessionId;
+  if (input.tokensPath) props.seedTokensPath = input.tokensPath;
   if (input.compositionMode) props.compositionMode = input.compositionMode;
   if (input.saveMode === 'overwrite') props.outDirOverride = input.savePath;
   if (input.outDirOverride) props.outDirOverride = input.outDirOverride;
