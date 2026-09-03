@@ -454,7 +454,6 @@ describe('runPipeline — map tokens step', () => {
     expect(mapStep?.status).toBe('complete');
     expect(mapStep?.detail).toEqual({ applied: 3 });
 
-    // Ordering: map tokens must come after generate components and before apply push
     const stepNames = result.steps.map((s) => s.step);
     expect(stepNames.indexOf('map tokens')).toBeGreaterThan(stepNames.indexOf('generate components'));
     expect(stepNames.indexOf('map tokens')).toBeLessThan(stepNames.indexOf('apply push'));
@@ -513,7 +512,6 @@ describe('runPipeline — map tokens step', () => {
     expect(mapStep?.status).toBe('skipped');
     expect(mapStep?.reason).toBe('no tokens in session');
 
-    // Rest of the pipeline must still proceed
     expect(result.steps.find((s) => s.step === 'apply push')?.status).toBe('complete');
   });
 
@@ -539,10 +537,8 @@ describe('runPipeline — map tokens step', () => {
 
     const mapStep = result.steps.find((s) => s.step === 'map tokens');
     expect(mapStep?.status).toBe('complete');
-    // Must not misreport a cache hit as zero mappings applied.
     expect(mapStep?.detail).not.toEqual({ applied: 0 });
 
-    // Rest of the pipeline must still proceed
     expect(result.steps.find((s) => s.step === 'apply push')?.status).toBe('complete');
   });
 
@@ -560,7 +556,6 @@ describe('runPipeline — map tokens step', () => {
 
     const mapStep = result.steps.find((s) => s.step === 'map tokens');
     expect(mapStep?.status).toBe('failed');
-    // Pipeline stops — apply push never runs
     expect(result.steps.find((s) => s.step === 'apply push')).toBeUndefined();
   });
 });

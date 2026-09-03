@@ -53,7 +53,6 @@ export interface PipelineOptions {
   compositionRefresh?: boolean;
   generateMap?: string;
   promptOverrides?: string[];
-  /** Skip the `map tokens` step that runs between generate and apply. */
   skipMapTokens?: boolean;
 }
 
