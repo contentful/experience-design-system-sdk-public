@@ -57,6 +57,7 @@ import {
   countMappableTokenProps,
   countRawTokens,
   copyTokensFromCache,
+  storeDTCGTokens,
   seedCDFFromPreviewResponse,
   seedDefaultsFromChangedItems,
   backfillUnclassifiedProps,
@@ -263,6 +264,16 @@ export function buildMapTokensArgs(opts: {
 
 export function shouldRunMapTokens(opts: { mappablePropCount: number; rawTokenCount: number }): boolean {
   return opts.mappablePropCount > 0 && opts.rawTokenCount > 0;
+}
+
+export async function materializeReusedTokens(
+  db: Parameters<typeof storeDTCGTokens>[0],
+  sessionId: string,
+  tokensPath: string,
+): Promise<number> {
+  const tokens = await readTokensFromPath('tokens', tokensPath);
+  storeDTCGTokens(db, sessionId, [], tokens);
+  return tokens.length;
 }
 
 export function formatAcceptanceSummary(opts: { accepted: number; autoRejected: number }): string {
@@ -654,6 +665,11 @@ export function WizardApp({
         // intact for save/push and --modify replay.
         if (state.tokenSessionId && state.tokenSessionId !== sessionId) {
           copyTokensFromCache(db, state.tokenSessionId, sessionId);
+        } else if (!state.tokenSessionId && state.tokensPath) {
+          // Reusing an existing tokens.json has no token session to copy. The
+          // map-tokens command consumes the session DB, so restore the saved
+          // catalog into the generated session before checking eligibility.
+          await materializeReusedTokens(db, sessionId, state.tokensPath);
         }
         mappablePropCount = countMappableTokenProps(db, sessionId);
         rawTokenCount = countRawTokens(db, sessionId);

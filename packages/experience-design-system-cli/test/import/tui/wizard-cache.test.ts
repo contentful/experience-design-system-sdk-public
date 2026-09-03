@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   buildGenerateComponentsArgs,
   buildMapTokensArgs,
+  materializeReusedTokens,
   shouldRunMapTokens,
 } from '../../../src/import/tui/WizardApp.js';
+import { getOrCreateSession, loadDTCGTokens, openPipelineDb } from '../../../src/session/db.js';
 
 describe('wizard generate-components cache', () => {
   it('defaults to cache-on (no --no-cache flag)', () => {
@@ -77,5 +82,24 @@ describe('wizard map-tokens step', () => {
     expect(shouldRunMapTokens({ mappablePropCount: 1, rawTokenCount: 1 })).toBe(true);
     expect(shouldRunMapTokens({ mappablePropCount: 0, rawTokenCount: 1 })).toBe(false);
     expect(shouldRunMapTokens({ mappablePropCount: 1, rawTokenCount: 0 })).toBe(false);
+  });
+
+  it('materializes a reused tokens.json catalog into the generated session', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'wizard-reused-tokens-'));
+    const db = openPipelineDb(join(dir, 'pipeline.db'));
+    try {
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'generate components' });
+      const tokensPath = join(dir, 'tokens.json');
+      await writeFile(tokensPath, JSON.stringify({ colors: { primary: { $type: 'color', $value: '#0066ff' } } }));
+
+      await materializeReusedTokens(db, sessionId, tokensPath);
+
+      expect(loadDTCGTokens(db, sessionId).tokens).toEqual([
+        { path: 'colors.primary', $type: 'color', $value: '#0066ff' },
+      ]);
+    } finally {
+      db.close();
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
