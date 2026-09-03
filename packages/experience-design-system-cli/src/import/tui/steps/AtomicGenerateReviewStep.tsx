@@ -50,6 +50,19 @@ type CdfReviewEntry = {
   status: ReviewComponentStatus;
 };
 
+function tokenRestrictionsChanged(
+  previous: CDFComponentEntry | undefined,
+  next: CDFComponentEntry,
+): boolean {
+  const restrictions = (entry: CDFComponentEntry | undefined): string =>
+    JSON.stringify(
+      Object.entries(entry?.$properties ?? {})
+        .filter(([, prop]) => prop.$type === 'token' && prop.$category === 'design')
+        .map(([name, prop]) => [name, prop['$token.allowed'] ?? []]),
+    );
+  return restrictions(previous) !== restrictions(next);
+}
+
 type GenerateReviewStepProps = {
   extractSessionId: string;
   tokenSessionId?: string | null;
@@ -275,6 +288,18 @@ export function AtomicGenerateReviewStep({
   };
 
   const applyHistorySnapshot = (snap: HistorySnapshot): void => {
+    const currentByKey = new Map(components.map((c) => [c.key, c.entry]));
+    const tokenEntries = snap.components
+      .filter(({ key, entry }) => tokenRestrictionsChanged(currentByKey.get(key), entry))
+      .map(({ key, entry }) => ({ key, entry }));
+    if (tokenEntries.length > 0) {
+      const db = openPipelineDb();
+      try {
+        storeCDFComponents(db, extractSessionId, tokenEntries);
+      } finally {
+        db.close();
+      }
+    }
     setComponents(snap.components.map((c) => ({ key: c.key, entry: c.entry, status: c.status })));
   };
 
@@ -484,7 +509,8 @@ export function AtomicGenerateReviewStep({
     const prop = current.entry.$properties[propName];
     if (!prop) return;
     const nextProp = { ...prop };
-    nextProp['$token.allowed'] = allowed;
+    if (allowed.length > 0) nextProp['$token.allowed'] = allowed;
+    else delete nextProp['$token.allowed'];
     const nextEntry: CDFComponentEntry = {
       ...current.entry,
       $properties: { ...current.entry.$properties, [propName]: nextProp },
@@ -505,7 +531,6 @@ export function AtomicGenerateReviewStep({
 
   const handleTokenEditSave = (s: TokenPropSuggestion): void => {
     const allowed = s.paths.filter((p) => tokenReviewEditSelection.has(p));
-    if (allowed.length === 0) return;
     persistTokenFields(s.propName, allowed);
     setTokenReviewEditing(false);
   };
@@ -596,7 +621,6 @@ export function AtomicGenerateReviewStep({
             const path = row.paths[tokenReviewEditCursor];
             setTokenReviewEditSelection((prev) => {
               const next = new Set(prev);
-              if (next.has(path) && next.size === 1) return next;
               if (next.has(path)) next.delete(path);
               else next.add(path);
               return next;

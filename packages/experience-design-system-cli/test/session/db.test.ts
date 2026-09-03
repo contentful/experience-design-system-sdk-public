@@ -252,9 +252,9 @@ describe('openPipelineDb', () => {
       expect(cols.map((c) => c.name)).toContain('source');
       // A row written before the review editor could set its own list can only
       // have come from map tokens, so 'agent' is the correct backfill.
-      expect(
-        migrated.prepare(`SELECT source FROM raw_prop_token_paths WHERE prop_name = 'bgColor'`).get(),
-      ).toEqual({ source: 'agent' });
+      expect(migrated.prepare(`SELECT source FROM raw_prop_token_paths WHERE prop_name = 'bgColor'`).get()).toEqual({
+        source: 'agent',
+      });
       migrated.close();
     });
   });
@@ -301,10 +301,15 @@ describe('raw prop token paths', () => {
       ]);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
 
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'set', [
-        'color.brand.primary',
-        'color.brand.secondary',
-      ], 'agent');
+      replaceRawPropTokenPaths(
+        db,
+        sessionId,
+        componentId,
+        'variant',
+        'set',
+        ['color.brand.primary', 'color.brand.secondary'],
+        'agent',
+      );
       replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.text.default'], 'agent');
       replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'set', ['color.brand.tertiary'], 'agent');
       replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', [], 'agent');
@@ -1768,10 +1773,20 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
         )
         .all(sessionId, componentId);
       expect(rows).toEqual([{ prop_name: 'foreground', kind: 'allowed', path: 'color.brand.secondary' }]);
-      const loaded = loadCDFComponents(db, sessionId);
+      db.close();
+
+      const reloadedDb = openPipelineDb(dbPath);
+      const reloadedRows = reloadedDb
+        .prepare(
+          `SELECT prop_name, kind, path FROM raw_prop_token_paths
+           WHERE session_id = ? AND component_id = ? ORDER BY prop_name, position`,
+        )
+        .all(sessionId, componentId);
+      expect(reloadedRows).toEqual([{ prop_name: 'foreground', kind: 'allowed', path: 'color.brand.secondary' }]);
+      const loaded = loadCDFComponents(reloadedDb, sessionId);
       expect(loaded[0]?.entry.$properties.background).not.toHaveProperty('$token.allowed');
       expect(loaded[0]?.entry.$properties.foreground?.['$token.allowed']).toEqual(['color.brand.secondary']);
-      db.close();
+      reloadedDb.close();
     });
   });
 
@@ -1861,20 +1876,22 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
         `UPDATE raw_props SET cdf_type = 'token', cdf_category = 'design', cdf_token_kind = 'color'
          WHERE session_id = ? AND component_id = ? AND name = 'variant'`,
       ).run(sessionId, componentId);
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', [
-        'color.blue.500',
-        'color.red.500',
-      ], 'agent');
+      replaceRawPropTokenPaths(
+        db,
+        sessionId,
+        componentId,
+        'variant',
+        'allowed',
+        ['color.blue.500', 'color.red.500'],
+        'agent',
+      );
       db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND component_id = ?`).run(
         sessionId,
         componentId,
       );
 
       const loaded = loadCDFComponents(db, sessionId);
-      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual([
-        'color.blue.500',
-        'color.red.500',
-      ]);
+      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual(['color.blue.500', 'color.red.500']);
       expect(loaded[0]?.entry.$properties['variant']?.$values).toBeUndefined();
       expect(loaded[0]?.entry.$properties['variant']).not.toHaveProperty('$token.sets');
       db.close();
@@ -3186,11 +3203,24 @@ describe('generation cache', () => {
         },
       ]);
       const sourceComponentId = loadRawComponents(db, sourceId)[0].component_id;
-      replaceRawPropTokenPaths(db, sourceId, sourceComponentId, 'bgColor', 'set', [
-        'colors.surface.default',
-        'colors.surface.raised',
-      ], 'agent');
-      replaceRawPropTokenPaths(db, sourceId, sourceComponentId, 'bgColor', 'allowed', ['colors.surface.default'], 'agent');
+      replaceRawPropTokenPaths(
+        db,
+        sourceId,
+        sourceComponentId,
+        'bgColor',
+        'set',
+        ['colors.surface.default', 'colors.surface.raised'],
+        'agent',
+      );
+      replaceRawPropTokenPaths(
+        db,
+        sourceId,
+        sourceComponentId,
+        'bgColor',
+        'allowed',
+        ['colors.surface.default'],
+        'agent',
+      );
 
       const { sessionId: targetId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
       storeRawComponents(db, targetId, [
