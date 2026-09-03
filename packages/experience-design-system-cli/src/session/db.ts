@@ -261,6 +261,66 @@ function applyDbMigrations(db: DatabaseSync): void {
     db.exec('ALTER TABLE raw_props ADD COLUMN source_end_line INTEGER');
   }
 
+  const rawPropsDdl = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'raw_props'`).get() as
+    | { sql: string }
+    | undefined;
+  if (rawPropsDdl && !rawPropsDdl.sql.includes(`'unattached'`)) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      db.exec('BEGIN');
+      try {
+        db.exec(`
+        CREATE TABLE raw_props__new (
+          session_id        TEXT NOT NULL,
+          component_id      TEXT NOT NULL,
+          name              TEXT NOT NULL,
+          type              TEXT NOT NULL,
+          required          INTEGER NOT NULL CHECK (required IN (0, 1)),
+          category          TEXT CHECK (category IN ('content', 'design', 'state')),
+          default_value     TEXT,
+          description       TEXT,
+          token_reference   TEXT,
+          position          INTEGER NOT NULL,
+          cdf_type          TEXT,
+          cdf_category      TEXT CHECK (cdf_category IN ('content', 'design', 'state', 'unattached')),
+          cdf_token_kind    TEXT,
+          rationale         TEXT,
+          source_start_line INTEGER,
+          source_end_line   INTEGER,
+          PRIMARY KEY (session_id, component_id, name),
+          FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
+        );
+
+        INSERT INTO raw_props__new
+          (session_id, component_id, name, type, required, category, default_value,
+           description, token_reference, position, cdf_type, cdf_category, cdf_token_kind,
+           rationale, source_start_line, source_end_line)
+        SELECT
+          session_id, component_id, name, type, required, category, default_value,
+          description, token_reference, position, cdf_type, cdf_category, cdf_token_kind,
+          rationale, source_start_line, source_end_line
+        FROM raw_props;
+
+        DROP TABLE raw_props;
+        ALTER TABLE raw_props__new RENAME TO raw_props;
+        CREATE INDEX IF NOT EXISTS idx_raw_props_session ON raw_props(session_id, component_id);
+
+        UPDATE raw_props
+        SET cdf_category = 'unattached',
+            cdf_type = CASE WHEN type = 'boolean' THEN 'boolean' ELSE 'string' END,
+            required = 0
+        WHERE cdf_type = 'excluded';
+      `);
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+    } finally {
+      db.exec('PRAGMA foreign_keys = ON');
+    }
+  }
+
   if (!rawCompColNames.has('reject_reason')) {
     db.exec('ALTER TABLE raw_components ADD COLUMN reject_reason TEXT');
   }
@@ -548,7 +608,12 @@ export function applyToolCalls(
      WHERE session_id = ? AND component_id = ? AND name = ?`,
   );
   const clearProp = db.prepare(
-    `UPDATE raw_props SET cdf_type = 'excluded', cdf_category = NULL, cdf_token_kind = NULL, rationale = ?
+    `UPDATE raw_props
+     SET cdf_type = CASE WHEN type = 'boolean' THEN 'boolean' ELSE 'string' END,
+         cdf_category = 'unattached',
+         cdf_token_kind = NULL,
+         required = 0,
+         rationale = ?
      WHERE session_id = ? AND component_id = ? AND name = ?`,
   );
   const deleteAllowedValues = db.prepare(
@@ -1344,7 +1409,7 @@ export function loadCDFComponents(
       `SELECT component_id, name, required, default_value, description,
               cdf_type, cdf_category, cdf_token_kind, position
        FROM raw_props
-       WHERE session_id = ? AND cdf_type IS NOT NULL AND cdf_type != 'excluded'
+       WHERE session_id = ? AND cdf_type IS NOT NULL
        ORDER BY component_id, position`,
     )
     .all(sessionId) as Array<{

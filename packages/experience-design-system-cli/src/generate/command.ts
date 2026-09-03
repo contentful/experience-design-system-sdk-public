@@ -605,7 +605,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       (allOk ? c.green('✓') : c.yellow('⚠')) +
         `  ${generated.length + cachedResults.length}/${componentResults.length} components` +
         cachedNote +
-        c.dim(`  ${totalClassified} classified, ${totalExcluded} excluded`) +
+        c.dim(`  ${totalClassified} classified, ${totalExcluded} unattached`) +
         '\n',
     );
     // Machine-parseable summary on stdout for the wizard / orchestrator.
