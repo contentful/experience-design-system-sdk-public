@@ -206,4 +206,60 @@ describe('TokenReviewPanel — edit mode', () => {
     expect(out).toMatch(/\[Ctrl\+S\] save/);
     expect(out).toMatch(/\[Esc\] cancel/);
   });
+
+  it('scrolls the token viewport to keep a focused compatible token visible', () => {
+    const paths = Array.from({ length: 20 }, (_, i) => `colors.scale.${i}`);
+    const { lastFrame } = render(
+      <TokenReviewPanel
+        componentName="Card"
+        suggestions={[
+          {
+            propName: 'bgColor',
+            paths,
+            suggested: [paths[0]!],
+            allowed: [paths[0]!],
+          },
+        ]}
+        selectedRow={0}
+        editing={true}
+        editCursor={15}
+        editSelection={new Set([paths[0]!])}
+        width={60}
+        height={10}
+        active={true}
+      />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).toContain('colors.scale.15');
+    expect(out).not.toContain('colors.scale.0');
+    expect(out).toContain('14-17 of 20');
+  });
+
+  it('keeps the viewport and commands visible when token paths exceed the panel width', () => {
+    const longPath = 'colors.really.long.token.path.that.must.not.wrap.inside.the.review.viewport';
+    const { lastFrame } = render(
+      <TokenReviewPanel
+        componentName="VeryLongComponentName"
+        suggestions={[
+          {
+            propName: 'veryLongTokenPropertyName',
+            paths: [longPath],
+            suggested: [longPath],
+            allowed: [longPath],
+          },
+        ]}
+        selectedRow={0}
+        editing={true}
+        editCursor={0}
+        editSelection={new Set([longPath])}
+        width={30}
+        height={10}
+        active={true}
+      />,
+    );
+    const out = lastFrame() ?? '';
+    expect(out).toContain('[↑/↓] move  [Space] toggle');
+    expect(out).toContain('[Ctrl+S] save  [Esc] cancel');
+    expect(out.split('\n')).toHaveLength(12);
+  });
 });

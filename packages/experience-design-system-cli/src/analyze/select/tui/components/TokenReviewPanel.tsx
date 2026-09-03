@@ -79,6 +79,10 @@ export function TokenReviewPanel({
   const current = suggestions[selectedRow];
 
   if (editing && current) {
+    const visibleCount = Math.max(1, height - 6);
+    const maxStart = Math.max(0, current.paths.length - visibleCount);
+    const scrollStart = Math.max(0, Math.min(editCursor - Math.floor(visibleCount / 2), maxStart));
+    const visiblePaths = current.paths.slice(scrollStart, scrollStart + visibleCount);
     return (
       <Box
         flexDirection="column"
@@ -87,22 +91,28 @@ export function TokenReviewPanel({
         borderStyle="single"
         borderColor={active ? PALETTE.inverse : undefined}
       >
-        <Text bold dimColor={!active}>{`TOKEN REVIEW — ${componentName} · ${current.propName} (edit allowed)`}</Text>
-        <Text dimColor>{'select which tokens are allowed'}</Text>
+        <Text bold dimColor={!active} wrap="truncate">
+          {`TOKEN REVIEW — ${componentName} · ${current.propName} (edit allowed)`}
+        </Text>
+        <Text dimColor wrap="truncate">
+          {`select which tokens are allowed (${scrollStart + 1}-${scrollStart + visiblePaths.length} of ${current.paths.length})`}
+        </Text>
         <Text> </Text>
-        {current.paths.map((path, i) => {
+        {visiblePaths.map((path, i) => {
+          const pathIndex = scrollStart + i;
           const checked = editSelection.has(path);
-          const focused = i === editCursor;
+          const focused = pathIndex === editCursor;
           return (
             <Box key={path}>
-              <Text color={focused ? PALETTE.info : undefined} bold={focused} dimColor={!active}>
+              <Text color={focused ? PALETTE.info : undefined} bold={focused} dimColor={!active} wrap="truncate">
                 {`  [${checked ? 'x' : ' '}] ${path}`}
               </Text>
             </Box>
           );
         })}
         <Text> </Text>
-        <Text dimColor>{'[↑/↓] move  [Space] toggle  [Ctrl+S] save  [Esc] cancel'}</Text>
+        <Text dimColor wrap="truncate">{'[↑/↓] move  [Space] toggle'}</Text>
+        <Text dimColor wrap="truncate">{'[Ctrl+S] save  [Esc] cancel'}</Text>
       </Box>
     );
   }
