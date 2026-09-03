@@ -1,5 +1,6 @@
 import { render } from 'ink-testing-library';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 
 const SAMPLE_ENTRY = {
   $type: 'component' as const,
@@ -57,6 +58,15 @@ function renderStep() {
   );
 }
 
+const CATEGORIZED_ENTRY: CDFComponentEntry = {
+  $type: 'component',
+  $properties: {
+    label: { $type: 'string', $category: 'content' },
+    isDisabled: { $type: 'boolean', $category: 'state' },
+    className: { $type: 'string', $category: 'unattached' },
+  },
+};
+
 describe('AtomicGenerateReviewStep — source panel + undo/redo/reload', () => {
   it('opens the source panel on [s] from the base (sidebar) state', async () => {
     const { stdin, lastFrame } = renderStep();
@@ -101,5 +111,21 @@ describe('AtomicGenerateReviewStep — source panel + undo/redo/reload', () => {
     await tick();
     const afterRedo = lastFrame() ?? '';
     expect(afterUndo).not.toBe(afterRedo);
+  });
+});
+
+describe('AtomicGenerateReviewStep — hidden properties', () => {
+  it('reveals hidden properties with H', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Button', entry: CATEGORIZED_ENTRY }]);
+    const { lastFrame, stdin } = renderStep();
+    await tick();
+
+    expect(lastFrame() ?? '').not.toContain('isDisabled');
+    stdin.write('H');
+    await tick();
+
+    expect(lastFrame() ?? '').toContain('isDisabled');
+    expect(lastFrame() ?? '').toContain('className');
   });
 });

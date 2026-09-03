@@ -842,6 +842,7 @@ export function FieldEditor({
 
   const props = editorState.props;
   const slots = editorState.slots;
+  // Filter the view only so saving preserves hidden properties.
   const visiblePropIndexes = React.useMemo(
     () =>
       props.flatMap((prop, index) =>

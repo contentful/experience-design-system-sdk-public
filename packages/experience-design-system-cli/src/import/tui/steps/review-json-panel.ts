@@ -7,6 +7,7 @@ type ReviewJsonComponent = {
 
 const HIDDEN_PROP_CATEGORIES = new Set(['state', 'unattached']);
 
+// This display-only projection must not be used as editable state.
 export function getReviewJsonPanelValue(selected: ReviewJsonComponent | null, showHiddenProps: boolean): string {
   if (!selected) return '';
 

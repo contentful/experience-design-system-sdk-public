@@ -1,5 +1,6 @@
 import { render } from 'ink-testing-library';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 
 const SAMPLE_ENTRY = {
   $type: 'component' as const,
@@ -68,6 +69,15 @@ afterEach(() => {
 
 const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
 
+const CATEGORIZED_ENTRY: CDFComponentEntry = {
+  $type: 'component',
+  $properties: {
+    label: { $type: 'string', $category: 'content' },
+    isDisabled: { $type: 'boolean', $category: 'state' },
+    className: { $type: 'string', $category: 'unattached' },
+  },
+};
+
 describe('GenerateReviewStep — form by default (Fix 1)', () => {
   it('mounts with FieldEditor (form) visible — not the JSON panel', async () => {
     const { lastFrame } = render(
@@ -134,6 +144,24 @@ describe('GenerateReviewStep — form by default (Fix 1)', () => {
     await tick();
     frame = lastFrame() ?? '';
     expect(frame).toMatch(/\[J\] hide JSON/);
+  });
+});
+
+describe('GenerateReviewStep — hidden properties', () => {
+  it('reveals hidden properties with H', async () => {
+    const dbMod = await import('../../../../src/session/db.js');
+    vi.mocked(dbMod.loadCDFComponents).mockReturnValueOnce([{ key: 'Button', entry: CATEGORIZED_ENTRY }]);
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+
+    expect(lastFrame() ?? '').not.toContain('isDisabled');
+    stdin.write('H');
+    await tick();
+
+    expect(lastFrame() ?? '').toContain('isDisabled');
+    expect(lastFrame() ?? '').toContain('className');
   });
 });
 
