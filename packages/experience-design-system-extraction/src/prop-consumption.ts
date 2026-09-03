@@ -64,10 +64,36 @@ function hasPropsDestructuring(name: string, text: string): boolean {
   return false;
 }
 
-/** Collect direct property names from executable function parameter patterns. */
-function getFunctionParameterBindings(text: string): Set<string> {
+interface SourceAnalysis {
+  /** Property names bound directly in executable function parameter patterns. */
+  parameterBindings: Set<string>;
+  /**
+   * True when the component hands the remainder of its props on unchanged —
+   * a rest element in a props pattern (`{ a, ...rest }`) or `props` spread
+   * straight onto an element. Every prop it did not name is read that way,
+   * so none of them can be reported as unconsumed.
+   */
+  forwardsRemainingProps: boolean;
+}
+
+function isPropsExpression(node: ts.Node): boolean {
+  if (ts.isIdentifier(node)) return node.text === 'props';
+  return (
+    ts.isPropertyAccessExpression(node) &&
+    node.expression.kind === ts.SyntaxKind.ThisKeyword &&
+    node.name.text === 'props'
+  );
+}
+
+function hasRestElement(pattern: ts.ObjectBindingPattern): boolean {
+  return pattern.elements.some((element) => element.dotDotDotToken !== undefined);
+}
+
+/** Collect direct property names and forwarding evidence from the executable AST. */
+function analyseSource(text: string): SourceAnalysis {
   const sourceFile = ts.createSourceFile('prop-consumption.tsx', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const bindings = new Set<string>();
+  const parameterBindings = new Set<string>();
+  let forwardsRemainingProps = false;
 
   const visit = (node: ts.Node): void => {
     if (ts.isFunctionLike(node)) {
@@ -75,30 +101,52 @@ function getFunctionParameterBindings(text: string): Set<string> {
       if (functionLike.body) {
         for (const parameter of functionLike.parameters) {
           if (!ts.isObjectBindingPattern(parameter.name)) continue;
+          if (hasRestElement(parameter.name)) forwardsRemainingProps = true;
           for (const element of parameter.name.elements) {
+            if (element.dotDotDotToken) continue;
             const propertyName = element.propertyName ?? element.name;
-            if (ts.isIdentifier(propertyName)) bindings.add(propertyName.text);
+            if (ts.isIdentifier(propertyName)) parameterBindings.add(propertyName.text);
           }
         }
       }
+    }
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isObjectBindingPattern(node.name) &&
+      node.initializer !== undefined &&
+      isPropsExpression(node.initializer) &&
+      hasRestElement(node.name)
+    ) {
+      forwardsRemainingProps = true;
+    }
+    if (ts.isJsxSpreadAttribute(node) && isPropsExpression(node.expression)) {
+      forwardsRemainingProps = true;
     }
     ts.forEachChild(node, visit);
   };
 
   visit(sourceFile);
-  return bindings;
+  return { parameterBindings, forwardsRemainingProps };
 }
 
-function isPropConsumedInSources(
-  name: string,
-  sources: SourceFile[],
-  functionParameterBindings: ReadonlySet<string>,
-): boolean {
+function analyseSources(sources: SourceFile[]): SourceAnalysis {
+  const parameterBindings = new Set<string>();
+  let forwardsRemainingProps = false;
+  for (const source of sources) {
+    const analysis = analyseSource(source.text);
+    for (const binding of analysis.parameterBindings) parameterBindings.add(binding);
+    forwardsRemainingProps ||= analysis.forwardsRemainingProps;
+  }
+  return { parameterBindings, forwardsRemainingProps };
+}
+
+function isPropConsumedInSources(name: string, sources: SourceFile[], analysis: SourceAnalysis): boolean {
+  if (analysis.forwardsRemainingProps) return true;
   return sources.some(
     (source) =>
       hasMemberAccess(name, source.text) ||
       hasPropsDestructuring(name, source.text) ||
-      functionParameterBindings.has(name) ||
+      analysis.parameterBindings.has(name) ||
       hasBareShorthand(name, source.text),
   );
 }
@@ -136,11 +184,7 @@ function hasBareShorthand(name: string, text: string): boolean {
 /** True when any supplied source shows the property being read. */
 export function isPropConsumed(name: string, sources: SourceFile[]): boolean {
   if (!name) return false;
-  const functionParameterBindings = new Set<string>();
-  for (const source of sources) {
-    for (const binding of getFunctionParameterBindings(source.text)) functionParameterBindings.add(binding);
-  }
-  return isPropConsumedInSources(name, sources, functionParameterBindings);
+  return isPropConsumedInSources(name, sources, analyseSources(sources));
 }
 
 /**
@@ -153,11 +197,6 @@ export function isPropConsumed(name: string, sources: SourceFile[]): boolean {
 export function findUnconsumedProps(propNames: string[], sources: SourceFile[]): string[] {
   const readable = sources.filter((source) => source.text.trim().length > 0);
   if (readable.length === 0) return [];
-  const functionParameterBindings = new Set<string>();
-  for (const source of readable) {
-    for (const binding of getFunctionParameterBindings(source.text)) functionParameterBindings.add(binding);
-  }
-  return propNames.filter(
-    (name) => name.length > 0 && !isPropConsumedInSources(name, readable, functionParameterBindings),
-  );
+  const analysis = analyseSources(readable);
+  return propNames.filter((name) => name.length > 0 && !isPropConsumedInSources(name, readable, analysis));
 }

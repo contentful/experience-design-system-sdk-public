@@ -3000,6 +3000,48 @@ describe('generation cache', () => {
     });
   });
 
+  // A styles module's first 1,200 characters are imports and constants; the
+  // line that decides enum-versus-token for a prop is almost never there.
+  it('loadComponentSourceRef windows a sibling excerpt around the prop uses instead of taking the head of the file', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Box.tsx');
+      const stylesPath = join(dir, 'Box.styles.ts');
+      await writeFile(componentPath, `import { StyledBox } from './Box.styles';\nexport const Box = ({ children, ...rest }: Props) => <StyledBox {...rest}>{children}</StyledBox>;\n`);
+      const filler = (prefix: string) => Array.from({ length: 80 }, (_, i) => `export const ${prefix}${i} = ${i};`).join('\n');
+      await writeFile(stylesPath, `${filler('before')}\nexport const StyledBox = styled.div\`padding: \${(p) => p.padding};\`;\n${filler('after')}\n`);
+
+      const ref = await loadComponentSourceRef('Box', componentPath, ['padding', 'children']);
+      expect(ref.siblingFiles).toHaveLength(1);
+      expect(ref.siblingFiles?.[0].content).toContain('padding: ${(p) => p.padding};');
+      expect(ref.siblingFiles?.[0].content).not.toContain('before0 = 0');
+      expect(ref.siblingFiles?.[0].content.length).toBeLessThanOrEqual(1_200 + '\n/* truncated */'.length);
+      expect(ref.usesNotShown).toBeUndefined();
+      // The component forwards everything through a rest spread, so nothing is unread.
+      expect(ref.unconsumedProps).toBeUndefined();
+    });
+  });
+
+  it('loadComponentSourceRef reports the props whose uses were cut by the sibling budget', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Box.tsx');
+      const stylesPath = join(dir, 'Box.styles.ts');
+      await writeFile(componentPath, `import { StyledBox } from './Box.styles';\n`);
+      const filler = (prefix: string) => Array.from({ length: 80 }, (_, i) => `export const ${prefix}${i} = ${i};`).join('\n');
+      // Two uses far apart, each with a wide window: the second cannot fit in 1,200 chars.
+      const bigLine = (name: string) => `export const ${name}Style = css\`\${(p) => p.${name}}; /* ${'x'.repeat(900)} */\`;`;
+      await writeFile(stylesPath, `${filler('a')}\n${bigLine('padding')}\n${filler('b')}\n${bigLine('margin')}\n${filler('c')}\n`);
+
+      const ref = await loadComponentSourceRef('Box', componentPath, ['padding', 'margin']);
+      // Later windows are kept in preference to earlier ones, so the margin use
+      // survives and the padding use is the one reported as cut.
+      expect(ref.siblingFiles?.[0].content).toContain('p.margin');
+      expect(ref.siblingFiles?.[0].content).not.toContain('p.padding');
+      expect(ref.usesNotShown).toEqual(['padding']);
+    });
+  });
+
   it('loadComponentSourceRef inlines a second-hop sibling reached through a first-hop sibling component', async () => {
     await withTempDb(async (dbPath) => {
       const dir = dirname(dbPath);

@@ -7,6 +7,7 @@ import { dirname, resolve, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import { generateSessionId } from './session-id.js';
 import { findUnconsumedProps } from '@contentful/experience-design-system-extraction';
+import { excerptAroundNames } from './source-excerpt.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types.js';
 import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
 import type { ToolCall, TokenToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
@@ -1338,11 +1339,6 @@ const RELATIVE_IMPORT_PATTERN = /from\s+['"](\.[^'"]+)['"]/g;
 const WORKSPACE_IMPORT_PATTERN = /from\s+['"](@[^'"/]+\/[^'"]+)['"]/g;
 const SIBLING_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
 
-function truncateSource(text: string, maxChars: number = MAX_COMPONENT_SOURCE_CHARS): string {
-  if (text.length <= maxChars) return text;
-  return text.slice(0, maxChars) + '\n/* truncated */';
-}
-
 function extractRelativeImportPaths(sourceText: string): string[] {
   const specifiers = new Set<string>();
   for (const match of sourceText.matchAll(RELATIVE_IMPORT_PATTERN)) {
@@ -1430,9 +1426,12 @@ async function resolveImportSpecifiers(sourceText: string, fromDir: string): Pro
 async function loadSiblingFiles(
   sourceText: string,
   sourcePath: string,
+  propNames: string[],
 ): Promise<{
   siblings: Array<{ path: string; content: string }>;
   truncatedCount: number;
+  /** Prop names with at least one use that fell outside a sibling's excerpt budget. */
+  usesNotShown: string[];
   /**
    * Every file the walk resolved, untruncated and including those dropped by
    * the inlining cap. The prompt gets `siblings`; evidence scans get this, so a
@@ -1473,12 +1472,23 @@ async function loadSiblingFiles(
     frontier = nextFrontier;
   }
 
-  const siblings = discovered
-    .slice(0, MAX_SIBLING_FILES)
-    .map((d) => ({ path: d.path, content: truncateSource(d.content, MAX_SIBLING_SNIPPET_CHARS) }));
+  // Excerpts are windowed around the prop names rather than cut from the
+  // head: a styles module's first lines are imports, and the line that decides
+  // a prop's classification is wherever that prop is interpolated.
+  const usesNotShown = new Set<string>();
+  const siblings = discovered.slice(0, MAX_SIBLING_FILES).map((d) => {
+    const excerpt = excerptAroundNames(d.content, propNames, MAX_SIBLING_SNIPPET_CHARS);
+    for (const name of excerpt.usesNotShown) usesNotShown.add(name);
+    return { path: d.path, content: excerpt.content };
+  });
   const truncatedCount = Math.max(0, discovered.length - MAX_SIBLING_FILES);
 
-  return { siblings, truncatedCount, scanned: discovered };
+  return {
+    siblings,
+    truncatedCount,
+    usesNotShown: propNames.filter((name) => usesNotShown.has(name)),
+    scanned: discovered,
+  };
 }
 
 // Reads and inlines real file content here, at the last point this pipeline
@@ -1496,15 +1506,21 @@ export async function loadComponentSourceRef(
   let siblingFiles: Array<{ path: string; content: string }> = [];
   let truncatedSiblingCount = 0;
   let unconsumedProps: string[] = [];
+  const usesNotShown = new Set<string>();
   try {
     const rawText = await readFile(sourcePath, 'utf8');
-    content = truncateSource(rawText);
+    const mainExcerpt = excerptAroundNames(rawText, propNames, MAX_COMPONENT_SOURCE_CHARS);
+    content = mainExcerpt.content;
+    for (const name of mainExcerpt.usesNotShown) usesNotShown.add(name);
     let scanned: Array<{ path: string; content: string }>;
+    let siblingUsesNotShown: string[];
     ({
       siblings: siblingFiles,
       truncatedCount: truncatedSiblingCount,
+      usesNotShown: siblingUsesNotShown,
       scanned,
-    } = await loadSiblingFiles(rawText, sourcePath));
+    } = await loadSiblingFiles(rawText, sourcePath, propNames));
+    for (const name of siblingUsesNotShown) usesNotShown.add(name);
     if (propNames.length > 0) {
       unconsumedProps = findUnconsumedProps(propNames, [
         { path: sourcePath, text: rawText },
@@ -1518,20 +1534,27 @@ export async function loadComponentSourceRef(
   if (siblingFiles.length > 0) ref.siblingFiles = siblingFiles;
   if (truncatedSiblingCount > 0) ref.truncatedSiblingCount = truncatedSiblingCount;
   if (unconsumedProps.length > 0) ref.unconsumedProps = unconsumedProps;
+  const notShown = propNames.filter((name) => usesNotShown.has(name));
+  if (notShown.length > 0) ref.usesNotShown = notShown;
   return ref;
 }
 
-export async function loadComponentSourceRefs(
-  db: DatabaseSync,
-  sessionId: string,
-): Promise<ComponentSourceRef[]> {
+export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: string): Promise<ComponentSourceRef[]> {
   const rows = db
     .prepare(
-      `SELECT name, source, source_path FROM raw_components WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
+      `SELECT component_id, name, source, source_path FROM raw_components WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
     )
-    .all(sessionId) as Array<{ name: string; source: string; source_path: string | null }>;
+    .all(sessionId) as Array<{ component_id: string; name: string; source: string; source_path: string | null }>;
+  const propNamesFor = db.prepare(
+    `SELECT name FROM raw_props WHERE session_id = ? AND component_id = ? ORDER BY position`,
+  );
 
-  return Promise.all(rows.map((r) => loadComponentSourceRef(r.name, r.source_path ?? r.source)));
+  return Promise.all(
+    rows.map((r) => {
+      const propNames = (propNamesFor.all(sessionId, r.component_id) as Array<{ name: string }>).map((p) => p.name);
+      return loadComponentSourceRef(r.name, r.source_path ?? r.source, propNames);
+    }),
+  );
 }
 
 export function renameEmptySlots(

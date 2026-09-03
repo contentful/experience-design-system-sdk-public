@@ -14,7 +14,7 @@ All input is embedded inline in the prompt before this file:
 
 - **Generated CDF so far** — design-category, token-typed props only, grouped by component. Every prop shown here already has `$type: "token"` and `$category: "design"`; you do not need to re-verify either. A prop that already carries a `$token.allowed` entry was resolved earlier from source evidence — leave it alone. Only decide for props that arrive with no `$token.allowed` at all.
 - **Token path index** — a flat array of `{ "path": "<dot.notation.path>", "type": "<DTCG $type>" }` covering every leaf token in the library. **No `$value` is included** — the mapping decision only needs paths and their DTCG type, not their concrete values. A prop's candidates are always the subset of this index whose `type` matches the prop's `$token.kind` — ignore every entry outside that type.
-- **Component source references** — the real file text for each component (bounded/truncated), rendered inline as a fenced code block, so you can look for `tokenReference` usage, union/enum-shaped prop types, default values, or comments that indicate a restriction. **You have no filesystem access and no tools — `sourcePath` is a citation label only, never something to open.** When a component's source couldn't be read (moved/deleted since extraction), it's listed separately by path with no code block; for those, there is no source evidence to narrow from — skip the prop.
+- **Component source references** — the real file text for each component (bounded/truncated), rendered inline as a fenced code block, so you can look for an explicit restriction: a comment naming the valid tokens, or code that validates the prop against a fixed list of token paths. A default value or a `tokenReference` is the prop's *default*, not a restriction — see the decision tree. **You have no filesystem access and no tools — `sourcePath` is a citation label only, never something to open.** When a component's source couldn't be read (moved/deleted since extraction), it's listed separately by path with no code block; for those, there is no source evidence to narrow from — skip the prop.
 
 ```typescript
 interface TokenPathIndexEntry {
@@ -48,15 +48,15 @@ This field is CDF-only in this step — nothing here writes to the Contentful Ex
 For each design-category, token-typed prop shown in the "Generated CDF so far" section:
 
 1. **Already has `$token.allowed`?** Skip it. It was resolved from source evidence earlier in the pipeline and must not be contradicted or overwritten.
-2. **Look for a `tokenReference`** in the component source (a CSS custom property or design-token reference near the prop's usage). If found and it resolves to an exact token path in the index, treat it as high-confidence evidence for `$token.allowed` and never contradict it.
-3. **Look for restriction evidence** in the component source:
-   - A union or enum-shaped prop type (e.g. `'primary' | 'secondary'`) that maps to specific named tokens
-   - A default value that resolves to a specific token
-   - An explicit comment calling out which tokens are valid
-   
+2. **Prop type is a union of variant names** (e.g. `'primary' | 'secondary'`)? That prop should not be a `token` at all — the component receives a name and resolves it, which is the `enum` case in the classification step. Do not narrow it; narrowing cannot repair a wrong type. Emit nothing, and note in a prose line that it looks misclassified so the developer can re-run classification.
+3. **A default or a `tokenReference` is a default, not a restriction.** `padding = tokens.spacingM`, `background: var(--bg-primary)`, or a structured `tokenReference` tells you which token the prop *starts* on. It does not say the author may choose no other. Narrowing to that single path would leave the marketer one option, which is worse than no list. On its own, this evidence yields no tool call. If you do narrow on other grounds (step 4), the default's path must be in the list — never emit a list that excludes the prop's own default.
+4. **Look for an explicit restriction** in the component source:
+   - A comment that names the valid tokens (`// accepts colors.brand.primary or colors.brand.secondary only`)
+   - Code that validates or maps the prop against a fixed list of token paths (an allowlist array, a `satisfies` over specific token keys)
+
    If you find such evidence, emit `$token.allowed` as the evidenced subset, scoped to tokens of the prop's `$token.kind` from the index.
-4. **No restriction evidence?** Emit nothing for this prop. Omitting the list means "any token of this kind," which is correct and live — a guessed list is worse than none because it freezes the author's choices.
-5. **No plausible candidates at all?** (No index entries of the prop's `$token.kind`.) Skip the prop.
+5. **No explicit restriction?** Emit nothing for this prop. Omitting the list means "any token of this kind," which is correct and live — a guessed list is worse than none because it freezes the author's choices.
+6. **No plausible candidates at all?** (No index entries of the prop's `$token.kind`.) Skip the prop.
 
 ---
 
@@ -92,33 +92,44 @@ Generated CDF shows:
 
 Token path index includes `colors.surface.default`, `colors.surface.raised`, `colors.brand.primary` (all `color`).
 
-Component source shows `bgColor` used generically with no union type or default hinting at a specific token.
+Component source shows `bgColor` interpolated generically with no comment or allowlist naming specific tokens.
 
 ```
 bgColor has no restriction evidence in source — any color token remains valid, so no tool call
 ```
 
-### Prop with restriction evidence (union type)
+### Prop with an explicit restriction (comment or allowlist)
 
 Component source:
 ```ts
 interface ButtonProps {
-  variantColor: 'primary' | 'secondary'; // maps to --brand-primary / --brand-secondary
+  /** Accepts only the brand colour tokens: colors.brand.primary or colors.brand.secondary. */
+  accentColor?: string;
 }
+const ACCENT_TOKENS = ['colors.brand.primary', 'colors.brand.secondary'] as const;
 ```
 
 ```
-variantColor is restricted to two specific tokens via the union type and the comment
-{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"Restricted to primary/secondary per the component's variant union type"}
+accentColor is restricted to two named tokens by the doc comment and the ACCENT_TOKENS allowlist
+{"tool":"map_token_prop","component":"Button","prop":"accentColor","token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"Restricted per the accentColor doc comment and ACCENT_TOKENS allowlist in Button.tsx"}
 ```
 
-### Prop with an existing `tokenReference` — high-confidence, narrow to the resolved path
+### Prop with a token default only — emit nothing
 
-Component source shows `background-color: var(--bg-primary)`, and `--bg-primary` resolves via the sidecar convention to `colors.bg.primary` (present in the token path index, type `color`, matching the prop's `$token.kind`).
+Component source shows `bgColor = tokens.bgPrimary` as the parameter default, interpolated into `background: ${bgColor}`. `tokens.bgPrimary` resolves via the sidecar to `colors.bg.primary`.
 
 ```
-bgColor resolves via tokenReference to colors.bg.primary — narrowing to that single path
-{"tool":"map_token_prop","component":"Panel","prop":"bgColor","token_allowed":["colors.bg.primary"],"description":"tokenReference --bg-primary resolves to colors.bg.primary"}
+bgColor defaults to colors.bg.primary but nothing restricts it to that token — a default is not an allowlist, so no tool call
+```
+
+Narrowing to `["colors.bg.primary"]` here would leave the marketer a picker with one entry. The default is already carried by `$default`; the allowlist stays open.
+
+### Token prop with a union of variant names — looks misclassified, emit nothing
+
+Generated CDF shows `Tag.variant` as `$type: "token"`, and the source has `variant: 'primary' | 'secondary'` resolved through a `Record<Variant, Token>`.
+
+```
+Tag.variant accepts variant names and resolves them itself — this is an enum, not a token; narrowing cannot fix the type, so no tool call. Flagging for reclassification.
 ```
 
 ### Prop that already arrived with `$token.allowed` — skip
@@ -141,6 +152,8 @@ A `borderWidth` token prop where the token path index contains no dimension/bord
 - **No token path index provided** — emit no tool calls; there is nothing to narrow against.
 - **Prop already has `$token.allowed`** — always skip; never contradict a prior narrowing.
 - **Ambiguous restriction (comment mentions "some" tokens but doesn't name them)** — treat as no evidence; emit nothing.
+- **Only a default or `tokenReference` in evidence** — that is the prop's default, not a restriction; emit nothing.
+- **Token prop whose type is a union of variant names** — a classification problem, not a narrowing one; emit nothing and flag it in prose.
 - **Component source file missing or unreadable** — there is no source evidence to narrow from; skip the prop.
 - **Prop not in the pipeline database** — skipped with a warning by the CLI; does not abort the run.
 
@@ -151,7 +164,8 @@ Before emitting any tool calls, verify:
 1. Every `map_token_prop` call targets a prop that appears in the "Generated CDF so far" section and does **not** already carry `$token.allowed`.
 2. Every path in `token_allowed` is a leaf path that exists verbatim in the token path index, and matches the prop's `$token.kind` — no group/prefix paths, no variant names.
 3. `token_allowed` is never empty — if there's nothing to narrow to, no call is emitted for that prop.
-4. No existing `tokenReference` or prior `$token.allowed` is contradicted.
+4. No prior `$token.allowed` is contradicted, and every emitted list includes the prop's own default token when it has one.
+5. No list was emitted on the strength of a default or `tokenReference` alone, and none targets a prop whose type is a union of variant names.
 
 ## CRITICAL: No hallucinated paths
 

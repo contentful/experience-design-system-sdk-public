@@ -30,7 +30,8 @@ All input is embedded inline in the prompt before this file:
 - **DTCG token data** — full token tree, if provided
 - **Token-name sidecar** — raw CSS custom property name → DTCG dot-notation path, if provided
 - **Component source references** — the real file text for the component's own source, plus up to 5 sibling files (e.g. a co-located `.styles.ts` or `utils.ts`, or a file reached transitively through another sibling — such as a re-exported component's own styles module), if provided. Use this when `tokenReference` is empty — see "Source-derived tokenReference" below. **You have no filesystem access and no tools — `sourcePath` is a citation label only, never something to open.**
-  - A **"declared but never read"** line may accompany these files, listing properties that appear in no read position anywhere in them. It is computed over the *untruncated* sources, so it is more reliable than the snippets you can see — a property can be absent from that list yet have its use fall outside a truncated excerpt. Treat a listed property as consumed by nothing: classify it `enum` or `string`, never `token`.
+  - A **"declared but no read found"** line may accompany these files, listing properties for which the scanner found no read in any of them. It is computed over the *untruncated* sources, so a property can be absent from that list yet have its use fall outside a truncated excerpt. The scanner recognises direct reads (`props.x`, `const { x } = props`, a destructured parameter, `{ x }` shorthand) and treats a rest spread (`{ a, ...rest }`, `<Child {...props} />`) as reading every prop it forwards; a value read by bracket access or reached through a framework accessor (`this.x`, `$props()`, `p => p.x`) is still not detected. Treat the list as **absence of consumption evidence**, not as proof the component ignores the value. Its only effect on classification is that `token` cannot be earned for a listed property — there is no citable interpolation — so a listed design prop is `enum` (or `string`). It says nothing about non-design props: a forwarded `image` is still `media`, a forwarded `icon` is still a slot, a forwarded `href` is still content.
+  - A **"uses not shown"** line may also accompany them. The files are excerpts windowed around the property names, and this line names the properties with at least one use that fell outside the excerpt budget. Treat those properties' consumption as unknown: do not classify them `token` on what is shown, and do not conclude they are unread. Unknown resolves to `enum` (or `string`) per "Ambiguity resolves to `enum`".
 
 ```typescript
 interface RawPropDefinition {
@@ -142,29 +143,87 @@ Both describe a closed set of choices, but the *contents* differ, and that is th
 | `token` | Design token paths the prop may bind to | `["color.brand.primary", "color.brand.neutral"]` |
 
 The distinction is **what the component does with the value it receives**. That
-is decidable from source; it is not inferred from the property's name or from
-the component's role.
+is decidable from source; it is not inferred from the property's name, from the
+component's role, or from the property's TypeScript type.
 
 An `enum` design property is delivered as a plain string, so the component
 receives `variant="primary"` — the value its own code branches on. A `token`
 property is resolved to the token's value *before* it reaches the component, so
 that same component would receive `variant="#0059c8"` and match no branch.
 
-| The component… | needs the | type |
-|---|---|---|
-| indexes or branches on the property — `SPACING[padding]`, `tokens[duration]`, `switch (variant)`, a `Record<Variant, Token>` lookup | name | `enum` |
-| interpolates the property straight into a style, no lookup — `padding: ${value}`, `<rect rx={radius}>` | value | `token` |
-| never reads the property at all | — | `enum` |
+#### The three-question procedure (closed, ordered)
 
-A lookup map from variant names to tokens is therefore evidence **for** `enum`,
-not against it. The map exists precisely because the component was handed a name
-it had to resolve itself.
+For every design prop that carries a value (not a boolean), answer these three
+questions **in this order**, from the source shown, and stop at the first answer
+that decides. There is no fourth question.
 
-**`token` is the exception, and it has to be earned.** Emit it only when you can
-point to a line of source that puts the property's value into a style directly.
-If you cannot cite one, emit `enum` (or `string`) and say so in `reason`. Nothing
-downstream re-derives, corrects, or second-guesses this — what you emit is what
-ships.
+- **Q1 — Does the component look the value up, switch on it, or compare it against names?**
+  An indexed access (`tokens[fontColor]`, `SPACING[padding]`, a `Record<Variant, Token>`),
+  a `switch (variant)` / `if (variant === 'x')` chain, a `styles[variant]` class lookup,
+  or a vocabulary of its own (`allowedValues`, a literal union) — any of these means
+  the component needs the *name*. A presence check (`if (width)`) or arithmetic on
+  the value is not a lookup.
+  **Yes → `enum`, names in `values`, stop.** No → Q2.
+- **Q2 — Is the value written straight into a style or attribute?**
+  `rx={radius}`, `padding: ${padding}`, `style={{ color }}`, `background: var(${bg})` —
+  the value reaches the renderer without the component resolving it.
+  **No → not `token`; leave this procedure and continue with the type rules.** Yes → Q3.
+- **Q3 — Is there a design-token reference at that use?** Any one of:
+  the parameter default is a token (`radius = tokens.borderRadiusSmall`), the raw prop
+  carries a `tokenReference`, or an inline `tokens.*` / `var(--*)` sits in the same
+  expression. The reference must belong to *this* prop — a `tokens.*` on some other
+  line of the file, or in a sibling's style object, is not one.
+  **Yes → `token`, stop; resolve `token_kind` from that reference. No → `string`, stop.**
+
+**The raw TypeScript type is not an input to Q1–Q3.** `string`, `number`,
+`string | number`, `stringOrNumber` — none of these answers any question above;
+they say what the compiler accepts, not what the component does with the value.
+"The type accepts any value, the default just happens to be a token reference" is
+a Q3-yes described as a no: a token parameter default *is* the design-token
+reference Q3 asks for, and the prop is `token`. Equally, a prop named `color` with
+no lookup and no token reference is `string`, however token-like the name.
+
+**Two worked examples — same shape, opposite answers:**
+
+```tsx
+// Divider.tsx
+export const Divider = ({ thickness = tokens.borderWidthDefault, inset = 0 }: DividerProps) => (
+  <hr style={{ borderTopWidth: thickness, marginLeft: inset }} />
+);
+```
+
+- `thickness` — Q1: no lookup. Q2: yes, `borderTopWidth: thickness`. Q3: yes, the
+  parameter default is `tokens.borderWidthDefault`. → **`token`**, `token_kind` from
+  `borderWidthDefault` via the sidecar. Its `string | number` annotation changes nothing.
+- `inset` — Q1: no lookup. Q2: yes, `marginLeft: inset`. Q3: no, the default is the
+  bare number `0` and nothing at this use is a token. → **`string`**, `default: "0"`.
+
+A lookup map from variant names to tokens is evidence **for** `enum`, not against
+it — that is Q1 answering yes. The map exists precisely because the component was
+handed a name it had to resolve itself.
+
+**`token` is earned by Q2 and Q3 together, and only that way.** Cite both lines
+in `reason`: the interpolation and the token reference. Once both are cited, the
+prop is `token` — do not then downgrade it because of its type annotation, because
+the default "could be overridden" (every default can), or because the tie-break
+below exists. Nothing downstream re-derives, corrects, or second-guesses this —
+what you emit is what ships.
+
+**Ambiguity resolves to `enum` — but only when Q1–Q3 cannot be answered.** The
+tie-break applies solely when the source shown does not let you answer the three
+questions: the property is interpolated in one place and looked up in another,
+the use sits in a file you cannot see, the source is truncated at the point of
+use (the "uses not shown" line), or the prop is on the "declared but no read
+found" list. In those cases emit `enum` (or `string` when it has no value set)
+and record the ambiguity in `reason`. When the three questions *can* be answered
+from the source shown, they are answered and the tie-break does not apply: a
+clear Q1-yes is `enum`, a clear Q2-yes + Q3-yes is `token`, and a type annotation
+does not create ambiguity. An `enum` is delivered as the plain string the
+component was written to receive and remains reachable from a content-type
+field; a wrong `token` delivers a resolved value the component cannot branch on
+and is permanently excluded from content-type field mapping. That asymmetric
+cost is why a genuine tie goes to `enum` — it is not a reason to call a decided
+case a tie.
 
 ---
 
@@ -202,20 +261,20 @@ For each `RawPropDefinition`, apply in order:
    - `accessibleNameRef` / `accessibleDescriptionRef` (web components) — these are ID references for a11y wiring; classify as `string`, `cdf_category: "state"` (behavioral wiring, not design or content).
    - `eventDetails` / similar telemetry props — `cdf_category: "state"`.
 3. **Positional/geometric design prop?** (`top`, `bottom`, `left`, `right`, `rotation`, `offset`, `zIndex`) → `classify_prop`, `cdf_type: "string"`, `cdf_category: "design"`.
-4. **Union of string literals** (e.g. `'a' | 'b' | 'c'`)? → `cdf_type: "enum"`, extract literals into `values`. This applies even when Component source references show each literal resolving to a design token internally (see "Source-derived tokenReference" below) — a resolved token map is evidence about the component's internals, not its interface.
-5. **`enum` or `token`?** Apply the consumption test from "`enum` versus `token`" above. Ask what the component *does* with the value, not what the value looks like:
+4. **`enum` or `token`? — run the three-question procedure first.** Before any type-based rule, for every design prop that carries a value, answer Q1–Q3 from "`enum` versus `token`" above, in order, from the source shown:
 
-   * It **resolves the value itself** — a lookup keyed by the property, a `switch` on it, any indexed access → `cdf_type: "enum"`, names in `values`. Do **not** emit `token_kind`. This holds even when every name maps 1:1 to a design token; the map is the component resolving a name it was given.
-   * It **interpolates the value straight into a style**, with no lookup and no vocabulary of its own → `cdf_type: "token"`, resolve `token_kind` via sidecar lookup. Do **not** emit `values`.
-   * You **cannot find it read anywhere** → `cdf_type: "enum"` (or `string` when it has no value set). Absence of evidence is not evidence of a token — see the "declared but never read" note in Component source references, which is computed over the untruncated files and is authoritative on this point.
+   * **Q1** looked up / switched on / compared / has its own vocabulary → `cdf_type: "enum"`, names in `values`, no `token_kind`. This holds even when every name maps 1:1 to a design token; the map is the component resolving a name it was given.
+   * **Q2** not written straight into a style or attribute → not `token`; continue to rules 5–7.
+   * **Q3** written straight into a style or attribute **and** a token reference at that use (a `tokens.*` parameter default, a `tokenReference`, an inline `tokens.*` / `var(--*)`) → `cdf_type: "token"`, `token_kind` from that reference via the sidecar, no `values`. Interpolated with no token reference at that use → `cdf_type: "string"`.
+   * Q1–Q3 **cannot be answered** from the source shown (unread, truncated, in a file you cannot see, evidence pointing both ways) → `cdf_type: "enum"` (or `string`). See "Ambiguity resolves to `enum`" above. The "declared but no read found" note is one input here, but it is a scanner result with known blind spots (rest spreads, bracket access, framework accessors) — it withdraws the possibility of `token`; it does not tell you what the component does.
 
-   A `tokenReference` on the raw prop no longer overrides other heuristics. If the prop also has `allowedValues` of friendly names, the friendly names win and the prop is an `enum`.
+   A `tokenReference` on the raw prop does not decide the type on its own. If the prop also has `allowedValues` of friendly names, Q1 is yes and the prop is an `enum`.
 
    **Cardinality is the tell.** `tokenReference` is a single-value field — it can only ever assert "this prop links to one token." A prop's *values* resolving to several distinct token targets (a `Record<Variant, Token>`, a `switch`, found via the "Source-derived tokenReference" evidence below) is a different, stronger signal, and it points the other way: one token target is the shape of a genuine token prop; many distinct token targets means the prop is a selector *over* tokens, which makes it an enum. Do not treat a bare `tokenReference` on the raw prop as if it were multi-value resolution evidence — it never is one.
 
-   An `enum` design property is stored and delivered as a plain string, so the component receives `variant="primary"` — the value its own code branches on. A token-typed property is stored as a token reference and is resolved to the token's value before it reaches the component, so the component would receive `variant="#0059c8"` and match no branch. Classify by what the component's prop signature accepts.
+   An `enum` design property is stored and delivered as a plain string, so the component receives `variant="primary"` — the value its own code branches on. A token-typed property is stored as a token reference and is resolved to the token's value before it reaches the component, so the component would receive `variant="#0059c8"` and match no branch. Classify by what the component does with the value, not by what the prop's type annotation admits.
 
-   Token classification has a second, independent cost beyond the render contract: `modeling-workspace`'s content-type-to-design-property mapping deliberately excludes every DTCG token type as unreachable from a content-type field's value, while a `String` design property (what an `enum` prop compiles to) is reachable from a `Symbol`/`Text` field. A variant prop classified `token` is not just delivered a value its own code can't branch on — it becomes permanently ineligible for content-type field mapping in the upgrade workspace. This is a platform constraint, not a preference, and it holds regardless of how cleanly the prop's values resolve to tokens internally.
+   Token classification has a second, independent cost beyond the render contract: `modeling-workspace`'s content-type-to-design-property mapping deliberately excludes every DTCG token type as unreachable from a content-type field's value, while a `String` design property (what an `enum` prop compiles to) is reachable from a `Symbol`/`Text` field. A prop classified `token` becomes permanently ineligible for content-type field mapping in the upgrade workspace. This cost applies to every token prop, genuine ones included, so it does not by itself decide enum versus token — Q1–Q3 do that. It is the reason the tie-break goes to `enum` when Q1–Q3 cannot be answered.
 
    **Do not classify on the component's role.** A layout primitive is not automatically a token consumer. Design systems routinely key their primitives on token *names*, and those props are `enum` — the component needs the name to perform its own lookup:
 
@@ -225,9 +284,10 @@ For each `RawPropDefinition`, apply in order:
    getSpacingStyles({ padding });               // → SpacingTable["spacingXs"] → "0.5rem"
    ```
 
-   Classify that `padding` as `token` and the platform delivers `"0.5rem"`, so `SpacingTable["0.5rem"]` is `undefined` and the spacing silently disappears. A value that is spelled like a token name is still a lookup key. Curated components with named variant APIs (`Button`, `Tag`, `Badge`, `Avatar`, `Notification`) are `enum` for the same reason. A design system may legitimately produce **zero** token-typed props.
+   Classify that `padding` as `token` and the platform delivers `"0.5rem"`, so `SpacingTable["0.5rem"]` is `undefined` and the spacing silently disappears. A value that is spelled like a token name is still a lookup key (Q1 yes). Curated components with named variant APIs (`Button`, `Tag`, `Badge`, `Avatar`, `Notification`) are `enum` for the same reason. A design system may legitimately produce **zero** token-typed props.
+5. **Union of string literals** (e.g. `'a' | 'b' | 'c'`)? → `cdf_type: "enum"`, extract literals into `values`. (Rule 4's Q1 will normally have decided this already — a literal union is the prop's own vocabulary.) This applies even when Component source references show each literal resolving to a design token internally (see "Source-derived tokenReference" below) — a resolved token map is evidence about the component's internals, not its interface.
 6. **Raw type is `string`** and prop name is `href`, `url`, or clearly a URL? → `cdf_type: "string"`, `cdf_category: "content"`.
-7. **Raw type is `string` / `number` / `boolean`?** → For `boolean`, use `cdf_type: "boolean"` with `default: true` or `false` (native boolean). For `number`, use `cdf_type: "string"` with `default` as the numeric value as a string (e.g. `"0"`). For `string`, use `cdf_type: "string"`.
+7. **Raw type is `string` / `number` / `boolean`?** → For `boolean`, use `cdf_type: "boolean"` with `default: true` or `false` (native boolean). For `number`, use `cdf_type: "string"` with `default` as the numeric value as a string (e.g. `"0"`). For `string`, use `cdf_type: "string"`. **A design prop reaches this rule only after leaving rule 4 at Q2 (not written into a style) or Q3 (written into a style with no token reference at that use).** A prop that answered Q3 yes is already `token` and never arrives here — a `string`, `number`, or `string | number` annotation on it does not bring it back to this rule.
 8. **Media/image type** (`ImageProps`, `MediaSource`, asset types)? → `cdf_type: "media"`.
 9. **Rich text / markup** (`ReactNode` used as content, HTML string)? → `cdf_type: "richtext"`.
 10. **Complex type — resolve before excluding** (see below).
@@ -320,9 +380,11 @@ tokenReference: "tokens.blue500"
   → tool call: {"tool":"classify_prop","prop":"borderColor","cdf_type":"token","cdf_category":"design","token_kind":"color","description":"..."}
 ```
 
-If `tokenReference` is not found in the sidecar → `cdf_type: "token"`, omit `token_kind`, add `description: "WARNING: tokenReference not found in sidecar — token_kind unknown"`.
+Both fallbacks below apply **only to a prop that has already earned `cdf_type: "token"` through the consumption test**. The presence of a `tokenReference` never decides the type on its own — a prop with a `tokenReference` that the component looks up or branches on, or that you cannot find read at all, is still `enum` (or `string`), and neither fallback applies to it.
 
-If token data was not provided and `tokenReference` is present → `cdf_type: "token"`, omit `token_kind`, add `description: "WARNING: no token data supplied — token_kind unknown"`.
+If the prop is `token` and its `tokenReference` is not found in the sidecar → keep `cdf_type: "token"`, omit `token_kind`, add `description: "WARNING: tokenReference not found in sidecar — token_kind unknown"`.
+
+If the prop is `token`, token data was not provided, and `tokenReference` is present → keep `cdf_type: "token"`, omit `token_kind`, add `description: "WARNING: no token data supplied — token_kind unknown"`.
 
 ### Source-derived tokenReference (no structured `tokenReference` field)
 
@@ -332,7 +394,7 @@ If token data was not provided and `tokenReference` is present → `cdf_type: "t
 - A direct `tokens.xxx` / `var(--xxx)` reference inline in the render logic, keyed off the prop's value
 - A `switch` statement or `if`/`else if` chain branching on the prop's value, where one or more branches resolve to a `tokens.*`, `var(--...)`, or DTCG-path reference — this is equally valid evidence as an object-literal lookup map. Don't require the resolution to be a plain object; a switch/if chain that ends in a token reference is the same signal in a different syntax.
 
-**This evidence describes the component's internals, not its interface — it does not override rule 5 of the decision tree.** A `Record<Variant, Token>` keyed by ordinary variant names (e.g. `{ neutral: tokens.gray300, positive: tokens.green300 }`) is still a variant→token resolution map, but the prop's signature accepts the variant *name*, not the token. That is exactly the enum case in rule 5: classify as `enum` with the names in `values` (see the PillNext example below), and do not derive a `tokenReference` for it.
+**This evidence describes the component's internals, not its interface — it does not override rule 4 of the decision tree.** A `Record<Variant, Token>` keyed by ordinary variant names (e.g. `{ neutral: tokens.gray300, positive: tokens.green300 }`) is still a variant→token resolution map, but the prop's signature accepts the variant *name*, not the token. That is exactly the Q1-yes enum case in rule 4: classify as `enum` with the names in `values` (see the PillNext example below), and do not derive a `tokenReference` for it.
 
 Only derive a `tokenReference` from this evidence — and classify `cdf_type: "token"` — when the prop has **no vocabulary of its own**: no `allowedValues`, no literal union, and source showing the value interpolated into a style directly, with no lookup or branch for the component to resolve. In that case, note in `description` which file the evidence came from (e.g. `"token linkage found in utils.ts's backgroundMap"`) so the developer can verify it.
 
@@ -508,8 +570,9 @@ Before emitting any tool calls, verify:
 13. `rationale.description` follows the same "Description content rules" as `description` — no internal initiative names (`INTEG-*`, `EDSI`, `DSI`, `M1`, `M2`, wave/phase references, etc.).
 14. Every `cdf_type: "token"` prop has no `values`, and its accepted values are token references rather than friendly names.
 15. Every prop whose values are friendly names is `enum` with a non-empty `values` array, even when each name resolves to a design token internally.
-16. Every `cdf_type: "token"` prop can be justified by a line of source that interpolates its value into a style. If you cannot cite one, it is not a `token` — re-emit it as `enum` or `string`.
-17. No prop named in the "declared but never read" list is classified `token`.
+16. Every `cdf_type: "token"` prop can be justified by a line of source that interpolates its value into a style **and** a token reference at that use (Q2 yes, Q3 yes). If you cannot cite both, it is not a `token` — re-emit it as `enum` or `string`. Conversely, every design prop for which you *can* cite both is `token` — its type annotation is not a reason to emit `string`.
+17. No prop named in the "declared but no read found" list is classified `token`. Its non-design props were classified on their own merits (media, slot, content), not forced to `enum`/`string` by the list.
+18. Every prop for which Q1–Q3 could not be answered from the source shown was emitted as `enum` (or `string`), with the ambiguity stated in `reason`. No prop for which Q1–Q3 *were* answerable was called ambiguous.
 
 After the run completes, the developer can validate the pipeline output with:
 

@@ -3,6 +3,32 @@ import { findUnconsumedProps, isPropConsumed } from '../src/prop-consumption.js'
 
 const file = (text: string) => [{ path: 'Component.tsx', text }];
 
+describe('isPropConsumed — rest-spread forwarding', () => {
+  // A component that collects the rest of its props and hands them to a
+  // child has read every prop it did not name. Reporting those as unread is
+  // the false claim that pushed forwarded token props to enum.
+  it('treats a prop as consumed when the parameter pattern collects a rest object', () => {
+    const text = 'const Box = ({ children, ...rest }: Props) => <Styled {...rest}>{children}</Styled>;';
+    expect(isPropConsumed('padding', file(text))).toBe(true);
+    expect(findUnconsumedProps(['padding', 'children'], file(text))).toEqual([]);
+  });
+
+  it('treats a prop as consumed when props itself is spread onto an element', () => {
+    const text = 'function Box(props: Props) { return <div {...props} />; }';
+    expect(isPropConsumed('padding', file(text))).toBe(true);
+  });
+
+  it('treats a prop as consumed when a destructuring off props collects a rest object', () => {
+    const text = 'const { as, ...rest } = props;\nreturn <Tag {...rest} />;';
+    expect(isPropConsumed('padding', file(text))).toBe(true);
+  });
+
+  it('does not treat a rest object collected from something other than props as forwarding', () => {
+    const text = 'const { a, ...rest } = styles;\nconst Box = ({ children }: Props) => <div>{children}</div>;';
+    expect(isPropConsumed('padding', file(text))).toBe(false);
+  });
+});
+
 describe('isPropConsumed — member access', () => {
   it('finds props.name', () => {
     expect(isPropConsumed('margin', file('const x = props.margin ? 1 : 0;'))).toBe(true);

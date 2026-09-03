@@ -248,7 +248,7 @@ describe('buildPrompt', () => {
       {
         component: 'Card',
         sourcePath: 'src/Card.tsx',
-        content: "export function Card({ bgColor }) {\n  return <div style={{ background: bgColor }} />;\n}",
+        content: 'export function Card({ bgColor }) {\n  return <div style={{ background: bgColor }} />;\n}',
       },
     ];
 
@@ -335,8 +335,51 @@ describe('buildPrompt', () => {
         componentSourceRefs: [{ ...SOURCE_REFS_WITH_CONTENT[0], unconsumedProps: ['margin', 'marginTop'] }],
         outDir: '/fake/out',
       });
-      expect(prompt).toContain('declared but never read: margin, marginTop');
-      expect(prompt).toContain('never `token`');
+      expect(prompt).toContain('declared but no read found: margin, marginTop');
+      expect(prompt).toContain('`token` cannot be earned');
+      // The note must not overclaim: the scanner has blind spots, and saying so
+      // is what stops the classifier treating the list as proof of non-use.
+      expect(prompt).toContain('absence of consumption evidence');
+    });
+
+    // Silent truncation at the use site is what turned genuine token props
+    // into enums. Stating it lets the classifier treat the gap as unknown.
+    it('renders the props whose uses were cut by the snippet budget', async () => {
+      const prompt = await buildPrompt({
+        skill: 'components',
+        mode: 'autonomous',
+        rawComponentsInline: '[]',
+        componentSourceRefs: [{ ...SOURCE_REFS_WITH_CONTENT[0], usesNotShown: ['padding'] }],
+        outDir: '/fake/out',
+        componentName: 'Card',
+      });
+      expect(prompt).toContain('uses not shown: padding');
+      expect(prompt).toContain('unknown, not absent');
+    });
+
+    it('tells the components skill that unreadable source forfeits token, and map-tokens to emit nothing', async () => {
+      const components = await buildPrompt({
+        skill: 'components',
+        mode: 'autonomous',
+        rawComponentsInline: '[]',
+        componentSourceRefs: SOURCE_REFS,
+        outDir: '/fake/out',
+        componentName: 'Card',
+      });
+      expect(components).toContain('Component source unavailable for');
+      expect(components).toContain('`token` cannot be earned');
+      expect(components).not.toContain('$token.kind alone');
+
+      const mapTokens = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        componentSourceRefs: SOURCE_REFS,
+        outDir: '/fake/out',
+      });
+      expect(mapTokens).toContain('emit nothing for their props');
+      expect(mapTokens).not.toContain('$token.kind alone');
     });
 
     it('omits the declared-but-never-read note when every property is read', async () => {
@@ -348,7 +391,7 @@ describe('buildPrompt', () => {
         componentSourceRefs: [{ ...SOURCE_REFS_WITH_CONTENT[0], unconsumedProps: [] }],
         outDir: '/fake/out',
       });
-      expect(prompt).not.toContain('declared but never read');
+      expect(prompt).not.toContain('declared but no read found');
     });
 
     it('inlines sibling files alongside the main component source', async () => {

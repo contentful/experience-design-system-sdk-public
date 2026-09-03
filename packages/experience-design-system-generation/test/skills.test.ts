@@ -161,7 +161,7 @@ describe('map-tokens.md', () => {
     expect(content).not.toMatch(/\btoken_sets\b/);
   });
 
-  it('scopes candidates to the prop\'s $token.kind', async () => {
+  it("scopes candidates to the prop's $token.kind", async () => {
     const content = await readSkill('map-tokens.md');
     expect(content).toMatch(/\$token\.kind/);
   });
@@ -182,11 +182,21 @@ describe('map-tokens.md', () => {
     expect(content).toMatch(/evidence/i);
   });
 
-  it('treats an existing tokenReference as high-confidence evidence', async () => {
+  // A default is where the prop starts, not the only place it may go. Narrowing
+  // to it would leave the picker one entry, which the skill itself calls worse
+  // than no list.
+  it('treats a tokenReference or default as the default, never as a restriction on its own', async () => {
     const content = await readSkill('map-tokens.md');
     expect(content).toMatch(/tokenReference/);
-    expect(content).toMatch(/high-confidence/i);
-    expect(content).toMatch(/never contradict/i);
+    expect(content).toMatch(/default, not a restriction/i);
+    expect(content).not.toMatch(/high-confidence evidence for `\$token\.allowed`/i);
+    expect(content).toMatch(/must be in the list/i);
+  });
+
+  it('refuses to narrow a token prop whose type is a union of variant names', async () => {
+    const content = await readSkill('map-tokens.md');
+    expect(content).toMatch(/union of variant names/i);
+    expect(content).toMatch(/misclassified/i);
   });
 
   it('contains no CLI-specific or local filesystem instructions', async () => {
