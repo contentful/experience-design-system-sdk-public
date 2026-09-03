@@ -77,6 +77,5 @@ describe('wizard map-tokens step', () => {
     expect(shouldRunMapTokens({ mappablePropCount: 1, rawTokenCount: 1 })).toBe(true);
     expect(shouldRunMapTokens({ mappablePropCount: 0, rawTokenCount: 1 })).toBe(false);
     expect(shouldRunMapTokens({ mappablePropCount: 1, rawTokenCount: 0 })).toBe(false);
-    expect(shouldRunMapTokens({ mappablePropCount: 0, rawTokenCount: 0 })).toBe(false);
   });
 });

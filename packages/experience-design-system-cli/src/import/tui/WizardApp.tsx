@@ -669,9 +669,6 @@ export function WizardApp({
       return false;
     }
 
-    // Keep the wizard's map step conditional. Match the command's eligibility
-    // check so a session with no token props or no raw tokens never invokes an
-    // agent or flashes a needless progress screen.
     if (!shouldRunMapTokens({ mappablePropCount, rawTokenCount })) {
       update({ mapTokensEligible: false });
       return true;
