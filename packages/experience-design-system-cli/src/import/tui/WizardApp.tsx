@@ -266,16 +266,6 @@ export function shouldRunMapTokens(opts: { mappablePropCount: number; rawTokenCo
   return opts.mappablePropCount > 0 && opts.rawTokenCount > 0;
 }
 
-export async function materializeReusedTokens(
-  db: Parameters<typeof storeDTCGTokens>[0],
-  sessionId: string,
-  tokensPath: string,
-): Promise<number> {
-  const tokens = await readTokensFromPath('tokens', tokensPath);
-  storeDTCGTokens(db, sessionId, [], tokens);
-  return tokens.length;
-}
-
 export function formatAcceptanceSummary(opts: { accepted: number; autoRejected: number }): string {
   const acceptedClause = `${opts.accepted} component${opts.accepted === 1 ? '' : 's'} accepted`;
   if (opts.autoRejected === 0) return `${acceptedClause}.`;
@@ -669,7 +659,8 @@ export function WizardApp({
           // Reusing an existing tokens.json has no token session to copy. The
           // map-tokens command consumes the session DB, so restore the saved
           // catalog into the generated session before checking eligibility.
-          await materializeReusedTokens(db, sessionId, state.tokensPath);
+          const tokens = await readTokensFromPath('tokens', state.tokensPath);
+          storeDTCGTokens(db, sessionId, [], tokens);
         }
         mappablePropCount = countMappableTokenProps(db, sessionId);
         rawTokenCount = countRawTokens(db, sessionId);
