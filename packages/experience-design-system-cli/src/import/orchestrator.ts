@@ -53,6 +53,7 @@ export interface PipelineOptions {
   compositionRefresh?: boolean;
   generateMap?: string;
   promptOverrides?: string[];
+  skipMapTokens?: boolean;
 }
 
 export interface StepResult {
@@ -217,7 +218,7 @@ export async function runPipeline(
   const steps: StepResult[] = [];
   let stepNum = 0;
 
-  const totalSteps = 4 + (opts.print ? 1 : 0);
+  const totalSteps = 5 + (opts.print ? 1 : 0);
 
   function stepLabel(name: string): string {
     stepNum++;
@@ -415,6 +416,82 @@ export async function runPipeline(
     });
     progressWriter(`${generateLabel}✓  components stored locally  (${(durationMs / 1000).toFixed(1)}s)`);
     steps.push({ step: 'generate components', status: 'complete', durationMs });
+  }
+
+  const mapTokensLabel = stepLabel('Mapping design tokens');
+  const hasGeneratedComponents = extractSessionId !== null && loadCDFComponents(db, extractSessionId).length > 0;
+  if (opts.skipMapTokens) {
+    progressWriter(`${mapTokensLabel}–  skipped (--skip-map-tokens)`);
+    steps.push({
+      step: 'map tokens',
+      status: 'skipped',
+      reason: '--skip-map-tokens',
+    });
+  } else if (!extractSessionId || (opts.skipGenerate && !hasGeneratedComponents)) {
+    const reason = extractSessionId ? 'no generated components' : 'no extract session';
+    progressWriter(`${mapTokensLabel}–  skipped (${reason})`);
+    steps.push({
+      step: 'map tokens',
+      status: 'skipped',
+      reason,
+    });
+  } else {
+    const mapTokensArgs = ['map', 'tokens', '--session', extractSessionId, '--agent', opts.agent];
+    if (opts.model) mapTokensArgs.push('--model', opts.model);
+    if (opts.noCache) mapTokensArgs.push('--no-cache');
+
+    const mapTokensStepId = createStep(db, sessionId, 'map tokens', {
+      extractSession: extractSessionId,
+    });
+    const t0MapTokens = Date.now();
+    const rMapTokens = await runStep(mapTokensArgs, cliPath, sessionId);
+    const mapTokensDurationMs = Date.now() - t0MapTokens;
+
+    if (rMapTokens.exitCode !== 0) {
+      if (rMapTokens.stderr) process.stderr.write(rMapTokens.stderr);
+      updateStep(db, mapTokensStepId, 'failed', {}, rMapTokens.stderr);
+      progressWriter(`${mapTokensLabel}✗  failed (${(mapTokensDurationMs / 1000).toFixed(1)}s)`);
+      steps.push({
+        step: 'map tokens',
+        status: 'failed',
+        durationMs: mapTokensDurationMs,
+        error: rMapTokens.stderr,
+      });
+      db.close();
+      return { session: sessionId, project: projectRoot, steps };
+    }
+
+    if (rMapTokens.stdout.includes('Nothing to map')) {
+      updateStep(db, mapTokensStepId, 'complete', { applied: '0' });
+      progressWriter(`${mapTokensLabel}–  skipped (no tokens in session)`);
+      steps.push({
+        step: 'map tokens',
+        status: 'skipped',
+        reason: 'no tokens in session',
+      });
+    } else if (rMapTokens.stdout.includes('cached')) {
+      updateStep(db, mapTokensStepId, 'complete', { cached: 'true' });
+      progressWriter(`${mapTokensLabel}✓  cached  (${(mapTokensDurationMs / 1000).toFixed(1)}s)`);
+      steps.push({
+        step: 'map tokens',
+        status: 'complete',
+        durationMs: mapTokensDurationMs,
+        detail: { cached: true },
+      });
+    } else {
+      const appliedMatch = /(\d+) mapping\(s\) applied/.exec(rMapTokens.stdout);
+      const applied = appliedMatch ? Number(appliedMatch[1]) : 0;
+      updateStep(db, mapTokensStepId, 'complete', { applied: String(applied) });
+      progressWriter(
+        `${mapTokensLabel}✓  ${applied} mapping${applied === 1 ? '' : 's'} applied  (${(mapTokensDurationMs / 1000).toFixed(1)}s)`,
+      );
+      steps.push({
+        step: 'map tokens',
+        status: 'complete',
+        durationMs: mapTokensDurationMs,
+        detail: { applied },
+      });
+    }
   }
 
   // Block save or push when the accepted set still contains a slot cycle.
