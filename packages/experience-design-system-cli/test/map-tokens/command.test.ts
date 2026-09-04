@@ -13,6 +13,8 @@ import {
   updateStep,
   loadRawPropTokenPaths,
   loadRawComponents,
+  loadCDFComponents,
+  replaceRawTokenNamePaths,
 } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 
@@ -151,10 +153,47 @@ describe('map tokens command', () => {
     db.close();
   });
 
+  it('normalizes an exact source-form token default before applying allowed paths', async () => {
+    const dbDir = await createTempDir('map-tokens-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const sessionId = await seedGeneratedSession(dbPath, true);
+    const setupDb = openPipelineDb(dbPath);
+    const componentId = loadRawComponents(setupDb, sessionId)[0].component_id;
+    setupDb
+      .prepare(`UPDATE raw_props SET default_value = ? WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`)
+      .run('tokens.surfaceDefault', sessionId, componentId);
+    replaceRawTokenNamePaths(setupDb, sessionId, {
+      'tokens.surfaceDefault': 'colors.surface.default',
+    });
+    setupDb.close();
+
+    const { code } = await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], {
+      dbPath,
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
+    });
+
+    expect(code).toBe(0);
+    const db = openPipelineDb(dbPath);
+    const [{ entry }] = loadCDFComponents(db, sessionId);
+    expect(entry.$properties.bgColor?.$default).toBe('colors.surface.default');
+    expect(entry.$properties.bgColor?.$default).not.toBe('#fff');
+    expect(entry.$properties.bgColor?.['$token.allowed']).toEqual(['colors.surface.default']);
+    db.close();
+  });
+
   it('--print-prompt prints the prompt and exits without invoking an agent', async () => {
     const dbDir = await createTempDir('map-tokens-db-');
     const dbPath = join(dbDir, 'pipeline.db');
     const sessionId = await seedGeneratedSession(dbPath, true);
+    const setupDb = openPipelineDb(dbPath);
+    const componentId = loadRawComponents(setupDb, sessionId)[0]!.component_id;
+    setupDb
+      .prepare(`UPDATE raw_props SET default_value = ? WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`)
+      .run('tokens.surfaceDefault', sessionId, componentId);
+    replaceRawTokenNamePaths(setupDb, sessionId, {
+      'tokens.surfaceDefault': 'colors.surface.default',
+    });
+    setupDb.close();
 
     const { stdout, code } = await run(
       ['map', 'tokens', '--session', sessionId, '--print-prompt', '--agent', 'claude'],
@@ -163,6 +202,15 @@ describe('map tokens command', () => {
 
     expect(code).toBe(0);
     expect(stdout).toContain('Token path index');
+    const db = openPipelineDb(dbPath);
+    const rawDefault = db
+      .prepare(`SELECT default_value FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`)
+      .get(sessionId, componentId) as { default_value: string };
+    expect(rawDefault.default_value).toBe('tokens.surfaceDefault');
+    expect(
+      db.prepare(`SELECT COUNT(*) AS count FROM steps WHERE session_id = ? AND command = 'map tokens'`).get(sessionId),
+    ).toEqual({ count: 0 });
+    db.close();
   });
 
   it('exits 0 with a clear message and writes nothing when the session has no tokens', async () => {

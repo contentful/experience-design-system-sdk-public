@@ -96,6 +96,13 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: ['--raw-tokens'],
   },
   {
+    flag: '--token-map',
+    kind: 'value',
+    sampleValue: '/tmp/token-name-map.json',
+    modes: ['pty', 'headless'],
+    incompatibleWith: [],
+  },
+  {
     flag: '--raw-tokens',
     kind: 'value',
     sampleValue: '/tmp/raw-tokens.scss',

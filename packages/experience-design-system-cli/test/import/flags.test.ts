@@ -79,6 +79,7 @@ describe('import — help output lists all flags', () => {
       '--agent',
       '--model',
       '--tokens',
+      '--token-map',
       '--select-all',
       '--select',
       '--deselect',

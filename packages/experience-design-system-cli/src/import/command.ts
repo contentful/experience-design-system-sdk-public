@@ -33,6 +33,7 @@ export function registerImportCommand(program: Command): void {
       'Model to use for generate components (defaults to a lightweight per-agent model; override with EDS_AGENT_MODEL_<AGENT>)',
   })
     .option('--tokens <path>', 'Path to a DTCG tokens.json file to push alongside generated components')
+    .option('--token-map <path>', 'Path to a raw token name to DTCG path sidecar for component generation')
     .option(
       '--raw-tokens <path>',
       'Path to a raw token source file (SCSS, CSS variables, JS/TS, Style Dictionary, etc.) to classify and import alongside components. Bypasses the interactive token prompt.',
@@ -154,6 +155,7 @@ export function registerImportCommand(program: Command): void {
         agent?: string;
         model?: string;
         tokens?: string;
+        tokenMap?: string;
         rawTokens?: string;
         selectAll?: boolean;
         select: string[];
@@ -422,6 +424,7 @@ export function registerImportCommand(program: Command): void {
             onConflictMode?: ConflictMode;
             selectPromptPath?: string;
             generatePromptPath?: string;
+            initialTokenMapPath?: string;
             initialRawTokensPath?: string;
             allowDeletions?: boolean;
             initialRuns?: typeof pickerDecision.runs;
@@ -485,6 +488,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.onConflict ? { onConflictMode: opts.onConflict } : {}),
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
+              ...(opts.tokenMap ? { initialTokenMapPath: normalizePath(opts.tokenMap) } : {}),
               ...(opts.rawTokens ? { initialRawTokensPath: normalizePath(opts.rawTokens) } : {}),
               allowDeletions: opts.allowDeletions === true,
               ...pickerProps,
@@ -544,6 +548,7 @@ export function registerImportCommand(program: Command): void {
             agent: headlessAgent,
             model: headlessModel,
             tokens: opts.tokens,
+            tokenMap: opts.tokenMap,
             selectAll: opts.selectAll,
             select: opts.select.length > 0 ? opts.select : undefined,
             deselect: opts.deselect.length > 0 ? opts.deselect : undefined,

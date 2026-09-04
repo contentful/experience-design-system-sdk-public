@@ -195,6 +195,30 @@ describe('runPipeline — apply push always gets --yes', () => {
 });
 
 describe('runPipeline — tokens flag', () => {
+  it('passes --token-map to generate components', async () => {
+    const dir = await makeTempDir('orch-token-map-');
+    const tokenMapPath = join(dir, 'token-name-map.json');
+    await writeFile(tokenMapPath, '{}');
+    const cliPath = await makeFakeCli(dir, {
+      'analyze extract': { stdout: 'session=test-session-1\n', stderr: 'Extracted 1 component\n' },
+      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
+      'generate components': { stdout: 'session=test-session-2\n', stderr: 'Done: 1/1 components\n' },
+      'apply push': {
+        stdout: JSON.stringify({
+          componentTypes: { created: 1, updated: 0, failed: 0 },
+          designTokens: { created: 0, updated: 0, failed: 0 },
+        }),
+      },
+    });
+
+    await runPipeline({ ...baseOpts({ out: dir, tokenMap: tokenMapPath }), project: dir }, () => {}, cliPath);
+
+    const calls = await readCalls(dir);
+    const generateCall = calls.find((c) => c[0] === 'generate' && c[1] === 'components');
+    expect(generateCall).toContain('--token-map');
+    expect(generateCall).toContain(tokenMapPath);
+  });
+
   it('passes --tokens to apply push when opts.tokens is set', async () => {
     const dir = await makeTempDir('orch-tokens-');
     const tokensPath = join(dir, 'tokens.json');

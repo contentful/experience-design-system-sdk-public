@@ -42,6 +42,17 @@ describe('buildSelectAgentArgs — --no-cache forwarding', () => {
 });
 
 describe('buildGenerateComponentsArgs — custom prompt path (Feature 8)', () => {
+  it('appends --token-map when tokenMapPath is set', () => {
+    const args = buildGenerateComponentsArgs({
+      sessionId: 's1',
+      agent: 'claude',
+      tokenMapPath: '/tmp/token-name-map.json',
+    });
+    const idx = args.indexOf('--token-map');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(args[idx + 1]).toBe('/tmp/token-name-map.json');
+  });
+
   it('appends --generate-prompt-path when generatePromptPath is set', () => {
     const args = buildGenerateComponentsArgs({
       sessionId: 's1',
