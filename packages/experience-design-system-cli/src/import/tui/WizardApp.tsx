@@ -231,6 +231,7 @@ export function parseAutoFilterProgressLine(line: string): AutoFilterProgress | 
 export function buildGenerateComponentsArgs(opts: {
   sessionId: string;
   tokensPath?: string;
+  tokenMapPath?: string;
   agent: string;
   model?: string;
   noCache?: boolean;
@@ -238,6 +239,7 @@ export function buildGenerateComponentsArgs(opts: {
 }): string[] {
   const args = ['generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
   if (opts.tokensPath) args.push('--tokens', opts.tokensPath);
+  if (opts.tokenMapPath) args.push('--token-map', opts.tokenMapPath);
   if (opts.model) args.push('--model', opts.model);
   if (opts.noCache) args.push('--no-cache');
   if (opts.generatePromptPath) args.push('--generate-prompt-path', opts.generatePromptPath);
@@ -304,6 +306,7 @@ export type WizardAppProps = {
   seedTokensPath?: string;
   initialStep?: 'scope-gate' | 'final-review' | 'push-from-picker';
   initialRawTokensPath?: string;
+  initialTokenMapPath?: string;
   initialRuns?: RunRecord[];
   onRunPicked?: (selection: RunPickerSelection) => void;
   allowDeletions?: boolean;
@@ -342,6 +345,7 @@ export function WizardApp({
   seedTokensPath,
   initialStep,
   initialRawTokensPath,
+  initialTokenMapPath,
   initialRuns,
   onRunPicked,
   allowDeletions = false,
@@ -832,6 +836,7 @@ export function WizardApp({
       ...buildGenerateComponentsArgs({
         sessionId: extractSessionId,
         tokensPath,
+        tokenMapPath: initialTokenMapPath,
         agent: state.agent,
         ...(state.agentModel ? { model: state.agentModel } : {}),
         noCache: effectiveNoCache,
@@ -904,6 +909,7 @@ export function WizardApp({
       ...buildGenerateComponentsArgs({
         sessionId: extractSessionId,
         tokensPath,
+        tokenMapPath: initialTokenMapPath,
         agent: state.agent,
         ...(state.agentModel ? { model: state.agentModel } : {}),
         noCache: effectiveNoCache,

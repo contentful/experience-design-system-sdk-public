@@ -29,6 +29,7 @@ import {
   renameEmptySlots,
   loadScopeComponents,
   replaceRawPropTokenPaths,
+  replaceRawTokenNamePaths,
   loadRawPropTokenPaths,
   computeMapTokensInputHash,
   countMappableTokenProps,
@@ -1149,6 +1150,123 @@ describe('storeRawComponents + loadRawComponents', () => {
       expect(loaded[0]?.sourcePath).toBe('/proj/Button.tsx');
       expect(loaded[0]?.props[0]?.sourceStartLine).toBe(3);
       expect(loaded[0]?.props[0]?.sourceEndLine).toBe(3);
+      db.close();
+    });
+  });
+});
+
+describe('loadCDFComponents token defaults', () => {
+  it('translates exact source token names without replacing defaults with token values', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'SkeletonImage',
+          source: 'src/SkeletonImage.tsx',
+          framework: 'react',
+          props: [
+            {
+              name: 'radiusX',
+              type: 'string',
+              required: false,
+              category: 'design',
+              defaultValue: 'tokens.borderRadiusSmall',
+            },
+            {
+              name: 'radiusY',
+              type: 'string',
+              required: false,
+              category: 'design',
+              defaultValue: 'border-radius.border-radius-small',
+            },
+            {
+              name: 'label',
+              type: 'string',
+              required: false,
+              category: 'content',
+              defaultValue: 'tokens.borderRadiusSmall',
+            },
+          ],
+          slots: [],
+        },
+      ]);
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'SkeletonImage',
+          entry: {
+            $type: 'component',
+            $properties: {
+              radiusX: { $type: 'token', $category: 'design', '$token.kind': 'dimension' },
+              radiusY: { $type: 'token', $category: 'design', '$token.kind': 'dimension' },
+              label: { $type: 'string', $category: 'content' },
+            },
+          },
+        },
+      ]);
+      storeDTCGTokens(
+        db,
+        sessionId,
+        [],
+        [{ path: 'border-radius.border-radius-small', $type: 'dimension', $value: '4px' }],
+      );
+      replaceRawTokenNamePaths(db, sessionId, {
+        'tokens.borderRadiusSmall': 'border-radius.border-radius-small',
+      });
+
+      const [{ entry }] = loadCDFComponents(db, sessionId);
+      expect(entry.$properties.radiusX?.$default).toBe('border-radius.border-radius-small');
+      expect(entry.$properties.radiusX?.$default).not.toBe('4px');
+      expect(entry.$properties.radiusY?.$default).toBe('border-radius.border-radius-small');
+      expect(entry.$properties.label?.$default).toBe('tokens.borderRadiusSmall');
+      db.close();
+    });
+  });
+
+  it('leaves an alias unchanged when its mapped token is absent', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'SkeletonImage',
+          source: 'src/SkeletonImage.tsx',
+          framework: 'react',
+          props: [
+            {
+              name: 'radiusX',
+              type: 'string',
+              required: false,
+              category: 'design',
+              defaultValue: 'tokens.borderRadiusSmall',
+            },
+          ],
+          slots: [],
+        },
+      ]);
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'SkeletonImage',
+          entry: {
+            $type: 'component',
+            $properties: {
+              radiusX: { $type: 'token', $category: 'design', '$token.kind': 'dimension' },
+            },
+          },
+        },
+      ]);
+      storeDTCGTokens(
+        db,
+        sessionId,
+        [],
+        [{ path: 'border-radius.border-radius-small', $type: 'dimension', $value: '4px' }],
+      );
+      replaceRawTokenNamePaths(db, sessionId, {
+        'tokens.borderRadiusSmall': 'border-radius.missing',
+      });
+
+      const [{ entry }] = loadCDFComponents(db, sessionId);
+      expect(entry.$properties.radiusX?.$default).toBe('tokens.borderRadiusSmall');
       db.close();
     });
   });
@@ -2671,6 +2789,82 @@ describe('generation cache', () => {
       expect(loaded[0]!.entry.$properties['title']?.$type).toBe('string');
       expect(loaded[0]!.entry.$properties['variant']?.$values).toEqual(['flat', 'raised']);
       expect(loaded[0]!.entry.$slots?.['content']?.$allowedComponents).toEqual(['Text', 'Image']);
+      db.close();
+    });
+  });
+
+  it('keeps the target extraction default when replaying a cached component', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const sourceRaw: RawComponentDefinition[] = [
+        {
+          name: 'SkeletonImage',
+          source: 'src/SkeletonImage.tsx',
+          framework: 'react',
+          props: [
+            {
+              name: 'radiusX',
+              type: 'string',
+              required: false,
+              category: 'design',
+              defaultValue: 'tokens.borderRadiusSmall',
+            },
+          ],
+          slots: [],
+        },
+      ];
+      const targetRaw: RawComponentDefinition[] = [
+        {
+          ...sourceRaw[0],
+          props: [{ ...sourceRaw[0]!.props[0]!, defaultValue: 'tokens.borderRadiusLarge' }],
+        },
+      ];
+      const cdf = [
+        {
+          key: 'SkeletonImage',
+          entry: {
+            $type: 'component' as const,
+            $properties: {
+              radiusX: { $type: 'token' as const, $category: 'design' as const, '$token.kind': 'dimension' },
+            },
+          },
+        },
+      ];
+      const tokens: DTCGTokenEntry[] = [
+        { path: 'border-radius.border-radius-small', $type: 'dimension', $value: '4px' },
+        { path: 'border-radius.border-radius-large', $type: 'dimension', $value: '8px' },
+      ];
+      const { sessionId: sourceSession } = getOrCreateSession(db, 'new', undefined, { command: 'import' });
+      storeRawComponents(db, sourceSession, sourceRaw);
+      storeCDFComponents(db, sourceSession, cdf);
+      storeDTCGTokens(db, sourceSession, [], tokens);
+      replaceRawTokenNamePaths(db, sourceSession, {
+        'tokens.borderRadiusSmall': 'border-radius.border-radius-small',
+      });
+
+      const { sessionId: targetSession } = getOrCreateSession(db, 'new', undefined, { command: 'import' });
+      storeRawComponents(db, targetSession, targetRaw);
+      storeDTCGTokens(db, targetSession, [], tokens);
+      const componentId = (
+        db
+          .prepare(`SELECT component_id FROM raw_components WHERE session_id = ? AND name = 'SkeletonImage'`)
+          .get(sourceSession) as { component_id: string }
+      ).component_id;
+      copyComponentFromCache(db, sourceSession, targetSession, componentId);
+
+      expect(loadCDFComponents(db, sourceSession)[0]!.entry.$properties.radiusX?.$default).toBe(
+        'border-radius.border-radius-small',
+      );
+      expect(loadCDFComponents(db, targetSession)[0]!.entry.$properties.radiusX?.$default).toBe(
+        'tokens.borderRadiusLarge',
+      );
+
+      replaceRawTokenNamePaths(db, targetSession, {
+        'tokens.borderRadiusLarge': 'border-radius.border-radius-large',
+      });
+      expect(loadCDFComponents(db, targetSession)[0]!.entry.$properties.radiusX?.$default).toBe(
+        'border-radius.border-radius-large',
+      );
       db.close();
     });
   });

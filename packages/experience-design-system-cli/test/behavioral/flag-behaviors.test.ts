@@ -404,6 +404,12 @@ describe('--token-map file content is embedded in the generated prompt', () => {
     expect(result.stdout).toContain('Token-name sidecar (raw name');
     // The unique content from the file
     expect(result.stdout).toContain(UNIQUE_TOKEN_KEY);
+
+    const db = openPipelineDb(dbPath);
+    expect(
+      db.prepare('SELECT COUNT(*) AS count FROM raw_token_name_paths WHERE session_id = ?').get(sessionId),
+    ).toEqual({ count: 0 });
+    db.close();
   });
 
   it('without --token-map, the "Token-name sidecar" preamble section is absent', async () => {

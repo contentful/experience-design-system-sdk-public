@@ -39,6 +39,7 @@ import {
   copyComponentFromCache,
   copyTokensFromCache,
   renameEmptySlots,
+  replaceRawTokenNamePaths,
   type RawComponentWithId,
 } from '../session/db.js';
 import { hashPromptForSkill } from '../session/cache-keys.js';
@@ -127,6 +128,26 @@ async function readFileInline(path: string | undefined): Promise<string | undefi
   if (files.length === 0) return undefined;
   const parts = await Promise.all(files.map((f) => readFile(f, 'utf8').catch(() => '')));
   return parts.filter(Boolean).join('\n\n');
+}
+
+function parseTokenNamePaths(tokenMapInline: string | undefined): Record<string, string> {
+  if (tokenMapInline === undefined) return {};
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(tokenMapInline);
+  } catch {
+    throw new Error('Error: --token-map must contain a JSON object of raw token names to DTCG paths.');
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('Error: --token-map must contain a JSON object of raw token names to DTCG paths.');
+  }
+
+  const entries = Object.entries(parsed);
+  if (entries.some(([, path]) => typeof path !== 'string')) {
+    throw new Error('Error: --token-map values must be DTCG path strings.');
+  }
+  return Object.fromEntries(entries) as Record<string, string>;
 }
 
 async function assertBinaryInPath(binary: string): Promise<boolean> {
@@ -578,6 +599,9 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     const db = openPipelineDb();
     let componentResults: ComponentRunResult[];
     try {
+      // A sidecar is prompt context in dry runs (and for other generation
+      // skills). Persist it only when components are actually generated.
+      replaceRawTokenNamePaths(db, sessionId, parseTokenNamePaths(tokenMapInline));
       const promptHash = await hashPromptForSkill('components', agent, model, generatePromptPath);
       componentResults = await runAllComponents(
         agent,

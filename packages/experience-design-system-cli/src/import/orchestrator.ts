@@ -34,6 +34,8 @@ export interface PipelineOptions {
   yes: boolean;
   verbose: boolean;
   tokens?: string;
+  /** Exact raw-token-name to DTCG-path sidecar forwarded to component generation. */
+  tokenMap?: string;
   viewports?: string;
   host?: string;
   dryRun?: boolean;
@@ -375,6 +377,7 @@ export async function runPipeline(
     const generateArgs = ['generate', 'components', '--agent', opts.agent];
     if (opts.model) generateArgs.push('--model', opts.model);
     if (extractSessionId) generateArgs.push('--session', extractSessionId);
+    if (opts.tokenMap) generateArgs.push('--token-map', opts.tokenMap);
     if (opts.dryRun) generateArgs.push('--dry-run');
     if (opts.verbose) generateArgs.push('--verbose');
 
