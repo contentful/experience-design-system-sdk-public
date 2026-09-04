@@ -210,6 +210,44 @@ function buildTokenPathIndex(tree: TokenTree, prefix = ''): TokenPathIndexEntry[
   return entries;
 }
 
+/** One line per candidate, e.g. `colors.brand.primary · color` — legible and countable, unlike nested JSON. */
+function formatTokenCandidateLines(entries: TokenPathIndexEntry[]): string {
+  return entries.map((entry) => `${entry.path} · ${entry.type}`).join('\n');
+}
+
+/**
+ * Distinct `$token.kind` values among design-category, token-typed props in
+ * `cdf`, plus whether any such prop has no `$token.kind` at all. Mirrors
+ * `filterDesignTokenProps`'s notion of a relevant prop without requiring a
+ * second pass over the raw CDF.
+ */
+function collectTokenKinds(cdf: GeneratedCdf): { kinds: string[]; hasUnscoped: boolean } {
+  const kinds = new Set<string>();
+  let hasUnscoped = false;
+  for (const component of Object.values(cdf)) {
+    const properties = component.$properties;
+    if (!properties) continue;
+    for (const prop of Object.values(properties)) {
+      if (prop.$type !== 'token' || prop.$category !== 'design') continue;
+      const kind = prop['$token.kind'];
+      if (typeof kind === 'string' && kind.length > 0) {
+        kinds.add(kind);
+      } else {
+        hasUnscoped = true;
+      }
+    }
+  }
+  return { kinds: [...kinds].sort(), hasUnscoped };
+}
+
+/** Renders one kind-scoped (or, for `kind: null`, full-tree) candidate section. Sections are cumulative, never merged, so each stays independently legible. */
+function renderTokenCandidateSection(kind: string | null, entries: TokenPathIndexEntry[]): string {
+  const label = kind
+    ? `Token path index — ${kind} candidates only`
+    : 'Token path index — full tree (no $token.kind to scope by)';
+  return `${label}, one leaf token per line as \`path · type\`, no \`$value\`:\n${formatTokenCandidateLines(entries)}`;
+}
+
 function buildPreamble(options: PromptOptions): string {
   const {
     skill,
@@ -248,11 +286,18 @@ function buildPreamble(options: PromptOptions): string {
     }
   }
   if (tokenTree) {
-    const index = buildTokenPathIndex(tokenTree);
+    const index = buildTokenPathIndex(tokenTree).sort((a, b) => a.path.localeCompare(b.path));
     if (index.length > 0) {
-      sections.push(
-        `Token path index — path and $type only, no $value (JSON):\n\`\`\`json\n${JSON.stringify(index)}\n\`\`\``,
-      );
+      if (generatedCdf) {
+        const { kinds, hasUnscoped } = collectTokenKinds(generatedCdf);
+        for (const kind of kinds) {
+          const scoped = index.filter((entry) => entry.type === kind);
+          if (scoped.length > 0) sections.push(renderTokenCandidateSection(kind, scoped));
+        }
+        if (hasUnscoped) sections.push(renderTokenCandidateSection(null, index));
+      } else {
+        sections.push(renderTokenCandidateSection(null, index));
+      }
     }
   }
   if (componentSourceRefs && componentSourceRefs.length > 0) {
@@ -399,9 +444,9 @@ The one tool call you may emit:
 Rules:
 - Emit exactly one JSON object per line. No multi-line JSON. No markdown fences around the lines.
 - Only emit a call for a prop that appears in the "Generated CDF so far" section and does not already carry \`$token.allowed\` — a prop that already has one was resolved from source and must not be contradicted.
-- Candidates are scoped to the prop's \`$token.kind\` — only tokens of that type from the "Token path index" can bind; ignore every other entry.
-- \`token_allowed\` is a flat list of individual **leaf** token paths — never a group/prefix path. The "Token path index" contains one entry per leaf token only; a path like \`colors.brand\` that groups \`colors.brand.primary\`/\`colors.brand.secondary\` does NOT itself appear in the index and must never be emitted.
-- Every path in \`token_allowed\` must exist verbatim in the "Token path index" section and match the prop's \`$token.kind\`. Never invent a path, and never substitute a variant/enum name for a real token path. If a path you'd otherwise suggest is missing from the index, omit it rather than guessing.
+- Each "Token path index" section below is already scoped to one \`$token.kind\` — a prop only draws candidates from the section matching its own \`$token.kind\`. A prop with no \`$token.kind\` draws from the "full tree" section instead. Never cross sections.
+- \`token_allowed\` is a flat list of individual **leaf** token paths — never a group/prefix path. Each "Token path index" section contains one entry per leaf token only; a path like \`colors.brand\` that groups \`colors.brand.primary\`/\`colors.brand.secondary\` does NOT itself appear in any section and must never be emitted.
+- Every path in \`token_allowed\` must exist verbatim in the matching "Token path index" section and match the prop's \`$token.kind\`. Never invent a path, and never substitute a variant/enum name for a real token path. If a path you'd otherwise suggest is missing from the index, omit it rather than guessing.
 - \`token_allowed\` is required and must be non-empty when the call is emitted. Restriction requires explicit evidence: a comment naming the valid tokens, or code that validates the prop against a fixed list of token paths.
 - A default value or a \`tokenReference\` is the prop's default, not a restriction. On its own it yields no call — narrowing to that one path would leave the marketer a single option. If you narrow on other evidence, the default's path must be in the list.
 - A token prop whose type is a union of variant names (\`'primary' | 'secondary'\`) is misclassified — it should be an enum. Do not narrow it; emit nothing and flag it in a prose line.
