@@ -54,6 +54,7 @@ export function registerImportCommand(program: Command): void {
     .option('--skip-generate', 'Skip the generate step (uses most recent generate session)')
     .option('--print', 'Write components.json to --out after generation')
     .option('--skip-apply', '(deprecated alias for --no-push) Skip pushing to Contentful')
+    .option('--skip-map-tokens', 'Skip the map tokens step between generate and apply')
     .option('--no-cache', 'Re-run all steps even if output already exists')
     .option('--yes', 'Skip interactive confirmation in apply push')
     .option('--verbose', 'Show full agent output and all entity progress')
@@ -162,6 +163,7 @@ export function registerImportCommand(program: Command): void {
         skipGenerate?: boolean;
         print?: boolean;
         skipApply?: boolean;
+        skipMapTokens?: boolean;
         cache?: boolean;
         yes?: boolean;
         verbose?: boolean;
@@ -549,6 +551,7 @@ export function registerImportCommand(program: Command): void {
             deselect: opts.deselect.length > 0 ? opts.deselect : undefined,
             skipAnalyze: opts.skipAnalyze ?? false,
             skipGenerate: opts.skipGenerate ?? false,
+            skipMapTokens: opts.skipMapTokens ?? false,
             print: opts.print ?? false,
             skipApply,
             noCache: opts.cache === false,
