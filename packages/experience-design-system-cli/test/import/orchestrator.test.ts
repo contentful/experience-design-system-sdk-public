@@ -4,6 +4,14 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, it, expect } from 'vitest';
 import { runPipeline } from '../../src/import/orchestrator.js';
 import type { PipelineOptions } from '../../src/import/orchestrator.js';
+import {
+  createStep,
+  getOrCreateSession,
+  openPipelineDb,
+  storeCDFComponents,
+  storeRawComponents,
+  updateStep,
+} from '../../src/session/db.js';
 
 const tempDirs: string[] = [];
 
@@ -246,8 +254,8 @@ describe('runPipeline — tokens flag', () => {
 });
 
 describe('runPipeline — step count in progress output', () => {
-  it('shows 4 total steps when print is false', async () => {
-    const dir = await makeTempDir('orch-4steps-');
+  it('shows 5 total steps when print is false', async () => {
+    const dir = await makeTempDir('orch-5steps-');
 
     const cliPath = await makeFakeCli(dir, {
       'analyze extract': { stdout: 'session=s1\n', stderr: 'Extracted 1 component\n' },
@@ -265,11 +273,11 @@ describe('runPipeline — step count in progress output', () => {
     await runPipeline({ ...baseOpts({ out: dir }), project: dir }, (line) => lines.push(line), cliPath);
 
     const stepLines = lines.filter((l) => l.includes('Step '));
-    expect(stepLines.every((l) => l.includes('/4'))).toBe(true);
+    expect(stepLines.every((l) => l.includes('/5'))).toBe(true);
   });
 
-  it('shows 5 total steps when print is true', async () => {
-    const dir = await makeTempDir('orch-5steps-');
+  it('shows 6 total steps when print is true', async () => {
+    const dir = await makeTempDir('orch-6steps-');
 
     const cliPath = await makeFakeCli(dir, {
       'analyze extract': { stdout: 'session=s1\n', stderr: 'Extracted 1 component\n' },
@@ -288,7 +296,7 @@ describe('runPipeline — step count in progress output', () => {
     await runPipeline({ ...baseOpts({ out: dir, print: true }), project: dir }, (line) => lines.push(line), cliPath);
 
     const stepLines = lines.filter((l) => l.includes('Step '));
-    expect(stepLines.every((l) => l.includes('/5'))).toBe(true);
+    expect(stepLines.every((l) => l.includes('/6'))).toBe(true);
   });
 });
 
@@ -369,5 +377,185 @@ describe('runPipeline — verbose flag propagation', () => {
     const pushCall = calls.find((c) => c[0] === 'apply' && c[1] === 'push');
     expect(genCall).not.toContain('--verbose');
     expect(pushCall).not.toContain('--verbose');
+  });
+});
+
+describe('runPipeline — map tokens step', () => {
+  it('maps a reused generated session even when the import session is distinct', async () => {
+    const dir = await makeTempDir('orch-reused-generated-session-');
+    const restoreDb = useTestDb(dir);
+    const db = openPipelineDb(join(dir, 'pipeline.db'));
+    const { sessionId: extractSessionId } = getOrCreateSession(db, 'new', undefined, {
+      command: 'analyze extract',
+    });
+    const extractStepId = createStep(db, extractSessionId, 'analyze extract', {});
+    updateStep(db, extractStepId, 'complete', {});
+    storeRawComponents(db, extractSessionId, [
+      { name: 'Button', source: 'src/Button.tsx', framework: 'react', props: [], slots: [] },
+    ]);
+    storeCDFComponents(db, extractSessionId, [{ key: 'Button', entry: { $type: 'component', $properties: {} } }]);
+    db.close();
+
+    const cliPath = await makeFakeCli(dir, {
+      'map tokens': {
+        stdout: `map tokens complete\nagent: claude\nsession=${extractSessionId}\n1 mapping(s) applied\n`,
+      },
+    });
+
+    const result = await runPipeline(
+      {
+        ...baseOpts({ skipAnalyze: true, skipGenerate: true, skipApply: true }),
+        project: dir,
+        out: dir,
+      },
+      () => {},
+      cliPath,
+    );
+    restoreDb();
+
+    expect(result.session).not.toBe(extractSessionId);
+    const calls = await readCalls(dir);
+    const mapCall = calls.find((c) => c[0] === 'map' && c[1] === 'tokens');
+    expect(mapCall).toBeDefined();
+    expect(mapCall).toContain(extractSessionId);
+    expect(result.steps.find((s) => s.step === 'map tokens')).toMatchObject({
+      status: 'complete',
+      detail: { applied: 1 },
+    });
+  });
+
+  it('runs map tokens between generate components and apply push, with the extract session', async () => {
+    const dir = await makeTempDir('orch-map-tokens-');
+    const restoreDb = useTestDb(dir);
+
+    const cliPath = await makeFakeCli(dir, {
+      'analyze extract': { stdout: 'session=extract-session\n', stderr: 'Extracted 1 component\n' },
+      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
+      'generate components': { stdout: 'session=extract-session\n', stderr: 'Done: 1/1 components\n' },
+      'map tokens': { stdout: 'map tokens complete\nagent: claude\nsession=extract-session\n3 mapping(s) applied\n' },
+      'apply push': {
+        stdout: JSON.stringify({
+          componentTypes: { created: 1, updated: 0, failed: 0 },
+          designTokens: { created: 0, updated: 0, failed: 0 },
+        }),
+      },
+    });
+
+    const result = await runPipeline({ ...baseOpts({ out: dir }), project: dir }, () => {}, cliPath);
+    restoreDb();
+
+    const calls = await readCalls(dir);
+    const mapCall = calls.find((c) => c[0] === 'map' && c[1] === 'tokens');
+    expect(mapCall).toBeDefined();
+    expect(mapCall).toContain('--session');
+    expect(mapCall).toContain('extract-session');
+
+    const mapStep = result.steps.find((s) => s.step === 'map tokens');
+    expect(mapStep?.status).toBe('complete');
+    expect(mapStep?.detail).toEqual({ applied: 3 });
+
+    const stepNames = result.steps.map((s) => s.step);
+    expect(stepNames.indexOf('map tokens')).toBeGreaterThan(stepNames.indexOf('generate components'));
+    expect(stepNames.indexOf('map tokens')).toBeLessThan(stepNames.indexOf('apply push'));
+  });
+
+  it('skips map tokens when opts.skipMapTokens is true', async () => {
+    const dir = await makeTempDir('orch-skip-map-tokens-');
+
+    const cliPath = await makeFakeCli(dir, {
+      'analyze extract': { stdout: 'session=s1\n', stderr: 'Extracted 1 component\n' },
+      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
+      'generate components': { stdout: 'session=s2\n', stderr: 'Done: 1/1 components\n' },
+      'apply push': {
+        stdout: JSON.stringify({
+          componentTypes: { created: 1, updated: 0, failed: 0 },
+          designTokens: { created: 0, updated: 0, failed: 0 },
+        }),
+      },
+    });
+
+    const result = await runPipeline(
+      { ...baseOpts({ out: dir, skipMapTokens: true }), project: dir },
+      () => {},
+      cliPath,
+    );
+
+    const calls = await readCalls(dir);
+    expect(calls.find((c) => c[0] === 'map' && c[1] === 'tokens')).toBeUndefined();
+
+    const mapStep = result.steps.find((s) => s.step === 'map tokens');
+    expect(mapStep?.status).toBe('skipped');
+    expect(mapStep?.reason).toBe('--skip-map-tokens');
+  });
+
+  it('marks map tokens as skipped (not failed) when the session has nothing to map', async () => {
+    const dir = await makeTempDir('orch-nothing-to-map-');
+
+    const cliPath = await makeFakeCli(dir, {
+      'analyze extract': { stdout: 'session=s1\n', stderr: 'Extracted 1 component\n' },
+      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
+      'generate components': { stdout: 'session=s2\n', stderr: 'Done: 1/1 components\n' },
+      'map tokens': {
+        stdout: "Nothing to map: session 's2' has 0 design-token prop(s) and 0 token(s). Nothing written.\n",
+      },
+      'apply push': {
+        stdout: JSON.stringify({
+          componentTypes: { created: 1, updated: 0, failed: 0 },
+          designTokens: { created: 0, updated: 0, failed: 0 },
+        }),
+      },
+    });
+
+    const result = await runPipeline({ ...baseOpts({ out: dir }), project: dir }, () => {}, cliPath);
+
+    const mapStep = result.steps.find((s) => s.step === 'map tokens');
+    expect(mapStep?.status).toBe('skipped');
+    expect(mapStep?.reason).toBe('no tokens in session');
+
+    expect(result.steps.find((s) => s.step === 'apply push')?.status).toBe('complete');
+  });
+
+  it('marks map tokens as complete (not "0 applied") when the map-tokens step was served from cache', async () => {
+    const dir = await makeTempDir('orch-map-tokens-cached-');
+
+    const cliPath = await makeFakeCli(dir, {
+      'analyze extract': { stdout: 'session=extract-session\n', stderr: 'Extracted 1 component\n' },
+      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
+      'generate components': { stdout: 'session=extract-session\n', stderr: 'Done: 1/1 components\n' },
+      'map tokens': {
+        stdout: 'map tokens complete\nagent: claude\nsession=extract-session\ncached\n',
+      },
+      'apply push': {
+        stdout: JSON.stringify({
+          componentTypes: { created: 1, updated: 0, failed: 0 },
+          designTokens: { created: 0, updated: 0, failed: 0 },
+        }),
+      },
+    });
+
+    const result = await runPipeline({ ...baseOpts({ out: dir }), project: dir }, () => {}, cliPath);
+
+    const mapStep = result.steps.find((s) => s.step === 'map tokens');
+    expect(mapStep?.status).toBe('complete');
+    expect(mapStep?.detail).not.toEqual({ applied: 0 });
+
+    expect(result.steps.find((s) => s.step === 'apply push')?.status).toBe('complete');
+  });
+
+  it('fails the pipeline when map tokens exits non-zero', async () => {
+    const dir = await makeTempDir('orch-map-tokens-fail-');
+
+    const cliPath = await makeFakeCli(dir, {
+      'analyze extract': { stdout: 'session=s1\n', stderr: 'Extracted 1 component\n' },
+      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
+      'generate components': { stdout: 'session=s2\n', stderr: 'Done: 1/1 components\n' },
+      'map tokens': { stderr: 'Error: map tokens agent failed\n', exitCode: 1 },
+    });
+
+    const result = await runPipeline({ ...baseOpts({ out: dir }), project: dir }, () => {}, cliPath);
+
+    const mapStep = result.steps.find((s) => s.step === 'map tokens');
+    expect(mapStep?.status).toBe('failed');
+    expect(result.steps.find((s) => s.step === 'apply push')).toBeUndefined();
   });
 });

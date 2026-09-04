@@ -150,6 +150,12 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     forcesHeadless: true,
   },
   {
+    flag: '--skip-map-tokens',
+    kind: 'boolean',
+    modes: ['headless'],
+    incompatibleWith: [],
+  },
+  {
     flag: '--no-cache',
     kind: 'boolean',
     modes: ['pty', 'headless'],
