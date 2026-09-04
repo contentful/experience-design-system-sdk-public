@@ -2,7 +2,13 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { openPipelineDb, loadRawComponents, replaceRawPropTokenPaths, storeDTCGTokens } from '../../src/session/db.js';
+import {
+  openPipelineDb,
+  loadRawComponents,
+  replaceRawPropTokenPaths,
+  storeDTCGTokens,
+  storeCDFComponents,
+} from '../../src/session/db.js';
 import type { DatabaseSync } from 'node:sqlite';
 import { applyMapTokenPropCalls } from '../../src/map-tokens/apply.js';
 import type { MapTokenPropCall } from '@contentful/experience-design-system-generation';
@@ -180,6 +186,51 @@ describe('applyMapTokenPropCalls', () => {
       const db = openPipelineDb(dbPath);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
       replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', ['colors.brand.primary'], 'review');
+
+      const result = applyMapTokenPropCalls(
+        db,
+        sessionId,
+        [{ tool: 'map_token_prop', component: 'Card', prop: 'bgColor', token_allowed: ['colors.surface.default'] }],
+        [],
+      );
+
+      expect(result.applied).toBe(0);
+      expect(result.warnings.join('\n')).toContain('a reviewer already set this restriction');
+      expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.brand.primary']);
+      db.close();
+    });
+  });
+
+  it('a restriction saved through the review editor outranks a later map-tokens run', async () => {
+    await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
+      const db = openPipelineDb(dbPath);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
+
+      // storeCDFComponents is the review editor's write path: a save here is
+      // a person's decision, and is recorded as such.
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'Card',
+          entry: {
+            $type: 'component',
+            $properties: {
+              bgColor: {
+                $type: 'token',
+                $category: 'design',
+                '$token.kind': 'color',
+                '$token.allowed': ['colors.brand.primary'],
+              },
+              label: { $type: 'string', $category: 'content' },
+            },
+          },
+        },
+      ]);
+
+      const sources = db
+        .prepare(`SELECT DISTINCT source FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ?`)
+        .all(sessionId, componentId) as Array<{ source: string }>;
+      expect(sources).toEqual([{ source: 'review' }]);
 
       const result = applyMapTokenPropCalls(
         db,

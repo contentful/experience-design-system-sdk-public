@@ -46,6 +46,22 @@ const STRING_COMPONENT = JSON.stringify(
   2,
 );
 
+const TOKEN_COMPONENT = JSON.stringify({
+  Card: {
+    $type: 'component',
+    $properties: {
+      color: {
+        $type: 'token',
+        $category: 'design',
+        '$token.kind': 'color',
+        '$token.allowed': ['colors.surface.default'],
+        $default: 'colors.surface.default',
+        $description: 'Surface color',
+      },
+    },
+  },
+});
+
 const tick = () => new Promise((r) => setTimeout(r, 30));
 
 async function navigateToValuesField(stdin: { write: (data: string) => void }): Promise<void> {
@@ -225,6 +241,54 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/Type to edit/);
     expect(frame).toContain('Hero title');
+  });
+
+  it('places allowed after description and shows its blue edit affordance', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={TOKEN_COMPONENT}
+        width={100}
+        height={25}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    stdin.write('\r');
+    await tick();
+    for (let i = 0; i < 6; i += 1) {
+      stdin.write('\x1b[B');
+      await tick();
+    }
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('press [t] to edit allowed tokens');
+    expect(frame).toContain('╭');
+
+    stdin.write('\x1b[B');
+    await tick();
+    expect(lastFrame() ?? '').not.toContain('press [t] to edit allowed tokens');
+  });
+
+  it('sets design token defaults when a prop is converted to token', async () => {
+    const onChange = vi.fn();
+    const { stdin, lastFrame } = render(
+      <FieldEditor value={STRING_COMPONENT} width={100} height={25} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    stdin.write('\r');
+    await tick();
+    for (let i = 0; i < 6; i += 1) {
+      stdin.write('\x1b[C');
+      await tick();
+    }
+    for (let i = 0; i < 6; i += 1) {
+      stdin.write('\x1b[B');
+      await tick();
+    }
+    expect(lastFrame() ?? '').toContain('press [t] to edit allowed tokens');
+    const updated = onChange.mock.calls.at(-1)?.[0] as string;
+    expect(updated).toContain('"$type": "token"');
+    expect(updated).toContain('"$category": "design"');
+    expect(updated).toContain('"$token.kind": "color"');
   });
 });
 
