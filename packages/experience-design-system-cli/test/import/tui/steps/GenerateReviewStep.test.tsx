@@ -11,6 +11,18 @@ const SAMPLE_ENTRY = {
       $description: 'Visual style',
       $values: ['primary', 'secondary'],
     },
+    bgColor: {
+      $type: 'token' as const,
+      $category: 'design' as const,
+      '$token.kind': 'color',
+      '$token.allowed': ['colors.surface.default', 'colors.surface.raised'],
+    },
+    borderColor: {
+      $type: 'token' as const,
+      $category: 'design' as const,
+      '$token.kind': 'color',
+      '$token.allowed': ['colors.border.subtle', 'colors.border.strong'],
+    },
   },
 };
 
@@ -21,6 +33,18 @@ vi.mock('../../../../src/session/db.js', () => ({
     close: vi.fn(),
   }),
   loadCDFComponents: vi.fn().mockReturnValue([{ key: 'Button', entry: SAMPLE_ENTRY }]),
+  loadDTCGTokens: vi.fn((_db: unknown, sessionId: string) => ({
+    groups: [],
+    tokens: [
+      { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
+      { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
+      { path: 'colors.brand.primary', $type: 'color', $value: '#00f' },
+      ...(sessionId === 'token-session'
+        ? [{ path: 'colors.brand.secondary', $type: 'color', $value: '#0f0' }]
+        : []),
+      { path: 'spacing.small', $type: 'dimension', $value: '4px' },
+    ],
+  })),
   storeCDFComponents: vi.fn(),
   loadSlotCycles: vi.fn().mockReturnValue([]),
   storeSlotCycles: vi.fn(),
@@ -34,6 +58,15 @@ vi.mock('../../../../src/session/db.js', () => ({
     props: [{ name: 'variant', category: 'content', description: 'Visual style', rationale: 'enum visual variant' }],
     slots: [],
   }),
+}));
+
+vi.mock('../../../../src/apply/manifest.js', () => ({
+  readTokensFromPath: vi.fn().mockResolvedValue([
+    { path: 'colors.file.only', $type: 'color', $value: '#0f0' },
+    { path: 'radius.file.small', $type: 'dimension', $value: '2px' },
+    { path: 'radius.file.large', $type: 'dimension', $value: '8px' },
+    { path: 'spacing.file.only', $type: 'dimension', $value: '8px' },
+  ]),
 }));
 
 const triggerSpy = vi.fn();
@@ -4617,5 +4650,176 @@ describe('GenerateReviewStep — [d] toggles removed-components banner (A2-2)', 
     await tick();
     const frame = (lastFrame() ?? '').replace(/\s+/g, ' ');
     expect(frame).toMatch(/\[d\] to expand\/collapse/);
+  });
+});
+
+describe('GenerateReviewStep — token review panel', () => {
+  it('shows the [t] token review hint when the selected component has a suggestion', async () => {
+    const { lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/\[t\] token review/);
+  });
+
+  it('opens the token review panel on [t] and lists the suggested prop', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/TOKEN REVIEW/i);
+    expect(frame).toContain('bgColor');
+    expect(frame).toContain('colors.surface.default');
+  });
+
+  it('closes the panel on Esc', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/TOKEN REVIEW —/i);
+    stdin.write('\x1b');
+    await tick();
+    expect(lastFrame() ?? '').not.toMatch(/TOKEN REVIEW —/i);
+  });
+});
+
+describe('GenerateReviewStep — token review editing', () => {
+  it('shows token review after a prop is manually converted to token', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('\r');
+    await tick();
+    for (let i = 0; i < 6; i += 1) {
+      stdin.write('\x1b[C');
+      await tick();
+    }
+    stdin.write('\x13');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/\[t\] token review/);
+  });
+
+  it('shows and opens token review after Tab focuses the prop list', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('\t');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/\[t\] token review/);
+    stdin.write('t');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/TOKEN REVIEW —/i);
+  });
+
+  it('edits the full compatible token list, persists a non-empty subset, and keeps suggested unchanged', async () => {
+    const dbModule = await import('../../../../src/session/db.js');
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    let frame = lastFrame() ?? '';
+    expect(frame).toContain('colors.brand.primary');
+    expect(frame).not.toContain('spacing.small');
+    stdin.write('j');
+    await tick();
+    stdin.write(' ');
+    await tick();
+    stdin.write('k');
+    await tick();
+    stdin.write(' ');
+    await tick();
+    stdin.write('\x13');
+    await tick();
+    frame = lastFrame() ?? '';
+    expect(frame).toContain('suggested: colors.surface.default, colors.surface.raised');
+    expect(frame).toContain('allowed: colors.surface.default');
+    const lastCall = vi.mocked(dbModule.storeCDFComponents).mock.calls.at(-1);
+    expect(lastCall![2][0].entry.$properties.bgColor['$token.allowed']).toEqual(['colors.surface.default']);
+  });
+
+  it('loads the full compatible catalog from tokenSessionId', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        tokenSessionId="token-session"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+      />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('colors.brand.secondary');
+    expect(frame).not.toContain('spacing.small');
+  });
+
+  it('loads the full compatible catalog from tokensPath when reusing existing tokens', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        tokensPath="/project/.contentful/tokens.json"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+      />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('colors.file.only');
+    expect(frame).not.toContain('spacing.file.only');
+  });
+
+  it('prefers the complete tokensPath catalog over the token session', async () => {
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep
+        extractSessionId="sess-1"
+        tokenSessionId="token-session"
+        tokensPath="/project/.contentful/tokens.json"
+        onFinalize={vi.fn()}
+        onQuit={vi.fn()}
+      />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('colors.file.only');
+    expect(frame).not.toContain('colors.brand.secondary');
+  });
+
+  it('does not accept or dismiss when those legacy keys are pressed', async () => {
+    const dbModule = await import('../../../../src/session/db.js');
+    const { stdin, lastFrame } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('t');
+    await tick();
+    const callsBefore = vi.mocked(dbModule.storeCDFComponents).mock.calls.length;
+    stdin.write('a');
+    stdin.write('x');
+    await tick();
+    expect(vi.mocked(dbModule.storeCDFComponents).mock.calls.length).toBe(callsBefore);
+    expect(lastFrame() ?? '').toContain('bgColor');
   });
 });
