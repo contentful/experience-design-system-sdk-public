@@ -18,13 +18,17 @@ export type Mode = 'autonomous';
  * inferring from the prop name and $token.kind alone in that case.
  * `siblingFiles` carries the content of files the source file relatively
  * imports (e.g. a co-located `.styles.ts`) — token-resolution logic often
- * lives one hop away from the component file itself.
+ * lives one hop away from the component file itself. `truncatedSiblingCount`
+ * is set when the caller found more resolvable sibling files than it inlines
+ * (see MAX_SIBLING_FILES) — surfaced in the prompt so the classifier knows
+ * evidence was dropped rather than that the search came up empty.
  */
 export interface ComponentSourceRef {
   component: string;
   sourcePath: string;
   content: string | null;
   siblingFiles?: Array<{ path: string; content: string }>;
+  truncatedSiblingCount?: number;
 }
 
 interface CDFPropertyLike {
@@ -255,7 +259,13 @@ function buildPreamble(options: PromptOptions): string {
           (sibling) =>
             `##### ${ref.component} — imported file \`${sibling.path}\`\n\`\`\`${inferFenceLang(sibling.path)}\n${sibling.content}\n\`\`\``,
         );
-        return [mainBlock, ...siblingBlocks].join('\n\n');
+        const truncationNote =
+          ref.truncatedSiblingCount && ref.truncatedSiblingCount > 0
+            ? [
+                `##### ${ref.component} — +${ref.truncatedSiblingCount} more imported file${ref.truncatedSiblingCount === 1 ? '' : 's'} not shown (evidence may be incomplete)`,
+              ]
+            : [];
+        return [mainBlock, ...siblingBlocks, ...truncationNote].join('\n\n');
       });
       sections.push(`### Component source references\n\n${blocks.join('\n\n')}`);
     }
