@@ -54,6 +54,10 @@ import {
   openPipelineDb,
   loadCDFComponents,
   loadScopeComponents,
+  countMappableTokenProps,
+  countRawTokens,
+  copyTokensFromCache,
+  storeDTCGTokens,
   seedCDFFromPreviewResponse,
   seedDefaultsFromChangedItems,
   backfillUnclassifiedProps,
@@ -95,6 +99,7 @@ type WizardStep =
   | 'extracting'
   | 'scope-gate'
   | 'generating'
+  | 'mapping-tokens'
   | 'final-review'
   | 'push-decision-gate'
   | 'credentials'
@@ -168,6 +173,7 @@ type WizardState = {
   credentialsValidating: boolean;
   generatePrefetchStatus: 'idle' | 'running' | 'complete' | 'failed';
   generatePrefetchError: string | null;
+  mapTokensEligible: boolean | null;
   credentialsSkipped: boolean;
   lastRunId: string | null;
   finalizeErrorBanner: string | null;
@@ -244,6 +250,22 @@ export function buildGenerateComponentsArgs(opts: {
   return args;
 }
 
+export function buildMapTokensArgs(opts: {
+  sessionId: string;
+  agent: string;
+  model?: string;
+  noCache?: boolean;
+}): string[] {
+  const args = ['map', 'tokens', '--session', opts.sessionId, '--agent', opts.agent];
+  if (opts.model) args.push('--model', opts.model);
+  if (opts.noCache) args.push('--no-cache');
+  return args;
+}
+
+export function shouldRunMapTokens(opts: { mappablePropCount: number; rawTokenCount: number }): boolean {
+  return opts.mappablePropCount > 0 && opts.rawTokenCount > 0;
+}
+
 export function formatAcceptanceSummary(opts: { accepted: number; autoRejected: number }): string {
   const acceptedClause = `${opts.accepted} component${opts.accepted === 1 ? '' : 's'} accepted`;
   if (opts.autoRejected === 0) return `${acceptedClause}.`;
@@ -298,6 +320,7 @@ export type WizardAppProps = {
   onConflictMode?: ConflictMode;
   selectPromptPath?: string;
   generatePromptPath?: string;
+  skipMapTokens?: boolean;
   seedExtractSessionId?: string;
   seedGenerateSessionId?: string;
   seedTokenSessionId?: string;
@@ -336,6 +359,7 @@ export function WizardApp({
   onConflictMode,
   selectPromptPath,
   generatePromptPath,
+  skipMapTokens = false,
   seedExtractSessionId,
   seedGenerateSessionId,
   seedTokenSessionId,
@@ -457,6 +481,7 @@ export function WizardApp({
     credentialsValidating: false,
     generatePrefetchStatus: 'idle',
     generatePrefetchError: null,
+    mapTokensEligible: null,
     credentialsSkipped: false,
     lastRunId: null,
     finalizeErrorBanner: null,
@@ -610,6 +635,74 @@ export function WizardApp({
       return;
     }
     update({ step: 'path-validation', tokensPath, tokenSessionId, tokenCount });
+  };
+
+  const runMapTokens = async (sessionId: string): Promise<boolean> => {
+    if (skipMapTokens) {
+      update({ mapTokensEligible: false });
+      return true;
+    }
+
+    let mappablePropCount = 0;
+    let rawTokenCount = 0;
+    try {
+      const db = openPipelineDb();
+      try {
+        // Raw-token generation happens before component extraction, so a
+        // normal wizard run can have a separate token session. The map-tokens
+        // command operates on one session; copy that token universe into the
+        // generated-component session while leaving the recorded token session
+        // intact for save/push and --modify replay.
+        if (state.tokenSessionId && state.tokenSessionId !== sessionId) {
+          copyTokensFromCache(db, state.tokenSessionId, sessionId);
+        } else if (!state.tokenSessionId && state.tokensPath) {
+          // Reusing an existing tokens.json has no token session to copy. The
+          // map-tokens command consumes the session DB, so restore the saved
+          // catalog into the generated session before checking eligibility.
+          const tokens = await readTokensFromPath('tokens', state.tokensPath);
+          storeDTCGTokens(db, sessionId, [], tokens);
+        }
+        mappablePropCount = countMappableTokenProps(db, sessionId);
+        rawTokenCount = countRawTokens(db, sessionId);
+      } finally {
+        db.close();
+      }
+    } catch (error) {
+      update({
+        step: 'error',
+        errorStep: 'map tokens',
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+
+    if (!shouldRunMapTokens({ mappablePropCount, rawTokenCount })) {
+      update({ mapTokensEligible: false });
+      return true;
+    }
+
+    update({ step: 'mapping-tokens', mapTokensEligible: true });
+    const args = buildMapTokensArgs({
+      sessionId,
+      agent: state.agent,
+      ...(state.agentModel ? { model: state.agentModel } : {}),
+      noCache: effectiveNoCache,
+    });
+
+    const result = await runCli(args);
+    if (result.exitCode !== 0) {
+      update({
+        step: 'error',
+        errorStep: 'map tokens',
+        errorMessage: result.stderr.trim() || 'Unknown error',
+      });
+      return false;
+    }
+
+    // The command can still report "Nothing to map" if the database changes
+    // between eligibility detection and subprocess startup. Treat that as a
+    // successful no-op and continue to final review.
+    return true;
   };
 
   const runExtract = async (projectPath: string) => {
@@ -938,13 +1031,14 @@ export function WizardApp({
     const generatedCount = countMatch ? Number(countMatch[1]) : acceptedCount;
     const renamedMatch = /^renamed-slots:\s*(\d+)$/m.exec(result.stdout);
     const renamedSlotsCount = renamedMatch ? Number(renamedMatch[1]) : 0;
+    const mappedSessionId = generateSessionId ?? extractSessionId;
     update({
-      step: 'final-review',
-      generateSessionId,
+      generateSessionId: mappedSessionId,
       generatedCount,
       renamedSlotsCount,
       generateProgress: null,
     });
+    if (await runMapTokens(mappedSessionId)) update({ step: 'final-review' });
   };
 
   const advanceToPushFlow = (generatedAcceptedCount: number) => {
@@ -1046,7 +1140,10 @@ export function WizardApp({
         const result = await inflight;
         generatePromiseRef.current = null;
         if (result.exitCode === 0 && result.signal !== 'SIGTERM') {
-          setState((prev) => ({ ...prev, step: 'final-review' }));
+          const sessionMatch = /^session=(.+)$/m.exec(result.stdout);
+          const generatedSessionId = sessionMatch ? sessionMatch[1]!.trim() : sid;
+          update({ generateSessionId: generatedSessionId });
+          if (await runMapTokens(generatedSessionId)) update({ step: 'final-review' });
           return;
         }
       }
@@ -1603,6 +1700,7 @@ export function WizardApp({
     'generating-tokens',
     'extracting',
     'generating',
+    'mapping-tokens',
     'printing',
     'previewing',
     'push-from-picker',
@@ -1612,7 +1710,8 @@ export function WizardApp({
 
   const hasTokens = !!state.tokensPath;
   const hasComponents = !state.skipComponents;
-  const totalSteps = 3 + (hasTokens ? 1 : 0) + (hasComponents ? 2 : 0);
+  const totalSteps =
+    3 + (hasTokens ? 1 : 0) + (hasComponents ? 2 : 0) + (state.mapTokensEligible === true ? 1 : 0);
 
   const stepContent = (() => {
     switch (state.step) {
@@ -1831,6 +1930,19 @@ export function WizardApp({
             title="Generating definitions"
             description={`${formatAcceptanceSummary({ accepted: state.acceptedCount, autoRejected: state.autoRejectedCount })} ${state.agent} is mapping your TypeScript types to Contentful's CDF format.${hasTokens ? ' Using your design tokens for prop resolution.' : ''}`}
             detail={progressDetail}
+          />
+        );
+      }
+
+      case 'mapping-tokens': {
+        const stepNum = hasTokens ? 5 : 4;
+        return (
+          <RunningStep
+            stepNumber={stepNum}
+            totalSteps={totalSteps}
+            title="Mapping design tokens"
+            description="Finding the design tokens that are valid for each generated token property."
+            detail={`Running ${state.agent}...`}
           />
         );
       }
