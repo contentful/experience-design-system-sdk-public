@@ -239,4 +239,22 @@ describe('validateCDF', () => {
     expect(result.valid).toBe(true);
     expect(result.components).toHaveLength(1);
   });
+
+  it('accepts token properties with $token.allowed', () => {
+    const result = validateCDF({
+      $schema: CDF_V1_SCHEMA_URL,
+      Button: {
+        $type: 'component',
+        $properties: {
+          bgColor: {
+            $type: 'token',
+            $category: 'design',
+            '$token.allowed': ['color.brand.primary', 'color.brand.secondary'],
+          },
+        },
+      },
+    });
+    expect(result.valid).toBe(true);
+    expect(result.components).toHaveLength(1);
+  });
 });
