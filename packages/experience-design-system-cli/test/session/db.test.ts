@@ -1498,42 +1498,6 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
     },
   ];
 
-  it('attaches $token.allowed on token-typed props', async () => {
-    await withTempDb((dbPath) => {
-      const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      storeCDFComponents(db, sessionId, [
-        {
-          key: 'Button',
-          entry: {
-            $type: 'component',
-            $properties: {
-              variant: {
-                $type: 'token',
-                $category: 'design',
-                '$token.kind': 'color',
-                '$token.allowed': ['color.brand.primary', 'color.brand.secondary'],
-              },
-            },
-          },
-        },
-      ]);
-
-      const loaded = loadCDFComponents(db, sessionId);
-      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual([
-        'color.brand.primary',
-        'color.brand.secondary',
-      ]);
-      expect(
-        validateCDF({
-          $schema: CDF_V1_SCHEMA_URL,
-          ...Object.fromEntries(loaded.map(({ key, entry }) => [key, entry])),
-        }).valid,
-      ).toBe(true);
-      db.close();
-    });
-  });
-
   it('omits $token.sets and $token.allowed entirely when no mapping was ever run', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
@@ -1618,7 +1582,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
                 $type: 'token',
                 $category: 'design',
                 '$token.kind': 'color',
-                '$token.allowed': ['color.brand.primary'],
+                '$token.allowed': ['color.brand.primary', 'color.brand.secondary'],
               },
             },
           },
@@ -1627,7 +1591,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
 
       const loaded = loadCDFComponents(db, sessionId);
       const prop = loaded[0]?.entry.$properties['variant'];
-      expect(prop?.['$token.allowed']).toEqual(['color.brand.primary']);
+      expect(prop?.['$token.allowed']).toEqual(['color.brand.primary', 'color.brand.secondary']);
       expect(prop).not.toHaveProperty('$token.sets');
       expect(prop?.['$token.kind']).toBe('color');
 
@@ -1639,29 +1603,6 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
       };
       expect(validateCDF(cdf).valid).toBe(true);
       expect(validateCDF(cdf, { tokens: rebuildDTCGTree([], tokens) }).valid).toBe(true);
-      db.close();
-    });
-  });
-
-  it("omits $token.sets when no raw token matches the prop's $token.kind", async () => {
-    await withTempDb((dbPath) => {
-      const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      storeDTCGTokens(db, sessionId, [], [{ path: 'spacing.md', $type: 'dimension', $value: '12px' }]);
-      storeCDFComponents(db, sessionId, [
-        {
-          key: 'Button',
-          entry: {
-            $type: 'component',
-            $properties: {
-              variant: { $type: 'token', $category: 'design', '$token.kind': 'color' },
-            },
-          },
-        },
-      ]);
-
-      const loaded = loadCDFComponents(db, sessionId);
-      expect(loaded[0]?.entry.$properties['variant']).not.toHaveProperty('$token.sets');
       db.close();
     });
   });
