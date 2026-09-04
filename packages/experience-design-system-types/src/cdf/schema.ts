@@ -44,6 +44,7 @@ export const cdfV1JsonSchema = {
         $default: {},
         $values: { type: 'array', items: { type: 'string' } },
         '$token.kind': { type: 'string' },
+        '$token.allowed': { type: 'array', items: { type: 'string' } },
       },
       additionalProperties: false,
     },

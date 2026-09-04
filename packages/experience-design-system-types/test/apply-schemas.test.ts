@@ -20,6 +20,15 @@ describe('CDFPropertySchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts a token design property with allowed token paths', () => {
+    const result = z.safeParse(CDFPropertySchema, {
+      $type: 'token',
+      $category: 'design',
+      '$token.allowed': ['color.brand.primary'],
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('rejects an unknown $type', () => {
     const result = z.safeParse(CDFPropertySchema, {
       $type: 'not-a-real-type',
