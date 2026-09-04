@@ -248,7 +248,7 @@ describe('buildPrompt', () => {
       {
         component: 'Card',
         sourcePath: 'src/Card.tsx',
-        content: "export function Card({ bgColor }) {\n  return <div style={{ background: bgColor }} />;\n}",
+        content: 'export function Card({ bgColor }) {\n  return <div style={{ background: bgColor }} />;\n}',
       },
     ];
 
@@ -262,8 +262,8 @@ describe('buildPrompt', () => {
         outDir: '/fake/out',
       });
       expect(prompt).toContain('map_token_prop');
-      expect(prompt).toContain('token_sets');
       expect(prompt).toContain('token_allowed');
+      expect(prompt).not.toMatch(/\btoken_sets\b/);
       expect(prompt).toContain('AUTONOMOUS mode');
     });
 
@@ -324,6 +324,46 @@ describe('buildPrompt', () => {
       expect(prompt).not.toContain('Component source unavailable for');
     });
 
+    // Silent truncation at the use site is what turned genuine token props
+    // into enums. Stating it lets the classifier treat the gap as unknown.
+    it('renders the props whose uses were cut by the snippet budget', async () => {
+      const prompt = await buildPrompt({
+        skill: 'components',
+        mode: 'autonomous',
+        rawComponentsInline: '[]',
+        componentSourceRefs: [{ ...SOURCE_REFS_WITH_CONTENT[0], usesNotShown: ['padding'] }],
+        outDir: '/fake/out',
+        componentName: 'Card',
+      });
+      expect(prompt).toContain('uses not shown: padding');
+      expect(prompt).toContain('unknown, not absent');
+    });
+
+    it('tells the components skill that unreadable source forfeits token, and map-tokens to emit nothing', async () => {
+      const components = await buildPrompt({
+        skill: 'components',
+        mode: 'autonomous',
+        rawComponentsInline: '[]',
+        componentSourceRefs: SOURCE_REFS,
+        outDir: '/fake/out',
+        componentName: 'Card',
+      });
+      expect(components).toContain('Component source unavailable for');
+      expect(components).toContain('`token` cannot be earned');
+      expect(components).not.toContain('$token.kind alone');
+
+      const mapTokens = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        componentSourceRefs: SOURCE_REFS,
+        outDir: '/fake/out',
+      });
+      expect(mapTokens).toContain('emit nothing for their props');
+      expect(mapTokens).not.toContain('$token.kind alone');
+    });
+
     it('inlines sibling files alongside the main component source', async () => {
       const prompt = await buildPrompt({
         skill: 'map-tokens',
@@ -369,7 +409,7 @@ describe('buildPrompt', () => {
       expect(prompt).not.toContain('design-category token props only (JSON)');
     });
 
-    it('requires evidence before restricting: no default token_allowed placeholder', async () => {
+    it('requires evidence before narrowing: emit nothing when unsupported, scoped by $token.kind', async () => {
       const prompt = await buildPrompt({
         skill: 'map-tokens',
         mode: 'autonomous',
@@ -377,8 +417,19 @@ describe('buildPrompt', () => {
         tokenTree: TOKEN_TREE,
         outDir: '/fake/out',
       });
-      expect(prompt).toMatch(/omit.*token_allowed.*entirely|token_allowed.*entirely.*when/i);
-      expect(prompt).toMatch(/subset/i);
+      expect(prompt).toMatch(/emit nothing|omit.*token_allowed/i);
+      expect(prompt).toMatch(/\$token\.kind/);
+    });
+
+    it('only narrows props that arrive without an existing token list', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toMatch(/without an existing|already (has|arrived|resolved)/i);
     });
 
     it('instructs never contradicting an existing tokenReference', async () => {

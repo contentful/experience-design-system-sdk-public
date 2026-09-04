@@ -255,7 +255,11 @@ async function runOneComponent(
     null,
     2,
   );
-  const sourceRef = await loadComponentSourceRef(component.name, component.sourcePath ?? component.source);
+  const sourceRef = await loadComponentSourceRef(
+    component.name,
+    component.sourcePath ?? component.source,
+    component.props.map((p) => p.name),
+  );
   const prompt = await buildPrompt({
     skill: 'components',
     mode: 'autonomous',
@@ -538,7 +542,11 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         )
       : undefined;
     const sampleSourceRef = sampleComponent
-      ? await loadComponentSourceRef(sampleComponent.name, sampleComponent.sourcePath ?? sampleComponent.source)
+      ? await loadComponentSourceRef(
+          sampleComponent.name,
+          sampleComponent.sourcePath ?? sampleComponent.source,
+          sampleComponent.props.map((p) => p.name),
+        )
       : undefined;
     const prompt = await buildPrompt({
       skill,

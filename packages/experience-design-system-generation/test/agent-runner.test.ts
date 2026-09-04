@@ -523,50 +523,36 @@ describe('parseTokenToolCallLines', () => {
 });
 
 describe('parseMapTokenPropToolCallLines', () => {
-  it('parses a call with token_sets only', () => {
-    const line = '{"tool":"map_token_prop","component":"Card","prop":"bgColor","token_sets":["colors.surface"]}';
-    const { calls, warnings } = parseMapTokenPropToolCallLines(line);
-    expect(warnings).toHaveLength(0);
-    expect(calls[0]).toEqual({
-      tool: 'map_token_prop',
-      component: 'Card',
-      prop: 'bgColor',
-      token_sets: ['colors.surface'],
-    });
-  });
-
-  it('parses a call with a subset token_allowed and description', () => {
+  it('parses a call with token_allowed and description', () => {
     const line =
-      '{"tool":"map_token_prop","component":"Card","prop":"padding","token_sets":["spacing.xs","spacing.s"],"token_allowed":["spacing.xs"],"description":"restricted"}';
+      '{"tool":"map_token_prop","component":"Card","prop":"padding","token_allowed":["spacing.xs"],"description":"restricted"}';
     const { calls, warnings } = parseMapTokenPropToolCallLines(line);
     expect(warnings).toHaveLength(0);
     expect(calls[0]).toEqual({
       tool: 'map_token_prop',
       component: 'Card',
       prop: 'padding',
-      token_sets: ['spacing.xs', 'spacing.s'],
       token_allowed: ['spacing.xs'],
       description: 'restricted',
     });
   });
 
-  it('parses a call with an empty token_allowed (evidenced as unrestricted)', () => {
+  it('parses a call with multiple token_allowed entries', () => {
     const line =
-      '{"tool":"map_token_prop","component":"Card","prop":"bgColor","token_sets":["colors.surface"],"token_allowed":[]}';
+      '{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_allowed":["colors.brand.primary","colors.brand.secondary"]}';
     const { calls, warnings } = parseMapTokenPropToolCallLines(line);
     expect(warnings).toHaveLength(0);
-    expect(calls[0]).toMatchObject({ token_allowed: [] });
-  });
-
-  it('leaves token_allowed undefined when omitted', () => {
-    const line = '{"tool":"map_token_prop","component":"Card","prop":"bgColor","token_sets":["colors.surface"]}';
-    const { calls } = parseMapTokenPropToolCallLines(line);
-    expect((calls[0] as { token_allowed?: string[] }).token_allowed).toBeUndefined();
+    expect(calls[0]).toEqual({
+      tool: 'map_token_prop',
+      component: 'Button',
+      prop: 'variantColor',
+      token_allowed: ['colors.brand.primary', 'colors.brand.secondary'],
+    });
   });
 
   it('warns and skips on missing component', () => {
     const { calls, warnings } = parseMapTokenPropToolCallLines(
-      '{"tool":"map_token_prop","prop":"bgColor","token_sets":["colors.surface"]}',
+      '{"tool":"map_token_prop","prop":"bgColor","token_allowed":["colors.surface"]}',
     );
     expect(calls).toHaveLength(0);
     expect(warnings[0]).toMatch(/missing component/);
@@ -574,42 +560,34 @@ describe('parseMapTokenPropToolCallLines', () => {
 
   it('warns and skips on missing prop', () => {
     const { calls, warnings } = parseMapTokenPropToolCallLines(
-      '{"tool":"map_token_prop","component":"Card","token_sets":["colors.surface"]}',
+      '{"tool":"map_token_prop","component":"Card","token_allowed":["colors.surface"]}',
     );
     expect(calls).toHaveLength(0);
     expect(warnings[0]).toMatch(/missing prop/);
   });
 
-  it('warns and skips on missing token_sets', () => {
+  it('warns and skips on missing token_allowed', () => {
     const { calls, warnings } = parseMapTokenPropToolCallLines(
       '{"tool":"map_token_prop","component":"Card","prop":"bgColor"}',
     );
     expect(calls).toHaveLength(0);
-    expect(warnings[0]).toMatch(/missing or empty token_sets/);
+    expect(warnings[0]).toMatch(/missing or empty token_allowed/);
   });
 
-  it('warns and skips on empty token_sets array', () => {
+  it('warns and skips on empty token_allowed array', () => {
     const { calls, warnings } = parseMapTokenPropToolCallLines(
-      '{"tool":"map_token_prop","component":"Card","prop":"bgColor","token_sets":[]}',
+      '{"tool":"map_token_prop","component":"Card","prop":"bgColor","token_allowed":[]}',
     );
     expect(calls).toHaveLength(0);
-    expect(warnings[0]).toMatch(/missing or empty token_sets/);
-  });
-
-  it('warns and skips when token_allowed is not a subset of token_sets', () => {
-    const line =
-      '{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_sets":["colors.brand"],"token_allowed":["colors.other"]}';
-    const { calls, warnings } = parseMapTokenPropToolCallLines(line);
-    expect(calls).toHaveLength(0);
-    expect(warnings[0]).toMatch(/not a subset/);
+    expect(warnings[0]).toMatch(/missing or empty token_allowed/);
   });
 
   it('warns and skips when token_allowed is not a string array', () => {
     const line =
-      '{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_sets":["colors.brand"],"token_allowed":"colors.brand"}';
+      '{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_allowed":"colors.brand"}';
     const { calls, warnings } = parseMapTokenPropToolCallLines(line);
     expect(calls).toHaveLength(0);
-    expect(warnings[0]).toMatch(/string array/);
+    expect(warnings[0]).toMatch(/missing or empty token_allowed/);
   });
 
   it('warns on unparseable JSON', () => {
@@ -629,9 +607,9 @@ describe('parseMapTokenPropToolCallLines', () => {
   it('ignores prose lines and continues after a bad line', () => {
     const stdout = [
       'Looking at Card.bgColor',
-      '{"tool":"map_token_prop","component":"Card","prop":"bgColor","token_sets":["colors.surface"]}',
+      '{"tool":"map_token_prop","component":"Card","prop":"bgColor","token_allowed":["colors.surface"]}',
       '{not valid json}',
-      '{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_sets":["colors.brand.primary","colors.brand.secondary"],"token_allowed":["colors.brand.primary"]}',
+      '{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_allowed":["colors.brand.primary"]}',
     ].join('\n');
     const { calls, warnings } = parseMapTokenPropToolCallLines(stdout);
     expect(calls).toHaveLength(2);

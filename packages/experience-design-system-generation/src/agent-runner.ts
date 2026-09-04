@@ -313,9 +313,8 @@ export interface MapTokenPropCall {
   tool: 'map_token_prop';
   component: string;
   prop: string;
-  token_sets: string[];
-  /** Subset of token_sets. Omitted = no restriction assessed; [] = evidenced as unrestricted. */
-  token_allowed?: string[];
+  /** Narrowed subset of tokens the prop may draw from. Required and non-empty. */
+  token_allowed: string[];
   description?: string;
 }
 
@@ -357,34 +356,19 @@ export function parseMapTokenPropToolCallLines(stdout: string): ParsedMapTokenPr
       warnings.push(`map_token_prop '${rec.component}': missing prop — skipped`);
       continue;
     }
-    if (!isStringArray(rec.token_sets) || rec.token_sets.length === 0) {
-      warnings.push(`map_token_prop '${rec.component}.${String(rec.prop)}': missing or empty token_sets — skipped`);
+    if (!isStringArray(rec.token_allowed) || rec.token_allowed.length === 0) {
+      warnings.push(
+        `map_token_prop '${rec.component}.${String(rec.prop)}': missing or empty token_allowed — skipped`,
+      );
       continue;
-    }
-    const tokenSets = rec.token_sets;
-
-    let tokenAllowed: string[] | undefined;
-    if (rec.token_allowed !== undefined) {
-      if (!isStringArray(rec.token_allowed)) {
-        warnings.push(`map_token_prop '${rec.component}.${rec.prop}': token_allowed must be a string array — skipped`);
-        continue;
-      }
-      if (!rec.token_allowed.every((p) => tokenSets.includes(p))) {
-        warnings.push(
-          `map_token_prop '${rec.component}.${rec.prop}': token_allowed is not a subset of token_sets — skipped`,
-        );
-        continue;
-      }
-      tokenAllowed = rec.token_allowed;
     }
 
     const call: MapTokenPropCall = {
       tool: 'map_token_prop',
       component: rec.component,
       prop: rec.prop,
-      token_sets: tokenSets,
+      token_allowed: rec.token_allowed,
     };
-    if (tokenAllowed !== undefined) call.token_allowed = tokenAllowed;
     if (typeof rec.description === 'string') call.description = rec.description;
     calls.push(call);
   }

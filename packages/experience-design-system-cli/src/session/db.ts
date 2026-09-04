@@ -3,9 +3,9 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
-import { dirname, resolve, sep } from 'node:path';
-import { createRequire } from 'node:module';
+import { dirname, resolve } from 'node:path';
 import { generateSessionId } from './session-id.js';
+import { excerptAroundNames } from './source-excerpt.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types.js';
 import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
 import type { ToolCall, TokenToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
@@ -238,7 +238,14 @@ function applyDbMigrations(db: DatabaseSync): void {
           session_id   TEXT NOT NULL,
           component_id TEXT NOT NULL,
           prop_name    TEXT NOT NULL,
+          -- DTCG token paths for the prop. Only 'allowed' rows are written or
+          -- read going forward; 'set' remains a valid value only so existing
+          -- sessions with legacy rows keep loading without a migration.
           kind         TEXT NOT NULL CHECK (kind IN ('set', 'allowed')),
+          -- Who set this list. 'agent' is a map-tokens suggestion, which a later
+          -- run of that step may freely revise. 'review' is a person's decision
+          -- in the review editor, which a re-run must not overwrite.
+          source       TEXT NOT NULL DEFAULT 'agent' CHECK (source IN ('agent', 'review')),
           position     INTEGER NOT NULL,
           path         TEXT NOT NULL,
           PRIMARY KEY (session_id, component_id, prop_name, kind, position),
@@ -287,6 +294,15 @@ function applyDbMigrations(db: DatabaseSync): void {
   if (!rawCompColNames.has('source_path')) {
     db.exec('ALTER TABLE raw_components ADD COLUMN source_path TEXT');
   }
+  const tokenPathCols = db.prepare('PRAGMA table_info(raw_prop_token_paths)').all() as Array<{ name: string }>;
+  if (tokenPathCols.length > 0 && !tokenPathCols.some((c) => c.name === 'source')) {
+    // Pre-existing rows predate the review editor writing its own lists, so they
+    // can only have come from map tokens — the 'agent' default is correct for them.
+    db.exec(
+      "ALTER TABLE raw_prop_token_paths ADD COLUMN source TEXT NOT NULL DEFAULT 'agent' CHECK (source IN ('agent', 'review'))",
+    );
+  }
+
   const rawPropCols = db.prepare('PRAGMA table_info(raw_props)').all() as Array<{ name: string }>;
   const rawPropColNames = new Set(rawPropCols.map((c) => c.name));
   if (!rawPropColNames.has('rationale')) {
@@ -465,6 +481,13 @@ function applyDbMigrations(db: DatabaseSync): void {
 
 export type RawPropTokenPathKind = 'set' | 'allowed';
 
+/**
+ * Where a prop's token-path list came from. 'agent' is a map-tokens suggestion,
+ * which a later run of that step may revise. 'review' is a person's decision in
+ * the review editor, which a re-run must leave alone.
+ */
+export type RawPropTokenPathSource = 'agent' | 'review';
+
 export interface RawPropTokenPathGroup {
   componentId: string;
   propName: string;
@@ -479,21 +502,22 @@ export function replaceRawPropTokenPaths(
   propName: string,
   kind: RawPropTokenPathKind,
   paths: string[],
+  source: RawPropTokenPathSource,
 ): void {
   const deletePaths = db.prepare(
     `DELETE FROM raw_prop_token_paths
      WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = ?`,
   );
   const insertPath = db.prepare(
-    `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, position, path)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, source, position, path)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
 
   db.exec('BEGIN');
   try {
     deletePaths.run(sessionId, componentId, propName, kind);
     paths.forEach((path, position) => {
-      insertPath.run(sessionId, componentId, propName, kind, position, path);
+      insertPath.run(sessionId, componentId, propName, kind, source, position, path);
     });
     db.exec('COMMIT');
   } catch (e) {
@@ -705,6 +729,9 @@ export function applyToolCalls(
   const deleteAllowedValues = db.prepare(
     `DELETE FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
   );
+  const deleteTokenPaths = db.prepare(
+    `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = 'allowed'`,
+  );
   const insertAllowedValue = db.prepare(
     `INSERT OR IGNORE INTO raw_prop_allowed_values (session_id, component_id, prop_name, value, position)
      VALUES (?, ?, ?, ?, ?)`,
@@ -768,9 +795,25 @@ export function applyToolCalls(
           warnings.push(`${componentName}: classify_prop '${call.prop}' — prop not found, skipped`);
           continue;
         }
-        if (call.values && call.values.length > 0) {
+        if (call.cdf_type === 'token') {
+          // A token property's options list is design token paths, written by
+          // map tokens. An enum vocabulary is not part of that definition,
+          // whether it is left over from a prior classification or supplied on
+          // this very call against the tool contract — so it is dropped either
+          // way, and the caller is told when it was asked for explicitly.
           deleteAllowedValues.run(sessionId, componentId, call.prop);
-          call.values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, call.prop, v, i));
+          if (call.values && call.values.length > 0) {
+            const count = call.values.length;
+            warnings.push(
+              `${componentName}: classify_prop '${call.prop}' — dropped ${count} value${count === 1 ? '' : 's'} on a token property; its options list is $token.allowed, not $values`,
+            );
+          }
+        } else {
+          deleteTokenPaths.run(sessionId, componentId, call.prop);
+          if (call.values && call.values.length > 0) {
+            deleteAllowedValues.run(sessionId, componentId, call.prop);
+            call.values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, call.prop, v, i));
+          }
         }
         if (call.default !== undefined) {
           const storedDefault = typeof call.default === 'boolean' ? String(call.default) : call.default;
@@ -1284,32 +1327,11 @@ const MAX_SIBLING_DEPTH = 2;
 // re-exports, each of which would otherwise be walked for a second hop.
 const MAX_SIBLING_CANDIDATES_EXPLORED = 25;
 const RELATIVE_IMPORT_PATTERN = /from\s+['"](\.[^'"]+)['"]/g;
-// Scoped package specifiers (`@scope/name` or `@scope/name/subpath`) — the
-// shape internal workspace packages conventionally use (e.g. a shared
-// `@contentful/f36-tokens`-style utils package). Bare unscoped specifiers
-// (`react`, `lodash`) are intentionally not matched here: they are almost
-// never the shared internal variant-to-token maps this is looking for, and
-// resolving every bare import would mean walking node_modules for every
-// third-party dependency a component happens to import.
-const WORKSPACE_IMPORT_PATTERN = /from\s+['"](@[^'"/]+\/[^'"]+)['"]/g;
 const SIBLING_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
-
-function truncateSource(text: string, maxChars: number = MAX_COMPONENT_SOURCE_CHARS): string {
-  if (text.length <= maxChars) return text;
-  return text.slice(0, maxChars) + '\n/* truncated */';
-}
 
 function extractRelativeImportPaths(sourceText: string): string[] {
   const specifiers = new Set<string>();
   for (const match of sourceText.matchAll(RELATIVE_IMPORT_PATTERN)) {
-    if (match[1]) specifiers.add(match[1]);
-  }
-  return [...specifiers];
-}
-
-function extractWorkspaceImportSpecifiers(sourceText: string): string[] {
-  const specifiers = new Set<string>();
-  for (const match of sourceText.matchAll(WORKSPACE_IMPORT_PATTERN)) {
     if (match[1]) specifiers.add(match[1]);
   }
   return [...specifiers];
@@ -1336,46 +1358,24 @@ async function resolveRelativeImport(specifier: string, fromDir: string): Promis
   return undefined;
 }
 
-// Resolves a scoped bare specifier via Node's own module resolution
-// (node_modules lookup, package.json main/exports, symlink-following),
-// then filters the result down to internal *workspace* packages only.
-// A monorepo workspace package (pnpm/yarn workspaces) resolves through a
-// node_modules symlink to source living outside any node_modules tree
-// (e.g. `packages/utils/src/index.ts`); a real external dependency resolves
-// to a path still inside a node_modules tree (hoisted, or a pnpm
-// `.pnpm/<pkg>@<version>/node_modules/<pkg>` store). Skipping the latter
-// avoids inlining arbitrary third-party package internals as "evidence".
-async function resolveWorkspaceImport(specifier: string, fromDir: string): Promise<string | undefined> {
-  try {
-    const require = createRequire(resolve(fromDir, 'noop.cjs'));
-    const resolved = require.resolve(specifier);
-    if (resolved.split(sep).includes('node_modules')) return undefined;
-    return resolved;
-  } catch {
-    return undefined;
-  }
-}
-
-// Resolves every relative and workspace-package specifier a file imports,
-// relative-import specifiers first (matches prior single-hop ordering).
+// Resolves every relative specifier a file imports, in source order. Bare
+// package specifiers (`react`, `@scope/pkg`) are deliberately not followed:
+// on a monorepo they resolve to built `dist/` bundles, which fill sibling
+// slots with minified output rather than the source line a classifier can
+// cite.
 async function resolveImportSpecifiers(sourceText: string, fromDir: string): Promise<string[]> {
   const resolvedPaths: string[] = [];
   for (const specifier of extractRelativeImportPaths(sourceText)) {
     const resolvedPath = await resolveRelativeImport(specifier, fromDir);
     if (resolvedPath) resolvedPaths.push(resolvedPath);
   }
-  for (const specifier of extractWorkspaceImportSpecifiers(sourceText)) {
-    const resolvedPath = await resolveWorkspaceImport(specifier, fromDir);
-    if (resolvedPath) resolvedPaths.push(resolvedPath);
-  }
   return resolvedPaths;
 }
 
-// Loads the content of files the component's source file imports — either
-// directly, or transitively through a sibling that is itself imported
-// (bounded by MAX_SIBLING_DEPTH) — both relatively (e.g. a co-located
-// `.styles.ts`) and via an internal workspace package (e.g. a shared
-// `@scope/utils` map). Token resolution logic (e.g. a variant-to-token map)
+// Loads the content of files the component's source file relatively imports
+// — either directly (e.g. a co-located `.styles.ts`), or transitively through
+// a sibling that is itself imported (bounded by MAX_SIBLING_DEPTH). Token
+// resolution logic (e.g. a variant-to-token map)
 // sometimes lives behind a component that re-exports another component's
 // prop rather than beside the component being classified, so a single hop
 // of resolution can miss it. Breadth-first with a visited-set: a component
@@ -1386,7 +1386,13 @@ async function resolveImportSpecifiers(sourceText: string, fromDir: string): Pro
 async function loadSiblingFiles(
   sourceText: string,
   sourcePath: string,
-): Promise<{ siblings: Array<{ path: string; content: string }>; truncatedCount: number }> {
+  propNames: string[],
+): Promise<{
+  siblings: Array<{ path: string; content: string }>;
+  truncatedCount: number;
+  /** Prop names with at least one use that fell outside a sibling's excerpt budget. */
+  usesNotShown: string[];
+}> {
   const visited = new Set<string>([resolve(sourcePath)]);
   const discovered: Array<{ path: string; content: string }> = [];
 
@@ -1419,12 +1425,22 @@ async function loadSiblingFiles(
     frontier = nextFrontier;
   }
 
-  const siblings = discovered
-    .slice(0, MAX_SIBLING_FILES)
-    .map((d) => ({ path: d.path, content: truncateSource(d.content, MAX_SIBLING_SNIPPET_CHARS) }));
+  // Excerpts are windowed around the prop names rather than cut from the
+  // head: a styles module's first lines are imports, and the line that decides
+  // a prop's classification is wherever that prop is interpolated.
+  const usesNotShown = new Set<string>();
+  const siblings = discovered.slice(0, MAX_SIBLING_FILES).map((d) => {
+    const excerpt = excerptAroundNames(d.content, propNames, MAX_SIBLING_SNIPPET_CHARS);
+    for (const name of excerpt.usesNotShown) usesNotShown.add(name);
+    return { path: d.path, content: excerpt.content };
+  });
   const truncatedCount = Math.max(0, discovered.length - MAX_SIBLING_FILES);
 
-  return { siblings, truncatedCount };
+  return {
+    siblings,
+    truncatedCount,
+    usesNotShown: propNames.filter((name) => usesNotShown.has(name)),
+  };
 }
 
 // Reads and inlines real file content here, at the last point this pipeline
@@ -1433,34 +1449,54 @@ async function loadSiblingFiles(
 // protocol), so a bare path is useless to them. Read failures (file moved or
 // deleted since extraction) resolve to `content: null`, not a thrown error —
 // callers fall back to inferring from the prop name and $token.kind alone.
-export async function loadComponentSourceRef(name: string, sourcePath: string): Promise<ComponentSourceRef> {
+export async function loadComponentSourceRef(
+  name: string,
+  sourcePath: string,
+  propNames: string[] = [],
+): Promise<ComponentSourceRef> {
   let content: string | null = null;
   let siblingFiles: Array<{ path: string; content: string }> = [];
   let truncatedSiblingCount = 0;
+  const usesNotShown = new Set<string>();
   try {
     const rawText = await readFile(sourcePath, 'utf8');
-    content = truncateSource(rawText);
-    ({ siblings: siblingFiles, truncatedCount: truncatedSiblingCount } = await loadSiblingFiles(rawText, sourcePath));
+    const mainExcerpt = excerptAroundNames(rawText, propNames, MAX_COMPONENT_SOURCE_CHARS);
+    content = mainExcerpt.content;
+    for (const name of mainExcerpt.usesNotShown) usesNotShown.add(name);
+    let siblingUsesNotShown: string[];
+    ({
+      siblings: siblingFiles,
+      truncatedCount: truncatedSiblingCount,
+      usesNotShown: siblingUsesNotShown,
+    } = await loadSiblingFiles(rawText, sourcePath, propNames));
+    for (const name of siblingUsesNotShown) usesNotShown.add(name);
   } catch {
     // File no longer exists or unreadable — leave content null.
   }
   const ref: ComponentSourceRef = { component: name, sourcePath, content };
   if (siblingFiles.length > 0) ref.siblingFiles = siblingFiles;
   if (truncatedSiblingCount > 0) ref.truncatedSiblingCount = truncatedSiblingCount;
+  const notShown = propNames.filter((name) => usesNotShown.has(name));
+  if (notShown.length > 0) ref.usesNotShown = notShown;
   return ref;
 }
 
-export async function loadComponentSourceRefs(
-  db: DatabaseSync,
-  sessionId: string,
-): Promise<ComponentSourceRef[]> {
+export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: string): Promise<ComponentSourceRef[]> {
   const rows = db
     .prepare(
-      `SELECT name, source, source_path FROM raw_components WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
+      `SELECT component_id, name, source, source_path FROM raw_components WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
     )
-    .all(sessionId) as Array<{ name: string; source: string; source_path: string | null }>;
+    .all(sessionId) as Array<{ component_id: string; name: string; source: string; source_path: string | null }>;
+  const propNamesFor = db.prepare(
+    `SELECT name FROM raw_props WHERE session_id = ? AND component_id = ? ORDER BY position`,
+  );
 
-  return Promise.all(rows.map((r) => loadComponentSourceRef(r.name, r.source_path ?? r.source)));
+  return Promise.all(
+    rows.map((r) => {
+      const propNames = (propNamesFor.all(sessionId, r.component_id) as Array<{ name: string }>).map((p) => p.name);
+      return loadComponentSourceRef(r.name, r.source_path ?? r.source, propNames);
+    }),
+  );
 }
 
 export function renameEmptySlots(
@@ -1562,12 +1598,16 @@ export function storeCDFComponents(
     `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = ?`,
   );
   const insertTokenPath = db.prepare(
-    `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, position, path)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, source, position, path)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
+  // storeCDFComponents is only reached from the review editor, so a list written
+  // here is a person's decision and is recorded as such.
   const writeTokenPaths = (componentId: string, propName: string, kind: 'set' | 'allowed', paths: string[]) => {
     deleteTokenPaths.run(sessionId, componentId, propName, kind);
-    paths.forEach((path, position) => insertTokenPath.run(sessionId, componentId, propName, kind, position, path));
+    paths.forEach((path, position) =>
+      insertTokenPath.run(sessionId, componentId, propName, kind, 'review', position, path),
+    );
   };
   const deleteSlots = db.prepare(`DELETE FROM raw_slots WHERE session_id = ? AND component_id = ?`);
   const deleteSlotAllowedComponents = db.prepare(
@@ -1605,7 +1645,6 @@ export function storeCDFComponents(
             deleteAllowedValues.run(sessionId, componentId, propName);
             prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
           }
-          if (prop['$token.sets'] !== undefined) writeTokenPaths(componentId, propName, 'set', prop['$token.sets']);
           if (prop['$token.allowed'] !== undefined) {
             writeTokenPaths(componentId, propName, 'allowed', prop['$token.allowed']);
           }
@@ -1662,7 +1701,6 @@ export function storeCDFComponents(
           if (prop.$values && prop.$values.length > 0) {
             prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
           }
-          if (prop['$token.sets'] !== undefined) writeTokenPaths(componentId, propName, 'set', prop['$token.sets']);
           if (prop['$token.allowed'] !== undefined) {
             writeTokenPaths(componentId, propName, 'allowed', prop['$token.allowed']);
           }
@@ -1804,13 +1842,19 @@ export function loadCDFComponents(
         }
       }
       if (p.description !== null) propDef.$description = p.description;
-      if (av && av.length > 0) propDef.$values = av.map((v) => v.value);
+      const isTokenProp = p.cdf_type === 'token' && p.cdf_category === 'design';
+      // A token prop's options list is design token paths, written below. Its
+      // extracted variant names stay in the session as scoping input only.
+      if (!isTokenProp && av && av.length > 0) propDef.$values = av.map((v) => v.value);
       if (p.cdf_token_kind !== null) propDef['$token.kind'] = p.cdf_token_kind;
-      if (p.cdf_type === 'token' && p.cdf_category === 'design') {
-        const sets = toTokenPaths(tokenPathsByPropAndKind.get(`${component_id}::${p.name}::set`));
-        if (sets !== undefined) propDef['$token.sets'] = sets;
+      if (isTokenProp) {
+        // Only the author-restricted subset is carried. The full universe of
+        // tokens a property may bind to is every token whose $type matches its
+        // $token.kind — a consumer holding the token document derives that in
+        // one filter, so serialising it per property would duplicate the whole
+        // token list once for every property that shares a kind.
         const allowed = toTokenPaths(tokenPathsByPropAndKind.get(`${component_id}::${p.name}::allowed`));
-        if (allowed !== undefined) propDef['$token.allowed'] = allowed;
+        if (allowed !== undefined && allowed.length > 0) propDef['$token.allowed'] = allowed;
       }
       $properties[p.name] = propDef;
     }
@@ -2671,7 +2715,7 @@ export function copyMapTokensFromCache(db: DatabaseSync, sourceSessionId: string
   try {
     const sourceRows = db
       .prepare(
-        `SELECT rc.name AS component_name, rptp.prop_name, rptp.kind, rptp.position, rptp.path
+        `SELECT rc.name AS component_name, rptp.prop_name, rptp.kind, rptp.source, rptp.position, rptp.path
          FROM raw_prop_token_paths rptp
          JOIN raw_components rc ON rc.session_id = rptp.session_id AND rc.component_id = rptp.component_id
          WHERE rptp.session_id = ?
@@ -2681,6 +2725,7 @@ export function copyMapTokensFromCache(db: DatabaseSync, sourceSessionId: string
       component_name: string;
       prop_name: string;
       kind: 'set' | 'allowed';
+      source: RawPropTokenPathSource;
       position: number;
       path: string;
     }>;
@@ -2700,8 +2745,8 @@ export function copyMapTokensFromCache(db: DatabaseSync, sourceSessionId: string
     );
 
     const insertPath = db.prepare(
-      `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, position, path)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, source, position, path)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     );
     const clearedKinds = new Set<string>();
     const copiedProps = new Set<string>();
@@ -2717,7 +2762,7 @@ export function copyMapTokensFromCache(db: DatabaseSync, sourceSessionId: string
           `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = ?`,
         ).run(targetSessionId, targetComponentId, row.prop_name, row.kind);
       }
-      insertPath.run(targetSessionId, targetComponentId, row.prop_name, row.kind, row.position, row.path);
+      insertPath.run(targetSessionId, targetComponentId, row.prop_name, row.kind, row.source, row.position, row.path);
       copiedProps.add(`${targetComponentId}::${row.prop_name}`);
     }
     copiedCount = copiedProps.size;

@@ -45,6 +45,7 @@ import type {
   ComponentTypeSummary,
 } from '@contentful/experience-design-system-types';
 import { CDF_V1_SCHEMA_URL, validateCDF } from '@contentful/experience-design-system-types';
+import { rebuildDTCGTree } from '../../src/print/command.js';
 
 const tempDirs: string[] = [];
 
@@ -221,6 +222,43 @@ describe('openPipelineDb', () => {
     });
   });
 
+  it('backfills raw_prop_token_paths.source as agent on a database that predates the column', async () => {
+    await withTempDb((dbPath) => {
+      const initial = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(initial, sessionId, [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [{ name: 'bgColor', type: 'string', required: false, category: 'design' }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(initial, sessionId)[0].component_id;
+
+      // Simulate the pre-provenance shape and leave a row behind in it.
+      initial.exec('ALTER TABLE raw_prop_token_paths DROP COLUMN source');
+      initial
+        .prepare(
+          `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, position, path)
+           VALUES (?, ?, 'bgColor', 'allowed', 0, 'colors.surface.default')`,
+        )
+        .run(sessionId, componentId);
+      initial.close();
+
+      const migrated = openPipelineDb(dbPath);
+      const cols = migrated.prepare('PRAGMA table_info(raw_prop_token_paths)').all() as Array<{ name: string }>;
+      expect(cols.map((c) => c.name)).toContain('source');
+      // A row written before the review editor could set its own list can only
+      // have come from map tokens, so 'agent' is the correct backfill.
+      expect(
+        migrated.prepare(`SELECT source FROM raw_prop_token_paths WHERE prop_name = 'bgColor'`).get(),
+      ).toEqual({ source: 'agent' });
+      migrated.close();
+    });
+  });
+
   it('migrates legacy databases with no raw_prop_token_paths table exactly once', async () => {
     await withTempDb((dbPath) => {
       const initial = openPipelineDb(dbPath);
@@ -266,10 +304,10 @@ describe('raw prop token paths', () => {
       replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'set', [
         'color.brand.primary',
         'color.brand.secondary',
-      ]);
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.text.default']);
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'set', ['color.brand.tertiary']);
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', []);
+      ], 'agent');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.text.default'], 'agent');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'set', ['color.brand.tertiary'], 'agent');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', [], 'agent');
 
       expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
         {
@@ -288,6 +326,243 @@ describe('raw prop token paths', () => {
           )
           .all(sessionId, componentId, 'variant', 'allowed'),
       ).toEqual([]);
+      db.close();
+    });
+  });
+});
+
+describe('applyToolCalls clears the other property type on reclassification', () => {
+  it('clears raw_prop_token_paths when a prop moves from token to enum', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Badge',
+          source: 'src/Badge.tsx',
+          framework: 'react',
+          props: [{ name: 'variant', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
+
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [{ tool: 'classify_prop', prop: 'variant', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' }],
+        [],
+      );
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.blue.500'], 'agent');
+
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [
+          {
+            tool: 'classify_prop',
+            prop: 'variant',
+            cdf_type: 'enum',
+            cdf_category: 'design',
+            values: ['primary', 'secondary'],
+          },
+        ],
+        [],
+      );
+
+      expect(loadRawPropTokenPaths(db, sessionId).filter((g) => g.componentId === componentId)).toEqual([]);
+      db.close();
+    });
+  });
+
+  it('drops values supplied on a token classify_prop call and warns', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Badge',
+          source: 'src/Badge.tsx',
+          framework: 'react',
+          props: [{ name: 'bgColor', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
+
+      const result = applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [
+          {
+            tool: 'classify_prop',
+            prop: 'bgColor',
+            cdf_type: 'token',
+            cdf_category: 'design',
+            token_kind: 'color',
+            values: ['primary', 'secondary'],
+          },
+        ],
+        [],
+      );
+
+      // The classification stands — only the vocabulary is refused.
+      expect(result.classified).toBe(1);
+      expect(result.warnings.join('\n')).toContain('dropped 2 values on a token property');
+      const stored = db
+        .prepare(`SELECT value FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ?`)
+        .all(sessionId, componentId);
+      expect(stored).toEqual([]);
+      db.close();
+    });
+  });
+
+  it('still stores values for a non-token classify_prop call', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Badge',
+          source: 'src/Badge.tsx',
+          framework: 'react',
+          props: [{ name: 'variant', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
+
+      const result = applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [
+          {
+            tool: 'classify_prop',
+            prop: 'variant',
+            cdf_type: 'enum',
+            cdf_category: 'design',
+            values: ['primary', 'secondary'],
+          },
+        ],
+        [],
+      );
+
+      expect(result.warnings).toEqual([]);
+      const stored = db
+        .prepare(
+          `SELECT value FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ? ORDER BY position`,
+        )
+        .all(sessionId, componentId) as Array<{ value: string }>;
+      expect(stored.map((r) => r.value)).toEqual(['primary', 'secondary']);
+      db.close();
+    });
+  });
+
+  it('clears raw_prop_allowed_values when a prop moves from enum to token', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Badge',
+          source: 'src/Badge.tsx',
+          framework: 'react',
+          props: [{ name: 'variant', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
+
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [
+          {
+            tool: 'classify_prop',
+            prop: 'variant',
+            cdf_type: 'enum',
+            cdf_category: 'design',
+            values: ['primary', 'secondary'],
+          },
+        ],
+        [],
+      );
+
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [{ tool: 'classify_prop', prop: 'variant', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' }],
+        [],
+      );
+
+      const [{ entry }] = loadCDFComponents(db, sessionId);
+      expect(entry.$properties.variant.$values).toBeUndefined();
+      const remaining = db
+        .prepare('SELECT COUNT(*) AS count FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ?')
+        .get(sessionId, componentId) as { count: number };
+      expect(remaining.count).toBe(0);
+      db.close();
+    });
+  });
+
+  it('does not disturb existing token paths when a prop is reclassified but stays token', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Badge',
+          source: 'src/Badge.tsx',
+          framework: 'react',
+          props: [{ name: 'variant', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
+
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [{ tool: 'classify_prop', prop: 'variant', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' }],
+        [],
+      );
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.blue.500'], 'agent');
+
+      applyToolCalls(
+        db,
+        sessionId,
+        componentId,
+        'Badge',
+        [
+          {
+            tool: 'classify_prop',
+            prop: 'variant',
+            cdf_type: 'token',
+            cdf_category: 'design',
+            token_kind: 'color',
+            description: 'updated description',
+          },
+        ],
+        [],
+      );
+
+      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
+        { componentId, propName: 'variant', kind: 'allowed', paths: ['color.blue.500'] },
+      ]);
       db.close();
     });
   });
@@ -1223,7 +1498,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
     },
   ];
 
-  it('attaches $token.sets and $token.allowed on token-typed props', async () => {
+  it('attaches $token.allowed on token-typed props', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -1237,8 +1512,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
                 $type: 'token',
                 $category: 'design',
                 '$token.kind': 'color',
-                '$token.sets': ['color.brand.primary', 'color.brand.secondary'],
-                '$token.allowed': ['color.brand.primary'],
+                '$token.allowed': ['color.brand.primary', 'color.brand.secondary'],
               },
             },
           },
@@ -1246,11 +1520,10 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
       ]);
 
       const loaded = loadCDFComponents(db, sessionId);
-      expect(loaded[0]?.entry.$properties['variant']?.['$token.sets']).toEqual([
+      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual([
         'color.brand.primary',
         'color.brand.secondary',
       ]);
-      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual(['color.brand.primary']);
       expect(
         validateCDF({
           $schema: CDF_V1_SCHEMA_URL,
@@ -1297,7 +1570,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
     });
   });
 
-  it('produces byte-identical output to today for a session with no mappings', async () => {
+  it('drops the extracted variant vocabulary for a token prop with no mapping', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -1313,7 +1586,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
             $description: 'A button component',
             $properties: {
               label: { $type: 'string', $category: 'content', $required: true },
-              variant: { $type: 'token', $category: 'design', $values: ['primary', 'secondary'] },
+              variant: { $type: 'token', $category: 'design' },
             },
             $slots: {
               icon: { $description: 'Optional icon' },
@@ -1325,7 +1598,75 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
     });
   });
 
-  it('round-trips $token.sets, and collapses an empty $token.allowed to absent, through an import --modify replay and re-print', async () => {
+  it('emits only $token.allowed for a token prop — the universe is not serialised', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      const tokens = [
+        { path: 'color.brand.primary', $type: 'color' as const, $value: '#000' },
+        { path: 'color.brand.secondary', $type: 'color' as const, $value: '#111' },
+        { path: 'spacing.md', $type: 'dimension' as const, $value: '12px' },
+      ];
+      storeDTCGTokens(db, sessionId, [], tokens);
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'Button',
+          entry: {
+            $type: 'component',
+            $properties: {
+              variant: {
+                $type: 'token',
+                $category: 'design',
+                '$token.kind': 'color',
+                '$token.allowed': ['color.brand.primary'],
+              },
+            },
+          },
+        },
+      ]);
+
+      const loaded = loadCDFComponents(db, sessionId);
+      const prop = loaded[0]?.entry.$properties['variant'];
+      expect(prop?.['$token.allowed']).toEqual(['color.brand.primary']);
+      expect(prop).not.toHaveProperty('$token.sets');
+      expect(prop?.['$token.kind']).toBe('color');
+
+      // The emitted CDF validates against the same session's token document,
+      // which is what a consumer resolves the universe from.
+      const cdf = {
+        $schema: CDF_V1_SCHEMA_URL,
+        ...Object.fromEntries(loaded.map(({ key, entry }) => [key, entry])),
+      };
+      expect(validateCDF(cdf).valid).toBe(true);
+      expect(validateCDF(cdf, { tokens: rebuildDTCGTree([], tokens) }).valid).toBe(true);
+      db.close();
+    });
+  });
+
+  it("omits $token.sets when no raw token matches the prop's $token.kind", async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeDTCGTokens(db, sessionId, [], [{ path: 'spacing.md', $type: 'dimension', $value: '12px' }]);
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'Button',
+          entry: {
+            $type: 'component',
+            $properties: {
+              variant: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+            },
+          },
+        },
+      ]);
+
+      const loaded = loadCDFComponents(db, sessionId);
+      expect(loaded[0]?.entry.$properties['variant']).not.toHaveProperty('$token.sets');
+      db.close();
+    });
+  });
+
+  it('round-trips $token.allowed through an import --modify replay and re-print', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -1338,8 +1679,8 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
               variant: {
                 $type: 'token',
                 $category: 'design',
-                '$token.sets': ['color.brand.primary'],
-                '$token.allowed': [],
+                '$token.kind': 'color',
+                '$token.allowed': ['color.brand.primary'],
               },
             },
           },
@@ -1358,10 +1699,9 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
            WHERE session_id = ? AND component_id = ? AND prop_name = ? ORDER BY kind, position`,
         )
         .all(sessionId, componentId, 'variant');
-      // An empty $token.allowed writes zero rows — no sentinel — so it reads back as absent,
-      // identical to "never mapped": nothing currently distinguishes the two.
-      expect(rows).toEqual([{ kind: 'set', position: 0, path: 'color.brand.primary' }]);
-      expect(printed[0]?.entry.$properties['variant']).not.toHaveProperty('$token.allowed');
+      // $token.allowed paths are stored with kind='allowed'
+      expect(rows).toEqual([{ kind: 'allowed', position: 0, path: 'color.brand.primary' }]);
+      expect(printed[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual(['color.brand.primary']);
 
       // Reimport the printed CDF verbatim, as `import --modify` would replay it.
       storeCDFComponents(db, sessionId, printed);
@@ -1383,7 +1723,8 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
               variant: {
                 $type: 'token',
                 $category: 'design',
-                '$token.sets': ['color.brand.tertiary', 'color.brand.primary', 'color.brand.secondary'],
+                '$token.kind': 'color',
+                '$token.allowed': ['color.brand.tertiary', 'color.brand.primary', 'color.brand.secondary'],
               },
             },
           },
@@ -1392,7 +1733,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
 
       const first = loadCDFComponents(db, sessionId);
       const second = loadCDFComponents(db, sessionId);
-      expect(first[0]?.entry.$properties['variant']?.['$token.sets']).toEqual([
+      expect(first[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual([
         'color.brand.tertiary',
         'color.brand.primary',
         'color.brand.secondary',
@@ -1415,8 +1756,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
               variant: {
                 $type: 'enum',
                 $category: 'design',
-                '$token.sets': ['color.brand.primary'],
-                '$token.allowed': ['color.brand.primary'],
+                $values: ['primary', 'secondary'],
               },
             },
           },
@@ -1424,8 +1764,91 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
       ]);
 
       const loaded = loadCDFComponents(db, sessionId);
-      expect(loaded[0]?.entry.$properties.variant).not.toHaveProperty('$token.sets');
       expect(loaded[0]?.entry.$properties.variant).not.toHaveProperty('$token.allowed');
+      db.close();
+    });
+  });
+
+  it('emits $token.allowed and suppresses $values on a token prop', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Badge',
+          source: 'src/Badge.tsx',
+          framework: 'react',
+          props: [
+            {
+              name: 'variant',
+              type: "'primary' | 'danger'",
+              required: false,
+              category: 'design',
+              // Vocabulary captured at extraction time must not reach the CDF.
+              allowedValues: ['primary', 'danger'],
+            },
+          ],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(db, sessionId)[0]!.component_id;
+      db.prepare(
+        `UPDATE raw_props SET cdf_type = 'token', cdf_category = 'design', cdf_token_kind = 'color'
+         WHERE session_id = ? AND component_id = ? AND name = 'variant'`,
+      ).run(sessionId, componentId);
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', [
+        'color.blue.500',
+        'color.red.500',
+      ], 'agent');
+      db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND component_id = ?`).run(
+        sessionId,
+        componentId,
+      );
+
+      const loaded = loadCDFComponents(db, sessionId);
+      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual([
+        'color.blue.500',
+        'color.red.500',
+      ]);
+      expect(loaded[0]?.entry.$properties['variant']?.$values).toBeUndefined();
+      expect(loaded[0]?.entry.$properties['variant']).not.toHaveProperty('$token.sets');
+      db.close();
+    });
+  });
+
+  it('still emits $values on an enum prop', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Layout',
+          source: 'src/Layout.tsx',
+          framework: 'react',
+          props: [
+            {
+              name: 'orientation',
+              type: "'row' | 'column'",
+              required: false,
+              category: 'design',
+              allowedValues: ['row', 'column'],
+            },
+          ],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(db, sessionId)[0]!.component_id;
+      db.prepare(
+        `UPDATE raw_props SET cdf_type = 'enum', cdf_category = 'design'
+         WHERE session_id = ? AND component_id = ? AND name = 'orientation'`,
+      ).run(sessionId, componentId);
+      db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND component_id = ?`).run(
+        sessionId,
+        componentId,
+      );
+
+      const loaded = loadCDFComponents(db, sessionId);
+      expect(loaded[0]?.entry.$properties['orientation']?.$values).toEqual(['row', 'column']);
       db.close();
     });
   });
@@ -2577,6 +3000,46 @@ describe('generation cache', () => {
     });
   });
 
+  // A styles module's first 1,200 characters are imports and constants; the
+  // line that decides enum-versus-token for a prop is almost never there.
+  it('loadComponentSourceRef windows a sibling excerpt around the prop uses instead of taking the head of the file', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Box.tsx');
+      const stylesPath = join(dir, 'Box.styles.ts');
+      await writeFile(componentPath, `import { StyledBox } from './Box.styles';\nexport const Box = ({ children, ...rest }: Props) => <StyledBox {...rest}>{children}</StyledBox>;\n`);
+      const filler = (prefix: string) => Array.from({ length: 80 }, (_, i) => `export const ${prefix}${i} = ${i};`).join('\n');
+      await writeFile(stylesPath, `${filler('before')}\nexport const StyledBox = styled.div\`padding: \${(p) => p.padding};\`;\n${filler('after')}\n`);
+
+      const ref = await loadComponentSourceRef('Box', componentPath, ['padding', 'children']);
+      expect(ref.siblingFiles).toHaveLength(1);
+      expect(ref.siblingFiles?.[0].content).toContain('padding: ${(p) => p.padding};');
+      expect(ref.siblingFiles?.[0].content).not.toContain('before0 = 0');
+      expect(ref.siblingFiles?.[0].content.length).toBeLessThanOrEqual(1_200 + '\n/* truncated */'.length);
+      expect(ref.usesNotShown).toBeUndefined();
+    });
+  });
+
+  it('loadComponentSourceRef reports the props whose uses were cut by the sibling budget', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Box.tsx');
+      const stylesPath = join(dir, 'Box.styles.ts');
+      await writeFile(componentPath, `import { StyledBox } from './Box.styles';\n`);
+      const filler = (prefix: string) => Array.from({ length: 80 }, (_, i) => `export const ${prefix}${i} = ${i};`).join('\n');
+      // Two uses far apart, each with a wide window: the second cannot fit in 1,200 chars.
+      const bigLine = (name: string) => `export const ${name}Style = css\`\${(p) => p.${name}}; /* ${'x'.repeat(900)} */\`;`;
+      await writeFile(stylesPath, `${filler('a')}\n${bigLine('padding')}\n${filler('b')}\n${bigLine('margin')}\n${filler('c')}\n`);
+
+      const ref = await loadComponentSourceRef('Box', componentPath, ['padding', 'margin']);
+      // Later windows are kept in preference to earlier ones, so the margin use
+      // survives and the padding use is the one reported as cut.
+      expect(ref.siblingFiles?.[0].content).toContain('p.margin');
+      expect(ref.siblingFiles?.[0].content).not.toContain('p.padding');
+      expect(ref.usesNotShown).toEqual(['padding']);
+    });
+  });
+
   it('loadComponentSourceRef inlines a second-hop sibling reached through a first-hop sibling component', async () => {
     await withTempDb(async (dbPath) => {
       const dir = dirname(dbPath);
@@ -2661,8 +3124,8 @@ describe('generation cache', () => {
       replaceRawPropTokenPaths(db, sourceId, sourceComponentId, 'bgColor', 'set', [
         'colors.surface.default',
         'colors.surface.raised',
-      ]);
-      replaceRawPropTokenPaths(db, sourceId, sourceComponentId, 'bgColor', 'allowed', ['colors.surface.default']);
+      ], 'agent');
+      replaceRawPropTokenPaths(db, sourceId, sourceComponentId, 'bgColor', 'allowed', ['colors.surface.default'], 'agent');
 
       const { sessionId: targetId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
       storeRawComponents(db, targetId, [
