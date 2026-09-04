@@ -447,6 +447,198 @@ describe('generate components — tool-call protocol output', () => {
     expect(stored[0]?.entry.$properties['label']?.$type).toBe('string');
   });
 
+  it('classifies Avatar.colorVariant as enum — friendly names win over 1:1 token backing', async () => {
+    const dbDir = await createTempDir('gen-avatar-enum-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const sid = await seedDb(dbPath, [
+      {
+        name: 'Avatar',
+        source: '/fake/src/Avatar.tsx',
+        framework: 'react',
+        props: [{ name: 'colorVariant', type: 'string', required: false, category: 'design' }],
+        slots: [],
+      },
+    ]);
+
+    const friendlyNames = [
+      'primary',
+      'muted',
+      'green',
+      'orange',
+      'yellow',
+      'purple',
+      'gray',
+      'pink',
+      'emerald',
+      'lavender',
+    ];
+    const toolCallLines = [
+      { tool: 'classify_component', description: 'An avatar component' },
+      {
+        tool: 'classify_prop',
+        prop: 'colorVariant',
+        cdf_type: 'enum',
+        cdf_category: 'design',
+        values: friendlyNames,
+        description: 'Named color variant',
+      },
+    ];
+
+    const fakeBinDir = await createTempDir('fake-bin-avatar-enum-');
+    const fakeAgent = join(fakeBinDir, 'claude');
+    await writeFile(
+      fakeAgent,
+      `#!/usr/bin/env node\n${toolCallLines
+        .map((call) => `process.stdout.write(${JSON.stringify(`${JSON.stringify(call)}\n`)});`)
+        .join('\n')}\nprocess.exit(0);\n`,
+    );
+    await chmod(fakeAgent, 0o755);
+
+    const { code } = await new Promise<{
+      stdout: string;
+      stderr: string;
+      code: number | null;
+    }>((res) => {
+      execFile(
+        'node',
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid],
+        {
+          env: {
+            ...process.env,
+            PATH: `${fakeBinDir}:${process.env.PATH}`,
+            EDS_PIPELINE_DB_PATH: dbPath,
+          },
+        },
+        (err, stdout, stderr) => res({ stdout, stderr, code: err?.code ? Number(err.code) : 0 }),
+      );
+    });
+    expect(code).toBe(0);
+
+    const db = openPipelineDb(dbPath);
+    const stored = loadCDFComponents(db, sid);
+    db.close();
+    const avatar = stored.find((c) => c.key === 'Avatar');
+    const colorVariant = avatar?.entry.$properties['colorVariant'];
+    expect(colorVariant?.$type).toBe('enum');
+    expect(colorVariant?.$values).toEqual(friendlyNames);
+    expect(colorVariant?.['$token.kind']).toBeUndefined();
+    expect(colorVariant?.['$token.allowed']).toBeUndefined();
+  });
+
+  it('classifies Section — token-typed layout props alongside enum-typed variant props on the same component', async () => {
+    const dbDir = await createTempDir('gen-section-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const sid = await seedDb(dbPath, [
+      {
+        name: 'Section',
+        source: '/fake/src/Section.tsx',
+        framework: 'react',
+        props: [
+          { name: 'direction', type: "'row' | 'column'", required: false, category: 'design' },
+          { name: 'itemAlign', type: "'start' | 'center' | 'end' | 'stretch'", required: false, category: 'design' },
+          { name: 'gap', type: 'string', required: false, category: 'design' },
+          { name: 'verticalSpacing', type: 'string', required: false, category: 'design' },
+          { name: 'horizontalSpacing', type: 'string', required: false, category: 'design' },
+          { name: 'backgroundColor', type: 'string', required: false, category: 'design' },
+          { name: 'color', type: 'string', required: false, category: 'design' },
+          { name: 'radius', type: 'string', required: false, category: 'design' },
+        ],
+        slots: [],
+      },
+    ]);
+
+    const toolCallLines = [
+      { tool: 'classify_component', description: 'A flex/grid layout primitive' },
+      {
+        tool: 'classify_prop',
+        prop: 'direction',
+        cdf_type: 'enum',
+        cdf_category: 'design',
+        values: ['row', 'column'],
+        description: 'Flex direction',
+      },
+      {
+        tool: 'classify_prop',
+        prop: 'itemAlign',
+        cdf_type: 'enum',
+        cdf_category: 'design',
+        values: ['start', 'center', 'end', 'stretch'],
+        description: 'Cross-axis alignment',
+      },
+      { tool: 'classify_prop', prop: 'gap', cdf_type: 'token', cdf_category: 'design', token_kind: 'dimension' },
+      {
+        tool: 'classify_prop',
+        prop: 'verticalSpacing',
+        cdf_type: 'token',
+        cdf_category: 'design',
+        token_kind: 'dimension',
+      },
+      {
+        tool: 'classify_prop',
+        prop: 'horizontalSpacing',
+        cdf_type: 'token',
+        cdf_category: 'design',
+        token_kind: 'dimension',
+      },
+      {
+        tool: 'classify_prop',
+        prop: 'backgroundColor',
+        cdf_type: 'token',
+        cdf_category: 'design',
+        token_kind: 'color',
+      },
+      { tool: 'classify_prop', prop: 'color', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' },
+      { tool: 'classify_prop', prop: 'radius', cdf_type: 'token', cdf_category: 'design', token_kind: 'dimension' },
+    ];
+
+    const fakeBinDir = await createTempDir('fake-bin-section-');
+    const fakeAgent = join(fakeBinDir, 'claude');
+    await writeFile(
+      fakeAgent,
+      `#!/usr/bin/env node\n${toolCallLines
+        .map((call) => `process.stdout.write(${JSON.stringify(`${JSON.stringify(call)}\n`)});`)
+        .join('\n')}\nprocess.exit(0);\n`,
+    );
+    await chmod(fakeAgent, 0o755);
+
+    const { code } = await new Promise<{
+      stdout: string;
+      stderr: string;
+      code: number | null;
+    }>((res) => {
+      execFile(
+        'node',
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid],
+        {
+          env: {
+            ...process.env,
+            PATH: `${fakeBinDir}:${process.env.PATH}`,
+            EDS_PIPELINE_DB_PATH: dbPath,
+          },
+        },
+        (err, stdout, stderr) => res({ stdout, stderr, code: err?.code ? Number(err.code) : 0 }),
+      );
+    });
+    expect(code).toBe(0);
+
+    const db = openPipelineDb(dbPath);
+    const stored = loadCDFComponents(db, sid);
+    db.close();
+    const section = stored.find((c) => c.key === 'Section');
+    const props = section?.entry.$properties ?? {};
+
+    for (const name of ['direction', 'itemAlign']) {
+      expect(props[name]?.$type).toBe('enum');
+      expect(props[name]?.$values).toBeDefined();
+      expect(props[name]?.['$token.kind']).toBeUndefined();
+    }
+    for (const name of ['gap', 'verticalSpacing', 'horizontalSpacing', 'backgroundColor', 'color', 'radius']) {
+      expect(props[name]?.$type).toBe('token');
+      expect(props[name]?.['$token.kind']).toBeDefined();
+      expect(props[name]?.$values).toBeUndefined();
+    }
+  });
+
   it('preserves accepted data-fetch wrappers for generation', async () => {
     const dbDir = await createTempDir('gen-wrapper-guard-db-');
     const dbPath = join(dbDir, 'pipeline.db');

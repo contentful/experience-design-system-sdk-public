@@ -29,6 +29,12 @@ export interface ComponentSourceRef {
   content: string | null;
   siblingFiles?: Array<{ path: string; content: string }>;
   truncatedSiblingCount?: number;
+  /**
+   * Properties with at least one use that fell outside the excerpt budget of
+   * the file it sits in. The reader cannot see that use, so its absence is a
+   * gap in the evidence, not evidence of absence.
+   */
+  usesNotShown?: string[];
 }
 
 interface CDFPropertyLike {
@@ -88,7 +94,7 @@ export interface PromptOptions {
   generatedCdf?: GeneratedCdf;
   /** For map-tokens skill: the full DTCG token tree. Flattened internally to a path+`$type` index, with `$value` stripped. */
   tokenTree?: TokenTree;
-  /** For map-tokens skill: component source file references, for restriction evidence (union types, defaults, comments). */
+  /** Component source file references — consumption evidence for the components skill, explicit-restriction evidence (comments, allowlists) for map-tokens. */
   componentSourceRefs?: ComponentSourceRef[];
   /**
    * Feature 8: custom prompt path override. When set, this absolute or relative
@@ -265,13 +271,23 @@ function buildPreamble(options: PromptOptions): string {
                 `##### ${ref.component} — +${ref.truncatedSiblingCount} more imported file${ref.truncatedSiblingCount === 1 ? '' : 's'} not shown (evidence may be incomplete)`,
               ]
             : [];
-        return [mainBlock, ...siblingBlocks, ...truncationNote].join('\n\n');
+        const notShownNote =
+          ref.usesNotShown && ref.usesNotShown.length > 0
+            ? [
+                `##### ${ref.component} — uses not shown: ${ref.usesNotShown.join(', ')}\n\nThe files above are excerpts, and each of these properties has at least one use that fell outside the excerpt budget. Treat their consumption as unknown, not absent: do not classify them \`token\` on what is shown, and do not conclude they are unread.`,
+              ]
+            : [];
+        return [mainBlock, ...siblingBlocks, ...truncationNote, ...notShownNote].join('\n\n');
       });
       sections.push(`### Component source references\n\n${blocks.join('\n\n')}`);
     }
     if (withoutContent.length > 0) {
+      const guidance =
+        skill === 'components'
+          ? 'there is no consumption evidence for these, so `token` cannot be earned for any of their props — classify from the prop signature alone, and any prop that would otherwise be enum-versus-token is `enum` (or `string`)'
+          : 'there is no source evidence to narrow from — emit nothing for their props';
       sections.push(
-        `Component source unavailable for (JSON) — infer from prop name and $token.kind alone for these:\n\`\`\`json\n${JSON.stringify(withoutContent.map((ref) => ({ component: ref.component, sourcePath: ref.sourcePath })))}\n\`\`\``,
+        `Component source unavailable for (JSON) — ${guidance}:\n\`\`\`json\n${JSON.stringify(withoutContent.map((ref) => ({ component: ref.component, sourcePath: ref.sourcePath })))}\n\`\`\``,
       );
     }
   }
@@ -297,8 +313,6 @@ Context: You are classifying a React component for **Contentful Experience Orche
 - **design**: controls how the component looks (variant, size, color, layout toggles)
 - **content**: the data a content editor fills in (text, images, URLs, rich text)
 - **state**: runtime behavioral flags (disabled, loading, expanded, identifiers)
-
-For props with complex TypeScript types (named types, enums): reason from the prop name and type name to classify them. Do not automatically exclude a prop just because its type is a named reference — infer the likely values and classify it as enum if it controls appearance.
 
 Your task: classify every prop and slot in the component below. Apply all judgment calls yourself — do not pause to ask for confirmation. Include a "description" field on each tool call to document your reasoning so the developer can review it afterward.
 
@@ -326,10 +340,12 @@ Rules:
 - Every slot in the input must have exactly one classify_slot call.
 - Valid cdf_type values: string, richtext, media, enum, token, boolean
 - Valid cdf_category values: content, design, state
-- For enum type, always include "values" (non-empty string array).
-- For token type, always include "token_kind" (DTCG \$type, e.g. "color").
-- href and URL props → cdf_type "string", cdf_category "content". Do NOT use cdf_type "link" — it is not valid.
-- Framework internals (ref, event handlers, test IDs) → exclude_prop.
+- For enum type, always include \`values\` (non-empty string array of the variant names the prop accepts).
+- For token type, always include \`token_kind\` (DTCG \$type, e.g. "color"). **Never emit \`values\` for \`cdf_type: "token"\` props** — an enum prop's list holds variant names; a token prop's list holds design token paths, produced separately and never by you. Emitting \`values\` on a token prop makes the definition invalid.
+- Never emit both "values" and "token_kind" on one prop.
+- \`enum\` vs \`token\` is decided by three questions answered in order from the source shown — never from the TypeScript type. Q1: does the component look the value up, switch on it, or have a vocabulary for it (\`tokens[x]\`, \`switch (variant)\`, \`allowedValues\`)? yes → \`enum\`, stop.
+- Q2: is the value written straight into a style or attribute (\`rx={radius}\`, \`padding: \${padding}\`)? no → not \`token\`, apply the type rules.
+- Q3: is there a design-token reference at that use — a \`tokens.*\` parameter default, a \`tokenReference\`, an inline \`tokens.*\` / \`var(--*)\`? yes → \`token\` (cite both lines in "reason"); no → \`string\`. "Ambiguity resolves to \`enum\`" applies only when Q1–Q3 cannot be answered from the source shown.
 - CSS design props (className, style, styles, positional/geometric props: top, bottom, left, right, rotation, offset, etc.) → classify_prop, cdf_type: "string", cdf_category: "design".
 - On classify_component, "rationale" fields are operator-facing (read-only) but may surface in customer-facing exports. The "rationale.description" field is subject to the description content rules in the skill prompt (no internal initiative names). "rationale.props" and "rationale.slots" describe your reasoning about scope; "classify_slot.rationale" explains why each slot was kept.
 - On classify_prop, "reason" is REQUIRED and is the LLM's internal rationale — shown to the developer reviewing the import, never to end-users. "description" is the customer-facing copy and is subject to the description content rules in the skill prompt. Keep them distinct: "description" is short and customer-facing; "reason" explains your reasoning in detail.
@@ -366,32 +382,32 @@ Rules:
 function buildMapTokensAutonomousPreamble(inputBlock: string): string {
   return `You are running as part of the experience-design-system-cli generate pipeline in AUTONOMOUS mode. The developer is not present to answer questions.
 
-Context: The components below already have design-category, token-typed props (\`$token.kind\` set). Your task is to suggest, for each such prop, which token set from the design library it draws from (\`token_sets\`) and, when there is concrete evidence, which subset of that set a marketer may actually choose from (\`token_allowed\`). Apply all judgment calls yourself — do not pause to ask for confirmation.
+Context: The components below already have design-category, token-typed props (\`$token.kind\` set). Some already carry a \`$token.allowed\` list resolved earlier from source evidence — leave those alone. For every prop that arrives with **no existing token list**, your task is to decide, from source evidence, whether to narrow it to a restricted subset (\`token_allowed\`) of the tokens matching its \`$token.kind\`. Apply all judgment calls yourself — do not pause to ask for confirmation.
 
 All input data is provided inline below — do not read any additional files.${inputBlock}
 
 ## Output protocol
 
-Do NOT write any files or emit any JSON blobs. Instead, emit one JSON object per line to stdout for each prop you map. The CLI reads your stdout line by line and writes each decision directly to the pipeline database.
+Do NOT write any files or emit any JSON blobs. Instead, emit one JSON object per line to stdout for each prop you narrow. The CLI reads your stdout line by line and writes each decision directly to the pipeline database.
 
 The one tool call you may emit:
 
 \`\`\`
-{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_sets":["colors.brand.primary","colors.brand.secondary","colors.brand.tertiary"],"token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"<reason>"}
+{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"<reason>"}
 \`\`\`
 
 Rules:
 - Emit exactly one JSON object per line. No multi-line JSON. No markdown fences around the lines.
-- Only emit a call for a prop that appears in the "Generated CDF so far" section — those are already confirmed design-category, token-typed props.
-- \`token_sets\` and \`token_allowed\` are flat lists of individual **leaf** token paths — never a group/prefix path. The "Token path index" contains one entry per leaf token only; a path like \`colors.brand\` that groups \`colors.brand.primary\`/\`colors.brand.secondary\` does NOT itself appear in the index and must never be emitted. If a prop's relevant set is "the brand colors," enumerate every leaf under that group that appears in the index (e.g. \`colors.brand.primary\`, \`colors.brand.secondary\`, \`colors.brand.tertiary\`), not the group name.
-- Every path in \`token_sets\` and \`token_allowed\` must exist verbatim in the "Token path index" section. Never invent a path. If a path you'd otherwise suggest is missing from the index, omit it rather than guessing.
-- \`token_allowed\` must be a subset of \`token_sets\`.
-- Restriction requires evidence: a union/enum-shaped prop type, a default value, or an explicit comment in the component source. Omit \`token_allowed\` entirely when you have no such evidence — do not include it as a placeholder.
-- An empty \`token_allowed\` array is a deliberate, evidenced claim that nothing in \`token_sets\` is restricted (everything is allowed) — only emit it when you actually reviewed the evidence and found no restriction, not as a default.
-- If the prop's source shows an existing \`tokenReference\` (a CSS custom property or design-token reference), treat it as high-confidence evidence and never contradict it in \`token_sets\` or \`token_allowed\`.
+- Only emit a call for a prop that appears in the "Generated CDF so far" section and does not already carry \`$token.allowed\` — a prop that already has one was resolved from source and must not be contradicted.
+- Candidates are scoped to the prop's \`$token.kind\` — only tokens of that type from the "Token path index" can bind; ignore every other entry.
+- \`token_allowed\` is a flat list of individual **leaf** token paths — never a group/prefix path. The "Token path index" contains one entry per leaf token only; a path like \`colors.brand\` that groups \`colors.brand.primary\`/\`colors.brand.secondary\` does NOT itself appear in the index and must never be emitted.
+- Every path in \`token_allowed\` must exist verbatim in the "Token path index" section and match the prop's \`$token.kind\`. Never invent a path, and never substitute a variant/enum name for a real token path. If a path you'd otherwise suggest is missing from the index, omit it rather than guessing.
+- \`token_allowed\` is required and must be non-empty when the call is emitted. Restriction requires explicit evidence: a comment naming the valid tokens, or code that validates the prop against a fixed list of token paths.
+- A default value or a \`tokenReference\` is the prop's default, not a restriction. On its own it yields no call — narrowing to that one path would leave the marketer a single option. If you narrow on other evidence, the default's path must be in the list.
+- A token prop whose type is a union of variant names (\`'primary' | 'secondary'\`) is misclassified — it should be an enum. Do not narrow it; emit nothing and flag it in a prose line.
+- Emit nothing for a prop when the evidence does not support narrowing. Omitting the list means "any token of this kind," which is the correct and live default — a guessed list is worse than none because it freezes the author's choices.
 - No \`$value\` is provided in this step — do not reason about specific token values, only paths and \`$type\`.
-- You may emit prose lines (not starting with \`{\`) anywhere — they are ignored by the parser and serve as your reasoning log.
-- If a prop has no plausible token set in the provided index, skip it entirely — do not emit a call with an empty \`token_sets\`.`;
+- You may emit prose lines (not starting with \`{\`) anywhere — they are ignored by the parser and serve as your reasoning log.`;
 }
 
 function buildTokensAutonomousPreamble(inputBlock: string): string {

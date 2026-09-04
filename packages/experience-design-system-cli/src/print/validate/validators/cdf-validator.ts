@@ -66,7 +66,14 @@ function rewriteDiagnostic(
   };
 }
 
-export async function validateCDFFile(filePath: string): Promise<ValidationResult> {
+/**
+ * `tokensPath`, when supplied, is the DTCG document the CDF's `$token.allowed`
+ * entries are checked against — a token property may only restrict to real
+ * tokens of its own `$token.kind`. An unreadable or unparseable token file
+ * downgrades to validating the CDF alone rather than failing it, since the
+ * token file is validated separately and reports its own diagnostics.
+ */
+export async function validateCDFFile(filePath: string, tokensPath?: string): Promise<ValidationResult> {
   let content: string;
   try {
     content = await readFile(filePath, 'utf-8');
@@ -89,7 +96,16 @@ export async function validateCDFFile(filePath: string): Promise<ValidationResul
     };
   }
 
-  const cdfResult = validateCDF(parsed);
+  let tokens: unknown;
+  if (tokensPath !== undefined) {
+    try {
+      tokens = JSON.parse(await readFile(tokensPath, 'utf-8'));
+    } catch {
+      tokens = undefined;
+    }
+  }
+
+  const cdfResult = validateCDF(parsed, { tokens });
 
   if (!cdfResult.valid) {
     const diagnostics = cdfResult.errors
