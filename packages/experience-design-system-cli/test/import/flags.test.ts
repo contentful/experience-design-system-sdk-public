@@ -86,6 +86,7 @@ describe('import — help output lists all flags', () => {
       '--skip-generate',
       '--print',
       '--skip-apply',
+      '--skip-map-tokens',
       '--no-cache',
       '--yes',
       '--verbose',
@@ -173,6 +174,18 @@ describe('import — credential flags', () => {
 });
 
 describe('import — skip flags', () => {
+  it('--skip-map-tokens is accepted in headless mode', async () => {
+    const { stderr, code } = await run([...skipAll(), '--skip-map-tokens'], baseEnv());
+    expect(stderr).not.toContain("unknown option '--skip-map-tokens'");
+    expect(code).toBe(0);
+  });
+
+  it('does not retain the --no-map-tokens alias', async () => {
+    const { stderr, code } = await run([...skipAll(), '--no-map-tokens'], baseEnv());
+    expect(stderr).toContain("unknown option '--no-map-tokens'");
+    expect(code).not.toBe(0);
+  });
+
   it('--skip-apply removes credential requirement', async () => {
     const { stderr } = await run(skipAll(), baseEnv());
     expect(stderr).not.toContain('--space-id');
