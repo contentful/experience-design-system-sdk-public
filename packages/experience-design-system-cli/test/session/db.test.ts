@@ -1710,6 +1710,71 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
     });
   });
 
+  it('clears persisted allowed paths when a reviewed token prop omits the field', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      const mapped = [
+        {
+          key: 'Button',
+          entry: {
+            $type: 'component' as const,
+            $properties: {
+              background: {
+                $type: 'token' as const,
+                $category: 'design' as const,
+                '$token.kind': 'color',
+                '$token.allowed': ['color.brand.primary'],
+              },
+              foreground: {
+                $type: 'token' as const,
+                $category: 'design' as const,
+                '$token.kind': 'color',
+                '$token.allowed': ['color.brand.secondary'],
+              },
+            },
+          },
+        },
+      ];
+
+      storeCDFComponents(db, sessionId, mapped);
+      const componentId = (
+        db
+          .prepare('SELECT component_id FROM raw_components WHERE session_id = ? AND name = ?')
+          .get(sessionId, 'Button') as { component_id: string }
+      ).component_id;
+
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'Button',
+          entry: {
+            ...mapped[0].entry,
+            $properties: {
+              background: {
+                $type: 'token',
+                $category: 'design',
+                '$token.kind': 'color',
+              },
+              foreground: mapped[0].entry.$properties.foreground,
+            },
+          },
+        },
+      ]);
+
+      const rows = db
+        .prepare(
+          `SELECT prop_name, kind, path FROM raw_prop_token_paths
+           WHERE session_id = ? AND component_id = ? ORDER BY prop_name, position`,
+        )
+        .all(sessionId, componentId);
+      expect(rows).toEqual([{ prop_name: 'foreground', kind: 'allowed', path: 'color.brand.secondary' }]);
+      const loaded = loadCDFComponents(db, sessionId);
+      expect(loaded[0]?.entry.$properties.background).not.toHaveProperty('$token.allowed');
+      expect(loaded[0]?.entry.$properties.foreground?.['$token.allowed']).toEqual(['color.brand.secondary']);
+      db.close();
+    });
+  });
+
   it('keeps path ordering stable across repeated loads', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);

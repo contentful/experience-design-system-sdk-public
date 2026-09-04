@@ -12,9 +12,11 @@ import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
 import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
 import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import { readTokensFromPath } from '../../../apply/manifest.js';
 import {
   openPipelineDb,
   loadCDFComponents,
+  loadDTCGTokens,
   storeCDFComponents,
   loadComponentReviewMetadata,
   loadComponentRationale,
@@ -23,6 +25,12 @@ import {
 } from '../../../session/db.js';
 import { RationalePanel, type RationaleRow } from '../../../analyze/select/tui/components/RationalePanel.js';
 import { ComponentRationalePanel } from '../../../analyze/select/tui/components/ComponentRationalePanel.js';
+import {
+  TokenReviewPanel,
+  collectTokenSuggestions,
+  type TokenPropSuggestion,
+  type TokenReviewToken,
+} from '../../../analyze/select/tui/components/TokenReviewPanel.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
 import type {
   PreviewAnnotation,
@@ -44,6 +52,7 @@ type CdfReviewEntry = {
 
 type GenerateReviewStepProps = {
   extractSessionId: string;
+  tokenSessionId?: string | null;
   onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
   onQuit: () => void;
   /**
@@ -94,6 +103,7 @@ const PANEL_HEIGHT = 22;
 
 export function AtomicGenerateReviewStep({
   extractSessionId,
+  tokenSessionId,
   onFinalize,
   onQuit,
   livePreview = true,
@@ -137,10 +147,18 @@ export function AtomicGenerateReviewStep({
   const [showRemovedPanel, setShowRemovedPanel] = useState(false);
   // Lifted rationale + source panels (replaces FieldEditor's right pane).
   // Mutually exclusive states.
-  const [panelOpen, setPanelOpen] = useState<'none' | 'prop-rationale' | 'component-rationale' | 'source'>('none');
+  const [panelOpen, setPanelOpen] = useState<
+    'none' | 'prop-rationale' | 'component-rationale' | 'source' | 'token-review'
+  >('none');
   const [panelScrollOffset, setPanelScrollOffset] = useState(0);
   const [textEntryActive, setTextEntryActive] = useState(false);
   const [componentRationale, setComponentRationale] = useState<ComponentRationale | null>(null);
+  const [tokenReviewRow, setTokenReviewRow] = useState(0);
+  const [tokenReviewEditing, setTokenReviewEditing] = useState(false);
+  const [tokenReviewEditCursor, setTokenReviewEditCursor] = useState(0);
+  const [tokenReviewEditSelection, setTokenReviewEditSelection] = useState<Set<string>>(new Set());
+  const [availableTokens, setAvailableTokens] = useState<TokenReviewToken[]>([]);
+  const tokenReviewSuggestedRef = useRef(new Map<string, string[]>());
   // Tracks the first `g` of a potential `gg` double-tap (jumps to top in
   // JSON-view + panel-focused state). Reset on any non-`g` key.
   const pendingGRef = useRef(false);
@@ -182,39 +200,55 @@ export function AtomicGenerateReviewStep({
   }, [livePreviewHook.status]);
   const livePreviewSpinner = SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length];
 
-  const loadEntries = (): { entries: CdfReviewEntry[]; error: string | null } => {
+  const loadEntries = (): { entries: CdfReviewEntry[]; tokens: TokenReviewToken[]; error: string | null } => {
     const db = openPipelineDb();
     let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }>;
+    let tokens: TokenReviewToken[] = [];
     try {
       cdfComponents = loadCDFComponents(db, extractSessionId);
+      tokens = loadDTCGTokens(db, tokenSessionId ?? extractSessionId).tokens.map((token) => ({
+        path: token.path,
+        kind: token.$type,
+      }));
     } finally {
       db.close();
     }
     if (cdfComponents.length === 0) {
-      return { entries: [], error: 'No generated definitions found for this session. Try re-running generate.' };
+      return { entries: [], tokens: [], error: 'No generated definitions found for this session. Try re-running generate.' };
     }
     const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
       key,
       entry,
       status: 'needs-review',
     }));
-    return { entries: sortComponentsForSidebar(reviewEntries), error: null };
+    return { entries: sortComponentsForSidebar(reviewEntries), tokens, error: null };
   };
 
   useEffect(() => {
-    try {
-      const { entries, error } = loadEntries();
-      if (error) {
-        setLoadError(error);
-      } else {
+    let disposed = false;
+    void (async () => {
+      try {
+        const { entries, tokens, error } = loadEntries();
+        if (error) {
+          if (!disposed) setLoadError(error);
+          return;
+        }
+        const catalog = tokensPath
+          ? (await readTokensFromPath('tokens', tokensPath)).map((token) => ({ path: token.path, kind: token.$type }))
+          : tokens;
+        if (disposed) return;
         setComponents(entries);
+        setAvailableTokens(catalog);
+      } catch (e: unknown) {
+        if (!disposed) setLoadError(String(e));
+      } finally {
+        if (!disposed) setLoading(false);
       }
-    } catch (e: unknown) {
-      setLoadError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    })();
+    return () => {
+      disposed = true;
+    };
+  }, [extractSessionId, tokenSessionId, tokensPath]);
 
   // Seed the undo/redo history once components are loaded.
   useEffect(() => {
@@ -256,12 +290,13 @@ export function AtomicGenerateReviewStep({
 
   const reloadFromSave = (): void => {
     try {
-      const { entries, error } = loadEntries();
+      const { entries, tokens, error } = loadEntries();
       if (error) {
         setLoadError(error);
         return;
       }
       setComponents(entries);
+      setAvailableTokens(tokens);
       historyRef.current?.reset({
         components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
         autoRejected: [],
@@ -304,6 +339,13 @@ export function AtomicGenerateReviewStep({
       db.close();
     }
   }, [selectedIdx, components, extractSessionId]);
+
+  useEffect(() => {
+    setTokenReviewRow(0);
+    setTokenReviewEditing(false);
+    setTokenReviewEditCursor(0);
+    setTokenReviewEditSelection(new Set());
+  }, [selectedIdx]);
 
   // Load component-level rationale for the selected component (drives the
   // `I` ComponentRationalePanel). Decoupled from review metadata so the data
@@ -425,6 +467,49 @@ export function AtomicGenerateReviewStep({
     setSaveError(null);
   };
 
+  const currentTokenSuggestions = (): TokenPropSuggestion[] => {
+    const current = components[selectedIdx];
+    if (!current) return [];
+    return collectTokenSuggestions(current.entry, availableTokens).map((suggestion) => {
+      const snapshotKey = `${current.key}::${suggestion.propName}`;
+      const suggested = tokenReviewSuggestedRef.current.get(snapshotKey) ?? [...suggestion.suggested];
+      tokenReviewSuggestedRef.current.set(snapshotKey, suggested);
+      return { ...suggestion, suggested };
+    });
+  };
+
+  const persistTokenFields = (propName: string, allowed: string[]): void => {
+    const current = components[selectedIdx];
+    if (!current) return;
+    const prop = current.entry.$properties[propName];
+    if (!prop) return;
+    const nextProp = { ...prop };
+    nextProp['$token.allowed'] = allowed;
+    const nextEntry: CDFComponentEntry = {
+      ...current.entry,
+      $properties: { ...current.entry.$properties, [propName]: nextProp },
+    };
+    setComponents((prev) => {
+      const next = prev.map((c, i) => (i === selectedIdx ? { ...c, entry: nextEntry } : c));
+      pushHistorySnapshot(next, `token-review:${propName}`);
+      return next;
+    });
+    const db = openPipelineDb();
+    try {
+      storeCDFComponents(db, extractSessionId, [{ key: current.key, entry: nextEntry }]);
+    } finally {
+      db.close();
+    }
+    livePreviewHook.trigger();
+  };
+
+  const handleTokenEditSave = (s: TokenPropSuggestion): void => {
+    const allowed = s.paths.filter((p) => tokenReviewEditSelection.has(p));
+    if (allowed.length === 0) return;
+    persistTokenFields(s.propName, allowed);
+    setTokenReviewEditing(false);
+  };
+
   const dialogOpen = showFinalize || showQuit;
 
   useImmediateInput((input, key) => {
@@ -490,6 +575,68 @@ export function AtomicGenerateReviewStep({
     // doesn't collide with FieldEditor input.
     if (input === 'd' && sidebarFocused && livePreview && removedComponents.length > 0) {
       setShowRemovedPanel(true);
+      return;
+    }
+
+    if (panelOpen === 'token-review') {
+      const suggestions = currentTokenSuggestions();
+      const row = suggestions[tokenReviewRow];
+
+      if (tokenReviewEditing) {
+        if (row && row.paths.length > 0) {
+          if (key.upArrow || input === 'k') {
+            setTokenReviewEditCursor((c) => Math.max(0, c - 1));
+            return;
+          }
+          if (key.downArrow || input === 'j') {
+            setTokenReviewEditCursor((c) => Math.min(row.paths.length - 1, c + 1));
+            return;
+          }
+          if (input === ' ' || key.return) {
+            const path = row.paths[tokenReviewEditCursor];
+            setTokenReviewEditSelection((prev) => {
+              const next = new Set(prev);
+              if (next.has(path) && next.size === 1) return next;
+              if (next.has(path)) next.delete(path);
+              else next.add(path);
+              return next;
+            });
+            return;
+          }
+          if (key.ctrl && input === 's') {
+            handleTokenEditSave(row);
+            return;
+          }
+        }
+        if (key.escape) {
+          setTokenReviewEditing(false);
+          return;
+        }
+        return;
+      }
+
+      if (key.upArrow || input === 'k') {
+        setTokenReviewRow((r) => Math.max(0, r - 1));
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        setTokenReviewRow((r) => Math.min(Math.max(0, suggestions.length - 1), r + 1));
+        return;
+      }
+      if (key.return && row) {
+        setTokenReviewEditCursor(0);
+        setTokenReviewEditSelection(new Set(row.allowed));
+        setTokenReviewEditing(true);
+        return;
+      }
+      if (key.escape) {
+        setPanelOpen('none');
+        return;
+      }
+      if (input === 't') {
+        setPanelOpen('none');
+        return;
+      }
       return;
     }
 
@@ -561,6 +708,11 @@ export function AtomicGenerateReviewStep({
       if (input === 's') {
         setPanelOpen('source');
         setPanelScrollOffset(() => 0);
+        return;
+      }
+      if (input === 't' && currentTokenSuggestions().length > 0) {
+        setPanelOpen('token-review');
+        setTokenReviewRow(0);
         return;
       }
     }
@@ -924,6 +1076,18 @@ export function AtomicGenerateReviewStep({
                       </Box>
                     );
                   })()
+                ) : panelOpen === 'token-review' ? (
+                  <TokenReviewPanel
+                    componentName={selected.key}
+                    suggestions={currentTokenSuggestions()}
+                    selectedRow={tokenReviewRow}
+                    editing={tokenReviewEditing}
+                    editCursor={tokenReviewEditCursor}
+                    editSelection={tokenReviewEditSelection}
+                    width={panelWidth}
+                    height={PANEL_HEIGHT}
+                    active={true}
+                  />
                 ) : showJson ? (
                   <JsonPanel
                     label="GENERATED DEFINITION (read-only)"
@@ -970,15 +1134,19 @@ export function AtomicGenerateReviewStep({
                 )}
                 {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
                 <Text dimColor>
-                  {sidebarFocused
+                  {panelOpen === 'token-review'
+                    ? '  [↑/↓] move  [Enter] edit allowed  [Esc] close'
+                    : sidebarFocused
                     ? '  [a] accept  [r] reject  [A] accept all  [i] prop rationale  [I] component rationale  [s] source  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
+                      (currentTokenSuggestions().length > 0 ? '  [t] token review' : '') +
                       '  [^z] undo  [^y] redo  [^r] reload  [F] finalize  [e/Tab] focus panel' +
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
                       '  [q] quit'
                     : showJson
                       ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
-                      : '  [Tab] focus list  (edit fields)'}
+                      : '  [Tab] focus list  (edit fields)' +
+                        (currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
                   {livePreviewHook.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
                   {livePreviewHook.disabled && <Text>{'  · live preview disabled'}</Text>}
                 </Text>

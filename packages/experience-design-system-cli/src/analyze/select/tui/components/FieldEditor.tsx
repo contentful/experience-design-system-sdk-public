@@ -63,6 +63,7 @@ type PropState = {
   description: string;
   values: string[];
   tokenKind: string;
+  allowed: string[];
   default: string | boolean | null;
 };
 
@@ -130,6 +131,9 @@ function parseToState(json: string): { state: EditorState; error: string | null 
       description: typeof p.$description === 'string' ? p.$description : '',
       values: Array.isArray(p.$values) ? (p.$values as string[]).filter((v) => typeof v === 'string') : [],
       tokenKind: typeof p['$token.kind'] === 'string' ? p['$token.kind'] : '',
+      allowed: Array.isArray(p['$token.allowed'])
+        ? (p['$token.allowed'] as unknown[]).filter((v): v is string => typeof v === 'string')
+        : [],
       default: defaultValue,
     };
   });
@@ -173,6 +177,7 @@ function serializeState(state: EditorState, originalJson: string): string {
     if (p.description) def.$description = p.description;
     if (p.type === 'enum' && p.values.length > 0) def.$values = p.values;
     if (p.type === 'token' && p.tokenKind) def['$token.kind'] = p.tokenKind;
+    if (p.type === 'token' && p.allowed.length > 0) def['$token.allowed'] = p.allowed;
     if (p.default !== null) {
       if (p.type === 'boolean' && typeof p.default === 'boolean') {
         def.$default = p.default;
@@ -399,6 +404,21 @@ function PropRow({
         </Box>
       )}
 
+      {selected && prop.type === 'token' && prop.category === 'design' && (
+        <Box paddingLeft={2} flexDirection="row" gap={1}>
+          <Text dimColor>allowed:</Text>
+          {activeField === 'allowed' ? (
+            <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
+              <Text dimColor>press [t] to edit allowed tokens</Text>
+            </Box>
+          ) : (
+            <Text color={prop.allowed.length > 0 ? PALETTE.info : undefined} dimColor={prop.allowed.length === 0}>
+              {prop.allowed.length > 0 ? prop.allowed.join(', ') : '(any)'}
+            </Text>
+          )}
+        </Box>
+      )}
+
       {selected && rationale && rationale.trim().length > 0 && (
         <Box paddingLeft={2} key={rowKey ? `rationale-${rowKey}` : undefined}>
           <Text dimColor>
@@ -609,17 +629,20 @@ function SlotRow({
   );
 }
 
-type PropField = 'type' | 'category' | 'required' | 'description' | 'tokenKind' | 'values' | 'default';
+type PropField = 'type' | 'category' | 'required' | 'description' | 'tokenKind' | 'allowed' | 'values' | 'default';
 type SlotField = 'required' | 'description' | 'allowedComponents';
 
 function propFields(prop: PropState): PropField[] {
   const fields: PropField[] = ['type', 'category', 'required'];
-  if (prop.type === 'token') fields.push('tokenKind');
+  if (prop.type === 'token') {
+    fields.push('tokenKind');
+  }
   if (prop.type === 'enum') fields.push('values');
   if (prop.type !== 'richtext' && prop.type !== 'media' && prop.type !== 'link') {
     fields.push('default');
   }
   fields.push('description');
+  if (prop.type === 'token' && prop.category === 'design') fields.push('allowed');
   return fields;
 }
 const SLOT_FIELDS: SlotField[] = ['required', 'allowedComponents', 'description'];
@@ -1262,7 +1285,12 @@ export function FieldEditor({
           ? options[(idx - 1 + options.length) % options.length]
           : options[(idx + 1) % options.length];
         const updated = { ...currentProp, type: next as PropState['type'] };
-        if (next !== 'token') updated.tokenKind = '';
+        if (next === 'token') {
+          updated.category = 'design';
+          updated.tokenKind ||= DESIGN_TOKEN_TYPES[0] ?? '';
+        } else {
+          updated.tokenKind = '';
+        }
         if (next !== 'enum') updated.values = [];
         const nextProps = props.map((p, i) => (i === propIdx ? updated : p));
         commit({ ...editorState, props: nextProps });

@@ -1839,6 +1839,7 @@ export function WizardApp({
         return (
           <FinalReviewHost
             extractSessionId={state.extractSessionId}
+            tokenSessionId={state.tokenSessionId}
             generatedCount={state.generatedCount}
             autoAccept={autoAcceptScope}
             compositionMode={compositionMode}
