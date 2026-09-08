@@ -230,7 +230,7 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
 }
 
 function applyDbMigrations(db: DatabaseSync): void {
-  const migrations = [
+  const migrations: Array<{ name: string; sql: string } | { name: string; apply: (db: DatabaseSync) => void }> = [
     {
       name: '001-raw-prop-token-paths',
       sql: `
@@ -266,6 +266,7 @@ function applyDbMigrations(db: DatabaseSync): void {
         );
       `,
     },
+    { name: '003-repair-raw-token-name-paths', apply: repairRawTokenNamePathsSchema },
   ];
 
   const hasAppliedMigration = db.prepare('SELECT 1 FROM migrations WHERE name = ?');
@@ -275,7 +276,11 @@ function applyDbMigrations(db: DatabaseSync): void {
 
     db.exec('BEGIN');
     try {
-      db.exec(migration.sql);
+      if ('apply' in migration) {
+        migration.apply(db);
+      } else {
+        db.exec(migration.sql);
+      }
       recordMigration.run(migration.name, new Date().toISOString());
       db.exec('COMMIT');
     } catch (e) {
@@ -488,6 +493,31 @@ function applyDbMigrations(db: DatabaseSync): void {
         PRIMARY KEY (input_hash, cli_version)
       );
     `);
+  }
+}
+
+function repairRawTokenNamePathsSchema(db: DatabaseSync): void {
+  const tableExists = db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'raw_token_name_paths'")
+    .get();
+
+  if (!tableExists) {
+    db.exec(`
+      CREATE TABLE raw_token_name_paths (
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        raw_name   TEXT NOT NULL,
+        path       TEXT NOT NULL,
+        source     TEXT NOT NULL CHECK (source IN ('automatic', 'manual')),
+        PRIMARY KEY (session_id, raw_name)
+      );
+    `);
+  } else {
+    const columns = db.prepare('PRAGMA table_info(raw_token_name_paths)').all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'source')) {
+      db.exec(
+        "ALTER TABLE raw_token_name_paths ADD COLUMN source TEXT NOT NULL DEFAULT 'automatic' CHECK (source IN ('automatic', 'manual'))",
+      );
+    }
   }
 }
 
