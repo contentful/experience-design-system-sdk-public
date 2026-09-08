@@ -8,8 +8,10 @@ import {
   updateStep,
   findLatestSessionForCommand,
   loadCDFComponents,
+  storeDTCGTokens,
 } from '../session/db.js';
 import { detectSlotCycles, formatSlotCycleReport } from '../apply/command.js';
+import { readTokensFromPath } from '../apply/manifest.js';
 import { PREVIEW_ERROR_PREFIX, VALIDATION_FAILED_CODE, parsePreviewValidationErrors } from '../apply/api-client.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
@@ -418,16 +420,17 @@ export async function runPipeline(
     steps.push({ step: 'generate components', status: 'complete', durationMs });
   }
 
+  // --tokens is already-classified DTCG input for apply, but map-tokens
+  // resolves defaults from the generated component session. Materialize the
+  // same leaves there before invoking its deterministic prepass.
+  if (extractSessionId && opts.tokens) {
+    const tokens = await readTokensFromPath('--tokens', opts.tokens);
+    storeDTCGTokens(db, extractSessionId, [], tokens);
+  }
+
   const mapTokensLabel = stepLabel('Mapping design tokens');
   const hasGeneratedComponents = extractSessionId !== null && loadCDFComponents(db, extractSessionId).length > 0;
-  if (opts.skipMapTokens) {
-    progressWriter(`${mapTokensLabel}–  skipped (--skip-map-tokens)`);
-    steps.push({
-      step: 'map tokens',
-      status: 'skipped',
-      reason: '--skip-map-tokens',
-    });
-  } else if (!extractSessionId || (opts.skipGenerate && !hasGeneratedComponents)) {
+  if (!extractSessionId || (opts.skipGenerate && !hasGeneratedComponents)) {
     const reason = extractSessionId ? 'no generated components' : 'no extract session';
     progressWriter(`${mapTokensLabel}–  skipped (${reason})`);
     steps.push({
@@ -439,9 +442,11 @@ export async function runPipeline(
     const mapTokensArgs = ['map', 'tokens', '--session', extractSessionId, '--agent', opts.agent];
     if (opts.model) mapTokensArgs.push('--model', opts.model);
     if (opts.noCache) mapTokensArgs.push('--no-cache');
+    if (opts.skipMapTokens) mapTokensArgs.push('--skip-agent');
 
     const mapTokensStepId = createStep(db, sessionId, 'map tokens', {
       extractSession: extractSessionId,
+      skipAgent: String(opts.skipMapTokens === true),
     });
     const t0MapTokens = Date.now();
     const rMapTokens = await runStep(mapTokensArgs, cliPath, sessionId);
@@ -461,7 +466,16 @@ export async function runPipeline(
       return { session: sessionId, project: projectRoot, steps };
     }
 
-    if (rMapTokens.stdout.includes('Nothing to map')) {
+    if (opts.skipMapTokens) {
+      updateStep(db, mapTokensStepId, 'complete', { deterministicOnly: 'true' });
+      progressWriter(`${mapTokensLabel}✓  defaults resolved (agent skipped)  (${(mapTokensDurationMs / 1000).toFixed(1)}s)`);
+      steps.push({
+        step: 'map tokens',
+        status: 'complete',
+        durationMs: mapTokensDurationMs,
+        detail: { deterministicOnly: true },
+      });
+    } else if (rMapTokens.stdout.includes('Nothing to map')) {
       updateStep(db, mapTokensStepId, 'complete', { applied: '0' });
       progressWriter(`${mapTokensLabel}–  skipped (no tokens in session)`);
       steps.push({
