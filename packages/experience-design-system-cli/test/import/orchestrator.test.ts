@@ -459,7 +459,7 @@ describe('runPipeline — map tokens step', () => {
     expect(stepNames.indexOf('map tokens')).toBeLessThan(stepNames.indexOf('apply push'));
   });
 
-  it('skips map tokens when opts.skipMapTokens is true', async () => {
+  it('runs deterministic default resolution but skips the agent when opts.skipMapTokens is true', async () => {
     const dir = await makeTempDir('orch-skip-map-tokens-');
 
     const cliPath = await makeFakeCli(dir, {
@@ -481,11 +481,14 @@ describe('runPipeline — map tokens step', () => {
     );
 
     const calls = await readCalls(dir);
-    expect(calls.find((c) => c[0] === 'map' && c[1] === 'tokens')).toBeUndefined();
+    const mapCall = calls.find((c) => c[0] === 'map' && c[1] === 'tokens');
+    expect(mapCall).toContain('--skip-agent');
 
     const mapStep = result.steps.find((s) => s.step === 'map tokens');
-    expect(mapStep?.status).toBe('skipped');
-    expect(mapStep?.reason).toBe('--skip-map-tokens');
+    expect(mapStep).toMatchObject({
+      status: 'complete',
+      detail: { deterministicOnly: true },
+    });
   });
 
   it('marks map tokens as skipped (not failed) when the session has nothing to map', async () => {

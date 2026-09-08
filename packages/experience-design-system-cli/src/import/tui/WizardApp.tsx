@@ -255,10 +255,12 @@ export function buildMapTokensArgs(opts: {
   agent: string;
   model?: string;
   noCache?: boolean;
+  skipAgent?: boolean;
 }): string[] {
   const args = ['map', 'tokens', '--session', opts.sessionId, '--agent', opts.agent];
   if (opts.model) args.push('--model', opts.model);
   if (opts.noCache) args.push('--no-cache');
+  if (opts.skipAgent) args.push('--skip-agent');
   return args;
 }
 
@@ -638,11 +640,6 @@ export function WizardApp({
   };
 
   const runMapTokens = async (sessionId: string): Promise<boolean> => {
-    if (skipMapTokens) {
-      update({ mapTokensEligible: false });
-      return true;
-    }
-
     let mappablePropCount = 0;
     let rawTokenCount = 0;
     try {
@@ -687,6 +684,7 @@ export function WizardApp({
       agent: state.agent,
       ...(state.agentModel ? { model: state.agentModel } : {}),
       noCache: effectiveNoCache,
+      skipAgent: skipMapTokens,
     });
 
     const result = await runCli(args);
@@ -1942,7 +1940,7 @@ export function WizardApp({
             totalSteps={totalSteps}
             title="Mapping design tokens"
             description="Finding the design tokens that are valid for each generated token property."
-            detail={`Running ${state.agent}...`}
+            detail={skipMapTokens ? 'Resolving token defaults...' : `Running ${state.agent}...`}
           />
         );
       }
