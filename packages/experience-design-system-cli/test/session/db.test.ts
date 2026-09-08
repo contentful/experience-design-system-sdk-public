@@ -30,6 +30,9 @@ import {
   loadScopeComponents,
   replaceRawPropTokenPaths,
   loadRawPropTokenPaths,
+  replaceRawTokenNamePaths,
+  loadRawTokenNamePaths,
+  loadRawTokenNamePathRows,
   computeMapTokensInputHash,
   countMappableTokenProps,
   countRawTokens,
@@ -281,6 +284,45 @@ describe('openPipelineDb', () => {
         reopened.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('001-raw-prop-token-paths'),
       ).toEqual({ count: 1 });
       reopened.close();
+    });
+  });
+});
+
+describe('raw token name paths', () => {
+  it('replaces a session-scoped exact source-reference sidecar', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+
+      replaceRawTokenNamePaths(db, sessionId, {
+        'tokens.borderRadiusSmall': 'border-radius.border-radius-small',
+        'theme.colors.primary': 'colors.brand.primary',
+      });
+      replaceRawTokenNamePaths(db, sessionId, {
+        'tokens.borderRadiusSmall': 'border-radius.border-radius-small',
+      });
+
+      expect(loadRawTokenNamePaths(db, sessionId)).toEqual({
+        'tokens.borderRadiusSmall': 'border-radius.border-radius-small',
+      });
+      db.close();
+    });
+  });
+
+  it('preserves manual mappings when automatic resolution is empty or conflicts', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+
+      replaceRawTokenNamePaths(db, sessionId, { 'tokens.primary': 'colors.brand.primary' });
+      replaceRawTokenNamePaths(db, sessionId, { 'tokens.primary': 'colors.brand.manual' }, 'manual');
+      replaceRawTokenNamePaths(db, sessionId, {});
+      replaceRawTokenNamePaths(db, sessionId, { 'tokens.primary': 'colors.brand.primary' });
+
+      expect(loadRawTokenNamePathRows(db, sessionId)).toEqual([
+        { rawName: 'tokens.primary', path: 'colors.brand.manual', source: 'manual' },
+      ]);
+      db.close();
     });
   });
 });
@@ -3094,6 +3136,36 @@ describe('generation cache', () => {
           kind: 'set',
           paths: ['colors.surface.default', 'colors.surface.raised'],
         },
+      ]);
+      db.close();
+    });
+  });
+
+  it('copyMapTokensFromCache preserves target manual defaults while copying automatic defaults', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId: sourceId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      replaceRawTokenNamePaths(db, sourceId, {
+        'tokens.automatic': 'colors.brand.automatic',
+        'tokens.conflict': 'colors.brand.automatic-conflict',
+      });
+
+      const { sessionId: targetId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      replaceRawTokenNamePaths(
+        db,
+        targetId,
+        {
+          'tokens.manual': 'colors.brand.manual',
+          'tokens.conflict': 'colors.brand.manual-conflict',
+        },
+        'manual',
+      );
+
+      copyMapTokensFromCache(db, sourceId, targetId);
+      expect(loadRawTokenNamePathRows(db, targetId)).toEqual([
+        { rawName: 'tokens.automatic', path: 'colors.brand.automatic', source: 'automatic' },
+        { rawName: 'tokens.conflict', path: 'colors.brand.manual-conflict', source: 'manual' },
+        { rawName: 'tokens.manual', path: 'colors.brand.manual', source: 'manual' },
       ]);
       db.close();
     });
