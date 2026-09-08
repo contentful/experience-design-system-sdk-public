@@ -85,7 +85,14 @@ async function seedGeneratedSessionWithAliasDefault(dbPath: string): Promise<str
     {
       ...RAW[0]!,
       props: [
-        { name: 'bgColor', type: 'string', required: false, category: 'design', defaultValue: 'tokens.surfaceDefault' },
+        {
+          name: 'bgColor',
+          type: 'string',
+          required: false,
+          category: 'design',
+          defaultValue: '4px',
+          tokenReference: 'tokens.surfaceDefault',
+        },
         { name: 'label', type: 'string', required: true, category: 'content' },
       ],
     },
@@ -203,7 +210,7 @@ describe('map tokens command', () => {
     expect(stdout).toContain('Token path index');
   });
 
-  it('resolves defaults before --print-prompt without replacing the extracted source value', async () => {
+  it('resolves a token reference before --print-prompt without replacing the extracted literal default', async () => {
     const dbDir = await createTempDir('map-tokens-db-');
     const dbPath = join(dbDir, 'pipeline.db');
     const sessionId = await seedGeneratedSessionWithAliasDefault(dbPath);
@@ -217,7 +224,8 @@ describe('map tokens command', () => {
     expect(loadRawTokenNamePaths(db, sessionId)).toEqual({
       'tokens.surfaceDefault': 'colors.surface.surface-default',
     });
-    expect(loadRawComponents(db, sessionId)[0]?.props[0]?.defaultValue).toBe('tokens.surfaceDefault');
+    expect(loadRawComponents(db, sessionId)[0]?.props[0]?.defaultValue).toBe('4px');
+    expect(loadRawComponents(db, sessionId)[0]?.props[0]?.tokenReference).toBe('tokens.surfaceDefault');
     expect(loadCDFComponents(db, sessionId)[0]?.entry.$properties.bgColor?.$default).toBe(
       'colors.surface.surface-default',
     );
@@ -265,7 +273,7 @@ describe('map tokens command', () => {
     expect(loadRawTokenNamePaths(db, sessionB)).toEqual({
       'tokens.surfaceDefault': 'colors.surface.surface-default',
     });
-    expect(loadRawComponents(db, sessionB)[0]?.props[0]?.defaultValue).toBe('tokens.surfaceDefault');
+    expect(loadRawComponents(db, sessionB)[0]?.props[0]?.defaultValue).toBe('4px');
     db.close();
   });
 

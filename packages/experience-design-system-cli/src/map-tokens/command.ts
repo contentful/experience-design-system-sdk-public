@@ -103,22 +103,29 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
 
     await bindAnalyticsSessionId(sessionId);
 
-    // Resolve only extracted defaults on generated design-token props. Values
-    // stay out of this prepass; it is a reproducible path/type lookup.
+    // Resolve generated design-token props by their source reference when one
+    // was extracted. The rendered default value stays out of this prepass.
     const rawDefaults = db
       .prepare(
-        `SELECT rp.default_value, rp.cdf_token_kind
+        `SELECT COALESCE(rp.token_reference, rp.default_value) AS default_reference, rp.cdf_token_kind
          FROM raw_props rp
          JOIN raw_components rc ON rc.session_id = rp.session_id AND rc.component_id = rp.component_id
          WHERE rp.session_id = ? AND rc.status = 'generated'
-           AND rp.cdf_type = 'token' AND rp.cdf_category = 'design' AND rp.default_value IS NOT NULL`,
+           AND rp.cdf_type = 'token' AND rp.cdf_category = 'design'
+           AND COALESCE(rp.token_reference, rp.default_value) IS NOT NULL`,
       )
-      .all(sessionId) as Array<{ default_value: string; cdf_token_kind: string | null }>;
+      .all(sessionId) as Array<{
+      default_reference: string;
+      cdf_token_kind: string | null;
+    }>;
     const tokenLeaves = db
       .prepare('SELECT path, type FROM raw_tokens WHERE session_id = ? ORDER BY path')
       .all(sessionId) as Array<{ path: string; type: string }>;
     const defaultResolution = resolveTokenDefaults(
-      rawDefaults.map((row) => ({ rawDefault: row.default_value, tokenKind: row.cdf_token_kind })),
+      rawDefaults.map((row) => ({
+        rawDefault: row.default_reference,
+        tokenKind: row.cdf_token_kind,
+      })),
       tokenLeaves,
     );
     const manualMappings = new Map(
