@@ -6,6 +6,8 @@ For every design-category, token-typed prop already present in the generated CDF
 
 This is a narrowing fallback, not a classification step. It does not re-classify props, re-derive categories, or touch anything that isn't already a design-category `token` prop. It also does not name a candidate universe — the universe is implicit: every token in the library whose type matches the prop's `$token.kind`. Your only job is to decide, from source evidence, whether that universe should be narrowed further.
 
+Default-path resolution is deterministic and happens in the CLI before this skill runs. A resolved `$default` is not model input for a mapping decision and never asks you to emit a mapping. It remains separate from `$token.allowed` inference: a default alone does not restrict the allowed list.
+
 ---
 
 ## Prerequisites — Input

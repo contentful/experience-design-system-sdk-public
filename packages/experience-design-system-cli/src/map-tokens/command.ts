@@ -28,6 +28,8 @@ import {
   lookupCache,
   storeCache,
   copyMapTokensFromCache,
+  replaceRawTokenNamePaths,
+  loadRawTokenNamePathRows,
 } from '../session/db.js';
 import { hashPromptForSkill } from '../session/cache-keys.js';
 import { rebuildDTCGTree } from '../print/command.js';
@@ -37,6 +39,7 @@ import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js';
 import { MapTokensView } from './tui/MapTokensView.js';
 import type { MapTokensViewResult } from './tui/MapTokensView.js';
+import { resolveTokenDefaults } from './resolve-defaults.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -48,6 +51,7 @@ interface MapTokensOptions {
   model?: string;
   printPrompt?: boolean;
   cache?: boolean;
+  skipAgent?: boolean;
 }
 
 function die(message: string): never {
@@ -80,12 +84,13 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
   const savedCreds = await readExperiencesCredentials();
   const agentName = opts.agent ?? savedCreds.agent;
   const model = opts.model ?? savedCreds.agentModel;
-  if (!agentName || !isAgentName(agentName)) {
+  const configuredAgent = agentName && isAgentName(agentName) ? agentName : undefined;
+  if (!opts.skipAgent && !configuredAgent) {
     die(
       `Error: no agent configured. Pass --agent <name> or run experiences setup. Accepted values: ${AGENT_NAMES.join(', ')}`,
     );
   }
-  const agent = agentName;
+  const resultAgent = configuredAgent ?? 'skipped';
 
   const db = openPipelineDb();
   try {
@@ -98,10 +103,57 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
 
     await bindAnalyticsSessionId(sessionId);
 
-    // Whether the session was auto-resolved (which already required a completed
-    // "generate components" step) or passed explicitly via --session, what actually
-    // matters is that the session has real generated CDF component data to map
-    // tokens onto — so verify that directly instead of re-checking the steps table.
+    // Resolve generated design-token props by their source reference when one
+    // was extracted. The rendered default value stays out of this prepass.
+    const rawDefaults = db
+      .prepare(
+        `SELECT COALESCE(rp.token_reference, rp.default_value) AS default_reference, rp.cdf_token_kind
+         FROM raw_props rp
+         JOIN raw_components rc ON rc.session_id = rp.session_id AND rc.component_id = rp.component_id
+         WHERE rp.session_id = ? AND rc.status = 'generated'
+           AND rp.cdf_type = 'token' AND rp.cdf_category = 'design'
+           AND COALESCE(rp.token_reference, rp.default_value) IS NOT NULL`,
+      )
+      .all(sessionId) as Array<{
+      default_reference: string;
+      cdf_token_kind: string | null;
+    }>;
+    const tokenLeaves = db
+      .prepare('SELECT path, type FROM raw_tokens WHERE session_id = ? ORDER BY path')
+      .all(sessionId) as Array<{ path: string; type: string }>;
+    const defaultResolution = resolveTokenDefaults(
+      rawDefaults.map((row) => ({
+        rawDefault: row.default_reference,
+        tokenKind: row.cdf_token_kind,
+      })),
+      tokenLeaves,
+    );
+    const manualMappings = new Map(
+      loadRawTokenNamePathRows(db, sessionId)
+        .filter((row) => row.source === 'manual')
+        .map((row) => [row.rawName, row.path]),
+    );
+    const automaticMappings: Record<string, string> = {};
+    const defaultDiagnostics = defaultResolution.diagnostics.map((diagnostic) => diagnostic.message);
+    for (const [rawName, path] of Object.entries(defaultResolution.mappings)) {
+      const manualPath = manualMappings.get(rawName);
+      if (manualPath === undefined) {
+        automaticMappings[rawName] = path;
+      } else if (manualPath !== path) {
+        defaultDiagnostics.push(
+          `Token default '${rawName}' automatically resolves to '${path}', but manual mapping '${manualPath}' is retained.`,
+        );
+      }
+    }
+    replaceRawTokenNamePaths(db, sessionId, automaticMappings, 'automatic');
+    if (defaultDiagnostics.length > 0) {
+      process.stderr.write(
+        `Unresolved token defaults:\n${defaultDiagnostics.map((diagnostic) => `  ${diagnostic}`).join('\n')}\n`,
+      );
+    }
+
+    // Build this projection exactly once after persisting defaults. The same
+    // snapshot is used for eligibility and prompt rendering.
     const cdfEntries = loadCDFComponents(db, sessionId);
     if (cdfEntries.length === 0) {
       die(
@@ -137,6 +189,19 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       await exitWithAnalytics(0);
       return;
     }
+
+    if (opts.skipAgent) {
+      const stepId = createStep(db, sessionId, 'map tokens', {
+        agent: resultAgent,
+        model: model ?? '',
+        skipAgent: 'true',
+      });
+      updateStep(db, stepId, 'complete', { applied: '0', skipAgent: 'true' });
+      await renderResult({ agent: resultAgent, sessionId, applied: 0, cached: false });
+      return;
+    }
+
+    const agent = configuredAgent!;
 
     const noCache = opts.cache === false || process.env.EDS_NO_CACHE === '1';
     const promptHash = await hashPromptForSkill('map-tokens', agent, model);
@@ -213,6 +278,7 @@ export function registerMapTokensCommand(program: Command): void {
     .description('Invoke a coding agent to suggest $token.allowed for design-category token props')
     .option('--session <id>', 'Session ID from generate components (defaults to most recent)')
     .option('--print-prompt', 'Print the prompt without invoking the agent')
+    .option('--skip-agent', 'Resolve token defaults without agentic $token.allowed inference')
     .option('--no-cache', 'Bypass the map-tokens cache and force a re-run');
 
   addAgentModelOptions(tokensCmd).action(async (opts: MapTokensOptions) => {

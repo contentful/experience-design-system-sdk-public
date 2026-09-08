@@ -30,6 +30,9 @@ import {
   loadScopeComponents,
   replaceRawPropTokenPaths,
   loadRawPropTokenPaths,
+  replaceRawTokenNamePaths,
+  loadRawTokenNamePaths,
+  loadRawTokenNamePathRows,
   computeMapTokensInputHash,
   countMappableTokenProps,
   countRawTokens,
@@ -77,6 +80,9 @@ describe('openPipelineDb', () => {
       expect(names).toContain('migrations');
       expect(names).toContain('raw_tokens');
       expect(names).toContain('raw_token_groups');
+      expect(
+        db.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('003-repair-raw-token-name-paths'),
+      ).toEqual({ count: 1 });
       db.close();
     });
   });
@@ -281,6 +287,116 @@ describe('openPipelineDb', () => {
         reopened.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('001-raw-prop-token-paths'),
       ).toEqual({ count: 1 });
       reopened.close();
+    });
+  });
+
+  it('repairs a legacy raw_token_name_paths table when migration 002 is already recorded', async () => {
+    await withTempDb((dbPath) => {
+      const initial = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
+      initial.exec(`
+        DROP TABLE raw_token_name_paths;
+        CREATE TABLE raw_token_name_paths (
+          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          raw_name   TEXT NOT NULL,
+          path       TEXT NOT NULL,
+          PRIMARY KEY (session_id, raw_name)
+        );
+      `);
+      initial
+        .prepare('INSERT INTO raw_token_name_paths (session_id, raw_name, path) VALUES (?, ?, ?)')
+        .run(sessionId, 'theme.colors.primary', 'colors.brand.primary');
+      expect(
+        initial.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('002-raw-token-name-paths'),
+      ).toEqual({ count: 1 });
+      initial.prepare('DELETE FROM migrations WHERE name = ?').run('003-repair-raw-token-name-paths');
+      initial.close();
+
+      const repaired = openPipelineDb(dbPath);
+      expect(loadRawTokenNamePathRows(repaired, sessionId)).toEqual([
+        { rawName: 'theme.colors.primary', path: 'colors.brand.primary', source: 'automatic' },
+      ]);
+      const migration = repaired
+        .prepare('SELECT applied_at FROM migrations WHERE name = ?')
+        .get('003-repair-raw-token-name-paths') as { applied_at: string };
+      expect(migration.applied_at).toEqual(expect.any(String));
+      repaired.close();
+
+      const reopened = openPipelineDb(dbPath);
+      expect(
+        reopened.prepare('SELECT applied_at FROM migrations WHERE name = ?').get('003-repair-raw-token-name-paths'),
+      ).toEqual(migration);
+      reopened.close();
+    });
+  });
+
+  it('recreates raw_token_name_paths when migration 002 is already recorded', async () => {
+    await withTempDb((dbPath) => {
+      const initial = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
+      initial.exec('DROP TABLE raw_token_name_paths');
+      expect(
+        initial.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('002-raw-token-name-paths'),
+      ).toEqual({ count: 1 });
+      initial.prepare('DELETE FROM migrations WHERE name = ?').run('003-repair-raw-token-name-paths');
+      initial.close();
+
+      const repaired = openPipelineDb(dbPath);
+      const columns = repaired.prepare('PRAGMA table_info(raw_token_name_paths)').all() as Array<{ name: string }>;
+      expect(columns.map((column) => column.name)).toEqual(['session_id', 'raw_name', 'path', 'source']);
+      replaceRawTokenNamePaths(repaired, sessionId, { 'theme.colors.primary': 'colors.brand.primary' });
+      expect(loadRawTokenNamePathRows(repaired, sessionId)).toEqual([
+        { rawName: 'theme.colors.primary', path: 'colors.brand.primary', source: 'automatic' },
+      ]);
+      expect(
+        repaired.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('003-repair-raw-token-name-paths'),
+      ).toEqual({ count: 1 });
+      repaired.close();
+
+      const reopened = openPipelineDb(dbPath);
+      expect(
+        reopened.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('003-repair-raw-token-name-paths'),
+      ).toEqual({ count: 1 });
+      reopened.close();
+    });
+  });
+});
+
+describe('raw token name paths', () => {
+  it('replaces a session-scoped exact source-reference sidecar', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+
+      replaceRawTokenNamePaths(db, sessionId, {
+        'tokens.borderRadiusSmall': 'border-radius.border-radius-small',
+        'theme.colors.primary': 'colors.brand.primary',
+      });
+      replaceRawTokenNamePaths(db, sessionId, {
+        'tokens.borderRadiusSmall': 'border-radius.border-radius-small',
+      });
+
+      expect(loadRawTokenNamePaths(db, sessionId)).toEqual({
+        'tokens.borderRadiusSmall': 'border-radius.border-radius-small',
+      });
+      db.close();
+    });
+  });
+
+  it('preserves manual mappings when automatic resolution is empty or conflicts', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+
+      replaceRawTokenNamePaths(db, sessionId, { 'tokens.primary': 'colors.brand.primary' });
+      replaceRawTokenNamePaths(db, sessionId, { 'tokens.primary': 'colors.brand.manual' }, 'manual');
+      replaceRawTokenNamePaths(db, sessionId, {});
+      replaceRawTokenNamePaths(db, sessionId, { 'tokens.primary': 'colors.brand.primary' });
+
+      expect(loadRawTokenNamePathRows(db, sessionId)).toEqual([
+        { rawName: 'tokens.primary', path: 'colors.brand.manual', source: 'manual' },
+      ]);
+      db.close();
     });
   });
 });
@@ -3094,6 +3210,36 @@ describe('generation cache', () => {
           kind: 'set',
           paths: ['colors.surface.default', 'colors.surface.raised'],
         },
+      ]);
+      db.close();
+    });
+  });
+
+  it('copyMapTokensFromCache preserves target manual defaults while copying automatic defaults', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId: sourceId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      replaceRawTokenNamePaths(db, sourceId, {
+        'tokens.automatic': 'colors.brand.automatic',
+        'tokens.conflict': 'colors.brand.automatic-conflict',
+      });
+
+      const { sessionId: targetId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      replaceRawTokenNamePaths(
+        db,
+        targetId,
+        {
+          'tokens.manual': 'colors.brand.manual',
+          'tokens.conflict': 'colors.brand.manual-conflict',
+        },
+        'manual',
+      );
+
+      copyMapTokensFromCache(db, sourceId, targetId);
+      expect(loadRawTokenNamePathRows(db, targetId)).toEqual([
+        { rawName: 'tokens.automatic', path: 'colors.brand.automatic', source: 'automatic' },
+        { rawName: 'tokens.conflict', path: 'colors.brand.manual-conflict', source: 'manual' },
+        { rawName: 'tokens.manual', path: 'colors.brand.manual', source: 'manual' },
       ]);
       db.close();
     });

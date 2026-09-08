@@ -230,7 +230,7 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
 }
 
 function applyDbMigrations(db: DatabaseSync): void {
-  const migrations = [
+  const migrations: Array<{ name: string; sql: string } | { name: string; apply: (db: DatabaseSync) => void }> = [
     {
       name: '001-raw-prop-token-paths',
       sql: `
@@ -254,6 +254,19 @@ function applyDbMigrations(db: DatabaseSync): void {
         );
       `,
     },
+    {
+      name: '002-raw-token-name-paths',
+      sql: `
+        CREATE TABLE IF NOT EXISTS raw_token_name_paths (
+          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          raw_name   TEXT NOT NULL,
+          path       TEXT NOT NULL,
+          source     TEXT NOT NULL CHECK (source IN ('automatic', 'manual')),
+          PRIMARY KEY (session_id, raw_name)
+        );
+      `,
+    },
+    { name: '003-repair-raw-token-name-paths', apply: repairRawTokenNamePathsSchema },
   ];
 
   const hasAppliedMigration = db.prepare('SELECT 1 FROM migrations WHERE name = ?');
@@ -263,7 +276,11 @@ function applyDbMigrations(db: DatabaseSync): void {
 
     db.exec('BEGIN');
     try {
-      db.exec(migration.sql);
+      if ('apply' in migration) {
+        migration.apply(db);
+      } else {
+        db.exec(migration.sql);
+      }
       recordMigration.run(migration.name, new Date().toISOString());
       db.exec('COMMIT');
     } catch (e) {
@@ -479,7 +496,93 @@ function applyDbMigrations(db: DatabaseSync): void {
   }
 }
 
+function repairRawTokenNamePathsSchema(db: DatabaseSync): void {
+  const tableExists = db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'raw_token_name_paths'")
+    .get();
+
+  if (!tableExists) {
+    db.exec(`
+      CREATE TABLE raw_token_name_paths (
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        raw_name   TEXT NOT NULL,
+        path       TEXT NOT NULL,
+        source     TEXT NOT NULL CHECK (source IN ('automatic', 'manual')),
+        PRIMARY KEY (session_id, raw_name)
+      );
+    `);
+  } else {
+    const columns = db.prepare('PRAGMA table_info(raw_token_name_paths)').all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'source')) {
+      db.exec(
+        "ALTER TABLE raw_token_name_paths ADD COLUMN source TEXT NOT NULL DEFAULT 'automatic' CHECK (source IN ('automatic', 'manual'))",
+      );
+    }
+  }
+}
+
 export type RawPropTokenPathKind = 'set' | 'allowed';
+
+/** An exact source token reference paired with its canonical DTCG path. */
+export type RawTokenNamePaths = Record<string, string>;
+export type RawTokenNamePathSource = 'automatic' | 'manual';
+
+export interface RawTokenNamePath {
+  rawName: string;
+  path: string;
+  source: RawTokenNamePathSource;
+}
+
+/**
+ * Replaces the session's exact source-reference-to-DTCG-path sidecar.
+ * Source references are retained verbatim; normalisation belongs to the
+ * deterministic resolver, not to persistence or CDF emission.
+ */
+export function replaceRawTokenNamePaths(
+  db: DatabaseSync,
+  sessionId: string,
+  tokenNamePaths: RawTokenNamePaths,
+  source: RawTokenNamePathSource = 'automatic',
+): void {
+  const entries = Object.entries(tokenNamePaths);
+  const deletePaths = db.prepare('DELETE FROM raw_token_name_paths WHERE session_id = ? AND source = ?');
+  const insertPath = db.prepare(
+    'INSERT OR IGNORE INTO raw_token_name_paths (session_id, raw_name, path, source) VALUES (?, ?, ?, ?)',
+  );
+  const deleteAutomaticByName = db.prepare(
+    "DELETE FROM raw_token_name_paths WHERE session_id = ? AND raw_name = ? AND source = 'automatic'",
+  );
+
+  db.exec('BEGIN');
+  try {
+    deletePaths.run(sessionId, source);
+    for (const [rawName, path] of entries) {
+      if (source === 'manual') deleteAutomaticByName.run(sessionId, rawName);
+      insertPath.run(sessionId, rawName, path, source);
+    }
+    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), sessionId);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
+/** Loads the exact source-reference-to-DTCG-path sidecar for a session. */
+export function loadRawTokenNamePaths(db: DatabaseSync, sessionId: string): RawTokenNamePaths {
+  const rows = db
+    .prepare('SELECT raw_name, path FROM raw_token_name_paths WHERE session_id = ? ORDER BY raw_name')
+    .all(sessionId) as Array<{ raw_name: string; path: string }>;
+  return Object.fromEntries(rows.map((row) => [row.raw_name, row.path]));
+}
+
+export function loadRawTokenNamePathRows(db: DatabaseSync, sessionId: string): RawTokenNamePath[] {
+  return (
+    db
+      .prepare('SELECT raw_name, path, source FROM raw_token_name_paths WHERE session_id = ? ORDER BY raw_name')
+      .all(sessionId) as Array<{ raw_name: string; path: string; source: RawTokenNamePathSource }>
+  ).map((row) => ({ rawName: row.raw_name, path: row.path, source: row.source }));
+}
 
 /**
  * Where a prop's token-path list came from. 'agent' is a map-tokens suggestion,
@@ -1749,7 +1852,7 @@ export function loadCDFComponents(
 
   const props = db
     .prepare(
-      `SELECT component_id, name, required, default_value, description,
+      `SELECT component_id, name, required, default_value, token_reference, description,
               cdf_type, cdf_category, cdf_token_kind, position
        FROM raw_props
        WHERE session_id = ? AND cdf_type IS NOT NULL AND cdf_type != 'excluded'
@@ -1760,6 +1863,7 @@ export function loadCDFComponents(
     name: string;
     required: number;
     default_value: string | null;
+    token_reference: string | null;
     description: string | null;
     cdf_type: string;
     cdf_category: string;
@@ -1814,6 +1918,19 @@ export function loadCDFComponents(
     path: string;
   }>;
 
+  // The extracted source default stays in raw_props. This sidecar is only
+  // consulted for CDF projection, after confirming it still names a matching
+  // DTCG leaf in this session.
+  const resolvedDefaultPaths = loadRawTokenNamePaths(db, sessionId);
+  const tokenTypeByPath = new Map(
+    (
+      db.prepare('SELECT path, type FROM raw_tokens WHERE session_id = ?').all(sessionId) as Array<{
+        path: string;
+        type: string;
+      }>
+    ).map((token) => [token.path, token.type]),
+  );
+
   const propsByComponent = groupBy(props, (p) => p.component_id);
   const allowedValuesByProp = groupBy(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
   const slotsByComponent = groupBy(slots, (s) => s.component_id);
@@ -1834,15 +1951,24 @@ export function loadCDFComponents(
         $category: p.cdf_category as CDFComponentEntry['$properties'][string]['$category'],
       };
       if (p.required) propDef.$required = true;
+      const isTokenProp = p.cdf_type === 'token' && p.cdf_category === 'design';
+      const defaultReference = p.token_reference ?? p.default_value;
+      const resolvedDefault =
+        isTokenProp && p.cdf_token_kind !== null && defaultReference !== null
+          ? resolvedDefaultPaths[defaultReference]
+          : undefined;
+      const compatibleResolvedDefault =
+        resolvedDefault !== undefined && tokenTypeByPath.get(resolvedDefault) === p.cdf_token_kind
+          ? resolvedDefault
+          : undefined;
       if (p.default_value !== null) {
         if (p.cdf_type === 'boolean') {
           propDef.$default = p.default_value === 'true';
         } else {
-          propDef.$default = p.default_value;
+          propDef.$default = compatibleResolvedDefault ?? p.default_value;
         }
       }
       if (p.description !== null) propDef.$description = p.description;
-      const isTokenProp = p.cdf_type === 'token' && p.cdf_category === 'design';
       // A token prop's options list is design token paths, written below. Its
       // extracted variant names stay in the session as scoping input only.
       if (!isTokenProp && av && av.length > 0) propDef.$values = av.map((v) => v.value);
@@ -2357,21 +2483,38 @@ export function computeTokenInputHash(rawTokenContent: string): string {
 export function computeMapTokensInputHash(db: DatabaseSync, sessionId: string): string {
   const props = db
     .prepare(
-      `SELECT rc.name AS component_name, rp.name AS prop_name, rp.cdf_token_kind
+      `SELECT rc.name AS component_name, rp.name AS prop_name, rp.cdf_token_kind, rp.default_value, rp.token_reference
        FROM raw_props rp
        JOIN raw_components rc ON rc.session_id = rp.session_id AND rc.component_id = rp.component_id
        WHERE rp.session_id = ? AND rp.cdf_type = 'token' AND rp.cdf_category = 'design'
        ORDER BY rc.name, rp.name`,
     )
-    .all(sessionId) as Array<{ component_name: string; prop_name: string; cdf_token_kind: string | null }>;
+    .all(sessionId) as Array<{
+    component_name: string;
+    prop_name: string;
+    cdf_token_kind: string | null;
+    default_value: string | null;
+    token_reference: string | null;
+  }>;
 
   const tokens = db
     .prepare(`SELECT path, type FROM raw_tokens WHERE session_id = ? ORDER BY path`)
     .all(sessionId) as Array<{ path: string; type: string }>;
 
+  const defaultMappings = db
+    .prepare('SELECT raw_name, path, source FROM raw_token_name_paths WHERE session_id = ? ORDER BY raw_name')
+    .all(sessionId) as Array<{ raw_name: string; path: string; source: RawTokenNamePathSource }>;
+
   const payload = {
-    props: props.map((p) => ({ component: p.component_name, prop: p.prop_name, tokenKind: p.cdf_token_kind })),
+    props: props.map((p) => ({
+      component: p.component_name,
+      prop: p.prop_name,
+      tokenKind: p.cdf_token_kind,
+      rawDefault: p.default_value,
+      tokenReference: p.token_reference,
+    })),
     tokens,
+    defaultMappings,
   };
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
@@ -2713,6 +2856,20 @@ export function copyMapTokensFromCache(db: DatabaseSync, sourceSessionId: string
   let copiedCount = 0;
   db.exec('BEGIN');
   try {
+    // Default resolution is map-tokens output alongside the agent's allowlist.
+    // This copies only the sidecar, never the target's extracted raw defaults.
+    db.prepare("DELETE FROM raw_token_name_paths WHERE session_id = ? AND source = 'automatic'").run(targetSessionId);
+    db.prepare(
+      `INSERT INTO raw_token_name_paths (session_id, raw_name, path, source)
+       SELECT ?, raw_name, path, source FROM raw_token_name_paths
+       WHERE session_id = ? AND source = 'automatic'
+         AND NOT EXISTS (
+           SELECT 1 FROM raw_token_name_paths target
+           WHERE target.session_id = ? AND target.raw_name = raw_token_name_paths.raw_name
+             AND target.source = 'manual'
+         )`,
+    ).run(targetSessionId, sourceSessionId, targetSessionId);
+
     const sourceRows = db
       .prepare(
         `SELECT rc.name AS component_name, rptp.prop_name, rptp.kind, rptp.source, rptp.position, rptp.path
