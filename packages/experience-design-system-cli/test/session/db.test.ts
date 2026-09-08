@@ -278,7 +278,6 @@ describe('openPipelineDb', () => {
       db2.close();
     });
   });
-
 });
 
 describe('raw token name paths', () => {
