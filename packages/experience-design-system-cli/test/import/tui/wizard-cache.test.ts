@@ -73,6 +73,16 @@ describe('wizard map-tokens step', () => {
     ]);
   });
 
+  it('can resolve defaults without invoking the agent', () => {
+    expect(
+      buildMapTokensArgs({
+        sessionId: 'generated-session',
+        agent: 'claude',
+        skipAgent: true,
+      }),
+    ).toEqual(['map', 'tokens', '--session', 'generated-session', '--agent', 'claude', '--skip-agent']);
+  });
+
   it('requires both mappable props and raw tokens before invoking the agent', () => {
     expect(shouldRunMapTokens({ mappablePropCount: 1, rawTokenCount: 1 })).toBe(true);
     expect(shouldRunMapTokens({ mappablePropCount: 0, rawTokenCount: 1 })).toBe(false);
