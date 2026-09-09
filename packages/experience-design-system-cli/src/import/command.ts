@@ -438,7 +438,6 @@ export function registerImportCommand(program: Command): void {
           if (opts.bedrock && !(isAgentName(resolvedAgent) && agentSupportsBedrock(resolvedAgent))) {
             process.stderr.write(`Error: --bedrock is not supported for --agent ${resolvedAgent}\n`);
             process.exit(1);
-            return;
           }
 
           const pickerDecision = await shouldShowRunPicker({
@@ -547,7 +546,6 @@ export function registerImportCommand(program: Command): void {
         if (opts.bedrock && !(isAgentName(headlessAgent) && agentSupportsBedrock(headlessAgent))) {
           process.stderr.write(`Error: --bedrock is not supported for --agent ${headlessAgent}\n`);
           process.exit(1);
-          return;
         }
 
         const result = await runPipeline(
