@@ -47,7 +47,6 @@ import type {
   ComponentTypeSummary,
 } from '@contentful/experience-design-system-types';
 import { CDF_V1_SCHEMA_URL, validateCDF } from '@contentful/experience-design-system-types';
-import { rebuildDTCGTree } from '../../src/print/command.js';
 
 const tempDirs: string[] = [];
 
@@ -1673,14 +1672,11 @@ describe('CDF builder: $token.allowed', () => {
       expect(prop?.['$token.allowed']).toEqual(['color.brand.primary', 'color.brand.secondary']);
       expect(prop?.['$token.kind']).toBe('color');
 
-      // The emitted CDF validates against the same session's token document,
-      // which is what a consumer resolves the universe from.
       const cdf = {
         $schema: CDF_V1_SCHEMA_URL,
         ...Object.fromEntries(loaded.map(({ key, entry }) => [key, entry])),
       };
       expect(validateCDF(cdf).valid).toBe(true);
-      expect(validateCDF(cdf, { tokens: rebuildDTCGTree([], tokens) }).valid).toBe(true);
       db.close();
     });
   });

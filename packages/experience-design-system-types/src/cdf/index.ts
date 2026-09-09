@@ -1,10 +1,4 @@
-export {
-  validateCDF,
-  buildTokenTypeIndex,
-  parseCDFComponents,
-  type CDFValidationOptions,
-  type TokenTypeIndex,
-} from './validate.js';
+export { validateCDF, parseCDFComponents } from './validate.js';
 export { CDF_V1_SCHEMA_URL } from './schema.js';
 export { CDF_PROPERTY_TYPES, CDF_PROPERTY_CATEGORIES } from './vocabularies.js';
 export {
