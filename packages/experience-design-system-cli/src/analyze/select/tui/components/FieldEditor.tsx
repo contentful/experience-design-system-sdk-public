@@ -861,8 +861,8 @@ export function FieldEditor({
   );
   const propGroups = React.useMemo(
     () => [
-      { kind: 'content' as const, label: '── CONTENT', indexes: contentPropIndexes },
-      { kind: 'design' as const, label: '── DESIGN', indexes: designPropIndexes },
+      { kind: 'content' as const, label: '── CONTENT PROPERTIES', indexes: contentPropIndexes },
+      { kind: 'design' as const, label: '── DESIGN PROPERTIES', indexes: designPropIndexes },
       { kind: 'hidden' as const, label: '── OTHER / HIDDEN', indexes: hiddenPropIndexes },
     ],
     [contentPropIndexes, designPropIndexes, hiddenPropIndexes],

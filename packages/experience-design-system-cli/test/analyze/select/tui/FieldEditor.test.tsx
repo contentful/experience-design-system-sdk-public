@@ -307,8 +307,8 @@ describe('FieldEditor — prop category grouping', () => {
       />,
     );
     const frame = lastFrame() ?? '';
-    const contentIndex = frame.indexOf('CONTENT');
-    const designIndex = frame.indexOf('DESIGN');
+    const contentIndex = frame.indexOf('CONTENT PROPERTIES');
+    const designIndex = frame.indexOf('DESIGN PROPERTIES');
     const slotsIndex = frame.indexOf('SLOTS');
     expect(contentIndex).toBeGreaterThanOrEqual(0);
     expect(designIndex).toBeGreaterThan(contentIndex);
@@ -387,8 +387,8 @@ describe('FieldEditor — prop category grouping', () => {
       />,
     );
     const frame = lastFrame() ?? '';
-    expect(frame).not.toContain('CONTENT');
-    expect(frame).toContain('DESIGN');
+    expect(frame).not.toContain('CONTENT PROPERTIES');
+    expect(frame).toContain('DESIGN PROPERTIES');
     expect(frame).toContain('SLOTS');
   });
 });
