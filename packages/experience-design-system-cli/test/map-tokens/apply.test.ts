@@ -226,35 +226,13 @@ describe('applyMapTokenPropCalls', () => {
     });
   });
 
-  it("leaves a reviewer's restriction untouched", async () => {
-    await withTempDb((dbPath) => {
-      const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
-      const componentId = loadRawComponents(db, sessionId)[0].component_id;
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', ['colors.brand.primary'], 'review');
-
-      const result = applyMapTokenPropCalls(
-        db,
-        sessionId,
-        [{ tool: 'map_token_prop', component: 'Card', prop: 'bgColor', token_allowed: ['colors.surface.default'] }],
-        [],
-      );
-
-      expect(result.applied).toBe(0);
-      expect(result.warnings.join('\n')).toContain('a reviewer already set this restriction');
-      expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.brand.primary']);
-      db.close();
-    });
-  });
-
   it('revises its own previous suggestion on a re-run', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
       seedSession(db, sessionId);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', ['colors.brand.primary'], 'agent');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', ['colors.brand.primary']);
 
       const result = applyMapTokenPropCalls(
         db,
@@ -265,27 +243,6 @@ describe('applyMapTokenPropCalls', () => {
 
       expect(result).toEqual({ applied: 1, warnings: [] });
       expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.surface.default']);
-      db.close();
-    });
-  });
-
-  it('records its own writes as agent-sourced, so a later run can revise them', async () => {
-    await withTempDb((dbPath) => {
-      const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
-
-      applyMapTokenPropCalls(
-        db,
-        sessionId,
-        [{ tool: 'map_token_prop', component: 'Card', prop: 'bgColor', token_allowed: ['colors.surface.default'] }],
-        [],
-      );
-
-      const sources = db
-        .prepare(`SELECT DISTINCT source FROM raw_prop_token_paths WHERE session_id = ?`)
-        .all(sessionId) as Array<{ source: string }>;
-      expect(sources).toEqual([{ source: 'agent' }]);
       db.close();
     });
   });

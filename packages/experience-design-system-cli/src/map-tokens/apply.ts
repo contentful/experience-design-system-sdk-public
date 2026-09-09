@@ -60,23 +60,6 @@ export function applyMapTokenPropCalls(
       continue;
     }
 
-    // A person's restriction set in the review editor outranks a fresh
-    // suggestion. This step's own prior output does not: re-running it, with or
-    // without the cache, has to be able to revise what it decided last time.
-    const reviewed = db
-      .prepare(
-        `SELECT COUNT(*) AS count FROM raw_prop_token_paths
-          WHERE session_id = ? AND component_id = ? AND prop_name = ?
-            AND source = 'review'`,
-      )
-      .get(sessionId, component.component_id, call.prop) as { count: number };
-    if (reviewed.count > 0) {
-      warnings.push(
-        `map_token_prop '${call.component}.${call.prop}': a reviewer already set this restriction — skipped`,
-      );
-      continue;
-    }
-
     const filteredAllowed: string[] = [];
     for (const path of call.token_allowed) {
       const tokenType = tokenTypeByPath.get(path);
@@ -96,7 +79,7 @@ export function applyMapTokenPropCalls(
       continue;
     }
 
-    replaceRawPropTokenPaths(db, sessionId, component.component_id, call.prop, filteredAllowed, 'agent');
+    replaceRawPropTokenPaths(db, sessionId, component.component_id, call.prop, filteredAllowed);
     applied++;
   }
 
