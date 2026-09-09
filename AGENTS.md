@@ -14,7 +14,7 @@ Nx monorepo with five packages:
 
 The CLI extracts React/Vue/Astro/Stencil/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
 
-The commands form a pipeline: **analyze extract → analyze select-agent → generate components → generate tokens → map tokens → print/validate → apply preview/select/push.** The `import` command — exposed as the `experiences import` binary — is the primary entry point for its extract/select/generate/print/apply flow behind an interactive **wizard** (Ink TUI) in a real terminal, or a non-interactive headless pipeline when given the right flags; it does not invoke `map tokens`. `analyze select-agent` runs one agent invocation per component to decide which components belong in Contentful ExO; `analyze select` (the standalone JsonEditor TUI) is the manual alternative.
+The commands form two related flows: **component import: analyze extract → analyze select-agent → generate components → print/validate → apply preview/select/push; optional token preparation: generate tokens → print tokens → `tokens.json` for component generation or apply.** In the wizard, token preparation runs before component extraction and generation when a raw token source is supplied. The standalone `map tokens` command runs after generated CDF and DTCG data are available in the same session and before artifacts are printed or applied; `experiences import` does not invoke it. `analyze select-agent` runs one agent invocation per component to decide which components belong in Contentful ExO; `analyze select` (the standalone JsonEditor TUI) is the manual alternative.
 
 ### Wizard step machine (`src/import/tui/`)
 
@@ -95,7 +95,7 @@ The standalone `map tokens` stage (`src/map-tokens/`) runs after generated CDF a
 
 The session stores the default projection in the `raw_token_name_paths` sidecar (`raw_name`, canonical DTCG `path`, and `source` of `automatic` or `manual`). `raw_prop_token_paths` stores ordered token-path lists per component property and records whether a list is an agent suggestion or a review decision. CDF loading projects a compatible resolved path into `$default` while retaining the raw extracted default when no valid resolution exists; only non-empty allowed lists are projected as `$token.allowed`.
 
-**Do not write intermediary JSON files.** All data between `analyze extract` and `generate components` flows through the session DB. This is a firm constraint.
+**Do not write intermediary JSON files for extracted component data.** The handoff from `analyze extract` to `generate components` flows through the session DB. The explicit `tokens.json` produced by optional token preparation is a separate input sidecar for component generation or apply.
 
 **`DatabaseSync` synchronous write invariant:** all multi-statement operations use explicit `BEGIN`/`COMMIT`/`ROLLBACK`. SIGINT and crash cannot produce partially-written state. Do not add async alternatives to this path.
 

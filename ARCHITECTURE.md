@@ -28,12 +28,12 @@ Design system codebase
     ├── import (headless)       → orchestrator that shells out to the subcommands below
     ├── runs                    → list/detail/replay prior wizard runs from ~/.config/experiences/runs.json
     │                              (positional <id-or-path>, --json, --pushed, --not-pushed)
+    ├── generate tokens (optional) → session DB (DTCG artifact via coding agent; before component generation)
     ├── analyze extract         → session DB (raw components)
     ├── analyze select          → session DB (accepted/rejected decisions, standalone JsonEditor TUI)
     ├── analyze select-agent    → session DB (agentic accept/reject + per-component rationale)
-    ├── generate components     → session DB (CDF artifact via coding agent)
-    ├── generate tokens         → session DB (DTCG artifact via coding agent)
-    ├── map tokens              → deterministic default paths, then optional agentic $token.allowed inference
+    ├── generate components     → session DB (CDF artifact via coding agent; can consume tokens.json)
+    ├── map tokens (standalone)  → deterministic default paths, then optional agentic $token.allowed inference
     ├── print validate          → validates CDF / DTCG files, exits 0/1
     ├── print components|tokens → write artifacts from the session DB
     ├── apply preview           → manifest preview (no writes)
@@ -48,9 +48,11 @@ Design system codebase
                 (component types + design tokens)
 ```
 
-All intermediary data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). The standalone `map tokens` command enriches that session before `print components` / `print tokens` write artifacts on demand; `experiences import` does not invoke it. The `apply` subcommands read those files (or read directly from the session DB via `--session`) and build a manifest for the sources API.
+Component-analysis data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). Optional token preparation writes the explicit `tokens.json` sidecar for component generation or apply. The standalone `map tokens` command enriches its session before `print components` / `print tokens` write artifacts on demand; `experiences import` does not invoke it. The `apply` subcommands read those files (or read directly from the session DB via `--session`) and build a manifest for the sources API.
 
 A separate JSON file at `~/.config/experiences/runs.json` records each successful wizard session (id, project path, save path, push target, component count) so it can be replayed with `experiences import --push-from-run` or `experiences import --modify`.
+
+When a raw token source is supplied, the wizard runs `generate tokens` and writes `tokens.json` before it extracts and generates components; `generate components --tokens tokens.json` consumes that file. For standalone `map tokens`, the generated CDF and DTCG artifacts must be present in the same pipeline session before mapping.
 
 ---
 
@@ -242,7 +244,6 @@ erDiagram
         TEXT session_id FK
         TEXT component_id FK
         TEXT prop_name FK
-        TEXT kind
         TEXT source
         INTEGER position
         TEXT path
@@ -289,13 +290,14 @@ erDiagram
 
 `raw_components.status` progresses from `'extracted'` (written by `analyze extract`) to `'generated'` (updated by `generate components` after AI processing). The `cdf_*` columns on `raw_props` and the `description` column on `raw_components` are null until `generate components` runs.
 
-`raw_prop_token_paths` is the ordered session sidecar for token-property path lists. Its `kind` is `allowed` for the current restriction contract (legacy `set` rows remain loadable), and its `source` is `agent` or `review`; review decisions take precedence over later agent suggestions. The separate `raw_token_name_paths` sidecar stores automatic or manual mappings from an extracted source reference to a canonical DTCG path. These sidecars preserve raw extraction while supporting the CDF projection described above.
+`raw_prop_token_paths` is the ordered session sidecar for token-property path lists used for `$token.allowed`. Its `source` is `agent` or `review`; review decisions take precedence over later agent suggestions. The separate `raw_token_name_paths` sidecar stores automatic or manual mappings from an extracted source reference to a canonical DTCG path. These sidecars preserve raw extraction while supporting the CDF projection described above.
 
 ### Pipeline Data Flow — Sequence Diagram
 
 ```mermaid
 sequenceDiagram
     actor Dev as Developer
+    participant GT as generate tokens<br/>(optional)
     participant AE as analyze extract
     participant DB as pipeline.db
     participant AnEdit as analyze edit
@@ -306,6 +308,15 @@ sequenceDiagram
     participant Val as print validate
     participant AP as apply preview/push
     participant CMS as Contentful ExO
+
+    opt raw token source supplied
+        Dev->>GT: experiences generate tokens --raw-tokens <path>
+        GT->>DB: Store DTCG token groups and leaves
+        GT-->>Dev: stdout: session=<id>
+        Dev->>Print: experiences print tokens --session <id>
+        Print->>DB: Read generated DTCG data
+        Print-->>Dev: Write tokens.json
+    end
 
     Dev->>AE: experiences analyze extract --project ./src
     AE->>DB: INSERT sessions (id, ...)
@@ -321,7 +332,7 @@ sequenceDiagram
     Dev-->>AnEdit: Finalize decisions
     AnEdit->>DB: UPDATE raw_components SET status='accepted'/'rejected'
 
-    Dev->>GC: experiences generate components --agent claude [--session <id>]
+    Dev->>GC: experiences generate components --agent claude [--tokens tokens.json] [--session <id>]
     GC->>DB: SELECT raw_components WHERE status='accepted'
     GC->>GC: Build prompt (inline JSON)
     GC->>Agent: spawn subprocess (stdin closed)
@@ -329,15 +340,17 @@ sequenceDiagram
     GC->>GC: validateCDF(output)
     GC->>DB: UPDATE raw_components SET status='generated', description=?
     GC->>DB: UPDATE raw_props SET cdf_type=?, cdf_category=?
-    GC->>DB: Store generated CDF/DTCG data and raw defaults
+    GC->>DB: Store generated CDF data and raw defaults
     GC-->>Dev: generation complete
 
-    Dev->>MT: experiences map tokens [--skip-agent] --session <id>
-    MT->>DB: Resolve deterministic defaults into raw_token_name_paths
-    opt agent enabled
-        MT->>Agent: infer compatible $token.allowed paths
-        Agent-->>MT: map_token_prop tool calls
-        MT->>DB: Store agent suggestions in raw_prop_token_paths
+    opt CDF and DTCG data are in the same session
+        Dev->>MT: experiences map tokens [--skip-agent] --session <id>
+        MT->>DB: Resolve deterministic defaults into raw_token_name_paths
+        opt agent enabled
+            MT->>Agent: infer compatible $token.allowed paths
+            Agent-->>MT: map_token_prop tool calls
+            MT->>DB: Store agent suggestions in raw_prop_token_paths
+        end
     end
 
     Dev->>Print: experiences print components|tokens --session <id>
