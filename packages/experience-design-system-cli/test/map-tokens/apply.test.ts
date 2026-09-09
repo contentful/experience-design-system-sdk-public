@@ -2,19 +2,11 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import {
-  openPipelineDb,
-  getOrCreateSession,
-  storeRawComponents,
-  loadRawComponents,
-  storeCDFComponents,
-  storeDTCGTokens,
-  replaceRawPropTokenPaths,
-} from '../../src/session/db.js';
+import { openPipelineDb, loadRawComponents, replaceRawPropTokenPaths, storeDTCGTokens } from '../../src/session/db.js';
 import type { DatabaseSync } from 'node:sqlite';
-import type { RawComponentDefinition } from '../../src/types.js';
 import { applyMapTokenPropCalls } from '../../src/map-tokens/apply.js';
 import type { MapTokenPropCall } from '@contentful/experience-design-system-generation';
+import { seedCardSession } from '../helpers/seed-card-session.js';
 
 /** Reads a prop's stored token-allowed paths directly, in position order. */
 function readTokenPaths(db: DatabaseSync, sessionId: string, componentId: string, propName: string): string[] {
@@ -51,52 +43,12 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
-const RAW: RawComponentDefinition[] = [
-  {
-    name: 'Card',
-    source: 'src/Card.tsx',
-    framework: 'react',
-    props: [
-      { name: 'bgColor', type: 'string', required: false, category: 'design' },
-      { name: 'label', type: 'string', required: true, category: 'content' },
-    ],
-    slots: [],
-  },
-];
-
-/** Seeds a Card component with bgColor classified as a design-category token prop. */
-function seedSession(db: Parameters<typeof storeRawComponents>[0], sessionId: string): void {
-  storeRawComponents(db, sessionId, RAW);
-  storeCDFComponents(db, sessionId, [
-    {
-      key: 'Card',
-      entry: {
-        $type: 'component',
-        $properties: {
-          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
-          label: { $type: 'string', $category: 'content' },
-        },
-      },
-    },
-  ]);
-  storeDTCGTokens(
-    db,
-    sessionId,
-    [],
-    [
-      { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
-      { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
-      { path: 'colors.brand.primary', $type: 'color', $value: '#00f' },
-    ],
-  );
-}
 
 describe('applyMapTokenPropCalls', () => {
   it('persists token_allowed paths that exist in raw_tokens', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
 
       const calls: MapTokenPropCall[] = [
@@ -117,9 +69,8 @@ describe('applyMapTokenPropCalls', () => {
 
   it("drops a path whose token type does not match the prop's $token.kind", async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
       // bgColor is $token.kind "color"; spacing.md is a dimension token.
       // storeDTCGTokens replaces the session's token set, so re-state the colours.
@@ -160,9 +111,8 @@ describe('applyMapTokenPropCalls', () => {
 
   it('skips the call entirely when every path is the wrong token type', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
       storeDTCGTokens(db, sessionId, [], [{ path: 'spacing.md', $type: 'dimension', $value: '8px' }]);
 
       const result = applyMapTokenPropCalls(
@@ -180,9 +130,8 @@ describe('applyMapTokenPropCalls', () => {
 
   it('drops a path absent from raw_tokens and warns, keeping the valid ones', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
 
       const result = applyMapTokenPropCalls(
@@ -208,9 +157,8 @@ describe('applyMapTokenPropCalls', () => {
 
   it('rejects a variant name in place of a token path, persisting nothing', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
 
       const result = applyMapTokenPropCalls(
         db,
@@ -228,9 +176,8 @@ describe('applyMapTokenPropCalls', () => {
 
   it('revises its own previous suggestion on a re-run', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
       replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', ['colors.brand.primary']);
 
@@ -249,9 +196,8 @@ describe('applyMapTokenPropCalls', () => {
 
   it('rejects a call targeting an unknown component, with a warning', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
 
       const result = applyMapTokenPropCalls(
         db,
@@ -269,9 +215,8 @@ describe('applyMapTokenPropCalls', () => {
 
   it('rejects a call targeting an unknown prop, with a warning', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
 
       const result = applyMapTokenPropCalls(
         db,
@@ -295,9 +240,8 @@ describe('applyMapTokenPropCalls', () => {
 
   it('rejects a call targeting a non-design-category prop, persisting nothing', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
 
       const result = applyMapTokenPropCalls(
         db,
@@ -315,9 +259,8 @@ describe('applyMapTokenPropCalls', () => {
 
   it('carries forward incoming warnings and continues processing subsequent calls after a rejection', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
 
       const result = applyMapTokenPropCalls(
         db,

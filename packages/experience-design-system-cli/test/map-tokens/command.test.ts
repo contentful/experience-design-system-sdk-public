@@ -5,19 +5,14 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   openPipelineDb,
-  storeRawComponents,
-  storeCDFComponents,
-  storeDTCGTokens,
   getOrCreateSession,
-  createStep,
-  updateStep,
   loadRawComponents,
   loadRawTokenNamePaths,
   loadCDFComponents,
   replaceRawTokenNamePaths,
 } from '../../src/session/db.js';
 import type { DatabaseSync } from 'node:sqlite';
-import type { RawComponentDefinition } from '../../src/types.js';
+import { seedCardSession } from '../helpers/seed-card-session.js';
 
 /** Reads a prop's stored token-allowed paths directly, in position order. */
 function readTokenPaths(db: DatabaseSync, sessionId: string, componentId: string, propName: string): string[] {
@@ -33,7 +28,7 @@ function readTokenPaths(db: DatabaseSync, sessionId: string, componentId: string
 }
 
 const bin = resolve(import.meta.dirname, '../../bin/cli.js');
-const FIXTURES_DIR = resolve(import.meta.dirname, '../fixtures/generate');
+const FIXTURES_DIR = resolve(import.meta.dirname, '../fixtures/map-tokens');
 
 const tempDirs: string[] = [];
 async function createTempDir(prefix: string): Promise<string> {
@@ -45,123 +40,19 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
-const RAW: RawComponentDefinition[] = [
-  {
-    name: 'Card',
-    source: 'src/Card.tsx',
-    framework: 'react',
-    props: [
-      { name: 'bgColor', type: 'string', required: false, category: 'design' },
-      { name: 'label', type: 'string', required: true, category: 'content' },
-    ],
-    slots: [],
-  },
-];
-
 async function seedGeneratedSession(dbPath: string, withTokens: boolean): Promise<string> {
-  const db = openPipelineDb(dbPath);
-  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-  storeRawComponents(db, sessionId, RAW);
-  storeCDFComponents(db, sessionId, [
-    {
-      key: 'Card',
-      entry: {
-        $type: 'component',
-        $properties: {
-          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
-          label: { $type: 'string', $category: 'content' },
-        },
-      },
-    },
-  ]);
-  if (withTokens) {
-    storeDTCGTokens(
-      db,
-      sessionId,
-      [],
-      [
-        { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
-        { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
-      ],
-    );
-  }
-  const stepId = createStep(db, sessionId, 'generate components', {});
-  updateStep(db, stepId, 'complete', { sessionId });
-  db.close();
-  return sessionId;
+  return seedCardSession(dbPath, { withTokens });
 }
 
 async function seedGeneratedSessionWithAliasDefault(dbPath: string): Promise<string> {
-  const db = openPipelineDb(dbPath);
-  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-  storeRawComponents(db, sessionId, [
-    {
-      ...RAW[0]!,
-      props: [
-        {
-          name: 'bgColor',
-          type: 'string',
-          required: false,
-          category: 'design',
-          defaultValue: 'tokens.surfaceDefault',
-        },
-        { name: 'label', type: 'string', required: true, category: 'content' },
-      ],
-    },
-  ]);
-  storeCDFComponents(db, sessionId, [
-    {
-      key: 'Card',
-      entry: {
-        $type: 'component',
-        $properties: {
-          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
-          label: { $type: 'string', $category: 'content' },
-        },
-      },
-    },
-  ]);
-  storeDTCGTokens(db, sessionId, [], [
-    { path: 'colors.surface.surface-default', $type: 'color', $value: '#fff' },
-    { path: 'colors.surface.default', $type: 'color', $value: '#fafafa' },
-    { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
-  ]);
-  const stepId = createStep(db, sessionId, 'generate components', {});
-  updateStep(db, stepId, 'complete', { sessionId });
-  db.close();
-  return sessionId;
+  return seedCardSession(dbPath, { aliasDefault: true });
 }
 
+// Deliberately no createStep/updateStep call for 'generate components' — this
+// mirrors a real standalone run, since `generate components` never records
+// that step itself.
 async function seedGeneratedSessionWithoutStep(dbPath: string): Promise<string> {
-  const db = openPipelineDb(dbPath);
-  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-  storeRawComponents(db, sessionId, RAW);
-  storeCDFComponents(db, sessionId, [
-    {
-      key: 'Card',
-      entry: {
-        $type: 'component',
-        $properties: {
-          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
-          label: { $type: 'string', $category: 'content' },
-        },
-      },
-    },
-  ]);
-  storeDTCGTokens(
-    db,
-    sessionId,
-    [],
-    [
-      { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
-      { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
-    ],
-  );
-  // Deliberately no createStep/updateStep call for 'generate components' — this
-  // mirrors a real standalone run, since `generate components` never records
-  // that step itself.
-  db.close();
-  return sessionId;
+  return seedCardSession(dbPath, { withStep: false });
 }
 
 async function run(
@@ -195,7 +86,7 @@ describe('map tokens command', () => {
 
     const { stdout, code } = await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], {
       dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
     });
 
     expect(code).toBe(0);
@@ -330,7 +221,7 @@ describe('map tokens command', () => {
     expect(
       (await run(['map', 'tokens', '--session', sessionA, '--agent', 'claude'], {
         dbPath,
-        fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
+        fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
       })).code,
     ).toBe(0);
 
@@ -385,7 +276,7 @@ describe('map tokens command', () => {
 
     const { stdout, code } = await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], {
       dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
     });
 
     expect(code).toBe(0);
@@ -404,7 +295,7 @@ describe('map tokens command', () => {
 
     const first = await run(['map', 'tokens', '--session', sessionA, '--agent', 'claude'], {
       dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
     });
     expect(first.code).toBe(0);
 
@@ -428,7 +319,7 @@ describe('map tokens command', () => {
 
     const first = await run(['map', 'tokens', '--session', sessionA, '--agent', 'claude'], {
       dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-wrong-category.mjs'),
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-wrong-category.mjs'),
     });
     expect(first.code).toBe(0);
 
@@ -457,7 +348,7 @@ describe('map tokens command', () => {
 
     await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], {
       dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
     });
 
     const db = openPipelineDb(dbPath);

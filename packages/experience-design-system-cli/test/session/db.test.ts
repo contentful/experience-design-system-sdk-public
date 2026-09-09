@@ -37,6 +37,7 @@ import {
   loadComponentSourceRef,
   copyMapTokensFromCache,
 } from '../../src/session/db.js';
+import { exportedFiller } from '../helpers/exported-filler.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 import type {
   CDFComponentEntry,
@@ -2918,8 +2919,7 @@ describe('generation cache', () => {
       const componentPath = join(dir, 'Box.tsx');
       const stylesPath = join(dir, 'Box.styles.ts');
       await writeFile(componentPath, `import { StyledBox } from './Box.styles';\nexport const Box = ({ children, ...rest }: Props) => <StyledBox {...rest}>{children}</StyledBox>;\n`);
-      const filler = (prefix: string) => Array.from({ length: 80 }, (_, i) => `export const ${prefix}${i} = ${i};`).join('\n');
-      await writeFile(stylesPath, `${filler('before')}\nexport const StyledBox = styled.div\`padding: \${(p) => p.padding};\`;\n${filler('after')}\n`);
+      await writeFile(stylesPath, `${exportedFiller('before')}\nexport const StyledBox = styled.div\`padding: \${(p) => p.padding};\`;\n${exportedFiller('after')}\n`);
 
       const ref = await loadComponentSourceRef('Box', componentPath, ['padding', 'children']);
       expect(ref.siblingFiles).toHaveLength(1);
@@ -2936,10 +2936,12 @@ describe('generation cache', () => {
       const componentPath = join(dir, 'Box.tsx');
       const stylesPath = join(dir, 'Box.styles.ts');
       await writeFile(componentPath, `import { StyledBox } from './Box.styles';\n`);
-      const filler = (prefix: string) => Array.from({ length: 80 }, (_, i) => `export const ${prefix}${i} = ${i};`).join('\n');
       // Two uses far apart, each with a wide window: the second cannot fit in 1,200 chars.
       const bigLine = (name: string) => `export const ${name}Style = css\`\${(p) => p.${name}}; /* ${'x'.repeat(900)} */\`;`;
-      await writeFile(stylesPath, `${filler('a')}\n${bigLine('padding')}\n${filler('b')}\n${bigLine('margin')}\n${filler('c')}\n`);
+      await writeFile(
+        stylesPath,
+        `${exportedFiller('a')}\n${bigLine('padding')}\n${exportedFiller('b')}\n${bigLine('margin')}\n${exportedFiller('c')}\n`,
+      );
 
       const ref = await loadComponentSourceRef('Box', componentPath, ['padding', 'margin']);
       // Later windows are kept in preference to earlier ones, so the margin use
