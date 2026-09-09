@@ -14,7 +14,7 @@ Nx monorepo with five packages:
 
 The CLI extracts React/Vue/Astro/Stencil/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
 
-The commands form a pipeline: **analyze extract → analyze select-agent → generate components → apply push.** The `import` command — exposed as the `experiences import` binary — is the primary entry point and runs the full pipeline behind an interactive **wizard** (Ink TUI) in a real terminal, or a non-interactive headless pipeline when given the right flags. `analyze select-agent` runs one agent invocation per component to decide which components belong in Contentful ExO; `analyze select` (the standalone JsonEditor TUI) is the manual alternative.
+The commands form a pipeline: **analyze extract → analyze select-agent → generate components → generate tokens → map tokens → print/validate → apply preview/select/push.** The `import` command — exposed as the `experiences import` binary — is the primary entry point for its extract/select/generate/print/apply flow behind an interactive **wizard** (Ink TUI) in a real terminal, or a non-interactive headless pipeline when given the right flags; it does not invoke `map tokens`. `analyze select-agent` runs one agent invocation per component to decide which components belong in Contentful ExO; `analyze select` (the standalone JsonEditor TUI) is the manual alternative.
 
 ### Wizard step machine (`src/import/tui/`)
 
@@ -91,6 +91,10 @@ The session layer lives in `src/session/db.ts`:
 - `storeRawComponents(db, sessionId, components)` — idempotent DELETE+INSERT; replaces all raw components for the session
 - `loadRawComponents(db, sessionId)` — returns `RawComponentDefinition[]` from the session
 
+The standalone `map tokens` stage (`src/map-tokens/`) runs after generated CDF and DTCG data are in the session and before artifacts are printed or applied. It deterministically resolves a canonical DTCG path, or a unique token-kind-compatible normalized terminal member, from `tokenReference` when present and otherwise from the extracted default. It preserves the extracted default in `raw_props`; unresolved or ambiguous matches remain unchanged and produce diagnostics. It then optionally invokes the coding agent to infer `$token.allowed` paths for design-category token properties. `--skip-agent` skips only that agentic inference; deterministic default resolution still runs.
+
+The session stores the default projection in the `raw_token_name_paths` sidecar (`raw_name`, canonical DTCG `path`, and `source` of `automatic` or `manual`). `raw_prop_token_paths` stores ordered token-path lists per component property and records whether a list is an agent suggestion or a review decision. CDF loading projects a compatible resolved path into `$default` while retaining the raw extracted default when no valid resolution exists; only non-empty allowed lists are projected as `$token.allowed`.
+
 **Do not write intermediary JSON files.** All data between `analyze extract` and `generate components` flows through the session DB. This is a firm constraint.
 
 **`DatabaseSync` synchronous write invariant:** all multi-statement operations use explicit `BEGIN`/`COMMIT`/`ROLLBACK`. SIGINT and crash cannot produce partially-written state. Do not add async alternatives to this path.
@@ -148,17 +152,13 @@ The skill file `skills/select-components.md` provides detailed instructions and 
 
 `src/apply/` contains:
 
-- `command.ts` — registers `apply` with `preview` + `push` + `select` subcommands (renamed from `import`)
-- `api-client.ts` — `ImportApiClient` with `listComponentTypes()`, `listDesignTokens()`, `putComponentType()`, `putDesignToken()`; all fetch-based, no SDK dependency
-- `cdf-mapper.ts` — `mapCDFComponent(key, entry, viewports)` → `ComponentTypeBody`; `designProperties` outer keys are **viewport IDs**, not design property names
-- `dtcg-mapper.ts` — `mapDTCGToken(entry)` → `DesignTokenBody`; returns `{ error }` for unknown `$type` values
-- `diff.ts` — `computeDiff(components, tokens, client, viewports)` → `DiffResult`; pre-fetches all remote entities once, deep-compares after stripping `sys` metadata
-- `session.ts` — apply-specific SQLite session for push resumption; separate from the pipeline session DB
-- `importer.ts` — `importTokens` and `importComponents`; handles 401/403 abort, 429 retry, 409 re-fetch, per-entity session recording
+- `command.ts` — registers `preview`, `select`, and `push`; loads CDF/DTCG artifacts or a session, builds manifests, and drives preview/apply operation polling
+- `manifest.ts` — compatibility re-exports for apply input helpers
+- `api-client.ts` — `ImportApiClient` calls the generated sources API client for token validation, manifest preview, manifest apply, and operation polling
+- `preview-utils.ts` — detects empty server previews before confirmation or apply
+- `tui/` — server preview, selection, and apply-progress views
 
-**`cdf-mapper.ts` property routing:**
-- `$category === 'content'` or `'state'` → `contentProperties[]`
-- `$category === 'design'` → `designProperties[]` (outer keys are viewport IDs, not property names)
+The apply flow validates the target, and `command.ts` builds a `ManifestPayload` through the shared manifest utilities from the selected CDF components and DTCG token entries. `preview` submits that manifest to the read-only sources API preview endpoint. `push` previews it, optionally confirms, submits the same manifest to the apply endpoint, and polls the returned operation to completion; `--allow-deletions` and breaking-change acknowledgement are sent as operation options. `select` previews the full manifest, filters the selected entries, then submits and polls the filtered manifest.
 
 **`apply select` non-interactive flags:** `--select-all`, `--select <pattern>` (repeatable), `--deselect <pattern>` (repeatable). These skip the TUI.
 
@@ -200,7 +200,7 @@ Terminal width thresholds for `analyze edit`:
 
 **Pipeline sessions** (analyze, generate, edit) are in `pipeline.db` as described above. Override with `EDS_PIPELINE_DB_PATH`.
 
-**Apply sessions** (push resumption) are in `~/.contentful/experience-design-system-cli/import.db`. Tests should set `EDS_IMPORT_DB_PATH` to a temp file to avoid polluting the developer's real DB.
+The legacy `import.db` is read only by the session migration when present; the current apply flow does not use it for per-entity push resumption.
 
 **Review (analyze select) session files** are written to `~/.contentful/experience-design-system-cli/reviews/<sessionId>/current-review-state.json`. The session directory is keyed directly by session ID — not by a hash of an input file path. Both `analyze select` (TUI) and `analyze select-agent` (agentic) write to this same format.
 

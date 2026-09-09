@@ -33,11 +33,12 @@ Design system codebase
     ├── analyze select-agent    → session DB (agentic accept/reject + per-component rationale)
     ├── generate components     → session DB (CDF artifact via coding agent)
     ├── generate tokens         → session DB (DTCG artifact via coding agent)
-    ├── print components|tokens → write components.json / tokens.json from session DB
+    ├── map tokens              → deterministic default paths, then optional agentic $token.allowed inference
     ├── print validate          → validates CDF / DTCG files, exits 0/1
-    ├── apply preview           → diff output (no writes)
-    ├── apply select            → interactive entity picker → PUT /component_types/:id, PUT /design_tokens/:id
-    ├── apply push              → PUT /component_types/:id, PUT /design_tokens/:id; emits viewUrl
+    ├── print components|tokens → write artifacts from the session DB
+    ├── apply preview           → manifest preview (no writes)
+    ├── apply select            → select manifest entries, then preview/apply
+    ├── apply push              → manifest preview, apply operation, and operation polling
     ├── session list|show|...   → lower-level pipeline-session management
     ├── setup                   → interactive prereq + credentials wizard
     └── doctor                  → prereq health check
@@ -47,7 +48,7 @@ Design system codebase
                 (component types + design tokens)
 ```
 
-All intermediary data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). `print components` / `print tokens` write `components.json` / `tokens.json` on demand. The `apply` subcommands read those files (or read directly from the session DB via `--session`).
+All intermediary data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). The standalone `map tokens` command enriches that session before `print components` / `print tokens` write artifacts on demand; `experiences import` does not invoke it. The `apply` subcommands read those files (or read directly from the session DB via `--session`) and build a manifest for the sources API.
 
 A separate JSON file at `~/.config/experiences/runs.json` records each successful wizard session (id, project path, save path, push target, component count) so it can be replayed with `experiences import --push-from-run` or `experiences import --modify`.
 
@@ -137,15 +138,18 @@ interface CDFComponentEntry {
 }
 
 interface CDFPropertyDefinition {
-  $type: CDFPropertyType;   // 'string' | 'boolean' | 'number' | 'enum' | 'reference' | 'object' | 'rich-text'
+  $type: CDFPropertyType;   // 'string' | 'richtext' | 'number' | 'media' | 'link' | 'enum' | 'token' | 'boolean'
   $category: CDFPropertyCategory;  // 'content' | 'design' | 'state'
   $description?: string;
   $required?: boolean;
   $default?: unknown;
   $values?: string[];
   '$token.kind'?: string;
+  '$token.allowed'?: string[];             // restricted DTCG paths; omitted for unrestricted token props
 }
 ```
+
+For design-category token properties, extraction stores the raw default in `raw_props.default_value` and does not rewrite it during mapping. `map tokens` resolves `tokenReference` when present, otherwise the raw default, to a canonical DTCG path when it is exact or has one token-kind-compatible normalized terminal-member match. It persists that source-reference-to-path association in `raw_token_name_paths`. When CDF is projected, that compatible path becomes `$default`; otherwise the raw extracted default is retained. The agentic part of the stage is separate: it may write reviewed-compatible DTCG paths to `$token.allowed`, while an empty or absent restriction leaves the property unrestricted.
 
 ### DTCG (W3C Design Token Format)
 
@@ -168,7 +172,7 @@ interface DTCGTokenGroupNode {
 
 ## Pipeline Session Database
 
-All commands share a single SQLite database at `~/.contentful/experience-design-system-cli/pipeline.db` (overridable via `EDS_PIPELINE_DB_PATH`). A second database, `import.db`, tracks per-entity push results for `apply push` resumption.
+All commands share a single SQLite database at `~/.contentful/experience-design-system-cli/pipeline.db` (overridable via `EDS_PIPELINE_DB_PATH`). Legacy `import.db` data may be read once by session migration, but the current apply flow uses the sources API manifest operation rather than per-entity push resumption.
 
 `DatabaseSync` (Node.js built-in) is used throughout. Synchronous writes are safe from SIGINT and uncaught exceptions without async ceremony — the database is always consistent at the moment of a signal.
 
@@ -234,6 +238,23 @@ erDiagram
         TEXT value
     }
 
+    raw_prop_token_paths {
+        TEXT session_id FK
+        TEXT component_id FK
+        TEXT prop_name FK
+        TEXT kind
+        TEXT source
+        INTEGER position
+        TEXT path
+    }
+
+    raw_token_name_paths {
+        TEXT session_id FK
+        TEXT raw_name
+        TEXT path
+        TEXT source
+    }
+
     raw_slots {
         TEXT session_id FK
         TEXT component_id FK
@@ -261,37 +282,14 @@ erDiagram
     raw_components ||--o{ raw_props : "has"
     raw_components ||--o{ raw_slots : "has"
     raw_props ||--o{ raw_prop_allowed_values : "has"
+    raw_props ||--o{ raw_prop_token_paths : "has"
+    sessions ||--o{ raw_token_name_paths : "has"
     raw_slots ||--o{ raw_slot_allowed_components : "has"
 ```
 
 `raw_components.status` progresses from `'extracted'` (written by `analyze extract`) to `'generated'` (updated by `generate components` after AI processing). The `cdf_*` columns on `raw_props` and the `description` column on `raw_components` are null until `generate components` runs.
 
-### import.db — Entity Relationship Diagram
-
-```mermaid
-erDiagram
-    sessions {
-        TEXT id PK
-        TEXT space_id
-        TEXT environment_id
-        TEXT started_at
-        TEXT updated_at
-    }
-
-    items {
-        TEXT session_id FK
-        TEXT entity_type
-        TEXT entity_id
-        TEXT status
-        TEXT action
-        TEXT error
-        TEXT updated_at
-    }
-
-    sessions ||--o{ items : "has"
-```
-
-`import.db` is keyed by `(space_id, environment_id)` — one session per Contentful environment. Each `apply push` upserts item rows as entities are written, enabling resumption after a partial failure.
+`raw_prop_token_paths` is the ordered session sidecar for token-property path lists. Its `kind` is `allowed` for the current restriction contract (legacy `set` rows remain loadable), and its `source` is `agent` or `review`; review decisions take precedence over later agent suggestions. The separate `raw_token_name_paths` sidecar stores automatic or manual mappings from an extracted source reference to a canonical DTCG path. These sidecars preserve raw extraction while supporting the CDF projection described above.
 
 ### Pipeline Data Flow — Sequence Diagram
 
@@ -303,8 +301,10 @@ sequenceDiagram
     participant AnEdit as analyze edit
     participant GC as generate components
     participant Agent as Coding agent<br/>(subprocess)
+    participant MT as map tokens
+    participant Print as print components|tokens
     participant Val as print validate
-    participant AP as apply push
+    participant AP as apply preview/push
     participant CMS as Contentful ExO
 
     Dev->>AE: experiences analyze extract --project ./src
@@ -329,21 +329,32 @@ sequenceDiagram
     GC->>GC: validateCDF(output)
     GC->>DB: UPDATE raw_components SET status='generated', description=?
     GC->>DB: UPDATE raw_props SET cdf_type=?, cdf_category=?
-    GC->>GC: Write components.json to disk
-    GC-->>Dev: stdout: Wrote components.json
+    GC->>DB: Store generated CDF/DTCG data and raw defaults
+    GC-->>Dev: generation complete
+
+    Dev->>MT: experiences map tokens [--skip-agent] --session <id>
+    MT->>DB: Resolve deterministic defaults into raw_token_name_paths
+    opt agent enabled
+        MT->>Agent: infer compatible $token.allowed paths
+        Agent-->>MT: map_token_prop tool calls
+        MT->>DB: Store agent suggestions in raw_prop_token_paths
+    end
+
+    Dev->>Print: experiences print components|tokens --session <id>
+    Print->>DB: Project resolved CDF defaults and allowed paths
+    Print-->>Dev: Write components.json / tokens.json
 
     Dev->>Val: experiences print validate --components components.json
     Val-->>Dev: Exit 0 (valid) or exit 1 + errors
 
     Dev->>AP: experiences apply push --components components.json --space-id ... --yes
-    AP->>CMS: GET /component_types, GET /design_tokens (prefetch)
-    AP->>AP: Diff local vs remote → new / changed / unchanged / conflict
-    AP-->>Dev: Confirmation prompt (skipped with --yes)
-    loop For each entity
-        AP->>CMS: PUT /component_types/:id or PUT /design_tokens/:id
-        AP->>DB: UPSERT items (import.db) status='succeeded'/'failed'
-    end
-    AP-->>Dev: Summary (N created, M updated, K failed)
+    AP->>AP: Build ManifestPayload with componentsManifest and tokensManifest
+    AP->>CMS: POST manifest preview
+    AP-->>Dev: Preview summary and confirmation (skipped with --yes)
+    AP->>CMS: POST manifest apply
+    CMS-->>AP: Apply operation
+    AP->>CMS: Poll operation
+    AP-->>Dev: Operation summary
 ```
 
 ### Autonomous import — Sequence Diagram
@@ -432,7 +443,7 @@ React components commonly extend `HTMLAttributes<T>`, `ButtonHTMLAttributes<T>`,
 
 `generate components` and `generate tokens` build a prompt by combining a skill file (markdown instructions) with a runtime preamble:
 
-- **Skill file** — `skills/generate-components-source.md` or `skills/generate-tokens-source.md`; shipped with the package and located at runtime by walking up from the compiled output
+- **Skill file** — `skills/generate-components.md` or `skills/generate-tokens.md`; shipped with the package and located at runtime by walking up from the compiled output
 - **Runtime preamble** — sets mode (autonomous/interactive), embeds raw component data inline as JSON, lists optional file paths, and instructs the agent on the output protocol
 
 **Output protocol:** the agent emits one JSON tool-call object per line to stdout (no sentinel markers). `parseToolCallLines()` in `agent-runner.ts` handles line-by-line parsing. (An earlier sentinel-block protocol, `extractSentinelOutput()`, still exists in the codebase but is dead code — nothing in the live pipeline calls it.)
@@ -445,28 +456,13 @@ Do not use agent SDKs or APIs — the generate command invokes agents as subproc
 
 ## The Apply Command
 
-`apply` has three subcommands that share all connection flags and the same diff computation logic:
+`apply` has three subcommands that use the sources API manifest contract:
 
-- `apply preview` — read-only diff; exits 0 if clean, 1 if there are kind conflicts
-- `apply select` — interactive checkbox TUI for picking a subset of entities; non-interactive via `--select-all`, `--select`, `--deselect`
-- `apply push` — writes all (or selected) entities to Contentful; `--yes` skips confirmation
+- `apply preview` — validates the target and submits a `ManifestPayload` for a read-only server preview
+- `apply select` — previews the full manifest, interactively selects component keys and token paths, then applies the filtered selection
+- `apply push` — builds a complete manifest, previews it, optionally confirms, submits the apply operation, and polls it to completion
 
-**Phases:**
-
-1. **Pre-flight** — validate flags, resolve CMA token, check environment exists, parse + validate CDF/DTCG files
-2. **Diff computation** — pre-fetch all remote entities → deep-compare mapped local vs remote body → classify as new/changed/unchanged/kindConflict
-3. **Confirmation** (`push` only) — interactive summary with "Press Enter to confirm", skipped with `--yes`
-4. **Write** (`push` only) — sequential PUT loop: tokens first, then component types; exponential backoff on 429; abort on 401/403; each write is recorded in the session DB
-5. **Result** — summary TUI or JSON to stdout
-
-**`cdf-mapper.ts` property routing:**
-- `$category === 'content'` or `'state'` → `contentProperties[]`
-- `$category === 'design'` → `designProperties[]` (outer keys are viewport IDs, not property names)
-
-**Default viewport:**
-```json
-{ "id": "all", "query": "*", "displayName": "All Sizes", "previewSize": "100%" }
-```
+`src/apply/command.ts` owns input resolution, slot-cycle checks, selection, and the preview/apply orchestration. It calls `buildManifest` and `buildFilteredManifest` from `experience-design-system-types` to construct `componentsManifest` from CDF component entries and `tokensManifest` from DTCG token entries. `src/apply/manifest.ts` only re-exports apply input helpers. `src/apply/api-client.ts` uses the generated client for token validation, manifest preview, manifest apply, and operation polling; `preview-utils.ts` and `tui/` provide response helpers and views.
 
 ---
 
