@@ -1,26 +1,34 @@
 import { execFile } from 'node:child_process';
-import { chmod, mkdtemp, rm, symlink } from 'node:fs/promises';
+import { chmod, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   openPipelineDb,
-  storeRawComponents,
-  storeCDFComponents,
-  storeDTCGTokens,
   getOrCreateSession,
-  createStep,
-  updateStep,
-  loadRawPropTokenPaths,
   loadRawComponents,
   loadRawTokenNamePaths,
   loadCDFComponents,
   replaceRawTokenNamePaths,
 } from '../../src/session/db.js';
-import type { RawComponentDefinition } from '../../src/types.js';
+import type { DatabaseSync } from 'node:sqlite';
+import { seedCardSession } from '../helpers/seed-card-session.js';
+
+/** Reads a prop's stored token-allowed paths directly, in position order. */
+function readTokenPaths(db: DatabaseSync, sessionId: string, componentId: string, propName: string): string[] {
+  return (
+    db
+      .prepare(
+        `SELECT path FROM raw_prop_token_paths
+         WHERE session_id = ? AND component_id = ? AND prop_name = ?
+         ORDER BY position`,
+      )
+      .all(sessionId, componentId, propName) as Array<{ path: string }>
+  ).map((r) => r.path);
+}
 
 const bin = resolve(import.meta.dirname, '../../bin/cli.js');
-const FIXTURES_DIR = resolve(import.meta.dirname, '../fixtures/generate');
+const FIXTURES_DIR = resolve(import.meta.dirname, '../fixtures/map-tokens');
 
 const tempDirs: string[] = [];
 async function createTempDir(prefix: string): Promise<string> {
@@ -32,124 +40,19 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
-const RAW: RawComponentDefinition[] = [
-  {
-    name: 'Card',
-    source: 'src/Card.tsx',
-    framework: 'react',
-    props: [
-      { name: 'bgColor', type: 'string', required: false, category: 'design' },
-      { name: 'label', type: 'string', required: true, category: 'content' },
-    ],
-    slots: [],
-  },
-];
-
 async function seedGeneratedSession(dbPath: string, withTokens: boolean): Promise<string> {
-  const db = openPipelineDb(dbPath);
-  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-  storeRawComponents(db, sessionId, RAW);
-  storeCDFComponents(db, sessionId, [
-    {
-      key: 'Card',
-      entry: {
-        $type: 'component',
-        $properties: {
-          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
-          label: { $type: 'string', $category: 'content' },
-        },
-      },
-    },
-  ]);
-  if (withTokens) {
-    storeDTCGTokens(
-      db,
-      sessionId,
-      [],
-      [
-        { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
-        { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
-      ],
-    );
-  }
-  const stepId = createStep(db, sessionId, 'generate components', {});
-  updateStep(db, stepId, 'complete', { sessionId });
-  db.close();
-  return sessionId;
+  return seedCardSession(dbPath, { withTokens });
 }
 
 async function seedGeneratedSessionWithAliasDefault(dbPath: string): Promise<string> {
-  const db = openPipelineDb(dbPath);
-  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-  storeRawComponents(db, sessionId, [
-    {
-      ...RAW[0]!,
-      props: [
-        {
-          name: 'bgColor',
-          type: 'string',
-          required: false,
-          category: 'design',
-          defaultValue: '4px',
-          tokenReference: 'tokens.surfaceDefault',
-        },
-        { name: 'label', type: 'string', required: true, category: 'content' },
-      ],
-    },
-  ]);
-  storeCDFComponents(db, sessionId, [
-    {
-      key: 'Card',
-      entry: {
-        $type: 'component',
-        $properties: {
-          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
-          label: { $type: 'string', $category: 'content' },
-        },
-      },
-    },
-  ]);
-  storeDTCGTokens(db, sessionId, [], [
-    { path: 'colors.surface.surface-default', $type: 'color', $value: '#fff' },
-    { path: 'colors.surface.default', $type: 'color', $value: '#fafafa' },
-    { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
-  ]);
-  const stepId = createStep(db, sessionId, 'generate components', {});
-  updateStep(db, stepId, 'complete', { sessionId });
-  db.close();
-  return sessionId;
+  return seedCardSession(dbPath, { aliasDefault: true });
 }
 
+// Deliberately no createStep/updateStep call for 'generate components' — this
+// mirrors a real standalone run, since `generate components` never records
+// that step itself.
 async function seedGeneratedSessionWithoutStep(dbPath: string): Promise<string> {
-  const db = openPipelineDb(dbPath);
-  const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-  storeRawComponents(db, sessionId, RAW);
-  storeCDFComponents(db, sessionId, [
-    {
-      key: 'Card',
-      entry: {
-        $type: 'component',
-        $properties: {
-          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
-          label: { $type: 'string', $category: 'content' },
-        },
-      },
-    },
-  ]);
-  storeDTCGTokens(
-    db,
-    sessionId,
-    [],
-    [
-      { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
-      { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
-    ],
-  );
-  // Deliberately no createStep/updateStep call for 'generate components' — this
-  // mirrors a real standalone run, since `generate components` never records
-  // that step itself.
-  db.close();
-  return sessionId;
+  return seedCardSession(dbPath, { withStep: false });
 }
 
 async function run(
@@ -183,7 +86,7 @@ describe('map tokens command', () => {
 
     const { stdout, code } = await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], {
       dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
     });
 
     expect(code).toBe(0);
@@ -191,8 +94,7 @@ describe('map tokens command', () => {
 
     const db = openPipelineDb(dbPath);
     const componentId = loadRawComponents(db, sessionId)[0].component_id;
-    const groups = loadRawPropTokenPaths(db, sessionId);
-    expect(groups).toEqual([{ componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] }]);
+    expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.surface.default']);
     db.close();
   });
 
@@ -224,8 +126,7 @@ describe('map tokens command', () => {
     expect(loadRawTokenNamePaths(db, sessionId)).toEqual({
       'tokens.surfaceDefault': 'colors.surface.surface-default',
     });
-    expect(loadRawComponents(db, sessionId)[0]?.props[0]?.defaultValue).toBe('4px');
-    expect(loadRawComponents(db, sessionId)[0]?.props[0]?.tokenReference).toBe('tokens.surfaceDefault');
+    expect(loadRawComponents(db, sessionId)[0]?.props[0]?.defaultValue).toBe('tokens.surfaceDefault');
     expect(loadCDFComponents(db, sessionId)[0]?.entry.$properties.bgColor?.$default).toBe(
       'colors.surface.surface-default',
     );
@@ -255,6 +156,64 @@ describe('map tokens command', () => {
     reopened.close();
   });
 
+  it('--token-map: a file mapping wins over the automatic resolution', async () => {
+    const dbDir = await createTempDir('map-tokens-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const sessionId = await seedGeneratedSessionWithAliasDefault(dbPath);
+    const tokenMapPath = join(dbDir, 'token-name-map.json');
+    await writeFile(tokenMapPath, JSON.stringify({ 'tokens.surfaceDefault': 'colors.surface.default' }));
+
+    const { code } = await run(
+      ['map', 'tokens', '--session', sessionId, '--print-prompt', '--agent', 'claude', '--token-map', tokenMapPath],
+      { dbPath },
+    );
+    expect(code).toBe(0);
+
+    const db = openPipelineDb(dbPath);
+    expect(loadRawTokenNamePaths(db, sessionId)).toEqual({
+      'tokens.surfaceDefault': 'colors.surface.default',
+    });
+    expect(loadCDFComponents(db, sessionId)[0]?.entry.$properties.bgColor?.$default).toBe('colors.surface.default');
+    db.close();
+  });
+
+  it('--token-map: reports the automatic conflict when a mapped default disagrees', async () => {
+    const dbDir = await createTempDir('map-tokens-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const sessionId = await seedGeneratedSessionWithAliasDefault(dbPath);
+    const tokenMapPath = join(dbDir, 'token-name-map.json');
+    await writeFile(tokenMapPath, JSON.stringify({ 'tokens.surfaceDefault': 'colors.surface.default' }));
+
+    const { code, stderr } = await run(
+      ['map', 'tokens', '--session', sessionId, '--print-prompt', '--agent', 'claude', '--token-map', tokenMapPath],
+      { dbPath },
+    );
+    expect(code).toBe(0);
+    expect(stderr).toContain("automatically resolves to 'colors.surface.surface-default'");
+    expect(stderr).toContain("manual mapping 'colors.surface.default' is retained");
+  });
+
+  it('--token-map: skips an unknown path with a warning', async () => {
+    const dbDir = await createTempDir('map-tokens-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const sessionId = await seedGeneratedSessionWithAliasDefault(dbPath);
+    const tokenMapPath = join(dbDir, 'token-name-map.json');
+    await writeFile(tokenMapPath, JSON.stringify({ 'tokens.ghost': 'colors.does.not.exist' }));
+
+    const { code, stderr } = await run(
+      ['map', 'tokens', '--session', sessionId, '--print-prompt', '--agent', 'claude', '--token-map', tokenMapPath],
+      { dbPath },
+    );
+    expect(code).toBe(0);
+    expect(stderr).toContain("'tokens.ghost'");
+    expect(stderr).toContain('colors.does.not.exist');
+    expect(stderr).toContain('skipped');
+
+    const db = openPipelineDb(dbPath);
+    expect(loadRawTokenNamePaths(db, sessionId)).not.toHaveProperty('tokens.ghost');
+    db.close();
+  });
+
   it('retains resolved defaults when a cached allowed-list mapping is reused', async () => {
     const dbDir = await createTempDir('map-tokens-db-');
     const dbPath = join(dbDir, 'pipeline.db');
@@ -262,7 +221,7 @@ describe('map tokens command', () => {
     expect(
       (await run(['map', 'tokens', '--session', sessionA, '--agent', 'claude'], {
         dbPath,
-        fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
+        fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
       })).code,
     ).toBe(0);
 
@@ -273,7 +232,7 @@ describe('map tokens command', () => {
     expect(loadRawTokenNamePaths(db, sessionB)).toEqual({
       'tokens.surfaceDefault': 'colors.surface.surface-default',
     });
-    expect(loadRawComponents(db, sessionB)[0]?.props[0]?.defaultValue).toBe('4px');
+    expect(loadRawComponents(db, sessionB)[0]?.props[0]?.defaultValue).toBe('tokens.surfaceDefault');
     db.close();
   });
 
@@ -288,7 +247,12 @@ describe('map tokens command', () => {
     expect(stdout).toContain('Nothing to map');
 
     const db = openPipelineDb(dbPath);
-    expect(loadRawPropTokenPaths(db, sessionId)).toEqual([]);
+    const count = (
+      db.prepare(`SELECT COUNT(*) AS count FROM raw_prop_token_paths WHERE session_id = ?`).get(sessionId) as {
+        count: number;
+      }
+    ).count;
+    expect(count).toBe(0);
     db.close();
   });
 
@@ -312,7 +276,7 @@ describe('map tokens command', () => {
 
     const { stdout, code } = await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], {
       dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
     });
 
     expect(code).toBe(0);
@@ -320,10 +284,7 @@ describe('map tokens command', () => {
 
     const db = openPipelineDb(dbPath);
     const componentId = loadRawComponents(db, sessionId)[0].component_id;
-    const groups = loadRawPropTokenPaths(db, sessionId);
-    expect(groups.find((g) => g.componentId === componentId && g.kind === 'allowed')?.paths).toEqual([
-      'colors.surface.default',
-    ]);
+    expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.surface.default']);
     db.close();
   });
 
@@ -334,7 +295,7 @@ describe('map tokens command', () => {
 
     const first = await run(['map', 'tokens', '--session', sessionA, '--agent', 'claude'], {
       dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
     });
     expect(first.code).toBe(0);
 
@@ -347,47 +308,36 @@ describe('map tokens command', () => {
 
     const db = openPipelineDb(dbPath);
     const componentId = loadRawComponents(db, sessionB)[0].component_id;
-    const groups = loadRawPropTokenPaths(db, sessionB);
-    expect(groups.find((g) => g.componentId === componentId && g.kind === 'allowed')?.paths).toEqual([
-      'colors.surface.default',
-    ]);
+    expect(readTokenPaths(db, sessionB, componentId, 'bgColor')).toEqual(['colors.surface.default']);
     db.close();
   });
 
-  it('does not cache a run that applies zero mappings, so a later session still invokes the agent', async () => {
+  it('stores a cache entry when applied = 0, and a later session reuses it without invoking the agent', async () => {
     const dbDir = await createTempDir('map-tokens-db-');
     const dbPath = join(dbDir, 'pipeline.db');
     const sessionA = await seedGeneratedSession(dbPath, true);
 
     const first = await run(['map', 'tokens', '--session', sessionA, '--agent', 'claude'], {
       dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-wrong-category.mjs'),
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-wrong-category.mjs'),
     });
     expect(first.code).toBe(0);
 
     const db = openPipelineDb(dbPath);
-    const cacheRows = db
-      .prepare(`SELECT * FROM generation_cache WHERE entity_type = 'token_mapping'`)
-      .all();
-    expect(cacheRows).toEqual([]);
+    const cacheRows = db.prepare(`SELECT * FROM generation_cache WHERE entity_type = 'token_mapping'`).all();
+    expect(cacheRows).toHaveLength(1);
     db.close();
 
     const sessionB = await seedGeneratedSession(dbPath, true);
-    // Must supply a fakeAgentScript — if a (poisoned) cache hit short-circuited this run, `which claude`
-    // would fail and the process would die non-zero, since no agent script is set up here.
-    const second = await run(['map', 'tokens', '--session', sessionB, '--agent', 'claude'], {
-      dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
-    });
+    // No fakeAgentScript — if the cache hit didn't short-circuit this run, `which claude` would
+    // fail and the process would die non-zero, since no agent script is set up here.
+    const second = await run(['map', 'tokens', '--session', sessionB, '--agent', 'claude'], { dbPath });
     expect(second.code).toBe(0);
-    expect(second.stdout).toContain('map tokens complete');
+    expect(second.stdout).toContain('cached');
 
     const db2 = openPipelineDb(dbPath);
     const componentId = loadRawComponents(db2, sessionB)[0].component_id;
-    const groups = loadRawPropTokenPaths(db2, sessionB);
-    expect(groups.find((g) => g.componentId === componentId && g.kind === 'allowed')?.paths).toEqual([
-      'colors.surface.default',
-    ]);
+    expect(readTokenPaths(db2, sessionB, componentId, 'bgColor')).toEqual([]);
     db2.close();
   });
 
@@ -398,7 +348,7 @@ describe('map tokens command', () => {
 
     await run(['map', 'tokens', '--session', sessionId, '--agent', 'claude'], {
       dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
+      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
     });
 
     const db = openPipelineDb(dbPath);

@@ -2,19 +2,33 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import {
-  openPipelineDb,
-  getOrCreateSession,
-  storeRawComponents,
-  loadRawComponents,
-  storeCDFComponents,
-  storeDTCGTokens,
-  loadRawPropTokenPaths,
-  replaceRawPropTokenPaths,
-} from '../../src/session/db.js';
-import type { RawComponentDefinition } from '../../src/types.js';
+import { openPipelineDb, loadRawComponents, replaceRawPropTokenPaths, storeDTCGTokens } from '../../src/session/db.js';
+import type { DatabaseSync } from 'node:sqlite';
 import { applyMapTokenPropCalls } from '../../src/map-tokens/apply.js';
 import type { MapTokenPropCall } from '@contentful/experience-design-system-generation';
+import { seedCardSession } from '../helpers/seed-card-session.js';
+
+/** Reads a prop's stored token-allowed paths directly, in position order. */
+function readTokenPaths(db: DatabaseSync, sessionId: string, componentId: string, propName: string): string[] {
+  return (
+    db
+      .prepare(
+        `SELECT path FROM raw_prop_token_paths
+         WHERE session_id = ? AND component_id = ? AND prop_name = ?
+         ORDER BY position`,
+      )
+      .all(sessionId, componentId, propName) as Array<{ path: string }>
+  ).map((r) => r.path);
+}
+
+/** Counts every stored token-allowed path across the whole session. */
+function countAllTokenPaths(db: DatabaseSync, sessionId: string): number {
+  return (
+    db.prepare(`SELECT COUNT(*) AS count FROM raw_prop_token_paths WHERE session_id = ?`).get(sessionId) as {
+      count: number;
+    }
+  ).count;
+}
 
 const tempDirs: string[] = [];
 
@@ -29,52 +43,12 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
-const RAW: RawComponentDefinition[] = [
-  {
-    name: 'Card',
-    source: 'src/Card.tsx',
-    framework: 'react',
-    props: [
-      { name: 'bgColor', type: 'string', required: false, category: 'design' },
-      { name: 'label', type: 'string', required: true, category: 'content' },
-    ],
-    slots: [],
-  },
-];
-
-/** Seeds a Card component with bgColor classified as a design-category token prop. */
-function seedSession(db: Parameters<typeof storeRawComponents>[0], sessionId: string): void {
-  storeRawComponents(db, sessionId, RAW);
-  storeCDFComponents(db, sessionId, [
-    {
-      key: 'Card',
-      entry: {
-        $type: 'component',
-        $properties: {
-          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
-          label: { $type: 'string', $category: 'content' },
-        },
-      },
-    },
-  ]);
-  storeDTCGTokens(
-    db,
-    sessionId,
-    [],
-    [
-      { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
-      { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
-      { path: 'colors.brand.primary', $type: 'color', $value: '#00f' },
-    ],
-  );
-}
 
 describe('applyMapTokenPropCalls', () => {
   it('persists token_allowed paths that exist in raw_tokens', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
 
       const calls: MapTokenPropCall[] = [
@@ -88,18 +62,16 @@ describe('applyMapTokenPropCalls', () => {
       const result = applyMapTokenPropCalls(db, sessionId, calls, []);
 
       expect(result).toEqual({ applied: 1, warnings: [] });
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
-        { componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] },
-      ]);
+      expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.surface.default']);
       db.close();
     });
   });
 
   it("drops a path whose token type does not match the prop's $token.kind", async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
       // bgColor is $token.kind "color"; spacing.md is a dimension token.
       // storeDTCGTokens replaces the session's token set, so re-state the colours.
       storeDTCGTokens(
@@ -132,16 +104,15 @@ describe('applyMapTokenPropCalls', () => {
       expect(result.warnings[0]).toContain('dimension');
       expect(result.warnings[0]).toContain('color');
       // Only the correctly-typed path is persisted.
-      expect(loadRawPropTokenPaths(db, sessionId)[0]?.paths).toEqual(['colors.surface.default']);
+      expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.surface.default']);
       db.close();
     });
   });
 
   it('skips the call entirely when every path is the wrong token type', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
       storeDTCGTokens(db, sessionId, [], [{ path: 'spacing.md', $type: 'dimension', $value: '8px' }]);
 
       const result = applyMapTokenPropCalls(
@@ -152,16 +123,15 @@ describe('applyMapTokenPropCalls', () => {
       );
 
       expect(result.applied).toBe(0);
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([]);
+      expect(countAllTokenPaths(db, sessionId)).toBe(0);
       db.close();
     });
   });
 
   it('drops a path absent from raw_tokens and warns, keeping the valid ones', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
 
       const result = applyMapTokenPropCalls(
@@ -180,18 +150,15 @@ describe('applyMapTokenPropCalls', () => {
 
       expect(result.applied).toBe(1);
       expect(result.warnings.join('\n')).toContain("dropped unknown token path 'colors.ghost.500'");
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
-        { componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] },
-      ]);
+      expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.surface.default']);
       db.close();
     });
   });
 
   it('rejects a variant name in place of a token path, persisting nothing', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
 
       const result = applyMapTokenPropCalls(
         db,
@@ -202,18 +169,17 @@ describe('applyMapTokenPropCalls', () => {
 
       expect(result.applied).toBe(0);
       expect(result.warnings.join('\n')).toContain('no valid token_allowed remain');
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([]);
+      expect(countAllTokenPaths(db, sessionId)).toBe(0);
       db.close();
     });
   });
 
   it("leaves a reviewer's restriction untouched", async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', 'allowed', ['colors.brand.primary'], 'review');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', ['colors.brand.primary'], 'review');
 
       const result = applyMapTokenPropCalls(
         db,
@@ -224,20 +190,17 @@ describe('applyMapTokenPropCalls', () => {
 
       expect(result.applied).toBe(0);
       expect(result.warnings.join('\n')).toContain('a reviewer already set this restriction');
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
-        { componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.brand.primary'] },
-      ]);
+      expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.brand.primary']);
       db.close();
     });
   });
 
   it('revises its own previous suggestion on a re-run', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', 'allowed', ['colors.brand.primary'], 'agent');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', ['colors.brand.primary'], 'agent');
 
       const result = applyMapTokenPropCalls(
         db,
@@ -247,18 +210,15 @@ describe('applyMapTokenPropCalls', () => {
       );
 
       expect(result).toEqual({ applied: 1, warnings: [] });
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
-        { componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] },
-      ]);
+      expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.surface.default']);
       db.close();
     });
   });
 
   it('records its own writes as agent-sourced, so a later run can revise them', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
 
       applyMapTokenPropCalls(
         db,
@@ -277,9 +237,8 @@ describe('applyMapTokenPropCalls', () => {
 
   it('rejects a call targeting an unknown component, with a warning', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
 
       const result = applyMapTokenPropCalls(
         db,
@@ -290,16 +249,15 @@ describe('applyMapTokenPropCalls', () => {
 
       expect(result.applied).toBe(0);
       expect(result.warnings[0]).toMatch(/unknown component/);
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([]);
+      expect(countAllTokenPaths(db, sessionId)).toBe(0);
       db.close();
     });
   });
 
   it('rejects a call targeting an unknown prop, with a warning', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
 
       const result = applyMapTokenPropCalls(
         db,
@@ -323,9 +281,8 @@ describe('applyMapTokenPropCalls', () => {
 
   it('rejects a call targeting a non-design-category prop, persisting nothing', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
 
       const result = applyMapTokenPropCalls(
         db,
@@ -336,16 +293,15 @@ describe('applyMapTokenPropCalls', () => {
 
       expect(result.applied).toBe(0);
       expect(result.warnings[0]).toMatch(/not a design-category token prop/);
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([]);
+      expect(countAllTokenPaths(db, sessionId)).toBe(0);
       db.close();
     });
   });
 
   it('carries forward incoming warnings and continues processing subsequent calls after a rejection', async () => {
     await withTempDb((dbPath) => {
+      const sessionId = seedCardSession(dbPath);
       const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      seedSession(db, sessionId);
 
       const result = applyMapTokenPropCalls(
         db,
