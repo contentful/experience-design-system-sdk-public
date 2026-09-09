@@ -1276,7 +1276,8 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
     const { lastFrame } = render(
       <FieldEditor value={NO_DESC} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
-    expect(lastFrame() ?? '').toMatch(/component-description|component \$description|\$description/i);
+    expect(lastFrame() ?? '').toContain('description:');
+    expect(lastFrame() ?? '').not.toContain('component-$description');
   });
 });
 

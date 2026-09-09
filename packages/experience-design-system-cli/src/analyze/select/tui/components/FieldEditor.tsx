@@ -1712,7 +1712,7 @@ export function FieldEditor({
                     bold={isSelected}
                     backgroundColor={isSelected ? 'blue' : undefined}
                   >
-                    {' component-$description '}
+                    {' description: '}
                   </Text>
                 </Box>
                 {isEditing ? (
