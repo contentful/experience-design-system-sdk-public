@@ -66,7 +66,7 @@ export function applyMapTokenPropCalls(
     const reviewed = db
       .prepare(
         `SELECT COUNT(*) AS count FROM raw_prop_token_paths
-          WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = 'allowed'
+          WHERE session_id = ? AND component_id = ? AND prop_name = ?
             AND source = 'review'`,
       )
       .get(sessionId, component.component_id, call.prop) as { count: number };
@@ -96,7 +96,7 @@ export function applyMapTokenPropCalls(
       continue;
     }
 
-    replaceRawPropTokenPaths(db, sessionId, component.component_id, call.prop, 'allowed', filteredAllowed, 'agent');
+    replaceRawPropTokenPaths(db, sessionId, component.component_id, call.prop, filteredAllowed, 'agent');
     applied++;
   }
 

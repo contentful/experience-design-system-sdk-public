@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** `components` — classify component props; `tokens` — classify design tokens; `select` — decide whether a component belongs in Contentful Experience Orchestration; `map-tokens` — suggest token sets/restrictions for design-category token props */
+/** `components` — classify component props; `tokens` — classify design tokens; `select` — decide whether a component belongs in Contentful Experience Orchestration; `map-tokens` — suggest `$token.allowed` restrictions for design-category token props */
 export type Skill = 'components' | 'tokens' | 'select' | 'map-tokens';
 export type Mode = 'autonomous';
 
@@ -185,7 +185,8 @@ function filterDesignTokenProps(cdf: GeneratedCdf): GeneratedCdf {
     const filteredProps: Record<string, CDFPropertyLike> = {};
     for (const [propName, prop] of Object.entries(properties)) {
       if (prop.$type === 'token' && prop.$category === 'design') {
-        filteredProps[propName] = prop;
+        const { '$token.allowed': _tokenAllowed, ...rest } = prop;
+        filteredProps[propName] = rest;
       }
     }
     if (Object.keys(filteredProps).length > 0) {
@@ -427,7 +428,7 @@ Rules:
 function buildMapTokensAutonomousPreamble(inputBlock: string): string {
   return `You are running as part of the experience-design-system-cli generate pipeline in AUTONOMOUS mode. The developer is not present to answer questions.
 
-Context: The components below already have design-category, token-typed props (\`$token.kind\` set). Some already carry a \`$token.allowed\` list resolved earlier from source evidence — leave those alone. For every prop that arrives with **no existing token list**, your task is to decide, from source evidence, whether to narrow it to a restricted subset (\`token_allowed\`) of the tokens matching its \`$token.kind\`. Apply all judgment calls yourself — do not pause to ask for confirmation.
+Context: The components below already have design-category, token-typed props (\`$token.kind\` set). Your task is to decide, from source evidence, whether to narrow each one to a restricted subset (\`token_allowed\`) of the tokens matching its \`$token.kind\`. Apply all judgment calls yourself — do not pause to ask for confirmation.
 
 All input data is provided inline below — do not read any additional files.${inputBlock}
 
@@ -438,12 +439,12 @@ Do NOT write any files or emit any JSON blobs. Instead, emit one JSON object per
 The one tool call you may emit:
 
 \`\`\`
-{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"<reason>"}
+{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_allowed":["colors.brand.primary","colors.brand.secondary"]}
 \`\`\`
 
 Rules:
 - Emit exactly one JSON object per line. No multi-line JSON. No markdown fences around the lines.
-- Only emit a call for a prop that appears in the "Generated CDF so far" section and does not already carry \`$token.allowed\` — a prop that already has one was resolved from source and must not be contradicted.
+- Only emit a call for a prop that appears in the "Generated CDF so far" section.
 - Each "Token path index" section below is already scoped to one \`$token.kind\` — a prop only draws candidates from the section matching its own \`$token.kind\`. A prop with no \`$token.kind\` draws from the "full tree" section instead. Never cross sections.
 - \`token_allowed\` is a flat list of individual **leaf** token paths — never a group/prefix path. Each "Token path index" section contains one entry per leaf token only; a path like \`colors.brand\` that groups \`colors.brand.primary\`/\`colors.brand.secondary\` does NOT itself appear in any section and must never be emitted.
 - Every path in \`token_allowed\` must exist verbatim in the matching "Token path index" section and match the prop's \`$token.kind\`. Never invent a path, and never substitute a variant/enum name for a real token path. If a path you'd otherwise suggest is missing from the index, omit it rather than guessing.

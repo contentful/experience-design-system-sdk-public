@@ -238,17 +238,13 @@ function applyDbMigrations(db: DatabaseSync): void {
           session_id   TEXT NOT NULL,
           component_id TEXT NOT NULL,
           prop_name    TEXT NOT NULL,
-          -- DTCG token paths for the prop. Only 'allowed' rows are written or
-          -- read going forward; 'set' remains a valid value only so existing
-          -- sessions with legacy rows keep loading without a migration.
-          kind         TEXT NOT NULL CHECK (kind IN ('set', 'allowed')),
           -- Who set this list. 'agent' is a map-tokens suggestion, which a later
           -- run of that step may freely revise. 'review' is a person's decision
           -- in the review editor, which a re-run must not overwrite.
           source       TEXT NOT NULL DEFAULT 'agent' CHECK (source IN ('agent', 'review')),
           position     INTEGER NOT NULL,
           path         TEXT NOT NULL,
-          PRIMARY KEY (session_id, component_id, prop_name, kind, position),
+          PRIMARY KEY (session_id, component_id, prop_name, position),
           FOREIGN KEY (session_id, component_id, prop_name)
             REFERENCES raw_props(session_id, component_id, name) ON DELETE CASCADE
         );
@@ -521,8 +517,6 @@ function repairRawTokenNamePathsSchema(db: DatabaseSync): void {
   }
 }
 
-export type RawPropTokenPathKind = 'set' | 'allowed';
-
 /** An exact source token reference paired with its canonical DTCG path. */
 export type RawTokenNamePaths = Record<string, string>;
 export type RawTokenNamePathSource = 'automatic' | 'manual';
@@ -591,81 +585,34 @@ export function loadRawTokenNamePathRows(db: DatabaseSync, sessionId: string): R
  */
 export type RawPropTokenPathSource = 'agent' | 'review';
 
-export interface RawPropTokenPathGroup {
-  componentId: string;
-  propName: string;
-  kind: RawPropTokenPathKind;
-  paths: string[];
-}
-
 export function replaceRawPropTokenPaths(
   db: DatabaseSync,
   sessionId: string,
   componentId: string,
   propName: string,
-  kind: RawPropTokenPathKind,
   paths: string[],
   source: RawPropTokenPathSource,
 ): void {
   const deletePaths = db.prepare(
     `DELETE FROM raw_prop_token_paths
-     WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = ?`,
+     WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
   );
   const insertPath = db.prepare(
-    `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, source, position, path)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, source, position, path)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   );
 
   db.exec('BEGIN');
   try {
-    deletePaths.run(sessionId, componentId, propName, kind);
+    deletePaths.run(sessionId, componentId, propName);
     paths.forEach((path, position) => {
-      insertPath.run(sessionId, componentId, propName, kind, source, position, path);
+      insertPath.run(sessionId, componentId, propName, source, position, path);
     });
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
     throw e;
   }
-}
-
-export function loadRawPropTokenPaths(db: DatabaseSync, sessionId: string): RawPropTokenPathGroup[] {
-  const rows = db
-    .prepare(
-      `SELECT component_id, prop_name, kind, position, path
-       FROM raw_prop_token_paths
-       WHERE session_id = ?
-       ORDER BY component_id, prop_name, kind, position`,
-    )
-    .all(sessionId) as Array<{
-    component_id: string;
-    prop_name: string;
-    kind: RawPropTokenPathKind;
-    position: number;
-    path: string;
-  }>;
-
-  const groups: RawPropTokenPathGroup[] = [];
-  for (const row of rows) {
-    const previous = groups.at(-1);
-    if (
-      previous &&
-      previous.componentId === row.component_id &&
-      previous.propName === row.prop_name &&
-      previous.kind === row.kind
-    ) {
-      previous.paths.push(row.path);
-      continue;
-    }
-    groups.push({
-      componentId: row.component_id,
-      propName: row.prop_name,
-      kind: row.kind,
-      paths: [row.path],
-    });
-  }
-
-  return groups;
 }
 
 export interface ApplyToolCallsResult {
@@ -833,7 +780,7 @@ export function applyToolCalls(
     `DELETE FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
   );
   const deleteTokenPaths = db.prepare(
-    `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = 'allowed'`,
+    `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
   );
   const insertAllowedValue = db.prepare(
     `INSERT OR IGNORE INTO raw_prop_allowed_values (session_id, component_id, prop_name, value, position)
@@ -1698,18 +1645,18 @@ export function storeCDFComponents(
      VALUES (?, ?, ?, ?, ?)`,
   );
   const deleteTokenPaths = db.prepare(
-    `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = ?`,
+    `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
   );
   const insertTokenPath = db.prepare(
-    `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, source, position, path)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, source, position, path)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   );
   // storeCDFComponents is only reached from the review editor, so a list written
   // here is a person's decision and is recorded as such.
-  const writeTokenPaths = (componentId: string, propName: string, kind: 'set' | 'allowed', paths: string[]) => {
-    deleteTokenPaths.run(sessionId, componentId, propName, kind);
+  const writeTokenPaths = (componentId: string, propName: string, paths: string[]) => {
+    deleteTokenPaths.run(sessionId, componentId, propName);
     paths.forEach((path, position) =>
-      insertTokenPath.run(sessionId, componentId, propName, kind, 'review', position, path),
+      insertTokenPath.run(sessionId, componentId, propName, 'review', position, path),
     );
   };
   const deleteSlots = db.prepare(`DELETE FROM raw_slots WHERE session_id = ? AND component_id = ?`);
@@ -1749,7 +1696,7 @@ export function storeCDFComponents(
             prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
           }
           if (prop['$token.allowed'] !== undefined) {
-            writeTokenPaths(componentId, propName, 'allowed', prop['$token.allowed']);
+            writeTokenPaths(componentId, propName, prop['$token.allowed']);
           }
         }
 
@@ -1805,7 +1752,7 @@ export function storeCDFComponents(
             prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
           }
           if (prop['$token.allowed'] !== undefined) {
-            writeTokenPaths(componentId, propName, 'allowed', prop['$token.allowed']);
+            writeTokenPaths(componentId, propName, prop['$token.allowed']);
           }
         }
 
@@ -1907,13 +1854,12 @@ export function loadCDFComponents(
 
   const tokenPaths = db
     .prepare(
-      `SELECT component_id, prop_name, kind, position, path
-       FROM raw_prop_token_paths WHERE session_id = ? ORDER BY component_id, prop_name, kind, position`,
+      `SELECT component_id, prop_name, position, path
+       FROM raw_prop_token_paths WHERE session_id = ? ORDER BY component_id, prop_name, position`,
     )
     .all(sessionId) as Array<{
     component_id: string;
     prop_name: string;
-    kind: 'set' | 'allowed';
     position: number;
     path: string;
   }>;
@@ -1935,7 +1881,7 @@ export function loadCDFComponents(
   const allowedValuesByProp = groupBy(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
   const slotsByComponent = groupBy(slots, (s) => s.component_id);
   const allowedComponentsBySlot = groupBy(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
-  const tokenPathsByPropAndKind = groupBy(tokenPaths, (t) => `${t.component_id}::${t.prop_name}::${t.kind}`);
+  const tokenPathsByProp = groupBy(tokenPaths, (t) => `${t.component_id}::${t.prop_name}`);
   const toTokenPaths = (rows: typeof tokenPaths | undefined): string[] | undefined =>
     rows === undefined ? undefined : rows.map((r) => r.path);
 
@@ -1974,12 +1920,7 @@ export function loadCDFComponents(
       if (!isTokenProp && av && av.length > 0) propDef.$values = av.map((v) => v.value);
       if (p.cdf_token_kind !== null) propDef['$token.kind'] = p.cdf_token_kind;
       if (isTokenProp) {
-        // Only the author-restricted subset is carried. The full universe of
-        // tokens a property may bind to is every token whose $type matches its
-        // $token.kind — a consumer holding the token document derives that in
-        // one filter, so serialising it per property would duplicate the whole
-        // token list once for every property that shares a kind.
-        const allowed = toTokenPaths(tokenPathsByPropAndKind.get(`${component_id}::${p.name}::allowed`));
+        const allowed = toTokenPaths(tokenPathsByProp.get(`${component_id}::${p.name}`));
         if (allowed !== undefined && allowed.length > 0) propDef['$token.allowed'] = allowed;
       }
       $properties[p.name] = propDef;
@@ -2872,16 +2813,15 @@ export function copyMapTokensFromCache(db: DatabaseSync, sourceSessionId: string
 
     const sourceRows = db
       .prepare(
-        `SELECT rc.name AS component_name, rptp.prop_name, rptp.kind, rptp.source, rptp.position, rptp.path
+        `SELECT rc.name AS component_name, rptp.prop_name, rptp.source, rptp.position, rptp.path
          FROM raw_prop_token_paths rptp
          JOIN raw_components rc ON rc.session_id = rptp.session_id AND rc.component_id = rptp.component_id
          WHERE rptp.session_id = ?
-         ORDER BY rc.name, rptp.prop_name, rptp.kind, rptp.position`,
+         ORDER BY rc.name, rptp.prop_name, rptp.position`,
       )
       .all(sourceSessionId) as Array<{
       component_name: string;
       prop_name: string;
-      kind: 'set' | 'allowed';
       source: RawPropTokenPathSource;
       position: number;
       path: string;
@@ -2902,25 +2842,25 @@ export function copyMapTokensFromCache(db: DatabaseSync, sourceSessionId: string
     );
 
     const insertPath = db.prepare(
-      `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, source, position, path)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, source, position, path)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     );
-    const clearedKinds = new Set<string>();
+    const clearedProps = new Set<string>();
     const copiedProps = new Set<string>();
     for (const row of sourceRows) {
       const targetComponentId = targetIdByName.get(row.component_name);
       if (!targetComponentId) continue;
       if (!targetProps.has(`${targetComponentId}::${row.prop_name}`)) continue;
 
-      const kindKey = `${targetComponentId}::${row.prop_name}::${row.kind}`;
-      if (!clearedKinds.has(kindKey)) {
-        clearedKinds.add(kindKey);
+      const propKey = `${targetComponentId}::${row.prop_name}`;
+      if (!clearedProps.has(propKey)) {
+        clearedProps.add(propKey);
         db.prepare(
-          `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = ?`,
-        ).run(targetSessionId, targetComponentId, row.prop_name, row.kind);
+          `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
+        ).run(targetSessionId, targetComponentId, row.prop_name);
       }
-      insertPath.run(targetSessionId, targetComponentId, row.prop_name, row.kind, row.source, row.position, row.path);
-      copiedProps.add(`${targetComponentId}::${row.prop_name}`);
+      insertPath.run(targetSessionId, targetComponentId, row.prop_name, row.source, row.position, row.path);
+      copiedProps.add(propKey);
     }
     copiedCount = copiedProps.size;
 

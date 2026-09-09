@@ -523,18 +523,7 @@ describe('buildPrompt', () => {
       expect(prompt).toMatch(/\$token\.kind/);
     });
 
-    it('only narrows props that arrive without an existing token list', async () => {
-      const prompt = await buildPrompt({
-        skill: 'map-tokens',
-        mode: 'autonomous',
-        generatedCdf: GENERATED_CDF,
-        tokenTree: TOKEN_TREE,
-        outDir: '/fake/out',
-      });
-      expect(prompt).toMatch(/without an existing|already (has|arrived|resolved)/i);
-    });
-
-    it('instructs never contradicting an existing tokenReference', async () => {
+    it('treats a tokenReference as a default, not a restriction', async () => {
       const prompt = await buildPrompt({
         skill: 'map-tokens',
         mode: 'autonomous',
@@ -543,7 +532,7 @@ describe('buildPrompt', () => {
         outDir: '/fake/out',
       });
       expect(prompt).toContain('tokenReference');
-      expect(prompt).toMatch(/never contradict/i);
+      expect(prompt).toMatch(/prop's default, not a restriction/i);
     });
 
     it('includes skill file content', async () => {

@@ -11,13 +11,26 @@ import {
   getOrCreateSession,
   createStep,
   updateStep,
-  loadRawPropTokenPaths,
   loadRawComponents,
   loadRawTokenNamePaths,
   loadCDFComponents,
   replaceRawTokenNamePaths,
 } from '../../src/session/db.js';
+import type { DatabaseSync } from 'node:sqlite';
 import type { RawComponentDefinition } from '../../src/types.js';
+
+/** Reads a prop's stored token-allowed paths directly, in position order. */
+function readTokenPaths(db: DatabaseSync, sessionId: string, componentId: string, propName: string): string[] {
+  return (
+    db
+      .prepare(
+        `SELECT path FROM raw_prop_token_paths
+         WHERE session_id = ? AND component_id = ? AND prop_name = ?
+         ORDER BY position`,
+      )
+      .all(sessionId, componentId, propName) as Array<{ path: string }>
+  ).map((r) => r.path);
+}
 
 const bin = resolve(import.meta.dirname, '../../bin/cli.js');
 const FIXTURES_DIR = resolve(import.meta.dirname, '../fixtures/generate');
@@ -191,8 +204,7 @@ describe('map tokens command', () => {
 
     const db = openPipelineDb(dbPath);
     const componentId = loadRawComponents(db, sessionId)[0].component_id;
-    const groups = loadRawPropTokenPaths(db, sessionId);
-    expect(groups).toEqual([{ componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] }]);
+    expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.surface.default']);
     db.close();
   });
 
@@ -288,7 +300,12 @@ describe('map tokens command', () => {
     expect(stdout).toContain('Nothing to map');
 
     const db = openPipelineDb(dbPath);
-    expect(loadRawPropTokenPaths(db, sessionId)).toEqual([]);
+    const count = (
+      db.prepare(`SELECT COUNT(*) AS count FROM raw_prop_token_paths WHERE session_id = ?`).get(sessionId) as {
+        count: number;
+      }
+    ).count;
+    expect(count).toBe(0);
     db.close();
   });
 
@@ -320,10 +337,7 @@ describe('map tokens command', () => {
 
     const db = openPipelineDb(dbPath);
     const componentId = loadRawComponents(db, sessionId)[0].component_id;
-    const groups = loadRawPropTokenPaths(db, sessionId);
-    expect(groups.find((g) => g.componentId === componentId && g.kind === 'allowed')?.paths).toEqual([
-      'colors.surface.default',
-    ]);
+    expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.surface.default']);
     db.close();
   });
 
@@ -347,10 +361,7 @@ describe('map tokens command', () => {
 
     const db = openPipelineDb(dbPath);
     const componentId = loadRawComponents(db, sessionB)[0].component_id;
-    const groups = loadRawPropTokenPaths(db, sessionB);
-    expect(groups.find((g) => g.componentId === componentId && g.kind === 'allowed')?.paths).toEqual([
-      'colors.surface.default',
-    ]);
+    expect(readTokenPaths(db, sessionB, componentId, 'bgColor')).toEqual(['colors.surface.default']);
     db.close();
   });
 
@@ -384,10 +395,7 @@ describe('map tokens command', () => {
 
     const db2 = openPipelineDb(dbPath);
     const componentId = loadRawComponents(db2, sessionB)[0].component_id;
-    const groups = loadRawPropTokenPaths(db2, sessionB);
-    expect(groups.find((g) => g.componentId === componentId && g.kind === 'allowed')?.paths).toEqual([
-      'colors.surface.default',
-    ]);
+    expect(readTokenPaths(db2, sessionB, componentId, 'bgColor')).toEqual(['colors.surface.default']);
     db2.close();
   });
 

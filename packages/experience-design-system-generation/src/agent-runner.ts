@@ -315,7 +315,6 @@ export interface MapTokenPropCall {
   prop: string;
   /** Narrowed subset of tokens the prop may draw from. Required and non-empty. */
   token_allowed: string[];
-  description?: string;
 }
 
 export interface ParsedMapTokenPropToolCalls {
@@ -369,7 +368,6 @@ export function parseMapTokenPropToolCallLines(stdout: string): ParsedMapTokenPr
       prop: rec.prop,
       token_allowed: rec.token_allowed,
     };
-    if (typeof rec.description === 'string') call.description = rec.description;
     calls.push(call);
   }
 

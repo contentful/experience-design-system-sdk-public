@@ -9,12 +9,34 @@ import {
   loadRawComponents,
   storeCDFComponents,
   storeDTCGTokens,
-  loadRawPropTokenPaths,
   replaceRawPropTokenPaths,
 } from '../../src/session/db.js';
+import type { DatabaseSync } from 'node:sqlite';
 import type { RawComponentDefinition } from '../../src/types.js';
 import { applyMapTokenPropCalls } from '../../src/map-tokens/apply.js';
 import type { MapTokenPropCall } from '@contentful/experience-design-system-generation';
+
+/** Reads a prop's stored token-allowed paths directly, in position order. */
+function readTokenPaths(db: DatabaseSync, sessionId: string, componentId: string, propName: string): string[] {
+  return (
+    db
+      .prepare(
+        `SELECT path FROM raw_prop_token_paths
+         WHERE session_id = ? AND component_id = ? AND prop_name = ?
+         ORDER BY position`,
+      )
+      .all(sessionId, componentId, propName) as Array<{ path: string }>
+  ).map((r) => r.path);
+}
+
+/** Counts every stored token-allowed path across the whole session. */
+function countAllTokenPaths(db: DatabaseSync, sessionId: string): number {
+  return (
+    db.prepare(`SELECT COUNT(*) AS count FROM raw_prop_token_paths WHERE session_id = ?`).get(sessionId) as {
+      count: number;
+    }
+  ).count;
+}
 
 const tempDirs: string[] = [];
 
@@ -88,9 +110,7 @@ describe('applyMapTokenPropCalls', () => {
       const result = applyMapTokenPropCalls(db, sessionId, calls, []);
 
       expect(result).toEqual({ applied: 1, warnings: [] });
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
-        { componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] },
-      ]);
+      expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.surface.default']);
       db.close();
     });
   });
@@ -100,6 +120,7 @@ describe('applyMapTokenPropCalls', () => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
       seedSession(db, sessionId);
+      const componentId = loadRawComponents(db, sessionId)[0].component_id;
       // bgColor is $token.kind "color"; spacing.md is a dimension token.
       // storeDTCGTokens replaces the session's token set, so re-state the colours.
       storeDTCGTokens(
@@ -132,7 +153,7 @@ describe('applyMapTokenPropCalls', () => {
       expect(result.warnings[0]).toContain('dimension');
       expect(result.warnings[0]).toContain('color');
       // Only the correctly-typed path is persisted.
-      expect(loadRawPropTokenPaths(db, sessionId)[0]?.paths).toEqual(['colors.surface.default']);
+      expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.surface.default']);
       db.close();
     });
   });
@@ -152,7 +173,7 @@ describe('applyMapTokenPropCalls', () => {
       );
 
       expect(result.applied).toBe(0);
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([]);
+      expect(countAllTokenPaths(db, sessionId)).toBe(0);
       db.close();
     });
   });
@@ -180,9 +201,7 @@ describe('applyMapTokenPropCalls', () => {
 
       expect(result.applied).toBe(1);
       expect(result.warnings.join('\n')).toContain("dropped unknown token path 'colors.ghost.500'");
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
-        { componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] },
-      ]);
+      expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.surface.default']);
       db.close();
     });
   });
@@ -202,7 +221,7 @@ describe('applyMapTokenPropCalls', () => {
 
       expect(result.applied).toBe(0);
       expect(result.warnings.join('\n')).toContain('no valid token_allowed remain');
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([]);
+      expect(countAllTokenPaths(db, sessionId)).toBe(0);
       db.close();
     });
   });
@@ -213,7 +232,7 @@ describe('applyMapTokenPropCalls', () => {
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
       seedSession(db, sessionId);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', 'allowed', ['colors.brand.primary'], 'review');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', ['colors.brand.primary'], 'review');
 
       const result = applyMapTokenPropCalls(
         db,
@@ -224,9 +243,7 @@ describe('applyMapTokenPropCalls', () => {
 
       expect(result.applied).toBe(0);
       expect(result.warnings.join('\n')).toContain('a reviewer already set this restriction');
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
-        { componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.brand.primary'] },
-      ]);
+      expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.brand.primary']);
       db.close();
     });
   });
@@ -237,7 +254,7 @@ describe('applyMapTokenPropCalls', () => {
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
       seedSession(db, sessionId);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', 'allowed', ['colors.brand.primary'], 'agent');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'bgColor', ['colors.brand.primary'], 'agent');
 
       const result = applyMapTokenPropCalls(
         db,
@@ -247,9 +264,7 @@ describe('applyMapTokenPropCalls', () => {
       );
 
       expect(result).toEqual({ applied: 1, warnings: [] });
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
-        { componentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] },
-      ]);
+      expect(readTokenPaths(db, sessionId, componentId, 'bgColor')).toEqual(['colors.surface.default']);
       db.close();
     });
   });
@@ -290,7 +305,7 @@ describe('applyMapTokenPropCalls', () => {
 
       expect(result.applied).toBe(0);
       expect(result.warnings[0]).toMatch(/unknown component/);
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([]);
+      expect(countAllTokenPaths(db, sessionId)).toBe(0);
       db.close();
     });
   });
@@ -336,7 +351,7 @@ describe('applyMapTokenPropCalls', () => {
 
       expect(result.applied).toBe(0);
       expect(result.warnings[0]).toMatch(/not a design-category token prop/);
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([]);
+      expect(countAllTokenPaths(db, sessionId)).toBe(0);
       db.close();
     });
   });
