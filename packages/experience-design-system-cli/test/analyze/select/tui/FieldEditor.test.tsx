@@ -394,6 +394,32 @@ describe('FieldEditor — prop category grouping', () => {
 });
 
 describe('FieldEditor — flat enum-values (Fix 3)', () => {
+  it('renders enum values inline for selected and unselected rows', async () => {
+    const value = JSON.stringify({
+      Card: {
+        $type: 'component',
+        $properties: {
+          variant: {
+            $type: 'enum',
+            $category: 'design',
+            $values: ['primary', 'secondary', 'tertiary'],
+          },
+          empty: { $type: 'enum', $category: 'design', $values: [] },
+        },
+      },
+    });
+    const { stdin, lastFrame } = render(
+      <FieldEditor value={value} width={100} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+
+    expect(lastFrame() ?? '').toContain('values: [primary, secondary, tertiary]');
+    expect(lastFrame() ?? '').toContain('values: []');
+
+    stdin.write('\r');
+    await tick();
+    expect(lastFrame() ?? '').toContain('values: [primary, secondary, tertiary]');
+  });
+
   it('renders the values legend when activeField is values', async () => {
     const { stdin, lastFrame } = render(
       <FieldEditor

@@ -357,6 +357,13 @@ function PropRow({
           <Toggle value={prop.required} active={false} />
         )}
 
+        {prop.type === 'enum' && (
+          <>
+            <Text dimColor={!selected}>values:</Text>
+            <Text color={selected ? PALETTE.warning : PALETTE.inverse}>[{prop.values.join(', ')}]</Text>
+          </>
+        )}
+
         {prop.type === 'token' && (
           <>
             <Text dimColor={!selected}>kind:</Text>
@@ -407,7 +414,7 @@ function PropRow({
         </Box>
       )}
 
-      {selected && prop.type === 'enum' && (
+      {selected && prop.type === 'enum' && activeField === 'values' && (
         <Box paddingLeft={2} flexDirection="column">
           <Box>
             <Text dimColor>values:</Text>
