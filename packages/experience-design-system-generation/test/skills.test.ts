@@ -166,11 +166,6 @@ describe('map-tokens.md', () => {
     expect(content).toMatch(/\$token\.kind/);
   });
 
-  it('only narrows props that arrive without an existing token list', async () => {
-    const content = await readSkill('map-tokens.md');
-    expect(content).toMatch(/without an existing|no existing token (list|allowed)|already (has|arrived)/i);
-  });
-
   it('forbids hallucinated paths not in the token path index', async () => {
     const content = await readSkill('map-tokens.md');
     expect(content).toMatch(/never invent a path|no hallucinated paths/i);

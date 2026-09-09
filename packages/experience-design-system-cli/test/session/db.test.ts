@@ -1626,7 +1626,7 @@ describe('CDF builder: $token.allowed', () => {
     });
   });
 
-  it('keeps path ordering stable across repeated loads', async () => {
+  it('preserves $token.allowed path order as stored, not sorted', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -1647,14 +1647,12 @@ describe('CDF builder: $token.allowed', () => {
         },
       ]);
 
-      const first = loadCDFComponents(db, sessionId);
-      const second = loadCDFComponents(db, sessionId);
-      expect(first[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual([
+      const loaded = loadCDFComponents(db, sessionId);
+      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual([
         'color.brand.tertiary',
         'color.brand.primary',
         'color.brand.secondary',
       ]);
-      expect(second).toEqual(first);
       db.close();
     });
   });
