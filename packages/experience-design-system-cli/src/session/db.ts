@@ -1717,7 +1717,7 @@ export function loadCDFComponents(
 
   const props = db
     .prepare(
-      `SELECT component_id, name, required, default_value, token_reference, description,
+      `SELECT component_id, name, required, default_value, description,
               cdf_type, cdf_category, cdf_token_kind, position
        FROM raw_props
        WHERE session_id = ? AND cdf_type IS NOT NULL AND cdf_type != 'excluded'
@@ -1728,7 +1728,6 @@ export function loadCDFComponents(
     name: string;
     required: number;
     default_value: string | null;
-    token_reference: string | null;
     description: string | null;
     cdf_type: string;
     cdf_category: string;
@@ -1816,7 +1815,7 @@ export function loadCDFComponents(
       };
       if (p.required) propDef.$required = true;
       const isTokenProp = p.cdf_type === 'token' && p.cdf_category === 'design';
-      const defaultReference = p.token_reference ?? p.default_value;
+      const defaultReference = p.default_value;
       const resolvedDefault =
         isTokenProp && p.cdf_token_kind !== null && defaultReference !== null
           ? resolvedDefaultPaths[defaultReference]
@@ -2342,7 +2341,7 @@ export function computeTokenInputHash(rawTokenContent: string): string {
 export function computeMapTokensInputHash(db: DatabaseSync, sessionId: string): string {
   const props = db
     .prepare(
-      `SELECT rc.name AS component_name, rp.name AS prop_name, rp.cdf_token_kind, rp.default_value, rp.token_reference
+      `SELECT rc.name AS component_name, rp.name AS prop_name, rp.cdf_token_kind, rp.default_value
        FROM raw_props rp
        JOIN raw_components rc ON rc.session_id = rp.session_id AND rc.component_id = rp.component_id
        WHERE rp.session_id = ? AND rp.cdf_type = 'token' AND rp.cdf_category = 'design'
@@ -2353,7 +2352,6 @@ export function computeMapTokensInputHash(db: DatabaseSync, sessionId: string): 
     prop_name: string;
     cdf_token_kind: string | null;
     default_value: string | null;
-    token_reference: string | null;
   }>;
 
   const tokens = db
@@ -2370,7 +2368,6 @@ export function computeMapTokensInputHash(db: DatabaseSync, sessionId: string): 
       prop: p.prop_name,
       tokenKind: p.cdf_token_kind,
       rawDefault: p.default_value,
-      tokenReference: p.token_reference,
     })),
     tokens,
     defaultMappings,

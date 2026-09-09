@@ -1,5 +1,6 @@
 import { createElement } from 'react';
 import { render } from 'ink';
+import { readFile } from 'node:fs/promises';
 import type { Command } from 'commander';
 import {
   AGENT_NAMES,
@@ -46,6 +47,7 @@ interface MapTokensOptions {
   printPrompt?: boolean;
   cache?: boolean;
   skipAgent?: boolean;
+  tokenMap?: string;
 }
 
 async function renderResult(result: MapTokensViewResult): Promise<void> {
@@ -82,24 +84,42 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
 
     await bindAnalyticsSessionId(sessionId);
 
+    const tokenLeaves = db
+      .prepare('SELECT path, type FROM raw_tokens WHERE session_id = ? ORDER BY path')
+      .all(sessionId) as Array<{ path: string; type: string }>;
+    const knownTokenPaths = new Set(tokenLeaves.map((t) => t.path));
+
+    const tokenMapDiagnostics: string[] = [];
+    if (opts.tokenMap) {
+      const fileMappings = JSON.parse(await readFile(opts.tokenMap, 'utf8')) as Record<string, string>;
+      const validMappings: Record<string, string> = {};
+      for (const [rawName, path] of Object.entries(fileMappings)) {
+        if (knownTokenPaths.has(path)) {
+          validMappings[rawName] = path;
+        } else {
+          tokenMapDiagnostics.push(`Token map '${rawName}' -> '${path}': path not found in session tokens — skipped.`);
+        }
+      }
+      // Replace-all-manual-then-insert, before the automatic pass, so the file
+      // is the source of truth for manual mappings on every run.
+      replaceRawTokenNamePaths(db, sessionId, validMappings, 'manual');
+    }
+
     // Resolve generated design-token props by their source reference when one
     // was extracted. The rendered default value stays out of this prepass.
     const rawDefaults = db
       .prepare(
-        `SELECT COALESCE(rp.token_reference, rp.default_value) AS default_reference, rp.cdf_token_kind
+        `SELECT rp.default_value AS default_reference, rp.cdf_token_kind
          FROM raw_props rp
          JOIN raw_components rc ON rc.session_id = rp.session_id AND rc.component_id = rp.component_id
          WHERE rp.session_id = ? AND rc.status = 'generated'
            AND rp.cdf_type = 'token' AND rp.cdf_category = 'design'
-           AND COALESCE(rp.token_reference, rp.default_value) IS NOT NULL`,
+           AND rp.default_value IS NOT NULL`,
       )
       .all(sessionId) as Array<{
       default_reference: string;
       cdf_token_kind: string | null;
     }>;
-    const tokenLeaves = db
-      .prepare('SELECT path, type FROM raw_tokens WHERE session_id = ? ORDER BY path')
-      .all(sessionId) as Array<{ path: string; type: string }>;
     const defaultResolution = resolveTokenDefaults(
       rawDefaults.map((row) => ({
         rawDefault: row.default_reference,
@@ -113,7 +133,10 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
         .map((row) => [row.rawName, row.path]),
     );
     const automaticMappings: Record<string, string> = {};
-    const defaultDiagnostics = defaultResolution.diagnostics.map((diagnostic) => diagnostic.message);
+    const defaultDiagnostics = [
+      ...tokenMapDiagnostics,
+      ...defaultResolution.diagnostics.map((diagnostic) => diagnostic.message),
+    ];
     for (const [rawName, path] of Object.entries(defaultResolution.mappings)) {
       const manualPath = manualMappings.get(rawName);
       if (manualPath === undefined) {
@@ -264,7 +287,8 @@ export function registerMapTokensCommand(program: Command): void {
     .option('--session <id>', 'Session ID from generate components (defaults to most recent)')
     .option('--print-prompt', 'Print the prompt without invoking the agent')
     .option('--skip-agent', 'Resolve token defaults without agentic $token.allowed inference')
-    .option('--no-cache', 'Bypass the map-tokens cache and force a re-run');
+    .option('--no-cache', 'Bypass the map-tokens cache and force a re-run')
+    .option('--token-map <path>', 'Path to token-name-map.json sidecar');
 
   addAgentModelOptions(tokensCmd).action(async (opts: MapTokensOptions) => {
     await runMapTokens(opts);
