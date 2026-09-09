@@ -348,12 +348,7 @@ function PropRow({
           <Text color={selected ? PALETTE.warning : PALETTE.inverse}>{prop.type}</Text>
         )}
 
-        <Text dimColor={!selected}>cat:</Text>
-        {activeField === 'category' ? (
-          <Picker value={prop.category} active={true} />
-        ) : (
-          <Text color={selected ? PALETTE.info : PALETTE.inverse}>{prop.category}</Text>
-        )}
+        {activeField === 'category' && <Picker value={prop.category} active={true} />}
 
         <Text dimColor={!selected}>req:</Text>
         {activeField === 'required' ? (
@@ -612,6 +607,8 @@ function SlotRow({
 
 type PropField = 'type' | 'category' | 'required' | 'description' | 'tokenKind' | 'values' | 'default';
 type SlotField = 'required' | 'description' | 'allowedComponents';
+type PropDisplayGroup = 'content' | 'design' | 'hidden';
+type SelectableRow = { kind: 'prop'; idx: number } | { kind: 'slot'; idx: number };
 
 function propFields(prop: PropState): PropField[] {
   const fields: PropField[] = ['type', 'category', 'required'];
@@ -842,15 +839,64 @@ export function FieldEditor({
 
   const props = editorState.props;
   const slots = editorState.slots;
-  // Filter the view only so saving preserves hidden properties.
-  const visiblePropIndexes = React.useMemo(
+  // Filter and group the view only so saving preserves hidden properties.
+  const contentPropIndexes = React.useMemo(
+    () => props.flatMap((prop, index) => (prop.category === 'content' ? [index] : [])),
+    [props],
+  );
+  const designPropIndexes = React.useMemo(
+    () => props.flatMap((prop, index) => (prop.category === 'design' ? [index] : [])),
+    [props],
+  );
+  const hiddenPropIndexes = React.useMemo(
     () =>
-      props.flatMap((prop, index) =>
-        showHiddenProps || (prop.category !== 'state' && prop.category !== 'unattached') ? [index] : [],
-      ),
+      showHiddenProps
+        ? props.flatMap((prop, index) => (prop.category === 'state' || prop.category === 'unattached' ? [index] : []))
+        : [],
     [props, showHiddenProps],
   );
+  const visiblePropIndexes = React.useMemo(
+    () => [...contentPropIndexes, ...designPropIndexes, ...hiddenPropIndexes],
+    [contentPropIndexes, designPropIndexes, hiddenPropIndexes],
+  );
+  const propGroups = React.useMemo(
+    () => [
+      { kind: 'content' as const, label: '── CONTENT', indexes: contentPropIndexes },
+      { kind: 'design' as const, label: '── DESIGN', indexes: designPropIndexes },
+      { kind: 'hidden' as const, label: '── OTHER / HIDDEN', indexes: hiddenPropIndexes },
+    ],
+    [contentPropIndexes, designPropIndexes, hiddenPropIndexes],
+  );
+  const selectableRows = React.useMemo<SelectableRow[]>(
+    () => [
+      ...contentPropIndexes.map((idx) => ({ kind: 'prop' as const, idx })),
+      ...designPropIndexes.map((idx) => ({ kind: 'prop' as const, idx })),
+      ...slots.map((_, idx) => ({ kind: 'slot' as const, idx })),
+      ...hiddenPropIndexes.map((idx) => ({ kind: 'prop' as const, idx })),
+    ],
+    [contentPropIndexes, designPropIndexes, hiddenPropIndexes, slots],
+  );
   const visiblePropPosition = visiblePropIndexes.indexOf(propIdx);
+  const selectedSelectableIndex = React.useMemo(
+    () =>
+      selectableRows.findIndex((row) =>
+        inSlots ? row.kind === 'slot' && row.idx === slotIdx : row.kind === 'prop' && row.idx === propIdx,
+      ),
+    [inSlots, propIdx, selectableRows, slotIdx],
+  );
+
+  const focusSelectableRow = (row: SelectableRow) => {
+    setInComponentDesc(false);
+    if (row.kind === 'prop') {
+      setInSlots(false);
+      setPropIdx(row.idx);
+      setFocusLevel('prop');
+    } else {
+      setInSlots(true);
+      setSlotIdx(row.idx);
+      setFocusLevel('slot');
+    }
+  };
 
   const textEntryActive =
     (focusLevel === 'field' && activeField === 'description') ||
@@ -1128,52 +1174,13 @@ export function FieldEditor({
       return;
     }
 
-    if (focusLevel === 'prop') {
-      if (key.upArrow || input === 'k') {
-        if (visiblePropPosition > 0) {
-          setPropIdx(visiblePropIndexes[visiblePropPosition - 1]!);
-        } else {
-          setFocusLevel('componentDescription');
-          setInSlots(false);
-          setInComponentDesc(true);
-        }
-        return;
-      }
-      if (key.downArrow || input === 'j') {
-        if (visiblePropPosition >= 0 && visiblePropPosition < visiblePropIndexes.length - 1) {
-          setPropIdx(visiblePropIndexes[visiblePropPosition + 1]!);
-        } else if (slots.length > 0) {
-          setInSlots(true);
-          setSlotIdx(0);
-          setFocusLevel('slot');
-        }
-        return;
-      }
-      if (key.return && currentProp) {
-        setFocusLevel('field');
-        setActiveField(propFields(currentProp)[0] ?? null);
-        setTextCursor(currentProp.description.length);
-        return;
-      }
-      return;
-    }
-
     if (focusLevel === 'componentDescription') {
       if (key.upArrow || input === 'k') {
         return;
       }
       if (key.downArrow || input === 'j') {
-        if (visiblePropIndexes.length > 0) {
-          setFocusLevel('prop');
-          setPropIdx(visiblePropIndexes[0]!);
-          setInSlots(false);
-          setInComponentDesc(false);
-        } else if (slots.length > 0) {
-          setFocusLevel('slot');
-          setSlotIdx(0);
-          setInSlots(true);
-          setInComponentDesc(false);
-        }
+        const firstSelectableRow = selectableRows[0];
+        if (firstSelectableRow) focusSelectableRow(firstSelectableRow);
         return;
       }
       if (key.return) {
@@ -1185,27 +1192,33 @@ export function FieldEditor({
       return;
     }
 
-    if (focusLevel === 'slot') {
+    if (focusLevel === 'prop' || focusLevel === 'slot') {
       if (key.upArrow || input === 'k') {
-        if (slotIdx > 0) {
-          setSlotIdx(slotIdx - 1);
-        } else if (visiblePropIndexes.length > 0) {
+        if (selectedSelectableIndex > 0) {
+          focusSelectableRow(selectableRows[selectedSelectableIndex - 1]!);
+        } else if (selectedSelectableIndex === 0) {
+          setFocusLevel('componentDescription');
           setInSlots(false);
-          setPropIdx(visiblePropIndexes[visiblePropIndexes.length - 1]!);
-          setFocusLevel('prop');
+          setInComponentDesc(true);
         }
         return;
       }
       if (key.downArrow || input === 'j') {
-        if (slotIdx < slots.length - 1) {
-          setSlotIdx(slotIdx + 1);
+        if (selectedSelectableIndex >= 0 && selectedSelectableIndex < selectableRows.length - 1) {
+          focusSelectableRow(selectableRows[selectedSelectableIndex + 1]!);
         }
         return;
       }
-      if (key.return && currentSlot) {
+      if (focusLevel === 'slot' && key.return && currentSlot) {
         setFocusLevel('field');
         setActiveField(SLOT_FIELDS[0] ?? null);
         setTextCursor(currentSlot.description.length);
+        return;
+      }
+      if (focusLevel === 'prop' && key.return && currentProp) {
+        setFocusLevel('field');
+        setActiveField(propFields(currentProp)[0] ?? null);
+        setTextCursor(currentProp.description.length);
         return;
       }
       return;
@@ -1617,20 +1630,30 @@ export function FieldEditor({
   })();
 
   type Row =
-    | { kind: 'header'; label: string; section: 'properties' | 'slots' }
+    | { kind: 'header'; label: string; section: PropDisplayGroup | 'slots' }
     | { kind: 'prop'; idx: number }
     | { kind: 'slot'; idx: number }
     | { kind: 'component-description' };
 
   const rows: Row[] = [];
   rows.push({ kind: 'component-description' });
-  if (visiblePropIndexes.length > 0) {
-    rows.push({ kind: 'header', label: `── PROPERTIES (${visiblePropIndexes.length}) `, section: 'properties' });
-    visiblePropIndexes.forEach((idx) => rows.push({ kind: 'prop', idx }));
+  for (const group of propGroups.filter((candidate) => candidate.kind !== 'hidden')) {
+    if (group.indexes.length === 0) continue;
+    rows.push({ kind: 'header', label: `${group.label} (${group.indexes.length}) `, section: group.kind });
+    group.indexes.forEach((idx) => rows.push({ kind: 'prop', idx }));
   }
   if (slots.length > 0) {
     rows.push({ kind: 'header', label: `── SLOTS (${slots.length}) `, section: 'slots' });
     slots.forEach((_, i) => rows.push({ kind: 'slot', idx: i }));
+  }
+  const hiddenGroup = propGroups.find((group) => group.kind === 'hidden');
+  if (hiddenGroup && hiddenGroup.indexes.length > 0) {
+    rows.push({
+      kind: 'header',
+      label: `${hiddenGroup.label} (${hiddenGroup.indexes.length}) `,
+      section: 'hidden',
+    });
+    hiddenGroup.indexes.forEach((idx) => rows.push({ kind: 'prop', idx }));
   }
 
   const selectedRowIdx = rows.findIndex(
@@ -1666,7 +1689,13 @@ export function FieldEditor({
         {visibleRowSlice.map((row, i) => {
           if (row.kind === 'header') {
             return (
-              <Text key={`header-${i}`} bold color={row.section === 'slots' ? PALETTE.info : PALETTE.success}>
+              <Text
+                key={`header-${i}`}
+                bold
+                color={
+                  row.section === 'slots' ? PALETTE.info : row.section === 'hidden' ? PALETTE.warning : PALETTE.success
+                }
+              >
                 {row.label}
               </Text>
             );

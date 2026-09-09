@@ -46,6 +46,25 @@ const STRING_COMPONENT = JSON.stringify(
   2,
 );
 
+const GROUPED_COMPONENT = JSON.stringify(
+  {
+    Button: {
+      $type: 'component',
+      $properties: {
+        label: { $type: 'string', $category: 'content', $description: 'content prop' },
+        color: { $type: 'token', $category: 'design', $description: 'design prop' },
+        disabled: { $type: 'boolean', $category: 'state', $description: 'state prop' },
+        dataTestId: { $type: 'string', $category: 'unattached', $description: 'hidden prop' },
+      },
+      $slots: {
+        icon: { $description: 'slot row' },
+      },
+    },
+  },
+  null,
+  2,
+);
+
 const tick = () => new Promise((r) => setTimeout(r, 30));
 
 async function navigateToValuesField(stdin: { write: (data: string) => void }): Promise<void> {
@@ -271,6 +290,106 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/Type to edit/);
     expect(frame).toContain('Hero title');
+  });
+});
+
+describe('FieldEditor — prop category grouping', () => {
+  it('groups visible rows as Content, Design, then Slots and omits the per-row category label', () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={GROUPED_COMPONENT}
+        width={100}
+        height={30}
+        showHiddenProps={false}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    const contentIndex = frame.indexOf('CONTENT');
+    const designIndex = frame.indexOf('DESIGN');
+    const slotsIndex = frame.indexOf('SLOTS');
+    expect(contentIndex).toBeGreaterThanOrEqual(0);
+    expect(designIndex).toBeGreaterThan(contentIndex);
+    expect(slotsIndex).toBeGreaterThan(designIndex);
+    expect(frame).not.toContain('cat:');
+    expect(frame).not.toContain('disabled');
+    expect(frame).not.toContain('dataTestId');
+  });
+
+  it('places state and unattached props in Other / Hidden after Slots when enabled', () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={GROUPED_COMPONENT}
+        width={100}
+        height={30}
+        showHiddenProps
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    const slotsIndex = frame.indexOf('SLOTS');
+    const hiddenIndex = frame.indexOf('OTHER / HIDDEN');
+    expect(hiddenIndex).toBeGreaterThan(slotsIndex);
+    expect(frame).toContain('disabled');
+    expect(frame).toContain('dataTestId');
+  });
+
+  it('navigates selected rows in Content, Design, Slot, then Other / Hidden order', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={GROUPED_COMPONENT}
+        width={100}
+        height={30}
+        showHiddenProps
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+
+    const enterAndAssert = async (expected: string) => {
+      stdin.write('\r');
+      await tick();
+      expect(lastFrame() ?? '').toContain(expected);
+      stdin.write('\x1b');
+      await tick();
+    };
+
+    await enterAndAssert('‹string›');
+    for (const expected of ['‹token›', 'toggle', '‹boolean›', '‹string›']) {
+      stdin.write('j');
+      await tick();
+      await enterAndAssert(expected);
+    }
+  });
+
+  it('omits empty category headers', () => {
+    const onlyDesignAndSlot = JSON.stringify({
+      Button: {
+        $type: 'component',
+        $properties: { color: { $type: 'string', $category: 'design' } },
+        $slots: { icon: {} },
+      },
+    });
+    const { lastFrame } = render(
+      <FieldEditor
+        value={onlyDesignAndSlot}
+        width={100}
+        height={30}
+        showHiddenProps={false}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toContain('CONTENT');
+    expect(frame).toContain('DESIGN');
+    expect(frame).toContain('SLOTS');
   });
 });
 
@@ -640,7 +759,7 @@ describe('FieldEditor — onExit panel-exit callback (Bug 1)', () => {
 });
 
 describe('FieldEditor — duplicate React-key safety (Bug 1, INTEG-4257)', () => {
-  it('renders both a $properties section header AND a prop with idx 0 without dropping either', () => {
+  it('renders both a category section header AND a prop with idx 0 without dropping either', () => {
     const COMPONENT_WITH_HEADER_AND_PROP = JSON.stringify(
       {
         Hero: {
@@ -664,7 +783,7 @@ describe('FieldEditor — duplicate React-key safety (Bug 1, INTEG-4257)', () =>
       />,
     );
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('PROPERTIES');
+    expect(frame).toContain('CONTENT');
     expect(frame).toContain('title');
   });
 });
@@ -1076,7 +1195,7 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Top-level hero');
     const descIdx = frame.indexOf('Top-level hero');
-    const propsIdx = frame.indexOf('PROPERTIES');
+    const propsIdx = frame.indexOf('CONTENT');
     expect(descIdx).toBeGreaterThanOrEqual(0);
     expect(propsIdx).toBeGreaterThan(descIdx);
   });
