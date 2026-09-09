@@ -30,7 +30,7 @@ function identifierPattern(name: string): RegExp {
   return new RegExp(`(?<![A-Za-z0-9_$])${escapeForRegExp(name)}(?![A-Za-z0-9_$])`);
 }
 
-interface Window {
+interface ExcerptWindow {
   start: number;
   end: number;
   names: Set<string>;
@@ -53,7 +53,7 @@ export function excerptAroundNames(
   const patterns = names.filter((name) => name.length > 0).map((name) => ({ name, pattern: identifierPattern(name) }));
   const lines = text.split('\n');
 
-  const windows: Window[] = [];
+  const windows: ExcerptWindow[] = [];
   lines.forEach((line, index) => {
     const mentioned = patterns.filter(({ pattern }) => pattern.test(line)).map(({ name }) => name);
     if (mentioned.length === 0) return;
@@ -79,10 +79,10 @@ export function excerptAroundNames(
   // A name is only reported as cut when the window holding its LAST occurrence
   // is dropped: that is the use site, and it is the line the reader needs. A
   // dropped declaration while the use is shown is not a gap worth reporting.
-  const lastWindowFor = new Map<string, Window>();
+  const lastWindowFor = new Map<string, ExcerptWindow>();
   for (const window of windows) for (const name of window.names) lastWindowFor.set(name, window);
 
-  const kept: Array<{ window: Window; text: string }> = [];
+  const kept: Array<{ window: ExcerptWindow; text: string }> = [];
   const cut = new Set<string>();
   let used = 0;
   for (const window of [...windows].reverse()) {

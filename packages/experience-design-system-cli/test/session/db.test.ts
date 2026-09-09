@@ -29,17 +29,15 @@ import {
   renameEmptySlots,
   loadScopeComponents,
   replaceRawPropTokenPaths,
-  loadRawPropTokenPaths,
   replaceRawTokenNamePaths,
   loadRawTokenNamePaths,
   loadRawTokenNamePathRows,
   computeMapTokensInputHash,
-  countMappableTokenProps,
-  countRawTokens,
   loadComponentSourceRefs,
   loadComponentSourceRef,
   copyMapTokensFromCache,
 } from '../../src/session/db.js';
+import { exportedFiller } from '../helpers/exported-filler.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 import type {
   CDFComponentEntry,
@@ -48,7 +46,6 @@ import type {
   ComponentTypeSummary,
 } from '@contentful/experience-design-system-types';
 import { CDF_V1_SCHEMA_URL, validateCDF } from '@contentful/experience-design-system-types';
-import { rebuildDTCGTree } from '../../src/print/command.js';
 
 const tempDirs: string[] = [];
 
@@ -57,6 +54,24 @@ async function withTempDb(run: (dbPath: string) => void | Promise<void>): Promis
   tempDirs.push(dir);
   const dbPath = join(dir, 'pipeline.db');
   await run(dbPath);
+}
+
+/** Reads a prop's stored token-allowed paths directly, in position order. */
+function readTokenPaths(
+  db: ReturnType<typeof openPipelineDb>,
+  sessionId: string,
+  componentId: string,
+  propName: string,
+): string[] {
+  return (
+    db
+      .prepare(
+        `SELECT path FROM raw_prop_token_paths
+         WHERE session_id = ? AND component_id = ? AND prop_name = ?
+         ORDER BY position`,
+      )
+      .all(sessionId, componentId, propName) as Array<{ path: string }>
+  ).map((r) => r.path);
 }
 
 afterEach(async () => {
@@ -131,9 +146,8 @@ describe('openPipelineDb', () => {
       expect(names).toContain('migrations');
       expect(names).toContain('raw_tokens');
       expect(names).toContain('raw_token_groups');
-      expect(
-        db.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('003-repair-raw-token-name-paths'),
-      ).toEqual({ count: 1 });
+      expect(names).toContain('raw_prop_token_paths');
+      expect(names).toContain('raw_token_name_paths');
       db.close();
     });
   });
@@ -144,6 +158,43 @@ describe('openPipelineDb', () => {
       db1.close();
       const db2 = openPipelineDb(dbPath);
       db2.close();
+    });
+  });
+
+  it('backfills raw_prop_token_paths.source as agent on a database that predates the column', async () => {
+    await withTempDb((dbPath) => {
+      const initial = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(initial, sessionId, [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [{ name: 'bgColor', type: 'string', required: false, category: 'design' }],
+          slots: [],
+        },
+      ]);
+      const componentId = loadRawComponents(initial, sessionId)[0].component_id;
+
+      // Simulate the pre-provenance shape and leave a row behind in it.
+      initial.exec('ALTER TABLE raw_prop_token_paths DROP COLUMN source');
+      initial
+        .prepare(
+          `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, position, path)
+           VALUES (?, ?, 'bgColor', 0, 'colors.surface.default')`,
+        )
+        .run(sessionId, componentId);
+      initial.close();
+
+      const migrated = openPipelineDb(dbPath);
+      const cols = migrated.prepare('PRAGMA table_info(raw_prop_token_paths)').all() as Array<{ name: string }>;
+      expect(cols.map((c) => c.name)).toContain('source');
+      // A row written before the review editor could set its own list can only
+      // have come from map tokens, so 'agent' is the correct backfill.
+      expect(migrated.prepare(`SELECT source FROM raw_prop_token_paths WHERE prop_name = 'bgColor'`).get()).toEqual({
+        source: 'agent',
+      });
+      migrated.close();
     });
   });
 
@@ -279,290 +330,6 @@ describe('openPipelineDb', () => {
     });
   });
 
-  it('migrates raw_props to allow cdf_category = "unattached" and preserves existing rows', async () => {
-    await withTempDb((dbPath) => {
-      const initial = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
-      storeRawComponents(initial, sessionId, [
-        {
-          name: 'Card',
-          source: 'src/Card.tsx',
-          framework: 'react',
-          props: [
-            {
-              name: 'bgColor',
-              type: "'light' | 'dark'",
-              required: false,
-              category: 'design',
-              allowedValues: ['light', 'dark'],
-            },
-          ],
-          slots: [],
-        },
-      ]);
-      const componentId = loadRawComponents(initial, sessionId)[0]!.component_id;
-      initial
-        .prepare(
-          `UPDATE raw_props SET cdf_type = 'string', cdf_category = 'design', required = 0
-           WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`,
-        )
-        .run(sessionId, componentId);
-
-      rebuildRawPropsWithoutUnattached(initial);
-      initial.close();
-
-      const migrated = openPipelineDb(dbPath);
-
-      expect(() =>
-        migrated
-          .prepare(
-            `UPDATE raw_props SET cdf_category = 'unattached' WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`,
-          )
-          .run(sessionId, componentId),
-      ).not.toThrow();
-
-      const row = migrated
-        .prepare(`SELECT cdf_type FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`)
-        .get(sessionId, componentId) as { cdf_type: string };
-      expect(row.cdf_type).toBe('string');
-
-      const allowedValues = migrated
-        .prepare(
-          `SELECT value FROM raw_prop_allowed_values
-           WHERE session_id = ? AND component_id = ? AND prop_name = ? ORDER BY position`,
-        )
-        .all(sessionId, componentId, 'bgColor') as Array<{ value: string }>;
-      expect(allowedValues.map(({ value }) => value)).toEqual(['light', 'dark']);
-
-      const fkCheck = migrated.prepare('PRAGMA foreign_key_check').all();
-      expect(fkCheck).toHaveLength(0);
-
-      migrated.close();
-    });
-  });
-
-  it('unattached-category migration is idempotent across opens', async () => {
-    await withTempDb((dbPath) => {
-      const db1 = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db1, 'new', undefined, { command: 'analyze extract' });
-      storeRawComponents(db1, sessionId, [
-        {
-          name: 'Card',
-          source: 'src/Card.tsx',
-          framework: 'react',
-          props: [{ name: 'bgColor', type: 'string', required: false, category: 'design' }],
-          slots: [],
-        },
-      ]);
-      const componentId = loadRawComponents(db1, sessionId)[0]!.component_id;
-      db1
-        .prepare(
-          `UPDATE raw_props SET cdf_type = 'string', cdf_category = 'unattached', required = 0
-           WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`,
-        )
-        .run(sessionId, componentId);
-      db1.close();
-
-      const db2 = openPipelineDb(dbPath);
-      const row = db2
-        .prepare(
-          `SELECT cdf_type, cdf_category FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'bgColor'`,
-        )
-        .get(sessionId, componentId) as { cdf_type: string; cdf_category: string };
-      expect(row).toEqual({ cdf_type: 'string', cdf_category: 'unattached' });
-
-      const cols = db2.prepare('PRAGMA table_info(raw_props)').all() as Array<{ name: string }>;
-      expect(cols.filter((c) => c.name === 'cdf_category')).toHaveLength(1);
-      db2.close();
-    });
-  });
-
-  it('backfills legacy excluded props (cdf_type = "excluded") into the unattached shape', async () => {
-    await withTempDb((dbPath) => {
-      const initial = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
-      storeRawComponents(initial, sessionId, [
-        {
-          name: 'Card',
-          source: 'src/Card.tsx',
-          framework: 'react',
-          props: [
-            { name: 'onClick', type: '() => void', required: false, category: 'design' },
-            { name: 'disabled', type: 'boolean', required: false, category: 'design' },
-          ],
-          slots: [],
-        },
-      ]);
-      const componentId = loadRawComponents(initial, sessionId)[0]!.component_id;
-      initial
-        .prepare(
-          `UPDATE raw_props SET cdf_type = 'excluded', cdf_category = NULL, rationale = 'event handler'
-           WHERE session_id = ? AND component_id = ? AND name = 'onClick'`,
-        )
-        .run(sessionId, componentId);
-      initial
-        .prepare(
-          `UPDATE raw_props SET cdf_type = 'excluded', cdf_category = NULL, rationale = 'internal flag'
-           WHERE session_id = ? AND component_id = ? AND name = 'disabled'`,
-        )
-        .run(sessionId, componentId);
-
-      rebuildRawPropsWithoutUnattached(initial);
-      initial.close();
-
-      const migrated = openPipelineDb(dbPath);
-      const rows = migrated
-        .prepare(
-          `SELECT name, cdf_type, cdf_category, required, rationale FROM raw_props
-           WHERE session_id = ? AND component_id = ? ORDER BY name`,
-        )
-        .all(sessionId, componentId) as Array<{
-        name: string;
-        cdf_type: string;
-        cdf_category: string;
-        required: number;
-        rationale: string;
-      }>;
-      expect(rows).toEqual([
-        { name: 'disabled', cdf_type: 'boolean', cdf_category: 'unattached', required: 0, rationale: 'internal flag' },
-        { name: 'onClick', cdf_type: 'string', cdf_category: 'unattached', required: 0, rationale: 'event handler' },
-      ]);
-      migrated.close();
-    });
-  });
-
-  it('backfills raw_prop_token_paths.source as agent on a database that predates the column', async () => {
-    await withTempDb((dbPath) => {
-      const initial = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
-      storeRawComponents(initial, sessionId, [
-        {
-          name: 'Card',
-          source: 'src/Card.tsx',
-          framework: 'react',
-          props: [{ name: 'bgColor', type: 'string', required: false, category: 'design' }],
-          slots: [],
-        },
-      ]);
-      const componentId = loadRawComponents(initial, sessionId)[0].component_id;
-
-      // Simulate the pre-provenance shape and leave a row behind in it.
-      initial.exec('ALTER TABLE raw_prop_token_paths DROP COLUMN source');
-      initial
-        .prepare(
-          `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, kind, position, path)
-           VALUES (?, ?, 'bgColor', 'allowed', 0, 'colors.surface.default')`,
-        )
-        .run(sessionId, componentId);
-      initial.close();
-
-      const migrated = openPipelineDb(dbPath);
-      const cols = migrated.prepare('PRAGMA table_info(raw_prop_token_paths)').all() as Array<{ name: string }>;
-      expect(cols.map((c) => c.name)).toContain('source');
-      // A row written before the review editor could set its own list can only
-      // have come from map tokens, so 'agent' is the correct backfill.
-      expect(
-        migrated.prepare(`SELECT source FROM raw_prop_token_paths WHERE prop_name = 'bgColor'`).get(),
-      ).toEqual({ source: 'agent' });
-      migrated.close();
-    });
-  });
-
-  it('migrates legacy databases with no raw_prop_token_paths table exactly once', async () => {
-    await withTempDb((dbPath) => {
-      const initial = openPipelineDb(dbPath);
-      initial.exec('DROP TABLE raw_prop_token_paths');
-      initial.prepare('DELETE FROM migrations WHERE name = ?').run('001-raw-prop-token-paths');
-      initial.close();
-
-      const migrated = openPipelineDb(dbPath);
-      const tables = migrated
-        .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'raw_prop_token_paths'`)
-        .all() as Array<{ name: string }>;
-      expect(tables).toHaveLength(1);
-      expect(
-        migrated.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('001-raw-prop-token-paths'),
-      ).toEqual({ count: 1 });
-      migrated.close();
-
-      const reopened = openPipelineDb(dbPath);
-      expect(
-        reopened.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('001-raw-prop-token-paths'),
-      ).toEqual({ count: 1 });
-      reopened.close();
-    });
-  });
-
-  it('repairs a legacy raw_token_name_paths table when migration 002 is already recorded', async () => {
-    await withTempDb((dbPath) => {
-      const initial = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
-      initial.exec(`
-        DROP TABLE raw_token_name_paths;
-        CREATE TABLE raw_token_name_paths (
-          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-          raw_name   TEXT NOT NULL,
-          path       TEXT NOT NULL,
-          PRIMARY KEY (session_id, raw_name)
-        );
-      `);
-      initial
-        .prepare('INSERT INTO raw_token_name_paths (session_id, raw_name, path) VALUES (?, ?, ?)')
-        .run(sessionId, 'theme.colors.primary', 'colors.brand.primary');
-      expect(
-        initial.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('002-raw-token-name-paths'),
-      ).toEqual({ count: 1 });
-      initial.prepare('DELETE FROM migrations WHERE name = ?').run('003-repair-raw-token-name-paths');
-      initial.close();
-
-      const repaired = openPipelineDb(dbPath);
-      expect(loadRawTokenNamePathRows(repaired, sessionId)).toEqual([
-        { rawName: 'theme.colors.primary', path: 'colors.brand.primary', source: 'automatic' },
-      ]);
-      const migration = repaired
-        .prepare('SELECT applied_at FROM migrations WHERE name = ?')
-        .get('003-repair-raw-token-name-paths') as { applied_at: string };
-      expect(migration.applied_at).toEqual(expect.any(String));
-      repaired.close();
-
-      const reopened = openPipelineDb(dbPath);
-      expect(
-        reopened.prepare('SELECT applied_at FROM migrations WHERE name = ?').get('003-repair-raw-token-name-paths'),
-      ).toEqual(migration);
-      reopened.close();
-    });
-  });
-
-  it('recreates raw_token_name_paths when migration 002 is already recorded', async () => {
-    await withTempDb((dbPath) => {
-      const initial = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
-      initial.exec('DROP TABLE raw_token_name_paths');
-      expect(
-        initial.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('002-raw-token-name-paths'),
-      ).toEqual({ count: 1 });
-      initial.prepare('DELETE FROM migrations WHERE name = ?').run('003-repair-raw-token-name-paths');
-      initial.close();
-
-      const repaired = openPipelineDb(dbPath);
-      const columns = repaired.prepare('PRAGMA table_info(raw_token_name_paths)').all() as Array<{ name: string }>;
-      expect(columns.map((column) => column.name)).toEqual(['session_id', 'raw_name', 'path', 'source']);
-      replaceRawTokenNamePaths(repaired, sessionId, { 'theme.colors.primary': 'colors.brand.primary' });
-      expect(loadRawTokenNamePathRows(repaired, sessionId)).toEqual([
-        { rawName: 'theme.colors.primary', path: 'colors.brand.primary', source: 'automatic' },
-      ]);
-      expect(
-        repaired.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('003-repair-raw-token-name-paths'),
-      ).toEqual({ count: 1 });
-      repaired.close();
-
-      const reopened = openPipelineDb(dbPath);
-      expect(
-        reopened.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('003-repair-raw-token-name-paths'),
-      ).toEqual({ count: 1 });
-      reopened.close();
-    });
-  });
 });
 
 describe('raw token name paths', () => {
@@ -605,7 +372,7 @@ describe('raw token name paths', () => {
 });
 
 describe('raw prop token paths', () => {
-  it('replaces paths per prop and kind, then loads ordered groups', async () => {
+  it('replaces a prop\'s paths, keeping only the latest set in position order', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -620,31 +387,18 @@ describe('raw prop token paths', () => {
       ]);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
 
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'set', [
-        'color.brand.primary',
-        'color.brand.secondary',
-      ], 'agent');
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.text.default'], 'agent');
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'set', ['color.brand.tertiary'], 'agent');
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', [], 'agent');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', ['color.brand.primary', 'color.brand.secondary'], 'agent');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', ['color.brand.tertiary'], 'agent');
 
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
-        {
-          componentId,
-          propName: 'variant',
-          kind: 'set',
-          paths: ['color.brand.tertiary'],
-        },
-      ]);
       expect(
         db
           .prepare(
             `SELECT position, path FROM raw_prop_token_paths
-             WHERE session_id = ? AND component_id = ? AND prop_name = ? AND kind = ?
+             WHERE session_id = ? AND component_id = ? AND prop_name = ?
              ORDER BY position`,
           )
-          .all(sessionId, componentId, 'variant', 'allowed'),
-      ).toEqual([]);
+          .all(sessionId, componentId, 'variant'),
+      ).toEqual([{ position: 0, path: 'color.brand.tertiary' }]);
       db.close();
     });
   });
@@ -674,7 +428,7 @@ describe('applyToolCalls clears the other property type on reclassification', ()
         [{ tool: 'classify_prop', prop: 'variant', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' }],
         [],
       );
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.blue.500'], 'agent');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', ['color.blue.500'], 'agent');
 
       applyToolCalls(
         db,
@@ -693,7 +447,7 @@ describe('applyToolCalls clears the other property type on reclassification', ()
         [],
       );
 
-      expect(loadRawPropTokenPaths(db, sessionId).filter((g) => g.componentId === componentId)).toEqual([]);
+      expect(readTokenPaths(db, sessionId, componentId, 'variant')).toEqual([]);
       db.close();
     });
   });
@@ -859,7 +613,7 @@ describe('applyToolCalls clears the other property type on reclassification', ()
         [{ tool: 'classify_prop', prop: 'variant', cdf_type: 'token', cdf_category: 'design', token_kind: 'color' }],
         [],
       );
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', ['color.blue.500'], 'agent');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', ['color.blue.500'], 'agent');
 
       applyToolCalls(
         db,
@@ -879,9 +633,7 @@ describe('applyToolCalls clears the other property type on reclassification', ()
         [],
       );
 
-      expect(loadRawPropTokenPaths(db, sessionId)).toEqual([
-        { componentId, propName: 'variant', kind: 'allowed', paths: ['color.blue.500'] },
-      ]);
+      expect(readTokenPaths(db, sessionId, componentId, 'variant')).toEqual(['color.blue.500']);
       db.close();
     });
   });
@@ -1780,7 +1532,7 @@ describe('storeCDFComponents + loadCDFComponents', () => {
   });
 });
 
-describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
+describe('CDF builder: $token.allowed', () => {
   const RAW: RawComponentDefinition[] = [
     {
       name: 'Button',
@@ -1817,14 +1569,13 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
     },
   ];
 
-  it('omits $token.sets and $token.allowed entirely when no mapping was ever run', async () => {
+  it('omits $token.allowed entirely when no mapping was ever run', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
       storeCDFComponents(db, sessionId, CDF_COMPONENTS);
 
       const loaded = loadCDFComponents(db, sessionId);
-      expect(loaded[0]?.entry.$properties['variant']).not.toHaveProperty('$token.sets');
       expect(loaded[0]?.entry.$properties['variant']).not.toHaveProperty('$token.allowed');
       db.close();
     });
@@ -1848,7 +1599,6 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
 
       const loaded = loadCDFComponents(db, sessionId);
       expect(loaded[0]?.entry.$properties['variant']).not.toHaveProperty('$token.allowed');
-      expect(loaded[0]?.entry.$properties['variant']).not.toHaveProperty('$token.sets');
       db.close();
     });
   });
@@ -1911,17 +1661,13 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
       const loaded = loadCDFComponents(db, sessionId);
       const prop = loaded[0]?.entry.$properties['variant'];
       expect(prop?.['$token.allowed']).toEqual(['color.brand.primary', 'color.brand.secondary']);
-      expect(prop).not.toHaveProperty('$token.sets');
       expect(prop?.['$token.kind']).toBe('color');
 
-      // The emitted CDF validates against the same session's token document,
-      // which is what a consumer resolves the universe from.
       const cdf = {
         $schema: CDF_V1_SCHEMA_URL,
         ...Object.fromEntries(loaded.map(({ key, entry }) => [key, entry])),
       };
       expect(validateCDF(cdf).valid).toBe(true);
-      expect(validateCDF(cdf, { tokens: rebuildDTCGTree([], tokens) }).valid).toBe(true);
       db.close();
     });
   });
@@ -1955,12 +1701,11 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
         .get(sessionId, 'Button') as { component_id: string } | undefined)!.component_id;
       const rows = db
         .prepare(
-          `SELECT kind, position, path FROM raw_prop_token_paths
-           WHERE session_id = ? AND component_id = ? AND prop_name = ? ORDER BY kind, position`,
+          `SELECT position, path FROM raw_prop_token_paths
+           WHERE session_id = ? AND component_id = ? AND prop_name = ? ORDER BY position`,
         )
         .all(sessionId, componentId, 'variant');
-      // $token.allowed paths are stored with kind='allowed'
-      expect(rows).toEqual([{ kind: 'allowed', position: 0, path: 'color.brand.primary' }]);
+      expect(rows).toEqual([{ position: 0, path: 'color.brand.primary' }]);
       expect(printed[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual(['color.brand.primary']);
 
       // Reimport the printed CDF verbatim, as `import --modify` would replay it.
@@ -1970,7 +1715,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
     });
   });
 
-  it('keeps path ordering stable across repeated loads', async () => {
+  it('preserves $token.allowed path order as stored, not sorted', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -1991,14 +1736,12 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
         },
       ]);
 
-      const first = loadCDFComponents(db, sessionId);
-      const second = loadCDFComponents(db, sessionId);
-      expect(first[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual([
+      const loaded = loadCDFComponents(db, sessionId);
+      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual([
         'color.brand.tertiary',
         'color.brand.primary',
         'color.brand.secondary',
       ]);
-      expect(second).toEqual(first);
       db.close();
     });
   });
@@ -2056,10 +1799,7 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
         `UPDATE raw_props SET cdf_type = 'token', cdf_category = 'design', cdf_token_kind = 'color'
          WHERE session_id = ? AND component_id = ? AND name = 'variant'`,
       ).run(sessionId, componentId);
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', 'allowed', [
-        'color.blue.500',
-        'color.red.500',
-      ], 'agent');
+      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', ['color.blue.500', 'color.red.500'], 'agent');
       db.prepare(`UPDATE raw_components SET status = 'generated' WHERE session_id = ? AND component_id = ?`).run(
         sessionId,
         componentId,
@@ -2071,7 +1811,6 @@ describe('CDF builder: $token.sets / $token.allowed (INTEG-4686)', () => {
         'color.red.500',
       ]);
       expect(loaded[0]?.entry.$properties['variant']?.$values).toBeUndefined();
-      expect(loaded[0]?.entry.$properties['variant']).not.toHaveProperty('$token.sets');
       db.close();
     });
   });
@@ -3103,7 +2842,7 @@ describe('generation cache', () => {
     });
   });
 
-  it('countMappableTokenProps and countRawTokens report zero on a session with none, and the real counts otherwise', async () => {
+  it('computeMapTokensInputHash key changes when a source ref\'s content changes', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -3112,31 +2851,31 @@ describe('generation cache', () => {
           name: 'Card',
           source: 'src/Card.tsx',
           framework: 'react',
-          props: [
-            { name: 'bgColor', type: 'string', required: false },
-            { name: 'label', type: 'string', required: true },
-          ],
+          props: [{ name: 'bgColor', type: 'string', required: false }],
           slots: [],
         },
       ]);
-      expect(countMappableTokenProps(db, sessionId)).toBe(0);
-      expect(countRawTokens(db, sessionId)).toBe(0);
-
       storeCDFComponents(db, sessionId, [
         {
           key: 'Card',
           entry: {
             $type: 'component',
-            $properties: {
-              bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
-              label: { $type: 'string', $category: 'content' },
-            },
+            $properties: { bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' } },
           },
         },
       ]);
       storeDTCGTokens(db, sessionId, [], [{ path: 'colors.brand.primary', $type: 'color', $value: '#00f' }]);
-      expect(countMappableTokenProps(db, sessionId)).toBe(1);
-      expect(countRawTokens(db, sessionId)).toBe(1);
+
+      const refsBefore = [
+        { component: 'Card', sourcePath: 'src/Card.tsx', content: '// no restriction here' },
+      ];
+      const refsAfter = [
+        { component: 'Card', sourcePath: 'src/Card.tsx', content: '// accepts only colors.brand.primary' },
+      ];
+      const hashBefore = computeMapTokensInputHash(db, sessionId, refsBefore);
+      const hashSame = computeMapTokensInputHash(db, sessionId, refsBefore);
+      expect(hashBefore).toBe(hashSame);
+      expect(computeMapTokensInputHash(db, sessionId, refsAfter)).not.toBe(hashBefore);
       db.close();
     });
   });
@@ -3271,8 +3010,7 @@ describe('generation cache', () => {
       const componentPath = join(dir, 'Box.tsx');
       const stylesPath = join(dir, 'Box.styles.ts');
       await writeFile(componentPath, `import { StyledBox } from './Box.styles';\nexport const Box = ({ children, ...rest }: Props) => <StyledBox {...rest}>{children}</StyledBox>;\n`);
-      const filler = (prefix: string) => Array.from({ length: 80 }, (_, i) => `export const ${prefix}${i} = ${i};`).join('\n');
-      await writeFile(stylesPath, `${filler('before')}\nexport const StyledBox = styled.div\`padding: \${(p) => p.padding};\`;\n${filler('after')}\n`);
+      await writeFile(stylesPath, `${exportedFiller('before')}\nexport const StyledBox = styled.div\`padding: \${(p) => p.padding};\`;\n${exportedFiller('after')}\n`);
 
       const ref = await loadComponentSourceRef('Box', componentPath, ['padding', 'children']);
       expect(ref.siblingFiles).toHaveLength(1);
@@ -3289,10 +3027,12 @@ describe('generation cache', () => {
       const componentPath = join(dir, 'Box.tsx');
       const stylesPath = join(dir, 'Box.styles.ts');
       await writeFile(componentPath, `import { StyledBox } from './Box.styles';\n`);
-      const filler = (prefix: string) => Array.from({ length: 80 }, (_, i) => `export const ${prefix}${i} = ${i};`).join('\n');
       // Two uses far apart, each with a wide window: the second cannot fit in 1,200 chars.
       const bigLine = (name: string) => `export const ${name}Style = css\`\${(p) => p.${name}}; /* ${'x'.repeat(900)} */\`;`;
-      await writeFile(stylesPath, `${filler('a')}\n${bigLine('padding')}\n${filler('b')}\n${bigLine('margin')}\n${filler('c')}\n`);
+      await writeFile(
+        stylesPath,
+        `${exportedFiller('a')}\n${bigLine('padding')}\n${exportedFiller('b')}\n${bigLine('margin')}\n${exportedFiller('c')}\n`,
+      );
 
       const ref = await loadComponentSourceRef('Box', componentPath, ['padding', 'margin']);
       // Later windows are kept in preference to earlier ones, so the margin use
@@ -3384,11 +3124,7 @@ describe('generation cache', () => {
         },
       ]);
       const sourceComponentId = loadRawComponents(db, sourceId)[0].component_id;
-      replaceRawPropTokenPaths(db, sourceId, sourceComponentId, 'bgColor', 'set', [
-        'colors.surface.default',
-        'colors.surface.raised',
-      ], 'agent');
-      replaceRawPropTokenPaths(db, sourceId, sourceComponentId, 'bgColor', 'allowed', ['colors.surface.default'], 'agent');
+      replaceRawPropTokenPaths(db, sourceId, sourceComponentId, 'bgColor', ['colors.surface.default'], 'agent');
 
       const { sessionId: targetId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
       storeRawComponents(db, targetId, [
@@ -3405,51 +3141,11 @@ describe('generation cache', () => {
       expect(copied).toBe(1);
 
       const targetComponentId = loadRawComponents(db, targetId)[0].component_id;
-      const groups = loadRawPropTokenPaths(db, targetId);
-      // loadRawPropTokenPaths orders groups by (component_id, prop_name, kind, position); 'allowed'
-      // sorts before 'set' alphabetically, so that's the order groups come back in here too.
-      expect(groups).toEqual([
-        { componentId: targetComponentId, propName: 'bgColor', kind: 'allowed', paths: ['colors.surface.default'] },
-        {
-          componentId: targetComponentId,
-          propName: 'bgColor',
-          kind: 'set',
-          paths: ['colors.surface.default', 'colors.surface.raised'],
-        },
-      ]);
+      expect(readTokenPaths(db, targetId, targetComponentId, 'bgColor')).toEqual(['colors.surface.default']);
       db.close();
     });
   });
 
-  it('copyMapTokensFromCache preserves target manual defaults while copying automatic defaults', async () => {
-    await withTempDb((dbPath) => {
-      const db = openPipelineDb(dbPath);
-      const { sessionId: sourceId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      replaceRawTokenNamePaths(db, sourceId, {
-        'tokens.automatic': 'colors.brand.automatic',
-        'tokens.conflict': 'colors.brand.automatic-conflict',
-      });
-
-      const { sessionId: targetId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      replaceRawTokenNamePaths(
-        db,
-        targetId,
-        {
-          'tokens.manual': 'colors.brand.manual',
-          'tokens.conflict': 'colors.brand.manual-conflict',
-        },
-        'manual',
-      );
-
-      copyMapTokensFromCache(db, sourceId, targetId);
-      expect(loadRawTokenNamePathRows(db, targetId)).toEqual([
-        { rawName: 'tokens.automatic', path: 'colors.brand.automatic', source: 'automatic' },
-        { rawName: 'tokens.conflict', path: 'colors.brand.manual-conflict', source: 'manual' },
-        { rawName: 'tokens.manual', path: 'colors.brand.manual', source: 'manual' },
-      ]);
-      db.close();
-    });
-  });
 });
 
 describe('renameEmptySlots', () => {

@@ -44,7 +44,7 @@ export type { AgentInvoker, CreateLocalCliAgentInvokerOptions, InvokeAgentOption
 
 // Prompt building
 export { buildPrompt, formatCustomPromptBanner, resolveSkillPath } from './prompt-builder.js';
-export type { ComponentSourceRef, GeneratedCdf, Mode, PromptOptions, Skill, TokenTree } from './prompt-builder.js';
+export type { ComponentSourceRef, GeneratedCdf, Mode, PromptOptions, Skill } from './prompt-builder.js';
 
 // Progress reporting
 export { formatGenerateProgressLine } from './progress.js';

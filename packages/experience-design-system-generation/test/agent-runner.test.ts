@@ -548,7 +548,7 @@ describe('parseTokenToolCallLines', () => {
 });
 
 describe('parseMapTokenPropToolCallLines', () => {
-  it('parses a call with token_allowed and description', () => {
+  it('parses a call with token_allowed, ignoring an extra description field', () => {
     const line =
       '{"tool":"map_token_prop","component":"Card","prop":"padding","token_allowed":["spacing.xs"],"description":"restricted"}';
     const { calls, warnings } = parseMapTokenPropToolCallLines(line);
@@ -558,7 +558,6 @@ describe('parseMapTokenPropToolCallLines', () => {
       component: 'Card',
       prop: 'padding',
       token_allowed: ['spacing.xs'],
-      description: 'restricted',
     });
   });
 

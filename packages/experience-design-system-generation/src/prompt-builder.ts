@@ -2,8 +2,9 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { flattenDTCG, type CDFComponentEntry } from '@contentful/experience-design-system-types';
 
-/** `components` — classify component props; `tokens` — classify design tokens; `select` — decide whether a component belongs in Contentful Experience Orchestration; `map-tokens` — suggest token sets/restrictions for design-category token props */
+/** `components` — classify component props; `tokens` — classify design tokens; `select` — decide whether a component belongs in Contentful Experience Orchestration; `map-tokens` — suggest `$token.allowed` restrictions for design-category token props */
 export type Skill = 'components' | 'tokens' | 'select' | 'map-tokens';
 export type Mode = 'autonomous';
 
@@ -37,33 +38,8 @@ export interface ComponentSourceRef {
   usesNotShown?: string[];
 }
 
-interface CDFPropertyLike {
-  $type?: unknown;
-  $category?: unknown;
-  [key: string]: unknown;
-}
-
-interface CDFComponentLike {
-  $properties?: Record<string, CDFPropertyLike>;
-  [key: string]: unknown;
-}
-
 /** Plain-data shape of the CDF generated so far — component name -> component entry. */
-export type GeneratedCdf = Record<string, CDFComponentLike>;
-
-interface TokenTreeNode {
-  $type?: unknown;
-  $value?: unknown;
-  [key: string]: unknown;
-}
-
-/** Plain-data DTCG token tree (same shape passed to the `tokens` inline preamble section). */
-export type TokenTree = Record<string, TokenTreeNode>;
-
-interface TokenPathIndexEntry {
-  path: string;
-  type: string;
-}
+export type GeneratedCdf = Record<string, CDFComponentEntry>;
 
 /**
  * Render the warning banner shown when a custom skill prompt is active.
@@ -93,7 +69,7 @@ export interface PromptOptions {
   /** For map-tokens skill: the CDF generated so far. Filtered internally to design-category token-typed props only. */
   generatedCdf?: GeneratedCdf;
   /** For map-tokens skill: the full DTCG token tree. Flattened internally to a path+`$type` index, with `$value` stripped. */
-  tokenTree?: TokenTree;
+  tokenTree?: Record<string, unknown>;
   /** Component source file references — consumption evidence for the components skill, explicit-restriction evidence (comments, allowlists) for map-tokens. */
   componentSourceRefs?: ComponentSourceRef[];
   /**
@@ -176,72 +152,50 @@ function inferFenceLang(filename: string | undefined): string {
   return map[ext] ?? 'text';
 }
 
-/** Keeps only design-category, token-typed props per component; drops components left with none. */
-function filterDesignTokenProps(cdf: GeneratedCdf): GeneratedCdf {
+/**
+ * Keeps only design-category, token-typed props per component (dropping
+ * components left with none), alongside the distinct `$token.kind` values
+ * seen among them and whether any such prop has no `$token.kind` at all —
+ * collected in the same pass rather than a second walk of the raw CDF.
+ */
+function filterDesignTokenProps(cdf: GeneratedCdf): {
+  filtered: GeneratedCdf;
+  kinds: string[];
+  hasUnscoped: boolean;
+} {
   const result: GeneratedCdf = {};
+  const kinds = new Set<string>();
+  let hasUnscoped = false;
   for (const [componentName, component] of Object.entries(cdf)) {
     const properties = component.$properties;
     if (!properties) continue;
-    const filteredProps: Record<string, CDFPropertyLike> = {};
+    const filteredProps: Record<string, CDFComponentEntry['$properties'][string]> = {};
     for (const [propName, prop] of Object.entries(properties)) {
       if (prop.$type === 'token' && prop.$category === 'design') {
-        filteredProps[propName] = prop;
+        const { '$token.allowed': _tokenAllowed, ...rest } = prop;
+        filteredProps[propName] = rest;
+        const kind = prop['$token.kind'];
+        if (typeof kind === 'string' && kind.length > 0) {
+          kinds.add(kind);
+        } else {
+          hasUnscoped = true;
+        }
       }
     }
     if (Object.keys(filteredProps).length > 0) {
       result[componentName] = { ...component, $properties: filteredProps };
     }
   }
-  return result;
-}
-
-/** Flattens a DTCG token tree to `{ path, type }` entries, stripping `$value`. */
-function buildTokenPathIndex(tree: TokenTree, prefix = ''): TokenPathIndexEntry[] {
-  const entries: TokenPathIndexEntry[] = [];
-  for (const [key, node] of Object.entries(tree)) {
-    if (key.startsWith('$') || node === null || typeof node !== 'object') continue;
-    const path = prefix ? `${prefix}.${key}` : key;
-    if (typeof node.$type === 'string') {
-      entries.push({ path, type: node.$type });
-    } else {
-      entries.push(...buildTokenPathIndex(node as TokenTree, path));
-    }
-  }
-  return entries;
+  return { filtered: result, kinds: [...kinds].sort(), hasUnscoped };
 }
 
 /** One line per candidate, e.g. `colors.brand.primary · color` — legible and countable, unlike nested JSON. */
-function formatTokenCandidateLines(entries: TokenPathIndexEntry[]): string {
-  return entries.map((entry) => `${entry.path} · ${entry.type}`).join('\n');
-}
-
-/**
- * Distinct `$token.kind` values among design-category, token-typed props in
- * `cdf`, plus whether any such prop has no `$token.kind` at all. Mirrors
- * `filterDesignTokenProps`'s notion of a relevant prop without requiring a
- * second pass over the raw CDF.
- */
-function collectTokenKinds(cdf: GeneratedCdf): { kinds: string[]; hasUnscoped: boolean } {
-  const kinds = new Set<string>();
-  let hasUnscoped = false;
-  for (const component of Object.values(cdf)) {
-    const properties = component.$properties;
-    if (!properties) continue;
-    for (const prop of Object.values(properties)) {
-      if (prop.$type !== 'token' || prop.$category !== 'design') continue;
-      const kind = prop['$token.kind'];
-      if (typeof kind === 'string' && kind.length > 0) {
-        kinds.add(kind);
-      } else {
-        hasUnscoped = true;
-      }
-    }
-  }
-  return { kinds: [...kinds].sort(), hasUnscoped };
+function formatTokenCandidateLines(entries: Array<{ path: string; $type?: unknown }>): string {
+  return entries.map((entry) => `${entry.path} · ${entry.$type}`).join('\n');
 }
 
 /** Renders one kind-scoped (or, for `kind: null`, full-tree) candidate section. Sections are cumulative, never merged, so each stays independently legible. */
-function renderTokenCandidateSection(kind: string | null, entries: TokenPathIndexEntry[]): string {
+function renderTokenCandidateSection(kind: string | null, entries: Array<{ path: string; $type?: unknown }>): string {
   const label = kind
     ? `Token path index — ${kind} candidates only`
     : 'Token path index — full tree (no $token.kind to scope by)';
@@ -277,21 +231,19 @@ function buildPreamble(options: PromptOptions): string {
   if (tokenMapInline) {
     sections.push(`Token-name sidecar (raw name → DTCG path):\n\`\`\`json\n${tokenMapInline}\n\`\`\``);
   }
-  if (generatedCdf) {
-    const filtered = filterDesignTokenProps(generatedCdf);
-    if (Object.keys(filtered).length > 0) {
-      sections.push(
-        `Generated CDF so far — design-category token props only (JSON):\n\`\`\`json\n${JSON.stringify(filtered)}\n\`\`\``,
-      );
-    }
+  const filteredTokenProps = generatedCdf ? filterDesignTokenProps(generatedCdf) : undefined;
+  if (filteredTokenProps && Object.keys(filteredTokenProps.filtered).length > 0) {
+    sections.push(
+      `Generated CDF so far — design-category token props only (JSON):\n\`\`\`json\n${JSON.stringify(filteredTokenProps.filtered)}\n\`\`\``,
+    );
   }
   if (tokenTree) {
-    const index = buildTokenPathIndex(tokenTree).sort((a, b) => a.path.localeCompare(b.path));
+    const index = flattenDTCG(tokenTree, '').sort((a, b) => a.path.localeCompare(b.path));
     if (index.length > 0) {
-      if (generatedCdf) {
-        const { kinds, hasUnscoped } = collectTokenKinds(generatedCdf);
+      if (filteredTokenProps) {
+        const { kinds, hasUnscoped } = filteredTokenProps;
         for (const kind of kinds) {
-          const scoped = index.filter((entry) => entry.type === kind);
+          const scoped = index.filter((entry) => entry.$type === kind);
           if (scoped.length > 0) sections.push(renderTokenCandidateSection(kind, scoped));
         }
         if (hasUnscoped) sections.push(renderTokenCandidateSection(null, index));
@@ -427,7 +379,7 @@ Rules:
 function buildMapTokensAutonomousPreamble(inputBlock: string): string {
   return `You are running as part of the experience-design-system-cli generate pipeline in AUTONOMOUS mode. The developer is not present to answer questions.
 
-Context: The components below already have design-category, token-typed props (\`$token.kind\` set). Some already carry a \`$token.allowed\` list resolved earlier from source evidence — leave those alone. For every prop that arrives with **no existing token list**, your task is to decide, from source evidence, whether to narrow it to a restricted subset (\`token_allowed\`) of the tokens matching its \`$token.kind\`. Apply all judgment calls yourself — do not pause to ask for confirmation.
+Context: The components below already have design-category, token-typed props (\`$token.kind\` set). Your task is to decide, from source evidence, whether to narrow each one to a restricted subset (\`token_allowed\`) of the tokens matching its \`$token.kind\`. Apply all judgment calls yourself — do not pause to ask for confirmation.
 
 All input data is provided inline below — do not read any additional files.${inputBlock}
 
@@ -438,20 +390,15 @@ Do NOT write any files or emit any JSON blobs. Instead, emit one JSON object per
 The one tool call you may emit:
 
 \`\`\`
-{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_allowed":["colors.brand.primary","colors.brand.secondary"],"description":"<reason>"}
+{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_allowed":["colors.brand.primary","colors.brand.secondary"]}
 \`\`\`
 
 Rules:
 - Emit exactly one JSON object per line. No multi-line JSON. No markdown fences around the lines.
-- Only emit a call for a prop that appears in the "Generated CDF so far" section and does not already carry \`$token.allowed\` — a prop that already has one was resolved from source and must not be contradicted.
-- Each "Token path index" section below is already scoped to one \`$token.kind\` — a prop only draws candidates from the section matching its own \`$token.kind\`. A prop with no \`$token.kind\` draws from the "full tree" section instead. Never cross sections.
-- \`token_allowed\` is a flat list of individual **leaf** token paths — never a group/prefix path. Each "Token path index" section contains one entry per leaf token only; a path like \`colors.brand\` that groups \`colors.brand.primary\`/\`colors.brand.secondary\` does NOT itself appear in any section and must never be emitted.
-- Every path in \`token_allowed\` must exist verbatim in the matching "Token path index" section and match the prop's \`$token.kind\`. Never invent a path, and never substitute a variant/enum name for a real token path. If a path you'd otherwise suggest is missing from the index, omit it rather than guessing.
-- \`token_allowed\` is required and must be non-empty when the call is emitted. Restriction requires explicit evidence: a comment naming the valid tokens, or code that validates the prop against a fixed list of token paths.
-- A default value or a \`tokenReference\` is the prop's default, not a restriction. On its own it yields no call — narrowing to that one path would leave the marketer a single option. If you narrow on other evidence, the default's path must be in the list.
-- A token prop whose type is a union of variant names (\`'primary' | 'secondary'\`) is misclassified — it should be an enum. Do not narrow it; emit nothing and flag it in a prose line.
-- Emit nothing for a prop when the evidence does not support narrowing. Omitting the list means "any token of this kind," which is the correct and live default — a guessed list is worse than none because it freezes the author's choices.
-- No \`$value\` is provided in this step — do not reason about specific token values, only paths and \`$type\`.
+- Only emit a call for a prop that appears in the "Generated CDF so far" section.
+- Each "Token path index" section below is already scoped to one \`$token.kind\` — a prop only draws candidates from the section matching its own \`$token.kind\` (or the "full tree" section, for a prop with no \`$token.kind\`). Never cross sections, never emit a group/prefix path, and never invent a path — every entry in \`token_allowed\` must exist verbatim in the matching section.
+- \`token_allowed\` is required and must be non-empty when the call is emitted.
+- For the judgment call of whether a prop should be narrowed at all, follow the decision tree in the map-tokens skill file: it explains defaults vs. restrictions, misclassified variant-name props, and when to emit nothing.
 - You may emit prose lines (not starting with \`{\`) anywhere — they are ignored by the parser and serve as your reasoning log.`;
 }
 

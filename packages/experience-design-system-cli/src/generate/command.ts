@@ -2,8 +2,6 @@ import { createElement } from 'react';
 import { render } from 'ink';
 import { access, readFile, readdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import type { Command } from 'commander';
 import {
   type AgentName,
@@ -48,8 +46,7 @@ import type { RawComponentDefinition } from '../types.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js';
-
-const execFileAsync = promisify(execFile);
+import { die, assertBinaryInPath } from '../lib/cli-errors.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 const DEFAULT_COMPONENT_CONCURRENCY = 10;
@@ -72,12 +69,6 @@ interface GenerateSubcommandOptions {
 const invoker = createLocalCliAgentInvoker({
   onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
 });
-
-function die(message: string): never {
-  process.stderr.write(`${message}\n`);
-  void exitWithAnalytics(1);
-  throw new Error('exit');
-}
 
 async function pathExists(p: string): Promise<boolean> {
   return access(p)
@@ -129,14 +120,6 @@ async function readFileInline(path: string | undefined): Promise<string | undefi
   return parts.filter(Boolean).join('\n\n');
 }
 
-async function assertBinaryInPath(binary: string): Promise<boolean> {
-  try {
-    await execFileAsync('which', [binary]);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function printFallbackInstructions(options: { agent: string; skill: Skill; sessionId: string }): void {
   const binary = resolveBinary(options.agent as AgentName);
