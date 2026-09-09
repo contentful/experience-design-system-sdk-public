@@ -2752,6 +2752,44 @@ describe('generation cache', () => {
     });
   });
 
+  it('computeMapTokensInputHash key changes when a source ref\'s content changes', async () => {
+    await withTempDb((dbPath) => {
+      const db = openPipelineDb(dbPath);
+      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
+      storeRawComponents(db, sessionId, [
+        {
+          name: 'Card',
+          source: 'src/Card.tsx',
+          framework: 'react',
+          props: [{ name: 'bgColor', type: 'string', required: false }],
+          slots: [],
+        },
+      ]);
+      storeCDFComponents(db, sessionId, [
+        {
+          key: 'Card',
+          entry: {
+            $type: 'component',
+            $properties: { bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' } },
+          },
+        },
+      ]);
+      storeDTCGTokens(db, sessionId, [], [{ path: 'colors.brand.primary', $type: 'color', $value: '#00f' }]);
+
+      const refsBefore = [
+        { component: 'Card', sourcePath: 'src/Card.tsx', content: '// no restriction here' },
+      ];
+      const refsAfter = [
+        { component: 'Card', sourcePath: 'src/Card.tsx', content: '// accepts only colors.brand.primary' },
+      ];
+      const hashBefore = computeMapTokensInputHash(db, sessionId, refsBefore);
+      const hashSame = computeMapTokensInputHash(db, sessionId, refsBefore);
+      expect(hashBefore).toBe(hashSame);
+      expect(computeMapTokensInputHash(db, sessionId, refsAfter)).not.toBe(hashBefore);
+      db.close();
+    });
+  });
+
   it('loadComponentSourceRefs returns generated components with their source path, falling back to source, and null content when the file is unreadable', async () => {
     await withTempDb(async (dbPath) => {
       const db = openPipelineDb(dbPath);
@@ -3017,35 +3055,6 @@ describe('generation cache', () => {
     });
   });
 
-  it('copyMapTokensFromCache preserves target manual defaults while copying automatic defaults', async () => {
-    await withTempDb((dbPath) => {
-      const db = openPipelineDb(dbPath);
-      const { sessionId: sourceId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      replaceRawTokenNamePaths(db, sourceId, {
-        'tokens.automatic': 'colors.brand.automatic',
-        'tokens.conflict': 'colors.brand.automatic-conflict',
-      });
-
-      const { sessionId: targetId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      replaceRawTokenNamePaths(
-        db,
-        targetId,
-        {
-          'tokens.manual': 'colors.brand.manual',
-          'tokens.conflict': 'colors.brand.manual-conflict',
-        },
-        'manual',
-      );
-
-      copyMapTokensFromCache(db, sourceId, targetId);
-      expect(loadRawTokenNamePathRows(db, targetId)).toEqual([
-        { rawName: 'tokens.automatic', path: 'colors.brand.automatic', source: 'automatic' },
-        { rawName: 'tokens.conflict', path: 'colors.brand.manual-conflict', source: 'manual' },
-        { rawName: 'tokens.manual', path: 'colors.brand.manual', source: 'manual' },
-      ]);
-      db.close();
-    });
-  });
 });
 
 describe('renameEmptySlots', () => {

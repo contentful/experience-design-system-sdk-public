@@ -2338,7 +2338,11 @@ export function computeTokenInputHash(rawTokenContent: string): string {
   return createHash('sha256').update(rawTokenContent.trim()).digest('hex');
 }
 
-export function computeMapTokensInputHash(db: DatabaseSync, sessionId: string): string {
+export function computeMapTokensInputHash(
+  db: DatabaseSync,
+  sessionId: string,
+  componentSourceRefs: readonly ComponentSourceRef[] = [],
+): string {
   const props = db
     .prepare(
       `SELECT rc.name AS component_name, rp.name AS prop_name, rp.cdf_token_kind, rp.default_value
@@ -2371,6 +2375,19 @@ export function computeMapTokensInputHash(db: DatabaseSync, sessionId: string): 
     })),
     tokens,
     defaultMappings,
+    // The agent's evidence, not just its inputs: a comment or allowlist edit
+    // in a source file (or a sibling it reads) changes the correct answer
+    // without touching props or tokens, so it must invalidate the cache too.
+    sourceRefs: [...componentSourceRefs]
+      .sort((a, b) => a.component.localeCompare(b.component))
+      .map((ref) => ({
+        component: ref.component,
+        content: ref.content,
+        siblingFiles: (ref.siblingFiles ?? [])
+          .map((s) => ({ path: s.path, content: s.content }))
+          .sort((a, b) => a.path.localeCompare(b.path)),
+        usesNotShown: [...(ref.usesNotShown ?? [])].sort(),
+      })),
   };
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
@@ -2696,20 +2713,6 @@ export function copyMapTokensFromCache(db: DatabaseSync, sourceSessionId: string
   let copiedCount = 0;
   db.exec('BEGIN');
   try {
-    // Default resolution is map-tokens output alongside the agent's allowlist.
-    // This copies only the sidecar, never the target's extracted raw defaults.
-    db.prepare("DELETE FROM raw_token_name_paths WHERE session_id = ? AND source = 'automatic'").run(targetSessionId);
-    db.prepare(
-      `INSERT INTO raw_token_name_paths (session_id, raw_name, path, source)
-       SELECT ?, raw_name, path, source FROM raw_token_name_paths
-       WHERE session_id = ? AND source = 'automatic'
-         AND NOT EXISTS (
-           SELECT 1 FROM raw_token_name_paths target
-           WHERE target.session_id = ? AND target.raw_name = raw_token_name_paths.raw_name
-             AND target.source = 'manual'
-         )`,
-    ).run(targetSessionId, sourceSessionId, targetSessionId);
-
     const sourceRows = db
       .prepare(
         `SELECT rc.name AS component_name, rptp.prop_name, rptp.position, rptp.path

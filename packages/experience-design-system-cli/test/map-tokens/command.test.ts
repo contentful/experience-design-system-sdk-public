@@ -421,7 +421,7 @@ describe('map tokens command', () => {
     db.close();
   });
 
-  it('does not cache a run that applies zero mappings, so a later session still invokes the agent', async () => {
+  it('stores a cache entry when applied = 0, and a later session reuses it without invoking the agent', async () => {
     const dbDir = await createTempDir('map-tokens-db-');
     const dbPath = join(dbDir, 'pipeline.db');
     const sessionA = await seedGeneratedSession(dbPath, true);
@@ -433,25 +433,20 @@ describe('map tokens command', () => {
     expect(first.code).toBe(0);
 
     const db = openPipelineDb(dbPath);
-    const cacheRows = db
-      .prepare(`SELECT * FROM generation_cache WHERE entity_type = 'token_mapping'`)
-      .all();
-    expect(cacheRows).toEqual([]);
+    const cacheRows = db.prepare(`SELECT * FROM generation_cache WHERE entity_type = 'token_mapping'`).all();
+    expect(cacheRows).toHaveLength(1);
     db.close();
 
     const sessionB = await seedGeneratedSession(dbPath, true);
-    // Must supply a fakeAgentScript — if a (poisoned) cache hit short-circuited this run, `which claude`
-    // would fail and the process would die non-zero, since no agent script is set up here.
-    const second = await run(['map', 'tokens', '--session', sessionB, '--agent', 'claude'], {
-      dbPath,
-      fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-map-tokens-valid.mjs'),
-    });
+    // No fakeAgentScript — if the cache hit didn't short-circuit this run, `which claude` would
+    // fail and the process would die non-zero, since no agent script is set up here.
+    const second = await run(['map', 'tokens', '--session', sessionB, '--agent', 'claude'], { dbPath });
     expect(second.code).toBe(0);
-    expect(second.stdout).toContain('map tokens complete');
+    expect(second.stdout).toContain('cached');
 
     const db2 = openPipelineDb(dbPath);
     const componentId = loadRawComponents(db2, sessionB)[0].component_id;
-    expect(readTokenPaths(db2, sessionB, componentId, 'bgColor')).toEqual(['colors.surface.default']);
+    expect(readTokenPaths(db2, sessionB, componentId, 'bgColor')).toEqual([]);
     db2.close();
   });
 
