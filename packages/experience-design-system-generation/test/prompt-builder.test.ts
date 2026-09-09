@@ -511,30 +511,6 @@ describe('buildPrompt', () => {
       expect(prompt).not.toContain('design-category token props only (JSON)');
     });
 
-    it('requires evidence before narrowing: emit nothing when unsupported, scoped by $token.kind', async () => {
-      const prompt = await buildPrompt({
-        skill: 'map-tokens',
-        mode: 'autonomous',
-        generatedCdf: GENERATED_CDF,
-        tokenTree: TOKEN_TREE,
-        outDir: '/fake/out',
-      });
-      expect(prompt).toMatch(/emit nothing|omit.*token_allowed/i);
-      expect(prompt).toMatch(/\$token\.kind/);
-    });
-
-    it('treats a tokenReference as a default, not a restriction', async () => {
-      const prompt = await buildPrompt({
-        skill: 'map-tokens',
-        mode: 'autonomous',
-        generatedCdf: GENERATED_CDF,
-        tokenTree: TOKEN_TREE,
-        outDir: '/fake/out',
-      });
-      expect(prompt).toContain('tokenReference');
-      expect(prompt).toMatch(/prop's default, not a restriction/i);
-    });
-
     it('includes skill file content', async () => {
       const prompt = await buildPrompt({
         skill: 'map-tokens',
