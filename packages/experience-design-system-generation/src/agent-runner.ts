@@ -344,6 +344,25 @@ export function resolveBinary(agent: AgentName): string {
 }
 
 /**
+ * Per-agent env vars that switch that agent's CLI to route model calls
+ * through AWS Bedrock instead of its default provider. Populated only for
+ * agents with a confirmed, simple boolean-style switch — `claude`'s
+ * CLAUDE_CODE_USE_BEDROCK=1. Not every agent has one: AWS Bedrock doesn't
+ * host OpenAI/GPT models at all (so `codex` has no Bedrock path), and
+ * `cursor-agent` exposes no AWS/Bedrock flag in its CLI. `opencode` likely
+ * supports Bedrock via a `bedrock/<model-id>` model string rather than a
+ * toggle env var — add it here once that's confirmed, rather than routing it
+ * through this same mechanism.
+ */
+const BEDROCK_ENV_BY_AGENT: Partial<Record<AgentName, Record<string, string>>> = {
+  claude: { CLAUDE_CODE_USE_BEDROCK: '1' },
+};
+
+export function agentSupportsBedrock(agent: AgentName): boolean {
+  return agent in BEDROCK_ENV_BY_AGENT;
+}
+
+/**
  * Default models per agent — lightweight/fast picks to control cost when no
  * explicit model is configured. cursor uses `gpt-mini` (verified alias from
  * GetUsableModels; haiku is not available in cursor's model catalog).
@@ -395,6 +414,15 @@ export async function runAgent(options: {
   prompt: string;
   timeoutMs: number;
   model?: string;
+  /**
+   * Route the selected agent's model calls through AWS Bedrock instead of its
+   * default provider, by setting that agent's Bedrock-routing env var(s) (see
+   * BEDROCK_ENV_BY_AGENT) on the spawned process. AWS credentials (AWS_PROFILE,
+   * or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_SESSION_TOKEN, plus
+   * AWS_REGION) must already be present in the parent env — this only flips
+   * the routing switch. No-op for agents with no entry in BEDROCK_ENV_BY_AGENT.
+   */
+  bedrock?: boolean;
   onOutput?: (chunk: string) => void;
   /**
    * Deliver the prompt on stdin instead of as an argv positional. Required for
@@ -405,7 +433,7 @@ export async function runAgent(options: {
   /** Optional debug-event sink; callers own how/where events get logged. */
   onDebugEvent?: AgentDebugEvent;
 }): Promise<AgentRunResult> {
-  const { agent, prompt, timeoutMs, model, onOutput, promptViaStdin, onDebugEvent } = options;
+  const { agent, prompt, timeoutMs, model, bedrock, onOutput, promptViaStdin, onDebugEvent } = options;
 
   const binary = resolveBinary(agent);
   const useStdin = !!promptViaStdin;
@@ -416,14 +444,17 @@ export async function runAgent(options: {
     agent,
     binary,
     model,
+    bedrock: !!bedrock,
     timeoutMs,
     promptLen: prompt.length,
     promptHead: prompt.slice(0, 500),
   });
 
   return new Promise((resolve) => {
+    const bedrockEnv = bedrock ? BEDROCK_ENV_BY_AGENT[agent] : undefined;
     const child = spawn(binary, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
+      ...(bedrockEnv ? { env: { ...process.env, ...bedrockEnv } } : {}),
     });
     if (useStdin && child.stdin) {
       // Guard against EPIPE: the child may close stdin before we finish

@@ -24,6 +24,7 @@ import { loadReviewInput } from '../select/parser.js';
 import type { ReviewSessionSnapshot } from '../select/types.js';
 import {
   AGENT_NAMES,
+  agentSupportsBedrock,
   buildPrompt,
   createLocalCliAgentInvoker,
   formatCustomPromptBanner,
@@ -168,6 +169,7 @@ type BatchItem = {
 async function selectBatch(
   agent: AgentName,
   model: string | undefined,
+  bedrock: boolean | undefined,
   batch: BatchItem[],
   total: number,
   verbose: boolean,
@@ -193,6 +195,7 @@ async function selectBatch(
   const result = await invoker.invoke({
     agent,
     model,
+    bedrock,
     prompt,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     onOutput: (chunk) => formatter.push(chunk),
@@ -295,6 +298,7 @@ async function selectBatch(
 async function selectAllComponents(
   agent: AgentName,
   model: string | undefined,
+  bedrock: boolean | undefined,
   components: SelectionCandidate[],
   verbose: boolean,
   skillPathOverride: string | undefined,
@@ -384,7 +388,7 @@ async function selectAllComponents(
     while (nextBatch < batches.length) {
       const b = nextBatch++;
       const batch = batches[b]!;
-      const batchResults = await selectBatch(agent, model, batch, total, verbose, skillPathOverride);
+      const batchResults = await selectBatch(agent, model, bedrock, batch, total, verbose, skillPathOverride);
       for (let k = 0; k < batch.length; k++) {
         results[batch[k]!.index] = batchResults[k]!;
       }
@@ -448,6 +452,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         projectRoot?: string;
         agent?: string;
         model?: string;
+        bedrock?: boolean;
         verbose?: boolean;
         dryRun?: boolean;
         excludeInvalid?: boolean;
@@ -485,6 +490,12 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         }
 
         const agent = agentName;
+
+        if (opts.bedrock && !agentSupportsBedrock(agent)) {
+          process.stderr.write(`Error: --bedrock is not supported for --agent ${agent}\n`);
+          await exitWithAnalytics(1);
+          return;
+        }
 
         // Feature 8: validate + announce custom prompt path before any heavy
         // work. Flag wins over saved credentials.
@@ -610,6 +621,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         const selectResults = await selectAllComponents(
           agent,
           model,
+          opts.bedrock,
           selectionCandidates,
           opts.verbose ?? false,
           selectPromptPath ? resolve(selectPromptPath) : undefined,

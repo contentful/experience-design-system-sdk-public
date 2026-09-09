@@ -26,6 +26,7 @@ export interface PipelineOptions {
   cmaToken?: string;
   agent: string;
   model?: string;
+  bedrock?: boolean;
   skipAnalyze: boolean;
   skipGenerate: boolean;
   print: boolean;
@@ -309,6 +310,7 @@ export async function runPipeline(
     if (useAgentSelect) {
       editArgs = ['analyze', 'select-agent', '--session', extractSessionId, '--agent', opts.agent];
       if (opts.model) editArgs.push('--model', opts.model);
+      if (opts.bedrock) editArgs.push('--bedrock');
       if (opts.excludeInvalid) editArgs.push('--exclude-invalid');
       if (opts.noCache) editArgs.push('--no-cache');
       if (opts.selectPromptPath) editArgs.push('--select-prompt-path', opts.selectPromptPath);
@@ -374,6 +376,7 @@ export async function runPipeline(
     const generateLabel = stepLabel('Categorizing component props');
     const generateArgs = ['generate', 'components', '--agent', opts.agent];
     if (opts.model) generateArgs.push('--model', opts.model);
+    if (opts.bedrock) generateArgs.push('--bedrock');
     if (extractSessionId) generateArgs.push('--session', extractSessionId);
     if (opts.dryRun) generateArgs.push('--dry-run');
     if (opts.verbose) generateArgs.push('--verbose');

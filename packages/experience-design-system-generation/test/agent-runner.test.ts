@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   AGENT_NAMES,
+  agentSupportsBedrock,
   buildArgs,
   checkAgentAuth,
   describeAgentFailure,
@@ -13,6 +14,7 @@ import {
   resolveBinary,
   resolveAgentModel,
   isAgentName,
+  runAgent,
   DEFAULT_AGENT_NAME,
 } from '../src/agent-runner.js';
 
@@ -698,5 +700,66 @@ describe('describeAgentFailure', () => {
   it('returns the base message alone when there is no stderr/stdout detail', () => {
     const msg = describeAgentFailure({ exitCode: 127, stdout: '', stderr: '', timedOut: false });
     expect(msg).toBe('agent exited with code 127');
+  });
+});
+
+describe('runAgent bedrock env', () => {
+  let dir: string;
+  const saved: Record<string, string | undefined> = {};
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'run-agent-bedrock-'));
+    saved.EDS_AGENT_BINARY_CLAUDE = process.env.EDS_AGENT_BINARY_CLAUDE;
+  });
+  afterEach(async () => {
+    if (saved.EDS_AGENT_BINARY_CLAUDE === undefined) delete process.env.EDS_AGENT_BINARY_CLAUDE;
+    else process.env.EDS_AGENT_BINARY_CLAUDE = saved.EDS_AGENT_BINARY_CLAUDE;
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  async function makeEnvEchoBinary(): Promise<string> {
+    const p = join(dir, 'echo-env');
+    await writeFile(p, '#!/usr/bin/env node\nprocess.stdout.write(process.env.CLAUDE_CODE_USE_BEDROCK ?? "");\n');
+    await chmod(p, 0o755);
+    return p;
+  }
+
+  it('sets CLAUDE_CODE_USE_BEDROCK=1 in the child env when bedrock is true', async () => {
+    process.env.EDS_AGENT_BINARY_CLAUDE = await makeEnvEchoBinary();
+    const result = await runAgent({ agent: 'claude', prompt: 'PROMPT', timeoutMs: 5000, bedrock: true });
+    expect(result.stdout).toBe('1');
+  });
+
+  it('does not set CLAUDE_CODE_USE_BEDROCK when bedrock is omitted', async () => {
+    process.env.EDS_AGENT_BINARY_CLAUDE = await makeEnvEchoBinary();
+    const result = await runAgent({ agent: 'claude', prompt: 'PROMPT', timeoutMs: 5000 });
+    expect(result.stdout).toBe('');
+  });
+
+  it('is a no-op for an agent with no Bedrock env entry, even when bedrock is true', async () => {
+    const p = join(dir, 'echo-env-cursor');
+    await writeFile(p, '#!/usr/bin/env node\nprocess.stdout.write(process.env.CLAUDE_CODE_USE_BEDROCK ?? "");\n');
+    await chmod(p, 0o755);
+    const savedCursor = process.env.EDS_AGENT_BINARY_CURSOR;
+    process.env.EDS_AGENT_BINARY_CURSOR = p;
+    try {
+      const result = await runAgent({ agent: 'cursor', prompt: 'PROMPT', timeoutMs: 5000, bedrock: true });
+      expect(result.stdout).toBe('');
+    } finally {
+      if (savedCursor === undefined) delete process.env.EDS_AGENT_BINARY_CURSOR;
+      else process.env.EDS_AGENT_BINARY_CURSOR = savedCursor;
+    }
+  });
+});
+
+describe('agentSupportsBedrock', () => {
+  it('returns true for claude', () => {
+    expect(agentSupportsBedrock('claude')).toBe(true);
+  });
+
+  it('returns false for codex, opencode, and cursor', () => {
+    expect(agentSupportsBedrock('codex')).toBe(false);
+    expect(agentSupportsBedrock('opencode')).toBe(false);
+    expect(agentSupportsBedrock('cursor')).toBe(false);
   });
 });

@@ -8,6 +8,7 @@ import type { Command } from 'commander';
 import {
   type AgentName,
   AGENT_NAMES,
+  agentSupportsBedrock,
   createLocalCliAgentInvoker,
   describeAgentFailure,
   formatCustomPromptBanner,
@@ -57,6 +58,7 @@ const RETRY_BACKOFF_MS = Number(process.env.EDS_RETRY_BACKOFF_MS ?? 5_000);
 interface GenerateSubcommandOptions {
   agent?: string;
   model?: string;
+  bedrock?: boolean;
   session?: string;
   rawTokens?: string;
   tokens?: string;
@@ -175,6 +177,7 @@ interface ComponentRunResult {
 async function runOneComponent(
   agent: AgentName,
   model: string | undefined,
+  bedrock: boolean | undefined,
   db: ReturnType<typeof openPipelineDb>,
   sessionId: string,
   component: RawComponentDefinition & { component_id: string },
@@ -277,6 +280,7 @@ async function runOneComponent(
     const result = await invoker.invoke({
       agent,
       model,
+      bedrock,
       prompt,
       timeoutMs: DEFAULT_TIMEOUT_MS,
       onOutput: (chunk) => formatter.push(chunk),
@@ -344,6 +348,7 @@ async function runOneComponent(
 async function runAllComponents(
   agent: AgentName,
   model: string | undefined,
+  bedrock: boolean | undefined,
   db: ReturnType<typeof openPipelineDb>,
   sessionId: string,
   components: Array<RawComponentDefinition & { component_id: string }>,
@@ -371,6 +376,7 @@ async function runAllComponents(
       results[i] = await runOneComponent(
         agent,
         model,
+        bedrock,
         db,
         sessionId,
         components[i]!,
@@ -445,6 +451,10 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     );
   }
   const agent = agentName;
+
+  if (opts.bedrock && !agentSupportsBedrock(agent)) {
+    die(`Error: --bedrock is not supported for --agent ${agent}`);
+  }
 
   // Feature 8: resolve custom-prompt path for `components` (flag wins over
   // saved credentials), validate, and emit the warning banner once at action
@@ -567,6 +577,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       componentResults = await runAllComponents(
         agent,
         model,
+        opts.bedrock,
         db,
         sessionId,
         allComponents,
@@ -691,6 +702,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       const result = await invoker.invoke({
         agent,
         model,
+        bedrock: opts.bedrock,
         prompt,
         timeoutMs: DEFAULT_TIMEOUT_MS * 5,
       });

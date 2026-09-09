@@ -74,4 +74,24 @@ describe('wizard subprocess arg builders thread --model through', () => {
     const args = buildGenerateComponentsArgs({ sessionId: 's1', agent: 'claude' });
     expect(args).not.toContain('--model');
   });
+
+  it('buildSelectAgentArgs appends --bedrock when true', () => {
+    const args = buildSelectAgentArgs({ sessionId: 's1', agent: 'claude', bedrock: true });
+    expect(args).toContain('--bedrock');
+  });
+
+  it('buildSelectAgentArgs omits --bedrock when not provided', () => {
+    const args = buildSelectAgentArgs({ sessionId: 's1', agent: 'claude' });
+    expect(args).not.toContain('--bedrock');
+  });
+
+  it('buildGenerateComponentsArgs appends --bedrock when true', () => {
+    const args = buildGenerateComponentsArgs({ sessionId: 's1', agent: 'claude', bedrock: true });
+    expect(args).toContain('--bedrock');
+  });
+
+  it('buildGenerateComponentsArgs omits --bedrock when not provided', () => {
+    const args = buildGenerateComponentsArgs({ sessionId: 's1', agent: 'claude' });
+    expect(args).not.toContain('--bedrock');
+  });
 });
