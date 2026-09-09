@@ -93,7 +93,8 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     kind: 'boolean',
     modes: ['pty', 'headless'],
     incompatibleWith: [],
-    notes: 'Only valid with an agent that supports Bedrock routing (currently: claude, the default); rejected otherwise.',
+    notes:
+      'Only valid with an agent that supports Bedrock routing (currently: claude, the default); rejected otherwise.',
   },
   {
     flag: '--tokens',
