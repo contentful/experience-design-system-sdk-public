@@ -15,10 +15,7 @@ export interface AgentModelOptionsConfig {
   modelDescription?: string;
 }
 
-/**
- * Register --agent and optionally --model/--bedrock flags to a Commander command, with customizable descriptions.
- * Pass `includeModel: false` for commands where the model dimension is not applicable (e.g., mapping-resolution agents that select an agent for logic, not model choice).
- */
+/** Register --agent and optional --model/--bedrock flags with a Commander command. Pass includeModel: false to omit both. */
 export function addAgentModelOptions(cmd: Command, config: AgentModelOptionsConfig = {}): Command {
   const { agentDescription = AGENT_DESCRIPTION, includeModel = true, modelDescription = MODEL_DESCRIPTION } = config;
 

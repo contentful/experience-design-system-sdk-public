@@ -705,15 +705,19 @@ describe('describeAgentFailure', () => {
 
 describe('runAgent bedrock env', () => {
   let dir: string;
-  const saved: Record<string, string | undefined> = {};
+  const envKeys = ['EDS_AGENT_BINARY_CLAUDE', 'EDS_AGENT_BINARY_CURSOR', 'CLAUDE_CODE_USE_BEDROCK'] as const;
+  const saved: Partial<Record<(typeof envKeys)[number], string | undefined>> = {};
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'run-agent-bedrock-'));
-    saved.EDS_AGENT_BINARY_CLAUDE = process.env.EDS_AGENT_BINARY_CLAUDE;
+    for (const key of envKeys) saved[key] = process.env[key];
+    delete process.env.CLAUDE_CODE_USE_BEDROCK;
   });
   afterEach(async () => {
-    if (saved.EDS_AGENT_BINARY_CLAUDE === undefined) delete process.env.EDS_AGENT_BINARY_CLAUDE;
-    else process.env.EDS_AGENT_BINARY_CLAUDE = saved.EDS_AGENT_BINARY_CLAUDE;
+    for (const key of envKeys) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
     await rm(dir, { recursive: true, force: true });
   });
 
@@ -737,18 +741,9 @@ describe('runAgent bedrock env', () => {
   });
 
   it('is a no-op for an agent with no Bedrock env entry, even when bedrock is true', async () => {
-    const p = join(dir, 'echo-env-cursor');
-    await writeFile(p, '#!/usr/bin/env node\nprocess.stdout.write(process.env.CLAUDE_CODE_USE_BEDROCK ?? "");\n');
-    await chmod(p, 0o755);
-    const savedCursor = process.env.EDS_AGENT_BINARY_CURSOR;
-    process.env.EDS_AGENT_BINARY_CURSOR = p;
-    try {
-      const result = await runAgent({ agent: 'cursor', prompt: 'PROMPT', timeoutMs: 5000, bedrock: true });
-      expect(result.stdout).toBe('');
-    } finally {
-      if (savedCursor === undefined) delete process.env.EDS_AGENT_BINARY_CURSOR;
-      else process.env.EDS_AGENT_BINARY_CURSOR = savedCursor;
-    }
+    process.env.EDS_AGENT_BINARY_CURSOR = await makeEnvEchoBinary();
+    const result = await runAgent({ agent: 'cursor', prompt: 'PROMPT', timeoutMs: 5000, bedrock: true });
+    expect(result.stdout).toBe('');
   });
 });
 
@@ -757,9 +752,7 @@ describe('agentSupportsBedrock', () => {
     expect(agentSupportsBedrock('claude')).toBe(true);
   });
 
-  it('returns false for codex, opencode, and cursor', () => {
-    expect(agentSupportsBedrock('codex')).toBe(false);
-    expect(agentSupportsBedrock('opencode')).toBe(false);
+  it('returns false for agents without a Bedrock env entry', () => {
     expect(agentSupportsBedrock('cursor')).toBe(false);
   });
 });

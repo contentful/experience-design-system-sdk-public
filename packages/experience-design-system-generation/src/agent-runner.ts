@@ -343,17 +343,7 @@ export function resolveBinary(agent: AgentName): string {
   return AGENT_BINARIES[agent];
 }
 
-/**
- * Per-agent env vars that switch that agent's CLI to route model calls
- * through AWS Bedrock instead of its default provider. Populated only for
- * agents with a confirmed, simple boolean-style switch — `claude`'s
- * CLAUDE_CODE_USE_BEDROCK=1. Not every agent has one: AWS Bedrock doesn't
- * host OpenAI/GPT models at all (so `codex` has no Bedrock path), and
- * `cursor-agent` exposes no AWS/Bedrock flag in its CLI. `opencode` likely
- * supports Bedrock via a `bedrock/<model-id>` model string rather than a
- * toggle env var — add it here once that's confirmed, rather than routing it
- * through this same mechanism.
- */
+/** Per-agent env vars that switch model calls to AWS Bedrock. */
 const BEDROCK_ENV_BY_AGENT: Partial<Record<AgentName, Record<string, string>>> = {
   claude: { CLAUDE_CODE_USE_BEDROCK: '1' },
 };
@@ -414,14 +404,7 @@ export async function runAgent(options: {
   prompt: string;
   timeoutMs: number;
   model?: string;
-  /**
-   * Route the selected agent's model calls through AWS Bedrock instead of its
-   * default provider, by setting that agent's Bedrock-routing env var(s) (see
-   * BEDROCK_ENV_BY_AGENT) on the spawned process. AWS credentials (AWS_PROFILE,
-   * or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_SESSION_TOKEN, plus
-   * AWS_REGION) must already be present in the parent env — this only flips
-   * the routing switch. No-op for agents with no entry in BEDROCK_ENV_BY_AGENT.
-   */
+  /** Apply the selected agent's Bedrock-routing env vars when enabled. */
   bedrock?: boolean;
   onOutput?: (chunk: string) => void;
   /**
