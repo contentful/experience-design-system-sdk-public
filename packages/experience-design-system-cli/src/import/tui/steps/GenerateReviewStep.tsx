@@ -2062,7 +2062,7 @@ export function GenerateReviewStep({
                     initialFocusTarget={
                       pendingEditorFocus && pendingEditorFocus.componentName === selected.key
                         ? pendingEditorFocus.target
-                        : undefined
+                        : { kind: 'description' }
                     }
                   />
                 )}

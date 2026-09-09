@@ -974,6 +974,7 @@ export function AtomicGenerateReviewStep({
                       setPanelScrollOffset(() => 0);
                     }}
                     onTextEntryActiveChange={setTextEntryActive}
+                    initialFocusTarget={{ kind: 'description' }}
                   />
                 )}
                 {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}

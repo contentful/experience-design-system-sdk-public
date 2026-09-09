@@ -85,7 +85,7 @@ describe('GenerateReviewStep — form by default (Fix 1)', () => {
     );
     await tick();
     const frame = lastFrame() ?? '';
-    expect(frame).toMatch(/FIELDS/);
+    expect(frame).toMatch(/description:/);
     expect(frame).not.toMatch(/GENERATED DEFINITION \(read-only\)/);
   });
 
@@ -123,12 +123,11 @@ describe('GenerateReviewStep — form by default (Fix 1)', () => {
     await tick();
     const jsonFrame = lastFrame() ?? '';
     expect(jsonFrame).toMatch(/GENERATED DEFINITION \(read-only\)/);
-    expect(jsonFrame).not.toMatch(/FIELDS \[Ctrl\+S/);
 
     stdin.write('J');
     await tick();
     const backFrame = lastFrame() ?? '';
-    expect(backFrame).toMatch(/FIELDS/);
+    expect(backFrame).toMatch(/description:/);
     expect(backFrame).not.toMatch(/GENERATED DEFINITION \(read-only\)/);
   });
 
@@ -196,6 +195,18 @@ describe('GenerateReviewStep — sidebar↔panel cross-key (Bug 1)', () => {
     await tick();
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/\[Tab\] focus list/);
+  });
+
+  it('starts each selected component on its description when the panel is focused', async () => {
+    const { lastFrame, stdin } = render(
+      <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
+    );
+    await tick();
+    stdin.write('\t');
+    await tick();
+    stdin.write('\r');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
 
   it('pressing e while panel is focused does NOT cross back to sidebar (gated)', async () => {
@@ -862,13 +873,12 @@ describe('GenerateReviewStep - component rationale panels (lifted)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    expect(lastFrame() ?? '').toMatch(/FIELDS/);
+    expect(lastFrame() ?? '').toMatch(/description:/);
     stdin.write('P');
     await tick();
     const out = lastFrame() ?? '';
     expect(out).toContain('Component rationale');
     expect(out).toContain('Button');
-    expect(out).not.toMatch(/FIELDS \[Ctrl\+S/);
   });
 
   it('L11: pressing I no longer opens the component rationale panel', async () => {
@@ -890,7 +900,6 @@ describe('GenerateReviewStep - component rationale panels (lifted)', () => {
     await tick();
     const out = lastFrame() ?? '';
     expect(out).toContain('RATIONALE');
-    expect(out).not.toMatch(/FIELDS \[Ctrl\+S/);
   });
 
   it('GA-2 A4: pressing s from sidebar focus opens the source panel', async () => {
@@ -904,12 +913,11 @@ describe('GenerateReviewStep - component rationale panels (lifted)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} />,
     );
     await tick();
-    expect(lastFrame() ?? '').toMatch(/FIELDS/);
+    expect(lastFrame() ?? '').toMatch(/description:/);
     stdin.write('s');
     await tick();
     const out = lastFrame() ?? '';
     expect(out).toContain('source: /proj/Button.tsx');
-    expect(out).not.toMatch(/FIELDS \[Ctrl\+S/);
   });
 
   it('pressing P again closes the panel and restores the right pane', async () => {
@@ -924,7 +932,7 @@ describe('GenerateReviewStep - component rationale panels (lifted)', () => {
     await tick();
     const out = lastFrame() ?? '';
     expect(out).not.toContain('Component rationale');
-    expect(out).toMatch(/FIELDS/);
+    expect(out).toMatch(/description:/);
   });
 
   it('Esc closes an open rationale panel without quitting the step', async () => {
@@ -1393,7 +1401,7 @@ describe('GenerateReviewStep — GA-4 interactive break-cycle overlay (A9)', () 
     expect(stripAnsi(lastFrame() ?? '')).toMatch(/CycleB \(cycle\)/);
   });
 
-  it('A2-5 — break overlay renders in the bottom banner slot (below FIELDS), not the top strip', async () => {
+  it('A2-5 — break overlay renders in the bottom banner slot (below the editor), not the top strip', async () => {
     const { utils } = await renderWithCycle();
     const { lastFrame, stdin } = utils;
     stdin.write('c');
@@ -1402,10 +1410,10 @@ describe('GenerateReviewStep — GA-4 interactive break-cycle overlay (A9)', () 
     await tick();
     const frame = stripAnsi(lastFrame() ?? '');
     const breakIdx = frame.indexOf('BREAK CYCLE');
-    const fieldsIdx = frame.indexOf('FIELDS');
+    const editorIdx = frame.indexOf('description:');
     expect(breakIdx).toBeGreaterThan(-1);
-    expect(fieldsIdx).toBeGreaterThan(-1);
-    expect(breakIdx).toBeGreaterThan(fieldsIdx);
+    expect(editorIdx).toBeGreaterThan(-1);
+    expect(breakIdx).toBeGreaterThan(editorIdx);
   });
 
   it('A2-5 — closing the break overlay + cycle panel restores the slot-dependency banner', async () => {
@@ -3400,14 +3408,14 @@ describe('GenerateReviewStep — bottom-of-step banners (T2)', () => {
       <GenerateReviewStep extractSessionId="sess-1" onFinalize={vi.fn()} onQuit={vi.fn()} livePreview={false} />,
     );
     await tick();
-    stdin.write('\x1a'); // Ctrl+Z — undo mount auto-reject so FIELDS marker present
+    stdin.write('\x1a'); // Ctrl+Z — undo mount auto-reject so the editor is visible
     await tick();
     const frame = lastFrame() ?? '';
-    const fieldsIdx = frame.indexOf('FIELDS');
+    const editorIdx = frame.indexOf('description:');
     const cycleIdx = frame.search(/slot dependency cycle/);
-    expect(fieldsIdx).toBeGreaterThanOrEqual(0);
+    expect(editorIdx).toBeGreaterThanOrEqual(0);
     expect(cycleIdx).toBeGreaterThanOrEqual(0);
-    expect(cycleIdx).toBeGreaterThan(fieldsIdx);
+    expect(cycleIdx).toBeGreaterThan(editorIdx);
   });
 
   it('search input renders BELOW the sidebar+detail row', async () => {
@@ -3431,11 +3439,11 @@ describe('GenerateReviewStep — bottom-of-step banners (T2)', () => {
     stdin.write('a');
     await tick();
     const frame = lastFrame() ?? '';
-    const fieldsIdx = frame.indexOf('FIELDS');
+    const editorIdx = frame.indexOf('description:');
     const searchIdx = frame.search(/\/a[^\n]*matches/);
-    expect(fieldsIdx).toBeGreaterThanOrEqual(0);
+    expect(editorIdx).toBeGreaterThanOrEqual(0);
     expect(searchIdx).toBeGreaterThanOrEqual(0);
-    expect(searchIdx).toBeGreaterThan(fieldsIdx);
+    expect(searchIdx).toBeGreaterThan(editorIdx);
   });
 
   it('auto-reject banner stays ABOVE the sidebar+detail row', async () => {
@@ -3460,10 +3468,10 @@ describe('GenerateReviewStep — bottom-of-step banners (T2)', () => {
     await tick();
     const frame = lastFrame() ?? '';
     const autoRejIdx = frame.search(/Cyclic manifest — auto-rejected/);
-    const fieldsIdx = frame.indexOf('FIELDS');
+    const editorIdx = frame.indexOf('description:');
     expect(autoRejIdx).toBeGreaterThanOrEqual(0);
-    expect(fieldsIdx).toBeGreaterThanOrEqual(0);
-    expect(autoRejIdx).toBeLessThan(fieldsIdx);
+    expect(editorIdx).toBeGreaterThanOrEqual(0);
+    expect(autoRejIdx).toBeLessThan(editorIdx);
   });
 });
 

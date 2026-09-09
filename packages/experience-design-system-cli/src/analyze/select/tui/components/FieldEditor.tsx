@@ -50,7 +50,7 @@ type FieldEditorProps = {
   currentComponentName?: string;
   onDirtyChange?: (isDirty: boolean) => void;
   discardTrigger?: number;
-  initialFocusTarget?: { kind: 'prop' | 'slot'; name: string };
+  initialFocusTarget?: { kind: 'description' } | { kind: 'prop' | 'slot'; name: string };
   showHiddenProps?: boolean;
 };
 
@@ -758,31 +758,40 @@ export function FieldEditor({
   const [parseErr] = useState<string | null>(parseError);
 
   const initialFocus = (() => {
-    if (initialFocusTarget) {
-      if (initialFocusTarget.kind === 'prop') {
-        const idx = initialState.props.findIndex((p) => p.name === initialFocusTarget.name);
-        if (idx >= 0) {
-          return {
-            focusLevel: 'prop' as FocusLevel,
-            inSlots: false,
-            propIdx: idx,
-            slotIdx: 0,
-            activeField: null as PropField | SlotField | null,
-            textCursor: 0,
-          };
-        }
-      } else {
-        const idx = initialState.slots.findIndex((s) => s.name === initialFocusTarget.name);
-        if (idx >= 0) {
-          return {
-            focusLevel: 'slot' as FocusLevel,
-            inSlots: true,
-            propIdx: 0,
-            slotIdx: idx,
-            activeField: null as PropField | SlotField | null,
-            textCursor: 0,
-          };
-        }
+    if (initialFocusTarget?.kind === 'description') {
+      return {
+        focusLevel: 'componentDescription' as FocusLevel,
+        inSlots: false,
+        propIdx: 0,
+        slotIdx: 0,
+        activeField: null as PropField | SlotField | null,
+        textCursor: 0,
+      };
+    }
+    if (initialFocusTarget?.kind === 'prop') {
+      const idx = initialState.props.findIndex((p) => p.name === initialFocusTarget.name);
+      if (idx >= 0) {
+        return {
+          focusLevel: 'prop' as FocusLevel,
+          inSlots: false,
+          propIdx: idx,
+          slotIdx: 0,
+          activeField: null as PropField | SlotField | null,
+          textCursor: 0,
+        };
+      }
+    }
+    if (initialFocusTarget?.kind === 'slot') {
+      const idx = initialState.slots.findIndex((s) => s.name === initialFocusTarget.name);
+      if (idx >= 0) {
+        return {
+          focusLevel: 'slot' as FocusLevel,
+          inSlots: true,
+          propIdx: 0,
+          slotIdx: idx,
+          activeField: null as PropField | SlotField | null,
+          textCursor: 0,
+        };
       }
     }
     if (initialState.props.length > 0) {
@@ -819,7 +828,7 @@ export function FieldEditor({
   const [propIdx, setPropIdx] = useState(initialFocus.propIdx);
   const [slotIdx, setSlotIdx] = useState(initialFocus.slotIdx);
   const [inSlots, setInSlots] = useState(initialFocus.inSlots);
-  const [inComponentDesc, setInComponentDesc] = useState(false);
+  const [inComponentDesc, setInComponentDesc] = useState(initialFocus.focusLevel === 'componentDescription');
   const [activeField, setActiveField] = useState<PropField | SlotField | null>(initialFocus.activeField);
   const [textCursor, setTextCursor] = useState(initialFocus.textCursor);
   const [valueCursor, setValueCursor] = useState(0);
@@ -1673,10 +1682,6 @@ export function FieldEditor({
       borderStyle="single"
       borderColor={hasEmptyProperties ? PALETTE.warning : PALETTE.info}
     >
-      <Text bold color={hasEmptyProperties ? PALETTE.warning : PALETTE.info}>
-        {'FIELDS [Ctrl+S save · Esc discard]'}
-      </Text>
-
       {hasEmptyProperties && (
         <Text color={PALETTE.warning}>
           {
@@ -1689,13 +1694,7 @@ export function FieldEditor({
         {visibleRowSlice.map((row, i) => {
           if (row.kind === 'header') {
             return (
-              <Text
-                key={`header-${i}`}
-                bold
-                color={
-                  row.section === 'slots' ? PALETTE.info : row.section === 'hidden' ? PALETTE.warning : PALETTE.success
-                }
-              >
+              <Text key={`header-${i}`} bold color={PALETTE.success}>
                 {row.label}
               </Text>
             );
@@ -1714,22 +1713,18 @@ export function FieldEditor({
                   >
                     {' description: '}
                   </Text>
-                </Box>
-                {isEditing ? (
-                  <Box paddingLeft={2} flexDirection="row">
+                  {isEditing ? (
                     <Box flexGrow={1} borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
                       <Text>{desc.slice(0, textCursor)}</Text>
                       <Text inverse={cursorVisible}>{desc[textCursor] ?? (cursorVisible ? '█' : ' ')}</Text>
                       <Text>{desc.slice(textCursor + 1)}</Text>
                     </Box>
-                  </Box>
-                ) : (
-                  <Box paddingLeft={2}>
-                    <Text color={desc ? PALETTE.success : undefined} dimColor={!desc}>
+                  ) : (
+                    <Text color={isSelected ? PALETTE.warning : PALETTE.inverse} dimColor={!desc}>
                       {desc || '(none — Return to edit)'}
                     </Text>
-                  </Box>
-                )}
+                  )}
+                </Box>
               </Box>
             );
           }

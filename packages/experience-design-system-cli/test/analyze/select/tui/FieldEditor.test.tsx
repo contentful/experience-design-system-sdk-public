@@ -1194,6 +1194,9 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Top-level hero');
+    const descriptionLine = frame.split('\n').find((line) => line.includes('description:')) ?? '';
+    expect(descriptionLine).toContain('description:');
+    expect(descriptionLine).toContain('Top-level hero');
     const descIdx = frame.indexOf('Top-level hero');
     const propsIdx = frame.indexOf('CONTENT');
     expect(descIdx).toBeGreaterThanOrEqual(0);
@@ -1278,6 +1281,23 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
     );
     expect(lastFrame() ?? '').toContain('description:');
     expect(lastFrame() ?? '').not.toContain('component-$description');
+  });
+
+  it('starts with the component description selected when requested by the parent navigator', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={HERO_WITH_DESC}
+        width={80}
+        height={20}
+        initialFocusTarget={{ kind: 'description' }}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    stdin.write('\r');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
 });
 
