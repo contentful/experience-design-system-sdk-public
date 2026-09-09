@@ -143,7 +143,7 @@ describe('map-tokens.md', () => {
 
   it('includes all required sections', async () => {
     const content = await readSkill('map-tokens.md');
-    for (const section of REQUIRED_SECTIONS) {
+    for (const section of ['Purpose', 'Input', 'Decision tree', 'Output protocol', 'Examples', 'Checklist']) {
       expect(content, `missing section: ${section}`).toMatch(new RegExp(`#.*${section}`, 'i'));
     }
   });

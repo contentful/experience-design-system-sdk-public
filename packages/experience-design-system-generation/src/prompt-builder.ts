@@ -396,14 +396,9 @@ The one tool call you may emit:
 Rules:
 - Emit exactly one JSON object per line. No multi-line JSON. No markdown fences around the lines.
 - Only emit a call for a prop that appears in the "Generated CDF so far" section.
-- Each "Token path index" section below is already scoped to one \`$token.kind\` — a prop only draws candidates from the section matching its own \`$token.kind\`. A prop with no \`$token.kind\` draws from the "full tree" section instead. Never cross sections.
-- \`token_allowed\` is a flat list of individual **leaf** token paths — never a group/prefix path. Each "Token path index" section contains one entry per leaf token only; a path like \`colors.brand\` that groups \`colors.brand.primary\`/\`colors.brand.secondary\` does NOT itself appear in any section and must never be emitted.
-- Every path in \`token_allowed\` must exist verbatim in the matching "Token path index" section and match the prop's \`$token.kind\`. Never invent a path, and never substitute a variant/enum name for a real token path. If a path you'd otherwise suggest is missing from the index, omit it rather than guessing.
-- \`token_allowed\` is required and must be non-empty when the call is emitted. Restriction requires explicit evidence: a comment naming the valid tokens, or code that validates the prop against a fixed list of token paths.
-- A default value or a \`tokenReference\` is the prop's default, not a restriction. On its own it yields no call — narrowing to that one path would leave the marketer a single option. If you narrow on other evidence, the default's path must be in the list.
-- A token prop whose type is a union of variant names (\`'primary' | 'secondary'\`) is misclassified — it should be an enum. Do not narrow it; emit nothing and flag it in a prose line.
-- Emit nothing for a prop when the evidence does not support narrowing. Omitting the list means "any token of this kind," which is the correct and live default — a guessed list is worse than none because it freezes the author's choices.
-- No \`$value\` is provided in this step — do not reason about specific token values, only paths and \`$type\`.
+- Each "Token path index" section below is already scoped to one \`$token.kind\` — a prop only draws candidates from the section matching its own \`$token.kind\` (or the "full tree" section, for a prop with no \`$token.kind\`). Never cross sections, never emit a group/prefix path, and never invent a path — every entry in \`token_allowed\` must exist verbatim in the matching section.
+- \`token_allowed\` is required and must be non-empty when the call is emitted.
+- For the judgment call of whether a prop should be narrowed at all, follow the decision tree in the map-tokens skill file: it explains defaults vs. restrictions, misclassified variant-name props, and when to emit nothing.
 - You may emit prose lines (not starting with \`{\`) anywhere — they are ignored by the parser and serve as your reasoning log.`;
 }
 
