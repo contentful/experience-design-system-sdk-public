@@ -1,7 +1,5 @@
 import { createElement } from 'react';
 import { render } from 'ink';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import type { Command } from 'commander';
 import {
   AGENT_NAMES,
@@ -13,15 +11,12 @@ import {
   resolveBinary,
   resolveSkillPath,
 } from '@contentful/experience-design-system-generation';
-import type { TokenTree } from '@contentful/experience-design-system-generation';
 import {
   openPipelineDb,
   loadCDFComponents,
   loadDTCGTokens,
   loadComponentSourceRefs,
   computeMapTokensInputHash,
-  countMappableTokenProps,
-  countRawTokens,
   createStep,
   updateStep,
   findLatestSessionForCommand,
@@ -40,8 +35,7 @@ import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js
 import { MapTokensView } from './tui/MapTokensView.js';
 import type { MapTokensViewResult } from './tui/MapTokensView.js';
 import { resolveTokenDefaults } from './resolve-defaults.js';
-
-const execFileAsync = promisify(execFile);
+import { die, assertBinaryInPath } from '../lib/cli-errors.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
@@ -52,21 +46,6 @@ interface MapTokensOptions {
   printPrompt?: boolean;
   cache?: boolean;
   skipAgent?: boolean;
-}
-
-function die(message: string): never {
-  process.stderr.write(`${message}\n`);
-  void exitWithAnalytics(1);
-  throw new Error('exit');
-}
-
-async function assertBinaryInPath(binary: string): Promise<boolean> {
-  try {
-    await execFileAsync('which', [binary]);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function renderResult(result: MapTokensViewResult): Promise<void> {
@@ -161,8 +140,15 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       );
     }
 
-    const mappablePropCount = countMappableTokenProps(db, sessionId);
-    const tokenCount = countRawTokens(db, sessionId);
+    const mappablePropCount = cdfEntries.reduce(
+      (count, { entry }) =>
+        count +
+        Object.values(entry.$properties ?? {}).filter((prop) => prop.$type === 'token' && prop.$category === 'design')
+          .length,
+      0,
+    );
+    const { groups, tokens } = loadDTCGTokens(db, sessionId);
+    const tokenCount = tokens.length;
     if (mappablePropCount === 0 || tokenCount === 0) {
       process.stdout.write(
         `Nothing to map: session '${sessionId}' has ${mappablePropCount} design-token prop(s) and ${tokenCount} token(s). Nothing written.\n`,
@@ -172,8 +158,7 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
     }
 
     const generatedCdf = Object.fromEntries(cdfEntries.map((c) => [c.key, c.entry]));
-    const { groups, tokens } = loadDTCGTokens(db, sessionId);
-    const tokenTree = rebuildDTCGTree(groups, tokens) as TokenTree;
+    const tokenTree = rebuildDTCGTree(groups, tokens);
     const componentSourceRefs = await loadComponentSourceRefs(db, sessionId);
 
     if (opts.printPrompt) {

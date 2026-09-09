@@ -33,8 +33,6 @@ import {
   loadRawTokenNamePaths,
   loadRawTokenNamePathRows,
   computeMapTokensInputHash,
-  countMappableTokenProps,
-  countRawTokens,
   loadComponentSourceRefs,
   loadComponentSourceRef,
   copyMapTokensFromCache,
@@ -96,9 +94,8 @@ describe('openPipelineDb', () => {
       expect(names).toContain('migrations');
       expect(names).toContain('raw_tokens');
       expect(names).toContain('raw_token_groups');
-      expect(
-        db.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('003-repair-raw-token-name-paths'),
-      ).toEqual({ count: 1 });
+      expect(names).toContain('raw_prop_token_paths');
+      expect(names).toContain('raw_token_name_paths');
       db.close();
     });
   });
@@ -244,101 +241,6 @@ describe('openPipelineDb', () => {
     });
   });
 
-  it('migrates legacy databases with no raw_prop_token_paths table exactly once', async () => {
-    await withTempDb((dbPath) => {
-      const initial = openPipelineDb(dbPath);
-      initial.exec('DROP TABLE raw_prop_token_paths');
-      initial.prepare('DELETE FROM migrations WHERE name = ?').run('001-raw-prop-token-paths');
-      initial.close();
-
-      const migrated = openPipelineDb(dbPath);
-      const tables = migrated
-        .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'raw_prop_token_paths'`)
-        .all() as Array<{ name: string }>;
-      expect(tables).toHaveLength(1);
-      expect(
-        migrated.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('001-raw-prop-token-paths'),
-      ).toEqual({ count: 1 });
-      migrated.close();
-
-      const reopened = openPipelineDb(dbPath);
-      expect(
-        reopened.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('001-raw-prop-token-paths'),
-      ).toEqual({ count: 1 });
-      reopened.close();
-    });
-  });
-
-  it('repairs a legacy raw_token_name_paths table when migration 002 is already recorded', async () => {
-    await withTempDb((dbPath) => {
-      const initial = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
-      initial.exec(`
-        DROP TABLE raw_token_name_paths;
-        CREATE TABLE raw_token_name_paths (
-          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-          raw_name   TEXT NOT NULL,
-          path       TEXT NOT NULL,
-          PRIMARY KEY (session_id, raw_name)
-        );
-      `);
-      initial
-        .prepare('INSERT INTO raw_token_name_paths (session_id, raw_name, path) VALUES (?, ?, ?)')
-        .run(sessionId, 'theme.colors.primary', 'colors.brand.primary');
-      expect(
-        initial.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('002-raw-token-name-paths'),
-      ).toEqual({ count: 1 });
-      initial.prepare('DELETE FROM migrations WHERE name = ?').run('003-repair-raw-token-name-paths');
-      initial.close();
-
-      const repaired = openPipelineDb(dbPath);
-      expect(loadRawTokenNamePathRows(repaired, sessionId)).toEqual([
-        { rawName: 'theme.colors.primary', path: 'colors.brand.primary', source: 'automatic' },
-      ]);
-      const migration = repaired
-        .prepare('SELECT applied_at FROM migrations WHERE name = ?')
-        .get('003-repair-raw-token-name-paths') as { applied_at: string };
-      expect(migration.applied_at).toEqual(expect.any(String));
-      repaired.close();
-
-      const reopened = openPipelineDb(dbPath);
-      expect(
-        reopened.prepare('SELECT applied_at FROM migrations WHERE name = ?').get('003-repair-raw-token-name-paths'),
-      ).toEqual(migration);
-      reopened.close();
-    });
-  });
-
-  it('recreates raw_token_name_paths when migration 002 is already recorded', async () => {
-    await withTempDb((dbPath) => {
-      const initial = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(initial, 'new', undefined, { command: 'analyze extract' });
-      initial.exec('DROP TABLE raw_token_name_paths');
-      expect(
-        initial.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('002-raw-token-name-paths'),
-      ).toEqual({ count: 1 });
-      initial.prepare('DELETE FROM migrations WHERE name = ?').run('003-repair-raw-token-name-paths');
-      initial.close();
-
-      const repaired = openPipelineDb(dbPath);
-      const columns = repaired.prepare('PRAGMA table_info(raw_token_name_paths)').all() as Array<{ name: string }>;
-      expect(columns.map((column) => column.name)).toEqual(['session_id', 'raw_name', 'path', 'source']);
-      replaceRawTokenNamePaths(repaired, sessionId, { 'theme.colors.primary': 'colors.brand.primary' });
-      expect(loadRawTokenNamePathRows(repaired, sessionId)).toEqual([
-        { rawName: 'theme.colors.primary', path: 'colors.brand.primary', source: 'automatic' },
-      ]);
-      expect(
-        repaired.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('003-repair-raw-token-name-paths'),
-      ).toEqual({ count: 1 });
-      repaired.close();
-
-      const reopened = openPipelineDb(dbPath);
-      expect(
-        reopened.prepare('SELECT COUNT(*) AS count FROM migrations WHERE name = ?').get('003-repair-raw-token-name-paths'),
-      ).toEqual({ count: 1 });
-      reopened.close();
-    });
-  });
 });
 
 describe('raw token name paths', () => {
@@ -2846,44 +2748,6 @@ describe('generation cache', () => {
         ],
       );
       expect(computeMapTokensInputHash(db, sessionId)).not.toBe(hash1);
-      db.close();
-    });
-  });
-
-  it('countMappableTokenProps and countRawTokens report zero on a session with none, and the real counts otherwise', async () => {
-    await withTempDb((dbPath) => {
-      const db = openPipelineDb(dbPath);
-      const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
-      storeRawComponents(db, sessionId, [
-        {
-          name: 'Card',
-          source: 'src/Card.tsx',
-          framework: 'react',
-          props: [
-            { name: 'bgColor', type: 'string', required: false },
-            { name: 'label', type: 'string', required: true },
-          ],
-          slots: [],
-        },
-      ]);
-      expect(countMappableTokenProps(db, sessionId)).toBe(0);
-      expect(countRawTokens(db, sessionId)).toBe(0);
-
-      storeCDFComponents(db, sessionId, [
-        {
-          key: 'Card',
-          entry: {
-            $type: 'component',
-            $properties: {
-              bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
-              label: { $type: 'string', $category: 'content' },
-            },
-          },
-        },
-      ]);
-      storeDTCGTokens(db, sessionId, [], [{ path: 'colors.brand.primary', $type: 'color', $value: '#00f' }]);
-      expect(countMappableTokenProps(db, sessionId)).toBe(1);
-      expect(countRawTokens(db, sessionId)).toBe(1);
       db.close();
     });
   });

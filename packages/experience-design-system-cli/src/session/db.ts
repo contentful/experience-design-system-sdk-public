@@ -190,6 +190,25 @@ CREATE TABLE IF NOT EXISTS slot_cycles (
   PRIMARY KEY (session_id, cycle_index)
 );
 
+CREATE TABLE IF NOT EXISTS raw_prop_token_paths (
+  session_id   TEXT NOT NULL,
+  component_id TEXT NOT NULL,
+  prop_name    TEXT NOT NULL,
+  position     INTEGER NOT NULL,
+  path         TEXT NOT NULL,
+  PRIMARY KEY (session_id, component_id, prop_name, position),
+  FOREIGN KEY (session_id, component_id, prop_name)
+    REFERENCES raw_props(session_id, component_id, name) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS raw_token_name_paths (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  raw_name   TEXT NOT NULL,
+  path       TEXT NOT NULL,
+  source     TEXT NOT NULL CHECK (source IN ('automatic', 'manual')),
+  PRIMARY KEY (session_id, raw_name)
+);
+
 CREATE INDEX IF NOT EXISTS idx_steps_session            ON steps(session_id);
 CREATE INDEX IF NOT EXISTS idx_steps_command            ON steps(session_id, command);
 CREATE INDEX IF NOT EXISTS idx_raw_components_session   ON raw_components(session_id);
@@ -230,57 +249,6 @@ export function openPipelineDb(dbPath?: string): DatabaseSync {
 }
 
 function applyDbMigrations(db: DatabaseSync): void {
-  const migrations: Array<{ name: string; sql: string } | { name: string; apply: (db: DatabaseSync) => void }> = [
-    {
-      name: '001-raw-prop-token-paths',
-      sql: `
-        CREATE TABLE IF NOT EXISTS raw_prop_token_paths (
-          session_id   TEXT NOT NULL,
-          component_id TEXT NOT NULL,
-          prop_name    TEXT NOT NULL,
-          position     INTEGER NOT NULL,
-          path         TEXT NOT NULL,
-          PRIMARY KEY (session_id, component_id, prop_name, position),
-          FOREIGN KEY (session_id, component_id, prop_name)
-            REFERENCES raw_props(session_id, component_id, name) ON DELETE CASCADE
-        );
-      `,
-    },
-    {
-      name: '002-raw-token-name-paths',
-      sql: `
-        CREATE TABLE IF NOT EXISTS raw_token_name_paths (
-          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-          raw_name   TEXT NOT NULL,
-          path       TEXT NOT NULL,
-          source     TEXT NOT NULL CHECK (source IN ('automatic', 'manual')),
-          PRIMARY KEY (session_id, raw_name)
-        );
-      `,
-    },
-    { name: '003-repair-raw-token-name-paths', apply: repairRawTokenNamePathsSchema },
-  ];
-
-  const hasAppliedMigration = db.prepare('SELECT 1 FROM migrations WHERE name = ?');
-  const recordMigration = db.prepare('INSERT INTO migrations (name, applied_at) VALUES (?, ?)');
-  for (const migration of migrations) {
-    if (hasAppliedMigration.get(migration.name)) continue;
-
-    db.exec('BEGIN');
-    try {
-      if ('apply' in migration) {
-        migration.apply(db);
-      } else {
-        db.exec(migration.sql);
-      }
-      recordMigration.run(migration.name, new Date().toISOString());
-      db.exec('COMMIT');
-    } catch (e) {
-      db.exec('ROLLBACK');
-      throw e;
-    }
-  }
-
   const cols = db.prepare('PRAGMA table_info(raw_slots)').all() as Array<{
     name: string;
   }>;
@@ -476,31 +444,6 @@ function applyDbMigrations(db: DatabaseSync): void {
         PRIMARY KEY (input_hash, cli_version)
       );
     `);
-  }
-}
-
-function repairRawTokenNamePathsSchema(db: DatabaseSync): void {
-  const tableExists = db
-    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'raw_token_name_paths'")
-    .get();
-
-  if (!tableExists) {
-    db.exec(`
-      CREATE TABLE raw_token_name_paths (
-        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        raw_name   TEXT NOT NULL,
-        path       TEXT NOT NULL,
-        source     TEXT NOT NULL CHECK (source IN ('automatic', 'manual')),
-        PRIMARY KEY (session_id, raw_name)
-      );
-    `);
-  } else {
-    const columns = db.prepare('PRAGMA table_info(raw_token_name_paths)').all() as Array<{ name: string }>;
-    if (!columns.some((column) => column.name === 'source')) {
-      db.exec(
-        "ALTER TABLE raw_token_name_paths ADD COLUMN source TEXT NOT NULL DEFAULT 'automatic' CHECK (source IN ('automatic', 'manual'))",
-      );
-    }
   }
 }
 
@@ -2433,22 +2376,6 @@ export function computeMapTokensInputHash(db: DatabaseSync, sessionId: string): 
     defaultMappings,
   };
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-}
-
-export function countMappableTokenProps(db: DatabaseSync, sessionId: string): number {
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS count FROM raw_props WHERE session_id = ? AND cdf_type = 'token' AND cdf_category = 'design'`,
-    )
-    .get(sessionId) as { count: number };
-  return row.count;
-}
-
-export function countRawTokens(db: DatabaseSync, sessionId: string): number {
-  const row = db.prepare(`SELECT COUNT(*) AS count FROM raw_tokens WHERE session_id = ?`).get(sessionId) as {
-    count: number;
-  };
-  return row.count;
 }
 
 export function lookupCache(
