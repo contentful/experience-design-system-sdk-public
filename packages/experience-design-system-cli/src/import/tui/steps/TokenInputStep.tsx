@@ -6,7 +6,7 @@ import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediat
 import { normalizePath } from '../../path-utils.js';
 
 type TokenInputStepProps = {
-  onConfirm: (rawTokensPath: string) => void;
+  onConfirm: (rawTokensPath: string, runMapTokens: boolean) => void;
   onSkip: () => void;
   onQuit: () => void;
 };
@@ -17,6 +17,7 @@ export function TokenInputStep({ onConfirm, onSkip, onQuit }: TokenInputStepProp
   const [error, setError] = useState<string | null>(null);
   const [resolvedPath, setResolvedPath] = useState<string | null>(null);
   const [typingMode, setTypingMode] = useState(false);
+  const [focus, setFocus] = useState<'input' | 'confirm-mapping'>('input');
 
   useEffect(() => {
     const interval = setInterval(() => setCursorVisible((v) => !v), 500);
@@ -24,6 +25,21 @@ export function TokenInputStep({ onConfirm, onSkip, onQuit }: TokenInputStepProp
   }, []);
 
   useImmediateInput((input, key) => {
+    if (focus === 'confirm-mapping') {
+      if (key.return || input === 'y' || input === 'Y') {
+        onConfirm(resolvedPath!, true);
+        return;
+      }
+      if (input === 'n' || input === 'N') {
+        onConfirm(resolvedPath!, false);
+        return;
+      }
+      if (key.escape) {
+        setFocus('input');
+        return;
+      }
+      return;
+    }
     if (key.return) {
       const trimmed = inputValue.trim();
       if (!trimmed) {
@@ -51,7 +67,7 @@ export function TokenInputStep({ onConfirm, onSkip, onQuit }: TokenInputStepProp
       }
       setError(null);
       setResolvedPath(normalized);
-      onConfirm(normalized);
+      setFocus('confirm-mapping');
       return;
     }
     if (key.tab) {
@@ -91,7 +107,7 @@ export function TokenInputStep({ onConfirm, onSkip, onQuit }: TokenInputStepProp
     }
   });
 
-  const displayValue = inputValue + (cursorVisible ? '█' : ' ');
+  const displayValue = inputValue + (focus === 'input' && cursorVisible ? '█' : ' ');
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
@@ -120,12 +136,29 @@ export function TokenInputStep({ onConfirm, onSkip, onQuit }: TokenInputStepProp
         )}
       </Box>
 
+      {focus === 'confirm-mapping' && (
+        <Box marginTop={1} gap={1}>
+          <Text color={PALETTE.info}>?</Text>
+          <Text>Would you like to bind allowed tokens to your component props?</Text>
+        </Box>
+      )}
+
       <Box gap={3} marginTop={1}>
-        <Text dimColor>[Enter] Submit / Skip if empty</Text>
-        <Text dimColor>[Tab] Exit typing</Text>
-        <Text dimColor>[Esc] Clear &amp; exit</Text>
-        <Text dimColor>[s] Skip</Text>
-        <Text dimColor>[q] Quit</Text>
+        {focus === 'confirm-mapping' ? (
+          <>
+            <Text dimColor>[Enter/y] Yes</Text>
+            <Text dimColor>[n] No</Text>
+            <Text dimColor>[Esc] Back to path</Text>
+          </>
+        ) : (
+          <>
+            <Text dimColor>[Enter] Submit / Skip if empty</Text>
+            <Text dimColor>[Tab] Exit typing</Text>
+            <Text dimColor>[Esc] Clear &amp; exit</Text>
+            <Text dimColor>[s] Skip</Text>
+            <Text dimColor>[q] Quit</Text>
+          </>
+        )}
       </Box>
     </Box>
   );
