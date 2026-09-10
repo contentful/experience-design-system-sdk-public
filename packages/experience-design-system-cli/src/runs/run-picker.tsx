@@ -32,7 +32,8 @@ function pushStatus(run: RunRecord): string {
 function runLine(run: RunRecord, label: string): string {
   const when = formatRelativeTime(run.createdAt);
   const count = `${run.componentCount} component${run.componentCount === 1 ? '' : 's'}`;
-  return `${label}  ${when}  ${count}  ${pushStatus(run)}`;
+  const agent = run.agent ? `  ${run.agent}` : '';
+  return `${label}  ${when}  ${count}  ${pushStatus(run)}${agent}`;
 }
 
 type ActionOption = 'push' | 'modify' | 'cancel';

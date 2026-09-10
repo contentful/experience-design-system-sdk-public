@@ -181,17 +181,19 @@ describe('RunPicker', () => {
     expect(handlers.onCancel).toHaveBeenCalled();
   });
 
-  it('renders each row as <leaf> <relative-time> <count> <push-status>', async () => {
+  it('renders each row as <leaf> <relative-time> <count> <push-status> <agent>', async () => {
     const runs = [
       makeRun('PUSHED', {
         projectPath: '/work/cx-simple-exo',
         createdAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
         pushedTo: { spaceId: 'abc123', environmentId: 'master', host: 'api.contentful.com' },
+        agent: 'claude',
       }),
       makeRun('UNPUSHED', {
         projectPath: '/personal/other-repo',
         createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
         pushedTo: null,
+        agent: 'codex',
       }),
     ];
     const handlers = makeHandlers();
@@ -201,8 +203,8 @@ describe('RunPicker', () => {
       (f) => f.includes('cx-simple-exo') && f.includes('other-repo'),
       3000,
     );
-    expect(frame).toMatch(/cx-simple-exo\s+20m ago\s+12 components\s+→ abc123\/master/);
-    expect(frame).toMatch(/other-repo\s+3h ago\s+12 components\s+not pushed/);
+    expect(frame).toMatch(/cx-simple-exo\s+20m ago\s+12 components\s+→ abc123\/master\s+claude/);
+    expect(frame).toMatch(/other-repo\s+3h ago\s+12 components\s+not pushed\s+codex/);
   });
 
   it('disambiguates colliding leaf names by expanding to <parent>/<leaf>', async () => {

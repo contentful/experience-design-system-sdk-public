@@ -19,7 +19,7 @@ import {
   resolveSavePath,
   type ConflictMode,
 } from '../../runs/save-path-resolver.js';
-import { appendRun } from '../../runs/store.js';
+import { appendRun, updateRun } from '../../runs/store.js';
 import { buildSourceFingerprint, buildSavedFingerprint } from '../../runs/fingerprint.js';
 import { TopBar } from '../../analyze/select/tui/components/TopBar.js';
 import { CustomPromptBanner } from './CustomPromptBanner.js';
@@ -1386,6 +1386,21 @@ export function WizardApp({
           },
           summary,
         };
+      }
+      const pushSucceeded =
+        pushResult.componentTypes.failed === 0 &&
+        pushResult.designTokens.failed === 0 &&
+        operation.sys.status !== 'failed';
+      if (pushSucceeded && state.lastRunId) {
+        try {
+          await updateRun(state.lastRunId, {
+            pushedTo: { spaceId, environmentId, host: resolvedHost },
+          });
+        } catch (err) {
+          process.stderr.write(
+            `Warning: failed to record push target on run: ${err instanceof Error ? err.message : String(err)}\n`,
+          );
+        }
       }
       update({ step: 'done', pushResult });
     } catch (e) {
