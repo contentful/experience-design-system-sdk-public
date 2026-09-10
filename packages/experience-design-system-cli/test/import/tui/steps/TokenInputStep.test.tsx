@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import { resolve } from 'node:path';
 import { render } from 'ink-testing-library';
 import { TokenInputStep } from '../../../../src/import/tui/steps/TokenInputStep.js';
+
+const tokenPath = resolve(import.meta.dirname, '../../../fixtures/valid-tokens.json');
 
 // Round-3 Feature 1: typing-mode escape.
 //
@@ -89,5 +92,62 @@ describe('TokenInputStep — typing-mode escape', () => {
     stdin.write('s');
     expect(onSkip).not.toHaveBeenCalled();
     expect(lastFrameContains(lastFrame(), 's')).toBe(true);
+  });
+});
+
+describe('TokenInputStep — map-tokens y/n confirmation', () => {
+  it('shows the y/n prompt after a valid path is submitted', () => {
+    const { stdin, lastFrame } = render(<TokenInputStep onConfirm={() => {}} onSkip={() => {}} onQuit={() => {}} />);
+    for (const ch of tokenPath) stdin.write(ch);
+    stdin.write('\r');
+    expect(lastFrameContains(lastFrame(), 'Would you like to bind allowed tokens to your component props?')).toBe(true);
+  });
+
+  it('removes the blinking cursor from the path line once the y/n prompt is focused', () => {
+    const { stdin, lastFrame } = render(<TokenInputStep onConfirm={() => {}} onSkip={() => {}} onQuit={() => {}} />);
+    for (const ch of tokenPath) stdin.write(ch);
+    const beforeConfirm = lastFrame();
+    expect(lastFrameContains(beforeConfirm, '█')).toBe(true);
+    stdin.write('\r');
+    expect(lastFrameContains(lastFrame(), '█')).toBe(false);
+  });
+
+  it('`y` confirms with runMapTokens=true', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(<TokenInputStep onConfirm={onConfirm} onSkip={() => {}} onQuit={() => {}} />);
+    for (const ch of tokenPath) stdin.write(ch);
+    stdin.write('\r');
+    stdin.write('y');
+    expect(onConfirm).toHaveBeenCalledWith(tokenPath, true);
+  });
+
+  it('Enter confirms with runMapTokens=true', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(<TokenInputStep onConfirm={onConfirm} onSkip={() => {}} onQuit={() => {}} />);
+    for (const ch of tokenPath) stdin.write(ch);
+    stdin.write('\r');
+    stdin.write('\r');
+    expect(onConfirm).toHaveBeenCalledWith(tokenPath, true);
+  });
+
+  it('`n` confirms with runMapTokens=false', () => {
+    const onConfirm = vi.fn();
+    const { stdin } = render(<TokenInputStep onConfirm={onConfirm} onSkip={() => {}} onQuit={() => {}} />);
+    for (const ch of tokenPath) stdin.write(ch);
+    stdin.write('\r');
+    stdin.write('n');
+    expect(onConfirm).toHaveBeenCalledWith(tokenPath, false);
+  });
+
+  it('Esc returns focus to the path input without confirming', () => {
+    const onConfirm = vi.fn();
+    const { stdin, lastFrame } = render(<TokenInputStep onConfirm={onConfirm} onSkip={() => {}} onQuit={() => {}} />);
+    for (const ch of tokenPath) stdin.write(ch);
+    stdin.write('\r');
+    stdin.write('\x1b');
+    expect(lastFrameContains(lastFrame(), 'Would you like to bind allowed tokens to your component props?')).toBe(
+      false,
+    );
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 });

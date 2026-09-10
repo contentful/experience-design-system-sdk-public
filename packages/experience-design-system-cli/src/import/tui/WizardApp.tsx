@@ -173,6 +173,7 @@ type WizardState = {
   generatePrefetchStatus: 'idle' | 'running' | 'complete' | 'failed';
   generatePrefetchError: string | null;
   mapTokensEligible: boolean | null;
+  skipMapTokensInteractive: boolean;
   credentialsSkipped: boolean;
   lastRunId: string | null;
   finalizeErrorBanner: string | null;
@@ -483,6 +484,7 @@ export function WizardApp({
     generatePrefetchStatus: 'idle',
     generatePrefetchError: null,
     mapTokensEligible: null,
+    skipMapTokensInteractive: false,
     credentialsSkipped: false,
     lastRunId: null,
     finalizeErrorBanner: null,
@@ -691,7 +693,7 @@ export function WizardApp({
       agent: state.agent,
       ...(state.agentModel ? { model: state.agentModel } : {}),
       noCache: effectiveNoCache,
-      skipAgent: skipMapTokens,
+      skipAgent: skipMapTokens || state.skipMapTokensInteractive,
     });
 
     const result = await runCli(args);
@@ -1750,8 +1752,8 @@ export function WizardApp({
       case 'token-input':
         return (
           <TokenInputStep
-            onConfirm={(rawTokensPath) => {
-              update({ rawTokensPath, step: 'generating-tokens' });
+            onConfirm={(rawTokensPath, runMapTokens) => {
+              update({ rawTokensPath, skipMapTokensInteractive: !runMapTokens, step: 'generating-tokens' });
             }}
             onSkip={() => update({ step: 'path-validation' })}
             onQuit={() => process.exit(0)}
@@ -1947,7 +1949,11 @@ export function WizardApp({
             totalSteps={totalSteps}
             title="Mapping design tokens"
             description="Finding the design tokens that are valid for each generated token property."
-            detail={skipMapTokens ? 'Resolving token defaults...' : `Running ${state.agent}...`}
+            detail={
+              skipMapTokens || state.skipMapTokensInteractive
+                ? 'Resolving token defaults...'
+                : `Running ${state.agent}...`
+            }
           />
         );
       }
