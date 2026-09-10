@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
+import { basename } from 'node:path';
 import type { ValidationDiagnostic } from '../validators/format-errors.js';
 import { TopBar } from '../../../analyze/select/tui/components/TopBar.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
@@ -54,7 +55,7 @@ export function ValidateView({ results, onExit }: ValidateViewProps): React.Reac
           return (
             <Box key={r.filePath}>
               <Text color={r.valid ? 'green' : 'red'}>{r.valid ? '✓' : '✗'}</Text>
-              <Text>{' ' + r.filePath.split('/').pop()}</Text>
+              <Text>{' ' + basename(r.filePath)}</Text>
               <Text dimColor>{'   ' + r.format + '   '}</Text>
               <Text color={r.valid ? 'green' : 'red'}>{summaryText}</Text>
             </Box>
@@ -66,7 +67,7 @@ export function ValidateView({ results, onExit }: ValidateViewProps): React.Reac
               <Box key={r.filePath} flexDirection="column">
                 <Text> </Text>
                 <Text dimColor>{'─'.repeat(70)}</Text>
-                <Text bold>{r.filePath.split('/').pop() + ' errors'}</Text>
+                <Text bold>{basename(r.filePath) + ' errors'}</Text>
                 <Text dimColor>{'─'.repeat(70)}</Text>
                 <Text> </Text>
                 {r.diagnostics.slice(scrollOffset).map((d, i) => (
