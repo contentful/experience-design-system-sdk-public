@@ -185,10 +185,6 @@ export function AtomicScopeGateStep({
   const above = scrollOffset;
   const below = Math.max(0, total - visibleEnd);
 
-  // Only the AI's untouched verdict should trigger the blocking banner — once the
-  // user has made any manual toggle (including toggle-all), a subsequent
-  // all-excluded state is a deliberate user choice, not an AI rejection, and
-  // must render as a normal (all-unchecked) list instead of hiding it.
   const allRejected =
     aiFilterStatus === 'complete' &&
     total > 0 &&
