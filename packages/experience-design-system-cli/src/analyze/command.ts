@@ -524,7 +524,6 @@ export function registerAnalyzeCommand(program: Command): void {
               prompt,
               timeoutMs: 120_000,
               promptViaStdin: true,
-              bedrock: opts.bedrock,
               onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
             });
             lastAgentExitCode = res.exitCode;

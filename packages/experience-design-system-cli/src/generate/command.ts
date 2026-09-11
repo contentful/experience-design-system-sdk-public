@@ -177,7 +177,6 @@ interface ComponentRunResult {
 async function runOneComponent(
   agent: AgentName,
   model: string | undefined,
-  bedrock: boolean | undefined,
   db: ReturnType<typeof openPipelineDb>,
   sessionId: string,
   component: RawComponentDefinition & { component_id: string },
@@ -280,7 +279,6 @@ async function runOneComponent(
     const result = await invoker.invoke({
       agent,
       model,
-      bedrock,
       prompt,
       timeoutMs: DEFAULT_TIMEOUT_MS,
       onOutput: (chunk) => formatter.push(chunk),
@@ -348,7 +346,6 @@ async function runOneComponent(
 async function runAllComponents(
   agent: AgentName,
   model: string | undefined,
-  bedrock: boolean | undefined,
   db: ReturnType<typeof openPipelineDb>,
   sessionId: string,
   components: Array<RawComponentDefinition & { component_id: string }>,
@@ -376,7 +373,6 @@ async function runAllComponents(
       results[i] = await runOneComponent(
         agent,
         model,
-        bedrock,
         db,
         sessionId,
         components[i]!,
@@ -577,7 +573,6 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       componentResults = await runAllComponents(
         agent,
         model,
-        opts.bedrock,
         db,
         sessionId,
         allComponents,
@@ -702,7 +697,6 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       const result = await invoker.invoke({
         agent,
         model,
-        bedrock: opts.bedrock,
         prompt,
         timeoutMs: DEFAULT_TIMEOUT_MS * 5,
       });
