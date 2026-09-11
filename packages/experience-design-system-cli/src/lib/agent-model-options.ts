@@ -32,8 +32,3 @@ export function addAgentModelOptions(cmd: Command, config: AgentModelOptionsConf
   cmd.option('--bedrock', BEDROCK_DESCRIPTION);
   return cmd;
 }
-
-/** Message for a `--bedrock` flag paired with an agent that has no Bedrock routing mechanism. */
-export function bedrockUnsupportedMessage(agent: string): string {
-  return `Error: --bedrock is not supported for --agent ${agent}`;
-}

@@ -3,7 +3,7 @@ import { render } from 'ink';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Command } from 'commander';
-import { addAgentModelOptions, bedrockUnsupportedMessage } from '../lib/agent-model-options.js';
+import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import {
   extractComponents,
   preClassifyComponent,
@@ -330,7 +330,7 @@ export function registerAnalyzeCommand(program: Command): void {
       if (opts.bedrock) {
         const bedrockAgent = resolveCompositionAgentName(opts.agent);
         if (!agentSupportsBedrock(bedrockAgent)) {
-          process.stderr.write(`${bedrockUnsupportedMessage(bedrockAgent)}\n`);
+          process.stderr.write(`Error: --bedrock is not supported for --agent ${bedrockAgent}\n`);
           process.exit(1);
         }
       }

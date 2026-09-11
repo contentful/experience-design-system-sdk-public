@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { addAgentModelOptions, bedrockUnsupportedMessage } from '../../lib/agent-model-options.js';
+import { addAgentModelOptions } from '../../lib/agent-model-options.js';
 import {
   openPipelineDb,
   loadRawComponents,
@@ -489,7 +489,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         const agent = agentName;
 
         if (opts.bedrock && !agentSupportsBedrock(agent)) {
-          process.stderr.write(`${bedrockUnsupportedMessage(agent)}\n`);
+          process.stderr.write(`Error: --bedrock is not supported for --agent ${agent}\n`);
           await exitWithAnalytics(1);
           return;
         }

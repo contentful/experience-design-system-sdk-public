@@ -5,7 +5,7 @@ import { normalizePath } from './path-utils.js';
 import { runPipeline } from './orchestrator.js';
 import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { resolveAgent, resolveModel } from './agent-model-resolve.js';
-import { addAgentModelOptions, bedrockUnsupportedMessage } from '../lib/agent-model-options.js';
+import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import { addAllowDeletionsOption, addCompositionOptions } from '../lib/command-options.js';
 import { isConflictMode, type ConflictMode } from '../runs/save-path-resolver.js';
@@ -436,7 +436,7 @@ export function registerImportCommand(program: Command): void {
           const resolvedCompositionMode = resolveCompositionMode(opts, creds.compositionMode);
 
           if (opts.bedrock && !(isAgentName(resolvedAgent) && agentSupportsBedrock(resolvedAgent))) {
-            process.stderr.write(`${bedrockUnsupportedMessage(resolvedAgent)}\n`);
+            process.stderr.write(`Error: --bedrock is not supported for --agent ${resolvedAgent}\n`);
             process.exit(1);
           }
 
@@ -544,7 +544,7 @@ export function registerImportCommand(program: Command): void {
         const headlessCompositionMode = resolveCompositionMode(opts, headlessCreds.compositionMode);
 
         if (opts.bedrock && !(isAgentName(headlessAgent) && agentSupportsBedrock(headlessAgent))) {
-          process.stderr.write(`${bedrockUnsupportedMessage(headlessAgent)}\n`);
+          process.stderr.write(`Error: --bedrock is not supported for --agent ${headlessAgent}\n`);
           process.exit(1);
         }
 
