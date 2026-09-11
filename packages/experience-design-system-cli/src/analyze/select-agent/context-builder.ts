@@ -78,6 +78,13 @@ function isWithinRoot(path: string, root: string): boolean {
   return relativePath !== '..' && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath);
 }
 
+// Path fields exposed to callers (and asserted on in tests) always use POSIX
+// separators, regardless of platform, so `relative()`'s OS-native separator
+// on Windows doesn't leak into consumer-facing output.
+function toPosixPath(path: string): string {
+  return sep === '/' ? path : path.split(sep).join('/');
+}
+
 function parseImportedNames(importClause: string): string[] {
   const names: string[] = [];
   const parts = importClause.split(',').map((part) => part.trim());
@@ -118,12 +125,12 @@ function resolveLocalImportPath(
 
   for (const candidate of candidates) {
     if (filePaths.has(candidate) && isWithinRoot(candidate, root)) {
-      return relative(root, candidate);
+      return toPosixPath(relative(root, candidate));
     }
   }
 
   if (isWithinRoot(basePath, root)) {
-    return relative(root, basePath);
+    return toPosixPath(relative(root, basePath));
   }
 
   return undefined;
@@ -188,7 +195,7 @@ function summarizeSiblingFiles(root: string, files: IndexedFile[], currentFile: 
     .filter((file) => file.absolutePath !== currentFile)
     .slice(0, MAX_SIBLING_FILES)
     .map((file) => ({
-      path: relative(root, file.absolutePath),
+      path: toPosixPath(relative(root, file.absolutePath)),
       exports: parseExports(file.text),
       codeSnippet: truncateText(file.text, MAX_SIBLING_SNIPPET_CHARS),
     }));
@@ -206,7 +213,7 @@ function findResolverReferences(
     .filter((file) => RESOLVER_HINT_PATTERN.test(file.absolutePath) || RESOLVER_HINT_PATTERN.test(file.text))
     .slice(0, MAX_REFERENCE_SNIPPETS)
     .map((file) => ({
-      path: relative(root, file.absolutePath),
+      path: toPosixPath(relative(root, file.absolutePath)),
       snippet: extractSnippet(file.text, componentName, MAX_REFERENCE_CHARS),
     }));
 }
@@ -231,7 +238,7 @@ function findParentUsageSite(
   if (!match) return undefined;
 
   return {
-    path: relative(root, match.absolutePath),
+    path: toPosixPath(relative(root, match.absolutePath)),
     snippet: extractSnippet(match.text, componentName, MAX_REFERENCE_CHARS),
   };
 }
@@ -244,7 +251,7 @@ export async function buildRepoContextIndex(root: string, filePaths: string[]): 
     filePaths.map(
       async (absolutePath): Promise<IndexedFile> => ({
         absolutePath,
-        relativePath: relative(resolvedRoot, absolutePath),
+        relativePath: toPosixPath(relative(resolvedRoot, absolutePath)),
         directory: dirname(absolutePath),
         text: await readFile(absolutePath, 'utf8').catch(() => ''),
       }),

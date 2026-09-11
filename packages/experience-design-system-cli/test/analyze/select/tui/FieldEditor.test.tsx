@@ -46,6 +46,25 @@ const STRING_COMPONENT = JSON.stringify(
   2,
 );
 
+const GROUPED_COMPONENT = JSON.stringify(
+  {
+    Button: {
+      $type: 'component',
+      $properties: {
+        label: { $type: 'string', $category: 'content', $description: 'content prop' },
+        color: { $type: 'token', $category: 'design', $description: 'design prop' },
+        disabled: { $type: 'boolean', $category: 'state', $description: 'state prop' },
+        dataTestId: { $type: 'string', $category: 'unattached', $description: 'hidden prop' },
+      },
+      $slots: {
+        icon: { $description: 'slot row' },
+      },
+    },
+  },
+  null,
+  2,
+);
+
 const tick = () => new Promise((r) => setTimeout(r, 30));
 
 async function navigateToValuesField(stdin: { write: (data: string) => void }): Promise<void> {
@@ -274,7 +293,133 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
   });
 });
 
+describe('FieldEditor — prop category grouping', () => {
+  it('groups visible rows as Content, Design, then Slots and omits the per-row category label', () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={GROUPED_COMPONENT}
+        width={100}
+        height={30}
+        showHiddenProps={false}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    const contentIndex = frame.indexOf('CONTENT PROPERTIES');
+    const designIndex = frame.indexOf('DESIGN PROPERTIES');
+    const slotsIndex = frame.indexOf('SLOTS');
+    expect(contentIndex).toBeGreaterThanOrEqual(0);
+    expect(designIndex).toBeGreaterThan(contentIndex);
+    expect(slotsIndex).toBeGreaterThan(designIndex);
+    expect(frame).not.toContain('cat:');
+    expect(frame).not.toContain('disabled');
+    expect(frame).not.toContain('dataTestId');
+  });
+
+  it('places state and unattached props in Other / Hidden after Slots when enabled', () => {
+    const { lastFrame } = render(
+      <FieldEditor
+        value={GROUPED_COMPONENT}
+        width={100}
+        height={30}
+        showHiddenProps
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    const slotsIndex = frame.indexOf('SLOTS');
+    const hiddenIndex = frame.indexOf('OTHER / HIDDEN');
+    expect(hiddenIndex).toBeGreaterThan(slotsIndex);
+    expect(frame).toContain('disabled');
+    expect(frame).toContain('dataTestId');
+  });
+
+  it('navigates selected rows in Content, Design, Slot, then Other / Hidden order', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={GROUPED_COMPONENT}
+        width={100}
+        height={30}
+        showHiddenProps
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+
+    const enterAndAssert = async (expected: string) => {
+      stdin.write('\r');
+      await tick();
+      expect(lastFrame() ?? '').toContain(expected);
+      stdin.write('\x1b');
+      await tick();
+    };
+
+    await enterAndAssert('‹string›');
+    for (const expected of ['‹token›', 'toggle', '‹boolean›', '‹string›']) {
+      stdin.write('j');
+      await tick();
+      await enterAndAssert(expected);
+    }
+  });
+
+  it('omits empty category headers', () => {
+    const onlyDesignAndSlot = JSON.stringify({
+      Button: {
+        $type: 'component',
+        $properties: { color: { $type: 'string', $category: 'design' } },
+        $slots: { icon: {} },
+      },
+    });
+    const { lastFrame } = render(
+      <FieldEditor
+        value={onlyDesignAndSlot}
+        width={100}
+        height={30}
+        showHiddenProps={false}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toContain('CONTENT PROPERTIES');
+    expect(frame).toContain('DESIGN PROPERTIES');
+    expect(frame).toContain('SLOTS');
+  });
+});
+
 describe('FieldEditor — flat enum-values (Fix 3)', () => {
+  it('renders enum values inline for selected and unselected rows', async () => {
+    const value = JSON.stringify({
+      Card: {
+        $type: 'component',
+        $properties: {
+          variant: {
+            $type: 'enum',
+            $category: 'design',
+            $values: ['primary', 'secondary', 'tertiary'],
+          },
+          empty: { $type: 'enum', $category: 'design', $values: [] },
+        },
+      },
+    });
+    const { stdin, lastFrame } = render(
+      <FieldEditor value={value} width={100} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
+    );
+
+    expect(lastFrame() ?? '').toContain('values: [primary, secondary, tertiary]');
+    expect(lastFrame() ?? '').toContain('values: []');
+
+    stdin.write('\r');
+    await tick();
+    expect(lastFrame() ?? '').toContain('values: [primary, secondary, tertiary]');
+  });
+
   it('renders the values legend when activeField is values', async () => {
     const { stdin, lastFrame } = render(
       <FieldEditor
@@ -640,7 +785,7 @@ describe('FieldEditor — onExit panel-exit callback (Bug 1)', () => {
 });
 
 describe('FieldEditor — duplicate React-key safety (Bug 1, INTEG-4257)', () => {
-  it('renders both a $properties section header AND a prop with idx 0 without dropping either', () => {
+  it('renders both a category section header AND a prop with idx 0 without dropping either', () => {
     const COMPONENT_WITH_HEADER_AND_PROP = JSON.stringify(
       {
         Hero: {
@@ -664,7 +809,7 @@ describe('FieldEditor — duplicate React-key safety (Bug 1, INTEG-4257)', () =>
       />,
     );
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('PROPERTIES');
+    expect(frame).toContain('CONTENT');
     expect(frame).toContain('title');
   });
 });
@@ -1075,8 +1220,11 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Top-level hero');
+    const descriptionLine = frame.split('\n').find((line) => line.includes('description:')) ?? '';
+    expect(descriptionLine).toContain('description:');
+    expect(descriptionLine).toContain('Top-level hero');
     const descIdx = frame.indexOf('Top-level hero');
-    const propsIdx = frame.indexOf('PROPERTIES');
+    const propsIdx = frame.indexOf('CONTENT');
     expect(descIdx).toBeGreaterThanOrEqual(0);
     expect(propsIdx).toBeGreaterThan(descIdx);
   });
@@ -1157,7 +1305,25 @@ describe('FieldEditor — Feature 5: component $description as first navigable r
     const { lastFrame } = render(
       <FieldEditor value={NO_DESC} width={80} height={20} onChange={vi.fn()} onSave={vi.fn()} onDiscard={vi.fn()} />,
     );
-    expect(lastFrame() ?? '').toMatch(/component-description|component \$description|\$description/i);
+    expect(lastFrame() ?? '').toContain('description:');
+    expect(lastFrame() ?? '').not.toContain('component-$description');
+  });
+
+  it('starts with the component description selected when requested by the parent navigator', async () => {
+    const { stdin, lastFrame } = render(
+      <FieldEditor
+        value={HERO_WITH_DESC}
+        width={80}
+        height={20}
+        initialFocusTarget={{ kind: 'description' }}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    stdin.write('\r');
+    await tick();
+    expect(lastFrame() ?? '').toMatch(/Type to edit/);
   });
 });
 
