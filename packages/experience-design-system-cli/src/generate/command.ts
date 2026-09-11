@@ -46,7 +46,7 @@ import { getRefineArtifactsRoot, getRefineSessionPaths } from '../analyze/select
 import type { ReviewSessionSnapshot } from '../analyze/select/types.js';
 import type { RawComponentDefinition } from '../types.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
-import { addAgentModelOptions } from '../lib/agent-model-options.js';
+import { addAgentModelOptions, bedrockUnsupportedMessage } from '../lib/agent-model-options.js';
 import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js';
 
 const execFileAsync = promisify(execFile);
@@ -449,7 +449,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
   const agent = agentName;
 
   if (opts.bedrock && !agentSupportsBedrock(agent)) {
-    die(`Error: --bedrock is not supported for --agent ${agent}`);
+    die(bedrockUnsupportedMessage(agent));
   }
 
   // Feature 8: resolve custom-prompt path for `components` (flag wins over
