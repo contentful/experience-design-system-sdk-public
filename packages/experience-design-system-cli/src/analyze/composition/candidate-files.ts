@@ -34,7 +34,7 @@ function matchReason(file: CandidateFile): string | undefined {
   // component — e.g. src/mapping/call_to_action.ts, no withParentType of its
   // own — must still be selected so the resolver can resolve OTHER files'
   // parent references to it. Matching only the basename silently dropped these.
-  const segments = file.path.split('/').filter((s) => s !== '');
+  const segments = file.path.split(/[/\\]/).filter((s) => s !== '');
   for (const pattern of CANDIDATE_NAME_PATTERNS) {
     if (segments.some((seg) => pattern.test(seg))) {
       return `name:${pattern.source.toLowerCase()}`;

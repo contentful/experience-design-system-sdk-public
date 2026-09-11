@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { render } from 'ink';
 import { access, readFile, readdir, stat } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Command } from 'commander';
@@ -539,7 +539,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       mode: 'autonomous',
       rawComponentsInline: sampleInline ?? rawTokensInline,
       rawTokensInline: skill === 'tokens' ? rawTokensInline : undefined,
-      rawTokensFilename: opts.rawTokens ? resolve(opts.rawTokens).split('/').pop() : undefined,
+      rawTokensFilename: opts.rawTokens ? basename(resolve(opts.rawTokens)) : undefined,
       tokensInline,
       tokenMapInline,
       outDir: process.cwd(),
@@ -682,7 +682,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         skill,
         mode: 'autonomous',
         rawTokensInline,
-        rawTokensFilename: opts.rawTokens ? resolve(opts.rawTokens).split('/').pop() : undefined,
+        rawTokensFilename: opts.rawTokens ? basename(resolve(opts.rawTokens)) : undefined,
         tokensInline,
         tokenMapInline,
         outDir: process.cwd(),

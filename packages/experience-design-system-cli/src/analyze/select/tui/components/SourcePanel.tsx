@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { basename } from 'node:path';
 
 type SourcePanelProps = {
   sourceCode: string | null;
@@ -51,7 +52,7 @@ function highlightSourceLine(line: string): React.ReactElement {
 
 function truncateFilePath(filePath: string, maxWidth: number): string {
   if (filePath.length <= maxWidth) return filePath;
-  const filename = filePath.split('/').pop() ?? filePath;
+  const filename = basename(filePath);
   if (filename.length >= maxWidth) return filename.slice(0, maxWidth - 1) + '…';
   return '…' + filePath.slice(filePath.length - (maxWidth - 1));
 }
