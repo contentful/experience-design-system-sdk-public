@@ -12,8 +12,8 @@ function makeRun(id: string, overrides: Partial<RunRecord> = {}): RunRecord {
   return {
     id,
     createdAt: '2026-06-25T14:31:00.000Z',
-    projectPath: '/work/foo',
-    savePath: '/work/foo/dist',
+    projectPath: `/work/${id.toLowerCase()}`,
+    savePath: `/work/${id.toLowerCase()}/dist`,
     componentCount: 12,
     tokenCount: 0,
     tokensPath: null,
@@ -41,10 +41,10 @@ describe('RunPicker', () => {
     const { lastFrame } = render(<RunPicker runs={runs} {...handlers} />);
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('AAA') && f.includes('KKK'),
+      (f) => f.includes('aaa') && f.includes('kkk'),
       3000,
     );
-    for (const id of ids) expect(frame).toContain(id);
+    for (const id of ids) expect(frame).toContain(id.toLowerCase());
     expect(frame).not.toContain('Show all');
     expect(frame).toContain('Start a new run');
   });
@@ -56,12 +56,12 @@ describe('RunPicker', () => {
     const { lastFrame } = render(<RunPicker runs={runs} {...handlers} />);
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('AAA') && f.includes('Show all'),
+      (f) => f.includes('aaa') && f.includes('Show all'),
       3000,
     );
-    for (const id of ids.slice(0, 10)) expect(frame).toContain(id);
-    expect(frame).not.toContain('KKK');
-    expect(frame).not.toContain('LLL');
+    for (const id of ids.slice(0, 10)) expect(frame).toContain(id.toLowerCase());
+    expect(frame).not.toContain('kkk');
+    expect(frame).not.toContain('lll');
     expect(frame).toContain('Show all (12)');
   });
 
@@ -79,10 +79,10 @@ describe('RunPicker', () => {
     stdin.write('\r');
     const expanded = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('KKK') && f.includes('LLL'),
+      (f) => f.includes('kkk') && f.includes('lll'),
       3000,
     );
-    for (const id of ids) expect(expanded).toContain(id);
+    for (const id of ids) expect(expanded).toContain(id.toLowerCase());
     expect(expanded).not.toContain('Show all');
   });
 
@@ -92,7 +92,7 @@ describe('RunPicker', () => {
     const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('AAA'),
+      (f) => f.includes('aaa'),
       3000,
     );
     stdin.write('j');
@@ -114,7 +114,7 @@ describe('RunPicker', () => {
     const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('AAA'),
+      (f) => f.includes('aaa'),
       3000,
     );
     stdin.write('\r');
@@ -134,7 +134,7 @@ describe('RunPicker', () => {
     const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('AAA'),
+      (f) => f.includes('aaa'),
       3000,
     );
     stdin.write('\r');
@@ -148,10 +148,10 @@ describe('RunPicker', () => {
     stdin.write('\r');
     const back = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Continue from one') && f.includes('AAA'),
+      (f) => f.includes('Continue from one') && f.includes('aaa'),
       3000,
     );
-    expect(back).toContain('AAA');
+    expect(back).toContain('aaa');
     expect(handlers.onSelect).not.toHaveBeenCalled();
   });
 
@@ -161,7 +161,7 @@ describe('RunPicker', () => {
     const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('AAA'),
+      (f) => f.includes('aaa'),
       3000,
     );
     stdin.write('n');
@@ -174,28 +174,74 @@ describe('RunPicker', () => {
     const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('AAA'),
+      (f) => f.includes('aaa'),
       3000,
     );
     stdin.write('q');
     expect(handlers.onCancel).toHaveBeenCalled();
   });
 
-  it('formats date as YYYY-MM-DD HH:MM and includes pushed / not pushed', async () => {
+  it('renders each row as <leaf> <relative-time> <count> <push-status> <agent>', async () => {
     const runs = [
-      makeRun('PUSHED', { createdAt: '2026-06-25T14:31:00.000Z' }),
-      makeRun('UNPUSHED', { createdAt: '2026-06-24T09:18:00.000Z', pushedTo: null }),
+      makeRun('PUSHED', {
+        projectPath: '/work/cx-simple-exo',
+        createdAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+        pushedTo: { spaceId: 'abc123', environmentId: 'master', host: 'api.contentful.com' },
+        agent: 'claude',
+      }),
+      makeRun('UNPUSHED', {
+        projectPath: '/personal/other-repo',
+        createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+        pushedTo: null,
+        agent: 'codex',
+      }),
     ];
     const handlers = makeHandlers();
     const { lastFrame } = render(<RunPicker runs={runs} {...handlers} />);
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('PUSHED') && f.includes('UNPUSHED'),
+      (f) => f.includes('cx-simple-exo') && f.includes('other-repo'),
       3000,
     );
-    expect(frame).toMatch(/2026-06-25 \d{2}:\d{2}/);
-    expect(frame).toMatch(/2026-06-24 \d{2}:\d{2}/);
-    expect(frame).toContain('pushed');
-    expect(frame).toContain('not pushed');
+    expect(frame).toMatch(/cx-simple-exo\s+20m ago\s+12 components\s+→ abc123\/master\s+claude/);
+    expect(frame).toMatch(/other-repo\s+3h ago\s+12 components\s+not pushed\s+codex/);
+  });
+
+  it('disambiguates colliding leaf names by expanding to <parent>/<leaf>', async () => {
+    const runs = [
+      makeRun('AAA', { projectPath: '/work/design-system' }),
+      makeRun('BBB', { projectPath: '/personal/design-system' }),
+    ];
+    const handlers = makeHandlers();
+    const { lastFrame } = render(<RunPicker runs={runs} {...handlers} />);
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('work/design-system') && f.includes('personal/design-system'),
+      3000,
+    );
+    expect(frame).toContain('work/design-system');
+    expect(frame).toContain('personal/design-system');
+  });
+
+  it('shows the full ULID for the highlighted row in the details footer', async () => {
+    const runs = [
+      makeRun('06G8FJ4J3MBXKSQKJDYR3G6X1C', { projectPath: '/work/alpha' }),
+      makeRun('06G8FH4BSGB2S807B5AYSN5CSR', { projectPath: '/work/beta' }),
+    ];
+    const handlers = makeHandlers();
+    const { lastFrame, stdin } = render(<RunPicker runs={runs} {...handlers} />);
+    let frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('ID:'),
+      3000,
+    );
+    expect(frame).toContain('ID: 06G8FJ4J3MBXKSQKJDYR3G6X1C');
+    stdin.write('j');
+    frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('ID: 06G8FH4BSGB2S807B5AYSN5CSR'),
+      3000,
+    );
+    expect(frame).toContain('ID: 06G8FH4BSGB2S807B5AYSN5CSR');
   });
 });
