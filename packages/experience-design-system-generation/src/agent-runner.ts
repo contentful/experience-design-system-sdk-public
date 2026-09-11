@@ -343,6 +343,15 @@ export function resolveBinary(agent: AgentName): string {
   return AGENT_BINARIES[agent];
 }
 
+/** Per-agent env vars that switch model calls to AWS Bedrock. */
+const BEDROCK_ENV_BY_AGENT: Partial<Record<AgentName, Record<string, string>>> = {
+  claude: { CLAUDE_CODE_USE_BEDROCK: '1' },
+};
+
+export function agentSupportsBedrock(agent: AgentName): boolean {
+  return agent in BEDROCK_ENV_BY_AGENT;
+}
+
 /**
  * Default models per agent — lightweight/fast picks to control cost when no
  * explicit model is configured. cursor uses `gpt-mini` (verified alias from
@@ -395,6 +404,8 @@ export async function runAgent(options: {
   prompt: string;
   timeoutMs: number;
   model?: string;
+  /** Apply the selected agent's Bedrock-routing env vars when enabled. */
+  bedrock?: boolean;
   onOutput?: (chunk: string) => void;
   /**
    * Deliver the prompt on stdin instead of as an argv positional. Required for
@@ -406,6 +417,11 @@ export async function runAgent(options: {
   onDebugEvent?: AgentDebugEvent;
 }): Promise<AgentRunResult> {
   const { agent, prompt, timeoutMs, model, onOutput, promptViaStdin, onDebugEvent } = options;
+  // Fall back to the process-wide EDS_BEDROCK signal (set once by the CLI's
+  // top-level --bedrock resolution and inherited by every spawned subprocess)
+  // when a call site doesn't pass `bedrock` explicitly — closes the gap for
+  // call sites that forget to thread the flag through by hand.
+  const bedrock = options.bedrock ?? process.env.EDS_BEDROCK === '1';
 
   const binary = resolveBinary(agent);
   const useStdin = !!promptViaStdin;
@@ -416,14 +432,17 @@ export async function runAgent(options: {
     agent,
     binary,
     model,
+    bedrock: !!bedrock,
     timeoutMs,
     promptLen: prompt.length,
     promptHead: prompt.slice(0, 500),
   });
 
   return new Promise((resolve) => {
+    const bedrockEnv = bedrock ? BEDROCK_ENV_BY_AGENT[agent] : undefined;
     const child = spawn(binary, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
+      ...(bedrockEnv ? { env: { ...process.env, ...bedrockEnv } } : {}),
     });
     if (useStdin && child.stdin) {
       // Guard against EPIPE: the child may close stdin before we finish

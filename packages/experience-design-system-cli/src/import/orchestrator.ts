@@ -26,6 +26,7 @@ export interface PipelineOptions {
   cmaToken?: string;
   agent: string;
   model?: string;
+  bedrock?: boolean;
   skipAnalyze: boolean;
   skipGenerate: boolean;
   print: boolean;
@@ -252,6 +253,7 @@ export async function runPipeline(
       if (opts.generateMap) analyzeArgs.push('--generate-map', opts.generateMap);
       for (const p of opts.promptOverrides ?? []) analyzeArgs.push('--prompt', p);
       if (opts.agent) analyzeArgs.push('--agent', opts.agent);
+      if (opts.bedrock) analyzeArgs.push('--bedrock');
     }
     const r = await runStep(analyzeArgs, cliPath, sessionId);
     const durationMs = Date.now() - t0;
@@ -309,6 +311,7 @@ export async function runPipeline(
     if (useAgentSelect) {
       editArgs = ['analyze', 'select-agent', '--session', extractSessionId, '--agent', opts.agent];
       if (opts.model) editArgs.push('--model', opts.model);
+      if (opts.bedrock) editArgs.push('--bedrock');
       if (opts.excludeInvalid) editArgs.push('--exclude-invalid');
       if (opts.noCache) editArgs.push('--no-cache');
       if (opts.selectPromptPath) editArgs.push('--select-prompt-path', opts.selectPromptPath);
@@ -374,6 +377,7 @@ export async function runPipeline(
     const generateLabel = stepLabel('Categorizing component props');
     const generateArgs = ['generate', 'components', '--agent', opts.agent];
     if (opts.model) generateArgs.push('--model', opts.model);
+    if (opts.bedrock) generateArgs.push('--bedrock');
     if (extractSessionId) generateArgs.push('--session', extractSessionId);
     if (opts.dryRun) generateArgs.push('--dry-run');
     if (opts.verbose) generateArgs.push('--verbose');

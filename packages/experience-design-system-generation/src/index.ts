@@ -4,6 +4,7 @@ export type { AgentName } from './agent-names.js';
 
 // Agent invocation (low-level)
 export {
+  agentSupportsBedrock,
   buildArgs,
   checkAgentAuth,
   describeAgentFailure,

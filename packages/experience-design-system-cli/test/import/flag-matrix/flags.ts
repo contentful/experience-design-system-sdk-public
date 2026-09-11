@@ -89,6 +89,14 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
+    flag: '--bedrock',
+    kind: 'boolean',
+    modes: ['pty', 'headless'],
+    incompatibleWith: [],
+    notes:
+      'Only valid with an agent that supports Bedrock routing (currently: claude, the default); rejected otherwise.',
+  },
+  {
     flag: '--tokens',
     kind: 'value',
     sampleValue: '/tmp/tokens.json',

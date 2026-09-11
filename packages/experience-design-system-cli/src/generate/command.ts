@@ -8,6 +8,7 @@ import type { Command } from 'commander';
 import {
   type AgentName,
   AGENT_NAMES,
+  agentSupportsBedrock,
   createLocalCliAgentInvoker,
   describeAgentFailure,
   formatCustomPromptBanner,
@@ -57,6 +58,7 @@ const RETRY_BACKOFF_MS = Number(process.env.EDS_RETRY_BACKOFF_MS ?? 5_000);
 interface GenerateSubcommandOptions {
   agent?: string;
   model?: string;
+  bedrock?: boolean;
   session?: string;
   rawTokens?: string;
   tokens?: string;
@@ -445,6 +447,10 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     );
   }
   const agent = agentName;
+
+  if (opts.bedrock && !agentSupportsBedrock(agent)) {
+    die(`Error: --bedrock is not supported for --agent ${agent}`);
+  }
 
   // Feature 8: resolve custom-prompt path for `components` (flag wins over
   // saved credentials), validate, and emit the warning banner once at action
