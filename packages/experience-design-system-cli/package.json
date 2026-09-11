@@ -54,7 +54,7 @@
     "@contentful/experience-design-system-client": "workspace:*",
     "@contentful/experience-design-system-extraction": "workspace:*",
     "@contentful/experience-design-system-generation": "workspace:*",
-    "@tsconfig/node24": "^24.0.4",
+    "@tsconfig/node24": "^24.0.5",
     "@types/node": "^24.0.3",
     "@types/react": "^18.3.24",
     "eslint": "^9.39.5",
