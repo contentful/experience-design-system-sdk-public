@@ -416,7 +416,12 @@ export async function runAgent(options: {
   /** Optional debug-event sink; callers own how/where events get logged. */
   onDebugEvent?: AgentDebugEvent;
 }): Promise<AgentRunResult> {
-  const { agent, prompt, timeoutMs, model, bedrock, onOutput, promptViaStdin, onDebugEvent } = options;
+  const { agent, prompt, timeoutMs, model, onOutput, promptViaStdin, onDebugEvent } = options;
+  // Fall back to the process-wide EDS_BEDROCK signal (set once by the CLI's
+  // top-level --bedrock resolution and inherited by every spawned subprocess)
+  // when a call site doesn't pass `bedrock` explicitly — closes the gap for
+  // call sites that forget to thread the flag through by hand.
+  const bedrock = options.bedrock ?? process.env.EDS_BEDROCK === '1';
 
   const binary = resolveBinary(agent);
   const useStdin = !!promptViaStdin;

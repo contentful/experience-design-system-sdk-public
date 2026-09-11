@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { runBuild } from '../src/program.js';
+import { Command } from 'commander';
+import { resolveBedrockFromAncestors, runBuild } from '../src/program.js';
 
 /**
  * P2.5 regression: when `pnpm` (or any spawn target) errors before exit
@@ -103,5 +104,33 @@ describe('runBuild — spawn error surfacing (P2.5)', () => {
 
     expect(result.exitCode).toBe(1);
     expect(stderrWrites.join('')).toContain('some string error');
+  });
+});
+
+describe('resolveBedrockFromAncestors', () => {
+  it('returns true when --bedrock is set on the action command itself', () => {
+    const sub = new Command('extract').option('--bedrock');
+    sub.setOptionValue('bedrock', true);
+    expect(resolveBedrockFromAncestors(sub)).toBe(true);
+  });
+
+  it('returns true when --bedrock is set on an ancestor command', () => {
+    const root = new Command('program').option('--bedrock');
+    root.setOptionValue('bedrock', true);
+    const sub = new Command('extract');
+    sub.parent = root;
+    expect(resolveBedrockFromAncestors(sub)).toBe(true);
+  });
+
+  it('returns false when --bedrock is not set anywhere in the chain', () => {
+    const root = new Command('program').option('--bedrock');
+    const sub = new Command('extract').option('--bedrock');
+    sub.parent = root;
+    expect(resolveBedrockFromAncestors(sub)).toBe(false);
+  });
+
+  it('returns false for a command with no --bedrock option registered at all', () => {
+    const sub = new Command('extract');
+    expect(resolveBedrockFromAncestors(sub)).toBe(false);
   });
 });

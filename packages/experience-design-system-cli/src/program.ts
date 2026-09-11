@@ -59,6 +59,19 @@ export async function runBuild(opts: {
   });
 }
 
+/**
+ * Walks `actionCommand` and its ancestors for a truthy `--bedrock`. --bedrock
+ * is registered per-subcommand (not at program scope, unlike --debug), so a
+ * root-level or subcommand-level setting can each carry it.
+ */
+export function resolveBedrockFromAncestors(actionCommand: Command): boolean {
+  for (let c: Command | null = actionCommand; c; c = c.parent) {
+    const opts = c.opts() as { bedrock?: boolean };
+    if (opts.bedrock) return true;
+  }
+  return false;
+}
+
 function registerBuildCommand(program: Command): void {
   program
     .command('build')
@@ -113,6 +126,17 @@ export function createProgram(): Command {
         break;
       }
     }
+
+    // Propagate --bedrock via env instead of relying on every subprocess spawn
+    // site to re-forward the argv flag. `runAgent()` falls back to this var
+    // when a call site omits `bedrock` explicitly, and any `node ... experiences
+    // <subcommand>` child spawned from here inherits it via `process.env` —
+    // closing the gap for call sites that forget to thread the flag through,
+    // present or future.
+    if (resolveBedrockFromAncestors(actionCommand)) {
+      process.env.EDS_BEDROCK = '1';
+    }
+
     // Build a `command` label out of the actual subcommand chain (e.g. "apply push").
     const chain: string[] = [];
     for (let c: Command | null = actionCommand; c && c.parent; c = c.parent) chain.unshift(c.name());
