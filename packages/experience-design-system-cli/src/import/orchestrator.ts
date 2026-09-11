@@ -253,6 +253,7 @@ export async function runPipeline(
       if (opts.generateMap) analyzeArgs.push('--generate-map', opts.generateMap);
       for (const p of opts.promptOverrides ?? []) analyzeArgs.push('--prompt', p);
       if (opts.agent) analyzeArgs.push('--agent', opts.agent);
+      if (opts.bedrock) analyzeArgs.push('--bedrock');
     }
     const r = await runStep(analyzeArgs, cliPath, sessionId);
     const durationMs = Date.now() - t0;

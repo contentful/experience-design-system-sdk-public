@@ -640,6 +640,7 @@ export function WizardApp({
         for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
         // Composition resolution uses the same agent the user picked for the run.
         if (state.agent) extractArgs.push('--agent', state.agent);
+        if (state.bedrock) extractArgs.push('--bedrock');
       }
       const child = spawn('node', extractArgs);
       let stdout = '';

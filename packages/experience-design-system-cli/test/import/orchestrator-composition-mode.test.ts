@@ -98,6 +98,7 @@ describe('runPipeline composition mode forwarding', () => {
         compositionRefresh: true,
         generateMap: '/tmp/skeleton.json',
         promptOverrides: ['composition=./p.md', 'grouping=./g.md'],
+        bedrock: true,
       }),
       () => {},
       'fake-cli-path',
@@ -116,6 +117,19 @@ describe('runPipeline composition mode forwarding', () => {
     expect(joined).toContain('--prompt composition=./p.md');
     expect(joined).toContain('--prompt grouping=./g.md');
     expect(joined).toContain('--agent fake-agent');
+    expect(joined).toContain('--bedrock');
+  });
+
+  it('does not forward --bedrock to analyze extract when composite mode is on but bedrock is unset', async () => {
+    const { runPipeline } = await import('../../src/import/orchestrator.js');
+    const calls: string[][] = [];
+    stubExecFile(calls);
+
+    await runPipeline(baseOpts({ compositionMode: 'composite' }), () => {}, 'fake-cli-path');
+
+    const extractCall = findExtractCall(calls);
+    expect(extractCall).toBeDefined();
+    expect(extractCall).not.toContain('--bedrock');
   });
 
   it('does not forward --composite when compositionMode is atomic', async () => {

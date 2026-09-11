@@ -16,14 +16,19 @@ export interface AgentModelOptionsConfig {
   modelDescription?: string;
 }
 
-/** Register --agent and optional --model/--bedrock flags with a Commander command. Pass includeModel: false to omit both. */
+/**
+ * Register --agent, --bedrock, and optional --model flags with a Commander
+ * command. Pass includeModel: false to omit --model only — --bedrock is
+ * independent of model selection (it's a routing switch, not a model choice)
+ * and is always registered alongside --agent.
+ */
 export function addAgentModelOptions(cmd: Command, config: AgentModelOptionsConfig = {}): Command {
   const { agentDescription = AGENT_DESCRIPTION, includeModel = true, modelDescription = MODEL_DESCRIPTION } = config;
 
   cmd.option('--agent <name>', agentDescription);
   if (includeModel) {
     cmd.option('--model <name>', modelDescription);
-    cmd.option('--bedrock', BEDROCK_DESCRIPTION);
   }
+  cmd.option('--bedrock', BEDROCK_DESCRIPTION);
   return cmd;
 }
