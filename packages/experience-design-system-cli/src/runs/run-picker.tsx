@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../analyze/select/tui/hooks/useImmediateInput.js';
 import type { RunRecord } from './store.js';
+import { disambiguateLabels, formatRelativeTime } from './picker-labels.js';
 
 export type RunPickerAction = 'push' | 'modify' | 'new';
 
@@ -23,22 +24,16 @@ export type RunPickerProps = {
 const COLLAPSED_LIMIT = 10;
 const COLLAPSE_THRESHOLD = 12;
 
-function formatCreatedAt(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+function pushStatus(run: RunRecord): string {
+  if (!run.pushedTo) return 'not pushed';
+  return `→ ${run.pushedTo.spaceId}/${run.pushedTo.environmentId}`;
 }
 
-function runLine(run: RunRecord): string {
-  const date = formatCreatedAt(run.createdAt);
-  const pushedTag = run.pushedTo ? 'pushed' : 'not pushed';
+function runLine(run: RunRecord, label: string): string {
+  const when = formatRelativeTime(run.createdAt);
   const count = `${run.componentCount} component${run.componentCount === 1 ? '' : 's'}`;
-  return `${run.id} - ${date} - ${run.projectPath} (${count}, ${pushedTag})`;
+  const agent = run.agent ? `  ${run.agent}` : '';
+  return `${label}  ${when}  ${count}  ${pushStatus(run)}${agent}`;
 }
 
 type ActionOption = 'push' | 'modify' | 'cancel';
@@ -126,6 +121,14 @@ export function RunPicker({ runs, staleRunIds, onSelect, onCancel }: RunPickerPr
 
   const rows = buildRows(runs, expanded);
   const clampedFocus = Math.min(focusIdx, rows.length - 1);
+  const visibleRunLabels = useMemo(() => {
+    const visibleRuns = rows
+      .filter((r): r is Extract<Row, { kind: 'run' }> => r.kind === 'run')
+      .map((r) => ({ id: r.run.id, projectPath: r.run.projectPath }));
+    return disambiguateLabels(visibleRuns);
+  }, [rows]);
+  const focusedRow = rows[clampedFocus];
+  const focusedRunId = focusedRow?.kind === 'run' ? focusedRow.run.id : null;
 
   const selectRow = (row: Row): void => {
     if (row.kind === 'show-all') {
@@ -189,10 +192,11 @@ export function RunPicker({ runs, staleRunIds, onSelect, onCancel }: RunPickerPr
           const cursor = focused ? '>' : ' ';
           if (row.kind === 'run') {
             const isStale = staleRunIds?.has(row.run.id) ?? false;
+            const label = visibleRunLabels.get(row.run.id) ?? row.run.projectPath;
             return (
               <Box key={`run-${row.run.id}`} gap={1}>
                 <Text color={color}>{cursor}</Text>
-                <Text color={color}>{runLine(row.run)}</Text>
+                <Text color={color}>{runLine(row.run, label)}</Text>
                 {isStale ? <Text dimColor> (stale)</Text> : null}
               </Box>
             );
@@ -213,6 +217,11 @@ export function RunPicker({ runs, staleRunIds, onSelect, onCancel }: RunPickerPr
           );
         })}
       </Box>
+      {focusedRunId ? (
+        <Box marginTop={1}>
+          <Text dimColor>ID: {focusedRunId}</Text>
+        </Box>
+      ) : null}
       <Box gap={3} marginTop={1}>
         <Text dimColor>[j/k] Navigate</Text>
         <Text dimColor>[Enter] Select</Text>

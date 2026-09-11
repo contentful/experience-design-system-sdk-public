@@ -33,14 +33,15 @@ function makeRun(id: string, overrides: Partial<RunRecord> = {}): RunRecord {
 
 describe('WizardApp run-picker integration', () => {
   it('renders the run picker before welcome when initialRuns is provided', async () => {
-    const { lastFrame } = render(<WizardApp initialRuns={[makeRun('AAA'), makeRun('BBB')]} onRunPicked={vi.fn()} />);
+    const runs = [makeRun('AAA', { projectPath: '/work/alpha' }), makeRun('BBB', { projectPath: '/work/beta' })];
+    const { lastFrame } = render(<WizardApp initialRuns={runs} onRunPicked={vi.fn()} />);
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('AAA') && /Continue from one/i.test(f),
+      (f) => f.includes('alpha') && /Continue from one/i.test(f),
       3000,
     );
-    expect(frame).toContain('AAA');
-    expect(frame).toContain('BBB');
+    expect(frame).toContain('alpha');
+    expect(frame).toContain('beta');
     expect(frame).not.toMatch(/Where is your component library/);
   });
 
@@ -66,10 +67,12 @@ describe('WizardApp run-picker integration', () => {
 
   it('calls onRunPicked when a run is selected with push', async () => {
     const onRunPicked = vi.fn();
-    const { lastFrame, stdin } = render(<WizardApp initialRuns={[makeRun('AAA')]} onRunPicked={onRunPicked} />);
+    const { lastFrame, stdin } = render(
+      <WizardApp initialRuns={[makeRun('AAA', { projectPath: '/work/alpha' })]} onRunPicked={onRunPicked} />,
+    );
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('AAA'),
+      (f) => f.includes('alpha'),
       3000,
     );
     stdin.write('\r');
@@ -84,10 +87,12 @@ describe('WizardApp run-picker integration', () => {
 
   it("advances to welcome when the operator picks 'Start a new run'", async () => {
     const onRunPicked = vi.fn();
-    const { lastFrame, stdin } = render(<WizardApp initialRuns={[makeRun('AAA')]} onRunPicked={onRunPicked} />);
+    const { lastFrame, stdin } = render(
+      <WizardApp initialRuns={[makeRun('AAA', { projectPath: '/work/alpha' })]} onRunPicked={onRunPicked} />,
+    );
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('AAA'),
+      (f) => f.includes('alpha'),
       3000,
     );
     stdin.write('n');
