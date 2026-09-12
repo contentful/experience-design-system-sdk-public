@@ -1386,6 +1386,29 @@ const MAX_SIBLING_DEPTH = 2;
 const MAX_SIBLING_CANDIDATES_EXPLORED = 25;
 const RELATIVE_IMPORT_PATTERN = /from\s+['"](\.[^'"]+)['"]/g;
 const SIBLING_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
+// TypeScript under `node16`/`nodenext`/`bundler` resolution requires the
+// *output* extension in the specifier: `import { X } from './Badge.types.js'`
+// for a file physically named `Badge.types.ts`. Appending an extension to
+// that specifier yields `Badge.types.js.ts`, which never exists, so every
+// relative import in such a project resolves to nothing. Map the output
+// extension back to the source extensions it could have been emitted from.
+const TS_ESM_EXTENSION_REWRITES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['.js', ['.ts', '.tsx', '.js', '.jsx']],
+  ['.jsx', ['.tsx', '.jsx']],
+  ['.mjs', ['.mts', '.mjs']],
+  ['.cjs', ['.cts', '.cjs']],
+];
+
+// Candidate source paths for a specifier that already carries an emitted
+// extension. Returns [] for a specifier with no such extension.
+function rewrittenSourcePaths(basePath: string): string[] {
+  for (const [emitted, sources] of TS_ESM_EXTENSION_REWRITES) {
+    if (!basePath.endsWith(emitted)) continue;
+    const stem = basePath.slice(0, -emitted.length);
+    return sources.map((ext) => `${stem}${ext}`);
+  }
+  return [];
+}
 
 function extractRelativeImportPaths(sourceText: string): string[] {
   const specifiers = new Set<string>();
@@ -1402,6 +1425,7 @@ async function resolveRelativeImport(specifier: string, fromDir: string): Promis
   const basePath = resolve(fromDir, specifier);
   const candidates = [
     basePath,
+    ...rewrittenSourcePaths(basePath),
     ...SIBLING_FILE_EXTENSIONS.map((ext) => `${basePath}${ext}`),
     ...SIBLING_FILE_EXTENSIONS.map((ext) => resolve(basePath, `index${ext}`)),
   ];
