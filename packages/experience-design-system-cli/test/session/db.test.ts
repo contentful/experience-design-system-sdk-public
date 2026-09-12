@@ -3189,6 +3189,68 @@ describe('generation cache', () => {
     });
   });
 
+  it('loadComponentSourceRef digests a `.css` sibling instead of windowing it raw, keyed on the kebab-cased prop name', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Gamma.ts');
+      const cssPath = join(dir, 'tokens.css');
+      await writeFile(componentPath, `import styles from './tokens.css';\nexport class Gamma {}\n`);
+      const filler = Array.from({ length: 100 }, (_, i) => `.filler-${i} { color: red; }`).join('\n');
+      await writeFile(
+        cssPath,
+        `${filler}\n:host([variant="celery"]) { color: var(--spectrum-celery); }\n:host([variant="fuchsia"]) { color: var(--spectrum-fuchsia); }\n${filler}`,
+      );
+
+      const ref = await loadComponentSourceRef('Gamma', componentPath, ['variant']);
+      expect(ref.siblingFiles).toHaveLength(1);
+      const content = ref.siblingFiles?.[0].content ?? '';
+      expect(content).toContain('celery');
+      expect(content).toContain('fuchsia');
+      // The digest is a small distillation, not a raw/windowed dump of the 3KB+ stylesheet.
+      expect(content.length).toBeLessThan(1_200);
+      expect(content).not.toContain('.filler-');
+    });
+  });
+
+  it('loadComponentSourceRef treats a `.scss` sibling the same as `.css`', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Gamma.ts');
+      const scssPath = join(dir, 'tokens.scss');
+      await writeFile(componentPath, `import styles from './tokens.scss';\nexport class Gamma {}\n`);
+      await writeFile(scssPath, `:host([size="l"]) { width: 10px; }`);
+
+      const ref = await loadComponentSourceRef('Gamma', componentPath, ['size']);
+      expect(ref.siblingFiles?.[0].content).toContain('size: l');
+    });
+  });
+
+  it('loadComponentSourceRef renders a bare CSS attribute selector as boolean, not a one-value enum', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Gamma.ts');
+      const cssPath = join(dir, 'tokens.css');
+      await writeFile(componentPath, `import styles from './tokens.css';\n`);
+      await writeFile(cssPath, `:host([quiet]) { opacity: 0.5; }`);
+
+      const ref = await loadComponentSourceRef('Gamma', componentPath, ['quiet']);
+      expect(ref.siblingFiles?.[0].content).toContain('[boolean] quiet');
+    });
+  });
+
+  it('loadComponentSourceRef omits a CSS sibling from the inlined list when it has no digest evidence for any prop', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Gamma.ts');
+      const cssPath = join(dir, 'tokens.css');
+      await writeFile(componentPath, `import styles from './tokens.css';\n`);
+      await writeFile(cssPath, `.unrelated { color: red; }`);
+
+      const ref = await loadComponentSourceRef('Gamma', componentPath, ['variant']);
+      expect(ref.siblingFiles).toBeUndefined();
+    });
+  });
+
   it('copyMapTokensFromCache copies matching-by-name components and skips props absent in the target session', async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);

@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { generateSessionId } from './session-id.js';
 import { excerptAroundNames } from './source-excerpt.js';
+import { digestCss, renderCssDigest } from './css-digest.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types.js';
 import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
 import type { ToolCall, TokenToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
@@ -1398,7 +1399,17 @@ const MAX_SIBLING_DEPTH = 2;
 // re-exports, each of which would otherwise be walked for a second hop.
 const MAX_SIBLING_CANDIDATES_EXPLORED = 25;
 const RELATIVE_IMPORT_PATTERN = /from\s+['"](\.[^'"]+)['"]/g;
-const SIBLING_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
+const SIBLING_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.css', '.scss', '.less'];
+// Stylesheets carry token bindings for web-component design systems (e.g.
+// `:host([variant="celery"]) { --spectrum-badge-color: var(--spectrum-celery); }`)
+// but run 12-30KB against a 1,200-char sibling budget — routed through
+// digestCss instead of excerptAroundNames so the evidence survives the budget.
+const STYLESHEET_EXTENSIONS = ['.css', '.scss', '.less'];
+
+function isStylesheetPath(path: string): boolean {
+  return STYLESHEET_EXTENSIONS.some((ext) => path.endsWith(ext));
+}
+
 // TypeScript under `node16`/`nodenext`/`bundler` resolution requires the
 // *output* extension in the specifier: `import { X } from './Badge.types.js'`
 // for a file physically named `Badge.types.ts`. Appending an extension to
@@ -1607,22 +1618,36 @@ async function loadSiblingFiles(
 
   // Excerpts are windowed around the prop names rather than cut from the
   // head: a styles module's first lines are imports, and the line that decides
-  // a prop's classification is wherever that prop is interpolated.
+  // a prop's classification is wherever that prop is interpolated. A
+  // stylesheet sibling goes through the CSS digester instead — raw CSS is far
+  // larger than this budget, and a digest survives it (see css-digest.ts).
+  // A stylesheet with no digest evidence for any prop is dropped outright:
+  // an empty digest block would only be noise, unlike a TS/JS excerpt, which
+  // always has some content (even the file head) worth showing.
   const usesNotShown = new Set<string>();
   const searchNames = [...new Set([...propNames, ...typeNames])];
   let enlarged = 0;
-  const siblings = discovered.slice(0, MAX_SIBLING_FILES).map((d) => {
+  const siblings: Array<{ path: string; content: string }> = [];
+  for (const d of discovered) {
+    // Stylesheets: digest keyed on prop names only — a CSS attribute selector
+    // is named for the prop (`[variant="celery"]`), never for its TS type.
+    if (isStylesheetPath(d.path)) {
+      const digestBlock = renderCssDigest(d.path, digestCss(d.content, propNames));
+      if (digestBlock) siblings.push({ path: d.path, content: digestBlock });
+      continue;
+    }
     const enlarge = enlarged < MAX_ENLARGED_SIBLINGS && declaresAnyType(d.content, typeNames);
     if (enlarge) enlarged++;
     const budget = enlarge ? MAX_TYPE_DECLARING_SIBLING_CHARS : MAX_SIBLING_SNIPPET_CHARS;
     const excerpt = excerptAroundNames(d.content, searchNames, budget);
     for (const name of excerpt.usesNotShown) usesNotShown.add(name);
-    return { path: d.path, content: excerpt.content };
-  });
-  const truncatedCount = Math.max(0, discovered.length - MAX_SIBLING_FILES);
+    siblings.push({ path: d.path, content: excerpt.content });
+  }
+  const inlined = siblings.slice(0, MAX_SIBLING_FILES);
+  const truncatedCount = Math.max(0, siblings.length - MAX_SIBLING_FILES);
 
   return {
-    siblings,
+    siblings: inlined,
     truncatedCount,
     usesNotShown: propNames.filter((name) => usesNotShown.has(name)),
   };
