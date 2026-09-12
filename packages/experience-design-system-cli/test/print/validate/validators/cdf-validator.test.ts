@@ -67,4 +67,74 @@ describe('validateCDFFile', () => {
       await unlink(tmp);
     }
   });
+
+  it('fails a schema-valid file whose component is missing $description', async () => {
+    const { writeFile, unlink } = await import('node:fs/promises');
+    const tmp = resolve(fixtures, '_tmp_no_component_description.json');
+    await writeFile(
+      tmp,
+      JSON.stringify({
+        $schema: 'https://contentful.com/schemas/cdf/v1',
+        Button: {
+          $type: 'component',
+          $properties: { label: { $type: 'string', $category: 'content', $description: 'A label' } },
+        },
+      }),
+    );
+    try {
+      const result = await validateCDFFile(tmp);
+      expect(result.valid).toBe(false);
+      expect(result.diagnostics.some((d) => d.path === '/Button/$description')).toBe(true);
+    } finally {
+      await unlink(tmp);
+    }
+  });
+
+  it('fails a schema-valid file whose property is missing $description', async () => {
+    const { writeFile, unlink } = await import('node:fs/promises');
+    const tmp = resolve(fixtures, '_tmp_no_prop_description.json');
+    await writeFile(
+      tmp,
+      JSON.stringify({
+        $schema: 'https://contentful.com/schemas/cdf/v1',
+        Button: {
+          $type: 'component',
+          $description: 'A button component',
+          $properties: { label: { $type: 'string', $category: 'content' } },
+        },
+      }),
+    );
+    try {
+      const result = await validateCDFFile(tmp);
+      expect(result.valid).toBe(false);
+      expect(result.diagnostics.some((d) => d.path === '/Button/$properties/label/$description')).toBe(true);
+    } finally {
+      await unlink(tmp);
+    }
+  });
+
+  it('fails a schema-valid file whose enum property has no $values', async () => {
+    const { writeFile, unlink } = await import('node:fs/promises');
+    const tmp = resolve(fixtures, '_tmp_empty_enum_values.json');
+    await writeFile(
+      tmp,
+      JSON.stringify({
+        $schema: 'https://contentful.com/schemas/cdf/v1',
+        Button: {
+          $type: 'component',
+          $description: 'A button component',
+          $properties: {
+            variant: { $type: 'enum', $category: 'design', $description: 'Visual variant', $values: [] },
+          },
+        },
+      }),
+    );
+    try {
+      const result = await validateCDFFile(tmp);
+      expect(result.valid).toBe(false);
+      expect(result.diagnostics.some((d) => d.path === '/Button/$properties/variant/$values')).toBe(true);
+    } finally {
+      await unlink(tmp);
+    }
+  });
 });

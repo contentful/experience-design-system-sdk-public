@@ -7,17 +7,20 @@
       "label": {
         "$type": "string",
         "$category": "content",
-        "$required": true
+        "$required": true,
+        "$description": "Button label text"
       },
       "variant": {
         "$type": "enum",
         "$category": "design",
-        "$values": ["primary", "secondary", "ghost"]
+        "$values": ["primary", "secondary", "ghost"],
+        "$description": "Visual variant"
       },
       "color": {
         "$type": "token",
         "$category": "design",
-        "$token.kind": "color"
+        "$token.kind": "color",
+        "$description": "Accent color"
       }
     }
   },
@@ -27,12 +30,14 @@
     "$properties": {
       "title": {
         "$type": "string",
-        "$category": "content"
+        "$category": "content",
+        "$description": "Card title text"
       },
       "padding": {
         "$type": "token",
         "$category": "design",
-        "$token.kind": "dimension"
+        "$token.kind": "dimension",
+        "$description": "Interior padding"
       }
     },
     "$slots": {

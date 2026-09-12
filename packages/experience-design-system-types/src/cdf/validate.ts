@@ -60,3 +60,44 @@ export function validateCDF(input: unknown): CDFValidationResult {
   const components = parseCDFComponents(file as Record<string, unknown>);
   return { valid: true, errors: [], components };
 }
+
+/**
+ * Checks invariants the schema itself leaves optional (so `validateCDF` stays
+ * usable for partial/in-progress entries elsewhere in the pipeline) but that the
+ * generation skill promises for every emitted component: a `$description` on
+ * the component and on every property, and a non-empty `$values` on every
+ * `$type: "enum"` property. `print validate` is the pre-push gate, so it
+ * enforces what the skill promises rather than let a silently-degraded
+ * component (e.g. one that dropped a tool-call line) pass through as valid.
+ */
+export function checkCDFComponentInvariants(
+  components: Array<{ key: string; entry: CDFComponentEntry }>,
+): CDFValidationError[] {
+  const errors: CDFValidationError[] = [];
+  for (const { key, entry } of components) {
+    if (!entry.$description) {
+      errors.push({
+        path: `/${key}/$description`,
+        message: `Component "${key}" is missing $description`,
+      });
+    }
+    for (const [propName, prop] of Object.entries(entry.$properties ?? {})) {
+      if (!(prop as { $description?: string }).$description) {
+        errors.push({
+          path: `/${key}/$properties/${propName}/$description`,
+          message: `Property "${propName}" on "${key}" is missing $description`,
+        });
+      }
+      if ((prop as { $type?: string }).$type === 'enum') {
+        const values = (prop as { $values?: string[] }).$values;
+        if (!values || values.length === 0) {
+          errors.push({
+            path: `/${key}/$properties/${propName}/$values`,
+            message: `Property "${propName}" on "${key}" is $type "enum" but has no $values`,
+          });
+        }
+      }
+    }
+  }
+  return errors;
+}
