@@ -4,16 +4,27 @@
     "$type": "component",
     "$description": "A button component",
     "$properties": {
-      "label": { "$type": "string", "$category": "content" },
-      "variant": { "$type": "enum", "$category": "design", "$values": ["primary", "secondary"] }
+      "label": { "$type": "string", "$category": "content", "$description": "Button label text" },
+      "variant": {
+        "$type": "enum",
+        "$category": "design",
+        "$values": ["primary", "secondary"],
+        "$description": "Visual variant"
+      }
     }
   },
   "forms": {
     "TextInput": {
       "$type": "component",
+      "$description": "A single-line text input",
       "$properties": {
-        "value": { "$type": "string", "$category": "content" },
-        "disabled": { "$type": "string", "$category": "state", "$default": "false" }
+        "value": { "$type": "string", "$category": "content", "$description": "Current input value" },
+        "disabled": {
+          "$type": "string",
+          "$category": "state",
+          "$default": "false",
+          "$description": "Whether the input is disabled"
+        }
       }
     }
   }
