@@ -2986,6 +2986,45 @@ describe('generation cache', () => {
     });
   });
 
+  // Lit and other web-component design systems compile `badge.css` to a
+  // `badge.css.js` module and import *that*, never the bare stylesheet — the
+  // TS-ESM rewrite above strips `.js` to try `.ts`/`.tsx`/`.jsx`, never the
+  // bare stem, so `badge.css` was never a candidate until this was fixed.
+  it('loadComponentSourceRef resolves a Lit `./x.css.js` specifier to the `x.css` stylesheet on disk', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Badge.ts');
+      await writeFile(componentPath, `import styles from './badge.css.js';\nexport class Badge {}\n`);
+      await writeFile(join(dir, 'badge.css'), `:host([size="s"]) { color: var(--spectrum-s); }\n`);
+
+      const ref = await loadComponentSourceRef('Badge', componentPath, ['size']);
+      expect(ref.siblingFiles).toHaveLength(1);
+      expect(ref.siblingFiles?.[0].content).toContain('size: s');
+    });
+  });
+
+  // Regression coverage for the real Spectrum Badge shape: a `./x.css.js`
+  // specifier resolving to a stylesheet whose CSS carries an apostrophe in a
+  // comment. Each defect was fixed and verified independently; this proves
+  // they compose — the resolver finds the stylesheet *and* the digest survives
+  // the poisoned comment, together, through the real loadComponentSourceRef path.
+  it('resolves a Lit `.css.js` specifier and digests a stylesheet with an apostrophe in a comment', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Badge.ts');
+      await writeFile(componentPath, `import styles from './badge.css.js';\nexport class Badge {}\n`);
+      await writeFile(
+        join(dir, 'badge.css'),
+        `/* cascade badge's size to its icon */\n:host([size="s"]) { color: var(--spectrum-s); }\n`,
+      );
+
+      const ref = await loadComponentSourceRef('Badge', componentPath, ['size']);
+      expect(ref.siblingFiles).toHaveLength(1);
+      expect(ref.siblingFiles?.[0].content).toContain('size: s');
+      expect(ref.siblingFiles?.[0].content).toContain('vars: --spectrum-s');
+    });
+  });
+
   // A styles module's first 1,200 characters are imports and constants; the
   // line that decides enum-versus-token for a prop is almost never there.
   it('loadComponentSourceRef windows a sibling excerpt around the prop uses instead of taking the head of the file', async () => {

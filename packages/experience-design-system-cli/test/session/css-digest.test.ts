@@ -72,6 +72,23 @@ describe('digestCss', () => {
     const entries = digestCss(css, ['variant']);
     expect(entries).toEqual([{ attr: 'variant', values: ['a}b'], isBoolean: false, varRefs: [] }]);
   });
+
+  it('does not treat an apostrophe inside a comment as a string delimiter', () => {
+    const css = `/* cascade badge's size to its icon */\n:host([size="s"]) { color: red; }`;
+    expect(digestCss(css, ['size'])).toEqual([{ attr: 'size', values: ['s'], isBoolean: false, varRefs: [] }]);
+  });
+
+  it('still treats a quote inside a declaration value as a string delimiter', () => {
+    const css = `:host([variant="a}b"]) { content: "/*"; } :host([variant="c"]) { color: red; }`;
+    expect(digestCss(css, ['variant'])).toEqual([
+      { attr: 'variant', values: ['a}b', 'c'], isBoolean: false, varRefs: [] },
+    ]);
+  });
+
+  it('keeps scanning past an unterminated comment rather than discarding the rest of the file', () => {
+    const css = `/* unterminated\n:host([size="s"]) { color: red; }`;
+    expect(digestCss(css, ['size'])).toHaveLength(1);
+  });
 });
 
 describe('renderCssDigest', () => {

@@ -37,6 +37,21 @@ function parseRules(css: string): Array<{ selector: string; body: string }> {
   let quote: '"' | "'" | null = null;
   for (let i = 0; i < css.length; i++) {
     const ch = css[i];
+    // Comments are skipped before quote tracking: an apostrophe in prose
+    // (`/* cascade badge's size */`) is not a string delimiter, but the
+    // scanner cannot know that once it is already inside a quote state. An
+    // unpaired one would otherwise open a quote that never closes and
+    // swallow every rule after it.
+    if (!quote && ch === '/' && css[i + 1] === '*') {
+      const end = css.indexOf('*/', i + 2);
+      // Unterminated comment: skip only the opener and keep scanning. Strict
+      // CSS would treat the rest of the file as comment, but this is an
+      // evidence harvester — dropping every remaining rule over one typo
+      // costs more than the stray text it lets through.
+      if (end !== -1) i = end + 1;
+      else i += 1;
+      continue;
+    }
     if (quote) {
       if (ch === quote) quote = null;
       continue;

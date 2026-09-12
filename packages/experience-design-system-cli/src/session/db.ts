@@ -1429,7 +1429,14 @@ function rewrittenSourcePaths(basePath: string): string[] {
   for (const [emitted, sources] of TS_ESM_EXTENSION_REWRITES) {
     if (!basePath.endsWith(emitted)) continue;
     const stem = basePath.slice(0, -emitted.length);
-    return sources.map((ext) => `${stem}${ext}`);
+    // Lit and friends compile `badge.css` to a `badge.css.js` module that
+    // exports it as a tagged template, and import *that*: `from
+    // './badge.css.js'`. Stripping `.js` leaves `badge.css`, which is the
+    // real source on disk — so when the stem is itself a stylesheet, it is a
+    // candidate in its own right. Only for stylesheet stems: a bare `./foo`
+    // from `./foo.js` could resolve to a directory or an unrelated file.
+    const stemIsStylesheet = isStylesheetPath(stem);
+    return [...(stemIsStylesheet ? [stem] : []), ...sources.map((ext) => `${stem}${ext}`)];
   }
   return [];
 }
