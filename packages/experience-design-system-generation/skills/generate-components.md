@@ -467,14 +467,30 @@ footer is supplementary and optional
 {"tool":"classify_slot","slot":"footer","required":false,"description":"Optional footer area for actions or metadata","rationale":"Footer is a supplementary region typically used for actions or metadata. Optional because most cards do not need one and the card renders correctly without it."}
 ```
 
-### Named type (HeadingSize, ButtonVariant, etc.)
+### Named type (HeadingSize, ButtonVariant, etc.) — do NOT infer the values
 
-When a prop has a named TypeScript type that is not inlined as a union literal, reason from the prop name and type name to infer the finite value set.
+When a prop has a named TypeScript type that is not inlined as a union literal,
+the value set is whatever that type's declaration says. A type *name* is not
+evidence of its members: `HeadingSize` could be `h1`–`h6`, `sm|md|lg`, or
+`s|m|l|xl`. Guessing picks one design system's vocabulary and is wrong more
+often than it is right, and a wrong name matches no style rule — the author's
+setting silently does nothing.
 
+So: look for the declaration in the source shown. If it is there, copy it. If it
+is not, **emit `string`** — `string` is an unrestricted enum, so the author stays
+unrestricted but correct.
+
+Members visible in the source shown — copy them, do not paraphrase:
 ```
-titleSize has type HeadingSize — this is a named enum controlling heading size
-inferring likely values: ["h1", "h2", "h3", "h4", "h5", "h6"] — documenting inference
-{"tool":"classify_prop","prop":"titleSize","cdf_type":"enum","cdf_category":"design","required":false,"values":["h1","h2","h3","h4","h5","h6"],"description":"Heading level — inferred from HeadingSize type name; actual values may be h1–h6 or sm/md/lg"}
+titleSize has type HeadingSize; HeadingSize is declared in the excerpt as 'sm' | 'md' | 'lg'
+{"tool":"classify_prop","prop":"titleSize","cdf_type":"enum","cdf_category":"design","required":false,"values":["sm","md","lg"],"description":"Heading size","reason":"Copied from the HeadingSize declaration shown in the excerpt."}
+```
+
+Members NOT visible in the source shown — degrade to `string`:
+```
+titleSize has type HeadingSize; HeadingSize is not declared anywhere in the source shown
+no evidence for its members, so no values list — string, not a guess
+{"tool":"classify_prop","prop":"titleSize","cdf_type":"string","cdf_category":"design","required":false,"description":"Heading size","reason":"HeadingSize is not declared in the source shown, so its members cannot be cited. Emitted as string rather than inventing a value list."}
 ```
 
 ### href prop
