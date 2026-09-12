@@ -3056,10 +3056,9 @@ describe('generation cache', () => {
       // declaration on line 1 — far above the first `variant` window — is cut)
       // and under the enlarged one (so the whole file is inlined).
       const pad = Array.from({ length: 20 }, () => '// pad').join('\n');
-      const uses = Array.from(
-        { length: 50 },
-        (_, i) => `export const k${i}: BadgeVariant = 'celery'; // variant`,
-      ).join('\n');
+      const uses = Array.from({ length: 50 }, (_, i) => `export const k${i}: BadgeVariant = 'celery'; // variant`).join(
+        '\n',
+      );
       await writeFile(typesPath, `export type BadgeVariant = 'celery' | 'fuchsia';\n${pad}\n${uses}\n`);
 
       const withoutTypes = await loadComponentSourceRef('Badge', componentPath, ['variant']);
