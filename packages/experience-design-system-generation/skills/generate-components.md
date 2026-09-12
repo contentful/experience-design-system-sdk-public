@@ -364,7 +364,7 @@ as enum so the author picks "primary" and the component receives "primary".
 
 ---
 
-## Category correction rules
+## Category and required corrections
 
 The pre-classified `category` is wrong in predictable ways. Correct silently (document in `description`):
 
@@ -374,6 +374,11 @@ The pre-classified `category` is wrong in predictable ways. Correct silently (do
 - Locale classified as `content` → `state` (it is a behavioral routing value, not editor-filled text)
 
 > **Key question for category**: "Who fills this in?" — A content editor fills in `content`. A designer configures `design`. Neither fills in `state` — it comes from routing, runtime behavior, or component infrastructure.
+
+**`required` is also a hint, and it is also wrong.** Verify it against the declaration:
+- A prop with a default value — a `$default`, a destructure default, or a `defaultVariants` entry — is **never** `required: true`. The two together are incoherent.
+- A prop declared `foo?:` is `required: false`, whatever the hint says.
+- Props reached through `VariantProps<typeof x>` or a Radix/`ComponentPropsWithoutRef` base are optional unless the component's own interface redeclares them as required.
 
 ---
 
@@ -508,6 +513,7 @@ Before emitting any tool calls, verify:
 14. Every `cdf_type: "token"` prop cites a line that interpolates its value into a style **and** a token reference at that use (Q2 yes, Q3 yes), and carries no `values`. If you cannot cite both, it is `enum` or `string`; if you can, it is `token` — its type annotation is not a reason to emit `string`.
 15. Every prop whose values are friendly names is `enum` with a non-empty `values` array, even when each name resolves to a design token internally; every prop for which Q1–Q3 could not be answered was emitted as `enum` (or `string`) with the ambiguity stated in `reason`, and no answerable prop was called ambiguous.
 16. Every `enum`'s `values` array is copied from evidence in the source shown (a type declaration, lookup table, or default) — none of it was invented. Where no evidence exists for the values, the `description` states so (e.g. `"WARNING: values not visible in source"`), not just `reason`.
+17. No prop has `required: true` alongside a default value (`$default`, a destructure default, or a `defaultVariants` entry) — the two are incoherent. A prop declared `foo?:`, or reached through `VariantProps<typeof x>` or a Radix/`ComponentPropsWithoutRef` base without its own required redeclaration, is `required: false`.
 
 After the run completes, the developer can validate the pipeline output with:
 

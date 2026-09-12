@@ -110,13 +110,21 @@ function findJsonObjectEnd(line: string): number {
 /**
  * Reads an agent's stdout into the tool-call objects it carries. Lines that do
  * not start with `{` are the agent's prose and are skipped silently, as before.
+ *
+ * `hadDroppedLine` is true when a line looked like a tool-call attempt (started
+ * with `{`) but was lost entirely — either it failed to parse, or it parsed but
+ * carried no recognizable `tool` field. It does NOT cover a line that parsed with
+ * a `tool` field but was later rejected by a caller for a bad prop/value (that
+ * caller pushes its own warning; the object itself was read successfully here).
  */
 function readToolCallObjects(stdout: string): {
   objects: Array<Record<string, unknown>>;
   warnings: string[];
+  hadDroppedLine: boolean;
 } {
   const objects: Array<Record<string, unknown>> = [];
   const warnings: string[] = [];
+  let hadDroppedLine = false;
 
   for (const raw of stdout.split('\n')) {
     const line = raw.trim();
@@ -125,6 +133,7 @@ function readToolCallObjects(stdout: string): {
     const end = findJsonObjectEnd(line);
     if (end === -1) {
       warnings.push(`unparseable line: ${line.slice(0, 120)}`);
+      hadDroppedLine = true;
       continue;
     }
     let parsed: unknown;
@@ -132,6 +141,7 @@ function readToolCallObjects(stdout: string): {
       parsed = JSON.parse(line.slice(0, end + 1));
     } catch {
       warnings.push(`unparseable line: ${line.slice(0, 120)}`);
+      hadDroppedLine = true;
       continue;
     }
     const trailing = line.slice(end + 1);
@@ -140,10 +150,12 @@ function readToolCallObjects(stdout: string): {
     }
     if (typeof parsed === 'object' && parsed !== null && 'tool' in parsed) {
       objects.push(parsed as Record<string, unknown>);
+    } else {
+      hadDroppedLine = true;
     }
   }
 
-  return { objects, warnings };
+  return { objects, warnings, hadDroppedLine };
 }
 
 export function parseSelectToolCallLines(stdout: string): ParsedSelectToolCalls {
@@ -202,6 +214,8 @@ export interface ParsedTokenToolCalls {
 export interface ParsedToolCalls {
   calls: ToolCall[];
   warnings: string[];
+  /** True when at least one line that looked like a tool call was lost outright (unparseable, or no `tool` field) — a signal to retry, distinct from a call that parsed but was rejected for a bad prop/value. */
+  hadDroppedLine: boolean;
 }
 
 const VALID_TOOL_NAMES = new Set(['classify_prop', 'exclude_prop', 'classify_component', 'classify_slot']);
@@ -211,7 +225,7 @@ const VALID_CATEGORIES = new Set(['content', 'design', 'state']);
 
 export function parseToolCallLines(stdout: string): ParsedToolCalls {
   const calls: ToolCall[] = [];
-  const { objects, warnings } = readToolCallObjects(stdout);
+  const { objects, warnings, hadDroppedLine } = readToolCallObjects(stdout);
 
   for (const rec of objects) {
     if (!VALID_TOOL_NAMES.has(rec.tool as string)) {
@@ -287,7 +301,7 @@ export function parseToolCallLines(stdout: string): ParsedToolCalls {
     }
   }
 
-  return { calls, warnings };
+  return { calls, warnings, hadDroppedLine };
 }
 
 export function parseTokenToolCallLines(stdout: string): ParsedTokenToolCalls {
@@ -376,9 +390,7 @@ export function parseMapTokenPropToolCallLines(stdout: string): ParsedMapTokenPr
       continue;
     }
     if (!isStringArray(rec.token_allowed) || rec.token_allowed.length === 0) {
-      warnings.push(
-        `map_token_prop '${rec.component}.${String(rec.prop)}': missing or empty token_allowed — skipped`,
-      );
+      warnings.push(`map_token_prop '${rec.component}.${String(rec.prop)}': missing or empty token_allowed — skipped`);
       continue;
     }
 

@@ -277,9 +277,7 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
 }
 
 export function registerMapTokensCommand(program: Command): void {
-  const map = program
-    .command('map')
-    .description('Suggest token restrictions for generated design-token props');
+  const map = program.command('map').description('Suggest token restrictions for generated design-token props');
 
   const tokensCmd = map
     .command('tokens')

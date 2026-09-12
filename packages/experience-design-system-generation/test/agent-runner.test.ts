@@ -427,9 +427,47 @@ describe('parseToolCallLines', () => {
         '{bad json line}',
         '{"tool":"classify_prop","prop":"label","cdf_type":"string","cdf_category":"content"}',
       ].join('\n');
-      const { calls, warnings } = parseToolCallLines(stdout);
+      const { calls, warnings, hadDroppedLine } = parseToolCallLines(stdout);
       expect(calls).toHaveLength(2);
       expect(warnings).toHaveLength(1);
+      expect(hadDroppedLine).toBe(true);
+    });
+  });
+
+  describe('hadDroppedLine', () => {
+    it('is false when every line parses into a recognized call', () => {
+      const { hadDroppedLine } = parseToolCallLines('{"tool":"classify_component"}');
+      expect(hadDroppedLine).toBe(false);
+    });
+
+    it('is true when a line fails to parse as JSON', () => {
+      const { hadDroppedLine } = parseToolCallLines('{broken json}');
+      expect(hadDroppedLine).toBe(true);
+    });
+
+    it('is true when a line has no closing brace', () => {
+      const { hadDroppedLine } = parseToolCallLines('{"tool":"classify_prop","prop":"margin"');
+      expect(hadDroppedLine).toBe(true);
+    });
+
+    it('is true when a parsed object carries no tool field at all', () => {
+      const { hadDroppedLine } = parseToolCallLines('{"foo":"bar"}');
+      expect(hadDroppedLine).toBe(true);
+    });
+
+    it('is false when the object parses with a tool field, even if the tool itself is later rejected', () => {
+      // The tool name is unrecognized, but the object was read successfully — the
+      // caller's own warning covers this case, not the dropped-line signal.
+      const { hadDroppedLine, warnings } = parseToolCallLines('{"tool":"write_file","path":"/tmp/x"}');
+      expect(hadDroppedLine).toBe(false);
+      expect(warnings[0]).toMatch(/unknown tool/);
+    });
+
+    it('is not tripped by benign trailing content after a complete object', () => {
+      const line =
+        '{"tool":"classify_prop","prop":"margin","cdf_type":"enum","cdf_category":"design","values":["none","spacingXs"]}"';
+      const { hadDroppedLine } = parseToolCallLines(line);
+      expect(hadDroppedLine).toBe(false);
     });
   });
 });
@@ -607,8 +645,7 @@ describe('parseMapTokenPropToolCallLines', () => {
   });
 
   it('warns and skips when token_allowed is not a string array', () => {
-    const line =
-      '{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_allowed":"colors.brand"}';
+    const line = '{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_allowed":"colors.brand"}';
     const { calls, warnings } = parseMapTokenPropToolCallLines(line);
     expect(calls).toHaveLength(0);
     expect(warnings[0]).toMatch(/missing or empty token_allowed/);

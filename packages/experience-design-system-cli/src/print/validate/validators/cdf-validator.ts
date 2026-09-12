@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { validateCDF } from '@contentful/experience-design-system-types';
+import { validateCDF, checkCDFComponentInvariants } from '@contentful/experience-design-system-types';
 import type { ValidationDiagnostic, ValidationResult } from './format-errors.js';
 
 function extractValue(input: unknown, path: string): string | undefined {
@@ -99,6 +99,15 @@ export async function validateCDFFile(filePath: string): Promise<ValidationResul
       })
       .map((e) => rewriteDiagnostic(e, parsed));
     return { valid: false, summary: '', diagnostics };
+  }
+
+  const invariantErrors = checkCDFComponentInvariants(cdfResult.components);
+  if (invariantErrors.length > 0) {
+    return {
+      valid: false,
+      summary: '',
+      diagnostics: invariantErrors.map((e: (typeof invariantErrors)[number]) => rewriteDiagnostic(e, parsed)),
+    };
   }
 
   const count = cdfResult.components.length;
