@@ -241,6 +241,7 @@ async function runOneComponent(
     component.name,
     component.sourcePath ?? component.source,
     component.props.map((p) => p.name),
+    component.props.map((p) => p.type),
   );
   const prompt = await buildPrompt({
     skill: 'components',
@@ -538,6 +539,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
           sampleComponent.name,
           sampleComponent.sourcePath ?? sampleComponent.source,
           sampleComponent.props.map((p) => p.name),
+          sampleComponent.props.map((p) => p.type),
         )
       : undefined;
     const prompt = await buildPrompt({

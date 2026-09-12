@@ -3011,6 +3011,95 @@ describe('generation cache', () => {
     });
   });
 
+  // A prop declared as a named alias (`border: SwatchBorder`) carries none of
+  // its own members. The alias's declaration mentions the type name and never
+  // the prop name, so a window keyed on prop names alone drops exactly the
+  // line that decides the answer — measured on Spectrum's Swatch.ts, where
+  // `export type SwatchShape = 'rectangle' | undefined;` was cut while the
+  // `public shape: SwatchShape;` line that needs it was kept.
+  it('loadComponentSourceRef windows the component source around the declaration of a prop type, not just the prop name', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Swatch.ts');
+      await writeFile(
+        componentPath,
+        [
+          "export type SwatchShape = 'rectangle' | undefined;",
+          exportedFiller('a'),
+          exportedFiller('b'),
+          exportedFiller('c'),
+          exportedFiller('d'),
+          exportedFiller('e'),
+          '  public shape: SwatchShape;',
+          exportedFiller('f'),
+        ].join('\n'),
+      );
+
+      const withoutTypes = await loadComponentSourceRef('Swatch', componentPath, ['shape']);
+      expect(withoutTypes.content).not.toContain("'rectangle'");
+
+      const withTypes = await loadComponentSourceRef('Swatch', componentPath, ['shape'], ['SwatchShape']);
+      expect(withTypes.content).toContain("export type SwatchShape = 'rectangle' | undefined;");
+    });
+  });
+
+  // A `*.types.ts` is small and every line of it is the answer; the 1,200-char
+  // styles-module budget cuts Spectrum's 3,071-byte Badge.types.ts inside
+  // `'cyan'`, which is the state that makes a model invent the rest of a list.
+  it('loadComponentSourceRef gives a sibling that declares a prop type the enlarged budget', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Badge.ts');
+      const typesPath = join(dir, 'Badge.types.ts');
+      await writeFile(componentPath, `import type { BadgeVariant } from './Badge.types.js';\n`);
+      // ~2,800 chars: over the styles-module budget (so it is windowed, and the
+      // declaration on line 1 — far above the first `variant` window — is cut)
+      // and under the enlarged one (so the whole file is inlined).
+      const pad = Array.from({ length: 20 }, () => '// pad').join('\n');
+      const uses = Array.from(
+        { length: 50 },
+        (_, i) => `export const k${i}: BadgeVariant = 'celery'; // variant`,
+      ).join('\n');
+      await writeFile(typesPath, `export type BadgeVariant = 'celery' | 'fuchsia';\n${pad}\n${uses}\n`);
+
+      const withoutTypes = await loadComponentSourceRef('Badge', componentPath, ['variant']);
+      expect(withoutTypes.siblingFiles?.[0].content).not.toContain("'fuchsia'");
+
+      const withTypes = await loadComponentSourceRef('Badge', componentPath, ['variant'], ['BadgeVariant']);
+      expect(withTypes.siblingFiles?.[0].content).toContain("export type BadgeVariant = 'celery' | 'fuchsia';");
+      expect(withTypes.siblingFiles?.[0].content.length).toBeLessThanOrEqual(4_000 + '\n/* truncated */'.length);
+    });
+  });
+
+  it('loadComponentSourceRef enlarges the budget for at most two type-declaring siblings', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Badge.ts');
+      const names = ['One', 'Two', 'Three'];
+      await writeFile(
+        componentPath,
+        names.map((n) => `import type { Kind${n} } from './Kind${n}.js';`).join('\n') + '\n',
+      );
+      for (const n of names) {
+        // Every line mentions the type, so the excerpt fills whatever budget it
+        // is given and its length reports which budget that was.
+        const body = Array.from({ length: 200 }, (_, i) => `export const k${i}: Kind${n} = 'celery';`).join('\n');
+        await writeFile(join(dir, `Kind${n}.ts`), `export type Kind${n} = 'celery';\n${body}\n`);
+      }
+
+      const ref = await loadComponentSourceRef(
+        'Badge',
+        componentPath,
+        ['variant'],
+        names.map((n) => `Kind${n}`),
+      );
+      const lengths = (ref.siblingFiles ?? []).map((f) => f.content.length).sort((a, b) => b - a);
+      expect(lengths).toHaveLength(3);
+      expect(lengths.filter((l) => l > 1_200 + 32)).toHaveLength(2);
+      expect(lengths[2]).toBeLessThanOrEqual(1_200 + 32);
+    });
+  });
+
   it('loadComponentSourceRef reports the props whose uses were cut by the sibling budget', async () => {
     await withTempDb(async (dbPath) => {
       const dir = dirname(dbPath);
