@@ -2952,6 +2952,40 @@ describe('generation cache', () => {
     });
   });
 
+  // TypeScript's node16/nodenext/bundler resolution makes the *emitted*
+  // extension mandatory in the specifier, so a `.ts` file is imported as
+  // `./X.js`. Appending an extension to that gives `X.js.ts`, which never
+  // exists — before this was handled, every relative import in every such
+  // project (all of Spectrum Web Components, for one) resolved to nothing and
+  // no sibling was ever inlined.
+  it('loadComponentSourceRef resolves a TypeScript-ESM `.js` specifier to the `.ts` file on disk', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Badge.ts');
+      const typesPath = join(dir, 'Badge.types.ts');
+      await writeFile(componentPath, `import { BADGE_VARIANTS } from './Badge.types.js';\n`);
+      await writeFile(typesPath, `export const BADGE_VARIANTS = ['s', 'm', 'l', 'xl'] as const;\n`);
+
+      const ref = await loadComponentSourceRef('Badge', componentPath);
+      expect(ref.siblingFiles).toEqual([
+        { path: typesPath, content: `export const BADGE_VARIANTS = ['s', 'm', 'l', 'xl'] as const;\n` },
+      ]);
+    });
+  });
+
+  it('loadComponentSourceRef prefers a real `.js` file over the `.ts` rewrite when both exist', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Badge.ts');
+      await writeFile(componentPath, `import { x } from './helper.js';\n`);
+      await writeFile(join(dir, 'helper.js'), 'export const x = 1;\n');
+      await writeFile(join(dir, 'helper.ts'), 'export const x: number = 2;\n');
+
+      const ref = await loadComponentSourceRef('Badge', componentPath);
+      expect(ref.siblingFiles).toEqual([{ path: join(dir, 'helper.js'), content: 'export const x = 1;\n' }]);
+    });
+  });
+
   // A styles module's first 1,200 characters are imports and constants; the
   // line that decides enum-versus-token for a prop is almost never there.
   it('loadComponentSourceRef windows a sibling excerpt around the prop uses instead of taking the head of the file', async () => {
