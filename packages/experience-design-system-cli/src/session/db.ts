@@ -1,12 +1,14 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { generateSessionId } from './session-id.js';
+import { excerptAroundNames } from './source-excerpt.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types.js';
 import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
-import type { ToolCall, TokenToolCall } from '@contentful/experience-design-system-generation';
+import type { ToolCall, TokenToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
 import type { SlotCycle, SlotEdge } from '../analyze/cycle-detection.js';
 
@@ -22,6 +24,7 @@ export type CommandName =
   | 'apply push'
   | 'print components'
   | 'print tokens'
+  | 'map tokens'
   | 'import';
 
 export interface SessionRow {
@@ -163,7 +166,7 @@ CREATE TABLE IF NOT EXISTS raw_tokens (
 
 CREATE TABLE IF NOT EXISTS generation_cache (
   input_hash        TEXT NOT NULL,
-  entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set')),
+  entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set', 'token_mapping')),
   entity_id         TEXT NOT NULL,
   source_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   human_edited      INTEGER NOT NULL DEFAULT 0 CHECK (human_edited IN (0, 1)),
@@ -185,6 +188,29 @@ CREATE TABLE IF NOT EXISTS slot_cycles (
   edges_json             TEXT NOT NULL,
   suggested_break_json   TEXT,
   PRIMARY KEY (session_id, cycle_index)
+);
+
+CREATE TABLE IF NOT EXISTS raw_prop_token_paths (
+  session_id   TEXT NOT NULL,
+  component_id TEXT NOT NULL,
+  prop_name    TEXT NOT NULL,
+  -- Who set this list. 'agent' is a map-tokens suggestion, which a later
+  -- run of that step may freely revise. 'review' is a person's decision
+  -- in the review editor, which a re-run must not overwrite.
+  source       TEXT NOT NULL DEFAULT 'agent' CHECK (source IN ('agent', 'review')),
+  position     INTEGER NOT NULL,
+  path         TEXT NOT NULL,
+  PRIMARY KEY (session_id, component_id, prop_name, position),
+  FOREIGN KEY (session_id, component_id, prop_name)
+    REFERENCES raw_props(session_id, component_id, name) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS raw_token_name_paths (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  raw_name   TEXT NOT NULL,
+  path       TEXT NOT NULL,
+  source     TEXT NOT NULL CHECK (source IN ('automatic', 'manual')),
+  PRIMARY KEY (session_id, raw_name)
 );
 
 CREATE INDEX IF NOT EXISTS idx_steps_session            ON steps(session_id);
@@ -321,6 +347,15 @@ function applyDbMigrations(db: DatabaseSync): void {
     }
   }
 
+  const tokenPathCols = db.prepare('PRAGMA table_info(raw_prop_token_paths)').all() as Array<{ name: string }>;
+  if (tokenPathCols.length > 0 && !tokenPathCols.some((c) => c.name === 'source')) {
+    // Pre-existing rows predate the review editor writing its own lists, so they
+    // can only have come from map tokens — the 'agent' default is correct for them.
+    db.exec(
+      "ALTER TABLE raw_prop_token_paths ADD COLUMN source TEXT NOT NULL DEFAULT 'agent' CHECK (source IN ('agent', 'review'))",
+    );
+  }
+
   if (!rawCompColNames.has('reject_reason')) {
     db.exec('ALTER TABLE raw_components ADD COLUMN reject_reason TEXT');
   }
@@ -382,7 +417,7 @@ function applyDbMigrations(db: DatabaseSync): void {
     db.exec(`
       CREATE TABLE generation_cache (
         input_hash        TEXT NOT NULL,
-        entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set')),
+        entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set', 'token_mapping')),
         entity_id         TEXT NOT NULL,
         source_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
         human_edited      INTEGER NOT NULL DEFAULT 0 CHECK (human_edited IN (0, 1)),
@@ -408,7 +443,7 @@ function applyDbMigrations(db: DatabaseSync): void {
       db.exec(`
         CREATE TABLE generation_cache__new (
           input_hash        TEXT NOT NULL,
-          entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set')),
+          entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set', 'token_mapping')),
           entity_id         TEXT NOT NULL,
           source_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
           human_edited      INTEGER NOT NULL DEFAULT 0 CHECK (human_edited IN (0, 1)),
@@ -433,6 +468,41 @@ function applyDbMigrations(db: DatabaseSync): void {
     }
   }
 
+  const genCacheTableSql = db
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'generation_cache'`)
+    .get() as { sql: string } | undefined;
+  const hasTokenMappingEntityType = genCacheTableSql?.sql.includes("'token_mapping'") ?? true;
+  if (!hasTokenMappingEntityType) {
+    db.exec('BEGIN');
+    try {
+      db.exec(`
+        CREATE TABLE generation_cache__new2 (
+          input_hash        TEXT NOT NULL,
+          entity_type       TEXT NOT NULL CHECK (entity_type IN ('component', 'token_set', 'token_mapping')),
+          entity_id         TEXT NOT NULL,
+          source_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          human_edited      INTEGER NOT NULL DEFAULT 0 CHECK (human_edited IN (0, 1)),
+          created_at        TEXT NOT NULL,
+          updated_at        TEXT NOT NULL,
+          prompt_hash       TEXT NOT NULL DEFAULT '',
+          PRIMARY KEY (input_hash, prompt_hash, entity_type, entity_id)
+        );
+        INSERT INTO generation_cache__new2
+          (input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash)
+          SELECT input_hash, entity_type, entity_id, source_session_id, human_edited, created_at, updated_at, prompt_hash
+          FROM generation_cache;
+        DROP TABLE generation_cache;
+        ALTER TABLE generation_cache__new2 RENAME TO generation_cache;
+        CREATE INDEX IF NOT EXISTS idx_generation_cache_entity  ON generation_cache(entity_type, entity_id);
+        CREATE INDEX IF NOT EXISTS idx_generation_cache_session ON generation_cache(source_session_id);
+      `);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+
   const hasCompositionCache = db
     .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='composition_cache'`)
     .all() as Array<{ name: string }>;
@@ -447,6 +517,104 @@ function applyDbMigrations(db: DatabaseSync): void {
         PRIMARY KEY (input_hash, cli_version)
       );
     `);
+  }
+}
+
+/** An exact source token reference paired with its canonical DTCG path. */
+export type RawTokenNamePaths = Record<string, string>;
+export type RawTokenNamePathSource = 'automatic' | 'manual';
+
+export interface RawTokenNamePath {
+  rawName: string;
+  path: string;
+  source: RawTokenNamePathSource;
+}
+
+/**
+ * Replaces the session's exact source-reference-to-DTCG-path sidecar.
+ * Source references are retained verbatim; normalisation belongs to the
+ * deterministic resolver, not to persistence or CDF emission.
+ */
+export function replaceRawTokenNamePaths(
+  db: DatabaseSync,
+  sessionId: string,
+  tokenNamePaths: RawTokenNamePaths,
+  source: RawTokenNamePathSource = 'automatic',
+): void {
+  const entries = Object.entries(tokenNamePaths);
+  const deletePaths = db.prepare('DELETE FROM raw_token_name_paths WHERE session_id = ? AND source = ?');
+  const insertPath = db.prepare(
+    'INSERT OR IGNORE INTO raw_token_name_paths (session_id, raw_name, path, source) VALUES (?, ?, ?, ?)',
+  );
+  const deleteAutomaticByName = db.prepare(
+    "DELETE FROM raw_token_name_paths WHERE session_id = ? AND raw_name = ? AND source = 'automatic'",
+  );
+
+  db.exec('BEGIN');
+  try {
+    deletePaths.run(sessionId, source);
+    for (const [rawName, path] of entries) {
+      if (source === 'manual') deleteAutomaticByName.run(sessionId, rawName);
+      insertPath.run(sessionId, rawName, path, source);
+    }
+    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), sessionId);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
+/** Loads the exact source-reference-to-DTCG-path sidecar for a session. */
+export function loadRawTokenNamePaths(db: DatabaseSync, sessionId: string): RawTokenNamePaths {
+  const rows = db
+    .prepare('SELECT raw_name, path FROM raw_token_name_paths WHERE session_id = ? ORDER BY raw_name')
+    .all(sessionId) as Array<{ raw_name: string; path: string }>;
+  return Object.fromEntries(rows.map((row) => [row.raw_name, row.path]));
+}
+
+export function loadRawTokenNamePathRows(db: DatabaseSync, sessionId: string): RawTokenNamePath[] {
+  return (
+    db
+      .prepare('SELECT raw_name, path, source FROM raw_token_name_paths WHERE session_id = ? ORDER BY raw_name')
+      .all(sessionId) as Array<{ raw_name: string; path: string; source: RawTokenNamePathSource }>
+  ).map((row) => ({ rawName: row.raw_name, path: row.path, source: row.source }));
+}
+
+/**
+ * Where a prop's token-path list came from. 'agent' is a map-tokens suggestion,
+ * which a later run of that step may revise. 'review' is a person's decision in
+ * the review editor, which a re-run must leave alone.
+ */
+export type RawPropTokenPathSource = 'agent' | 'review';
+
+export function replaceRawPropTokenPaths(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  propName: string,
+  paths: string[],
+  source: RawPropTokenPathSource,
+): void {
+  const deletePaths = db.prepare(
+    `DELETE FROM raw_prop_token_paths
+     WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
+  );
+  const insertPath = db.prepare(
+    `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, source, position, path)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+
+  db.exec('BEGIN');
+  try {
+    deletePaths.run(sessionId, componentId, propName);
+    paths.forEach((path, position) => {
+      insertPath.run(sessionId, componentId, propName, source, position, path);
+    });
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
   }
 }
 
@@ -619,6 +787,9 @@ export function applyToolCalls(
   const deleteAllowedValues = db.prepare(
     `DELETE FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
   );
+  const deleteTokenPaths = db.prepare(
+    `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
+  );
   const insertAllowedValue = db.prepare(
     `INSERT OR IGNORE INTO raw_prop_allowed_values (session_id, component_id, prop_name, value, position)
      VALUES (?, ?, ?, ?, ?)`,
@@ -682,9 +853,25 @@ export function applyToolCalls(
           warnings.push(`${componentName}: classify_prop '${call.prop}' — prop not found, skipped`);
           continue;
         }
-        if (call.values && call.values.length > 0) {
+        if (call.cdf_type === 'token') {
+          // A token property's options list is design token paths, written by
+          // map tokens. An enum vocabulary is not part of that definition,
+          // whether it is left over from a prior classification or supplied on
+          // this very call against the tool contract — so it is dropped either
+          // way, and the caller is told when it was asked for explicitly.
           deleteAllowedValues.run(sessionId, componentId, call.prop);
-          call.values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, call.prop, v, i));
+          if (call.values && call.values.length > 0) {
+            const count = call.values.length;
+            warnings.push(
+              `${componentName}: classify_prop '${call.prop}' — dropped ${count} value${count === 1 ? '' : 's'} on a token property; its options list is $token.allowed, not $values`,
+            );
+          }
+        } else {
+          deleteTokenPaths.run(sessionId, componentId, call.prop);
+          if (call.values && call.values.length > 0) {
+            deleteAllowedValues.run(sessionId, componentId, call.prop);
+            call.values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, call.prop, v, i));
+          }
         }
         if (call.default !== undefined) {
           const storedDefault = typeof call.default === 'boolean' ? String(call.default) : call.default;
@@ -1177,6 +1364,199 @@ export function loadRawComponents(
   );
 }
 
+// Mirrors analyze/select-agent/context-builder.ts's MAX_COMPONENT_SOURCE_CHARS
+// convention for bounding inlined source in an agent prompt.
+const MAX_COMPONENT_SOURCE_CHARS = 8_000;
+// Mirrors analyze/select-agent/context-builder.ts's MAX_SIBLING_FILES /
+// MAX_SIBLING_SNIPPET_CHARS conventions — small, purpose-built duplicate
+// rather than importing that module's SelectionContext machinery, which is
+// built for a different command (analyze select-agent).
+const MAX_SIBLING_FILES = 5;
+const MAX_SIBLING_SNIPPET_CHARS = 1_200;
+// A token-resolution map sometimes lives behind a component that itself
+// re-exports another component's prop (A imports B, B imports B's own
+// styles module) rather than beside the component being classified. Two hops
+// covers "the component's own imports" plus "those imports' own imports"
+// without walking the whole dependency graph.
+const MAX_SIBLING_DEPTH = 2;
+// Caps total files read while *discovering* candidates (before the
+// MAX_SIBLING_FILES inlining cap applies), independent of how many end up
+// inlined — bounds cost when a hop-1 import is a barrel file with many
+// re-exports, each of which would otherwise be walked for a second hop.
+const MAX_SIBLING_CANDIDATES_EXPLORED = 25;
+const RELATIVE_IMPORT_PATTERN = /from\s+['"](\.[^'"]+)['"]/g;
+const SIBLING_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
+
+function extractRelativeImportPaths(sourceText: string): string[] {
+  const specifiers = new Set<string>();
+  for (const match of sourceText.matchAll(RELATIVE_IMPORT_PATTERN)) {
+    if (match[1]) specifiers.add(match[1]);
+  }
+  return [...specifiers];
+}
+
+// Tries the specifier as a file directly, then with each known extension,
+// then as a directory's index file — same resolution order as Node's own
+// extension-less relative import resolution.
+async function resolveRelativeImport(specifier: string, fromDir: string): Promise<string | undefined> {
+  const basePath = resolve(fromDir, specifier);
+  const candidates = [
+    basePath,
+    ...SIBLING_FILE_EXTENSIONS.map((ext) => `${basePath}${ext}`),
+    ...SIBLING_FILE_EXTENSIONS.map((ext) => resolve(basePath, `index${ext}`)),
+  ];
+  for (const candidate of candidates) {
+    try {
+      await readFile(candidate, 'utf8');
+      return candidate;
+    } catch {
+      // Not this candidate — try the next.
+    }
+  }
+  return undefined;
+}
+
+// Resolves every relative specifier a file imports, in source order. Bare
+// package specifiers (`react`, `@scope/pkg`) are deliberately not followed:
+// on a monorepo they resolve to built `dist/` bundles, which fill sibling
+// slots with minified output rather than the source line a classifier can
+// cite.
+async function resolveImportSpecifiers(sourceText: string, fromDir: string): Promise<string[]> {
+  const resolvedPaths: string[] = [];
+  for (const specifier of extractRelativeImportPaths(sourceText)) {
+    const resolvedPath = await resolveRelativeImport(specifier, fromDir);
+    if (resolvedPath) resolvedPaths.push(resolvedPath);
+  }
+  return resolvedPaths;
+}
+
+// Loads the content of files the component's source file relatively imports
+// — either directly (e.g. a co-located `.styles.ts`), or transitively through
+// a sibling that is itself imported (bounded by MAX_SIBLING_DEPTH). Token
+// resolution logic (e.g. a variant-to-token map)
+// sometimes lives behind a component that re-exports another component's
+// prop rather than beside the component being classified, so a single hop
+// of resolution can miss it. Breadth-first with a visited-set: a component
+// that imports another which imports it back (or any other cycle) is
+// walked exactly once. Returns the count of resolved candidates dropped
+// once the inlining cap was hit, so callers can surface that truncation to
+// the classifier instead of silently dropping evidence.
+async function loadSiblingFiles(
+  sourceText: string,
+  sourcePath: string,
+  propNames: string[],
+): Promise<{
+  siblings: Array<{ path: string; content: string }>;
+  truncatedCount: number;
+  /** Prop names with at least one use that fell outside a sibling's excerpt budget. */
+  usesNotShown: string[];
+}> {
+  const visited = new Set<string>([resolve(sourcePath)]);
+  const discovered: Array<{ path: string; content: string }> = [];
+
+  let frontier: Array<{ text: string; dir: string }> = [{ text: sourceText, dir: dirname(sourcePath) }];
+
+  for (let hop = 0; hop < MAX_SIBLING_DEPTH && discovered.length < MAX_SIBLING_CANDIDATES_EXPLORED; hop++) {
+    const nextFrontier: Array<{ text: string; dir: string }> = [];
+
+    for (const node of frontier) {
+      if (discovered.length >= MAX_SIBLING_CANDIDATES_EXPLORED) break;
+
+      const resolvedPaths = await resolveImportSpecifiers(node.text, node.dir);
+      for (const resolvedPath of resolvedPaths) {
+        if (visited.has(resolvedPath)) continue;
+        visited.add(resolvedPath);
+        if (discovered.length >= MAX_SIBLING_CANDIDATES_EXPLORED) break;
+
+        let content: string;
+        try {
+          content = await readFile(resolvedPath, 'utf8');
+        } catch {
+          // Resolved but became unreadable between the resolve check and this read — skip it.
+          continue;
+        }
+        discovered.push({ path: resolvedPath, content });
+        nextFrontier.push({ text: content, dir: dirname(resolvedPath) });
+      }
+    }
+
+    frontier = nextFrontier;
+  }
+
+  // Excerpts are windowed around the prop names rather than cut from the
+  // head: a styles module's first lines are imports, and the line that decides
+  // a prop's classification is wherever that prop is interpolated.
+  const usesNotShown = new Set<string>();
+  const siblings = discovered.slice(0, MAX_SIBLING_FILES).map((d) => {
+    const excerpt = excerptAroundNames(d.content, propNames, MAX_SIBLING_SNIPPET_CHARS);
+    for (const name of excerpt.usesNotShown) usesNotShown.add(name);
+    return { path: d.path, content: excerpt.content };
+  });
+  const truncatedCount = Math.max(0, discovered.length - MAX_SIBLING_FILES);
+
+  return {
+    siblings,
+    truncatedCount,
+    usesNotShown: propNames.filter((name) => usesNotShown.has(name)),
+  };
+}
+
+// Reads and inlines real file content here, at the last point this pipeline
+// has local filesystem access — the map-tokens/generate-components agent
+// invocations are deliberately filesystem-free (stdout-only tool-call
+// protocol), so a bare path is useless to them. Read failures (file moved or
+// deleted since extraction) resolve to `content: null`, not a thrown error —
+// callers fall back to inferring from the prop name and $token.kind alone.
+export async function loadComponentSourceRef(
+  name: string,
+  sourcePath: string,
+  propNames: string[] = [],
+): Promise<ComponentSourceRef> {
+  let content: string | null = null;
+  let siblingFiles: Array<{ path: string; content: string }> = [];
+  let truncatedSiblingCount = 0;
+  const usesNotShown = new Set<string>();
+  try {
+    const rawText = await readFile(sourcePath, 'utf8');
+    const mainExcerpt = excerptAroundNames(rawText, propNames, MAX_COMPONENT_SOURCE_CHARS);
+    content = mainExcerpt.content;
+    for (const name of mainExcerpt.usesNotShown) usesNotShown.add(name);
+    let siblingUsesNotShown: string[];
+    ({
+      siblings: siblingFiles,
+      truncatedCount: truncatedSiblingCount,
+      usesNotShown: siblingUsesNotShown,
+    } = await loadSiblingFiles(rawText, sourcePath, propNames));
+    for (const name of siblingUsesNotShown) usesNotShown.add(name);
+  } catch {
+    // File no longer exists or unreadable — leave content null.
+  }
+  const ref: ComponentSourceRef = { component: name, sourcePath, content };
+  if (siblingFiles.length > 0) ref.siblingFiles = siblingFiles;
+  if (truncatedSiblingCount > 0) ref.truncatedSiblingCount = truncatedSiblingCount;
+  const notShown = propNames.filter((name) => usesNotShown.has(name));
+  if (notShown.length > 0) ref.usesNotShown = notShown;
+  return ref;
+}
+
+export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: string): Promise<ComponentSourceRef[]> {
+  const rows = db
+    .prepare(
+      `SELECT component_id, name, source, source_path FROM raw_components WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
+    )
+    .all(sessionId) as Array<{ component_id: string; name: string; source: string; source_path: string | null }>;
+  const propNamesFor = db.prepare(
+    `SELECT name FROM raw_props WHERE session_id = ? AND component_id = ? ORDER BY position`,
+  );
+
+  return Promise.all(
+    rows.map((r) => {
+      const propNames = (propNamesFor.all(sessionId, r.component_id) as Array<{ name: string }>).map((p) => p.name);
+      return loadComponentSourceRef(r.name, r.source_path ?? r.source, propNames);
+    }),
+  );
+}
+
 export function renameEmptySlots(
   db: DatabaseSync,
   sessionId: string,
@@ -1272,6 +1652,21 @@ export function storeCDFComponents(
     `INSERT INTO raw_slot_allowed_components (session_id, component_id, slot_name, allowed_component, position)
      VALUES (?, ?, ?, ?, ?)`,
   );
+  const deleteTokenPaths = db.prepare(
+    `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
+  );
+  const insertTokenPath = db.prepare(
+    `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, source, position, path)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+  // storeCDFComponents is only reached from the review editor, so a list written
+  // here is a person's decision and is recorded as such.
+  const writeTokenPaths = (componentId: string, propName: string, paths: string[]) => {
+    deleteTokenPaths.run(sessionId, componentId, propName);
+    paths.forEach((path, position) =>
+      insertTokenPath.run(sessionId, componentId, propName, 'review', position, path),
+    );
+  };
   const deleteSlots = db.prepare(`DELETE FROM raw_slots WHERE session_id = ? AND component_id = ?`);
   const deleteSlotAllowedComponents = db.prepare(
     `DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ?`,
@@ -1307,6 +1702,9 @@ export function storeCDFComponents(
           if (prop.$values && prop.$values.length > 0) {
             deleteAllowedValues.run(sessionId, componentId, propName);
             prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
+          }
+          if (prop['$token.allowed'] !== undefined) {
+            writeTokenPaths(componentId, propName, prop['$token.allowed']);
           }
         }
 
@@ -1360,6 +1758,9 @@ export function storeCDFComponents(
           );
           if (prop.$values && prop.$values.length > 0) {
             prop.$values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, propName, v, i));
+          }
+          if (prop['$token.allowed'] !== undefined) {
+            writeTokenPaths(componentId, propName, prop['$token.allowed']);
           }
         }
 
@@ -1458,10 +1859,38 @@ export function loadCDFComponents(
     allowed_component: string;
   }>;
 
+  const tokenPaths = db
+    .prepare(
+      `SELECT component_id, prop_name, position, path
+       FROM raw_prop_token_paths WHERE session_id = ? ORDER BY component_id, prop_name, position`,
+    )
+    .all(sessionId) as Array<{
+    component_id: string;
+    prop_name: string;
+    position: number;
+    path: string;
+  }>;
+
+  // The extracted source default stays in raw_props. This sidecar is only
+  // consulted for CDF projection, after confirming it still names a matching
+  // DTCG leaf in this session.
+  const resolvedDefaultPaths = loadRawTokenNamePaths(db, sessionId);
+  const tokenTypeByPath = new Map(
+    (
+      db.prepare('SELECT path, type FROM raw_tokens WHERE session_id = ?').all(sessionId) as Array<{
+        path: string;
+        type: string;
+      }>
+    ).map((token) => [token.path, token.type]),
+  );
+
   const propsByComponent = groupBy(props, (p) => p.component_id);
   const allowedValuesByProp = groupBy(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
   const slotsByComponent = groupBy(slots, (s) => s.component_id);
   const allowedComponentsBySlot = groupBy(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
+  const tokenPathsByProp = groupBy(tokenPaths, (t) => `${t.component_id}::${t.prop_name}`);
+  const toTokenPaths = (rows: typeof tokenPaths | undefined): string[] | undefined =>
+    rows === undefined ? undefined : rows.map((r) => r.path);
 
   return components.map(({ component_id, name, description }) => {
     const compProps = propsByComponent.get(component_id) ?? [];
@@ -1475,16 +1904,32 @@ export function loadCDFComponents(
         $category: p.cdf_category as CDFComponentEntry['$properties'][string]['$category'],
       };
       if (p.required) propDef.$required = true;
+      const isTokenProp = p.cdf_type === 'token' && p.cdf_category === 'design';
+      const defaultReference = p.default_value;
+      const resolvedDefault =
+        isTokenProp && p.cdf_token_kind !== null && defaultReference !== null
+          ? resolvedDefaultPaths[defaultReference]
+          : undefined;
+      const compatibleResolvedDefault =
+        resolvedDefault !== undefined && tokenTypeByPath.get(resolvedDefault) === p.cdf_token_kind
+          ? resolvedDefault
+          : undefined;
       if (p.default_value !== null) {
         if (p.cdf_type === 'boolean') {
           propDef.$default = p.default_value === 'true';
         } else {
-          propDef.$default = p.default_value;
+          propDef.$default = compatibleResolvedDefault ?? p.default_value;
         }
       }
       if (p.description !== null) propDef.$description = p.description;
-      if (av && av.length > 0) propDef.$values = av.map((v) => v.value);
+      // A token prop's options list is design token paths, written below. Its
+      // extracted variant names stay in the session as scoping input only.
+      if (!isTokenProp && av && av.length > 0) propDef.$values = av.map((v) => v.value);
       if (p.cdf_token_kind !== null) propDef['$token.kind'] = p.cdf_token_kind;
+      if (isTokenProp) {
+        const allowed = toTokenPaths(tokenPathsByProp.get(`${component_id}::${p.name}`));
+        if (allowed !== undefined && allowed.length > 0) propDef['$token.allowed'] = allowed;
+      }
       $properties[p.name] = propDef;
     }
 
@@ -1948,9 +2393,11 @@ function mapServerTypeToCDFType(serverType: string): string | null {
   }
 }
 
+export type CacheEntityType = 'component' | 'token_set' | 'token_mapping';
+
 export interface CacheEntry {
   inputHash: string;
-  entityType: 'component' | 'token_set';
+  entityType: CacheEntityType;
   entityId: string;
   sourceSessionId: string;
   humanEdited: boolean;
@@ -1981,10 +2428,64 @@ export function computeTokenInputHash(rawTokenContent: string): string {
   return createHash('sha256').update(rawTokenContent.trim()).digest('hex');
 }
 
+export function computeMapTokensInputHash(
+  db: DatabaseSync,
+  sessionId: string,
+  componentSourceRefs: readonly ComponentSourceRef[] = [],
+): string {
+  const props = db
+    .prepare(
+      `SELECT rc.name AS component_name, rp.name AS prop_name, rp.cdf_token_kind, rp.default_value
+       FROM raw_props rp
+       JOIN raw_components rc ON rc.session_id = rp.session_id AND rc.component_id = rp.component_id
+       WHERE rp.session_id = ? AND rp.cdf_type = 'token' AND rp.cdf_category = 'design'
+       ORDER BY rc.name, rp.name`,
+    )
+    .all(sessionId) as Array<{
+    component_name: string;
+    prop_name: string;
+    cdf_token_kind: string | null;
+    default_value: string | null;
+  }>;
+
+  const tokens = db
+    .prepare(`SELECT path, type FROM raw_tokens WHERE session_id = ? ORDER BY path`)
+    .all(sessionId) as Array<{ path: string; type: string }>;
+
+  const defaultMappings = db
+    .prepare('SELECT raw_name, path, source FROM raw_token_name_paths WHERE session_id = ? ORDER BY raw_name')
+    .all(sessionId) as Array<{ raw_name: string; path: string; source: RawTokenNamePathSource }>;
+
+  const payload = {
+    props: props.map((p) => ({
+      component: p.component_name,
+      prop: p.prop_name,
+      tokenKind: p.cdf_token_kind,
+      rawDefault: p.default_value,
+    })),
+    tokens,
+    defaultMappings,
+    // The agent's evidence, not just its inputs: a comment or allowlist edit
+    // in a source file (or a sibling it reads) changes the correct answer
+    // without touching props or tokens, so it must invalidate the cache too.
+    sourceRefs: [...componentSourceRefs]
+      .sort((a, b) => a.component.localeCompare(b.component))
+      .map((ref) => ({
+        component: ref.component,
+        content: ref.content,
+        siblingFiles: (ref.siblingFiles ?? [])
+          .map((s) => ({ path: s.path, content: s.content }))
+          .sort((a, b) => a.path.localeCompare(b.path)),
+        usesNotShown: [...(ref.usesNotShown ?? [])].sort(),
+      })),
+  };
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
 export function lookupCache(
   db: DatabaseSync,
   inputHash: string,
-  entityType: 'component' | 'token_set',
+  entityType: CacheEntityType,
   entityId: string,
   promptHash: string = '',
 ): CacheEntry | null {
@@ -2009,7 +2510,7 @@ export function lookupCache(
   if (!row) return null;
   return {
     inputHash: row.input_hash,
-    entityType: row.entity_type as 'component' | 'token_set',
+    entityType: row.entity_type as CacheEntityType,
     entityId: row.entity_id,
     sourceSessionId: row.source_session_id,
     humanEdited: row.human_edited === 1,
@@ -2021,7 +2522,7 @@ export function lookupCache(
 
 export function lookupCacheByEntity(
   db: DatabaseSync,
-  entityType: 'component' | 'token_set',
+  entityType: CacheEntityType,
   entityId: string,
 ): CacheEntry | null {
   const row = db
@@ -2046,7 +2547,7 @@ export function lookupCacheByEntity(
   if (!row) return null;
   return {
     inputHash: row.input_hash,
-    entityType: row.entity_type as 'component' | 'token_set',
+    entityType: row.entity_type as CacheEntityType,
     entityId: row.entity_id,
     sourceSessionId: row.source_session_id,
     humanEdited: row.human_edited === 1,
@@ -2059,7 +2560,7 @@ export function lookupCacheByEntity(
 export function storeCache(
   db: DatabaseSync,
   inputHash: string,
-  entityType: 'component' | 'token_set',
+  entityType: CacheEntityType,
   entityId: string,
   sourceSessionId: string,
   humanEdited: boolean,
@@ -2295,6 +2796,73 @@ export function copyTokensFromCache(db: DatabaseSync, sourceSessionId: string, t
     db.exec('ROLLBACK');
     throw e;
   }
+}
+
+export function copyMapTokensFromCache(db: DatabaseSync, sourceSessionId: string, targetSessionId: string): number {
+  const now = new Date().toISOString();
+  let copiedCount = 0;
+  db.exec('BEGIN');
+  try {
+    const sourceRows = db
+      .prepare(
+        `SELECT rc.name AS component_name, rptp.prop_name, rptp.source, rptp.position, rptp.path
+         FROM raw_prop_token_paths rptp
+         JOIN raw_components rc ON rc.session_id = rptp.session_id AND rc.component_id = rptp.component_id
+         WHERE rptp.session_id = ?
+         ORDER BY rc.name, rptp.prop_name, rptp.position`,
+      )
+      .all(sourceSessionId) as Array<{
+      component_name: string;
+      prop_name: string;
+      source: RawPropTokenPathSource;
+      position: number;
+      path: string;
+    }>;
+
+    const targetComponents = db
+      .prepare(`SELECT component_id, name FROM raw_components WHERE session_id = ?`)
+      .all(targetSessionId) as Array<{ component_id: string; name: string }>;
+    const targetIdByName = new Map(targetComponents.map((c) => [c.name, c.component_id]));
+
+    const targetProps = new Set(
+      (
+        db.prepare(`SELECT component_id, name FROM raw_props WHERE session_id = ?`).all(targetSessionId) as Array<{
+          component_id: string;
+          name: string;
+        }>
+      ).map((p) => `${p.component_id}::${p.name}`),
+    );
+
+    const insertPath = db.prepare(
+      `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, source, position, path)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    );
+    const clearedProps = new Set<string>();
+    const copiedProps = new Set<string>();
+    for (const row of sourceRows) {
+      const targetComponentId = targetIdByName.get(row.component_name);
+      if (!targetComponentId) continue;
+      if (!targetProps.has(`${targetComponentId}::${row.prop_name}`)) continue;
+
+      const propKey = `${targetComponentId}::${row.prop_name}`;
+      if (!clearedProps.has(propKey)) {
+        clearedProps.add(propKey);
+        db.prepare(
+          `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
+        ).run(targetSessionId, targetComponentId, row.prop_name);
+      }
+      insertPath.run(targetSessionId, targetComponentId, row.prop_name, row.source, row.position, row.path);
+      copiedProps.add(propKey);
+    }
+    copiedCount = copiedProps.size;
+
+    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, targetSessionId);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  return copiedCount;
 }
 
 let _cliCacheVersionCache: string | null = null;

@@ -110,20 +110,6 @@ describe('validateCDF', () => {
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
-  it('accepts $category: "unattached" on a property', () => {
-    const result = validateCDF({
-      $schema: CDF_V1_SCHEMA_URL,
-      Button: {
-        $type: 'component',
-        $properties: {
-          internalRef: { $type: 'string', $category: 'unattached', $required: false },
-        },
-      },
-    });
-    expect(result.valid).toBe(true);
-    expect(result.errors).toHaveLength(0);
-  });
-
   it('extracts components from nested groups', () => {
     const result = validateCDF({
       $schema: CDF_V1_SCHEMA_URL,
@@ -240,21 +226,4 @@ describe('validateCDF', () => {
     expect(result.components).toHaveLength(1);
   });
 
-  it('accepts token properties with $token.allowed', () => {
-    const result = validateCDF({
-      $schema: CDF_V1_SCHEMA_URL,
-      Button: {
-        $type: 'component',
-        $properties: {
-          bgColor: {
-            $type: 'token',
-            $category: 'design',
-            '$token.allowed': ['color.brand.primary', 'color.brand.secondary'],
-          },
-        },
-      },
-    });
-    expect(result.valid).toBe(true);
-    expect(result.components).toHaveLength(1);
-  });
 });

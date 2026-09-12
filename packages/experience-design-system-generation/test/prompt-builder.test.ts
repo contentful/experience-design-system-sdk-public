@@ -216,6 +216,314 @@ describe('buildPrompt', () => {
     });
   });
 
+  describe('map-tokens skill', () => {
+    const GENERATED_CDF = {
+      Card: {
+        $type: 'component',
+        $properties: {
+          bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+          title: { $type: 'string', $category: 'content' },
+        },
+      },
+      Widget: {
+        $type: 'component',
+        $properties: {
+          label: { $type: 'string', $category: 'content' },
+        },
+      },
+    };
+    const TOKEN_TREE = {
+      colors: {
+        surface: {
+          default: { $type: 'color', $value: '#ffffff' },
+          raised: { $type: 'color', $value: '#f5f5f5' },
+        },
+        brand: {
+          primary: { $type: 'color', $value: '#0066ff' },
+        },
+      },
+    };
+    const SOURCE_REFS = [{ component: 'Card', sourcePath: 'src/Card.tsx', content: null }];
+    const SOURCE_REFS_WITH_CONTENT = [
+      {
+        component: 'Card',
+        sourcePath: 'src/Card.tsx',
+        content: 'export function Card({ bgColor }) {\n  return <div style={{ background: bgColor }} />;\n}',
+      },
+    ];
+
+    it('autonomous preamble includes map_token_prop tool-call protocol', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        componentSourceRefs: SOURCE_REFS,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('map_token_prop');
+      expect(prompt).toContain('token_allowed');
+      expect(prompt).not.toMatch(/\btoken_sets\b/);
+      expect(prompt).toContain('AUTONOMOUS mode');
+    });
+
+    it('includes only design-category token-typed props from the generated CDF', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('bgColor');
+      expect(prompt).toContain('Card');
+      expect(prompt).not.toContain('"title"');
+      expect(prompt).not.toContain('Widget');
+    });
+
+    it('flattens the token tree to one path · type line per candidate, no $value', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('colors.surface.default · color');
+      expect(prompt).toContain('colors.brand.primary · color');
+      expect(prompt).toContain('Token path index');
+      expect(prompt).not.toContain('#ffffff');
+      expect(prompt).not.toContain('#0066ff');
+    });
+
+    it('kind-scopes the candidate list per property, excluding tokens of other kinds', async () => {
+      const cdf = {
+        Card: {
+          $type: 'component',
+          $properties: {
+            bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+          },
+        },
+      };
+      const tree = {
+        colors: { brand: { primary: { $type: 'color', $value: '#0066ff' } } },
+        spacing: { md: { $type: 'dimension', $value: '16px' } },
+      };
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: cdf,
+        tokenTree: tree,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('color candidates only');
+      expect(prompt).toContain('colors.brand.primary · color');
+      expect(prompt).not.toContain('spacing.md · dimension');
+      expect(prompt).not.toContain('Token path index — full tree');
+    });
+
+    it('falls back to the full, unscoped tree for a prop with no $token.kind', async () => {
+      const cdf = {
+        Card: {
+          $type: 'component',
+          $properties: {
+            bgColor: { $type: 'token', $category: 'design' },
+          },
+        },
+      };
+      const tree = {
+        colors: { brand: { primary: { $type: 'color', $value: '#0066ff' } } },
+        spacing: { md: { $type: 'dimension', $value: '16px' } },
+      };
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: cdf,
+        tokenTree: tree,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('full tree');
+      expect(prompt).toContain('colors.brand.primary · color');
+      expect(prompt).toContain('spacing.md · dimension');
+    });
+
+    it('renders a separate scoped section per distinct $token.kind, plus the full-tree fallback when mixed', async () => {
+      const cdf = {
+        Card: {
+          $type: 'component',
+          $properties: {
+            bgColor: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+            gap: { $type: 'token', $category: 'design', '$token.kind': 'dimension' },
+            unscopedProp: { $type: 'token', $category: 'design' },
+          },
+        },
+      };
+      const tree = {
+        colors: { brand: { primary: { $type: 'color', $value: '#0066ff' } } },
+        spacing: { md: { $type: 'dimension', $value: '16px' } },
+      };
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: cdf,
+        tokenTree: tree,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('color candidates only');
+      expect(prompt).toContain('dimension candidates only');
+      expect(prompt).toContain('full tree');
+      const colorIdx = prompt.indexOf('color candidates only');
+      const dimensionIdx = prompt.indexOf('dimension candidates only');
+      expect(colorIdx).toBeGreaterThanOrEqual(0);
+      expect(dimensionIdx).toBeGreaterThan(colorIdx);
+    });
+
+    it('produces an identical prompt across repeated calls with the same input (deterministic ordering)', async () => {
+      const cdf = {
+        Widget: {
+          $type: 'component',
+          $properties: {
+            gap: { $type: 'token', $category: 'design', '$token.kind': 'dimension' },
+            color: { $type: 'token', $category: 'design', '$token.kind': 'color' },
+          },
+        },
+      };
+      const tree = {
+        spacing: { md: { $type: 'dimension', $value: '16px' }, sm: { $type: 'dimension', $value: '8px' } },
+        colors: { brand: { primary: { $type: 'color', $value: '#0066ff' } } },
+      };
+      const buildOnce = () =>
+        buildPrompt({ skill: 'map-tokens', mode: 'autonomous', generatedCdf: cdf, tokenTree: tree, outDir: '/fake/out' });
+      const [first, second] = await Promise.all([buildOnce(), buildOnce()]);
+      expect(first).toEqual(second);
+    });
+
+    it('falls back to a path-only listing when content could not be read', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        componentSourceRefs: SOURCE_REFS,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('Component source unavailable for');
+      expect(prompt).toContain('src/Card.tsx');
+    });
+
+    it('inlines real file content as a fenced code block, not just the path', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        componentSourceRefs: SOURCE_REFS_WITH_CONTENT,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('### Component source references');
+      expect(prompt).toContain('```tsx');
+      expect(prompt).toContain('background: bgColor');
+      expect(prompt).not.toContain('Component source unavailable for');
+    });
+
+    // Silent truncation at the use site is what turned genuine token props
+    // into enums. Stating it lets the classifier treat the gap as unknown.
+    it('renders the props whose uses were cut by the snippet budget', async () => {
+      const prompt = await buildPrompt({
+        skill: 'components',
+        mode: 'autonomous',
+        rawComponentsInline: '[]',
+        componentSourceRefs: [{ ...SOURCE_REFS_WITH_CONTENT[0], usesNotShown: ['padding'] }],
+        outDir: '/fake/out',
+        componentName: 'Card',
+      });
+      expect(prompt).toContain('uses not shown: padding');
+      expect(prompt).toContain('unknown, not absent');
+    });
+
+    it('tells the components skill that unreadable source forfeits token, and map-tokens to emit nothing', async () => {
+      const components = await buildPrompt({
+        skill: 'components',
+        mode: 'autonomous',
+        rawComponentsInline: '[]',
+        componentSourceRefs: SOURCE_REFS,
+        outDir: '/fake/out',
+        componentName: 'Card',
+      });
+      expect(components).toContain('Component source unavailable for');
+      expect(components).toContain('`token` cannot be earned');
+      expect(components).not.toContain('$token.kind alone');
+
+      const mapTokens = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        componentSourceRefs: SOURCE_REFS,
+        outDir: '/fake/out',
+      });
+      expect(mapTokens).toContain('emit nothing for their props');
+      expect(mapTokens).not.toContain('$token.kind alone');
+    });
+
+    it('inlines sibling files alongside the main component source', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        componentSourceRefs: [
+          {
+            ...SOURCE_REFS_WITH_CONTENT[0],
+            siblingFiles: [
+              { path: 'src/Card.styles.ts', content: 'export const cardColorMap = { primary: "blue500" };' },
+            ],
+          },
+        ],
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('src/Card.styles.ts');
+      expect(prompt).toContain('cardColorMap');
+      expect(prompt).toContain('```ts');
+    });
+
+    it('omits sections entirely when there is no token data', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        outDir: '/fake/out',
+      });
+      expect(prompt).not.toContain('design-category token props only (JSON)');
+      expect(prompt).not.toContain('Token path index —');
+      expect(prompt).not.toContain('### Component source references');
+      expect(prompt).not.toContain('Component source unavailable for');
+    });
+
+    it('omits the generated-CDF section when no props are design-category tokens', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: {
+          Widget: { $type: 'component', $properties: { label: { $type: 'string', $category: 'content' } } },
+        },
+        outDir: '/fake/out',
+      });
+      expect(prompt).not.toContain('design-category token props only (JSON)');
+    });
+
+    it('includes skill file content', async () => {
+      const prompt = await buildPrompt({
+        skill: 'map-tokens',
+        mode: 'autonomous',
+        generatedCdf: GENERATED_CDF,
+        tokenTree: TOKEN_TREE,
+        outDir: '/fake/out',
+      });
+      expect(prompt).toContain('## Purpose');
+      expect(prompt).toContain('Map Tokens');
+    });
+  });
+
   it('tokens autonomous preamble includes tool-call protocol instructions', async () => {
     const rawTokensInline = JSON.stringify([
       { name: '--color-primary', value: '#0066ff', source: 'css', inferredKind: 'color', ambiguous: false },

@@ -29,6 +29,7 @@ describe('analytics normalizeCommand', () => {
     expect(normalizeCommand('apply push')).toBe('apply_push');
     expect(normalizeCommand('analyze extract')).toBe('analyze_extract');
     expect(normalizeCommand('analyze select-agent')).toBe('analyze_select');
+    expect(normalizeCommand('map tokens')).toBe('map_tokens');
   });
 
   it('returns undefined for untracked commands', () => {

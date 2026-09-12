@@ -122,6 +122,43 @@ describe('generate-components.md', () => {
     expect(content).toContain('validate --components');
     expect(content).toMatch(/iterate|loop|re-run|repeat/i);
   });
+
+  it('stops emitting values for token-typed props', async () => {
+    const content = await readSkill('generate-components.md');
+    expect(content).toMatch(/do not include.*values.*cdf_type.*token/i);
+    expect(content).toMatch(/\$token\.allowed/);
+  });
+});
+
+describe('map-tokens.md', () => {
+  it('exists', async () => {
+    await expect(readSkill('map-tokens.md')).resolves.toBeDefined();
+  });
+
+  it('includes all required sections', async () => {
+    const content = await readSkill('map-tokens.md');
+    for (const section of ['Purpose', 'Input', 'Decision tree', 'Output protocol', 'Examples', 'Checklist']) {
+      expect(content, `missing section: ${section}`).toMatch(new RegExp(`#.*${section}`, 'i'));
+    }
+  });
+
+  it('describes the $token.allowed target field', async () => {
+    const content = await readSkill('map-tokens.md');
+    expect(content).toContain('$token.allowed');
+    expect(content).not.toContain('$token.sets');
+  });
+
+  it('documents the map_token_prop tool call, token_allowed only', async () => {
+    const content = await readSkill('map-tokens.md');
+    expect(content).toContain('map_token_prop');
+    expect(content).toContain('token_allowed');
+    expect(content).not.toMatch(/\btoken_sets\b/);
+  });
+
+  it('contains no CLI-specific or local filesystem instructions', async () => {
+    const content = await readSkill('map-tokens.md');
+    expect(content).not.toMatch(/run this command|read the file at|open the file/i);
+  });
 });
 
 describe('packaging', () => {

@@ -8,6 +8,7 @@ export {
   checkAgentAuth,
   describeAgentFailure,
   extractSentinelOutput,
+  parseMapTokenPropToolCallLines,
   parseSelectToolCallLines,
   parseTokenToolCallLines,
   parseToolCallLines,
@@ -23,6 +24,8 @@ export type {
   ClassifyPropCall,
   ClassifySlotCall,
   ExcludePropCall,
+  MapTokenPropCall,
+  ParsedMapTokenPropToolCalls,
   ParsedSelectToolCalls,
   ParsedTokenToolCalls,
   ParsedToolCalls,
@@ -41,7 +44,7 @@ export type { AgentInvoker, CreateLocalCliAgentInvokerOptions, InvokeAgentOption
 
 // Prompt building
 export { buildPrompt, formatCustomPromptBanner, resolveSkillPath } from './prompt-builder.js';
-export type { Mode, PromptOptions, Skill } from './prompt-builder.js';
+export type { ComponentSourceRef, GeneratedCdf, Mode, PromptOptions, Skill } from './prompt-builder.js';
 
 // Progress reporting
 export { formatGenerateProgressLine } from './progress.js';
