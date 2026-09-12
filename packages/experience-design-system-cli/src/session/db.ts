@@ -1373,6 +1373,19 @@ const MAX_COMPONENT_SOURCE_CHARS = 8_000;
 // built for a different command (analyze select-agent).
 const MAX_SIBLING_FILES = 5;
 const MAX_SIBLING_SNIPPET_CHARS = 1_200;
+// A sibling that *declares* the type of a prop being classified is not the
+// same kind of evidence as a styles module, and 1,200 characters is the wrong
+// budget for it. A `*.types.ts` is small, and every line of it is the answer:
+// Spectrum's Badge.types.ts is 3,071 bytes of nothing but the member lists for
+// `size`, `variant` and `fixed`. Under the styles-module budget the excerpt
+// ends mid-array (`'cy` — the file is cut inside `'cyan'`), which is exactly
+// the state that makes a model invent the rest.
+const MAX_TYPE_DECLARING_SIBLING_CHARS = 4_000;
+// …but only for the first few such files, in discovery order (the component's
+// own direct imports before anything reached transitively). A prop's type is
+// declared in one or two files; without this cap a component whose five
+// siblings all declare something would triple the inlined-source budget.
+const MAX_ENLARGED_SIBLINGS = 2;
 // A token-resolution map sometimes lives behind a component that itself
 // re-exports another component's prop (A imports B, B imports B's own
 // styles module) rather than beside the component being classified. Two hops
@@ -1386,6 +1399,113 @@ const MAX_SIBLING_DEPTH = 2;
 const MAX_SIBLING_CANDIDATES_EXPLORED = 25;
 const RELATIVE_IMPORT_PATTERN = /from\s+['"](\.[^'"]+)['"]/g;
 const SIBLING_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
+// TypeScript under `node16`/`nodenext`/`bundler` resolution requires the
+// *output* extension in the specifier: `import { X } from './Badge.types.js'`
+// for a file physically named `Badge.types.ts`. Appending an extension to
+// that specifier yields `Badge.types.js.ts`, which never exists, so every
+// relative import in such a project resolves to nothing. Map the output
+// extension back to the source extensions it could have been emitted from.
+const TS_ESM_EXTENSION_REWRITES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['.js', ['.ts', '.tsx', '.js', '.jsx']],
+  ['.jsx', ['.tsx', '.jsx']],
+  ['.mjs', ['.mts', '.mjs']],
+  ['.cjs', ['.cts', '.cjs']],
+];
+
+// Candidate source paths for a specifier that already carries an emitted
+// extension. Returns [] for a specifier with no such extension.
+function rewrittenSourcePaths(basePath: string): string[] {
+  for (const [emitted, sources] of TS_ESM_EXTENSION_REWRITES) {
+    if (!basePath.endsWith(emitted)) continue;
+    const stem = basePath.slice(0, -emitted.length);
+    return sources.map((ext) => `${stem}${ext}`);
+  }
+  return [];
+}
+
+// A prop whose declared type is a named alias (`variant: BadgeVariantS1`)
+// carries none of its own members: the literals a classifier must emit live in
+// that alias's declaration, which mentions the *type* name and never the prop
+// name. Windowing the excerpt on prop names alone therefore cuts exactly the
+// lines that decide the answer — measured on Spectrum's Swatch.ts, the three
+// `export type Swatch* = 'light' | ...` declarations were dropped from an
+// 8,000-char budget while the `public border: SwatchBorder;` line that needs
+// them was kept. Search on the type names too.
+const TYPE_NAME_PATTERN = /\b[A-Z][A-Za-z0-9_$]*\b/g;
+// Names that appear in prop types but never usefully locate a declaration:
+// TypeScript/JS built-ins and framework namespaces whose definition is not in
+// the repository anyway.
+const TYPE_NAME_STOPLIST = new Set([
+  'Array',
+  'ReadonlyArray',
+  'Record',
+  'Partial',
+  'Required',
+  'Readonly',
+  'Pick',
+  'Omit',
+  'Exclude',
+  'Extract',
+  'NonNullable',
+  'Parameters',
+  'ReturnType',
+  'Map',
+  'Set',
+  'WeakMap',
+  'WeakSet',
+  'Promise',
+  'Date',
+  'RegExp',
+  'Function',
+  'Object',
+  'String',
+  'Number',
+  'Boolean',
+  'Symbol',
+  'BigInt',
+  'Error',
+  'React',
+  'ReactNode',
+  'ReactElement',
+  'JSX',
+  'Element',
+  'CSSProperties',
+  'HTMLElement',
+  'SVGElement',
+  'Node',
+  'Event',
+  'MouseEvent',
+  'KeyboardEvent',
+  'FocusEvent',
+  'ChangeEvent',
+  'FormEvent',
+]);
+
+// The named types a prop's declared type refers to. Deliberately
+// initial-uppercase only: that covers both `BadgeVariantS1` and
+// `BADGE_VALID_SIZES` while excluding the primitive keywords (`string`,
+// `undefined`, `boolean`) that would otherwise window on every line.
+function propTypeSearchNames(propTypes: string[]): string[] {
+  const names = new Set<string>();
+  for (const propType of propTypes) {
+    for (const match of propType.matchAll(TYPE_NAME_PATTERN)) {
+      if (!TYPE_NAME_STOPLIST.has(match[0])) names.add(match[0]);
+    }
+  }
+  return [...names];
+}
+
+function escapeForRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Whether this file is where one of these named types is declared, as opposed
+// to a file that merely mentions it in a signature.
+function declaresAnyType(text: string, typeNames: string[]): boolean {
+  return typeNames.some((name) =>
+    new RegExp(`\\b(?:type|interface|enum|const|class)\\s+${escapeForRegExp(name)}\\b`).test(text),
+  );
+}
 
 function extractRelativeImportPaths(sourceText: string): string[] {
   const specifiers = new Set<string>();
@@ -1402,6 +1522,7 @@ async function resolveRelativeImport(specifier: string, fromDir: string): Promis
   const basePath = resolve(fromDir, specifier);
   const candidates = [
     basePath,
+    ...rewrittenSourcePaths(basePath),
     ...SIBLING_FILE_EXTENSIONS.map((ext) => `${basePath}${ext}`),
     ...SIBLING_FILE_EXTENSIONS.map((ext) => resolve(basePath, `index${ext}`)),
   ];
@@ -1445,6 +1566,7 @@ async function loadSiblingFiles(
   sourceText: string,
   sourcePath: string,
   propNames: string[],
+  typeNames: string[] = [],
 ): Promise<{
   siblings: Array<{ path: string; content: string }>;
   truncatedCount: number;
@@ -1487,8 +1609,13 @@ async function loadSiblingFiles(
   // head: a styles module's first lines are imports, and the line that decides
   // a prop's classification is wherever that prop is interpolated.
   const usesNotShown = new Set<string>();
+  const searchNames = [...new Set([...propNames, ...typeNames])];
+  let enlarged = 0;
   const siblings = discovered.slice(0, MAX_SIBLING_FILES).map((d) => {
-    const excerpt = excerptAroundNames(d.content, propNames, MAX_SIBLING_SNIPPET_CHARS);
+    const enlarge = enlarged < MAX_ENLARGED_SIBLINGS && declaresAnyType(d.content, typeNames);
+    if (enlarge) enlarged++;
+    const budget = enlarge ? MAX_TYPE_DECLARING_SIBLING_CHARS : MAX_SIBLING_SNIPPET_CHARS;
+    const excerpt = excerptAroundNames(d.content, searchNames, budget);
     for (const name of excerpt.usesNotShown) usesNotShown.add(name);
     return { path: d.path, content: excerpt.content };
   });
@@ -1511,6 +1638,7 @@ export async function loadComponentSourceRef(
   name: string,
   sourcePath: string,
   propNames: string[] = [],
+  propTypes: string[] = [],
 ): Promise<ComponentSourceRef> {
   let content: string | null = null;
   let siblingFiles: Array<{ path: string; content: string }> = [];
@@ -1518,7 +1646,15 @@ export async function loadComponentSourceRef(
   const usesNotShown = new Set<string>();
   try {
     const rawText = await readFile(sourcePath, 'utf8');
-    const mainExcerpt = excerptAroundNames(rawText, propNames, MAX_COMPONENT_SOURCE_CHARS);
+    // Prop names locate the *use* of a prop; the named types those props are
+    // declared with locate the *members* the classifier has to emit. Both are
+    // needed, and a name appearing in neither role costs nothing.
+    const typeNames = propTypeSearchNames(propTypes);
+    const mainExcerpt = excerptAroundNames(
+      rawText,
+      [...new Set([...propNames, ...typeNames])],
+      MAX_COMPONENT_SOURCE_CHARS,
+    );
     content = mainExcerpt.content;
     for (const name of mainExcerpt.usesNotShown) usesNotShown.add(name);
     let siblingUsesNotShown: string[];
@@ -1526,7 +1662,7 @@ export async function loadComponentSourceRef(
       siblings: siblingFiles,
       truncatedCount: truncatedSiblingCount,
       usesNotShown: siblingUsesNotShown,
-    } = await loadSiblingFiles(rawText, sourcePath, propNames));
+    } = await loadSiblingFiles(rawText, sourcePath, propNames, typeNames));
     for (const name of siblingUsesNotShown) usesNotShown.add(name);
   } catch {
     // File no longer exists or unreadable — leave content null.
@@ -1545,14 +1681,19 @@ export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: strin
       `SELECT component_id, name, source, source_path FROM raw_components WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
     )
     .all(sessionId) as Array<{ component_id: string; name: string; source: string; source_path: string | null }>;
-  const propNamesFor = db.prepare(
-    `SELECT name FROM raw_props WHERE session_id = ? AND component_id = ? ORDER BY position`,
+  const propsFor = db.prepare(
+    `SELECT name, type FROM raw_props WHERE session_id = ? AND component_id = ? ORDER BY position`,
   );
 
   return Promise.all(
     rows.map((r) => {
-      const propNames = (propNamesFor.all(sessionId, r.component_id) as Array<{ name: string }>).map((p) => p.name);
-      return loadComponentSourceRef(r.name, r.source_path ?? r.source, propNames);
+      const props = propsFor.all(sessionId, r.component_id) as Array<{ name: string; type: string }>;
+      return loadComponentSourceRef(
+        r.name,
+        r.source_path ?? r.source,
+        props.map((p) => p.name),
+        props.map((p) => p.type),
+      );
     }),
   );
 }
@@ -1663,9 +1804,7 @@ export function storeCDFComponents(
   // here is a person's decision and is recorded as such.
   const writeTokenPaths = (componentId: string, propName: string, paths: string[]) => {
     deleteTokenPaths.run(sessionId, componentId, propName);
-    paths.forEach((path, position) =>
-      insertTokenPath.run(sessionId, componentId, propName, 'review', position, path),
-    );
+    paths.forEach((path, position) => insertTokenPath.run(sessionId, componentId, propName, 'review', position, path));
   };
   const deleteSlots = db.prepare(`DELETE FROM raw_slots WHERE session_id = ? AND component_id = ?`);
   const deleteSlotAllowedComponents = db.prepare(
@@ -2847,9 +2986,11 @@ export function copyMapTokensFromCache(db: DatabaseSync, sourceSessionId: string
       const propKey = `${targetComponentId}::${row.prop_name}`;
       if (!clearedProps.has(propKey)) {
         clearedProps.add(propKey);
-        db.prepare(
-          `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
-        ).run(targetSessionId, targetComponentId, row.prop_name);
+        db.prepare(`DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ?`).run(
+          targetSessionId,
+          targetComponentId,
+          row.prop_name,
+        );
       }
       insertPath.run(targetSessionId, targetComponentId, row.prop_name, row.source, row.position, row.path);
       copiedProps.add(propKey);

@@ -91,7 +91,7 @@ Emit one JSON object per line. The CLI parses lines starting with `{`. Lines not
 - Every prop in the input must produce exactly one call: `classify_prop` OR `exclude_prop`.
 - Every slot must produce exactly one `classify_slot` call.
 - Emit `classify_component` once at the start (required). The `description` field is **required** — always provide a brief description of the component's purpose.
-- `values` is required for `cdf_type: "enum"` — must be a non-empty string array of the variant names the prop accepts.
+- `values` is required for `cdf_type: "enum"` — must be a non-empty string array of the variant names the prop accepts. **There is no legal `enum` with a guessed list.** If the value set is shown to you anywhere in the material below — the type's own declaration, an `allowedValues` list on the raw prop, a variant/lookup map, a default, a sibling excerpt — copy it and emit `enum`. If it is shown nowhere, emit `cdf_type: "string"` and leave `values` off. `string` is an unrestricted enum: the author can still pass the real value. A guessed list silently rejects it.
 - **Do NOT include `values` for `cdf_type: "token"`.** The two property types carry different kinds of list. An `enum` prop's list holds *variant names* the component accepts (`"primary"`, `"secondary"`). A `token` prop's list holds *design token paths* (`"color.brand.primary"`), produced by the separate token-mapping step (`$token.allowed`) — never by you. Emitting `values` on a token prop makes the definition invalid.
 - `token_kind` is required for `cdf_type: "token"` — must be a DTCG `$type` string, e.g. `"color"`.
 - `required` must be a JSON boolean (`true`/`false`), not a string.
@@ -364,7 +364,7 @@ as enum so the author picks "primary" and the component receives "primary".
 
 ---
 
-## Category correction rules
+## Category and required corrections
 
 The pre-classified `category` is wrong in predictable ways. Correct silently (document in `description`):
 
@@ -374,6 +374,11 @@ The pre-classified `category` is wrong in predictable ways. Correct silently (do
 - Locale classified as `content` → `state` (it is a behavioral routing value, not editor-filled text)
 
 > **Key question for category**: "Who fills this in?" — A content editor fills in `content`. A designer configures `design`. Neither fills in `state` — it comes from routing, runtime behavior, or component infrastructure.
+
+**`required` is also a hint, and it is also wrong.** Verify it against the declaration:
+- A prop with a default value — a `$default`, a destructure default, or a `defaultVariants` entry — is **never** `required: true`. The two together are incoherent.
+- A prop declared `foo?:` is `required: false`, whatever the hint says.
+- Props reached through `VariantProps<typeof x>` or a Radix/`ComponentPropsWithoutRef` base are optional unless the component's own interface redeclares them as required.
 
 ---
 
@@ -462,14 +467,30 @@ footer is supplementary and optional
 {"tool":"classify_slot","slot":"footer","required":false,"description":"Optional footer area for actions or metadata","rationale":"Footer is a supplementary region typically used for actions or metadata. Optional because most cards do not need one and the card renders correctly without it."}
 ```
 
-### Named type (HeadingSize, ButtonVariant, etc.)
+### Named type (HeadingSize, ButtonVariant, etc.) — do NOT infer the values
 
-When a prop has a named TypeScript type that is not inlined as a union literal, reason from the prop name and type name to infer the finite value set.
+When a prop has a named TypeScript type that is not inlined as a union literal,
+the value set is whatever that type's declaration says. A type *name* is not
+evidence of its members: `HeadingSize` could be `h1`–`h6`, `sm|md|lg`, or
+`s|m|l|xl`. Guessing picks one design system's vocabulary and is wrong more
+often than it is right, and a wrong name matches no style rule — the author's
+setting silently does nothing.
 
+So: look for the declaration in the source shown. If it is there, copy it. If it
+is not, **emit `string`** — `string` is an unrestricted enum, so the author stays
+unrestricted but correct.
+
+Members visible in the source shown — copy them, do not paraphrase:
 ```
-titleSize has type HeadingSize — this is a named enum controlling heading size
-inferring likely values: ["h1", "h2", "h3", "h4", "h5", "h6"] — documenting inference
-{"tool":"classify_prop","prop":"titleSize","cdf_type":"enum","cdf_category":"design","required":false,"values":["h1","h2","h3","h4","h5","h6"],"description":"Heading level — inferred from HeadingSize type name; actual values may be h1–h6 or sm/md/lg"}
+titleSize has type HeadingSize; HeadingSize is declared in the excerpt as 'sm' | 'md' | 'lg'
+{"tool":"classify_prop","prop":"titleSize","cdf_type":"enum","cdf_category":"design","required":false,"values":["sm","md","lg"],"description":"Heading size","reason":"Copied from the HeadingSize declaration shown in the excerpt."}
+```
+
+Members NOT visible in the source shown — degrade to `string`:
+```
+titleSize has type HeadingSize; HeadingSize is not declared anywhere in the source shown
+no evidence for its members, so no values list — string, not a guess
+{"tool":"classify_prop","prop":"titleSize","cdf_type":"string","cdf_category":"design","required":false,"description":"Heading size","reason":"HeadingSize is not declared in the source shown, so its members cannot be cited. Emitted as string rather than inventing a value list."}
 ```
 
 ### href prop
@@ -495,7 +516,7 @@ Before emitting any tool calls, verify:
 1. Every prop in the input has exactly one `classify_prop` or `exclude_prop` call
 2. Every slot has exactly one `classify_slot` call
 3. `classify_component` is emitted exactly once
-4. Every `cdf_type: "enum"` has a non-empty `values` array
+4. Every `cdf_type: "enum"` has a non-empty `values` array taken from the material shown. A prop whose value set was shown nowhere is `cdf_type: "string"` with no `values` — never an `enum` with a plausible-looking list, and never an `exclude_prop`.
 5. Every `cdf_type: "token"` has `token_kind` (or a warning in `description` if lookup failed) and does **not** have `values` set
 6. No `cdf_type: "link"` — all href/url props use `string`
 7. `required` values are JSON booleans, not strings
@@ -507,7 +528,8 @@ Before emitting any tool calls, verify:
 13. `rationale.description` follows the same "Description content rules" as `description` — no internal initiative names (`INTEG-*`, `EDSI`, `DSI`, `M1`, `M2`, wave/phase references, etc.).
 14. Every `cdf_type: "token"` prop cites a line that interpolates its value into a style **and** a token reference at that use (Q2 yes, Q3 yes), and carries no `values`. If you cannot cite both, it is `enum` or `string`; if you can, it is `token` — its type annotation is not a reason to emit `string`.
 15. Every prop whose values are friendly names is `enum` with a non-empty `values` array, even when each name resolves to a design token internally; every prop for which Q1–Q3 could not be answered was emitted as `enum` (or `string`) with the ambiguity stated in `reason`, and no answerable prop was called ambiguous.
-16. Every `enum`'s `values` array is copied from evidence in the source shown (a type declaration, lookup table, or default) — none of it was invented. Where no evidence exists for the values, the `description` states so (e.g. `"WARNING: values not visible in source"`), not just `reason`.
+16. Every `enum`'s `values` array is copied from evidence in the material shown — a type declaration, an `allowedValues` list on the raw prop, a variant or lookup map, a default, in the component's own file or in any sibling excerpt — and none of it was invented. Where the value set appears nowhere, the prop is `cdf_type: "string"`, with the reason recorded in `reason`. Do not drop a prop merely because you could not enumerate its values.
+17. No prop has `required: true` alongside a default value (`$default`, a destructure default, or a `defaultVariants` entry) — the two are incoherent. A prop declared `foo?:`, or reached through `VariantProps<typeof x>` or a Radix/`ComponentPropsWithoutRef` base without its own required redeclaration, is `required: false`.
 
 After the run completes, the developer can validate the pipeline output with:
 
@@ -528,4 +550,6 @@ properties — this is never acceptable.
 If you are genuinely uncertain about every prop, classify each as:
 {"tool":"classify_prop","prop":"<name>","cdf_type":"string","cdf_category":"content","required":false,"description":"Uncertain classification — review recommended"}
 
-An imperfect classification is infinitely better than no classification.
+An imperfect classification is infinitely better than no classification. That is
+about **classifying a prop rather than dropping it** — it is not a licence to
+invent a `values` list. The uncertain answer is `cdf_type: "string"`, every time.

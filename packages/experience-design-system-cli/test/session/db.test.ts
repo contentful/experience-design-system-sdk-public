@@ -78,57 +78,6 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
-function rebuildRawPropsWithoutUnattached(db: ReturnType<typeof openPipelineDb>): void {
-  db.exec('PRAGMA foreign_keys = OFF');
-  try {
-    db.exec('BEGIN');
-    try {
-      db.exec(`
-      CREATE TABLE raw_props_legacy (
-        session_id        TEXT NOT NULL,
-        component_id      TEXT NOT NULL,
-        name              TEXT NOT NULL,
-        type              TEXT NOT NULL,
-        required          INTEGER NOT NULL CHECK (required IN (0, 1)),
-        category          TEXT CHECK (category IN ('content', 'design', 'state')),
-        default_value     TEXT,
-        description       TEXT,
-        token_reference   TEXT,
-        position          INTEGER NOT NULL,
-        cdf_type          TEXT,
-        cdf_category      TEXT CHECK (cdf_category IN ('content', 'design', 'state')),
-        cdf_token_kind    TEXT,
-        rationale         TEXT,
-        source_start_line INTEGER,
-        source_end_line   INTEGER,
-        PRIMARY KEY (session_id, component_id, name),
-        FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
-      );
-
-      INSERT INTO raw_props_legacy
-        (session_id, component_id, name, type, required, category, default_value,
-         description, token_reference, position, cdf_type, cdf_category, cdf_token_kind,
-         rationale, source_start_line, source_end_line)
-      SELECT
-        session_id, component_id, name, type, required, category, default_value,
-        description, token_reference, position, cdf_type, cdf_category, cdf_token_kind,
-        rationale, source_start_line, source_end_line
-      FROM raw_props;
-
-      DROP TABLE raw_props;
-      ALTER TABLE raw_props_legacy RENAME TO raw_props;
-      CREATE INDEX IF NOT EXISTS idx_raw_props_session ON raw_props(session_id, component_id);
-    `);
-      db.exec('COMMIT');
-    } catch (e) {
-      db.exec('ROLLBACK');
-      throw e;
-    }
-  } finally {
-    db.exec('PRAGMA foreign_keys = ON');
-  }
-}
-
 describe('openPipelineDb', () => {
   it('creates pipeline.db at the specified path and schema tables exist', async () => {
     await withTempDb((dbPath) => {
@@ -329,7 +278,6 @@ describe('openPipelineDb', () => {
       db2.close();
     });
   });
-
 });
 
 describe('raw token name paths', () => {
@@ -372,7 +320,7 @@ describe('raw token name paths', () => {
 });
 
 describe('raw prop token paths', () => {
-  it('replaces a prop\'s paths, keeping only the latest set in position order', async () => {
+  it("replaces a prop's paths, keeping only the latest set in position order", async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -387,7 +335,14 @@ describe('raw prop token paths', () => {
       ]);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
 
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', ['color.brand.primary', 'color.brand.secondary'], 'agent');
+      replaceRawPropTokenPaths(
+        db,
+        sessionId,
+        componentId,
+        'variant',
+        ['color.brand.primary', 'color.brand.secondary'],
+        'agent',
+      );
       replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', ['color.brand.tertiary'], 'agent');
 
       expect(
@@ -1806,10 +1761,7 @@ describe('CDF builder: $token.allowed', () => {
       );
 
       const loaded = loadCDFComponents(db, sessionId);
-      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual([
-        'color.blue.500',
-        'color.red.500',
-      ]);
+      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual(['color.blue.500', 'color.red.500']);
       expect(loaded[0]?.entry.$properties['variant']?.$values).toBeUndefined();
       db.close();
     });
@@ -2842,7 +2794,7 @@ describe('generation cache', () => {
     });
   });
 
-  it('computeMapTokensInputHash key changes when a source ref\'s content changes', async () => {
+  it("computeMapTokensInputHash key changes when a source ref's content changes", async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -2866,9 +2818,7 @@ describe('generation cache', () => {
       ]);
       storeDTCGTokens(db, sessionId, [], [{ path: 'colors.brand.primary', $type: 'color', $value: '#00f' }]);
 
-      const refsBefore = [
-        { component: 'Card', sourcePath: 'src/Card.tsx', content: '// no restriction here' },
-      ];
+      const refsBefore = [{ component: 'Card', sourcePath: 'src/Card.tsx', content: '// no restriction here' }];
       const refsAfter = [
         { component: 'Card', sourcePath: 'src/Card.tsx', content: '// accepts only colors.brand.primary' },
       ];
@@ -3002,6 +2952,40 @@ describe('generation cache', () => {
     });
   });
 
+  // TypeScript's node16/nodenext/bundler resolution makes the *emitted*
+  // extension mandatory in the specifier, so a `.ts` file is imported as
+  // `./X.js`. Appending an extension to that gives `X.js.ts`, which never
+  // exists — before this was handled, every relative import in every such
+  // project (all of Spectrum Web Components, for one) resolved to nothing and
+  // no sibling was ever inlined.
+  it('loadComponentSourceRef resolves a TypeScript-ESM `.js` specifier to the `.ts` file on disk', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Badge.ts');
+      const typesPath = join(dir, 'Badge.types.ts');
+      await writeFile(componentPath, `import { BADGE_VARIANTS } from './Badge.types.js';\n`);
+      await writeFile(typesPath, `export const BADGE_VARIANTS = ['s', 'm', 'l', 'xl'] as const;\n`);
+
+      const ref = await loadComponentSourceRef('Badge', componentPath);
+      expect(ref.siblingFiles).toEqual([
+        { path: typesPath, content: `export const BADGE_VARIANTS = ['s', 'm', 'l', 'xl'] as const;\n` },
+      ]);
+    });
+  });
+
+  it('loadComponentSourceRef prefers a real `.js` file over the `.ts` rewrite when both exist', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Badge.ts');
+      await writeFile(componentPath, `import { x } from './helper.js';\n`);
+      await writeFile(join(dir, 'helper.js'), 'export const x = 1;\n');
+      await writeFile(join(dir, 'helper.ts'), 'export const x: number = 2;\n');
+
+      const ref = await loadComponentSourceRef('Badge', componentPath);
+      expect(ref.siblingFiles).toEqual([{ path: join(dir, 'helper.js'), content: 'export const x = 1;\n' }]);
+    });
+  });
+
   // A styles module's first 1,200 characters are imports and constants; the
   // line that decides enum-versus-token for a prop is almost never there.
   it('loadComponentSourceRef windows a sibling excerpt around the prop uses instead of taking the head of the file', async () => {
@@ -3009,8 +2993,14 @@ describe('generation cache', () => {
       const dir = dirname(dbPath);
       const componentPath = join(dir, 'Box.tsx');
       const stylesPath = join(dir, 'Box.styles.ts');
-      await writeFile(componentPath, `import { StyledBox } from './Box.styles';\nexport const Box = ({ children, ...rest }: Props) => <StyledBox {...rest}>{children}</StyledBox>;\n`);
-      await writeFile(stylesPath, `${exportedFiller('before')}\nexport const StyledBox = styled.div\`padding: \${(p) => p.padding};\`;\n${exportedFiller('after')}\n`);
+      await writeFile(
+        componentPath,
+        `import { StyledBox } from './Box.styles';\nexport const Box = ({ children, ...rest }: Props) => <StyledBox {...rest}>{children}</StyledBox>;\n`,
+      );
+      await writeFile(
+        stylesPath,
+        `${exportedFiller('before')}\nexport const StyledBox = styled.div\`padding: \${(p) => p.padding};\`;\n${exportedFiller('after')}\n`,
+      );
 
       const ref = await loadComponentSourceRef('Box', componentPath, ['padding', 'children']);
       expect(ref.siblingFiles).toHaveLength(1);
@@ -3021,6 +3011,94 @@ describe('generation cache', () => {
     });
   });
 
+  // A prop declared as a named alias (`border: SwatchBorder`) carries none of
+  // its own members. The alias's declaration mentions the type name and never
+  // the prop name, so a window keyed on prop names alone drops exactly the
+  // line that decides the answer — measured on Spectrum's Swatch.ts, where
+  // `export type SwatchShape = 'rectangle' | undefined;` was cut while the
+  // `public shape: SwatchShape;` line that needs it was kept.
+  it('loadComponentSourceRef windows the component source around the declaration of a prop type, not just the prop name', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Swatch.ts');
+      await writeFile(
+        componentPath,
+        [
+          "export type SwatchShape = 'rectangle' | undefined;",
+          exportedFiller('a'),
+          exportedFiller('b'),
+          exportedFiller('c'),
+          exportedFiller('d'),
+          exportedFiller('e'),
+          '  public shape: SwatchShape;',
+          exportedFiller('f'),
+        ].join('\n'),
+      );
+
+      const withoutTypes = await loadComponentSourceRef('Swatch', componentPath, ['shape']);
+      expect(withoutTypes.content).not.toContain("'rectangle'");
+
+      const withTypes = await loadComponentSourceRef('Swatch', componentPath, ['shape'], ['SwatchShape']);
+      expect(withTypes.content).toContain("export type SwatchShape = 'rectangle' | undefined;");
+    });
+  });
+
+  // A `*.types.ts` is small and every line of it is the answer; the 1,200-char
+  // styles-module budget cuts Spectrum's 3,071-byte Badge.types.ts inside
+  // `'cyan'`, which is the state that makes a model invent the rest of a list.
+  it('loadComponentSourceRef gives a sibling that declares a prop type the enlarged budget', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Badge.ts');
+      const typesPath = join(dir, 'Badge.types.ts');
+      await writeFile(componentPath, `import type { BadgeVariant } from './Badge.types.js';\n`);
+      // ~2,800 chars: over the styles-module budget (so it is windowed, and the
+      // declaration on line 1 — far above the first `variant` window — is cut)
+      // and under the enlarged one (so the whole file is inlined).
+      const pad = Array.from({ length: 20 }, () => '// pad').join('\n');
+      const uses = Array.from({ length: 50 }, (_, i) => `export const k${i}: BadgeVariant = 'celery'; // variant`).join(
+        '\n',
+      );
+      await writeFile(typesPath, `export type BadgeVariant = 'celery' | 'fuchsia';\n${pad}\n${uses}\n`);
+
+      const withoutTypes = await loadComponentSourceRef('Badge', componentPath, ['variant']);
+      expect(withoutTypes.siblingFiles?.[0].content).not.toContain("'fuchsia'");
+
+      const withTypes = await loadComponentSourceRef('Badge', componentPath, ['variant'], ['BadgeVariant']);
+      expect(withTypes.siblingFiles?.[0].content).toContain("export type BadgeVariant = 'celery' | 'fuchsia';");
+      expect(withTypes.siblingFiles?.[0].content.length).toBeLessThanOrEqual(4_000 + '\n/* truncated */'.length);
+    });
+  });
+
+  it('loadComponentSourceRef enlarges the budget for at most two type-declaring siblings', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Badge.ts');
+      const names = ['One', 'Two', 'Three'];
+      await writeFile(
+        componentPath,
+        names.map((n) => `import type { Kind${n} } from './Kind${n}.js';`).join('\n') + '\n',
+      );
+      for (const n of names) {
+        // Every line mentions the type, so the excerpt fills whatever budget it
+        // is given and its length reports which budget that was.
+        const body = Array.from({ length: 200 }, (_, i) => `export const k${i}: Kind${n} = 'celery';`).join('\n');
+        await writeFile(join(dir, `Kind${n}.ts`), `export type Kind${n} = 'celery';\n${body}\n`);
+      }
+
+      const ref = await loadComponentSourceRef(
+        'Badge',
+        componentPath,
+        ['variant'],
+        names.map((n) => `Kind${n}`),
+      );
+      const lengths = (ref.siblingFiles ?? []).map((f) => f.content.length).sort((a, b) => b - a);
+      expect(lengths).toHaveLength(3);
+      expect(lengths.filter((l) => l > 1_200 + 32)).toHaveLength(2);
+      expect(lengths[2]).toBeLessThanOrEqual(1_200 + 32);
+    });
+  });
+
   it('loadComponentSourceRef reports the props whose uses were cut by the sibling budget', async () => {
     await withTempDb(async (dbPath) => {
       const dir = dirname(dbPath);
@@ -3028,7 +3106,8 @@ describe('generation cache', () => {
       const stylesPath = join(dir, 'Box.styles.ts');
       await writeFile(componentPath, `import { StyledBox } from './Box.styles';\n`);
       // Two uses far apart, each with a wide window: the second cannot fit in 1,200 chars.
-      const bigLine = (name: string) => `export const ${name}Style = css\`\${(p) => p.${name}}; /* ${'x'.repeat(900)} */\`;`;
+      const bigLine = (name: string) =>
+        `export const ${name}Style = css\`\${(p) => p.${name}}; /* ${'x'.repeat(900)} */\`;`;
       await writeFile(
         stylesPath,
         `${exportedFiller('a')}\n${bigLine('padding')}\n${exportedFiller('b')}\n${bigLine('margin')}\n${exportedFiller('c')}\n`,
@@ -3145,7 +3224,6 @@ describe('generation cache', () => {
       db.close();
     });
   });
-
 });
 
 describe('renameEmptySlots', () => {

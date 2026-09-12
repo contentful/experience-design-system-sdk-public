@@ -2,6 +2,7 @@
 export {
   validateCDF,
   parseCDFComponents,
+  checkCDFComponentInvariants,
   CDF_V1_SCHEMA_URL,
   CDF_PROPERTY_TYPES,
   CDF_PROPERTY_CATEGORIES,
