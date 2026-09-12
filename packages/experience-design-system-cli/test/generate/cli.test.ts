@@ -271,7 +271,6 @@ describe('generate components — --dry-run', () => {
     expect(stdout).toContain('Component source references');
     expect(stdout).toContain('export const avatarColorMap = { primary: "blue500" };');
   });
-
 });
 
 describe('generate components — agent binary not found', () => {
@@ -481,5 +480,48 @@ process.exit(0);
     });
     expect(code).toBe(1);
     expect(stderr).toContain('no tool calls');
+  }, 30_000);
+
+  it('retries once then fails a component whose output keeps dropping a tool-call line', async () => {
+    const dbDir = await createTempDir('gen-dropped-line-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+    const sid = await seedDb(dbPath);
+
+    const fakeBinDir = await createTempDir('fake-bin-dropped-line-');
+    await symlink(
+      join(resolve(import.meta.dirname, '../fixtures/generate'), 'fake-agent-dropped-line.mjs'),
+      join(fakeBinDir, 'claude'),
+    );
+
+    const { stderr, code } = await new Promise<{
+      stdout: string;
+      stderr: string;
+      code: number | null;
+    }>((res) => {
+      execFile(
+        'node',
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid],
+        {
+          env: {
+            ...process.env,
+            PATH: `${fakeBinDir}:${process.env.PATH}`,
+            EDS_PIPELINE_DB_PATH: dbPath,
+            EDS_RETRY_BACKOFF_MS: '0',
+          },
+        },
+        (err, stdout, innerStderr) => res({ stdout, stderr: innerStderr, code: err?.code ? Number(err.code) : 0 }),
+      );
+    });
+
+    // Fails after retrying once (not on the first attempt) rather than shipping
+    // the partial result — the run still exits non-zero, naming the failure.
+    expect(stderr).toContain('retrying (2/2)');
+    expect(stderr).toContain('dropped at least one tool-call line');
+    expect(code).toBe(1);
+
+    const db = openPipelineDb(dbPath);
+    const stored = loadCDFComponents(db, sid);
+    db.close();
+    expect(stored).toHaveLength(0);
   }, 30_000);
 });

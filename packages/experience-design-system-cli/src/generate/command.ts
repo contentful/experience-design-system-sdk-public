@@ -120,7 +120,6 @@ async function readFileInline(path: string | undefined): Promise<string | undefi
   return parts.filter(Boolean).join('\n\n');
 }
 
-
 function printFallbackInstructions(options: { agent: string; skill: Skill; sessionId: string }): void {
   const binary = resolveBinary(options.agent as AgentName);
   const skillPath = resolveSkillPath(options.skill);
@@ -242,6 +241,7 @@ async function runOneComponent(
     component.name,
     component.sourcePath ?? component.source,
     component.props.map((p) => p.name),
+    component.props.map((p) => p.type),
   );
   const prompt = await buildPrompt({
     skill: 'components',
@@ -296,11 +296,21 @@ async function runOneComponent(
       continue;
     }
 
-    const { calls, warnings } = parseToolCallLines(result.stdout);
+    const { calls, warnings, hadDroppedLine } = parseToolCallLines(result.stdout);
 
     if (calls.length === 0) {
       lastError = describeAgentFailure(result);
       continue;
+    }
+
+    // A dropped line degrades the component silently even though calls.length > 0
+    // (some tool calls parsed fine). Retry once, same as a fully-empty response —
+    // and if it still drops a line after retries, record the component as failed
+    // rather than shipping the partial result.
+    if (hadDroppedLine) {
+      lastError = `agent output dropped at least one tool-call line: ${warnings.join('; ').slice(0, 200)}`;
+      if (attempt < maxAttempts) continue;
+      break;
     }
 
     const applied = applyToolCalls(db, sessionId, component.component_id, component.name, calls, warnings);
@@ -529,6 +539,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
           sampleComponent.name,
           sampleComponent.sourcePath ?? sampleComponent.source,
           sampleComponent.props.map((p) => p.name),
+          sampleComponent.props.map((p) => p.type),
         )
       : undefined;
     const prompt = await buildPrompt({
@@ -612,6 +623,14 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     if (generated.length === 0 && cachedResults.length === 0) {
       die(
         `Error: all ${componentResults.length} component(s) failed to generate — see the per-component errors above.`,
+      );
+    }
+    // Every remaining component already ran (no mid-run abort above) — a partial
+    // failure still exits non-zero, naming the failed components, rather than
+    // reporting success on a degraded run.
+    if (failed.length > 0) {
+      die(
+        `Error: ${failed.length}/${componentResults.length} component(s) failed to generate — see the per-component errors above.`,
       );
     }
   } else if (skill === 'tokens') {
