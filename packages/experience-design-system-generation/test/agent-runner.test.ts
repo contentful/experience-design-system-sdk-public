@@ -348,10 +348,11 @@ describe('parseToolCallLines', () => {
     it('recovers a call when a stray character follows the object', () => {
       const line =
         '{"tool":"classify_prop","prop":"margin","cdf_type":"enum","cdf_category":"design","values":["none","spacingXs"]}"';
-      const { calls, warnings } = parseToolCallLines(line);
+      const { calls, warnings, hadDroppedLine } = parseToolCallLines(line);
       expect(calls).toHaveLength(1);
       expect(calls[0]).toMatchObject({ tool: 'classify_prop', prop: 'margin', cdf_type: 'enum' });
       expect(warnings).toEqual(['ignored trailing content after JSON: "']);
+      expect(hadDroppedLine).toBe(false);
     });
 
     it('handles braces and escaped quotes inside string values', () => {
@@ -363,29 +364,35 @@ describe('parseToolCallLines', () => {
     });
 
     it('still drops and warns when the object itself is incomplete', () => {
-      const { calls, warnings } = parseToolCallLines('{"tool":"classify_prop","prop":"margin"');
+      const { calls, warnings, hadDroppedLine } = parseToolCallLines('{"tool":"classify_prop","prop":"margin"');
       expect(calls).toHaveLength(0);
       expect(warnings[0]).toMatch(/unparseable line/);
+      expect(hadDroppedLine).toBe(true);
     });
   });
 
   describe('unknown / malformed lines', () => {
     it('warns on unparseable JSON', () => {
-      const { calls, warnings } = parseToolCallLines('{broken json}');
+      const { calls, warnings, hadDroppedLine } = parseToolCallLines('{broken json}');
       expect(calls).toHaveLength(0);
       expect(warnings[0]).toMatch(/unparseable line/);
+      expect(hadDroppedLine).toBe(true);
     });
 
-    it('warns on unknown tool name', () => {
-      const { calls, warnings } = parseToolCallLines('{"tool":"write_file","path":"/tmp/x"}');
+    it('warns on unknown tool name but does not count it as a dropped line', () => {
+      // The tool name is unrecognized, but the object was read successfully — the
+      // caller's own warning covers this case, not the dropped-line signal.
+      const { calls, warnings, hadDroppedLine } = parseToolCallLines('{"tool":"write_file","path":"/tmp/x"}');
       expect(calls).toHaveLength(0);
       expect(warnings[0]).toMatch(/unknown tool/);
+      expect(hadDroppedLine).toBe(false);
     });
 
-    it('silently skips objects without a tool field', () => {
-      const { calls, warnings } = parseToolCallLines('{"foo":"bar"}');
+    it('silently skips objects without a tool field, but still flags it as dropped', () => {
+      const { calls, warnings, hadDroppedLine } = parseToolCallLines('{"foo":"bar"}');
       expect(calls).toHaveLength(0);
       expect(warnings).toHaveLength(0);
+      expect(hadDroppedLine).toBe(true);
     });
   });
 
@@ -404,8 +411,9 @@ describe('parseToolCallLines', () => {
         '{"tool":"classify_slot","slot":"icon","required":false,"description":"Optional icon"}',
       ].join('\n');
 
-      const { calls, warnings } = parseToolCallLines(stdout);
+      const { calls, warnings, hadDroppedLine } = parseToolCallLines(stdout);
       expect(warnings).toHaveLength(0);
+      expect(hadDroppedLine).toBe(false);
       expect(calls).toHaveLength(7);
       expect(calls[0]).toMatchObject({ tool: 'classify_component' });
       expect(calls[1]).toMatchObject({ tool: 'classify_prop', prop: 'label', cdf_type: 'string' });
@@ -431,43 +439,6 @@ describe('parseToolCallLines', () => {
       expect(calls).toHaveLength(2);
       expect(warnings).toHaveLength(1);
       expect(hadDroppedLine).toBe(true);
-    });
-  });
-
-  describe('hadDroppedLine', () => {
-    it('is false when every line parses into a recognized call', () => {
-      const { hadDroppedLine } = parseToolCallLines('{"tool":"classify_component"}');
-      expect(hadDroppedLine).toBe(false);
-    });
-
-    it('is true when a line fails to parse as JSON', () => {
-      const { hadDroppedLine } = parseToolCallLines('{broken json}');
-      expect(hadDroppedLine).toBe(true);
-    });
-
-    it('is true when a line has no closing brace', () => {
-      const { hadDroppedLine } = parseToolCallLines('{"tool":"classify_prop","prop":"margin"');
-      expect(hadDroppedLine).toBe(true);
-    });
-
-    it('is true when a parsed object carries no tool field at all', () => {
-      const { hadDroppedLine } = parseToolCallLines('{"foo":"bar"}');
-      expect(hadDroppedLine).toBe(true);
-    });
-
-    it('is false when the object parses with a tool field, even if the tool itself is later rejected', () => {
-      // The tool name is unrecognized, but the object was read successfully — the
-      // caller's own warning covers this case, not the dropped-line signal.
-      const { hadDroppedLine, warnings } = parseToolCallLines('{"tool":"write_file","path":"/tmp/x"}');
-      expect(hadDroppedLine).toBe(false);
-      expect(warnings[0]).toMatch(/unknown tool/);
-    });
-
-    it('is not tripped by benign trailing content after a complete object', () => {
-      const line =
-        '{"tool":"classify_prop","prop":"margin","cdf_type":"enum","cdf_category":"design","values":["none","spacingXs"]}"';
-      const { hadDroppedLine } = parseToolCallLines(line);
-      expect(hadDroppedLine).toBe(false);
     });
   });
 });
