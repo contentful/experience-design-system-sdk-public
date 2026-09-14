@@ -68,9 +68,8 @@ describe('validateCDFFile', () => {
     }
   });
 
-  // checkCDFComponentInvariants itself is exhaustively unit-tested in
-  // experience-design-system-types; this only proves validateCDFFile wires it
-  // in and rewrites its diagnostic paths correctly.
+  // Only proves the wiring — checkCDFComponentInvariants itself is unit-tested
+  // in experience-design-system-types.
   it('surfaces checkCDFComponentInvariants failures as diagnostics with rewritten paths', async () => {
     const { writeFile, unlink } = await import('node:fs/promises');
     const tmp = resolve(fixtures, '_tmp_invariant_violations.json');

@@ -3017,12 +3017,8 @@ describe('generation cache', () => {
     });
   });
 
-  // TypeScript's node16/nodenext/bundler resolution makes the *emitted*
-  // extension mandatory in the specifier, so a `.ts` file is imported as
-  // `./X.js`. Appending an extension to that gives `X.js.ts`, which never
-  // exists — before this was handled, every relative import in every such
-  // project (all of Spectrum Web Components, for one) resolved to nothing and
-  // no sibling was ever inlined.
+  // node16/nodenext/bundler resolution requires the emitted `.js` extension
+  // in the specifier even for a `.ts` file — resolve it back to source.
   it('loadComponentSourceRef resolves a TypeScript-ESM `.js` specifier to the `.ts` file on disk', async () => {
     await withTempDb(async (dbPath) => {
       const dir = dirname(dbPath);
@@ -3076,12 +3072,8 @@ describe('generation cache', () => {
     });
   });
 
-  // A prop declared as a named alias (`border: SwatchBorder`) carries none of
-  // its own members. The alias's declaration mentions the type name and never
-  // the prop name, so a window keyed on prop names alone drops exactly the
-  // line that decides the answer — measured on Spectrum's Swatch.ts, where
-  // `export type SwatchShape = 'rectangle' | undefined;` was cut while the
-  // `public shape: SwatchShape;` line that needs it was kept.
+  // A prop typed as a named alias needs the alias's own declaration windowed
+  // in too, not just the prop name's use site.
   it('loadComponentSourceRef windows the component source around the declaration of a prop type, not just the prop name', async () => {
     await withTempDb(async (dbPath) => {
       const dir = dirname(dbPath);
@@ -3108,18 +3100,15 @@ describe('generation cache', () => {
     });
   });
 
-  // A `*.types.ts` is small and every line of it is the answer; the 1,200-char
-  // styles-module budget cuts Spectrum's 3,071-byte Badge.types.ts inside
-  // `'cyan'`, which is the state that makes a model invent the rest of a list.
+  // A small type-declaring file is worth inlining whole, past the 1,200-char
+  // styles-module budget.
   it('loadComponentSourceRef gives a sibling that declares a prop type the enlarged budget', async () => {
     await withTempDb(async (dbPath) => {
       const dir = dirname(dbPath);
       const componentPath = join(dir, 'Badge.ts');
       const typesPath = join(dir, 'Badge.types.ts');
       await writeFile(componentPath, `import type { BadgeVariant } from './Badge.types.js';\n`);
-      // ~2,800 chars: over the styles-module budget (so it is windowed, and the
-      // declaration on line 1 — far above the first `variant` window — is cut)
-      // and under the enlarged one (so the whole file is inlined).
+      // ~2,800 chars: over the styles-module budget, under the enlarged one.
       const pad = Array.from({ length: 20 }, () => '// pad').join('\n');
       const uses = Array.from({ length: 50 }, (_, i) => `export const k${i}: BadgeVariant = 'celery'; // variant`).join(
         '\n',
@@ -3164,10 +3153,8 @@ describe('generation cache', () => {
     });
   });
 
-  // A name from a prop's type is worth windowing on only when a file in hand
-  // declares it. `MouseEventHandler` comes from `react` — nothing in the
-  // repository declares it — so it must not open a window on the import line
-  // and spend the budget there.
+  // A type name nothing in hand declares (e.g. `react`'s `MouseEventHandler`)
+  // must not open a window at all.
   it('loadComponentSourceRef does not window the component source on a type name that no file in hand declares', async () => {
     await withTempDb(async (dbPath) => {
       const dir = dirname(dbPath);
@@ -3197,9 +3184,8 @@ describe('generation cache', () => {
     });
   });
 
-  // `VariantProps<typeof buttonVariants>['intent']` names the value-carrying
-  // declaration in lowercase. Case is not what makes a name worth windowing
-  // on; being declared in a file in hand is.
+  // A declared name is a search name regardless of case (e.g. a lowercase
+  // `const`, not just a `type`).
   it('loadComponentSourceRef windows the component source on a lowercase declared name from a prop type', async () => {
     await withTempDb(async (dbPath) => {
       const dir = dirname(dbPath);

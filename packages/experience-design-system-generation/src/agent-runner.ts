@@ -108,14 +108,8 @@ function findJsonObjectEnd(line: string): number {
 }
 
 /**
- * Reads an agent's stdout into the tool-call objects it carries. Lines that do
- * not start with `{` are the agent's prose and are skipped silently, as before.
- *
- * `hadDroppedLine` is true when a line looked like a tool-call attempt (started
- * with `{`) but was lost entirely — either it failed to parse, or it parsed but
- * carried no recognizable `tool` field. It does NOT cover a line that parsed with
- * a `tool` field but was later rejected by a caller for a bad prop/value (that
- * caller pushes its own warning; the object itself was read successfully here).
+ * Reads an agent's stdout into tool-call objects; non-`{` lines are prose.
+ * `hadDroppedLine` is true only when a line is lost outright, not rejected later.
  */
 function readToolCallObjects(stdout: string): {
   objects: Array<Record<string, unknown>>;
@@ -214,7 +208,7 @@ export interface ParsedTokenToolCalls {
 export interface ParsedToolCalls {
   calls: ToolCall[];
   warnings: string[];
-  /** True when at least one line that looked like a tool call was lost outright (unparseable, or no `tool` field) — a signal to retry, distinct from a call that parsed but was rejected for a bad prop/value. */
+  /** True when a line was lost outright (unparseable, or no `tool` field) — a retry signal, distinct from a parsed-but-rejected call. */
   hadDroppedLine: boolean;
 }
 

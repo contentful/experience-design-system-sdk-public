@@ -303,10 +303,8 @@ async function runOneComponent(
       continue;
     }
 
-    // A dropped line degrades the component silently even though calls.length > 0
-    // (some tool calls parsed fine). Retry once, same as a fully-empty response —
-    // and if it still drops a line after retries, record the component as failed
-    // rather than shipping the partial result.
+    // A dropped line degrades the component silently even if other calls parsed.
+    // Retry once; if it still drops after that, fail the component outright.
     if (hadDroppedLine) {
       lastError = `agent output dropped at least one tool-call line: ${warnings.join('; ').slice(0, 200)}`;
       if (attempt < maxAttempts) continue;
@@ -625,9 +623,8 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         `Error: all ${componentResults.length} component(s) failed to generate — see the per-component errors above.`,
       );
     }
-    // Every remaining component already ran (no mid-run abort above) — a partial
-    // failure still exits non-zero, naming the failed components, rather than
-    // reporting success on a degraded run.
+    // A partial failure still exits non-zero rather than reporting success
+    // on a degraded run.
     if (failed.length > 0) {
       die(
         `Error: ${failed.length}/${componentResults.length} component(s) failed to generate — see the per-component errors above.`,

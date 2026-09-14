@@ -513,8 +513,7 @@ process.exit(0);
       );
     });
 
-    // Fails after retrying once (not on the first attempt) rather than shipping
-    // the partial result — the run still exits non-zero, naming the failure.
+    // Fails after retrying once, not on the first attempt.
     expect(stderr).toContain('retrying (2/2)');
     expect(stderr).toContain('dropped at least one tool-call line');
     expect(code).toBe(1);

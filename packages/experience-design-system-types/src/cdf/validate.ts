@@ -62,13 +62,8 @@ export function validateCDF(input: unknown): CDFValidationResult {
 }
 
 /**
- * Checks invariants the schema itself leaves optional (so `validateCDF` stays
- * usable for partial/in-progress entries elsewhere in the pipeline) but that the
- * generation skill promises for every emitted component: a `$description` on
- * the component and on every property, and a non-empty `$values` on every
- * `$type: "enum"` property. `print validate` is the pre-push gate, so it
- * enforces what the skill promises rather than let a silently-degraded
- * component (e.g. one that dropped a tool-call line) pass through as valid.
+ * Enforces invariants the schema itself leaves optional but the generation
+ * skill promises: `$description` everywhere, and non-empty `$values` on enums.
  */
 export function checkCDFComponentInvariants(
   components: Array<{ key: string; entry: CDFComponentEntry }>,
