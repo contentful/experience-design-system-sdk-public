@@ -468,7 +468,9 @@ export async function runPipeline(
 
     if (opts.skipMapTokens) {
       updateStep(db, mapTokensStepId, 'complete', { deterministicOnly: 'true' });
-      progressWriter(`${mapTokensLabel}✓  defaults resolved (agent skipped)  (${(mapTokensDurationMs / 1000).toFixed(1)}s)`);
+      progressWriter(
+        `${mapTokensLabel}✓  defaults resolved (agent skipped)  (${(mapTokensDurationMs / 1000).toFixed(1)}s)`,
+      );
       steps.push({
         step: 'map tokens',
         status: 'complete',

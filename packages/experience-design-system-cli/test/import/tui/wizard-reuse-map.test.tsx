@@ -5,12 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { render } from 'ink-testing-library';
 import { Text } from 'ink';
-import {
-  getOrCreateSession,
-  openPipelineDb,
-  storeCDFComponents,
-  storeRawComponents,
-} from '../../../src/session/db.js';
+import { getOrCreateSession, openPipelineDb, storeCDFComponents, storeRawComponents } from '../../../src/session/db.js';
 import type { RawComponentDefinition } from '../../../src/types.js';
 
 const mapInvocations: string[][] = [];
@@ -62,12 +57,14 @@ vi.mock('node:child_process', async (importOriginal) => {
     spawn: vi.fn((_command, args) => {
       const stdout = {
         on: (event: string, callback: (chunk: Buffer) => void) => {
-          if (event === 'data' && (args as string[]).includes('extract')) callback(Buffer.from('session=extract-session\n'));
+          if (event === 'data' && (args as string[]).includes('extract'))
+            callback(Buffer.from('session=extract-session\n'));
         },
       };
       const stderr = {
         on: (event: string, callback: (chunk: Buffer) => void) => {
-          if (event === 'data' && (args as string[]).includes('extract')) callback(Buffer.from('Extracted 1 component\n'));
+          if (event === 'data' && (args as string[]).includes('extract'))
+            callback(Buffer.from('Extracted 1 component\n'));
         },
       };
       return {
@@ -139,11 +136,18 @@ describe('WizardApp reused token catalog', () => {
     await mkdir(projectPath, { recursive: true });
     await writeFile(join(dir, 'raw-tokens.json'), '{}');
     await writeFile(join(projectPath, 'Card.tsx'), 'export function Card() { return null; }');
-    await writeFile(join(outDir, 'tokens.json'), JSON.stringify({ colors: { primary: { $type: 'color', $value: '#06f' } } }), {
-      flag: 'w',
-    }).catch(async () => {
+    await writeFile(
+      join(outDir, 'tokens.json'),
+      JSON.stringify({ colors: { primary: { $type: 'color', $value: '#06f' } } }),
+      {
+        flag: 'w',
+      },
+    ).catch(async () => {
       await mkdir(outDir, { recursive: true });
-      await writeFile(join(outDir, 'tokens.json'), JSON.stringify({ colors: { primary: { $type: 'color', $value: '#06f' } } }));
+      await writeFile(
+        join(outDir, 'tokens.json'),
+        JSON.stringify({ colors: { primary: { $type: 'color', $value: '#06f' } } }),
+      );
     });
     seedGeneratedSession(process.env.EDS_PIPELINE_DB_PATH);
 

@@ -49,7 +49,6 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
-
 describe('applyMapTokenPropCalls', () => {
   it('persists token_allowed paths that exist in raw_tokens', async () => {
     await withTempDb((dbPath) => {

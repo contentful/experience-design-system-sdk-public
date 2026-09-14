@@ -337,7 +337,14 @@ describe('FieldEditor — row landing + Return-to-edit (Fix 2)', () => {
   it('sets design token defaults when a prop is converted to token', async () => {
     const onChange = vi.fn();
     const { stdin, lastFrame } = render(
-      <FieldEditor value={STRING_COMPONENT} width={100} height={25} onChange={onChange} onSave={vi.fn()} onDiscard={vi.fn()} />,
+      <FieldEditor
+        value={STRING_COMPONENT}
+        width={100}
+        height={25}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
     );
     stdin.write('\r');
     await tick();

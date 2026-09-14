@@ -28,9 +28,7 @@ export function collectTokenSuggestions(
     .filter(([, def]) => {
       const rawKind = (def as { '$token.kind'?: unknown })['$token.kind'];
       return (
-        def.$type === 'token' &&
-        def.$category === 'design' &&
-        (typeof rawKind === 'string' || Array.isArray(rawKind))
+        def.$type === 'token' && def.$category === 'design' && (typeof rawKind === 'string' || Array.isArray(rawKind))
       );
     })
     .map(([propName, def]) => {
@@ -44,9 +42,7 @@ export function collectTokenSuggestions(
               .map((kind) => kind.trim())
               .filter(Boolean)
           : [];
-      const compatible = availableTokens
-        .filter((token) => kinds.includes(token.kind))
-        .map((token) => token.path);
+      const compatible = availableTokens.filter((token) => kinds.includes(token.kind)).map((token) => token.path);
       const compatiblePaths = new Set(compatible);
       const allowed =
         availableTokens.length > 0 ? persistedAllowed.filter((path) => compatiblePaths.has(path)) : persistedAllowed;
@@ -118,8 +114,12 @@ export function TokenReviewPanel({
           );
         })}
         <Text> </Text>
-        <Text dimColor wrap="truncate">{'[↑/↓] move  [Space] toggle'}</Text>
-        <Text dimColor wrap="truncate">{'[Ctrl+S] save  [Esc] cancel'}</Text>
+        <Text dimColor wrap="truncate">
+          {'[↑/↓] move  [Space] toggle'}
+        </Text>
+        <Text dimColor wrap="truncate">
+          {'[Ctrl+S] save  [Esc] cancel'}
+        </Text>
       </Box>
     );
   }

@@ -216,7 +216,11 @@ export function AtomicGenerateReviewStep({
       db.close();
     }
     if (cdfComponents.length === 0) {
-      return { entries: [], tokens: [], error: 'No generated definitions found for this session. Try re-running generate.' };
+      return {
+        entries: [],
+        tokens: [],
+        error: 'No generated definitions found for this session. Try re-running generate.',
+      };
     }
     const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
       key,
@@ -1146,18 +1150,18 @@ export function AtomicGenerateReviewStep({
                   {panelOpen === 'token-review'
                     ? '  [↑/↓] move  [Enter] edit allowed  [Esc] close'
                     : sidebarFocused
-                    ? '  [a] accept  [r] reject  [A] accept all  [i] prop rationale  [I] component rationale  [s] source  [J] ' +
-                      (showJson ? 'hide JSON' : 'show JSON') +
-                      '  [H] ' +
-                      (showHiddenProps ? 'hide state/unattached' : 'show state/unattached') +
-                      (currentTokenSuggestions().length > 0 ? '  [t] token review' : '') +
-                      '  [^z] undo  [^y] redo  [^r] reload  [F] finalize  [e/Tab] focus panel' +
-                      (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
-                      '  [q] quit'
-                    : showJson
-                      ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
-                      : '  [Tab] focus list  (edit fields)' +
-                        (currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
+                      ? '  [a] accept  [r] reject  [A] accept all  [i] prop rationale  [I] component rationale  [s] source  [J] ' +
+                        (showJson ? 'hide JSON' : 'show JSON') +
+                        '  [H] ' +
+                        (showHiddenProps ? 'hide state/unattached' : 'show state/unattached') +
+                        (currentTokenSuggestions().length > 0 ? '  [t] token review' : '') +
+                        '  [^z] undo  [^y] redo  [^r] reload  [F] finalize  [e/Tab] focus panel' +
+                        (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
+                        '  [q] quit'
+                      : showJson
+                        ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
+                        : '  [Tab] focus list  (edit fields)' +
+                          (currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
                   {livePreviewHook.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
                   {livePreviewHook.disabled && <Text>{'  · live preview disabled'}</Text>}
                 </Text>

@@ -1730,8 +1730,7 @@ export function WizardApp({
 
   const hasTokens = !!state.tokensPath;
   const hasComponents = !state.skipComponents;
-  const totalSteps =
-    3 + (hasTokens ? 1 : 0) + (hasComponents ? 2 : 0) + (state.mapTokensEligible === true ? 1 : 0);
+  const totalSteps = 3 + (hasTokens ? 1 : 0) + (hasComponents ? 2 : 0) + (state.mapTokensEligible === true ? 1 : 0);
 
   const stepContent = (() => {
     switch (state.step) {

@@ -40,9 +40,7 @@ vi.mock('../../../../src/session/db.js', () => ({
       { path: 'colors.surface.default', $type: 'color', $value: '#fff' },
       { path: 'colors.surface.raised', $type: 'color', $value: '#eee' },
       { path: 'colors.brand.primary', $type: 'color', $value: '#00f' },
-      ...(sessionId === 'token-session'
-        ? [{ path: 'colors.brand.secondary', $type: 'color', $value: '#0f0' }]
-        : []),
+      ...(sessionId === 'token-session' ? [{ path: 'colors.brand.secondary', $type: 'color', $value: '#0f0' }] : []),
       { path: 'spacing.small', $type: 'dimension', $value: '4px' },
     ],
   })),

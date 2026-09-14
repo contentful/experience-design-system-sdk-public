@@ -2235,13 +2235,13 @@ export function GenerateReviewStep({
                   {panelOpen === 'token-review'
                     ? '  [↑/↓] move  [Enter] edit allowed  [Esc] close'
                     : sidebarFocused
-                    ? hasGroupRoots
-                      ? '  [Space] expand/collapse group  [E/C] expand/collapse all'
-                      : ''
-                    : showJson
-                      ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
-                      : '  [Tab] focus list  (edit fields)' +
-                        (currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
+                      ? hasGroupRoots
+                        ? '  [Space] expand/collapse group  [E/C] expand/collapse all'
+                        : ''
+                      : showJson
+                        ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
+                        : '  [Tab] focus list  (edit fields)' +
+                          (currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
                   {livePreviewHook.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
                   {livePreviewHook.disabled && <Text>{'  · live preview disabled'}</Text>}
                 </Text>
@@ -2312,33 +2312,33 @@ export function GenerateReviewStep({
             </>
           ) : (
             <>
-          {legendEntry('[j/k]', 'move')}
-          {legendEntry('[a]', 'accept')}
-          {legendEntry('[r]', 'reject')}
-          {legendEntry('[A]', 'accept all')}
-          {legendEntry('[F]', 'finalize')}
-          {legendEntry('[L]', 'flat', columnOneView === 'flat')}
-          {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
-          {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
-          {legendEntry('[w]', 'only breaking', activeFilters.has('broken'))}
-          {slotCycles.length > 0 && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
-          {slotCycles.length > 0 && legendEntry('[c]', 'cycle list', cyclePanel.isOpen)}
-          {legendEntry('[p]', 'prop rationale', panelOpen === 'prop-rationale')}
-          {legendEntry('[P]', 'component rationale', panelOpen === 'component-rationale')}
-          {legendEntry('[s]', 'source', panelOpen === 'source')}
-          {currentTokenSuggestions().length > 0 && legendEntry('[t]', 'token review')}
-          {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
-          {legendEntry('[H]', showHiddenProps ? 'hide state/unattached' : 'show state/unattached', showHiddenProps)}
-          {breakingChanges.length > 0 && legendEntry('[b]', 'see breaking changes', breakingPanel.isOpen)}
-          {removedComponents.length > 0 &&
-            legendEntry('[d]', removedBannerCollapsed ? 'show removed' : 'hide removed', !removedBannerCollapsed)}
-          {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
-          {legendEntry('[Tab]', 'focus panel')}
-          {legendEntry('[Ctrl+Z]', 'undo')}
-          {legendEntry('[Ctrl+Y]', 'redo')}
-          {legendEntry('[Ctrl+R]', 'reload')}
-          {legendEntry('[?]', 'help')}
-          {legendEntry('[q]', 'quit')}
+              {legendEntry('[j/k]', 'move')}
+              {legendEntry('[a]', 'accept')}
+              {legendEntry('[r]', 'reject')}
+              {legendEntry('[A]', 'accept all')}
+              {legendEntry('[F]', 'finalize')}
+              {legendEntry('[L]', 'flat', columnOneView === 'flat')}
+              {legendEntry('[l]', 'lineage', lineagePanel.isOpen)}
+              {legendEntry('[i]', 'focus lineage', jumpFilterTarget !== null)}
+              {legendEntry('[w]', 'only breaking', activeFilters.has('broken'))}
+              {slotCycles.length > 0 && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
+              {slotCycles.length > 0 && legendEntry('[c]', 'cycle list', cyclePanel.isOpen)}
+              {legendEntry('[p]', 'prop rationale', panelOpen === 'prop-rationale')}
+              {legendEntry('[P]', 'component rationale', panelOpen === 'component-rationale')}
+              {legendEntry('[s]', 'source', panelOpen === 'source')}
+              {currentTokenSuggestions().length > 0 && legendEntry('[t]', 'token review')}
+              {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
+              {legendEntry('[H]', showHiddenProps ? 'hide state/unattached' : 'show state/unattached', showHiddenProps)}
+              {breakingChanges.length > 0 && legendEntry('[b]', 'see breaking changes', breakingPanel.isOpen)}
+              {removedComponents.length > 0 &&
+                legendEntry('[d]', removedBannerCollapsed ? 'show removed' : 'hide removed', !removedBannerCollapsed)}
+              {legendEntry('[/]', 'search', searchOpen || searchQuery.length > 0)}
+              {legendEntry('[Tab]', 'focus panel')}
+              {legendEntry('[Ctrl+Z]', 'undo')}
+              {legendEntry('[Ctrl+Y]', 'redo')}
+              {legendEntry('[Ctrl+R]', 'reload')}
+              {legendEntry('[?]', 'help')}
+              {legendEntry('[q]', 'quit')}
             </>
           )}
         </Box>

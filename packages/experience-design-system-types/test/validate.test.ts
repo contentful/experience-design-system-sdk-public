@@ -225,5 +225,4 @@ describe('validateCDF', () => {
     expect(result.valid).toBe(true);
     expect(result.components).toHaveLength(1);
   });
-
 });
