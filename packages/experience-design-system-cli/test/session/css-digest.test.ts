@@ -53,10 +53,9 @@ describe('digestCss', () => {
   });
 
   it('caps the var(--*) reference list per attribute', () => {
-    const rules = Array.from(
-      { length: 30 },
-      (_, i) => `:host([variant="v${i}"]) { color: var(--token-${i}); }`,
-    ).join('\n');
+    const rules = Array.from({ length: 30 }, (_, i) => `:host([variant="v${i}"]) { color: var(--token-${i}); }`).join(
+      '\n',
+    );
     const entries = digestCss(rules, ['variant']);
     expect(entries[0].varRefs.length).toBeLessThanOrEqual(20);
   });

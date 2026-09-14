@@ -1,10 +1,6 @@
 /**
- * Distills a stylesheet down to the evidence relevant to a component's
- * props: which attribute selectors match a (kebab-cased) prop name, what
- * values they take, and what `var(--*)` tokens their declaration blocks
- * reference. Raw Lit/web-component CSS runs 12-30KB against a ~1,200-char
- * sibling budget — a digest instead of a window keeps the evidence readable
- * without blowing the budget (see the E5 CSS-digest handoff).
+ * Distills a stylesheet to the attribute selectors, values, and `var(--*)`
+ * refs relevant to a component's props — raw CSS is too large to window.
  */
 
 const MAX_VAR_REFS_PER_ATTR = 20;
@@ -24,11 +20,7 @@ function kebabCase(name: string): string {
   return name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
 }
 
-/**
- * Splits CSS into `{ selector, body }` rule pairs, cutting only on a rule's
- * closing `}` — never mid-declaration, since CSS is rule-structured (unlike
- * the char-window used for TS/JS siblings elsewhere in this file).
- */
+// Splits CSS into { selector, body } pairs, cutting only on a rule's closing `}`.
 function parseRules(css: string): Array<{ selector: string; body: string }> {
   const rules: Array<{ selector: string; body: string }> = [];
   let depth = 0;
@@ -37,17 +29,11 @@ function parseRules(css: string): Array<{ selector: string; body: string }> {
   let quote: '"' | "'" | null = null;
   for (let i = 0; i < css.length; i++) {
     const ch = css[i];
-    // Comments are skipped before quote tracking: an apostrophe in prose
-    // (`/* cascade badge's size */`) is not a string delimiter, but the
-    // scanner cannot know that once it is already inside a quote state. An
-    // unpaired one would otherwise open a quote that never closes and
-    // swallow every rule after it.
+    // Skip comments before quote tracking, so an apostrophe in prose
+    // (e.g. "badge's size") isn't mistaken for a string delimiter.
     if (!quote && ch === '/' && css[i + 1] === '*') {
       const end = css.indexOf('*/', i + 2);
-      // Unterminated comment: skip only the opener and keep scanning. Strict
-      // CSS would treat the rest of the file as comment, but this is an
-      // evidence harvester — dropping every remaining rule over one typo
-      // costs more than the stray text it lets through.
+      // Unterminated comment: skip only the opener, keep scanning the rest.
       if (end !== -1) i = end + 1;
       else i += 1;
       continue;
@@ -83,12 +69,8 @@ function extractVarRefs(body: string): string[] {
   return [...refs];
 }
 
-/**
- * Builds one digest entry per prop name that has at least one matching
- * attribute selector in `css`. A prop with no selector present is omitted
- * entirely — the digest is a lower bound on the vocabulary, never proof of
- * absence (an unstyled default like `size="m"` needs no rule at all).
- */
+// One entry per prop with a matching attribute selector; unmatched props are
+// omitted — absence isn't proof the prop is unstyled.
 export function digestCss(css: string, propNames: string[]): CssDigestEntry[] {
   const kebabToProp = new Map(propNames.map((name) => [kebabCase(name), name]));
   const rules = parseRules(css);
@@ -128,13 +110,8 @@ export function digestCss(css: string, propNames: string[]): CssDigestEntry[] {
   }));
 }
 
-/**
- * Renders a digest as its own labelled prompt block, distinct from source
- * excerpts — so the classifier does not mistake distilled evidence for the
- * component's own code. States the two limits the digest cannot paper over:
- * it is a lower bound (unstyled defaults have no selector) and a bare
- * attribute is boolean, not a one-value enum.
- */
+// A labelled prompt block distinct from source excerpts, stating its two
+// limits: it's a lower bound, and a bare attribute is boolean, not an enum.
 export function renderCssDigest(path: string, entries: CssDigestEntry[]): string {
   if (entries.length === 0) return '';
 

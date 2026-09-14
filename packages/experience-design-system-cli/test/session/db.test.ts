@@ -2986,10 +2986,8 @@ describe('generation cache', () => {
     });
   });
 
-  // Lit and other web-component design systems compile `badge.css` to a
-  // `badge.css.js` module and import *that*, never the bare stylesheet — the
-  // TS-ESM rewrite above strips `.js` to try `.ts`/`.tsx`/`.jsx`, never the
-  // bare stem, so `badge.css` was never a candidate until this was fixed.
+  // Lit imports `./badge.css.js`, which must resolve to the bare stylesheet
+  // on disk rather than a `.ts`/`.tsx`/`.jsx` rewrite.
   it('loadComponentSourceRef resolves a Lit `./x.css.js` specifier to the `x.css` stylesheet on disk', async () => {
     await withTempDb(async (dbPath) => {
       const dir = dirname(dbPath);
@@ -3003,11 +3001,7 @@ describe('generation cache', () => {
     });
   });
 
-  // Regression coverage for the real Spectrum Badge shape: a `./x.css.js`
-  // specifier resolving to a stylesheet whose CSS carries an apostrophe in a
-  // comment. Each defect was fixed and verified independently; this proves
-  // they compose — the resolver finds the stylesheet *and* the digest survives
-  // the poisoned comment, together, through the real loadComponentSourceRef path.
+  // Proves the two fixes compose through the real loadComponentSourceRef path.
   it('resolves a Lit `.css.js` specifier and digests a stylesheet with an apostrophe in a comment', async () => {
     await withTempDb(async (dbPath) => {
       const dir = dirname(dbPath);

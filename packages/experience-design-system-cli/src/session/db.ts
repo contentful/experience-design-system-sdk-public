@@ -1400,10 +1400,8 @@ const MAX_SIBLING_DEPTH = 2;
 const MAX_SIBLING_CANDIDATES_EXPLORED = 25;
 const RELATIVE_IMPORT_PATTERN = /from\s+['"](\.[^'"]+)['"]/g;
 const SIBLING_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.css', '.scss', '.less'];
-// Stylesheets carry token bindings for web-component design systems (e.g.
-// `:host([variant="celery"]) { --spectrum-badge-color: var(--spectrum-celery); }`)
-// but run 12-30KB against a 1,200-char sibling budget — routed through
-// digestCss instead of excerptAroundNames so the evidence survives the budget.
+// Stylesheets run too large for the char-window budget, so they're routed
+// through digestCss instead of excerptAroundNames.
 const STYLESHEET_EXTENSIONS = ['.css', '.scss', '.less'];
 
 function isStylesheetPath(path: string): boolean {
@@ -1429,12 +1427,8 @@ function rewrittenSourcePaths(basePath: string): string[] {
   for (const [emitted, sources] of TS_ESM_EXTENSION_REWRITES) {
     if (!basePath.endsWith(emitted)) continue;
     const stem = basePath.slice(0, -emitted.length);
-    // Lit and friends compile `badge.css` to a `badge.css.js` module that
-    // exports it as a tagged template, and import *that*: `from
-    // './badge.css.js'`. Stripping `.js` leaves `badge.css`, which is the
-    // real source on disk — so when the stem is itself a stylesheet, it is a
-    // candidate in its own right. Only for stylesheet stems: a bare `./foo`
-    // from `./foo.js` could resolve to a directory or an unrelated file.
+    // Lit imports `./badge.css.js`; stripping `.js` gives the real stylesheet
+    // on disk, so a stylesheet stem is itself a candidate.
     const stemIsStylesheet = isStylesheetPath(stem);
     return [...(stemIsStylesheet ? [stem] : []), ...sources.map((ext) => `${stem}${ext}`)];
   }
@@ -1581,12 +1575,9 @@ async function loadSiblingFiles(
 
   // Excerpts are windowed around the prop names rather than cut from the
   // head: a styles module's first lines are imports, and the line that decides
-  // a prop's classification is wherever that prop is interpolated. A
-  // stylesheet sibling goes through the CSS digester instead — raw CSS is far
-  // larger than this budget, and a digest survives it (see css-digest.ts).
-  // A stylesheet with no digest evidence for any prop is dropped outright:
-  // an empty digest block would only be noise, unlike a TS/JS excerpt, which
-  // always has some content (even the file head) worth showing.
+  // a prop's classification is wherever that prop is interpolated.
+  // A stylesheet sibling is digested instead (see css-digest.ts), and dropped
+  // outright if the digest has no evidence.
   const usesNotShown = new Set<string>();
   const searchNames = [...new Set([...propNames, ...declaredTypeNames])];
   let enlarged = 0;
