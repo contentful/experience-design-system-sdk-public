@@ -2,10 +2,44 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { flattenDTCG, type CDFComponentEntry } from '@contentful/experience-design-system-types';
 
-/** `components` — classify component props; `tokens` — classify design tokens; `select` — decide whether a component belongs in Contentful Experience Orchestration */
-export type Skill = 'components' | 'tokens' | 'select';
+/** `components` — classify component props; `tokens` — classify design tokens; `select` — decide whether a component belongs in Contentful Experience Orchestration; `map-tokens` — suggest `$token.allowed` restrictions for design-category token props */
+export type Skill = 'components' | 'tokens' | 'select' | 'map-tokens';
 export type Mode = 'autonomous';
+
+/**
+ * A component name paired with the source file it was extracted from, for
+ * token-mapping evidence. `content` is the real file text (bounded, see
+ * MAX_COMPONENT_SOURCE_CHARS) — this pipeline is agent-fs-free by design (see
+ * generate-components.md's "you do not write any files"), so the caller must
+ * read the file itself and inline the text here rather than handing the
+ * agent a path and expecting it to open the file. `null` when the file
+ * couldn't be read (moved/deleted since extraction) — callers fall back to
+ * inferring from the prop name and $token.kind alone in that case.
+ * `siblingFiles` carries the content of files the source file relatively
+ * imports (e.g. a co-located `.styles.ts`) — token-resolution logic often
+ * lives one hop away from the component file itself. `truncatedSiblingCount`
+ * is set when the caller found more resolvable sibling files than it inlines
+ * (see MAX_SIBLING_FILES) — surfaced in the prompt so the classifier knows
+ * evidence was dropped rather than that the search came up empty.
+ */
+export interface ComponentSourceRef {
+  component: string;
+  sourcePath: string;
+  content: string | null;
+  siblingFiles?: Array<{ path: string; content: string }>;
+  truncatedSiblingCount?: number;
+  /**
+   * Properties with at least one use that fell outside the excerpt budget of
+   * the file it sits in. The reader cannot see that use, so its absence is a
+   * gap in the evidence, not evidence of absence.
+   */
+  usesNotShown?: string[];
+}
+
+/** Plain-data shape of the CDF generated so far — component name -> component entry. */
+export type GeneratedCdf = Record<string, CDFComponentEntry>;
 
 /**
  * Render the warning banner shown when a custom skill prompt is active.
@@ -32,6 +66,12 @@ export interface PromptOptions {
   outDir: string;
   /** For components skill only: the single component's name (used in error messages). */
   componentName?: string;
+  /** For map-tokens skill: the CDF generated so far. Filtered internally to design-category token-typed props only. */
+  generatedCdf?: GeneratedCdf;
+  /** For map-tokens skill: the full DTCG token tree. Flattened internally to a path+`$type` index, with `$value` stripped. */
+  tokenTree?: Record<string, unknown>;
+  /** Component source file references — consumption evidence for the components skill, explicit-restriction evidence (comments, allowlists) for map-tokens. */
+  componentSourceRefs?: ComponentSourceRef[];
   /**
    * Feature 8: custom prompt path override. When set, this absolute or relative
    * `.md` path is read in place of the bundled skill file. The bundled-prompt
@@ -46,6 +86,7 @@ const SKILL_FILES: Record<Skill, string> = {
   components: 'generate-components.md',
   tokens: 'generate-tokens.md',
   select: 'select-components.md',
+  'map-tokens': 'map-tokens.md',
 };
 
 export async function buildPrompt(options: PromptOptions): Promise<string> {
@@ -97,6 +138,11 @@ function inferFenceLang(filename: string | undefined): string {
     ts: 'ts',
     mts: 'ts',
     cts: 'ts',
+    tsx: 'tsx',
+    jsx: 'jsx',
+    vue: 'vue',
+    svelte: 'svelte',
+    astro: 'astro',
     scss: 'scss',
     sass: 'scss',
     css: 'css',
@@ -106,8 +152,68 @@ function inferFenceLang(filename: string | undefined): string {
   return map[ext] ?? 'text';
 }
 
+/**
+ * Keeps only design-category, token-typed props per component (dropping
+ * components left with none), alongside the distinct `$token.kind` values
+ * seen among them and whether any such prop has no `$token.kind` at all —
+ * collected in the same pass rather than a second walk of the raw CDF.
+ */
+function filterDesignTokenProps(cdf: GeneratedCdf): {
+  filtered: GeneratedCdf;
+  kinds: string[];
+  hasUnscoped: boolean;
+} {
+  const result: GeneratedCdf = {};
+  const kinds = new Set<string>();
+  let hasUnscoped = false;
+  for (const [componentName, component] of Object.entries(cdf)) {
+    const properties = component.$properties;
+    if (!properties) continue;
+    const filteredProps: Record<string, CDFComponentEntry['$properties'][string]> = {};
+    for (const [propName, prop] of Object.entries(properties)) {
+      if (prop.$type === 'token' && prop.$category === 'design') {
+        const { '$token.allowed': _tokenAllowed, ...rest } = prop;
+        filteredProps[propName] = rest;
+        const kind = prop['$token.kind'];
+        if (typeof kind === 'string' && kind.length > 0) {
+          kinds.add(kind);
+        } else {
+          hasUnscoped = true;
+        }
+      }
+    }
+    if (Object.keys(filteredProps).length > 0) {
+      result[componentName] = { ...component, $properties: filteredProps };
+    }
+  }
+  return { filtered: result, kinds: [...kinds].sort(), hasUnscoped };
+}
+
+/** One line per candidate, e.g. `colors.brand.primary · color` — legible and countable, unlike nested JSON. */
+function formatTokenCandidateLines(entries: Array<{ path: string; $type?: unknown }>): string {
+  return entries.map((entry) => `${entry.path} · ${entry.$type}`).join('\n');
+}
+
+/** Renders one kind-scoped (or, for `kind: null`, full-tree) candidate section. Sections are cumulative, never merged, so each stays independently legible. */
+function renderTokenCandidateSection(kind: string | null, entries: Array<{ path: string; $type?: unknown }>): string {
+  const label = kind
+    ? `Token path index — ${kind} candidates only`
+    : 'Token path index — full tree (no $token.kind to scope by)';
+  return `${label}, one leaf token per line as \`path · type\`, no \`$value\`:\n${formatTokenCandidateLines(entries)}`;
+}
+
 function buildPreamble(options: PromptOptions): string {
-  const { skill, rawComponentsInline, rawTokensInline, rawTokensFilename, tokensInline, tokenMapInline } = options;
+  const {
+    skill,
+    rawComponentsInline,
+    rawTokensInline,
+    rawTokensFilename,
+    tokensInline,
+    tokenMapInline,
+    generatedCdf,
+    tokenTree,
+    componentSourceRefs,
+  } = options;
 
   const sections: string[] = [];
 
@@ -125,6 +231,63 @@ function buildPreamble(options: PromptOptions): string {
   if (tokenMapInline) {
     sections.push(`Token-name sidecar (raw name → DTCG path):\n\`\`\`json\n${tokenMapInline}\n\`\`\``);
   }
+  const filteredTokenProps = generatedCdf ? filterDesignTokenProps(generatedCdf) : undefined;
+  if (filteredTokenProps && Object.keys(filteredTokenProps.filtered).length > 0) {
+    sections.push(
+      `Generated CDF so far — design-category token props only (JSON):\n\`\`\`json\n${JSON.stringify(filteredTokenProps.filtered)}\n\`\`\``,
+    );
+  }
+  if (tokenTree) {
+    const index = flattenDTCG(tokenTree, '').sort((a, b) => a.path.localeCompare(b.path));
+    if (index.length > 0) {
+      if (filteredTokenProps) {
+        const { kinds, hasUnscoped } = filteredTokenProps;
+        for (const kind of kinds) {
+          const scoped = index.filter((entry) => entry.$type === kind);
+          if (scoped.length > 0) sections.push(renderTokenCandidateSection(kind, scoped));
+        }
+        if (hasUnscoped) sections.push(renderTokenCandidateSection(null, index));
+      } else {
+        sections.push(renderTokenCandidateSection(null, index));
+      }
+    }
+  }
+  if (componentSourceRefs && componentSourceRefs.length > 0) {
+    const withContent = componentSourceRefs.filter((ref) => ref.content != null);
+    const withoutContent = componentSourceRefs.filter((ref) => ref.content == null);
+    if (withContent.length > 0) {
+      const blocks = withContent.map((ref) => {
+        const mainBlock = `#### ${ref.component} (\`${ref.sourcePath}\`)\n\`\`\`${inferFenceLang(ref.sourcePath)}\n${ref.content}\n\`\`\``;
+        const siblingBlocks = (ref.siblingFiles ?? []).map(
+          (sibling) =>
+            `##### ${ref.component} — imported file \`${sibling.path}\`\n\`\`\`${inferFenceLang(sibling.path)}\n${sibling.content}\n\`\`\``,
+        );
+        const truncationNote =
+          ref.truncatedSiblingCount && ref.truncatedSiblingCount > 0
+            ? [
+                `##### ${ref.component} — +${ref.truncatedSiblingCount} more imported file${ref.truncatedSiblingCount === 1 ? '' : 's'} not shown (evidence may be incomplete)`,
+              ]
+            : [];
+        const notShownNote =
+          ref.usesNotShown && ref.usesNotShown.length > 0
+            ? [
+                `##### ${ref.component} — uses not shown: ${ref.usesNotShown.join(', ')}\n\nThe files above are excerpts, and each of these properties has at least one use that fell outside the excerpt budget. Treat their consumption as unknown, not absent: do not classify them \`token\` on what is shown, and do not conclude they are unread.`,
+              ]
+            : [];
+        return [mainBlock, ...siblingBlocks, ...truncationNote, ...notShownNote].join('\n\n');
+      });
+      sections.push(`### Component source references\n\n${blocks.join('\n\n')}`);
+    }
+    if (withoutContent.length > 0) {
+      const guidance =
+        skill === 'components'
+          ? 'there is no consumption evidence for these, so `token` cannot be earned for any of their props — classify from the prop signature alone, and any prop that would otherwise be enum-versus-token is `enum` (or `string`)'
+          : 'there is no source evidence to narrow from — emit nothing for their props';
+      sections.push(
+        `Component source unavailable for (JSON) — ${guidance}:\n\`\`\`json\n${JSON.stringify(withoutContent.map((ref) => ({ component: ref.component, sourcePath: ref.sourcePath })))}\n\`\`\``,
+      );
+    }
+  }
 
   const inputBlock = sections.length > 0 ? `\n\n${sections.join('\n\n')}` : '';
 
@@ -133,6 +296,9 @@ function buildPreamble(options: PromptOptions): string {
   }
   if (skill === 'select') {
     return buildSelectAutonomousPreamble(inputBlock);
+  }
+  if (skill === 'map-tokens') {
+    return buildMapTokensAutonomousPreamble(inputBlock);
   }
   return buildTokensAutonomousPreamble(inputBlock);
 }
@@ -144,8 +310,6 @@ Context: You are classifying a React component for **Contentful Experience Orche
 - **design**: controls how the component looks (variant, size, color, layout toggles)
 - **content**: the data a content editor fills in (text, images, URLs, rich text)
 - **state**: runtime behavioral flags (disabled, loading, expanded, identifiers)
-
-For props with complex TypeScript types (named types, enums): reason from the prop name and type name to classify them. Do not automatically exclude a prop just because its type is a named reference — infer the likely values and classify it as enum if it controls appearance.
 
 Your task: classify every prop and slot in the component below. Apply all judgment calls yourself — do not pause to ask for confirmation. Include a "description" field on each tool call to document your reasoning so the developer can review it afterward.
 
@@ -173,10 +337,12 @@ Rules:
 - Every slot in the input must have exactly one classify_slot call.
 - Valid cdf_type values: string, richtext, media, enum, token, boolean
 - Valid cdf_category values: content, design, state
-- For enum type, always include "values" (non-empty string array).
-- For token type, always include "token_kind" (DTCG \$type, e.g. "color").
-- href and URL props → cdf_type "string", cdf_category "content". Do NOT use cdf_type "link" — it is not valid.
-- Framework internals (ref, event handlers, test IDs) → exclude_prop.
+- For enum type, always include \`values\` (non-empty string array of the variant names the prop accepts).
+- For token type, always include \`token_kind\` (DTCG \$type, e.g. "color"). **Never emit \`values\` for \`cdf_type: "token"\` props** — an enum prop's list holds variant names; a token prop's list holds design token paths, produced separately and never by you. Emitting \`values\` on a token prop makes the definition invalid.
+- Never emit both "values" and "token_kind" on one prop.
+- \`enum\` vs \`token\` is decided by three questions answered in order from the source shown — never from the TypeScript type. Q1: does the component look the value up, switch on it, or have a vocabulary for it (\`tokens[x]\`, \`switch (variant)\`, \`allowedValues\`)? yes → \`enum\`, stop.
+- Q2: is the value written straight into a style or attribute (\`rx={radius}\`, \`padding: \${padding}\`)? no → not \`token\`, apply the type rules.
+- Q3: is there a design-token reference at that use — a \`tokens.*\` parameter default, a \`tokenReference\`, an inline \`tokens.*\` / \`var(--*)\`? yes → \`token\` (cite both lines in "reason"); no → \`string\`. "Ambiguity resolves to \`enum\`" applies only when Q1–Q3 cannot be answered from the source shown.
 - CSS design props (className, style, styles, positional/geometric props: top, bottom, left, right, rotation, offset, etc.) → classify_prop, cdf_type: "string", cdf_category: "design".
 - On classify_component, "rationale" fields are operator-facing (read-only) but may surface in customer-facing exports. The "rationale.description" field is subject to the description content rules in the skill prompt (no internal initiative names). "rationale.props" and "rationale.slots" describe your reasoning about scope; "classify_slot.rationale" explains why each slot was kept.
 - On classify_prop, "reason" is REQUIRED and is the LLM's internal rationale — shown to the developer reviewing the import, never to end-users. "description" is the customer-facing copy and is subject to the description content rules in the skill prompt. Keep them distinct: "description" is short and customer-facing; "reason" explains your reasoning in detail.
@@ -208,6 +374,32 @@ Rules:
 - Emit exactly one JSON object per line. No multi-line JSON. No markdown fences.
 - Emit exactly one tool call per input component. The "name" field must match a component name from the input array exactly. Tool calls may appear in any order.
 - You may emit prose lines (not starting with {) to reason before each tool call — they are ignored by the parser.`;
+}
+
+function buildMapTokensAutonomousPreamble(inputBlock: string): string {
+  return `You are running as part of the experience-design-system-cli generate pipeline in AUTONOMOUS mode. The developer is not present to answer questions.
+
+Context: The components below already have design-category, token-typed props (\`$token.kind\` set). Your task is to decide, from source evidence, whether to narrow each one to a restricted subset (\`token_allowed\`) of the tokens matching its \`$token.kind\`. Apply all judgment calls yourself — do not pause to ask for confirmation.
+
+All input data is provided inline below — do not read any additional files.${inputBlock}
+
+## Output protocol
+
+Do NOT write any files or emit any JSON blobs. Instead, emit one JSON object per line to stdout for each prop you narrow. The CLI reads your stdout line by line and writes each decision directly to the pipeline database.
+
+The one tool call you may emit:
+
+\`\`\`
+{"tool":"map_token_prop","component":"<ComponentName>","prop":"<propName>","token_allowed":["colors.brand.primary","colors.brand.secondary"]}
+\`\`\`
+
+Rules:
+- Emit exactly one JSON object per line. No multi-line JSON. No markdown fences around the lines.
+- Only emit a call for a prop that appears in the "Generated CDF so far" section.
+- Each "Token path index" section below is already scoped to one \`$token.kind\` — a prop only draws candidates from the section matching its own \`$token.kind\` (or the "full tree" section, for a prop with no \`$token.kind\`). Never cross sections, never emit a group/prefix path, and never invent a path — every entry in \`token_allowed\` must exist verbatim in the matching section.
+- \`token_allowed\` is required and must be non-empty when the call is emitted.
+- For the judgment call of whether a prop should be narrowed at all, follow the decision tree in the map-tokens skill file: it explains defaults vs. restrictions, misclassified variant-name props, and when to emit nothing.
+- You may emit prose lines (not starting with \`{\`) anywhere — they are ignored by the parser and serve as your reasoning log.`;
 }
 
 function buildTokensAutonomousPreamble(inputBlock: string): string {
