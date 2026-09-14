@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import type { Screen } from '../../app.js';
+import type { Screen } from '../../../app.js';
 
 export function SettingsScreen({
   onNavigate,

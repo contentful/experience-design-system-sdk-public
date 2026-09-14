@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { StartScreen } from './start.js';
-import { ImportScreen } from './src/import/screen.js';
-import { SavedRunsScreen } from './src/saved-runs/screen.js';
-import { HelpScreen } from './src/help/screen.js';
-import { SettingsScreen } from './src/settings/screen.js';
-import { OptInAnalyticsScreen } from './src/settings/opt-in-analytics/screen.js';
-import { ConfigurationScreen } from './src/settings/push-configuration/screen.js';
+import { ImportScreen } from './src/tui/import/PageContainer.js';
+import { SavedRunsScreen } from './src/tui/saved-runs/PageContainer.js';
+import { HelpScreen } from './src/tui/help/PageContainer.js';
+import { SettingsScreen } from './src/tui/settings/PageContainer.js';
+import { OptInAnalyticsScreen } from './src/tui/settings/opt-in-analytics/screen.js';
+import { ConfigurationScreen } from './src/tui/settings/push-configuration/screen.js';
 
 export type Screen =
   | 'start'
