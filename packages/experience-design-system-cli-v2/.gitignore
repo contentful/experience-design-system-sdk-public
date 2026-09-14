@@ -1,0 +1,4 @@
+.contentful/*
+!.contentful/debug/
+.contentful/debug/*
+!.contentful/debug/README.md
