@@ -3099,6 +3099,71 @@ describe('generation cache', () => {
     });
   });
 
+  // A name from a prop's type is worth windowing on only when a file in hand
+  // declares it. `MouseEventHandler` comes from `react` — nothing in the
+  // repository declares it — so it must not open a window on the import line
+  // and spend the budget there.
+  it('loadComponentSourceRef does not window the component source on a type name that no file in hand declares', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Button.tsx');
+      await writeFile(
+        componentPath,
+        [
+          "import type { MouseEventHandler } from 'react';",
+          exportedFiller('a'),
+          exportedFiller('b'),
+          exportedFiller('c'),
+          exportedFiller('d'),
+          exportedFiller('e'),
+          '  onClick?: MouseEventHandler<HTMLElement>;',
+          exportedFiller('f'),
+        ].join('\n'),
+      );
+
+      const ref = await loadComponentSourceRef(
+        'Button',
+        componentPath,
+        ['onClick'],
+        ['MouseEventHandler<HTMLElement>'],
+      );
+      expect(ref.content).toContain('onClick?: MouseEventHandler<HTMLElement>');
+      expect(ref.content).not.toContain("from 'react'");
+    });
+  });
+
+  // `VariantProps<typeof buttonVariants>['intent']` names the value-carrying
+  // declaration in lowercase. Case is not what makes a name worth windowing
+  // on; being declared in a file in hand is.
+  it('loadComponentSourceRef windows the component source on a lowercase declared name from a prop type', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Button.tsx');
+      await writeFile(
+        componentPath,
+        [
+          "const buttonVariants = cva('btn', buttonVariantConfig);",
+          exportedFiller('a'),
+          "const buttonVariantConfig = { variants: { intent: { primary: 'bg-blue', ghost: 'bg-none' } } };",
+          exportedFiller('b'),
+          exportedFiller('c'),
+          exportedFiller('d'),
+          exportedFiller('e'),
+          "  intent?: VariantProps<typeof buttonVariants>['intent'];",
+          exportedFiller('f'),
+        ].join('\n'),
+      );
+
+      const ref = await loadComponentSourceRef(
+        'Button',
+        componentPath,
+        ['intent'],
+        ["VariantProps<typeof buttonVariants>['intent']"],
+      );
+      expect(ref.content).toContain('const buttonVariants = cva(');
+    });
+  });
+
   it('loadComponentSourceRef reports the props whose uses were cut by the sibling budget', async () => {
     await withTempDb(async (dbPath) => {
       const dir = dirname(dbPath);
