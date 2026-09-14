@@ -294,7 +294,14 @@ describe('applyMapTokenPropCalls', () => {
       const result = applyMapTokenPropCalls(
         db,
         sessionId,
-        [{ tool: 'map_token_prop', component: 'Nonexistent', prop: 'bgColor', token_allowed: ['colors.surface.default'] }],
+        [
+          {
+            tool: 'map_token_prop',
+            component: 'Nonexistent',
+            prop: 'bgColor',
+            token_allowed: ['colors.surface.default'],
+          },
+        ],
         [],
       );
 

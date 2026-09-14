@@ -141,9 +141,12 @@ describe('map tokens command', () => {
     replaceRawTokenNamePaths(db, sessionId, { 'tokens.surfaceDefault': 'colors.surface.default' }, 'manual');
     db.close();
 
-    const { code, stderr } = await run(['map', 'tokens', '--session', sessionId, '--print-prompt', '--agent', 'claude'], {
-      dbPath,
-    });
+    const { code, stderr } = await run(
+      ['map', 'tokens', '--session', sessionId, '--print-prompt', '--agent', 'claude'],
+      {
+        dbPath,
+      },
+    );
     expect(code).toBe(0);
     expect(stderr).toContain("automatically resolves to 'colors.surface.surface-default'");
     expect(stderr).toContain("manual mapping 'colors.surface.default' is retained");
@@ -152,7 +155,9 @@ describe('map tokens command', () => {
     expect(loadRawTokenNamePaths(reopened, sessionId)).toEqual({
       'tokens.surfaceDefault': 'colors.surface.default',
     });
-    expect(loadCDFComponents(reopened, sessionId)[0]?.entry.$properties.bgColor?.$default).toBe('colors.surface.default');
+    expect(loadCDFComponents(reopened, sessionId)[0]?.entry.$properties.bgColor?.$default).toBe(
+      'colors.surface.default',
+    );
     reopened.close();
   });
 
@@ -219,10 +224,12 @@ describe('map tokens command', () => {
     const dbPath = join(dbDir, 'pipeline.db');
     const sessionA = await seedGeneratedSessionWithAliasDefault(dbPath);
     expect(
-      (await run(['map', 'tokens', '--session', sessionA, '--agent', 'claude'], {
-        dbPath,
-        fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
-      })).code,
+      (
+        await run(['map', 'tokens', '--session', sessionA, '--agent', 'claude'], {
+          dbPath,
+          fakeAgentScript: join(FIXTURES_DIR, 'fake-agent-valid.mjs'),
+        })
+      ).code,
     ).toBe(0);
 
     const sessionB = await seedGeneratedSessionWithAliasDefault(dbPath);

@@ -185,7 +185,7 @@ describe('applyToolCalls — classify_prop', () => {
     });
   });
 
-  it('nulls out cdf_type for excluded props', async () => {
+  it('classifies excluded props as unattached instead of dropping them', async () => {
     await withTempDb((dbPath) => {
       const { db, sessionId, componentId } = setupSession(dbPath);
       applyToolCalls(
@@ -210,8 +210,8 @@ describe('applyToolCalls — classify_prop', () => {
           `SELECT cdf_type, cdf_category FROM raw_props WHERE session_id = ? AND component_id = ? AND name = 'className'`,
         )
         .get(sessionId, componentId) as { cdf_type: string | null; cdf_category: string | null };
-      expect(prop.cdf_type).toBe('excluded');
-      expect(prop.cdf_category).toBeNull();
+      expect(prop.cdf_type).toBe('string');
+      expect(prop.cdf_category).toBe('unattached');
       db.close();
     });
   });
@@ -439,7 +439,7 @@ describe('applyToolCalls — loadCDFComponents integration', () => {
       expect(entry.entry.$properties['variant']?.$values).toEqual(['primary', 'secondary']);
       expect(entry.entry.$properties['disabled']?.$category).toBe('state');
       expect(entry.entry.$properties['bgColor']?.$type).toBe('token');
-      expect(entry.entry.$properties['className']).toBeUndefined();
+      expect(entry.entry.$properties['className']).toMatchObject({ $type: 'string', $category: 'unattached' });
       expect(entry.entry.$slots?.['icon']?.$required).toBeUndefined();
       expect(entry.entry.$slots?.['icon']?.$allowedComponents).toEqual(['Icon']);
       db.close();

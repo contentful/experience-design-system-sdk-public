@@ -64,10 +64,7 @@ export function resolveTokenDefaults(
     leavesByNormalizedKey.set(normalizedKey, matches);
   }
 
-  const outcomesByRawDefault = new Map<
-    string,
-    { resolvedPaths: string[]; diagnostics: UnresolvedTokenDefault[] }
-  >();
+  const outcomesByRawDefault = new Map<string, { resolvedPaths: string[]; diagnostics: UnresolvedTokenDefault[] }>();
   const diagnostics: UnresolvedTokenDefault[] = [];
   const outcomesFor = (rawDefault: string): { resolvedPaths: string[]; diagnostics: UnresolvedTokenDefault[] } => {
     const outcomes = outcomesByRawDefault.get(rawDefault) ?? { resolvedPaths: [], diagnostics: [] };
@@ -101,7 +98,8 @@ export function resolveTokenDefaults(
 
     const member = terminalMember(input.rawDefault);
     const candidates = member === undefined ? [] : (leavesByNormalizedKey.get(normalizeTokenKey(member)) ?? []);
-    const compatible = input.tokenKind === null ? candidates : candidates.filter((candidate) => candidate.type === input.tokenKind);
+    const compatible =
+      input.tokenKind === null ? candidates : candidates.filter((candidate) => candidate.type === input.tokenKind);
 
     if (compatible.length === 1) {
       recordResolvedPath(input.rawDefault, compatible[0]!.path);

@@ -68,6 +68,33 @@ describe('ScopeGateHost — compositionMode fork', () => {
     expect(onConfirm).toHaveBeenCalledWith({ accepted: ['Provider'], rejected: [] });
   });
 
+  it('keeps the list visible when a user toggle-all drives everything to excluded after AI filtering completed', () => {
+    // Regression: AI flags one component (excluded by default). Filtering has
+    // completed. User presses `A` to toggle-all the remaining (non-AI) components
+    // to excluded too, landing at all-excluded by their own action — this must
+    // NOT be mistaken for "AI excluded all components" and must NOT hide the list.
+    const { lastFrame, stdin } = render(
+      <ScopeGateHost
+        components={[
+          { name: 'Provider', componentId: 'c0', needsReview: true, aiReason: 'flagged by AI' },
+          { name: 'Button', componentId: 'c1' },
+        ]}
+        autoAccept={false}
+        compositionMode="atomic"
+        aiFilterStatus="complete"
+        onConfirm={() => {}}
+        onQuit={() => {}}
+      />,
+    );
+
+    stdin.write('A');
+
+    const out = lastFrame() ?? '';
+    expect(out).not.toMatch(/AI excluded all components/i);
+    expect(out).toContain('Provider');
+    expect(out).toContain('Button');
+  });
+
   it('composite mode renders the hierarchy-aware step', () => {
     const { lastFrame } = render(
       <ScopeGateHost

@@ -9,4 +9,4 @@ export const CDF_PROPERTY_TYPES = [
   'boolean',
 ] as const;
 
-export const CDF_PROPERTY_CATEGORIES = ['content', 'design', 'state'] as const;
+export const CDF_PROPERTY_CATEGORIES = ['content', 'design', 'state', 'unattached'] as const;

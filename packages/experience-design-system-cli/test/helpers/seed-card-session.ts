@@ -27,10 +27,7 @@ const CARD: RawComponentDefinition[] = [
 const CARD_WITH_ALIAS_DEFAULT: RawComponentDefinition[] = [
   {
     ...CARD[0]!,
-    props: [
-      { ...CARD[0]!.props[0]!, defaultValue: 'tokens.surfaceDefault' },
-      CARD[0]!.props[1]!,
-    ],
+    props: [{ ...CARD[0]!.props[0]!, defaultValue: 'tokens.surfaceDefault' }, CARD[0]!.props[1]!],
   },
 ];
 

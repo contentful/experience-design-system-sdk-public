@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
+import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { Box, Text, useStdout } from 'ink';
 import type {
   BreakingChange,
@@ -281,6 +282,7 @@ export function GenerateReviewStep({
   const [showFinalize, setShowFinalize] = useState(false);
   const [showQuit, setShowQuit] = useState(false);
   const [showJson, setShowJson] = useState(false);
+  const [showHiddenProps, setShowHiddenProps] = useState(false);
   const [draftValue, setDraftValue] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [finalizeError, setFinalizeError] = useState<string | null>(initialFinalizeError);
@@ -1439,7 +1441,7 @@ export function GenerateReviewStep({
 
     if (!sidebarFocused && showJson) {
       const current = components[selectedIdx];
-      const currentJson = current ? JSON.stringify({ [current.key]: current.entry }, null, 2) : '';
+      const currentJson = getReviewJsonPanelValue(current ?? null, showHiddenProps);
       const totalLines = currentJson.split('\n').length;
       const maxOffset = Math.max(0, totalLines - PANEL_HEIGHT);
 
@@ -1584,6 +1586,12 @@ export function GenerateReviewStep({
     }
     if (input === 'J') {
       setShowJson((prev) => !prev);
+      setJsonScrollOffset(0);
+      pendingGRef.current = false;
+      return;
+    }
+    if (input === 'H') {
+      setShowHiddenProps((prev) => !prev);
       setJsonScrollOffset(0);
       pendingGRef.current = false;
       return;
@@ -1742,6 +1750,7 @@ export function GenerateReviewStep({
 
   const selected = components[selectedIdx] ?? null;
   const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
+  const visibleJsonPanelValue = getReviewJsonPanelValue(selected, showHiddenProps);
 
   const isEmpty = (c: CdfReviewEntry): boolean =>
     Object.keys(c.entry.$properties).length === 0 && Object.keys(c.entry.$slots ?? {}).length === 0;
@@ -2164,7 +2173,7 @@ export function GenerateReviewStep({
                 ) : showJson ? (
                   <JsonPanel
                     label="GENERATED DEFINITION (read-only)"
-                    value={selectedJson}
+                    value={visibleJsonPanelValue}
                     scrollOffset={jsonScrollOffset}
                     width={panelWidth}
                     height={PANEL_HEIGHT}
@@ -2178,6 +2187,7 @@ export function GenerateReviewStep({
                         : selected.key
                     }
                     value={draftValue || selectedJson}
+                    showHiddenProps={showHiddenProps}
                     width={panelWidth}
                     height={PANEL_HEIGHT}
                     active={!sidebarFocused}
@@ -2216,7 +2226,7 @@ export function GenerateReviewStep({
                     initialFocusTarget={
                       pendingEditorFocus && pendingEditorFocus.componentName === selected.key
                         ? pendingEditorFocus.target
-                        : undefined
+                        : { kind: 'description' }
                     }
                   />
                 )}
@@ -2318,6 +2328,7 @@ export function GenerateReviewStep({
           {legendEntry('[s]', 'source', panelOpen === 'source')}
           {currentTokenSuggestions().length > 0 && legendEntry('[t]', 'token review')}
           {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
+          {legendEntry('[H]', showHiddenProps ? 'hide state/unattached' : 'show state/unattached', showHiddenProps)}
           {breakingChanges.length > 0 && legendEntry('[b]', 'see breaking changes', breakingPanel.isOpen)}
           {removedComponents.length > 0 &&
             legendEntry('[d]', removedBannerCollapsed ? 'show removed' : 'hide removed', !removedBannerCollapsed)}

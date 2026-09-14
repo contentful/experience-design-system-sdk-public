@@ -43,6 +43,7 @@ import { useLivePreview } from '../useLivePreview.js';
 import { useFinalizePreview } from '../useFinalizePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
+import { getReviewJsonPanelValue } from './review-json-panel.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -128,6 +129,7 @@ export function AtomicGenerateReviewStep({
   const [showQuit, setShowQuit] = useState(false);
   // FieldEditor is the default editor. JSON view is an opt-in read-only toggle.
   const [showJson, setShowJson] = useState(false);
+  const [showHiddenProps, setShowHiddenProps] = useState(false);
   const [draftValue, setDraftValue] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   // INTEG-4411: inline banner shown when the operator tries to finalize
@@ -731,12 +733,10 @@ export function AtomicGenerateReviewStep({
       return;
     }
 
-    // JSON view + panel focused: own j/k/arrows/PageUp/PageDown/Ctrl+u/d/gg/G
-    // for scrolling. Computed against the live `selectedJson` so the
-    // viewport math matches what JsonPanel renders.
+    // JSON view + panel focused: own j/k/arrows/PageUp/PageDown/Ctrl+u/d/gg/G for scrolling.
     if (!sidebarFocused && showJson) {
       const current = components[selectedIdx];
-      const currentJson = current ? JSON.stringify({ [current.key]: current.entry }, null, 2) : '';
+      const currentJson = getReviewJsonPanelValue(current ?? null, showHiddenProps);
       const totalLines = currentJson.split('\n').length;
       const maxOffset = Math.max(0, totalLines - PANEL_HEIGHT);
 
@@ -807,6 +807,12 @@ export function AtomicGenerateReviewStep({
       pendingGRef.current = false;
       return;
     }
+    if (input === 'H') {
+      setShowHiddenProps((prev) => !prev);
+      setJsonScrollOffset(0);
+      pendingGRef.current = false;
+      return;
+    }
 
     if (key.upArrow || input === 'k') {
       // Pilot-2026-06-23 bug: rapid k/j bursts could lose cursor position
@@ -858,6 +864,7 @@ export function AtomicGenerateReviewStep({
 
   const selected = components[selectedIdx] ?? null;
   const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
+  const visibleJsonPanelValue = getReviewJsonPanelValue(selected, showHiddenProps);
 
   // A component with zero classified $properties is a real defensibility issue —
   // it can't be pushed to Contentful (no fields). Surface it in the sidebar via
@@ -1091,7 +1098,7 @@ export function AtomicGenerateReviewStep({
                 ) : showJson ? (
                   <JsonPanel
                     label="GENERATED DEFINITION (read-only)"
-                    value={selectedJson}
+                    value={visibleJsonPanelValue}
                     scrollOffset={jsonScrollOffset}
                     width={panelWidth}
                     height={PANEL_HEIGHT}
@@ -1101,6 +1108,7 @@ export function AtomicGenerateReviewStep({
                   <FieldEditor
                     key={selected.key}
                     value={draftValue || selectedJson}
+                    showHiddenProps={showHiddenProps}
                     width={panelWidth}
                     height={PANEL_HEIGHT}
                     active={!sidebarFocused}
@@ -1130,6 +1138,7 @@ export function AtomicGenerateReviewStep({
                       setPanelScrollOffset(() => 0);
                     }}
                     onTextEntryActiveChange={setTextEntryActive}
+                    initialFocusTarget={{ kind: 'description' }}
                   />
                 )}
                 {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
@@ -1139,6 +1148,8 @@ export function AtomicGenerateReviewStep({
                     : sidebarFocused
                     ? '  [a] accept  [r] reject  [A] accept all  [i] prop rationale  [I] component rationale  [s] source  [J] ' +
                       (showJson ? 'hide JSON' : 'show JSON') +
+                      '  [H] ' +
+                      (showHiddenProps ? 'hide state/unattached' : 'show state/unattached') +
                       (currentTokenSuggestions().length > 0 ? '  [t] token review' : '') +
                       '  [^z] undo  [^y] redo  [^r] reload  [F] finalize  [e/Tab] focus panel' +
                       (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +

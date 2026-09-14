@@ -320,7 +320,7 @@ describe('raw token name paths', () => {
 });
 
 describe('raw prop token paths', () => {
-  it('replaces a prop\'s paths, keeping only the latest set in position order', async () => {
+  it("replaces a prop's paths, keeping only the latest set in position order", async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -335,7 +335,14 @@ describe('raw prop token paths', () => {
       ]);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
 
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', ['color.brand.primary', 'color.brand.secondary'], 'agent');
+      replaceRawPropTokenPaths(
+        db,
+        sessionId,
+        componentId,
+        'variant',
+        ['color.brand.primary', 'color.brand.secondary'],
+        'agent',
+      );
       replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', ['color.brand.tertiary'], 'agent');
 
       expect(
@@ -1819,10 +1826,7 @@ describe('CDF builder: $token.allowed', () => {
       );
 
       const loaded = loadCDFComponents(db, sessionId);
-      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual([
-        'color.blue.500',
-        'color.red.500',
-      ]);
+      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual(['color.blue.500', 'color.red.500']);
       expect(loaded[0]?.entry.$properties['variant']?.$values).toBeUndefined();
       db.close();
     });
@@ -2492,12 +2496,15 @@ describe('backfillUnclassifiedProps', () => {
       const refProp = props.find((p) => p.name === 'internalRef');
 
       expect(titleProp?.cdf_type).toBe('string');
-      expect(refProp?.cdf_type).toBe('excluded');
+      expect(refProp?.cdf_type).toBe('string');
 
       const loaded = loadCDFComponents(db, sessionId);
       expect(loaded).toHaveLength(1);
       expect(Object.keys(loaded[0]!.entry.$properties)).toContain('title');
-      expect(Object.keys(loaded[0]!.entry.$properties)).not.toContain('internalRef');
+      expect(loaded[0]!.entry.$properties.internalRef).toMatchObject({
+        $type: 'string',
+        $category: 'unattached',
+      });
       db.close();
     });
   });
@@ -2852,7 +2859,7 @@ describe('generation cache', () => {
     });
   });
 
-  it('computeMapTokensInputHash key changes when a source ref\'s content changes', async () => {
+  it("computeMapTokensInputHash key changes when a source ref's content changes", async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -2876,9 +2883,7 @@ describe('generation cache', () => {
       ]);
       storeDTCGTokens(db, sessionId, [], [{ path: 'colors.brand.primary', $type: 'color', $value: '#00f' }]);
 
-      const refsBefore = [
-        { component: 'Card', sourcePath: 'src/Card.tsx', content: '// no restriction here' },
-      ];
+      const refsBefore = [{ component: 'Card', sourcePath: 'src/Card.tsx', content: '// no restriction here' }];
       const refsAfter = [
         { component: 'Card', sourcePath: 'src/Card.tsx', content: '// accepts only colors.brand.primary' },
       ];
@@ -3019,8 +3024,14 @@ describe('generation cache', () => {
       const dir = dirname(dbPath);
       const componentPath = join(dir, 'Box.tsx');
       const stylesPath = join(dir, 'Box.styles.ts');
-      await writeFile(componentPath, `import { StyledBox } from './Box.styles';\nexport const Box = ({ children, ...rest }: Props) => <StyledBox {...rest}>{children}</StyledBox>;\n`);
-      await writeFile(stylesPath, `${exportedFiller('before')}\nexport const StyledBox = styled.div\`padding: \${(p) => p.padding};\`;\n${exportedFiller('after')}\n`);
+      await writeFile(
+        componentPath,
+        `import { StyledBox } from './Box.styles';\nexport const Box = ({ children, ...rest }: Props) => <StyledBox {...rest}>{children}</StyledBox>;\n`,
+      );
+      await writeFile(
+        stylesPath,
+        `${exportedFiller('before')}\nexport const StyledBox = styled.div\`padding: \${(p) => p.padding};\`;\n${exportedFiller('after')}\n`,
+      );
 
       const ref = await loadComponentSourceRef('Box', componentPath, ['padding', 'children']);
       expect(ref.siblingFiles).toHaveLength(1);
@@ -3038,7 +3049,8 @@ describe('generation cache', () => {
       const stylesPath = join(dir, 'Box.styles.ts');
       await writeFile(componentPath, `import { StyledBox } from './Box.styles';\n`);
       // Two uses far apart, each with a wide window: the second cannot fit in 1,200 chars.
-      const bigLine = (name: string) => `export const ${name}Style = css\`\${(p) => p.${name}}; /* ${'x'.repeat(900)} */\`;`;
+      const bigLine = (name: string) =>
+        `export const ${name}Style = css\`\${(p) => p.${name}}; /* ${'x'.repeat(900)} */\`;`;
       await writeFile(
         stylesPath,
         `${exportedFiller('a')}\n${bigLine('padding')}\n${exportedFiller('b')}\n${bigLine('margin')}\n${exportedFiller('c')}\n`,
@@ -3155,7 +3167,6 @@ describe('generation cache', () => {
       db.close();
     });
   });
-
 });
 
 describe('renameEmptySlots', () => {

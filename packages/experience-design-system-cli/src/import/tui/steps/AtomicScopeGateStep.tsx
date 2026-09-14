@@ -185,7 +185,12 @@ export function AtomicScopeGateStep({
   const above = scrollOffset;
   const below = Math.max(0, total - visibleEnd);
 
-  const allRejected = aiFilterStatus === 'complete' && total > 0 && flatList.every((c) => !isIncluded(c));
+  const allRejected =
+    aiFilterStatus === 'complete' &&
+    total > 0 &&
+    userExcluded.size === 0 &&
+    userUnExcluded.size === 0 &&
+    flatList.every((c) => !isIncluded(c));
 
   // Atomic has no groups; the counter strip shows binary included/excluded.
   const counters = {
