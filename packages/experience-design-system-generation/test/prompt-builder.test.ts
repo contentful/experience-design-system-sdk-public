@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildPrompt } from '../src/prompt-builder.js';
+import { buildPrompt, type GeneratedCdf } from '../src/prompt-builder.js';
 
 const INLINE_COMPONENTS = JSON.stringify([
   {
@@ -217,7 +217,7 @@ describe('buildPrompt', () => {
   });
 
   describe('map-tokens skill', () => {
-    const GENERATED_CDF = {
+    const GENERATED_CDF: GeneratedCdf = {
       Card: {
         $type: 'component',
         $properties: {
@@ -297,7 +297,7 @@ describe('buildPrompt', () => {
     });
 
     it('kind-scopes the candidate list per property, excluding tokens of other kinds', async () => {
-      const cdf = {
+      const cdf: GeneratedCdf = {
         Card: {
           $type: 'component',
           $properties: {
@@ -323,7 +323,7 @@ describe('buildPrompt', () => {
     });
 
     it('falls back to the full, unscoped tree for a prop with no $token.kind', async () => {
-      const cdf = {
+      const cdf: GeneratedCdf = {
         Card: {
           $type: 'component',
           $properties: {
@@ -348,7 +348,7 @@ describe('buildPrompt', () => {
     });
 
     it('renders a separate scoped section per distinct $token.kind, plus the full-tree fallback when mixed', async () => {
-      const cdf = {
+      const cdf: GeneratedCdf = {
         Card: {
           $type: 'component',
           $properties: {
@@ -379,7 +379,7 @@ describe('buildPrompt', () => {
     });
 
     it('produces an identical prompt across repeated calls with the same input (deterministic ordering)', async () => {
-      const cdf = {
+      const cdf: GeneratedCdf = {
         Widget: {
           $type: 'component',
           $properties: {
