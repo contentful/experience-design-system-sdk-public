@@ -1373,18 +1373,11 @@ const MAX_COMPONENT_SOURCE_CHARS = 8_000;
 // built for a different command (analyze select-agent).
 const MAX_SIBLING_FILES = 5;
 const MAX_SIBLING_SNIPPET_CHARS = 1_200;
-// A sibling that *declares* the type of a prop being classified is not the
-// same kind of evidence as a styles module, and 1,200 characters is the wrong
-// budget for it. A `*.types.ts` is small, and every line of it is the answer:
-// Spectrum's Badge.types.ts is 3,071 bytes of nothing but the member lists for
-// `size`, `variant` and `fixed`. Under the styles-module budget the excerpt
-// ends mid-array (`'cy` — the file is cut inside `'cyan'`), which is exactly
-// the state that makes a model invent the rest.
+// A type-declaring sibling (e.g. `*.types.ts`) needs a bigger budget than a
+// styles module — the styles-module budget can cut mid-array.
 const MAX_TYPE_DECLARING_SIBLING_CHARS = 4_000;
-// …but only for the first few such files, in discovery order (the component's
-// own direct imports before anything reached transitively). A prop's type is
-// declared in one or two files; without this cap a component whose five
-// siblings all declare something would triple the inlined-source budget.
+// Caps how many siblings get the enlarged budget, since a type is usually
+// declared in only one or two files.
 const MAX_ENLARGED_SIBLINGS = 2;
 // A token-resolution map sometimes lives behind a component that itself
 // re-exports another component's prop (A imports B, B imports B's own
@@ -1399,12 +1392,8 @@ const MAX_SIBLING_DEPTH = 2;
 const MAX_SIBLING_CANDIDATES_EXPLORED = 25;
 const RELATIVE_IMPORT_PATTERN = /from\s+['"](\.[^'"]+)['"]/g;
 const SIBLING_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
-// TypeScript under `node16`/`nodenext`/`bundler` resolution requires the
-// *output* extension in the specifier: `import { X } from './Badge.types.js'`
-// for a file physically named `Badge.types.ts`. Appending an extension to
-// that specifier yields `Badge.types.js.ts`, which never exists, so every
-// relative import in such a project resolves to nothing. Map the output
-// extension back to the source extensions it could have been emitted from.
+// TS node16/nodenext/bundler resolution requires the *emitted* extension in
+// the specifier (`./Badge.types.js` for a file named `Badge.types.ts`).
 const TS_ESM_EXTENSION_REWRITES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['.js', ['.ts', '.tsx', '.js', '.jsx']],
   ['.jsx', ['.tsx', '.jsx']],
@@ -1412,8 +1401,7 @@ const TS_ESM_EXTENSION_REWRITES: ReadonlyArray<readonly [string, readonly string
   ['.cjs', ['.cts', '.cjs']],
 ];
 
-// Candidate source paths for a specifier that already carries an emitted
-// extension. Returns [] for a specifier with no such extension.
+// Candidate source paths for a specifier with an emitted extension, else [].
 function rewrittenSourcePaths(basePath: string): string[] {
   for (const [emitted, sources] of TS_ESM_EXTENSION_REWRITES) {
     if (!basePath.endsWith(emitted)) continue;
@@ -1423,21 +1411,8 @@ function rewrittenSourcePaths(basePath: string): string[] {
   return [];
 }
 
-// A prop whose declared type is a named alias (`variant: BadgeVariantS1`)
-// carries none of its own members: the literals a classifier must emit live in
-// that alias's declaration, which mentions the *type* name and never the prop
-// name. Windowing the excerpt on prop names alone therefore cuts exactly the
-// lines that decide the answer — measured on Spectrum's Swatch.ts, the three
-// `export type Swatch* = 'light' | ...` declarations were dropped from an
-// 8,000-char budget while the `public border: SwatchBorder;` line that needs
-// them was kept. So the names in a prop's type are search names too — but
-// only those some file in hand declares (see `declaresAnyType`). A name
-// nothing in hand declares (`React`, `MouseEventHandler`, `string`,
-// `undefined`) has no declaration to find, and a window on it would only
-// spend the budget on import lines and signatures. That one test replaces
-// any list of names to skip, and it is why case does not matter here:
-// `typeof buttonVariants` names a declared `const` as surely as
-// `BadgeVariantS1` names a declared `type`.
+// A prop typed as a named alias (`variant: BadgeVariantS1`) carries none of
+// its own members — the type name is a search name too, so we can window on it.
 const IDENTIFIER_PATTERN = /[A-Za-z_$][A-Za-z0-9_$]*/g;
 
 function identifiersIn(propTypes: string[]): string[] {
@@ -1603,9 +1578,8 @@ export async function loadComponentSourceRef(
   const usesNotShown = new Set<string>();
   try {
     const rawText = await readFile(sourcePath, 'utf8');
-    // Siblings first: which names from the prop types are worth windowing on
-    // depends on what the files in hand declare, and the component's own
-    // excerpt is keyed on that same set.
+    // Siblings first: the component's own excerpt is keyed on the same
+    // declared-type-name set.
     let siblingUsesNotShown: string[];
     let declaredTypeNames: string[];
     ({
