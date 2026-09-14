@@ -38,6 +38,7 @@
     "lint:fix": "nx lint:fix experience-design-system-cli"
   },
   "dependencies": {
+    "@contentful/experience-design-system-cli-v2": "workspace:*",
     "@contentful/experience-design-system-types": "workspace:*",
     "@segment/analytics-node": "^3.0.0",
     "@vue/compiler-sfc": "^3.5.31",

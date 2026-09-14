@@ -60,6 +60,19 @@ export async function runBuild(opts: {
   });
 }
 
+function registerImportV2Command(program: Command): void {
+  program
+    .command('importv2')
+    .description('Launch the v2 import TUI (experience-design-system-cli-v2)')
+    .action(async () => {
+      const { render } = await import('ink');
+      const { createElement } = await import('react');
+      const { App } = await import('@contentful/experience-design-system-cli-v2/app');
+      const { waitUntilExit } = render(createElement(App));
+      await waitUntilExit();
+    });
+}
+
 function registerBuildCommand(program: Command): void {
   program
     .command('build')
@@ -88,6 +101,7 @@ export function createProgram(): Command {
   registerApplyCommand(program);
   registerSessionCommand(program);
   registerImportCommand(program);
+  registerImportV2Command(program);
   registerSetupCommand(program);
   registerRunsCommand(program);
   registerBuildCommand(program);
