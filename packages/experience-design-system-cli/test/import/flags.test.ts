@@ -60,7 +60,7 @@ function baseEnv(): NodeJS.ProcessEnv {
 // ── Baseline args that skip all pipeline steps safely ─────────────────────
 // Anything that just needs to verify a flag is accepted can append to this.
 function skipAll(): string[] {
-  return ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', projectDir];
+  return ['import', '--skip-analyze', '--skip-generate', '--skip-map-tokens', '--skip-apply', '--project', projectDir];
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -86,6 +86,7 @@ describe('import — help output lists all flags', () => {
       '--skip-generate',
       '--print',
       '--skip-apply',
+      '--skip-map-tokens',
       '--no-cache',
       '--yes',
       '--verbose',
@@ -173,6 +174,18 @@ describe('import — credential flags', () => {
 });
 
 describe('import — skip flags', () => {
+  it('--skip-map-tokens is accepted in headless mode', async () => {
+    const { stderr, code } = await run([...skipAll(), '--skip-map-tokens'], baseEnv());
+    expect(stderr).not.toContain("unknown option '--skip-map-tokens'");
+    expect(code).toBe(0);
+  });
+
+  it('does not retain the --no-map-tokens alias', async () => {
+    const { stderr, code } = await run([...skipAll(), '--no-map-tokens'], baseEnv());
+    expect(stderr).toContain("unknown option '--no-map-tokens'");
+    expect(code).not.toBe(0);
+  });
+
   it('--skip-apply removes credential requirement', async () => {
     const { stderr } = await run(skipAll(), baseEnv());
     expect(stderr).not.toContain('--space-id');
@@ -336,7 +349,24 @@ describe('import — push-related flags', () => {
   });
 
   it('--no-cache is accepted and overrides --skip-analyze (forces re-run)', async () => {
-    const { stderr } = await run([...skipAll(), '--no-cache'], baseEnv(), 30_000);
+    // Isolated project/DB: --no-cache forces a real analyze extract run, which
+    // would otherwise leave a session in the shared DB for later tests to pick up.
+    const freshProjectDir = await createTempDir('no-cache-project-');
+    const freshDbPath = join(await createTempDir('no-cache-db-'), 'pipeline.db');
+    const { stderr } = await run(
+      [
+        'import',
+        '--skip-analyze',
+        '--skip-generate',
+        '--skip-map-tokens',
+        '--skip-apply',
+        '--project',
+        freshProjectDir,
+        '--no-cache',
+      ],
+      { EDS_PIPELINE_DB_PATH: freshDbPath, NODE_NO_WARNINGS: '1' },
+      30_000,
+    );
     expect(stderr).not.toContain("unknown option '--no-cache'");
     // --no-cache overrides --skip-analyze, so analyze runs (may fail on minimal fixture)
     // The important assertion is that the flag is recognized and acted upon

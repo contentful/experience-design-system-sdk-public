@@ -14,6 +14,7 @@ vi.mock('../../../../src/session/db.js', () => ({
     close: vi.fn(),
   }),
   loadCDFComponents: vi.fn().mockReturnValue([{ key: 'Button', entry: SAMPLE_ENTRY }]),
+  loadDTCGTokens: vi.fn().mockReturnValue({ groups: [], tokens: [] }),
   storeCDFComponents: vi.fn(),
   loadSlotCycles: vi.fn().mockReturnValue([]),
   storeSlotCycles: vi.fn(),
