@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { generateSessionId } from './session-id.js';
-import { excerptAroundNames } from './source-excerpt.js';
+import { escapeForRegExp, excerptAroundNames } from './source-excerpt.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types.js';
 import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
 import type { ToolCall, TokenToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
@@ -1430,39 +1430,26 @@ function rewrittenSourcePaths(basePath: string): string[] {
 // lines that decide the answer — measured on Spectrum's Swatch.ts, the three
 // `export type Swatch* = 'light' | ...` declarations were dropped from an
 // 8,000-char budget while the `public border: SwatchBorder;` line that needs
-// them was kept. Search on the type names too.
-const TYPE_NAME_PATTERN = /\b[A-Z][A-Za-z0-9_$]*\b/g;
-// Names that appear in prop types but never usefully locate a declaration:
-// TypeScript/JS built-ins and framework namespaces whose definition is not in
-// the repository anyway.
-const TYPE_NAME_STOPLIST = new Set([
-  'Array', 'ReadonlyArray', 'Record', 'Partial', 'Required', 'Readonly', 'Pick', 'Omit', 'Exclude',
-  'Extract', 'NonNullable', 'Parameters', 'ReturnType', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Promise',
-  'Date', 'RegExp', 'Function', 'Object', 'String', 'Number', 'Boolean', 'Symbol', 'BigInt', 'Error',
-  'React', 'ReactNode', 'ReactElement', 'JSX', 'Element', 'CSSProperties', 'HTMLElement', 'SVGElement',
-  'Node', 'Event', 'MouseEvent', 'KeyboardEvent', 'FocusEvent', 'ChangeEvent', 'FormEvent',
-]);
+// them was kept. So the names in a prop's type are search names too — but
+// only those some file in hand declares (see `declaresAnyType`). A name
+// nothing in hand declares (`React`, `MouseEventHandler`, `string`,
+// `undefined`) has no declaration to find, and a window on it would only
+// spend the budget on import lines and signatures. That one test replaces
+// any list of names to skip, and it is why case does not matter here:
+// `typeof buttonVariants` names a declared `const` as surely as
+// `BadgeVariantS1` names a declared `type`.
+const IDENTIFIER_PATTERN = /[A-Za-z_$][A-Za-z0-9_$]*/g;
 
-// The named types a prop's declared type refers to. Deliberately
-// initial-uppercase only: that covers both `BadgeVariantS1` and
-// `BADGE_VALID_SIZES` while excluding the primitive keywords (`string`,
-// `undefined`, `boolean`) that would otherwise window on every line.
-function propTypeSearchNames(propTypes: string[]): string[] {
+function identifiersIn(propTypes: string[]): string[] {
   const names = new Set<string>();
   for (const propType of propTypes) {
-    for (const match of propType.matchAll(TYPE_NAME_PATTERN)) {
-      if (!TYPE_NAME_STOPLIST.has(match[0])) names.add(match[0]);
-    }
+    for (const match of propType.matchAll(IDENTIFIER_PATTERN)) names.add(match[0]);
   }
   return [...names];
 }
 
-function escapeForRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// Whether this file is where one of these named types is declared, as opposed
-// to a file that merely mentions it in a signature.
+// Whether this file is where one of these names is declared, as opposed to a
+// file that merely mentions it in a signature.
 function declaresAnyType(text: string, typeNames: string[]): boolean {
   return typeNames.some((name) =>
     new RegExp(`\\b(?:type|interface|enum|const|class)\\s+${escapeForRegExp(name)}\\b`).test(text),
@@ -1528,12 +1515,14 @@ async function loadSiblingFiles(
   sourceText: string,
   sourcePath: string,
   propNames: string[],
-  typeNames: string[] = [],
+  candidateTypeNames: string[] = [],
 ): Promise<{
   siblings: Array<{ path: string; content: string }>;
   truncatedCount: number;
   /** Prop names with at least one use that fell outside a sibling's excerpt budget. */
   usesNotShown: string[];
+  /** The candidate type names that the component's own source or a discovered sibling declares. */
+  declaredTypeNames: string[];
 }> {
   const visited = new Set<string>([resolve(sourcePath)]);
   const discovered: Array<{ path: string; content: string }> = [];
@@ -1567,14 +1556,19 @@ async function loadSiblingFiles(
     frontier = nextFrontier;
   }
 
+  // Only the type names some file in hand declares are worth windowing on;
+  // the rest have no declaration to find (see IDENTIFIER_PATTERN above).
+  const inHand = [sourceText, ...discovered.map((d) => d.content)];
+  const declaredTypeNames = candidateTypeNames.filter((name) => inHand.some((text) => declaresAnyType(text, [name])));
+
   // Excerpts are windowed around the prop names rather than cut from the
   // head: a styles module's first lines are imports, and the line that decides
   // a prop's classification is wherever that prop is interpolated.
   const usesNotShown = new Set<string>();
-  const searchNames = [...new Set([...propNames, ...typeNames])];
+  const searchNames = [...new Set([...propNames, ...declaredTypeNames])];
   let enlarged = 0;
   const siblings = discovered.slice(0, MAX_SIBLING_FILES).map((d) => {
-    const enlarge = enlarged < MAX_ENLARGED_SIBLINGS && declaresAnyType(d.content, typeNames);
+    const enlarge = enlarged < MAX_ENLARGED_SIBLINGS && declaresAnyType(d.content, declaredTypeNames);
     if (enlarge) enlarged++;
     const budget = enlarge ? MAX_TYPE_DECLARING_SIBLING_CHARS : MAX_SIBLING_SNIPPET_CHARS;
     const excerpt = excerptAroundNames(d.content, searchNames, budget);
@@ -1587,6 +1581,7 @@ async function loadSiblingFiles(
     siblings,
     truncatedCount,
     usesNotShown: propNames.filter((name) => usesNotShown.has(name)),
+    declaredTypeNames,
   };
 }
 
@@ -1608,23 +1603,26 @@ export async function loadComponentSourceRef(
   const usesNotShown = new Set<string>();
   try {
     const rawText = await readFile(sourcePath, 'utf8');
-    // Prop names locate the *use* of a prop; the named types those props are
-    // declared with locate the *members* the classifier has to emit. Both are
-    // needed, and a name appearing in neither role costs nothing.
-    const typeNames = propTypeSearchNames(propTypes);
-    const mainExcerpt = excerptAroundNames(
-      rawText,
-      [...new Set([...propNames, ...typeNames])],
-      MAX_COMPONENT_SOURCE_CHARS,
-    );
-    content = mainExcerpt.content;
-    for (const name of mainExcerpt.usesNotShown) usesNotShown.add(name);
+    // Siblings first: which names from the prop types are worth windowing on
+    // depends on what the files in hand declare, and the component's own
+    // excerpt is keyed on that same set.
     let siblingUsesNotShown: string[];
+    let declaredTypeNames: string[];
     ({
       siblings: siblingFiles,
       truncatedCount: truncatedSiblingCount,
       usesNotShown: siblingUsesNotShown,
-    } = await loadSiblingFiles(rawText, sourcePath, propNames, typeNames));
+      declaredTypeNames,
+    } = await loadSiblingFiles(rawText, sourcePath, propNames, identifiersIn(propTypes)));
+    // Prop names locate the *use* of a prop; the declared type names locate
+    // the *members* the classifier has to emit. Both are needed.
+    const mainExcerpt = excerptAroundNames(
+      rawText,
+      [...new Set([...propNames, ...declaredTypeNames])],
+      MAX_COMPONENT_SOURCE_CHARS,
+    );
+    content = mainExcerpt.content;
+    for (const name of mainExcerpt.usesNotShown) usesNotShown.add(name);
     for (const name of siblingUsesNotShown) usesNotShown.add(name);
   } catch {
     // File no longer exists or unreadable — leave content null.
