@@ -376,9 +376,7 @@ export function parseMapTokenPropToolCallLines(stdout: string): ParsedMapTokenPr
       continue;
     }
     if (!isStringArray(rec.token_allowed) || rec.token_allowed.length === 0) {
-      warnings.push(
-        `map_token_prop '${rec.component}.${String(rec.prop)}': missing or empty token_allowed — skipped`,
-      );
+      warnings.push(`map_token_prop '${rec.component}.${String(rec.prop)}': missing or empty token_allowed — skipped`);
       continue;
     }
 

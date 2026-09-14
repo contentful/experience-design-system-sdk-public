@@ -120,7 +120,6 @@ async function readFileInline(path: string | undefined): Promise<string | undefi
   return parts.filter(Boolean).join('\n\n');
 }
 
-
 function printFallbackInstructions(options: { agent: string; skill: Skill; sessionId: string }): void {
   const binary = resolveBinary(options.agent as AgentName);
   const skillPath = resolveSkillPath(options.skill);

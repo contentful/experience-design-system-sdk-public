@@ -607,8 +607,7 @@ describe('parseMapTokenPropToolCallLines', () => {
   });
 
   it('warns and skips when token_allowed is not a string array', () => {
-    const line =
-      '{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_allowed":"colors.brand"}';
+    const line = '{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_allowed":"colors.brand"}';
     const { calls, warnings } = parseMapTokenPropToolCallLines(line);
     expect(calls).toHaveLength(0);
     expect(warnings[0]).toMatch(/missing or empty token_allowed/);

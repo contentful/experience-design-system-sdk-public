@@ -393,7 +393,13 @@ describe('buildPrompt', () => {
         colors: { brand: { primary: { $type: 'color', $value: '#0066ff' } } },
       };
       const buildOnce = () =>
-        buildPrompt({ skill: 'map-tokens', mode: 'autonomous', generatedCdf: cdf, tokenTree: tree, outDir: '/fake/out' });
+        buildPrompt({
+          skill: 'map-tokens',
+          mode: 'autonomous',
+          generatedCdf: cdf,
+          tokenTree: tree,
+          outDir: '/fake/out',
+        });
       const [first, second] = await Promise.all([buildOnce(), buildOnce()]);
       expect(first).toEqual(second);
     });

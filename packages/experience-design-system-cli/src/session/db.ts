@@ -1663,9 +1663,7 @@ export function storeCDFComponents(
   // here is a person's decision and is recorded as such.
   const writeTokenPaths = (componentId: string, propName: string, paths: string[]) => {
     deleteTokenPaths.run(sessionId, componentId, propName);
-    paths.forEach((path, position) =>
-      insertTokenPath.run(sessionId, componentId, propName, 'review', position, path),
-    );
+    paths.forEach((path, position) => insertTokenPath.run(sessionId, componentId, propName, 'review', position, path));
   };
   const deleteSlots = db.prepare(`DELETE FROM raw_slots WHERE session_id = ? AND component_id = ?`);
   const deleteSlotAllowedComponents = db.prepare(
@@ -2847,9 +2845,11 @@ export function copyMapTokensFromCache(db: DatabaseSync, sourceSessionId: string
       const propKey = `${targetComponentId}::${row.prop_name}`;
       if (!clearedProps.has(propKey)) {
         clearedProps.add(propKey);
-        db.prepare(
-          `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
-        ).run(targetSessionId, targetComponentId, row.prop_name);
+        db.prepare(`DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ?`).run(
+          targetSessionId,
+          targetComponentId,
+          row.prop_name,
+        );
       }
       insertPath.run(targetSessionId, targetComponentId, row.prop_name, row.source, row.position, row.path);
       copiedProps.add(propKey);

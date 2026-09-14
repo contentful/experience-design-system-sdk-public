@@ -78,57 +78,6 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
-function rebuildRawPropsWithoutUnattached(db: ReturnType<typeof openPipelineDb>): void {
-  db.exec('PRAGMA foreign_keys = OFF');
-  try {
-    db.exec('BEGIN');
-    try {
-      db.exec(`
-      CREATE TABLE raw_props_legacy (
-        session_id        TEXT NOT NULL,
-        component_id      TEXT NOT NULL,
-        name              TEXT NOT NULL,
-        type              TEXT NOT NULL,
-        required          INTEGER NOT NULL CHECK (required IN (0, 1)),
-        category          TEXT CHECK (category IN ('content', 'design', 'state')),
-        default_value     TEXT,
-        description       TEXT,
-        token_reference   TEXT,
-        position          INTEGER NOT NULL,
-        cdf_type          TEXT,
-        cdf_category      TEXT CHECK (cdf_category IN ('content', 'design', 'state')),
-        cdf_token_kind    TEXT,
-        rationale         TEXT,
-        source_start_line INTEGER,
-        source_end_line   INTEGER,
-        PRIMARY KEY (session_id, component_id, name),
-        FOREIGN KEY (session_id, component_id) REFERENCES raw_components(session_id, component_id) ON DELETE CASCADE
-      );
-
-      INSERT INTO raw_props_legacy
-        (session_id, component_id, name, type, required, category, default_value,
-         description, token_reference, position, cdf_type, cdf_category, cdf_token_kind,
-         rationale, source_start_line, source_end_line)
-      SELECT
-        session_id, component_id, name, type, required, category, default_value,
-        description, token_reference, position, cdf_type, cdf_category, cdf_token_kind,
-        rationale, source_start_line, source_end_line
-      FROM raw_props;
-
-      DROP TABLE raw_props;
-      ALTER TABLE raw_props_legacy RENAME TO raw_props;
-      CREATE INDEX IF NOT EXISTS idx_raw_props_session ON raw_props(session_id, component_id);
-    `);
-      db.exec('COMMIT');
-    } catch (e) {
-      db.exec('ROLLBACK');
-      throw e;
-    }
-  } finally {
-    db.exec('PRAGMA foreign_keys = ON');
-  }
-}
-
 describe('openPipelineDb', () => {
   it('creates pipeline.db at the specified path and schema tables exist', async () => {
     await withTempDb((dbPath) => {
@@ -329,7 +278,6 @@ describe('openPipelineDb', () => {
       db2.close();
     });
   });
-
 });
 
 describe('raw token name paths', () => {
@@ -372,7 +320,7 @@ describe('raw token name paths', () => {
 });
 
 describe('raw prop token paths', () => {
-  it('replaces a prop\'s paths, keeping only the latest set in position order', async () => {
+  it("replaces a prop's paths, keeping only the latest set in position order", async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -387,7 +335,14 @@ describe('raw prop token paths', () => {
       ]);
       const componentId = loadRawComponents(db, sessionId)[0].component_id;
 
-      replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', ['color.brand.primary', 'color.brand.secondary'], 'agent');
+      replaceRawPropTokenPaths(
+        db,
+        sessionId,
+        componentId,
+        'variant',
+        ['color.brand.primary', 'color.brand.secondary'],
+        'agent',
+      );
       replaceRawPropTokenPaths(db, sessionId, componentId, 'variant', ['color.brand.tertiary'], 'agent');
 
       expect(
@@ -1806,10 +1761,7 @@ describe('CDF builder: $token.allowed', () => {
       );
 
       const loaded = loadCDFComponents(db, sessionId);
-      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual([
-        'color.blue.500',
-        'color.red.500',
-      ]);
+      expect(loaded[0]?.entry.$properties['variant']?.['$token.allowed']).toEqual(['color.blue.500', 'color.red.500']);
       expect(loaded[0]?.entry.$properties['variant']?.$values).toBeUndefined();
       db.close();
     });
@@ -2842,7 +2794,7 @@ describe('generation cache', () => {
     });
   });
 
-  it('computeMapTokensInputHash key changes when a source ref\'s content changes', async () => {
+  it("computeMapTokensInputHash key changes when a source ref's content changes", async () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const { sessionId } = getOrCreateSession(db, 'new', undefined, { command: 'analyze extract' });
@@ -2866,9 +2818,7 @@ describe('generation cache', () => {
       ]);
       storeDTCGTokens(db, sessionId, [], [{ path: 'colors.brand.primary', $type: 'color', $value: '#00f' }]);
 
-      const refsBefore = [
-        { component: 'Card', sourcePath: 'src/Card.tsx', content: '// no restriction here' },
-      ];
+      const refsBefore = [{ component: 'Card', sourcePath: 'src/Card.tsx', content: '// no restriction here' }];
       const refsAfter = [
         { component: 'Card', sourcePath: 'src/Card.tsx', content: '// accepts only colors.brand.primary' },
       ];
@@ -3009,8 +2959,14 @@ describe('generation cache', () => {
       const dir = dirname(dbPath);
       const componentPath = join(dir, 'Box.tsx');
       const stylesPath = join(dir, 'Box.styles.ts');
-      await writeFile(componentPath, `import { StyledBox } from './Box.styles';\nexport const Box = ({ children, ...rest }: Props) => <StyledBox {...rest}>{children}</StyledBox>;\n`);
-      await writeFile(stylesPath, `${exportedFiller('before')}\nexport const StyledBox = styled.div\`padding: \${(p) => p.padding};\`;\n${exportedFiller('after')}\n`);
+      await writeFile(
+        componentPath,
+        `import { StyledBox } from './Box.styles';\nexport const Box = ({ children, ...rest }: Props) => <StyledBox {...rest}>{children}</StyledBox>;\n`,
+      );
+      await writeFile(
+        stylesPath,
+        `${exportedFiller('before')}\nexport const StyledBox = styled.div\`padding: \${(p) => p.padding};\`;\n${exportedFiller('after')}\n`,
+      );
 
       const ref = await loadComponentSourceRef('Box', componentPath, ['padding', 'children']);
       expect(ref.siblingFiles).toHaveLength(1);
@@ -3028,7 +2984,8 @@ describe('generation cache', () => {
       const stylesPath = join(dir, 'Box.styles.ts');
       await writeFile(componentPath, `import { StyledBox } from './Box.styles';\n`);
       // Two uses far apart, each with a wide window: the second cannot fit in 1,200 chars.
-      const bigLine = (name: string) => `export const ${name}Style = css\`\${(p) => p.${name}}; /* ${'x'.repeat(900)} */\`;`;
+      const bigLine = (name: string) =>
+        `export const ${name}Style = css\`\${(p) => p.${name}}; /* ${'x'.repeat(900)} */\`;`;
       await writeFile(
         stylesPath,
         `${exportedFiller('a')}\n${bigLine('padding')}\n${exportedFiller('b')}\n${bigLine('margin')}\n${exportedFiller('c')}\n`,
@@ -3145,7 +3102,6 @@ describe('generation cache', () => {
       db.close();
     });
   });
-
 });
 
 describe('renameEmptySlots', () => {

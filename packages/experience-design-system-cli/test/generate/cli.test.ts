@@ -271,7 +271,6 @@ describe('generate components — --dry-run', () => {
     expect(stdout).toContain('Component source references');
     expect(stdout).toContain('export const avatarColorMap = { primary: "blue500" };');
   });
-
 });
 
 describe('generate components — agent binary not found', () => {
