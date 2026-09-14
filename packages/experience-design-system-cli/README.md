@@ -63,7 +63,7 @@ When more than one source speaks to the same relationship, the higher-precedence
 
 - `--composition-agent-mode <parser|edges>` — `parser` (default; the sandboxed-parser design above) or `edges` (agent lists relationships directly; less robust).
 - `--composition-refresh` — ignore the cache and re-resolve from scratch, forcing the agent to run.
-- `--agent <name>` — which coding agent authors the parser (`claude`, `codex`, `opencode`, `cursor`).
+- `--agent <name>` — which coding agent authors the parser (`claude`, `codex`, `opencode`, `cursor`, `copilot`).
 - `--prompt composition=<file-or-text>` — override the composition stage's prompt.
 
 Because the agent path spawns a coding agent, it adds latency and cost and is best-effort (parser quality can vary run to run). For reproducible results, prefer `--composition-map`.
@@ -86,6 +86,7 @@ If the resolved graph contains a circular slot dependency (A slots B, B slots A)
 | **OpenAI Codex** (`codex`) | `npm install -g @openai/codex` | Set `OPENAI_API_KEY` |
 | **OpenCode** (`opencode`) | `npm install -g opencode-ai` | Configure via `opencode auth` (supports multiple providers) |
 | **Cursor** (`cursor`) | Install [Cursor](https://cursor.com) | Sign in to Cursor; exposes `cursor-agent` binary |
+| **GitHub Copilot** (`copilot`) | `npm install -g @github/copilot` | Run `copilot` once to complete GitHub OAuth login |
 
 The CLI invokes the agent non-interactively in a subprocess. If the binary is not found in `$PATH`, the command exits 1 and prints manual fallback instructions.
 
@@ -291,7 +292,7 @@ experiences analyze extract --project <path> [--dir <src-dir>] [composition flag
 | `--composition-agent` | — | Opt into agentic resolution when deterministic sources find no groups (implies `--composite`) |
 | `--composition-refresh` | — | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`) |
 | `--composition-agent-mode <mode>` | `parser` | `parser` (agent writes a sandboxed parser — deterministic) or `edges` (agent lists edges directly) |
-| `--agent <name>` | saved by setup | Coding agent for composition resolution: `claude`, `codex`, `opencode`, `cursor` |
+| `--agent <name>` | saved by setup | Coding agent for composition resolution: `claude`, `codex`, `opencode`, `cursor`, `copilot` |
 | `--prompt <stage=value>` | — | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
 
 Scans `.tsx`, `.ts`, `.jsx`, `.js`, `.vue`, and `.astro` files. Ignores `node_modules`, `dist`, `build`, `.next`, `.nuxt`, `coverage`, `storybook-static`, `out`, `demo(s)`, and `example(s)` directories. Also ignores `*.stories.*`, `*.story.*`, `*.spec.*`, and `*.test.*` files.
@@ -339,7 +340,7 @@ experiences analyze select-agent [--agent <name>] [--session <id>]
 
 | Option | Default | Description |
 |---|---|---|
-| `--agent <name>` | saved by `experiences setup` | Agent: `claude`, `codex`, `opencode`, or `cursor` |
+| `--agent <name>` | saved by `experiences setup` | Agent: `claude`, `codex`, `opencode`, `cursor`, or `copilot` |
 | `--session <id>` | most recent completed `analyze extract` | Session ID from `analyze extract` |
 | `--project-root <path>` | `cwd` | Project root for resolving component source files |
 | `--model <name>` | agent default | Model to use |
@@ -368,7 +369,7 @@ experiences generate components [--agent <name>] [--session <id>]
 
 | Option | Default | Description |
 |---|---|---|
-| `--agent <name>` | saved by setup | Agent: `claude`, `codex`, `opencode`, or `cursor` |
+| `--agent <name>` | saved by setup | Agent: `claude`, `codex`, `opencode`, `cursor`, or `copilot` |
 | `--session <id>` | most recent completed `analyze extract` | Session ID from `analyze extract` |
 | `--tokens <path>` | — | Path to `tokens.json` for token-linked prop resolution |
 | `--token-map <path>` | — | Path to `token-name-map.json` sidecar |

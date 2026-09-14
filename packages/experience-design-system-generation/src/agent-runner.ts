@@ -399,6 +399,7 @@ const AGENT_BINARIES: Record<AgentName, string> = {
   codex: 'codex',
   opencode: 'opencode',
   cursor: 'cursor-agent',
+  copilot: 'copilot',
 };
 
 export function resolveBinary(agent: AgentName): string {
@@ -418,6 +419,7 @@ const DEFAULT_MODELS: Record<AgentName, string> = {
   codex: 'gpt-5.4-mini', // requires OPENAI_API_KEY; ChatGPT account users must pass --model
   opencode: 'claude-haiku-4-5',
   cursor: 'gpt-mini', // cursor alias for gpt-5.4-mini-medium; haiku not in cursor's catalog
+  copilot: 'claude-sonnet-4.5', // matches upstream default; override via EDS_AGENT_MODEL_COPILOT
 };
 
 /**
@@ -452,6 +454,9 @@ export function buildArgs(agent: AgentName, prompt: string, model?: string, prom
     case 'cursor':
       // cursor-agent uses --print for non-interactive stdout output
       return ['--print', ...modelArg, ...promptArg];
+    case 'copilot':
+      // --allow-all-tools required for non-interactive use (mirrors codex sandbox bypass)
+      return ['-p', ...modelArg, '--allow-all-tools', ...promptArg];
   }
 }
 

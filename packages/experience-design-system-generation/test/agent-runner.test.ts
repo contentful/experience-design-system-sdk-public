@@ -19,7 +19,7 @@ import {
 
 describe('agent definitions', () => {
   it('exposes the canonical agent names and validates against them', () => {
-    expect(AGENT_NAMES).toEqual(['claude', 'codex', 'opencode', 'cursor']);
+    expect(AGENT_NAMES).toEqual(['claude', 'codex', 'opencode', 'cursor', 'copilot']);
     expect(DEFAULT_AGENT_NAME).toBe('claude');
     expect(AGENT_NAMES.every(isAgentName)).toBe(true);
     expect(isAgentName('other')).toBe(false);
@@ -32,6 +32,7 @@ describe('resolveBinary', () => {
     'EDS_AGENT_BINARY_CODEX',
     'EDS_AGENT_BINARY_OPENCODE',
     'EDS_AGENT_BINARY_CURSOR',
+    'EDS_AGENT_BINARY_COPILOT',
   ] as const;
   const saved: Record<string, string | undefined> = {};
 
@@ -52,6 +53,7 @@ describe('resolveBinary', () => {
   it('maps codex → codex', () => expect(resolveBinary('codex')).toBe('codex'));
   it('maps opencode → opencode', () => expect(resolveBinary('opencode')).toBe('opencode'));
   it('maps cursor → cursor-agent', () => expect(resolveBinary('cursor')).toBe('cursor-agent'));
+  it('maps copilot → copilot', () => expect(resolveBinary('copilot')).toBe('copilot'));
 
   it('honors EDS_AGENT_BINARY_CLAUDE override', () => {
     process.env.EDS_AGENT_BINARY_CLAUDE = '/opt/custom/claude';
@@ -646,6 +648,7 @@ describe('resolveAgentModel', () => {
     'EDS_AGENT_MODEL_CODEX',
     'EDS_AGENT_MODEL_OPENCODE',
     'EDS_AGENT_MODEL_CURSOR',
+    'EDS_AGENT_MODEL_COPILOT',
   ] as const;
   const saved: Record<string, string | undefined> = {};
   beforeEach(() => {
@@ -677,6 +680,12 @@ describe('resolveAgentModel', () => {
     process.env.EDS_AGENT_MODEL_OPENCODE = '   ';
     expect(resolveAgentModel('opencode')).toBe('claude-haiku-4-5');
   });
+  it('uses claude-sonnet-4.5 default for copilot when neither explicit nor env is set', () =>
+    expect(resolveAgentModel('copilot')).toBe('claude-sonnet-4.5'));
+  it('honors EDS_AGENT_MODEL_COPILOT override', () => {
+    process.env.EDS_AGENT_MODEL_COPILOT = 'gpt-5';
+    expect(resolveAgentModel('copilot')).toBe('gpt-5');
+  });
 });
 
 describe('checkAgentAuth', () => {
@@ -686,6 +695,7 @@ describe('checkAgentAuth', () => {
     'EDS_AGENT_BINARY_CODEX',
     'EDS_AGENT_BINARY_OPENCODE',
     'EDS_AGENT_BINARY_CURSOR',
+    'EDS_AGENT_BINARY_COPILOT',
   ] as const;
   const saved: Record<string, string | undefined> = {};
 
@@ -756,6 +766,24 @@ describe('buildArgs model handling', () => {
   });
   it('omits the prompt positional when promptViaStdin is true', () => {
     expect(buildArgs('opencode', 'PROMPT', undefined, true)).toEqual(['run', '--model', 'claude-haiku-4-5']);
+  });
+  it('uses claude-sonnet-4.5 default and --allow-all-tools for copilot', () => {
+    expect(buildArgs('copilot', 'PROMPT')).toEqual([
+      '-p',
+      '--model',
+      'claude-sonnet-4.5',
+      '--allow-all-tools',
+      'PROMPT',
+    ]);
+  });
+  it('includes explicit --model for copilot when provided', () => {
+    expect(buildArgs('copilot', 'PROMPT', 'gpt-5')).toEqual([
+      '-p',
+      '--model',
+      'gpt-5',
+      '--allow-all-tools',
+      'PROMPT',
+    ]);
   });
 });
 
