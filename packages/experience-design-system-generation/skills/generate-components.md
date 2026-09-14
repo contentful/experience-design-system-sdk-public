@@ -208,12 +208,14 @@ the default "could be overridden" (every default can), or because the tie-break
 below exists. Nothing downstream re-derives, corrects, or second-guesses this —
 what you emit is what ships.
 
-**Ambiguity resolves to `enum` — but only when Q1–Q3 cannot be answered.** The
-tie-break applies solely when the source shown does not let you answer the three
-questions: the property is interpolated in one place and looked up in another,
-the use sits in a file you cannot see, or the source is truncated at the point
-of use (the "uses not shown" line). In those cases emit `enum` (or `string` when
-it has no value set) and record the ambiguity in `reason`. When the three
+**Ambiguity resolves to `enum` — but only when Q1–Q3 cannot be answered, and only
+when you can still cite its values.** The tie-break applies solely when the source
+shown does not let you answer the three questions: the property is interpolated
+in one place and looked up in another, the use sits in a file you cannot see, or
+the source is truncated at the point of use (the "uses not shown" line). In those
+cases emit `enum` if a value set is citable from the source shown, else `cdf_type:
+"string"` per "no legal `enum` with a guessed list" — either way, record the
+ambiguity in `reason`. When the three
 questions *can* be answered from the source shown, they are answered and the
 tie-break does not apply: a clear Q1-yes is `enum`, a clear Q2-yes + Q3-yes is
 `token`, and a type annotation does not create ambiguity. An `enum` is delivered
@@ -297,7 +299,7 @@ A prop with a complex TypeScript type is **not automatically excluded**. Many pr
 | Raw type pattern | How to resolve |
 |---|---|
 | `'primary' \| 'secondary' \| 'ghost'` (union of literals) | → `enum`, extract `values` |
-| `HeadingSize` / `ButtonVariant` / any named type that is clearly a finite set of visual options | → `enum`. **Never invent a value list.** Use only values you can cite from the source shown (the type's own declaration, a lookup table, a default). If the source shown does not enumerate the values, this is the "cannot be answered" case — apply "Ambiguity resolves to `enum`": emit `enum` (or `string` if it has no discoverable value set) and record the missing evidence in `description` (not `reason` — `description` ships to the CDF, `reason` does not), e.g. `"WARNING: values not visible in source — enum values unconfirmed"`. Do not default to a generic guess like `['sm', 'md', 'lg']` or `['primary', 'secondary']` — those are one design system's vocabulary, not a fallback for missing evidence. |
+| `HeadingSize` / `ButtonVariant` / any named type that is clearly a finite set of visual options | → `enum` if you can cite its values from the source shown (the type's own declaration, a lookup table, a default) — copy them, never invent them. If the source shown does not enumerate the values, this is not the Q1–Q3 ambiguity tie-break — it is the "no legal `enum` with a guessed list" rule: emit `cdf_type: "string"` instead, with the missing evidence noted in `reason`. Do not default to a generic guess like `['sm', 'md', 'lg']` or `['primary', 'secondary']` — those are one design system's vocabulary, not a fallback for missing evidence. |
 | `Variant` / `variant` prop | Usually a visual design variant. → `enum`, `cdf_category: "design"`. Same evidence rule as above — cite values from the source shown; do not invent them. |
 | `Section[]` / array of custom items where the structure is unclear | → `exclude_prop` only if the array elements are complex objects with no obvious flat representation. If items are simple (title, label, id), consider representing as `string` (a comma-separated IDs or keys) or note in `description` why. |
 | `ExperienceConfiguration<Variant>` / deep generic | Personalization config — → `exclude_prop`, reason: `"personalization configuration — framework internal"` |
