@@ -471,7 +471,7 @@ export function buildArgs(agent: AgentName, prompt: string, model?: string, prom
       // value, so promptViaStdin will fail here — callers must pass the
       // prompt inline for copilot.
       const copilotModel = resolveAgentModel('copilot', model);
-      const copilotModelArg = copilotModel === 'Auto' ? [] : ['--model', copilotModel];
+      const copilotModelArg = !copilotModel || copilotModel === 'Auto' ? [] : ['--model', copilotModel];
       return ['-p', ...promptArg, ...copilotModelArg, '--allow-all-tools'];
     }
   }
