@@ -419,7 +419,7 @@ const DEFAULT_MODELS: Record<AgentName, string> = {
   codex: 'gpt-5.4-mini', // requires OPENAI_API_KEY; ChatGPT account users must pass --model
   opencode: 'claude-haiku-4-5',
   cursor: 'gpt-mini', // cursor alias for gpt-5.4-mini-medium; haiku not in cursor's catalog
-  copilot: 'claude-sonnet-4.5', // matches upstream default; override via EDS_AGENT_MODEL_COPILOT
+  copilot: 'Auto', // the only model guaranteed on every Copilot plan (Free/Pro/Business/Enterprise); Pro+ users override via EDS_AGENT_MODEL_COPILOT
 };
 
 /**

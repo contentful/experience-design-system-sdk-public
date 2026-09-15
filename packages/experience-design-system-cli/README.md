@@ -86,7 +86,7 @@ If the resolved graph contains a circular slot dependency (A slots B, B slots A)
 | **OpenAI Codex** (`codex`) | `npm install -g @openai/codex` | Set `OPENAI_API_KEY` |
 | **OpenCode** (`opencode`) | `npm install -g opencode-ai` | Configure via `opencode auth` (supports multiple providers) |
 | **Cursor** (`cursor`) | Install [Cursor](https://cursor.com) | Sign in to Cursor; exposes `cursor-agent` binary |
-| **GitHub Copilot** (`copilot`) | `npm install -g @github/copilot` | Run `copilot` once to complete GitHub OAuth login |
+| **GitHub Copilot** (`copilot`) | `npm install -g @github/copilot` | Run `copilot` once to complete GitHub OAuth login. Free plan supports `Auto` only; paid plans can override via `EDS_AGENT_MODEL_COPILOT` |
 
 The CLI invokes the agent non-interactively in a subprocess. If the binary is not found in `$PATH`, the command exits 1 and prints manual fallback instructions.
 

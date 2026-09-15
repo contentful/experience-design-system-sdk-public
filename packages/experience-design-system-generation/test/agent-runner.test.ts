@@ -680,8 +680,8 @@ describe('resolveAgentModel', () => {
     process.env.EDS_AGENT_MODEL_OPENCODE = '   ';
     expect(resolveAgentModel('opencode')).toBe('claude-haiku-4-5');
   });
-  it('uses claude-sonnet-4.5 default for copilot when neither explicit nor env is set', () =>
-    expect(resolveAgentModel('copilot')).toBe('claude-sonnet-4.5'));
+  it('uses Auto default for copilot when neither explicit nor env is set', () =>
+    expect(resolveAgentModel('copilot')).toBe('Auto'));
   it('honors EDS_AGENT_MODEL_COPILOT override', () => {
     process.env.EDS_AGENT_MODEL_COPILOT = 'gpt-5';
     expect(resolveAgentModel('copilot')).toBe('gpt-5');
@@ -767,11 +767,11 @@ describe('buildArgs model handling', () => {
   it('omits the prompt positional when promptViaStdin is true', () => {
     expect(buildArgs('opencode', 'PROMPT', undefined, true)).toEqual(['run', '--model', 'claude-haiku-4-5']);
   });
-  it('uses claude-sonnet-4.5 default and --allow-all-tools for copilot', () => {
+  it('uses Auto default and --allow-all-tools for copilot', () => {
     expect(buildArgs('copilot', 'PROMPT')).toEqual([
       '-p',
       '--model',
-      'claude-sonnet-4.5',
+      'Auto',
       '--allow-all-tools',
       'PROMPT',
     ]);
