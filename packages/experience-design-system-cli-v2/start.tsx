@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
+import { readFileSync } from 'node:fs';
 import { Box, Text, useApp, useInput } from 'ink';
 import type { Screen } from './app.js';
+
+const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+  version: string;
+};
 
 const START_ITEMS: { label: string; screen: Screen | 'exit' }[] = [
   { label: 'Import', screen: 'import' },
@@ -41,6 +46,7 @@ export function StartScreen({ onNavigate }: { onNavigate: (screen: Screen) => vo
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text bold>Contentful Experiences — Import v2</Text>
+      <Text dimColor>v{pkg.version}</Text>
       <Text> </Text>
       {START_ITEMS.map((item, i) => (
         <Text key={item.label} color={i === focusIdx ? 'cyan' : undefined}>
