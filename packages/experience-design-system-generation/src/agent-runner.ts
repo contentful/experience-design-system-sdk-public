@@ -454,15 +454,25 @@ export function buildArgs(agent: AgentName, prompt: string, model?: string, prom
     case 'cursor':
       // cursor-agent uses --print for non-interactive stdout output
       return ['--print', ...modelArg, ...promptArg];
-    case 'copilot':
+    case 'copilot': {
       // copilot's -p takes the prompt as its value — it MUST come immediately
-      // after -p or the CLI rejects with "Invalid command format". Model +
-      // --allow-all-tools follow. --allow-all-tools mirrors codex's sandbox
-      // bypass for non-interactive use.
+      // after -p or the CLI rejects with "Invalid command format".
+      // --allow-all-tools mirrors codex's sandbox bypass for non-interactive
+      // use.
+      //
+      // Model handling is special: copilot's UI shows "Auto" as the default
+      // pick, but the CLI rejects --model Auto ("not available"). Auto is a
+      // UI-only label — internally, omitting --model IS Auto. So we only
+      // pass --model when the user set an explicit override (via flag or
+      // EDS_AGENT_MODEL_COPILOT); the sentinel string 'Auto' means "omit".
+      //
       // Stdin fallback is unsupported: copilot -p requires an inline prompt
       // value, so promptViaStdin will fail here — callers must pass the
       // prompt inline for copilot.
-      return ['-p', ...promptArg, ...modelArg, '--allow-all-tools'];
+      const copilotModel = resolveAgentModel('copilot', model);
+      const copilotModelArg = copilotModel === 'Auto' ? [] : ['--model', copilotModel];
+      return ['-p', ...promptArg, ...copilotModelArg, '--allow-all-tools'];
+    }
   }
 }
 

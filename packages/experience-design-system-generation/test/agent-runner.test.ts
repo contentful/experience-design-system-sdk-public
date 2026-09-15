@@ -767,23 +767,30 @@ describe('buildArgs model handling', () => {
   it('omits the prompt positional when promptViaStdin is true', () => {
     expect(buildArgs('opencode', 'PROMPT', undefined, true)).toEqual(['run', '--model', 'claude-haiku-4-5']);
   });
-  it('uses Auto default and --allow-all-tools for copilot (prompt immediately after -p)', () => {
-    expect(buildArgs('copilot', 'PROMPT')).toEqual([
+  it('omits --model on the default (Auto) for copilot; prompt sits immediately after -p', () => {
+    // Auto is a UI-only label — the CLI rejects --model Auto. Skipping
+    // --model entirely is how you actually get Auto behavior.
+    expect(buildArgs('copilot', 'PROMPT')).toEqual(['-p', 'PROMPT', '--allow-all-tools']);
+  });
+  it('includes explicit --model for copilot when a real model is provided', () => {
+    expect(buildArgs('copilot', 'PROMPT', 'claude-sonnet-4.6')).toEqual([
       '-p',
       'PROMPT',
       '--model',
-      'Auto',
+      'claude-sonnet-4.6',
       '--allow-all-tools',
     ]);
   });
-  it('includes explicit --model for copilot when provided', () => {
-    expect(buildArgs('copilot', 'PROMPT', 'gpt-5')).toEqual([
-      '-p',
-      'PROMPT',
-      '--model',
-      'gpt-5',
-      '--allow-all-tools',
-    ]);
+  it('omits --model when EDS_AGENT_MODEL_COPILOT is explicitly set to Auto', () => {
+    // Users who set the env override to "Auto" get the same behavior as no override.
+    const prevModel = process.env['EDS_AGENT_MODEL_COPILOT'];
+    process.env['EDS_AGENT_MODEL_COPILOT'] = 'Auto';
+    try {
+      expect(buildArgs('copilot', 'PROMPT')).toEqual(['-p', 'PROMPT', '--allow-all-tools']);
+    } finally {
+      if (prevModel === undefined) delete process.env['EDS_AGENT_MODEL_COPILOT'];
+      else process.env['EDS_AGENT_MODEL_COPILOT'] = prevModel;
+    }
   });
 });
 
