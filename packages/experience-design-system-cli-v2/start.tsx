@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import type { Screen } from './app.js';
 import { FOCUS_MARKER, FRAME_BORDER_STYLE, PALETTE } from './src/tui/theme.js';
+import { readPackageVersion } from './src/tui/version.js';
+
+const VERSION = readPackageVersion();
 
 const START_ITEMS: { label: string; hint: string; screen: Screen | 'exit' }[] = [
   { label: 'Import', hint: 'Extract components and push them to Contentful', screen: 'import' },
@@ -48,7 +51,10 @@ export function StartScreen({ onNavigate }: { onNavigate: (screen: Screen) => vo
         <Text bold color={PALETTE.accent}>
           Contentful Experiences
         </Text>
-        <Text color={PALETTE.muted}>Design System Import</Text>
+        <Box>
+          <Text color={PALETTE.muted}>Design System Import</Text>
+          <Text color={PALETTE.muted}> · v{VERSION}</Text>
+        </Box>
       </Box>
 
       <Box flexDirection="column" marginTop={1}>

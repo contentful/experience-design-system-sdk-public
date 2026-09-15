@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 import { StartScreen } from '../start.js';
@@ -69,6 +70,16 @@ describe('StartScreen', () => {
     expect(frame).toContain('Contentful Experiences');
     expect(frame).toContain('Design System Import');
     expect(frame).toContain('q quit');
+  });
+
+  it('shows the installed CLI version in the header', async () => {
+    const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      version: string;
+    };
+    const { lastFrame } = renderHome();
+    await flush();
+
+    expect(plain(lastFrame()!)).toContain(`v${version}`);
   });
 
   it('paints the wordmark and focused row in the Contentful accent color', async () => {
