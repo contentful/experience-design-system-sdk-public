@@ -21,7 +21,7 @@ export interface SourceExcerpt {
   usesNotShown: string[];
 }
 
-function escapeForRegExp(value: string): string {
+export function escapeForRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
