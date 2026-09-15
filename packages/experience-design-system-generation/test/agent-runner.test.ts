@@ -585,6 +585,21 @@ describe('resolveAgentModel', () => {
     process.env.EDS_AGENT_MODEL_OPENCODE = '   ';
     expect(resolveAgentModel('opencode')).toBe('claude-haiku-4-5');
   });
+
+  it('returns the Bedrock-specific default for codex when bedrock is true', () => {
+    expect(resolveAgentModel('codex', undefined, true)).toBe('openai.gpt-5.6-luna');
+  });
+  it('returns the amazon-bedrock-prefixed default for opencode when bedrock is true', () => {
+    expect(resolveAgentModel('opencode', undefined, true)).toBe('amazon-bedrock/claude-haiku-4-5');
+  });
+  it('an EDS_AGENT_MODEL_<AGENT> override still wins over the Bedrock default', () => {
+    process.env.EDS_AGENT_MODEL_CODEX = 'gpt-x';
+    expect(resolveAgentModel('codex', undefined, true)).toBe('gpt-x');
+  });
+  it('bedrock does not affect claude or cursor defaults, which are unaffected by the flag', () => {
+    expect(resolveAgentModel('claude', undefined, true)).toBe('haiku');
+    expect(resolveAgentModel('cursor', undefined, true)).toBe('gpt-mini');
+  });
 });
 
 describe('checkAgentAuth', () => {
@@ -651,7 +666,7 @@ describe('buildArgs model handling', () => {
   });
   it('preserves codex sandbox flag and uses default model', () => {
     const args = buildArgs('codex', 'PROMPT');
-    expect(args).toEqual(['exec', '--model', 'gpt-5.4-mini', '--dangerously-bypass-approvals-and-sandbox', 'PROMPT']);
+    expect(args).toEqual(['exec', '--model', 'gpt-5.6-luna', '--dangerously-bypass-approvals-and-sandbox', 'PROMPT']);
   });
   it('inserts explicit --model before the codex sandbox flag', () => {
     expect(buildArgs('codex', 'PROMPT', 'gpt-5.5')).toEqual([
@@ -664,6 +679,80 @@ describe('buildArgs model handling', () => {
   });
   it('omits the prompt positional when promptViaStdin is true', () => {
     expect(buildArgs('opencode', 'PROMPT', undefined, true)).toEqual(['run', '--model', 'claude-haiku-4-5']);
+  });
+
+  describe('bedrock', () => {
+    const ENV_KEYS = ['AWS_REGION', 'AWS_DEFAULT_REGION'] as const;
+    const saved: Record<string, string | undefined> = {};
+    beforeEach(() => {
+      for (const k of ENV_KEYS) {
+        saved[k] = process.env[k];
+        delete process.env[k];
+      }
+    });
+    afterEach(() => {
+      for (const k of ENV_KEYS) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+    });
+
+    it('injects -c model_provider/region overrides for codex, defaulting region to us-east-1', () => {
+      expect(buildArgs('codex', 'PROMPT', undefined, false, true)).toEqual([
+        'exec',
+        '-c',
+        'model_provider=amazon-bedrock',
+        '-c',
+        'model_providers.amazon-bedrock.region=us-east-1',
+        '--model',
+        'openai.gpt-5.6-luna',
+        '--dangerously-bypass-approvals-and-sandbox',
+        'PROMPT',
+      ]);
+    });
+
+    it('uses AWS_REGION over the us-east-1 default for codex', () => {
+      process.env.AWS_REGION = 'eu-west-1';
+      const args = buildArgs('codex', 'PROMPT', undefined, false, true);
+      expect(args).toContain('model_providers.amazon-bedrock.region=eu-west-1');
+    });
+
+    it('does not add -c overrides for codex when bedrock is false', () => {
+      const args = buildArgs('codex', 'PROMPT', undefined, false, false);
+      expect(args).not.toContain('-c');
+    });
+
+    it('an explicit --model for codex overrides the Bedrock default id', () => {
+      const args = buildArgs('codex', 'PROMPT', 'openai.gpt-5.6-sol', false, true);
+      expect(args).toContain('openai.gpt-5.6-sol');
+      expect(args).not.toContain('openai.gpt-5.6-luna');
+    });
+
+    it('prefixes the default opencode model with amazon-bedrock/', () => {
+      expect(buildArgs('opencode', 'PROMPT', undefined, false, true)).toEqual([
+        'run',
+        '--model',
+        'amazon-bedrock/claude-haiku-4-5',
+        'PROMPT',
+      ]);
+    });
+
+    it('does not prefix an explicit opencode --model', () => {
+      expect(buildArgs('opencode', 'PROMPT', 'claude-sonnet-4-5', false, true)).toEqual([
+        'run',
+        '--model',
+        'claude-sonnet-4-5',
+        'PROMPT',
+      ]);
+    });
+
+    it('leaves an already-prefixed opencode model untouched', () => {
+      expect(resolveAgentModel('opencode', 'openai/gpt-5.6', true)).toBe('openai/gpt-5.6');
+    });
+
+    it('does not affect claude args (routed via env, not argv)', () => {
+      expect(buildArgs('claude', 'PROMPT', undefined, false, true)).toEqual(['--print', '--model', 'haiku', 'PROMPT']);
+    });
   });
 });
 
@@ -779,7 +868,15 @@ describe('agentSupportsBedrock', () => {
     expect(agentSupportsBedrock('claude')).toBe(true);
   });
 
-  it('returns false for agents without a Bedrock env entry', () => {
+  it('returns true for codex', () => {
+    expect(agentSupportsBedrock('codex')).toBe(true);
+  });
+
+  it('returns true for opencode', () => {
+    expect(agentSupportsBedrock('opencode')).toBe(true);
+  });
+
+  it('returns false for cursor, which has no working non-interactive Bedrock path', () => {
     expect(agentSupportsBedrock('cursor')).toBe(false);
   });
 });
