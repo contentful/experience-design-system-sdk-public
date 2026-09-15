@@ -8,6 +8,7 @@ import { registerGenerateCommand } from './generate/command.js';
 import { registerApplyCommand } from './apply/command.js';
 import { registerSessionCommand } from './session/command.js';
 import { registerPrintCommand } from './print/command.js';
+import { registerMapTokensCommand } from './map-tokens/command.js';
 import { registerImportCommand } from './import/command.js';
 import { registerSetupCommand } from './setup/command.js';
 import { registerRunsCommand } from './runs/ls-command.js';
@@ -72,6 +73,19 @@ export function resolveBedrockFromAncestors(actionCommand: Command): boolean {
   return false;
 }
 
+function registerImportV2Command(program: Command): void {
+  program
+    .command('importv2')
+    .description('Launch the v2 import TUI (experience-design-system-cli-v2)')
+    .action(async () => {
+      const { render } = await import('ink');
+      const { createElement } = await import('react');
+      const { App } = await import('@contentful/experience-design-system-cli-v2/app');
+      const { waitUntilExit } = render(createElement(App));
+      await waitUntilExit();
+    });
+}
+
 function registerBuildCommand(program: Command): void {
   program
     .command('build')
@@ -96,9 +110,11 @@ export function createProgram(): Command {
   registerAnalyzeCommand(program);
   registerGenerateCommand(program);
   registerPrintCommand(program);
+  registerMapTokensCommand(program);
   registerApplyCommand(program);
   registerSessionCommand(program);
   registerImportCommand(program);
+  registerImportV2Command(program);
   registerSetupCommand(program);
   registerRunsCommand(program);
   registerBuildCommand(program);

@@ -327,6 +327,71 @@ export function parseTokenToolCallLines(stdout: string): ParsedTokenToolCalls {
   return { calls, warnings };
 }
 
+// --- Map-tokens tool calls ---
+
+export interface MapTokenPropCall {
+  tool: 'map_token_prop';
+  component: string;
+  prop: string;
+  /** Narrowed subset of tokens the prop may draw from. Required and non-empty. */
+  token_allowed: string[];
+}
+
+export interface ParsedMapTokenPropToolCalls {
+  calls: MapTokenPropCall[];
+  warnings: string[];
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === 'string');
+}
+
+export function parseMapTokenPropToolCallLines(stdout: string): ParsedMapTokenPropToolCalls {
+  const calls: MapTokenPropCall[] = [];
+  const warnings: string[] = [];
+
+  for (const raw of stdout.split('\n')) {
+    const line = raw.trim();
+    if (!line.startsWith('{')) continue;
+
+    let obj: unknown;
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      warnings.push(`unparseable line: ${line.slice(0, 120)}`);
+      continue;
+    }
+
+    if (typeof obj !== 'object' || obj === null || !('tool' in obj)) continue;
+    const rec = obj as Record<string, unknown>;
+
+    if (rec.tool !== 'map_token_prop') continue; // not a map-tokens call — skip silently
+
+    if (typeof rec.component !== 'string' || !rec.component) {
+      warnings.push('map_token_prop missing component — skipped');
+      continue;
+    }
+    if (typeof rec.prop !== 'string' || !rec.prop) {
+      warnings.push(`map_token_prop '${rec.component}': missing prop — skipped`);
+      continue;
+    }
+    if (!isStringArray(rec.token_allowed) || rec.token_allowed.length === 0) {
+      warnings.push(`map_token_prop '${rec.component}.${String(rec.prop)}': missing or empty token_allowed — skipped`);
+      continue;
+    }
+
+    const call: MapTokenPropCall = {
+      tool: 'map_token_prop',
+      component: rec.component,
+      prop: rec.prop,
+      token_allowed: rec.token_allowed,
+    };
+    calls.push(call);
+  }
+
+  return { calls, warnings };
+}
+
 // --- Agent invocation ---
 
 const AGENT_BINARIES: Record<AgentName, string> = {
@@ -334,6 +399,7 @@ const AGENT_BINARIES: Record<AgentName, string> = {
   codex: 'codex',
   opencode: 'opencode',
   cursor: 'cursor-agent',
+  copilot: 'copilot',
 };
 
 export function resolveBinary(agent: AgentName): string {
@@ -375,6 +441,7 @@ const DEFAULT_MODELS: Record<AgentName, string> = {
   codex: 'gpt-5.6-luna', // requires OPENAI_API_KEY; ChatGPT account users must pass --model
   opencode: 'claude-haiku-4-5',
   cursor: 'gpt-mini', // cursor alias for gpt-5.4-mini-medium; haiku not in cursor's catalog
+  copilot: 'Auto', // the only model guaranteed on every Copilot plan (Free/Pro/Business/Enterprise); Pro+ users override via EDS_AGENT_MODEL_COPILOT
 };
 
 const DEFAULT_CODEX_BEDROCK_MODEL = 'openai.gpt-5.6-luna';
@@ -447,6 +514,25 @@ export function buildArgs(
     case 'cursor':
       // cursor-agent uses --print for non-interactive stdout output
       return ['--print', ...modelArg, ...promptArg];
+    case 'copilot': {
+      // copilot's -p takes the prompt as its value — it MUST come immediately
+      // after -p or the CLI rejects with "Invalid command format".
+      // --allow-all-tools mirrors codex's sandbox bypass for non-interactive
+      // use.
+      //
+      // Model handling is special: copilot's UI shows "Auto" as the default
+      // pick, but the CLI rejects --model Auto ("not available"). Auto is a
+      // UI-only label — internally, omitting --model IS Auto. So we only
+      // pass --model when the user set an explicit override (via flag or
+      // EDS_AGENT_MODEL_COPILOT); the sentinel string 'Auto' means "omit".
+      //
+      // Stdin fallback is unsupported: copilot -p requires an inline prompt
+      // value, so promptViaStdin will fail here — callers must pass the
+      // prompt inline for copilot.
+      const copilotModel = resolveAgentModel('copilot', model);
+      const copilotModelArg = copilotModel === 'Auto' ? [] : ['--model', copilotModel];
+      return ['-p', ...promptArg, ...copilotModelArg, '--allow-all-tools'];
+    }
   }
 }
 

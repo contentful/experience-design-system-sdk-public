@@ -9,6 +9,7 @@ import {
   checkAgentAuth,
   describeAgentFailure,
   extractSentinelOutput,
+  parseMapTokenPropToolCallLines,
   parseToolCallLines,
   parseTokenToolCallLines,
   resolveBinary,
@@ -20,7 +21,7 @@ import {
 
 describe('agent definitions', () => {
   it('exposes the canonical agent names and validates against them', () => {
-    expect(AGENT_NAMES).toEqual(['claude', 'codex', 'opencode', 'cursor']);
+    expect(AGENT_NAMES).toEqual(['claude', 'codex', 'opencode', 'cursor', 'copilot']);
     expect(DEFAULT_AGENT_NAME).toBe('claude');
     expect(AGENT_NAMES.every(isAgentName)).toBe(true);
     expect(isAgentName('other')).toBe(false);
@@ -33,6 +34,7 @@ describe('resolveBinary', () => {
     'EDS_AGENT_BINARY_CODEX',
     'EDS_AGENT_BINARY_OPENCODE',
     'EDS_AGENT_BINARY_CURSOR',
+    'EDS_AGENT_BINARY_COPILOT',
   ] as const;
   const saved: Record<string, string | undefined> = {};
 
@@ -53,6 +55,7 @@ describe('resolveBinary', () => {
   it('maps codex → codex', () => expect(resolveBinary('codex')).toBe('codex'));
   it('maps opencode → opencode', () => expect(resolveBinary('opencode')).toBe('opencode'));
   it('maps cursor → cursor-agent', () => expect(resolveBinary('cursor')).toBe('cursor-agent'));
+  it('maps copilot → copilot', () => expect(resolveBinary('copilot')).toBe('copilot'));
 
   it('honors EDS_AGENT_BINARY_CLAUDE override', () => {
     process.env.EDS_AGENT_BINARY_CLAUDE = '/opt/custom/claude';
@@ -548,12 +551,106 @@ describe('parseTokenToolCallLines', () => {
   });
 });
 
+describe('parseMapTokenPropToolCallLines', () => {
+  it('parses a call with token_allowed, ignoring an extra description field', () => {
+    const line =
+      '{"tool":"map_token_prop","component":"Card","prop":"padding","token_allowed":["spacing.xs"],"description":"restricted"}';
+    const { calls, warnings } = parseMapTokenPropToolCallLines(line);
+    expect(warnings).toHaveLength(0);
+    expect(calls[0]).toEqual({
+      tool: 'map_token_prop',
+      component: 'Card',
+      prop: 'padding',
+      token_allowed: ['spacing.xs'],
+    });
+  });
+
+  it('parses a call with multiple token_allowed entries', () => {
+    const line =
+      '{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_allowed":["colors.brand.primary","colors.brand.secondary"]}';
+    const { calls, warnings } = parseMapTokenPropToolCallLines(line);
+    expect(warnings).toHaveLength(0);
+    expect(calls[0]).toEqual({
+      tool: 'map_token_prop',
+      component: 'Button',
+      prop: 'variantColor',
+      token_allowed: ['colors.brand.primary', 'colors.brand.secondary'],
+    });
+  });
+
+  it('warns and skips on missing component', () => {
+    const { calls, warnings } = parseMapTokenPropToolCallLines(
+      '{"tool":"map_token_prop","prop":"bgColor","token_allowed":["colors.surface"]}',
+    );
+    expect(calls).toHaveLength(0);
+    expect(warnings[0]).toMatch(/missing component/);
+  });
+
+  it('warns and skips on missing prop', () => {
+    const { calls, warnings } = parseMapTokenPropToolCallLines(
+      '{"tool":"map_token_prop","component":"Card","token_allowed":["colors.surface"]}',
+    );
+    expect(calls).toHaveLength(0);
+    expect(warnings[0]).toMatch(/missing prop/);
+  });
+
+  it('warns and skips on missing token_allowed', () => {
+    const { calls, warnings } = parseMapTokenPropToolCallLines(
+      '{"tool":"map_token_prop","component":"Card","prop":"bgColor"}',
+    );
+    expect(calls).toHaveLength(0);
+    expect(warnings[0]).toMatch(/missing or empty token_allowed/);
+  });
+
+  it('warns and skips on empty token_allowed array', () => {
+    const { calls, warnings } = parseMapTokenPropToolCallLines(
+      '{"tool":"map_token_prop","component":"Card","prop":"bgColor","token_allowed":[]}',
+    );
+    expect(calls).toHaveLength(0);
+    expect(warnings[0]).toMatch(/missing or empty token_allowed/);
+  });
+
+  it('warns and skips when token_allowed is not a string array', () => {
+    const line = '{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_allowed":"colors.brand"}';
+    const { calls, warnings } = parseMapTokenPropToolCallLines(line);
+    expect(calls).toHaveLength(0);
+    expect(warnings[0]).toMatch(/missing or empty token_allowed/);
+  });
+
+  it('warns on unparseable JSON', () => {
+    const { calls, warnings } = parseMapTokenPropToolCallLines('{bad json}');
+    expect(calls).toHaveLength(0);
+    expect(warnings[0]).toMatch(/unparseable line/);
+  });
+
+  it('silently skips non-map-tokens tool names (e.g. set_token)', () => {
+    const { calls, warnings } = parseMapTokenPropToolCallLines(
+      '{"tool":"set_token","path":"colors.a","type":"color","value":"#fff"}',
+    );
+    expect(calls).toHaveLength(0);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('ignores prose lines and continues after a bad line', () => {
+    const stdout = [
+      'Looking at Card.bgColor',
+      '{"tool":"map_token_prop","component":"Card","prop":"bgColor","token_allowed":["colors.surface"]}',
+      '{not valid json}',
+      '{"tool":"map_token_prop","component":"Button","prop":"variantColor","token_allowed":["colors.brand.primary"]}',
+    ].join('\n');
+    const { calls, warnings } = parseMapTokenPropToolCallLines(stdout);
+    expect(calls).toHaveLength(2);
+    expect(warnings).toHaveLength(1);
+  });
+});
+
 describe('resolveAgentModel', () => {
   const ENV_KEYS = [
     'EDS_AGENT_MODEL_CLAUDE',
     'EDS_AGENT_MODEL_CODEX',
     'EDS_AGENT_MODEL_OPENCODE',
     'EDS_AGENT_MODEL_CURSOR',
+    'EDS_AGENT_MODEL_COPILOT',
   ] as const;
   const saved: Record<string, string | undefined> = {};
   beforeEach(() => {
@@ -600,6 +697,13 @@ describe('resolveAgentModel', () => {
     expect(resolveAgentModel('claude', undefined, true)).toBe('haiku');
     expect(resolveAgentModel('cursor', undefined, true)).toBe('gpt-mini');
   });
+
+  it('uses Auto default for copilot when neither explicit nor env is set', () =>
+    expect(resolveAgentModel('copilot')).toBe('Auto'));
+  it('honors EDS_AGENT_MODEL_COPILOT override', () => {
+    process.env.EDS_AGENT_MODEL_COPILOT = 'gpt-5';
+    expect(resolveAgentModel('copilot')).toBe('gpt-5');
+  });
 });
 
 describe('checkAgentAuth', () => {
@@ -609,6 +713,7 @@ describe('checkAgentAuth', () => {
     'EDS_AGENT_BINARY_CODEX',
     'EDS_AGENT_BINARY_OPENCODE',
     'EDS_AGENT_BINARY_CURSOR',
+    'EDS_AGENT_BINARY_COPILOT',
   ] as const;
   const saved: Record<string, string | undefined> = {};
 
@@ -754,6 +859,32 @@ describe('buildArgs model handling', () => {
       expect(buildArgs('claude', 'PROMPT', undefined, false, true)).toEqual(['--print', '--model', 'haiku', 'PROMPT']);
     });
   });
+
+  it('omits --model on the default (Auto) for copilot; prompt sits immediately after -p', () => {
+    // Auto is a UI-only label — the CLI rejects --model Auto. Skipping
+    // --model entirely is how you actually get Auto behavior.
+    expect(buildArgs('copilot', 'PROMPT')).toEqual(['-p', 'PROMPT', '--allow-all-tools']);
+  });
+  it('includes explicit --model for copilot when a real model is provided', () => {
+    expect(buildArgs('copilot', 'PROMPT', 'claude-sonnet-4.6')).toEqual([
+      '-p',
+      'PROMPT',
+      '--model',
+      'claude-sonnet-4.6',
+      '--allow-all-tools',
+    ]);
+  });
+  it('omits --model when EDS_AGENT_MODEL_COPILOT is explicitly set to Auto', () => {
+    // Users who set the env override to "Auto" get the same behavior as no override.
+    const prevModel = process.env['EDS_AGENT_MODEL_COPILOT'];
+    process.env['EDS_AGENT_MODEL_COPILOT'] = 'Auto';
+    try {
+      expect(buildArgs('copilot', 'PROMPT')).toEqual(['-p', 'PROMPT', '--allow-all-tools']);
+    } finally {
+      if (prevModel === undefined) delete process.env['EDS_AGENT_MODEL_COPILOT'];
+      else process.env['EDS_AGENT_MODEL_COPILOT'] = prevModel;
+    }
+  });
 });
 
 describe('describeAgentFailure', () => {
@@ -878,5 +1009,9 @@ describe('agentSupportsBedrock', () => {
 
   it('returns false for cursor, which has no working non-interactive Bedrock path', () => {
     expect(agentSupportsBedrock('cursor')).toBe(false);
+  });
+
+  it('returns false for copilot, which has no Bedrock routing mechanism yet', () => {
+    expect(agentSupportsBedrock('copilot')).toBe(false);
   });
 });

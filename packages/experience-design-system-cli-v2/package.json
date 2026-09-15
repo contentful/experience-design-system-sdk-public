@@ -1,0 +1,64 @@
+{
+  "name": "@contentful/experience-design-system-cli-v2",
+  "version": "2.30.1",
+  "description": "Contentful Experiences design system import CLI (v2 TUI)",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "experiences-v2": "./bin/cli-v2.js"
+  },
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./app": {
+      "types": "./dist/app.d.ts",
+      "import": "./dist/app.js",
+      "node": "./dist/app.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "files": [
+    "bin/",
+    "dist/"
+  ],
+  "scripts": {
+    "build": "nx build experience-design-system-cli-v2",
+    "typecheck": "nx typecheck experience-design-system-cli-v2",
+    "clean": "nx clean experience-design-system-cli-v2",
+    "test": "nx test experience-design-system-cli-v2",
+    "lint": "nx lint experience-design-system-cli-v2",
+    "lint:fix": "nx lint:fix experience-design-system-cli-v2"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "ink": "^4.4.1",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tsconfig/node24": "^24.0.4",
+    "@types/node": "^24.0.3",
+    "@types/react": "^18.3.24",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
+    "ink-testing-library": "^4.0.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.0.16"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/contentful/experience-design-system-sdk-public.git",
+    "directory": "packages/experience-design-system-cli-v2"
+  },
+  "homepage": "https://github.com/contentful/experience-design-system-sdk-public#readme",
+  "bugs": {
+    "url": "https://github.com/contentful/experience-design-system-sdk-public/issues"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

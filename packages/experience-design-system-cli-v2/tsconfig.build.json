@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": ".",
+    "outDir": "dist",
+    "baseUrl": "."
+  },
+  "include": [
+    "index.ts",
+    "program.ts",
+    "app.tsx",
+    "start.tsx",
+    "src/import/screen.tsx",
+    "src/saved-runs/screen.tsx",
+    "src/settings/screen.tsx",
+    "src/settings/opt-in-analytics/screen.tsx",
+    "src/settings/push-configuration/screen.tsx",
+    "src/help/screen.tsx"
+  ]
+}

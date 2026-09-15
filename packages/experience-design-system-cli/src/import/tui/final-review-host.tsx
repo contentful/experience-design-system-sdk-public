@@ -7,6 +7,7 @@ import type { CompositionMode } from '../../lib/composition-mode.js';
 
 export type FinalReviewHostProps = {
   extractSessionId: string | null;
+  tokenSessionId?: string | null;
   generatedCount: number;
   autoAccept: boolean;
   compositionMode?: CompositionMode;
@@ -24,6 +25,7 @@ export type FinalReviewHostProps = {
 
 export function FinalReviewHost({
   extractSessionId,
+  tokenSessionId,
   generatedCount,
   autoAccept,
   compositionMode = 'atomic',
@@ -58,6 +60,7 @@ export function FinalReviewHost({
   return (
     <StepComponent
       extractSessionId={extractSessionId}
+      tokenSessionId={tokenSessionId}
       onFinalize={onFinalize}
       onQuit={onQuit}
       livePreview={livePreview}
