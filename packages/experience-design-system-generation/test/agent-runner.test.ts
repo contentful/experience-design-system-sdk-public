@@ -767,22 +767,22 @@ describe('buildArgs model handling', () => {
   it('omits the prompt positional when promptViaStdin is true', () => {
     expect(buildArgs('opencode', 'PROMPT', undefined, true)).toEqual(['run', '--model', 'claude-haiku-4-5']);
   });
-  it('uses Auto default and --allow-all-tools for copilot', () => {
+  it('uses Auto default and --allow-all-tools for copilot (prompt immediately after -p)', () => {
     expect(buildArgs('copilot', 'PROMPT')).toEqual([
       '-p',
+      'PROMPT',
       '--model',
       'Auto',
       '--allow-all-tools',
-      'PROMPT',
     ]);
   });
   it('includes explicit --model for copilot when provided', () => {
     expect(buildArgs('copilot', 'PROMPT', 'gpt-5')).toEqual([
       '-p',
+      'PROMPT',
       '--model',
       'gpt-5',
       '--allow-all-tools',
-      'PROMPT',
     ]);
   });
 });
