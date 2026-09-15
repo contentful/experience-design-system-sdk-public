@@ -34,7 +34,7 @@
     "@hey-api/client-fetch": "^0.9.0"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "^0.80.1",
+    "@hey-api/openapi-ts": "^0.97.0",
     "@tsconfig/node24": "^24.0.4",
     "@types/node": "^24.0.3",
     "eslint": "^9.39.5",
