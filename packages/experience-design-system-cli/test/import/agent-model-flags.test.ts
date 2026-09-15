@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_AGENT, resolveAgent, resolveModel } from '../../src/import/agent-model-resolve.js';
+import { DEFAULT_AGENT, resolveAgent, resolveBedrock, resolveModel } from '../../src/import/agent-model-resolve.js';
 import { buildGenerateComponentsArgs, buildSelectAgentArgs } from '../../src/import/tui/WizardApp.js';
 
 /**
@@ -37,6 +37,16 @@ describe('agent/model resolution chain', () => {
 
   it('returns undefined when neither flag nor stored model is set', () => {
     expect(resolveModel(undefined, undefined)).toBeUndefined();
+  });
+
+  it('prefers an explicit Bedrock flag over the saved preference', () => {
+    expect(resolveBedrock(true, false)).toBe(true);
+    expect(resolveBedrock(false, true)).toBe(false);
+  });
+
+  it('falls back to the saved Bedrock preference and then disabled', () => {
+    expect(resolveBedrock(undefined, true)).toBe(true);
+    expect(resolveBedrock(undefined, undefined)).toBe(false);
   });
 });
 

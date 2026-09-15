@@ -191,6 +191,39 @@ describe('readExperiencesCredentials', () => {
 });
 
 describe('writeExperiencesCredentials', () => {
+  it('round-trips the Bedrock preference', async () => {
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+
+    await writeExperiencesCredentials({
+      spaceId: 'space1',
+      environmentId: 'master',
+      cmaToken: 'token',
+      bedrock: true,
+    });
+
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
+    expect(written.bedrock).toBe(true);
+
+    mockReadFile.mockResolvedValue(JSON.stringify(written));
+    await expect(readExperiencesCredentials()).resolves.toMatchObject({ bedrock: true });
+  });
+
+  it('omits the Bedrock preference when it is disabled', async () => {
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+
+    await writeExperiencesCredentials({
+      spaceId: 'space1',
+      environmentId: 'master',
+      cmaToken: 'token',
+      bedrock: false,
+    });
+
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string) as Record<string, unknown>;
+    expect(written).not.toHaveProperty('bedrock');
+  });
+
   it('writes credentials including host to JSON file', async () => {
     mockMkdir.mockResolvedValue(undefined);
     mockWriteFile.mockResolvedValue(undefined);

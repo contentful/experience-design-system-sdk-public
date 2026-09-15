@@ -15,9 +15,10 @@ import {
 import { promptAutoFilterPreference } from './auto-filter-prompt.js';
 import { promptDebugModePreference } from './debug-mode-prompt.js';
 import { promptAnalyticsPreference } from './analytics-prompt.js';
+import { promptBedrockPreference } from './bedrock-prompt.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { findPkgRoot } from '../lib/cli-path.js';
-import type { AgentName } from '@contentful/experience-design-system-generation';
+import { agentSupportsBedrock, type AgentName } from '@contentful/experience-design-system-generation';
 
 const execFileAsync = promisify(execFile);
 
@@ -426,7 +427,9 @@ async function promptCodexModel(): Promise<string | undefined> {
   return undefined;
 }
 
-async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel: string | undefined }> {
+async function setupAgent(
+  currentBedrock?: boolean,
+): Promise<{ agent: AgentName | undefined; agentModel: string | undefined; bedrock: boolean }> {
   section('Step 4: Coding agent (claude, codex, or opencode)', '[required]');
   info('experiences import uses a coding agent to generate component definitions.');
   info('');
@@ -438,7 +441,10 @@ async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel:
   if (found.length === 1) {
     ok(`${found[0]!.name} (${found[0]!.binary}) found`);
     const agentModel = found[0]!.binary === 'codex' ? await promptCodexModel() : undefined;
-    return { agent: found[0]!.binary, agentModel };
+    const bedrock = agentSupportsBedrock(found[0]!.binary)
+      ? await promptBedrockPreference(prompt, currentBedrock)
+      : false;
+    return { agent: found[0]!.binary, agentModel, bedrock };
   }
 
   if (found.length > 1) {
@@ -449,14 +455,17 @@ async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel:
     const choice = await prompt('  \x1b[2m›\x1b[0m Your choice [1]: ');
     if (choice.toLowerCase() === 's') {
       warn('Skipped. Install a coding agent before running experiences import.');
-      return { agent: undefined, agentModel: undefined };
+      return { agent: undefined, agentModel: undefined, bedrock: false };
     }
     const parsed = choice === '' ? 1 : parseInt(choice, 10);
     const idx = Number.isNaN(parsed) || parsed < 1 || parsed > found.length ? 0 : parsed - 1;
     const selected = found[idx]!;
     ok(`${selected.name} \x1b[2m(${selected.binary})\x1b[0m selected`);
     const agentModel = selected.binary === 'codex' ? await promptCodexModel() : undefined;
-    return { agent: selected.binary, agentModel };
+    const bedrock = agentSupportsBedrock(selected.binary)
+      ? await promptBedrockPreference(prompt, currentBedrock)
+      : false;
+    return { agent: selected.binary, agentModel, bedrock };
   }
 
   warn('No coding agent found on PATH');
@@ -477,51 +486,67 @@ async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel:
     if (r.exitCode !== 0) {
       fail('Install failed');
       info(r.stderr.trim().split('\n').slice(0, 5).join('\n'));
-      return { agent: undefined, agentModel: undefined };
+      return { agent: undefined, agentModel: undefined, bedrock: false };
     }
     if (!(await binaryExists('claude'))) {
       fail('claude binary not found on PATH after install — check your npm global bin directory');
-      return { agent: undefined, agentModel: undefined };
+      return { agent: undefined, agentModel: undefined, bedrock: false };
     }
     ok('Claude Code installed');
     info('');
     info('Next: run `claude login` to authenticate (browser OAuth).');
     info('Or set ANTHROPIC_API_KEY in your shell profile.');
-    return { agent: 'claude', agentModel: undefined };
+    const bedrock = await promptBedrockPreference(prompt, currentBedrock);
+    return { agent: 'claude', agentModel: undefined, bedrock };
   }
 
   if (choice === '2') {
     const r = await runSpawn('npm', ['install', '-g', '@openai/codex']);
     if (r.exitCode !== 0) {
       fail('Install failed');
-      return { agent: undefined, agentModel: undefined };
+      return { agent: undefined, agentModel: undefined, bedrock: false };
     }
     if (!(await binaryExists('codex'))) {
       fail('codex binary not found on PATH after install — check your npm global bin directory');
-      return { agent: undefined, agentModel: undefined };
+      return { agent: undefined, agentModel: undefined, bedrock: false };
     }
     ok('OpenAI Codex installed');
     const agentModel = await promptCodexModel();
-    return { agent: 'codex', agentModel };
+    return { agent: 'codex', agentModel, bedrock: false };
   }
 
   if (choice === '3') {
     const r = await runSpawn('npm', ['install', '-g', 'opencode-ai']);
     if (r.exitCode !== 0) {
       fail('Install failed');
-      return { agent: undefined, agentModel: undefined };
+      return { agent: undefined, agentModel: undefined, bedrock: false };
     }
     if (!(await binaryExists('opencode'))) {
       fail('opencode binary not found on PATH after install — check your npm global bin directory');
-      return { agent: undefined, agentModel: undefined };
+      return { agent: undefined, agentModel: undefined, bedrock: false };
     }
     ok('OpenCode installed');
     info('Run `opencode auth` to configure your provider.');
-    return { agent: 'opencode', agentModel: undefined };
+    return { agent: 'opencode', agentModel: undefined, bedrock: false };
   }
 
   warn('Skipped. Install a coding agent before running experiences import.');
-  return { agent: undefined, agentModel: undefined };
+  return { agent: undefined, agentModel: undefined, bedrock: false };
+}
+
+export function buildSetupAgentCredentials(
+  stored: ExperiencesCredentials,
+  agent: AgentName,
+  agentModel: string | undefined,
+  bedrock: boolean,
+): ExperiencesCredentials {
+  const { agentModel: _staleModel, bedrock: _staleBedrock, ...storedWithoutAgentPreferences } = stored;
+  return {
+    ...storedWithoutAgentPreferences,
+    agent,
+    ...(agentModel ? { agentModel } : {}),
+    ...(bedrock ? { bedrock: true } : {}),
+  };
 }
 
 // ── Step 5: Contentful credentials ───────────────────────────────────────────
@@ -1025,11 +1050,10 @@ export function registerSetupCommand(program: Command): void {
 
         // Step 4: agent
         if (!opts.skipAgent) {
-          const { agent, agentModel } = await setupAgent();
+          const stored = await readExperiencesCredentials();
+          const { agent, agentModel, bedrock } = await setupAgent(stored.bedrock);
           if (agent) {
-            const stored = await readExperiencesCredentials();
-            const { agentModel: _staleModel, ...storedWithoutModel } = stored;
-            await writeExperiencesCredentials({ ...storedWithoutModel, agent, ...(agentModel ? { agentModel } : {}) });
+            await writeExperiencesCredentials(buildSetupAgentCredentials(stored, agent, agentModel, bedrock));
           }
           results.push({ name: 'coding agent', passed: !!agent, required: true });
         } else {

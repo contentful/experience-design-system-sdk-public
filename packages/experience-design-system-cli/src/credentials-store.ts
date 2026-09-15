@@ -11,6 +11,8 @@ export type ExperiencesCredentials = {
   host?: string;
   agent?: string;
   agentModel?: string;
+  /** Persisted preference to route supported coding agents through AWS Bedrock. */
+  bedrock?: boolean;
   /** Feature 8: persisted custom prompt path for `analyze select-agent`. */
   selectPromptPath?: string;
   /** Feature 8: persisted custom prompt path for `generate components`. */
@@ -58,6 +60,7 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
       ...(host ? { host } : {}),
       ...(parsed.agent ? { agent: parsed.agent } : {}),
       ...(parsed.agentModel ? { agentModel: parsed.agentModel } : {}),
+      ...(typeof parsed.bedrock === 'boolean' ? { bedrock: parsed.bedrock } : {}),
       ...(parsed.selectPromptPath ? { selectPromptPath: parsed.selectPromptPath } : {}),
       ...(parsed.generatePromptPath ? { generatePromptPath: parsed.generatePromptPath } : {}),
       ...(typeof parsed.autoFilter === 'boolean' ? { autoFilter: parsed.autoFilter } : {}),
@@ -83,6 +86,7 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
     host: _host,
     agent,
     agentModel,
+    bedrock,
     selectPromptPath,
     generatePromptPath,
     autoFilter,
@@ -101,6 +105,7 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
         ...(host ? { host } : {}),
         ...(agent ? { agent } : {}),
         ...(agentModel ? { agentModel } : {}),
+        ...(typeof bedrock === 'boolean' && bedrock ? { bedrock: true } : {}),
         ...(selectPromptPath ? { selectPromptPath } : {}),
         ...(generatePromptPath ? { generatePromptPath } : {}),
         ...(typeof autoFilter === 'boolean' ? { autoFilter } : {}),

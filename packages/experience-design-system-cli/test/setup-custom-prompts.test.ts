@@ -1,5 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { promptCustomSkillPath } from '../src/setup/command.js';
+import { buildSetupAgentCredentials, promptCustomSkillPath } from '../src/setup/command.js';
+import type { ExperiencesCredentials } from '../src/credentials-store.js';
+
+describe('buildSetupAgentCredentials', () => {
+  it('clears a previously saved Bedrock preference when setup disables it', () => {
+    const stored: ExperiencesCredentials = {
+      spaceId: 'space',
+      environmentId: 'master',
+      cmaToken: 'token',
+      agent: 'claude',
+      bedrock: true,
+    };
+
+    const result = buildSetupAgentCredentials(stored, 'codex', undefined, false);
+
+    expect(result).toMatchObject({ agent: 'codex' });
+    expect(result).not.toHaveProperty('bedrock');
+  });
+});
 
 describe('promptCustomSkillPath (Feature 8)', () => {
   it('returns the trimmed path when the operator supplies one', async () => {

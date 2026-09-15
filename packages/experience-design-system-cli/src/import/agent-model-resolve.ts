@@ -32,3 +32,7 @@ export function resolveModel(flagValue: string | undefined, storedValue: string 
   if (storedValue && storedValue.length > 0) return storedValue;
   return undefined;
 }
+
+export function resolveBedrock(flagValue: boolean | undefined, storedValue: boolean | undefined): boolean {
+  return flagValue ?? storedValue ?? false;
+}
