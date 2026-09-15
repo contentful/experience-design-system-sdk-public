@@ -1,6 +1,6 @@
 {
   "name": "@contentful/experience-design-system-cli-v2",
-  "version": "2.30.0",
+  "version": "2.30.1",
   "description": "Contentful Experiences design system import CLI (v2 TUI)",
   "license": "MIT",
   "type": "module",
