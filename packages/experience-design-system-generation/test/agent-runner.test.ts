@@ -676,6 +676,8 @@ describe('resolveAgentModel', () => {
   });
   it('returns the DEFAULT_MODELS entry when neither explicit nor env is set', () =>
     expect(resolveAgentModel('cursor')).toBe('gpt-mini'));
+  it('leaves the Codex model unset when neither explicit nor env is set', () =>
+    expect(resolveAgentModel('codex')).toBeUndefined());
   it('ignores blank env values and falls back to default', () => {
     process.env.EDS_AGENT_MODEL_OPENCODE = '   ';
     expect(resolveAgentModel('opencode')).toBe('claude-haiku-4-5');
@@ -751,9 +753,9 @@ describe('buildArgs model handling', () => {
   it('uses gpt-mini default for cursor when no model provided', () => {
     expect(buildArgs('cursor', 'PROMPT')).toEqual(['--print', '--model', 'gpt-mini', 'PROMPT']);
   });
-  it('preserves codex sandbox flag and uses default model', () => {
+  it('preserves the Codex sandbox flag and lets Codex choose the default model', () => {
     const args = buildArgs('codex', 'PROMPT');
-    expect(args).toEqual(['exec', '--model', 'gpt-5.4-mini', '--dangerously-bypass-approvals-and-sandbox', 'PROMPT']);
+    expect(args).toEqual(['exec', '--dangerously-bypass-approvals-and-sandbox', 'PROMPT']);
   });
   it('inserts explicit --model before the codex sandbox flag', () => {
     expect(buildArgs('codex', 'PROMPT', 'gpt-5.5')).toEqual([

@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { promptCustomSkillPath } from '../src/setup/command.js';
+import { promptCodexModel, promptCustomSkillPath } from '../src/setup/command.js';
+
+describe('promptCodexModel', () => {
+  it('returns a trimmed model name when the operator supplies one', async () => {
+    const ask = async () => '  gpt-5.6-luna  ';
+    const result = await promptCodexModel(ask);
+    expect(result).toBe('gpt-5.6-luna');
+  });
+
+  it('returns undefined when the operator presses Enter', async () => {
+    const ask = async () => '';
+    const result = await promptCodexModel(ask);
+    expect(result).toBeUndefined();
+  });
+
+});
 
 describe('promptCustomSkillPath (Feature 8)', () => {
   it('returns the trimmed path when the operator supplies one', async () => {
