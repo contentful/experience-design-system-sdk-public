@@ -195,4 +195,32 @@ describe('runPipeline — select-agent argv forwarding', () => {
       cleanup();
     }
   });
+
+  it('forwards --bedrock to select-agent and generate components', async () => {
+    const dir = await makeTempDir('orch-bedrock-');
+    const cleanup = useTestDb(dir);
+    try {
+      const cliPath = await makeFakeCli(dir, {
+        'analyze extract': { stdout: 'session=s-extract\n' },
+        'analyze select-agent': { stderr: 'Accepted: 1  Rejected: 0\n' },
+        'generate components': { stdout: 'session=s-gen\n' },
+        'apply push': {
+          stdout: JSON.stringify({
+            componentTypes: { created: 1, updated: 0, failed: 0 },
+            designTokens: { created: 0, updated: 0, failed: 0 },
+          }),
+        },
+      });
+
+      await runPipeline({ ...baseOpts({ out: dir, bedrock: true }), project: dir }, () => {}, cliPath);
+
+      const calls = await readCalls(dir);
+      const selectAgentCall = calls.find((c) => c[0] === 'analyze' && c[1] === 'select-agent');
+      const generateCall = calls.find((c) => c[0] === 'generate' && c[1] === 'components');
+      expect(selectAgentCall).toContain('--bedrock');
+      expect(generateCall).toContain('--bedrock');
+    } finally {
+      cleanup();
+    }
+  });
 });

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   AGENT_NAMES,
+  agentSupportsBedrock,
   buildArgs,
   checkAgentAuth,
   describeAgentFailure,
@@ -14,6 +15,7 @@ import {
   resolveBinary,
   resolveAgentModel,
   isAgentName,
+  runAgent,
   DEFAULT_AGENT_NAME,
 } from '../src/agent-runner.js';
 
@@ -682,6 +684,22 @@ describe('resolveAgentModel', () => {
     process.env.EDS_AGENT_MODEL_OPENCODE = '   ';
     expect(resolveAgentModel('opencode')).toBe('claude-haiku-4-5');
   });
+
+  it('returns the Bedrock-specific default for codex when bedrock is true', () => {
+    expect(resolveAgentModel('codex', undefined, true)).toBe('openai.gpt-5.6-luna');
+  });
+  it('returns the amazon-bedrock-prefixed default for opencode when bedrock is true', () => {
+    expect(resolveAgentModel('opencode', undefined, true)).toBe('amazon-bedrock/claude-haiku-4-5');
+  });
+  it('an EDS_AGENT_MODEL_<AGENT> override still wins over the Bedrock default', () => {
+    process.env.EDS_AGENT_MODEL_CODEX = 'gpt-x';
+    expect(resolveAgentModel('codex', undefined, true)).toBe('gpt-x');
+  });
+  it('bedrock does not affect claude or cursor defaults, which are unaffected by the flag', () => {
+    expect(resolveAgentModel('claude', undefined, true)).toBe('haiku');
+    expect(resolveAgentModel('cursor', undefined, true)).toBe('gpt-mini');
+  });
+
   it('uses Auto default for copilot when neither explicit nor env is set', () =>
     expect(resolveAgentModel('copilot')).toBe('Auto'));
   it('honors EDS_AGENT_MODEL_COPILOT override', () => {
@@ -769,6 +787,81 @@ describe('buildArgs model handling', () => {
   it('omits the prompt positional when promptViaStdin is true', () => {
     expect(buildArgs('opencode', 'PROMPT', undefined, true)).toEqual(['run', '--model', 'claude-haiku-4-5']);
   });
+
+  describe('bedrock', () => {
+    const ENV_KEYS = ['AWS_REGION', 'AWS_DEFAULT_REGION'] as const;
+    const saved: Record<string, string | undefined> = {};
+    beforeEach(() => {
+      for (const k of ENV_KEYS) {
+        saved[k] = process.env[k];
+        delete process.env[k];
+      }
+    });
+    afterEach(() => {
+      for (const k of ENV_KEYS) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+    });
+
+    it('injects -c model_provider/region overrides for codex, defaulting region to us-east-1', () => {
+      expect(buildArgs('codex', 'PROMPT', undefined, false, true)).toEqual([
+        'exec',
+        '-c',
+        'model_provider=amazon-bedrock',
+        '-c',
+        'model_providers.amazon-bedrock.region=us-east-1',
+        '--model',
+        'openai.gpt-5.6-luna',
+        '--dangerously-bypass-approvals-and-sandbox',
+        'PROMPT',
+      ]);
+    });
+
+    it('uses AWS_REGION over the us-east-1 default for codex', () => {
+      process.env.AWS_REGION = 'eu-west-1';
+      const args = buildArgs('codex', 'PROMPT', undefined, false, true);
+      expect(args).toContain('model_providers.amazon-bedrock.region=eu-west-1');
+    });
+
+    it('does not add -c overrides for codex when bedrock is false', () => {
+      const args = buildArgs('codex', 'PROMPT', undefined, false, false);
+      expect(args).not.toContain('-c');
+    });
+
+    it('an explicit --model for codex overrides the Bedrock default id', () => {
+      const args = buildArgs('codex', 'PROMPT', 'openai.gpt-5.6-sol', false, true);
+      expect(args).toContain('openai.gpt-5.6-sol');
+      expect(args).not.toContain('openai.gpt-5.6-luna');
+    });
+
+    it('prefixes the default opencode model with amazon-bedrock/', () => {
+      expect(buildArgs('opencode', 'PROMPT', undefined, false, true)).toEqual([
+        'run',
+        '--model',
+        'amazon-bedrock/claude-haiku-4-5',
+        'PROMPT',
+      ]);
+    });
+
+    it('does not prefix an explicit opencode --model', () => {
+      expect(buildArgs('opencode', 'PROMPT', 'claude-sonnet-4-5', false, true)).toEqual([
+        'run',
+        '--model',
+        'claude-sonnet-4-5',
+        'PROMPT',
+      ]);
+    });
+
+    it('leaves an already-prefixed opencode model untouched', () => {
+      expect(resolveAgentModel('opencode', 'openai/gpt-5.6', true)).toBe('openai/gpt-5.6');
+    });
+
+    it('does not affect claude args (routed via env, not argv)', () => {
+      expect(buildArgs('claude', 'PROMPT', undefined, false, true)).toEqual(['--print', '--model', 'haiku', 'PROMPT']);
+    });
+  });
+
   it('omits --model on the default (Auto) for copilot; prompt sits immediately after -p', () => {
     // Auto is a UI-only label — the CLI rejects --model Auto. Skipping
     // --model entirely is how you actually get Auto behavior.
@@ -829,5 +922,98 @@ describe('describeAgentFailure', () => {
   it('returns the base message alone when there is no stderr/stdout detail', () => {
     const msg = describeAgentFailure({ exitCode: 127, stdout: '', stderr: '', timedOut: false });
     expect(msg).toBe('agent exited with code 127');
+  });
+});
+
+describe('runAgent bedrock env', () => {
+  let dir: string;
+  const envKeys = [
+    'EDS_AGENT_BINARY_CLAUDE',
+    'EDS_AGENT_BINARY_CURSOR',
+    'CLAUDE_CODE_USE_BEDROCK',
+    'EDS_BEDROCK',
+  ] as const;
+  const saved: Partial<Record<(typeof envKeys)[number], string | undefined>> = {};
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'run-agent-bedrock-'));
+    for (const key of envKeys) saved[key] = process.env[key];
+    delete process.env.CLAUDE_CODE_USE_BEDROCK;
+    delete process.env.EDS_BEDROCK;
+  });
+  afterEach(async () => {
+    for (const key of envKeys) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  async function makeEnvEchoBinary(): Promise<string> {
+    const p = join(dir, 'echo-env');
+    await writeFile(p, '#!/usr/bin/env node\nprocess.stdout.write(process.env.CLAUDE_CODE_USE_BEDROCK ?? "");\n');
+    await chmod(p, 0o755);
+    return p;
+  }
+
+  it('sets CLAUDE_CODE_USE_BEDROCK=1 in the child env when bedrock is true', async () => {
+    process.env.EDS_AGENT_BINARY_CLAUDE = await makeEnvEchoBinary();
+    const result = await runAgent({ agent: 'claude', prompt: 'PROMPT', timeoutMs: 5000, bedrock: true });
+    expect(result.stdout).toBe('1');
+  });
+
+  it('does not set CLAUDE_CODE_USE_BEDROCK when bedrock is omitted', async () => {
+    process.env.EDS_AGENT_BINARY_CLAUDE = await makeEnvEchoBinary();
+    const result = await runAgent({ agent: 'claude', prompt: 'PROMPT', timeoutMs: 5000 });
+    expect(result.stdout).toBe('');
+  });
+
+  it('is a no-op for an agent with no Bedrock env entry, even when bedrock is true', async () => {
+    process.env.EDS_AGENT_BINARY_CURSOR = await makeEnvEchoBinary();
+    const result = await runAgent({ agent: 'cursor', prompt: 'PROMPT', timeoutMs: 5000, bedrock: true });
+    expect(result.stdout).toBe('');
+  });
+
+  it('falls back to EDS_BEDROCK=1 when bedrock is not passed explicitly', async () => {
+    process.env.EDS_AGENT_BINARY_CLAUDE = await makeEnvEchoBinary();
+    process.env.EDS_BEDROCK = '1';
+    const result = await runAgent({ agent: 'claude', prompt: 'PROMPT', timeoutMs: 5000 });
+    expect(result.stdout).toBe('1');
+  });
+
+  it('an explicit bedrock: false overrides EDS_BEDROCK=1', async () => {
+    process.env.EDS_AGENT_BINARY_CLAUDE = await makeEnvEchoBinary();
+    process.env.EDS_BEDROCK = '1';
+    const result = await runAgent({ agent: 'claude', prompt: 'PROMPT', timeoutMs: 5000, bedrock: false });
+    expect(result.stdout).toBe('');
+  });
+
+  it('ignores EDS_BEDROCK when set to a non-"1" value', async () => {
+    process.env.EDS_AGENT_BINARY_CLAUDE = await makeEnvEchoBinary();
+    process.env.EDS_BEDROCK = 'true';
+    const result = await runAgent({ agent: 'claude', prompt: 'PROMPT', timeoutMs: 5000 });
+    expect(result.stdout).toBe('');
+  });
+});
+
+describe('agentSupportsBedrock', () => {
+  it('returns true for claude', () => {
+    expect(agentSupportsBedrock('claude')).toBe(true);
+  });
+
+  it('returns true for codex', () => {
+    expect(agentSupportsBedrock('codex')).toBe(true);
+  });
+
+  it('returns true for opencode', () => {
+    expect(agentSupportsBedrock('opencode')).toBe(true);
+  });
+
+  it('returns false for cursor, which has no working non-interactive Bedrock path', () => {
+    expect(agentSupportsBedrock('cursor')).toBe(false);
+  });
+
+  it('returns false for copilot, which has no Bedrock routing mechanism yet', () => {
+    expect(agentSupportsBedrock('copilot')).toBe(false);
   });
 });
