@@ -406,28 +406,17 @@ function pick(items: Array<{ label: string; description?: string }>, defaultIdx 
   process.stdout.write(`     \x1b[2m[s] Skip\x1b[0m\n`);
 }
 
-async function promptCodexModel(): Promise<string | undefined> {
-  if (process.env['OPENAI_API_KEY']) return undefined; // API key users get the default (gpt-4.1-nano)
+export async function promptCodexModel(ask: (q: string) => Promise<string> = prompt): Promise<string | undefined> {
+  if (process.env['OPENAI_API_KEY']) return undefined; // API key users use Codex's configured default
   info('');
   process.stdout.write(`     \x1b[33m⚠\x1b[0m  No OPENAI_API_KEY — using ChatGPT account authentication.\n`);
-  info('  Tip: run \x1b[1mcodex\x1b[0m then type \x1b[1m/model\x1b[0m to browse all available models.');
-  info('');
-  info('  Choose a model:');
-  info('');
-  pick([
-    { label: 'gpt-5.4-mini', description: 'fast, lower cost' },
-    { label: 'gpt-5.5', description: 'most capable' },
-    { label: 'gpt-5.4' },
-  ]);
-  info('');
-  const choice = await prompt('  \x1b[2m›\x1b[0m Your choice [1]: ');
-  if (choice === '1' || choice === '') return 'gpt-5.4-mini';
-  if (choice === '2') return 'gpt-5.5';
-  if (choice === '3') return 'gpt-5.4';
-  return undefined;
+  info('  Tip: run \x1b[1mcodex\x1b[0m then type \x1b[1m/model\x1b[0m to browse the models available to your account.');
+  const model = await ask('  Model name (optional - press Enter for Codex default): ');
+  const trimmed = model.trim();
+  return trimmed || undefined;
 }
 
-async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel: string | undefined }> {
+export async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel: string | undefined }> {
   section('Step 4: Coding agent (claude, codex, opencode, or copilot)', '[required]');
   info('experiences import uses a coding agent to generate component definitions.');
   info('');
@@ -455,7 +444,6 @@ async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel:
     const parsed = choice === '' ? 1 : parseInt(choice, 10);
     const idx = Number.isNaN(parsed) || parsed < 1 || parsed > found.length ? 0 : parsed - 1;
     const selected = found[idx]!;
-    ok(`${selected.name} \x1b[2m(${selected.binary})\x1b[0m selected`);
     const agentModel = selected.binary === 'codex' ? await promptCodexModel() : undefined;
     return { agent: selected.binary, agentModel };
   }
