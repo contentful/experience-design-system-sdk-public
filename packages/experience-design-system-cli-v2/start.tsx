@@ -5,6 +5,7 @@ import type { Screen } from './app.js';
 const START_ITEMS: { label: string; screen: Screen | 'exit' }[] = [
   { label: 'Import', screen: 'import' },
   { label: 'Saved Runs', screen: 'saved-runs' },
+  { label: 'Upgrade', screen: 'upgrade' },
   { label: 'Settings', screen: 'settings' },
   { label: 'Help', screen: 'help' },
   { label: 'Exit', screen: 'exit' },
