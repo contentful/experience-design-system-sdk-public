@@ -416,7 +416,7 @@ export async function promptCodexModel(ask: (q: string) => Promise<string> = pro
   return trimmed || undefined;
 }
 
-async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel: string | undefined }> {
+export async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel: string | undefined }> {
   section('Step 4: Coding agent (claude, codex, opencode, or copilot)', '[required]');
   info('experiences import uses a coding agent to generate component definitions.');
   info('');
@@ -444,7 +444,6 @@ async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel:
     const parsed = choice === '' ? 1 : parseInt(choice, 10);
     const idx = Number.isNaN(parsed) || parsed < 1 || parsed > found.length ? 0 : parsed - 1;
     const selected = found[idx]!;
-    ok(`${selected.name} \x1b[2m(${selected.binary})\x1b[0m selected`);
     const agentModel = selected.binary === 'codex' ? await promptCodexModel() : undefined;
     return { agent: selected.binary, agentModel };
   }
