@@ -393,6 +393,7 @@ const AGENT_DEFS: Array<{ name: string; binary: AgentName; installHint: string }
   { name: 'Claude Code', binary: 'claude', installHint: 'npm install -g @anthropic-ai/claude-code && claude login' },
   { name: 'OpenAI Codex', binary: 'codex', installHint: 'npm install -g @openai/codex  (requires OPENAI_API_KEY)' },
   { name: 'OpenCode', binary: 'opencode', installHint: 'npm install -g opencode-ai && opencode auth' },
+  { name: 'GitHub Copilot', binary: 'copilot', installHint: 'npm install -g @github/copilot && copilot' },
 ];
 
 function pick(items: Array<{ label: string; description?: string }>, defaultIdx = 0): void {
@@ -427,7 +428,7 @@ async function promptCodexModel(): Promise<string | undefined> {
 }
 
 async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel: string | undefined }> {
-  section('Step 4: Coding agent (claude, codex, or opencode)', '[required]');
+  section('Step 4: Coding agent (claude, codex, opencode, or copilot)', '[required]');
   info('experiences import uses a coding agent to generate component definitions.');
   info('');
 
