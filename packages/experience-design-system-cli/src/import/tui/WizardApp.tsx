@@ -125,6 +125,7 @@ type WizardState = {
   step: WizardStep;
   agent: string;
   agentModel?: string;
+  bedrock?: boolean;
   projectPath: string;
   outDir: string;
   rawTokensPath: string;
@@ -187,11 +188,13 @@ export function buildSelectAgentArgs(opts: {
   sessionId: string;
   agent: string;
   model?: string;
+  bedrock?: boolean;
   selectPromptPath?: string;
   noCache?: boolean;
 }): string[] {
   const args = ['analyze', 'select-agent', '--agent', opts.agent, '--session', opts.sessionId, '--exclude-invalid'];
   if (opts.model) args.push('--model', opts.model);
+  if (opts.bedrock) args.push('--bedrock');
   if (opts.selectPromptPath) args.push('--select-prompt-path', opts.selectPromptPath);
   if (opts.noCache) args.push('--no-cache');
   return args;
@@ -238,12 +241,14 @@ export function buildGenerateComponentsArgs(opts: {
   tokensPath?: string;
   agent: string;
   model?: string;
+  bedrock?: boolean;
   noCache?: boolean;
   generatePromptPath?: string;
 }): string[] {
   const args = ['generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
   if (opts.tokensPath) args.push('--tokens', opts.tokensPath);
   if (opts.model) args.push('--model', opts.model);
+  if (opts.bedrock) args.push('--bedrock');
   if (opts.noCache) args.push('--no-cache');
   if (opts.generatePromptPath) args.push('--generate-prompt-path', opts.generatePromptPath);
   return args;
@@ -301,6 +306,7 @@ export type WizardAppProps = {
   initialHost?: string;
   initialAgent?: string;
   initialModel?: string;
+  bedrock?: boolean;
   initialProjectPath?: string;
   host?: string;
   autoAcceptScope?: boolean;
@@ -340,6 +346,7 @@ export function WizardApp({
   initialHost,
   initialAgent,
   initialModel,
+  bedrock = false,
   initialProjectPath,
   host,
   autoAcceptScope = false,
@@ -437,6 +444,7 @@ export function WizardApp({
           : initialStepResolved,
     agent: initialAgent ?? 'claude',
     ...(initialModel ? { agentModel: initialModel } : {}),
+    ...(bedrock ? { bedrock: true } : {}),
     projectPath: initialProjectPath ?? '',
     outDir: initialOutDir,
     rawTokensPath: rawTokensEntryReady ? initialRawTokensPath! : '',
@@ -581,6 +589,7 @@ export function WizardApp({
     }>((res) => {
       const tokenArgs = [findCliPath(), 'generate', 'tokens', '--agent', state.agent, '--raw-tokens', rawTokensPath];
       if (state.agentModel) tokenArgs.push('--model', state.agentModel);
+      if (state.bedrock) tokenArgs.push('--bedrock');
       const child = spawn('node', tokenArgs);
       let stdout = '';
       let stderr = '';
@@ -729,6 +738,7 @@ export function WizardApp({
         for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
         // Composition resolution uses the same agent the user picked for the run.
         if (state.agent) extractArgs.push('--agent', state.agent);
+        if (state.bedrock) extractArgs.push('--bedrock');
       }
       const child = spawn('node', extractArgs);
       let stdout = '';
@@ -819,6 +829,7 @@ export function WizardApp({
         sessionId,
         agent: state.agent,
         ...(state.agentModel ? { model: state.agentModel } : {}),
+        ...(state.bedrock ? { bedrock: true } : {}),
         selectPromptPath,
         noCache,
       });
@@ -932,6 +943,7 @@ export function WizardApp({
         tokensPath,
         agent: state.agent,
         ...(state.agentModel ? { model: state.agentModel } : {}),
+        ...(state.bedrock ? { bedrock: true } : {}),
         noCache: effectiveNoCache,
       }),
     ];
@@ -1004,6 +1016,7 @@ export function WizardApp({
         tokensPath,
         agent: state.agent,
         ...(state.agentModel ? { model: state.agentModel } : {}),
+        ...(state.bedrock ? { bedrock: true } : {}),
         noCache: effectiveNoCache,
         generatePromptPath,
       }),
