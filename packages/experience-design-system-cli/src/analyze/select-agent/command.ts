@@ -24,6 +24,7 @@ import { loadReviewInput } from '../select/parser.js';
 import type { ReviewSessionSnapshot } from '../select/types.js';
 import {
   AGENT_NAMES,
+  agentSupportsBedrock,
   buildPrompt,
   createLocalCliAgentInvoker,
   formatCustomPromptBanner,
@@ -448,6 +449,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         projectRoot?: string;
         agent?: string;
         model?: string;
+        bedrock?: boolean;
         verbose?: boolean;
         dryRun?: boolean;
         excludeInvalid?: boolean;
@@ -485,6 +487,12 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         }
 
         const agent = agentName;
+
+        if (opts.bedrock && !agentSupportsBedrock(agent)) {
+          process.stderr.write(`Error: --bedrock is not supported for --agent ${agent}\n`);
+          await exitWithAnalytics(1);
+          return;
+        }
 
         // Feature 8: validate + announce custom prompt path before any heavy
         // work. Flag wins over saved credentials.
