@@ -6,6 +6,7 @@ import { HelpScreen } from './src/tui/help/PageContainer.js';
 import { SettingsScreen } from './src/tui/settings/PageContainer.js';
 import { OptInAnalyticsScreen } from './src/tui/settings/opt-in-analytics/screen.js';
 import { ConfigurationScreen } from './src/tui/settings/push-configuration/screen.js';
+import { UpgradeScreen } from './src/tui/upgrade/PageContainer.js';
 
 export type Screen =
   | 'start'
@@ -14,7 +15,8 @@ export type Screen =
   | 'help'
   | 'settings'
   | 'settings-opt-in-analytics'
-  | 'settings-configuration';
+  | 'settings-configuration'
+  | 'upgrade';
 
 export function App(): React.ReactElement {
   const [screen, setScreen] = useState<Screen>('start');
@@ -36,6 +38,9 @@ export function App(): React.ReactElement {
   }
   if (screen === 'settings-configuration') {
     return <ConfigurationScreen onDone={() => setScreen('settings')} />;
+  }
+  if (screen === 'upgrade') {
+    return <UpgradeScreen onDone={() => setScreen('start')} />;
   }
 
   return <StartScreen onNavigate={setScreen} />;
