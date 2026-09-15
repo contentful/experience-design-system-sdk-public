@@ -19,7 +19,9 @@ export function UpgradeScreen({ onDone }: { onDone: () => void }): React.ReactEl
       <Text> </Text>
       <Text>This is a placeholder screen for v2 upgrade content.</Text>
       <Text> </Text>
-      <Text dimColor>Coming soon: checks your installed version against the latest release and upgrades the TUI and CLI in place.</Text>
+      <Text dimColor>
+        Coming soon: checks your installed version against the latest release and upgrades the TUI and CLI in place.
+      </Text>
       <Text> </Text>
       <Text dimColor>[Enter] Complete [Esc/q] Exit — both return to Start</Text>
     </Box>
