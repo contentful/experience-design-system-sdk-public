@@ -2,6 +2,19 @@
 
 import { releaseVersion, releasePublish } from 'nx/release/index.js'
 import { execSync } from 'node:child_process'
+import { appendFileSync } from 'node:fs'
+
+// The PR preview comment in ci.yml needs the exact version this run published.
+// nx derives it from the next patch bump + preid, so it cannot be reconstructed
+// in YAML without drifting -- it has to be reported from here.
+const setOutput = (key, value) => {
+  if (!process.env.GITHUB_OUTPUT) return
+  appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`)
+}
+
+// Package the preview comment advertises. Only this one gets a `npx` line;
+// the other packages in the release are libraries with nothing to launch.
+const PREVIEW_PROJECT = 'experience-design-system-cli'
 
 const branch = process.env.GITHUB_REF?.replace('refs/heads/', '') ?? ''
 const isMain = branch === 'main'
@@ -78,6 +91,7 @@ if (isCanary) {
 
   if (!affectedProjects || affectedProjects.length === 0) {
     console.log('No packages have changed. Exiting.')
+    setOutput('preview_version', '')
     process.exit(0)
   }
 
@@ -118,9 +132,18 @@ if (isCanary) {
 
     const allSucceeded = Object.values(publishResults).every((result) => result.code === 0)
     console.log(allSucceeded ? '\n✓ Development packages published successfully!' : '\n✗ One or more dev packages failed to publish.')
+
+    // Only advertise a build that actually made it to the registry. A failed
+    // publish, or a PR that did not touch the CLI, leaves the output empty and
+    // the comment step is skipped.
+    const cliVersion = projectsVersionData[PREVIEW_PROJECT]?.newVersion
+    const cliPublished = publishResults[PREVIEW_PROJECT]?.code === 0
+    setOutput('preview_version', allSucceeded && cliPublished && cliVersion ? cliVersion : '')
+
     process.exit(allSucceeded ? 0 : 1)
   } catch (error) {
     console.error('Error during dev release:', error)
+    setOutput('preview_version', '')
     process.exit(1)
   }
 } else {
