@@ -20,7 +20,7 @@ export type UseLivePreviewOptions = {
   allowDeletions?: boolean;
 };
 
-export type LivePreviewStatus = 'idle' | 'running';
+type LivePreviewStatus = 'idle' | 'running';
 
 export type UseLivePreviewReturn = {
   trigger: () => void;

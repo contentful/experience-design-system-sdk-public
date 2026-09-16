@@ -7,7 +7,7 @@ export interface HistorySnapshot {
   undoSnapshot: Map<string, ReviewComponentStatus> | null;
 }
 
-export interface CdfReviewEntrySnapshot {
+interface CdfReviewEntrySnapshot {
   key: string;
   entry: CDFComponentEntry;
   status: ReviewComponentStatus;

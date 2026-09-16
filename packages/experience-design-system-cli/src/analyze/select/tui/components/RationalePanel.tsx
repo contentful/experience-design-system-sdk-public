@@ -63,7 +63,7 @@ type RenderedLine =
   | { kind: 'text'; text: string }
   | { kind: 'blank' };
 
-export function renderRationaleLines(rows: RationaleRow[], innerWidth: number): RenderedLine[] {
+function renderRationaleLines(rows: RationaleRow[], innerWidth: number): RenderedLine[] {
   const out: RenderedLine[] = [];
   rows.forEach((row, idx) => {
     out.push({ kind: 'name', text: row.name, isSlot: row.kind === 'slot' });

@@ -1,17 +1,6 @@
-export { ANALYTICS_SESSION_ENV, IMPORT_PIPELINE_ENV } from './constants.js';
-export { analyticsEnvForSubprocess, pipelineSubprocessEnv } from './env.js';
-export { exitWithAnalytics, failureFromApiError, failureFromUnknown } from './exit.js';
-export {
-  analyticsEnabled,
-  cliVersion,
-  flushAnalytics,
-  resetAnalyticsClientForTests,
-  setPersistedAnalyticsDisabled,
-  trackEvent,
-} from './client.js';
-export { isPipelineAnalyticsChild, resolveAnalyticsSessionId } from './session.js';
-export { normalizeCommand } from './normalize.js';
-export { getOsName } from './os.js';
+export { exitWithAnalytics, failureFromApiError } from './exit.js';
+export { flushAnalytics, setPersistedAnalyticsDisabled } from './client.js';
+export { isPipelineAnalyticsChild } from './session.js';
 export {
   bindAnalyticsSession,
   bindAnalyticsSessionId,
@@ -19,18 +8,7 @@ export {
   emitSessionStarted,
   enrichCommandResult,
   failActiveCommand,
-  getBoundSessionId,
   noteCommandStart,
-  resetAnalyticsStateForTests,
-  setCommandContext,
 } from './tracker.js';
 export { recordApplyOutcome, recordContentfulContext } from './apply.js';
-export type {
-  CommandCompletion,
-  CommandContext,
-  CommandFailure,
-  DsiCliCommand,
-  EntryCommand,
-  OsName,
-  WriteResult,
-} from './types.js';
+export type { CommandFailure } from './types.js';

@@ -7,7 +7,7 @@
  * URL shape.
  */
 
-export type PostPushView = 'components' | 'design_tokens';
+type PostPushView = 'components' | 'design_tokens';
 
 export interface BuildPostPushUrlInput {
   host: string;
@@ -28,7 +28,7 @@ function normalizeHost(host: string): string {
  * inputs this swaps the `api.` prefix to `app.`; any other host is returned
  * as-is (callers get the raw host, no guessing).
  */
-export function apiHostToAppHost(host: string): string {
+function apiHostToAppHost(host: string): string {
   const normalized = normalizeHost(host);
   return normalized.replace(/^api\./, 'app.');
 }

@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import type { CompositionMode } from '../lib/composition-mode.js';
 
 export const RUNS_FILE_VERSION = 3 as const;
-export const RUNS_FILE_CAP = 200;
+const RUNS_FILE_CAP = 200;
 
 /** Versions this CLI can read. v1 / v2 files are auto-migrated in memory;
  *  new writes always use the latest version. */
@@ -16,7 +16,7 @@ export const READABLE_VERSIONS = new Set<number>([1, 2, 3]);
  *  mtime (ISO 8601) at the moment the run record was written and, when
  *  known, the component name extracted from it (first-seen wins on
  *  collisions). */
-export type SourceFingerprint = {
+type SourceFingerprint = {
   files: Record<string, { mtime: string; componentName?: string }>;
   rawTokensPath: string | null;
   rawTokensMtime: string | null;
@@ -25,7 +25,7 @@ export type SourceFingerprint = {
 
 /** SHA-256 hashes of the JSON artifacts the wizard wrote to disk. Used on
  *  replay to detect manual edits to components.json / tokens.json. */
-export type SavedFingerprint = {
+type SavedFingerprint = {
   componentsJsonHash: string | null;
   tokensJsonHash: string | null;
 };
@@ -96,7 +96,7 @@ function encodeBase32(bytes: Uint8Array, length: number): string {
   return out.slice(0, length);
 }
 
-export function generateUlid(now: number = Date.now()): string {
+function generateUlid(now: number = Date.now()): string {
   // 48-bit timestamp -> 10 chars
   const tsBytes = new Uint8Array(6);
   let n = now;
@@ -208,11 +208,6 @@ export async function updateRun(id: string, patch: Partial<Omit<RunRecord, 'id'>
   file.runs[idx] = updated;
   await writeAtomic(file);
   return updated;
-}
-
-export async function findRunBySavePath(savePath: string): Promise<RunRecord | null> {
-  const file = await readFileMaybe();
-  return file?.runs.find((r) => r.savePath === savePath) ?? null;
 }
 
 export async function findAllRunsBySavePath(savePath: string): Promise<RunRecord[]> {

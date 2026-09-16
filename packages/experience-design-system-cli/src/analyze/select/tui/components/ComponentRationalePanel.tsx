@@ -60,7 +60,7 @@ type RenderedLine =
   | { kind: 'list-name'; text: string; sublabel?: string }
   | { kind: 'blank' };
 
-export function renderComponentRationaleLines(data: ComponentRationale, innerWidth: number): RenderedLine[] {
+function renderComponentRationaleLines(data: ComponentRationale, innerWidth: number): RenderedLine[] {
   const out: RenderedLine[] = [];
 
   const pushSection = (heading: string, body: string | null) => {

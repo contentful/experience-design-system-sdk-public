@@ -19,6 +19,7 @@
     "affected:build": "nx affected -t build --parallel=3",
     "affected:test": "nx affected -t test --parallel=3",
     "affected:lint": "nx affected -t lint --parallel=3",
+    "lint:duplicates": "jscpd packages tools --pattern '**/src/**/*.{ts,tsx,js,jsx,mjs,cjs}' --format typescript,tsx,javascript --ignore '**/node_modules/**,**/dist/**,**/coverage/**,**/.nx/**' --reporters console --no-colors --no-tips",
     "release": "node ./scripts/release.js",
     "prepare": "[ -n \"$CI\" ] || husky",
     "postbuild": "[ -n \"$CI\" ] || node scripts/link-cli.js",
@@ -47,14 +48,11 @@
     "@commitlint/config-conventional": "^20.5.3",
     "@nx/esbuild": "22.7.8",
     "@nx/js": "^22.7.8",
-    "@nx/workspace": "^22.7.8",
-    "conventional-changelog-conventionalcommits": "^9.3.1",
     "husky": "^9.1.7",
     "jscpd": "^5.2.1",
     "knip": "^6.36.0",
     "lint-staged": "^16.4.0",
-    "nx": "^22.7.8",
-    "semver": "^7.7.3"
+    "nx": "^22.7.8"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

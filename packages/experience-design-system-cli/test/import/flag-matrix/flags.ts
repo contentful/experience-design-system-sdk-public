@@ -1,4 +1,4 @@
-export type FlagMode = 'pty' | 'headless';
+type FlagMode = 'pty' | 'headless';
 
 export interface FlagSpec {
   flag: string;
@@ -20,16 +20,6 @@ export const COMPOSITION_FLAGS = [
   '--composition-refresh',
   '--generate-map',
   '--prompt',
-] as const;
-
-export const HEADLESS_TRIGGER_FLAGS = [
-  '--auto-accept-scope',
-  '--skip-analyze',
-  '--skip-generate',
-  '--skip-apply',
-  '--yes',
-  '--dry-run',
-  '--print-prompt',
 ] as const;
 
 export const IMPORT_FLAGS: FlagSpec[] = [

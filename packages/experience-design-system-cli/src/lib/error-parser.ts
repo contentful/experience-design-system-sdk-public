@@ -11,7 +11,7 @@ export interface ParsedEdsiError {
   diagnostics?: ErrorDiagnostic[];
 }
 
-export interface ErrorDiagnostic {
+interface ErrorDiagnostic {
   message: string;
   component?: string;
   /**

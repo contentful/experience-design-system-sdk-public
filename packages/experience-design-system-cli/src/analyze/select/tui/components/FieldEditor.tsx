@@ -15,7 +15,7 @@ import { useImmediateInput } from '../hooks/useImmediateInput.js';
 import { computeNextScrollOffset } from '../hooks/scroll-offset.js';
 import { findSlotCycles, type ComponentSlotInfo } from '../../../cycle-detection.js';
 
-export type PropMetadata = {
+type PropMetadata = {
   rationale?: string | null;
   sourceStartLine?: number | null;
   sourceEndLine?: number | null;

@@ -62,6 +62,3 @@ export async function pushRunSession(opts: PushSessionOptions): Promise<PushSess
   if (r.exitCode === 0) return { ok: true };
   return { ok: false, error: r.stderr.trim() || r.stdout.trim() || `exit ${r.exitCode}` };
 }
-
-/** Internal test surface. Not part of the public API. */
-export const __testing = { findCliPath };

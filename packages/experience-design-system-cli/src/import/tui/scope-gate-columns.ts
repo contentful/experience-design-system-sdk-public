@@ -7,7 +7,7 @@ export interface ScopeComponentLike {
 
 export type Decision = 'accepted' | 'rejected' | 'undecided';
 
-export const THREE_COLUMN_MIN_WIDTH = 120;
+const THREE_COLUMN_MIN_WIDTH = 120;
 
 export function computeColumnWidths(totalWidth: number): {
   layout: 'single' | 'three-column';

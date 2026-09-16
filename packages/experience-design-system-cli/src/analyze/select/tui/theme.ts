@@ -13,8 +13,6 @@ export const PALETTE = {
   bg: '#EFF2F6',
 } as const;
 
-export type PaletteRole = keyof typeof PALETTE;
-
 export function statusPaletteColor(
   status: ReviewComponentStatus,
   validationErrorCount: number,

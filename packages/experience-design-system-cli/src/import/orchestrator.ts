@@ -121,7 +121,7 @@ async function runStep(
 
 const MAX_VALIDATION_RETRIES = Number(process.env['EDS_MAX_VALIDATION_RETRIES'] ?? 2);
 
-export const SLOT_CYCLE_MARKER = 'manifest:components/slot-cycles';
+const SLOT_CYCLE_MARKER = 'manifest:components/slot-cycles';
 
 export function isSlotCycleError(result: { exitCode: number; stderr: string }): boolean {
   return result.exitCode !== 0 && result.stderr.includes(SLOT_CYCLE_MARKER);

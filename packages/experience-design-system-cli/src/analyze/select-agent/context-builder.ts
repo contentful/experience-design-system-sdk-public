@@ -23,20 +23,20 @@ const MAX_SIBLING_SNIPPET_CHARS = 1_200;
 const MAX_REFERENCE_SNIPPETS = 3;
 const MAX_REFERENCE_CHARS = 800;
 
-export type SelectionImportSummary = {
+type SelectionImportSummary = {
   source: string;
   names: string[];
   local: boolean;
   resolvedPath?: string;
 };
 
-export type SelectionFileSummary = {
+type SelectionFileSummary = {
   path: string;
   exports: string[];
   codeSnippet: string;
 };
 
-export type SelectionReference = {
+type SelectionReference = {
   path: string;
   snippet: string;
 };

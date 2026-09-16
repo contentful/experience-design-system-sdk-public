@@ -13,7 +13,7 @@ type AnalyzeViewRow = AnalyzeViewResult['components'][number];
  * (e.g. requiring a space after the colon), update `WARNING_PREFIX_SUFFIX`
  * and both call sites pick it up.
  */
-export const WARNING_PREFIX_SUFFIX = ':';
+const WARNING_PREFIX_SUFFIX = ':';
 
 export function isWarningForComponent(warning: string, componentName: string): boolean {
   return warning.startsWith(componentName + WARNING_PREFIX_SUFFIX);

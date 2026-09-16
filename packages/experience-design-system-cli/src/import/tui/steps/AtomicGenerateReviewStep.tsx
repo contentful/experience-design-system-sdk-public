@@ -90,7 +90,7 @@ type GenerateReviewStepProps = {
  *
  * Within each tier (empty / non-empty) we tie-break alphabetically by `key`.
  */
-export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(components: T[]): T[] {
+function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(components: T[]): T[] {
   return [...components].sort((a, b) => {
     const aEmpty = Object.keys(a.entry.$properties ?? {}).length === 0;
     const bEmpty = Object.keys(b.entry.$properties ?? {}).length === 0;
