@@ -20,13 +20,10 @@ export const PALETTE = {
   border: BRAND.steel,
 } as const;
 
-export type PaletteRole = keyof typeof PALETTE;
-
 export const BRAND_RAMP = [BRAND.blue, BRAND.orange, BRAND.yellow] as const;
 
 const BAR_CELL = '━';
 
-/** Splits `width` cells across the ramp colors, one segment each. */
 export function brandBar(width: number, ramp: readonly string[] = BRAND_RAMP): { text: string; color: string }[] {
   if (width <= 0 || ramp.length === 0) return [];
 
@@ -35,7 +32,6 @@ export function brandBar(width: number, ramp: readonly string[] = BRAND_RAMP): {
 
   return ramp
     .map((color, i) => ({
-      // Leftover cells go to the leading segments so the bar totals `width`.
       text: BAR_CELL.repeat(base + (i < remainder ? 1 : 0)),
       color,
     }))
