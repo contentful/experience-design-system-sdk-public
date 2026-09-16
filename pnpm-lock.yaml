@@ -167,9 +167,6 @@ importers:
 
   packages/experience-design-system-client:
     dependencies:
-      '@contentful/experience-design-system-types':
-        specifier: workspace:*
-        version: link:../experience-design-system-types
       '@hey-api/client-fetch':
         specifier: ^0.9.0
         version: 0.9.0(@hey-api/openapi-ts@0.80.18(typescript@5.9.3))
