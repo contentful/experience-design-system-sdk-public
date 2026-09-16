@@ -29,7 +29,6 @@ export function parsePreferenceSelection(input: string): PreferenceKey[] | undef
   return PREFERENCE_OPTIONS.filter((option) => numbers.has(option.number)).map((option) => option.key);
 }
 
-/** The picker list shown before any individual preference is configured. */
 export function formatPreferencePicker(): string {
   return [
     'Choose preferences to configure:',

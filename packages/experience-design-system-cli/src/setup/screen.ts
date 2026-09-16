@@ -25,10 +25,6 @@ export interface SetupStepperEntry {
   label: string;
 }
 
-/**
- * Labelled steps only fit once the terminal is at least as wide as the joined
- * stepper; narrower terminals fall back to numbered markers so it never wraps.
- */
 export function shouldUseWideStepper(columns?: number): boolean {
   return columns !== undefined && columns >= WIDE_STEPPER_MIN_COLUMNS;
 }
@@ -55,10 +51,6 @@ export function setupStepperEntries(activeStep: number, columns?: number): Setup
   });
 }
 
-/**
- * The version sits flush right when the terminal can hold the title, a gap, and
- * the version; otherwise it stays inline directly after the title.
- */
 export function shouldAlignVersionRight(version: string, columns?: number): boolean {
   const contentWidth = SETUP_TITLE.length + HEADER_INLINE_GAP + `v${version}`.length;
   return columns !== undefined && columns >= contentWidth;

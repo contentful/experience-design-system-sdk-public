@@ -19,10 +19,14 @@ import {
   runPrerequisitesSetup,
   type SetupActionDependencies,
   type SetupActionEvent,
+  type SetupChoice,
 } from '../setup-actions.js';
 
-/** The dependencies the screen cannot supply itself; prompts and output are UI-owned. */
-export type SetupScreenDependencies = Omit<SetupActionDependencies, 'ask' | 'askSecret' | 'confirm' | 'write'>;
+/** Prompts and output are UI-owned; the screen supplies the rest itself. */
+export type SetupScreenDependencies = Omit<
+  SetupActionDependencies,
+  'ask' | 'askSecret' | 'confirm' | 'choose' | 'write'
+>;
 
 export type SetupSkipFlags = {
   skipBuild?: boolean;
@@ -44,16 +48,21 @@ type SetupScreenProps = {
   profilePath: string;
   dependencies: SetupScreenDependencies;
   skip?: SetupSkipFlags;
-  /** Terminal width override; defaults to the live Ink stdout columns. */
+  /** Defaults to the live Ink stdout columns. */
   columns?: number;
-  /** Whether to offer `experiences doctor` after the summary. */
   offerDoctor?: boolean;
   onComplete: (outcome: SetupOutcome) => void;
 };
 
 type PendingPrompt =
   | { kind: 'text' | 'secret'; question: string; resolve: (answer: string) => void }
-  | { kind: 'confirm'; question: string; defaultYes: boolean; resolve: (answer: boolean) => void };
+  | { kind: 'confirm'; question: string; defaultYes: boolean; resolve: (answer: boolean) => void }
+  | {
+      kind: 'select';
+      question: string;
+      options: readonly SetupChoice[];
+      resolve: (answer: number | undefined) => void;
+    };
 
 const STEP_ACTIVITY = [
   'Checking prerequisites',
@@ -79,19 +88,20 @@ export function SetupScreen({
   const [events, setEvents] = useState<SetupActionEvent[]>([]);
   const [prompt, setPrompt] = useState<PendingPrompt | null>(null);
   const [inputValue, setInputValue] = useState('');
-  // A single chunk can carry typed text and the Enter that submits it, so the
-  // value has to be readable synchronously rather than via batched state.
+  // A chunk can carry typed text and the Enter that submits it, so the value
+  // has to be readable synchronously rather than through batched state.
   const inputValueRef = useRef('');
 
   const updateInput = (next: string): void => {
     inputValueRef.current = next;
     setInputValue(next);
   };
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [outcome, setOutcome] = useState<SetupOutcome | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // The driver mounts once and awaits the UI for every prompt, so the actions
-  // keep their existing sequencing without knowing they are rendered by Ink.
+  // The driver awaits the UI for every prompt, so the actions keep their own
+  // sequencing without knowing they are rendered by Ink.
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -101,6 +111,7 @@ export function SetupScreen({
     const request = <T,>(build: (resolve: (answer: T) => void) => PendingPrompt): Promise<T> =>
       new Promise<T>((resolve) => {
         updateInput('');
+        setSelectedIndex(0);
         setPrompt(build(resolve));
       });
 
@@ -110,6 +121,8 @@ export function SetupScreen({
       askSecret: (question) => request<string>((resolve) => ({ kind: 'secret', question, resolve })),
       confirm: (question, defaultYes = true) =>
         request<boolean>((resolve) => ({ kind: 'confirm', question, defaultYes, resolve })),
+      choose: (question, options) =>
+        request<number | undefined>((resolve) => ({ kind: 'select', question, options, resolve })),
       write: (event) => setEvents((current) => [...current, event]),
     };
 
@@ -121,7 +134,6 @@ export function SetupScreen({
     void (async () => {
       const results: SetupResultEntry[] = [];
 
-      // Step 1 — prerequisites run immediately, without waiting for input.
       const prerequisites = await runPrerequisitesSetup(uiDependencies, repoRoot, {
         ...(skip.skipBuild !== undefined ? { skipBuild: skip.skipBuild } : {}),
       });
@@ -147,18 +159,17 @@ export function SetupScreen({
       results.push({ name: 'pnpm', status: prerequisites.pnpm?.passed ? 'completed' : 'failed', required: true });
       if (prerequisites.build) {
         results.push({
-          name: 'install & build',
+          name: 'Install & build',
           status: prerequisites.build.passed ? 'completed' : 'failed',
           required: true,
         });
       } else if (skip.skipBuild) {
-        results.push({ name: 'install & build', status: 'skipped', required: false });
+        results.push({ name: 'Install & build', status: 'skipped', required: false });
       }
 
-      // Step 2 — coding agent.
       enterStep(2);
       if (skip.skipAgent) {
-        results.push({ name: 'coding agent', status: 'skipped', required: false });
+        results.push({ name: 'Coding agent', status: 'skipped', required: false });
       } else {
         const { agent, agentModel, passed } = await runAgentSetup(uiDependencies);
         if (agent) {
@@ -170,10 +181,9 @@ export function SetupScreen({
             ...(agentModel ? { agentModel } : {}),
           });
         }
-        results.push({ name: 'coding agent', status: passed ? 'completed' : 'failed', required: true });
+        results.push({ name: 'Coding agent', status: passed ? 'completed' : 'failed', required: true });
       }
 
-      // Step 3 — Contentful credentials.
       enterStep(3);
       if (skip.skipCredentials) {
         results.push({ name: 'Contentful credentials', status: 'skipped', required: false });
@@ -186,7 +196,6 @@ export function SetupScreen({
         });
       }
 
-      // Step 4 — preferences.
       enterStep(4);
       if (skip.skipOptional) {
         results.push({ name: 'Preferences', status: 'skipped', required: false });
@@ -218,14 +227,29 @@ export function SetupScreen({
       setOutcome(finalOutcome);
       onComplete(finalOutcome);
     })();
-    // Deliberately keyed on nothing: the driver owns the whole run, so
-    // re-running it when a prop changes identity would restart setup
-    // mid-flight. `startedRef` guards against a double invocation.
+    // Keyed on nothing deliberately: re-running when a prop changes identity
+    // would restart setup mid-flight.
   }, []);
 
   usePromptInput((chunk, key) => {
     const active = prompt;
     if (!active) return;
+
+    if (active.kind === 'select') {
+      const lastIndex = active.options.length;
+      if (key.upArrow) return setSelectedIndex((index) => (index === 0 ? lastIndex : index - 1));
+      if (key.downArrow) return setSelectedIndex((index) => (index === lastIndex ? 0 : index + 1));
+      if (key.return) {
+        setPrompt(null);
+        active.resolve(selectedIndex === lastIndex ? undefined : selectedIndex);
+        return;
+      }
+      if (chunk === 's' || chunk === 'S') {
+        setPrompt(null);
+        active.resolve(undefined);
+      }
+      return;
+    }
 
     const submit = (value: string): void => {
       setPrompt(null);
@@ -250,8 +274,6 @@ export function SetupScreen({
 
     if (key.ctrl || key.meta || key.escape || key.tab) return;
 
-    // Pasted values arrive as one chunk that may already include the Enter
-    // that submits them, so the raw chunk is split rather than appended whole.
     const { text, submitted } = splitPromptInput(chunk);
     if (!text && !submitted) return;
     const next = inputValueRef.current + text;
@@ -293,7 +315,12 @@ export function SetupScreen({
         </>
       )}
 
-      {prompt && <SetupPrompt prompt={prompt} value={inputValue} />}
+      {prompt &&
+        (prompt.kind === 'select' ? (
+          <SetupChoiceList prompt={prompt} selectedIndex={selectedIndex} />
+        ) : (
+          <SetupPrompt prompt={prompt} value={inputValue} />
+        ))}
     </Box>
   );
 }
@@ -319,7 +346,41 @@ function SetupEventLine({ event }: { event: SetupActionEvent }): React.ReactElem
   return <Text>{event.message}</Text>;
 }
 
+function SetupChoiceList({
+  prompt,
+  selectedIndex,
+}: {
+  prompt: Extract<PendingPrompt, { kind: 'select' }>;
+  selectedIndex: number;
+}): React.ReactElement {
+  const rows = [...prompt.options.map((option) => ({ ...option, skip: false })), { label: 'Skip', skip: true }];
+
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Text>{prompt.question}</Text>
+      <Box flexDirection="column" marginTop={1}>
+        {rows.map((row, index) => {
+          const isSelected = index === selectedIndex;
+          return (
+            <Box key={row.label}>
+              <Text color={isSelected ? PALETTE.info : undefined}>{isSelected ? '❯ ' : '  '}</Text>
+              <Text bold={isSelected} dimColor={row.skip && !isSelected} color={isSelected ? PALETTE.info : undefined}>
+                {row.label}
+              </Text>
+              {'description' in row && row.description ? <Text dimColor> {row.description}</Text> : null}
+            </Box>
+          );
+        })}
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>↑↓ to move · Enter to select</Text>
+      </Box>
+    </Box>
+  );
+}
+
 function SetupPrompt({ prompt, value }: { prompt: PendingPrompt; value: string }): React.ReactElement {
+  if (prompt.kind === 'select') return <Text>{prompt.question}</Text>;
   const display = prompt.kind === 'secret' ? '•'.repeat(value.length) : value;
   const hint = prompt.kind === 'confirm' ? (prompt.defaultYes ? ' [Y/n]' : ' [y/N]') : '';
 

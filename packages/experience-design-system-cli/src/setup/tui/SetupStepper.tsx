@@ -14,11 +14,6 @@ function stepColor(state: SetupStepState): string | undefined {
   return undefined;
 }
 
-/**
- * The persistent progress row shown above every setup screen. Labels appear
- * once the terminal is wide enough; narrower terminals get numbered markers so
- * the row never wraps.
- */
 export function SetupStepper({ activeStep, columns }: SetupStepperProps): React.ReactElement {
   const entries = setupStepperEntries(activeStep, columns);
   const separator = setupStepperSeparator(columns);
