@@ -16,7 +16,7 @@ import type { SetupActionDependencies, SetupActionEvent, SetupChoice } from '../
 import { runAgentSetup } from '../steps/coding-agent.js';
 import { ContentfulScreen } from '../steps/contentful.js';
 import type { StepStatus } from '../steps/StepLayout.js';
-import { runPreferenceSetupAction } from '../steps/preferences/index.js';
+import { PREFERENCE_OPTIONS } from '../steps/preferences/index.js';
 import { runPrerequisitesSetup } from '../steps/prerequisites/index.js';
 
 /** Prompts and output are UI-owned; the screen supplies the rest itself. */
@@ -84,7 +84,6 @@ export function SetupScreen({
   const [activeStep, setActiveStep] = useState(1);
   const [events, setEvents] = useState<SetupActionEvent[]>([]);
   const [prompt, setPrompt] = useState<PendingPrompt | null>(null);
-  const [pageHelp, setPageHelp] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
   // A chunk can carry typed text and the Enter that submits it, so the value
   // has to be readable synchronously rather than through batched state.
@@ -117,7 +116,6 @@ export function SetupScreen({
     const runScreen = (build: (done: (status: StepStatus) => void) => React.ReactNode): Promise<StepStatus> =>
       new Promise<StepStatus>((resolve) => {
         setPrompt(null);
-        setPageHelp(null);
         setEvents([]);
         setScreen(
           build((status) => {
@@ -135,20 +133,12 @@ export function SetupScreen({
         request<boolean>((resolve) => ({ kind: 'confirm', question, defaultYes, resolve })),
       choose: (question, options) =>
         request<number | undefined>((resolve) => ({ kind: 'select', question, options, resolve })),
-      write: (event) => {
-        if (event.kind === 'page') {
-          setEvents([]);
-          setPageHelp(event.message);
-          return;
-        }
-        setEvents((current) => [...current, event]);
-      },
+      write: (event) => setEvents((current) => [...current, event]),
     };
 
     const enterStep = (step: number): void => {
       setActiveStep(step);
       setEvents([]);
-      setPageHelp(null);
     };
 
     void (async () => {
@@ -216,12 +206,14 @@ export function SetupScreen({
       if (skip.skipOptional) {
         results.push({ name: 'Preferences', status: 'skipped', required: false });
       } else {
-        const { selected } = await runPreferenceSetupAction(uiDependencies, profilePath);
-        results.push({
-          name: 'Preferences',
-          status: selected.length > 0 ? 'completed' : 'skipped',
-          required: false,
-        });
+        // Each preference owns its screen, so the wizard walks them in order
+        // and reports the step as completed if any of them changed something.
+        let changed = false;
+        for (const { key, Screen } of PREFERENCE_OPTIONS) {
+          const status = await runScreen((done) => <Screen key={key} profilePath={profilePath} onDone={done} />);
+          if (status === 'completed') changed = true;
+        }
+        results.push({ name: 'Preferences', status: changed ? 'completed' : 'skipped', required: false });
       }
 
       const exitCode = countRequiredFailures(results) === 0 ? 0 : 1;
@@ -325,12 +317,6 @@ export function SetupScreen({
         ) : (
           <SetupPrompt prompt={prompt} value={inputValue} />
         ))}
-
-      {pageHelp && !outcome && (
-        <Box marginTop={1}>
-          <Text dimColor>{pageHelp}</Text>
-        </Box>
-      )}
     </Box>
   );
 }
@@ -354,7 +340,6 @@ function SetupEventLine({ event }: { event: SetupActionEvent }): React.ReactElem
   if (event.kind === 'failure') return <Text color={PALETTE.error}>✗ {event.message}</Text>;
   if (event.kind === 'warning') return <Text color={PALETTE.warning}>⚠ {event.message}</Text>;
   if (event.kind === 'help') return <Text dimColor>{event.message}</Text>;
-  if (event.kind === 'value') return <Text> {event.message}</Text>;
   return <Text>{event.message}</Text>;
 }
 

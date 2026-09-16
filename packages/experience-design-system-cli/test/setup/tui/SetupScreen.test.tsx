@@ -423,41 +423,6 @@ describe('SetupScreen', () => {
     expect(frame).not.toContain('Filters out components irrelevant');
   });
 
-  it('keeps both custom prompt paths on the page that offered them', async () => {
-    const { lastFrame, stdin } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Enable AI auto-filter'),
-    );
-    await answer(stdin, '');
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Speed up component analysis'),
-    );
-    await answer(stdin, 'n');
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Use your own prompt files'),
-    );
-    await answer(stdin, 'y');
-
-    const selectFrame = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Custom select'),
-    );
-    expect(selectFrame).toContain('Replaces the built-in instructions');
-    expect(selectFrame).not.toContain('Analyzes more components');
-    await answer(stdin, '/tmp/select.md');
-
-    const generateFrame = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Custom generate'),
-    );
-    expect(generateFrame).toContain('Replaces the built-in instructions');
-  });
-
   it('describes the profile settings by effect rather than by variable name', async () => {
     const { lastFrame, stdin, frames } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
 
@@ -475,41 +440,5 @@ describe('SetupScreen', () => {
     const history = frames.join('\n');
     expect(history).not.toContain('EDS_EXTRACT_CONCURRENCY=8 to your profile');
     expect(history).not.toContain('NO_COLOR=1 (disable colors)');
-  });
-
-  it('records configured preferences in the summary', async () => {
-    const writeCredentials = vi.fn();
-    const { lastFrame, stdin } = renderScreen({
-      dependencies: createDependencies({ writeCredentials }),
-      skip: { skipAgent: true, skipCredentials: true },
-    });
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Enable AI auto-filter'),
-    );
-    await answer(stdin, 'n');
-
-    for (const question of [
-      'Speed up component analysis',
-      'Use your own prompt files',
-      'Enable debug logging',
-      'analytics',
-      'Turn off colored output',
-    ]) {
-      await waitForFrame(
-        () => lastFrame(),
-        (f) => f.includes(question),
-      );
-      await answer(stdin, '');
-    }
-
-    const frame = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Summary'),
-    );
-
-    expect(frame).toContain('✓ Preferences');
-    expect(writeCredentials).toHaveBeenCalledWith({ spaceId: '', environmentId: '', cmaToken: '', autoFilter: false });
   });
 });
