@@ -86,21 +86,6 @@ describe('SetupScreen', () => {
     expect(frame).not.toContain('✓ Prerequisites');
   });
 
-  it('renders a blank spacer line after the credentials path notice', async () => {
-    const { lastFrame } = renderScreen({ skip: { skipAgent: true } });
-
-    const frame = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Current values') || f.includes('Configure Contentful credentials?'),
-    );
-
-    // The notice wraps, so the spacer follows its last wrapped line.
-    const lines = frame.split('\n');
-    const noticeEnd = lines.findIndex((line) => line.trim().endsWith('import.'));
-    expect(noticeEnd).toBeGreaterThanOrEqual(0);
-    expect(lines[noticeEnd + 1]!.trim()).toBe('');
-  });
-
   it('renders no step label or subtitle above the stepper', async () => {
     const { lastFrame } = renderScreen();
 
@@ -187,52 +172,6 @@ describe('SetupScreen', () => {
       (f) => f.includes('[3 Contentful]'),
     );
     expect(advanced).toContain('[3 Contentful]');
-  });
-
-  it('masks secret prompts', async () => {
-    const { lastFrame, stdin } = renderScreen({ skip: { skipAgent: true } });
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Configure Contentful credentials?'),
-    );
-    await answer(stdin, 'y');
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Space ID'),
-    );
-    await answer(stdin, 'space');
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Environment ID'),
-    );
-    await answer(stdin, '');
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('CMA token'),
-    );
-    stdin.write('secret');
-
-    const frame = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('••••••'),
-    );
-    expect(frame).toContain('••••••');
-    expect(frame).not.toContain('secret');
-  });
-
-  it('renders confirm prompts with the default hint', async () => {
-    const { lastFrame } = renderScreen({ skip: { skipAgent: true } });
-
-    const frame = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Configure Contentful credentials?'),
-    );
-
-    expect(frame).toContain('Configure Contentful credentials? [Y/n]');
   });
 
   it('renders a choice prompt with a Skip row and moves the pointer with arrow keys', async () => {
@@ -437,102 +376,6 @@ describe('SetupScreen', () => {
     );
 
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ runDoctor: true, exitCode: 0 }));
-  });
-
-  it('submits a pasted value that arrives with its own newline in one chunk', async () => {
-    const writeCredentials = vi.fn();
-    const { lastFrame, stdin } = renderScreen({
-      dependencies: createDependencies({ writeCredentials }),
-      skip: { skipAgent: true, skipOptional: true },
-    });
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Configure Contentful credentials?'),
-    );
-    stdin.write('y\r');
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Space ID'),
-    );
-    stdin.write('demo-space\r');
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Environment ID'),
-    );
-    stdin.write('\r');
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('CMA token'),
-    );
-    stdin.write('CFPAT-pasted-token\r');
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('API host'),
-    );
-    stdin.write('\r');
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Summary'),
-    );
-
-    expect(writeCredentials).toHaveBeenCalledWith(
-      expect.objectContaining({
-        spaceId: 'demo-space',
-        environmentId: 'master',
-        cmaToken: 'CFPAT-pasted-token',
-      }),
-    );
-  });
-
-  it('strips the bracketed-paste markers a terminal wraps a pasted token in', async () => {
-    const writeCredentials = vi.fn();
-    const { lastFrame, stdin } = renderScreen({
-      dependencies: createDependencies({ writeCredentials }),
-      skip: { skipAgent: true, skipOptional: true },
-    });
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Configure Contentful credentials?'),
-    );
-    stdin.write('y\r');
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Space ID'),
-    );
-    stdin.write('demo-space\r');
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Environment ID'),
-    );
-    stdin.write('\r');
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('CMA token'),
-    );
-    stdin.write('\x1b[200~CFPAT-bracketed\x1b[201~\r');
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('API host'),
-    );
-    stdin.write('\r');
-
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Summary'),
-    );
-
-    expect(writeCredentials).toHaveBeenCalledWith(expect.objectContaining({ cmaToken: 'CFPAT-bracketed' }));
   });
 
   it('walks every preference in order without asking which to configure', async () => {

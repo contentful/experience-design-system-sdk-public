@@ -14,7 +14,8 @@ import { usePromptInput } from './usePromptInput.js';
 import { SetupStepper } from './SetupStepper.js';
 import type { SetupActionDependencies, SetupActionEvent, SetupChoice } from '../lib/types.js';
 import { runAgentSetup } from '../steps/coding-agent.js';
-import { runCredentialsSetup } from '../steps/contentful.js';
+import { ContentfulScreen } from '../steps/contentful.js';
+import type { StepStatus } from '../steps/StepLayout.js';
 import { runPreferenceSetupAction } from '../steps/preferences/index.js';
 import { runPrerequisitesSetup } from '../steps/prerequisites/index.js';
 
@@ -95,6 +96,8 @@ export function SetupScreen({
   };
   const [outcome, setOutcome] = useState<SetupOutcome | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // A step that owns its own screen renders here while the driver awaits it.
+  const [screen, setScreen] = useState<React.ReactNode | null>(null);
 
   // The driver awaits the UI for every prompt, so the actions keep their own
   // sequencing without knowing they are rendered by Ink.
@@ -108,6 +111,20 @@ export function SetupScreen({
       new Promise<T>((resolve) => {
         updateInput('');
         setPrompt(build(resolve));
+      });
+
+    /** Hand the terminal to a self-rendering step and resolve with its status. */
+    const runScreen = (build: (done: (status: StepStatus) => void) => React.ReactNode): Promise<StepStatus> =>
+      new Promise<StepStatus>((resolve) => {
+        setPrompt(null);
+        setPageHelp(null);
+        setEvents([]);
+        setScreen(
+          build((status) => {
+            setScreen(null);
+            resolve(status);
+          }),
+        );
       });
 
     const uiDependencies: SetupActionDependencies = {
@@ -191,12 +208,8 @@ export function SetupScreen({
       if (skip.skipCredentials) {
         results.push({ name: 'Contentful credentials', status: 'skipped', required: false });
       } else {
-        const credentials = await runCredentialsSetup(uiDependencies);
-        results.push({
-          name: 'Contentful credentials',
-          status: credentials.passed ? 'completed' : 'failed',
-          required: false,
-        });
+        const status = await runScreen((done) => <ContentfulScreen onDone={done} />);
+        results.push({ name: 'Contentful credentials', status, required: false });
       }
 
       enterStep(4);
@@ -287,6 +300,8 @@ export function SetupScreen({
 
       {outcome ? (
         <SetupSummary outcome={outcome} notice={notice} />
+      ) : screen ? (
+        <Box marginTop={1}>{screen}</Box>
       ) : (
         <>
           <SetupEventLog events={events} />
