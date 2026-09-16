@@ -4,7 +4,6 @@ import {
   WIDE_STEPPER_MIN_COLUMNS,
   countRequiredFailures,
   formatSetupCompletionMessage,
-  setupScreenLabel,
   setupStepperEntries,
   setupStepperSeparator,
   shouldAlignVersionRight,
@@ -20,15 +19,6 @@ describe('setup screens', () => {
       { title: 'Contentful', kind: 'optional' },
       { title: 'Preferences', kind: 'optional' },
     ]);
-  });
-
-  it('labels the active screen with its position and requirement', () => {
-    expect(setupScreenLabel(2)).toBe('[2/4] Coding agent · required');
-    expect(setupScreenLabel(3)).toBe('[3/4] Contentful · optional');
-  });
-
-  it('returns an empty label for a step outside the wizard', () => {
-    expect(setupScreenLabel(5)).toBe('');
   });
 });
 

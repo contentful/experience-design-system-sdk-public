@@ -5,7 +5,6 @@ import {
   SETUP_TITLE,
   countRequiredFailures,
   formatSetupCompletionMessage,
-  setupScreenLabel,
   shouldAlignVersionRight,
   type SetupResultEntry,
 } from '../screen.js';
@@ -25,7 +24,7 @@ import {
 /** Prompts and output are UI-owned; the screen supplies the rest itself. */
 export type SetupScreenDependencies = Omit<
   SetupActionDependencies,
-  'ask' | 'askSecret' | 'confirm' | 'choose' | 'write'
+  'ask' | 'askSecret' | 'confirm' | 'choose' | 'chooseMany' | 'write'
 >;
 
 export type SetupSkipFlags = {
@@ -62,6 +61,12 @@ type PendingPrompt =
       question: string;
       options: readonly SetupChoice[];
       resolve: (answer: number | undefined) => void;
+    }
+  | {
+      kind: 'multiselect';
+      question: string;
+      options: readonly SetupChoice[];
+      resolve: (answer: number[]) => void;
     };
 
 const STEP_ACTIVITY = [
@@ -97,6 +102,7 @@ export function SetupScreen({
     setInputValue(next);
   };
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [checkedIndexes, setCheckedIndexes] = useState<readonly number[]>([]);
   const [outcome, setOutcome] = useState<SetupOutcome | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -112,6 +118,7 @@ export function SetupScreen({
       new Promise<T>((resolve) => {
         updateInput('');
         setSelectedIndex(0);
+        setCheckedIndexes([]);
         setPrompt(build(resolve));
       });
 
@@ -123,6 +130,8 @@ export function SetupScreen({
         request<boolean>((resolve) => ({ kind: 'confirm', question, defaultYes, resolve })),
       choose: (question, options) =>
         request<number | undefined>((resolve) => ({ kind: 'select', question, options, resolve })),
+      chooseMany: (question, options) =>
+        request<number[]>((resolve) => ({ kind: 'multiselect', question, options, resolve })),
       write: (event) => setEvents((current) => [...current, event]),
     };
 
@@ -235,6 +244,29 @@ export function SetupScreen({
     const active = prompt;
     if (!active) return;
 
+    if (active.kind === 'multiselect') {
+      const lastIndex = active.options.length - 1;
+      if (key.upArrow) return setSelectedIndex((index) => (index === 0 ? lastIndex : index - 1));
+      if (key.downArrow) return setSelectedIndex((index) => (index === lastIndex ? 0 : index + 1));
+      if (chunk === ' ') {
+        return setCheckedIndexes((checked) =>
+          checked.includes(selectedIndex)
+            ? checked.filter((index) => index !== selectedIndex)
+            : [...checked, selectedIndex],
+        );
+      }
+      if (chunk === 'a' || chunk === 'A') {
+        return setCheckedIndexes((checked) =>
+          checked.length === active.options.length ? [] : active.options.map((_option, index) => index),
+        );
+      }
+      if (key.return) {
+        setPrompt(null);
+        active.resolve([...checkedIndexes].sort((left, right) => left - right));
+      }
+      return;
+    }
+
     if (active.kind === 'select') {
       const lastIndex = active.options.length;
       if (key.upArrow) return setSelectedIndex((index) => (index === 0 ? lastIndex : index - 1));
@@ -291,10 +323,6 @@ export function SetupScreen({
         {alignRight ? <Box flexGrow={1} /> : <Text> </Text>}
         <Text dimColor>{versionLabel}</Text>
       </Box>
-      <Text>
-        Prepare this machine for <Text bold>experiences import</Text>.
-      </Text>
-
       <Box marginTop={1}>
         <SetupStepper activeStep={activeStep} columns={columns} />
       </Box>
@@ -303,9 +331,6 @@ export function SetupScreen({
         <SetupSummary outcome={outcome} notice={notice} />
       ) : (
         <>
-          <Box marginTop={1}>
-            <Text dimColor>{setupScreenLabel(activeStep)}</Text>
-          </Box>
           <SetupEventLog events={events} />
           {!prompt && (
             <Box marginTop={1}>
@@ -318,6 +343,8 @@ export function SetupScreen({
       {prompt &&
         (prompt.kind === 'select' ? (
           <SetupChoiceList prompt={prompt} selectedIndex={selectedIndex} />
+        ) : prompt.kind === 'multiselect' ? (
+          <SetupCheckboxList prompt={prompt} selectedIndex={selectedIndex} checkedIndexes={checkedIndexes} />
         ) : (
           <SetupPrompt prompt={prompt} value={inputValue} />
         ))}
@@ -379,8 +406,43 @@ function SetupChoiceList({
   );
 }
 
+function SetupCheckboxList({
+  prompt,
+  selectedIndex,
+  checkedIndexes,
+}: {
+  prompt: Extract<PendingPrompt, { kind: 'multiselect' }>;
+  selectedIndex: number;
+  checkedIndexes: readonly number[];
+}): React.ReactElement {
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Text>{prompt.question}</Text>
+      <Box flexDirection="column" marginTop={1}>
+        {prompt.options.map((option, index) => {
+          const isSelected = index === selectedIndex;
+          const isChecked = checkedIndexes.includes(index);
+          return (
+            <Box key={option.label}>
+              <Text color={isSelected ? PALETTE.info : undefined}>{isSelected ? '❯ ' : '  '}</Text>
+              <Text color={isChecked ? PALETTE.success : undefined}>{isChecked ? '◉ ' : '◯ '}</Text>
+              <Text bold={isSelected} color={isSelected ? PALETTE.info : undefined}>
+                {option.label}
+              </Text>
+              {option.description ? <Text dimColor> {option.description}</Text> : null}
+            </Box>
+          );
+        })}
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>↑↓ to move · Space to toggle · a for all · Enter to continue</Text>
+      </Box>
+    </Box>
+  );
+}
+
 function SetupPrompt({ prompt, value }: { prompt: PendingPrompt; value: string }): React.ReactElement {
-  if (prompt.kind === 'select') return <Text>{prompt.question}</Text>;
+  if (prompt.kind === 'select' || prompt.kind === 'multiselect') return <Text>{prompt.question}</Text>;
   const display = prompt.kind === 'secret' ? '•'.repeat(value.length) : value;
   const hint = prompt.kind === 'confirm' ? (prompt.defaultYes ? ' [Y/n]' : ' [y/N]') : '';
 

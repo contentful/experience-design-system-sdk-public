@@ -84,7 +84,19 @@ describe('SetupScreen', () => {
 
     expect(frame).toContain('[1 Prerequisites]');
     expect(frame).not.toContain('✓ Prerequisites');
-    expect(frame).toContain('[1/4] Prerequisites · required');
+  });
+
+  it('renders no step label or subtitle above the stepper', async () => {
+    const { lastFrame } = renderScreen();
+
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('[1 Prerequisites]'),
+    );
+
+    expect(frame).not.toContain('[1/4]');
+    expect(frame).not.toContain('· required');
+    expect(frame).not.toContain('Prepare this machine');
   });
 
   it('uses the compact numbered stepper on narrow terminals', async () => {
@@ -129,7 +141,7 @@ describe('SetupScreen', () => {
 
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('[3/4]'),
+      (f) => f.includes('[3 Contentful]'),
     );
 
     expect(frame).toContain('✓ Prerequisites');
@@ -417,6 +429,75 @@ describe('SetupScreen', () => {
     expect(writeCredentials).toHaveBeenCalledWith(expect.objectContaining({ cmaToken: 'CFPAT-bracketed' }));
   });
 
+  it('renders preferences as a toggleable checkbox list', async () => {
+    const { lastFrame } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
+
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Choose preferences to configure'),
+    );
+
+    expect(frame).toContain('❯ ◯ AI auto-filter');
+    expect(frame).toContain('◯ Disable terminal colors');
+    expect(frame).toContain('Space to toggle');
+    expect(frame).not.toContain('[all] Configure all');
+    expect(frame).not.toContain('for example, 1,3 or all');
+  });
+
+  it('skips every preference when Enter is pressed with nothing checked', async () => {
+    const { lastFrame, stdin } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
+
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Choose preferences to configure'),
+    );
+    stdin.write('\r');
+
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Summary'),
+    );
+    expect(frame).toContain('– Preferences — skipped');
+  });
+
+  it('toggles every preference on with a and off again', async () => {
+    const { lastFrame, stdin } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
+
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Choose preferences to configure'),
+    );
+    stdin.write('a');
+    const allOn = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('◉ Disable terminal colors'),
+    );
+    expect(allOn).toContain('◉ AI auto-filter');
+
+    stdin.write('a');
+    const allOff = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('◯ Disable terminal colors'),
+    );
+    expect(allOff).toContain('◯ AI auto-filter');
+  });
+
+  it('moves the highlight with the arrow keys', async () => {
+    const { lastFrame, stdin } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
+
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('❯ ◯ AI auto-filter'),
+    );
+    stdin.write('\x1b[B');
+
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('❯ ◯ Performance concurrency'),
+    );
+    expect(frame).toContain('❯ ◯ Performance concurrency');
+  });
+
   it('records configured preferences in the summary', async () => {
     const writeCredentials = vi.fn();
     const { lastFrame, stdin } = renderScreen({
@@ -428,11 +509,16 @@ describe('SetupScreen', () => {
       () => lastFrame(),
       (f) => f.includes('Choose preferences to configure'),
     );
-    await answer(stdin, '1');
+    stdin.write(' ');
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('◉ AI auto-filter'),
+    );
+    stdin.write('\r');
 
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.toLowerCase().includes('auto-filter'),
+      (f) => f.includes('Enable AI auto-filter'),
     );
     await answer(stdin, 'n');
 

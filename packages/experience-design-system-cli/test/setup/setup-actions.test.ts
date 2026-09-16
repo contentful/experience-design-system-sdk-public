@@ -19,6 +19,7 @@ function createDependencies(overrides: Partial<SetupActionDependencies> = {}): S
     askSecret: async () => '',
     confirm: async () => true,
     choose: async () => 0,
+    chooseMany: async () => [],
     write: () => undefined,
     binaryExists: async (binary) => binary === 'pnpm',
     run: async () => ({ exitCode: 0, stdout: '10.0.0\n', stderr: '' }),
@@ -168,7 +169,8 @@ describe('setup actions', () => {
   it('runs only the selected preference through injected prompts and writers', async () => {
     const writeCredentials = vi.fn();
     const dependencies = createDependencies({
-      ask: vi.fn().mockResolvedValueOnce('1').mockResolvedValueOnce('n'),
+      ask: vi.fn().mockResolvedValueOnce('n'),
+      chooseMany: async () => [0],
       writeCredentials,
     });
 
@@ -178,9 +180,37 @@ describe('setup actions', () => {
     expect(writeCredentials).toHaveBeenCalledWith({ spaceId: '', environmentId: '', cmaToken: '', autoFilter: false });
   });
 
+  it('offers every preference to the multi-select in display order', async () => {
+    const chooseMany = vi.fn().mockResolvedValue([]);
+    const dependencies = createDependencies({ chooseMany });
+
+    await runPreferenceSetupAction(dependencies, '/home/tester/.zshrc');
+
+    expect(chooseMany).toHaveBeenCalledWith('Choose preferences to configure:', [
+      { label: 'AI auto-filter' },
+      { label: 'Performance concurrency' },
+      { label: 'Custom prompts' },
+      { label: 'Debug logging' },
+      { label: 'Usage analytics' },
+      { label: 'Disable terminal colors' },
+    ]);
+  });
+
+  it('maps several chosen indexes to their preference keys', async () => {
+    const dependencies = createDependencies({
+      chooseMany: async () => [0, 4],
+      ask: async () => '',
+      confirm: async () => false,
+    });
+
+    await expect(runPreferenceSetupAction(dependencies, '/home/tester/.zshrc')).resolves.toEqual({
+      selected: ['autoFilter', 'analytics'],
+    });
+  });
+
   it('reports that no preferences changed when the picker is skipped', async () => {
     const events: SetupActionEvent[] = [];
-    const dependencies = createDependencies({ ask: async () => '', write: (event) => events.push(event) });
+    const dependencies = createDependencies({ chooseMany: async () => [], write: (event) => events.push(event) });
 
     await expect(runPreferenceSetupAction(dependencies, '/home/tester/.zshrc')).resolves.toEqual({ selected: [] });
     expect(events).toContainEqual({ kind: 'info', message: 'No preferences changed.' });
