@@ -50,6 +50,8 @@
     "@nx/workspace": "^22.7.8",
     "conventional-changelog-conventionalcommits": "^9.3.1",
     "husky": "^9.1.7",
+    "jscpd": "^5.2.1",
+    "knip": "^6.36.0",
     "lint-staged": "^16.4.0",
     "nx": "^22.7.8",
     "semver": "^7.7.3"
