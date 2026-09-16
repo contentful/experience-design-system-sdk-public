@@ -42,16 +42,13 @@ function renderScreen(
   return { ...result, onComplete };
 }
 
-/** Type a value and submit it, the way a terminal delivers a pasted answer. */
 async function answer(stdin: { write: (data: string) => void }, text: string): Promise<void> {
   stdin.write(`${text}\r`);
   await new Promise((resolve) => setTimeout(resolve, 20));
 }
 
-/**
- * Each screen clears its own action log when the next step begins, so
- * transient progress has to be asserted against the full frame history.
- */
+// Each screen clears its action log when the next step begins, so transient
+// progress only survives in the frame history.
 function waitForHistory(
   frames: () => string[],
   condition: (history: string) => boolean,
@@ -223,8 +220,8 @@ describe('SetupScreen', () => {
 
     expect(frame).toContain('✓ Node.js 24+');
     expect(frame).toContain('✓ pnpm');
-    expect(frame).toContain('✓ install & build');
-    expect(frame).toContain('– coding agent — skipped');
+    expect(frame).toContain('✓ Install & build');
+    expect(frame).toContain('– Coding agent — skipped');
     expect(frame).toContain('– Contentful credentials — skipped');
     expect(frame).toContain('– Preferences — skipped');
     expect(frame).toContain('✓ Setup complete. You can now run: experiences import');

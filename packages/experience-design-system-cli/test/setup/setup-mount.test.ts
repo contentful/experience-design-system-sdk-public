@@ -52,7 +52,6 @@ describe('experiences setup mounting', () => {
     expect(source).toContain("await import('ink')");
     expect(source).toContain("await import('./tui/SetupScreen.js')");
     expect(source).not.toContain('node:readline');
-    // Ink owns rerendering, so no manual clear-and-home sequences remain.
     expect(source).not.toContain('\\x1b[2J');
   });
 });

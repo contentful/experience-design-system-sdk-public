@@ -1,12 +1,8 @@
 /**
- * Split a raw terminal input chunk into typed text and whether it submits.
- *
  * A terminal coalesces fast input, so a pasted value and the Enter that follows
- * it can arrive in a single chunk (`"my-token\r"`). Treating such a chunk as
- * plain text would append the carriage return to the field instead of
- * submitting it, so the trailing newline is detected here. Only the first line
- * is kept: a multi-line paste submits its first value rather than smuggling the
- * remaining lines into one field.
+ * it arrive in a single chunk (`"my-token\r"`). Only the first line is kept, so
+ * a multi-line paste submits its first value instead of filling one field with
+ * all of them.
  */
 export function splitPromptInput(input: string): { text: string; submitted: boolean } {
   const cleaned = stripBracketedPasteMarkers(input);
@@ -20,7 +16,6 @@ function stripBracketedPasteMarkers(value: string): string {
   return value.replace(/\x1b\[20[01]~/g, '');
 }
 
-/** Drop escape sequences and other control bytes a paste may carry along. */
 function stripControlCharacters(value: string): string {
   return value.replace(/[\x00-\x1f\x7f]/g, '');
 }

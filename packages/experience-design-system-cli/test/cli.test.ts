@@ -298,8 +298,6 @@ describe('CLI entry point', () => {
       expect(stdout).toContain('--skip-optional');
     });
 
-    // Setup is Ink-only: there is no second non-interactive implementation, so
-    // a non-TTY session is rejected instead of falling back to prompts.
     it('rejects a non-TTY session', async () => {
       const { stderr, code } = await run(
         'setup',

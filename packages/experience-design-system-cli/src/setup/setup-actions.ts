@@ -29,6 +29,8 @@ export interface SetupActionDependencies {
   ask(question: string): Promise<string>;
   askSecret(question: string): Promise<string>;
   confirm(question: string, defaultYes?: boolean): Promise<boolean>;
+  /** Resolves the chosen index, or `undefined` when the operator skips. */
+  choose(question: string, options: readonly SetupChoice[]): Promise<number | undefined>;
   write(event: SetupActionEvent): void;
   binaryExists(binary: string): Promise<boolean>;
   run(
@@ -42,6 +44,11 @@ export interface SetupActionDependencies {
   readCredentials(): Promise<ExperiencesCredentials>;
   writeCredentials(credentials: ExperiencesCredentials): Promise<void>;
   credentialsPath(): string;
+}
+
+export interface SetupChoice {
+  label: string;
+  description?: string;
 }
 
 export interface SetupCheckResult {
@@ -69,16 +76,6 @@ const AGENT_DEFS: Array<{ name: string; binary: AgentName; installHint: string }
 
 function emit(dependencies: SetupActionDependencies, kind: SetupActionEventKind, message: string): void {
   dependencies.write({ kind, message });
-}
-
-function emitChoices(
-  dependencies: SetupActionDependencies,
-  items: Array<{ label: string; description?: string }>,
-): void {
-  items.forEach((item, index) =>
-    emit(dependencies, 'choice', `[${index + 1}] ${item.label}${item.description ? `  ${item.description}` : ''}`),
-  );
-  emit(dependencies, 'choice', '[s] Skip');
 }
 
 export async function runPrerequisitesSetup(
@@ -272,6 +269,7 @@ async function promptCodexModel(dependencies: SetupActionDependencies): Promise<
 
 export async function runAgentSetup(dependencies: SetupActionDependencies): Promise<AgentSetupResult> {
   emit(dependencies, 'info', 'experiences import uses a coding agent to generate component definitions.');
+  emit(dependencies, 'info', '');
   const found = (
     await Promise.all(
       AGENT_DEFS.map(async (agent) => ((await dependencies.binaryExists(agent.binary)) ? agent : undefined)),
@@ -284,26 +282,24 @@ export async function runAgentSetup(dependencies: SetupActionDependencies): Prom
     return { agent: selected.binary, agentModel, passed: true };
   }
   if (found.length > 1) {
-    emit(dependencies, 'info', 'Multiple coding agents found. Choose one to use as the default:');
-    emitChoices(
-      dependencies,
+    const index = await dependencies.choose(
+      'Multiple coding agents found. Choose one to use as the default:',
       found.map((agent) => ({ label: agent.name, description: agent.binary })),
     );
-    const choice = await dependencies.ask('Your choice [1]: ');
-    if (choice.toLowerCase() === 's') return { agent: undefined, agentModel: undefined, passed: false };
-    const selected = found[(Number.parseInt(choice || '1', 10) || 1) - 1] ?? found[0]!;
+    if (index === undefined) return { agent: undefined, agentModel: undefined, passed: false };
+    const selected = found[index] ?? found[0]!;
     const agentModel = selected.binary === 'codex' ? await promptCodexModel(dependencies) : undefined;
     return { agent: selected.binary, agentModel, passed: true };
   }
 
   emit(dependencies, 'warning', 'No coding agent found on PATH');
-  emitChoices(
-    dependencies,
-    AGENT_DEFS.slice(0, 3).map((agent) => ({ label: agent.name, description: agent.installHint })),
+  const installable = AGENT_DEFS.slice(0, 3);
+  const index = await dependencies.choose(
+    'Choose one to install:',
+    installable.map((agent) => ({ label: agent.name, description: agent.installHint })),
   );
-  const choice = await dependencies.ask('Your choice: ');
-  const selected = AGENT_DEFS[Number.parseInt(choice || '1', 10) - 1];
-  if (!selected || selected.binary === 'copilot') return { agent: undefined, agentModel: undefined, passed: false };
+  const selected = index === undefined ? undefined : installable[index];
+  if (!selected) return { agent: undefined, agentModel: undefined, passed: false };
   const packageName =
     selected.binary === 'claude'
       ? '@anthropic-ai/claude-code'

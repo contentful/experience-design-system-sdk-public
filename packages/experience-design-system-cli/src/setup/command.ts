@@ -96,10 +96,6 @@ function runSpawn(
   });
 }
 
-/**
- * The environment- and disk-backed half of the setup actions. Prompts and
- * output stay with the Ink screen, which supplies the rest.
- */
 export function createSetupScreenDependencies(): SetupScreenDependencies {
   return {
     nodeVersion: process.versions.node,

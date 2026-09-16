@@ -18,6 +18,7 @@ function createDependencies(overrides: Partial<SetupActionDependencies> = {}): S
     ask: async () => '',
     askSecret: async () => '',
     confirm: async () => true,
+    choose: async () => 0,
     write: () => undefined,
     binaryExists: async (binary) => binary === 'pnpm',
     run: async () => ({ exitCode: 0, stdout: '10.0.0\n', stderr: '' }),
@@ -82,6 +83,54 @@ describe('setup actions', () => {
       build: { passed: true },
     });
     expect(events).toContainEqual({ kind: 'success', message: 'CLI built successfully' });
+  });
+
+  it('selects an agent by the chosen index when several are installed', async () => {
+    const choose = vi.fn().mockResolvedValue(1);
+    const dependencies = createDependencies({
+      binaryExists: async (binary) => binary === 'claude' || binary === 'codex',
+      choose,
+      ask: async () => '',
+    });
+
+    await expect(runAgentSetup(dependencies)).resolves.toEqual({
+      agent: 'codex',
+      agentModel: undefined,
+      passed: true,
+    });
+    expect(choose).toHaveBeenCalledWith('Multiple coding agents found. Choose one to use as the default:', [
+      { label: 'Claude Code', description: 'claude' },
+      { label: 'OpenAI Codex', description: 'codex' },
+    ]);
+  });
+
+  it('skips the agent step when the chooser resolves undefined', async () => {
+    const dependencies = createDependencies({
+      binaryExists: async (binary) => binary === 'claude' || binary === 'codex',
+      choose: async () => undefined,
+    });
+
+    await expect(runAgentSetup(dependencies)).resolves.toEqual({
+      agent: undefined,
+      agentModel: undefined,
+      passed: false,
+    });
+  });
+
+  it('separates the agent intro from the list that follows it', async () => {
+    const events: SetupActionEvent[] = [];
+    const dependencies = createDependencies({
+      binaryExists: async (binary) => binary === 'claude',
+      write: (event) => events.push(event),
+    });
+
+    await runAgentSetup(dependencies);
+
+    expect(events.slice(0, 3)).toEqual([
+      { kind: 'info', message: 'experiences import uses a coding agent to generate component definitions.' },
+      { kind: 'info', message: '' },
+      { kind: 'success', message: 'Claude Code (claude) found' },
+    ]);
   });
 
   it('returns the selected Codex agent and typed model from injected prompts', async () => {
