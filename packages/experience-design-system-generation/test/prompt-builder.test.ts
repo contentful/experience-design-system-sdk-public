@@ -48,6 +48,44 @@ describe('buildPrompt', () => {
     expect(prompt).not.toContain('Token-name sidecar (raw name');
   });
 
+  it('omits existing-entities preamble sections when not provided', async () => {
+    const prompt = await buildPrompt({
+      skill: 'components',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      outDir: '/fake/out',
+    });
+    // The skill markdown itself references these entities as *possible* preamble
+    // content; the negative check is scoped to the JSON-block section header
+    // the preamble renderer emits when the inline data is actually attached.
+    expect(prompt).not.toContain('Existing components in the target Contentful space (JSON)');
+    expect(prompt).not.toContain('Existing design tokens in the target Contentful space (JSON)');
+  });
+
+  it('inlines existing-entity summaries when provided', async () => {
+    const existingComponentsInline = JSON.stringify({
+      components: [{ id: 'c1', name: 'Button', description: 'Primary CTA' }],
+    });
+    const existingTokensInline = JSON.stringify({
+      tokens: [{ id: 't1', name: 'unique-fixture-token-name-9c2f', type: 'DTCG.Color' }],
+    });
+    const prompt = await buildPrompt({
+      skill: 'components',
+      mode: 'autonomous',
+      rawComponentsInline: INLINE_COMPONENTS,
+      existingComponentsInline,
+      existingTokensInline,
+      outDir: '/fake/out',
+    });
+    expect(prompt).toContain('Existing components in the target Contentful space (JSON)');
+    expect(prompt).toContain('Primary CTA');
+    expect(prompt).toContain('Existing design tokens in the target Contentful space (JSON)');
+    // Use a fixture-unique token name to prove the block was actually inlined —
+    // a common name like `brand.primary` also appears in the skill markdown, so
+    // asserting on it doesn't distinguish injected content from base template.
+    expect(prompt).toContain('unique-fixture-token-name-9c2f');
+  });
+
   it('inlines optional token data when provided', async () => {
     const tokensInline = JSON.stringify({ colors: { primary: { $type: 'color', $value: '#0066ff' } } });
     const tokenMapInline = JSON.stringify({ '--brand-primary': 'colors.primary' });

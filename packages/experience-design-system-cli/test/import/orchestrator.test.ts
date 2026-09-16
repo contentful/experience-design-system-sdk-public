@@ -269,8 +269,17 @@ describe('runPipeline — step count in progress output', () => {
       },
     });
 
+    // With creds present the orchestrator would attempt the automatic
+    // existing-entities fetch (a real CMA HTTP call), inflating the step count.
+    // Strip creds and skip apply push (which also requires creds) to keep this
+    // a pure base-pipeline count test.
+    const opts = baseOpts({ out: dir, skipApply: true });
+    delete opts.spaceId;
+    delete opts.environmentId;
+    delete opts.cmaToken;
+
     const lines: string[] = [];
-    await runPipeline({ ...baseOpts({ out: dir }), project: dir }, (line) => lines.push(line), cliPath);
+    await runPipeline({ ...opts, project: dir }, (line) => lines.push(line), cliPath);
 
     const stepLines = lines.filter((l) => l.includes('Step '));
     expect(stepLines.every((l) => l.includes('/5'))).toBe(true);
@@ -292,8 +301,13 @@ describe('runPipeline — step count in progress output', () => {
       },
     });
 
+    const opts = baseOpts({ out: dir, print: true, skipApply: true });
+    delete opts.spaceId;
+    delete opts.environmentId;
+    delete opts.cmaToken;
+
     const lines: string[] = [];
-    await runPipeline({ ...baseOpts({ out: dir, print: true }), project: dir }, (line) => lines.push(line), cliPath);
+    await runPipeline({ ...opts, project: dir }, (line) => lines.push(line), cliPath);
 
     const stepLines = lines.filter((l) => l.includes('Step '));
     expect(stepLines.every((l) => l.includes('/6'))).toBe(true);

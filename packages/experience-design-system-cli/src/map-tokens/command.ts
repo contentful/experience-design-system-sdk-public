@@ -27,7 +27,10 @@ import {
   replaceRawTokenNamePaths,
   loadRawTokenNamePathRows,
 } from '../session/db.js';
-import { hashPromptForSkill } from '../session/cache-keys.js';
+import { hashContent, hashPromptForSkill } from '../session/cache-keys.js';
+import { readExistingContentfulEntitiesFromSession } from '../helpers/read-existing-contentful-entities-from-session.js';
+import { summarizeForMapTokens } from '../helpers/summarize-existing-contentful-entities.js';
+import { resolve } from 'node:path';
 import { rebuildDTCGTree } from '../print/command.js';
 import { applyMapTokenPropCalls } from './apply.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
@@ -48,6 +51,7 @@ interface MapTokensOptions {
   cache?: boolean;
   skipAgent?: boolean;
   tokenMap?: string;
+  existingEntitiesPath?: string;
 }
 
 async function renderResult(result: MapTokensViewResult): Promise<void> {
@@ -184,6 +188,20 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
     const tokenTree = rebuildDTCGTree(groups, tokens);
     const componentSourceRefs = await loadComponentSourceRefs(db, sessionId);
 
+    let existingTokensInline: string | undefined;
+    if (opts.existingEntitiesPath) {
+      const existingContentfulEntities = await readExistingContentfulEntitiesFromSession(
+        resolve(opts.existingEntitiesPath),
+      );
+      if (existingContentfulEntities) {
+        existingTokensInline = JSON.stringify(summarizeForMapTokens(existingContentfulEntities));
+      } else {
+        process.stderr.write(
+          `warn: --existing-entities-path ${opts.existingEntitiesPath} could not be read as JSON — proceeding without space-context enrichment\n`,
+        );
+      }
+    }
+
     if (opts.printPrompt) {
       const prompt = await buildPrompt({
         skill: 'map-tokens',
@@ -192,6 +210,7 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
         tokenTree,
         componentSourceRefs,
         outDir: process.cwd(),
+        existingTokensInline,
       });
       process.stdout.write(prompt + '\n');
       await exitWithAnalytics(0);
@@ -212,7 +231,13 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
     const agent = configuredAgent!;
 
     const noCache = opts.cache === false || process.env.EDS_NO_CACHE === '1';
-    const promptHash = await hashPromptForSkill('map-tokens', agent, model);
+    const promptHash = await hashPromptForSkill(
+      'map-tokens',
+      agent,
+      model,
+      undefined,
+      existingTokensInline ? [hashContent(existingTokensInline)] : [],
+    );
     const inputHash = computeMapTokensInputHash(db, sessionId, componentSourceRefs);
 
     if (!noCache) {
@@ -244,6 +269,7 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
       tokenTree,
       componentSourceRefs,
       outDir: process.cwd(),
+      existingTokensInline,
     });
 
     const invoker = createLocalCliAgentInvoker();
@@ -286,7 +312,13 @@ export function registerMapTokensCommand(program: Command): void {
     .option('--print-prompt', 'Print the prompt without invoking the agent')
     .option('--skip-agent', 'Resolve token defaults without agentic $token.allowed inference')
     .option('--no-cache', 'Bypass the map-tokens cache and force a re-run')
-    .option('--token-map <path>', 'Path to token-name-map.json sidecar');
+    .option('--token-map <path>', 'Path to token-name-map.json sidecar')
+    .option(
+      '--existing-entities-path <path>',
+      'Path to the .existing-entities.json file written by the orchestrator when CMA credentials are supplied. ' +
+        "When present, the agent gets a list of the space's existing design tokens so it can prefer binding to them. " +
+        'Missing/malformed files are treated as no-op.',
+    );
 
   addAgentModelOptions(tokensCmd).action(async (opts: MapTokensOptions) => {
     await runMapTokens(opts);
