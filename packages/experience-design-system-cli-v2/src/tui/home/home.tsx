@@ -4,7 +4,7 @@ import type { Screen } from '../../../app.js';
 import { FOCUS_MARKER, PALETTE, brandBar } from './home.theme.js';
 import { readPackageVersion } from '../version.js';
 import { useTerminalWidth } from '../use-terminal-width.js';
-import { checkForUpgrade, type UpgradeCheckResult } from '../../api/version-check.js';
+import { checkForUpgrade, type UpgradeCheckResult } from '../upgrade/services/version-check.js';
 
 const VERSION = readPackageVersion();
 const HEADING = 'Contentful Experiences';

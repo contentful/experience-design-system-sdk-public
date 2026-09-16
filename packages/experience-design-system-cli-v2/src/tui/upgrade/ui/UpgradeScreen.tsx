@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { Box, Text, useApp, useInput } from 'ink';
-import { checkForUpgrade, type UpgradeCheckResult } from '../../api/version-check.js';
+import { checkForUpgrade, type UpgradeCheckResult } from '../services/version-check.js';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 

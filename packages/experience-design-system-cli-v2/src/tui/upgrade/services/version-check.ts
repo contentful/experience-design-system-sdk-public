@@ -1,4 +1,4 @@
-import { readPackageVersion } from '../tui/version.js';
+import { readPackageVersion } from '../../version.js';
 
 const TAGS_URL = 'https://api.github.com/repos/contentful/experience-design-system-sdk-public/tags?per_page=10';
 
