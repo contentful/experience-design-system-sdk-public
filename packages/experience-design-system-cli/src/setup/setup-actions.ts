@@ -9,7 +9,7 @@ import { PREFERENCE_OPTIONS, type PreferenceKey } from './preferences-picker.js'
 
 const REQUIRED_NODE_MAJOR = 24;
 
-export type SetupActionEventKind = 'success' | 'failure' | 'warning' | 'info' | 'dim' | 'choice';
+export type SetupActionEventKind = 'success' | 'failure' | 'warning' | 'info' | 'dim' | 'choice' | 'value';
 
 export interface SetupActionEvent {
   kind: SetupActionEventKind;
@@ -318,12 +318,25 @@ export async function runAgentSetup(dependencies: SetupActionDependencies): Prom
   return { agent: selected.binary, agentModel, passed: true };
 }
 
+const CURRENT_VALUE_LABEL_WIDTH = 'Environment ID'.length + 2;
+
+function emitCurrentValue(
+  dependencies: SetupActionDependencies,
+  label: string,
+  value: string | undefined | false,
+): void {
+  const paddedLabel = label.padEnd(CURRENT_VALUE_LABEL_WIDTH);
+  if (value) emit(dependencies, 'value', `${paddedLabel}${value}`);
+  else emit(dependencies, 'warning', `${paddedLabel}(not set)`);
+}
+
 export async function runCredentialsSetup(dependencies: SetupActionDependencies): Promise<SetupCheckResult> {
   emit(
     dependencies,
     'info',
     `Saved to ${dependencies.credentialsPath()} — loaded automatically by experiences import.`,
   );
+  emit(dependencies, 'info', '');
   const envShadowing = [
     dependencies.env['CONTENTFUL_SPACE_ID'] ? 'CONTENTFUL_SPACE_ID' : undefined,
     dependencies.env['CONTENTFUL_ENVIRONMENT_ID'] ? 'CONTENTFUL_ENVIRONMENT_ID' : undefined,
@@ -344,14 +357,14 @@ export async function runCredentialsSetup(dependencies: SetupActionDependencies)
   const allSet = Boolean(stored.spaceId && stored.environmentId && stored.cmaToken);
   if (hasAny) {
     emit(dependencies, 'info', 'Current values:');
-    if (stored.spaceId) emit(dependencies, 'success', `Space ID        ${stored.spaceId}`);
-    else emit(dependencies, 'warning', 'Space ID        (not set)');
-    if (stored.environmentId) emit(dependencies, 'success', `Environment ID  ${stored.environmentId}`);
-    else emit(dependencies, 'warning', 'Environment ID  (not set)');
-    if (stored.cmaToken)
-      emit(dependencies, 'success', `CMA Token       ${'•'.repeat(Math.min(stored.cmaToken.length, 8))}...`);
-    else emit(dependencies, 'warning', 'CMA Token       (not set)');
-    emit(dependencies, 'success', `API Host        ${currentHost}`);
+    emitCurrentValue(dependencies, 'Space ID', stored.spaceId);
+    emitCurrentValue(dependencies, 'Environment ID', stored.environmentId);
+    emitCurrentValue(
+      dependencies,
+      'CMA Token',
+      stored.cmaToken && `${'•'.repeat(Math.min(stored.cmaToken.length, 8))}...`,
+    );
+    emitCurrentValue(dependencies, 'API Host', currentHost);
   }
   if (!(await dependencies.confirm(hasAny ? 'Update credentials?' : 'Configure Contentful credentials?', !allSet))) {
     if (allSet) emit(dependencies, 'success', 'Credentials already configured — no changes made');
