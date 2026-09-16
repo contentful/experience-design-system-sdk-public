@@ -113,7 +113,7 @@ export function AnalyzeView({ result, onExit }: AnalyzeViewProps): React.ReactEl
           return (
             <Box key={component.name}>
               {component.errors.length > 0 && <Text color="red">✗ </Text>}
-              {component.errors.length === 0 && component.warnings.length > 0 && <Text color="yellow">⚠ </Text>}
+              {component.errors.length === 0 && component.warnings.length > 0 && <Text color="yellow">{'⚠'}</Text>}
               {component.errors.length === 0 && component.warnings.length === 0 && <Text> </Text>}
               <Text>{truncateName(component.name).padEnd(20)}</Text>
               <Text dimColor>{component.framework.padEnd(10)}</Text>
