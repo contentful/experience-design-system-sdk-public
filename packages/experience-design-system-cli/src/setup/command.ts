@@ -10,8 +10,14 @@ import {
 } from '../credentials-store.js';
 import { findPkgRoot } from '../lib/cli-path.js';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
-import { runDoctor, type DoctorOptions } from './doctor.js';
-import { appendToProfile, binaryExists, detectShellProfile, pathExists, profileContains, runSpawn } from './shell.js';
+import {
+  appendToProfile,
+  binaryExists,
+  detectShellProfile,
+  pathExists,
+  profileContains,
+  runSpawn,
+} from './lib/shell.js';
 import type { SetupOutcome, SetupScreenDependencies, SetupSkipFlags } from './tui/SetupScreen.js';
 
 export const SETUP_REQUIRES_TTY_MESSAGE = 'Error: experiences setup requires an interactive terminal.';
@@ -99,13 +105,6 @@ async function runSetup(opts: SetupSkipFlags): Promise<void> {
 }
 
 export function registerSetupCommand(program: Command): void {
-  program
-    .command('doctor')
-    .description('Check prerequisites so experiences import runs without errors')
-    .option('--skip-build', 'Skip the pnpm install + build step (useful if already built)')
-    .option('--skip-agent', 'Skip the coding agent check')
-    .action((opts: DoctorOptions) => runDoctor(opts));
-
   program
     .command('setup')
     .description('Interactive setup wizard: installs prerequisites and configures credentials for experiences import')

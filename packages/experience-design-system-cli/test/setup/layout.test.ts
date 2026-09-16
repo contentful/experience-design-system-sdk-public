@@ -9,7 +9,7 @@ import {
   shouldAlignVersionRight,
   shouldUseWideStepper,
   type SetupResultEntry,
-} from '../../src/setup/screen.js';
+} from '../../src/setup/lib/layout.js';
 
 describe('setup screens', () => {
   it('defines the four setup screens in order', () => {
