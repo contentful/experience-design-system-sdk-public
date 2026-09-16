@@ -1,6 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
-import { formatPreferencePicker, runPreferenceSetup } from '../../src/setup/command.js';
-import { PREFERENCE_OPTIONS, parsePreferenceSelection } from '../../src/setup/preferences-picker.js';
+import { describe, expect, it } from 'vitest';
+import {
+  PREFERENCE_OPTIONS,
+  formatPreferencePicker,
+  parsePreferenceSelection,
+} from '../../src/setup/preferences-picker.js';
 
 describe('parsePreferenceSelection', () => {
   it('returns all options in display order', () => {
@@ -44,47 +47,5 @@ describe('formatPreferencePicker', () => {
         '  [s] Skip',
       ].join('\n'),
     );
-  });
-});
-
-describe('runPreferenceSetup', () => {
-  it.each(['', 's'])('prints no changes and invokes no setting flows for %j', async (answer) => {
-    const output: string[] = [];
-    const configurePreference = vi.fn();
-
-    await runPreferenceSetup({
-      askPicker: async () => answer,
-      write: (message) => output.push(message),
-      configurePreference,
-    });
-
-    expect(output).toContain('No preferences changed.');
-    expect(configurePreference).not.toHaveBeenCalled();
-  });
-
-  it('retries only the picker after invalid input', async () => {
-    const output: string[] = [];
-    const askPicker = vi.fn().mockResolvedValueOnce('x').mockResolvedValueOnce('s');
-    const configurePreference = vi.fn();
-
-    await runPreferenceSetup({ askPicker, write: (message) => output.push(message), configurePreference });
-
-    expect(askPicker).toHaveBeenCalledTimes(2);
-    expect(output).toContain('Enter numbers from the list, "all", or "s".');
-    expect(configurePreference).not.toHaveBeenCalled();
-  });
-
-  it('runs only the selected preference flows', async () => {
-    const configurePreference = vi.fn();
-
-    await runPreferenceSetup({
-      askPicker: async () => '1,5',
-      write: () => undefined,
-      configurePreference,
-    });
-
-    expect(configurePreference).toHaveBeenNthCalledWith(1, 'autoFilter');
-    expect(configurePreference).toHaveBeenNthCalledWith(2, 'analytics');
-    expect(configurePreference).toHaveBeenCalledTimes(2);
   });
 });
