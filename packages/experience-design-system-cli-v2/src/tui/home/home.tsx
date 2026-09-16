@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import type { Screen } from '../../../app.js';
 import { FOCUS_MARKER, PALETTE, brandBar } from './home.theme.js';
 import { readPackageVersion } from '../version.js';
 import { useTerminalWidth } from '../use-terminal-width.js';
+import { checkForUpgrade, type UpgradeCheckResult } from '../../api/version-check.js';
 
 const VERSION = readPackageVersion();
 const HEADING = 'Contentful Experiences';
@@ -21,9 +22,24 @@ const START_ITEMS: { label: string; screen: Screen }[] = [
 
 export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }): React.ReactElement {
   const [focusIdx, setFocusIdx] = useState(0);
+  const [upgradeCheck, setUpgradeCheck] = useState<UpgradeCheckResult | null>(null);
   const { exit } = useApp();
   const terminalWidth = useTerminalWidth();
   const tooNarrow = terminalWidth < MIN_TERMINAL_WIDTH;
+
+  useEffect(() => {
+    let cancelled = false;
+    void checkForUpgrade().then((result) => {
+      if (!cancelled) {
+        setUpgradeCheck(result);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const isUpgradeDisabled = upgradeCheck?.status === 'up-to-date';
 
   useInput((input, key) => {
     if (input === 'q' || key.escape) {
@@ -41,7 +57,11 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
       return;
     }
     if (key.return) {
-      onNavigate(START_ITEMS[focusIdx]!.screen);
+      const chosen = START_ITEMS[focusIdx]!;
+      if (chosen.screen === 'upgrade' && isUpgradeDisabled) {
+        return;
+      }
+      onNavigate(chosen.screen);
       return;
     }
   });
@@ -80,10 +100,23 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
         <Box flexDirection="column">
           {START_ITEMS.map((item, i) => {
             const focused = i === focusIdx;
+            const disabled = item.screen === 'upgrade' && isUpgradeDisabled;
+
+            let label = item.label;
+            if (item.screen === 'upgrade' && upgradeCheck?.status === 'update-available') {
+              label = `Upgrade (v${upgradeCheck.latest} available)`;
+            } else if (item.screen === 'upgrade' && upgradeCheck?.status === 'up-to-date') {
+              label = 'Upgrade (up to date)';
+            }
+
             return (
-              <Text key={item.label} bold={focused} color={focused ? PALETTE.accent : undefined}>
+              <Text
+                key={item.label}
+                bold={focused}
+                color={disabled ? PALETTE.muted : focused ? PALETTE.accent : undefined}
+              >
                 {focused ? `${FOCUS_MARKER} ` : '  '}
-                {item.label}
+                {label}
               </Text>
             );
           })}
