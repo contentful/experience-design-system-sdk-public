@@ -4,12 +4,6 @@ import { fileURLToPath } from 'node:url';
 
 const PACKAGE_NAME = '@contentful/experience-design-system-cli-v2';
 
-/**
- * Version from this package's own package.json.
- *
- * Walks up rather than using a fixed relative path: the bundle sits in `dist/`,
- * one level below the manifest, while the source modules sit deeper.
- */
 export function readPackageVersion(): string {
   let dir = dirname(fileURLToPath(import.meta.url));
 

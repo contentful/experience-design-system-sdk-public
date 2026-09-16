@@ -9,11 +9,7 @@ const VERSION = readPackageVersion();
 const HEADING = 'Contentful Experiences';
 const SUBTITLE = "Let's import your design system into Contentful";
 
-/** Width the layout needs: longest line plus side padding. */
-const LAYOUT_COLUMNS = 41;
-
-/** 4x the layout's needs, so this gates a default 80-column terminal. */
-export const MIN_COLUMNS = LAYOUT_COLUMNS * 4;
+export const MIN_TERMINAL_WIDTH = 164;
 
 const START_ITEMS: { label: string; screen: Screen }[] = [
   { label: 'Import', screen: 'import' },
@@ -27,10 +23,9 @@ export function StartScreen({ onNavigate }: { onNavigate: (screen: Screen) => vo
   const [focusIdx, setFocusIdx] = useState(0);
   const { exit } = useApp();
   const terminalWidth = useTerminalWidth();
-  const tooNarrow = terminalWidth < MIN_COLUMNS;
+  const tooNarrow = terminalWidth < MIN_TERMINAL_WIDTH;
 
   useInput((input, key) => {
-    // Quitting works from the too-narrow notice; menu keys do not apply there.
     if (input === 'q' || key.escape) {
       exit();
       return;
@@ -57,7 +52,6 @@ export function StartScreen({ onNavigate }: { onNavigate: (screen: Screen) => vo
         <Text bold color={PALETTE.warning}>
           Terminal too small
         </Text>
-        {/* Split in two so it does not wrap on the terminals that trigger it. */}
         <Text color={PALETTE.muted}>Use full screen</Text>
         <Text color={PALETTE.muted}>for the best experience</Text>
         <Text color={PALETTE.muted}>q quit</Text>
@@ -82,7 +76,6 @@ export function StartScreen({ onNavigate }: { onNavigate: (screen: Screen) => vo
         <Text color={PALETTE.muted}>v{VERSION}</Text>
       </Box>
 
-      {/* Centered as a block; labels stay left-aligned with each other. */}
       <Box marginTop={1} justifyContent="center">
         <Box flexDirection="column">
           {START_ITEMS.map((item, i) => {

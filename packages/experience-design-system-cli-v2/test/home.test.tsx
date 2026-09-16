@@ -1,6 +1,6 @@
 import { render } from 'ink-testing-library';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MIN_COLUMNS, StartScreen } from '../start.js';
+import { MIN_TERMINAL_WIDTH, StartScreen } from '../start.js';
 import { BRAND, FOCUS_MARKER } from '../src/tui/styles/theme.js';
 
 const ESC = '\u001B';
@@ -11,7 +11,6 @@ const ENTER = '\r';
 const LABELS = ['Import', 'Saved Runs', 'Upgrade Version', 'Settings', 'Help'];
 
 const exit = vi.hoisted(() => vi.fn());
-// Set in beforeEach; vi.hoisted runs before MIN_COLUMNS is importable.
 const terminalWidth = vi.hoisted(() => ({ current: 0 }));
 
 vi.mock('ink', async () => {
@@ -24,11 +23,10 @@ vi.mock('../src/tui/use-terminal-width.js', () => ({
 }));
 
 beforeEach(() => {
-  terminalWidth.current = MIN_COLUMNS + 20;
+  terminalWidth.current = MIN_TERMINAL_WIDTH + 20;
   exit.mockClear();
 });
 
-/** ink renders asynchronously; give it a tick to flush before asserting. */
 async function flush(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 10));
 }
@@ -122,7 +120,7 @@ describe('StartScreen', () => {
 
   describe('when the terminal is too narrow', () => {
     beforeEach(() => {
-      terminalWidth.current = MIN_COLUMNS - 1;
+      terminalWidth.current = MIN_TERMINAL_WIDTH - 1;
     });
 
     it('shows a notice instead of the menu', async () => {
@@ -135,7 +133,7 @@ describe('StartScreen', () => {
     });
 
     it('renders the menu at exactly the minimum width', async () => {
-      terminalWidth.current = MIN_COLUMNS;
+      terminalWidth.current = MIN_TERMINAL_WIDTH;
       const { lastFrame } = renderHome();
       await flush();
 
