@@ -1,3 +1,4 @@
+import semver from 'semver';
 import { readPackageVersion } from '../../version.js';
 
 const TAGS_URL = 'https://api.github.com/repos/contentful/experience-design-system-sdk-public/tags?per_page=10';
@@ -9,23 +10,6 @@ export type UpgradeCheckResult =
 
 export function getCurrentVersion(): string {
   return readPackageVersion();
-}
-
-export function parseVersionTag(tag: string): [number, number, number] | null {
-  const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag);
-  if (!match) {
-    return null;
-  }
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-
-function compareVersions(a: [number, number, number], b: [number, number, number]): number {
-  for (let i = 0; i < 3; i++) {
-    if (a[i] !== b[i]) {
-      return a[i] - b[i];
-    }
-  }
-  return 0;
 }
 
 export async function checkForUpgrade(): Promise<UpgradeCheckResult> {
@@ -40,30 +24,17 @@ export async function checkForUpgrade(): Promise<UpgradeCheckResult> {
     }
 
     const tags = (await response.json()) as { name: string }[];
-    let latestTuple: [number, number, number] | null = null;
-    let latestTag = '';
-    for (const tag of tags) {
-      const parsed = parseVersionTag(tag.name);
-      if (!parsed) {
-        continue;
-      }
-      if (!latestTuple || compareVersions(parsed, latestTuple) > 0) {
-        latestTuple = parsed;
-        latestTag = tag.name;
-      }
-    }
+    const latest = tags
+      .map((tag) => semver.valid(semver.coerce(tag.name)))
+      .filter((version): version is string => version !== null)
+      .sort(semver.rcompare)[0];
 
-    if (!latestTuple) {
+    if (!latest || !semver.valid(current)) {
       return { status: 'error' };
     }
 
-    const currentTuple = parseVersionTag(`v${current}`);
-    if (!currentTuple) {
-      return { status: 'error' };
-    }
-
-    if (compareVersions(latestTuple, currentTuple) > 0) {
-      return { status: 'update-available', current, latest: latestTag.replace(/^v/, '') };
+    if (semver.gt(latest, current)) {
+      return { status: 'update-available', current, latest };
     }
     return { status: 'up-to-date', current };
   } catch {

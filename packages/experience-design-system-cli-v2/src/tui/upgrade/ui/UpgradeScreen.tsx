@@ -13,7 +13,8 @@ type InstallResult = {
 };
 
 function spawnInstall(latest: string): { child: ChildProcess; donePromise: Promise<InstallResult> } {
-  const child = spawn('npm', ['install', '-g', `@contentful/experience-design-system-cli-v2@${latest}`]);
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const child = spawn(npmCommand, ['install', '-g', `@contentful/experience-design-system-cli-v2@${latest}`]);
   let stdout = '';
   let stderr = '';
   child.stdout?.on('data', (d: Buffer) => {
@@ -24,7 +25,7 @@ function spawnInstall(latest: string): { child: ChildProcess; donePromise: Promi
   });
   const donePromise = new Promise<InstallResult>((resolve) => {
     child.on('close', (code, signal) => {
-      resolve({ exitCode: code ?? 0, signal: signal ?? null, stdout, stderr });
+      resolve({ exitCode: signal ? 1 : (code ?? 0), signal: signal ?? null, stdout, stderr });
     });
     child.on('error', (err) => {
       resolve({ exitCode: 1, signal: null, stdout, stderr: stderr + (err.message ?? String(err)) });
