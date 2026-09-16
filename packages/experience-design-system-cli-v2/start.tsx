@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import type { Screen } from './app.js';
-import { FOCUS_MARKER, PALETTE, brandBar } from './src/tui/theme.js';
+import { FOCUS_MARKER, PALETTE, brandBar } from './src/tui/styles/theme.js';
 import { readPackageVersion } from './src/tui/version.js';
 import { useTerminalWidth } from './src/tui/use-terminal-width.js';
 
@@ -9,17 +9,10 @@ const VERSION = readPackageVersion();
 const HEADING = 'Contentful Experiences';
 const SUBTITLE = "Let's import your design system into Contentful";
 
-/** Width the layout strictly needs: the longest line plus its side padding. */
+/** Width the layout needs: longest line plus side padding. */
 const LAYOUT_COLUMNS = 41;
 
-/**
- * Narrowest terminal the home page renders in.
- *
- * Four times what the layout strictly needs, so the page only appears in a
- * generously sized window; below it the menu is gated behind a notice. Note
- * this is well above a default 80-column terminal, so most windows must be
- * widened (or maximized) before the menu shows.
- */
+/** 4x the layout's needs, so this gates a default 80-column terminal. */
 export const MIN_COLUMNS = LAYOUT_COLUMNS * 4;
 
 const START_ITEMS: { label: string; screen: Screen }[] = [
@@ -37,8 +30,7 @@ export function StartScreen({ onNavigate }: { onNavigate: (screen: Screen) => vo
   const tooNarrow = terminalWidth < MIN_COLUMNS;
 
   useInput((input, key) => {
-    // Quitting stays available while the too-narrow notice is showing; menu
-    // navigation does not, since the menu is not on screen.
+    // Quitting works from the too-narrow notice; menu keys do not apply there.
     if (input === 'q' || key.escape) {
       exit();
       return;
@@ -65,8 +57,7 @@ export function StartScreen({ onNavigate }: { onNavigate: (screen: Screen) => vo
         <Text bold color={PALETTE.warning}>
           Terminal too small
         </Text>
-        {/* Two short lines rather than one long one: the notice appears on
-            terminals too narrow to fit the full sentence unwrapped. */}
+        {/* Split in two so it does not wrap on the terminals that trigger it. */}
         <Text color={PALETTE.muted}>Use full screen</Text>
         <Text color={PALETTE.muted}>for the best experience</Text>
         <Text color={PALETTE.muted}>q quit</Text>
@@ -80,8 +71,6 @@ export function StartScreen({ onNavigate }: { onNavigate: (screen: Screen) => vo
         <Text bold color={PALETTE.heading}>
           {HEADING}
         </Text>
-        {/* Brand bar underlining the heading: one segment per brand color. It
-            can match the heading exactly, since MIN_COLUMNS guarantees room. */}
         <Text>
           {brandBar(HEADING.length).map((segment, i) => (
             <Text key={i} color={segment.color}>
@@ -93,8 +82,7 @@ export function StartScreen({ onNavigate }: { onNavigate: (screen: Screen) => vo
         <Text color={PALETTE.muted}>v{VERSION}</Text>
       </Box>
 
-      {/* The column is centered as a block while labels stay left-aligned with
-          each other, so the focus marker reads down a single edge. */}
+      {/* Centered as a block; labels stay left-aligned with each other. */}
       <Box marginTop={1} justifyContent="center">
         <Box flexDirection="column">
           {START_ITEMS.map((item, i) => {
