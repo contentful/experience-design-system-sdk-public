@@ -350,9 +350,8 @@ function SetupEventLine({ event }: { event: SetupActionEvent }): React.ReactElem
   if (event.kind === 'success') return <Text color={PALETTE.success}>✓ {event.message}</Text>;
   if (event.kind === 'failure') return <Text color={PALETTE.error}>✗ {event.message}</Text>;
   if (event.kind === 'warning') return <Text color={PALETTE.warning}>⚠ {event.message}</Text>;
-  if (event.kind === 'dim' || event.kind === 'help') return <Text dimColor>{event.message}</Text>;
+  if (event.kind === 'help') return <Text dimColor>{event.message}</Text>;
   if (event.kind === 'value') return <Text> {event.message}</Text>;
-  if (event.kind === 'choice') return <Text> {event.message}</Text>;
   return <Text>{event.message}</Text>;
 }
 
