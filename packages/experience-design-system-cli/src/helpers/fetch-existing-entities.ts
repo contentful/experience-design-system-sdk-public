@@ -20,9 +20,7 @@ export async function fetchExistingEntities(
   params: FetchExistingEntitiesParams,
 ): Promise<ExistingEntities> {
   const scope = { spaceId: params.spaceId, environmentId: params.environmentId, query: {} };
-  const [components, tokens] = await Promise.all([
-    fetchAll(client.component.getMany, scope),
-    fetchAll(client.designToken.getMany, scope),
-  ]);
+  const components = await fetchAll(client.component.getMany, scope);
+  const tokens = await fetchAll(client.designToken.getMany, scope);
   return { components, tokens };
 }

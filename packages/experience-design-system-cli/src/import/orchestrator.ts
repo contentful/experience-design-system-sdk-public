@@ -51,14 +51,6 @@ export interface PipelineOptions {
   /** When true, auto-reject cycle participants and retry push instead of surfacing an error. */
   autoRejectCycles?: boolean;
   allowDeletions?: boolean;
-  /**
-   * Fetch existing Components + DesignTokens from the target space+env
-   * and persist them under outDir/.existing-entities.json so downstream
-   * agent steps can consume them as context. Requires spaceId +
-   * environmentId + cmaToken; skipped with a warning otherwise. No-op
-   * for the agent flow in this PR — the file is written but nothing
-   * reads it yet.
-   */
   withSpaceContext?: boolean;
   compositionMode?: CompositionMode;
   compositionMap?: string;
