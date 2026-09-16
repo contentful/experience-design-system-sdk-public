@@ -127,7 +127,7 @@ describe('setup actions', () => {
     await runAgentSetup(dependencies);
 
     expect(events.slice(0, 3)).toEqual([
-      { kind: 'info', message: 'experiences import uses a coding agent to generate component definitions.' },
+      { kind: 'info', message: 'Experiences import uses a coding agent to generate component definitions.' },
       { kind: 'info', message: '' },
       { kind: 'success', message: 'Claude Code (claude) found' },
     ]);
