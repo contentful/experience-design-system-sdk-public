@@ -25,6 +25,7 @@ export type CommandName =
   | 'print components'
   | 'print tokens'
   | 'map tokens'
+  | 'fetch existing entities'
   | 'import';
 
 export interface SessionRow {
