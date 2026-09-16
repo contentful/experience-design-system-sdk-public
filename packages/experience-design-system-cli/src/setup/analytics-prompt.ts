@@ -16,7 +16,7 @@ export async function promptAnalyticsPreference(
 ): Promise<boolean> {
   const defaultValue = current ?? false;
   const hint = defaultValue ? '[Y/n]' : '[y/N]';
-  const answer = (await ask(`  Disable anonymous usage analytics? ${hint} `)).trim().toLowerCase();
+  const answer = (await ask(`Disable anonymous usage analytics? ${hint} `)).trim().toLowerCase();
   if (answer === '') return defaultValue;
   if (answer.startsWith('y')) return true;
   if (answer.startsWith('n')) return false;

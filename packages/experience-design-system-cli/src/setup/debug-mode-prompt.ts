@@ -14,7 +14,7 @@ export async function promptDebugModePreference(
 ): Promise<boolean> {
   const defaultValue = current ?? false;
   const hint = defaultValue ? '[Y/n]' : '[y/N]';
-  const answer = (await ask(`  Enable debug logging by default? ${hint} `)).trim().toLowerCase();
+  const answer = (await ask(`Enable debug logging by default? ${hint} `)).trim().toLowerCase();
   if (answer === '') return defaultValue;
   if (answer.startsWith('y')) return true;
   if (answer.startsWith('n')) return false;

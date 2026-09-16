@@ -9,7 +9,16 @@ import { PREFERENCE_OPTIONS, type PreferenceKey } from './preferences-picker.js'
 
 const REQUIRED_NODE_MAJOR = 24;
 
-export type SetupActionEventKind = 'success' | 'failure' | 'warning' | 'info' | 'dim' | 'choice' | 'value';
+export type SetupActionEventKind =
+  | 'success'
+  | 'failure'
+  | 'warning'
+  | 'info'
+  | 'dim'
+  | 'choice'
+  | 'value'
+  | 'help'
+  | 'page';
 
 export interface SetupActionEvent {
   kind: SetupActionEventKind;
@@ -31,8 +40,6 @@ export interface SetupActionDependencies {
   confirm(question: string, defaultYes?: boolean): Promise<boolean>;
   /** Resolves the chosen index, or `undefined` when the operator skips. */
   choose(question: string, options: readonly SetupChoice[]): Promise<number | undefined>;
-  /** Resolves the chosen indexes, empty when the operator selects nothing. */
-  chooseMany(question: string, options: readonly SetupChoice[]): Promise<number[]>;
   write(event: SetupActionEvent): void;
   binaryExists(binary: string): Promise<boolean>;
   run(
@@ -333,7 +340,7 @@ function emitCurrentValue(
 export async function runCredentialsSetup(dependencies: SetupActionDependencies): Promise<SetupCheckResult> {
   emit(
     dependencies,
-    'info',
+    'help',
     `Saved to ${dependencies.credentialsPath()} — loaded automatically by experiences import.`,
   );
   emit(dependencies, 'info', '');
@@ -411,15 +418,7 @@ export async function runPreferenceSetupAction(
   dependencies: SetupActionDependencies,
   profilePath: string,
 ): Promise<{ selected: PreferenceKey[] }> {
-  const chosen = await dependencies.chooseMany(
-    'Choose preferences to configure:',
-    PREFERENCE_OPTIONS.map((option) => ({ label: option.label })),
-  );
-  const selected = chosen.map((index) => PREFERENCE_OPTIONS[index]!.key);
-  if (selected.length === 0) {
-    emit(dependencies, 'info', 'No preferences changed.');
-    return { selected };
-  }
+  const selected = PREFERENCE_OPTIONS.map((option) => option.key);
   for (const preference of selected) await runPreference(dependencies, profilePath, preference);
   return { selected };
 }
@@ -430,22 +429,29 @@ async function runPreference(
   preference: PreferenceKey,
 ): Promise<void> {
   if (preference === 'autoFilter') {
+    emit(dependencies, 'page', 'Filters out components irrelevant to experience orchestration during extraction.');
     const stored = await dependencies.readCredentials();
     const autoFilter = await promptAutoFilterPreference(dependencies.ask, stored.autoFilter);
     if (autoFilter !== (stored.autoFilter ?? true)) await dependencies.writeCredentials({ ...stored, autoFilter });
     return;
   }
   if (preference === 'concurrency') {
+    emit(dependencies, 'page', 'Analyzes more components at once, which is faster on machines with spare cores.');
     if (
       !(await dependencies.profileContains(profilePath, 'EDS_EXTRACT_CONCURRENCY')) &&
-      (await dependencies.confirm('Add EDS_EXTRACT_CONCURRENCY=8 to your profile?', false))
+      (await dependencies.confirm('Speed up component analysis on this machine?', false))
     ) {
       await dependencies.appendToProfile(profilePath, '# experiences performance\nexport EDS_EXTRACT_CONCURRENCY=8');
     }
     return;
   }
   if (preference === 'customPrompts') {
-    if (!(await dependencies.confirm('Configure custom skill prompt paths?', false))) return;
+    emit(
+      dependencies,
+      'page',
+      'Replaces the built-in instructions the coding agent follows when it selects and generates components.',
+    );
+    if (!(await dependencies.confirm('Use your own prompt files instead of the built-in ones?', false))) return;
     const stored = await dependencies.readCredentials();
     const selectPromptPath = await promptCustomSkillPathAction('select', stored.selectPromptPath, dependencies.ask);
     const generatePromptPath = await promptCustomSkillPathAction(
@@ -462,19 +468,22 @@ async function runPreference(
     return;
   }
   if (preference === 'debug') {
+    emit(dependencies, 'page', 'Writes a verbose trace of every command decision, for troubleshooting.');
     const stored = await dependencies.readCredentials();
     const debug = await promptDebugModePreference(dependencies.ask, stored.debug);
     if (debug !== (stored.debug ?? false)) await dependencies.writeCredentials({ ...stored, debug });
     return;
   }
   if (preference === 'analytics') {
+    emit(dependencies, 'page', 'Shares anonymous usage data about which CLI commands run.');
     const stored = await dependencies.readCredentials();
     const analyticsDisabled = await promptAnalyticsPreference(dependencies.ask, stored.analyticsDisabled);
     if (analyticsDisabled !== (stored.analyticsDisabled ?? false))
       await dependencies.writeCredentials({ ...stored, analyticsDisabled });
     return;
   }
-  if (await dependencies.confirm('Add NO_COLOR=1 (disable colors) to your profile?', false)) {
+  emit(dependencies, 'page', 'Prints plain text with no color, which suits CI logs and basic terminals.');
+  if (await dependencies.confirm('Turn off colored output?', false)) {
     if (!(await dependencies.profileContains(profilePath, 'NO_COLOR')))
       await dependencies.appendToProfile(profilePath, 'export NO_COLOR=1');
   }
