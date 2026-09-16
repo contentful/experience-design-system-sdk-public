@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { splitPromptInput } from '../../src/setup/prompt-input.js';
+import { splitPromptInput } from '../../src/setup/lib/prompt-input.js';
 
 describe('splitPromptInput', () => {
   it('treats a plain chunk as typed text that does not submit', () => {

@@ -44,14 +44,14 @@ describe('experiences setup mounting', () => {
     expect(stdout).toContain('--skip-agent');
   });
 
-  it('mounts the Ink screen rather than the readline flow', async () => {
-    const source = await import('node:fs/promises').then((fs) =>
-      fs.readFile(resolve(import.meta.dirname, '../../src/setup/command.ts'), 'utf8'),
-    );
+  // Previously asserted on command.ts's source text, which only survived a
+  // refactor by being edited. The readline flow's defining trait was that it
+  // prompted on a non-TTY instead of refusing, so assert that instead.
+  it('never prompts on a non-TTY, even with credentials unset', async () => {
+    const { stdout, stderr, code } = await run('setup');
 
-    expect(source).toContain("await import('ink')");
-    expect(source).toContain("await import('./tui/SetupScreen.js')");
-    expect(source).not.toContain('node:readline');
-    expect(source).not.toContain('\\x1b[2J');
+    expect(code).toBe(1);
+    expect(stderr).toContain(SETUP_REQUIRES_TTY_MESSAGE);
+    expect(stdout).toBe('');
   });
 });

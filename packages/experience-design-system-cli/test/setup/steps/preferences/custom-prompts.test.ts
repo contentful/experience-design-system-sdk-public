@@ -1,7 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { promptCustomSkillPathAction } from '../../src/setup/setup-actions.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  configureCustomPrompts,
+  promptCustomSkillPathAction,
+} from '../../../../src/setup/steps/preferences/custom-prompts.js';
+import { createDependencies } from '../dependencies.js';
 
-describe('promptCustomSkillPathAction (Feature 8)', () => {
+describe('promptCustomSkillPathAction', () => {
   it('returns the trimmed path when the operator supplies one', async () => {
     const ask = async () => '  /tmp/custom-select.md  ';
     const result = await promptCustomSkillPathAction('select', undefined, ask);
@@ -39,5 +43,34 @@ describe('promptCustomSkillPathAction (Feature 8)', () => {
     };
     await promptCustomSkillPathAction('select', undefined, ask);
     expect(asked).toContain('[none]');
+  });
+});
+
+describe('configureCustomPrompts', () => {
+  it('does nothing when the operator declines', async () => {
+    const writeCredentials = vi.fn();
+    await configureCustomPrompts(createDependencies({ confirm: async () => false, writeCredentials }));
+    expect(writeCredentials).not.toHaveBeenCalled();
+  });
+
+  it('saves a supplied select path and clears a generate path on "-"', async () => {
+    const writeCredentials = vi.fn();
+    const answers = ['/tmp/select.md', '-'];
+    await configureCustomPrompts(
+      createDependencies({
+        confirm: async () => true,
+        ask: async () => answers.shift() ?? '',
+        readCredentials: async () => ({
+          spaceId: '',
+          environmentId: '',
+          cmaToken: '',
+          generatePromptPath: '/old/generate.md',
+        }),
+        writeCredentials,
+      }),
+    );
+    const saved = writeCredentials.mock.calls[0]![0] as Record<string, unknown>;
+    expect(saved['selectPromptPath']).toBe('/tmp/select.md');
+    expect(saved).not.toHaveProperty('generatePromptPath');
   });
 });

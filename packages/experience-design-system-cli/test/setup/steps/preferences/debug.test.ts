@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { promptDebugModePreference } from '../../src/setup/debug-mode-prompt.js';
+import { describe, expect, it, vi } from 'vitest';
+import { configureDebug, promptDebugModePreference } from '../../../../src/setup/steps/preferences/debug.js';
+import { createDependencies } from '../dependencies.js';
 
 describe('promptDebugModePreference', () => {
   it('defaults to OFF when no current value and empty answer', async () => {
@@ -30,5 +31,13 @@ describe('promptDebugModePreference', () => {
     expect(asked).toContain('[y/N]');
     await promptDebugModePreference(ask, true);
     expect(asked).toContain('[Y/n]');
+  });
+});
+
+describe('configureDebug', () => {
+  it('persists debug logging when the operator opts in', async () => {
+    const writeCredentials = vi.fn();
+    await configureDebug(createDependencies({ ask: async () => 'y', writeCredentials }));
+    expect(writeCredentials).toHaveBeenCalledWith(expect.objectContaining({ debug: true }));
   });
 });

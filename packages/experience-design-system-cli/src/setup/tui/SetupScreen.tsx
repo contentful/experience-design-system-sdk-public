@@ -7,19 +7,15 @@ import {
   formatSetupCompletionMessage,
   shouldAlignVersionRight,
   type SetupResultEntry,
-} from '../screen.js';
-import { splitPromptInput } from '../prompt-input.js';
+} from '../lib/layout.js';
+import { splitPromptInput } from '../lib/prompt-input.js';
 import { usePromptInput } from './usePromptInput.js';
 import { SetupStepper } from './SetupStepper.js';
-import {
-  runAgentSetup,
-  runCredentialsSetup,
-  runPreferenceSetupAction,
-  runPrerequisitesSetup,
-  type SetupActionDependencies,
-  type SetupActionEvent,
-  type SetupChoice,
-} from '../setup-actions.js';
+import type { SetupActionDependencies, SetupActionEvent, SetupChoice } from '../lib/types.js';
+import { runAgentSetup } from '../steps/coding-agent.js';
+import { runCredentialsSetup } from '../steps/contentful.js';
+import { runPreferenceSetupAction } from '../steps/preferences/index.js';
+import { runPrerequisitesSetup } from '../steps/prerequisites/index.js';
 
 /** Prompts and output are UI-owned; the screen supplies the rest itself. */
 export type SetupScreenDependencies = Omit<

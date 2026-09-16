@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { promptAnalyticsPreference } from '../../src/setup/analytics-prompt.js';
+import { describe, expect, it, vi } from 'vitest';
+import { configureAnalytics, promptAnalyticsPreference } from '../../../../src/setup/steps/preferences/analytics.js';
+import { createDependencies } from '../dependencies.js';
 
 describe('promptAnalyticsPreference', () => {
   it('defaults to enabled (not disabled) when no current value and empty answer', async () => {
@@ -30,5 +31,13 @@ describe('promptAnalyticsPreference', () => {
     expect(asked).toContain('[y/N]');
     await promptAnalyticsPreference(ask, true);
     expect(asked).toContain('[Y/n]');
+  });
+});
+
+describe('configureAnalytics', () => {
+  it('persists the opt-out when the operator disables analytics', async () => {
+    const writeCredentials = vi.fn();
+    await configureAnalytics(createDependencies({ ask: async () => 'y', writeCredentials }));
+    expect(writeCredentials).toHaveBeenCalledWith(expect.objectContaining({ analyticsDisabled: true }));
   });
 });
