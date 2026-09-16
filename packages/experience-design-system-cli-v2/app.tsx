@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StartScreen } from './start.js';
+import { HomeScreen } from './src/tui/home/home.js';
 import { ImportScreen } from './src/tui/import/PageContainer.js';
 import { SavedRunsScreen } from './src/tui/saved-runs/PageContainer.js';
 import { HelpScreen } from './src/tui/help/PageContainer.js';
@@ -43,5 +43,5 @@ export function App(): React.ReactElement {
     return <UpgradeScreen onDone={() => setScreen('start')} />;
   }
 
-  return <StartScreen onNavigate={setScreen} />;
+  return <HomeScreen onNavigate={setScreen} />;
 }

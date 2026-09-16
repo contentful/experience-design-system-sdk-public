@@ -6,5 +6,6 @@ export default defineConfig({
     globals: false,
     include: ['test/**/*.test.{ts,tsx}'],
     passWithNoTests: true,
+    env: { FORCE_COLOR: '3' },
   },
 });
