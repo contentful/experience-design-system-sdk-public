@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { resolve, join } from 'node:path';
+import { agentSupportsBedrock, isAgentName } from '@contentful/experience-design-system-generation';
 import { normalizePath } from './path-utils.js';
 import { runPipeline } from './orchestrator.js';
 import { resolveAutoFilter } from './auto-filter-resolve.js';
@@ -157,6 +158,7 @@ export function registerImportCommand(program: Command): void {
         out?: string;
         agent?: string;
         model?: string;
+        bedrock?: boolean;
         tokens?: string;
         rawTokens?: string;
         selectAll?: boolean;
@@ -407,6 +409,7 @@ export function registerImportCommand(program: Command): void {
             initialHost?: string;
             initialAgent?: string;
             initialModel?: string;
+            bedrock?: boolean;
             initialProjectPath?: string;
             host?: string;
             autoAcceptScope?: boolean;
@@ -437,6 +440,11 @@ export function registerImportCommand(program: Command): void {
           const resolvedAgent = resolveAgent(opts.agent, creds.agent);
           const resolvedModel = resolveModel(opts.model, creds.agentModel);
           const resolvedCompositionMode = resolveCompositionMode(opts, creds.compositionMode);
+
+          if (opts.bedrock && !(isAgentName(resolvedAgent) && agentSupportsBedrock(resolvedAgent))) {
+            process.stderr.write(`Error: --bedrock is not supported for --agent ${resolvedAgent}\n`);
+            process.exit(1);
+          }
 
           const pickerDecision = await shouldShowRunPicker({
             flags: {
@@ -471,6 +479,7 @@ export function registerImportCommand(program: Command): void {
               initialHost: toConfiguredHost(opts.host ?? creds.host) ?? DEFAULT_CONFIGURED_HOST,
               initialAgent: resolvedAgent,
               ...(resolvedModel ? { initialModel: resolvedModel } : {}),
+              ...(opts.bedrock ? { bedrock: true } : {}),
               initialProjectPath: opts.project !== '.' ? normalizePath(opts.project) : undefined,
               host: opts.host,
               autoAcceptScope,
@@ -541,6 +550,11 @@ export function registerImportCommand(program: Command): void {
         const headlessModel = resolveModel(opts.model, headlessCreds.agentModel);
         const headlessCompositionMode = resolveCompositionMode(opts, headlessCreds.compositionMode);
 
+        if (opts.bedrock && !(isAgentName(headlessAgent) && agentSupportsBedrock(headlessAgent))) {
+          process.stderr.write(`Error: --bedrock is not supported for --agent ${headlessAgent}\n`);
+          process.exit(1);
+        }
+
         const result = await runPipeline(
           {
             project: projectRoot,
@@ -550,6 +564,7 @@ export function registerImportCommand(program: Command): void {
             cmaToken,
             agent: headlessAgent,
             model: headlessModel,
+            ...(opts.bedrock ? { bedrock: true } : {}),
             tokens: opts.tokens,
             selectAll: opts.selectAll,
             select: opts.select.length > 0 ? opts.select : undefined,

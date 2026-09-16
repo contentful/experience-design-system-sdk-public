@@ -399,6 +399,7 @@ const AGENT_BINARIES: Record<AgentName, string> = {
   codex: 'codex',
   opencode: 'opencode',
   cursor: 'cursor-agent',
+  copilot: 'copilot',
 };
 
 export function resolveBinary(agent: AgentName): string {
@@ -408,35 +409,101 @@ export function resolveBinary(agent: AgentName): string {
   return AGENT_BINARIES[agent];
 }
 
+/** Per-agent env vars that switch model calls to AWS Bedrock. */
+const BEDROCK_ENV_BY_AGENT: Partial<Record<AgentName, Record<string, string>>> = {
+  claude: { CLAUDE_CODE_USE_BEDROCK: '1' },
+};
+
+/**
+ * Agents with a working Bedrock routing mechanism, of any shape (env var,
+ * argv config override, or a provider-prefixed model string) — not just the
+ * env-var agents in BEDROCK_ENV_BY_AGENT. cursor is excluded: its own Bedrock
+ * support is currently broken for non-interactive/CI use.
+ */
+const BEDROCK_CAPABLE_AGENTS = new Set<AgentName>(['claude', 'codex', 'opencode']);
+
+export function agentSupportsBedrock(agent: AgentName): boolean {
+  return BEDROCK_CAPABLE_AGENTS.has(agent);
+}
+
+const DEFAULT_CODEX_BEDROCK_REGION = 'us-east-1';
+
+const DEFAULT_OPENCODE_MODEL = 'claude-haiku-4-5';
+
 /**
  * Default models per agent — lightweight/fast picks to control cost when no
  * explicit model is configured. cursor uses `gpt-mini` (verified alias from
  * GetUsableModels; haiku is not available in cursor's model catalog).
+ *
+ * codex is deliberately absent: with no entry here it gets no `--model` at
+ * all, so the installed Codex CLI picks whatever its account supports. On
+ * Bedrock it still needs an explicit id, since the model id there carries an
+ * `openai.` prefix required by the Bedrock provider and absent from the
+ * direct api.openai.com id — see DEFAULT_CODEX_BEDROCK_MODEL.
  */
-const DEFAULT_MODELS: Record<AgentName, string> = {
+const DEFAULT_MODELS: Partial<Record<AgentName, string>> = {
   claude: 'haiku',
-  codex: 'gpt-5.4-mini', // requires OPENAI_API_KEY; ChatGPT account users must pass --model
-  opencode: 'claude-haiku-4-5',
+  opencode: DEFAULT_OPENCODE_MODEL,
   cursor: 'gpt-mini', // cursor alias for gpt-5.4-mini-medium; haiku not in cursor's catalog
+  copilot: 'Auto', // the only model guaranteed on every Copilot plan (Free/Pro/Business/Enterprise); Pro+ users override via EDS_AGENT_MODEL_COPILOT
 };
+
+const DEFAULT_CODEX_BEDROCK_MODEL = 'openai.gpt-5.6-luna';
 
 /**
  * Resolve the model for an agent. Explicit flag/creds value wins, then a
  * per-agent `EDS_AGENT_MODEL_<AGENT>` env override (mirrors the
  * `EDS_AGENT_BINARY_<AGENT>` pattern), otherwise the lightweight default for
- * that agent.
+ * that agent. `bedrock` only affects the fallback default, and only for
+ * agents whose model id changes shape under Bedrock (codex, opencode) — an
+ * explicit value or env override is never rewritten.
  */
-export function resolveAgentModel(agent: AgentName, explicit?: string): string {
+export function resolveAgentModel(agent: AgentName, explicit?: string, bedrock = false): string | undefined {
   if (explicit && explicit.trim()) return explicit.trim();
   const override = process.env[`EDS_AGENT_MODEL_${agent.toUpperCase()}`];
   if (override && override.trim()) return override.trim();
+  if (bedrock && agent === 'codex') return DEFAULT_CODEX_BEDROCK_MODEL;
+  if (bedrock && agent === 'opencode') return withBedrockProviderPrefix(DEFAULT_OPENCODE_MODEL);
   return DEFAULT_MODELS[agent];
+}
+
+/**
+ * opencode selects providers via a `provider/model` string rather than a
+ * flag or env var, so routing it through Bedrock means rewriting the model
+ * string itself. Left alone if it already carries a provider prefix (an
+ * explicit --model / EDS_AGENT_MODEL_OPENCODE value naming its own
+ * provider), since resolveAgentModel only applies this to the bare default.
+ */
+function withBedrockProviderPrefix(model: string): string {
+  return model.includes('/') ? model : `amazon-bedrock/${model}`;
+}
+
+/**
+ * codex has no Bedrock env var; it requires `-c` config overrides
+ * (`model_provider` + the Bedrock provider's region) passed as argv, per the
+ * org's verified codex-bedrock-security-review setup. Region comes from the
+ * environment's own AWS region var, falling back to us-east-1 — the region
+ * gpt-5.6-luna's Bedrock endpoint requires — when neither is set.
+ */
+function codexBedrockConfigArgs(): string[] {
+  const region =
+    process.env.AWS_REGION?.trim() || process.env.AWS_DEFAULT_REGION?.trim() || DEFAULT_CODEX_BEDROCK_REGION;
+  return ['-c', 'model_provider=amazon-bedrock', '-c', `model_providers.amazon-bedrock.region=${region}`];
 }
 
 export type AgentDebugEvent = (name: string, payload?: Record<string, unknown>) => void;
 
-export function buildArgs(agent: AgentName, prompt: string, model?: string, promptViaStdin = false): string[] {
-  const modelArg = ['--model', resolveAgentModel(agent, model)];
+export function buildArgs(
+  agent: AgentName,
+  prompt: string,
+  model?: string,
+  promptViaStdin = false,
+  bedrock = false,
+): string[] {
+  // codex with no configured model resolves to undefined — omit --model
+  // entirely so the CLI picks its own account-compatible default.
+  const resolvedModel = resolveAgentModel(agent, model, bedrock);
+  const modelArg = resolvedModel ? ['--model', resolvedModel] : [];
   // When the prompt is delivered on stdin, omit it from argv — a large prompt
   // as a command-line argument overflows ARG_MAX (spawn E2BIG). All four CLIs
   // read the prompt from stdin when it isn't passed positionally.
@@ -444,14 +511,35 @@ export function buildArgs(agent: AgentName, prompt: string, model?: string, prom
   switch (agent) {
     case 'claude':
       return ['--print', ...modelArg, ...promptArg];
-    case 'codex':
+    case 'codex': {
+      const bedrockArgs = bedrock ? codexBedrockConfigArgs() : [];
       // --dangerously-bypass-approvals-and-sandbox required for non-interactive use
-      return ['exec', ...modelArg, '--dangerously-bypass-approvals-and-sandbox', ...promptArg];
+      return ['exec', ...bedrockArgs, ...modelArg, '--dangerously-bypass-approvals-and-sandbox', ...promptArg];
+    }
     case 'opencode':
       return ['run', ...modelArg, ...promptArg];
     case 'cursor':
       // cursor-agent uses --print for non-interactive stdout output
       return ['--print', ...modelArg, ...promptArg];
+    case 'copilot': {
+      // copilot's -p takes the prompt as its value — it MUST come immediately
+      // after -p or the CLI rejects with "Invalid command format".
+      // --allow-all-tools mirrors codex's sandbox bypass for non-interactive
+      // use.
+      //
+      // Model handling is special: copilot's UI shows "Auto" as the default
+      // pick, but the CLI rejects --model Auto ("not available"). Auto is a
+      // UI-only label — internally, omitting --model IS Auto. So we only
+      // pass --model when the user set an explicit override (via flag or
+      // EDS_AGENT_MODEL_COPILOT); the sentinel string 'Auto' means "omit".
+      //
+      // Stdin fallback is unsupported: copilot -p requires an inline prompt
+      // value, so promptViaStdin will fail here — callers must pass the
+      // prompt inline for copilot.
+      const copilotModel = resolveAgentModel('copilot', model);
+      const copilotModelArg = !copilotModel || copilotModel === 'Auto' ? [] : ['--model', copilotModel];
+      return ['-p', ...promptArg, ...copilotModelArg, '--allow-all-tools'];
+    }
   }
 }
 
@@ -460,6 +548,8 @@ export async function runAgent(options: {
   prompt: string;
   timeoutMs: number;
   model?: string;
+  /** Apply the selected agent's Bedrock-routing env vars when enabled. */
+  bedrock?: boolean;
   onOutput?: (chunk: string) => void;
   /**
    * Deliver the prompt on stdin instead of as an argv positional. Required for
@@ -471,24 +561,32 @@ export async function runAgent(options: {
   onDebugEvent?: AgentDebugEvent;
 }): Promise<AgentRunResult> {
   const { agent, prompt, timeoutMs, model, onOutput, promptViaStdin, onDebugEvent } = options;
+  // Fall back to the process-wide EDS_BEDROCK signal (set once by the CLI's
+  // top-level --bedrock resolution and inherited by every spawned subprocess)
+  // when a call site doesn't pass `bedrock` explicitly — closes the gap for
+  // call sites that forget to thread the flag through by hand.
+  const bedrock = options.bedrock ?? process.env.EDS_BEDROCK === '1';
 
   const binary = resolveBinary(agent);
   const useStdin = !!promptViaStdin;
-  const args = buildArgs(agent, prompt, model, useStdin);
+  const args = buildArgs(agent, prompt, model, useStdin, bedrock);
 
   const startedAt = Date.now();
   onDebugEvent?.('run.start', {
     agent,
     binary,
     model,
+    bedrock: !!bedrock,
     timeoutMs,
     promptLen: prompt.length,
     promptHead: prompt.slice(0, 500),
   });
 
   return new Promise((resolve) => {
+    const bedrockEnv = bedrock ? BEDROCK_ENV_BY_AGENT[agent] : undefined;
     const child = spawn(binary, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
+      ...(bedrockEnv ? { env: { ...process.env, ...bedrockEnv } } : {}),
     });
     if (useStdin && child.stdin) {
       // Guard against EPIPE: the child may close stdin before we finish

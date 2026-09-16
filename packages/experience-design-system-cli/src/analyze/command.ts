@@ -45,6 +45,7 @@ import { resolveViaAgentParser } from './composition/agent-parser/resolve-via-pa
 import type { RawSlotDefinition } from '../types.js';
 import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
 import {
+  agentSupportsBedrock,
   DEFAULT_AGENT_NAME,
   isAgentName,
   runAgent,
@@ -75,6 +76,7 @@ interface AnalyzeExtractOptions {
   generateMap?: string;
   prompt?: string[];
   agent?: string;
+  bedrock?: boolean;
 }
 
 const SCANNED_FILE_EXTENSIONS = new Set(['.astro', '.js', '.jsx', '.svelte', '.ts', '.tsx', '.vue']);
@@ -325,6 +327,14 @@ export function registerAnalyzeCommand(program: Command): void {
         }
         return v;
       })();
+      if (opts.bedrock) {
+        const bedrockAgent = resolveCompositionAgentName(opts.agent);
+        if (!agentSupportsBedrock(bedrockAgent)) {
+          process.stderr.write(`Error: --bedrock is not supported for --agent ${bedrockAgent}\n`);
+          process.exit(1);
+        }
+      }
+
       const projectRoot = resolve(opts.project);
       const outDir = join(projectRoot, '.contentful');
 

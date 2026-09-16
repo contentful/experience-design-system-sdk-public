@@ -4,6 +4,7 @@ import { checkAgentAuth, runAgent } from './agent-runner.js';
 export interface InvokeAgentOptions {
   agent: AgentName;
   model?: string;
+  bedrock?: boolean;
   prompt: string;
   timeoutMs: number;
   onOutput?: (chunk: string) => void;
