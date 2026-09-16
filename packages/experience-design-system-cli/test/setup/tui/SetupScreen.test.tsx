@@ -86,6 +86,21 @@ describe('SetupScreen', () => {
     expect(frame).not.toContain('✓ Prerequisites');
   });
 
+  it('renders a blank spacer line after the credentials path notice', async () => {
+    const { lastFrame } = renderScreen({ skip: { skipAgent: true } });
+
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Current values') || f.includes('Configure Contentful credentials?'),
+    );
+
+    // The notice wraps, so the spacer follows its last wrapped line.
+    const lines = frame.split('\n');
+    const noticeEnd = lines.findIndex((line) => line.trim().endsWith('import.'));
+    expect(noticeEnd).toBeGreaterThanOrEqual(0);
+    expect(lines[noticeEnd + 1]!.trim()).toBe('');
+  });
+
   it('renders no step label or subtitle above the stepper', async () => {
     const { lastFrame } = renderScreen();
 

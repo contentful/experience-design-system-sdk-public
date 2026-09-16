@@ -365,10 +365,13 @@ function SetupEventLog({ events }: { events: readonly SetupActionEvent[] }): Rea
 }
 
 function SetupEventLine({ event }: { event: SetupActionEvent }): React.ReactElement {
+  // Ink gives an empty Text zero height, so a spacer needs a space to occupy.
+  if (event.message === '') return <Text> </Text>;
   if (event.kind === 'success') return <Text color={PALETTE.success}>✓ {event.message}</Text>;
   if (event.kind === 'failure') return <Text color={PALETTE.error}>✗ {event.message}</Text>;
   if (event.kind === 'warning') return <Text color={PALETTE.warning}>⚠ {event.message}</Text>;
   if (event.kind === 'dim') return <Text dimColor>{event.message}</Text>;
+  if (event.kind === 'value') return <Text> {event.message}</Text>;
   if (event.kind === 'choice') return <Text> {event.message}</Text>;
   return <Text>{event.message}</Text>;
 }

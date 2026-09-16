@@ -149,6 +149,55 @@ describe('setup actions', () => {
     expect(ask).toHaveBeenCalledWith('Model name (optional - press Enter for Codex default): ');
   });
 
+  it('renders stored credential values as a plain readout, not as passed checks', async () => {
+    const events: SetupActionEvent[] = [];
+    const dependencies = createDependencies({
+      readCredentials: async () => ({ spaceId: 'space', environmentId: 'master', cmaToken: 'token-value' }),
+      confirm: async () => false,
+      write: (event) => events.push(event),
+    });
+
+    await runCredentialsSetup(dependencies);
+
+    expect(events).toContainEqual({ kind: 'value', message: 'Space ID        space' });
+    expect(events).toContainEqual({ kind: 'value', message: 'Environment ID  master' });
+    expect(events).toContainEqual({ kind: 'value', message: 'CMA Token       ••••••••...' });
+    expect(events).toContainEqual({ kind: 'value', message: 'API Host        api.contentful.com' });
+    expect(events.filter((event) => event.kind === 'success')).toEqual([
+      { kind: 'success', message: 'Credentials already configured — no changes made' },
+    ]);
+  });
+
+  it('flags a missing credential as a warning rather than a value', async () => {
+    const events: SetupActionEvent[] = [];
+    const dependencies = createDependencies({
+      readCredentials: async () => ({ spaceId: 'space', environmentId: '', cmaToken: '' }),
+      confirm: async () => false,
+      write: (event) => events.push(event),
+    });
+
+    await runCredentialsSetup(dependencies);
+
+    expect(events).toContainEqual({ kind: 'warning', message: 'Environment ID  (not set)' });
+    expect(events).toContainEqual({ kind: 'warning', message: 'CMA Token       (not set)' });
+  });
+
+  it('separates the credentials path notice from what follows it', async () => {
+    const events: SetupActionEvent[] = [];
+    const dependencies = createDependencies({ confirm: async () => false, write: (event) => events.push(event) });
+
+    await runCredentialsSetup(dependencies);
+
+    expect(events.slice(0, 2)).toEqual([
+      {
+        kind: 'info',
+        message:
+          'Saved to /home/tester/.config/experiences/credentials.json — loaded automatically by experiences import.',
+      },
+      { kind: 'info', message: '' },
+    ]);
+  });
+
   it('persists credentials collected through injected prompts', async () => {
     const writeCredentials = vi.fn();
     const dependencies = createDependencies({
