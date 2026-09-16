@@ -1,0 +1,18 @@
+import React from 'react';
+import type { StepDone } from '../StepLayout.js';
+import { BooleanPreference } from './BooleanPreference.js';
+
+export const ANALYTICS_HELP = 'Shares anonymous usage data about which CLI commands run.';
+
+export function AnalyticsScreen({ onDone }: { onDone: StepDone }): React.ReactElement {
+  return (
+    <BooleanPreference
+      help={ANALYTICS_HELP}
+      question="Disable anonymous usage analytics?"
+      read={(credentials) => credentials.analyticsDisabled}
+      write={(credentials, analyticsDisabled) => ({ ...credentials, analyticsDisabled })}
+      fallback={false}
+      onDone={onDone}
+    />
+  );
+}

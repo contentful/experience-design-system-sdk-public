@@ -2,7 +2,7 @@ import type { AgentName } from '@contentful/experience-design-system-generation'
 import type { ExperiencesCredentials } from '../../credentials-store.js';
 import type { ShellCommandResult } from './shell.js';
 
-export type SetupActionEventKind = 'success' | 'failure' | 'warning' | 'info' | 'value' | 'help' | 'page';
+export type SetupActionEventKind = 'success' | 'failure' | 'warning' | 'info' | 'help';
 
 export interface SetupActionEvent {
   kind: SetupActionEventKind;
