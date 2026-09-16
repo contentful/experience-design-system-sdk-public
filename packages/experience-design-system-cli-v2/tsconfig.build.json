@@ -10,7 +10,7 @@
     "index.ts",
     "program.ts",
     "app.tsx",
-    "start.tsx",
+    "home.tsx",
     "src/import/screen.tsx",
     "src/saved-runs/screen.tsx",
     "src/settings/screen.tsx",

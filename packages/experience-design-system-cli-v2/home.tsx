@@ -19,7 +19,7 @@ const START_ITEMS: { label: string; screen: Screen }[] = [
   { label: 'Help', screen: 'help' },
 ];
 
-export function StartScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }): React.ReactElement {
+export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }): React.ReactElement {
   const [focusIdx, setFocusIdx] = useState(0);
   const { exit } = useApp();
   const terminalWidth = useTerminalWidth();

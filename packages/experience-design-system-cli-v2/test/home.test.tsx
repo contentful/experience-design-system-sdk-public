@@ -1,6 +1,6 @@
 import { render } from 'ink-testing-library';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MIN_TERMINAL_WIDTH, StartScreen } from '../start.js';
+import { MIN_TERMINAL_WIDTH, HomeScreen } from '../home.js';
 import { BRAND, FOCUS_MARKER } from '../src/tui/styles/theme.js';
 
 const ESC = '\u001B';
@@ -33,7 +33,7 @@ async function flush(): Promise<void> {
 
 function renderHome() {
   const onNavigate = vi.fn();
-  const instance = render(<StartScreen onNavigate={onNavigate} />);
+  const instance = render(<HomeScreen onNavigate={onNavigate} />);
   return { ...instance, onNavigate };
 }
 
@@ -54,7 +54,7 @@ function focusedLabel(frame: string): string | undefined {
   return line.slice(line.indexOf(FOCUS_MARKER) + FOCUS_MARKER.length).trim();
 }
 
-describe('StartScreen', () => {
+describe('HomeScreen', () => {
   it('renders the header and every menu item', async () => {
     const { lastFrame } = renderHome();
     await flush();
