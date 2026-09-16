@@ -73,7 +73,7 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
           Terminal too small
         </Text>
         <Text color={PALETTE.muted}>
-          Press q to quit, make your terminal full screen, then run experiences import again.
+          Press q to quit, make your terminal full screen, and then run experiences import again.
         </Text>
       </Box>
     );
@@ -101,22 +101,28 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
           {START_ITEMS.map((item, i) => {
             const focused = i === focusIdx;
             const disabled = item.screen === 'upgrade' && isUpgradeDisabled;
+            const upgradeAvailable = item.screen === 'upgrade' && upgradeCheck?.status === 'update-available';
 
             let label = item.label;
-            if (item.screen === 'upgrade' && upgradeCheck?.status === 'update-available') {
+            if (upgradeAvailable) {
               label = `Upgrade (v${upgradeCheck.latest} available)`;
-            } else if (item.screen === 'upgrade' && upgradeCheck?.status === 'up-to-date') {
+            } else if (disabled) {
               label = 'Upgrade (up to date)';
             }
 
+            const color = disabled
+              ? PALETTE.muted
+              : upgradeAvailable
+                ? PALETTE.success
+                : focused
+                  ? PALETTE.accent
+                  : undefined;
+
             return (
-              <Text
-                key={item.label}
-                bold={focused}
-                color={disabled ? PALETTE.muted : focused ? PALETTE.accent : undefined}
-              >
+              <Text key={item.label} bold={focused || upgradeAvailable} dimColor={disabled} color={color}>
                 {focused ? `${FOCUS_MARKER} ` : '  '}
                 {label}
+                {upgradeAvailable ? ' ●' : ''}
               </Text>
             );
           })}
