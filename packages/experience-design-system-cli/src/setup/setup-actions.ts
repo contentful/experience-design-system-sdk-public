@@ -5,7 +5,7 @@ import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { promptAnalyticsPreference } from './analytics-prompt.js';
 import { promptAutoFilterPreference } from './auto-filter-prompt.js';
 import { promptDebugModePreference } from './debug-mode-prompt.js';
-import { formatPreferencePicker, parsePreferenceSelection, type PreferenceKey } from './preferences-picker.js';
+import { PREFERENCE_OPTIONS, type PreferenceKey } from './preferences-picker.js';
 
 const REQUIRED_NODE_MAJOR = 24;
 
@@ -31,6 +31,8 @@ export interface SetupActionDependencies {
   confirm(question: string, defaultYes?: boolean): Promise<boolean>;
   /** Resolves the chosen index, or `undefined` when the operator skips. */
   choose(question: string, options: readonly SetupChoice[]): Promise<number | undefined>;
+  /** Resolves the chosen indexes, empty when the operator selects nothing. */
+  chooseMany(question: string, options: readonly SetupChoice[]): Promise<number[]>;
   write(event: SetupActionEvent): void;
   binaryExists(binary: string): Promise<boolean>;
   run(
@@ -396,14 +398,11 @@ export async function runPreferenceSetupAction(
   dependencies: SetupActionDependencies,
   profilePath: string,
 ): Promise<{ selected: PreferenceKey[] }> {
-  emit(dependencies, 'info', formatPreferencePicker());
-  let selected: PreferenceKey[] | undefined;
-  while (!selected) {
-    selected = parsePreferenceSelection(
-      await dependencies.ask('Choose preferences to configure (for example, 1,3 or all; Enter to skip): '),
-    );
-    if (!selected) emit(dependencies, 'warning', 'Enter numbers from the list, "all", or "s".');
-  }
+  const chosen = await dependencies.chooseMany(
+    'Choose preferences to configure:',
+    PREFERENCE_OPTIONS.map((option) => ({ label: option.label })),
+  );
+  const selected = chosen.map((index) => PREFERENCE_OPTIONS[index]!.key);
   if (selected.length === 0) {
     emit(dependencies, 'info', 'No preferences changed.');
     return { selected };

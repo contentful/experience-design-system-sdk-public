@@ -56,12 +56,6 @@ export function shouldAlignVersionRight(version: string, columns?: number): bool
   return columns !== undefined && columns >= contentWidth;
 }
 
-export function setupScreenLabel(activeStep: number): string {
-  const screen = SETUP_SCREENS[activeStep - 1];
-  if (!screen) return '';
-  return `[${activeStep}/${SETUP_SCREENS.length}] ${screen.title} · ${screen.kind}`;
-}
-
 export type SetupResultStatus = 'completed' | 'skipped' | 'failed';
 
 export interface SetupResultEntry {
