@@ -235,6 +235,97 @@ describe('SetupScreen', () => {
     expect(frame).toContain('Configure Contentful credentials? [Y/n]');
   });
 
+  it('renders a choice prompt with a Skip row and moves the pointer with arrow keys', async () => {
+    const { lastFrame, stdin } = renderScreen({
+      dependencies: createDependencies({
+        binaryExists: async (binary) => binary === 'pnpm' || binary === 'claude' || binary === 'codex',
+      }),
+    });
+
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Multiple coding agents found'),
+    );
+    expect(frame).toContain('Claude Code');
+    expect(frame).toContain('OpenAI Codex');
+    expect(frame).toContain('Skip');
+    // Select renders the focused row with figures.pointer.
+    expect(frame).toContain('❯ Claude Code');
+
+    stdin.write('\u001b[B');
+    const moved = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('❯ OpenAI Codex'),
+    );
+    expect(moved).toContain('❯ OpenAI Codex');
+  });
+
+  it('resolves a choice prompt to the highlighted option on Enter', async () => {
+    const writeCredentials = vi.fn();
+    const { lastFrame, stdin } = renderScreen({
+      skip: { skipCredentials: true, skipOptional: true },
+      dependencies: createDependencies({
+        binaryExists: async (binary) => binary === 'pnpm' || binary === 'claude' || binary === 'codex',
+        writeCredentials,
+      }),
+    });
+
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Multiple coding agents found'),
+    );
+    stdin.write('\u001b[B');
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('❯ OpenAI Codex'),
+    );
+    stdin.write('\r');
+
+    // Codex is the second row, so reaching its model prompt proves the resolved
+    // index tracks the pointer rather than defaulting to the first option.
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Model name'),
+    );
+    await answer(stdin, '');
+
+    const saved = await waitForFrame(
+      () => JSON.stringify(writeCredentials.mock.calls),
+      (calls) => calls.includes('codex'),
+    );
+    expect(saved).toContain('codex');
+  });
+
+  it('treats the trailing Skip row as declining the choice', async () => {
+    const { lastFrame, stdin, onComplete } = renderScreen({
+      skip: { skipCredentials: true, skipOptional: true },
+      dependencies: createDependencies({
+        binaryExists: async (binary) => binary === 'pnpm' || binary === 'claude' || binary === 'codex',
+      }),
+    });
+
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Multiple coding agents found'),
+    );
+    // Claude, Codex, then Skip — three downs from the first row lands on Skip.
+    stdin.write('\u001b[B');
+    stdin.write('\u001b[B');
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('❯ Skip'),
+    );
+    stdin.write('\r');
+
+    await waitForFrame(
+      () => (onComplete.mock.calls.length > 0 ? 'done' : ''),
+      (f) => f === 'done',
+    );
+    const outcome = onComplete.mock.calls[0]![0] as { results: Array<{ name: string; status: string }> };
+    const agent = outcome.results.find((result) => result.name === 'Coding agent');
+    expect(agent?.status).toBe('failed');
+  });
+
   it('shows the final summary with completed, skipped, and failed actions', async () => {
     const { lastFrame, onComplete } = renderScreen({
       skip: { skipAgent: true, skipCredentials: true, skipOptional: true },

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
+import { Select } from '@inkjs/ui';
 import { PALETTE } from '../../analyze/select/tui/theme.js';
 import {
   SETUP_TITLE,
@@ -92,7 +93,6 @@ export function SetupScreen({
     inputValueRef.current = next;
     setInputValue(next);
   };
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const [outcome, setOutcome] = useState<SetupOutcome | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -107,7 +107,6 @@ export function SetupScreen({
     const request = <T,>(build: (resolve: (answer: T) => void) => PendingPrompt): Promise<T> =>
       new Promise<T>((resolve) => {
         updateInput('');
-        setSelectedIndex(0);
         setPrompt(build(resolve));
       });
 
@@ -239,21 +238,8 @@ export function SetupScreen({
     const active = prompt;
     if (!active) return;
 
-    if (active.kind === 'select') {
-      const lastIndex = active.options.length;
-      if (key.upArrow) return setSelectedIndex((index) => (index === 0 ? lastIndex : index - 1));
-      if (key.downArrow) return setSelectedIndex((index) => (index === lastIndex ? 0 : index + 1));
-      if (key.return) {
-        setPrompt(null);
-        active.resolve(selectedIndex === lastIndex ? undefined : selectedIndex);
-        return;
-      }
-      if (chunk === 's' || chunk === 'S') {
-        setPrompt(null);
-        active.resolve(undefined);
-      }
-      return;
-    }
+    // Select owns its own keys, so the raw handler ignores choice prompts.
+    if (active.kind === 'select') return;
 
     const submit = (value: string): void => {
       setPrompt(null);
@@ -314,7 +300,13 @@ export function SetupScreen({
 
       {prompt &&
         (prompt.kind === 'select' ? (
-          <SetupChoiceList prompt={prompt} selectedIndex={selectedIndex} />
+          <SetupChoiceList
+            prompt={prompt}
+            onResolve={(index) => {
+              setPrompt(null);
+              prompt.resolve(index);
+            }}
+          />
         ) : (
           <SetupPrompt prompt={prompt} value={inputValue} />
         ))}
@@ -351,31 +343,35 @@ function SetupEventLine({ event }: { event: SetupActionEvent }): React.ReactElem
   return <Text>{event.message}</Text>;
 }
 
+/** The value Select reports when the operator picks the trailing Skip row. */
+const SKIP_VALUE = '\u0000skip';
+
 function SetupChoiceList({
   prompt,
-  selectedIndex,
+  onResolve,
 }: {
   prompt: Extract<PendingPrompt, { kind: 'select' }>;
-  selectedIndex: number;
+  onResolve: (index: number | undefined) => void;
 }): React.ReactElement {
-  const rows = [...prompt.options.map((option) => ({ ...option, skip: false })), { label: 'Skip', skip: true }];
+  // Select keys options by value, so each row carries its index and Skip gets a
+  // sentinel that cannot collide with one.
+  const options = [
+    ...prompt.options.map((option, index) => ({
+      label: option.description ? `${option.label}  ${option.description}` : option.label,
+      value: String(index),
+    })),
+    { label: 'Skip', value: SKIP_VALUE },
+  ];
 
   return (
     <Box flexDirection="column" marginTop={1}>
       <Text>{prompt.question}</Text>
       <Box flexDirection="column" marginTop={1}>
-        {rows.map((row, index) => {
-          const isSelected = index === selectedIndex;
-          return (
-            <Box key={row.label}>
-              <Text color={isSelected ? PALETTE.info : undefined}>{isSelected ? '❯ ' : '  '}</Text>
-              <Text bold={isSelected} dimColor={row.skip && !isSelected} color={isSelected ? PALETTE.info : undefined}>
-                {row.label}
-              </Text>
-              {'description' in row && row.description ? <Text dimColor> {row.description}</Text> : null}
-            </Box>
-          );
-        })}
+        <Select
+          options={options}
+          visibleOptionCount={options.length}
+          onChange={(value) => onResolve(value === SKIP_VALUE ? undefined : Number(value))}
+        />
       </Box>
       <Box marginTop={1}>
         <Text dimColor>↑↓ to move · Enter to select</Text>
