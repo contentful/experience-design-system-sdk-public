@@ -1,5 +1,7 @@
 import { join } from 'node:path';
 import type { AgentName } from '@contentful/experience-design-system-generation';
+import { AGENT_DEFS, type AgentDefinition } from './agents.js';
+import { REQUIRED_NODE_MAJOR, type ShellCommandResult } from './shell.js';
 import type { ExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { promptAnalyticsPreference } from './analytics-prompt.js';
@@ -7,28 +9,11 @@ import { promptAutoFilterPreference } from './auto-filter-prompt.js';
 import { promptDebugModePreference } from './debug-mode-prompt.js';
 import { PREFERENCE_OPTIONS, type PreferenceKey } from './preferences-picker.js';
 
-const REQUIRED_NODE_MAJOR = 24;
-
-export type SetupActionEventKind =
-  | 'success'
-  | 'failure'
-  | 'warning'
-  | 'info'
-  | 'dim'
-  | 'choice'
-  | 'value'
-  | 'help'
-  | 'page';
+export type SetupActionEventKind = 'success' | 'failure' | 'warning' | 'info' | 'value' | 'help' | 'page';
 
 export interface SetupActionEvent {
   kind: SetupActionEventKind;
   message: string;
-}
-
-export interface SetupCommandResult {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
 }
 
 export interface SetupActionDependencies {
@@ -46,7 +31,7 @@ export interface SetupActionDependencies {
     command: string,
     args: string[],
     options?: { cwd?: string; env?: NodeJS.ProcessEnv },
-  ): Promise<SetupCommandResult>;
+  ): Promise<ShellCommandResult>;
   pathExists(path: string): Promise<boolean>;
   profileContains(profilePath: string, value: string): Promise<boolean>;
   appendToProfile(profilePath: string, lines: string): Promise<void>;
@@ -75,13 +60,6 @@ export interface AgentSetupResult {
   agentModel: string | undefined;
   passed: boolean;
 }
-
-const AGENT_DEFS: Array<{ name: string; binary: AgentName; installHint: string }> = [
-  { name: 'Claude Code', binary: 'claude', installHint: 'npm install -g @anthropic-ai/claude-code && claude login' },
-  { name: 'OpenAI Codex', binary: 'codex', installHint: 'npm install -g @openai/codex  (requires OPENAI_API_KEY)' },
-  { name: 'OpenCode', binary: 'opencode', installHint: 'npm install -g opencode-ai && opencode auth' },
-  { name: 'GitHub Copilot', binary: 'copilot', installHint: 'npm install -g @github/copilot && copilot' },
-];
 
 function emit(dependencies: SetupActionDependencies, kind: SetupActionEventKind, message: string): void {
   dependencies.write({ kind, message });
@@ -278,12 +256,11 @@ async function promptCodexModel(dependencies: SetupActionDependencies): Promise<
 
 export async function runAgentSetup(dependencies: SetupActionDependencies): Promise<AgentSetupResult> {
   emit(dependencies, 'info', 'Experiences import uses a coding agent to generate component definitions.');
-  emit(dependencies, 'info', '');
   const found = (
     await Promise.all(
       AGENT_DEFS.map(async (agent) => ((await dependencies.binaryExists(agent.binary)) ? agent : undefined)),
     )
-  ).filter((agent): agent is (typeof AGENT_DEFS)[number] => agent !== undefined);
+  ).filter((agent): agent is AgentDefinition => agent !== undefined);
   if (found.length === 1) {
     const selected = found[0]!;
     emit(dependencies, 'success', `${selected.name} (${selected.binary}) found`);

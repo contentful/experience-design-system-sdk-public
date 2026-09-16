@@ -117,7 +117,7 @@ describe('setup actions', () => {
     });
   });
 
-  it('separates the agent intro from the list that follows it', async () => {
+  it('introduces the agent step before reporting what it found', async () => {
     const events: SetupActionEvent[] = [];
     const dependencies = createDependencies({
       binaryExists: async (binary) => binary === 'claude',
@@ -126,9 +126,8 @@ describe('setup actions', () => {
 
     await runAgentSetup(dependencies);
 
-    expect(events.slice(0, 3)).toEqual([
+    expect(events.slice(0, 2)).toEqual([
       { kind: 'info', message: 'Experiences import uses a coding agent to generate component definitions.' },
-      { kind: 'info', message: '' },
       { kind: 'success', message: 'Claude Code (claude) found' },
     ]);
   });
