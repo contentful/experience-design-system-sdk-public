@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import {
@@ -13,6 +13,8 @@ import {
 import { detectSlotCycles, formatSlotCycleReport } from '../apply/command.js';
 import { readTokensFromPath } from '../apply/manifest.js';
 import { PREVIEW_ERROR_PREFIX, VALIDATION_FAILED_CODE, parsePreviewValidationErrors } from '../apply/api-client.js';
+import { fetchExistingEntities } from '../helpers/fetch-existing-entities.js';
+import { createCmaClient } from '../helpers/cma-client.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
 import { bindAnalyticsSession, emitSessionStarted } from '../analytics/index.js';
@@ -49,6 +51,15 @@ export interface PipelineOptions {
   /** When true, auto-reject cycle participants and retry push instead of surfacing an error. */
   autoRejectCycles?: boolean;
   allowDeletions?: boolean;
+  /**
+   * Fetch existing Components + DesignTokens from the target space+env
+   * and persist them under outDir/.existing-entities.json so downstream
+   * agent steps can consume them as context. Requires spaceId +
+   * environmentId + cmaToken; skipped with a warning otherwise. No-op
+   * for the agent flow in this PR — the file is written but nothing
+   * reads it yet.
+   */
+  withSpaceContext?: boolean;
   compositionMode?: CompositionMode;
   compositionMap?: string;
   compositionAgent?: boolean;
@@ -221,11 +232,76 @@ export async function runPipeline(
   const steps: StepResult[] = [];
   let stepNum = 0;
 
-  const totalSteps = 5 + (opts.print ? 1 : 0);
+  const wantsSpaceContext = opts.withSpaceContext === true;
+  const canFetchSpaceContext = wantsSpaceContext && !!opts.spaceId && !!opts.environmentId && !!opts.cmaToken;
+
+  const totalSteps = 5 + (opts.print ? 1 : 0) + (canFetchSpaceContext ? 1 : 0);
 
   function stepLabel(name: string): string {
     stepNum++;
     return `  Step ${stepNum}/${totalSteps}  ${name}  `;
+  }
+
+  if (wantsSpaceContext && !canFetchSpaceContext) {
+    progressWriter(
+      '  Note: --with-space-context requires --space-id, --environment-id, and --cma-token; skipping context fetch.',
+    );
+  }
+
+  if (canFetchSpaceContext) {
+    const fetchLabel = stepLabel('Fetching existing components + design tokens');
+    const fetchStepId = createStep(db, sessionId, 'fetch existing entities', {
+      spaceId: opts.spaceId!,
+      environmentId: opts.environmentId!,
+    });
+    const t0 = Date.now();
+    try {
+      const cmaClient = createCmaClient({
+        cmaToken: opts.cmaToken!,
+        ...(opts.host ? { host: opts.host } : {}),
+      });
+      const existingComponentsAndTokens = await fetchExistingEntities(cmaClient, {
+        spaceId: opts.spaceId!,
+        environmentId: opts.environmentId!,
+      });
+      const fetchDurationMs = Date.now() - t0;
+      const existingEntitiesPath = join(outDir, '.existing-entities.json');
+      await writeFile(existingEntitiesPath, JSON.stringify(existingComponentsAndTokens, null, 2), 'utf8');
+      updateStep(db, fetchStepId, 'complete', {
+        components: String(existingComponentsAndTokens.components.length),
+        tokens: String(existingComponentsAndTokens.tokens.length),
+        path: existingEntitiesPath,
+      });
+      progressWriter(
+        `${fetchLabel}✓  ${existingComponentsAndTokens.components.length} component${existingComponentsAndTokens.components.length === 1 ? '' : 's'}, ${existingComponentsAndTokens.tokens.length} token${existingComponentsAndTokens.tokens.length === 1 ? '' : 's'}  (${(fetchDurationMs / 1000).toFixed(1)}s)`,
+      );
+      steps.push({
+        step: 'fetch existing entities',
+        status: 'complete',
+        durationMs: fetchDurationMs,
+        detail: {
+          components: existingComponentsAndTokens.components.length,
+          tokens: existingComponentsAndTokens.tokens.length,
+        },
+      });
+    } catch (error) {
+      const fetchDurationMs = Date.now() - t0;
+      const message = error instanceof Error ? error.message : String(error);
+      // Record as 'skipped' rather than 'failed' so this optional enrichment
+      // step doesn't flip the overall pipeline exit code (the top-level
+      // `hasFailed` check treats any 'failed' step as non-zero exit).
+      updateStep(db, fetchStepId, 'complete', {}, message);
+      progressWriter(
+        `${fetchLabel}⚠  fetch failed, continuing without space context  (${(fetchDurationMs / 1000).toFixed(1)}s)`,
+      );
+      progressWriter(`    ${message.split('\n')[0]}`);
+      steps.push({
+        step: 'fetch existing entities',
+        status: 'skipped',
+        durationMs: fetchDurationMs,
+        reason: `fetch failed: ${message.split('\n')[0]}`,
+      });
+    }
   }
 
   const analyzeLabel = stepLabel('Statically analyzing project');

@@ -289,6 +289,13 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
+    flag: '--with-space-context',
+    kind: 'boolean',
+    modes: ['pty', 'headless'],
+    incompatibleWith: [],
+    notes: 'Requires --space-id, --environment-id, and --cma-token; silently no-ops otherwise.',
+  },
+  {
     flag: '--auto-filter',
     kind: 'boolean',
     modes: ['pty', 'headless'],
