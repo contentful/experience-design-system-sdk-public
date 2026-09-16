@@ -428,18 +428,22 @@ export function agentSupportsBedrock(agent: AgentName): boolean {
 
 const DEFAULT_CODEX_BEDROCK_REGION = 'us-east-1';
 
+const DEFAULT_OPENCODE_MODEL = 'claude-haiku-4-5';
+
 /**
  * Default models per agent — lightweight/fast picks to control cost when no
  * explicit model is configured. cursor uses `gpt-mini` (verified alias from
- * GetUsableModels; haiku is not available in cursor's model catalog). codex's
- * default differs on Bedrock: the model id there carries an `openai.` prefix,
- * required by the Bedrock provider and absent from the direct api.openai.com
- * id.
+ * GetUsableModels; haiku is not available in cursor's model catalog).
+ *
+ * codex is deliberately absent: with no entry here it gets no `--model` at
+ * all, so the installed Codex CLI picks whatever its account supports. On
+ * Bedrock it still needs an explicit id, since the model id there carries an
+ * `openai.` prefix required by the Bedrock provider and absent from the
+ * direct api.openai.com id — see DEFAULT_CODEX_BEDROCK_MODEL.
  */
-const DEFAULT_MODELS: Record<AgentName, string> = {
+const DEFAULT_MODELS: Partial<Record<AgentName, string>> = {
   claude: 'haiku',
-  codex: 'gpt-5.6-luna', // requires OPENAI_API_KEY; ChatGPT account users must pass --model
-  opencode: 'claude-haiku-4-5',
+  opencode: DEFAULT_OPENCODE_MODEL,
   cursor: 'gpt-mini', // cursor alias for gpt-5.4-mini-medium; haiku not in cursor's catalog
   copilot: 'Auto', // the only model guaranteed on every Copilot plan (Free/Pro/Business/Enterprise); Pro+ users override via EDS_AGENT_MODEL_COPILOT
 };
@@ -454,12 +458,12 @@ const DEFAULT_CODEX_BEDROCK_MODEL = 'openai.gpt-5.6-luna';
  * agents whose model id changes shape under Bedrock (codex, opencode) — an
  * explicit value or env override is never rewritten.
  */
-export function resolveAgentModel(agent: AgentName, explicit?: string, bedrock = false): string {
+export function resolveAgentModel(agent: AgentName, explicit?: string, bedrock = false): string | undefined {
   if (explicit && explicit.trim()) return explicit.trim();
   const override = process.env[`EDS_AGENT_MODEL_${agent.toUpperCase()}`];
   if (override && override.trim()) return override.trim();
   if (bedrock && agent === 'codex') return DEFAULT_CODEX_BEDROCK_MODEL;
-  if (bedrock && agent === 'opencode') return withBedrockProviderPrefix(DEFAULT_MODELS.opencode);
+  if (bedrock && agent === 'opencode') return withBedrockProviderPrefix(DEFAULT_OPENCODE_MODEL);
   return DEFAULT_MODELS[agent];
 }
 
@@ -496,7 +500,10 @@ export function buildArgs(
   promptViaStdin = false,
   bedrock = false,
 ): string[] {
-  const modelArg = ['--model', resolveAgentModel(agent, model, bedrock)];
+  // codex with no configured model resolves to undefined — omit --model
+  // entirely so the CLI picks its own account-compatible default.
+  const resolvedModel = resolveAgentModel(agent, model, bedrock);
+  const modelArg = resolvedModel ? ['--model', resolvedModel] : [];
   // When the prompt is delivered on stdin, omit it from argv — a large prompt
   // as a command-line argument overflows ARG_MAX (spawn E2BIG). All four CLIs
   // read the prompt from stdin when it isn't passed positionally.
@@ -530,7 +537,7 @@ export function buildArgs(
       // value, so promptViaStdin will fail here — callers must pass the
       // prompt inline for copilot.
       const copilotModel = resolveAgentModel('copilot', model);
-      const copilotModelArg = copilotModel === 'Auto' ? [] : ['--model', copilotModel];
+      const copilotModelArg = !copilotModel || copilotModel === 'Auto' ? [] : ['--model', copilotModel];
       return ['-p', ...promptArg, ...copilotModelArg, '--allow-all-tools'];
     }
   }
