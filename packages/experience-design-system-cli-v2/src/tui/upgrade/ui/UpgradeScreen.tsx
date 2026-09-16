@@ -4,6 +4,7 @@ import { Box, Text, useApp, useInput } from 'ink';
 import { checkForUpgrade, type UpgradeCheckResult } from '../services/version-check.js';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const CONTENTFUL_SCOPED_REGISTRY = 'https://npm.pkg.github.com';
 
 type InstallResult = {
   exitCode: number;
@@ -14,7 +15,12 @@ type InstallResult = {
 
 function spawnInstall(latest: string): { child: ChildProcess; donePromise: Promise<InstallResult> } {
   const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const child = spawn(npmCommand, ['install', '-g', `@contentful/experience-design-system-cli-v2@${latest}`]);
+  const child = spawn(npmCommand, [
+    'install',
+    '-g',
+    `@contentful/experience-design-system-cli-v2@${latest}`,
+    `--@contentful:registry=${CONTENTFUL_SCOPED_REGISTRY}`,
+  ]);
   let stdout = '';
   let stderr = '';
   child.stdout?.on('data', (d: Buffer) => {
