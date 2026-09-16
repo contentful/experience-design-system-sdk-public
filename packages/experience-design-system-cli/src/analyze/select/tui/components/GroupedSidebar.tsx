@@ -626,7 +626,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
                 {'▶'}
               </Text>
             ) : (
-              <Text> </Text>
+              <Text>{'  '}</Text>
             )}
             {badge ? (
               <Text color={badge.color} bold={badge.bold} dimColor={badge.dim}>

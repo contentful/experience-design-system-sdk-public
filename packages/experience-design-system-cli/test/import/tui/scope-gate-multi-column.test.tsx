@@ -167,14 +167,14 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     const initial = lastFrame() ?? '';
     stdin.write('\x1b[Z');
     const afterShift1 = lastFrame() ?? '';
-    expect(afterShift1).toMatch(/▶ Card \(2 deps\)/);
+    expect(afterShift1).toMatch(/▶ +Card \(2 deps\)/);
     stdin.write('\x1b[Z');
     const afterShift2 = lastFrame() ?? '';
-    expect(afterShift2).toMatch(/▶ Card\b/);
+    expect(afterShift2).toMatch(/▶ +Card\b/);
     stdin.write('\x1b[Z');
     const afterShift3 = lastFrame() ?? '';
-    expect(afterShift3).not.toMatch(/▶ Card \(2 deps\)/);
-    expect(afterShift3).not.toMatch(/▶ Card\b/);
+    expect(afterShift3).not.toMatch(/▶ +Card \(2 deps\)/);
+    expect(afterShift3).not.toMatch(/▶ +Card\b/);
     expect(afterShift3).toContain('Added components');
     expect(afterShift3).toContain('Added groups');
     void initial;
@@ -195,10 +195,10 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     stdin.write('A');
     stdin.write('\t');
     stdin.write('\x1b[B');
-    expect(lastFrame() ?? '').toMatch(/▶ Icon\b/);
+    expect(lastFrame() ?? '').toMatch(/▶ +Icon\b/);
     stdin.write('\r');
     const out = lastFrame() ?? '';
-    expect(out).not.toMatch(/▶ Icon\b/);
+    expect(out).not.toMatch(/▶ +Icon\b/);
     expect(out).toMatch(/▶[^\n]*Icon/);
   });
 
@@ -210,10 +210,10 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     stdin.write('A');
     stdin.write('\t');
     stdin.write('\t');
-    expect(lastFrame() ?? '').toMatch(/▶ Card \(2 deps\)/);
+    expect(lastFrame() ?? '').toMatch(/▶ +Card \(2 deps\)/);
     stdin.write('\r');
     const out = lastFrame() ?? '';
-    expect(out).not.toMatch(/▶ Card \(2 deps\)/);
+    expect(out).not.toMatch(/▶ +Card \(2 deps\)/);
     expect(out).toMatch(/▶[^\n]*Card \(2 deps\)/);
   });
 
@@ -225,11 +225,11 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     stdin.write('A');
     stdin.write('\t');
     stdin.write('\x1b[B');
-    expect(lastFrame() ?? '').toMatch(/▶ Icon\b/);
+    expect(lastFrame() ?? '').toMatch(/▶ +Icon\b/);
     stdin.write('\t');
     stdin.write('\t');
     stdin.write('\t');
-    expect(lastFrame() ?? '').toMatch(/▶ Icon\b/);
+    expect(lastFrame() ?? '').toMatch(/▶ +Icon\b/);
   });
 
   it('[r] in Added-components rejects the highlighted row via reject-cascade machinery', () => {
@@ -241,10 +241,10 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     stdin.write('\t');
     stdin.write('\x1b[B');
     stdin.write('\x1b[B');
-    expect(lastFrame() ?? '').toMatch(/▶ Standalone\b/);
+    expect(lastFrame() ?? '').toMatch(/▶ +Standalone\b/);
     stdin.write('r');
     const out = lastFrame() ?? '';
-    expect(out).not.toMatch(/▶ Standalone\b/);
+    expect(out).not.toMatch(/▶ +Standalone\b/);
     expect(out).toMatch(/Accepted[^0-9]*3[^0-9]*4/);
     expect(out).toMatch(/Rejected[^0-9]*1/);
   });
@@ -258,10 +258,10 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     stdin.write('\t');
     stdin.write('\x1b[B');
     stdin.write('\x1b[B');
-    expect(lastFrame() ?? '').toMatch(/▶ Standalone\b/);
+    expect(lastFrame() ?? '').toMatch(/▶ +Standalone\b/);
     stdin.write('a');
     const out = lastFrame() ?? '';
-    expect(out).toMatch(/▶ Standalone\b/);
+    expect(out).toMatch(/▶ +Standalone\b/);
     expect(out).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
     expect(out).toMatch(/Rejected[^0-9]*0/);
   });
@@ -275,10 +275,10 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     stdin.write('\t');
     stdin.write('\x1b[B');
     stdin.write('\x1b[B');
-    expect(lastFrame() ?? '').toMatch(/▶ Standalone\b/);
+    expect(lastFrame() ?? '').toMatch(/▶ +Standalone\b/);
     stdin.write(' ');
     const out = lastFrame() ?? '';
-    expect(out).toMatch(/▶ Standalone\b/);
+    expect(out).toMatch(/▶ +Standalone\b/);
     expect(out).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
     expect(out).toMatch(/Rejected[^0-9]*0/);
   });
@@ -291,19 +291,19 @@ describe('ScopeGateStep — three-column layout (wide terminal)', () => {
     stdin.write('A');
     stdin.write('\t');
     stdin.write('\t');
-    expect(lastFrame() ?? '').toMatch(/▶ Card \(2 deps\)/);
+    expect(lastFrame() ?? '').toMatch(/▶ +Card \(2 deps\)/);
     stdin.write('a');
     const afterA = lastFrame() ?? '';
-    expect(afterA).toMatch(/▶ Card \(2 deps\)/);
+    expect(afterA).toMatch(/▶ +Card \(2 deps\)/);
     expect(afterA).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
     stdin.write(' ');
     const afterSpace = lastFrame() ?? '';
-    expect(afterSpace).toMatch(/▶ Card \(2 deps\)/);
+    expect(afterSpace).toMatch(/▶ +Card \(2 deps\)/);
     expect(afterSpace).toMatch(/Accepted[^0-9]*4[^0-9]*4/);
     stdin.write('r');
     stdin.write('y');
     const afterR = lastFrame() ?? '';
-    expect(afterR).not.toMatch(/▶ Card \(2 deps\)/);
+    expect(afterR).not.toMatch(/▶ +Card \(2 deps\)/);
   });
 });
 
@@ -397,8 +397,8 @@ describe('ScopeGateStep — [L] flat view toggle', () => {
     );
     stdin.write('L');
     const out = lastFrame() ?? '';
-    const innerPos = out.indexOf('⚠ Inner');
-    const loopyPos = out.indexOf('⚠ Loopy');
+    const innerPos = out.search(/⚠ +Inner/);
+    const loopyPos = out.search(/⚠ +Loopy/);
     const cardPos = out.indexOf('Card (1 dep)');
     expect(innerPos).toBeGreaterThan(-1);
     expect(loopyPos).toBeGreaterThan(innerPos);
@@ -470,8 +470,8 @@ describe('ScopeGateStep — cycle participants in side columns', () => {
         return parts.length >= 7 ? parts[3] : '';
       })
       .join('\n');
-    const col2InnerPos = col2.indexOf('⚠ Inner');
-    const col2LoopyPos = col2.indexOf('⚠ Loopy');
+    const col2InnerPos = col2.search(/⚠ +Inner/);
+    const col2LoopyPos = col2.search(/⚠ +Loopy/);
     // Match Column 2's non-cycle Card row specifically — Column 3 renders
     // "Card (1 dep)" (a group-root), so exclude the "(1 dep)" occurrence.
     const col2CardPos = col2.search(/\bCard(?!\s*\()/);

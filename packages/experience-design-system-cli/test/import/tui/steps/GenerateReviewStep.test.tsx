@@ -1162,8 +1162,8 @@ describe('GenerateReviewStep — slot-cycle warning surface (INTEG-4401)', () =>
     await tick();
     const frame = lastFrame() ?? '';
     expect(frame).toMatch(/slot dependency cycle/);
-    expect(frame).toMatch(/CycleA \(cycle\)/);
-    expect(frame).toMatch(/CycleB \(cycle\)/);
+    expect(frame).toMatch(/⚠ +CycleA/);
+    expect(frame).toMatch(/⚠ +CycleB/);
   });
 
   it('opens the cycle detail panel on [c] with suggested fix visible', async () => {
@@ -1412,7 +1412,7 @@ describe('GenerateReviewStep — GA-4 interactive break-cycle overlay (A9)', () 
     const lastStore = vi.mocked(dbMod.storeSlotCycles).mock.calls.at(-1);
     expect(lastStore?.[2]).toEqual([]);
     const frame = stripAnsi(lastFrame() ?? '');
-    expect(frame).not.toMatch(/CycleB \(cycle\)/);
+    expect(frame).not.toMatch(/⚠ +CycleB/);
   });
 
   it('Ctrl+Z restores the removed $allowedComponents edge after a break-delete', async () => {
@@ -1426,10 +1426,10 @@ describe('GenerateReviewStep — GA-4 interactive break-cycle overlay (A9)', () 
     await tick();
     stdin.write('y');
     await tick();
-    expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/CycleB \(cycle\)/);
+    expect(stripAnsi(lastFrame() ?? '')).not.toMatch(/⚠ +CycleB/);
     stdin.write('\x1a'); // Ctrl+Z
     await tick();
-    expect(stripAnsi(lastFrame() ?? '')).toMatch(/CycleB \(cycle\)/);
+    expect(stripAnsi(lastFrame() ?? '')).toMatch(/⚠ +CycleB/);
   });
 
   it('A2-5 — break overlay renders in the bottom banner slot (below the editor), not the top strip', async () => {
@@ -1578,14 +1578,14 @@ describe('GenerateReviewStep — slot-cycle re-detection on user actions (INTEG-
     await tick();
     let frame = lastFrame() ?? '';
     expect(frame).toMatch(/slot dependency cycle/);
-    expect(frame).toMatch(/CycleA \(cycle\)/);
+    expect(frame).toMatch(/⚠ +CycleA/);
 
     stdin.write('r');
     await tick();
     frame = lastFrame() ?? '';
     expect(frame).not.toMatch(/slot dependency cycle/);
-    expect(frame).toMatch(/CycleA \(cycle\)/);
-    expect(frame).toMatch(/CycleB \(cycle\)/);
+    expect(frame).toMatch(/⚠ +CycleA/);
+    expect(frame).toMatch(/⚠ +CycleB/);
     expect(vi.mocked(dbMod.storeSlotCycles)).toHaveBeenCalled();
     const lastCallArgs = vi.mocked(dbMod.storeSlotCycles).mock.calls.at(-1);
     expect(lastCallArgs?.[2]).toEqual([]);
