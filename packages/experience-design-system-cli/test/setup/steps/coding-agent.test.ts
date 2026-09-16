@@ -65,4 +65,40 @@ describe('coding agent step', () => {
     });
     expect(ask).toHaveBeenCalledWith('Model name (optional - press Enter for Codex default): ');
   });
+
+  // The Codex model prompt short-circuits when OPENAI_API_KEY is set: those users
+  // get whatever default Codex itself is configured with, so we must not ask.
+  it('skips the Codex model prompt when OPENAI_API_KEY is set', async () => {
+    const ask = vi.fn().mockResolvedValue('gpt-next');
+    const dependencies = createDependencies({
+      ask,
+      env: { OPENAI_API_KEY: 'sk-test' },
+      binaryExists: async (binary) => binary === 'codex',
+    });
+
+    await expect(runAgentSetup(dependencies)).resolves.toEqual({
+      agent: 'codex',
+      agentModel: undefined,
+      passed: true,
+    });
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it('trims a typed Codex model name', async () => {
+    const dependencies = createDependencies({
+      ask: async () => '  gpt-5.6-luna  ',
+      binaryExists: async (binary) => binary === 'codex',
+    });
+
+    await expect(runAgentSetup(dependencies)).resolves.toMatchObject({ agentModel: 'gpt-5.6-luna' });
+  });
+
+  it('leaves the Codex model unset when the operator presses Enter', async () => {
+    const dependencies = createDependencies({
+      ask: async () => '',
+      binaryExists: async (binary) => binary === 'codex',
+    });
+
+    await expect(runAgentSetup(dependencies)).resolves.toMatchObject({ agentModel: undefined });
+  });
 });
