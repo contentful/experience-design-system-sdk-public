@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
-import type { Screen } from './app.js';
-import { FOCUS_MARKER, PALETTE, brandBar } from './src/tui/styles/theme.js';
-import { readPackageVersion } from './src/tui/version.js';
-import { useTerminalWidth } from './src/tui/use-terminal-width.js';
+import type { Screen } from '../../../app.js';
+import { FOCUS_MARKER, PALETTE, brandBar } from './home.theme.js';
+import { readPackageVersion } from '../version.js';
+import { useTerminalWidth } from '../use-terminal-width.js';
 
 const VERSION = readPackageVersion();
 const HEADING = 'Contentful Experiences';

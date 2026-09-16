@@ -1,7 +1,7 @@
 import { render } from 'ink-testing-library';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MIN_TERMINAL_WIDTH, HomeScreen } from '../home.js';
-import { BRAND, FOCUS_MARKER } from '../src/tui/styles/theme.js';
+import { MIN_TERMINAL_WIDTH, HomeScreen } from '../src/tui/home/home.js';
+import { BRAND, FOCUS_MARKER } from '../src/tui/home/home.theme.js';
 
 const ESC = '\u001B';
 const ARROW_UP = `${ESC}[A`;

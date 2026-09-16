@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { HomeScreen } from './home.js';
+import { HomeScreen } from './src/tui/home/home.js';
 import { ImportScreen } from './src/tui/import/PageContainer.js';
 import { SavedRunsScreen } from './src/tui/saved-runs/PageContainer.js';
 import { HelpScreen } from './src/tui/help/PageContainer.js';
