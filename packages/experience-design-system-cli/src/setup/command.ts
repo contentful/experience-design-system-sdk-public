@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { appendFile, readFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -15,9 +16,11 @@ import {
 import { promptAutoFilterPreference } from './auto-filter-prompt.js';
 import { promptDebugModePreference } from './debug-mode-prompt.js';
 import { promptAnalyticsPreference } from './analytics-prompt.js';
+import { PREFERENCE_OPTIONS, parsePreferenceSelection, type PreferenceKey } from './preferences-picker.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { findPkgRoot } from '../lib/cli-path.js';
 import type { AgentName } from '@contentful/experience-design-system-generation';
+import { SETUP_SCREENS, formatSetupScreen } from './screen.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -46,6 +49,11 @@ function section(title: string, tag?: '[required]' | '[optional]'): void {
   process.stdout.write(`\n\x1b[1m${title}\x1b[0m${tagStr}\n`);
 }
 
+function getCliVersion(): string {
+  const pkg = JSON.parse(readFileSync(join(findPkgRoot(), 'package.json'), 'utf8')) as { version: string };
+  return pkg.version;
+}
+
 function dim(msg: string): void {
   process.stdout.write(`\x1b[2m${msg}\x1b[0m\n`);
 }
@@ -54,6 +62,14 @@ function dim(msg: string): void {
 
 function isInteractivePromptSession(): boolean {
   return !!(process.stdin.isTTY && process.stdout.isTTY);
+}
+
+export function shouldClearSetupScreen(isInteractive: boolean): boolean {
+  return isInteractive;
+}
+
+export function formatSetupScreenTransition(isInteractive: boolean, activeStep: number): string {
+  return activeStep > 1 && shouldClearSetupScreen(isInteractive) ? '\x1b[2J\x1b[H' : '';
 }
 
 function prompt(question: string): Promise<string> {
@@ -210,11 +226,9 @@ async function appendToProfile(profilePath: string, lines: string): Promise<void
   await appendFile(profilePath, `\n${lines}\n`, 'utf8');
 }
 
-// ── Step 1: Node.js ───────────────────────────────────────────────────────────
+// ── Prerequisites: Node.js ────────────────────────────────────────────────────
 
 async function setupNode(): Promise<boolean> {
-  section('Step 1: Node.js', '[required]');
-
   const current = process.versions.node;
   const major = parseInt(current.split('.')[0]!, 10);
 
@@ -306,11 +320,9 @@ async function setupNode(): Promise<boolean> {
   return false;
 }
 
-// ── Step 2: pnpm ─────────────────────────────────────────────────────────────
+// ── Prerequisites: pnpm ───────────────────────────────────────────────────────
 
 async function setupPnpm(): Promise<boolean> {
-  section('Step 2: pnpm', '[required]');
-
   if (await binaryExists('pnpm')) {
     const v = await runSpawn('pnpm', ['--version']);
     ok(`pnpm v${v.stdout.trim()} — already installed`);
@@ -355,11 +367,9 @@ async function setupPnpm(): Promise<boolean> {
   return true;
 }
 
-// ── Step 3: install + build ───────────────────────────────────────────────────
+// ── Prerequisites: install + build ────────────────────────────────────────────
 
 async function setupBuild(repoRoot: string): Promise<boolean> {
-  section('Step 3: Install dependencies & build', '[required]');
-
   info('Running pnpm install...');
   const installResult = await runSpawn('pnpm', ['install', '--frozen-lockfile'], { cwd: repoRoot });
   if (installResult.exitCode !== 0) {
@@ -387,7 +397,7 @@ async function setupBuild(repoRoot: string): Promise<boolean> {
   return true;
 }
 
-// ── Step 4: agent CLI ─────────────────────────────────────────────────────────
+// ── Coding agent ──────────────────────────────────────────────────────────────
 
 const AGENT_DEFS: Array<{ name: string; binary: AgentName; installHint: string }> = [
   { name: 'Claude Code', binary: 'claude', installHint: 'npm install -g @anthropic-ai/claude-code && claude login' },
@@ -417,7 +427,6 @@ export async function promptCodexModel(ask: (q: string) => Promise<string> = pro
 }
 
 async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel: string | undefined }> {
-  section('Step 4: Coding agent (claude, codex, opencode, or copilot)', '[required]');
   info('experiences import uses a coding agent to generate component definitions.');
   info('');
 
@@ -513,10 +522,9 @@ async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel:
   return { agent: undefined, agentModel: undefined };
 }
 
-// ── Step 5: Contentful credentials ───────────────────────────────────────────
+// ── Contentful credentials ────────────────────────────────────────────────────
 
 async function setupContentfulCredentials(): Promise<boolean> {
-  section('Step 5: Contentful credentials', '[optional]');
   info(`Saved to ${experiencesCredentialsPath()} — loaded automatically by experiences import.`);
   info('');
 
@@ -634,107 +642,139 @@ export async function promptCustomSkillPath(
   return trimmed;
 }
 
-// ── Step 6: Optional quality-of-life ─────────────────────────────────────────
+// ── Preferences ───────────────────────────────────────────────────────────────
+
+export function formatPreferencePicker(): string {
+  return [
+    'Choose preferences to configure:',
+    ...PREFERENCE_OPTIONS.map((option) => `  [${option.number}] ${option.label}`),
+    '  [all] Configure all',
+    '  [s] Skip',
+  ].join('\n');
+}
+
+export interface PreferenceSetupOptions {
+  askPicker: () => Promise<string>;
+  write: (message: string) => void;
+  configurePreference: (preference: PreferenceKey) => Promise<void> | void;
+}
+
+export async function runPreferenceSetup({
+  askPicker,
+  write,
+  configurePreference,
+}: PreferenceSetupOptions): Promise<void> {
+  write(formatPreferencePicker());
+
+  let selected: PreferenceKey[] | undefined;
+  while (selected === undefined) {
+    selected = parsePreferenceSelection(await askPicker());
+    if (selected === undefined) write('Enter numbers from the list, "all", or "s".');
+  }
+
+  if (selected.length === 0) {
+    write('No preferences changed.');
+    return;
+  }
+
+  for (const preference of selected) {
+    await configurePreference(preference);
+  }
+}
 
 async function setupQoL(profilePath: string): Promise<void> {
-  section('Step 6: Optional extras', '[optional]');
-  info('These are not required for experiences import but improve the experience.');
-  info('');
+  await runPreferenceSetup({
+    askPicker: () => prompt('Choose preferences to configure (for example, 1,3 or all; Enter to skip): '),
+    write: (message) => process.stdout.write(`${message}\n`),
+    configurePreference: async (preference) => {
+      if (preference === 'autoFilter') {
+        info('Set the default for agent-assisted component prefiltering.');
+        const existingCreds = await readExperiencesCredentials();
+        const autoFilter = await promptAutoFilterPreference((q) => prompt(q), existingCreds.autoFilter);
+        if (autoFilter !== (existingCreds.autoFilter ?? true)) {
+          await writeExperiencesCredentials({ ...existingCreds, autoFilter });
+          ok(`AI auto-filter default set to ${autoFilter ? 'ON' : 'OFF'}`);
+        } else {
+          dim('     unchanged');
+        }
+      }
 
-  // 6a: AI auto-filter default
-  const existingCreds = await readExperiencesCredentials();
-  info('AI auto-filter — runs an agent pass before the manual scope-gate to prefilter components.');
-  info('Operators who prefer to review every component can default this OFF and override per run with --auto-filter.');
-  const autoFilter = await promptAutoFilterPreference((q) => prompt(q), existingCreds.autoFilter);
-  if (autoFilter !== (existingCreds.autoFilter ?? true)) {
-    await writeExperiencesCredentials({ ...existingCreds, autoFilter });
-    ok(`AI auto-filter default set to ${autoFilter ? 'ON' : 'OFF'}`);
-  } else {
-    dim('     unchanged');
-  }
-  info('');
+      if (preference === 'concurrency') {
+        info('Increase parallel component analysis for faster machines.');
+        const hasConcurrency = await profileContains(profilePath, 'EDS_EXTRACT_CONCURRENCY');
+        if (!hasConcurrency) {
+          const setConcurrency = await confirm('Add EDS_EXTRACT_CONCURRENCY=8 to your profile?', false);
+          if (setConcurrency) {
+            await appendToProfile(profilePath, '# experiences performance\nexport EDS_EXTRACT_CONCURRENCY=8');
+            ok(`EDS_EXTRACT_CONCURRENCY=8 written to ${profilePath}`);
+          } else {
+            dim('     skipped');
+          }
+        } else {
+          ok('EDS_EXTRACT_CONCURRENCY — already set');
+        }
+      }
 
-  // 6b: EDS_EXTRACT_CONCURRENCY
-  const hasConcurrency = await profileContains(profilePath, 'EDS_EXTRACT_CONCURRENCY');
-  if (!hasConcurrency) {
-    info('EDS_EXTRACT_CONCURRENCY — controls how many components are analyzed in parallel.');
-    info('Default is 4. Set higher (e.g. 8) on fast machines to speed up large codebases.');
-    const setConcurrency = await confirm('Add EDS_EXTRACT_CONCURRENCY=8 to your profile?', false);
-    if (setConcurrency) {
-      await appendToProfile(profilePath, '# experiences performance\nexport EDS_EXTRACT_CONCURRENCY=8');
-      ok(`EDS_EXTRACT_CONCURRENCY=8 written to ${profilePath}`);
-    } else {
-      dim('     skipped');
-    }
-  } else {
-    ok('EDS_EXTRACT_CONCURRENCY — already set');
-  }
+      if (preference === 'customPrompts') {
+        info('Use your own select-agent or generate-components prompt files.');
+        const offerCustomPrompts = await confirm('Configure custom skill prompt paths?', false);
+        if (offerCustomPrompts) {
+          const stored = await readExperiencesCredentials();
+          const selectAnswer = await promptCustomSkillPath('select', stored.selectPromptPath);
+          const generateAnswer = await promptCustomSkillPath('generate', stored.generatePromptPath);
+          const updated: ExperiencesCredentials = { ...stored };
+          if (selectAnswer === null) delete updated.selectPromptPath;
+          else if (selectAnswer !== undefined) updated.selectPromptPath = selectAnswer;
+          if (generateAnswer === null) delete updated.generatePromptPath;
+          else if (generateAnswer !== undefined) updated.generatePromptPath = generateAnswer;
+          await writeExperiencesCredentials(updated);
+          ok(`Custom prompt paths saved to ${experiencesCredentialsPath()}`);
+        } else {
+          dim('     skipped');
+        }
+      }
 
-  // 6c (Feature 8): custom skill prompt paths
-  info('');
-  info('Custom skill prompt paths — point select-agent and/or generate components at your own .md prompts.');
-  info('When set, the bundled invariants (utility-wrapper rejection, description rules) do NOT apply.');
-  const offerCustomPrompts = await confirm('Configure custom skill prompt paths?', false);
-  if (offerCustomPrompts) {
-    const stored = await readExperiencesCredentials();
-    const selectAnswer = await promptCustomSkillPath('select', stored.selectPromptPath);
-    const generateAnswer = await promptCustomSkillPath('generate', stored.generatePromptPath);
-    const updated: ExperiencesCredentials = { ...stored };
-    if (selectAnswer === null) delete updated.selectPromptPath;
-    else if (selectAnswer !== undefined) updated.selectPromptPath = selectAnswer;
-    if (generateAnswer === null) delete updated.generatePromptPath;
-    else if (generateAnswer !== undefined) updated.generatePromptPath = generateAnswer;
-    await writeExperiencesCredentials(updated);
-    ok(`Custom prompt paths saved to ${experiencesCredentialsPath()}`);
-  } else {
-    dim('     skipped');
-  }
+      if (preference === 'debug') {
+        info('Save verbose command traces for troubleshooting.');
+        const debugCreds = await readExperiencesCredentials();
+        const debugChoice = await promptDebugModePreference((q) => prompt(q), debugCreds.debug);
+        if (debugChoice !== (debugCreds.debug ?? false)) {
+          await writeExperiencesCredentials({ ...debugCreds, debug: debugChoice });
+          ok(`Debug logging default set to ${debugChoice ? 'ON' : 'OFF'}`);
+        } else {
+          dim('     unchanged');
+        }
+      }
 
-  // 6d: Debug-mode default
-  info('');
-  info('Debug logging — writes a JSONL trace of every command decision (agent calls, tool calls,');
-  info('apply actions, filter decisions, etc.) to ~/.contentful/experience-design-system-cli/debug/.');
-  info('Useful for developers debugging the CLI; OFF by default because traces are verbose.');
-  const debugCreds = await readExperiencesCredentials();
-  const debugChoice = await promptDebugModePreference((q) => prompt(q), debugCreds.debug);
-  if (debugChoice !== (debugCreds.debug ?? false)) {
-    await writeExperiencesCredentials({ ...debugCreds, debug: debugChoice });
-    ok(`Debug logging default set to ${debugChoice ? 'ON' : 'OFF'}`);
-  } else {
-    dim('     unchanged');
-  }
-  info('');
+      if (preference === 'analytics') {
+        info('Choose whether to share anonymous CLI usage data.');
+        const analyticsCreds = await readExperiencesCredentials();
+        const analyticsDisabled = await promptAnalyticsPreference((q) => prompt(q), analyticsCreds.analyticsDisabled);
+        if (analyticsDisabled !== (analyticsCreds.analyticsDisabled ?? false)) {
+          await writeExperiencesCredentials({ ...analyticsCreds, analyticsDisabled });
+          ok(`Analytics ${analyticsDisabled ? 'disabled' : 'enabled'}`);
+        } else {
+          dim('     unchanged');
+        }
+      }
 
-  // 6d.1: Analytics opt-out
-  info('');
-  info('Anonymous usage analytics — helps us see which commands are used and where imports');
-  info('succeed or fail. Never includes source code, file paths, credentials, or authored content.');
-  info('Disabling here persists the opt-out; it will not silently re-enable later. See README > Usage data.');
-  const analyticsCreds = await readExperiencesCredentials();
-  const analyticsDisabled = await promptAnalyticsPreference((q) => prompt(q), analyticsCreds.analyticsDisabled);
-  if (analyticsDisabled !== (analyticsCreds.analyticsDisabled ?? false)) {
-    await writeExperiencesCredentials({ ...analyticsCreds, analyticsDisabled });
-    ok(`Analytics ${analyticsDisabled ? 'disabled' : 'enabled'}`);
-  } else {
-    dim('     unchanged');
-  }
-  info('');
-
-  // 6e: NO_COLOR
-  info('');
-  info('NO_COLOR — set to 1 to disable ANSI color output (useful in CI or plain terminals).');
-  const setNoColor = await confirm('Add NO_COLOR=1 (disable colors) to your profile?', false);
-  if (setNoColor) {
-    const hasNoColor = await profileContains(profilePath, 'NO_COLOR');
-    if (!hasNoColor) {
-      await appendToProfile(profilePath, 'export NO_COLOR=1');
-      ok(`NO_COLOR=1 written to ${profilePath}`);
-    } else {
-      warn('NO_COLOR already present in profile — skipping');
-    }
-  } else {
-    dim('     skipped');
-  }
+      if (preference === 'noColor') {
+        info('Disable ANSI colors in CI or plain terminals.');
+        const setNoColor = await confirm('Add NO_COLOR=1 (disable colors) to your profile?', false);
+        if (setNoColor) {
+          const hasNoColor = await profileContains(profilePath, 'NO_COLOR');
+          if (!hasNoColor) {
+            await appendToProfile(profilePath, 'export NO_COLOR=1');
+            ok(`NO_COLOR=1 written to ${profilePath}`);
+          } else {
+            warn('NO_COLOR already present in profile — skipping');
+          }
+        } else {
+          dim('     skipped');
+        }
+      }
+    },
+  });
 }
 
 // ── Doctor checks ─────────────────────────────────────────────────────────────
@@ -980,8 +1020,12 @@ export function registerSetupCommand(program: Command): void {
     .option('--skip-optional', 'Skip optional quality-of-life extras')
     .action(
       async (opts: { skipBuild?: boolean; skipAgent?: boolean; skipCredentials?: boolean; skipOptional?: boolean }) => {
-        process.stdout.write('\n\x1b[1mexperiences setup\x1b[0m — interactive setup wizard\n');
-        process.stdout.write('Sets up everything you need to run \x1b[1mexperiences import\x1b[0m.\n');
+        const isInteractive = isInteractivePromptSession();
+        const renderSetupScreen = (activeStep: number): void => {
+          process.stdout.write(formatSetupScreenTransition(isInteractive, activeStep));
+          const screen = SETUP_SCREENS[activeStep - 1]!;
+          process.stdout.write(formatSetupScreen(getCliVersion(), activeStep, screen.title, screen.kind));
+        };
 
         const pkgRoot = findPkgRoot();
         const repoRoot = join(pkgRoot, '..', '..');
@@ -989,7 +1033,8 @@ export function registerSetupCommand(program: Command): void {
 
         const results: { name: string; passed: boolean; required: boolean }[] = [];
 
-        // Step 1: Node
+        // Screen 1: prerequisites run immediately.
+        renderSetupScreen(1);
         const nodeOk = await setupNode();
         results.push({ name: 'Node.js 24+', passed: nodeOk, required: true });
 
@@ -1000,11 +1045,9 @@ export function registerSetupCommand(program: Command): void {
           process.exit(0);
         }
 
-        // Step 2: pnpm
         const pnpmOk = await setupPnpm();
         results.push({ name: 'pnpm', passed: pnpmOk, required: true });
 
-        // Step 3: install + build
         if (!opts.skipBuild && pnpmOk) {
           const buildOk = await setupBuild(repoRoot);
           results.push({ name: 'install & build', passed: buildOk, required: true });
@@ -1012,7 +1055,8 @@ export function registerSetupCommand(program: Command): void {
           info('\nSkipping install + build (--skip-build)');
         }
 
-        // Step 4: agent
+        // Screen 2: coding agent.
+        renderSetupScreen(2);
         if (!opts.skipAgent) {
           const { agent, agentModel } = await setupAgent();
           if (agent) {
@@ -1026,7 +1070,8 @@ export function registerSetupCommand(program: Command): void {
           results.push({ name: 'coding agent', passed: true, required: false });
         }
 
-        // Step 5: credentials
+        // Screen 3: Contentful credentials.
+        renderSetupScreen(3);
         if (!opts.skipCredentials) {
           const credsOk = await setupContentfulCredentials();
           results.push({ name: 'Contentful credentials', passed: credsOk, required: false });
@@ -1034,7 +1079,8 @@ export function registerSetupCommand(program: Command): void {
           info('\nSkipping credentials (--skip-credentials)');
         }
 
-        // Step 6: optional QoL
+        // Screen 4: preferences. Task 4 will replace this content with the picker.
+        renderSetupScreen(4);
         if (!opts.skipOptional) {
           await setupQoL(profilePath);
         }
