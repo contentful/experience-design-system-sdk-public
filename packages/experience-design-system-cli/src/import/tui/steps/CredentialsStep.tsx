@@ -165,19 +165,25 @@ export function CredentialsStep({
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
       {summary && <Text color={PALETTE.success}>✓ {summary}</Text>}
 
-      <Box marginTop={1}>
+      <Box flexDirection="column" marginTop={1} gap={0}>
         <Text>
           {initialSpaceId && initialCmaToken
             ? 'Credentials pre-filled from experiences setup. Press Enter to continue or edit any field to update.'
-            : 'Enter your Contentful credentials to continue.'}
+            : 'Enter the Contentful space you want to import into.'}
         </Text>
+        {!(initialSpaceId && initialCmaToken) && (
+          <>
+            <Text dimColor>
+              These credentials are used both to align agent suggestions with what already exists in the space and to
+              push your import at the end. Press S to skip and run without space context (push will be disabled).
+            </Text>
+            <Text dimColor>
+              Tip: run experiences setup to save these to ~/.config/experiences/credentials.json so they pre-fill here
+              automatically.
+            </Text>
+          </>
+        )}
       </Box>
-      {!(initialSpaceId && initialCmaToken) && (
-        <Text dimColor>
-          Tip: run experiences setup to save these to ~/.config/experiences/credentials.json so they pre-fill here
-          automatically.
-        </Text>
-      )}
 
       <Box flexDirection="column" gap={0} marginTop={1}>
         {renderField('Space ID', spaceId, 'spaceId')}

@@ -12,7 +12,9 @@ import {
   getCliCacheVersion,
   type RawComponentWithId,
 } from '../../session/db.js';
-import { hashPromptForSkill } from '../../session/cache-keys.js';
+import { hashContent, hashPromptForSkill } from '../../session/cache-keys.js';
+import { readExistingContentfulEntitiesFromSession } from '../../helpers/read-existing-contentful-entities-from-session.js';
+import { summarizeForSelectAgent } from '../../helpers/summarize-existing-contentful-entities.js';
 import {
   appendReviewEvent,
   getRefineArtifactsRoot,
@@ -173,6 +175,7 @@ async function selectBatch(
   total: number,
   verbose: boolean,
   skillPathOverride: string | undefined,
+  existingComponentsInline: string | undefined,
 ): Promise<SelectOneResult[]> {
   const prompt = await buildPrompt({
     skill: 'select',
@@ -184,6 +187,7 @@ async function selectBatch(
     ),
     outDir: process.cwd(),
     skillPathOverride,
+    existingComponentsInline,
   });
 
   let outputBuf = '';
@@ -299,6 +303,7 @@ async function selectAllComponents(
   components: SelectionCandidate[],
   verbose: boolean,
   skillPathOverride: string | undefined,
+  existingComponentsInline: string | undefined,
   cacheConfig: { noCache: boolean; dbPath?: string } = { noCache: true },
 ): Promise<SelectOneResult[]> {
   const concurrency = Number(process.env.EDS_GENERATE_CONCURRENCY ?? DEFAULT_CONCURRENCY);
@@ -313,7 +318,13 @@ async function selectAllComponents(
   let cliVersion = '';
   if (!cacheConfig.noCache) {
     try {
-      promptHash = await hashPromptForSkill('select', agent, model, skillPathOverride);
+      promptHash = await hashPromptForSkill(
+        'select',
+        agent,
+        model,
+        skillPathOverride,
+        existingComponentsInline ? [hashContent(existingComponentsInline)] : [],
+      );
       cliVersion = await getCliCacheVersion();
       const db = openPipelineDb(cacheConfig.dbPath);
       try {
@@ -385,7 +396,15 @@ async function selectAllComponents(
     while (nextBatch < batches.length) {
       const b = nextBatch++;
       const batch = batches[b]!;
-      const batchResults = await selectBatch(agent, model, batch, total, verbose, skillPathOverride);
+      const batchResults = await selectBatch(
+        agent,
+        model,
+        batch,
+        total,
+        verbose,
+        skillPathOverride,
+        existingComponentsInline,
+      );
       for (let k = 0; k < batch.length; k++) {
         results[batch[k]!.index] = batchResults[k]!;
       }
@@ -438,6 +457,12 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
     .option('--no-select-cache', 'Skip the per-component select cache and re-LLM every component')
     .option('--no-cache', 'Skip ALL fine-grained caches (extract, select, generate)')
     .option(
+      '--existing-entities-path <path>',
+      'Path to the .existing-entities.json file written by the orchestrator when CMA credentials are supplied. ' +
+        'When present, the agent gets an existing-components summary to align rejection/acceptance ' +
+        'reasoning with the target space. Missing/malformed files are treated as no-op.',
+    )
+    .option(
       '--show-rationale',
       'Read-only: print the AI rejection rationale persisted by a prior select-agent run and exit. ' +
         'No LLM call. Combine with --json for machine-readable output.',
@@ -456,6 +481,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         selectPromptPath?: string;
         selectCache?: boolean;
         cache?: boolean;
+        existingEntitiesPath?: string;
         showRationale?: boolean;
         json?: boolean;
       }) => {
@@ -590,6 +616,20 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           }
         }
 
+        let existingComponentsInline: string | undefined;
+        if (opts.existingEntitiesPath) {
+          const existingContentfulEntities = await readExistingContentfulEntitiesFromSession(
+            resolve(opts.existingEntitiesPath),
+          );
+          if (existingContentfulEntities) {
+            existingComponentsInline = JSON.stringify(summarizeForSelectAgent(existingContentfulEntities));
+          } else {
+            process.stderr.write(
+              `warn: --existing-entities-path ${opts.existingEntitiesPath} could not be read as JSON — proceeding without space-context enrichment\n`,
+            );
+          }
+        }
+
         if (opts.dryRun) {
           if (selectionCandidates.length === 0) {
             process.stderr.write(
@@ -605,6 +645,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
             rawComponentsInline: JSON.stringify([buildComponentData(first)], null, 2),
             outDir: process.cwd(),
             skillPathOverride: selectPromptPath ? resolve(selectPromptPath) : undefined,
+            existingComponentsInline,
           });
           process.stdout.write(prompt + '\n');
           await exitWithAnalytics(0);
@@ -621,6 +662,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           selectionCandidates,
           opts.verbose ?? false,
           selectPromptPath ? resolve(selectPromptPath) : undefined,
+          existingComponentsInline,
           { noCache },
         );
 

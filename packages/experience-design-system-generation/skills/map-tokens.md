@@ -88,3 +88,15 @@ Before emitting any tool calls, verify:
 3. `token_allowed` is never empty.
 4. Every emitted list includes the prop's own default token when it has one.
 5. No list was emitted on the strength of a default alone, and none targets a prop whose type is a union of variant names.
+
+---
+
+## Existing entities in the target space
+
+The preamble may include an "Existing design tokens in the target Contentful space" JSON block listing tokens already present in the target space (by name + DTCG type).
+
+Prefer restricting to existing tokens over proposing new ones:
+
+1. When the source has restriction evidence AND a candidate maps semantically to an existing token by name/type, favor the existing token in the emitted `token_allowed` list.
+2. Never emit a `token_allowed` entry that contradicts the "path exists verbatim" rule above — the existing-tokens block is guidance, not a substitute for the token path index. If a token appears in the existing-entities list but not in the token path index, do not use it.
+3. If none of the existing tokens fit and the source's evidence is specific, proceed as usual — the diff will surface the new proposal.

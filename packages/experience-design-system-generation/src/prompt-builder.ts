@@ -80,6 +80,10 @@ export interface PromptOptions {
    * appropriate warning banner.
    */
   skillPathOverride?: string;
+  /** JSON-serialized summary of existing space Components. Callers pre-project the shape per skill. */
+  existingComponentsInline?: string;
+  /** JSON-serialized summary of existing space DesignTokens. Callers pre-project the shape per skill. */
+  existingTokensInline?: string;
 }
 
 const SKILL_FILES: Record<Skill, string> = {
@@ -213,10 +217,22 @@ function buildPreamble(options: PromptOptions): string {
     generatedCdf,
     tokenTree,
     componentSourceRefs,
+    existingComponentsInline,
+    existingTokensInline,
   } = options;
 
   const sections: string[] = [];
 
+  if (existingComponentsInline) {
+    sections.push(
+      `Existing components in the target Contentful space (JSON) — use for alignment, not as a hard filter:\n\`\`\`json\n${existingComponentsInline}\n\`\`\``,
+    );
+  }
+  if (existingTokensInline) {
+    sections.push(
+      `Existing design tokens in the target Contentful space (JSON) — prefer binding to these paths over inventing new ones:\n\`\`\`json\n${existingTokensInline}\n\`\`\``,
+    );
+  }
   if (rawComponentsInline) {
     sections.push(`Raw component data (JSON):\n\`\`\`json\n${rawComponentsInline}\n\`\`\``);
   }

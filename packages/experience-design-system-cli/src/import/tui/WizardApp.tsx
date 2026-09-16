@@ -71,6 +71,7 @@ import { checkAgentAuth, type AgentName } from '@contentful/experience-design-sy
 import { normalizePath } from '../path-utils.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../host-utils.js';
 import { writeExperiencesCredentials } from '../../credentials-store.js';
+import { fetchAndPersistExistingContentfulEntities } from '../../helpers/fetch-and-persist-existing-contentful-entities.js';
 import {
   nextStepAfterScopeGate,
   nextStepAfterCredentialsValidated,
@@ -175,6 +176,13 @@ type WizardState = {
   generatePrefetchError: string | null;
   mapTokensEligible: boolean | null;
   credentialsSkipped: boolean;
+  /**
+   * Absolute path to `<outDir>/.existing-entities.json` if the fetch step
+   * fired after credentials validated. Forwarded to each downstream agent
+   * subprocess as --existing-entities-path so classifications can align
+   * with the target space.
+   */
+  existingEntitiesPath: string | null;
   lastRunId: string | null;
   finalizeErrorBanner: string | null;
   finalReviewPassed: boolean;
@@ -191,12 +199,14 @@ export function buildSelectAgentArgs(opts: {
   bedrock?: boolean;
   selectPromptPath?: string;
   noCache?: boolean;
+  existingEntitiesPath?: string;
 }): string[] {
   const args = ['analyze', 'select-agent', '--agent', opts.agent, '--session', opts.sessionId, '--exclude-invalid'];
   if (opts.model) args.push('--model', opts.model);
   if (opts.bedrock) args.push('--bedrock');
   if (opts.selectPromptPath) args.push('--select-prompt-path', opts.selectPromptPath);
   if (opts.noCache) args.push('--no-cache');
+  if (opts.existingEntitiesPath) args.push('--existing-entities-path', opts.existingEntitiesPath);
   return args;
 }
 
@@ -244,6 +254,7 @@ export function buildGenerateComponentsArgs(opts: {
   bedrock?: boolean;
   noCache?: boolean;
   generatePromptPath?: string;
+  existingEntitiesPath?: string;
 }): string[] {
   const args = ['generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
   if (opts.tokensPath) args.push('--tokens', opts.tokensPath);
@@ -251,6 +262,7 @@ export function buildGenerateComponentsArgs(opts: {
   if (opts.bedrock) args.push('--bedrock');
   if (opts.noCache) args.push('--no-cache');
   if (opts.generatePromptPath) args.push('--generate-prompt-path', opts.generatePromptPath);
+  if (opts.existingEntitiesPath) args.push('--existing-entities-path', opts.existingEntitiesPath);
   return args;
 }
 
@@ -260,11 +272,13 @@ export function buildMapTokensArgs(opts: {
   model?: string;
   noCache?: boolean;
   skipAgent?: boolean;
+  existingEntitiesPath?: string;
 }): string[] {
   const args = ['map', 'tokens', '--session', opts.sessionId, '--agent', opts.agent];
   if (opts.model) args.push('--model', opts.model);
   if (opts.noCache) args.push('--no-cache');
   if (opts.skipAgent) args.push('--skip-agent');
+  if (opts.existingEntitiesPath) args.push('--existing-entities-path', opts.existingEntitiesPath);
   return args;
 }
 
@@ -492,6 +506,7 @@ export function WizardApp({
     generatePrefetchError: null,
     mapTokensEligible: null,
     credentialsSkipped: false,
+    existingEntitiesPath: null,
     lastRunId: null,
     finalizeErrorBanner: null,
     finalReviewPassed: modifyEntryReady || pushFromPickerReady,
@@ -701,6 +716,7 @@ export function WizardApp({
       ...(state.agentModel ? { model: state.agentModel } : {}),
       noCache: effectiveNoCache,
       skipAgent: skipMapTokens,
+      ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
     });
 
     const result = await runCli(args);
@@ -832,6 +848,7 @@ export function WizardApp({
         ...(state.bedrock ? { bedrock: true } : {}),
         selectPromptPath,
         noCache,
+        ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
       });
       const child = spawn('node', [findCliPath(), ...args]);
       autoFilterChildRef.current = child;
@@ -945,6 +962,7 @@ export function WizardApp({
         ...(state.agentModel ? { model: state.agentModel } : {}),
         ...(state.bedrock ? { bedrock: true } : {}),
         noCache: effectiveNoCache,
+        ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
       }),
     ];
     let progressCursor: GenerateProgressState = null;
@@ -1019,6 +1037,7 @@ export function WizardApp({
         ...(state.bedrock ? { bedrock: true } : {}),
         noCache: effectiveNoCache,
         generatePromptPath,
+        ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
       }),
     ];
     let progressCursor: GenerateProgressState = state.generateProgress;
@@ -1060,7 +1079,9 @@ export function WizardApp({
   };
 
   const advanceToPushFlow = (generatedAcceptedCount: number) => {
-    update({ generatedAcceptedCount, step: 'credentials' });
+    // Credentials collected at the front of the wizard — push flow decides
+    // directly at the push-decision-gate.
+    update({ generatedAcceptedCount, step: 'push-decision-gate' });
   };
 
   const runEditFromPreview = async () => {
@@ -1137,6 +1158,32 @@ export function WizardApp({
   };
 
   const advanceAfterCredentialsValidated = async () => {
+    // Fire the existing-entities fetch immediately after credentials validate,
+    // before any agent subprocess runs. `state.existingEntitiesPath` gets
+    // threaded into buildSelectAgentArgs / buildGenerateComponentsArgs /
+    // buildMapTokensArgs downstream. Fetch failure is silent — downstream
+    // agents just run without space context.
+    if (!state.credentialsSkipped && state.spaceId && state.environmentId && state.cmaToken && state.projectPath) {
+      const outDir = join(resolve(state.projectPath), '.contentful');
+      await mkdir(outDir, { recursive: true });
+      const result = await fetchAndPersistExistingContentfulEntities({
+        spaceId: state.spaceId,
+        environmentId: state.environmentId,
+        cmaToken: state.cmaToken,
+        ...(state.host ? { host: state.host } : {}),
+        outDir,
+      });
+      if (result.ok) {
+        update({ existingEntitiesPath: result.path });
+      }
+    }
+    // Under the front-of-flow ordering, credentials are collected right after
+    // path-validation and before extract. When we get here without an extract
+    // session, the user hasn't started the pipeline yet — kick it off.
+    if (!sessionRef.current.extractSessionId && state.projectPath) {
+      void runExtract(state.projectPath);
+      return;
+    }
     if (shouldSkipFinalReviewAfterCredentials(state)) {
       update({ step: 'push-decision-gate' });
       return;
@@ -1838,7 +1885,12 @@ export function WizardApp({
           <PathValidationStep
             projectPath={state.projectPath}
             onConfirm={(path) => {
-              void runExtract(path);
+              // Front-of-flow: collect credentials before running extract so
+              // downstream agents (select, generate, map-tokens) can align
+              // suggestions against the target Contentful space. If the user
+              // has no creds and hits [S] on the credentials screen, the
+              // pipeline still proceeds (agents just run without space context).
+              update({ projectPath: path, step: 'credentials' });
             }}
             onSkipComponents={() => {
               if (noPush) {
@@ -1926,12 +1978,12 @@ export function WizardApp({
                     }
                     return;
                   }
-                  if (acceptedCount > 0 && !noPush) {
-                    if (await runAgentAuthCheck('credentials')) {
-                      startGeneratePrefetch(sid, state.tokensPath);
-                    }
-                  }
-                  update({ step: 'credentials' });
+                  // Credentials are collected at the front of the wizard, so
+                  // by the time we reach this branch we either have them or
+                  // the user opted to skip. If skipped, credentialsSkipped is
+                  // set and downstream push gates handle the missing-creds
+                  // case; otherwise proceed straight to the push decision.
+                  update({ step: 'push-decision-gate' });
                 },
                 onAdvanceToPushFlow: (count) => {
                   update({ acceptedCount: count, autoRejectedCount: 0 });

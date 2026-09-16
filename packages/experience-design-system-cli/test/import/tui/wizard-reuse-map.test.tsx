@@ -156,10 +156,15 @@ describe('WizardApp reused token catalog', () => {
       <WizardApp initialProjectPath={projectPath} initialRawTokensPath={join(dir, 'raw-tokens.json')} noPush />,
     );
     await new Promise((resolve) => setTimeout(resolve, 100));
+    // Frame 1: token-reuse-gate — press Enter to reuse the pre-generated tokens.
     app.stdin.write('\r');
     await new Promise((resolve) => setTimeout(resolve, 100));
+    // Frame 2: path-validation — press Enter to confirm the project path.
     app.stdin.write('\r');
     await new Promise((resolve) => setTimeout(resolve, 100));
+    // Frame 3: set-credentials — press 's' to skip (test doesn't exercise space context).
+    app.stdin.write('s');
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     expect(app.lastFrame()).toContain('FINAL_REVIEW');
     expect(mapInvocations).toHaveLength(1);
