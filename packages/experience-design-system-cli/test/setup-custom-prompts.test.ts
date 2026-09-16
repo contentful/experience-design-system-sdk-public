@@ -1,5 +1,41 @@
-import { describe, it, expect } from 'vitest';
-import { promptCustomSkillPath } from '../src/setup/command.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { promptCodexModel, promptCustomSkillPath } from '../src/setup/command.js';
+
+describe('promptCodexModel', () => {
+  // promptCodexModel short-circuits when OPENAI_API_KEY is set, so the prompting
+  // tests below must run with it absent regardless of the ambient environment.
+  beforeEach(() => {
+    vi.stubEnv('OPENAI_API_KEY', '');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('returns undefined without prompting when OPENAI_API_KEY is set', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'sk-test');
+    let asked = false;
+    const ask = async () => {
+      asked = true;
+      return 'gpt-5.6-luna';
+    };
+    const result = await promptCodexModel(ask);
+    expect(result).toBeUndefined();
+    expect(asked).toBe(false);
+  });
+
+  it('returns a trimmed model name when the operator supplies one', async () => {
+    const ask = async () => '  gpt-5.6-luna  ';
+    const result = await promptCodexModel(ask);
+    expect(result).toBe('gpt-5.6-luna');
+  });
+
+  it('returns undefined when the operator presses Enter', async () => {
+    const ask = async () => '';
+    const result = await promptCodexModel(ask);
+    expect(result).toBeUndefined();
+  });
+});
 
 describe('promptCustomSkillPath (Feature 8)', () => {
   it('returns the trimmed path when the operator supplies one', async () => {

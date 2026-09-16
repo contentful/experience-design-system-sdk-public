@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { generateSessionId } from './session-id.js';
-import { excerptAroundNames } from './source-excerpt.js';
+import { escapeForRegExp, excerptAroundNames } from './source-excerpt.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types.js';
 import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
 import type { ToolCall, TokenToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
@@ -1373,6 +1373,12 @@ const MAX_COMPONENT_SOURCE_CHARS = 8_000;
 // built for a different command (analyze select-agent).
 const MAX_SIBLING_FILES = 5;
 const MAX_SIBLING_SNIPPET_CHARS = 1_200;
+// A type-declaring sibling (e.g. `*.types.ts`) needs a bigger budget than a
+// styles module — the styles-module budget can cut mid-array.
+const MAX_TYPE_DECLARING_SIBLING_CHARS = 4_000;
+// Caps how many siblings get the enlarged budget, since a type is usually
+// declared in only one or two files.
+const MAX_ENLARGED_SIBLINGS = 2;
 // A token-resolution map sometimes lives behind a component that itself
 // re-exports another component's prop (A imports B, B imports B's own
 // styles module) rather than beside the component being classified. Two hops
@@ -1386,6 +1392,44 @@ const MAX_SIBLING_DEPTH = 2;
 const MAX_SIBLING_CANDIDATES_EXPLORED = 25;
 const RELATIVE_IMPORT_PATTERN = /from\s+['"](\.[^'"]+)['"]/g;
 const SIBLING_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
+// TS node16/nodenext/bundler resolution requires the *emitted* extension in
+// the specifier (`./Badge.types.js` for a file named `Badge.types.ts`).
+const TS_ESM_EXTENSION_REWRITES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['.js', ['.ts', '.tsx', '.js', '.jsx']],
+  ['.jsx', ['.tsx', '.jsx']],
+  ['.mjs', ['.mts', '.mjs']],
+  ['.cjs', ['.cts', '.cjs']],
+];
+
+// Candidate source paths for a specifier with an emitted extension, else [].
+function rewrittenSourcePaths(basePath: string): string[] {
+  for (const [emitted, sources] of TS_ESM_EXTENSION_REWRITES) {
+    if (!basePath.endsWith(emitted)) continue;
+    const stem = basePath.slice(0, -emitted.length);
+    return sources.map((ext) => `${stem}${ext}`);
+  }
+  return [];
+}
+
+// A prop typed as a named alias (`variant: BadgeVariantS1`) carries none of
+// its own members — the type name is a search name too, so we can window on it.
+const IDENTIFIER_PATTERN = /[A-Za-z_$][A-Za-z0-9_$]*/g;
+
+function identifiersIn(propTypes: string[]): string[] {
+  const names = new Set<string>();
+  for (const propType of propTypes) {
+    for (const match of propType.matchAll(IDENTIFIER_PATTERN)) names.add(match[0]);
+  }
+  return [...names];
+}
+
+// Whether this file is where one of these names is declared, as opposed to a
+// file that merely mentions it in a signature.
+function declaresAnyType(text: string, typeNames: string[]): boolean {
+  return typeNames.some((name) =>
+    new RegExp(`\\b(?:type|interface|enum|const|class)\\s+${escapeForRegExp(name)}\\b`).test(text),
+  );
+}
 
 function extractRelativeImportPaths(sourceText: string): string[] {
   const specifiers = new Set<string>();
@@ -1402,6 +1446,7 @@ async function resolveRelativeImport(specifier: string, fromDir: string): Promis
   const basePath = resolve(fromDir, specifier);
   const candidates = [
     basePath,
+    ...rewrittenSourcePaths(basePath),
     ...SIBLING_FILE_EXTENSIONS.map((ext) => `${basePath}${ext}`),
     ...SIBLING_FILE_EXTENSIONS.map((ext) => resolve(basePath, `index${ext}`)),
   ];
@@ -1445,11 +1490,14 @@ async function loadSiblingFiles(
   sourceText: string,
   sourcePath: string,
   propNames: string[],
+  candidateTypeNames: string[] = [],
 ): Promise<{
   siblings: Array<{ path: string; content: string }>;
   truncatedCount: number;
   /** Prop names with at least one use that fell outside a sibling's excerpt budget. */
   usesNotShown: string[];
+  /** The candidate type names that the component's own source or a discovered sibling declares. */
+  declaredTypeNames: string[];
 }> {
   const visited = new Set<string>([resolve(sourcePath)]);
   const discovered: Array<{ path: string; content: string }> = [];
@@ -1483,12 +1531,22 @@ async function loadSiblingFiles(
     frontier = nextFrontier;
   }
 
+  // Only the type names some file in hand declares are worth windowing on;
+  // the rest have no declaration to find (see IDENTIFIER_PATTERN above).
+  const inHand = [sourceText, ...discovered.map((d) => d.content)];
+  const declaredTypeNames = candidateTypeNames.filter((name) => inHand.some((text) => declaresAnyType(text, [name])));
+
   // Excerpts are windowed around the prop names rather than cut from the
   // head: a styles module's first lines are imports, and the line that decides
   // a prop's classification is wherever that prop is interpolated.
   const usesNotShown = new Set<string>();
+  const searchNames = [...new Set([...propNames, ...declaredTypeNames])];
+  let enlarged = 0;
   const siblings = discovered.slice(0, MAX_SIBLING_FILES).map((d) => {
-    const excerpt = excerptAroundNames(d.content, propNames, MAX_SIBLING_SNIPPET_CHARS);
+    const enlarge = enlarged < MAX_ENLARGED_SIBLINGS && declaresAnyType(d.content, declaredTypeNames);
+    if (enlarge) enlarged++;
+    const budget = enlarge ? MAX_TYPE_DECLARING_SIBLING_CHARS : MAX_SIBLING_SNIPPET_CHARS;
+    const excerpt = excerptAroundNames(d.content, searchNames, budget);
     for (const name of excerpt.usesNotShown) usesNotShown.add(name);
     return { path: d.path, content: excerpt.content };
   });
@@ -1498,6 +1556,7 @@ async function loadSiblingFiles(
     siblings,
     truncatedCount,
     usesNotShown: propNames.filter((name) => usesNotShown.has(name)),
+    declaredTypeNames,
   };
 }
 
@@ -1511,6 +1570,7 @@ export async function loadComponentSourceRef(
   name: string,
   sourcePath: string,
   propNames: string[] = [],
+  propTypes: string[] = [],
 ): Promise<ComponentSourceRef> {
   let content: string | null = null;
   let siblingFiles: Array<{ path: string; content: string }> = [];
@@ -1518,15 +1578,25 @@ export async function loadComponentSourceRef(
   const usesNotShown = new Set<string>();
   try {
     const rawText = await readFile(sourcePath, 'utf8');
-    const mainExcerpt = excerptAroundNames(rawText, propNames, MAX_COMPONENT_SOURCE_CHARS);
-    content = mainExcerpt.content;
-    for (const name of mainExcerpt.usesNotShown) usesNotShown.add(name);
+    // Siblings first: the component's own excerpt is keyed on the same
+    // declared-type-name set.
     let siblingUsesNotShown: string[];
+    let declaredTypeNames: string[];
     ({
       siblings: siblingFiles,
       truncatedCount: truncatedSiblingCount,
       usesNotShown: siblingUsesNotShown,
-    } = await loadSiblingFiles(rawText, sourcePath, propNames));
+      declaredTypeNames,
+    } = await loadSiblingFiles(rawText, sourcePath, propNames, identifiersIn(propTypes)));
+    // Prop names locate the *use* of a prop; the declared type names locate
+    // the *members* the classifier has to emit. Both are needed.
+    const mainExcerpt = excerptAroundNames(
+      rawText,
+      [...new Set([...propNames, ...declaredTypeNames])],
+      MAX_COMPONENT_SOURCE_CHARS,
+    );
+    content = mainExcerpt.content;
+    for (const name of mainExcerpt.usesNotShown) usesNotShown.add(name);
     for (const name of siblingUsesNotShown) usesNotShown.add(name);
   } catch {
     // File no longer exists or unreadable — leave content null.
@@ -1545,14 +1615,19 @@ export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: strin
       `SELECT component_id, name, source, source_path FROM raw_components WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
     )
     .all(sessionId) as Array<{ component_id: string; name: string; source: string; source_path: string | null }>;
-  const propNamesFor = db.prepare(
-    `SELECT name FROM raw_props WHERE session_id = ? AND component_id = ? ORDER BY position`,
+  const propsFor = db.prepare(
+    `SELECT name, type FROM raw_props WHERE session_id = ? AND component_id = ? ORDER BY position`,
   );
 
   return Promise.all(
     rows.map((r) => {
-      const propNames = (propNamesFor.all(sessionId, r.component_id) as Array<{ name: string }>).map((p) => p.name);
-      return loadComponentSourceRef(r.name, r.source_path ?? r.source, propNames);
+      const props = propsFor.all(sessionId, r.component_id) as Array<{ name: string; type: string }>;
+      return loadComponentSourceRef(
+        r.name,
+        r.source_path ?? r.source,
+        props.map((p) => p.name),
+        props.map((p) => p.type),
+      );
     }),
   );
 }
