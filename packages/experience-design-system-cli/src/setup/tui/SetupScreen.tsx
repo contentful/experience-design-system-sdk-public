@@ -86,6 +86,7 @@ export function SetupScreen({
   const [activeStep, setActiveStep] = useState(1);
   const [events, setEvents] = useState<SetupActionEvent[]>([]);
   const [prompt, setPrompt] = useState<PendingPrompt | null>(null);
+  const [pageHelp, setPageHelp] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
   // A chunk can carry typed text and the Enter that submits it, so the value
   // has to be readable synchronously rather than through batched state.
@@ -122,13 +123,20 @@ export function SetupScreen({
         request<boolean>((resolve) => ({ kind: 'confirm', question, defaultYes, resolve })),
       choose: (question, options) =>
         request<number | undefined>((resolve) => ({ kind: 'select', question, options, resolve })),
-      write: (event) =>
-        setEvents((current) => (event.kind === 'page' ? [{ ...event, kind: 'help' }] : [...current, event])),
+      write: (event) => {
+        if (event.kind === 'page') {
+          setEvents([]);
+          setPageHelp(event.message);
+          return;
+        }
+        setEvents((current) => [...current, event]);
+      },
     };
 
     const enterStep = (step: number): void => {
       setActiveStep(step);
       setEvents([]);
+      setPageHelp(null);
     };
 
     void (async () => {
@@ -314,6 +322,12 @@ export function SetupScreen({
         ) : (
           <SetupPrompt prompt={prompt} value={inputValue} />
         ))}
+
+      {pageHelp && !outcome && (
+        <Box marginTop={1}>
+          <Text dimColor>{pageHelp}</Text>
+        </Box>
+      )}
     </Box>
   );
 }
@@ -336,7 +350,7 @@ function SetupEventLine({ event }: { event: SetupActionEvent }): React.ReactElem
   if (event.kind === 'success') return <Text color={PALETTE.success}>✓ {event.message}</Text>;
   if (event.kind === 'failure') return <Text color={PALETTE.error}>✗ {event.message}</Text>;
   if (event.kind === 'warning') return <Text color={PALETTE.warning}>⚠ {event.message}</Text>;
-  if (event.kind === 'dim') return <Text dimColor>{event.message}</Text>;
+  if (event.kind === 'dim' || event.kind === 'help') return <Text dimColor>{event.message}</Text>;
   if (event.kind === 'value') return <Text> {event.message}</Text>;
   if (event.kind === 'choice') return <Text> {event.message}</Text>;
   return <Text>{event.message}</Text>;

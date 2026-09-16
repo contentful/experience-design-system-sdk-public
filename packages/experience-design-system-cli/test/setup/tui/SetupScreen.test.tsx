@@ -458,6 +458,21 @@ describe('SetupScreen', () => {
     expect(frames.join('\n')).toContain('Filters out components irrelevant to experience orchestration');
   });
 
+  it('renders the preference help text below the prompt, dimmed', async () => {
+    const { lastFrame } = renderScreen({ skip: { skipAgent: true, skipCredentials: true }, columns: 200 });
+
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Filters out components irrelevant'),
+    );
+
+    const lines = frame.split('\n');
+    const promptLine = lines.findIndex((line) => line.includes('Enable AI auto-filter'));
+    const helpLine = lines.findIndex((line) => line.includes('Filters out components irrelevant'));
+    expect(promptLine).toBeGreaterThanOrEqual(0);
+    expect(helpLine).toBeGreaterThan(promptLine);
+  });
+
   it('clears a finished preference from the screen before the next one', async () => {
     const { lastFrame, stdin } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
 
@@ -499,7 +514,7 @@ describe('SetupScreen', () => {
       (f) => f.includes('Custom select'),
     );
     expect(selectFrame).toContain('Replaces the built-in instructions');
-    expect(selectFrame).not.toContain('Analyzes more components at once');
+    expect(selectFrame).not.toContain('Analyzes more components');
     await answer(stdin, '/tmp/select.md');
 
     const generateFrame = await waitForFrame(

@@ -277,7 +277,7 @@ async function promptCodexModel(dependencies: SetupActionDependencies): Promise<
 }
 
 export async function runAgentSetup(dependencies: SetupActionDependencies): Promise<AgentSetupResult> {
-  emit(dependencies, 'info', 'experiences import uses a coding agent to generate component definitions.');
+  emit(dependencies, 'info', 'Experiences import uses a coding agent to generate component definitions.');
   emit(dependencies, 'info', '');
   const found = (
     await Promise.all(
