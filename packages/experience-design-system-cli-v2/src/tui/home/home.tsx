@@ -52,9 +52,9 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
         <Text bold color={PALETTE.warning}>
           Terminal too small
         </Text>
-        <Text color={PALETTE.muted}>Use full screen</Text>
-        <Text color={PALETTE.muted}>for the best experience</Text>
-        <Text color={PALETTE.muted}>q quit</Text>
+        <Text color={PALETTE.muted}>
+          Press q to quit, make your terminal full screen, then run experiences import again.
+        </Text>
       </Box>
     );
   }

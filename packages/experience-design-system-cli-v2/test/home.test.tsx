@@ -123,12 +123,15 @@ describe('HomeScreen', () => {
       terminalWidth.current = MIN_TERMINAL_WIDTH - 1;
     });
 
-    it('shows a notice instead of the menu', async () => {
+    it('shows a notice instead of the menu, telling the user what to do next', async () => {
       const { lastFrame } = renderHome();
       await flush();
 
       const frame = plain(lastFrame()!);
       expect(frame).toContain('Terminal too small');
+      expect(frame).toContain('Press q to quit');
+      expect(frame).toContain('full screen');
+      expect(frame).toContain('experiences import');
       expect(frame).not.toContain('Saved Runs');
     });
 
