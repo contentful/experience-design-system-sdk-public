@@ -19,9 +19,22 @@ export function parsePreferenceSelection(input: string): PreferenceKey[] | undef
   if (selectedNumbers.some((token) => !/^\d+$/.test(token))) return undefined;
 
   const numbers = new Set(selectedNumbers.map(Number));
-  if (numbers.size === 0 || [...numbers].some((number) => !PREFERENCE_OPTIONS.some((option) => option.number === number))) {
+  if (
+    numbers.size === 0 ||
+    [...numbers].some((number) => !PREFERENCE_OPTIONS.some((option) => option.number === number))
+  ) {
     return undefined;
   }
 
   return PREFERENCE_OPTIONS.filter((option) => numbers.has(option.number)).map((option) => option.key);
+}
+
+/** The picker list shown before any individual preference is configured. */
+export function formatPreferencePicker(): string {
+  return [
+    'Choose preferences to configure:',
+    ...PREFERENCE_OPTIONS.map((option) => `  [${option.number}] ${option.label}`),
+    '  [all] Configure all',
+    '  [s] Skip',
+  ].join('\n');
 }

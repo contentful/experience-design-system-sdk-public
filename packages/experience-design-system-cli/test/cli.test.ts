@@ -298,46 +298,21 @@ describe('CLI entry point', () => {
       expect(stdout).toContain('--skip-optional');
     });
 
-    it('checks Node.js version and prints result on stdout', async () => {
-      const { stdout, code } = await run(
+    // Setup is Ink-only: there is no second non-interactive implementation, so
+    // a non-TTY session is rejected instead of falling back to prompts.
+    it('rejects a non-TTY session', async () => {
+      const { stderr, code } = await run(
         'setup',
         '--skip-build',
         '--skip-agent',
         '--skip-credentials',
         '--skip-optional',
       );
-      expect(stdout).toContain('Node.js');
-      expect(code === 0 || stdout.includes('need v24+')).toBe(true);
+      expect(code).toBe(1);
+      expect(stderr).toContain('Error: experiences setup requires an interactive terminal.');
     });
 
-    it('exits 0 when all required steps pass with all skips', async () => {
-      const { stdout, code } = await run(
-        'setup',
-        '--skip-build',
-        '--skip-agent',
-        '--skip-credentials',
-        '--skip-optional',
-      );
-      const nodeMajor = parseInt(process.versions.node.split('.')[0]!, 10);
-      if (nodeMajor >= 24) {
-        expect(code).toBe(0);
-        expect(stdout).toContain('Node.js');
-      }
-    });
-
-    it('skips install and build steps with --skip-build', async () => {
-      const { stdout } = await run('setup', '--skip-build', '--skip-agent', '--skip-credentials', '--skip-optional');
-      const nodeMajor = parseInt(process.versions.node.split('.')[0]!, 10);
-      if (nodeMajor >= 24) {
-        expect(stdout).toContain('Skipping install + build');
-        expect(stdout).not.toContain('pnpm install');
-        expect(stdout).not.toContain('Building CLI');
-      } else {
-        expect(stdout).toContain('need v24+');
-      }
-    });
-
-    it('skips credentials step with --skip-credentials', async () => {
+    it('does not prompt for credentials on a non-TTY session', async () => {
       const { stdout } = await run('setup', '--skip-build', '--skip-agent', '--skip-credentials', '--skip-optional');
       expect(stdout).not.toContain('CMA token');
       expect(stdout).not.toContain('Space ID');

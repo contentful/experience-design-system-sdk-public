@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { promptAnalyticsPreference } from '../src/setup/analytics-prompt.js';
+import { promptAnalyticsPreference } from '../../src/setup/analytics-prompt.js';
 
 describe('promptAnalyticsPreference', () => {
   it('defaults to enabled (not disabled) when no current value and empty answer', async () => {

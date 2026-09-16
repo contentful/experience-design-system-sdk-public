@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { promptDebugModePreference } from '../src/setup/debug-mode-prompt.js';
+import { promptDebugModePreference } from '../../src/setup/debug-mode-prompt.js';
 
 describe('promptDebugModePreference', () => {
   it('defaults to OFF when no current value and empty answer', async () => {

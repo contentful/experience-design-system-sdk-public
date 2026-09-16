@@ -5,55 +5,85 @@ export const SETUP_SCREENS = [
   { title: 'Preferences', kind: 'optional' },
 ] as const;
 
+export const SETUP_TITLE = 'experiences setup';
+
 const WIDE_STEPPER_SEPARATOR = '  ·  ';
-const WIDE_STEPPER_MIN_COLUMNS = SETUP_SCREENS.map((screen, index) => {
+const COMPACT_STEPPER_SEPARATOR = '  ';
+const HEADER_INLINE_GAP = 2;
+
+export const WIDE_STEPPER_MIN_COLUMNS = SETUP_SCREENS.map((screen, index) => {
   const label = `${index + 1} ${screen.title}`;
   return index === 0 ? `[${label}]` : label;
-})
-  .join(WIDE_STEPPER_SEPARATOR)
-  .length;
+}).join(WIDE_STEPPER_SEPARATOR).length;
 
-export function formatSetupHeader(version: string, columns = process.stdout.columns): string {
-  const title = 'experiences setup';
-  const versionLabel = `v${version}`;
-  const inlineGap = 2;
-  const contentWidth = title.length + inlineGap + versionLabel.length;
-  const gap =
-    columns !== undefined && columns >= contentWidth ? columns - title.length - versionLabel.length : inlineGap;
+export type SetupStepState = 'complete' | 'active' | 'pending';
 
-  return `\n\x1b[1m${title}\x1b[0m${' '.repeat(gap)}\x1b[2m${versionLabel}\x1b[0m\nPrepare this machine for \x1b[1mexperiences import\x1b[0m.\n`;
+export interface SetupStepperEntry {
+  step: number;
+  title: string;
+  state: SetupStepState;
+  label: string;
 }
 
-export function formatSetupStepper(activeStep: number, columns?: number): string {
-  const isWide = columns !== undefined && columns >= WIDE_STEPPER_MIN_COLUMNS;
+/**
+ * Labelled steps only fit once the terminal is at least as wide as the joined
+ * stepper; narrower terminals fall back to numbered markers so it never wraps.
+ */
+export function shouldUseWideStepper(columns?: number): boolean {
+  return columns !== undefined && columns >= WIDE_STEPPER_MIN_COLUMNS;
+}
 
-  if (!isWide) {
-    const markers = SETUP_SCREENS.map((_, index) => {
-      const step = index + 1;
-      if (step < activeStep) return '\x1b[32m✓\x1b[0m';
-      if (step === activeStep) return `\x1b[1m[${step}]\x1b[0m`;
-      return `\x1b[2m${step}\x1b[0m`;
-    });
+export function setupStepperSeparator(columns?: number): string {
+  return shouldUseWideStepper(columns) ? WIDE_STEPPER_SEPARATOR : COMPACT_STEPPER_SEPARATOR;
+}
 
-    return `${markers.join('  ')}\n`;
-  }
+export function setupStepperEntries(activeStep: number, columns?: number): SetupStepperEntry[] {
+  const isWide = shouldUseWideStepper(columns);
 
-  const steps = SETUP_SCREENS.map((screen, index) => {
+  return SETUP_SCREENS.map((screen, index) => {
     const step = index + 1;
-    if (step < activeStep) return `\x1b[32m✓\x1b[0m ${screen.title}`;
-    if (step === activeStep) return `\x1b[1m[${step} ${screen.title}]\x1b[0m`;
-    return `\x1b[2m${step} ${screen.title}\x1b[0m`;
-  });
+    const state: SetupStepState = step < activeStep ? 'complete' : step === activeStep ? 'active' : 'pending';
+    const compactLabel = state === 'complete' ? '✓' : state === 'active' ? `[${step}]` : `${step}`;
+    const wideLabel =
+      state === 'complete'
+        ? `✓ ${screen.title}`
+        : state === 'active'
+          ? `[${step} ${screen.title}]`
+          : `${step} ${screen.title}`;
 
-  return `${steps.join(`  \x1b[2m·\x1b[0m  `)}\n`;
+    return { step, title: screen.title, state, label: isWide ? wideLabel : compactLabel };
+  });
 }
 
-export function formatSetupScreen(
-  version: string,
-  activeStep: number,
-  title: string,
-  kind: 'required' | 'optional',
-  columns = process.stdout.columns,
-): string {
-  return `${formatSetupHeader(version, columns)}\n${formatSetupStepper(activeStep, columns)}\n\x1b[2m[${activeStep}/4]\x1b[0m \x1b[1m${title}\x1b[0m \x1b[2m· ${kind}\x1b[0m\n`;
+/**
+ * The version sits flush right when the terminal can hold the title, a gap, and
+ * the version; otherwise it stays inline directly after the title.
+ */
+export function shouldAlignVersionRight(version: string, columns?: number): boolean {
+  const contentWidth = SETUP_TITLE.length + HEADER_INLINE_GAP + `v${version}`.length;
+  return columns !== undefined && columns >= contentWidth;
+}
+
+export function setupScreenLabel(activeStep: number): string {
+  const screen = SETUP_SCREENS[activeStep - 1];
+  if (!screen) return '';
+  return `[${activeStep}/${SETUP_SCREENS.length}] ${screen.title} · ${screen.kind}`;
+}
+
+export type SetupResultStatus = 'completed' | 'skipped' | 'failed';
+
+export interface SetupResultEntry {
+  name: string;
+  status: SetupResultStatus;
+  required: boolean;
+}
+
+export function countRequiredFailures(results: readonly SetupResultEntry[]): number {
+  return results.filter((result) => result.required && result.status === 'failed').length;
+}
+
+export function formatSetupCompletionMessage(results: readonly SetupResultEntry[]): string {
+  const requiredFailed = countRequiredFailures(results);
+  if (requiredFailed === 0) return '✓ Setup complete. You can now run: experiences import';
+  return `⚠ ${requiredFailed} required step${requiredFailed === 1 ? '' : 's'} incomplete.`;
 }

@@ -4,27 +4,23 @@ import { appendFile, readFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import type { Command } from 'commander';
 import {
   readExperiencesCredentials,
   writeExperiencesCredentials,
   experiencesCredentialsPath,
-  type ExperiencesCredentials,
 } from '../credentials-store.js';
-import { promptAutoFilterPreference } from './auto-filter-prompt.js';
-import { promptDebugModePreference } from './debug-mode-prompt.js';
-import { promptAnalyticsPreference } from './analytics-prompt.js';
-import { PREFERENCE_OPTIONS, parsePreferenceSelection, type PreferenceKey } from './preferences-picker.js';
-import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { findPkgRoot } from '../lib/cli-path.js';
+import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
 import type { AgentName } from '@contentful/experience-design-system-generation';
-import { SETUP_SCREENS, formatSetupScreen } from './screen.js';
+import type { SetupOutcome, SetupScreenDependencies, SetupSkipFlags } from './tui/SetupScreen.js';
 
 const execFileAsync = promisify(execFile);
 
 const REQUIRED_NODE_MAJOR = 24;
+
+export const SETUP_REQUIRES_TTY_MESSAGE = 'Error: experiences setup requires an interactive terminal.';
 
 // ── Output helpers ────────────────────────────────────────────────────────────
 
@@ -49,99 +45,9 @@ function section(title: string, tag?: '[required]' | '[optional]'): void {
   process.stdout.write(`\n\x1b[1m${title}\x1b[0m${tagStr}\n`);
 }
 
-function getCliVersion(): string {
+export function getCliVersion(): string {
   const pkg = JSON.parse(readFileSync(join(findPkgRoot(), 'package.json'), 'utf8')) as { version: string };
   return pkg.version;
-}
-
-function dim(msg: string): void {
-  process.stdout.write(`\x1b[2m${msg}\x1b[0m\n`);
-}
-
-// ── Prompt helpers ────────────────────────────────────────────────────────────
-
-function isInteractivePromptSession(): boolean {
-  return !!(process.stdin.isTTY && process.stdout.isTTY);
-}
-
-export function shouldClearSetupScreen(isInteractive: boolean): boolean {
-  return isInteractive;
-}
-
-export function formatSetupScreenTransition(isInteractive: boolean, activeStep: number): string {
-  return activeStep > 1 && shouldClearSetupScreen(isInteractive) ? '\x1b[2J\x1b[H' : '';
-}
-
-function prompt(question: string): Promise<string> {
-  if (!isInteractivePromptSession()) {
-    return Promise.resolve('');
-  }
-
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
-
-function promptSecret(question: string): Promise<string> {
-  if (!isInteractivePromptSession()) {
-    return Promise.resolve('');
-  }
-
-  // Use readline for all prompts — mixing raw-mode stdin listeners with
-  // readline createInterface causes readline to buffer+unshift unconsumed
-  // input back onto the stream, which the raw listener then re-reads,
-  // doubling the typed value. Using readline throughout avoids this entirely.
-  return new Promise((resolve) => {
-    const rl = createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      terminal: process.stdin.isTTY,
-    });
-    let value = '';
-    process.stdout.write(question);
-    let origWrite: ((s: string) => void) | null = null;
-    if (process.stdin.isTTY) {
-      // Intercept the readline output write so we can replace echoed chars with *
-      origWrite = (rl as unknown as { output: { write: (s: string) => void } }).output.write.bind(
-        (rl as unknown as { output: NodeJS.WriteStream }).output,
-      );
-      (rl as unknown as { output: { write: (s: string) => void } }).output.write = (s: string) => {
-        // Allow newline through; suppress everything else (the echoed characters)
-        if (s === '\r\n' || s === '\n' || s === '\r') origWrite!(s);
-      };
-    }
-    rl.on('line', (line) => {
-      value = line;
-      rl.close();
-    });
-    rl.once('close', () => {
-      // Restore stdout.write before resolving — the interceptor patches rl.output.write
-      // which is process.stdout.write, so without restoring it all subsequent output is swallowed.
-      if (origWrite) {
-        (rl as unknown as { output: { write: (s: string) => void } }).output.write = origWrite;
-      }
-      // In TTY mode readline already emitted \n when Enter was pressed; only add one in non-TTY.
-      if (!process.stdin.isTTY) process.stdout.write('\n');
-      // rl.close() pauses stdin; resume it so subsequent prompt() calls work.
-      process.stdin.resume();
-      resolve(value);
-    });
-  });
-}
-
-async function confirm(question: string, defaultYes = true): Promise<boolean> {
-  if (!isInteractivePromptSession()) {
-    return false;
-  }
-
-  const hint = defaultYes ? '[Y/n]' : '[y/N]';
-  const answer = await prompt(`  ${question} ${hint} `);
-  if (!answer) return defaultYes;
-  return answer.toLowerCase().startsWith('y');
 }
 
 // ── Shell helpers ─────────────────────────────────────────────────────────────
@@ -190,6 +96,29 @@ function runSpawn(
   });
 }
 
+/**
+ * The environment- and disk-backed half of the setup actions. Prompts and
+ * output stay with the Ink screen, which supplies the rest.
+ */
+export function createSetupScreenDependencies(): SetupScreenDependencies {
+  return {
+    nodeVersion: process.versions.node,
+    homeDir: homedir(),
+    env: process.env,
+    binaryExists,
+    run: runSpawn,
+    pathExists: async (path) =>
+      access(path)
+        .then(() => true)
+        .catch(() => false),
+    profileContains,
+    appendToProfile,
+    readCredentials: readExperiencesCredentials,
+    writeCredentials: writeExperiencesCredentials,
+    credentialsPath: experiencesCredentialsPath,
+  };
+}
+
 // ── Shell profile detection ───────────────────────────────────────────────────
 
 async function detectShellProfile(): Promise<string> {
@@ -226,178 +155,7 @@ async function appendToProfile(profilePath: string, lines: string): Promise<void
   await appendFile(profilePath, `\n${lines}\n`, 'utf8');
 }
 
-// ── Prerequisites: Node.js ────────────────────────────────────────────────────
-
-async function setupNode(): Promise<boolean> {
-  const current = process.versions.node;
-  const major = parseInt(current.split('.')[0]!, 10);
-
-  if (major >= REQUIRED_NODE_MAJOR) {
-    ok(`Node.js v${current} — already good`);
-    return true;
-  }
-
-  fail(`Node.js v${current} — need v${REQUIRED_NODE_MAJOR}+`);
-  info('');
-
-  const hasNvm =
-    (await binaryExists('nvm')) ||
-    (await access(join(homedir(), '.nvm', 'nvm.sh'))
-      .then(() => true)
-      .catch(() => false));
-  const hasFnm = await binaryExists('fnm');
-
-  if (hasNvm) {
-    info(`nvm detected. Will run: nvm install ${REQUIRED_NODE_MAJOR} && nvm use ${REQUIRED_NODE_MAJOR}`);
-    const go = await confirm(`Install and switch to Node ${REQUIRED_NODE_MAJOR} via nvm?`);
-    if (!go) {
-      warn(`Skipped. Re-run experiences setup after switching to Node ${REQUIRED_NODE_MAJOR}.`);
-      return false;
-    }
-    // nvm is a shell function so we source it and run in a subshell
-    const nvmScript = join(homedir(), '.nvm', 'nvm.sh');
-    const result = await runSpawn('bash', [
-      '-c',
-      `source "${nvmScript}" && nvm install ${REQUIRED_NODE_MAJOR} && nvm alias default ${REQUIRED_NODE_MAJOR}`,
-    ]);
-    if (result.exitCode !== 0) {
-      fail('nvm install failed');
-      info(result.stderr.trim().split('\n').slice(0, 5).join('\n'));
-      info(`Run manually: nvm install ${REQUIRED_NODE_MAJOR} && nvm use ${REQUIRED_NODE_MAJOR}`);
-      return false;
-    }
-    ok(`Node ${REQUIRED_NODE_MAJOR} installed via nvm. Re-run experiences setup in a fresh shell to pick it up.`);
-    return false; // Need fresh shell to get the new node on PATH
-  }
-
-  if (hasFnm) {
-    info(`fnm detected. Will run: fnm install ${REQUIRED_NODE_MAJOR} && fnm use ${REQUIRED_NODE_MAJOR}`);
-    const go = await confirm(`Install and switch to Node ${REQUIRED_NODE_MAJOR} via fnm?`);
-    if (!go) {
-      warn(`Skipped. Re-run experiences setup after switching to Node ${REQUIRED_NODE_MAJOR}.`);
-      return false;
-    }
-    const result = await runSpawn('fnm', ['install', String(REQUIRED_NODE_MAJOR)]);
-    if (result.exitCode !== 0) {
-      fail('fnm install failed');
-      info(`Run manually: fnm install ${REQUIRED_NODE_MAJOR} && fnm use ${REQUIRED_NODE_MAJOR}`);
-      return false;
-    }
-    const useResult = await runSpawn('fnm', ['use', String(REQUIRED_NODE_MAJOR)]);
-    if (useResult.exitCode !== 0) {
-      warn(`fnm use ${REQUIRED_NODE_MAJOR} failed — node installed but not activated`);
-      info(`Run manually: fnm use ${REQUIRED_NODE_MAJOR} && fnm default ${REQUIRED_NODE_MAJOR}`);
-    } else {
-      const defaultResult = await runSpawn('fnm', ['default', String(REQUIRED_NODE_MAJOR)]);
-      if (defaultResult.exitCode !== 0) {
-        warn(`fnm default ${REQUIRED_NODE_MAJOR} failed — version won't persist across new shells`);
-        info(`Run manually: fnm default ${REQUIRED_NODE_MAJOR}`);
-      }
-    }
-    ok(`Node ${REQUIRED_NODE_MAJOR} installed via fnm. Re-run experiences setup in a fresh shell.`);
-    return false;
-  }
-
-  // No version manager found — offer to install nvm
-  info('No Node version manager detected (nvm or fnm).');
-  const installNvm = await confirm('Install nvm now? (recommended)');
-  if (installNvm) {
-    info('Running nvm install script...');
-    const result = await runSpawn('bash', [
-      '-c',
-      'curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash',
-    ]);
-    if (result.exitCode !== 0) {
-      fail('nvm install failed');
-      info('Install manually: https://github.com/nvm-sh/nvm#installing-and-updating');
-      return false;
-    }
-    ok('nvm installed. Open a new shell, then re-run experiences setup.');
-    return false;
-  }
-
-  info(`Install Node ${REQUIRED_NODE_MAJOR} manually from https://nodejs.org`);
-  return false;
-}
-
-// ── Prerequisites: pnpm ───────────────────────────────────────────────────────
-
-async function setupPnpm(): Promise<boolean> {
-  if (await binaryExists('pnpm')) {
-    const v = await runSpawn('pnpm', ['--version']);
-    ok(`pnpm v${v.stdout.trim()} — already installed`);
-    return true;
-  }
-
-  fail('pnpm not found');
-  info('');
-
-  const hasCorecpack = await binaryExists('corepack');
-  if (hasCorecpack) {
-    info('Will run: corepack enable && corepack prepare pnpm@latest --activate');
-    const go = await confirm('Install pnpm via corepack?');
-    if (go) {
-      const r1 = await runSpawn('corepack', ['enable']);
-      const r2 = r1.exitCode === 0 ? await runSpawn('corepack', ['prepare', 'pnpm@latest', '--activate']) : r1;
-      if (r2.exitCode !== 0) {
-        fail('corepack install failed');
-        info('Try: npm install -g pnpm');
-        return false;
-      }
-      ok('pnpm installed via corepack');
-      return true;
-    }
-  }
-
-  info('Will run: npm install -g pnpm');
-  const go = await confirm('Install pnpm via npm?');
-  if (!go) {
-    warn('Skipped. Install pnpm manually: npm install -g pnpm');
-    return false;
-  }
-
-  const result = await runSpawn('npm', ['install', '-g', 'pnpm']);
-  if (result.exitCode !== 0) {
-    fail('npm install -g pnpm failed');
-    info(result.stderr.trim().split('\n').slice(0, 5).join('\n'));
-    return false;
-  }
-
-  ok('pnpm installed');
-  return true;
-}
-
-// ── Prerequisites: install + build ────────────────────────────────────────────
-
-async function setupBuild(repoRoot: string): Promise<boolean> {
-  info('Running pnpm install...');
-  const installResult = await runSpawn('pnpm', ['install', '--frozen-lockfile'], { cwd: repoRoot });
-  if (installResult.exitCode !== 0) {
-    fail('pnpm install failed');
-    const errLines = installResult.stderr.trim().split('\n').slice(0, 8);
-    for (const line of errLines) info(line);
-    info('');
-    info('Try: pnpm install (without --frozen-lockfile) to update the lockfile');
-    return false;
-  }
-  ok('Dependencies installed');
-
-  info('Building CLI...');
-  const buildResult = await runSpawn('pnpm', ['--filter', '@contentful/experience-design-system-cli', 'run', 'build'], {
-    cwd: repoRoot,
-  });
-  if (buildResult.exitCode !== 0) {
-    fail('Build failed');
-    const errLines = buildResult.stderr.trim().split('\n').slice(0, 10);
-    for (const line of errLines) info(line);
-    return false;
-  }
-
-  ok('CLI built successfully');
-  return true;
-}
-
-// ── Coding agent ──────────────────────────────────────────────────────────────
+// ── Doctor checks ─────────────────────────────────────────────────────────────
 
 const AGENT_DEFS: Array<{ name: string; binary: AgentName; installHint: string }> = [
   { name: 'Claude Code', binary: 'claude', installHint: 'npm install -g @anthropic-ai/claude-code && claude login' },
@@ -405,379 +163,6 @@ const AGENT_DEFS: Array<{ name: string; binary: AgentName; installHint: string }
   { name: 'OpenCode', binary: 'opencode', installHint: 'npm install -g opencode-ai && opencode auth' },
   { name: 'GitHub Copilot', binary: 'copilot', installHint: 'npm install -g @github/copilot && copilot' },
 ];
-
-function pick(items: Array<{ label: string; description?: string }>, defaultIdx = 0): void {
-  items.forEach((item, i) => {
-    const num = `\x1b[1m[${i + 1}]\x1b[0m`;
-    const desc = item.description ? `  \x1b[2m${item.description}\x1b[0m` : '';
-    const def = i === defaultIdx ? `  \x1b[2m(default)\x1b[0m` : '';
-    process.stdout.write(`     ${num} ${item.label}${desc}${def}\n`);
-  });
-  process.stdout.write(`     \x1b[2m[s] Skip\x1b[0m\n`);
-}
-
-export async function promptCodexModel(ask: (q: string) => Promise<string> = prompt): Promise<string | undefined> {
-  if (process.env['OPENAI_API_KEY']) return undefined; // API key users use Codex's configured default
-  info('');
-  process.stdout.write(`     \x1b[33m⚠\x1b[0m  No OPENAI_API_KEY — using ChatGPT account authentication.\n`);
-  info('  Tip: run \x1b[1mcodex\x1b[0m then type \x1b[1m/model\x1b[0m to browse the models available to your account.');
-  const model = await ask('  Model name (optional - press Enter for Codex default): ');
-  const trimmed = model.trim();
-  return trimmed || undefined;
-}
-
-export async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel: string | undefined }> {
-  info('experiences import uses a coding agent to generate component definitions.');
-  info('');
-
-  const found = (await Promise.all(AGENT_DEFS.map(async (a) => ((await binaryExists(a.binary)) ? a : null)))).filter(
-    (a): a is (typeof AGENT_DEFS)[number] => a !== null,
-  );
-
-  if (found.length === 1) {
-    ok(`${found[0]!.name} (${found[0]!.binary}) found`);
-    const agentModel = found[0]!.binary === 'codex' ? await promptCodexModel() : undefined;
-    return { agent: found[0]!.binary, agentModel };
-  }
-
-  if (found.length > 1) {
-    info('Multiple coding agents found. Choose one to use as the default:');
-    info('');
-    pick(found.map((a) => ({ label: `${a.name}`, description: a.binary })));
-    info('');
-    const choice = await prompt('  \x1b[2m›\x1b[0m Your choice [1]: ');
-    if (choice.toLowerCase() === 's') {
-      warn('Skipped. Install a coding agent before running experiences import.');
-      return { agent: undefined, agentModel: undefined };
-    }
-    const parsed = choice === '' ? 1 : parseInt(choice, 10);
-    const idx = Number.isNaN(parsed) || parsed < 1 || parsed > found.length ? 0 : parsed - 1;
-    const selected = found[idx]!;
-    const agentModel = selected.binary === 'codex' ? await promptCodexModel() : undefined;
-    return { agent: selected.binary, agentModel };
-  }
-
-  warn('No coding agent found on PATH');
-  info('');
-  info('Choose one to install:');
-  info('');
-  pick([
-    { label: 'Claude Code', description: 'npm install -g @anthropic-ai/claude-code' },
-    { label: 'OpenAI Codex', description: 'npm install -g @openai/codex' },
-    { label: 'OpenCode', description: 'npm install -g opencode-ai' },
-  ]);
-  info('');
-
-  const choice = await prompt('  Your choice: ');
-
-  if (choice === '1' || choice === '') {
-    const r = await runSpawn('npm', ['install', '-g', '@anthropic-ai/claude-code']);
-    if (r.exitCode !== 0) {
-      fail('Install failed');
-      info(r.stderr.trim().split('\n').slice(0, 5).join('\n'));
-      return { agent: undefined, agentModel: undefined };
-    }
-    if (!(await binaryExists('claude'))) {
-      fail('claude binary not found on PATH after install — check your npm global bin directory');
-      return { agent: undefined, agentModel: undefined };
-    }
-    ok('Claude Code installed');
-    info('');
-    info('Next: run `claude login` to authenticate (browser OAuth).');
-    info('Or set ANTHROPIC_API_KEY in your shell profile.');
-    return { agent: 'claude', agentModel: undefined };
-  }
-
-  if (choice === '2') {
-    const r = await runSpawn('npm', ['install', '-g', '@openai/codex']);
-    if (r.exitCode !== 0) {
-      fail('Install failed');
-      return { agent: undefined, agentModel: undefined };
-    }
-    if (!(await binaryExists('codex'))) {
-      fail('codex binary not found on PATH after install — check your npm global bin directory');
-      return { agent: undefined, agentModel: undefined };
-    }
-    ok('OpenAI Codex installed');
-    const agentModel = await promptCodexModel();
-    return { agent: 'codex', agentModel };
-  }
-
-  if (choice === '3') {
-    const r = await runSpawn('npm', ['install', '-g', 'opencode-ai']);
-    if (r.exitCode !== 0) {
-      fail('Install failed');
-      return { agent: undefined, agentModel: undefined };
-    }
-    if (!(await binaryExists('opencode'))) {
-      fail('opencode binary not found on PATH after install — check your npm global bin directory');
-      return { agent: undefined, agentModel: undefined };
-    }
-    ok('OpenCode installed');
-    info('Run `opencode auth` to configure your provider.');
-    return { agent: 'opencode', agentModel: undefined };
-  }
-
-  warn('Skipped. Install a coding agent before running experiences import.');
-  return { agent: undefined, agentModel: undefined };
-}
-
-// ── Contentful credentials ────────────────────────────────────────────────────
-
-async function setupContentfulCredentials(): Promise<boolean> {
-  info(`Saved to ${experiencesCredentialsPath()} — loaded automatically by experiences import.`);
-  info('');
-
-  // INTEG-4410: as of the precedence flip, disk wins over env — but env vars
-  // still act as a fallback when disk is empty, so operators who have any
-  // CONTENTFUL_* / EDS_HOST env set should know the ambient value would take
-  // effect if they skip this step. Warn regardless of the choice.
-  const envShadowing = [
-    process.env['CONTENTFUL_SPACE_ID'] ? 'CONTENTFUL_SPACE_ID' : null,
-    process.env['CONTENTFUL_ENVIRONMENT_ID'] ? 'CONTENTFUL_ENVIRONMENT_ID' : null,
-    process.env['CONTENTFUL_MANAGEMENT_TOKEN'] ? 'CONTENTFUL_MANAGEMENT_TOKEN' : null,
-    process.env['EDS_HOST'] ? 'EDS_HOST' : null,
-  ].filter((v): v is string => !!v);
-  if (envShadowing.length > 0) {
-    warn(
-      `Env vars set: ${envShadowing.join(', ')}. Values saved here take precedence; env vars only apply where disk is empty.`,
-    );
-    info('');
-  }
-
-  const stored = await readExperiencesCredentials();
-  const currentSpace = stored.spaceId;
-  const currentEnv = stored.environmentId;
-  const currentToken = stored.cmaToken;
-  const storedHost = stored.host;
-  const currentHost = storedHost ?? DEFAULT_CONFIGURED_HOST;
-  const hasAny = !!(currentSpace || currentEnv || currentToken);
-
-  if (hasAny) {
-    info('Current values:');
-    if (currentSpace) {
-      ok(`Space ID        ${currentSpace}`);
-    } else {
-      warn('Space ID        (not set)');
-    }
-    if (currentEnv) {
-      ok(`Environment ID  ${currentEnv}`);
-    } else {
-      warn('Environment ID  (not set)');
-    }
-    if (currentToken) {
-      ok(`CMA Token       ${'•'.repeat(Math.min(currentToken.length, 8))}...`);
-    } else {
-      warn('CMA Token       (not set)');
-    }
-    ok(`API Host        ${currentHost}`);
-    info('');
-  }
-
-  const allSet = !!(currentSpace && currentEnv && currentToken);
-  const doUpdate = await confirm(hasAny ? 'Update credentials?' : 'Configure Contentful credentials?', !allSet);
-
-  if (!doUpdate) {
-    if (allSet) {
-      ok('Credentials already configured — no changes made');
-    } else {
-      warn('Skipped. experiences import will prompt for credentials interactively.');
-    }
-    return true;
-  }
-
-  info('');
-  info('Get your CMA token: Contentful web app → Settings → API keys → Content management tokens');
-  info('');
-
-  const spaceIdInput = await prompt(`  Space ID${currentSpace ? ` [${currentSpace}]` : ''}: `);
-  const spaceId = spaceIdInput || currentSpace;
-
-  const envIdInput = await prompt(`  Environment ID [${currentEnv || 'master'}]: `);
-  const environmentId = envIdInput || currentEnv || 'master';
-
-  const tokenInput = await promptSecret(
-    `  CMA token${currentToken ? ' [press Enter to keep existing]' : ' (paste here)'}: `,
-  );
-  const cmaToken = tokenInput || currentToken;
-
-  if (!cmaToken || !spaceId) {
-    warn('Space ID and CMA token are required. Skipped.');
-    return false;
-  }
-  const hostInput = await prompt(`  API host [${currentHost}]: `);
-  const host = toConfiguredHost(hostInput) ?? storedHost;
-
-  const existing = await readExperiencesCredentials();
-  await writeExperiencesCredentials({ ...existing, spaceId, environmentId, cmaToken, ...(host ? { host } : {}) });
-  ok(`Credentials saved to ${experiencesCredentialsPath()}`);
-  ok(`API host set to ${host ?? DEFAULT_CONFIGURED_HOST}`);
-  info('Run experiences import — credentials will be pre-filled automatically.');
-
-  return true;
-}
-
-// ── Feature 8: custom-skill-prompt helper (injectable for tests) ──────────────
-
-export type SkillPromptKind = 'select' | 'generate';
-
-/**
- * Prompt the operator for a custom skill prompt path. Returns the resolved
- * trimmed value, or `undefined` to leave the current value unchanged, or `null`
- * to clear it. `ask` is injectable so tests can stub stdin.
- */
-export async function promptCustomSkillPath(
-  kind: SkillPromptKind,
-  current: string | undefined,
-  ask: (q: string) => Promise<string> = prompt,
-): Promise<string | undefined | null> {
-  const flagName = kind === 'select' ? '--select-prompt-path' : '--generate-prompt-path';
-  void flagName;
-  const label = kind === 'select' ? 'select (analyze select-agent)' : 'generate (generate components)';
-  const currentLabel = current ? ` [${current}]` : ' [none]';
-  const answer = await ask(`  Custom ${label} prompt path${currentLabel} (empty=keep, "-"=clear): `);
-  const trimmed = answer.trim();
-  if (trimmed === '') return undefined;
-  if (trimmed === '-') return null;
-  return trimmed;
-}
-
-// ── Preferences ───────────────────────────────────────────────────────────────
-
-export function formatPreferencePicker(): string {
-  return [
-    'Choose preferences to configure:',
-    ...PREFERENCE_OPTIONS.map((option) => `  [${option.number}] ${option.label}`),
-    '  [all] Configure all',
-    '  [s] Skip',
-  ].join('\n');
-}
-
-export interface PreferenceSetupOptions {
-  askPicker: () => Promise<string>;
-  write: (message: string) => void;
-  configurePreference: (preference: PreferenceKey) => Promise<void> | void;
-}
-
-export async function runPreferenceSetup({
-  askPicker,
-  write,
-  configurePreference,
-}: PreferenceSetupOptions): Promise<void> {
-  write(formatPreferencePicker());
-
-  let selected: PreferenceKey[] | undefined;
-  while (selected === undefined) {
-    selected = parsePreferenceSelection(await askPicker());
-    if (selected === undefined) write('Enter numbers from the list, "all", or "s".');
-  }
-
-  if (selected.length === 0) {
-    write('No preferences changed.');
-    return;
-  }
-
-  for (const preference of selected) {
-    await configurePreference(preference);
-  }
-}
-
-async function setupQoL(profilePath: string): Promise<void> {
-  await runPreferenceSetup({
-    askPicker: () => prompt('Choose preferences to configure (for example, 1,3 or all; Enter to skip): '),
-    write: (message) => process.stdout.write(`${message}\n`),
-    configurePreference: async (preference) => {
-      if (preference === 'autoFilter') {
-        info('Set the default for agent-assisted component prefiltering.');
-        const existingCreds = await readExperiencesCredentials();
-        const autoFilter = await promptAutoFilterPreference((q) => prompt(q), existingCreds.autoFilter);
-        if (autoFilter !== (existingCreds.autoFilter ?? true)) {
-          await writeExperiencesCredentials({ ...existingCreds, autoFilter });
-          ok(`AI auto-filter default set to ${autoFilter ? 'ON' : 'OFF'}`);
-        } else {
-          dim('     unchanged');
-        }
-      }
-
-      if (preference === 'concurrency') {
-        info('Increase parallel component analysis for faster machines.');
-        const hasConcurrency = await profileContains(profilePath, 'EDS_EXTRACT_CONCURRENCY');
-        if (!hasConcurrency) {
-          const setConcurrency = await confirm('Add EDS_EXTRACT_CONCURRENCY=8 to your profile?', false);
-          if (setConcurrency) {
-            await appendToProfile(profilePath, '# experiences performance\nexport EDS_EXTRACT_CONCURRENCY=8');
-            ok(`EDS_EXTRACT_CONCURRENCY=8 written to ${profilePath}`);
-          } else {
-            dim('     skipped');
-          }
-        } else {
-          ok('EDS_EXTRACT_CONCURRENCY — already set');
-        }
-      }
-
-      if (preference === 'customPrompts') {
-        info('Use your own select-agent or generate-components prompt files.');
-        const offerCustomPrompts = await confirm('Configure custom skill prompt paths?', false);
-        if (offerCustomPrompts) {
-          const stored = await readExperiencesCredentials();
-          const selectAnswer = await promptCustomSkillPath('select', stored.selectPromptPath);
-          const generateAnswer = await promptCustomSkillPath('generate', stored.generatePromptPath);
-          const updated: ExperiencesCredentials = { ...stored };
-          if (selectAnswer === null) delete updated.selectPromptPath;
-          else if (selectAnswer !== undefined) updated.selectPromptPath = selectAnswer;
-          if (generateAnswer === null) delete updated.generatePromptPath;
-          else if (generateAnswer !== undefined) updated.generatePromptPath = generateAnswer;
-          await writeExperiencesCredentials(updated);
-          ok(`Custom prompt paths saved to ${experiencesCredentialsPath()}`);
-        } else {
-          dim('     skipped');
-        }
-      }
-
-      if (preference === 'debug') {
-        info('Save verbose command traces for troubleshooting.');
-        const debugCreds = await readExperiencesCredentials();
-        const debugChoice = await promptDebugModePreference((q) => prompt(q), debugCreds.debug);
-        if (debugChoice !== (debugCreds.debug ?? false)) {
-          await writeExperiencesCredentials({ ...debugCreds, debug: debugChoice });
-          ok(`Debug logging default set to ${debugChoice ? 'ON' : 'OFF'}`);
-        } else {
-          dim('     unchanged');
-        }
-      }
-
-      if (preference === 'analytics') {
-        info('Choose whether to share anonymous CLI usage data.');
-        const analyticsCreds = await readExperiencesCredentials();
-        const analyticsDisabled = await promptAnalyticsPreference((q) => prompt(q), analyticsCreds.analyticsDisabled);
-        if (analyticsDisabled !== (analyticsCreds.analyticsDisabled ?? false)) {
-          await writeExperiencesCredentials({ ...analyticsCreds, analyticsDisabled });
-          ok(`Analytics ${analyticsDisabled ? 'disabled' : 'enabled'}`);
-        } else {
-          dim('     unchanged');
-        }
-      }
-
-      if (preference === 'noColor') {
-        info('Disable ANSI colors in CI or plain terminals.');
-        const setNoColor = await confirm('Add NO_COLOR=1 (disable colors) to your profile?', false);
-        if (setNoColor) {
-          const hasNoColor = await profileContains(profilePath, 'NO_COLOR');
-          if (!hasNoColor) {
-            await appendToProfile(profilePath, 'export NO_COLOR=1');
-            ok(`NO_COLOR=1 written to ${profilePath}`);
-          } else {
-            warn('NO_COLOR already present in profile — skipping');
-          }
-        } else {
-          dim('     skipped');
-        }
-      }
-    },
-  });
-}
-
-// ── Doctor checks ─────────────────────────────────────────────────────────────
 
 async function checkNode(): Promise<boolean> {
   section('Checking Node.js version');
@@ -1018,121 +403,63 @@ export function registerSetupCommand(program: Command): void {
     .option('--skip-agent', 'Skip the coding agent check')
     .option('--skip-credentials', 'Skip the Contentful credentials step')
     .option('--skip-optional', 'Skip optional quality-of-life extras')
-    .action(
-      async (opts: { skipBuild?: boolean; skipAgent?: boolean; skipCredentials?: boolean; skipOptional?: boolean }) => {
-        const isInteractive = isInteractivePromptSession();
-        const renderSetupScreen = (activeStep: number): void => {
-          process.stdout.write(formatSetupScreenTransition(isInteractive, activeStep));
-          const screen = SETUP_SCREENS[activeStep - 1]!;
-          process.stdout.write(formatSetupScreen(getCliVersion(), activeStep, screen.title, screen.kind));
-        };
+    .action(async (opts: SetupSkipFlags) => {
+      // Setup is Ink-only: there is no second non-interactive implementation.
+      if (!getInteractiveTerminalSupport().supported) {
+        process.stderr.write(`${SETUP_REQUIRES_TTY_MESSAGE}\n`);
+        process.exit(1);
+        return;
+      }
 
-        const pkgRoot = findPkgRoot();
-        const repoRoot = join(pkgRoot, '..', '..');
-        const profilePath = await detectShellProfile();
+      const { render } = await import('ink');
+      const { createElement } = await import('react');
+      const { SetupScreen } = await import('./tui/SetupScreen.js');
 
-        const results: { name: string; passed: boolean; required: boolean }[] = [];
+      const pkgRoot = findPkgRoot();
+      const repoRoot = join(pkgRoot, '..', '..');
+      const profilePath = await detectShellProfile();
 
-        // Screen 1: prerequisites run immediately.
-        renderSetupScreen(1);
-        const nodeOk = await setupNode();
-        results.push({ name: 'Node.js 24+', passed: nodeOk, required: true });
+      const completion: { outcome: SetupOutcome | null } = { outcome: null };
+      let unmountInk: (() => void) | null = null;
 
-        if (!nodeOk) {
-          process.stdout.write(
-            '\n\x1b[33mNode.js setup requires a shell restart. Re-run experiences setup afterwards.\x1b[0m\n\n',
-          );
-          process.exit(0);
-        }
+      const { waitUntilExit, unmount } = render(
+        createElement(SetupScreen, {
+          version: getCliVersion(),
+          repoRoot,
+          profilePath,
+          dependencies: createSetupScreenDependencies(),
+          skip: {
+            ...(opts.skipBuild !== undefined ? { skipBuild: opts.skipBuild } : {}),
+            ...(opts.skipAgent !== undefined ? { skipAgent: opts.skipAgent } : {}),
+            ...(opts.skipCredentials !== undefined ? { skipCredentials: opts.skipCredentials } : {}),
+            ...(opts.skipOptional !== undefined ? { skipOptional: opts.skipOptional } : {}),
+          },
+          offerDoctor: true,
+          onComplete: (result) => {
+            completion.outcome = result;
+            unmountInk?.();
+          },
+        }),
+      );
+      unmountInk = unmount;
+      await waitUntilExit();
 
-        const pnpmOk = await setupPnpm();
-        results.push({ name: 'pnpm', passed: pnpmOk, required: true });
+      const finished = completion.outcome;
+      if (!finished) {
+        process.exit(1);
+        return;
+      }
 
-        if (!opts.skipBuild && pnpmOk) {
-          const buildOk = await setupBuild(repoRoot);
-          results.push({ name: 'install & build', passed: buildOk, required: true });
-        } else if (opts.skipBuild) {
-          info('\nSkipping install + build (--skip-build)');
-        }
+      if (finished.runDoctor) {
+        const cliBin = process.argv[1] ?? fileURLToPath(import.meta.url);
+        const doctorResult = await runSpawn(process.execPath, [cliBin, 'doctor'], { env: process.env });
+        process.stdout.write(doctorResult.stdout);
+        process.stderr.write(doctorResult.stderr);
+        process.exit(doctorResult.exitCode);
+        return;
+      }
 
-        // Screen 2: coding agent.
-        renderSetupScreen(2);
-        if (!opts.skipAgent) {
-          const { agent, agentModel } = await setupAgent();
-          if (agent) {
-            const stored = await readExperiencesCredentials();
-            const { agentModel: _staleModel, ...storedWithoutModel } = stored;
-            await writeExperiencesCredentials({ ...storedWithoutModel, agent, ...(agentModel ? { agentModel } : {}) });
-          }
-          results.push({ name: 'coding agent', passed: !!agent, required: true });
-        } else {
-          info('\nSkipping agent check (--skip-agent)');
-          results.push({ name: 'coding agent', passed: true, required: false });
-        }
-
-        // Screen 3: Contentful credentials.
-        renderSetupScreen(3);
-        if (!opts.skipCredentials) {
-          const credsOk = await setupContentfulCredentials();
-          results.push({ name: 'Contentful credentials', passed: credsOk, required: false });
-        } else {
-          info('\nSkipping credentials (--skip-credentials)');
-        }
-
-        // Screen 4: preferences. Task 4 will replace this content with the picker.
-        renderSetupScreen(4);
-        if (!opts.skipOptional) {
-          await setupQoL(profilePath);
-        }
-
-        // ── Summary ────────────────────────────────────────────────────────────
-        section('Summary');
-
-        const requiredFailed = results.filter((r) => r.required && !r.passed);
-        const optionalFailed = results.filter((r) => !r.required && !r.passed);
-
-        for (const r of results) {
-          if (r.passed) {
-            ok(`${r.name}`);
-          } else if (r.required) {
-            fail(`${r.name} — required`);
-          } else {
-            warn(`${r.name} — optional`);
-          }
-        }
-
-        process.stdout.write('\n');
-
-        if (requiredFailed.length === 0) {
-          process.stdout.write('\x1b[32m\x1b[1m✓ Setup complete. You can now run: experiences import\x1b[0m\n');
-          if (optionalFailed.length > 0) {
-            process.stdout.write("  (Some optional steps were skipped — that's fine.)\n");
-          }
-        } else {
-          process.stdout.write(
-            `\x1b[33m\x1b[1m⚠ ${requiredFailed.length} required step${requiredFailed.length === 1 ? '' : 's'} incomplete.\x1b[0m\n`,
-          );
-          process.stdout.write('  Complete the steps above, then re-run \x1b[1mexperiences setup\x1b[0m.\n');
-        }
-
-        // ── Offer experiences doctor ───────────────────────────────────────────────────
-        process.stdout.write('\n');
-        const runDoctor =
-          process.stdout.isTTY &&
-          (await confirm('Run experiences doctor now to verify your environment?', requiredFailed.length === 0));
-        if (runDoctor) {
-          process.stdout.write('\n');
-          const cliBin = process.argv[1] ?? fileURLToPath(import.meta.url);
-          const doctorResult = await runSpawn(process.execPath, [cliBin, 'doctor'], {
-            env: process.env,
-          });
-          process.stdout.write(doctorResult.stdout);
-          process.stderr.write(doctorResult.stderr);
-          process.exit(doctorResult.exitCode);
-        }
-
-        process.stdout.write('\nRun \x1b[1mexperiences doctor\x1b[0m at any time to re-check your environment.\n\n');
-        process.exit(requiredFailed.length === 0 ? 0 : 1);
-      },
-    );
+      process.stdout.write('\nRun \x1b[1mexperiences doctor\x1b[0m at any time to re-check your environment.\n\n');
+      process.exit(finished.exitCode);
+    });
 }
