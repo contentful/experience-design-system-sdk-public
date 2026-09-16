@@ -3017,6 +3017,36 @@ describe('generation cache', () => {
     });
   });
 
+  // node16/nodenext/bundler resolution requires the emitted `.js` extension
+  // in the specifier even for a `.ts` file — resolve it back to source.
+  it('loadComponentSourceRef resolves a TypeScript-ESM `.js` specifier to the `.ts` file on disk', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Badge.ts');
+      const typesPath = join(dir, 'Badge.types.ts');
+      await writeFile(componentPath, `import { BADGE_VARIANTS } from './Badge.types.js';\n`);
+      await writeFile(typesPath, `export const BADGE_VARIANTS = ['s', 'm', 'l', 'xl'] as const;\n`);
+
+      const ref = await loadComponentSourceRef('Badge', componentPath);
+      expect(ref.siblingFiles).toEqual([
+        { path: typesPath, content: `export const BADGE_VARIANTS = ['s', 'm', 'l', 'xl'] as const;\n` },
+      ]);
+    });
+  });
+
+  it('loadComponentSourceRef prefers a real `.js` file over the `.ts` rewrite when both exist', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Badge.ts');
+      await writeFile(componentPath, `import { x } from './helper.js';\n`);
+      await writeFile(join(dir, 'helper.js'), 'export const x = 1;\n');
+      await writeFile(join(dir, 'helper.ts'), 'export const x: number = 2;\n');
+
+      const ref = await loadComponentSourceRef('Badge', componentPath);
+      expect(ref.siblingFiles).toEqual([{ path: join(dir, 'helper.js'), content: 'export const x = 1;\n' }]);
+    });
+  });
+
   // A styles module's first 1,200 characters are imports and constants; the
   // line that decides enum-versus-token for a prop is almost never there.
   it('loadComponentSourceRef windows a sibling excerpt around the prop uses instead of taking the head of the file', async () => {
@@ -3039,6 +3069,149 @@ describe('generation cache', () => {
       expect(ref.siblingFiles?.[0].content).not.toContain('before0 = 0');
       expect(ref.siblingFiles?.[0].content.length).toBeLessThanOrEqual(1_200 + '\n/* truncated */'.length);
       expect(ref.usesNotShown).toBeUndefined();
+    });
+  });
+
+  // A prop typed as a named alias needs the alias's own declaration windowed
+  // in too, not just the prop name's use site.
+  it('loadComponentSourceRef windows the component source around the declaration of a prop type, not just the prop name', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Swatch.ts');
+      await writeFile(
+        componentPath,
+        [
+          "export type SwatchShape = 'rectangle' | undefined;",
+          exportedFiller('a'),
+          exportedFiller('b'),
+          exportedFiller('c'),
+          exportedFiller('d'),
+          exportedFiller('e'),
+          '  public shape: SwatchShape;',
+          exportedFiller('f'),
+        ].join('\n'),
+      );
+
+      const withoutTypes = await loadComponentSourceRef('Swatch', componentPath, ['shape']);
+      expect(withoutTypes.content).not.toContain("'rectangle'");
+
+      const withTypes = await loadComponentSourceRef('Swatch', componentPath, ['shape'], ['SwatchShape']);
+      expect(withTypes.content).toContain("export type SwatchShape = 'rectangle' | undefined;");
+    });
+  });
+
+  // A small type-declaring file is worth inlining whole, past the 1,200-char
+  // styles-module budget.
+  it('loadComponentSourceRef gives a sibling that declares a prop type the enlarged budget', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Badge.ts');
+      const typesPath = join(dir, 'Badge.types.ts');
+      await writeFile(componentPath, `import type { BadgeVariant } from './Badge.types.js';\n`);
+      // ~2,800 chars: over the styles-module budget, under the enlarged one.
+      const pad = Array.from({ length: 20 }, () => '// pad').join('\n');
+      const uses = Array.from({ length: 50 }, (_, i) => `export const k${i}: BadgeVariant = 'celery'; // variant`).join(
+        '\n',
+      );
+      await writeFile(typesPath, `export type BadgeVariant = 'celery' | 'fuchsia';\n${pad}\n${uses}\n`);
+
+      const withoutTypes = await loadComponentSourceRef('Badge', componentPath, ['variant']);
+      expect(withoutTypes.siblingFiles?.[0].content).not.toContain("'fuchsia'");
+
+      const withTypes = await loadComponentSourceRef('Badge', componentPath, ['variant'], ['BadgeVariant']);
+      expect(withTypes.siblingFiles?.[0].content).toContain("export type BadgeVariant = 'celery' | 'fuchsia';");
+      expect(withTypes.siblingFiles?.[0].content.length).toBeLessThanOrEqual(4_000 + '\n/* truncated */'.length);
+    });
+  });
+
+  it('loadComponentSourceRef enlarges the budget for at most two type-declaring siblings', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Badge.ts');
+      const names = ['One', 'Two', 'Three'];
+      await writeFile(
+        componentPath,
+        names.map((n) => `import type { Kind${n} } from './Kind${n}.js';`).join('\n') + '\n',
+      );
+      for (const n of names) {
+        // Every line mentions the type, so the excerpt fills whatever budget it
+        // is given and its length reports which budget that was.
+        const body = Array.from({ length: 200 }, (_, i) => `export const k${i}: Kind${n} = 'celery';`).join('\n');
+        await writeFile(join(dir, `Kind${n}.ts`), `export type Kind${n} = 'celery';\n${body}\n`);
+      }
+
+      const ref = await loadComponentSourceRef(
+        'Badge',
+        componentPath,
+        ['variant'],
+        names.map((n) => `Kind${n}`),
+      );
+      const lengths = (ref.siblingFiles ?? []).map((f) => f.content.length).sort((a, b) => b - a);
+      expect(lengths).toHaveLength(3);
+      expect(lengths.filter((l) => l > 1_200 + 32)).toHaveLength(2);
+      expect(lengths[2]).toBeLessThanOrEqual(1_200 + 32);
+    });
+  });
+
+  // A type name nothing in hand declares (e.g. `react`'s `MouseEventHandler`)
+  // must not open a window at all.
+  it('loadComponentSourceRef does not window the component source on a type name that no file in hand declares', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Button.tsx');
+      await writeFile(
+        componentPath,
+        [
+          "import type { MouseEventHandler } from 'react';",
+          exportedFiller('a'),
+          exportedFiller('b'),
+          exportedFiller('c'),
+          exportedFiller('d'),
+          exportedFiller('e'),
+          '  onClick?: MouseEventHandler<HTMLElement>;',
+          exportedFiller('f'),
+        ].join('\n'),
+      );
+
+      const ref = await loadComponentSourceRef(
+        'Button',
+        componentPath,
+        ['onClick'],
+        ['MouseEventHandler<HTMLElement>'],
+      );
+      expect(ref.content).toContain('onClick?: MouseEventHandler<HTMLElement>');
+      expect(ref.content).not.toContain("from 'react'");
+    });
+  });
+
+  // A declared name is a search name regardless of case (e.g. a lowercase
+  // `const`, not just a `type`).
+  it('loadComponentSourceRef windows the component source on a lowercase declared name from a prop type', async () => {
+    await withTempDb(async (dbPath) => {
+      const dir = dirname(dbPath);
+      const componentPath = join(dir, 'Button.tsx');
+      await writeFile(
+        componentPath,
+        [
+          "const buttonVariants = cva('btn', buttonVariantConfig);",
+          exportedFiller('a'),
+          "const buttonVariantConfig = { variants: { intent: { primary: 'bg-blue', ghost: 'bg-none' } } };",
+          exportedFiller('b'),
+          exportedFiller('c'),
+          exportedFiller('d'),
+          exportedFiller('e'),
+          "  intent?: VariantProps<typeof buttonVariants>['intent'];",
+          exportedFiller('f'),
+        ].join('\n'),
+      );
+
+      const ref = await loadComponentSourceRef(
+        'Button',
+        componentPath,
+        ['intent'],
+        ["VariantProps<typeof buttonVariants>['intent']"],
+      );
+      expect(ref.content).toContain('const buttonVariants = cva(');
     });
   });
 
