@@ -444,73 +444,88 @@ describe('SetupScreen', () => {
     expect(writeCredentials).toHaveBeenCalledWith(expect.objectContaining({ cmaToken: 'CFPAT-bracketed' }));
   });
 
-  it('renders preferences as a toggleable checkbox list', async () => {
-    const { lastFrame } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
+  it('walks every preference in order without asking which to configure', async () => {
+    const { lastFrame, frames } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
 
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Choose preferences to configure'),
+      (f) => f.includes('Enable AI auto-filter'),
     );
 
-    expect(frame).toContain('❯ ◯ AI auto-filter');
-    expect(frame).toContain('◯ Disable terminal colors');
-    expect(frame).toContain('Space to toggle');
-    expect(frame).not.toContain('[all] Configure all');
-    expect(frame).not.toContain('for example, 1,3 or all');
+    expect(frame).not.toContain('Choose preferences to configure');
+    expect(frame).not.toContain('Space to toggle');
+    // The help text says what the setting is for, not which variable backs it.
+    expect(frames.join('\n')).toContain('Filters out components irrelevant to experience orchestration');
   });
 
-  it('skips every preference when Enter is pressed with nothing checked', async () => {
+  it('clears a finished preference from the screen before the next one', async () => {
     const { lastFrame, stdin } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
 
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Choose preferences to configure'),
+      (f) => f.includes('Filters out components irrelevant'),
     );
-    stdin.write('\r');
+    await answer(stdin, '');
 
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Summary'),
+      (f) => f.includes('Analyzes more components at once'),
     );
-    expect(frame).toContain('– Preferences — skipped');
+    expect(frame).not.toContain('Filters out components irrelevant');
   });
 
-  it('toggles every preference on with a and off again', async () => {
+  it('keeps both custom prompt paths on the page that offered them', async () => {
     const { lastFrame, stdin } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
 
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Choose preferences to configure'),
+      (f) => f.includes('Enable AI auto-filter'),
     );
-    stdin.write('a');
-    const allOn = await waitForFrame(
+    await answer(stdin, '');
+    await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('◉ Disable terminal colors'),
+      (f) => f.includes('Speed up component analysis'),
     );
-    expect(allOn).toContain('◉ AI auto-filter');
-
-    stdin.write('a');
-    const allOff = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('◯ Disable terminal colors'),
-    );
-    expect(allOff).toContain('◯ AI auto-filter');
-  });
-
-  it('moves the highlight with the arrow keys', async () => {
-    const { lastFrame, stdin } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
+    await answer(stdin, 'n');
 
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('❯ ◯ AI auto-filter'),
+      (f) => f.includes('Use your own prompt files'),
     );
-    stdin.write('\x1b[B');
+    await answer(stdin, 'y');
 
-    const frame = await waitForFrame(
+    const selectFrame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('❯ ◯ Performance concurrency'),
+      (f) => f.includes('Custom select'),
     );
-    expect(frame).toContain('❯ ◯ Performance concurrency');
+    expect(selectFrame).toContain('Replaces the built-in instructions');
+    expect(selectFrame).not.toContain('Analyzes more components at once');
+    await answer(stdin, '/tmp/select.md');
+
+    const generateFrame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Custom generate'),
+    );
+    expect(generateFrame).toContain('Replaces the built-in instructions');
+  });
+
+  it('describes the profile settings by effect rather than by variable name', async () => {
+    const { lastFrame, stdin, frames } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
+
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Enable AI auto-filter'),
+    );
+    await answer(stdin, '');
+
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Speed up component analysis on this machine?'),
+    );
+
+    const history = frames.join('\n');
+    expect(history).not.toContain('EDS_EXTRACT_CONCURRENCY=8 to your profile');
+    expect(history).not.toContain('NO_COLOR=1 (disable colors)');
   });
 
   it('records configured preferences in the summary', async () => {
@@ -522,20 +537,23 @@ describe('SetupScreen', () => {
 
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Choose preferences to configure'),
-    );
-    stdin.write(' ');
-    await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('◉ AI auto-filter'),
-    );
-    stdin.write('\r');
-
-    await waitForFrame(
-      () => lastFrame(),
       (f) => f.includes('Enable AI auto-filter'),
     );
     await answer(stdin, 'n');
+
+    for (const question of [
+      'Speed up component analysis',
+      'Use your own prompt files',
+      'Enable debug logging',
+      'analytics',
+      'Turn off colored output',
+    ]) {
+      await waitForFrame(
+        () => lastFrame(),
+        (f) => f.includes(question),
+      );
+      await answer(stdin, '');
+    }
 
     const frame = await waitForFrame(
       () => lastFrame(),

@@ -6,7 +6,7 @@ export async function promptBooleanPreference(
 ): Promise<boolean> {
   const value = current ?? defaultValue;
   const hint = value ? '[Y/n]' : '[y/N]';
-  const answer = (await ask(`  ${question} ${hint} `)).trim().toLowerCase();
+  const answer = (await ask(`${question} ${hint} `)).trim().toLowerCase();
   if (answer === '') return value;
   if (answer.startsWith('y')) return true;
   if (answer.startsWith('n')) return false;
