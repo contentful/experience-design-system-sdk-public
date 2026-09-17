@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import figures from 'figures';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { Box, Text, useStdout } from 'ink';
@@ -1721,7 +1722,7 @@ export function GenerateReviewStep({
           const isCursor = idx === breakCursor;
           return (
             <Text key={`break-${idx}`} inverse={isCursor}>
-              {`${isCursor ? '▶' : ' '} remove '${edge.toComponent}' from ${edge.fromComponent}.$slots.${edge.slotName}.$allowedComponents`}
+              {`${isCursor ? figures.pointer : ' '} remove '${edge.toComponent}' from ${edge.fromComponent}.$slots.${edge.slotName}.$allowedComponents`}
             </Text>
           );
         })}
@@ -1913,7 +1914,7 @@ export function GenerateReviewStep({
                 key={`cyc-h-${idx}`}
                 bold
                 inverse={isCursor}
-              >{`${isCursor ? '▶' : ' '} Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
+              >{`${isCursor ? figures.pointer : ' '} Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
             );
             const segs = formatCyclePathSegments(cycle, 16);
             lines.push(

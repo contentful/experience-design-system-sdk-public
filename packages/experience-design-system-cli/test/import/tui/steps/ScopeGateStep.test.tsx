@@ -1992,10 +1992,10 @@ describe('FB2 — cursor + selection coherence under active category filters', (
   const cursorRowLabel = (frame: string): string | undefined => {
     const line = stripAnsi(frame)
       .split('\n')
-      .find((l) => l.includes('▶'));
+      .find((l) => l.includes('❯'));
     if (!line) return undefined;
     return line
-      .replace(/[▶✓✗×⚠▸▾├└─│\[\] ]/g, ' ')
+      .replace(/[❯✓✗×⚠▸▾├└─│\[\] ]/g, ' ')
       .replace(/\(cycle\)/g, '')
       .replace(/\s+/g, ' ')
       .trim();
