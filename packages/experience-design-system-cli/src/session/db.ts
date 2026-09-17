@@ -6,8 +6,8 @@ import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { escapeForRegExp, excerptAroundNames } from './source-excerpt.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types.js';
-import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
-import type { ToolCall, TokenToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
+import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
+import type { ToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
 import type { SlotCycle, SlotEdge } from '../analyze/cycle-detection.js';
 import { deriveComponentId } from './core/components/derive-component-id.js';
@@ -21,11 +21,28 @@ import { updateSessionTimestamp } from './repositories/sessions/write.js';
 import { getSessionIdForStep } from './repositories/steps/read.js';
 import { createPendingStep, updatePendingStepsToInterrupted, updateStepStatus } from './repositories/steps/write.js';
 import { getOrCreateSessionForCommand, type SessionResolution } from './services/session-resolver.js';
+import { getRawTokenNamePaths, type RawTokenNamePathSource } from './repositories/tokens/read.js';
+import { type RawPropTokenPathSource } from './repositories/tokens/write.js';
 
 export { deriveComponentId } from './core/components/derive-component-id.js';
 export { hashComponentShape as computeComponentInputHash } from './core/components/hash-component-shape.js';
 export { hashTokenContent as computeTokenInputHash } from './core/tokens/hash-token-content.js';
 export { mapContentfulTypeToCdfType, resolveCdfCategory } from './core/cdf/cdf-mappers.js';
+
+// Tokens — repositories/tokens/{read,write}.ts and services/tokens/*
+export {
+  getDtcgTokensForSession as loadDTCGTokens,
+  getRawTokenNamePaths as loadRawTokenNamePaths,
+  getRawTokenNamePathRows as loadRawTokenNamePathRows,
+  type RawTokenNamePaths,
+  type RawTokenNamePathSource,
+  type RawTokenNamePath,
+} from './repositories/tokens/read.js';
+export { type RawPropTokenPathSource } from './repositories/tokens/write.js';
+export { storeDtcgTokens as storeDTCGTokens } from './services/tokens/store-dtcg-tokens.js';
+export { applyTokenToolCalls, type ApplyTokenToolCallsResult } from './services/tokens/apply-tool-calls.js';
+export { replaceRawTokenNamePaths } from './services/tokens/replace-raw-token-name-paths.js';
+export { replaceRawPropTokenPaths } from './services/tokens/replace-raw-prop-token-paths.js';
 
 export type StepStatus = 'pending' | 'complete' | 'failed' | 'interrupted';
 export type CommandName =
@@ -533,104 +550,6 @@ function applyDbMigrations(db: DatabaseSync): void {
         PRIMARY KEY (input_hash, cli_version)
       );
     `);
-  }
-}
-
-/** An exact source token reference paired with its canonical DTCG path. */
-export type RawTokenNamePaths = Record<string, string>;
-export type RawTokenNamePathSource = 'automatic' | 'manual';
-
-export interface RawTokenNamePath {
-  rawName: string;
-  path: string;
-  source: RawTokenNamePathSource;
-}
-
-/**
- * Replaces the session's exact source-reference-to-DTCG-path sidecar.
- * Source references are retained verbatim; normalisation belongs to the
- * deterministic resolver, not to persistence or CDF emission.
- */
-export function replaceRawTokenNamePaths(
-  db: DatabaseSync,
-  sessionId: string,
-  tokenNamePaths: RawTokenNamePaths,
-  source: RawTokenNamePathSource = 'automatic',
-): void {
-  const entries = Object.entries(tokenNamePaths);
-  const deletePaths = db.prepare('DELETE FROM raw_token_name_paths WHERE session_id = ? AND source = ?');
-  const insertPath = db.prepare(
-    'INSERT OR IGNORE INTO raw_token_name_paths (session_id, raw_name, path, source) VALUES (?, ?, ?, ?)',
-  );
-  const deleteAutomaticByName = db.prepare(
-    "DELETE FROM raw_token_name_paths WHERE session_id = ? AND raw_name = ? AND source = 'automatic'",
-  );
-
-  db.exec('BEGIN');
-  try {
-    deletePaths.run(sessionId, source);
-    for (const [rawName, path] of entries) {
-      if (source === 'manual') deleteAutomaticByName.run(sessionId, rawName);
-      insertPath.run(sessionId, rawName, path, source);
-    }
-    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), sessionId);
-    db.exec('COMMIT');
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
-  }
-}
-
-/** Loads the exact source-reference-to-DTCG-path sidecar for a session. */
-export function loadRawTokenNamePaths(db: DatabaseSync, sessionId: string): RawTokenNamePaths {
-  const rows = db
-    .prepare('SELECT raw_name, path FROM raw_token_name_paths WHERE session_id = ? ORDER BY raw_name')
-    .all(sessionId) as Array<{ raw_name: string; path: string }>;
-  return Object.fromEntries(rows.map((row) => [row.raw_name, row.path]));
-}
-
-export function loadRawTokenNamePathRows(db: DatabaseSync, sessionId: string): RawTokenNamePath[] {
-  return (
-    db
-      .prepare('SELECT raw_name, path, source FROM raw_token_name_paths WHERE session_id = ? ORDER BY raw_name')
-      .all(sessionId) as Array<{ raw_name: string; path: string; source: RawTokenNamePathSource }>
-  ).map((row) => ({ rawName: row.raw_name, path: row.path, source: row.source }));
-}
-
-/**
- * Where a prop's token-path list came from. 'agent' is a map-tokens suggestion,
- * which a later run of that step may revise. 'review' is a person's decision in
- * the review editor, which a re-run must leave alone.
- */
-export type RawPropTokenPathSource = 'agent' | 'review';
-
-export function replaceRawPropTokenPaths(
-  db: DatabaseSync,
-  sessionId: string,
-  componentId: string,
-  propName: string,
-  paths: string[],
-  source: RawPropTokenPathSource,
-): void {
-  const deletePaths = db.prepare(
-    `DELETE FROM raw_prop_token_paths
-     WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
-  );
-  const insertPath = db.prepare(
-    `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, source, position, path)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  );
-
-  db.exec('BEGIN');
-  try {
-    deletePaths.run(sessionId, componentId, propName);
-    paths.forEach((path, position) => {
-      insertPath.run(sessionId, componentId, propName, source, position, path);
-    });
-    db.exec('COMMIT');
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
   }
 }
 
@@ -1901,7 +1820,7 @@ export function loadCDFComponents(
   // The extracted source default stays in raw_props. This sidecar is only
   // consulted for CDF projection, after confirming it still names a matching
   // DTCG leaf in this session.
-  const resolvedDefaultPaths = loadRawTokenNamePaths(db, sessionId);
+  const resolvedDefaultPaths = getRawTokenNamePaths(db, sessionId);
   const tokenTypeByPath = new Map(
     (
       db.prepare('SELECT path, type FROM raw_tokens WHERE session_id = ?').all(sessionId) as Array<{
@@ -2069,126 +1988,6 @@ export function applyScopeDecisions(
     );
   }
   db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
-}
-
-export function storeDTCGTokens(
-  db: DatabaseSync,
-  sessionId: string,
-  groups: DTCGTokenGroup[],
-  tokens: DTCGTokenEntry[],
-): void {
-  const now = new Date().toISOString();
-
-  db.exec('BEGIN');
-  try {
-    db.prepare('DELETE FROM raw_token_groups WHERE session_id = ?').run(sessionId);
-    db.prepare('DELETE FROM raw_tokens WHERE session_id = ?').run(sessionId);
-
-    const insertGroup = db.prepare(`INSERT INTO raw_token_groups (session_id, path, description) VALUES (?, ?, ?)`);
-    for (const group of groups) {
-      insertGroup.run(sessionId, group.path, group.$description ?? null);
-    }
-
-    const insertToken = db.prepare(
-      `INSERT INTO raw_tokens (session_id, path, type, value, description) VALUES (?, ?, ?, ?, ?)`,
-    );
-    for (const token of tokens) {
-      insertToken.run(sessionId, token.path, token.$type, JSON.stringify(token.$value), token.$description ?? null);
-    }
-
-    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
-    db.exec('COMMIT');
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
-  }
-}
-
-export interface ApplyTokenToolCallsResult {
-  tokens: number;
-  groups: number;
-  warnings: string[];
-}
-
-export function applyTokenToolCalls(
-  db: DatabaseSync,
-  sessionId: string,
-  calls: TokenToolCall[],
-  incomingWarnings: string[],
-): ApplyTokenToolCallsResult {
-  const now = new Date().toISOString();
-  const warnings = [...incomingWarnings];
-  let tokens = 0;
-  let groups = 0;
-
-  const upsertToken = db.prepare(
-    `INSERT INTO raw_tokens (session_id, path, type, value, description) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(session_id, path) DO UPDATE SET type = excluded.type, value = excluded.value, description = excluded.description`,
-  );
-  const upsertGroup = db.prepare(
-    `INSERT INTO raw_token_groups (session_id, path, description) VALUES (?, ?, ?)
-     ON CONFLICT(session_id, path) DO UPDATE SET description = excluded.description`,
-  );
-
-  db.exec('BEGIN');
-  try {
-    for (const call of calls) {
-      if (call.tool === 'set_token') {
-        upsertToken.run(sessionId, call.path, call.type, JSON.stringify(call.value), call.description ?? null);
-        tokens++;
-      } else if (call.tool === 'set_group') {
-        upsertGroup.run(sessionId, call.path, call.description ?? null);
-        groups++;
-      }
-    }
-    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
-    db.exec('COMMIT');
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
-  }
-
-  return { tokens, groups, warnings };
-}
-
-export function loadDTCGTokens(
-  db: DatabaseSync,
-  sessionId: string,
-): { groups: DTCGTokenGroup[]; tokens: DTCGTokenEntry[] } {
-  const groupRows = db
-    .prepare('SELECT path, description FROM raw_token_groups WHERE session_id = ? ORDER BY path')
-    .all(sessionId) as Array<{ path: string; description: string | null }>;
-
-  const tokenRows = db
-    .prepare('SELECT path, type, value, description FROM raw_tokens WHERE session_id = ? ORDER BY path')
-    .all(sessionId) as Array<{
-    path: string;
-    type: string;
-    value: string;
-    description: string | null;
-  }>;
-
-  const groups: DTCGTokenGroup[] = groupRows.map((r) => {
-    const prefix = `${r.path}.`;
-    const tokenIds = tokenRows
-      .filter((t) => t.path.startsWith(prefix) && !t.path.slice(prefix.length).includes('.'))
-      .map((t) => t.path);
-    const g: DTCGTokenGroup = { path: r.path, tokenIds };
-    if (r.description !== null) g.$description = r.description;
-    return g;
-  });
-
-  const tokens: DTCGTokenEntry[] = tokenRows.map((r) => {
-    const t: DTCGTokenEntry = {
-      path: r.path,
-      $type: r.type as DTCGTokenEntry['$type'],
-      $value: JSON.parse(r.value) as unknown,
-    };
-    if (r.description !== null) t.$description = r.description;
-    return t;
-  });
-
-  return { groups, tokens };
 }
 
 export function findLatestSessionForCommand(db: DatabaseSync, command: CommandName): string | null {
