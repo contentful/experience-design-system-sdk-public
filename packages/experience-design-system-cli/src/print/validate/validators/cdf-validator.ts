@@ -1,6 +1,6 @@
-import { readFile } from 'node:fs/promises';
 import { validateCDF } from '@contentful/experience-design-system-types';
 import type { ValidationDiagnostic, ValidationResult } from './format-errors.js';
+import { readJsonFile } from './read-json-file.js';
 
 function extractValue(input: unknown, path: string): string | undefined {
   if (path === '/') return undefined;
@@ -67,27 +67,10 @@ function rewriteDiagnostic(
 }
 
 export async function validateCDFFile(filePath: string): Promise<ValidationResult> {
-  let content: string;
-  try {
-    content = await readFile(filePath, 'utf-8');
-  } catch (err) {
-    return {
-      valid: false,
-      summary: '',
-      diagnostics: [{ path: filePath, message: (err as Error).message }],
-    };
-  }
+  const readResult = await readJsonFile(filePath);
+  if (!readResult.ok) return readResult.result;
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch (err) {
-    return {
-      valid: false,
-      summary: '',
-      diagnostics: [{ path: filePath, message: `Invalid JSON: ${(err as Error).message}` }],
-    };
-  }
+  const { value: parsed } = readResult;
 
   const cdfResult = validateCDF(parsed);
 
