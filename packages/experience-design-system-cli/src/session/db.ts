@@ -11,7 +11,7 @@ import type { ToolCall, TokenToolCall, ComponentSourceRef } from '@contentful/ex
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
 import type { SlotCycle, SlotEdge } from '../analyze/cycle-detection.js';
 import { deriveComponentId } from './core/components/component-id.js';
-import { mapServerTypeToCdfType, resolveCdfCategory } from './core/cdf/server-type-map.js';
+import { mapContentfulTypeToCdfType, resolveCdfCategory } from './core/cdf/contentful-type-map.js';
 import { groupBy } from './core/shared/group-by.js';
 import {
   findLatestSessionForCommand as findLatestSessionForCommandRepo,
@@ -25,7 +25,7 @@ import { resolveSession, type SessionResolution } from './services/session-resol
 export { deriveComponentId } from './core/components/component-id.js';
 export { computeComponentInputHash } from './core/components/input-hash.js';
 export { computeTokenInputHash } from './core/tokens/input-hash.js';
-export { mapServerTypeToCdfType, resolveCdfCategory } from './core/cdf/server-type-map.js';
+export { mapContentfulTypeToCdfType, resolveCdfCategory } from './core/cdf/contentful-type-map.js';
 
 export type StepStatus = 'pending' | 'complete' | 'failed' | 'interrupted';
 export type CommandName =
@@ -2289,7 +2289,7 @@ export function seedCDFFromPreviewResponse(
     const designProps = new Set(item.designProperties);
 
     for (const [propName, propSummary] of Object.entries(item.fullProperties)) {
-      const cdfType = mapServerTypeToCdfType(propSummary.type);
+      const cdfType = mapContentfulTypeToCdfType(propSummary.type);
       const cdfCategory = resolveCdfCategory(propSummary.category, propName, contentProps, designProps);
       const result = updateStmt.run(cdfType, cdfCategory, sessionId, localComponent.component_id, propName);
       totalSeeded += Number(result.changes);
@@ -2338,7 +2338,7 @@ export function seedDefaultsFromChangedItems(
         totalSeeded += Number(result.changes);
       }
 
-      const cdfType = mapServerTypeToCdfType(propSummary.type);
+      const cdfType = mapContentfulTypeToCdfType(propSummary.type);
       const cdfCategory = resolveCdfCategory(propSummary.category, propName, contentProps, designProps);
       const result = updateCDFStmt.run(cdfType, cdfCategory, sessionId, localComponent.component_id, propName);
       totalSeeded += Number(result.changes);
