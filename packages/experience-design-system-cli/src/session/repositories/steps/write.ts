@@ -1,11 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { CommandName } from '../../db.js';
 
-/**
- * Flip every step for this session+command that is still in the 'pending'
- * status to 'interrupted'. Called right before creating a fresh pending step
- * for the same command so we never leave zombie 'pending' rows behind.
- */
 export function updatePendingStepsToInterrupted(
   db: DatabaseSync,
   sessionId: string,
@@ -36,11 +31,6 @@ export function createPendingStep(
   return Number(result.lastInsertRowid);
 }
 
-/**
- * Set a step's terminal state (status = 'complete' | 'failed'), its outputs,
- * its error (if any), and `completed_at`. Called once when the step's work
- * has finished, successfully or not.
- */
 export function updateStepStatus(
   db: DatabaseSync,
   stepId: number,

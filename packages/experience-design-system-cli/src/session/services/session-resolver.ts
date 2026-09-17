@@ -11,14 +11,6 @@ export interface SessionResolution {
   isResumed: boolean;
 }
 
-/**
- * Decide which session the caller should operate on:
- *   - `sessionFlag === 'new'` or undefined → create a new session
- *   - explicit id → verify it exists and reuse it (throws if missing)
- *
- * `MatchHints` is accepted for signature stability (callers pass it today) but
- * is not currently used — hint-based session resumption was removed upstream.
- */
 export function getOrCreateSessionForCommand(
   db: DatabaseSync,
   sessionFlag: string | undefined,

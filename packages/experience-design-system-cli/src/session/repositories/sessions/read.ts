@@ -12,10 +12,6 @@ export function getSessionById(db: DatabaseSync, sessionId: string): { id: strin
   return row ?? null;
 }
 
-/**
- * Return the id of the most recent session whose `steps` table records a
- * successful ('complete') step for the given command, or null if none exists.
- */
 export function getLatestCompletedSessionForCommand(db: DatabaseSync, command: CommandName): string | null {
   const row = db
     .prepare(
