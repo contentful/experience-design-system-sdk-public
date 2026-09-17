@@ -8,6 +8,7 @@ import type {
 import { ServerPreviewView } from './ServerPreviewView.js';
 import { buildPostPushUrl } from '../../lib/contentful-urls.js';
 import { formatEdsiError } from '../../lib/error-parser.js';
+import { usePreviewConfirmationInput } from '../../import/tui/preview-confirmation-input.js';
 
 interface ServerPreviewConfirmProps {
   preview: ServerPreviewResponse;
@@ -31,14 +32,17 @@ export function ServerPreviewConfirm({
 }: ServerPreviewConfirmProps): React.ReactElement {
   const [allowDeletions, setAllowDeletions] = useState(fetchedAllowDeletions);
   const removedCount = preview.components.removed.length + preview.tokens.removed.length;
+  const handlePreviewInput = usePreviewConfirmationInput(
+    breakingWithImpact,
+    allowDeletions,
+    fetchedAllowDeletions,
+    removedCount,
+    onConfirm,
+    setAllowDeletions,
+  );
 
   useInput((input, key) => {
-    if (key.return) {
-      onConfirm(breakingWithImpact, allowDeletions);
-      return;
-    }
-    if ((input === 'x' || input === 'X') && fetchedAllowDeletions && removedCount > 0) {
-      setAllowDeletions((prev) => !prev);
+    if (handlePreviewInput(input, key)) {
       return;
     }
     if (key.escape || input === 'q') onCancel();

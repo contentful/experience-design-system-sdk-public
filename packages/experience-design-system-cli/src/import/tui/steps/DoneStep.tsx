@@ -3,6 +3,7 @@ import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import { buildPostPushUrl } from '../../../lib/contentful-urls.js';
+import { SpaceEnvironment } from '../components/SpaceEnvironment.js';
 
 type EntityResult = {
   created: number;
@@ -137,13 +138,7 @@ export function DoneStep({
         </Box>
       )}
 
-      <Box gap={1} marginTop={1}>
-        <Text dimColor>Space:</Text>
-        <Text>{spaceId}</Text>
-        <Text dimColor>/</Text>
-        <Text dimColor>Environment:</Text>
-        <Text>{environmentId}</Text>
-      </Box>
+      <SpaceEnvironment spaceId={spaceId} environmentId={environmentId} />
 
       {success && totalPushed > 0 && (
         <Box flexDirection="column" gap={1} marginTop={1}>

@@ -2,14 +2,41 @@ import React, { useState, useMemo } from 'react';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text, useStdout } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
-import type { ServerPreviewResponse, DesignTokenSummary } from '@contentful/experience-design-system-types';
+import type {
+  ChangeClassification,
+  ServerPreviewResponse,
+  DesignTokenSummary,
+} from '@contentful/experience-design-system-types';
 import { hasBreakingChangesWithImpact } from '../../../apply/manifest.js';
 import { computeComponentDiffLines } from './preview-diff.js';
+import { StepHeader } from '../components/StepHeader.js';
+import { SpaceEnvironment } from '../components/SpaceEnvironment.js';
+import { usePreviewConfirmationInput } from '../preview-confirmation-input.js';
 
 export interface PreviewDiffLine {
   key: string;
   color: string;
   text: string;
+}
+
+function appendChangedPreviewLine(
+  lines: PreviewDiffLine[],
+  keyPrefix: string,
+  name: string,
+  hasPendingDraftChanges: boolean,
+  changeClassification?: ChangeClassification,
+): void {
+  lines.push({
+    key: `${keyPrefix}-h-${name}`,
+    color: PALETTE.warning,
+    text: ` ~ ${name}${hasPendingDraftChanges ? ' ⚡ has pending draft changes' : ''}`,
+  });
+  if (changeClassification?.classification !== 'breaking') return;
+
+  const reasons = changeClassification.breakingChanges
+    .map((bc) => `${'slotId' in bc ? bc.slotId : bc.propertyId}: ${bc.reason}`)
+    .join(', ');
+  lines.push({ key: `${keyPrefix}-b-${name}`, color: PALETTE.error, text: ` ⚠ BREAKING: ${reasons}` });
 }
 
 export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDiffLine[] {
@@ -44,17 +71,7 @@ export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDi
   }
 
   for (const item of components.changed) {
-    lines.push({
-      key: `comp-h-${item.current.name}`,
-      color: PALETTE.warning,
-      text: ` ~ ${item.current.name}${item.hasPendingDraftChanges ? ' ⚡ has pending draft changes' : ''}`,
-    });
-    if (item.changeClassification?.classification === 'breaking') {
-      const reasons = item.changeClassification.breakingChanges
-        .map((bc) => `${'slotId' in bc ? bc.slotId : bc.propertyId}: ${bc.reason}`)
-        .join(', ');
-      lines.push({ key: `comp-b-${item.current.name}`, color: PALETTE.error, text: ` ⚠ BREAKING: ${reasons}` });
-    }
+    appendChangedPreviewLine(lines, 'comp', item.current.name, item.hasPendingDraftChanges, item.changeClassification);
     const diffLines = computeComponentDiffLines(
       item.current,
       item.proposed as unknown as Record<string, unknown>,
@@ -93,17 +110,7 @@ export function buildPreviewDiffLines(preview: ServerPreviewResponse): PreviewDi
   }
   for (const item of tokens.changed) {
     const tokenName = (item.current as DesignTokenSummary).name;
-    lines.push({
-      key: `tok-h-${tokenName}`,
-      color: PALETTE.warning,
-      text: ` ~ ${tokenName}${item.hasPendingDraftChanges ? ' ⚡ has pending draft changes' : ''}`,
-    });
-    if (item.changeClassification?.classification === 'breaking') {
-      const reasons = item.changeClassification.breakingChanges
-        .map((bc) => `${'slotId' in bc ? bc.slotId : bc.propertyId}: ${bc.reason}`)
-        .join(', ');
-      lines.push({ key: `tok-b-${tokenName}`, color: PALETTE.error, text: ` ⚠ BREAKING: ${reasons}` });
-    }
+    appendChangedPreviewLine(lines, 'tok', tokenName, item.hasPendingDraftChanges, item.changeClassification);
   }
 
   return lines;
@@ -162,14 +169,17 @@ export function WizardPreviewStep({
 
   const maxScroll = Math.max(0, allDiffLines.length - viewportHeight);
   const removedCount = preview.components.removed.length + preview.tokens.removed.length;
+  const handlePreviewInput = usePreviewConfirmationInput(
+    breakingWithImpact,
+    allowDeletions,
+    fetchedAllowDeletions,
+    removedCount,
+    onConfirm,
+    setAllowDeletions,
+  );
 
   useImmediateInput((input, key) => {
-    if (key.return) {
-      onConfirm(breakingWithImpact, allowDeletions);
-      return;
-    }
-    if ((input === 'x' || input === 'X') && fetchedAllowDeletions && removedCount > 0) {
-      setAllowDeletions((prev) => !prev);
+    if (handlePreviewInput(input, key)) {
       return;
     }
     if (input === 'd' || input === 'D') {
@@ -216,17 +226,7 @@ export function WizardPreviewStep({
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Box flexDirection="column" gap={0}>
-        <Text dimColor>{'─'.repeat(40)}</Text>
-        <Box gap={1}>
-          <Text bold>
-            Step {stepNumber} of {totalSteps}
-          </Text>
-          <Text bold>—</Text>
-          <Text bold>Push to Contentful</Text>
-        </Box>
-        <Text dimColor>{'─'.repeat(40)}</Text>
-      </Box>
+      <StepHeader stepNumber={stepNumber} totalSteps={totalSteps} title="Push to Contentful" />
 
       {hasAnything ? (
         <>
@@ -383,6 +383,8 @@ export function WizardPreviewStep({
           </Text>
         </Box>
       )}
+
+      <SpaceEnvironment spaceId={spaceId} environmentId={environmentId} />
 
       <Box gap={3} marginTop={1}>
         <Text dimColor>[Enter] Push to Contentful</Text>
