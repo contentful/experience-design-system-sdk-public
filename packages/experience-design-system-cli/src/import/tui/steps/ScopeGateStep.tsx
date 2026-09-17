@@ -1174,15 +1174,21 @@ export function computeColumnWindow(
   return { start, end, above: start, below: total - end };
 }
 
-function AddedComponentsColumn(props: {
+type AddedColumnEntry = { name: string; isCycle: boolean };
+
+type AddedColumnProps<T extends AddedColumnEntry> = {
+  title: string;
   width: number;
-  entries: AddedComponentEntry[];
+  entries: T[];
   cursor: number;
   focused: boolean;
   aiFlaggedByKey?: Map<string, boolean>;
   visibleCount: number;
-}): React.ReactElement {
-  const { width, entries, cursor, focused, aiFlaggedByKey, visibleCount } = props;
+  renderSuffix?: (entry: T, style: ReturnType<typeof sideColumnLabelStyle>) => React.ReactNode;
+};
+
+function AddedColumn<T extends AddedColumnEntry>(props: AddedColumnProps<T>): React.ReactElement {
+  const { title, width, entries, cursor, focused, aiFlaggedByKey, visibleCount, renderSuffix } = props;
   const reserveAiBadge = entries.some((e) => aiFlaggedByKey?.get(e.name) === true);
   const firstNonCycleIdx = entries.findIndex((e) => !e.isCycle);
   const window = computeColumnWindow(entries.length, cursor, Math.max(1, visibleCount));
@@ -1194,7 +1200,7 @@ function AddedComponentsColumn(props: {
       borderStyle="single"
       borderColor={focused ? PALETTE.inverse : undefined}
     >
-      <ColumnHeader title="Added components" width={width} focused={focused} />
+      <ColumnHeader title={title} width={width} focused={focused} />
       {entries.length === 0 ? (
         <Text dimColor>(none)</Text>
       ) : (
@@ -1249,6 +1255,7 @@ function AddedComponentsColumn(props: {
                   >
                     {' ' + entry.name}
                   </Text>
+                  {renderSuffix?.(entry, style)}
                 </Box>
               </React.Fragment>
             );
@@ -1260,6 +1267,17 @@ function AddedComponentsColumn(props: {
   );
 }
 
+function AddedComponentsColumn(props: {
+  width: number;
+  entries: AddedComponentEntry[];
+  cursor: number;
+  focused: boolean;
+  aiFlaggedByKey?: Map<string, boolean>;
+  visibleCount: number;
+}): React.ReactElement {
+  return <AddedColumn title="Added components" {...props} />;
+}
+
 function AddedGroupsColumn(props: {
   width: number;
   entries: AddedGroupEntry[];
@@ -1268,91 +1286,25 @@ function AddedGroupsColumn(props: {
   aiFlaggedByKey?: Map<string, boolean>;
   visibleCount: number;
 }): React.ReactElement {
-  const { width, entries, cursor, focused, aiFlaggedByKey, visibleCount } = props;
-  const reserveAiBadge = entries.some((g) => aiFlaggedByKey?.get(g.name) === true);
-  const firstNonCycleIdx = entries.findIndex((e) => !e.isCycle);
-  const window = computeColumnWindow(entries.length, cursor, Math.max(1, visibleCount));
   return (
-    <Box
-      flexDirection="column"
-      width={width}
-      flexShrink={0}
-      borderStyle="single"
-      borderColor={focused ? PALETTE.inverse : undefined}
-    >
-      <ColumnHeader title="Added groups" width={width} focused={focused} />
-      {entries.length === 0 ? (
-        <Text dimColor>(none)</Text>
-      ) : (
-        <>
-          {window.above > 0 && <Text dimColor>{`↑ ${window.above} more`}</Text>}
-          {entries.slice(window.start, window.end).map((g, vi) => {
-            const i = window.start + vi;
-            const isSelected = i === cursor;
-            const isCursor = focused && isSelected;
-            const suffix = ` (${g.depCount} dep${g.depCount === 1 ? '' : 's'})`;
-            const aiFlagged = aiFlaggedByKey?.get(g.name) === true;
-            const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
-            const style = sideColumnLabelStyle({
-              isCycle: g.isCycle,
-              isSelected,
-              focused,
-            });
-            return (
-              <React.Fragment key={g.name}>
-                {showSeparator && <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>}
-                <Box>
-                  {isCursor ? (
-                    <Text color={PALETTE.info} bold>
-                      {'▶'}
-                    </Text>
-                  ) : (
-                    <Text> </Text>
-                  )}
-                  {reserveAiBadge &&
-                    (aiFlagged ? (
-                      <Text color={PALETTE.warning} bold>
-                        {' [×]'}
-                      </Text>
-                    ) : (
-                      <Text>{'    '}</Text>
-                    ))}
-                  {g.isCycle && (
-                    <Text
-                      color={isCursor ? PALETTE.inverse : PALETTE.warning}
-                      bold
-                      inverse={isCursor}
-                      underline={style.nameUnderline}
-                    >
-                      {' ⚠'}
-                    </Text>
-                  )}
-                  <Text
-                    color={style.nameColor}
-                    bold={style.nameBold}
-                    inverse={style.nameInverse}
-                    underline={style.nameUnderline}
-                    wrap="truncate"
-                  >
-                    {' ' + g.name}
-                  </Text>
-                  <Text
-                    color={style.suffixColor}
-                    dimColor={style.suffixDim}
-                    inverse={style.suffixInverse}
-                    underline={style.suffixUnderline}
-                    bold={style.nameBold}
-                    wrap="truncate"
-                  >
-                    {suffix}
-                  </Text>
-                </Box>
-              </React.Fragment>
-            );
-          })}
-          {window.below > 0 && <Text dimColor>{`↓ ${window.below} more`}</Text>}
-        </>
-      )}
-    </Box>
+    <AddedColumn
+      title="Added groups"
+      {...props}
+      renderSuffix={(entry, style) => {
+        const suffix = ` (${entry.depCount} dep${entry.depCount === 1 ? '' : 's'})`;
+        return (
+          <Text
+            color={style.suffixColor}
+            dimColor={style.suffixDim}
+            inverse={style.suffixInverse}
+            underline={style.suffixUnderline}
+            bold={style.nameBold}
+            wrap="truncate"
+          >
+            {suffix}
+          </Text>
+        );
+      }}
+    />
   );
 }
