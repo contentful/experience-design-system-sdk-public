@@ -1,6 +1,6 @@
 import React, { createElement, useState } from 'react';
 import { render, useInput } from 'ink';
-import { access, readFile, readdir, stat } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Command } from 'commander';
 import {
@@ -39,6 +39,7 @@ import {
   recordContentfulContext,
 } from '../analytics/index.js';
 import type { CommandFailure } from '../analytics/index.js';
+import { pathExists } from '../lib/path-exists.js';
 
 async function die(message: string, fields: CommandFailure = {}): Promise<never> {
   process.stderr.write(`${message}\n`);
@@ -47,12 +48,6 @@ async function die(message: string, fields: CommandFailure = {}): Promise<never>
 
 function dieWithApiError(error: ApiError, verbose?: boolean): Promise<never> {
   return die(`Error: ${formatApiError(error, verbose)}`, failureFromApiError(error));
-}
-
-async function pathExists(p: string): Promise<boolean> {
-  return access(p)
-    .then(() => true)
-    .catch(() => false);
 }
 
 async function assertFileExists(flag: string, p: string): Promise<void> {

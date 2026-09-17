@@ -29,6 +29,29 @@ export type PickerDispatchDeps = {
   pickerPushRun?: typeof pickerPushRunFn;
 };
 
+export function buildPickerCredentialOptions(
+  opts: Pick<PickerDispatchOptions, 'spaceId' | 'environmentId' | 'cmaToken' | 'host' | 'force'>,
+): Pick<PickerDispatchOptions, 'spaceId' | 'environmentId' | 'cmaToken' | 'host' | 'force'> {
+  return {
+    ...(opts.spaceId ? { spaceId: opts.spaceId } : {}),
+    ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
+    ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
+    ...(opts.host ? { host: opts.host } : {}),
+    ...(opts.force ? { force: true } : {}),
+  };
+}
+
+export function buildPickerModifyOptions(
+  opts: Pick<PickerDispatchOptions, 'outDir' | 'overwrite' | 'saveAsNew' | 'force'>,
+): Pick<PickerDispatchOptions, 'outDir' | 'overwrite' | 'saveAsNew' | 'force'> {
+  return {
+    ...(opts.outDir ? { outDir: opts.outDir } : {}),
+    ...(opts.overwrite ? { overwrite: true } : {}),
+    ...(opts.saveAsNew ? { saveAsNew: true } : {}),
+    ...(opts.force ? { force: true } : {}),
+  };
+}
+
 // Route a resolved RunPickerSelection into replayRun / modifyRun / picker-push.
 // Extracted from command.ts so the dispatch decision is testable without an
 // Ink runtime and so the picker callback in command.ts is a simple
@@ -46,32 +69,21 @@ export async function dispatchPickerSelection(
     if (opts.interactive !== false && deps.pickerPushRun) {
       await deps.pickerPushRun({
         runIdOrPath: selection.runId,
-        ...(opts.spaceId ? { spaceId: opts.spaceId } : {}),
-        ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
-        ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
-        ...(opts.host ? { host: opts.host } : {}),
-        ...(opts.force ? { force: true } : {}),
+        ...buildPickerCredentialOptions(opts),
       });
       return;
     }
     await deps.replayRun({
       runIdOrPath: selection.runId,
-      ...(opts.spaceId ? { spaceId: opts.spaceId } : {}),
-      ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
-      ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
-      ...(opts.host ? { host: opts.host } : {}),
+      ...buildPickerCredentialOptions(opts),
       ...(opts.interactive !== undefined ? { interactive: opts.interactive } : {}),
-      ...(opts.force ? { force: true } : {}),
     });
     return;
   }
   if (selection.action === 'modify' && selection.runId) {
     await deps.modifyRun({
       runIdOrPath: selection.runId,
-      ...(opts.outDir ? { outDir: opts.outDir } : {}),
-      ...(opts.overwrite ? { overwrite: true } : {}),
-      ...(opts.saveAsNew ? { saveAsNew: true } : {}),
-      ...(opts.force ? { force: true } : {}),
+      ...buildPickerModifyOptions(opts),
     });
     return;
   }

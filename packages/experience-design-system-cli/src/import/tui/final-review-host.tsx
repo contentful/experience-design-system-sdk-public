@@ -4,23 +4,13 @@ import React from 'react';
 import { GenerateReviewStep } from './steps/GenerateReviewStep.js';
 import { AtomicGenerateReviewStep } from './steps/AtomicGenerateReviewStep.js';
 import type { CompositionMode } from '../../lib/composition-mode.js';
+import type { ReviewStepProps } from './review-step-props.js';
 
-export type FinalReviewHostProps = {
+export type FinalReviewHostProps = Omit<ReviewStepProps, 'extractSessionId'> & {
   extractSessionId: string | null;
-  tokenSessionId?: string | null;
   generatedCount: number;
   autoAccept: boolean;
   compositionMode?: CompositionMode;
-  onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
-  onQuit: () => void;
-  livePreview?: boolean;
-  spaceId?: string;
-  environmentId?: string;
-  cmaToken?: string;
-  host?: string;
-  tokensPath?: string;
-  initialFinalizeError?: string | null;
-  allowDeletions?: boolean;
 };
 
 export function FinalReviewHost({
