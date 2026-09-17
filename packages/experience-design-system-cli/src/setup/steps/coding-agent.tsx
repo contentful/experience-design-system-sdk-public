@@ -16,7 +16,7 @@ const PACKAGE_NAMES: Partial<Record<AgentName, string>> = {
   opencode: 'opencode-ai',
 };
 
-export const AGENT_HELP = 'Experiences import uses a coding agent to generate component definitions.';
+export const AGENT_HELP = 'Experiences import requires a coding agent to generate component definitions.';
 
 /** The value Select reports for the trailing Skip row, which no agent can collide with. */
 const SKIP_VALUE = '\u0000skip';

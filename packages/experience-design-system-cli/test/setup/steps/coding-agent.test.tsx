@@ -212,8 +212,8 @@ describe('CodingAgentScreen', () => {
     const { lastFrame } = setup(makeDeps());
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Experiences import uses a coding agent'),
+      (f) => f.includes('Experiences import requires a coding agent'),
     );
-    expect(frame).toContain('Experiences import uses a coding agent to generate component definitions.');
+    expect(frame).toContain('Experiences import requires a coding agent to generate component definitions.');
   });
 });

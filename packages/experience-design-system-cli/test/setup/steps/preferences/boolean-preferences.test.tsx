@@ -70,7 +70,7 @@ describe('AutoFilterScreen', () => {
       () => lastFrame(),
       (f) => f.includes('AI auto-filter'),
     );
-    await choose(stdin, lastFrame, 'Filter out irrelevant components');
+    await choose(stdin, lastFrame, 'Use AI to filter out irrelevant components');
 
     expect(write).toHaveBeenCalledWith(expect.objectContaining({ autoFilter: true }));
   });
