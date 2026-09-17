@@ -1,4 +1,5 @@
 import React from 'react';
+import figures from 'figures';
 import { PALETTE } from '../theme.js';
 import { Box, Text } from 'ink';
 
@@ -28,7 +29,7 @@ export interface GotoBannerProps {
   /**
    * Escape hatch for feature-specific row rendering. Receives the row, its
    * index into `rows`, and whether the cursor is on it. Falls back to a
-   * generic ▶-pointer row.
+   * generic pointer row.
    */
   renderRow?: (row: GotoRow, index: number, isCursor: boolean) => React.ReactElement;
 }
@@ -49,7 +50,7 @@ function defaultRenderRow(row: GotoRow, index: number, isCursor: boolean): React
     <Text key={index}>
       {isCursor ? (
         <Text color={PALETTE.info} bold>
-          {'▶'}
+          {figures.pointer}
         </Text>
       ) : (
         <Text> </Text>
