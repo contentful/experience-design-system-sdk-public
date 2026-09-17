@@ -37,9 +37,7 @@ import {
 import { formatCyclePathSegments, findSlotCycles, suggestCycleBreakEdge } from '../../../analyze/cycle-detection.js';
 import { followCycleScroll } from '../cycle-panel-scroll.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
-import type { PreviewAnnotation, ReviewComponentStatus } from '../../../analyze/select/types.js';
-import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
-import { useLivePreview } from '../useLivePreview.js';
+import type { ReviewComponentStatus } from '../../../analyze/select/types.js';
 import { useFinalizePreview } from '../useFinalizePreview.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
 import {
@@ -82,6 +80,8 @@ import {
 } from '../hooks/useReviewSession.js';
 import { useReviewEditor } from '../hooks/useReviewEditor.js';
 import { handleJsonPanelInput, handleRationalePanelInput, handleTokenReviewInput } from '../hooks/review-input.js';
+import { useReviewPreview } from '../hooks/useReviewPreview.js';
+import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
 
 type GenerateReviewStepProps = ReviewStepProps;
 
@@ -360,8 +360,6 @@ export function GenerateReviewStep({
   const [showFinalize, setShowFinalize] = useState(false);
   const [showQuit, setShowQuit] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(initialFinalizeError);
-  const [previewAnnotations, setPreviewAnnotations] = useState<Map<string, PreviewAnnotation>>(new Map());
-  const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
   const [removedBannerCollapsed, setRemovedBannerCollapsed] = useState(false);
   const removedBannerDefaultedRef = useRef(false);
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
@@ -421,52 +419,28 @@ export function GenerateReviewStep({
 
   const [showReloadDialog, setShowReloadDialog] = useState(false);
 
-  const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
-    if (!response) return;
-    setPreviewAnnotations(
-      applyPreviewAnnotations(
-        response,
-        components.map((c) => c.key),
-      ),
-    );
-    const nextRemoved = response.components.removed ?? [];
-    setRemovedComponents(nextRemoved);
-    if (!removedBannerDefaultedRef.current && nextRemoved.length > 0) {
-      removedBannerDefaultedRef.current = true;
-      setRemovedBannerCollapsed(nextRemoved.length > 5);
-    }
-    setBreakingChanges(deriveBreakingChanges(response));
-  };
-
   const acceptedCountForPreview = components.filter((c) => c.status === 'accepted').length;
-  const livePreviewHook = useLivePreview({
-    enabled: livePreview,
+  const { previewAnnotations, removedComponents, livePreviewHook, livePreviewSpinner } = useReviewPreview({
+    components,
+    loading,
+    livePreview,
     sessionId: extractSessionId,
     tokensPath,
     spaceId,
     environmentId,
     cmaToken,
     host,
-    onResult: handleLivePreviewResult,
     deleteAllComponents: acceptedCountForPreview === 0,
     allowDeletions,
+    onResult: (response) => {
+      const nextRemoved = response.components.removed ?? [];
+      if (!removedBannerDefaultedRef.current && nextRemoved.length > 0) {
+        removedBannerDefaultedRef.current = true;
+        setRemovedBannerCollapsed(nextRemoved.length > 5);
+      }
+      setBreakingChanges(deriveBreakingChanges(response));
+    },
   });
-
-  const SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
-  const [spinnerTick, setSpinnerTick] = useState(0);
-  useEffect(() => {
-    if (livePreviewHook.status !== 'running') return;
-    const id = setInterval(() => setSpinnerTick((t) => t + 1), 80);
-    return () => clearInterval(id);
-  }, [livePreviewHook.status]);
-  const livePreviewSpinner = SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length];
-
-  useEffect(() => {
-    if (loading) return;
-    if (!livePreview) return;
-    if (components.length === 0) return;
-    livePreviewHook.trigger();
-  }, [loading]);
 
   const finalizePreview = useFinalizePreview({
     open: showFinalize,
@@ -1633,36 +1607,15 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {!dialogOpen &&
-        livePreview &&
-        (() => {
-          const counts = { new: 0, changed: 0, removed: 0, breaking: 0 };
-          for (const v of previewAnnotations.values()) {
-            counts[v] = (counts[v] ?? 0) + 1;
-          }
-          const hasCounts = counts.new + counts.changed + counts.removed + counts.breaking > 0;
-          if (livePreviewHook.disabled) {
-            return <Text dimColor>{'Preview: disabled (creds rejected)'}</Text>;
-          }
-          if (livePreviewHook.status === 'running' && !hasCounts) {
-            return <Text dimColor>{`Preview: ${livePreviewSpinner} running...`}</Text>;
-          }
-          if (!hasCounts) return null;
-          return (
-            <Box>
-              <Text>{'Preview: '}</Text>
-              <Text color={PALETTE.success}>{`${counts.new} new`}</Text>
-              <Text>{' · '}</Text>
-              <Text color={PALETTE.warning}>{`${counts.changed} changed`}</Text>
-              <Text>{' · '}</Text>
-              <Text dimColor>{`${counts.removed} removed`}</Text>
-              <Text>{' · '}</Text>
-              <Text color={PALETTE.error} bold>
-                {`${counts.breaking} breaking`}
-              </Text>
-            </Box>
-          );
-        })()}
+      {!dialogOpen && (
+        <LivePreviewSummary
+          enabled={livePreview}
+          previewAnnotations={previewAnnotations}
+          status={livePreviewHook.status}
+          disabled={livePreviewHook.disabled}
+          spinner={livePreviewSpinner}
+        />
+      )}
       {!dialogOpen &&
         autoRejected.length > 0 &&
         (() => {

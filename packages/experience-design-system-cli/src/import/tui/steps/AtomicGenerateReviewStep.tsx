@@ -1,10 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
-import type {
-  CDFComponentEntry,
-  ComponentTypeSummary,
-  ServerPreviewResponse,
-} from '@contentful/experience-design-system-types';
+import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { Sidebar } from '../../../analyze/select/tui/components/Sidebar.js';
 import { FieldEditor } from '../../../analyze/select/tui/components/FieldEditor.js';
 import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
@@ -12,18 +8,13 @@ import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeD
 import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
-import type {
-  PreviewAnnotation,
-  ReviewComponentStatus,
-  ReviewComponentSummary,
-} from '../../../analyze/select/types.js';
-import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
+import type { ReviewComponentStatus, ReviewComponentSummary } from '../../../analyze/select/types.js';
 import type { HistorySnapshot } from '../history.js';
-import { useLivePreview } from '../useLivePreview.js';
 import { useFinalizePreview } from '../useFinalizePreview.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { ReviewDetailsPanel } from './review-details-panel.js';
+import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
 import { handleJsonPanelInput, handleRationalePanelInput, handleTokenReviewInput } from '../hooks/review-input.js';
 import {
   createReviewHistorySnapshot,
@@ -36,6 +27,7 @@ import {
   type ReviewSessionLoadResult,
 } from '../hooks/useReviewSession.js';
 import { useReviewEditor } from '../hooks/useReviewEditor.js';
+import { useReviewPreview } from '../hooks/useReviewPreview.js';
 
 type GenerateReviewStepProps = {
   extractSessionId: string;
@@ -135,14 +127,9 @@ export function AtomicGenerateReviewStep({
   const [finalizeError, setFinalizeError] = useState<string | null>(initialFinalizeError);
   // Feature 1: per-component review metadata (rationale + source location)
   // for the currently-selected component. Reloaded when selection changes.
-  // Feature 2: per-component preview annotations refreshed after every
-  // FieldEditor save via the useLivePreview hook below. Empty when live
-  // preview is disabled, when creds are missing, or before the first response.
-  const [previewAnnotations, setPreviewAnnotations] = useState<Map<string, PreviewAnnotation>>(new Map());
   // Pilot-2026-06-24: raw removed list for the `d` detail panel. The
   // annotation map only carries kind, not the rich summaries we need to list
   // names/ids when the operator asks "which ones?".
-  const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
   const [showRemovedPanel, setShowRemovedPanel] = useState(false);
   const [showReloadDialog, setShowReloadDialog] = useState(false);
 
@@ -162,26 +149,16 @@ export function AtomicGenerateReviewStep({
     applySnapshot: applyHistorySnapshot,
   });
 
-  const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
-    if (!response) return;
-    setPreviewAnnotations(
-      applyPreviewAnnotations(
-        response,
-        components.map((c) => c.key),
-      ),
-    );
-    setRemovedComponents(response.components.removed ?? []);
-  };
-
-  const livePreviewHook = useLivePreview({
-    enabled: livePreview,
+  const { previewAnnotations, removedComponents, livePreviewHook, livePreviewSpinner } = useReviewPreview({
+    components,
+    loading,
+    livePreview,
     sessionId: extractSessionId,
     tokensPath,
     spaceId,
     environmentId,
     cmaToken,
     host,
-    onResult: handleLivePreviewResult,
   });
 
   const {
@@ -225,37 +202,11 @@ export function AtomicGenerateReviewStep({
     onTokenSaved: () => livePreviewHook.trigger(),
   });
 
-  // Manual spinner cycling (no extra dep) for the sidebar status-row
-  // indicator. Runs only while the live-preview hook reports `running`.
-  const SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
-  const [spinnerTick, setSpinnerTick] = useState(0);
-  useEffect(() => {
-    if (livePreviewHook.status !== 'running') return;
-    const id = setInterval(() => setSpinnerTick((t) => t + 1), 80);
-    return () => clearInterval(id);
-  }, [livePreviewHook.status]);
-  const livePreviewSpinner = SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length];
-
   const reloadFromSave = (): void => {
     const result = reloadSessionFromSave();
     if (!result) return;
     resetHistory(createReviewHistorySnapshot(result.entries));
   };
-
-  // Pilot-2026-06-23 R2: fire the live preview once on entry to final-review
-  // so diff badges populate before the operator's first save. We gate on the
-  // livePreview prop to honor --no-live-preview without depending on the
-  // hook's internal short-circuit. Cred-missing is still handled by the
-  // hook's own no-op path.
-  useEffect(() => {
-    if (loading) return;
-    if (!livePreview) return;
-    if (components.length === 0) return;
-    livePreviewHook.trigger();
-    // Intentionally only on load completion — subsequent fires happen via
-    // handleEditSave. Adding livePreviewHook to deps would re-fire on every
-    // hook re-creation.
-  }, [loading]);
 
   const { reviewMetadata, componentRationale } = useReviewMetadata({
     components,
@@ -615,43 +566,17 @@ export function AtomicGenerateReviewStep({
           <Text dimColor>press d or Esc to close</Text>
         </Box>
       )}
-      {!dialogOpen &&
-        livePreview &&
-        (() => {
-          // Pilot-2026-06-23 R2: at-a-glance diff summary at the top of the
-          // step. Mutually exclusive states:
-          //   - hook running (and we don't yet have annotations) → spinner.
-          //   - hook disabled (creds rejected) → static disabled hint.
-          //   - annotations populated → counts.
-          //   - idle, no annotations, not disabled → render nothing.
-          const counts = { new: 0, changed: 0, removed: 0, breaking: 0 };
-          for (const v of previewAnnotations.values()) {
-            counts[v] = (counts[v] ?? 0) + 1;
-          }
-          const hasCounts = counts.new + counts.changed + counts.removed + counts.breaking > 0;
-          if (livePreviewHook.disabled) {
-            return <Text dimColor>{'Preview: disabled (creds rejected)'}</Text>;
-          }
-          if (livePreviewHook.status === 'running' && !hasCounts) {
-            return <Text dimColor>{`Preview: ${livePreviewSpinner} running...`}</Text>;
-          }
-          if (!hasCounts) return null;
-          return (
-            <Box>
-              <Text>{'Preview: '}</Text>
-              <Text color={PALETTE.success}>{`${counts.new} new`}</Text>
-              <Text>{' · '}</Text>
-              <Text color={PALETTE.warning}>{`${counts.changed} changed`}</Text>
-              <Text>{' · '}</Text>
-              <Text dimColor>{`${counts.removed} removed`}</Text>
-              {removedComponents.length > 0 && <Text dimColor>{' ([d] removed list)'}</Text>}
-              <Text>{' · '}</Text>
-              <Text color={PALETTE.error} bold>
-                {`${counts.breaking} breaking`}
-              </Text>
-            </Box>
-          );
-        })()}
+      {!dialogOpen && (
+        <LivePreviewSummary
+          enabled={livePreview}
+          previewAnnotations={previewAnnotations}
+          status={livePreviewHook.status}
+          disabled={livePreviewHook.disabled}
+          spinner={livePreviewSpinner}
+          removedCount={removedComponents.length}
+          showRemovedListHint
+        />
+      )}
       {!dialogOpen && emptyCount > 0 && (
         <Text color={PALETTE.warning}>
           {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
