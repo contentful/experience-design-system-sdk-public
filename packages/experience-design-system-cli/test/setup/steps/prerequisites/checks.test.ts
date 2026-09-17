@@ -1,11 +1,24 @@
 import { describe, expect, it, vi } from 'vitest';
-import { runPrerequisitesSetup } from '../../../src/setup/steps/prerequisites/index.js';
-import type { SetupActionEvent } from '../../../src/setup/lib/types.js';
-import { createDependencies } from './dependencies.js';
+import type { PrerequisiteDeps, PrerequisiteEvent } from '../../../../src/setup/steps/prerequisites/deps.js';
+import { runPrerequisitesSetup } from '../../../../src/setup/steps/prerequisites/index.js';
+
+/** The prerequisite checks with every side effect stubbed. */
+function createDependencies(overrides: Partial<PrerequisiteDeps> = {}): PrerequisiteDeps {
+  return {
+    nodeVersion: '24.18.1',
+    homeDir: '/home/tester',
+    binaryExists: async (binary) => binary === 'pnpm',
+    pathExists: async () => false,
+    run: async () => ({ exitCode: 0, stdout: '10.0.0\n', stderr: '' }),
+    confirm: async () => true,
+    emit: () => undefined,
+    ...overrides,
+  };
+}
 
 describe('prerequisites step', () => {
   it('marks a successful fnm install as restart-required and reports failed activation recovery', async () => {
-    const events: SetupActionEvent[] = [];
+    const events: PrerequisiteEvent[] = [];
     const run = vi
       .fn()
       .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' })
@@ -14,7 +27,7 @@ describe('prerequisites step', () => {
       nodeVersion: '22.0.0',
       binaryExists: async (binary) => binary === 'fnm',
       run,
-      write: (event) => events.push(event),
+      emit: (event) => events.push(event),
     });
 
     await expect(runPrerequisitesSetup(dependencies, '/repo')).resolves.toEqual({
@@ -43,8 +56,8 @@ describe('prerequisites step', () => {
   });
 
   it('returns typed prerequisite results after installing dependencies and building the CLI', async () => {
-    const events: SetupActionEvent[] = [];
-    const dependencies = createDependencies({ write: (event) => events.push(event) });
+    const events: PrerequisiteEvent[] = [];
+    const dependencies = createDependencies({ emit: (event) => events.push(event) });
 
     await expect(runPrerequisitesSetup(dependencies, '/repo')).resolves.toEqual({
       node: { passed: true },

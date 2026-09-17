@@ -1,46 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import type { Command } from 'commander';
-import {
-  readExperiencesCredentials,
-  writeExperiencesCredentials,
-  experiencesCredentialsPath,
-} from '../credentials-store.js';
 import { findPkgRoot } from '../lib/cli-path.js';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
-import {
-  appendToProfile,
-  binaryExists,
-  detectShellProfile,
-  pathExists,
-  profileContains,
-  runSpawn,
-} from './lib/shell.js';
-import type { SetupOutcome, SetupScreenDependencies, SetupSkipFlags } from './tui/SetupScreen.js';
+import { detectShellProfile, runSpawn } from './lib/shell.js';
+import type { SetupOutcome, SetupSkipFlags } from './tui/SetupScreen.js';
 
 export const SETUP_REQUIRES_TTY_MESSAGE = 'Error: experiences setup requires an interactive terminal.';
 
 export function getCliVersion(): string {
   const pkg = JSON.parse(readFileSync(join(findPkgRoot(), 'package.json'), 'utf8')) as { version: string };
   return pkg.version;
-}
-
-export function createSetupScreenDependencies(): SetupScreenDependencies {
-  return {
-    nodeVersion: process.versions.node,
-    homeDir: homedir(),
-    env: process.env,
-    binaryExists,
-    run: runSpawn,
-    pathExists,
-    profileContains,
-    appendToProfile,
-    readCredentials: readExperiencesCredentials,
-    writeCredentials: writeExperiencesCredentials,
-    credentialsPath: experiencesCredentialsPath,
-  };
 }
 
 async function runSetup(opts: SetupSkipFlags): Promise<void> {
@@ -66,7 +37,6 @@ async function runSetup(opts: SetupSkipFlags): Promise<void> {
       version: getCliVersion(),
       repoRoot,
       profilePath,
-      dependencies: createSetupScreenDependencies(),
       skip: {
         ...(opts.skipBuild !== undefined ? { skipBuild: opts.skipBuild } : {}),
         ...(opts.skipAgent !== undefined ? { skipAgent: opts.skipAgent } : {}),

@@ -1,7 +1,7 @@
 import { detectPnpm } from '../../lib/checks.js';
-import { emit, type SetupActionDependencies, type SetupCheckResult } from '../../lib/types.js';
+import { emit, type PrerequisiteDeps, type PrerequisiteResult } from './deps.js';
 
-export async function runPnpmSetup(dependencies: SetupActionDependencies): Promise<SetupCheckResult> {
+export async function runPnpmSetup(dependencies: PrerequisiteDeps): Promise<PrerequisiteResult> {
   const detected = await detectPnpm(dependencies);
   if (detected.status === 'ok') {
     emit(dependencies, 'success', `pnpm v${detected.version} — already installed`);

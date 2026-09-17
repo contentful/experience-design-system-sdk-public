@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
-import { Select } from '@inkjs/ui';
+import { ConfirmInput } from '@inkjs/ui';
 import { PALETTE } from '../../analyze/select/tui/theme.js';
 import {
   SETUP_TITLE,
@@ -9,22 +9,15 @@ import {
   shouldAlignVersionRight,
   type SetupResultEntry,
 } from '../lib/layout.js';
-import { splitPromptInput } from '../lib/prompt-input.js';
-import { usePromptInput } from './usePromptInput.js';
 import { SetupStepper } from './SetupStepper.js';
-import type { SetupActionDependencies, SetupActionEvent, SetupChoice } from '../lib/types.js';
-import { runAgentSetup } from '../steps/coding-agent.js';
+import { CodingAgentScreen } from '../steps/coding-agent.js';
 import { ContentfulScreen } from '../steps/contentful.js';
 import type { StepStatus } from '../steps/StepLayout.js';
 import { PREFERENCE_OPTIONS } from '../steps/preferences/index.js';
-import { runPrerequisitesSetup } from '../steps/prerequisites/index.js';
+import { PrerequisitesScreen } from '../steps/prerequisites/PrerequisitesScreen.js';
+import type { PrerequisitesOutcome } from '../steps/prerequisites/deps.js';
 
 /** Prompts and output are UI-owned; the screen supplies the rest itself. */
-export type SetupScreenDependencies = Omit<
-  SetupActionDependencies,
-  'ask' | 'askSecret' | 'confirm' | 'choose' | 'write'
->;
-
 export type SetupSkipFlags = {
   skipBuild?: boolean;
   skipAgent?: boolean;
@@ -43,7 +36,6 @@ type SetupScreenProps = {
   version: string;
   repoRoot: string;
   profilePath: string;
-  dependencies: SetupScreenDependencies;
   skip?: SetupSkipFlags;
   /** Defaults to the live Ink stdout columns. */
   columns?: number;
@@ -51,15 +43,11 @@ type SetupScreenProps = {
   onComplete: (outcome: SetupOutcome) => void;
 };
 
-type PendingPrompt =
-  | { kind: 'text' | 'secret'; question: string; resolve: (answer: string) => void }
-  | { kind: 'confirm'; question: string; defaultYes: boolean; resolve: (answer: boolean) => void }
-  | {
-      kind: 'select';
-      question: string;
-      options: readonly SetupChoice[];
-      resolve: (answer: number | undefined) => void;
-    };
+type PendingConfirm = {
+  question: string;
+  defaultYes: boolean;
+  resolve: (answer: boolean) => void;
+};
 
 const STEP_ACTIVITY = [
   'Checking prerequisites',
@@ -72,7 +60,6 @@ export function SetupScreen({
   version,
   repoRoot,
   profilePath,
-  dependencies,
   skip = {},
   columns: columnsOverride,
   offerDoctor = false,
@@ -82,17 +69,7 @@ export function SetupScreen({
   const columns = columnsOverride ?? stdout?.columns;
 
   const [activeStep, setActiveStep] = useState(1);
-  const [events, setEvents] = useState<SetupActionEvent[]>([]);
-  const [prompt, setPrompt] = useState<PendingPrompt | null>(null);
-  const [inputValue, setInputValue] = useState('');
-  // A chunk can carry typed text and the Enter that submits it, so the value
-  // has to be readable synchronously rather than through batched state.
-  const inputValueRef = useRef('');
-
-  const updateInput = (next: string): void => {
-    inputValueRef.current = next;
-    setInputValue(next);
-  };
+  const [prompt, setPrompt] = useState<PendingConfirm | null>(null);
   const [outcome, setOutcome] = useState<SetupOutcome | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // A step that owns its own screen renders here while the driver awaits it.
@@ -106,47 +83,32 @@ export function SetupScreen({
     if (startedRef.current) return;
     startedRef.current = true;
 
-    const request = <T,>(build: (resolve: (answer: T) => void) => PendingPrompt): Promise<T> =>
+    /** Hand the terminal to a self-rendering step and resolve with what it reports. */
+    const runScreen = <T,>(build: (done: (result: T) => void) => React.ReactNode): Promise<T> =>
       new Promise<T>((resolve) => {
-        updateInput('');
-        setPrompt(build(resolve));
-      });
-
-    /** Hand the terminal to a self-rendering step and resolve with its status. */
-    const runScreen = (build: (done: (status: StepStatus) => void) => React.ReactNode): Promise<StepStatus> =>
-      new Promise<StepStatus>((resolve) => {
         setPrompt(null);
-        setEvents([]);
         setScreen(
-          build((status) => {
+          build((result) => {
             setScreen(null);
-            resolve(status);
+            resolve(result);
           }),
         );
       });
 
-    const uiDependencies: SetupActionDependencies = {
-      ...dependencies,
-      ask: (question) => request<string>((resolve) => ({ kind: 'text', question, resolve })),
-      askSecret: (question) => request<string>((resolve) => ({ kind: 'secret', question, resolve })),
-      confirm: (question, defaultYes = true) =>
-        request<boolean>((resolve) => ({ kind: 'confirm', question, defaultYes, resolve })),
-      choose: (question, options) =>
-        request<number | undefined>((resolve) => ({ kind: 'select', question, options, resolve })),
-      write: (event) => setEvents((current) => [...current, event]),
-    };
-
     const enterStep = (step: number): void => {
       setActiveStep(step);
-      setEvents([]);
     };
 
     void (async () => {
       const results: SetupResultEntry[] = [];
 
-      const prerequisites = await runPrerequisitesSetup(uiDependencies, repoRoot, {
-        ...(skip.skipBuild !== undefined ? { skipBuild: skip.skipBuild } : {}),
-      });
+      const prerequisites = await runScreen<PrerequisitesOutcome>((done) => (
+        <PrerequisitesScreen
+          repoRoot={repoRoot}
+          {...(skip.skipBuild !== undefined ? { skipBuild: skip.skipBuild } : {})}
+          onDone={done}
+        />
+      ));
       results.push({
         name: 'Node.js 24+',
         status: prerequisites.node.passed ? 'completed' : 'failed',
@@ -181,24 +143,15 @@ export function SetupScreen({
       if (skip.skipAgent) {
         results.push({ name: 'Coding agent', status: 'skipped', required: false });
       } else {
-        const { agent, agentModel, passed } = await runAgentSetup(uiDependencies);
-        if (agent) {
-          const stored = await dependencies.readCredentials();
-          const { agentModel: _staleModel, ...storedWithoutModel } = stored;
-          await dependencies.writeCredentials({
-            ...storedWithoutModel,
-            agent,
-            ...(agentModel ? { agentModel } : {}),
-          });
-        }
-        results.push({ name: 'Coding agent', status: passed ? 'completed' : 'failed', required: true });
+        const status = await runScreen<StepStatus>((done) => <CodingAgentScreen onDone={done} />);
+        results.push({ name: 'Coding agent', status, required: true });
       }
 
       enterStep(3);
       if (skip.skipCredentials) {
         results.push({ name: 'Contentful credentials', status: 'skipped', required: false });
       } else {
-        const status = await runScreen((done) => <ContentfulScreen onDone={done} />);
+        const status = await runScreen<StepStatus>((done) => <ContentfulScreen onDone={done} />);
         results.push({ name: 'Contentful credentials', status, required: false });
       }
 
@@ -218,16 +171,16 @@ export function SetupScreen({
 
       const exitCode = countRequiredFailures(results) === 0 ? 0 : 1;
       setPrompt(null);
-      setEvents([]);
       setOutcome({ results, exitCode, restartRequired: false, runDoctor: false });
 
       const runDoctor = offerDoctor
-        ? await request<boolean>((resolve) => ({
-            kind: 'confirm',
-            question: 'Run experiences doctor now to verify your environment?',
-            defaultYes: exitCode === 0,
-            resolve,
-          }))
+        ? await new Promise<boolean>((resolve) => {
+            setPrompt({
+              question: 'Run experiences doctor now to verify your environment?',
+              defaultYes: exitCode === 0,
+              resolve,
+            });
+          })
         : false;
 
       setPrompt(null);
@@ -238,43 +191,6 @@ export function SetupScreen({
     // Keyed on nothing deliberately: re-running when a prop changes identity
     // would restart setup mid-flight.
   }, []);
-
-  usePromptInput((chunk, key) => {
-    const active = prompt;
-    if (!active) return;
-
-    // Select owns its own keys, so the raw handler ignores choice prompts.
-    if (active.kind === 'select') return;
-
-    const submit = (value: string): void => {
-      setPrompt(null);
-      updateInput('');
-      if (active.kind === 'confirm') {
-        const answer = value.trim().toLowerCase();
-        active.resolve(answer === '' ? active.defaultYes : answer.startsWith('y'));
-      } else {
-        active.resolve(value.trim());
-      }
-    };
-
-    if (key.return) {
-      submit(inputValueRef.current);
-      return;
-    }
-
-    if (key.backspace || key.delete) {
-      updateInput(inputValueRef.current.slice(0, -1));
-      return;
-    }
-
-    if (key.ctrl || key.meta || key.escape || key.tab) return;
-
-    const { text, submitted } = splitPromptInput(chunk);
-    if (!text && !submitted) return;
-    const next = inputValueRef.current + text;
-    if (submitted) submit(next);
-    else updateInput(next);
-  });
 
   const versionLabel = `v${version}`;
   const alignRight = shouldAlignVersionRight(version, columns);
@@ -296,7 +212,6 @@ export function SetupScreen({
         <Box marginTop={1}>{screen}</Box>
       ) : (
         <>
-          <SetupEventLog events={events} />
           {!prompt && (
             <Box marginTop={1}>
               <Text color={PALETTE.info}>⟳ {STEP_ACTIVITY[activeStep - 1]}…</Text>
@@ -305,95 +220,23 @@ export function SetupScreen({
         </>
       )}
 
-      {prompt &&
-        (prompt.kind === 'select' ? (
-          <SetupChoiceList
-            prompt={prompt}
-            onResolve={(index) => {
+      {prompt && (
+        <Box marginTop={1}>
+          <Text color={PALETTE.info}>› </Text>
+          <Text>{prompt.question} </Text>
+          <ConfirmInput
+            defaultChoice={prompt.defaultYes ? 'confirm' : 'cancel'}
+            onConfirm={() => {
               setPrompt(null);
-              prompt.resolve(index);
+              prompt.resolve(true);
+            }}
+            onCancel={() => {
+              setPrompt(null);
+              prompt.resolve(false);
             }}
           />
-        ) : (
-          <SetupPrompt prompt={prompt} value={inputValue} />
-        ))}
-    </Box>
-  );
-}
-
-function SetupEventLog({ events }: { events: readonly SetupActionEvent[] }): React.ReactElement | null {
-  if (events.length === 0) return null;
-
-  return (
-    <Box flexDirection="column" marginTop={1}>
-      {events.map((event, index) => (
-        <SetupEventLine key={`${index}-${event.message}`} event={event} />
-      ))}
-    </Box>
-  );
-}
-
-function SetupEventLine({ event }: { event: SetupActionEvent }): React.ReactElement {
-  // Ink gives an empty Text zero height, so a spacer needs a space to occupy.
-  if (event.message === '') return <Text> </Text>;
-  if (event.kind === 'success') return <Text color={PALETTE.success}>✓ {event.message}</Text>;
-  if (event.kind === 'failure') return <Text color={PALETTE.error}>✗ {event.message}</Text>;
-  if (event.kind === 'warning') return <Text color={PALETTE.warning}>⚠ {event.message}</Text>;
-  if (event.kind === 'help') return <Text dimColor>{event.message}</Text>;
-  return <Text>{event.message}</Text>;
-}
-
-/** The value Select reports when the operator picks the trailing Skip row. */
-const SKIP_VALUE = '\u0000skip';
-
-function SetupChoiceList({
-  prompt,
-  onResolve,
-}: {
-  prompt: Extract<PendingPrompt, { kind: 'select' }>;
-  onResolve: (index: number | undefined) => void;
-}): React.ReactElement {
-  // Select keys options by value, so each row carries its index and Skip gets a
-  // sentinel that cannot collide with one.
-  const options = [
-    ...prompt.options.map((option, index) => ({
-      label: option.description ? `${option.label}  ${option.description}` : option.label,
-      value: String(index),
-    })),
-    { label: 'Skip', value: SKIP_VALUE },
-  ];
-
-  return (
-    <Box flexDirection="column" marginTop={1}>
-      <Text>{prompt.question}</Text>
-      <Box flexDirection="column" marginTop={1}>
-        <Select
-          options={options}
-          visibleOptionCount={options.length}
-          onChange={(value) => onResolve(value === SKIP_VALUE ? undefined : Number(value))}
-        />
-      </Box>
-      <Box marginTop={1}>
-        <Text dimColor>↑↓ to move · Enter to select</Text>
-      </Box>
-    </Box>
-  );
-}
-
-function SetupPrompt({ prompt, value }: { prompt: PendingPrompt; value: string }): React.ReactElement {
-  if (prompt.kind === 'select') return <Text>{prompt.question}</Text>;
-  const display = prompt.kind === 'secret' ? '•'.repeat(value.length) : value;
-  const hint = prompt.kind === 'confirm' ? (prompt.defaultYes ? ' [Y/n]' : ' [y/N]') : '';
-
-  return (
-    <Box marginTop={1}>
-      <Text color={PALETTE.info}>› </Text>
-      <Text>
-        {prompt.question}
-        {hint}
-      </Text>
-      <Text> {display}</Text>
-      <Text color={PALETTE.info}>█</Text>
+        </Box>
+      )}
     </Box>
   );
 }
