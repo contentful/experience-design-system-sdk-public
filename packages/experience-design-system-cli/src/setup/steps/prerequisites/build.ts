@@ -1,9 +1,6 @@
-import { emit, type SetupActionDependencies, type SetupCheckResult } from '../../lib/types.js';
+import { emit, type PrerequisiteDeps, type PrerequisiteResult } from './deps.js';
 
-export async function runBuildSetup(
-  dependencies: SetupActionDependencies,
-  repoRoot: string,
-): Promise<SetupCheckResult> {
+export async function runBuildSetup(dependencies: PrerequisiteDeps, repoRoot: string): Promise<PrerequisiteResult> {
   emit(dependencies, 'info', 'Running pnpm install...');
   const install = await dependencies.run('pnpm', ['install', '--frozen-lockfile'], { cwd: repoRoot });
   if (install.exitCode !== 0) {

@@ -1,10 +1,10 @@
 import { checkNodeVersion, detectNodeVersionManagers } from '../../lib/checks.js';
 import { REQUIRED_NODE_MAJOR } from '../../lib/shell.js';
-import { emit, type SetupActionDependencies, type SetupCheckResult } from '../../lib/types.js';
+import { emit, type PrerequisiteDeps, type PrerequisiteResult } from './deps.js';
 
 export async function runNodeSetup(
-  dependencies: SetupActionDependencies,
-): Promise<SetupCheckResult & { restartRequired?: boolean }> {
+  dependencies: PrerequisiteDeps,
+): Promise<PrerequisiteResult & { restartRequired?: boolean }> {
   const check = checkNodeVersion(dependencies.nodeVersion);
   if (check.passed) {
     emit(dependencies, 'success', `Node.js v${check.version} — already good`);
