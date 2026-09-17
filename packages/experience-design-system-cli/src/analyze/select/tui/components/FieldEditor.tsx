@@ -81,6 +81,18 @@ type EditorState = {
   slots: SlotState[];
 };
 
+type EditingValue = { mode: 'add' | 'edit'; index?: number };
+
+function removeAt<T>(values: T[], index: number): T[] {
+  return values.filter((_, i) => i !== index);
+}
+
+function swapValues<T>(values: T[], firstIndex: number, secondIndex: number): T[] {
+  const next = [...values];
+  [next[firstIndex], next[secondIndex]] = [next[secondIndex], next[firstIndex]];
+  return next;
+}
+
 function parseToState(json: string): { state: EditorState; error: string | null } {
   let parsed: unknown;
   try {
@@ -235,6 +247,123 @@ function Toggle({ value, active }: { value: boolean; active: boolean }): React.R
   );
 }
 
+function DefaultValueRow({ display, active }: { display: string; active: boolean }): React.ReactElement {
+  return (
+    <Box paddingLeft={2} gap={1}>
+      <Text dimColor>default:</Text>
+      {active ? <Picker value={display} active={true} /> : <Text color={PALETTE.inverse}>{display}</Text>}
+    </Box>
+  );
+}
+
+function RowLabel({ name, selected }: { name: string; selected: boolean }): React.ReactElement {
+  const nameDisplay = name.length > 14 ? name.slice(0, 13) + '…' : name.padEnd(14);
+  return (
+    <Text
+      color={selected ? PALETTE.inverse : PALETTE.info}
+      bold={selected}
+      backgroundColor={selected ? 'blue' : undefined}
+    >
+      {' '}
+      {nameDisplay}{' '}
+    </Text>
+  );
+}
+
+function ValueInputRow({
+  mode,
+  valueText,
+  cursorVisible,
+}: {
+  mode: 'add' | 'edit';
+  valueText: string;
+  cursorVisible: boolean;
+}): React.ReactElement {
+  return (
+    <Box paddingLeft={2}>
+      <Text color={PALETTE.info}>{mode === 'edit' ? '✎ ' : '+ '}</Text>
+      <Text>{valueText}</Text>
+      <Text inverse={cursorVisible}> </Text>
+    </Box>
+  );
+}
+
+function EditableListItem({
+  value,
+  index,
+  active,
+  editingValue,
+  valueText,
+  cursorVisible,
+}: {
+  value: string;
+  index: number;
+  active: boolean;
+  editingValue: EditingValue | null;
+  valueText: string;
+  cursorVisible: boolean;
+}): React.ReactElement {
+  const isBeingEdited = editingValue?.mode === 'edit' && editingValue.index === index;
+  if (isBeingEdited) {
+    return <ValueInputRow mode="edit" valueText={valueText} cursorVisible={cursorVisible} />;
+  }
+  return (
+    <Box gap={1} paddingLeft={2}>
+      <Text color={active ? PALETTE.info : PALETTE.inverse}>{active ? `▶ ${value}` : `  ${value}`}</Text>
+    </Box>
+  );
+}
+
+function EditableValueList({
+  values,
+  valueCursor,
+  cursorActive,
+  editingValue,
+  valueText,
+  cursorVisible,
+  emptyMessage,
+  emptyPaddingLeft,
+  showAddInput,
+}: {
+  values: string[];
+  valueCursor: number;
+  cursorActive: boolean;
+  editingValue: EditingValue | null;
+  valueText: string;
+  cursorVisible: boolean;
+  emptyMessage: string;
+  emptyPaddingLeft?: number;
+  showAddInput: boolean;
+}): React.ReactElement {
+  return (
+    <>
+      {values.length === 0 &&
+        !editingValue &&
+        (emptyPaddingLeft === undefined ? (
+          <Text dimColor>{emptyMessage}</Text>
+        ) : (
+          <Box paddingLeft={emptyPaddingLeft}>
+            <Text dimColor>{emptyMessage}</Text>
+          </Box>
+        ))}
+      {values.map((value, index) => (
+        <EditableListItem
+          key={index}
+          value={value}
+          index={index}
+          active={cursorActive && valueCursor === index}
+          editingValue={editingValue}
+          valueText={valueText}
+          cursorVisible={cursorVisible}
+        />
+      ))}
+      {showAddInput && editingValue?.mode === 'add' && (
+        <ValueInputRow mode="add" valueText={valueText} cursorVisible={cursorVisible} />
+      )}
+    </>
+  );
+}
+
 function DefaultSubRow({
   prop,
   active,
@@ -258,12 +387,7 @@ function DefaultSubRow({
 
   if (prop.type === 'boolean') {
     const display = prop.default === true ? 'true' : prop.default === false ? 'false' : '(unset)';
-    return (
-      <Box paddingLeft={2} gap={1}>
-        <Text dimColor>default:</Text>
-        {active ? <Picker value={display} active={true} /> : <Text color={PALETTE.inverse}>{display}</Text>}
-      </Box>
-    );
+    return <DefaultValueRow display={display} active={active} />;
   }
 
   if (prop.type === 'enum') {
@@ -276,12 +400,7 @@ function DefaultSubRow({
       );
     }
     const display = typeof prop.default === 'string' && prop.default !== '' ? prop.default : '(unset)';
-    return (
-      <Box paddingLeft={2} gap={1}>
-        <Text dimColor>default:</Text>
-        {active ? <Picker value={display} active={true} /> : <Text color={PALETTE.inverse}>{display}</Text>}
-      </Box>
-    );
+    return <DefaultValueRow display={display} active={active} />;
   }
 
   const value = typeof prop.default === 'string' ? prop.default : '';
@@ -326,25 +445,19 @@ function PropRow({
   textCursor: number;
   valueCursor: number;
   cursorVisible: boolean;
-  editingValue: { mode: 'add' | 'edit'; index?: number } | null;
+  editingValue: EditingValue | null;
   valueText: string;
   width: number;
   rationale?: string | null;
   rowKey?: string;
 }): React.ReactElement {
   const cursor = cursorVisible ? '█' : ' ';
-  const bg = selected ? 'blue' : undefined;
   const descActive = activeField === 'description';
-
-  const nameDisplay = prop.name.length > 14 ? prop.name.slice(0, 13) + '…' : prop.name.padEnd(14);
 
   return (
     <Box flexDirection="column" width={width}>
       <Box gap={1}>
-        <Text color={selected ? PALETTE.inverse : PALETTE.info} bold={selected} backgroundColor={bg}>
-          {' '}
-          {nameDisplay}{' '}
-        </Text>
+        <RowLabel name={prop.name} selected={selected} />
 
         <Text dimColor={!selected}>type:</Text>
         {activeField === 'type' ? (
@@ -442,34 +555,16 @@ function PropRow({
               <Text dimColor>{'  [a]dd  [e]dit  [r]emove  [↑↓] navigate  [K/J] reorder'}</Text>
             )}
           </Box>
-          {prop.values.length === 0 && !editingValue && <Text dimColor> (none — press [a] to add)</Text>}
-          {prop.values.map((v, i) => {
-            const isActiveCursor = activeField === 'values' && valueCursor === i;
-            const isBeingEdited = editingValue?.mode === 'edit' && editingValue.index === i;
-            if (isBeingEdited) {
-              return (
-                <Box key={i} paddingLeft={2}>
-                  <Text color={PALETTE.info}>{'✎ '}</Text>
-                  <Text>{valueText}</Text>
-                  <Text inverse={cursorVisible}> </Text>
-                </Box>
-              );
-            }
-            return (
-              <Box key={i} gap={1} paddingLeft={2}>
-                <Text color={isActiveCursor ? PALETTE.info : PALETTE.inverse}>
-                  {isActiveCursor ? `▶ ${v}` : `  ${v}`}
-                </Text>
-              </Box>
-            );
-          })}
-          {editingValue?.mode === 'add' && (
-            <Box paddingLeft={2}>
-              <Text color={PALETTE.info}>{'+ '}</Text>
-              <Text>{valueText}</Text>
-              <Text inverse={cursorVisible}> </Text>
-            </Box>
-          )}
+          <EditableValueList
+            values={prop.values}
+            valueCursor={valueCursor}
+            cursorActive={activeField === 'values'}
+            editingValue={editingValue}
+            valueText={valueText}
+            cursorVisible={cursorVisible}
+            emptyMessage=" (none — press [a] to add)"
+            showAddInput={true}
+          />
         </Box>
       )}
     </Box>
@@ -495,23 +590,18 @@ function SlotRow({
   textCursor: number;
   valueCursor: number;
   cursorVisible: boolean;
-  editingValue: { mode: 'add' | 'edit'; index?: number } | null;
+  editingValue: EditingValue | null;
   valueText: string;
   width: number;
   pickerCandidates: string[] | null;
   pickerCursor: number;
 }): React.ReactElement {
   const cursor = cursorVisible ? '█' : ' ';
-  const bg = selected ? 'blue' : undefined;
-  const nameDisplay = slot.name.length > 14 ? slot.name.slice(0, 13) + '…' : slot.name.padEnd(14);
 
   return (
     <Box flexDirection="column" width={width}>
       <Box gap={1}>
-        <Text color={selected ? PALETTE.inverse : PALETTE.info} bold={selected} backgroundColor={bg}>
-          {' '}
-          {nameDisplay}{' '}
-        </Text>
+        <RowLabel name={slot.name} selected={selected} />
         <Text dimColor={!selected}>req:</Text>
         {activeField === 'required' ? (
           <Toggle value={slot.required} active={true} />
@@ -542,38 +632,17 @@ function SlotRow({
               </Text>
             )}
           </Box>
-          {slot.allowedComponents.length === 0 && !editingValue && (
-            <Box paddingLeft={2}>
-              <Text dimColor>{activeField === 'allowedComponents' ? '(any — press [a] to add)' : '(any)'}</Text>
-            </Box>
-          )}
-          {slot.allowedComponents.map((v, i) => {
-            const isActiveCursor = activeField === 'allowedComponents' && valueCursor === i;
-            const isBeingEdited = editingValue?.mode === 'edit' && editingValue.index === i;
-            if (isBeingEdited) {
-              return (
-                <Box key={i} paddingLeft={2}>
-                  <Text color={PALETTE.info}>{'✎ '}</Text>
-                  <Text>{valueText}</Text>
-                  <Text inverse={cursorVisible}> </Text>
-                </Box>
-              );
-            }
-            return (
-              <Box key={i} gap={1} paddingLeft={2}>
-                <Text color={isActiveCursor ? PALETTE.info : PALETTE.inverse}>
-                  {isActiveCursor ? `▶ ${v}` : `  ${v}`}
-                </Text>
-              </Box>
-            );
-          })}
-          {editingValue?.mode === 'add' && activeField === 'allowedComponents' && (
-            <Box paddingLeft={2}>
-              <Text color={PALETTE.info}>{'+ '}</Text>
-              <Text>{valueText}</Text>
-              <Text inverse={cursorVisible}> </Text>
-            </Box>
-          )}
+          <EditableValueList
+            values={slot.allowedComponents}
+            valueCursor={valueCursor}
+            cursorActive={activeField === 'allowedComponents'}
+            editingValue={editingValue}
+            valueText={valueText}
+            cursorVisible={cursorVisible}
+            emptyMessage={activeField === 'allowedComponents' ? '(any — press [a] to add)' : '(any)'}
+            emptyPaddingLeft={2}
+            showAddInput={activeField === 'allowedComponents'}
+          />
           {editingValue?.mode === 'add' && activeField === 'allowedComponents' && pickerCandidates !== null && (
             <Box paddingLeft={2} flexDirection="column">
               {pickerCandidates.length === 0 ? (
@@ -862,7 +931,7 @@ export function FieldEditor({
   const [activeField, setActiveField] = useState<PropField | SlotField | null>(initialFocus.activeField);
   const [textCursor, setTextCursor] = useState(initialFocus.textCursor);
   const [valueCursor, setValueCursor] = useState(0);
-  const [editingValue, setEditingValue] = useState<{ mode: 'add' | 'edit'; index?: number } | null>(null);
+  const [editingValue, setEditingValue] = useState<EditingValue | null>(null);
   const [valueText, setValueText] = useState('');
   const [pickerCursor, setPickerCursor] = useState(0);
 
@@ -1500,12 +1569,59 @@ export function FieldEditor({
         return;
       }
 
-      if (activeField === 'allowedComponents' && currentSlot) {
-        const vals = currentSlot.allowedComponents;
-        const setSlotVals = (next: string[]) => {
+      const currentValueList =
+        activeField === 'allowedComponents' && currentSlot
+          ? currentSlot.allowedComponents
+          : activeField === 'values' && currentProp
+            ? currentProp.values
+            : null;
+      const setCurrentValueList = (next: string[]) => {
+        if (activeField === 'allowedComponents' && currentSlot) {
           const nextSlots = slots.map((s, i) => (i === slotIdx ? { ...s, allowedComponents: next } : s));
           commit({ ...editorState, slots: nextSlots });
-        };
+        } else if (activeField === 'values' && currentProp) {
+          const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: next } : p));
+          commit({ ...editorState, props: nextProps });
+        }
+      };
+
+      if (currentValueList) {
+        if (input === 'a') {
+          setEditingValue({ mode: 'add' });
+          setValueText('');
+          return;
+        }
+
+        if (input === 'e' && currentValueList.length > 0) {
+          setEditingValue({ mode: 'edit', index: valueCursor });
+          setValueText(currentValueList[valueCursor] ?? '');
+          return;
+        }
+
+        if (input === 'r' && currentValueList.length > 0) {
+          const nextVals = removeAt(currentValueList, valueCursor);
+          setCurrentValueList(nextVals);
+          setValueCursor((c) => Math.max(0, Math.min(c, nextVals.length - 1)));
+          return;
+        }
+
+        if (input === 'K' && valueCursor > 0) {
+          const nextVals = swapValues(currentValueList, valueCursor - 1, valueCursor);
+          setCurrentValueList(nextVals);
+          setValueCursor((c) => c - 1);
+          return;
+        }
+
+        if (input === 'J' && valueCursor < currentValueList.length - 1) {
+          const nextVals = swapValues(currentValueList, valueCursor, valueCursor + 1);
+          setCurrentValueList(nextVals);
+          setValueCursor((c) => c + 1);
+          return;
+        }
+      }
+
+      if (activeField === 'allowedComponents' && currentSlot) {
+        const vals = currentSlot.allowedComponents;
         if (
           (key.leftArrow || key.rightArrow || input === 'h' || input === 'l') &&
           vals.length > 0 &&
@@ -1533,84 +1649,10 @@ export function FieldEditor({
           const next = candidates[nextIdx];
           if (next === undefined || next === current) return;
           const nextVals = vals.map((v, i) => (i === valueCursor ? next : v));
-          setSlotVals(nextVals);
+          setCurrentValueList(nextVals);
           setValidationError(null);
           return;
         }
-        if (input === 'a') {
-          setEditingValue({ mode: 'add' });
-          setValueText('');
-          return;
-        }
-        if (input === 'e' && vals.length > 0) {
-          setEditingValue({ mode: 'edit', index: valueCursor });
-          setValueText(vals[valueCursor] ?? '');
-          return;
-        }
-        if (input === 'r' && vals.length > 0) {
-          const nextVals = vals.filter((_, i) => i !== valueCursor);
-          setSlotVals(nextVals);
-          setValueCursor((c) => Math.max(0, Math.min(c, nextVals.length - 1)));
-          return;
-        }
-        if (input === 'K' && valueCursor > 0) {
-          const nextVals = [...vals];
-          [nextVals[valueCursor - 1], nextVals[valueCursor]] = [nextVals[valueCursor], nextVals[valueCursor - 1]];
-          setSlotVals(nextVals);
-          setValueCursor((c) => c - 1);
-          return;
-        }
-        if (input === 'J' && valueCursor < vals.length - 1) {
-          const nextVals = [...vals];
-          [nextVals[valueCursor], nextVals[valueCursor + 1]] = [nextVals[valueCursor + 1], nextVals[valueCursor]];
-          setSlotVals(nextVals);
-          setValueCursor((c) => c + 1);
-          return;
-        }
-        return;
-      }
-
-      if (activeField === 'values' && currentProp) {
-        const vals = currentProp.values;
-
-        if (input === 'a') {
-          setEditingValue({ mode: 'add' });
-          setValueText('');
-          return;
-        }
-
-        if (input === 'e' && vals.length > 0) {
-          setEditingValue({ mode: 'edit', index: valueCursor });
-          setValueText(vals[valueCursor] ?? '');
-          return;
-        }
-
-        if (input === 'r' && vals.length > 0) {
-          const nextVals = vals.filter((_, i) => i !== valueCursor);
-          const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
-          commit({ ...editorState, props: nextProps });
-          setValueCursor((c) => Math.max(0, Math.min(c, nextVals.length - 1)));
-          return;
-        }
-
-        if (input === 'K' && valueCursor > 0) {
-          const nextVals = [...vals];
-          [nextVals[valueCursor - 1], nextVals[valueCursor]] = [nextVals[valueCursor], nextVals[valueCursor - 1]];
-          const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
-          commit({ ...editorState, props: nextProps });
-          setValueCursor((c) => c - 1);
-          return;
-        }
-
-        if (input === 'J' && valueCursor < vals.length - 1) {
-          const nextVals = [...vals];
-          [nextVals[valueCursor], nextVals[valueCursor + 1]] = [nextVals[valueCursor + 1], nextVals[valueCursor]];
-          const nextProps = props.map((p, i) => (i === propIdx ? { ...p, values: nextVals } : p));
-          commit({ ...editorState, props: nextProps });
-          setValueCursor((c) => c + 1);
-          return;
-        }
-        return;
       }
 
       return;
