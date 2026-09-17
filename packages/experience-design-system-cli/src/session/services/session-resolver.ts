@@ -1,14 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { generateSessionId } from '../session-id.js';
-import type { CommandName } from '../db.js';
-import { getSessionById } from '../repositories/sessions/read.js';
+import { getSessionById, type MatchHints } from '../repositories/sessions/read.js';
 import { createSession } from '../repositories/sessions/write.js';
 
-export interface MatchHints {
-  command: CommandName;
-  inputPath?: string;
-  outDir?: string;
-}
+export type { MatchHints };
 
 export interface SessionResolution {
   sessionId: string;

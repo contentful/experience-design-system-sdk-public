@@ -28,7 +28,7 @@ describe('hashComponentShape', () => {
     );
   });
 
-  it('sorts allowedComponents so slot order does not affect the hash', () => {
+  it('sorts allowedComponents within a slot so their order does not affect the hash', () => {
     const a = makeComponent({
       slots: [{ name: 'children', isDefault: true, allowedComponents: ['A', 'B'] }],
     });
@@ -36,5 +36,21 @@ describe('hashComponentShape', () => {
       slots: [{ name: 'children', isDefault: true, allowedComponents: ['B', 'A'] }],
     });
     expect(hashComponentShape(a)).toBe(hashComponentShape(b));
+  });
+
+  it('is sensitive to slot order (slots array is not sorted)', () => {
+    const a = makeComponent({
+      slots: [
+        { name: 'header', isDefault: false, allowedComponents: [] },
+        { name: 'footer', isDefault: false, allowedComponents: [] },
+      ],
+    });
+    const b = makeComponent({
+      slots: [
+        { name: 'footer', isDefault: false, allowedComponents: [] },
+        { name: 'header', isDefault: false, allowedComponents: [] },
+      ],
+    });
+    expect(hashComponentShape(a)).not.toBe(hashComponentShape(b));
   });
 });
