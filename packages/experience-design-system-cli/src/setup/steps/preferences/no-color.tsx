@@ -10,7 +10,8 @@ export function NoColorScreen({ profilePath, onDone }: { profilePath: string; on
   return (
     <ProfilePreference
       helpText={NO_COLOR_HELP}
-      question="Turn off colored output?"
+      question="Terminal colors"
+      labels={{ add: 'Turn colors off', skip: 'Keep colors on' }}
       variable={PROFILE_VARIABLE}
       lines={`export ${PROFILE_VARIABLE}=1`}
       profilePath={profilePath}

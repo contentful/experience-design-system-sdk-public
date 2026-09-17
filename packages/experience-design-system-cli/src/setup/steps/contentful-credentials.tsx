@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text } from 'ink';
-import { ConfirmInput, PasswordInput, TextInput } from '@inkjs/ui';
+import { PasswordInput, Select, TextInput } from '@inkjs/ui';
 import {
   experiencesCredentialsPath,
   readExperiencesCredentials,
@@ -25,6 +25,9 @@ export function envShadowingWarning(env: NodeJS.ProcessEnv): string | null {
 export function maskToken(token: string): string {
   return `${'•'.repeat(Math.min(token.length, 8))}...`;
 }
+
+const ENTER = 'enter';
+const KEEP = 'keep';
 
 type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host';
 
@@ -69,17 +72,26 @@ export function ContentfulScreen({ onDone }: { onDone: StepDone }): React.ReactE
   const helpText = `Saved to ${experiencesCredentialsPath()} — loaded automatically by experiences import.`;
 
   if (field === 'confirm') {
+    // Fully configured credentials default to leaving them alone; an incomplete
+    // set defaults to entering them, since that is what the operator came for.
+    const options = [
+      { label: hasAny ? 'Update the saved credentials' : 'Enter credentials now', value: ENTER },
+      { label: allSet ? 'Keep them as they are' : 'Skip for now', value: KEEP },
+    ];
     return (
       <StepLayout
         helpText={helpText}
         prompt={
-          <Box>
-            <Text>{hasAny ? 'Update credentials?' : 'Configure Contentful credentials?'} </Text>
-            <ConfirmInput
-              defaultChoice={allSet ? 'cancel' : 'confirm'}
-              onConfirm={() => setField('spaceId')}
-              onCancel={() => onDone('skipped')}
-            />
+          <Box flexDirection="column">
+            <Text>Contentful credentials</Text>
+            <Box marginTop={1}>
+              <Select
+                // Select highlights its first option, so the sensible default
+                // leads: keep a complete set, enter an incomplete one.
+                options={allSet ? [...options].reverse() : options}
+                onChange={(value) => (value === ENTER ? setField('spaceId') : onDone('skipped'))}
+              />
+            </Box>
           </Box>
         }
       >

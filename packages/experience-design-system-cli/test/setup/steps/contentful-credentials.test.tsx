@@ -3,6 +3,7 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ContentfulScreen, envShadowingWarning, maskToken } from '../../../src/setup/steps/contentful-credentials.js';
 import { waitForFrame } from '../../helpers/wait-for-frame.js';
+import { acceptDefault, choose } from './select-helpers.js';
 
 const credentialsStore = vi.hoisted(() => ({
   read: vi.fn(),
@@ -97,10 +98,9 @@ describe('ContentfulScreen', () => {
 
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Update credentials?'),
+      (f) => f.includes('Contentful credentials'),
     );
-    stdin.write('n');
-    await new Promise((r) => setTimeout(r, 60));
+    await acceptDefault(stdin);
 
     expect(onDone).toHaveBeenCalledWith('skipped');
     expect(write).not.toHaveBeenCalled();
@@ -111,10 +111,9 @@ describe('ContentfulScreen', () => {
 
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Configure Contentful credentials?'),
+      (f) => f.includes('Contentful credentials'),
     );
-    stdin.write('y');
-    await new Promise((r) => setTimeout(r, 80));
+    await choose(stdin, lastFrame, 'Enter credentials now');
 
     for (const [prompt, value] of [
       ['Space ID:', 'space'],
@@ -143,10 +142,9 @@ describe('ContentfulScreen', () => {
 
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Configure Contentful credentials?'),
+      (f) => f.includes('Contentful credentials'),
     );
-    stdin.write('y');
-    await new Promise((r) => setTimeout(r, 80));
+    await choose(stdin, lastFrame, 'Enter credentials now');
 
     for (const [prompt, value] of [
       ['Space ID:', 'space'],
@@ -169,10 +167,9 @@ describe('ContentfulScreen', () => {
 
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Configure Contentful credentials?'),
+      (f) => f.includes('Contentful credentials'),
     );
-    stdin.write('y');
-    await new Promise((r) => setTimeout(r, 80));
+    await choose(stdin, lastFrame, 'Enter credentials now');
 
     for (const prompt of ['Space ID:', 'Environment ID', 'CMA token', 'API host'] as const) {
       await waitForFrame(

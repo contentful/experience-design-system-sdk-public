@@ -5,6 +5,7 @@ import { ConcurrencyScreen } from '../../../../src/setup/steps/preferences/concu
 import { NoColorScreen } from '../../../../src/setup/steps/preferences/no-color.js';
 import type { StepDone } from '../../../../src/setup/steps/StepLayout.js';
 import { waitForFrame } from '../../../helpers/wait-for-frame.js';
+import { acceptDefault, choose } from '../select-helpers.js';
 
 const shell = vi.hoisted(() => ({ profileContains: vi.fn(), appendToProfile: vi.fn() }));
 
@@ -22,17 +23,14 @@ function setup(Screen: React.ComponentType<{ profilePath: string; onDone: StepDo
   return { ...render(<Screen profilePath={PROFILE} onDone={onDone} />), onDone, append: shell.appendToProfile };
 }
 
-const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 80));
-
 describe('ConcurrencyScreen', () => {
   it('appends the variable when the operator opts in', async () => {
     const { lastFrame, stdin, onDone, append } = setup(ConcurrencyScreen);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Speed up component analysis on this machine?'),
+      (f) => f.includes('Performance concurrency'),
     );
-    stdin.write('y');
-    await settle();
+    await choose(stdin, lastFrame, 'Analyze more components at once');
 
     expect(append).toHaveBeenCalledWith(PROFILE, '# experiences performance\nexport EDS_EXTRACT_CONCURRENCY=8');
     expect(onDone).toHaveBeenCalledWith('completed');
@@ -42,10 +40,9 @@ describe('ConcurrencyScreen', () => {
     const { lastFrame, stdin, onDone, append } = setup(ConcurrencyScreen);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Speed up component analysis on this machine?'),
+      (f) => f.includes('Performance concurrency'),
     );
-    stdin.write('n');
-    await settle();
+    await acceptDefault(stdin);
 
     expect(append).not.toHaveBeenCalled();
     expect(onDone).toHaveBeenCalledWith('skipped');
@@ -59,7 +56,7 @@ describe('ConcurrencyScreen', () => {
     );
 
     expect(frame).toContain('EDS_EXTRACT_CONCURRENCY — already set');
-    expect(frame).not.toContain('Speed up component analysis');
+    expect(frame).not.toContain('Performance concurrency');
     expect(append).not.toHaveBeenCalled();
     expect(onDone).toHaveBeenCalledWith('skipped');
   });
@@ -68,7 +65,7 @@ describe('ConcurrencyScreen', () => {
     const { lastFrame } = setup(ConcurrencyScreen);
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Speed up component analysis'),
+      (f) => f.includes('Performance concurrency'),
     );
 
     expect(frame).not.toContain('EDS_EXTRACT_CONCURRENCY=8 to your profile');
@@ -80,10 +77,9 @@ describe('NoColorScreen', () => {
     const { lastFrame, stdin, append } = setup(NoColorScreen);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Turn off colored output?'),
+      (f) => f.includes('Terminal colors'),
     );
-    stdin.write('y');
-    await settle();
+    await choose(stdin, lastFrame, 'Turn colors off');
 
     expect(append).toHaveBeenCalledWith(PROFILE, 'export NO_COLOR=1');
   });
@@ -92,7 +88,7 @@ describe('NoColorScreen', () => {
     const { lastFrame } = setup(NoColorScreen);
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Turn off colored output?'),
+      (f) => f.includes('Terminal colors'),
     );
 
     expect(frame).not.toContain('NO_COLOR=1 (disable colors)');

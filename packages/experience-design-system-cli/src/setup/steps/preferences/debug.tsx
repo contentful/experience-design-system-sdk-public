@@ -8,7 +8,8 @@ export function DebugScreen({ onDone }: { onDone: StepDone }): React.ReactElemen
   return (
     <BooleanPreference
       helpText={DEBUG_HELP}
-      question="Enable debug logging by default?"
+      question="Debug logging"
+      labels={{ on: 'Write verbose traces', off: 'Stay quiet' }}
       read={(credentials) => credentials.debug}
       write={(credentials, debug) => ({ ...credentials, debug })}
       fallback={false}

@@ -8,7 +8,8 @@ export function AutoFilterScreen({ onDone }: { onDone: StepDone }): React.ReactE
   return (
     <BooleanPreference
       helpText={AUTO_FILTER_HELP}
-      question="Enable AI auto-filter by default?"
+      question="AI auto-filter"
+      labels={{ on: 'Filter out irrelevant components', off: 'Keep every component' }}
       read={(credentials) => credentials.autoFilter}
       write={(credentials, autoFilter) => ({ ...credentials, autoFilter })}
       fallback
