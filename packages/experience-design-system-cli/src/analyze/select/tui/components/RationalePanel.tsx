@@ -1,6 +1,7 @@
 import React from 'react';
 import { PALETTE } from '../theme.js';
 import { Box, Text } from 'ink';
+import { wrapText } from './wrap-text.js';
 
 export type RationaleRow = {
   name: string;
@@ -16,47 +17,6 @@ export type RationalePanelProps = {
   height: number;
   active: boolean;
 };
-
-function wrapText(text: string, innerWidth: number): string[] {
-  if (!text) return [''];
-  const width = Math.max(1, innerWidth);
-  const words = text.split(/\s+/).filter((w) => w.length > 0);
-  if (words.length === 0) return [''];
-  const lines: string[] = [];
-  let current = '';
-  for (const w of words) {
-    if (current.length === 0) {
-      if (w.length > width) {
-        let rest = w;
-        while (rest.length > width) {
-          lines.push(rest.slice(0, width));
-          rest = rest.slice(width);
-        }
-        current = rest;
-      } else {
-        current = w;
-      }
-      continue;
-    }
-    if (current.length + 1 + w.length <= width) {
-      current += ' ' + w;
-    } else {
-      lines.push(current);
-      if (w.length > width) {
-        let rest = w;
-        while (rest.length > width) {
-          lines.push(rest.slice(0, width));
-          rest = rest.slice(width);
-        }
-        current = rest;
-      } else {
-        current = w;
-      }
-    }
-  }
-  if (current.length > 0) lines.push(current);
-  return lines.length > 0 ? lines : [''];
-}
 
 type RenderedLine =
   | { kind: 'name'; text: string; isSlot: boolean }

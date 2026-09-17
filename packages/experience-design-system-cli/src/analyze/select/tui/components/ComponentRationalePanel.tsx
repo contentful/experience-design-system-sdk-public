@@ -2,6 +2,7 @@ import React from 'react';
 import { PALETTE } from '../theme.js';
 import { Box, Text } from 'ink';
 import type { ComponentRationale } from '../../../../session/db.js';
+import { wrapText } from './wrap-text.js';
 
 export type ComponentRationalePanelProps = {
   data: ComponentRationale;
@@ -12,47 +13,6 @@ export type ComponentRationalePanelProps = {
 };
 
 const PLACEHOLDER = '(no rationale captured)';
-
-function wrapText(text: string, innerWidth: number): string[] {
-  if (!text) return [''];
-  const width = Math.max(1, innerWidth);
-  const words = text.split(/\s+/).filter((w) => w.length > 0);
-  if (words.length === 0) return [''];
-  const lines: string[] = [];
-  let current = '';
-  for (const w of words) {
-    if (current.length === 0) {
-      if (w.length > width) {
-        let rest = w;
-        while (rest.length > width) {
-          lines.push(rest.slice(0, width));
-          rest = rest.slice(width);
-        }
-        current = rest;
-      } else {
-        current = w;
-      }
-      continue;
-    }
-    if (current.length + 1 + w.length <= width) {
-      current += ' ' + w;
-    } else {
-      lines.push(current);
-      if (w.length > width) {
-        let rest = w;
-        while (rest.length > width) {
-          lines.push(rest.slice(0, width));
-          rest = rest.slice(width);
-        }
-        current = rest;
-      } else {
-        current = w;
-      }
-    }
-  }
-  if (current.length > 0) lines.push(current);
-  return lines.length > 0 ? lines : [''];
-}
 
 type RenderedLine =
   | { kind: 'heading'; text: string }
@@ -66,20 +26,20 @@ function renderComponentRationaleLines(data: ComponentRationale, innerWidth: num
   const pushSection = (heading: string, body: string | null) => {
     out.push({ kind: 'heading', text: heading });
     const text = body && body.trim().length > 0 ? body : PLACEHOLDER;
-    for (const ln of wrapText(text, Math.max(1, innerWidth - 2))) {
-      out.push({ kind: 'text', text: '  ' + ln, dim: !body });
+    for (const line of wrapText(text, Math.max(1, innerWidth - 2))) {
+      out.push({ kind: 'text', text: '  ' + line, dim: !body });
     }
     out.push({ kind: 'blank' });
   };
 
   out.push({ kind: 'heading', text: 'Description' });
   const descBody = data.description && data.description.trim().length > 0 ? data.description : PLACEHOLDER;
-  for (const ln of wrapText(descBody, Math.max(1, innerWidth - 2))) {
-    out.push({ kind: 'text', text: '  ' + ln, dim: !data.description });
+  for (const line of wrapText(descBody, Math.max(1, innerWidth - 2))) {
+    out.push({ kind: 'text', text: '  ' + line, dim: !data.description });
   }
   if (data.descriptionRationale && data.descriptionRationale.trim().length > 0) {
-    for (const ln of wrapText(`why: ${data.descriptionRationale}`, Math.max(1, innerWidth - 2))) {
-      out.push({ kind: 'text', text: '  ' + ln, dim: true });
+    for (const line of wrapText(`why: ${data.descriptionRationale}`, Math.max(1, innerWidth - 2))) {
+      out.push({ kind: 'text', text: '  ' + line, dim: true });
     }
   }
   out.push({ kind: 'blank' });
@@ -94,8 +54,8 @@ function renderComponentRationaleLines(data: ComponentRationale, innerWidth: num
       const sub = p.category ? `(${p.category})` : undefined;
       out.push({ kind: 'list-name', text: p.name, sublabel: sub });
       const text = p.rationale && p.rationale.trim().length > 0 ? p.rationale : PLACEHOLDER;
-      for (const ln of wrapText(text, Math.max(1, innerWidth - 4))) {
-        out.push({ kind: 'text', text: '    ' + ln, dim: !p.rationale });
+      for (const line of wrapText(text, Math.max(1, innerWidth - 4))) {
+        out.push({ kind: 'text', text: '    ' + line, dim: !p.rationale });
       }
     }
   }
@@ -108,8 +68,8 @@ function renderComponentRationaleLines(data: ComponentRationale, innerWidth: num
     for (const s of data.slots) {
       out.push({ kind: 'list-name', text: s.name });
       const text = s.rationale && s.rationale.trim().length > 0 ? s.rationale : PLACEHOLDER;
-      for (const ln of wrapText(text, Math.max(1, innerWidth - 4))) {
-        out.push({ kind: 'text', text: '    ' + ln, dim: !s.rationale });
+      for (const line of wrapText(text, Math.max(1, innerWidth - 4))) {
+        out.push({ kind: 'text', text: '    ' + line, dim: !s.rationale });
       }
     }
   }
