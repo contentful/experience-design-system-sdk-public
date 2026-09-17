@@ -123,6 +123,83 @@ export function sortComponentsForSidebar<T extends { key: string; entry: CDFComp
 
 const PANEL_HEIGHT = 22;
 
+type CursorMoveDirection = 'up' | 'down';
+
+function moveSelectableCursor({
+  direction,
+  previousRow,
+  previousScroll,
+  positions,
+  visibleCount,
+}: {
+  direction: CursorMoveDirection;
+  previousRow: number;
+  previousScroll: number;
+  positions: number[];
+  visibleCount: number;
+}): { cursorRowIdx: number; sidebarScrollOffset: number } {
+  if (positions.length === 0) {
+    return { cursorRowIdx: previousRow, sidebarScrollOffset: previousScroll };
+  }
+
+  const position = positions.indexOf(previousRow);
+  const currentSelectableIdx =
+    position >= 0
+      ? position
+      : Math.max(
+          0,
+          positions.reduce((acc, row, index) => (row <= previousRow ? index : acc), 0),
+        );
+  const nextSelectableIdx =
+    direction === 'up'
+      ? Math.max(0, currentSelectableIdx - 1)
+      : Math.min(positions.length - 1, currentSelectableIdx + 1);
+  const nextRow = positions[nextSelectableIdx] ?? previousRow;
+  const nextScroll =
+    direction === 'up'
+      ? Math.min(previousScroll, nextRow)
+      : nextRow >= previousScroll + visibleCount
+        ? nextRow - visibleCount + 1
+        : previousScroll;
+
+  return { cursorRowIdx: nextRow, sidebarScrollOffset: nextScroll };
+}
+
+type CyclePathSegments = ReturnType<typeof formatCyclePathSegments>;
+
+function CyclePathLine({
+  segments,
+  prefix,
+  highlightComponents = false,
+  highlightLine = false,
+}: {
+  segments: CyclePathSegments;
+  prefix: string;
+  highlightComponents?: boolean;
+  highlightLine?: boolean;
+}): React.ReactElement {
+  return (
+    <Text color={highlightLine ? PALETTE.warning : undefined}>
+      {prefix}
+      {segments.map((segment, index) =>
+        segment.kind === 'slot' ? (
+          <Text key={index} color={PALETTE.info}>
+            {segment.text}
+          </Text>
+        ) : segment.kind === 'arrow' ? (
+          <Text key={index} dimColor>
+            {segment.text}
+          </Text>
+        ) : (
+          <Text key={index} color={highlightComponents ? PALETTE.warning : undefined}>
+            {segment.text}
+          </Text>
+        ),
+      )}
+    </Text>
+  );
+}
+
 const HELP_SECTIONS: HelpSection[] = [
   {
     title: 'Navigation',
@@ -1614,42 +1691,29 @@ export function GenerateReviewStep({
     }
 
     if (key.upArrow || input === 'k') {
-      setNav(({ cursorRowIdx: prev, sidebarScrollOffset: off }) => {
-        const positions = selectableRowPositions;
-        if (positions.length === 0) return { cursorRowIdx: prev, sidebarScrollOffset: off };
-        const pos = positions.indexOf(prev);
-        const currentSelectableIdx =
-          pos >= 0
-            ? pos
-            : Math.max(
-                0,
-                positions.reduce((acc, p, i) => (p <= prev ? i : acc), 0),
-              );
-        const nextSelectableIdx = Math.max(0, currentSelectableIdx - 1);
-        const newRow = positions[nextSelectableIdx] ?? prev;
-        return { cursorRowIdx: newRow, sidebarScrollOffset: Math.min(off, newRow) };
-      });
+      setNav(({ cursorRowIdx: previousRow, sidebarScrollOffset: previousScroll }) =>
+        moveSelectableCursor({
+          direction: 'up',
+          previousRow,
+          previousScroll,
+          positions: selectableRowPositions,
+          visibleCount,
+        }),
+      );
       setJsonScrollOffset(0);
       setDraftValue('');
       setSaveError(null);
       setPendingEditorFocus(null);
     } else if (key.downArrow || input === 'j') {
-      setNav(({ cursorRowIdx: prev, sidebarScrollOffset: off }) => {
-        const positions = selectableRowPositions;
-        if (positions.length === 0) return { cursorRowIdx: prev, sidebarScrollOffset: off };
-        const pos = positions.indexOf(prev);
-        const currentSelectableIdx =
-          pos >= 0
-            ? pos
-            : Math.max(
-                0,
-                positions.reduce((acc, p, i) => (p <= prev ? i : acc), 0),
-              );
-        const nextSelectableIdx = Math.min(positions.length - 1, currentSelectableIdx + 1);
-        const newRow = positions[nextSelectableIdx] ?? prev;
-        const nextOff = newRow >= off + visibleCount ? newRow - visibleCount + 1 : off;
-        return { cursorRowIdx: newRow, sidebarScrollOffset: nextOff };
-      });
+      setNav(({ cursorRowIdx: previousRow, sidebarScrollOffset: previousScroll }) =>
+        moveSelectableCursor({
+          direction: 'down',
+          previousRow,
+          previousScroll,
+          positions: selectableRowPositions,
+          visibleCount,
+        }),
+      );
       setJsonScrollOffset(0);
       setDraftValue('');
       setSaveError(null);
@@ -1686,30 +1750,9 @@ export function GenerateReviewStep({
         <Text bold color={PALETTE.warning}>
           {`BREAK CYCLE ${cyclesCursor + 1} — remove a slot edge or reject a member`}
         </Text>
-        {highlightedCycle &&
-          (() => {
-            const segs = formatCyclePathSegments(highlightedCycle);
-            return (
-              <Text>
-                {'  '}
-                {segs.map((seg, si) =>
-                  seg.kind === 'slot' ? (
-                    <Text key={si} color={PALETTE.info}>
-                      {seg.text}
-                    </Text>
-                  ) : seg.kind === 'arrow' ? (
-                    <Text key={si} dimColor>
-                      {seg.text}
-                    </Text>
-                  ) : (
-                    <Text key={si} color={PALETTE.warning}>
-                      {seg.text}
-                    </Text>
-                  ),
-                )}
-              </Text>
-            );
-          })()}
+        {highlightedCycle && (
+          <CyclePathLine segments={formatCyclePathSegments(highlightedCycle)} prefix="  " highlightComponents />
+        )}
         <Text dimColor>
           {highlightedCycle
             ? 'Deleting an edge removes it from $allowedComponents (undo with Ctrl+Z).'
@@ -1915,24 +1958,8 @@ export function GenerateReviewStep({
                 inverse={isCursor}
               >{`${isCursor ? '▶' : ' '} Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
             );
-            const segs = formatCyclePathSegments(cycle, 16);
             lines.push(
-              <Text key={`cyc-p-${idx}`}>
-                {'    '}
-                {segs.map((seg, si) =>
-                  seg.kind === 'slot' ? (
-                    <Text key={si} color={PALETTE.info}>
-                      {seg.text}
-                    </Text>
-                  ) : seg.kind === 'arrow' ? (
-                    <Text key={si} dimColor>
-                      {seg.text}
-                    </Text>
-                  ) : (
-                    <Text key={si}>{seg.text}</Text>
-                  ),
-                )}
-              </Text>,
+              <CyclePathLine key={`cyc-p-${idx}`} segments={formatCyclePathSegments(cycle, 16)} prefix="    " />,
             );
             if (cycle.suggestedBreak) {
               const b = cycle.suggestedBreak;
@@ -2259,26 +2286,14 @@ export function GenerateReviewStep({
             {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
           </Text>
           {slotCycles.slice(0, 3).map((cycle, idx) => {
-            const segs = formatCyclePathSegments(cycle);
             return (
-              <Text key={`cyc-banner-${idx}`} color={PALETTE.warning}>
-                {'  Cycle: '}
-                {segs.map((seg, si) =>
-                  seg.kind === 'slot' ? (
-                    <Text key={si} color={PALETTE.info}>
-                      {seg.text}
-                    </Text>
-                  ) : seg.kind === 'arrow' ? (
-                    <Text key={si} dimColor>
-                      {seg.text}
-                    </Text>
-                  ) : (
-                    <Text key={si} color={PALETTE.warning}>
-                      {seg.text}
-                    </Text>
-                  ),
-                )}
-              </Text>
+              <CyclePathLine
+                key={`cyc-banner-${idx}`}
+                segments={formatCyclePathSegments(cycle)}
+                prefix="  Cycle: "
+                highlightComponents
+                highlightLine
+              />
             );
           })}
           {slotCycles.length > 3 && <Text color={PALETTE.warning}>{`  …${slotCycles.length - 3} more`}</Text>}
