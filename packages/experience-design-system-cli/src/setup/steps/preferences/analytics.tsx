@@ -2,14 +2,14 @@ import React from 'react';
 import type { StepDone } from '../StepLayout.js';
 import { BooleanPreference } from './BooleanPreference.js';
 
-export const ANALYTICS_HELP = 'Shares anonymous usage data about which CLI commands run.';
+export const ANALYTICS_HELP = 'Shares anonymous usage data about which CLI commands are used and where imports succeed or fail. Never includes source code, file paths, credentials, or authored content';
 
 export function AnalyticsScreen({ onDone }: { onDone: StepDone }): React.ReactElement {
   return (
     <BooleanPreference
       helpText={ANALYTICS_HELP}
-      question="Usage analytics"
-      labels={{ on: 'Stop sharing usage data', off: 'Keep sharing usage data' }}
+      question="Anonymous usage analytics"
+      labels={{ on: "Don't share usage data", off: 'Keep sharing usage data' }}
       read={(credentials) => credentials.analyticsDisabled}
       write={(credentials, analyticsDisabled) => ({ ...credentials, analyticsDisabled })}
       fallback={false}
