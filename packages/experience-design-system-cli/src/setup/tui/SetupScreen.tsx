@@ -11,7 +11,7 @@ import {
 } from '../lib/layout.js';
 import { SetupStepper } from './SetupStepper.js';
 import { CodingAgentScreen } from '../steps/coding-agent.js';
-import { ContentfulScreen } from '../steps/contentful.js';
+import { ContentfulScreen } from '../steps/contentful-credentials.js';
 import type { StepStatus } from '../steps/StepLayout.js';
 import { PREFERENCE_OPTIONS } from '../steps/preferences/index.js';
 import { PrerequisitesScreen } from '../steps/prerequisites/PrerequisitesScreen.js';
@@ -49,13 +49,6 @@ type PendingConfirm = {
   resolve: (answer: boolean) => void;
 };
 
-const STEP_ACTIVITY = [
-  'Checking prerequisites',
-  'Configuring your coding agent',
-  'Configuring Contentful credentials',
-  'Configuring preferences',
-] as const;
-
 export function SetupScreen({
   version,
   repoRoot,
@@ -83,16 +76,15 @@ export function SetupScreen({
     if (startedRef.current) return;
     startedRef.current = true;
 
-    /** Hand the terminal to a self-rendering step and resolve with what it reports. */
+    /**
+     * Hand the terminal to a self-rendering step and resolve with what it reports.
+     * The finished step stays on screen until the next one replaces it — clearing
+     * it first left a frame with nothing under the stepper, which read as a flicker.
+     */
     const runScreen = <T,>(build: (done: (result: T) => void) => React.ReactNode): Promise<T> =>
       new Promise<T>((resolve) => {
         setPrompt(null);
-        setScreen(
-          build((result) => {
-            setScreen(null);
-            resolve(result);
-          }),
-        );
+        setScreen(build(resolve));
       });
 
     const enterStep = (step: number): void => {
@@ -206,19 +198,7 @@ export function SetupScreen({
         <SetupStepper activeStep={activeStep} columns={columns} />
       </Box>
 
-      {outcome ? (
-        <SetupSummary outcome={outcome} notice={notice} />
-      ) : screen ? (
-        <Box marginTop={1}>{screen}</Box>
-      ) : (
-        <>
-          {!prompt && (
-            <Box marginTop={1}>
-              <Text color={PALETTE.info}>⟳ {STEP_ACTIVITY[activeStep - 1]}…</Text>
-            </Box>
-          )}
-        </>
-      )}
+      {outcome ? <SetupSummary outcome={outcome} notice={notice} /> : screen && <Box marginTop={1}>{screen}</Box>}
 
       {prompt && (
         <Box marginTop={1}>

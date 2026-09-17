@@ -9,7 +9,7 @@ import {
 import { StepLayout, type StepDone } from '../StepLayout.js';
 
 type BooleanPreferenceProps = {
-  help: string;
+  helpText: string;
   question: string;
   /** Reads the stored value; `undefined` means the operator has never set it. */
   read: (credentials: ExperiencesCredentials) => boolean | undefined;
@@ -26,7 +26,7 @@ type BooleanPreferenceProps = {
  * writes nothing, which is what makes pressing Enter through the wizard safe.
  */
 export function BooleanPreference({
-  help,
+  helpText,
   question,
   read,
   write,
@@ -53,7 +53,7 @@ export function BooleanPreference({
 
   return (
     <StepLayout
-      help={help}
+      helpText={helpText}
       prompt={
         <Box>
           <Text>{question} </Text>

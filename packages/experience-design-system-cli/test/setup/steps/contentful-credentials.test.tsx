@@ -1,7 +1,7 @@
 import { render } from 'ink-testing-library';
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { ContentfulScreen, envShadowingWarning, maskToken } from '../../../src/setup/steps/contentful.js';
+import { ContentfulScreen, envShadowingWarning, maskToken } from '../../../src/setup/steps/contentful-credentials.js';
 import { waitForFrame } from '../../helpers/wait-for-frame.js';
 
 const credentialsStore = vi.hoisted(() => ({

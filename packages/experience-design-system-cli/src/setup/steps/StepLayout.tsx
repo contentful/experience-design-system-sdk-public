@@ -9,21 +9,21 @@ export type StepDone = (status: StepStatus) => void;
 
 type StepLayoutProps = {
   /** Explanation of the setting, rendered dimmed below the prompt. */
-  help?: string;
+  helpText?: string;
   /** Lines the step has already resolved, rendered above the prompt. */
   children: React.ReactNode;
   /** The active prompt, if the step is waiting on input. */
   prompt?: React.ReactNode;
 };
 
-export function StepLayout({ help, children, prompt }: StepLayoutProps): React.ReactElement {
+export function StepLayout({ helpText, children, prompt }: StepLayoutProps): React.ReactElement {
   return (
     <Box flexDirection="column">
       {children}
       {prompt && <Box marginTop={1}>{prompt}</Box>}
-      {help && (
+      {helpText && (
         <Box marginTop={1}>
-          <Text dimColor>{help}</Text>
+          <Text dimColor>{helpText}</Text>
         </Box>
       )}
     </Box>

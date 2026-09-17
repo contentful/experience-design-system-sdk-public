@@ -137,7 +137,7 @@ export function CodingAgentScreen({ onDone, deps }: CodingAgentScreenProps): Rea
   if (phase.kind === 'choose') {
     return (
       <StepLayout
-        help={AGENT_HELP}
+        helpText={AGENT_HELP}
         prompt={chooser(
           'Multiple coding agents found. Choose one to use as the default:',
           phase.found,
@@ -153,7 +153,7 @@ export function CodingAgentScreen({ onDone, deps }: CodingAgentScreenProps): Rea
   if (phase.kind === 'install-choice') {
     return (
       <StepLayout
-        help={AGENT_HELP}
+        helpText={AGENT_HELP}
         prompt={chooser(
           'Choose one to install:',
           [...INSTALLABLE],
@@ -169,7 +169,7 @@ export function CodingAgentScreen({ onDone, deps }: CodingAgentScreenProps): Rea
   if (phase.kind === 'model') {
     return (
       <StepLayout
-        help={AGENT_HELP}
+        helpText={AGENT_HELP}
         prompt={
           <Box>
             <Text>Model name (optional - press Enter for Codex default): </Text>
@@ -193,14 +193,16 @@ export function CodingAgentScreen({ onDone, deps }: CodingAgentScreenProps): Rea
 
   if (phase.kind === 'installing') {
     return (
-      <StepLayout help={AGENT_HELP}>
+      <StepLayout helpText={AGENT_HELP}>
         {[...notes, <Text key="installing">{`Installing ${phase.agent.name}…`}</Text>]}
       </StepLayout>
     );
   }
 
   if (phase.kind === 'failed') {
-    return <StepLayout help={AGENT_HELP}>{[...notes, <Text key="failed">{`✗ ${phase.message}`}</Text>]}</StepLayout>;
+    return (
+      <StepLayout helpText={AGENT_HELP}>{[...notes, <Text key="failed">{`✗ ${phase.message}`}</Text>]}</StepLayout>
+    );
   }
 
   return <Text dimColor>Looking for a coding agent…</Text>;

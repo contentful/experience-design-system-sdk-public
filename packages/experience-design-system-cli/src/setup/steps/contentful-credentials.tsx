@@ -66,12 +66,12 @@ export function ContentfulScreen({ onDone }: { onDone: StepDone }): React.ReactE
     </>
   );
 
-  const help = `Saved to ${experiencesCredentialsPath()} — loaded automatically by experiences import.`;
+  const helpText = `Saved to ${experiencesCredentialsPath()} — loaded automatically by experiences import.`;
 
   if (field === 'confirm') {
     return (
       <StepLayout
-        help={help}
+        helpText={helpText}
         prompt={
           <Box>
             <Text>{hasAny ? 'Update credentials?' : 'Configure Contentful credentials?'} </Text>
@@ -146,7 +146,7 @@ export function ContentfulScreen({ onDone }: { onDone: StepDone }): React.ReactE
   };
 
   return (
-    <StepLayout help={help} prompt={prompts[field]}>
+    <StepLayout helpText={helpText} prompt={prompts[field]}>
       {summary}
     </StepLayout>
   );

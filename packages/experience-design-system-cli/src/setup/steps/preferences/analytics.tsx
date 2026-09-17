@@ -7,7 +7,7 @@ export const ANALYTICS_HELP = 'Shares anonymous usage data about which CLI comma
 export function AnalyticsScreen({ onDone }: { onDone: StepDone }): React.ReactElement {
   return (
     <BooleanPreference
-      help={ANALYTICS_HELP}
+      helpText={ANALYTICS_HELP}
       question="Disable anonymous usage analytics?"
       read={(credentials) => credentials.analyticsDisabled}
       write={(credentials, analyticsDisabled) => ({ ...credentials, analyticsDisabled })}

@@ -7,7 +7,7 @@ export const DEBUG_HELP = 'Writes a verbose trace of every command decision, for
 export function DebugScreen({ onDone }: { onDone: StepDone }): React.ReactElement {
   return (
     <BooleanPreference
-      help={DEBUG_HELP}
+      helpText={DEBUG_HELP}
       question="Enable debug logging by default?"
       read={(credentials) => credentials.debug}
       write={(credentials, debug) => ({ ...credentials, debug })}

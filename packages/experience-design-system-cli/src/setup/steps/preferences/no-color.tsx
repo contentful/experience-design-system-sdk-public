@@ -9,7 +9,7 @@ const PROFILE_VARIABLE = 'NO_COLOR';
 export function NoColorScreen({ profilePath, onDone }: { profilePath: string; onDone: StepDone }): React.ReactElement {
   return (
     <ProfilePreference
-      help={NO_COLOR_HELP}
+      helpText={NO_COLOR_HELP}
       question="Turn off colored output?"
       variable={PROFILE_VARIABLE}
       lines={`export ${PROFILE_VARIABLE}=1`}

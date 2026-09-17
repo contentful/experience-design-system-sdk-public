@@ -72,7 +72,7 @@ export function CustomPromptsScreen({ onDone }: { onDone: StepDone }): React.Rea
   if (phase === 'confirm') {
     return (
       <StepLayout
-        help={CUSTOM_PROMPTS_HELP}
+        helpText={CUSTOM_PROMPTS_HELP}
         prompt={
           <Box>
             <Text>Use your own prompt files instead of the built-in ones? </Text>
@@ -93,7 +93,7 @@ export function CustomPromptsScreen({ onDone }: { onDone: StepDone }): React.Rea
 
   return (
     <StepLayout
-      help={CUSTOM_PROMPTS_HELP}
+      helpText={CUSTOM_PROMPTS_HELP}
       prompt={
         <Box>
           <Text>{customSkillPathQuestion(phase, current)}</Text>
