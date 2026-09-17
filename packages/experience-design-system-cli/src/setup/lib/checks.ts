@@ -76,19 +76,15 @@ export async function checkPnpm(pkgRoot: string, deps: PnpmDeps = { binaryExists
 
 export interface InstallCheck {
   passed: boolean;
-  /** Whether `node_modules` was already present, which changes doctor's wording. */
-  hadNodeModules: boolean;
   result: ShellCommandResult;
 }
 
 export async function installDependencies(
-  pkgRoot: string,
-  deps: { pathExists: typeof pathExists; run: typeof runSpawn } = { pathExists, run: runSpawn },
+  repoRoot: string,
+  deps: { run: typeof runSpawn } = { run: runSpawn },
 ): Promise<InstallCheck> {
-  const hadNodeModules = await deps.pathExists(join(pkgRoot, 'node_modules'));
-  const repoRoot = join(pkgRoot, '..', '..');
   const result = await deps.run('pnpm', ['install', '--frozen-lockfile'], { cwd: repoRoot });
-  return { passed: result.exitCode === 0, hadNodeModules, result };
+  return { passed: result.exitCode === 0, result };
 }
 
 export interface BuildCheck {

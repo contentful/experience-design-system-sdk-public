@@ -79,7 +79,7 @@ export async function reportDependencies(pkgRoot: string): Promise<boolean> {
     info('Running pnpm install to ensure dependencies are up to date...');
   }
 
-  const check = await installDependencies(pkgRoot);
+  const check = await installDependencies(join(pkgRoot, '..', '..'));
   if (!check.passed) {
     fail('pnpm install failed');
     info('');
