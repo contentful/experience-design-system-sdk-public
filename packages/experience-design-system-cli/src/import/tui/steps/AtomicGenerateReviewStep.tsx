@@ -380,6 +380,14 @@ export function AtomicGenerateReviewStep({
     });
   };
 
+  const acceptAll = (): void => {
+    setComponents((prev) => {
+      const next: CdfReviewEntry[] = prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c));
+      pushHistorySnapshot(next, 'accept-all');
+      return next;
+    });
+  };
+
   const finalizePreview = useFinalizePreview({
     open: showFinalize,
     extractSessionId,
@@ -794,13 +802,7 @@ export function AtomicGenerateReviewStep({
       return;
     }
     if (input === 'A') {
-      setComponents((prev) => {
-        const next: CdfReviewEntry[] = prev.map((c) =>
-          c.status === 'needs-review' ? { ...c, status: 'accepted' } : c,
-        );
-        pushHistorySnapshot(next, 'accept-all');
-        return next;
-      });
+      acceptAll();
       setFinalizeError(null);
       return;
     }
@@ -1178,15 +1180,7 @@ export function AtomicGenerateReviewStep({
           rejected={rejected}
           reviewed={0}
           needsReview={needsReview}
-          onApproveAll={() => {
-            setComponents((prev) => {
-              const next: CdfReviewEntry[] = prev.map((c) =>
-                c.status === 'needs-review' ? { ...c, status: 'accepted' } : c,
-              );
-              pushHistorySnapshot(next, 'accept-all');
-              return next;
-            });
-          }}
+          onApproveAll={acceptAll}
           onFinalize={() => setShowFinalize(true)}
         />
       )}
