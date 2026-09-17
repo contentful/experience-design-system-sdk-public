@@ -3,9 +3,7 @@ import { Box, Text } from 'ink';
 import type { PreviewAnnotation, ReviewComponentSummary, ReviewComponentStatus } from '../../types.js';
 import { PALETTE } from '../theme.js';
 
-export function previewBadge(
-  annotation: PreviewAnnotation | undefined,
-): { char: string; color: string; bold?: boolean; dim?: boolean } | null {
+export function previewBadge(annotation: PreviewAnnotation | undefined): PreviewBadgeValue | null {
   switch (annotation) {
     case 'new':
       return { char: '+', color: PALETTE.success };
@@ -18,6 +16,18 @@ export function previewBadge(
     default:
       return null;
   }
+}
+
+export type PreviewBadgeValue = { char: string; color: string; bold?: boolean; dim?: boolean };
+
+export function PreviewBadge({ badge }: { badge: PreviewBadgeValue | null }): React.ReactElement {
+  return badge ? (
+    <Text color={badge.color} bold={badge.bold} dimColor={badge.dim}>
+      {badge.char}
+    </Text>
+  ) : (
+    <Text> </Text>
+  );
 }
 
 type SidebarProps = {
@@ -142,13 +152,7 @@ export function Sidebar({
             <Text color={color} inverse={isSelected && focused} underline={isSelected && !focused}>
               {icon}
             </Text>
-            {badge ? (
-              <Text color={badge.color} bold={badge.bold} dimColor={badge.dim}>
-                {badge.char}
-              </Text>
-            ) : (
-              <Text> </Text>
-            )}
+            <PreviewBadge badge={badge} />
             <Text color={color} inverse={isSelected && focused} underline={isSelected && !focused} wrap="truncate">
               {' ' + name}
             </Text>

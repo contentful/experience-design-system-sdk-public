@@ -77,9 +77,15 @@ import { computeAutoRejectDecision } from './auto-reject-decision.js';
 import { formatBreakingChange } from './breaking-change-format.js';
 import { enumerateCycleBreaks, shouldBreakOverlayGoFullScreen, type BreakEdge } from './enumerate-cycle-breaks.js';
 import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
-import { computeAutocomplete } from '../autocomplete.js';
 import { resolveGroupRoot } from '../group-collapse.js';
 import { buildFlatDimPredicate, computeFilterKeys, intersectFilterKeys, type FilterCategory } from '../step-filters.js';
+import { createSidebarViewsHelpSection } from '../sidebar-help.js';
+import { handleSidebarSearchInput } from '../sidebar-input.js';
+import { collectExpandedGroupRoots, computeSidebarViewToggle } from '../sidebar-navigation.js';
+import { handleLineageNavigation } from '../lineage-input.js';
+import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
+import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
+import type { ReviewStepProps } from '../review-step-props.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -87,20 +93,7 @@ type CdfReviewEntry = {
   status: ReviewComponentStatus;
 };
 
-type GenerateReviewStepProps = {
-  extractSessionId: string;
-  tokenSessionId?: string | null;
-  onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
-  onQuit: () => void;
-  livePreview?: boolean;
-  spaceId?: string;
-  environmentId?: string;
-  cmaToken?: string;
-  host?: string;
-  tokensPath?: string;
-  initialFinalizeError?: string | null;
-  allowDeletions?: boolean;
-};
+type GenerateReviewStepProps = ReviewStepProps;
 
 export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
   components: T[],
@@ -218,18 +211,7 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'F', label: 'Finalize' },
     ],
   },
-  {
-    title: 'Sidebar views',
-    entries: [
-      { keys: 'L', label: 'Flat view' },
-      { keys: 'l', label: 'Lineage' },
-      { keys: 'i', label: 'Focus lineage' },
-      { keys: 'w', label: 'Only breaking' },
-      { keys: 'o', label: 'Only cycles' },
-      { keys: 'space', label: 'Expand/collapse group' },
-      { keys: 'E / C', label: 'Expand/collapse all' },
-    ],
-  },
+  createSidebarViewsHelpSection(true),
   {
     title: 'Panels',
     entries: [
@@ -402,10 +384,22 @@ export function GenerateReviewStep({
   const [breakConfirm, setBreakConfirm] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const seededGroupsRef = useRef(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [autocompleteCandidates, setAutocompleteCandidates] = useState<string[]>([]);
-  const [jumpFilterTarget, setJumpFilterTarget] = useState<string | null>(null);
+  const {
+    searchOpen,
+    setSearchOpen,
+    searchQuery,
+    setSearchQuery,
+    autocompleteCandidates,
+    setAutocompleteCandidates,
+    jumpFilterTarget,
+    setJumpFilterTarget,
+    columnOneView,
+    setColumnOneView,
+    activeFilters,
+    setActiveFilters,
+    showHelp,
+    setShowHelp,
+  } = useSidebarSearchState();
   const lineagePanel = useOverlayPanel({ toggleKey: 'l' });
   const [lineageCursor, setLineageCursor] = useState(0);
   const breakingPanel = useOverlayPanel({ toggleKey: 'b', onClose: () => setBreakingDetailOpen(false) });
@@ -416,8 +410,6 @@ export function GenerateReviewStep({
     componentName: string;
     target: { kind: 'prop' | 'slot'; name: string };
   } | null>(null);
-  const [columnOneView, setColumnOneView] = useState<'grouped' | 'flat'>('grouped');
-  const [activeFilters, setActiveFilters] = useState<Set<FilterCategory>>(new Set());
   const [autoRejected, setAutoRejected] = useState<string[]>([]);
   const [undoSnapshot, setUndoSnapshot] = useState<Map<string, ReviewComponentStatus> | null>(null);
   const autoRejectFiredRef = useRef<boolean>(false);
@@ -430,7 +422,6 @@ export function GenerateReviewStep({
   const historyRef = useRef<HistoryStack | null>(null);
   const historySeededRef = useRef(false);
   const [showReloadDialog, setShowReloadDialog] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
@@ -624,9 +615,12 @@ export function GenerateReviewStep({
     if (seededGroupsRef.current) return;
     if (closures.size === 0 && slotCycles.length === 0) return;
     seededGroupsRef.current = true;
-    const seed = new Set<string>(closures.keys());
-    for (const cyc of slotCycles) for (const p of cyc.path) seed.add(p);
-    setExpandedGroups(seed);
+    setExpandedGroups(
+      collectExpandedGroupRoots(
+        closures,
+        slotCycles.flatMap((cycle) => cycle.path),
+      ),
+    );
   }, [closures, slotCycles]);
   const directIssues = useMemo<Map<string, NodeStatus>>(() => {
     const m = new Map<string, NodeStatus>();
@@ -736,12 +730,7 @@ export function GenerateReviewStep({
       const reloadGraph = buildComponentGraph(entries);
       const reloadClosures = computeAllClosures(reloadGraph);
       const reloadCycleView = computeCycleView(entries);
-      const reloadSeed = new Set<string>();
-      for (const [name, closure] of reloadClosures.entries()) {
-        if (closure.nodes.length > 1) reloadSeed.add(name);
-      }
-      for (const name of reloadCycleView.structural) reloadSeed.add(name);
-      setExpandedGroups(reloadSeed);
+      setExpandedGroups(collectExpandedGroupRoots(reloadClosures, reloadCycleView.structural));
       seededGroupsRef.current = true;
       setAutoRejected([]);
       setUndoSnapshot(null);
@@ -1184,25 +1173,15 @@ export function GenerateReviewStep({
         setSearchOpen(false);
         return;
       }
-      if (key.tab) {
-        const { completion, candidates } = computeAutocomplete(
-          searchQuery,
-          components.map((c) => c.key),
-        );
-        setSearchQuery(completion);
-        setAutocompleteCandidates(candidates);
+      if (
+        handleSidebarSearchInput(input, key, {
+          query: searchQuery,
+          names: components.map((c) => c.key),
+          setQuery: setSearchQuery,
+          setCandidates: setAutocompleteCandidates,
+        })
+      )
         return;
-      }
-      if (key.backspace) {
-        setAutocompleteCandidates([]);
-        setSearchQuery((q) => q.slice(0, -1));
-        return;
-      }
-      if (input && input.length === 1 && input >= ' ' && input !== '\r' && input !== '\n') {
-        setAutocompleteCandidates([]);
-        setSearchQuery((q) => q + input);
-        return;
-      }
       return;
     }
 
@@ -1238,26 +1217,19 @@ export function GenerateReviewStep({
     }
     if (lineagePanel.isOpen) {
       if (lineagePanel.handleInput(input, key)) return;
-      if (key.upArrow || input === 'k') {
-        setLineageCursor((c) => Math.max(0, c - 1));
+      if (
+        handleLineageNavigation({
+          input,
+          key,
+          cursor: lineageCursor,
+          jumpables: lineageJumpables,
+          onCursorChange: setLineageCursor,
+          onJump: jumpCursorToName,
+          onClose: lineagePanel.close,
+          allowTab: true,
+        })
+      )
         return;
-      }
-      if (key.downArrow || input === 'j') {
-        setLineageCursor((c) => Math.min(Math.max(0, lineageJumpables.length - 1), c + 1));
-        return;
-      }
-      if (key.tab) {
-        setLineageCursor((c) => (lineageJumpables.length === 0 ? 0 : (c + 1) % lineageJumpables.length));
-        return;
-      }
-      if (key.return) {
-        const target = lineageJumpables[lineageCursor];
-        if (target && (target.entry.kind === 'ancestor' || target.entry.kind === 'descendant')) {
-          jumpCursorToName(target.entry.jumpTarget);
-        }
-        lineagePanel.close();
-        return;
-      }
       return;
     }
     if (breakPanel.isOpen) {
@@ -1591,33 +1563,18 @@ export function GenerateReviewStep({
         cursorRowIdx >= 0 && cursorRowIdx < visibleRowsMemo.length
           ? (components[visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1]?.key ?? null)
           : null;
-      const nextView: 'grouped' | 'flat' = columnOneView === 'grouped' ? 'flat' : 'grouped';
-      const nextRows = buildVisibleRows({
+      const next = computeSidebarViewToggle({
+        currentView: columnOneView,
+        currentKey,
+        currentScroll: sidebarScrollOffset,
+        visibleCount,
         items: groupedItemsMemo,
         cycleParticipants: cycleView.structural,
         expandedGroups,
-        viewMode: nextView,
         graph: sidebarGraph,
       });
-      let nextCursor = 0;
-      if (currentKey) {
-        for (let i = 0; i < nextRows.length; i++) {
-          const r = nextRows[i];
-          if (r.itemIdx < 0) continue;
-          if (components[r.itemIdx]?.key === currentKey) {
-            nextCursor = i;
-            break;
-          }
-        }
-      }
-      const nextScroll =
-        nextCursor < sidebarScrollOffset
-          ? nextCursor
-          : nextCursor >= sidebarScrollOffset + visibleCount
-            ? nextCursor - visibleCount + 1
-            : sidebarScrollOffset;
-      setColumnOneView(nextView);
-      setNav({ cursorRowIdx: nextCursor, sidebarScrollOffset: nextScroll });
+      setColumnOneView(next.view);
+      setNav({ cursorRowIdx: next.cursor, sidebarScrollOffset: next.scroll });
       return;
     }
     if (input === 'a') {
@@ -1649,12 +1606,7 @@ export function GenerateReviewStep({
       return;
     }
     if (input === 'E') {
-      const roots = new Set<string>();
-      for (const [name, closure] of closures.entries()) {
-        if (closure.nodes.length > 1) roots.add(name);
-      }
-      for (const name of cycleView.structural) roots.add(name);
-      setExpandedGroups(roots);
+      setExpandedGroups(collectExpandedGroupRoots(closures, cycleView.structural));
       return;
     }
     if (input === 'C') {
@@ -2300,23 +2252,14 @@ export function GenerateReviewStep({
           <Text dimColor>{'  press [c] for detail'}</Text>
         </Box>
       )}
-      {!dialogOpen && searchOpen && (
-        <Box flexDirection="column">
-          <Text>
-            {`/${searchQuery}`}
-            <Text color={PALETTE.info}>{'▎'}</Text>
-            {searchQuery && <Text dimColor>{`  (${searchMatchCount}/${components.length} matches)`}</Text>}
-          </Text>
-          {autocompleteCandidates.length > 1 && (
-            <Text dimColor>{`  possibilities: ${autocompleteCandidates.join(' · ').slice(0, 120)}`}</Text>
-          )}
-        </Box>
-      )}
-      {!dialogOpen && !searchOpen && searchQuery && (
-        <Box>
-          <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear`}</Text>
-        </Box>
-      )}
+      <SearchMatchSummary
+        open={searchOpen}
+        query={searchQuery}
+        matches={searchMatchCount}
+        total={components.length}
+        autocompleteCandidates={autocompleteCandidates}
+        hidden={dialogOpen}
+      />
       {!dialogOpen && sidebarFocused && (
         <Box columnGap={2} flexWrap="wrap">
           {panelOpen === 'token-review' ? (

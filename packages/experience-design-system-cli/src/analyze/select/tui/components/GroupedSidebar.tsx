@@ -9,7 +9,7 @@ import {
   type NodeStatus,
 } from '../../../composite-closure.js';
 import type { RenderStatus } from '../../../issue-inheritance.js';
-import { previewBadge } from './Sidebar.js';
+import { PreviewBadge, previewBadge } from './Sidebar.js';
 import { PALETTE } from '../theme.js';
 import type { PreviewAnnotation } from '../../types.js';
 
@@ -617,13 +617,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
             ) : (
               <Text>{'  '}</Text>
             )}
-            {badge ? (
-              <Text color={badge.color} bold={badge.bold} dimColor={badge.dim}>
-                {badge.char}
-              </Text>
-            ) : (
-              <Text> </Text>
-            )}
+            <PreviewBadge badge={badge} />
             {selectionStateByKey !== undefined &&
               (selGlyph && !isSynthetic ? (
                 <Text color={selColor} dimColor={selDim} bold={selBold}>
