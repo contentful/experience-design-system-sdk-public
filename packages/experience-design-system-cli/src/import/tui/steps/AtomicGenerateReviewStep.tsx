@@ -6,7 +6,6 @@ import type {
   ServerPreviewResponse,
 } from '@contentful/experience-design-system-types';
 import { Sidebar } from '../../../analyze/select/tui/components/Sidebar.js';
-import { JsonPanel } from '../../../analyze/select/tui/components/JsonPanel.js';
 import { FieldEditor } from '../../../analyze/select/tui/components/FieldEditor.js';
 import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
 import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
@@ -23,10 +22,7 @@ import {
   type ComponentReviewMetadata,
   type ComponentRationale,
 } from '../../../session/db.js';
-import { RationalePanel, type RationaleRow } from '../../../analyze/select/tui/components/RationalePanel.js';
-import { ComponentRationalePanel } from '../../../analyze/select/tui/components/ComponentRationalePanel.js';
 import {
-  TokenReviewPanel,
   collectTokenSuggestions,
   type TokenPropSuggestion,
   type TokenReviewToken,
@@ -44,6 +40,7 @@ import { useFinalizePreview } from '../useFinalizePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
+import { ReviewDetailsPanel } from './review-details-panel.js';
 
 type CdfReviewEntry = {
   key: string;
@@ -1018,135 +1015,62 @@ export function AtomicGenerateReviewStep({
                     {sidebarFocused ? '[e/Tab] focus panel' : '[Tab] focus list'}
                   </Text>
                 </Box>
-                {panelOpen === 'prop-rationale' ? (
-                  (() => {
-                    const rows: RationaleRow[] = [
-                      ...(componentRationale?.props ?? []).map<RationaleRow>((p) => ({
-                        name: p.name,
-                        kind: 'prop',
-                        rationale: p.rationale ?? '',
-                      })),
-                      ...(componentRationale?.slots ?? []).map<RationaleRow>((s) => ({
-                        name: s.name,
-                        kind: 'slot',
-                        rationale: s.rationale ?? '',
-                      })),
-                    ];
-                    return (
-                      <RationalePanel
-                        componentName={componentRationale?.name ?? selected.key}
-                        rows={rows}
-                        scrollOffset={panelScrollOffset}
-                        width={panelWidth}
-                        height={PANEL_HEIGHT}
-                        active={true}
-                      />
-                    );
-                  })()
-                ) : panelOpen === 'component-rationale' ? (
-                  <ComponentRationalePanel
-                    data={
-                      componentRationale ?? {
-                        name: selected.key,
-                        description: null,
-                        descriptionRationale: null,
-                        propsRationale: null,
-                        slotsRationale: null,
-                        props: [],
-                        slots: [],
+                <ReviewDetailsPanel
+                  selectedKey={selected.key}
+                  panelOpen={panelOpen}
+                  componentRationale={componentRationale}
+                  reviewMetadata={reviewMetadata}
+                  panelScrollOffset={panelScrollOffset}
+                  width={panelWidth}
+                  height={PANEL_HEIGHT}
+                  sourceBorderColor={PALETTE.border}
+                  tokenSuggestions={currentTokenSuggestions()}
+                  tokenReviewRow={tokenReviewRow}
+                  tokenReviewEditing={tokenReviewEditing}
+                  tokenReviewEditCursor={tokenReviewEditCursor}
+                  tokenReviewEditSelection={tokenReviewEditSelection}
+                  showJson={showJson}
+                  jsonValue={visibleJsonPanelValue}
+                  jsonScrollOffset={jsonScrollOffset}
+                  sidebarFocused={sidebarFocused}
+                  editor={
+                    <FieldEditor
+                      key={selected.key}
+                      value={draftValue || selectedJson}
+                      showHiddenProps={showHiddenProps}
+                      width={panelWidth}
+                      height={PANEL_HEIGHT}
+                      active={!sidebarFocused}
+                      onChange={setDraftValue}
+                      onSave={handleEditSave}
+                      onDiscard={handleEditDiscard}
+                      onExit={() => setSidebarFocused(true)}
+                      metadata={
+                        reviewMetadata
+                          ? ({
+                              sourcePath: reviewMetadata.sourcePath,
+                              componentSource: reviewMetadata.componentSource,
+                              props: reviewMetadata.props,
+                            } as FieldEditorMetadata)
+                          : undefined
                       }
-                    }
-                    scrollOffset={panelScrollOffset}
-                    width={panelWidth}
-                    height={PANEL_HEIGHT}
-                    active={true}
-                  />
-                ) : panelOpen === 'source' ? (
-                  (() => {
-                    const path = reviewMetadata?.sourcePath ?? null;
-                    const src = reviewMetadata?.componentSource ?? null;
-                    const headerPath = path ?? '<unknown source path>';
-                    const lines = src ? src.split('\n').slice(panelScrollOffset, panelScrollOffset + PANEL_HEIGHT) : [];
-                    return (
-                      <Box
-                        flexDirection="column"
-                        width={panelWidth}
-                        borderStyle="single"
-                        borderColor={PALETTE.border}
-                        paddingX={1}
-                      >
-                        <Text dimColor bold>{`source: ${headerPath}`}</Text>
-                        {src ? (
-                          lines.map((ln, i) => (
-                            <Text key={`source-line-${i}`} dimColor>
-                              {ln}
-                            </Text>
-                          ))
-                        ) : (
-                          <Text dimColor>{'(no source captured)'}</Text>
-                        )}
-                        <Text dimColor>{'[s/Esc] close'}</Text>
-                      </Box>
-                    );
-                  })()
-                ) : panelOpen === 'token-review' ? (
-                  <TokenReviewPanel
-                    componentName={selected.key}
-                    suggestions={currentTokenSuggestions()}
-                    selectedRow={tokenReviewRow}
-                    editing={tokenReviewEditing}
-                    editCursor={tokenReviewEditCursor}
-                    editSelection={tokenReviewEditSelection}
-                    width={panelWidth}
-                    height={PANEL_HEIGHT}
-                    active={true}
-                  />
-                ) : showJson ? (
-                  <JsonPanel
-                    label="GENERATED DEFINITION (read-only)"
-                    value={visibleJsonPanelValue}
-                    scrollOffset={jsonScrollOffset}
-                    width={panelWidth}
-                    height={PANEL_HEIGHT}
-                    active={!sidebarFocused}
-                  />
-                ) : (
-                  <FieldEditor
-                    key={selected.key}
-                    value={draftValue || selectedJson}
-                    showHiddenProps={showHiddenProps}
-                    width={panelWidth}
-                    height={PANEL_HEIGHT}
-                    active={!sidebarFocused}
-                    onChange={setDraftValue}
-                    onSave={handleEditSave}
-                    onDiscard={handleEditDiscard}
-                    onExit={() => setSidebarFocused(true)}
-                    metadata={
-                      reviewMetadata
-                        ? ({
-                            sourcePath: reviewMetadata.sourcePath,
-                            componentSource: reviewMetadata.componentSource,
-                            props: reviewMetadata.props,
-                          } as FieldEditorMetadata)
-                        : undefined
-                    }
-                    onTogglePropRationale={() => {
-                      setPanelOpen('prop-rationale');
-                      setPanelScrollOffset(() => 0);
-                    }}
-                    onToggleComponentRationale={() => {
-                      setPanelOpen('component-rationale');
-                      setPanelScrollOffset(() => 0);
-                    }}
-                    onToggleSourceExternal={() => {
-                      setPanelOpen('source');
-                      setPanelScrollOffset(() => 0);
-                    }}
-                    onTextEntryActiveChange={setTextEntryActive}
-                    initialFocusTarget={{ kind: 'description' }}
-                  />
-                )}
+                      onTogglePropRationale={() => {
+                        setPanelOpen('prop-rationale');
+                        setPanelScrollOffset(() => 0);
+                      }}
+                      onToggleComponentRationale={() => {
+                        setPanelOpen('component-rationale');
+                        setPanelScrollOffset(() => 0);
+                      }}
+                      onToggleSourceExternal={() => {
+                        setPanelOpen('source');
+                        setPanelScrollOffset(() => 0);
+                      }}
+                      onTextEntryActiveChange={setTextEntryActive}
+                      initialFocusTarget={{ kind: 'description' }}
+                    />
+                  }
+                />
                 {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
                 <Text dimColor>
                   {panelOpen === 'token-review'
