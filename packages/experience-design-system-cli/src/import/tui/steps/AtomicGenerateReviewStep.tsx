@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import type {
   CDFComponentEntry,
@@ -11,11 +11,6 @@ import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
 import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
 import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
-import { openPipelineDb, storeCDFComponents } from '../../../session/db.js';
-import {
-  collectTokenSuggestions,
-  type TokenPropSuggestion,
-} from '../../../analyze/select/tui/components/TokenReviewPanel.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
 import type {
   PreviewAnnotation,
@@ -26,10 +21,10 @@ import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotat
 import type { HistorySnapshot } from '../history.js';
 import { useLivePreview } from '../useLivePreview.js';
 import { useFinalizePreview } from '../useFinalizePreview.js';
-import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { ReviewDetailsPanel } from './review-details-panel.js';
+import { handleJsonPanelInput, handleRationalePanelInput, handleTokenReviewInput } from '../hooks/review-input.js';
 import {
   createReviewHistorySnapshot,
   finalizeReviewSession,
@@ -40,6 +35,7 @@ import {
   type CdfReviewEntry,
   type ReviewSessionLoadResult,
 } from '../hooks/useReviewSession.js';
+import { useReviewEditor } from '../hooks/useReviewEditor.js';
 
 type GenerateReviewStepProps = {
   extractSessionId: string;
@@ -131,15 +127,9 @@ export function AtomicGenerateReviewStep({
 
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [sidebarScrollOffset, setSidebarScrollOffset] = useState(0);
-  const [jsonScrollOffset, setJsonScrollOffset] = useState(0);
   const [sidebarFocused, setSidebarFocused] = useState(true);
   const [showFinalize, setShowFinalize] = useState(false);
   const [showQuit, setShowQuit] = useState(false);
-  // FieldEditor is the default editor. JSON view is an opt-in read-only toggle.
-  const [showJson, setShowJson] = useState(false);
-  const [showHiddenProps, setShowHiddenProps] = useState(false);
-  const [draftValue, setDraftValue] = useState('');
-  const [saveError, setSaveError] = useState<string | null>(null);
   // INTEG-4411: inline banner shown when the operator tries to finalize
   // with zero accepted components. Cleared on the next 'a' or 'A' press.
   const [finalizeError, setFinalizeError] = useState<string | null>(initialFinalizeError);
@@ -154,22 +144,6 @@ export function AtomicGenerateReviewStep({
   // names/ids when the operator asks "which ones?".
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
   const [showRemovedPanel, setShowRemovedPanel] = useState(false);
-  // Lifted rationale + source panels (replaces FieldEditor's right pane).
-  // Mutually exclusive states.
-  const [panelOpen, setPanelOpen] = useState<
-    'none' | 'prop-rationale' | 'component-rationale' | 'source' | 'token-review'
-  >('none');
-  const [panelScrollOffset, setPanelScrollOffset] = useState(0);
-  const [textEntryActive, setTextEntryActive] = useState(false);
-  const [tokenReviewRow, setTokenReviewRow] = useState(0);
-  const [tokenReviewEditing, setTokenReviewEditing] = useState(false);
-  const [tokenReviewEditCursor, setTokenReviewEditCursor] = useState(0);
-  const [tokenReviewEditSelection, setTokenReviewEditSelection] = useState<Set<string>>(new Set());
-  const tokenReviewSuggestedRef = useRef(new Map<string, string[]>());
-  // Tracks the first `g` of a potential `gg` double-tap (jumps to top in
-  // JSON-view + panel-focused state). Reset on any non-`g` key.
-  const pendingGRef = useRef(false);
-
   const [showReloadDialog, setShowReloadDialog] = useState(false);
 
   const applyHistorySnapshot = (snapshot: HistorySnapshot): void => {
@@ -210,6 +184,47 @@ export function AtomicGenerateReviewStep({
     onResult: handleLivePreviewResult,
   });
 
+  const {
+    panelOpen,
+    setPanelOpen,
+    panelScrollOffset,
+    setPanelScrollOffset,
+    jsonScrollOffset,
+    setJsonScrollOffset,
+    textEntryActive,
+    setTextEntryActive,
+    showJson,
+    setShowJson,
+    showHiddenProps,
+    setShowHiddenProps,
+    draftValue,
+    setDraftValue,
+    saveError,
+    setSaveError,
+    tokenReviewRow,
+    setTokenReviewRow,
+    tokenReviewEditing,
+    setTokenReviewEditing,
+    tokenReviewEditCursor,
+    setTokenReviewEditCursor,
+    tokenReviewEditSelection,
+    setTokenReviewEditSelection,
+    pendingGRef,
+    currentTokenSuggestions,
+    handleEditSave,
+    handleEditDiscard,
+    handleTokenEditSave,
+  } = useReviewEditor({
+    components,
+    selectedIdx,
+    extractSessionId,
+    availableTokens,
+    setComponents,
+    pushHistorySnapshot,
+    onEditSaved: () => livePreviewHook.trigger(),
+    onTokenSaved: () => livePreviewHook.trigger(),
+  });
+
   // Manual spinner cycling (no extra dep) for the sidebar status-row
   // indicator. Runs only while the live-preview hook reports `running`.
   const SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
@@ -248,13 +263,6 @@ export function AtomicGenerateReviewStep({
     extractSessionId,
   });
 
-  useEffect(() => {
-    setTokenReviewRow(0);
-    setTokenReviewEditing(false);
-    setTokenReviewEditCursor(0);
-    setTokenReviewEditSelection(new Set());
-  }, [selectedIdx]);
-
   const updateStatus = (idx: number, status: ReviewComponentStatus) => {
     setComponents((prev) => {
       const next = prev.map((c, i) => (i === idx ? { ...c, status } : c));
@@ -285,90 +293,6 @@ export function AtomicGenerateReviewStep({
   const handleFinalizeConfirm = () => {
     const counts = finalizeReviewSession(extractSessionId, components);
     onFinalize(counts.accepted, counts.rejected, counts.unresolved);
-  };
-
-  const handleEditSave = () => {
-    const current = components[selectedIdx];
-    if (!current) return;
-    try {
-      const parsed = JSON.parse(draftValue) as Record<string, unknown>;
-      // Accept both bare entry and wrapped { [key]: entry } forms
-      const keys = Object.keys(parsed);
-      const entry =
-        keys.length === 1 && typeof parsed[keys[0]] === 'object' && parsed[keys[0]] !== null
-          ? (parsed[keys[0]] as CDFComponentEntry)
-          : (parsed as unknown as CDFComponentEntry);
-      if (entry.$type !== 'component' || typeof entry.$properties !== 'object' || entry.$properties === null) {
-        setSaveError('Invalid CDF entry: must have $type: "component" and $properties object');
-        return;
-      }
-      setComponents((prev) =>
-        prev.map((c, i) =>
-          i === selectedIdx ? { ...c, entry, status: c.status === 'needs-review' ? 'accepted' : c.status } : c,
-        ),
-      );
-      setDraftValue('');
-      setSaveError(null);
-      const db = openPipelineDb();
-      try {
-        storeCDFComponents(db, extractSessionId, [{ key: current.key, entry }]);
-      } finally {
-        db.close();
-      }
-      // Feature 2: re-fire the live preview now that pipeline.db reflects
-      // the new state. The hook owns debounce + cred-missing short-circuit.
-      livePreviewHook.trigger();
-    } catch (e) {
-      setSaveError(String(e));
-    }
-  };
-
-  const handleEditDiscard = () => {
-    setDraftValue('');
-    setSaveError(null);
-  };
-
-  const currentTokenSuggestions = (): TokenPropSuggestion[] => {
-    const current = components[selectedIdx];
-    if (!current) return [];
-    return collectTokenSuggestions(current.entry, availableTokens).map((suggestion) => {
-      const snapshotKey = `${current.key}::${suggestion.propName}`;
-      const suggested = tokenReviewSuggestedRef.current.get(snapshotKey) ?? [...suggestion.suggested];
-      tokenReviewSuggestedRef.current.set(snapshotKey, suggested);
-      return { ...suggestion, suggested };
-    });
-  };
-
-  const persistTokenFields = (propName: string, allowed: string[]): void => {
-    const current = components[selectedIdx];
-    if (!current) return;
-    const prop = current.entry.$properties[propName];
-    if (!prop) return;
-    const nextProp = { ...prop };
-    nextProp['$token.allowed'] = allowed;
-    const nextEntry: CDFComponentEntry = {
-      ...current.entry,
-      $properties: { ...current.entry.$properties, [propName]: nextProp },
-    };
-    setComponents((prev) => {
-      const next = prev.map((c, i) => (i === selectedIdx ? { ...c, entry: nextEntry } : c));
-      pushHistorySnapshot(next, `token-review:${propName}`);
-      return next;
-    });
-    const db = openPipelineDb();
-    try {
-      storeCDFComponents(db, extractSessionId, [{ key: current.key, entry: nextEntry }]);
-    } finally {
-      db.close();
-    }
-    livePreviewHook.trigger();
-  };
-
-  const handleTokenEditSave = (s: TokenPropSuggestion): void => {
-    const allowed = s.paths.filter((p) => tokenReviewEditSelection.has(p));
-    if (allowed.length === 0) return;
-    persistTokenFields(s.propName, allowed);
-    setTokenReviewEditing(false);
   };
 
   const dialogOpen = showFinalize || showQuit;
@@ -439,121 +363,40 @@ export function AtomicGenerateReviewStep({
       return;
     }
 
-    if (panelOpen === 'token-review') {
-      const suggestions = currentTokenSuggestions();
-      const row = suggestions[tokenReviewRow];
-
-      if (tokenReviewEditing) {
-        if (row && row.paths.length > 0) {
-          if (key.upArrow || input === 'k') {
-            setTokenReviewEditCursor((c) => Math.max(0, c - 1));
-            return;
-          }
-          if (key.downArrow || input === 'j') {
-            setTokenReviewEditCursor((c) => Math.min(row.paths.length - 1, c + 1));
-            return;
-          }
-          if (input === ' ' || key.return) {
-            const path = row.paths[tokenReviewEditCursor];
-            setTokenReviewEditSelection((prev) => {
-              const next = new Set(prev);
-              if (next.has(path) && next.size === 1) return next;
-              if (next.has(path)) next.delete(path);
-              else next.add(path);
-              return next;
-            });
-            return;
-          }
-          if (key.ctrl && input === 's') {
-            handleTokenEditSave(row);
-            return;
-          }
-        }
-        if (key.escape) {
-          setTokenReviewEditing(false);
-          return;
-        }
-        return;
-      }
-
-      if (key.upArrow || input === 'k') {
-        setTokenReviewRow((r) => Math.max(0, r - 1));
-        return;
-      }
-      if (key.downArrow || input === 'j') {
-        setTokenReviewRow((r) => Math.min(Math.max(0, suggestions.length - 1), r + 1));
-        return;
-      }
-      if (key.return && row) {
-        setTokenReviewEditCursor(0);
-        setTokenReviewEditSelection(new Set(row.allowed));
-        setTokenReviewEditing(true);
-        return;
-      }
-      if (key.escape) {
-        setPanelOpen('none');
-        return;
-      }
-      if (input === 't') {
-        setPanelOpen('none');
-        return;
-      }
+    if (
+      handleTokenReviewInput(input, key, {
+        panelOpen,
+        setPanelOpen,
+        tokenReviewRow,
+        setTokenReviewRow,
+        tokenReviewEditing,
+        setTokenReviewEditing,
+        tokenReviewEditCursor,
+        setTokenReviewEditCursor,
+        tokenReviewEditSelection,
+        setTokenReviewEditSelection,
+        currentTokenSuggestions,
+        handleTokenEditSave,
+      })
+    )
       return;
-    }
 
     // Lifted rationale + source panels: i/I/s fire from anywhere (sidebar OR
     // panel focus). Gated against text-entry surfaces inside FieldEditor
     // (description editors, string-default editor, value-list text entry)
     // via the `onTextEntryActiveChange` callback, plus the help/finalize/quit
     // overlays and the JSON view.
-    if (panelOpen !== 'none') {
-      const PANEL_HEIGHT_LOCAL = 12;
-      const next = computeNextScrollOffset(panelScrollOffset, input, key, 9999, PANEL_HEIGHT_LOCAL);
-      if (next !== null) {
-        setPanelScrollOffset(() => next);
-        return;
-      }
-      if (key.escape) {
-        setPanelOpen('none');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      // Guard against Ctrl-letter aliases (Tab is Ctrl+I in ASCII, Ctrl+S would
-      // collide with save in nested editors). Only react to bare keystrokes.
-      const togglable = !key.ctrl && !key.tab && !key.meta && !key.return;
-      if (togglable && input === 'i' && panelOpen === 'prop-rationale') {
-        setPanelOpen('none');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (togglable && input === 'I' && panelOpen === 'component-rationale') {
-        setPanelOpen('none');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (togglable && input === 's' && panelOpen === 'source') {
-        setPanelOpen('none');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      // Cross-panel toggles while one is open.
-      if (togglable && input === 'i') {
-        setPanelOpen('prop-rationale');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (togglable && input === 'I') {
-        setPanelOpen('component-rationale');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (togglable && input === 's') {
-        setPanelOpen('source');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
+    if (
+      handleRationalePanelInput(input, key, {
+        panelOpen,
+        setPanelOpen,
+        panelScrollOffset,
+        setPanelScrollOffset,
+        propKey: 'i',
+        componentKey: 'I',
+      })
+    )
       return;
-    }
     const rationaleKeyOk = !textEntryActive && !showJson && !key.ctrl && !key.tab && !key.meta && !key.return;
     if (rationaleKeyOk) {
       if (input === 'i') {
@@ -593,38 +436,19 @@ export function AtomicGenerateReviewStep({
     }
 
     // JSON view + panel focused: own j/k/arrows/PageUp/PageDown/Ctrl+u/d/gg/G for scrolling.
-    if (!sidebarFocused && showJson) {
-      const current = components[selectedIdx];
-      const currentJson = getReviewJsonPanelValue(current ?? null, showHiddenProps);
-      const totalLines = currentJson.split('\n').length;
-      const maxOffset = Math.max(0, totalLines - PANEL_HEIGHT);
-
-      // `gg` double-tap to jump to top; single `g` arms the pending flag.
-      if (input === 'g' && !key.ctrl) {
-        if (pendingGRef.current) {
-          pendingGRef.current = false;
-          setJsonScrollOffset(() => 0);
-          return;
-        }
-        pendingGRef.current = true;
-        return;
-      }
-
-      const next = computeNextScrollOffset(jsonScrollOffset, input, key, totalLines, PANEL_HEIGHT);
-      if (next !== null) {
-        pendingGRef.current = false;
-        // Functional setState mirrors the cursor-stutter fix (commit 5d11e60).
-        // Clamp against maxOffset re-computed at apply time in case totalLines
-        // shifted between events (defensive — helper already clamps).
-        const clamped = Math.min(maxOffset, Math.max(0, next));
-        setJsonScrollOffset(() => clamped);
-        return;
-      }
-      // Any other key in this slice resets the gg-pending flag, then falls
-      // through to the early-return below so the panel-focused state still
-      // swallows non-scroll input.
-      pendingGRef.current = false;
-    }
+    const current = components[selectedIdx];
+    if (
+      handleJsonPanelInput(input, key, {
+        sidebarFocused,
+        showJson,
+        jsonValue: getReviewJsonPanelValue(current ?? null, showHiddenProps),
+        jsonScrollOffset,
+        setJsonScrollOffset,
+        pendingGRef,
+        height: PANEL_HEIGHT,
+      })
+    )
+      return;
 
     // When the panel is focused, FieldEditor (or JsonPanel) owns the keys.
     // Only Tab (handled above) should escape from the panel-focused state.

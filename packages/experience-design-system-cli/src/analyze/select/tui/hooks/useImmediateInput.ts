@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import { useStdin } from 'ink';
 
-type Key = {
+export type ImmediateInputKey = {
   upArrow: boolean;
   downArrow: boolean;
   leftArrow: boolean;
@@ -19,14 +19,14 @@ type Key = {
   meta: boolean;
 };
 
-type InputHandler = (input: string, key: Key) => void;
+export type ImmediateInputHandler = (input: string, key: ImmediateInputKey) => void;
 
-function parseInput(data: string): { input: string; key: Key } {
+function parseInput(data: string): { input: string; key: ImmediateInputKey } {
   // Shift-Tab in most terminals emits CSI Z (\x1b[Z). We surface it as both
   // `tab` and `shiftTab` so callers that already branch on `tab` still fire,
   // and new callers can distinguish direction via `shiftTab`.
   const isShiftTab = data === '\x1b[Z';
-  const key: Key = {
+  const key: ImmediateInputKey = {
     upArrow: data === '\x1b[A',
     downArrow: data === '\x1b[B',
     leftArrow: data === '\x1b[D',
@@ -73,7 +73,7 @@ function parseInput(data: string): { input: string; key: Key } {
   return { input, key };
 }
 
-export function useImmediateInput(handler: InputHandler): void {
+export function useImmediateInput(handler: ImmediateInputHandler): void {
   const { stdin, setRawMode } = useStdin();
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
