@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import type {
   CDFComponentEntry,
@@ -11,21 +11,10 @@ import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
 import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
 import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
-import { readTokensFromPath } from '../../../apply/manifest.js';
-import {
-  openPipelineDb,
-  loadCDFComponents,
-  loadDTCGTokens,
-  storeCDFComponents,
-  loadComponentReviewMetadata,
-  loadComponentRationale,
-  type ComponentReviewMetadata,
-  type ComponentRationale,
-} from '../../../session/db.js';
+import { openPipelineDb, storeCDFComponents } from '../../../session/db.js';
 import {
   collectTokenSuggestions,
   type TokenPropSuggestion,
-  type TokenReviewToken,
 } from '../../../analyze/select/tui/components/TokenReviewPanel.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
 import type {
@@ -34,19 +23,23 @@ import type {
   ReviewComponentSummary,
 } from '../../../analyze/select/types.js';
 import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
-import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
+import type { HistorySnapshot } from '../history.js';
 import { useLivePreview } from '../useLivePreview.js';
 import { useFinalizePreview } from '../useFinalizePreview.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { ReviewDetailsPanel } from './review-details-panel.js';
-
-type CdfReviewEntry = {
-  key: string;
-  entry: CDFComponentEntry;
-  status: ReviewComponentStatus;
-};
+import {
+  createReviewHistorySnapshot,
+  finalizeReviewSession,
+  loadReviewSessionState,
+  useReviewHistory,
+  useReviewMetadata,
+  useReviewSession,
+  type CdfReviewEntry,
+  type ReviewSessionLoadResult,
+} from '../hooks/useReviewSession.js';
 
 type GenerateReviewStepProps = {
   extractSessionId: string;
@@ -115,9 +108,27 @@ export function AtomicGenerateReviewStep({
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
 
-  const [components, setComponents] = useState<CdfReviewEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadSessionState = useCallback(
+    (): ReviewSessionLoadResult =>
+      loadReviewSessionState({
+        extractSessionId,
+        tokenSessionId,
+        sortEntries: (entries) => sortComponentsForSidebar(entries),
+      }),
+    [extractSessionId, tokenSessionId],
+  );
+  const {
+    components,
+    setComponents,
+    loading,
+    loadError,
+    availableTokens,
+    reloadFromSave: reloadSessionFromSave,
+  } = useReviewSession({
+    loadSession: loadSessionState,
+    tokensPath,
+  });
+
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [sidebarScrollOffset, setSidebarScrollOffset] = useState(0);
   const [jsonScrollOffset, setJsonScrollOffset] = useState(0);
@@ -134,7 +145,6 @@ export function AtomicGenerateReviewStep({
   const [finalizeError, setFinalizeError] = useState<string | null>(initialFinalizeError);
   // Feature 1: per-component review metadata (rationale + source location)
   // for the currently-selected component. Reloaded when selection changes.
-  const [reviewMetadata, setReviewMetadata] = useState<ComponentReviewMetadata | null>(null);
   // Feature 2: per-component preview annotations refreshed after every
   // FieldEditor save via the useLivePreview hook below. Empty when live
   // preview is disabled, when creds are missing, or before the first response.
@@ -151,20 +161,32 @@ export function AtomicGenerateReviewStep({
   >('none');
   const [panelScrollOffset, setPanelScrollOffset] = useState(0);
   const [textEntryActive, setTextEntryActive] = useState(false);
-  const [componentRationale, setComponentRationale] = useState<ComponentRationale | null>(null);
   const [tokenReviewRow, setTokenReviewRow] = useState(0);
   const [tokenReviewEditing, setTokenReviewEditing] = useState(false);
   const [tokenReviewEditCursor, setTokenReviewEditCursor] = useState(0);
   const [tokenReviewEditSelection, setTokenReviewEditSelection] = useState<Set<string>>(new Set());
-  const [availableTokens, setAvailableTokens] = useState<TokenReviewToken[]>([]);
   const tokenReviewSuggestedRef = useRef(new Map<string, string[]>());
   // Tracks the first `g` of a potential `gg` double-tap (jumps to top in
   // JSON-view + panel-focused state). Reset on any non-`g` key.
   const pendingGRef = useRef(false);
 
   const [showReloadDialog, setShowReloadDialog] = useState(false);
-  const historyRef = useRef<HistoryStack | null>(null);
-  const historySeededRef = useRef(false);
+
+  const applyHistorySnapshot = (snapshot: HistorySnapshot): void => {
+    setComponents(
+      snapshot.components.map((component) => ({
+        key: component.key,
+        entry: component.entry,
+        status: component.status,
+      })),
+    );
+  };
+  const { pushHistorySnapshot, handleUndo, handleRedo, resetHistory } = useReviewHistory({
+    loading,
+    components,
+    createSnapshot: (entries) => createReviewHistorySnapshot(entries),
+    applySnapshot: applyHistorySnapshot,
+  });
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
     if (!response) return;
@@ -199,115 +221,10 @@ export function AtomicGenerateReviewStep({
   }, [livePreviewHook.status]);
   const livePreviewSpinner = SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length];
 
-  const loadEntries = (): { entries: CdfReviewEntry[]; tokens: TokenReviewToken[]; error: string | null } => {
-    const db = openPipelineDb();
-    let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }>;
-    let tokens: TokenReviewToken[] = [];
-    try {
-      cdfComponents = loadCDFComponents(db, extractSessionId);
-      tokens = loadDTCGTokens(db, tokenSessionId ?? extractSessionId).tokens.map((token) => ({
-        path: token.path,
-        kind: token.$type,
-      }));
-    } finally {
-      db.close();
-    }
-    if (cdfComponents.length === 0) {
-      return {
-        entries: [],
-        tokens: [],
-        error: 'No generated definitions found for this session. Try re-running generate.',
-      };
-    }
-    const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
-      key,
-      entry,
-      status: 'needs-review',
-    }));
-    return { entries: sortComponentsForSidebar(reviewEntries), tokens, error: null };
-  };
-
-  useEffect(() => {
-    let disposed = false;
-    void (async () => {
-      try {
-        const { entries, tokens, error } = loadEntries();
-        if (error) {
-          if (!disposed) setLoadError(error);
-          return;
-        }
-        const catalog = tokensPath
-          ? (await readTokensFromPath('tokens', tokensPath)).map((token) => ({ path: token.path, kind: token.$type }))
-          : tokens;
-        if (disposed) return;
-        setComponents(entries);
-        setAvailableTokens(catalog);
-      } catch (e: unknown) {
-        if (!disposed) setLoadError(String(e));
-      } finally {
-        if (!disposed) setLoading(false);
-      }
-    })();
-    return () => {
-      disposed = true;
-    };
-  }, [extractSessionId, tokenSessionId, tokensPath]);
-
-  // Seed the undo/redo history once components are loaded.
-  useEffect(() => {
-    if (loading) return;
-    if (historySeededRef.current) return;
-    historySeededRef.current = true;
-    historyRef.current = createHistoryStack({
-      components: components.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-      autoRejected: [],
-      undoSnapshot: null,
-    });
-  }, [loading, components]);
-
-  const pushHistorySnapshot = (entries: CdfReviewEntry[], label: string): void => {
-    if (!historyRef.current) return;
-    historyRef.current.push(
-      {
-        components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-        autoRejected: [],
-        undoSnapshot: null,
-      },
-      label,
-    );
-  };
-
-  const applyHistorySnapshot = (snap: HistorySnapshot): void => {
-    setComponents(snap.components.map((c) => ({ key: c.key, entry: c.entry, status: c.status })));
-  };
-
-  const handleUndo = (): void => {
-    const snap = historyRef.current?.undo();
-    if (snap) applyHistorySnapshot(snap);
-  };
-
-  const handleRedo = (): void => {
-    const snap = historyRef.current?.redo();
-    if (snap) applyHistorySnapshot(snap);
-  };
-
   const reloadFromSave = (): void => {
-    try {
-      const { entries, tokens, error } = loadEntries();
-      if (error) {
-        setLoadError(error);
-        return;
-      }
-      setComponents(entries);
-      setAvailableTokens(tokens);
-      historyRef.current?.reset({
-        components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-        autoRejected: [],
-        undoSnapshot: null,
-      });
-    } catch (e: unknown) {
-      setLoadError(String(e));
-    }
+    const result = reloadSessionFromSave();
+    if (!result) return;
+    resetHistory(createReviewHistorySnapshot(result.entries));
   };
 
   // Pilot-2026-06-23 R2: fire the live preview once on entry to final-review
@@ -325,23 +242,11 @@ export function AtomicGenerateReviewStep({
     // hook re-creation.
   }, [loading]);
 
-  // Feature 1: load review metadata (rationale + source location) for the
-  // selected component when selection changes.
-  useEffect(() => {
-    const current = components[selectedIdx];
-    if (!current) {
-      setReviewMetadata(null);
-      return;
-    }
-    const db = openPipelineDb();
-    try {
-      setReviewMetadata(loadComponentReviewMetadata(db, extractSessionId, current.key));
-    } catch {
-      setReviewMetadata(null);
-    } finally {
-      db.close();
-    }
-  }, [selectedIdx, components, extractSessionId]);
+  const { reviewMetadata, componentRationale } = useReviewMetadata({
+    components,
+    selectedIdx,
+    extractSessionId,
+  });
 
   useEffect(() => {
     setTokenReviewRow(0);
@@ -349,25 +254,6 @@ export function AtomicGenerateReviewStep({
     setTokenReviewEditCursor(0);
     setTokenReviewEditSelection(new Set());
   }, [selectedIdx]);
-
-  // Load component-level rationale for the selected component (drives the
-  // `I` ComponentRationalePanel). Decoupled from review metadata so the data
-  // contracts can evolve independently.
-  useEffect(() => {
-    const current = components[selectedIdx];
-    if (!current) {
-      setComponentRationale(null);
-      return;
-    }
-    const db = openPipelineDb();
-    try {
-      setComponentRationale(loadComponentRationale(db, extractSessionId, current.key));
-    } catch {
-      setComponentRationale(null);
-    } finally {
-      db.close();
-    }
-  }, [selectedIdx, components, extractSessionId]);
 
   const updateStatus = (idx: number, status: ReviewComponentStatus) => {
     setComponents((prev) => {
@@ -397,44 +283,8 @@ export function AtomicGenerateReviewStep({
   });
 
   const handleFinalizeConfirm = () => {
-    // Strict opt-in: only EXPLICITLY ACCEPTED components ship. Anything left
-    // in 'needs-review' OR explicitly 'rejected' is downgraded to
-    // 'generate-rejected' so loadCDFComponents excludes it from the manifest.
-    // The operator told us they want accept-to-ship semantics — leaving a
-    // component unresolved should NOT silently push it (Pilot-2026-06-24 R2).
-    const acceptedCount = components.filter((c) => c.status === 'accepted').length;
-    // INTEG-4411 refined: DO NOT block on `acceptedCount === 0` up-front.
-    // A push with zero accepted but one or more rejections targeting a
-    // component that exists server-side still produces REMOVALS — a valid
-    // push, not a no-op. Same for token-only diffs. The load-bearing no-op
-    // check lives downstream in WizardApp.runPreview, which consults the
-    // preview response and only blocks when every diff bucket is empty.
-    // We keep the `finalizeError` state so the wizard can route back here
-    // with an inline banner when that downstream check fires.
-    const explicitlyRejected = components.filter((c) => c.status === 'rejected').map((c) => c.key);
-    const unresolved = components.filter((c) => c.status === 'needs-review').map((c) => c.key);
-    const toReject = [...explicitlyRejected, ...unresolved];
-    if (toReject.length > 0) {
-      const db = openPipelineDb();
-      try {
-        const stmt = db.prepare(
-          `UPDATE raw_components SET status = 'generate-rejected' WHERE session_id = ? AND name = ?`,
-        );
-        db.exec('BEGIN');
-        try {
-          for (const name of toReject) {
-            stmt.run(extractSessionId, name);
-          }
-          db.exec('COMMIT');
-        } catch (e) {
-          db.exec('ROLLBACK');
-          throw e;
-        }
-      } finally {
-        db.close();
-      }
-    }
-    onFinalize(acceptedCount, explicitlyRejected.length, unresolved.length);
+    const counts = finalizeReviewSession(extractSessionId, components);
+    onFinalize(counts.accepted, counts.rejected, counts.unresolved);
   };
 
   const handleEditSave = () => {

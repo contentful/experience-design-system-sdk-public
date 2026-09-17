@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { Box, Text, useStdout } from 'ink';
@@ -27,18 +27,11 @@ import {
 } from '../../../analyze/select/tui/components/removed-components-text.js';
 import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
-import { readTokensFromPath } from '../../../apply/manifest.js';
 import {
   openPipelineDb,
-  loadCDFComponents,
-  loadDTCGTokens,
   storeCDFComponents,
-  loadComponentReviewMetadata,
-  loadComponentRationale,
-  loadSlotCycles,
   storeSlotCycles,
-  type ComponentReviewMetadata,
-  type ComponentRationale,
+  loadSlotCycles,
   type StoredSlotCycle,
 } from '../../../session/db.js';
 import { formatCyclePathSegments, findSlotCycles, suggestCycleBreakEdge } from '../../../analyze/cycle-detection.js';
@@ -46,7 +39,6 @@ import { followCycleScroll } from '../cycle-panel-scroll.js';
 import {
   collectTokenSuggestions,
   type TokenPropSuggestion,
-  type TokenReviewToken,
 } from '../../../analyze/select/tui/components/TokenReviewPanel.js';
 import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
 import type { PreviewAnnotation, ReviewComponentStatus } from '../../../analyze/select/types.js';
@@ -72,7 +64,7 @@ import { legendEntry } from '../components/LegendEntry.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
 import { formatBreakingChange } from './breaking-change-format.js';
 import { enumerateCycleBreaks, shouldBreakOverlayGoFullScreen, type BreakEdge } from './enumerate-cycle-breaks.js';
-import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
+import type { HistorySnapshot } from '../history.js';
 import { resolveGroupRoot } from '../group-collapse.js';
 import { buildFlatDimPredicate, computeFilterKeys, intersectFilterKeys, type FilterCategory } from '../step-filters.js';
 import { createSidebarViewsHelpSection } from '../sidebar-help.js';
@@ -83,12 +75,16 @@ import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
 import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
 import type { ReviewStepProps } from '../review-step-props.js';
 import { ReviewDetailsPanel } from './review-details-panel.js';
-
-type CdfReviewEntry = {
-  key: string;
-  entry: CDFComponentEntry;
-  status: ReviewComponentStatus;
-};
+import {
+  createReviewHistorySnapshot,
+  finalizeReviewSession,
+  loadReviewSessionState,
+  useReviewHistory,
+  useReviewMetadata,
+  useReviewSession,
+  type CdfReviewEntry,
+  type ReviewSessionLoadResult,
+} from '../hooks/useReviewSession.js';
 
 type GenerateReviewStepProps = ReviewStepProps;
 
@@ -324,9 +320,39 @@ export function GenerateReviewStep({
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
 
-  const [components, setComponents] = useState<CdfReviewEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [slotCycles, setSlotCycles] = useState<StoredSlotCycle[]>([]);
+  const setLoadedSlotCycles = useCallback((cycles: StoredSlotCycle[] | undefined): void => {
+    setSlotCycles(cycles ?? []);
+  }, []);
+  const loadSessionState = useCallback(
+    (): ReviewSessionLoadResult<StoredSlotCycle[]> =>
+      loadReviewSessionState({
+        extractSessionId,
+        tokenSessionId,
+        loadExtra: (db, sessionId) => loadSlotCycles(db, sessionId),
+        sortEntries: (entries, cycles) => {
+          const cycleParticipants = new Set<string>();
+          for (const cycle of cycles ?? []) {
+            for (const participant of cycle.path) cycleParticipants.add(participant);
+          }
+          return sortComponentsForSidebar(entries, cycleParticipants);
+        },
+      }),
+    [extractSessionId, tokenSessionId],
+  );
+  const {
+    components,
+    setComponents,
+    loading,
+    loadError,
+    availableTokens,
+    reloadFromSave: reloadSessionFromSave,
+  } = useReviewSession({
+    loadSession: loadSessionState,
+    tokensPath,
+    onExtraLoaded: setLoadedSlotCycles,
+  });
+
   const [nav, setNav] = useState<{ cursorRowIdx: number; sidebarScrollOffset: number }>({
     cursorRowIdx: 0,
     sidebarScrollOffset: 0,
@@ -342,7 +368,6 @@ export function GenerateReviewStep({
   const [draftValue, setDraftValue] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [finalizeError, setFinalizeError] = useState<string | null>(initialFinalizeError);
-  const [reviewMetadata, setReviewMetadata] = useState<ComponentReviewMetadata | null>(null);
   const [previewAnnotations, setPreviewAnnotations] = useState<Map<string, PreviewAnnotation>>(new Map());
   const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
   const [removedBannerCollapsed, setRemovedBannerCollapsed] = useState(false);
@@ -352,15 +377,12 @@ export function GenerateReviewStep({
   >('none');
   const [panelScrollOffset, setPanelScrollOffset] = useState(0);
   const [textEntryActive, setTextEntryActive] = useState(false);
-  const [componentRationale, setComponentRationale] = useState<ComponentRationale | null>(null);
   const [tokenReviewRow, setTokenReviewRow] = useState(0);
   const [tokenReviewEditing, setTokenReviewEditing] = useState(false);
   const [tokenReviewEditCursor, setTokenReviewEditCursor] = useState(0);
   const [tokenReviewEditSelection, setTokenReviewEditSelection] = useState<Set<string>>(new Set());
-  const [availableTokens, setAvailableTokens] = useState<TokenReviewToken[]>([]);
   const tokenReviewSuggestedRef = useRef(new Map<string, string[]>());
   const pendingGRef = useRef(false);
-  const [slotCycles, setSlotCycles] = useState<StoredSlotCycle[]>([]);
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
   const [cyclesCursor, setCyclesCursor] = useState(0);
   const cyclePanel = useOverlayPanel({
@@ -416,8 +438,6 @@ export function GenerateReviewStep({
   const [pendingFocusAway, setPendingFocusAway] = useState<null | 'tab-to-sidebar'>(null);
   const [discardTrigger, setDiscardTrigger] = useState(0);
 
-  const historyRef = useRef<HistoryStack | null>(null);
-  const historySeededRef = useRef(false);
   const [showReloadDialog, setShowReloadDialog] = useState(false);
 
   const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
@@ -460,76 +480,6 @@ export function GenerateReviewStep({
   }, [livePreviewHook.status]);
   const livePreviewSpinner = SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length];
 
-  const loadSessionState = (): {
-    entries: CdfReviewEntry[];
-    cycles: StoredSlotCycle[];
-    tokens: TokenReviewToken[];
-    error: string | null;
-  } => {
-    const db = openPipelineDb();
-    let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }> = [];
-    let cycles: StoredSlotCycle[] = [];
-    let tokens: TokenReviewToken[] = [];
-    try {
-      cdfComponents = loadCDFComponents(db, extractSessionId);
-      cycles = loadSlotCycles(db, extractSessionId);
-      tokens = loadDTCGTokens(db, tokenSessionId ?? extractSessionId).tokens.map((token) => ({
-        path: token.path,
-        kind: token.$type,
-      }));
-    } finally {
-      db.close();
-    }
-    if (cdfComponents.length === 0) {
-      return {
-        entries: [],
-        cycles: [],
-        tokens: [],
-        error: 'No generated definitions found for this session. Try re-running generate.',
-      };
-    }
-    const cycleParticipants = new Set<string>();
-    for (const c of cycles) for (const p of c.path) cycleParticipants.add(p);
-    const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
-      key,
-      entry,
-      status: 'needs-review',
-    }));
-    return {
-      entries: sortComponentsForSidebar(reviewEntries, cycleParticipants),
-      cycles,
-      tokens,
-      error: null,
-    };
-  };
-
-  useEffect(() => {
-    let disposed = false;
-    void (async () => {
-      try {
-        const { entries, cycles, tokens, error } = loadSessionState();
-        if (error) {
-          if (!disposed) setLoadError(error);
-          return;
-        }
-        const catalog = tokensPath
-          ? (await readTokensFromPath('tokens', tokensPath)).map((token) => ({ path: token.path, kind: token.$type }))
-          : tokens;
-        if (disposed) return;
-        setSlotCycles(cycles);
-        setAvailableTokens(catalog);
-        setComponents(entries);
-      } catch (e: unknown) {
-        if (!disposed) setLoadError(String(e));
-      } finally {
-        if (!disposed) setLoading(false);
-      }
-    })();
-    return () => {
-      disposed = true;
-    };
-  }, [extractSessionId, tokenSessionId, tokensPath]);
-
   useEffect(() => {
     if (loading) return;
     if (!livePreview) return;
@@ -550,31 +500,8 @@ export function GenerateReviewStep({
   });
 
   const handleFinalizeConfirm = () => {
-    const acceptedCount = components.filter((c) => c.status === 'accepted').length;
-    const explicitlyRejected = components.filter((c) => c.status === 'rejected').map((c) => c.key);
-    const unresolved = components.filter((c) => c.status === 'needs-review').map((c) => c.key);
-    const toReject = [...explicitlyRejected, ...unresolved];
-    if (toReject.length > 0) {
-      const db = openPipelineDb();
-      try {
-        const stmt = db.prepare(
-          `UPDATE raw_components SET status = 'generate-rejected' WHERE session_id = ? AND name = ?`,
-        );
-        db.exec('BEGIN');
-        try {
-          for (const name of toReject) {
-            stmt.run(extractSessionId, name);
-          }
-          db.exec('COMMIT');
-        } catch (e) {
-          db.exec('ROLLBACK');
-          throw e;
-        }
-      } finally {
-        db.close();
-      }
-    }
-    onFinalize(acceptedCount, explicitlyRejected.length, unresolved.length);
+    const counts = finalizeReviewSession(extractSessionId, components);
+    onFinalize(counts.accepted, counts.rejected, counts.unresolved);
   };
 
   const recomputeCycles = (currentComponents: CdfReviewEntry[]): void => {
@@ -652,44 +579,6 @@ export function GenerateReviewStep({
     setUndoSnapshot(flipped.length > 0 ? snapshot : null);
   }, [loading, cycleView, componentGraph, slotCycles]);
 
-  useEffect(() => {
-    if (loading) return;
-    if (historySeededRef.current) return;
-    historySeededRef.current = true;
-    historyRef.current = createHistoryStack({
-      components: components.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-      autoRejected: [],
-      undoSnapshot: null,
-    });
-  }, [loading, components]);
-
-  const pushHistorySnapshot = (
-    entries: CdfReviewEntry[],
-    autoRej: string[],
-    undoSnap: Map<string, ReviewComponentStatus> | null,
-    label: string,
-  ): void => {
-    if (!historyRef.current) return;
-    historyRef.current.push(
-      {
-        components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-        autoRejected: [...autoRej],
-        undoSnapshot: undoSnap === null ? null : new Map(undoSnap),
-      },
-      label,
-    );
-  };
-
-  const autoRejectPushedRef = useRef(false);
-  useEffect(() => {
-    if (loading) return;
-    if (!historySeededRef.current) return;
-    if (!autoRejectFiredRef.current) return;
-    if (autoRejectPushedRef.current) return;
-    autoRejectPushedRef.current = true;
-    pushHistorySnapshot(components, autoRejected, undoSnapshot, 'mount-auto-reject');
-  }, [autoRejected]);
-
   const applyHistorySnapshot = (snap: HistorySnapshot): void => {
     const restored: CdfReviewEntry[] = snap.components.map((c) => ({
       key: c.key,
@@ -702,48 +591,44 @@ export function GenerateReviewStep({
     recomputeCycles(restored);
   };
 
-  const handleUndo = (): void => {
-    const snap = historyRef.current?.undo();
-    if (!snap) return;
-    applyHistorySnapshot(snap);
-  };
+  const { historySeededRef, pushHistorySnapshot, handleUndo, handleRedo, resetHistory } = useReviewHistory({
+    loading,
+    components,
+    createSnapshot: (entries) =>
+      createReviewHistorySnapshot(entries, {
+        autoRejected,
+        undoSnapshot,
+      }),
+    applySnapshot: applyHistorySnapshot,
+  });
 
-  const handleRedo = (): void => {
-    const snap = historyRef.current?.redo();
-    if (!snap) return;
-    applyHistorySnapshot(snap);
-  };
+  const autoRejectPushedRef = useRef(false);
+  useEffect(() => {
+    if (loading) return;
+    if (!historySeededRef.current) return;
+    if (!autoRejectFiredRef.current) return;
+    if (autoRejectPushedRef.current) return;
+    autoRejectPushedRef.current = true;
+    pushHistorySnapshot(components, 'mount-auto-reject');
+  }, [autoRejected]);
 
   const reloadFromSave = (): void => {
-    try {
-      const { entries, cycles, tokens, error } = loadSessionState();
-      if (error) {
-        setLoadError(error);
-        return;
-      }
-      setSlotCycles(cycles);
-      setAvailableTokens(tokens);
-      setComponents(entries);
-      const reloadGraph = buildComponentGraph(entries);
-      const reloadClosures = computeAllClosures(reloadGraph);
-      const reloadCycleView = computeCycleView(entries);
-      setExpandedGroups(collectExpandedGroupRoots(reloadClosures, reloadCycleView.structural));
-      seededGroupsRef.current = true;
-      setAutoRejected([]);
-      setUndoSnapshot(null);
-      autoRejectFiredRef.current = false;
-      autoRejectPushedRef.current = false;
-      historyRef.current?.reset({
-        components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-        autoRejected: [],
-        undoSnapshot: null,
-      });
-      setNav({ cursorRowIdx: 0, sidebarScrollOffset: 0 });
-      setSaveError(null);
-      setFinalizeError(null);
-    } catch (e: unknown) {
-      setLoadError(String(e));
-    }
+    const result = reloadSessionFromSave();
+    if (!result) return;
+    const { entries } = result;
+    const reloadGraph = buildComponentGraph(entries);
+    const reloadClosures = computeAllClosures(reloadGraph);
+    const reloadCycleView = computeCycleView(entries);
+    setExpandedGroups(collectExpandedGroupRoots(reloadClosures, reloadCycleView.structural));
+    seededGroupsRef.current = true;
+    setAutoRejected([]);
+    setUndoSnapshot(null);
+    autoRejectFiredRef.current = false;
+    autoRejectPushedRef.current = false;
+    resetHistory(createReviewHistorySnapshot(entries));
+    setNav({ cursorRowIdx: 0, sidebarScrollOffset: 0 });
+    setSaveError(null);
+    setFinalizeError(null);
   };
   const groupedItemsMemo = useMemo(
     () =>
@@ -819,21 +704,11 @@ export function GenerateReviewStep({
     }));
   }, [selectableRowPositions, cursorRowIdx, sidebarScrollOffset, visibleRowsMemo.length, visibleCount]);
 
-  useEffect(() => {
-    const current = components[selectedIdx];
-    if (!current) {
-      setReviewMetadata(null);
-      return;
-    }
-    const db = openPipelineDb();
-    try {
-      setReviewMetadata(loadComponentReviewMetadata(db, extractSessionId, current.key));
-    } catch {
-      setReviewMetadata(null);
-    } finally {
-      db.close();
-    }
-  }, [selectedIdx, components, extractSessionId]);
+  const { reviewMetadata, componentRationale } = useReviewMetadata({
+    components,
+    selectedIdx,
+    extractSessionId,
+  });
 
   useEffect(() => {
     setTokenReviewRow(0);
@@ -842,21 +717,6 @@ export function GenerateReviewStep({
     setTokenReviewEditSelection(new Set());
   }, [selectedIdx]);
 
-  useEffect(() => {
-    const current = components[selectedIdx];
-    if (!current) {
-      setComponentRationale(null);
-      return;
-    }
-    const db = openPipelineDb();
-    try {
-      setComponentRationale(loadComponentRationale(db, extractSessionId, current.key));
-    } catch {
-      setComponentRationale(null);
-    } finally {
-      db.close();
-    }
-  }, [selectedIdx, components, extractSessionId]);
   const renderStatusByKey = useMemo<Map<string, RenderStatus>>(() => {
     const merged = new Map<string, RenderStatus>();
     for (const closure of closures.values()) {
@@ -966,7 +826,7 @@ export function GenerateReviewStep({
       }
       recomputeCycles(updatedComponents);
       livePreviewHook.trigger();
-      pushHistorySnapshot(updatedComponents, autoRejected, undoSnapshot, 'edit-save');
+      pushHistorySnapshot(updatedComponents, 'edit-save');
     } catch (e) {
       setSaveError(String(e));
     }
@@ -1007,7 +867,7 @@ export function GenerateReviewStep({
     }
     recomputeCycles(next);
     livePreviewHook.trigger();
-    pushHistorySnapshot(next, autoRejected, undoSnapshot, 'break-cycle-edge');
+    pushHistorySnapshot(next, 'break-cycle-edge');
   };
 
   const handleRejectComponent = (key: string): void => {
@@ -1024,7 +884,7 @@ export function GenerateReviewStep({
     });
     setComponents(next);
     recomputeCycles(next);
-    pushHistorySnapshot(next, autoRejected, undoSnapshot, 'reject-cascade');
+    pushHistorySnapshot(next, 'reject-cascade');
   };
 
   const currentTokenSuggestions = (): TokenPropSuggestion[] => {
@@ -1058,7 +918,7 @@ export function GenerateReviewStep({
       db.close();
     }
     livePreviewHook.trigger();
-    pushHistorySnapshot(next, autoRejected, undoSnapshot, `token-review:${propName}`);
+    pushHistorySnapshot(next, `token-review:${propName}`);
   };
 
   const handleTokenEditSave = (s: TokenPropSuggestion): void => {
@@ -1584,7 +1444,7 @@ export function GenerateReviewStep({
       setComponents(next);
       setFinalizeError(null);
       recomputeCycles(next);
-      pushHistorySnapshot(next, autoRejected, undoSnapshot, 'accept-cascade');
+      pushHistorySnapshot(next, 'accept-cascade');
       return;
     }
     if (input === 'r') {
@@ -1599,7 +1459,7 @@ export function GenerateReviewStep({
       );
       setComponents(next);
       setFinalizeError(null);
-      pushHistorySnapshot(next, autoRejected, undoSnapshot, 'bulk-accept');
+      pushHistorySnapshot(next, 'bulk-accept');
       return;
     }
     if (input === 'E') {
