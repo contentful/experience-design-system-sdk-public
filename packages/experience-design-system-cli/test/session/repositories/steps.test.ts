@@ -4,11 +4,11 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { openPipelineDb } from '../../../src/session/db.js';
 import { createSession } from '../../../src/session/repositories/sessions/write.js';
-import { findStepSessionId } from '../../../src/session/repositories/steps/read.js';
+import { getSessionIdForStep } from '../../../src/session/repositories/steps/read.js';
 import {
-  insertPendingStep,
-  markPendingStepsInterrupted,
-  updateStepResult,
+  createPendingStep,
+  updatePendingStepsToInterrupted,
+  updateStepStatus,
 } from '../../../src/session/repositories/steps/write.js';
 
 const tempDirs: string[] = [];
@@ -24,12 +24,12 @@ afterEach(async () => {
 });
 
 describe('steps repository', () => {
-  it('insertPendingStep creates a pending step and returns its rowid', async () => {
+  it('createPendingStep creates a pending step and returns its rowid', async () => {
     await withDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const now = new Date().toISOString();
       createSession(db, 'sess-1', null, now);
-      const id = insertPendingStep(db, 'sess-1', 'analyze extract', { k: 'v' }, now);
+      const id = createPendingStep(db, 'sess-1', 'analyze extract', { k: 'v' }, now);
       expect(id).toBeGreaterThan(0);
       const row = db.prepare('SELECT status, inputs FROM steps WHERE id = ?').get(id) as {
         status: string;
@@ -41,14 +41,14 @@ describe('steps repository', () => {
     });
   });
 
-  it('markPendingStepsInterrupted flips pending steps for the command only', async () => {
+  it('updatePendingStepsToInterrupted flips pending steps for the command only', async () => {
     await withDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const now = new Date().toISOString();
       createSession(db, 'sess-1', null, now);
-      const s1 = insertPendingStep(db, 'sess-1', 'analyze extract', {}, now);
-      const s2 = insertPendingStep(db, 'sess-1', 'analyze select', {}, now);
-      markPendingStepsInterrupted(db, 'sess-1', 'analyze extract', now);
+      const s1 = createPendingStep(db, 'sess-1', 'analyze extract', {}, now);
+      const s2 = createPendingStep(db, 'sess-1', 'analyze select', {}, now);
+      updatePendingStepsToInterrupted(db, 'sess-1', 'analyze extract', now);
       const r1 = db.prepare('SELECT status FROM steps WHERE id = ?').get(s1) as { status: string };
       const r2 = db.prepare('SELECT status FROM steps WHERE id = ?').get(s2) as { status: string };
       expect(r1.status).toBe('interrupted');
@@ -57,13 +57,13 @@ describe('steps repository', () => {
     });
   });
 
-  it('updateStepResult sets status/outputs/error/completed_at', async () => {
+  it('updateStepStatus sets status/outputs/error/completed_at', async () => {
     await withDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const now = new Date().toISOString();
       createSession(db, 'sess-1', null, now);
-      const id = insertPendingStep(db, 'sess-1', 'analyze extract', {}, now);
-      updateStepResult(db, id, 'complete', { out: '1' }, null, now);
+      const id = createPendingStep(db, 'sess-1', 'analyze extract', {}, now);
+      updateStepStatus(db, id, 'complete', { out: '1' }, null, now);
       const row = db.prepare('SELECT status, outputs, error, completed_at FROM steps WHERE id = ?').get(id) as {
         status: string;
         outputs: string;
@@ -78,14 +78,14 @@ describe('steps repository', () => {
     });
   });
 
-  it('findStepSessionId returns the parent session id, or null when missing', async () => {
+  it('getSessionIdForStep returns the parent session id, or null when missing', async () => {
     await withDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const now = new Date().toISOString();
       createSession(db, 'sess-1', null, now);
-      const id = insertPendingStep(db, 'sess-1', 'analyze extract', {}, now);
-      expect(findStepSessionId(db, id)).toBe('sess-1');
-      expect(findStepSessionId(db, 99999)).toBeNull();
+      const id = createPendingStep(db, 'sess-1', 'analyze extract', {}, now);
+      expect(getSessionIdForStep(db, id)).toBe('sess-1');
+      expect(getSessionIdForStep(db, 99999)).toBeNull();
       db.close();
     });
   });

@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { groupBy } from '../../../../src/session/core/shared/group-by.js';
+import { indexRowsByKey } from '../../../../src/session/core/shared/index-rows-by-key.js';
 
-describe('groupBy', () => {
+describe('indexRowsByKey', () => {
   it('returns an empty map for an empty input', () => {
-    expect(groupBy([], (x) => String(x)).size).toBe(0);
+    expect(indexRowsByKey([], (x) => String(x)).size).toBe(0);
   });
 
-  it('groups items sharing a key', () => {
-    const groups = groupBy(
+  it('buckets items that share a key', () => {
+    const groups = indexRowsByKey(
       [
         { id: 'a', v: 1 },
         { id: 'a', v: 2 },
@@ -22,8 +22,8 @@ describe('groupBy', () => {
     expect(groups.get('b')).toEqual([{ id: 'b', v: 3 }]);
   });
 
-  it('preserves input order within a group', () => {
-    const groups = groupBy(
+  it('preserves input order within a bucket', () => {
+    const groups = indexRowsByKey(
       [
         { id: 'x', v: 1 },
         { id: 'x', v: 2 },

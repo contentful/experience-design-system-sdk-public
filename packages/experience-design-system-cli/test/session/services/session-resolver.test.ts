@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { openPipelineDb } from '../../../src/session/db.js';
-import { resolveSession } from '../../../src/session/services/session-resolver.js';
+import { getOrCreateSessionForCommand } from '../../../src/session/services/session-resolver.js';
 import { createSession } from '../../../src/session/repositories/sessions/write.js';
 
 const tempDirs: string[] = [];
@@ -18,11 +18,11 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
-describe('resolveSession', () => {
+describe('getOrCreateSessionForCommand', () => {
   it('creates a new session when sessionFlag === "new"', async () => {
     await withDb((dbPath) => {
       const db = openPipelineDb(dbPath);
-      const result = resolveSession(db, 'new', 'my-name', { command: 'analyze extract' });
+      const result = getOrCreateSessionForCommand(db, 'new', 'my-name', { command: 'analyze extract' });
       expect(result.isNew).toBe(true);
       expect(result.isResumed).toBe(false);
       expect(result.sessionId).toMatch(/.+/);
@@ -33,7 +33,7 @@ describe('resolveSession', () => {
   it('creates a new session when sessionFlag is undefined', async () => {
     await withDb((dbPath) => {
       const db = openPipelineDb(dbPath);
-      const result = resolveSession(db, undefined, undefined, { command: 'analyze extract' });
+      const result = getOrCreateSessionForCommand(db, undefined, undefined, { command: 'analyze extract' });
       expect(result.isNew).toBe(true);
       expect(result.isResumed).toBe(false);
       db.close();
@@ -44,7 +44,7 @@ describe('resolveSession', () => {
     await withDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       createSession(db, 'sess-1', null, new Date().toISOString());
-      const result = resolveSession(db, 'sess-1', undefined, { command: 'analyze extract' });
+      const result = getOrCreateSessionForCommand(db, 'sess-1', undefined, { command: 'analyze extract' });
       expect(result).toEqual({ sessionId: 'sess-1', isNew: false, isResumed: false });
       db.close();
     });
@@ -53,7 +53,7 @@ describe('resolveSession', () => {
   it('throws when an explicit sessionId does not exist', async () => {
     await withDb((dbPath) => {
       const db = openPipelineDb(dbPath);
-      expect(() => resolveSession(db, 'nonexistent', undefined, { command: 'analyze extract' })).toThrow(
+      expect(() => getOrCreateSessionForCommand(db, 'nonexistent', undefined, { command: 'analyze extract' })).toThrow(
         /session 'nonexistent' not found/,
       );
       db.close();

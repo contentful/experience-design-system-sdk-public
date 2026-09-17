@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  mapContentfulTypeToCdfType,
-  resolveCdfCategory,
-} from '../../../../src/session/core/cdf/contentful-type-map.js';
+import { mapContentfulTypeToCdfType, resolveCdfCategory } from '../../../../src/session/core/cdf/cdf-mappers.js';
 
 describe('mapContentfulTypeToCdfType', () => {
   const cases: Array<[string, string]> = [

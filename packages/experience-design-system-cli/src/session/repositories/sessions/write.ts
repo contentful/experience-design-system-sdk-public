@@ -9,6 +9,6 @@ export function createSession(db: DatabaseSync, id: string, name: string | null,
   );
 }
 
-export function touchSession(db: DatabaseSync, sessionId: string, timestamp: string): void {
+export function updateSessionTimestamp(db: DatabaseSync, sessionId: string, timestamp: string): void {
   db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(timestamp, sessionId);
 }

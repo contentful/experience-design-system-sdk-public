@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveComponentId } from '../../../../src/session/core/components/component-id.js';
+import { deriveComponentId } from '../../../../src/session/core/components/derive-component-id.js';
 
 describe('deriveComponentId', () => {
   it('is deterministic for the same inputs', () => {

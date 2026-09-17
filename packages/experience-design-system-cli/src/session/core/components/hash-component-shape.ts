@@ -3,7 +3,18 @@ import type { RawComponentDefinition } from '../../../types.js';
 
 export type RawComponentForHash = RawComponentDefinition & { component_id?: string };
 
-export function computeComponentInputHash(component: RawComponentForHash): string {
+/**
+ * Hash the identity-defining shape of a component: framework, name, source
+ * path, prop signature (name + type only, no descriptions or defaults), and
+ * slot composition (name, isDefault, sorted allowedComponents).
+ *
+ * Deliberately EXCLUDES fields an LLM may mutate between runs — descriptions,
+ * defaults, required flags, allowed values, token references — so cache
+ * lookups still hit when only classification data changed.
+ *
+ * Used as the primary key in the `generation_cache` table.
+ */
+export function hashComponentShape(component: RawComponentForHash): string {
   const payload = {
     framework: component.framework,
     name: component.name,

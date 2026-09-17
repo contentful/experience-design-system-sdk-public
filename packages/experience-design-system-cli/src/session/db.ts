@@ -10,22 +10,22 @@ import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@content
 import type { ToolCall, TokenToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
 import type { SlotCycle, SlotEdge } from '../analyze/cycle-detection.js';
-import { deriveComponentId } from './core/components/component-id.js';
-import { mapContentfulTypeToCdfType, resolveCdfCategory } from './core/cdf/contentful-type-map.js';
-import { groupBy } from './core/shared/group-by.js';
+import { deriveComponentId } from './core/components/derive-component-id.js';
+import { mapContentfulTypeToCdfType, resolveCdfCategory } from './core/cdf/cdf-mappers.js';
+import { indexRowsByKey } from './core/shared/index-rows-by-key.js';
 import {
-  findLatestSessionForCommand as findLatestSessionForCommandRepo,
+  getLatestCompletedSessionForCommand,
   type MatchHints as SessionMatchHints,
 } from './repositories/sessions/read.js';
-import { touchSession } from './repositories/sessions/write.js';
-import { findStepSessionId } from './repositories/steps/read.js';
-import { insertPendingStep, markPendingStepsInterrupted, updateStepResult } from './repositories/steps/write.js';
-import { resolveSession, type SessionResolution } from './services/session-resolver.js';
+import { updateSessionTimestamp } from './repositories/sessions/write.js';
+import { getSessionIdForStep } from './repositories/steps/read.js';
+import { createPendingStep, updatePendingStepsToInterrupted, updateStepStatus } from './repositories/steps/write.js';
+import { getOrCreateSessionForCommand, type SessionResolution } from './services/session-resolver.js';
 
-export { deriveComponentId } from './core/components/component-id.js';
-export { computeComponentInputHash } from './core/components/input-hash.js';
-export { computeTokenInputHash } from './core/tokens/input-hash.js';
-export { mapContentfulTypeToCdfType, resolveCdfCategory } from './core/cdf/contentful-type-map.js';
+export { deriveComponentId } from './core/components/derive-component-id.js';
+export { hashComponentShape as computeComponentInputHash } from './core/components/hash-component-shape.js';
+export { hashTokenContent as computeTokenInputHash } from './core/tokens/hash-token-content.js';
+export { mapContentfulTypeToCdfType, resolveCdfCategory } from './core/cdf/cdf-mappers.js';
 
 export type StepStatus = 'pending' | 'complete' | 'failed' | 'interrupted';
 export type CommandName =
@@ -952,7 +952,7 @@ export function getOrCreateSession(
   sessionName: string | undefined,
   hints: MatchHints,
 ): SessionResolution {
-  return resolveSession(db, sessionFlag, sessionName, hints);
+  return getOrCreateSessionForCommand(db, sessionFlag, sessionName, hints);
 }
 
 export function createStep(
@@ -965,9 +965,9 @@ export function createStep(
 
   db.exec('BEGIN');
   try {
-    markPendingStepsInterrupted(db, sessionId, command, now);
-    const stepId = insertPendingStep(db, sessionId, command, inputs, now);
-    touchSession(db, sessionId, now);
+    updatePendingStepsToInterrupted(db, sessionId, command, now);
+    const stepId = createPendingStep(db, sessionId, command, inputs, now);
+    updateSessionTimestamp(db, sessionId, now);
     db.exec('COMMIT');
     return stepId;
   } catch (e) {
@@ -986,10 +986,10 @@ export function updateStep(
   const now = new Date().toISOString();
   db.exec('BEGIN');
   try {
-    const stepSessionId = findStepSessionId(db, stepId);
-    updateStepResult(db, stepId, status, outputs, error ?? null, now);
+    const stepSessionId = getSessionIdForStep(db, stepId);
+    updateStepStatus(db, stepId, status, outputs, error ?? null, now);
     if (stepSessionId) {
-      touchSession(db, stepSessionId, now);
+      updateSessionTimestamp(db, stepSessionId, now);
     }
     db.exec('COMMIT');
   } catch (e) {
@@ -1289,10 +1289,10 @@ export function loadRawComponents(
     allowed_component: string;
   }>;
 
-  const propsByComponent = groupBy(props, (p) => p.component_id);
-  const allowedValuesByProp = groupBy(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
-  const slotsByComponent = groupBy(slots, (s) => s.component_id);
-  const allowedComponentsBySlot = groupBy(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
+  const propsByComponent = indexRowsByKey(props, (p) => p.component_id);
+  const allowedValuesByProp = indexRowsByKey(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
+  const slotsByComponent = indexRowsByKey(slots, (s) => s.component_id);
+  const allowedComponentsBySlot = indexRowsByKey(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
 
   return components.map(
     (c): RawComponentWithId => ({
@@ -1911,11 +1911,11 @@ export function loadCDFComponents(
     ).map((token) => [token.path, token.type]),
   );
 
-  const propsByComponent = groupBy(props, (p) => p.component_id);
-  const allowedValuesByProp = groupBy(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
-  const slotsByComponent = groupBy(slots, (s) => s.component_id);
-  const allowedComponentsBySlot = groupBy(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
-  const tokenPathsByProp = groupBy(tokenPaths, (t) => `${t.component_id}::${t.prop_name}`);
+  const propsByComponent = indexRowsByKey(props, (p) => p.component_id);
+  const allowedValuesByProp = indexRowsByKey(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
+  const slotsByComponent = indexRowsByKey(slots, (s) => s.component_id);
+  const allowedComponentsBySlot = indexRowsByKey(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
+  const tokenPathsByProp = indexRowsByKey(tokenPaths, (t) => `${t.component_id}::${t.prop_name}`);
   const toTokenPaths = (rows: typeof tokenPaths | undefined): string[] | undefined =>
     rows === undefined ? undefined : rows.map((r) => r.path);
 
@@ -2024,8 +2024,8 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
     allowed_component: string;
   }>;
 
-  const slotsByComponent = groupBy(slotRows, (s) => s.component_id);
-  const allowedBySlot = groupBy(allowedRows, (a) => `${a.component_id}::${a.slot_name}`);
+  const slotsByComponent = indexRowsByKey(slotRows, (s) => s.component_id);
+  const allowedBySlot = indexRowsByKey(allowedRows, (a) => `${a.component_id}::${a.slot_name}`);
 
   return rows.map((r) => {
     const reviewReasons = parseReviewReasons(r.review_reasons);
@@ -2192,7 +2192,7 @@ export function loadDTCGTokens(
 }
 
 export function findLatestSessionForCommand(db: DatabaseSync, command: CommandName): string | null {
-  return findLatestSessionForCommandRepo(db, command);
+  return getLatestCompletedSessionForCommand(db, command);
 }
 
 export function seedCDFFromPriorSession(db: DatabaseSync, targetSessionId: string): number {

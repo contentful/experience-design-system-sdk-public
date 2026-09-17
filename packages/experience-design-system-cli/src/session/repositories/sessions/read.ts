@@ -7,12 +7,16 @@ export interface MatchHints {
   outDir?: string;
 }
 
-export function findSession(db: DatabaseSync, sessionId: string): { id: string } | null {
+export function getSessionById(db: DatabaseSync, sessionId: string): { id: string } | null {
   const row = db.prepare('SELECT id FROM sessions WHERE id = ?').get(sessionId) as { id: string } | undefined;
   return row ?? null;
 }
 
-export function findLatestSessionForCommand(db: DatabaseSync, command: CommandName): string | null {
+/**
+ * Return the id of the most recent session whose `steps` table records a
+ * successful ('complete') step for the given command, or null if none exists.
+ */
+export function getLatestCompletedSessionForCommand(db: DatabaseSync, command: CommandName): string | null {
   const row = db
     .prepare(
       `SELECT s.id FROM sessions s
