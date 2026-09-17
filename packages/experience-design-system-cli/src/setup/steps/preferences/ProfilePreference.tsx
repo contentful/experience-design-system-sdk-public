@@ -5,7 +5,7 @@ import { appendToProfile, profileContains } from '../../lib/shell.js';
 import { StepLayout, StepSuccess, type StepDone } from '../StepLayout.js';
 
 type ProfilePreferenceProps = {
-  help: string;
+  helpText: string;
   question: string;
   /** The variable to look for before offering to add it. */
   variable: string;
@@ -21,7 +21,7 @@ type ProfilePreferenceProps = {
  * appended twice.
  */
 export function ProfilePreference({
-  help,
+  helpText,
   question,
   variable,
   lines,
@@ -42,7 +42,7 @@ export function ProfilePreference({
 
   return (
     <StepLayout
-      help={help}
+      helpText={helpText}
       prompt={
         <Box>
           <Text>{question} </Text>

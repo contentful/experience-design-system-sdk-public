@@ -7,7 +7,7 @@ export const AUTO_FILTER_HELP = 'Filters out components irrelevant to experience
 export function AutoFilterScreen({ onDone }: { onDone: StepDone }): React.ReactElement {
   return (
     <BooleanPreference
-      help={AUTO_FILTER_HELP}
+      helpText={AUTO_FILTER_HELP}
       question="Enable AI auto-filter by default?"
       read={(credentials) => credentials.autoFilter}
       write={(credentials, autoFilter) => ({ ...credentials, autoFilter })}

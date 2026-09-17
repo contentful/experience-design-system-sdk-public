@@ -15,7 +15,7 @@ export function ConcurrencyScreen({
 }): React.ReactElement {
   return (
     <ProfilePreference
-      help={CONCURRENCY_HELP}
+      helpText={CONCURRENCY_HELP}
       question="Speed up component analysis on this machine?"
       variable={PROFILE_VARIABLE}
       lines={`# experiences performance\nexport ${PROFILE_VARIABLE}=8`}
