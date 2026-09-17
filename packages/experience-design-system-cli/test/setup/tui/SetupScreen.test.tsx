@@ -3,6 +3,7 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { SetupScreen } from '../../../src/setup/tui/SetupScreen.js';
 import { waitForFrame } from '../../helpers/wait-for-frame.js';
+import { acceptDefault } from '../steps/select-helpers.js';
 
 /**
  * Each step now reads and writes for itself, so the wizard's own tests stub the
@@ -202,7 +203,7 @@ describe('SetupScreen', () => {
 
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Enable AI auto-filter'),
+      (f) => f.includes('AI auto-filter'),
     );
 
     expect(frame).not.toContain('Choose preferences to configure');
@@ -216,7 +217,7 @@ describe('SetupScreen', () => {
       () => lastFrame(),
       (f) => f.includes('Filters out components irrelevant'),
     );
-    stdin.write('y');
+    await acceptDefault(stdin);
 
     const frame = await waitForFrame(
       () => lastFrame(),

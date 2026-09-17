@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
-import { ConfirmInput } from '@inkjs/ui';
+import { Select } from '@inkjs/ui';
 import {
   readExperiencesCredentials,
   writeExperiencesCredentials,
@@ -11,6 +11,8 @@ import { StepLayout, type StepDone } from '../StepLayout.js';
 type BooleanPreferenceProps = {
   helpText: string;
   question: string;
+  /** What choosing each option means, named after the outcome rather than yes/no. */
+  labels: { on: string; off: string };
   /** Reads the stored value; `undefined` means the operator has never set it. */
   read: (credentials: ExperiencesCredentials) => boolean | undefined;
   /** Applied to the stored credentials when the answer differs from the default. */
@@ -20,14 +22,18 @@ type BooleanPreferenceProps = {
   onDone: StepDone;
 };
 
+const ON = 'on';
+const OFF = 'off';
+
 /**
  * The three boolean preferences differ only in their wording and which field
- * they persist, so they share one screen. An answer matching the current value
- * writes nothing, which is what makes pressing Enter through the wizard safe.
+ * they persist, so they share one screen. The operator's current setting starts
+ * highlighted, so pressing Enter keeps it and writes nothing.
  */
 export function BooleanPreference({
   helpText,
   question,
+  labels,
   read,
   write,
   fallback,
@@ -55,13 +61,28 @@ export function BooleanPreference({
     <StepLayout
       helpText={helpText}
       prompt={
-        <Box>
-          <Text>{question} </Text>
-          <ConfirmInput
-            defaultChoice={current ? 'confirm' : 'cancel'}
-            onConfirm={() => submit(true)}
-            onCancel={() => submit(false)}
-          />
+        <Box flexDirection="column">
+          <Text>{question}</Text>
+          <Box marginTop={1}>
+            <Select
+              // Select always highlights its first option and only reports a
+              // value that differs from `defaultValue`, so the current setting
+              // leads the list and no `defaultValue` is given — otherwise
+              // choosing the current setting would report nothing at all.
+              options={
+                current
+                  ? [
+                      { label: labels.on, value: ON },
+                      { label: labels.off, value: OFF },
+                    ]
+                  : [
+                      { label: labels.off, value: OFF },
+                      { label: labels.on, value: ON },
+                    ]
+              }
+              onChange={(value) => submit(value === ON)}
+            />
+          </Box>
         </Box>
       }
     >

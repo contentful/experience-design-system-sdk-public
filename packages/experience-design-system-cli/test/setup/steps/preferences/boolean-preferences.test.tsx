@@ -7,6 +7,7 @@ import { AutoFilterScreen } from '../../../../src/setup/steps/preferences/auto-f
 import { DebugScreen } from '../../../../src/setup/steps/preferences/debug.js';
 import type { StepDone } from '../../../../src/setup/steps/StepLayout.js';
 import { waitForFrame } from '../../../helpers/wait-for-frame.js';
+import { acceptDefault, choose } from '../select-helpers.js';
 
 const store = vi.hoisted(() => ({ read: vi.fn(), write: vi.fn() }));
 
@@ -25,30 +26,26 @@ function setup(Screen: React.ComponentType<{ onDone: StepDone }>, stored: Experi
   return { ...render(<Screen onDone={onDone} />), onDone, write: store.write };
 }
 
-const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 80));
-
 describe('AutoFilterScreen', () => {
   it('defaults to on, so confirming changes nothing', async () => {
     const { lastFrame, stdin, onDone, write } = setup(AutoFilterScreen);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Enable AI auto-filter by default?'),
+      (f) => f.includes('AI auto-filter'),
     );
-    stdin.write('y');
-    await settle();
+    await acceptDefault(stdin);
 
     expect(write).not.toHaveBeenCalled();
     expect(onDone).toHaveBeenCalledWith('skipped');
   });
 
-  it('persists the opt-out when the operator declines', async () => {
+  it('persists the opt-out when the operator picks the other option', async () => {
     const { lastFrame, stdin, onDone, write } = setup(AutoFilterScreen);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Enable AI auto-filter by default?'),
+      (f) => f.includes('AI auto-filter'),
     );
-    stdin.write('n');
-    await settle();
+    await choose(stdin, lastFrame, 'Keep every component');
 
     expect(write).toHaveBeenCalledWith(expect.objectContaining({ autoFilter: false }));
     expect(onDone).toHaveBeenCalledWith('completed');
@@ -62,7 +59,7 @@ describe('AutoFilterScreen', () => {
     );
 
     const lines = frame.split('\n');
-    const prompt = lines.findIndex((line) => line.includes('Enable AI auto-filter'));
+    const prompt = lines.findIndex((line) => line.includes('AI auto-filter'));
     const help = lines.findIndex((line) => line.includes('Filters out components'));
     expect(help).toBeGreaterThan(prompt);
   });
@@ -71,10 +68,9 @@ describe('AutoFilterScreen', () => {
     const { lastFrame, stdin, write } = setup(AutoFilterScreen, { ...EMPTY, autoFilter: false });
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Enable AI auto-filter by default?'),
+      (f) => f.includes('AI auto-filter'),
     );
-    stdin.write('y');
-    await settle();
+    await choose(stdin, lastFrame, 'Filter out irrelevant components');
 
     expect(write).toHaveBeenCalledWith(expect.objectContaining({ autoFilter: true }));
   });
@@ -85,10 +81,9 @@ describe('DebugScreen', () => {
     const { lastFrame, stdin, onDone, write } = setup(DebugScreen);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Enable debug logging by default?'),
+      (f) => f.includes('Debug logging'),
     );
-    stdin.write('n');
-    await settle();
+    await acceptDefault(stdin);
 
     expect(write).not.toHaveBeenCalled();
     expect(onDone).toHaveBeenCalledWith('skipped');
@@ -98,10 +93,9 @@ describe('DebugScreen', () => {
     const { lastFrame, stdin, write } = setup(DebugScreen);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Enable debug logging by default?'),
+      (f) => f.includes('Debug logging'),
     );
-    stdin.write('y');
-    await settle();
+    await choose(stdin, lastFrame, 'Write verbose traces');
 
     expect(write).toHaveBeenCalledWith(expect.objectContaining({ debug: true }));
   });
@@ -112,10 +106,9 @@ describe('AnalyticsScreen', () => {
     const { lastFrame, stdin, onDone, write } = setup(AnalyticsScreen);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Disable anonymous usage analytics?'),
+      (f) => f.includes('Usage analytics'),
     );
-    stdin.write('n');
-    await settle();
+    await acceptDefault(stdin);
 
     expect(write).not.toHaveBeenCalled();
     expect(onDone).toHaveBeenCalledWith('skipped');
@@ -125,10 +118,9 @@ describe('AnalyticsScreen', () => {
     const { lastFrame, stdin, write } = setup(AnalyticsScreen);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Disable anonymous usage analytics?'),
+      (f) => f.includes('Usage analytics'),
     );
-    stdin.write('y');
-    await settle();
+    await choose(stdin, lastFrame, 'Stop sharing usage data');
 
     expect(write).toHaveBeenCalledWith(expect.objectContaining({ analyticsDisabled: true }));
   });

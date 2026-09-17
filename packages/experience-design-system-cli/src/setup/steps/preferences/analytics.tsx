@@ -8,7 +8,8 @@ export function AnalyticsScreen({ onDone }: { onDone: StepDone }): React.ReactEl
   return (
     <BooleanPreference
       helpText={ANALYTICS_HELP}
-      question="Disable anonymous usage analytics?"
+      question="Usage analytics"
+      labels={{ on: 'Stop sharing usage data', off: 'Keep sharing usage data' }}
       read={(credentials) => credentials.analyticsDisabled}
       write={(credentials, analyticsDisabled) => ({ ...credentials, analyticsDisabled })}
       fallback={false}
