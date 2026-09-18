@@ -4,13 +4,28 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
-import { generateSessionId } from './session-id.js';
 import { escapeForRegExp, excerptAroundNames } from './source-excerpt.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types.js';
 import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
 import type { ToolCall, TokenToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
 import type { SlotCycle, SlotEdge } from '../analyze/cycle-detection.js';
+import { deriveComponentId } from './core/components/derive-component-id.js';
+import { mapContentfulTypeToCdfType, resolveCdfCategory } from './core/cdf/cdf-mappers.js';
+import { indexRowsByKey } from './core/shared/index-rows-by-key.js';
+import {
+  getLatestCompletedSessionForCommand,
+  type MatchHints as SessionMatchHints,
+} from './repositories/sessions/read.js';
+import { updateSessionTimestamp } from './repositories/sessions/write.js';
+import { getSessionIdForStep } from './repositories/steps/read.js';
+import { createPendingStep, updatePendingStepsToInterrupted, updateStepStatus } from './repositories/steps/write.js';
+import { getOrCreateSessionForCommand, type SessionResolution } from './services/session-resolver.js';
+
+export { deriveComponentId } from './core/components/derive-component-id.js';
+export { hashComponentShape as computeComponentInputHash } from './core/components/hash-component-shape.js';
+export { hashTokenContent as computeTokenInputHash } from './core/tokens/hash-token-content.js';
+export { mapContentfulTypeToCdfType, resolveCdfCategory } from './core/cdf/cdf-mappers.js';
 
 export type StepStatus = 'pending' | 'complete' | 'failed' | 'interrupted';
 export type CommandName =
@@ -928,42 +943,16 @@ export function applyToolCalls(
   return { classified, excluded, slots, warnings };
 }
 
-export interface MatchHints {
-  command: CommandName;
-  inputPath?: string;
-  outDir?: string;
-}
-
-export interface SessionResolution {
-  sessionId: string;
-  isNew: boolean;
-  isResumed: boolean;
-}
+export type MatchHints = SessionMatchHints;
+export type { SessionResolution };
 
 export function getOrCreateSession(
   db: DatabaseSync,
   sessionFlag: string | undefined,
   sessionName: string | undefined,
-  _hints: MatchHints,
+  hints: MatchHints,
 ): SessionResolution {
-  const now = new Date().toISOString();
-
-  if (sessionFlag === 'new' || sessionFlag === undefined) {
-    const id = generateSessionId();
-    db.prepare('INSERT INTO sessions (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(
-      id,
-      sessionName ?? null,
-      now,
-      now,
-    );
-    return { sessionId: id, isNew: true, isResumed: false };
-  }
-
-  const existing = db.prepare('SELECT id FROM sessions WHERE id = ?').get(sessionFlag) as { id: string } | undefined;
-  if (!existing) {
-    throw new Error(`session '${sessionFlag}' not found. Run 'session list' to see active sessions.`);
-  }
-  return { sessionId: sessionFlag, isNew: false, isResumed: false };
+  return getOrCreateSessionForCommand(db, sessionFlag, sessionName, hints);
 }
 
 export function createStep(
@@ -976,24 +965,11 @@ export function createStep(
 
   db.exec('BEGIN');
   try {
-    db.prepare(
-      `UPDATE steps SET status = 'interrupted', completed_at = ?, updated_at = ?
-       WHERE session_id = ? AND command = ? AND status = 'pending'`,
-    ).run(now, now, sessionId, command);
-
-    const result = db
-      .prepare(
-        `INSERT INTO steps (session_id, command, status, started_at, inputs, outputs, updated_at)
-         VALUES (?, ?, 'pending', ?, ?, '{}', ?)`,
-      )
-      .run(sessionId, command, now, JSON.stringify(inputs), now) as {
-      lastInsertRowid: number | bigint;
-    };
-
-    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
-
+    updatePendingStepsToInterrupted(db, sessionId, command, now);
+    const stepId = createPendingStep(db, sessionId, command, inputs, now);
+    updateSessionTimestamp(db, sessionId, now);
     db.exec('COMMIT');
-    return Number(result.lastInsertRowid);
+    return stepId;
   } catch (e) {
     db.exec('ROLLBACK');
     throw e;
@@ -1010,18 +986,11 @@ export function updateStep(
   const now = new Date().toISOString();
   db.exec('BEGIN');
   try {
-    const step = db.prepare('SELECT session_id FROM steps WHERE id = ?').get(stepId) as
-      | { session_id: string }
-      | undefined;
-
-    db.prepare(
-      `UPDATE steps SET status = ?, completed_at = ?, outputs = ?, error = ?, updated_at = ? WHERE id = ?`,
-    ).run(status, now, JSON.stringify(outputs), error ?? null, now, stepId);
-
-    if (step) {
-      db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, step.session_id);
+    const stepSessionId = getSessionIdForStep(db, stepId);
+    updateStepStatus(db, stepId, status, outputs, error ?? null, now);
+    if (stepSessionId) {
+      updateSessionTimestamp(db, stepSessionId, now);
     }
-
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
@@ -1320,10 +1289,10 @@ export function loadRawComponents(
     allowed_component: string;
   }>;
 
-  const propsByComponent = groupBy(props, (p) => p.component_id);
-  const allowedValuesByProp = groupBy(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
-  const slotsByComponent = groupBy(slots, (s) => s.component_id);
-  const allowedComponentsBySlot = groupBy(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
+  const propsByComponent = indexRowsByKey(props, (p) => p.component_id);
+  const allowedValuesByProp = indexRowsByKey(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
+  const slotsByComponent = indexRowsByKey(slots, (s) => s.component_id);
+  const allowedComponentsBySlot = indexRowsByKey(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
 
   return components.map(
     (c): RawComponentWithId => ({
@@ -1686,24 +1655,6 @@ function parseReviewReasons(raw: string | null | undefined): string[] {
   }
 }
 
-function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
-  const map = new Map<string, T[]>();
-  for (const item of items) {
-    const k = key(item);
-    let arr = map.get(k);
-    if (!arr) {
-      arr = [];
-      map.set(k, arr);
-    }
-    arr.push(item);
-  }
-  return map;
-}
-
-function deriveComponentId(name: string, source: string): string {
-  return createHash('sha256').update(`${name}:${source}`).digest('hex').slice(0, 12);
-}
-
 export function storeCDFComponents(
   db: DatabaseSync,
   sessionId: string,
@@ -1810,7 +1761,7 @@ export function storeCDFComponents(
           }
         }
       } else {
-        const componentId = createHash('sha256').update(`${key}:generated`).digest('hex').slice(0, 12);
+        const componentId = deriveComponentId(key, 'generated');
         db.prepare(
           `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, status, description)
            VALUES (?, ?, ?, '', 'react', ?, 'generated', ?)`,
@@ -1960,11 +1911,11 @@ export function loadCDFComponents(
     ).map((token) => [token.path, token.type]),
   );
 
-  const propsByComponent = groupBy(props, (p) => p.component_id);
-  const allowedValuesByProp = groupBy(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
-  const slotsByComponent = groupBy(slots, (s) => s.component_id);
-  const allowedComponentsBySlot = groupBy(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
-  const tokenPathsByProp = groupBy(tokenPaths, (t) => `${t.component_id}::${t.prop_name}`);
+  const propsByComponent = indexRowsByKey(props, (p) => p.component_id);
+  const allowedValuesByProp = indexRowsByKey(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
+  const slotsByComponent = indexRowsByKey(slots, (s) => s.component_id);
+  const allowedComponentsBySlot = indexRowsByKey(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
+  const tokenPathsByProp = indexRowsByKey(tokenPaths, (t) => `${t.component_id}::${t.prop_name}`);
   const toTokenPaths = (rows: typeof tokenPaths | undefined): string[] | undefined =>
     rows === undefined ? undefined : rows.map((r) => r.path);
 
@@ -2073,8 +2024,8 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
     allowed_component: string;
   }>;
 
-  const slotsByComponent = groupBy(slotRows, (s) => s.component_id);
-  const allowedBySlot = groupBy(allowedRows, (a) => `${a.component_id}::${a.slot_name}`);
+  const slotsByComponent = indexRowsByKey(slotRows, (s) => s.component_id);
+  const allowedBySlot = indexRowsByKey(allowedRows, (a) => `${a.component_id}::${a.slot_name}`);
 
   return rows.map((r) => {
     const reviewReasons = parseReviewReasons(r.review_reasons);
@@ -2241,16 +2192,7 @@ export function loadDTCGTokens(
 }
 
 export function findLatestSessionForCommand(db: DatabaseSync, command: CommandName): string | null {
-  const row = db
-    .prepare(
-      `SELECT s.id FROM sessions s
-       JOIN steps st ON st.session_id = s.id
-       WHERE st.command = ? AND st.status = 'complete'
-       ORDER BY st.started_at DESC, st.id DESC
-       LIMIT 1`,
-    )
-    .get(command) as { id: string } | undefined;
-  return row?.id ?? null;
+  return getLatestCompletedSessionForCommand(db, command);
 }
 
 export function seedCDFFromPriorSession(db: DatabaseSync, targetSessionId: string): number {
@@ -2347,16 +2289,8 @@ export function seedCDFFromPreviewResponse(
     const designProps = new Set(item.designProperties);
 
     for (const [propName, propSummary] of Object.entries(item.fullProperties)) {
-      const cdfType = mapServerTypeToCDFType(propSummary.type);
-      if (!cdfType) continue;
-
-      let cdfCategory = propSummary.category || null;
-      if (!cdfCategory || !['content', 'design', 'state'].includes(cdfCategory)) {
-        if (contentProps.has(propName)) cdfCategory = 'content';
-        else if (designProps.has(propName)) cdfCategory = 'design';
-        else cdfCategory = 'state';
-      }
-
+      const cdfType = mapContentfulTypeToCdfType(propSummary.type);
+      const cdfCategory = resolveCdfCategory(propSummary.category, propName, contentProps, designProps);
       const result = updateStmt.run(cdfType, cdfCategory, sessionId, localComponent.component_id, propName);
       totalSeeded += Number(result.changes);
     }
@@ -2404,16 +2338,8 @@ export function seedDefaultsFromChangedItems(
         totalSeeded += Number(result.changes);
       }
 
-      const cdfType = mapServerTypeToCDFType(propSummary.type);
-      if (!cdfType) continue;
-
-      let cdfCategory = propSummary.category || null;
-      if (!cdfCategory || !['content', 'design', 'state'].includes(cdfCategory)) {
-        if (contentProps.has(propName)) cdfCategory = 'content';
-        else if (designProps.has(propName)) cdfCategory = 'design';
-        else cdfCategory = 'state';
-      }
-
+      const cdfType = mapContentfulTypeToCdfType(propSummary.type);
+      const cdfCategory = resolveCdfCategory(propSummary.category, propName, contentProps, designProps);
       const result = updateCDFStmt.run(cdfType, cdfCategory, sessionId, localComponent.component_id, propName);
       totalSeeded += Number(result.changes);
     }
@@ -2446,29 +2372,6 @@ export function backfillUnclassifiedProps(db: DatabaseSync, sessionId: string): 
   return Number(withCategory.changes) + Number(withoutCategory.changes);
 }
 
-function mapServerTypeToCDFType(serverType: string): string | null {
-  switch (serverType.toLowerCase()) {
-    case 'string':
-    case 'text':
-      return 'string';
-    case 'richtext':
-      return 'richtext';
-    case 'media':
-      return 'media';
-    case 'link':
-      return 'link';
-    case 'enum':
-    case 'symbol':
-      return 'enum';
-    case 'token':
-      return 'token';
-    case 'boolean':
-      return 'boolean';
-    default:
-      return 'string';
-  }
-}
-
 export type CacheEntityType = 'component' | 'token_set' | 'token_mapping';
 
 export interface CacheEntry {
@@ -2480,28 +2383,6 @@ export interface CacheEntry {
   promptHash: string;
   createdAt: string;
   updatedAt: string;
-}
-
-export function computeComponentInputHash(component: RawComponentWithId): string {
-  const payload = {
-    framework: component.framework,
-    name: component.name,
-    source: component.source,
-    props: component.props.map((p) => ({
-      name: p.name,
-      type: p.type,
-    })),
-    slots: component.slots.map((s) => ({
-      name: s.name,
-      isDefault: s.isDefault,
-      allowedComponents: [...(s.allowedComponents ?? [])].sort(),
-    })),
-  };
-  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-}
-
-export function computeTokenInputHash(rawTokenContent: string): string {
-  return createHash('sha256').update(rawTokenContent.trim()).digest('hex');
 }
 
 export function computeMapTokensInputHash(
