@@ -66,6 +66,7 @@ import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
 import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
 import type { ReviewStepProps } from '../review-step-props.js';
 import { ReviewDetailsEditor } from '../components/ReviewDetailsEditor.js';
+import { countReviewStatuses, ReviewLoadError, ReviewLoadingState } from '../components/ReviewStatus.js';
 import {
   createReviewHistorySnapshot,
   finalizeReviewSession,
@@ -1293,21 +1294,11 @@ export function GenerateReviewStep({
   });
 
   if (loading) {
-    return (
-      <Box paddingX={2} paddingY={1}>
-        <Text dimColor>Loading generated definitions...</Text>
-      </Box>
-    );
+    return <ReviewLoadingState />;
   }
 
   if (loadError) {
-    return (
-      <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text color={PALETTE.error}>{loadError}</Text>
-        <Text> </Text>
-        <Text dimColor>[q / Enter / Esc] Quit</Text>
-      </Box>
-    );
+    return <ReviewLoadError message={loadError} />;
   }
 
   if (showHelp) {
@@ -1406,9 +1397,7 @@ export function GenerateReviewStep({
     return false;
   })();
 
-  const accepted = components.filter((c) => c.status === 'accepted').length;
-  const rejected = components.filter((c) => c.status === 'rejected').length;
-  const needsReview = components.filter((c) => c.status === 'needs-review').length;
+  const { accepted, rejected, needsReview } = countReviewStatuses(components);
   const propCount = selected ? Object.keys(selected.entry.$properties).length : 0;
   const slotCount = selected?.entry.$slots ? Object.keys(selected.entry.$slots).length : 0;
 

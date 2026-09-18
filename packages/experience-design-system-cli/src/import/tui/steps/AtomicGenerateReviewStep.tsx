@@ -13,6 +13,7 @@ import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { ReviewDetailsEditor } from '../components/ReviewDetailsEditor.js';
 import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
+import { countReviewStatuses, ReviewLoadError, ReviewLoadingState } from '../components/ReviewStatus.js';
 import {
   handleJsonPanelInput,
   handleRationalePanelInput,
@@ -416,21 +417,11 @@ export function AtomicGenerateReviewStep({
   });
 
   if (loading) {
-    return (
-      <Box paddingX={2} paddingY={1}>
-        <Text dimColor>Loading generated definitions...</Text>
-      </Box>
-    );
+    return <ReviewLoadingState />;
   }
 
   if (loadError) {
-    return (
-      <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text color={PALETTE.error}>{loadError}</Text>
-        <Text> </Text>
-        <Text dimColor>[q / Enter / Esc] Quit</Text>
-      </Box>
-    );
+    return <ReviewLoadError message={loadError} />;
   }
 
   const selected = components[selectedIdx] ?? null;
@@ -465,9 +456,7 @@ export function AtomicGenerateReviewStep({
   const sidebarWidth = Math.min(Math.max(longestName + 5, 14), 30);
   const panelWidth = Math.max(10, terminalWidth - sidebarWidth - 4);
 
-  const accepted = components.filter((c) => c.status === 'accepted').length;
-  const rejected = components.filter((c) => c.status === 'rejected').length;
-  const needsReview = components.filter((c) => c.status === 'needs-review').length;
+  const { accepted, rejected, needsReview } = countReviewStatuses(components);
   const propCount = selected ? Object.keys(selected.entry.$properties).length : 0;
   const slotCount = selected?.entry.$slots ? Object.keys(selected.entry.$slots).length : 0;
 
