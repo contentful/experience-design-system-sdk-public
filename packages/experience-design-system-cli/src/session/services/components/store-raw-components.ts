@@ -3,10 +3,11 @@ import type { RawComponentDefinition } from '../../../types.js';
 import { withTransaction } from '../../repositories/shared/with-transaction.js';
 import { updateSessionTimestamp } from '../../repositories/sessions/write.js';
 import {
-  getRawPropAllowedValues,
   getClassifiedProps,
   getComponentDescriptions,
+  getRawPropAllowedValues,
   getRawPropNameAtPosition,
+  hasRawPropNamed,
 } from '../../repositories/components/raw/read.js';
 import {
   createRawComponent,
@@ -16,6 +17,7 @@ import {
   updateRawComponentsStatus,
 } from '../../repositories/components/raw/write.js';
 import { planCdfRestore } from '../../core/components/plan-cdf-restore.js';
+import { memoizeByKey } from '../../core/shared/memoize-by-key.js';
 import { applyCdfRestore } from './apply-cdf-restore.js';
 
 // Snapshot → mutate → restore, all inside one transaction. planCdfRestore
@@ -46,8 +48,8 @@ export function storeRawComponents(
 
     if (options?.preserveCDF && cdfSnapshot.length > 0) {
       const plan = planCdfRestore(cdfSnapshot, descSnapshot, avSnapshot, {
-        hasPropNamed: (componentId, propName) => hasPropByName(db, sessionId, componentId, propName),
-        propNameAtPosition: memoize((componentId, position) =>
+        hasPropNamed: (componentId, propName) => hasRawPropNamed(db, sessionId, componentId, propName),
+        propNameAtPosition: memoizeByKey((componentId: string, position: number) =>
           getRawPropNameAtPosition(db, sessionId, componentId, position),
         ),
       });
@@ -59,24 +61,4 @@ export function storeRawComponents(
     }
     updateSessionTimestamp(db, sessionId, now);
   });
-}
-
-function hasPropByName(db: DatabaseSync, sessionId: string, componentId: string, propName: string): boolean {
-  const row = db
-    .prepare('SELECT 1 as one FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?')
-    .get(sessionId, componentId, propName);
-  return row !== undefined;
-}
-
-function memoize(
-  lookup: (componentId: string, position: number) => string | null,
-): (componentId: string, position: number) => string | null {
-  const cache = new Map<string, string | null>();
-  return (componentId, position) => {
-    const key = `${componentId}::${position}`;
-    if (cache.has(key)) return cache.get(key)!;
-    const value = lookup(componentId, position);
-    cache.set(key, value);
-    return value;
-  };
 }

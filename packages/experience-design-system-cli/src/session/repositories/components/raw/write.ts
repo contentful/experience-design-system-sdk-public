@@ -46,26 +46,45 @@ export function createRawProps(
     `INSERT INTO raw_prop_allowed_values (session_id, component_id, prop_name, position, value)
      VALUES (?, ?, ?, ?, ?)`,
   );
-  for (let i = 0; i < props.length; i++) {
-    const prop = props[i]!;
-    insertProp.run(
-      sessionId,
-      componentId,
-      prop.name,
-      prop.type,
-      prop.required ? 1 : 0,
-      prop.category ?? null,
-      prop.defaultValue ?? null,
-      prop.description ?? null,
-      prop.tokenReference ?? null,
-      i,
-      prop.sourceStartLine ?? null,
-      prop.sourceEndLine ?? null,
-    );
-    if (prop.allowedValues) {
-      prop.allowedValues.forEach((v, j) => insertAllowedValue.run(sessionId, componentId, prop.name, j, v));
-    }
-  }
+  props.forEach((prop, position) => {
+    insertPropRow(insertProp, sessionId, componentId, prop, position);
+    insertPropAllowedValues(insertAllowedValue, sessionId, componentId, prop);
+  });
+}
+
+function insertPropRow(
+  insertProp: ReturnType<DatabaseSync['prepare']>,
+  sessionId: string,
+  componentId: string,
+  prop: RawComponentDefinition['props'][number],
+  position: number,
+): void {
+  insertProp.run(
+    sessionId,
+    componentId,
+    prop.name,
+    prop.type,
+    prop.required ? 1 : 0,
+    prop.category ?? null,
+    prop.defaultValue ?? null,
+    prop.description ?? null,
+    prop.tokenReference ?? null,
+    position,
+    prop.sourceStartLine ?? null,
+    prop.sourceEndLine ?? null,
+  );
+}
+
+function insertPropAllowedValues(
+  insertAllowedValue: ReturnType<DatabaseSync['prepare']>,
+  sessionId: string,
+  componentId: string,
+  prop: RawComponentDefinition['props'][number],
+): void {
+  if (!prop.allowedValues) return;
+  prop.allowedValues.forEach((value, position) => {
+    insertAllowedValue.run(sessionId, componentId, prop.name, position, value);
+  });
 }
 
 export function createRawSlots(
@@ -82,13 +101,32 @@ export function createRawSlots(
     `INSERT INTO raw_slot_allowed_components (session_id, component_id, slot_name, position, allowed_component)
      VALUES (?, ?, ?, ?, ?)`,
   );
-  for (let i = 0; i < slots.length; i++) {
-    const slot = slots[i]!;
-    insertSlot.run(sessionId, componentId, slot.name, slot.isDefault ? 1 : 0, slot.description ?? null, i);
-    if (slot.allowedComponents) {
-      slot.allowedComponents.forEach((ac, j) => insertAllowedComponent.run(sessionId, componentId, slot.name, j, ac));
-    }
-  }
+  slots.forEach((slot, position) => {
+    insertSlotRow(insertSlot, sessionId, componentId, slot, position);
+    insertSlotAllowedComponents(insertAllowedComponent, sessionId, componentId, slot);
+  });
+}
+
+function insertSlotRow(
+  insertSlot: ReturnType<DatabaseSync['prepare']>,
+  sessionId: string,
+  componentId: string,
+  slot: RawComponentDefinition['slots'][number],
+  position: number,
+): void {
+  insertSlot.run(sessionId, componentId, slot.name, slot.isDefault ? 1 : 0, slot.description ?? null, position);
+}
+
+function insertSlotAllowedComponents(
+  insertAllowedComponent: ReturnType<DatabaseSync['prepare']>,
+  sessionId: string,
+  componentId: string,
+  slot: RawComponentDefinition['slots'][number],
+): void {
+  if (!slot.allowedComponents) return;
+  slot.allowedComponents.forEach((allowedComponent, position) => {
+    insertAllowedComponent.run(sessionId, componentId, slot.name, position, allowedComponent);
+  });
 }
 
 export function updateRawComponentsStatus(db: DatabaseSync, sessionId: string, status: string): void {

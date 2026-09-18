@@ -1,41 +1,20 @@
-export interface CdfSnapshotEntry {
-  component_id: string;
-  name: string;
-  position: number;
-  cdf_type: string;
-  cdf_category: string;
-  cdf_token_kind: string | null;
-}
+import type {
+  AllowedValueSnapshotEntry,
+  CdfRestorePlan,
+  CdfSnapshotEntry,
+  CurrentPropsQuery,
+  DescriptionSnapshotEntry,
+} from './snapshot-types.js';
+import { groupAllowedValuesByProp } from './group-allowed-values-by-prop.js';
 
-export interface DescriptionSnapshotEntry {
-  component_id: string;
-  description: string;
-}
-
-export interface AllowedValueSnapshotEntry {
-  component_id: string;
-  prop_name: string;
-  position: number;
-  value: string;
-}
-
-export interface RestoredAllowedValues {
-  componentId: string;
-  propName: string;
-  values: AllowedValueSnapshotEntry[];
-}
-
-export interface CdfRestorePlan {
-  byName: CdfSnapshotEntry[];
-  byPosition: CdfSnapshotEntry[];
-  descriptions: DescriptionSnapshotEntry[];
-  allowedValues: RestoredAllowedValues[];
-}
-
-export interface CurrentPropsQuery {
-  hasPropNamed: (componentId: string, propName: string) => boolean;
-  propNameAtPosition: (componentId: string, position: number) => string | null;
-}
+export type {
+  AllowedValueSnapshotEntry,
+  CdfRestorePlan,
+  CdfSnapshotEntry,
+  CurrentPropsQuery,
+  DescriptionSnapshotEntry,
+  RestoredAllowedValues,
+} from './snapshot-types.js';
 
 // Decide which CDF snapshot entries to reapply after the raw table has been
 // wiped and repopulated by an extraction re-run. A snapshot entry matches by
@@ -67,20 +46,11 @@ export function planCdfRestore(
     }
   }
 
-  const buckets = new Map<string, RestoredAllowedValues>();
-  for (const av of avSnapshot) {
-    const key = propKey(av.component_id, av.prop_name);
-    if (!nameMatchedKeys.has(key)) continue;
-    const bucket = buckets.get(key) ?? { componentId: av.component_id, propName: av.prop_name, values: [] };
-    bucket.values.push(av);
-    buckets.set(key, bucket);
-  }
-
   return {
     byName,
     byPosition,
     descriptions: descSnapshot,
-    allowedValues: [...buckets.values()],
+    allowedValues: groupAllowedValuesByProp(avSnapshot, nameMatchedKeys),
   };
 }
 

@@ -26,6 +26,7 @@ export { getClassifiedProps } from './reads/get-classified-props.js';
 export { getComponentDescriptions } from './reads/get-component-descriptions.js';
 export { getRawPropAllowedValues } from './reads/get-raw-prop-allowed-values.js';
 export { getRawPropNameAtPosition } from './reads/get-raw-prop-name-at-position.js';
+export { hasRawPropNamed } from './reads/has-raw-prop-named.js';
 
 export type RawComponentWithId = RawComponentDefinition & {
   component_id: string;
