@@ -8,7 +8,7 @@ import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import type { ReviewComponentStatus, ReviewComponentSummary } from '../../../analyze/select/types.js';
 import type { HistorySnapshot } from '../history.js';
-import { useFinalizePreview } from '../useFinalizePreview.js';
+import { useReviewFinalizePreview } from '../useFinalizePreview.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { ReviewDetailsEditor } from '../components/ReviewDetailsEditor.js';
@@ -221,7 +221,7 @@ export function AtomicGenerateReviewStep({
     });
   };
 
-  const finalizePreview = useFinalizePreview({
+  const finalizePreview = useReviewFinalizePreview({
     open: showFinalize,
     extractSessionId,
     tokensPath,
@@ -229,7 +229,7 @@ export function AtomicGenerateReviewStep({
     environmentId,
     cmaToken,
     host,
-    acceptedKeys: new Set(components.filter((c) => c.status === 'accepted').map((c) => c.key)),
+    components,
   });
 
   const handleFinalizeConfirm = () => {

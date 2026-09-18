@@ -36,7 +36,7 @@ import {
 import { formatCyclePathSegments, findSlotCycles, suggestCycleBreakEdge } from '../../../analyze/cycle-detection.js';
 import { followCycleScroll } from '../cycle-panel-scroll.js';
 import type { ReviewComponentStatus } from '../../../analyze/select/types.js';
-import { useFinalizePreview } from '../useFinalizePreview.js';
+import { useReviewFinalizePreview } from '../useFinalizePreview.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
 import {
   computeDirectNeighborhood,
@@ -446,7 +446,7 @@ export function GenerateReviewStep({
     },
   });
 
-  const finalizePreview = useFinalizePreview({
+  const finalizePreview = useReviewFinalizePreview({
     open: showFinalize,
     extractSessionId,
     tokensPath,
@@ -454,7 +454,7 @@ export function GenerateReviewStep({
     environmentId,
     cmaToken,
     host,
-    acceptedKeys: new Set(components.filter((c) => c.status === 'accepted').map((c) => c.key)),
+    components,
     allowDeletions,
   });
 
