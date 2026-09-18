@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
-import { appendFile, readFile, access } from 'node:fs/promises';
+import { appendFile, readFile, access, open } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -130,34 +130,138 @@ async function confirm(question: string, defaultYes = true): Promise<boolean> {
 
 // ── Shell helpers ─────────────────────────────────────────────────────────────
 
-async function binaryExists(name: string): Promise<boolean> {
-  try {
-    await execFileAsync('which', [name]);
-    return true;
-  } catch {
-    return false;
+/**
+ * Human-readable cause for the spawn failures that are worth explaining.
+ *
+ * ENOEXEC is the one that used to escape as a bare `Error: spawn ENOEXEC`:
+ * the file is on PATH and has the +x bit, so `which` reports success, but the
+ * kernel cannot load it (no shebang, zero bytes, a saved HTML error page). A
+ * partially-written `npm i -g pnpm` or corepack shim lands in exactly that
+ * state, and reinstalling does not always help — if the broken copy sits in an
+ * earlier PATH entry than the new one, it keeps winning. So we point at
+ * `which -a`, which is what actually reveals the shadowing.
+ */
+function explainSpawnFailure(cmd: string, err: NodeJS.ErrnoException): string {
+  // `which -a` only makes sense for a bare name; for an absolute path we
+  // already know which file is at fault.
+  const isBareName = !cmd.includes('/') && !cmd.includes('\\');
+  const shadowHint = isBareName
+    ? ` Run \`which -a ${cmd}\` to list every copy on your PATH — if more than one is listed, an earlier broken copy is shadowing a working one. Remove the broken one, run \`hash -r\`, and retry.`
+    : '';
+
+  switch (err.code) {
+    case 'ENOEXEC':
+      return `${cmd} could not be started — the file exists and is executable, but is not a loadable program (commonly a truncated or partially-written install).${shadowHint}`;
+    case 'ENOENT':
+      return `${cmd} was not found on your PATH.`;
+    case 'EACCES':
+      return `${cmd} was found but is not executable — check its permissions.${shadowHint}`;
+    default:
+      return `failed to run ${cmd}: ${err.message}`;
   }
 }
 
-function runSpawn(
+/**
+ * True when `name` resolves on PATH *and* the resolved file looks loadable.
+ *
+ * `which` alone only proves a +x file exists, which is why a corrupt shim used
+ * to pass this check and then blow up at the first real call. We read the first
+ * bytes rather than running the binary: a `--version` probe would be a side
+ * effect we do not want on arbitrary agent CLIs, and could hang.
+ */
+export async function binaryExists(name: string): Promise<boolean> {
+  let resolved: string;
+  try {
+    const { stdout } = await execFileAsync(process.platform === 'win32' ? 'where' : 'which', [name]);
+    resolved = stdout.split('\n')[0]?.trim() ?? '';
+  } catch {
+    return false;
+  }
+  if (!resolved) return false;
+  return isLoadableExecutable(resolved);
+}
+
+/**
+ * Cheap pre-flight for the ENOEXEC class of breakage: a file is loadable if it
+ * starts with a shebang or a known binary magic number. Anything else (zero
+ * bytes, a saved HTML error page, a half-written download) is what the kernel
+ * refuses with ENOEXEC. On any read error we return true and let the real spawn
+ * produce the authoritative error — this check only rules things out.
+ */
+async function isLoadableExecutable(path: string): Promise<boolean> {
+  let handle;
+  try {
+    handle = await open(path, 'r');
+    const buf = Buffer.alloc(4);
+    const { bytesRead } = await handle.read(buf, 0, 4, 0);
+    if (bytesRead === 0) return false; // empty file → ENOEXEC
+    if (buf[0] === 0x23 && buf[1] === 0x21) return true; // "#!"
+    if (bytesRead < 4) return false;
+    const magic = buf.readUInt32BE(0);
+    return (
+      magic === 0xcffaedfe || // Mach-O 64 LE
+      magic === 0xcefaedfe || // Mach-O 32 LE
+      magic === 0xfeedfacf || // Mach-O 64 BE
+      magic === 0xfeedface || // Mach-O 32 BE
+      magic === 0xcafebabe || // Mach-O universal
+      magic === 0x7f454c46 || // ELF
+      buf[0] === 0x4d // "M" → MZ (PE/Windows)
+    );
+  } catch {
+    return true; // unreadable: defer to the real spawn
+  } finally {
+    await handle?.close();
+  }
+}
+
+export interface SpawnResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  /** Set when the process could not be started at all (vs. started and failed). */
+  spawnErrorCode?: string;
+}
+
+export function runSpawn(
   cmd: string,
   args: string[],
   opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+): Promise<SpawnResult> {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, {
-      cwd: opts.cwd,
-      env: opts.env ?? process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
     let settled = false;
+    const settle = (r: SpawnResult): void => {
+      if (settled) return;
+      settled = true;
+      resolve(r);
+    };
+
+    let child;
+    try {
+      child = spawn(cmd, args, {
+        cwd: opts.cwd,
+        env: opts.env ?? process.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (e) {
+      // spawn() throws SYNCHRONOUSLY for ENOEXEC — the 'error' listener below
+      // never runs, so without this catch the error escaped the promise, past
+      // every caller, and printed as a bare `Error: spawn ENOEXEC` with no clue
+      // which command failed. Keep this: it is the whole point of the wrapper.
+      const err = e as NodeJS.ErrnoException;
+      settle({
+        exitCode: 1,
+        stdout: '',
+        stderr: explainSpawnFailure(cmd, err),
+        spawnErrorCode: err.code,
+      });
+      return;
+    }
+
     let stdout = '';
     let stderr = '';
-    child.on('error', (err) => {
-      if (!settled) {
-        settled = true;
-        resolve({ exitCode: 1, stdout: '', stderr: err.message });
-      }
+    child.on('error', (e) => {
+      const err = e as NodeJS.ErrnoException;
+      settle({ exitCode: 1, stdout: '', stderr: explainSpawnFailure(cmd, err), spawnErrorCode: err.code });
     });
     child.stdout.on('data', (d: Buffer) => {
       stdout += String(d);
@@ -165,12 +269,7 @@ function runSpawn(
     child.stderr.on('data', (d: Buffer) => {
       stderr += String(d);
     });
-    child.on('exit', (code) => {
-      if (!settled) {
-        settled = true;
-        resolve({ exitCode: code ?? 1, stdout, stderr });
-      }
-    });
+    child.on('exit', (code) => settle({ exitCode: code ?? 1, stdout, stderr }));
   });
 }
 
@@ -311,10 +410,19 @@ async function setupNode(): Promise<boolean> {
 async function setupPnpm(): Promise<boolean> {
   section('Step 2: pnpm', '[required]');
 
-  if (await binaryExists('pnpm')) {
-    const v = await runSpawn('pnpm', ['--version']);
+  const v = await runSpawn('pnpm', ['--version']);
+  if (v.exitCode === 0 && v.stdout.trim() !== '') {
     ok(`pnpm v${v.stdout.trim()} — already installed`);
     return true;
+  }
+
+  // A pnpm that resolves on PATH but cannot start is a different problem from a
+  // missing pnpm, and offering to install over it does not fix it — the broken
+  // copy keeps winning PATH resolution. Report it and stop.
+  if (v.spawnErrorCode === 'ENOEXEC' || v.spawnErrorCode === 'EACCES') {
+    fail('pnpm is installed but cannot be run');
+    info(v.stderr);
+    return false;
   }
 
   fail('pnpm not found');
@@ -780,7 +888,11 @@ async function checkPnpm(pkgRoot: string): Promise<boolean> {
   const versionResult = await runSpawn('pnpm', ['--version']);
   if (versionResult.exitCode !== 0) {
     fail('pnpm found but not working');
-    info('Try reinstalling: npm install -g pnpm --force');
+    if (versionResult.spawnErrorCode !== undefined) {
+      info(versionResult.stderr);
+    } else {
+      info('Try reinstalling: npm install -g pnpm --force');
+    }
     return false;
   }
 
