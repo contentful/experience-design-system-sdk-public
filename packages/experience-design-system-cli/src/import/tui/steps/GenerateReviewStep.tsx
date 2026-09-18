@@ -19,12 +19,10 @@ import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { computeCycleView, type CycleView } from '../../../analyze/cycle-view.js';
 import { computeRenderStatuses, pickDrillTarget, type RenderStatus } from '../../../analyze/issue-inheritance.js';
 import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
-import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
 import {
   removedComponentsHeader,
   removedComponentLine,
 } from '../../../analyze/select/tui/components/removed-components-text.js';
-import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import {
   openPipelineDb,
@@ -79,6 +77,7 @@ import {
 } from '../hooks/useReviewSession.js';
 import { useReviewEditor } from '../hooks/useReviewEditor.js';
 import { useReviewSurfaceState } from '../hooks/useReviewSurfaceState.js';
+import { ReviewFinalizeDialogs, ReviewReloadDialog } from '../components/ReviewDialogs.js';
 import {
   handleJsonPanelInput,
   handleReviewPanelShortcuts,
@@ -1363,19 +1362,20 @@ export function GenerateReviewStep({
 
   return (
     <Box flexDirection="column">
-      {showFinalize && (
-        <FinalizeDialog
-          accepted={accepted}
-          rejected={rejected}
-          needsReview={needsReview}
-          removed={finalizePreview.removed}
-          previewStatus={finalizePreview.status}
-          removedScrollOffset={finalizePreview.scrollOffset}
-          onConfirm={handleFinalizeConfirm}
-          onCancel={() => setShowFinalize(false)}
-        />
-      )}
-      {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
+      <ReviewFinalizeDialogs
+        showFinalize={showFinalize}
+        showQuit={showQuit}
+        accepted={accepted}
+        rejected={rejected}
+        needsReview={needsReview}
+        removed={finalizePreview.removed}
+        previewStatus={finalizePreview.status}
+        removedScrollOffset={finalizePreview.scrollOffset}
+        onFinalizeConfirm={handleFinalizeConfirm}
+        onFinalizeCancel={() => setShowFinalize(false)}
+        onQuitConfirm={onQuit}
+        onQuitCancel={() => setShowQuit(false)}
+      />
       {showUnsavedWarning && !dialogOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
           <Text bold color={PALETTE.warning}>
@@ -1388,17 +1388,7 @@ export function GenerateReviewStep({
           <Text>{'  [Tab]    Stay in the panel'}</Text>
         </Box>
       )}
-      {showReloadDialog && !dialogOpen && (
-        <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
-          <Text bold color={PALETTE.warning}>
-            Reload from saved state?
-          </Text>
-          <Text>Unsaved in-memory changes will be lost.</Text>
-          <Text> </Text>
-          <Text>{'  [Enter]  Confirm'}</Text>
-          <Text>{'  [Esc]    Cancel'}</Text>
-        </Box>
-      )}
+      <ReviewReloadDialog open={showReloadDialog && !dialogOpen} />
       {removedComponents.length > 0 && !dialogOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.error} paddingX={1}>
           <Text bold color={PALETTE.error}>

@@ -3,8 +3,6 @@ import { Box, Text, useStdout } from 'ink';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { Sidebar } from '../../../analyze/select/tui/components/Sidebar.js';
 import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
-import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
-import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import type { ReviewComponentStatus, ReviewComponentSummary } from '../../../analyze/select/types.js';
 import type { HistorySnapshot } from '../history.js';
@@ -33,6 +31,7 @@ import {
 import { useReviewEditor } from '../hooks/useReviewEditor.js';
 import { useReviewSurfaceState } from '../hooks/useReviewSurfaceState.js';
 import { useReviewPreview } from '../hooks/useReviewPreview.js';
+import { ReviewFinalizeDialogs, ReviewReloadDialog } from '../components/ReviewDialogs.js';
 
 type GenerateReviewStepProps = {
   extractSessionId: string;
@@ -416,30 +415,21 @@ export function AtomicGenerateReviewStep({
 
   return (
     <Box flexDirection="column">
-      {showFinalize && (
-        <FinalizeDialog
-          accepted={accepted}
-          rejected={rejected}
-          needsReview={needsReview}
-          removed={finalizePreview.removed}
-          previewStatus={finalizePreview.status}
-          removedScrollOffset={finalizePreview.scrollOffset}
-          onConfirm={handleFinalizeConfirm}
-          onCancel={() => setShowFinalize(false)}
-        />
-      )}
-      {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
-      {showReloadDialog && !dialogOpen && (
-        <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
-          <Text bold color={PALETTE.warning}>
-            Reload from saved state?
-          </Text>
-          <Text>Unsaved in-memory changes will be lost.</Text>
-          <Text> </Text>
-          <Text>{'  [Enter]  Confirm'}</Text>
-          <Text>{'  [Esc]    Cancel'}</Text>
-        </Box>
-      )}
+      <ReviewFinalizeDialogs
+        showFinalize={showFinalize}
+        showQuit={showQuit}
+        accepted={accepted}
+        rejected={rejected}
+        needsReview={needsReview}
+        removed={finalizePreview.removed}
+        previewStatus={finalizePreview.status}
+        removedScrollOffset={finalizePreview.scrollOffset}
+        onFinalizeConfirm={handleFinalizeConfirm}
+        onFinalizeCancel={() => setShowFinalize(false)}
+        onQuitConfirm={onQuit}
+        onQuitCancel={() => setShowQuit(false)}
+      />
+      <ReviewReloadDialog open={showReloadDialog && !dialogOpen} />
       {showRemovedPanel && !dialogOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
           <Text bold color={PALETTE.info}>{`Removed components (${removedComponents.length})`}</Text>
