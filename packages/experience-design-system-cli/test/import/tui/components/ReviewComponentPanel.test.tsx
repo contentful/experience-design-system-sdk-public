@@ -24,8 +24,15 @@ describe('ReviewComponentPanel', () => {
     const { lastFrame } = render(
       <ReviewComponentPanel
         selectedKey="Button"
-        propCount={3}
-        slotCount={1}
+        selectedEntry={{
+          $type: 'component',
+          $properties: {
+            one: { $type: 'string', $category: 'content' },
+            two: { $type: 'string', $category: 'content' },
+            three: { $type: 'string', $category: 'content' },
+          },
+          $slots: { content: { $allowedComponents: [] } },
+        }}
         componentRationale={null}
         reviewMetadata={null}
         reviewEditor={REVIEW_EDITOR}

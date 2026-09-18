@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import type { ReviewComponentStatus } from '../../../analyze/select/types.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
+import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
 
 export type ReviewStatusCounts = {
   accepted: number;
@@ -9,7 +10,7 @@ export type ReviewStatusCounts = {
   needsReview: number;
 };
 
-type ReviewStatusEntry = {
+export type ReviewStatusEntry = {
   status: ReviewComponentStatus;
 };
 
@@ -22,6 +23,28 @@ export function countReviewStatuses(entries: ReadonlyArray<ReviewStatusEntry>): 
       return counts;
     },
     { accepted: 0, rejected: 0, needsReview: 0 },
+  );
+}
+
+export function ReviewStatusBar({
+  entries,
+  onApproveAll,
+  onFinalize,
+}: {
+  entries: ReadonlyArray<ReviewStatusEntry>;
+  onApproveAll: () => void;
+  onFinalize: () => void;
+}): React.ReactElement {
+  const { accepted, rejected, needsReview } = countReviewStatuses(entries);
+  return (
+    <StatusBar
+      accepted={accepted}
+      rejected={rejected}
+      reviewed={0}
+      needsReview={needsReview}
+      onApproveAll={onApproveAll}
+      onFinalize={onFinalize}
+    />
   );
 }
 

@@ -4,13 +4,12 @@ import { Box, Text } from 'ink';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
 import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
+import { countReviewStatuses, type ReviewStatusEntry } from './ReviewStatus.js';
 
 export type ReviewFinalizeDialogsProps = {
   showFinalize: boolean;
   showQuit: boolean;
-  accepted: number;
-  rejected: number;
-  needsReview: number;
+  components: ReadonlyArray<ReviewStatusEntry>;
   removed?: ComponentTypeSummary[];
   previewStatus?: 'idle' | 'running' | 'done' | 'error';
   removedScrollOffset?: number;
@@ -23,9 +22,7 @@ export type ReviewFinalizeDialogsProps = {
 export function ReviewFinalizeDialogs({
   showFinalize,
   showQuit,
-  accepted,
-  rejected,
-  needsReview,
+  components,
   removed,
   previewStatus,
   removedScrollOffset,
@@ -34,6 +31,7 @@ export function ReviewFinalizeDialogs({
   onQuitConfirm,
   onQuitCancel,
 }: ReviewFinalizeDialogsProps): React.ReactElement {
+  const { accepted, rejected, needsReview } = countReviewStatuses(components);
   return (
     <>
       {showFinalize && (

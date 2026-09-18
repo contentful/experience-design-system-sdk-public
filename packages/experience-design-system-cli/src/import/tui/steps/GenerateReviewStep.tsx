@@ -18,7 +18,6 @@ import { computeAllClosures, type ComponentGraphNode, type NodeStatus } from '..
 import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { computeCycleView, type CycleView } from '../../../analyze/cycle-view.js';
 import { computeRenderStatuses, pickDrillTarget, type RenderStatus } from '../../../analyze/issue-inheritance.js';
-import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
 import {
   removedComponentsHeader,
   removedComponentLine,
@@ -64,7 +63,7 @@ import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
 import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
 import type { ReviewStepProps } from '../review-step-props.js';
 import { ReviewComponentPanel } from '../components/ReviewComponentPanel.js';
-import { countReviewStatuses, ReviewLoadError, ReviewLoadingState } from '../components/ReviewStatus.js';
+import { ReviewLoadError, ReviewLoadingState, ReviewStatusBar } from '../components/ReviewStatus.js';
 import {
   createReviewHistorySnapshot,
   finalizeReviewSession,
@@ -1356,18 +1355,12 @@ export function GenerateReviewStep({
     return false;
   })();
 
-  const { accepted, rejected, needsReview } = countReviewStatuses(components);
-  const propCount = selected ? Object.keys(selected.entry.$properties).length : 0;
-  const slotCount = selected?.entry.$slots ? Object.keys(selected.entry.$slots).length : 0;
-
   return (
     <Box flexDirection="column">
       <ReviewFinalizeDialogs
         showFinalize={showFinalize}
         showQuit={showQuit}
-        accepted={accepted}
-        rejected={rejected}
-        needsReview={needsReview}
+        components={components}
         removed={finalizePreview.removed}
         previewStatus={finalizePreview.status}
         removedScrollOffset={finalizePreview.scrollOffset}
@@ -1593,8 +1586,7 @@ export function GenerateReviewStep({
           {selected ? (
             <ReviewComponentPanel
               selectedKey={selected.key}
-              propCount={propCount}
-              slotCount={slotCount}
+              selectedEntry={selected.entry}
               componentRationale={componentRationale}
               reviewMetadata={reviewMetadata}
               reviewEditor={reviewEditor}
@@ -1733,11 +1725,8 @@ export function GenerateReviewStep({
         </Box>
       )}
       {!dialogOpen && (
-        <StatusBar
-          accepted={accepted}
-          rejected={rejected}
-          reviewed={0}
-          needsReview={needsReview}
+        <ReviewStatusBar
+          entries={components}
           onApproveAll={() => {
             setComponents((prev) => prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c)));
           }}

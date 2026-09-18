@@ -5,9 +5,7 @@ import { ReviewFinalizeDialogs, ReviewReloadDialog } from '../../../../src/impor
 const BASE_PROPS = {
   showFinalize: false,
   showQuit: false,
-  accepted: 2,
-  rejected: 1,
-  needsReview: 0,
+  components: [{ status: 'accepted' as const }, { status: 'rejected' as const }],
   onFinalizeConfirm: vi.fn(),
   onFinalizeCancel: vi.fn(),
   onQuitConfirm: vi.fn(),

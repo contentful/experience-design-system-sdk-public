@@ -2,7 +2,6 @@ import React, { useCallback, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { Sidebar } from '../../../analyze/select/tui/components/Sidebar.js';
-import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import type { ReviewComponentStatus, ReviewComponentSummary } from '../../../analyze/select/types.js';
 import type { HistorySnapshot } from '../history.js';
@@ -11,7 +10,7 @@ import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { ReviewComponentPanel } from '../components/ReviewComponentPanel.js';
 import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
-import { countReviewStatuses, ReviewLoadError, ReviewLoadingState } from '../components/ReviewStatus.js';
+import { ReviewLoadError, ReviewLoadingState, ReviewStatusBar } from '../components/ReviewStatus.js';
 import {
   handleJsonPanelInput,
   handleReviewPanelShortcuts,
@@ -409,18 +408,12 @@ export function AtomicGenerateReviewStep({
   const sidebarWidth = Math.min(Math.max(longestName + 5, 14), 30);
   const panelWidth = Math.max(10, terminalWidth - sidebarWidth - 4);
 
-  const { accepted, rejected, needsReview } = countReviewStatuses(components);
-  const propCount = selected ? Object.keys(selected.entry.$properties).length : 0;
-  const slotCount = selected?.entry.$slots ? Object.keys(selected.entry.$slots).length : 0;
-
   return (
     <Box flexDirection="column">
       <ReviewFinalizeDialogs
         showFinalize={showFinalize}
         showQuit={showQuit}
-        accepted={accepted}
-        rejected={rejected}
-        needsReview={needsReview}
+        components={components}
         removed={finalizePreview.removed}
         previewStatus={finalizePreview.status}
         removedScrollOffset={finalizePreview.scrollOffset}
@@ -480,8 +473,7 @@ export function AtomicGenerateReviewStep({
           {selected ? (
             <ReviewComponentPanel
               selectedKey={selected.key}
-              propCount={propCount}
-              slotCount={slotCount}
+              selectedEntry={selected.entry}
               componentRationale={componentRationale}
               reviewMetadata={reviewMetadata}
               reviewEditor={reviewEditor}
@@ -543,14 +535,7 @@ export function AtomicGenerateReviewStep({
         </Box>
       )}
       {!dialogOpen && (
-        <StatusBar
-          accepted={accepted}
-          rejected={rejected}
-          reviewed={0}
-          needsReview={needsReview}
-          onApproveAll={acceptAll}
-          onFinalize={() => setShowFinalize(true)}
-        />
+        <ReviewStatusBar entries={components} onApproveAll={acceptAll} onFinalize={() => setShowFinalize(true)} />
       )}
     </Box>
   );

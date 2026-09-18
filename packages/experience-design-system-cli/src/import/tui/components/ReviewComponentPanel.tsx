@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { ReviewDetailsEditor, type ReviewDetailsEditorProps } from './ReviewDetailsEditor.js';
 
@@ -18,16 +19,14 @@ type ReviewDetailsEditorConfig = Pick<
 
 export type ReviewComponentPanelProps = ReviewDetailsEditorConfig & {
   selectedKey: string;
-  propCount: number;
-  slotCount: number;
+  selectedEntry: CDFComponentEntry;
   saveError: string | null;
   footer: React.ReactNode;
 };
 
 export function ReviewComponentPanel({
   selectedKey,
-  propCount,
-  slotCount,
+  selectedEntry,
   componentRationale,
   reviewMetadata,
   reviewEditor,
@@ -40,6 +39,8 @@ export function ReviewComponentPanel({
   saveError,
   footer,
 }: ReviewComponentPanelProps): React.ReactElement {
+  const propCount = Object.keys(selectedEntry.$properties).length;
+  const slotCount = selectedEntry.$slots ? Object.keys(selectedEntry.$slots).length : 0;
   return (
     <Box flexGrow={1} paddingLeft={1} flexDirection="column">
       <Box>
