@@ -112,14 +112,17 @@ export function UpgradeExecutionScreen({ onDone }: { onDone: () => void }): Reac
       exit();
       return;
     }
+    if (phase === 'done') {
+      if (input === 'r' && !restarting.current) {
+        restarting.current = true;
+        spawn(process.argv[0]!, process.argv.slice(1), { stdio: 'inherit', detached: true });
+        process.exit(0);
+      }
+      return;
+    }
     if (key.return || input === 'b') {
       onDone();
       return;
-    }
-    if (phase === 'done' && input === 'r' && !restarting.current) {
-      restarting.current = true;
-      spawn(process.argv[0]!, process.argv.slice(1), { stdio: 'inherit', detached: true });
-      process.exit(0);
     }
   });
 
@@ -165,7 +168,7 @@ export function UpgradeExecutionScreen({ onDone }: { onDone: () => void }): Reac
   return (
     <Box flexDirection="column" gap={1}>
       <Text color="green">✔ Upgrade complete — now on v{latest}</Text>
-      <Text dimColor>[Enter/B] Back to Start [Q] Quit [R] Restart now</Text>
+      <Text dimColor>[R] Restart now [Q] Quit</Text>
     </Box>
   );
 }
