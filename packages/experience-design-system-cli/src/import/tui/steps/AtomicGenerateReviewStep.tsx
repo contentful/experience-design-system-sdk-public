@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { Sidebar } from '../../../analyze/select/tui/components/Sidebar.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
@@ -7,8 +7,15 @@ import type { ReviewComponentStatus, ReviewComponentSummary } from '../../../ana
 import type { HistorySnapshot } from '../history.js';
 import { useReviewFinalizePreview } from '../useFinalizePreview.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
+import {
+  buildReviewFieldEditor,
+  getReviewSelectionState,
+  ReviewEmptyComponentsWarning,
+  ReviewComponentPanel,
+  ReviewFinalizeError,
+  ReviewNoSelection,
+} from '../components/ReviewComponentPanel.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
-import { ReviewComponentPanel } from '../components/ReviewComponentPanel.js';
 import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
 import { ReviewLoadError, ReviewLoadingState, ReviewStatusBar } from '../components/ReviewStatus.js';
 import {
@@ -30,7 +37,8 @@ import {
 import { useReviewEditor } from '../hooks/useReviewEditor.js';
 import { useReviewSurfaceState } from '../hooks/useReviewSurfaceState.js';
 import { useReviewPreview } from '../hooks/useReviewPreview.js';
-import { ReviewFinalizeDialogs, ReviewReloadDialog } from '../components/ReviewDialogs.js';
+import { ReviewReloadDialog, ReviewStepDialogs } from '../components/ReviewDialogs.js';
+import { useTerminalColumns } from './useTerminalColumns.js';
 
 type GenerateReviewStepProps = {
   extractSessionId: string;
@@ -96,8 +104,7 @@ export function AtomicGenerateReviewStep({
   tokensPath = '',
   initialFinalizeError = null,
 }: GenerateReviewStepProps): React.ReactElement {
-  const { stdout } = useStdout();
-  const terminalWidth = stdout?.columns ?? 80;
+  const terminalWidth = useTerminalColumns();
 
   const loadSessionState = useCallback(
     (): ReviewSessionLoadResult =>
@@ -108,6 +115,7 @@ export function AtomicGenerateReviewStep({
       }),
     [extractSessionId, tokenSessionId],
   );
+  const reviewSurface = useReviewSurfaceState(initialFinalizeError);
   const {
     components,
     setComponents,
@@ -131,7 +139,7 @@ export function AtomicGenerateReviewStep({
     setShowQuit,
     finalizeError,
     setFinalizeError,
-  } = useReviewSurfaceState(initialFinalizeError);
+  } = reviewSurface;
   // INTEG-4411: inline banner shown when the operator tries to finalize
   // with zero accepted components. Cleared on the next 'a' or 'A' press.
   // Feature 1: per-component review metadata (rationale + source location)
@@ -180,23 +188,6 @@ export function AtomicGenerateReviewStep({
     onEditSaved: () => livePreviewHook.trigger(),
     onTokenSaved: () => livePreviewHook.trigger(),
   });
-
-  const {
-    panelOpen,
-    setPanelOpen,
-    setPanelScrollOffset,
-    setJsonScrollOffset,
-    setTextEntryActive,
-    showJson,
-    showHiddenProps,
-    draftValue,
-    setDraftValue,
-    saveError,
-    setSaveError,
-    currentTokenSuggestions,
-    handleEditSave,
-    handleEditDiscard,
-  } = reviewEditor;
 
   const reloadFromSave = (): void => {
     const result = reloadSessionFromSave();
@@ -302,8 +293,8 @@ export function AtomicGenerateReviewStep({
       handleJsonPanelInput(input, key, {
         ...reviewEditor,
         sidebarFocused,
-        showJson,
-        jsonValue: getReviewJsonPanelValue(current ?? null, showHiddenProps),
+        showJson: reviewEditor.showJson,
+        jsonValue: getReviewJsonPanelValue(current ?? null, reviewEditor.showHiddenProps),
         height: PANEL_HEIGHT,
       })
     )
@@ -353,18 +344,18 @@ export function AtomicGenerateReviewStep({
         setSidebarScrollOffset((off) => Math.min(off, newIdx));
         return newIdx;
       });
-      setJsonScrollOffset(0);
-      setDraftValue('');
-      setSaveError(null);
+      reviewEditor.setJsonScrollOffset(0);
+      reviewEditor.setDraftValue('');
+      reviewEditor.setSaveError(null);
     } else if (key.downArrow || input === 'j') {
       setSelectedIdx((prev) => {
         const newIdx = Math.min(components.length - 1, prev + 1);
         setSidebarScrollOffset((off) => (newIdx >= off + VISIBLE_COUNT ? newIdx - VISIBLE_COUNT + 1 : off));
         return newIdx;
       });
-      setJsonScrollOffset(0);
-      setDraftValue('');
-      setSaveError(null);
+      reviewEditor.setJsonScrollOffset(0);
+      reviewEditor.setDraftValue('');
+      reviewEditor.setSaveError(null);
     }
   });
 
@@ -376,9 +367,11 @@ export function AtomicGenerateReviewStep({
     return <ReviewLoadError message={loadError} />;
   }
 
-  const selected = components[selectedIdx] ?? null;
-  const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
-  const visibleJsonPanelValue = getReviewJsonPanelValue(selected, showHiddenProps);
+  const { selected, selectedJson, visibleJsonPanelValue } = getReviewSelectionState(
+    components,
+    selectedIdx,
+    reviewEditor.showHiddenProps,
+  );
 
   // A component with zero classified $properties is a real defensibility issue —
   // it can't be pushed to Contentful (no fields). Surface it in the sidebar via
@@ -410,17 +403,12 @@ export function AtomicGenerateReviewStep({
 
   return (
     <Box flexDirection="column">
-      <ReviewFinalizeDialogs
-        showFinalize={showFinalize}
-        showQuit={showQuit}
+      <ReviewStepDialogs
+        surfaceState={reviewSurface}
         components={components}
-        removed={finalizePreview.removed}
-        previewStatus={finalizePreview.status}
-        removedScrollOffset={finalizePreview.scrollOffset}
-        onFinalizeConfirm={handleFinalizeConfirm}
-        onFinalizeCancel={() => setShowFinalize(false)}
-        onQuitConfirm={onQuit}
-        onQuitCancel={() => setShowQuit(false)}
+        finalizePreview={finalizePreview}
+        onFinalize={handleFinalizeConfirm}
+        onQuit={onQuit}
       />
       <ReviewReloadDialog open={showReloadDialog && !dialogOpen} />
       {showRemovedPanel && !dialogOpen && (
@@ -446,12 +434,8 @@ export function AtomicGenerateReviewStep({
           showRemovedListHint
         />
       )}
-      {!dialogOpen && emptyCount > 0 && (
-        <Text color={PALETTE.warning}>
-          {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
-        </Text>
-      )}
-      {!dialogOpen && finalizeError && <Text color={PALETTE.error}>{`⚠ ${finalizeError}`}</Text>}
+      <ReviewEmptyComponentsWarning count={emptyCount} hidden={dialogOpen} />
+      <ReviewFinalizeError message={finalizeError} hidden={dialogOpen} />
       {!dialogOpen && (
         <Box>
           <Sidebar
@@ -464,7 +448,7 @@ export function AtomicGenerateReviewStep({
               const idx = components.findIndex((c) => c.key === id);
               if (idx >= 0) {
                 setSelectedIdx(idx);
-                setJsonScrollOffset(0);
+                reviewEditor.setJsonScrollOffset(0);
               }
             }}
             onScrollChange={setSidebarScrollOffset}
@@ -482,55 +466,23 @@ export function AtomicGenerateReviewStep({
               sourceBorderColor={PALETTE.border}
               jsonValue={visibleJsonPanelValue}
               sidebarFocused={sidebarFocused}
-              fieldEditor={{
-                value: draftValue || selectedJson,
-                showHiddenProps,
-                onChange: setDraftValue,
-                onSave: handleEditSave,
-                onDiscard: handleEditDiscard,
-                onExit: () => setSidebarFocused(true),
-                onTogglePropRationale: () => {
-                  setPanelOpen('prop-rationale');
-                  setPanelScrollOffset(() => 0);
-                },
-                onToggleComponentRationale: () => {
-                  setPanelOpen('component-rationale');
-                  setPanelScrollOffset(() => 0);
-                },
-                onToggleSourceExternal: () => {
-                  setPanelOpen('source');
-                  setPanelScrollOffset(() => 0);
-                },
-                onTextEntryActiveChange: setTextEntryActive,
-                initialFocusTarget: { kind: 'description' },
-              }}
-              saveError={saveError}
-              footer={
-                <>
-                  {panelOpen === 'token-review'
-                    ? '  [↑/↓] move  [Enter] edit allowed  [Esc] close'
-                    : sidebarFocused
-                      ? '  [a] accept  [r] reject  [A] accept all  [i] prop rationale  [I] component rationale  [s] source  [J] ' +
-                        (showJson ? 'hide JSON' : 'show JSON') +
-                        '  [H] ' +
-                        (showHiddenProps ? 'hide state/unattached' : 'show state/unattached') +
-                        (currentTokenSuggestions().length > 0 ? '  [t] token review' : '') +
-                        '  [^z] undo  [^y] redo  [^r] reload  [F] finalize  [e/Tab] focus panel' +
-                        (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
-                        '  [q] quit'
-                      : showJson
-                        ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
-                        : '  [Tab] focus list  (edit fields)' +
-                          (currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
-                  {livePreviewHook.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
-                  {livePreviewHook.disabled && <Text>{'  · live preview disabled'}</Text>}
-                </>
+              fieldEditor={buildReviewFieldEditor(reviewEditor, selectedJson, () => setSidebarFocused(true))}
+              saveError={reviewEditor.saveError}
+              sidebarFooter={
+                '  [a] accept  [r] reject  [A] accept all  [i] prop rationale  [I] component rationale  [s] source  [J] ' +
+                (reviewEditor.showJson ? 'hide JSON' : 'show JSON') +
+                '  [H] ' +
+                (reviewEditor.showHiddenProps ? 'hide state/unattached' : 'show state/unattached') +
+                (reviewEditor.currentTokenSuggestions().length > 0 ? '  [t] token review' : '') +
+                '  [^z] undo  [^y] redo  [^r] reload  [F] finalize  [e/Tab] focus panel' +
+                (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
+                '  [q] quit'
               }
+              livePreview={livePreviewHook}
+              livePreviewSpinner={livePreviewSpinner}
             />
           ) : (
-            <Box flexGrow={1} paddingLeft={1} flexDirection="column">
-              <Text dimColor>No component selected</Text>
-            </Box>
+            <ReviewNoSelection />
           )}
         </Box>
       )}

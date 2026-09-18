@@ -4,6 +4,8 @@ import { Box, Text } from 'ink';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
 import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
+import type { UseFinalizePreviewReturn } from '../useFinalizePreview.js';
+import type { UseReviewSurfaceStateResult } from '../hooks/useReviewSurfaceState.js';
 import { countReviewStatuses, type ReviewStatusEntry } from './ReviewStatus.js';
 
 export type ReviewFinalizeDialogsProps = {
@@ -48,6 +50,35 @@ export function ReviewFinalizeDialogs({
       )}
       {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuitConfirm} onCancel={onQuitCancel} />}
     </>
+  );
+}
+
+export function ReviewStepDialogs({
+  surfaceState,
+  components,
+  finalizePreview,
+  onFinalize,
+  onQuit,
+}: {
+  surfaceState: UseReviewSurfaceStateResult;
+  components: ReadonlyArray<ReviewStatusEntry>;
+  finalizePreview: UseFinalizePreviewReturn;
+  onFinalize: () => void;
+  onQuit: () => void;
+}): React.ReactElement {
+  return (
+    <ReviewFinalizeDialogs
+      showFinalize={surfaceState.showFinalize}
+      showQuit={surfaceState.showQuit}
+      components={components}
+      removed={finalizePreview.removed}
+      previewStatus={finalizePreview.status}
+      removedScrollOffset={finalizePreview.scrollOffset}
+      onFinalizeConfirm={onFinalize}
+      onFinalizeCancel={() => surfaceState.setShowFinalize(false)}
+      onQuitConfirm={onQuit}
+      onQuitCancel={() => surfaceState.setShowQuit(false)}
+    />
   );
 }
 

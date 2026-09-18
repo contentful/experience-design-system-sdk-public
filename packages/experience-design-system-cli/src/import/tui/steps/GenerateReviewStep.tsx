@@ -62,7 +62,14 @@ import { handleLineageNavigation } from '../lineage-input.js';
 import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
 import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
 import type { ReviewStepProps } from '../review-step-props.js';
-import { ReviewComponentPanel } from '../components/ReviewComponentPanel.js';
+import {
+  buildReviewFieldEditor,
+  getReviewSelectionState,
+  ReviewEmptyComponentsWarning,
+  ReviewComponentPanel,
+  ReviewFinalizeError,
+  ReviewNoSelection,
+} from '../components/ReviewComponentPanel.js';
 import { ReviewLoadError, ReviewLoadingState, ReviewStatusBar } from '../components/ReviewStatus.js';
 import {
   createReviewHistorySnapshot,
@@ -76,7 +83,7 @@ import {
 } from '../hooks/useReviewSession.js';
 import { useReviewEditor } from '../hooks/useReviewEditor.js';
 import { useReviewSurfaceState } from '../hooks/useReviewSurfaceState.js';
-import { ReviewFinalizeDialogs, ReviewReloadDialog } from '../components/ReviewDialogs.js';
+import { ReviewReloadDialog, ReviewStepDialogs } from '../components/ReviewDialogs.js';
 import {
   handleJsonPanelInput,
   handleReviewPanelShortcuts,
@@ -340,6 +347,7 @@ export function GenerateReviewStep({
       }),
     [extractSessionId, tokenSessionId],
   );
+  const reviewSurface = useReviewSurfaceState(initialFinalizeError);
   const {
     components,
     setComponents,
@@ -368,7 +376,7 @@ export function GenerateReviewStep({
     setShowQuit,
     finalizeError,
     setFinalizeError,
-  } = useReviewSurfaceState(initialFinalizeError);
+  } = reviewSurface;
   const [removedBannerCollapsed, setRemovedBannerCollapsed] = useState(false);
   const removedBannerDefaultedRef = useRef(false);
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
@@ -591,7 +599,7 @@ export function GenerateReviewStep({
     autoRejectPushedRef.current = false;
     resetHistory(createReviewHistorySnapshot(entries));
     setNav({ cursorRowIdx: 0, sidebarScrollOffset: 0 });
-    setSaveError(null);
+    reviewEditor.setSaveError(null);
     setFinalizeError(null);
   };
   const groupedItemsMemo = useMemo(
@@ -683,23 +691,6 @@ export function GenerateReviewStep({
     onTokenSaved: () => livePreviewHook.trigger(),
   });
 
-  const {
-    panelOpen,
-    setPanelOpen,
-    setPanelScrollOffset,
-    setJsonScrollOffset,
-    setTextEntryActive,
-    showJson,
-    showHiddenProps,
-    draftValue,
-    setDraftValue,
-    saveError,
-    setSaveError,
-    currentTokenSuggestions,
-    handleEditSave,
-    handleEditDiscard,
-  } = reviewEditor;
-
   const { reviewMetadata, componentRationale } = useReviewMetadata({
     components,
     selectedIdx,
@@ -768,9 +759,9 @@ export function GenerateReviewStep({
       else if (rowIdx >= prev + visibleCount) nextOff = rowIdx - visibleCount + 1;
       return { cursorRowIdx: rowIdx, sidebarScrollOffset: nextOff };
     });
-    setJsonScrollOffset(0);
-    setDraftValue('');
-    setSaveError(null);
+    reviewEditor.setJsonScrollOffset(0);
+    reviewEditor.setDraftValue('');
+    reviewEditor.setSaveError(null);
     setPendingEditorFocus(null);
   };
   const jumpCursorToName = (name: string): void => {
@@ -857,7 +848,7 @@ export function GenerateReviewStep({
 
     if (showUnsavedWarning) {
       if (key.return) {
-        handleEditSave();
+        reviewEditor.handleEditSave();
         setShowUnsavedWarning(false);
         if (pendingFocusAway === 'tab-to-sidebar') setSidebarFocused(true);
         setPendingFocusAway(null);
@@ -1078,7 +1069,7 @@ export function GenerateReviewStep({
       setSidebarFocused((prev) => !prev);
       return;
     }
-    if (input === ' ' && sidebarFocused && !showJson) {
+    if (input === ' ' && sidebarFocused && !reviewEditor.showJson) {
       const current = components[selectedIdx];
       if (!current) return;
       const rootName = resolveGroupRoot(current.key, closures, cycleView.structural);
@@ -1096,8 +1087,8 @@ export function GenerateReviewStep({
       handleJsonPanelInput(input, key, {
         ...reviewEditor,
         sidebarFocused,
-        showJson,
-        jsonValue: getReviewJsonPanelValue(components[selectedIdx] ?? null, showHiddenProps),
+        showJson: reviewEditor.showJson,
+        jsonValue: getReviewJsonPanelValue(components[selectedIdx] ?? null, reviewEditor.showHiddenProps),
         height: PANEL_HEIGHT,
       })
     )
@@ -1230,9 +1221,9 @@ export function GenerateReviewStep({
           visibleCount,
         }),
       );
-      setJsonScrollOffset(0);
-      setDraftValue('');
-      setSaveError(null);
+      reviewEditor.setJsonScrollOffset(0);
+      reviewEditor.setDraftValue('');
+      reviewEditor.setSaveError(null);
       setPendingEditorFocus(null);
     } else if (key.downArrow || input === 'j') {
       setNav(({ cursorRowIdx: previousRow, sidebarScrollOffset: previousScroll }) =>
@@ -1244,9 +1235,9 @@ export function GenerateReviewStep({
           visibleCount,
         }),
       );
-      setJsonScrollOffset(0);
-      setDraftValue('');
-      setSaveError(null);
+      reviewEditor.setJsonScrollOffset(0);
+      reviewEditor.setDraftValue('');
+      reviewEditor.setSaveError(null);
       setPendingEditorFocus(null);
     }
   });
@@ -1311,9 +1302,11 @@ export function GenerateReviewStep({
     return renderBreakOverlay();
   }
 
-  const selected = components[selectedIdx] ?? null;
-  const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
-  const visibleJsonPanelValue = getReviewJsonPanelValue(selected, showHiddenProps);
+  const { selected, selectedJson, visibleJsonPanelValue } = getReviewSelectionState(
+    components,
+    selectedIdx,
+    reviewEditor.showHiddenProps,
+  );
 
   const isEmpty = (c: CdfReviewEntry): boolean =>
     Object.keys(c.entry.$properties).length === 0 && Object.keys(c.entry.$slots ?? {}).length === 0;
@@ -1357,17 +1350,12 @@ export function GenerateReviewStep({
 
   return (
     <Box flexDirection="column">
-      <ReviewFinalizeDialogs
-        showFinalize={showFinalize}
-        showQuit={showQuit}
+      <ReviewStepDialogs
+        surfaceState={reviewSurface}
         components={components}
-        removed={finalizePreview.removed}
-        previewStatus={finalizePreview.status}
-        removedScrollOffset={finalizePreview.scrollOffset}
-        onFinalizeConfirm={handleFinalizeConfirm}
-        onFinalizeCancel={() => setShowFinalize(false)}
-        onQuitConfirm={onQuit}
-        onQuitCancel={() => setShowQuit(false)}
+        finalizePreview={finalizePreview}
+        onFinalize={handleFinalizeConfirm}
+        onQuit={onQuit}
       />
       {showUnsavedWarning && !dialogOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
@@ -1517,12 +1505,8 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {!dialogOpen && emptyCount > 0 && (
-        <Text color={PALETTE.warning}>
-          {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
-        </Text>
-      )}
-      {!dialogOpen && finalizeError && <Text color={PALETTE.error}>{`⚠ ${finalizeError}`}</Text>}
+      <ReviewEmptyComponentsWarning count={emptyCount} hidden={dialogOpen} />
+      <ReviewFinalizeError message={finalizeError} hidden={dialogOpen} />
       {!dialogOpen && (
         <Box>
           {breakingPanel.isOpen ? (
@@ -1559,7 +1543,7 @@ export function GenerateReviewStep({
                     return;
                   }
                 }
-                setJsonScrollOffset(0);
+                reviewEditor.setJsonScrollOffset(0);
               }}
               expandedGroups={expandedGroups}
               onToggleExpanded={(rootName) => {
@@ -1594,32 +1578,13 @@ export function GenerateReviewStep({
               height={PANEL_HEIGHT}
               jsonValue={visibleJsonPanelValue}
               sidebarFocused={sidebarFocused}
-              fieldEditor={{
+              fieldEditor={buildReviewFieldEditor(reviewEditor, selectedJson, () => setSidebarFocused(true), {
                 key:
                   pendingEditorFocus && pendingEditorFocus.componentName === selected.key
                     ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
                     : selected.key,
-                value: draftValue || selectedJson,
-                showHiddenProps,
-                onChange: setDraftValue,
-                onSave: handleEditSave,
-                onDiscard: handleEditDiscard,
-                onExit: () => setSidebarFocused(true),
-                onTogglePropRationale: () => {
-                  setPanelOpen('prop-rationale');
-                  setPanelScrollOffset(() => 0);
-                },
                 propRationaleKey: 'p',
                 componentRationaleKey: 'P',
-                onToggleComponentRationale: () => {
-                  setPanelOpen('component-rationale');
-                  setPanelScrollOffset(() => 0);
-                },
-                onToggleSourceExternal: () => {
-                  setPanelOpen('source');
-                  setPanelScrollOffset(() => 0);
-                },
-                onTextEntryActiveChange: setTextEntryActive,
                 projectSlotGraph,
                 currentComponentName: selected.key,
                 onDirtyChange: setEditorDirty,
@@ -1628,29 +1593,14 @@ export function GenerateReviewStep({
                   pendingEditorFocus && pendingEditorFocus.componentName === selected.key
                     ? pendingEditorFocus.target
                     : { kind: 'description' },
-              }}
-              saveError={saveError}
-              footer={
-                <>
-                  {panelOpen === 'token-review'
-                    ? '  [↑/↓] move  [Enter] edit allowed  [Esc] close'
-                    : sidebarFocused
-                      ? hasGroupRoots
-                        ? '  [Space] expand/collapse group  [E/C] expand/collapse all'
-                        : ''
-                      : showJson
-                        ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
-                        : '  [Tab] focus list  (edit fields)' +
-                          (currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
-                  {livePreviewHook.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
-                  {livePreviewHook.disabled && <Text>{'  · live preview disabled'}</Text>}
-                </>
-              }
+              })}
+              saveError={reviewEditor.saveError}
+              sidebarFooter={hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : ''}
+              livePreview={livePreviewHook}
+              livePreviewSpinner={livePreviewSpinner}
             />
           ) : (
-            <Box flexGrow={1} paddingLeft={1} flexDirection="column">
-              <Text dimColor>No component selected</Text>
-            </Box>
+            <ReviewNoSelection />
           )}
         </Box>
       )}
@@ -1685,7 +1635,7 @@ export function GenerateReviewStep({
       />
       {!dialogOpen && sidebarFocused && (
         <Box columnGap={2} flexWrap="wrap">
-          {panelOpen === 'token-review' ? (
+          {reviewEditor.panelOpen === 'token-review' ? (
             <>
               {legendEntry('[↑/↓]', 'move')}
               {legendEntry('[Enter]', 'edit allowed')}
@@ -1704,12 +1654,16 @@ export function GenerateReviewStep({
               {legendEntry('[w]', 'only breaking', activeFilters.has('broken'))}
               {slotCycles.length > 0 && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
               {slotCycles.length > 0 && legendEntry('[c]', 'cycle list', cyclePanel.isOpen)}
-              {legendEntry('[p]', 'prop rationale', panelOpen === 'prop-rationale')}
-              {legendEntry('[P]', 'component rationale', panelOpen === 'component-rationale')}
-              {legendEntry('[s]', 'source', panelOpen === 'source')}
-              {currentTokenSuggestions().length > 0 && legendEntry('[t]', 'token review')}
-              {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
-              {legendEntry('[H]', showHiddenProps ? 'hide state/unattached' : 'show state/unattached', showHiddenProps)}
+              {legendEntry('[p]', 'prop rationale', reviewEditor.panelOpen === 'prop-rationale')}
+              {legendEntry('[P]', 'component rationale', reviewEditor.panelOpen === 'component-rationale')}
+              {legendEntry('[s]', 'source', reviewEditor.panelOpen === 'source')}
+              {reviewEditor.currentTokenSuggestions().length > 0 && legendEntry('[t]', 'token review')}
+              {legendEntry('[J]', reviewEditor.showJson ? 'hide JSON' : 'show JSON', reviewEditor.showJson)}
+              {legendEntry(
+                '[H]',
+                reviewEditor.showHiddenProps ? 'hide state/unattached' : 'show state/unattached',
+                reviewEditor.showHiddenProps,
+              )}
               {breakingChanges.length > 0 && legendEntry('[b]', 'see breaking changes', breakingPanel.isOpen)}
               {removedComponents.length > 0 &&
                 legendEntry('[d]', removedBannerCollapsed ? 'show removed' : 'hide removed', !removedBannerCollapsed)}

@@ -47,7 +47,9 @@ describe('ReviewComponentPanel', () => {
           onDiscard: () => {},
         }}
         saveError="Invalid CDF"
-        footer="[F] finalize"
+        sidebarFooter="[F] finalize"
+        livePreview={{ status: 'idle', disabled: false }}
+        livePreviewSpinner=""
       />,
     );
     const frame = lastFrame() ?? '';
