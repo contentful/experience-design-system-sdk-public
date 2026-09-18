@@ -14,7 +14,12 @@ import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { ReviewDetailsEditor } from '../components/ReviewDetailsEditor.js';
 import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
 import { countReviewStatuses, ReviewLoadError, ReviewLoadingState } from '../components/ReviewStatus.js';
-import { handleJsonPanelInput, handleReviewPanelShortcuts, handleReviewOverlayInput } from '../hooks/review-input.js';
+import {
+  handleJsonPanelInput,
+  handleReviewPanelShortcuts,
+  handleReviewOverlayInput,
+  handleReviewViewToggleInput,
+} from '../hooks/review-input.js';
 import {
   createReviewHistorySnapshot,
   finalizeReviewSession,
@@ -180,9 +185,7 @@ export function AtomicGenerateReviewStep({
     setJsonScrollOffset,
     setTextEntryActive,
     showJson,
-    setShowJson,
     showHiddenProps,
-    setShowHiddenProps,
     draftValue,
     setDraftValue,
     saveError,
@@ -191,7 +194,6 @@ export function AtomicGenerateReviewStep({
     tokenReviewEditing,
     tokenReviewEditCursor,
     tokenReviewEditSelection,
-    pendingGRef,
     currentTokenSuggestions,
     handleEditSave,
     handleEditDiscard,
@@ -335,19 +337,7 @@ export function AtomicGenerateReviewStep({
       setFinalizeError(null);
       return;
     }
-    if (input === 'J') {
-      // Toggle read-only JSON view.
-      setShowJson((prev) => !prev);
-      setJsonScrollOffset(0);
-      pendingGRef.current = false;
-      return;
-    }
-    if (input === 'H') {
-      setShowHiddenProps((prev) => !prev);
-      setJsonScrollOffset(0);
-      pendingGRef.current = false;
-      return;
-    }
+    if (handleReviewViewToggleInput(input, reviewEditor)) return;
 
     if (key.upArrow || input === 'k') {
       // Pilot-2026-06-23 bug: rapid k/j bursts could lose cursor position

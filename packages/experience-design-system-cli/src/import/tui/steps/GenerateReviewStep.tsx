@@ -78,7 +78,12 @@ import {
   type ReviewSessionLoadResult,
 } from '../hooks/useReviewSession.js';
 import { useReviewEditor } from '../hooks/useReviewEditor.js';
-import { handleJsonPanelInput, handleReviewPanelShortcuts, handleReviewOverlayInput } from '../hooks/review-input.js';
+import {
+  handleJsonPanelInput,
+  handleReviewPanelShortcuts,
+  handleReviewOverlayInput,
+  handleReviewViewToggleInput,
+} from '../hooks/review-input.js';
 import { useReviewPreview } from '../hooks/useReviewPreview.js';
 import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
 
@@ -682,9 +687,7 @@ export function GenerateReviewStep({
     setJsonScrollOffset,
     setTextEntryActive,
     showJson,
-    setShowJson,
     showHiddenProps,
-    setShowHiddenProps,
     draftValue,
     setDraftValue,
     saveError,
@@ -693,7 +696,6 @@ export function GenerateReviewStep({
     tokenReviewEditing,
     tokenReviewEditCursor,
     tokenReviewEditSelection,
-    pendingGRef,
     currentTokenSuggestions,
     handleEditSave,
     handleEditDiscard,
@@ -1201,18 +1203,7 @@ export function GenerateReviewStep({
       setExpandedGroups(new Set());
       return;
     }
-    if (input === 'J') {
-      setShowJson((prev) => !prev);
-      setJsonScrollOffset(0);
-      pendingGRef.current = false;
-      return;
-    }
-    if (input === 'H') {
-      setShowHiddenProps((prev) => !prev);
-      setJsonScrollOffset(0);
-      pendingGRef.current = false;
-      return;
-    }
+    if (handleReviewViewToggleInput(input, reviewEditor)) return;
 
     if (key.return) {
       const current = components[selectedIdx];

@@ -226,6 +226,27 @@ export function handleReviewPanelShortcuts(
   return false;
 }
 
+export type ReviewViewToggleInputState = Pick<
+  UseReviewEditorResult,
+  'setShowJson' | 'setShowHiddenProps' | 'setJsonScrollOffset' | 'pendingGRef'
+>;
+
+export function handleReviewViewToggleInput(input: string, state: ReviewViewToggleInputState): boolean {
+  if (input === 'J') {
+    state.setShowJson((previous) => !previous);
+    state.setJsonScrollOffset(0);
+    state.pendingGRef.current = false;
+    return true;
+  }
+  if (input === 'H') {
+    state.setShowHiddenProps((previous) => !previous);
+    state.setJsonScrollOffset(0);
+    state.pendingGRef.current = false;
+    return true;
+  }
+  return false;
+}
+
 type JsonPanelInputState = Pick<UseReviewEditorResult, 'jsonScrollOffset' | 'setJsonScrollOffset' | 'pendingGRef'> & {
   sidebarFocused: boolean;
   showJson: boolean;

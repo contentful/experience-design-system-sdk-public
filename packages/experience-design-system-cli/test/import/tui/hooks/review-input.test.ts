@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ImmediateInputKey } from '../../../../src/analyze/select/tui/hooks/useImmediateInput.js';
 import {
   handleReviewPanelShortcuts,
+  handleReviewViewToggleInput,
   type ReviewPanelShortcutState,
 } from '../../../../src/import/tui/hooks/review-input.js';
 
@@ -86,5 +87,44 @@ describe('handleReviewPanelShortcuts', () => {
     expect(handleReviewPanelShortcuts('i', key(), shortcutState)).toBe(false);
     expect(shortcutState.setPanelOpen).not.toHaveBeenCalled();
     expect(shortcutState.setPanelScrollOffset).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleReviewViewToggleInput', () => {
+  it('toggles JSON and hidden-property views and resets JSON navigation', () => {
+    const setShowJson = vi.fn();
+    const setShowHiddenProps = vi.fn();
+    const setJsonScrollOffset = vi.fn();
+    const pendingGRef = { current: true };
+    const toggleState = {
+      setShowJson,
+      setShowHiddenProps,
+      setJsonScrollOffset,
+      pendingGRef,
+    };
+
+    expect(handleReviewViewToggleInput('J', toggleState)).toBe(true);
+    expect(setShowJson).toHaveBeenCalledWith(expect.any(Function));
+    expect(setJsonScrollOffset).toHaveBeenCalledWith(0);
+    expect(pendingGRef.current).toBe(false);
+
+    pendingGRef.current = true;
+    expect(handleReviewViewToggleInput('H', toggleState)).toBe(true);
+    expect(setShowHiddenProps).toHaveBeenCalledWith(expect.any(Function));
+    expect(setJsonScrollOffset).toHaveBeenCalledTimes(2);
+    expect(pendingGRef.current).toBe(false);
+  });
+
+  it('does not consume unrelated input', () => {
+    const toggleState = {
+      setShowJson: vi.fn(),
+      setShowHiddenProps: vi.fn(),
+      setJsonScrollOffset: vi.fn(),
+      pendingGRef: { current: true },
+    };
+
+    expect(handleReviewViewToggleInput('j', toggleState)).toBe(false);
+    expect(toggleState.setShowJson).not.toHaveBeenCalled();
+    expect(toggleState.setShowHiddenProps).not.toHaveBeenCalled();
   });
 });
