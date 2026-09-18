@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { openPipelineDb, getOrCreateSession } from '../../../../../src/session/db.js';
 import {
@@ -30,7 +30,7 @@ async function withTempDb(run: (dbPath: string) => void | Promise<void>): Promis
 afterEach(async () => {
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
-    if (dir) await rm(dirname(dir), { recursive: true, force: true }).catch(() => {});
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 });
 
