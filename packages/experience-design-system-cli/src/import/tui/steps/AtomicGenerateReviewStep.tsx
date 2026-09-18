@@ -179,9 +179,7 @@ export function AtomicGenerateReviewStep({
   const {
     panelOpen,
     setPanelOpen,
-    panelScrollOffset,
     setPanelScrollOffset,
-    jsonScrollOffset,
     setJsonScrollOffset,
     setTextEntryActive,
     showJson,
@@ -190,10 +188,6 @@ export function AtomicGenerateReviewStep({
     setDraftValue,
     saveError,
     setSaveError,
-    tokenReviewRow,
-    tokenReviewEditing,
-    tokenReviewEditCursor,
-    tokenReviewEditSelection,
     currentTokenSuggestions,
     handleEditSave,
     handleEditDiscard,
@@ -501,21 +495,13 @@ export function AtomicGenerateReviewStep({
                 </Box>
                 <ReviewDetailsEditor
                   selectedKey={selected.key}
-                  panelOpen={panelOpen}
                   componentRationale={componentRationale}
                   reviewMetadata={reviewMetadata}
-                  panelScrollOffset={panelScrollOffset}
+                  reviewEditor={reviewEditor}
                   width={panelWidth}
                   height={PANEL_HEIGHT}
                   sourceBorderColor={PALETTE.border}
-                  tokenSuggestions={currentTokenSuggestions()}
-                  tokenReviewRow={tokenReviewRow}
-                  tokenReviewEditing={tokenReviewEditing}
-                  tokenReviewEditCursor={tokenReviewEditCursor}
-                  tokenReviewEditSelection={tokenReviewEditSelection}
-                  showJson={showJson}
                   jsonValue={visibleJsonPanelValue}
-                  jsonScrollOffset={jsonScrollOffset}
                   sidebarFocused={sidebarFocused}
                   fieldEditor={{
                     value: draftValue || selectedJson,

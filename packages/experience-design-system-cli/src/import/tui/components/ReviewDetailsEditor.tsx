@@ -6,8 +6,35 @@ import {
 } from '../../../analyze/select/tui/components/FieldEditor.js';
 import type { ComponentReviewMetadata } from '../../../session/db.js';
 import { ReviewDetailsPanel, type ReviewDetailsPanelProps } from '../steps/review-details-panel.js';
+import type { UseReviewEditorResult } from '../hooks/useReviewEditor.js';
 
-export type ReviewDetailsEditorProps = Omit<ReviewDetailsPanelProps, 'editor'> & {
+type ReviewEditorPanelState = Pick<
+  UseReviewEditorResult,
+  | 'panelOpen'
+  | 'panelScrollOffset'
+  | 'tokenReviewRow'
+  | 'tokenReviewEditing'
+  | 'tokenReviewEditCursor'
+  | 'tokenReviewEditSelection'
+  | 'showJson'
+  | 'jsonScrollOffset'
+  | 'currentTokenSuggestions'
+>;
+
+export type ReviewDetailsEditorProps = Omit<
+  ReviewDetailsPanelProps,
+  | 'editor'
+  | 'panelOpen'
+  | 'panelScrollOffset'
+  | 'tokenSuggestions'
+  | 'tokenReviewRow'
+  | 'tokenReviewEditing'
+  | 'tokenReviewEditCursor'
+  | 'tokenReviewEditSelection'
+  | 'showJson'
+  | 'jsonScrollOffset'
+> & {
+  reviewEditor: ReviewEditorPanelState;
   fieldEditor: Omit<FieldEditorProps, 'active' | 'height' | 'metadata' | 'width'> & {
     key?: string;
   };
@@ -24,24 +51,28 @@ function toFieldEditorMetadata(reviewMetadata: ComponentReviewMetadata | null): 
 
 export function ReviewDetailsEditor({
   selectedKey,
-  panelOpen,
   componentRationale,
   reviewMetadata,
-  panelScrollOffset,
   width,
   height,
   sourceBorderColor,
-  tokenSuggestions,
-  tokenReviewRow,
-  tokenReviewEditing,
-  tokenReviewEditCursor,
-  tokenReviewEditSelection,
-  showJson,
   jsonValue,
-  jsonScrollOffset,
   sidebarFocused,
+  reviewEditor,
   fieldEditor,
 }: ReviewDetailsEditorProps): React.ReactElement {
+  const {
+    panelOpen,
+    panelScrollOffset,
+    tokenReviewRow,
+    tokenReviewEditing,
+    tokenReviewEditCursor,
+    tokenReviewEditSelection,
+    showJson,
+    jsonScrollOffset,
+    currentTokenSuggestions,
+  } = reviewEditor;
+
   return (
     <ReviewDetailsPanel
       selectedKey={selectedKey}
@@ -52,7 +83,7 @@ export function ReviewDetailsEditor({
       width={width}
       height={height}
       sourceBorderColor={sourceBorderColor}
-      tokenSuggestions={tokenSuggestions}
+      tokenSuggestions={currentTokenSuggestions()}
       tokenReviewRow={tokenReviewRow}
       tokenReviewEditing={tokenReviewEditing}
       tokenReviewEditCursor={tokenReviewEditCursor}

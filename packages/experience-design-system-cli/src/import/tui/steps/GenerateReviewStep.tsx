@@ -681,9 +681,7 @@ export function GenerateReviewStep({
   const {
     panelOpen,
     setPanelOpen,
-    panelScrollOffset,
     setPanelScrollOffset,
-    jsonScrollOffset,
     setJsonScrollOffset,
     setTextEntryActive,
     showJson,
@@ -692,10 +690,6 @@ export function GenerateReviewStep({
     setDraftValue,
     saveError,
     setSaveError,
-    tokenReviewRow,
-    tokenReviewEditing,
-    tokenReviewEditCursor,
-    tokenReviewEditSelection,
     currentTokenSuggestions,
     handleEditSave,
     handleEditDiscard,
@@ -1614,20 +1608,12 @@ export function GenerateReviewStep({
                 </Box>
                 <ReviewDetailsEditor
                   selectedKey={selected.key}
-                  panelOpen={panelOpen}
                   componentRationale={componentRationale}
                   reviewMetadata={reviewMetadata}
-                  panelScrollOffset={panelScrollOffset}
+                  reviewEditor={reviewEditor}
                   width={panelWidth}
                   height={PANEL_HEIGHT}
-                  tokenSuggestions={currentTokenSuggestions()}
-                  tokenReviewRow={tokenReviewRow}
-                  tokenReviewEditing={tokenReviewEditing}
-                  tokenReviewEditCursor={tokenReviewEditCursor}
-                  tokenReviewEditSelection={tokenReviewEditSelection}
-                  showJson={showJson}
                   jsonValue={visibleJsonPanelValue}
-                  jsonScrollOffset={jsonScrollOffset}
                   sidebarFocused={sidebarFocused}
                   fieldEditor={{
                     key:
