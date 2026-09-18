@@ -29,7 +29,7 @@ describe('planCdfRestore', () => {
     expect(plan.byName).toEqual([]);
     expect(plan.byPosition).toEqual([]);
     expect(plan.descriptions).toEqual([]);
-    expect(plan.allowedValuesByPropKey.size).toBe(0);
+    expect(plan.allowedValues).toEqual([]);
   });
 
   it('matches by name when the prop still exists', () => {
@@ -63,7 +63,7 @@ describe('planCdfRestore', () => {
     expect(plan.descriptions).toEqual(descs);
   });
 
-  it('carries allowed values only for restored prop keys (by name)', () => {
+  it('restores allowed values for name-matched props only', () => {
     const plan = planCdfRestore(
       [snap({ name: 'variant' })],
       [],
@@ -74,18 +74,21 @@ describe('planCdfRestore', () => {
       ],
       { hasPropNamed: (_c, n) => n === 'variant', propNameAtPosition: () => null },
     );
-    expect(plan.allowedValuesByPropKey.get('c1::variant')).toHaveLength(2);
-    expect(plan.allowedValuesByPropKey.get('c1::orphan')).toBeUndefined();
+    const variant = plan.allowedValues.find((av) => av.propName === 'variant');
+    expect(variant?.values).toHaveLength(2);
+    expect(plan.allowedValues.find((av) => av.propName === 'orphan')).toBeUndefined();
   });
 
-  it('carries allowed values under the new name when matched by position', () => {
+  it('does NOT restore allowed values for position-matched (renamed) props', () => {
+    // Matches original behavior: on rename, the CDF classification survives
+    // but the AV list is dropped — the prop's meaning may have changed.
     const plan = planCdfRestore(
       [snap({ name: 'oldName', position: 3 })],
       [],
-      [{ component_id: 'c1', prop_name: 'newName', position: 0, value: 'x' }],
+      [{ component_id: 'c1', prop_name: 'oldName', position: 0, value: 'x' }],
       { hasPropNamed: () => false, propNameAtPosition: (_c, p) => (p === 3 ? 'newName' : null) },
     );
-    // The AV snapshot key must match the RESTORED (current) prop name.
-    expect(plan.allowedValuesByPropKey.get('c1::newName')).toHaveLength(1);
+    expect(plan.byPosition).toHaveLength(1);
+    expect(plan.allowedValues).toEqual([]);
   });
 });
