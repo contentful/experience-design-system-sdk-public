@@ -4,6 +4,73 @@ import type { UseReviewEditorResult } from './useReviewEditor.js';
 
 const PANEL_CONTENT_HEIGHT = 12;
 
+type ReviewOverlayInputState = {
+  loading: boolean;
+  loadError: string | null;
+  showFinalize: boolean;
+  dialogOpen: boolean;
+  showHelp?: boolean;
+  showReloadDialog: boolean;
+  finalizePreview: { scrollBy: (delta: number) => void };
+  reloadFromSave: () => void;
+  setShowReloadDialog: (open: boolean) => void;
+  onQuit: () => void;
+  handleUndo: () => void;
+  handleRedo: () => void;
+};
+
+export function handleReviewOverlayInput(
+  input: string,
+  key: ImmediateInputKey,
+  state: ReviewOverlayInputState,
+): boolean {
+  if (state.loading) return true;
+  if (state.loadError) {
+    if (input === 'q' || key.escape || key.return) state.onQuit();
+    return true;
+  }
+  if (state.showFinalize) {
+    // The dialog owns y/n/Enter/Esc; here we own j/k scroll of its deletion list.
+    if (input === 'j' || key.downArrow) {
+      state.finalizePreview.scrollBy(1);
+      return true;
+    }
+    if (input === 'k' || key.upArrow) {
+      state.finalizePreview.scrollBy(-1);
+      return true;
+    }
+    return true;
+  }
+  if (state.dialogOpen || state.showHelp) return true;
+
+  if (state.showReloadDialog) {
+    if (key.return) {
+      state.reloadFromSave();
+      state.setShowReloadDialog(false);
+      return true;
+    }
+    if (key.escape) {
+      state.setShowReloadDialog(false);
+      return true;
+    }
+    return true;
+  }
+
+  if (key.ctrl && input === 'z') {
+    state.handleUndo();
+    return true;
+  }
+  if (key.ctrl && input === 'y') {
+    state.handleRedo();
+    return true;
+  }
+  if (key.ctrl && input === 'r') {
+    state.setShowReloadDialog(true);
+    return true;
+  }
+  return false;
+}
+
 type TokenReviewInputState = Pick<
   UseReviewEditorResult,
   | 'panelOpen'

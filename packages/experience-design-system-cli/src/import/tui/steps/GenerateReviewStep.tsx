@@ -77,7 +77,12 @@ import {
   type ReviewSessionLoadResult,
 } from '../hooks/useReviewSession.js';
 import { useReviewEditor } from '../hooks/useReviewEditor.js';
-import { handleJsonPanelInput, handleRationalePanelInput, handleTokenReviewInput } from '../hooks/review-input.js';
+import {
+  handleJsonPanelInput,
+  handleRationalePanelInput,
+  handleReviewOverlayInput,
+  handleTokenReviewInput,
+} from '../hooks/review-input.js';
 import { useReviewPreview } from '../hooks/useReviewPreview.js';
 import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
 
@@ -839,53 +844,23 @@ export function GenerateReviewStep({
   const dialogOpen = showFinalize || showQuit;
 
   useImmediateInput((input, key) => {
-    if (loading) return;
-    // On a load error there's nothing to review — still let the operator quit
-    // (q / Esc / Enter) instead of trapping them on the error screen.
-    if (loadError) {
-      if (input === 'q' || key.escape || key.return) onQuit();
+    if (
+      handleReviewOverlayInput(input, key, {
+        loading,
+        loadError,
+        showFinalize,
+        dialogOpen,
+        showHelp,
+        showReloadDialog,
+        finalizePreview,
+        reloadFromSave,
+        setShowReloadDialog,
+        onQuit,
+        handleUndo,
+        handleRedo,
+      })
+    )
       return;
-    }
-    if (showFinalize) {
-      // The dialog owns y/n/Enter/Esc; here we own j/k scroll of its deletion list.
-      if (input === 'j' || key.downArrow) {
-        finalizePreview.scrollBy(1);
-        return;
-      }
-      if (input === 'k' || key.upArrow) {
-        finalizePreview.scrollBy(-1);
-        return;
-      }
-      return;
-    }
-    if (dialogOpen) return;
-    if (showHelp) return;
-
-    if (showReloadDialog) {
-      if (key.return) {
-        reloadFromSave();
-        setShowReloadDialog(false);
-        return;
-      }
-      if (key.escape) {
-        setShowReloadDialog(false);
-        return;
-      }
-      return;
-    }
-
-    if (key.ctrl && input === 'z') {
-      handleUndo();
-      return;
-    }
-    if (key.ctrl && input === 'y') {
-      handleRedo();
-      return;
-    }
-    if (key.ctrl && input === 'r') {
-      setShowReloadDialog(true);
-      return;
-    }
 
     if (showUnsavedWarning) {
       if (key.return) {

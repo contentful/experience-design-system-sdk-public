@@ -13,7 +13,12 @@ import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { ReviewDetailsEditor } from '../components/ReviewDetailsEditor.js';
 import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
-import { handleJsonPanelInput, handleRationalePanelInput, handleTokenReviewInput } from '../hooks/review-input.js';
+import {
+  handleJsonPanelInput,
+  handleRationalePanelInput,
+  handleReviewOverlayInput,
+  handleTokenReviewInput,
+} from '../hooks/review-input.js';
 import {
   createReviewHistorySnapshot,
   finalizeReviewSession,
@@ -247,52 +252,22 @@ export function AtomicGenerateReviewStep({
   const dialogOpen = showFinalize || showQuit;
 
   useImmediateInput((input, key) => {
-    if (loading) return;
-    // On a load error there's nothing to review — still let the operator quit
-    // (q / Esc / Enter) instead of trapping them on the error screen.
-    if (loadError) {
-      if (input === 'q' || key.escape || key.return) onQuit();
+    if (
+      handleReviewOverlayInput(input, key, {
+        loading,
+        loadError,
+        showFinalize,
+        dialogOpen,
+        showReloadDialog,
+        finalizePreview,
+        reloadFromSave,
+        setShowReloadDialog,
+        onQuit,
+        handleUndo,
+        handleRedo,
+      })
+    )
       return;
-    }
-    if (showFinalize) {
-      // The dialog owns y/n/Enter/Esc; here we own j/k scroll of its deletion list.
-      if (input === 'j' || key.downArrow) {
-        finalizePreview.scrollBy(1);
-        return;
-      }
-      if (input === 'k' || key.upArrow) {
-        finalizePreview.scrollBy(-1);
-        return;
-      }
-      return;
-    }
-    if (dialogOpen) return;
-
-    if (showReloadDialog) {
-      if (key.return) {
-        reloadFromSave();
-        setShowReloadDialog(false);
-        return;
-      }
-      if (key.escape) {
-        setShowReloadDialog(false);
-        return;
-      }
-      return;
-    }
-
-    if (key.ctrl && input === 'z') {
-      handleUndo();
-      return;
-    }
-    if (key.ctrl && input === 'y') {
-      handleRedo();
-      return;
-    }
-    if (key.ctrl && input === 'r') {
-      setShowReloadDialog(true);
-      return;
-    }
 
     // Pilot-2026-06-24: removed-detail panel. When open, only `d` (toggle)
     // and Esc (close) respond — all other input is swallowed so j/k/Enter/
