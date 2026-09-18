@@ -22,6 +22,11 @@ import {
 } from '../../repositories/components/raw/write.js';
 import { planCdfRestore } from '../../core/components/plan-cdf-restore.js';
 
+// Snapshot → mutate → restore, all inside one transaction. planCdfRestore
+// runs AFTER the mutation and queries the just-inserted rows via
+// hasPropByName / getRawPropNameAtPosition. This only works because SQLite
+// reads on the same connection see the pending writes of the enclosing
+// transaction — do not split this flow across transactions or connections.
 export function storeRawComponents(
   db: DatabaseSync,
   sessionId: string,
