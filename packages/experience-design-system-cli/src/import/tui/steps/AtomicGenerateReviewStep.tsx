@@ -14,12 +14,7 @@ import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { ReviewDetailsEditor } from '../components/ReviewDetailsEditor.js';
 import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
 import { countReviewStatuses, ReviewLoadError, ReviewLoadingState } from '../components/ReviewStatus.js';
-import {
-  handleJsonPanelInput,
-  handleRationalePanelInput,
-  handleReviewOverlayInput,
-  handleTokenReviewInput,
-} from '../hooks/review-input.js';
+import { handleJsonPanelInput, handleReviewPanelShortcuts, handleReviewOverlayInput } from '../hooks/review-input.js';
 import {
   createReviewHistorySnapshot,
   finalizeReviewSession,
@@ -183,7 +178,6 @@ export function AtomicGenerateReviewStep({
     setPanelScrollOffset,
     jsonScrollOffset,
     setJsonScrollOffset,
-    textEntryActive,
     setTextEntryActive,
     showJson,
     setShowJson,
@@ -194,7 +188,6 @@ export function AtomicGenerateReviewStep({
     saveError,
     setSaveError,
     tokenReviewRow,
-    setTokenReviewRow,
     tokenReviewEditing,
     tokenReviewEditCursor,
     tokenReviewEditSelection,
@@ -286,37 +279,7 @@ export function AtomicGenerateReviewStep({
       return;
     }
 
-    if (handleTokenReviewInput(input, key, reviewEditor)) return;
-
-    // Lifted rationale + source panels: i/I/s fire from anywhere (sidebar OR
-    // panel focus). Gated against text-entry surfaces inside FieldEditor
-    // (description editors, string-default editor, value-list text entry)
-    // via the `onTextEntryActiveChange` callback, plus the help/finalize/quit
-    // overlays and the JSON view.
-    if (handleRationalePanelInput(input, key, { ...reviewEditor, propKey: 'i', componentKey: 'I' })) return;
-    const rationaleKeyOk = !textEntryActive && !showJson && !key.ctrl && !key.tab && !key.meta && !key.return;
-    if (rationaleKeyOk) {
-      if (input === 'i') {
-        setPanelOpen('prop-rationale');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (input === 'I') {
-        setPanelOpen('component-rationale');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (input === 's') {
-        setPanelOpen('source');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (input === 't' && currentTokenSuggestions().length > 0) {
-        setPanelOpen('token-review');
-        setTokenReviewRow(0);
-        return;
-      }
-    }
+    if (handleReviewPanelShortcuts(input, key, { ...reviewEditor, propKey: 'i', componentKey: 'I' })) return;
 
     // Tab toggles focus bidirectionally between sidebar and panel. `e` is a
     // sidebar-only alias for crossing INTO the panel — gating it to the

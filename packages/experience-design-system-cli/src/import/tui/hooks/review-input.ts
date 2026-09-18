@@ -1,6 +1,6 @@
 import type { ImmediateInputKey } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
-import type { UseReviewEditorResult } from './useReviewEditor.js';
+import type { ReviewPanel, UseReviewEditorResult } from './useReviewEditor.js';
 
 const PANEL_CONTENT_HEIGHT = 12;
 
@@ -155,6 +155,22 @@ type RationalePanelInputState = Pick<
   componentKey: string;
 };
 
+type ReviewPanelState = Pick<UseReviewEditorResult, 'setPanelOpen' | 'setPanelScrollOffset'>;
+
+function setReviewPanel(state: ReviewPanelState, panel: ReviewPanel): void {
+  state.setPanelOpen(panel);
+  state.setPanelScrollOffset(() => 0);
+}
+
+type RationalePanel = Exclude<ReviewPanel, 'none' | 'token-review'>;
+
+function rationalePanelForInput(input: string, propKey: string, componentKey: string): RationalePanel | null {
+  if (input === propKey) return 'prop-rationale';
+  if (input === componentKey) return 'component-rationale';
+  if (input === 's') return 'source';
+  return null;
+}
+
 export function handleRationalePanelInput(
   input: string,
   key: ImmediateInputKey,
@@ -168,45 +184,46 @@ export function handleRationalePanelInput(
     return true;
   }
   if (key.escape) {
-    state.setPanelOpen('none');
-    state.setPanelScrollOffset(() => 0);
+    setReviewPanel(state, 'none');
     return true;
   }
 
   const togglable = !key.ctrl && !key.tab && !key.meta && !key.return;
   if (!togglable) return true;
 
-  if (input === state.propKey && state.panelOpen === 'prop-rationale') {
-    state.setPanelOpen('none');
-    state.setPanelScrollOffset(() => 0);
-    return true;
-  }
-  if (input === state.componentKey && state.panelOpen === 'component-rationale') {
-    state.setPanelOpen('none');
-    state.setPanelScrollOffset(() => 0);
-    return true;
-  }
-  if (input === 's' && state.panelOpen === 'source') {
-    state.setPanelOpen('none');
-    state.setPanelScrollOffset(() => 0);
-    return true;
-  }
-  if (input === state.propKey) {
-    state.setPanelOpen('prop-rationale');
-    state.setPanelScrollOffset(() => 0);
-    return true;
-  }
-  if (input === state.componentKey) {
-    state.setPanelOpen('component-rationale');
-    state.setPanelScrollOffset(() => 0);
-    return true;
-  }
-  if (input === 's') {
-    state.setPanelOpen('source');
-    state.setPanelScrollOffset(() => 0);
-    return true;
-  }
+  const panel = rationalePanelForInput(input, state.propKey, state.componentKey);
+  if (panel) setReviewPanel(state, state.panelOpen === panel ? 'none' : panel);
   return true;
+}
+
+export type ReviewPanelShortcutState = TokenReviewInputState &
+  RationalePanelInputState & {
+    textEntryActive: boolean;
+    showJson: boolean;
+  };
+
+export function handleReviewPanelShortcuts(
+  input: string,
+  key: ImmediateInputKey,
+  state: ReviewPanelShortcutState,
+): boolean {
+  if (handleTokenReviewInput(input, key, state)) return true;
+  if (handleRationalePanelInput(input, key, state)) return true;
+
+  const rationaleKeyOk = !state.textEntryActive && !state.showJson && !key.ctrl && !key.tab && !key.meta && !key.return;
+  if (!rationaleKeyOk) return false;
+
+  const panel = rationalePanelForInput(input, state.propKey, state.componentKey);
+  if (panel) {
+    setReviewPanel(state, panel);
+    return true;
+  }
+  if (input === 't' && state.currentTokenSuggestions().length > 0) {
+    state.setPanelOpen('token-review');
+    state.setTokenReviewRow(0);
+    return true;
+  }
+  return false;
 }
 
 type JsonPanelInputState = Pick<UseReviewEditorResult, 'jsonScrollOffset' | 'setJsonScrollOffset' | 'pendingGRef'> & {

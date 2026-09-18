@@ -78,12 +78,7 @@ import {
   type ReviewSessionLoadResult,
 } from '../hooks/useReviewSession.js';
 import { useReviewEditor } from '../hooks/useReviewEditor.js';
-import {
-  handleJsonPanelInput,
-  handleRationalePanelInput,
-  handleReviewOverlayInput,
-  handleTokenReviewInput,
-} from '../hooks/review-input.js';
+import { handleJsonPanelInput, handleReviewPanelShortcuts, handleReviewOverlayInput } from '../hooks/review-input.js';
 import { useReviewPreview } from '../hooks/useReviewPreview.js';
 import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
 
@@ -685,7 +680,6 @@ export function GenerateReviewStep({
     setPanelScrollOffset,
     jsonScrollOffset,
     setJsonScrollOffset,
-    textEntryActive,
     setTextEntryActive,
     showJson,
     setShowJson,
@@ -696,7 +690,6 @@ export function GenerateReviewStep({
     saveError,
     setSaveError,
     tokenReviewRow,
-    setTokenReviewRow,
     tokenReviewEditing,
     tokenReviewEditCursor,
     tokenReviewEditSelection,
@@ -1073,32 +1066,7 @@ export function GenerateReviewStep({
       return;
     }
 
-    if (handleTokenReviewInput(input, key, reviewEditor)) return;
-
-    if (handleRationalePanelInput(input, key, { ...reviewEditor, propKey: 'p', componentKey: 'P' })) return;
-    const rationaleKeyOk = !textEntryActive && !showJson && !key.ctrl && !key.tab && !key.meta && !key.return;
-    if (rationaleKeyOk) {
-      if (input === 'p') {
-        setPanelOpen('prop-rationale');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (input === 'P') {
-        setPanelOpen('component-rationale');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (input === 's') {
-        setPanelOpen('source');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (input === 't' && currentTokenSuggestions().length > 0) {
-        setPanelOpen('token-review');
-        setTokenReviewRow(0);
-        return;
-      }
-    }
+    if (handleReviewPanelShortcuts(input, key, { ...reviewEditor, propKey: 'p', componentKey: 'P' })) return;
 
     if (key.tab) {
       if (!sidebarFocused && editorDirty) {
