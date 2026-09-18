@@ -50,6 +50,7 @@ import {
   validateExtractedComponents,
   shouldExcludeDueToValidation,
   formatExclusionWarning,
+  formatExcludedComponentLines,
 } from '@contentful/experience-design-system-extraction';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
@@ -543,14 +544,8 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         if (invalidComponents.length > 0 && !opts.excludeInvalid) {
           const lines = [
             `Error: ${invalidComponents.length} component(s) failed validation; refusing select-agent without --exclude-invalid:`,
+            ...formatExcludedComponentLines(invalidComponents),
           ];
-          for (const comp of invalidComponents) {
-            const codes = (comp.validationIssues ?? [])
-              .filter((i) => i.severity === 'error')
-              .map((i) => i.code)
-              .join(', ');
-            lines.push(`  ✗  ${comp.name}  ${codes}`);
-          }
           lines.push('');
           lines.push('Re-run with --exclude-invalid to auto-reject these components, or fix them in source first.');
           process.stderr.write(lines.join('\n') + '\n');

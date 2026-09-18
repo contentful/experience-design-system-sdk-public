@@ -48,7 +48,9 @@ export {
   validateExtractedComponents,
   shouldExcludeDueToValidation,
   formatExclusionWarning,
+  formatExcludedComponentLines,
 } from './extract/validate.js';
+export { parseImportedNames } from './extract/parse-imported-names.js';
 
 // Slot detection helpers
 export {

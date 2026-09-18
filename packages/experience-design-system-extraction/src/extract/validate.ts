@@ -95,13 +95,21 @@ export function formatExclusionWarning(
   rejected: Array<{ name: string; validationIssues?: ExtractionValidationIssue[] }>,
 ): string {
   if (rejected.length === 0) return '';
-  const lines = [`Warning: ${rejected.length} component(s) excluded due to validation errors:`];
-  for (const comp of rejected) {
+  const lines = [
+    `Warning: ${rejected.length} component(s) excluded due to validation errors:`,
+    ...formatExcludedComponentLines(rejected),
+  ];
+  return lines.join('\n') + '\n';
+}
+
+export function formatExcludedComponentLines(
+  rejected: Array<{ name: string; validationIssues?: ExtractionValidationIssue[] }>,
+): string[] {
+  return rejected.map((comp) => {
     const codes = (comp.validationIssues ?? [])
       .filter((i) => i.severity === 'error')
       .map((i) => i.code)
       .join(', ');
-    lines.push(`  ✗  ${comp.name}  ${codes}`);
-  }
-  return lines.join('\n') + '\n';
+    return `  ✗  ${comp.name}  ${codes}`;
+  });
 }
