@@ -33,12 +33,20 @@ const NON_EMPTY_ROUTES = {
     sys: { id: 'op-1', status: 'succeeded' },
     items: [
       {
-        entityType: 'ComponentType',
+        entityType: 'Component',
         id: 'button-id',
         action: 'create',
         status: 'succeeded',
       },
     ],
+    summary: { total: 1, succeeded: 1, failed: 0, pending: 0 },
+  },
+};
+
+const NO_ITEM_ROUTES = {
+  ...NON_EMPTY_ROUTES,
+  'GET /spaces/test-space/environments/master/design_systems/imports/apply/op-1': {
+    sys: { id: 'op-1', status: 'succeeded' },
     summary: { total: 1, succeeded: 1, failed: 0, pending: 0 },
   },
 };
@@ -62,17 +70,20 @@ const baseEnv = () => ({
 describe('apply push / select — viewUrl emission (Gap 4)', () => {
   let pushServer: MockCMAServer;
   let previewServer: MockCMAServer;
+  let noItemServer: MockCMAServer;
 
   beforeAll(async () => {
-    [pushServer, previewServer] = await Promise.all([
+    [pushServer, previewServer, noItemServer] = await Promise.all([
       createMockCMAServer(NON_EMPTY_ROUTES),
       createMockCMAServer(EMPTY_PREVIEW_ROUTES),
+      createMockCMAServer(NO_ITEM_ROUTES),
     ]);
   });
 
   afterAll(() => {
     pushServer.close();
     previewServer.close();
+    noItemServer.close();
   });
 
   it('non-TTY apply push JSON summary includes viewUrl', async () => {
@@ -94,6 +105,7 @@ describe('apply push / select — viewUrl emission (Gap 4)', () => {
     const { stdout, code } = await runCliWithEnv(args, baseEnv());
     expect(code).toBe(0);
     const payload = JSON.parse(stdout);
+    expect(payload.componentTypes).toMatchObject({ created: 1, updated: 0, failed: 0 });
     expect(typeof payload.viewUrl).toBe('string');
     expect(payload.viewUrl).toMatch(/^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/components$/);
     expect(typeof payload.tokensUrl).toBe('string');
@@ -147,6 +159,31 @@ describe('apply push / select — viewUrl emission (Gap 4)', () => {
     expect(payload).not.toHaveProperty('tokensUrl');
   });
 
+  it('marks the per-entity breakdown unavailable when the operation omits items', async () => {
+    const args = [
+      'apply',
+      'push',
+      '--components',
+      componentsPath,
+      '--space-id',
+      'test-space',
+      '--environment-id',
+      'master',
+      '--cma-token',
+      'test-token',
+      '--yes',
+      '--host',
+      noItemServer.url,
+    ];
+    const { stdout, code } = await runCliWithEnv(args, baseEnv());
+    expect(code).toBe(0);
+    const payload = JSON.parse(stdout);
+    expect(payload.summary).toEqual({ total: 1, succeeded: 1, failed: 0, pending: 0 });
+    expect(payload.breakdownAvailable).toBe(false);
+    expect(payload.componentTypes?.created).not.toBe(0);
+    expect(payload.designTokens?.created).not.toBe(0);
+  });
+
   it('interactive ServerApplyDone renders the view URL on success', () => {
     const { lastFrame } = render(
       React.createElement(ServerApplyDone, {
@@ -185,7 +222,7 @@ describe('apply push / select — viewUrl emission (Gap 4)', () => {
           summary: { total: 1, succeeded: 0, failed: 1, pending: 0 },
           items: [
             {
-              entityType: 'ComponentType' as const,
+              entityType: 'Component' as const,
               id: 'button-id',
               action: 'create' as const,
               status: 'failed' as const,
@@ -207,5 +244,28 @@ describe('apply push / select — viewUrl emission (Gap 4)', () => {
     expect(frame).toContain('Field "Link" of type "Link" must have a selection of subfields');
     expect(frame).toMatch(/Default › resolvers ›\s+r_-gxsm8Pv7v › query/);
     expect(frame).not.toContain('[object Object]');
+  });
+
+  it('surfaces an unavailable per-entity breakdown when operation items are omitted', () => {
+    const { lastFrame } = render(
+      React.createElement(ServerApplyDone, {
+        operation: {
+          sys: {
+            type: 'ApplyOperation' as const,
+            id: 'op-1',
+            status: 'succeeded' as const,
+            createdAt: '2026-01-01T00:00:00Z',
+            createdBy: { sys: { type: 'Link' as const, linkType: 'User' as const, id: 'u' } },
+          },
+          summary: { total: 16, succeeded: 16, failed: 0, pending: 0 },
+        },
+        spaceId: 'test-space',
+        environmentId: 'master',
+        host: 'api.contentful.com',
+      }),
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('16 succeeded');
+    expect(frame).toContain('Per-entity breakdown unavailable');
   });
 });

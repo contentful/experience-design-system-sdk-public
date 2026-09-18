@@ -2,6 +2,19 @@ import { describe, it, expect } from 'vitest';
 import * as z from 'zod/mini';
 import { CDFComponentSchema, CDFPropertySchema, CDFSlotSchema } from '../src/cdf/index.js';
 import { DTCGTokenSchema } from '../src/dtcg/index.js';
+import type { ApplyOperationItem } from '../src/sources-api/apply/index.js';
+
+describe('ApplyOperationItem', () => {
+  it('uses the canonical Component entity type from the operation API', () => {
+    const item: ApplyOperationItem = {
+      entityType: 'Component',
+      id: 'button-id',
+      action: 'create',
+      status: 'succeeded',
+    };
+    expect(item.entityType).toBe('Component');
+  });
+});
 
 describe('CDFPropertySchema', () => {
   it('accepts a minimal content property', () => {
