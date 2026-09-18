@@ -1,4 +1,5 @@
 import React from 'react';
+import figures from 'figures';
 import { Box, Text } from 'ink';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { PALETTE } from '../theme.js';
@@ -140,7 +141,7 @@ export function TokenReviewPanel({
           <Box key={s.propName} flexDirection="column">
             <Box>
               <Text color={focused ? PALETTE.info : undefined} bold={focused} dimColor={!active}>
-                {`${focused ? '▶' : ' '} ${s.propName}`}
+                {`${focused ? figures.pointer : ' '} ${s.propName}`}
               </Text>
             </Box>
             <Text dimColor>{`  suggested: ${s.suggested.join(', ')}`}</Text>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import figures from 'figures';
 import { PALETTE } from '../theme.js';
 import { Box, Text } from 'ink';
 import {
@@ -458,7 +459,7 @@ function PropRow({
             return (
               <Box key={i} gap={1} paddingLeft={2}>
                 <Text color={isActiveCursor ? PALETTE.info : PALETTE.inverse}>
-                  {isActiveCursor ? `▶ ${v}` : `  ${v}`}
+                  {isActiveCursor ? `${figures.pointer} ${v}` : `  ${v}`}
                 </Text>
               </Box>
             );
@@ -562,7 +563,7 @@ function SlotRow({
             return (
               <Box key={i} gap={1} paddingLeft={2}>
                 <Text color={isActiveCursor ? PALETTE.info : PALETTE.inverse}>
-                  {isActiveCursor ? `▶ ${v}` : `  ${v}`}
+                  {isActiveCursor ? `${figures.pointer} ${v}` : `  ${v}`}
                 </Text>
               </Box>
             );
@@ -599,7 +600,7 @@ function SlotRow({
                         const isCursor = absIdx === cursor;
                         return (
                           <Text key={name} color={isCursor ? PALETTE.info : undefined} dimColor={!isCursor}>
-                            {isCursor ? `  ▶ ${name}` : `    ${name}`}
+                            {isCursor ? `  ${figures.pointer} ${name}` : `    ${name}`}
                           </Text>
                         );
                       })}

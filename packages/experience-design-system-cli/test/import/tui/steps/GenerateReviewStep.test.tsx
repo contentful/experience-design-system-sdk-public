@@ -1322,7 +1322,7 @@ describe('GenerateReviewStep — GA-3 cycle features (A1/A2/A7/A8)', () => {
       stdin.write('j');
       await tick();
     }
-    expect(stripAnsi(lastFrame() ?? '')).toMatch(/▶ Cycle 12 \(/);
+    expect(stripAnsi(lastFrame() ?? '')).toMatch(/❯ Cycle 12 \(/);
   });
 });
 
@@ -2276,10 +2276,10 @@ describe('GenerateReviewStep — duplicate-row cursor (INTEG-4411)', () => {
     stdin.write('j');
     await tick();
     const frame = lastFrame() ?? '';
-    const cursorCount = (frame.match(/▶/g) ?? []).length;
+    const cursorCount = (frame.match(/❯/g) ?? []).length;
     expect(cursorCount).toBe(1);
     const lines = frame.split('\n');
-    const cursorLineIdx = lines.findIndex((l) => l.includes('▶'));
+    const cursorLineIdx = lines.findIndex((l) => l.includes('❯'));
     const sectionLineIdx = lines.findIndex((l) => l.includes('Section'));
     expect(cursorLineIdx).toBeGreaterThan(sectionLineIdx);
   });
@@ -3531,7 +3531,7 @@ describe('GenerateReviewStep — [i] jump-and-filter (T5b)', () => {
     const found = new Set<string>();
     for (const l of rowLines) {
       for (const name of ['A', 'B', 'C', 'D']) {
-        if (new RegExp(`(^|[\\s├└─▸▾▶]) ?${name}(\\s|$|[^A-Za-z])`).test(l)) {
+        if (new RegExp(`(^|[\\s├└─▸▾❯]) ?${name}(\\s|$|[^A-Za-z])`).test(l)) {
           found.add(name);
         }
       }
