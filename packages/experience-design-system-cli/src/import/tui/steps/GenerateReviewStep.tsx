@@ -662,6 +662,21 @@ export function GenerateReviewStep({
     }));
   }, [selectableRowPositions, cursorRowIdx, sidebarScrollOffset, visibleRowsMemo.length, visibleCount]);
 
+  const reviewEditor = useReviewEditor({
+    components,
+    selectedIdx,
+    extractSessionId,
+    availableTokens,
+    setComponents,
+    pushHistorySnapshot,
+    onEditSaved: (entries) => {
+      recomputeCycles(entries);
+      livePreviewHook.trigger();
+      pushHistorySnapshot(entries, 'edit-save');
+    },
+    onTokenSaved: () => livePreviewHook.trigger(),
+  });
+
   const {
     panelOpen,
     setPanelOpen,
@@ -682,30 +697,13 @@ export function GenerateReviewStep({
     tokenReviewRow,
     setTokenReviewRow,
     tokenReviewEditing,
-    setTokenReviewEditing,
     tokenReviewEditCursor,
-    setTokenReviewEditCursor,
     tokenReviewEditSelection,
-    setTokenReviewEditSelection,
     pendingGRef,
     currentTokenSuggestions,
     handleEditSave,
     handleEditDiscard,
-    handleTokenEditSave,
-  } = useReviewEditor({
-    components,
-    selectedIdx,
-    extractSessionId,
-    availableTokens,
-    setComponents,
-    pushHistorySnapshot,
-    onEditSaved: (entries) => {
-      recomputeCycles(entries);
-      livePreviewHook.trigger();
-      pushHistorySnapshot(entries, 'edit-save');
-    },
-    onTokenSaved: () => livePreviewHook.trigger(),
-  });
+  } = reviewEditor;
 
   const { reviewMetadata, componentRationale } = useReviewMetadata({
     components,
@@ -1074,35 +1072,9 @@ export function GenerateReviewStep({
       return;
     }
 
-    if (
-      handleTokenReviewInput(input, key, {
-        panelOpen,
-        setPanelOpen,
-        tokenReviewRow,
-        setTokenReviewRow,
-        tokenReviewEditing,
-        setTokenReviewEditing,
-        tokenReviewEditCursor,
-        setTokenReviewEditCursor,
-        tokenReviewEditSelection,
-        setTokenReviewEditSelection,
-        currentTokenSuggestions,
-        handleTokenEditSave,
-      })
-    )
-      return;
+    if (handleTokenReviewInput(input, key, reviewEditor)) return;
 
-    if (
-      handleRationalePanelInput(input, key, {
-        panelOpen,
-        setPanelOpen,
-        panelScrollOffset,
-        setPanelScrollOffset,
-        propKey: 'p',
-        componentKey: 'P',
-      })
-    )
-      return;
+    if (handleRationalePanelInput(input, key, { ...reviewEditor, propKey: 'p', componentKey: 'P' })) return;
     const rationaleKeyOk = !textEntryActive && !showJson && !key.ctrl && !key.tab && !key.meta && !key.return;
     if (rationaleKeyOk) {
       if (input === 'p') {
@@ -1152,12 +1124,10 @@ export function GenerateReviewStep({
 
     if (
       handleJsonPanelInput(input, key, {
+        ...reviewEditor,
         sidebarFocused,
         showJson,
         jsonValue: getReviewJsonPanelValue(components[selectedIdx] ?? null, showHiddenProps),
-        jsonScrollOffset,
-        setJsonScrollOffset,
-        pendingGRef,
         height: PANEL_HEIGHT,
       })
     )

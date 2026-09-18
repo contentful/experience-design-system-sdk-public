@@ -164,6 +164,17 @@ export function AtomicGenerateReviewStep({
     host,
   });
 
+  const reviewEditor = useReviewEditor({
+    components,
+    selectedIdx,
+    extractSessionId,
+    availableTokens,
+    setComponents,
+    pushHistorySnapshot,
+    onEditSaved: () => livePreviewHook.trigger(),
+    onTokenSaved: () => livePreviewHook.trigger(),
+  });
+
   const {
     panelOpen,
     setPanelOpen,
@@ -184,26 +195,13 @@ export function AtomicGenerateReviewStep({
     tokenReviewRow,
     setTokenReviewRow,
     tokenReviewEditing,
-    setTokenReviewEditing,
     tokenReviewEditCursor,
-    setTokenReviewEditCursor,
     tokenReviewEditSelection,
-    setTokenReviewEditSelection,
     pendingGRef,
     currentTokenSuggestions,
     handleEditSave,
     handleEditDiscard,
-    handleTokenEditSave,
-  } = useReviewEditor({
-    components,
-    selectedIdx,
-    extractSessionId,
-    availableTokens,
-    setComponents,
-    pushHistorySnapshot,
-    onEditSaved: () => livePreviewHook.trigger(),
-    onTokenSaved: () => livePreviewHook.trigger(),
-  });
+  } = reviewEditor;
 
   const reloadFromSave = (): void => {
     const result = reloadSessionFromSave();
@@ -287,40 +285,14 @@ export function AtomicGenerateReviewStep({
       return;
     }
 
-    if (
-      handleTokenReviewInput(input, key, {
-        panelOpen,
-        setPanelOpen,
-        tokenReviewRow,
-        setTokenReviewRow,
-        tokenReviewEditing,
-        setTokenReviewEditing,
-        tokenReviewEditCursor,
-        setTokenReviewEditCursor,
-        tokenReviewEditSelection,
-        setTokenReviewEditSelection,
-        currentTokenSuggestions,
-        handleTokenEditSave,
-      })
-    )
-      return;
+    if (handleTokenReviewInput(input, key, reviewEditor)) return;
 
     // Lifted rationale + source panels: i/I/s fire from anywhere (sidebar OR
     // panel focus). Gated against text-entry surfaces inside FieldEditor
     // (description editors, string-default editor, value-list text entry)
     // via the `onTextEntryActiveChange` callback, plus the help/finalize/quit
     // overlays and the JSON view.
-    if (
-      handleRationalePanelInput(input, key, {
-        panelOpen,
-        setPanelOpen,
-        panelScrollOffset,
-        setPanelScrollOffset,
-        propKey: 'i',
-        componentKey: 'I',
-      })
-    )
-      return;
+    if (handleRationalePanelInput(input, key, { ...reviewEditor, propKey: 'i', componentKey: 'I' })) return;
     const rationaleKeyOk = !textEntryActive && !showJson && !key.ctrl && !key.tab && !key.meta && !key.return;
     if (rationaleKeyOk) {
       if (input === 'i') {
@@ -363,12 +335,10 @@ export function AtomicGenerateReviewStep({
     const current = components[selectedIdx];
     if (
       handleJsonPanelInput(input, key, {
+        ...reviewEditor,
         sidebarFocused,
         showJson,
         jsonValue: getReviewJsonPanelValue(current ?? null, showHiddenProps),
-        jsonScrollOffset,
-        setJsonScrollOffset,
-        pendingGRef,
         height: PANEL_HEIGHT,
       })
     )
