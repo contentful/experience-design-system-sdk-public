@@ -31,6 +31,7 @@ import {
   type ReviewSessionLoadResult,
 } from '../hooks/useReviewSession.js';
 import { useReviewEditor } from '../hooks/useReviewEditor.js';
+import { useReviewSurfaceState } from '../hooks/useReviewSurfaceState.js';
 import { useReviewPreview } from '../hooks/useReviewPreview.js';
 
 type GenerateReviewStepProps = {
@@ -123,12 +124,18 @@ export function AtomicGenerateReviewStep({
 
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [sidebarScrollOffset, setSidebarScrollOffset] = useState(0);
-  const [sidebarFocused, setSidebarFocused] = useState(true);
-  const [showFinalize, setShowFinalize] = useState(false);
-  const [showQuit, setShowQuit] = useState(false);
+  const {
+    sidebarFocused,
+    setSidebarFocused,
+    showFinalize,
+    setShowFinalize,
+    showQuit,
+    setShowQuit,
+    finalizeError,
+    setFinalizeError,
+  } = useReviewSurfaceState(initialFinalizeError);
   // INTEG-4411: inline banner shown when the operator tries to finalize
   // with zero accepted components. Cleared on the next 'a' or 'A' press.
-  const [finalizeError, setFinalizeError] = useState<string | null>(initialFinalizeError);
   // Feature 1: per-component review metadata (rationale + source location)
   // for the currently-selected component. Reloaded when selection changes.
   // Pilot-2026-06-24: raw removed list for the `d` detail panel. The

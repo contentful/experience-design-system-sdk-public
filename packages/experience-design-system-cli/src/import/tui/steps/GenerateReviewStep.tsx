@@ -78,6 +78,7 @@ import {
   type ReviewSessionLoadResult,
 } from '../hooks/useReviewSession.js';
 import { useReviewEditor } from '../hooks/useReviewEditor.js';
+import { useReviewSurfaceState } from '../hooks/useReviewSurfaceState.js';
 import {
   handleJsonPanelInput,
   handleReviewPanelShortcuts,
@@ -360,10 +361,16 @@ export function GenerateReviewStep({
   });
   const cursorRowIdx = nav.cursorRowIdx;
   const sidebarScrollOffset = nav.sidebarScrollOffset;
-  const [sidebarFocused, setSidebarFocused] = useState(true);
-  const [showFinalize, setShowFinalize] = useState(false);
-  const [showQuit, setShowQuit] = useState(false);
-  const [finalizeError, setFinalizeError] = useState<string | null>(initialFinalizeError);
+  const {
+    sidebarFocused,
+    setSidebarFocused,
+    showFinalize,
+    setShowFinalize,
+    showQuit,
+    setShowQuit,
+    finalizeError,
+    setFinalizeError,
+  } = useReviewSurfaceState(initialFinalizeError);
   const [removedBannerCollapsed, setRemovedBannerCollapsed] = useState(false);
   const removedBannerDefaultedRef = useRef(false);
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
