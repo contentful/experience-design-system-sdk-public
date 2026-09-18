@@ -63,7 +63,7 @@ import { handleLineageNavigation } from '../lineage-input.js';
 import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
 import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
 import type { ReviewStepProps } from '../review-step-props.js';
-import { ReviewDetailsEditor } from '../components/ReviewDetailsEditor.js';
+import { ReviewComponentPanel } from '../components/ReviewComponentPanel.js';
 import { countReviewStatuses, ReviewLoadError, ReviewLoadingState } from '../components/ReviewStatus.js';
 import {
   createReviewHistorySnapshot,
@@ -1590,66 +1590,56 @@ export function GenerateReviewStep({
               graph={sidebarGraph}
             />
           )}
-          <Box flexGrow={1} paddingLeft={1} flexDirection="column">
-            {selected ? (
-              <>
-                <Box>
-                  <Text bold>{selected.key}</Text>
-                  <Box flexGrow={1} />
-                  <Text dimColor>
-                    {propCount} prop{propCount !== 1 ? 's' : ''}
-                    {slotCount > 0 ? ` · ${slotCount} slot${slotCount !== 1 ? 's' : ''}` : ''}
-                    {'  '}
-                    {sidebarFocused ? '[Tab] focus panel' : '[Tab] focus list'}
-                  </Text>
-                </Box>
-                <ReviewDetailsEditor
-                  selectedKey={selected.key}
-                  componentRationale={componentRationale}
-                  reviewMetadata={reviewMetadata}
-                  reviewEditor={reviewEditor}
-                  width={panelWidth}
-                  height={PANEL_HEIGHT}
-                  jsonValue={visibleJsonPanelValue}
-                  sidebarFocused={sidebarFocused}
-                  fieldEditor={{
-                    key:
-                      pendingEditorFocus && pendingEditorFocus.componentName === selected.key
-                        ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
-                        : selected.key,
-                    value: draftValue || selectedJson,
-                    showHiddenProps,
-                    onChange: setDraftValue,
-                    onSave: handleEditSave,
-                    onDiscard: handleEditDiscard,
-                    onExit: () => setSidebarFocused(true),
-                    onTogglePropRationale: () => {
-                      setPanelOpen('prop-rationale');
-                      setPanelScrollOffset(() => 0);
-                    },
-                    propRationaleKey: 'p',
-                    componentRationaleKey: 'P',
-                    onToggleComponentRationale: () => {
-                      setPanelOpen('component-rationale');
-                      setPanelScrollOffset(() => 0);
-                    },
-                    onToggleSourceExternal: () => {
-                      setPanelOpen('source');
-                      setPanelScrollOffset(() => 0);
-                    },
-                    onTextEntryActiveChange: setTextEntryActive,
-                    projectSlotGraph,
-                    currentComponentName: selected.key,
-                    onDirtyChange: setEditorDirty,
-                    discardTrigger,
-                    initialFocusTarget:
-                      pendingEditorFocus && pendingEditorFocus.componentName === selected.key
-                        ? pendingEditorFocus.target
-                        : { kind: 'description' },
-                  }}
-                />
-                {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
-                <Text dimColor>
+          {selected ? (
+            <ReviewComponentPanel
+              selectedKey={selected.key}
+              propCount={propCount}
+              slotCount={slotCount}
+              componentRationale={componentRationale}
+              reviewMetadata={reviewMetadata}
+              reviewEditor={reviewEditor}
+              width={panelWidth}
+              height={PANEL_HEIGHT}
+              jsonValue={visibleJsonPanelValue}
+              sidebarFocused={sidebarFocused}
+              fieldEditor={{
+                key:
+                  pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                    ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
+                    : selected.key,
+                value: draftValue || selectedJson,
+                showHiddenProps,
+                onChange: setDraftValue,
+                onSave: handleEditSave,
+                onDiscard: handleEditDiscard,
+                onExit: () => setSidebarFocused(true),
+                onTogglePropRationale: () => {
+                  setPanelOpen('prop-rationale');
+                  setPanelScrollOffset(() => 0);
+                },
+                propRationaleKey: 'p',
+                componentRationaleKey: 'P',
+                onToggleComponentRationale: () => {
+                  setPanelOpen('component-rationale');
+                  setPanelScrollOffset(() => 0);
+                },
+                onToggleSourceExternal: () => {
+                  setPanelOpen('source');
+                  setPanelScrollOffset(() => 0);
+                },
+                onTextEntryActiveChange: setTextEntryActive,
+                projectSlotGraph,
+                currentComponentName: selected.key,
+                onDirtyChange: setEditorDirty,
+                discardTrigger,
+                initialFocusTarget:
+                  pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                    ? pendingEditorFocus.target
+                    : { kind: 'description' },
+              }}
+              saveError={saveError}
+              footer={
+                <>
                   {panelOpen === 'token-review'
                     ? '  [↑/↓] move  [Enter] edit allowed  [Esc] close'
                     : sidebarFocused
@@ -1662,12 +1652,14 @@ export function GenerateReviewStep({
                           (currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
                   {livePreviewHook.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
                   {livePreviewHook.disabled && <Text>{'  · live preview disabled'}</Text>}
-                </Text>
-              </>
-            ) : (
+                </>
+              }
+            />
+          ) : (
+            <Box flexGrow={1} paddingLeft={1} flexDirection="column">
               <Text dimColor>No component selected</Text>
-            )}
-          </Box>
+            </Box>
+          )}
         </Box>
       )}
       {breakPanel.isOpen && !breakOverlayFullScreen && !dialogOpen && renderBreakOverlay()}

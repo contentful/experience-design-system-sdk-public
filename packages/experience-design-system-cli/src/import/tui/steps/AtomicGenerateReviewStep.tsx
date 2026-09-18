@@ -9,7 +9,7 @@ import type { HistorySnapshot } from '../history.js';
 import { useReviewFinalizePreview } from '../useFinalizePreview.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
-import { ReviewDetailsEditor } from '../components/ReviewDetailsEditor.js';
+import { ReviewComponentPanel } from '../components/ReviewComponentPanel.js';
 import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
 import { countReviewStatuses, ReviewLoadError, ReviewLoadingState } from '../components/ReviewStatus.js';
 import {
@@ -477,54 +477,44 @@ export function AtomicGenerateReviewStep({
             onScrollChange={setSidebarScrollOffset}
             width={sidebarWidth}
           />
-          <Box flexGrow={1} paddingLeft={1} flexDirection="column">
-            {selected ? (
-              <>
-                <Box>
-                  <Text bold>{selected.key}</Text>
-                  <Box flexGrow={1} />
-                  <Text dimColor>
-                    {propCount} prop{propCount !== 1 ? 's' : ''}
-                    {slotCount > 0 ? ` · ${slotCount} slot${slotCount !== 1 ? 's' : ''}` : ''}
-                    {'  '}
-                    {sidebarFocused ? '[e/Tab] focus panel' : '[Tab] focus list'}
-                  </Text>
-                </Box>
-                <ReviewDetailsEditor
-                  selectedKey={selected.key}
-                  componentRationale={componentRationale}
-                  reviewMetadata={reviewMetadata}
-                  reviewEditor={reviewEditor}
-                  width={panelWidth}
-                  height={PANEL_HEIGHT}
-                  sourceBorderColor={PALETTE.border}
-                  jsonValue={visibleJsonPanelValue}
-                  sidebarFocused={sidebarFocused}
-                  fieldEditor={{
-                    value: draftValue || selectedJson,
-                    showHiddenProps,
-                    onChange: setDraftValue,
-                    onSave: handleEditSave,
-                    onDiscard: handleEditDiscard,
-                    onExit: () => setSidebarFocused(true),
-                    onTogglePropRationale: () => {
-                      setPanelOpen('prop-rationale');
-                      setPanelScrollOffset(() => 0);
-                    },
-                    onToggleComponentRationale: () => {
-                      setPanelOpen('component-rationale');
-                      setPanelScrollOffset(() => 0);
-                    },
-                    onToggleSourceExternal: () => {
-                      setPanelOpen('source');
-                      setPanelScrollOffset(() => 0);
-                    },
-                    onTextEntryActiveChange: setTextEntryActive,
-                    initialFocusTarget: { kind: 'description' },
-                  }}
-                />
-                {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
-                <Text dimColor>
+          {selected ? (
+            <ReviewComponentPanel
+              selectedKey={selected.key}
+              propCount={propCount}
+              slotCount={slotCount}
+              componentRationale={componentRationale}
+              reviewMetadata={reviewMetadata}
+              reviewEditor={reviewEditor}
+              width={panelWidth}
+              height={PANEL_HEIGHT}
+              sourceBorderColor={PALETTE.border}
+              jsonValue={visibleJsonPanelValue}
+              sidebarFocused={sidebarFocused}
+              fieldEditor={{
+                value: draftValue || selectedJson,
+                showHiddenProps,
+                onChange: setDraftValue,
+                onSave: handleEditSave,
+                onDiscard: handleEditDiscard,
+                onExit: () => setSidebarFocused(true),
+                onTogglePropRationale: () => {
+                  setPanelOpen('prop-rationale');
+                  setPanelScrollOffset(() => 0);
+                },
+                onToggleComponentRationale: () => {
+                  setPanelOpen('component-rationale');
+                  setPanelScrollOffset(() => 0);
+                },
+                onToggleSourceExternal: () => {
+                  setPanelOpen('source');
+                  setPanelScrollOffset(() => 0);
+                },
+                onTextEntryActiveChange: setTextEntryActive,
+                initialFocusTarget: { kind: 'description' },
+              }}
+              saveError={saveError}
+              footer={
+                <>
                   {panelOpen === 'token-review'
                     ? '  [↑/↓] move  [Enter] edit allowed  [Esc] close'
                     : sidebarFocused
@@ -542,12 +532,14 @@ export function AtomicGenerateReviewStep({
                           (currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
                   {livePreviewHook.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
                   {livePreviewHook.disabled && <Text>{'  · live preview disabled'}</Text>}
-                </Text>
-              </>
-            ) : (
+                </>
+              }
+            />
+          ) : (
+            <Box flexGrow={1} paddingLeft={1} flexDirection="column">
               <Text dimColor>No component selected</Text>
-            )}
-          </Box>
+            </Box>
+          )}
         </Box>
       )}
       {!dialogOpen && (
