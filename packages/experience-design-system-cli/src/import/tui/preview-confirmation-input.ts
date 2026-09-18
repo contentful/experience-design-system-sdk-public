@@ -13,7 +13,7 @@ type PreviewConfirmationInputOptions = {
   onToggleAllowDeletions: () => void;
 };
 
-export function handlePreviewConfirmationInput(
+function handlePreviewConfirmationInput(
   input: string,
   key: PreviewConfirmationKey,
   options: PreviewConfirmationInputOptions,

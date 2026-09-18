@@ -87,7 +87,7 @@ type TokenReviewInputState = Pick<
   | 'handleTokenEditSave'
 >;
 
-export function handleTokenReviewInput(input: string, key: ImmediateInputKey, state: TokenReviewInputState): boolean {
+function handleTokenReviewInput(input: string, key: ImmediateInputKey, state: TokenReviewInputState): boolean {
   if (state.panelOpen !== 'token-review') return false;
 
   const suggestions = state.currentTokenSuggestions();
@@ -171,7 +171,7 @@ function rationalePanelForInput(input: string, propKey: string, componentKey: st
   return null;
 }
 
-export function handleRationalePanelInput(
+function handleRationalePanelInput(
   input: string,
   key: ImmediateInputKey,
   state: RationalePanelInputState,

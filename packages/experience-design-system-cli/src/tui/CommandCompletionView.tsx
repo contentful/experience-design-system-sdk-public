@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 
-export type CompletionRow = {
+type CompletionRow = {
   label: string;
   value: React.ReactNode;
 };
