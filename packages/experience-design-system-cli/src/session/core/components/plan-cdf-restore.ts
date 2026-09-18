@@ -19,11 +19,17 @@ export interface AllowedValueSnapshotEntry {
   value: string;
 }
 
+export interface RestoredAllowedValues {
+  componentId: string;
+  propName: string;
+  values: AllowedValueSnapshotEntry[];
+}
+
 export interface CdfRestorePlan {
   byName: CdfSnapshotEntry[];
   byPosition: CdfSnapshotEntry[];
   descriptions: DescriptionSnapshotEntry[];
-  allowedValuesByPropKey: Map<string, AllowedValueSnapshotEntry[]>;
+  allowedValues: RestoredAllowedValues[];
 }
 
 export interface CurrentPropsQuery {
@@ -31,6 +37,15 @@ export interface CurrentPropsQuery {
   propNameAtPosition: (componentId: string, position: number) => string | null;
 }
 
+// Decide which CDF snapshot entries to reapply after the raw table has been
+// wiped and repopulated by an extraction re-run. A snapshot entry matches by
+// name when the same-named prop still exists on the same component; otherwise
+// by position when a prop exists at the same position (a rename). Entries
+// that match neither are dropped.
+//
+// Allowed values are only restored for props matched by name — the original
+// code preserved this behavior, and it avoids reapplying value lists to a
+// prop whose meaning may have changed under the rename.
 export function planCdfRestore(
   cdfSnapshot: CdfSnapshotEntry[],
   descSnapshot: DescriptionSnapshotEntry[],
@@ -39,34 +54,36 @@ export function planCdfRestore(
 ): CdfRestorePlan {
   const byName: CdfSnapshotEntry[] = [];
   const byPosition: CdfSnapshotEntry[] = [];
-  const restoredPropKeys = new Set<string>();
+  const nameMatchedKeys = new Set<string>();
 
   for (const snap of cdfSnapshot) {
     if (currentProps.hasPropNamed(snap.component_id, snap.name)) {
       byName.push(snap);
-      restoredPropKeys.add(`${snap.component_id}::${snap.name}`);
+      nameMatchedKeys.add(propKey(snap.component_id, snap.name));
       continue;
     }
-    const currentName = currentProps.propNameAtPosition(snap.component_id, snap.position);
-    if (currentName !== null) {
+    if (currentProps.propNameAtPosition(snap.component_id, snap.position) !== null) {
       byPosition.push(snap);
-      restoredPropKeys.add(`${snap.component_id}::${currentName}`);
     }
   }
 
-  const relevantAv = avSnapshot.filter((av) => restoredPropKeys.has(`${av.component_id}::${av.prop_name}`));
-  const allowedValuesByPropKey = new Map<string, AllowedValueSnapshotEntry[]>();
-  for (const av of relevantAv) {
-    const key = `${av.component_id}::${av.prop_name}`;
-    const arr = allowedValuesByPropKey.get(key) ?? [];
-    if (arr.length === 0) allowedValuesByPropKey.set(key, arr);
-    arr.push(av);
+  const buckets = new Map<string, RestoredAllowedValues>();
+  for (const av of avSnapshot) {
+    const key = propKey(av.component_id, av.prop_name);
+    if (!nameMatchedKeys.has(key)) continue;
+    const bucket = buckets.get(key) ?? { componentId: av.component_id, propName: av.prop_name, values: [] };
+    bucket.values.push(av);
+    buckets.set(key, bucket);
   }
 
   return {
     byName,
     byPosition,
     descriptions: descSnapshot,
-    allowedValuesByPropKey,
+    allowedValues: [...buckets.values()],
   };
+}
+
+function propKey(componentId: string, propName: string): string {
+  return `${componentId}::${propName}`;
 }

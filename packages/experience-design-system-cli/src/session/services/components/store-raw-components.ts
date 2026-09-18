@@ -10,23 +10,19 @@ import {
 } from '../../repositories/components/raw/read.js';
 import {
   createRawComponent,
-  createRawPropAllowedValue,
   createRawProps,
   createRawSlots,
   deleteRawComponentsForSession,
-  deleteRawPropAllowedValuesForProp,
-  updateRawComponentDescription,
   updateRawComponentsStatus,
-  updateRawPropCdfByName,
-  updateRawPropCdfByPosition,
 } from '../../repositories/components/raw/write.js';
 import { planCdfRestore } from '../../core/components/plan-cdf-restore.js';
+import { applyCdfRestore } from './apply-cdf-restore.js';
 
 // Snapshot → mutate → restore, all inside one transaction. planCdfRestore
-// runs AFTER the mutation and queries the just-inserted rows via
-// hasPropByName / getRawPropNameAtPosition. This only works because SQLite
-// reads on the same connection see the pending writes of the enclosing
-// transaction — do not split this flow across transactions or connections.
+// runs AFTER the mutation and queries the just-inserted rows. This only works
+// because SQLite reads on the same connection see the pending writes of the
+// enclosing transaction — do not split this flow across transactions or
+// connections.
 export function storeRawComponents(
   db: DatabaseSync,
   sessionId: string,
@@ -49,51 +45,13 @@ export function storeRawComponents(
     }
 
     if (options?.preserveCDF && cdfSnapshot.length > 0) {
-      const currentPropNameCache = new Map<string, string | null>();
       const plan = planCdfRestore(cdfSnapshot, descSnapshot, avSnapshot, {
         hasPropNamed: (componentId, propName) => hasPropByName(db, sessionId, componentId, propName),
-        propNameAtPosition: (componentId, position) => {
-          const key = `${componentId}::${position}`;
-          if (currentPropNameCache.has(key)) return currentPropNameCache.get(key)!;
-          const name = getRawPropNameAtPosition(db, sessionId, componentId, position);
-          currentPropNameCache.set(key, name);
-          return name;
-        },
+        propNameAtPosition: memoize((componentId, position) =>
+          getRawPropNameAtPosition(db, sessionId, componentId, position),
+        ),
       });
-
-      for (const snap of plan.byName) {
-        updateRawPropCdfByName(
-          db,
-          sessionId,
-          snap.component_id,
-          snap.name,
-          snap.cdf_type,
-          snap.cdf_category,
-          snap.cdf_token_kind,
-        );
-      }
-      for (const snap of plan.byPosition) {
-        updateRawPropCdfByPosition(
-          db,
-          sessionId,
-          snap.component_id,
-          snap.position,
-          snap.cdf_type,
-          snap.cdf_category,
-          snap.cdf_token_kind,
-        );
-      }
-      for (const snap of plan.descriptions) {
-        updateRawComponentDescription(db, sessionId, snap.component_id, snap.description);
-      }
-      for (const [key, avs] of plan.allowedValuesByPropKey) {
-        const [componentId, propName] = key.split('::');
-        if (!componentId || !propName) continue;
-        deleteRawPropAllowedValuesForProp(db, sessionId, componentId, propName);
-        for (const av of avs) {
-          createRawPropAllowedValue(db, sessionId, componentId, propName, av.position, av.value);
-        }
-      }
+      applyCdfRestore(db, sessionId, plan);
     }
 
     if (options?.status) {
@@ -108,4 +66,17 @@ function hasPropByName(db: DatabaseSync, sessionId: string, componentId: string,
     .prepare('SELECT 1 as one FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?')
     .get(sessionId, componentId, propName);
   return row !== undefined;
+}
+
+function memoize(
+  lookup: (componentId: string, position: number) => string | null,
+): (componentId: string, position: number) => string | null {
+  const cache = new Map<string, string | null>();
+  return (componentId, position) => {
+    const key = `${componentId}::${position}`;
+    if (cache.has(key)) return cache.get(key)!;
+    const value = lookup(componentId, position);
+    cache.set(key, value);
+    return value;
+  };
 }
