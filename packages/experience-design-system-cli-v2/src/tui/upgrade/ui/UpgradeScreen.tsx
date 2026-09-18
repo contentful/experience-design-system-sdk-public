@@ -49,7 +49,7 @@ function Spinner(): React.ReactElement {
   return <Text color="cyan">{SPINNER_FRAMES[frame]}</Text>;
 }
 
-type Phase = 'checking' | 'up-to-date' | 'upgrading' | 'done' | 'error';
+type Phase = 'checking' | 'up-to-date' | 'source-checkout' | 'upgrading' | 'done' | 'error';
 
 export function UpgradeExecutionScreen({ onDone }: { onDone: () => void }): React.ReactElement {
   const { exit } = useApp();
@@ -77,6 +77,11 @@ export function UpgradeExecutionScreen({ onDone }: { onDone: () => void }): Reac
 
       if (result.status === 'up-to-date') {
         setPhase('up-to-date');
+        return;
+      }
+
+      if (result.status === 'source-checkout') {
+        setPhase('source-checkout');
         return;
       }
 
@@ -151,6 +156,15 @@ export function UpgradeExecutionScreen({ onDone }: { onDone: () => void }): Reac
     return (
       <Box flexDirection="column" gap={1}>
         <Text>You're already on the latest version (v{current}).</Text>
+        <Text dimColor>[Enter/B] Back to Start [Q] Quit</Text>
+      </Box>
+    );
+  }
+
+  if (phase === 'source-checkout') {
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Text>Running from a source checkout (v{current}) — use `git pull` to update instead.</Text>
         <Text dimColor>[Enter/B] Back to Start [Q] Quit</Text>
       </Box>
     );

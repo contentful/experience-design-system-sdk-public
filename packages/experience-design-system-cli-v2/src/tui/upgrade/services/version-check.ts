@@ -1,11 +1,12 @@
 import semver from 'semver';
-import { readPackageVersion } from '../../version.js';
+import { readPackageVersion, isSourceCheckout } from '../../version.js';
 
 const TAGS_URL = 'https://api.github.com/repos/contentful/experience-design-system-sdk-public/tags?per_page=10';
 
 export type UpgradeCheckResult =
   | { status: 'update-available'; current: string; latest: string }
   | { status: 'up-to-date'; current: string }
+  | { status: 'source-checkout'; current: string }
   | { status: 'error' };
 
 export function getCurrentVersion(): string {
@@ -14,6 +15,10 @@ export function getCurrentVersion(): string {
 
 export async function checkForUpgrade(): Promise<UpgradeCheckResult> {
   const current = getCurrentVersion();
+
+  if (isSourceCheckout()) {
+    return { status: 'source-checkout', current };
+  }
 
   try {
     const response = await fetch(TAGS_URL, {
