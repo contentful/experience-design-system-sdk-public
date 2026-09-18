@@ -18,7 +18,6 @@ import { computeAllClosures, type ComponentGraphNode, type NodeStatus } from '..
 import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { computeCycleView, type CycleView } from '../../../analyze/cycle-view.js';
 import { computeRenderStatuses, pickDrillTarget, type RenderStatus } from '../../../analyze/issue-inheritance.js';
-import { FieldEditor } from '../../../analyze/select/tui/components/FieldEditor.js';
 import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
 import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
 import {
@@ -36,7 +35,6 @@ import {
 } from '../../../session/db.js';
 import { formatCyclePathSegments, findSlotCycles, suggestCycleBreakEdge } from '../../../analyze/cycle-detection.js';
 import { followCycleScroll } from '../cycle-panel-scroll.js';
-import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
 import type { ReviewComponentStatus } from '../../../analyze/select/types.js';
 import { useFinalizePreview } from '../useFinalizePreview.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
@@ -67,7 +65,7 @@ import { handleLineageNavigation } from '../lineage-input.js';
 import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
 import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
 import type { ReviewStepProps } from '../review-step-props.js';
-import { ReviewDetailsPanel } from './review-details-panel.js';
+import { ReviewDetailsEditor } from '../components/ReviewDetailsEditor.js';
 import {
   createReviewHistorySnapshot,
   finalizeReviewSession,
@@ -1721,7 +1719,7 @@ export function GenerateReviewStep({
                     {sidebarFocused ? '[Tab] focus panel' : '[Tab] focus list'}
                   </Text>
                 </Box>
-                <ReviewDetailsPanel
+                <ReviewDetailsEditor
                   selectedKey={selected.key}
                   panelOpen={panelOpen}
                   componentRationale={componentRationale}
@@ -1738,57 +1736,41 @@ export function GenerateReviewStep({
                   jsonValue={visibleJsonPanelValue}
                   jsonScrollOffset={jsonScrollOffset}
                   sidebarFocused={sidebarFocused}
-                  editor={
-                    <FieldEditor
-                      key={
-                        pendingEditorFocus && pendingEditorFocus.componentName === selected.key
-                          ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
-                          : selected.key
-                      }
-                      value={draftValue || selectedJson}
-                      showHiddenProps={showHiddenProps}
-                      width={panelWidth}
-                      height={PANEL_HEIGHT}
-                      active={!sidebarFocused}
-                      onChange={setDraftValue}
-                      onSave={handleEditSave}
-                      onDiscard={handleEditDiscard}
-                      onExit={() => setSidebarFocused(true)}
-                      metadata={
-                        reviewMetadata
-                          ? ({
-                              sourcePath: reviewMetadata.sourcePath,
-                              componentSource: reviewMetadata.componentSource,
-                              props: reviewMetadata.props,
-                            } as FieldEditorMetadata)
-                          : undefined
-                      }
-                      onTogglePropRationale={() => {
-                        setPanelOpen('prop-rationale');
-                        setPanelScrollOffset(() => 0);
-                      }}
-                      propRationaleKey="p"
-                      componentRationaleKey="P"
-                      onToggleComponentRationale={() => {
-                        setPanelOpen('component-rationale');
-                        setPanelScrollOffset(() => 0);
-                      }}
-                      onToggleSourceExternal={() => {
-                        setPanelOpen('source');
-                        setPanelScrollOffset(() => 0);
-                      }}
-                      onTextEntryActiveChange={setTextEntryActive}
-                      projectSlotGraph={projectSlotGraph}
-                      currentComponentName={selected.key}
-                      onDirtyChange={setEditorDirty}
-                      discardTrigger={discardTrigger}
-                      initialFocusTarget={
-                        pendingEditorFocus && pendingEditorFocus.componentName === selected.key
-                          ? pendingEditorFocus.target
-                          : { kind: 'description' }
-                      }
-                    />
-                  }
+                  fieldEditor={{
+                    key:
+                      pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                        ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
+                        : selected.key,
+                    value: draftValue || selectedJson,
+                    showHiddenProps,
+                    onChange: setDraftValue,
+                    onSave: handleEditSave,
+                    onDiscard: handleEditDiscard,
+                    onExit: () => setSidebarFocused(true),
+                    onTogglePropRationale: () => {
+                      setPanelOpen('prop-rationale');
+                      setPanelScrollOffset(() => 0);
+                    },
+                    propRationaleKey: 'p',
+                    componentRationaleKey: 'P',
+                    onToggleComponentRationale: () => {
+                      setPanelOpen('component-rationale');
+                      setPanelScrollOffset(() => 0);
+                    },
+                    onToggleSourceExternal: () => {
+                      setPanelOpen('source');
+                      setPanelScrollOffset(() => 0);
+                    },
+                    onTextEntryActiveChange: setTextEntryActive,
+                    projectSlotGraph,
+                    currentComponentName: selected.key,
+                    onDirtyChange: setEditorDirty,
+                    discardTrigger,
+                    initialFocusTarget:
+                      pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                        ? pendingEditorFocus.target
+                        : { kind: 'description' },
+                  }}
                 />
                 {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
                 <Text dimColor>

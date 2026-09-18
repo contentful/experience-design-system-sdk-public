@@ -8,7 +8,7 @@ import type { ComponentRationale, ComponentReviewMetadata } from '../../../sessi
 
 type ReviewPanel = 'none' | 'prop-rationale' | 'component-rationale' | 'source' | 'token-review';
 
-type ReviewDetailsPanelProps = {
+export type ReviewDetailsPanelProps = {
   selectedKey: string;
   panelOpen: ReviewPanel;
   componentRationale: ComponentRationale | null;

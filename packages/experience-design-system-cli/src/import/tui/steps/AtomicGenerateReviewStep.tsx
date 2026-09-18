@@ -2,18 +2,16 @@ import React, { useCallback, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { Sidebar } from '../../../analyze/select/tui/components/Sidebar.js';
-import { FieldEditor } from '../../../analyze/select/tui/components/FieldEditor.js';
 import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
 import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
 import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
-import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
 import type { ReviewComponentStatus, ReviewComponentSummary } from '../../../analyze/select/types.js';
 import type { HistorySnapshot } from '../history.js';
 import { useFinalizePreview } from '../useFinalizePreview.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
-import { ReviewDetailsPanel } from './review-details-panel.js';
+import { ReviewDetailsEditor } from '../components/ReviewDetailsEditor.js';
 import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
 import { handleJsonPanelInput, handleRationalePanelInput, handleTokenReviewInput } from '../hooks/review-input.js';
 import {
@@ -614,7 +612,7 @@ export function AtomicGenerateReviewStep({
                     {sidebarFocused ? '[e/Tab] focus panel' : '[Tab] focus list'}
                   </Text>
                 </Box>
-                <ReviewDetailsPanel
+                <ReviewDetailsEditor
                   selectedKey={selected.key}
                   panelOpen={panelOpen}
                   componentRationale={componentRationale}
@@ -632,43 +630,28 @@ export function AtomicGenerateReviewStep({
                   jsonValue={visibleJsonPanelValue}
                   jsonScrollOffset={jsonScrollOffset}
                   sidebarFocused={sidebarFocused}
-                  editor={
-                    <FieldEditor
-                      key={selected.key}
-                      value={draftValue || selectedJson}
-                      showHiddenProps={showHiddenProps}
-                      width={panelWidth}
-                      height={PANEL_HEIGHT}
-                      active={!sidebarFocused}
-                      onChange={setDraftValue}
-                      onSave={handleEditSave}
-                      onDiscard={handleEditDiscard}
-                      onExit={() => setSidebarFocused(true)}
-                      metadata={
-                        reviewMetadata
-                          ? ({
-                              sourcePath: reviewMetadata.sourcePath,
-                              componentSource: reviewMetadata.componentSource,
-                              props: reviewMetadata.props,
-                            } as FieldEditorMetadata)
-                          : undefined
-                      }
-                      onTogglePropRationale={() => {
-                        setPanelOpen('prop-rationale');
-                        setPanelScrollOffset(() => 0);
-                      }}
-                      onToggleComponentRationale={() => {
-                        setPanelOpen('component-rationale');
-                        setPanelScrollOffset(() => 0);
-                      }}
-                      onToggleSourceExternal={() => {
-                        setPanelOpen('source');
-                        setPanelScrollOffset(() => 0);
-                      }}
-                      onTextEntryActiveChange={setTextEntryActive}
-                      initialFocusTarget={{ kind: 'description' }}
-                    />
-                  }
+                  fieldEditor={{
+                    value: draftValue || selectedJson,
+                    showHiddenProps,
+                    onChange: setDraftValue,
+                    onSave: handleEditSave,
+                    onDiscard: handleEditDiscard,
+                    onExit: () => setSidebarFocused(true),
+                    onTogglePropRationale: () => {
+                      setPanelOpen('prop-rationale');
+                      setPanelScrollOffset(() => 0);
+                    },
+                    onToggleComponentRationale: () => {
+                      setPanelOpen('component-rationale');
+                      setPanelScrollOffset(() => 0);
+                    },
+                    onToggleSourceExternal: () => {
+                      setPanelOpen('source');
+                      setPanelScrollOffset(() => 0);
+                    },
+                    onTextEntryActiveChange: setTextEntryActive,
+                    initialFocusTarget: { kind: 'description' },
+                  }}
                 />
                 {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
                 <Text dimColor>

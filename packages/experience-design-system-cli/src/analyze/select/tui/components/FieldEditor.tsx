@@ -30,7 +30,7 @@ export type FieldEditorMetadata = {
   props?: Record<string, PropMetadata>;
 };
 
-type FieldEditorProps = {
+export type FieldEditorProps = {
   value: string;
   width: number;
   height: number;
