@@ -3,10 +3,10 @@ import type { RawComponentDefinition } from '../../../types.js';
 import { withTransaction } from '../../repositories/shared/with-transaction.js';
 import { updateSessionTimestamp } from '../../repositories/sessions/write.js';
 import {
-  getAllowedValueSnapshot,
-  getCdfSnapshot,
-  getComponentDescriptionSnapshot,
-  getPropNameAtPosition,
+  getRawPropAllowedValues,
+  getClassifiedProps,
+  getComponentDescriptions,
+  getRawPropNameAtPosition,
 } from '../../repositories/components/raw/read.js';
 import {
   createRawComponent,
@@ -31,9 +31,9 @@ export function storeRawComponents(
   const now = new Date().toISOString();
 
   withTransaction(db, () => {
-    const cdfSnapshot = options?.preserveCDF ? getCdfSnapshot(db, sessionId) : [];
-    const descSnapshot = options?.preserveCDF ? getComponentDescriptionSnapshot(db, sessionId) : [];
-    const avSnapshot = options?.preserveCDF && cdfSnapshot.length > 0 ? getAllowedValueSnapshot(db, sessionId) : [];
+    const cdfSnapshot = options?.preserveCDF ? getClassifiedProps(db, sessionId) : [];
+    const descSnapshot = options?.preserveCDF ? getComponentDescriptions(db, sessionId) : [];
+    const avSnapshot = options?.preserveCDF && cdfSnapshot.length > 0 ? getRawPropAllowedValues(db, sessionId) : [];
 
     deleteRawComponentsForSession(db, sessionId);
 
@@ -50,7 +50,7 @@ export function storeRawComponents(
         propNameAtPosition: (componentId, position) => {
           const key = `${componentId}::${position}`;
           if (currentPropNameCache.has(key)) return currentPropNameCache.get(key)!;
-          const name = getPropNameAtPosition(db, sessionId, componentId, position);
+          const name = getRawPropNameAtPosition(db, sessionId, componentId, position);
           currentPropNameCache.set(key, name);
           return name;
         },
