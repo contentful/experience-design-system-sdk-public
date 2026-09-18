@@ -137,6 +137,7 @@ jobs:
       contents: write
       id-token: write
       actions: read
+      pull-requests: write # PR preview comment (see "Post preview comment" below)
     concurrency:
       group: release-${{ github.ref }}
       cancel-in-progress: false
@@ -202,6 +203,63 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.vault.outputs.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ steps.vault.outputs.GITHUB_PACKAGES_WRITE_TOKEN }}
+
+      # Point reviewers at the SHA-stamped prerelease the step above just
+      # published, so testing a PR is one paste instead of a checkout + build.
+      # `--edit-last --create-if-none` keeps this to a single comment that is
+      # rewritten on every push, so a stale version is never left on screen.
+      # preview_version is empty when the CLI was not in the affected set or
+      # its publish failed, so nothing is advertised that cannot be installed.
+      - name: Post preview comment
+        if: github.event_name == 'pull_request' && steps.release.outputs.preview_version != ''
+        env:
+          GH_TOKEN: ${{ steps.vault.outputs.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          VERSION: ${{ steps.release.outputs.preview_version }}
+        run: |
+          # The SHA comes out of the version string, not from
+          # github.event.pull_request.head.sha. On a pull_request event the
+          # checkout is GitHub's ephemeral merge commit, and release.js stamps
+          # the version from that HEAD -- so the head SHA would name a
+          # different commit than the build was made from and read as stale.
+          SHORT_SHA="${VERSION##*-dev-build-}"
+          SHORT_SHA="${SHORT_SHA%%.*}"
+          BODY="$RUNNER_TEMP/preview-comment.md"
+          # Each markdown line is a single-quoted printf argument so backticks
+          # and $ are emitted literally; only VERSION and SHORT_SHA are
+          # interpolated, via %s. Written outside the checkout to keep the
+          # working tree clean for the steps that follow.
+          {
+            printf '%s\n' '<!-- exo-cli-preview -->'
+            printf '%s\n' '### 🧪 Test this PR'
+            printf '%s\n' ''
+            printf '%s\n' 'Run the CLI built from this branch — no checkout, no build:'
+            printf '%s\n' ''
+            printf '%s\n' '```sh'
+            printf 'npx @contentful/experience-design-system-cli@%s\n' "$VERSION"
+            printf '%s\n' '```'
+            printf '%s\n' ''
+            printf 'Built from `%s` (the PR merge commit) · updates on every push.\n' "$SHORT_SHA"
+            printf '%s\n' ''
+            printf '%s\n' '<details>'
+            printf '%s\n' '<summary>First time? One-time npm auth setup</summary>'
+            printf '%s\n' ''
+            printf '%s\n' 'Preview builds live in GitHub Packages, so `~/.npmrc` needs:'
+            printf '%s\n' ''
+            printf '%s\n' '```'
+            printf '%s\n' '@contentful:registry=https://npm.pkg.github.com'
+            printf '%s\n' '//npm.pkg.github.com/:_authToken=<your token>'
+            printf '%s\n' '```'
+            printf '%s\n' ''
+            printf '%s\n' 'A classic PAT with `read:packages` works; `gh auth token` also works if your'
+            printf '%s\n' 'gh login has that scope.'
+            printf '%s\n' '</details>'
+          } > "$BODY"
+
+          gh pr comment "$PR_NUMBER" \
+            --body-file "$BODY" \
+            --edit-last \
+            --create-if-none
 
       # nx (step above) publishes to GitHub Packages, then commits + tags the
       # new version on main. Detect that tag; if present, mirror the same
