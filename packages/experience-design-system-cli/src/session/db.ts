@@ -1,10 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
-import { escapeForRegExp, excerptAroundNames } from './source-excerpt.js';
 import type { RawComponentDefinition } from '../types.js';
 import type { ComponentSourceRef } from '@contentful/experience-design-system-generation';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
@@ -57,6 +55,14 @@ export {
 export { storeCDFComponents } from './services/components/store-cdf-components.js';
 export { renameEmptySlots } from './services/components/rename-empty-slots.js';
 export { applyScopeDecisions } from './services/components/apply-scope-decisions.js';
+
+// Component source loading — adapters/component-source/* and composing services
+export { loadComponentSourceRef } from '../adapters/component-source/load-source-ref.js';
+export { loadComponentSourceRefs } from './services/components/load-component-source-refs.js';
+export {
+  loadComponentReviewMetadata,
+  type ComponentReviewMetadata,
+} from './services/components/load-component-review-metadata.js';
 
 export type StepStatus = 'pending' | 'complete' | 'failed' | 'interrupted';
 export type CommandName =
@@ -567,62 +573,6 @@ function applyDbMigrations(db: DatabaseSync): void {
   }
 }
 
-export interface ComponentReviewMetadata {
-  sourcePath: string | null;
-  componentSource: string | null;
-  props: Record<string, { rationale: string | null; sourceStartLine: number | null; sourceEndLine: number | null }>;
-}
-
-export function loadComponentReviewMetadata(
-  db: DatabaseSync,
-  sessionId: string,
-  componentName: string,
-): ComponentReviewMetadata | null {
-  const compRow = db
-    .prepare(`SELECT component_id, source, source_path FROM raw_components WHERE session_id = ? AND name = ?`)
-    .get(sessionId, componentName) as { component_id: string; source: string; source_path: string | null } | undefined;
-  if (!compRow) return null;
-
-  const propRows = db
-    .prepare(
-      `SELECT name, rationale, source_start_line, source_end_line FROM raw_props WHERE session_id = ? AND component_id = ?`,
-    )
-    .all(sessionId, compRow.component_id) as Array<{
-    name: string;
-    rationale: string | null;
-    source_start_line: number | null;
-    source_end_line: number | null;
-  }>;
-
-  const props: ComponentReviewMetadata['props'] = {};
-  for (const r of propRows) {
-    props[r.name] = {
-      rationale: r.rationale,
-      sourceStartLine: r.source_start_line,
-      sourceEndLine: r.source_end_line,
-    };
-  }
-
-  // raw_components.source historically stores the file path, not the file
-  // text. For the source-view panel to render real lines, prefer reading
-  // the file from disk via source_path. Fall back to whatever's in `source`
-  // (handles in-memory fixtures and tests).
-  let componentSource: string | null = compRow.source ?? null;
-  if (compRow.source_path) {
-    try {
-      componentSource = readFileSync(compRow.source_path, 'utf8');
-    } catch {
-      // File no longer exists or unreadable — leave fallback.
-    }
-  }
-
-  return {
-    sourcePath: compRow.source_path,
-    componentSource,
-    props,
-  };
-}
-
 export type MatchHints = SessionMatchHints;
 export type { SessionResolution };
 
@@ -676,274 +626,6 @@ export function updateStep(
     db.exec('ROLLBACK');
     throw e;
   }
-}
-
-// Mirrors analyze/select-agent/context-builder.ts's MAX_COMPONENT_SOURCE_CHARS
-// convention for bounding inlined source in an agent prompt.
-const MAX_COMPONENT_SOURCE_CHARS = 8_000;
-// Mirrors analyze/select-agent/context-builder.ts's MAX_SIBLING_FILES /
-// MAX_SIBLING_SNIPPET_CHARS conventions — small, purpose-built duplicate
-// rather than importing that module's SelectionContext machinery, which is
-// built for a different command (analyze select-agent).
-const MAX_SIBLING_FILES = 5;
-const MAX_SIBLING_SNIPPET_CHARS = 1_200;
-// A type-declaring sibling (e.g. `*.types.ts`) needs a bigger budget than a
-// styles module — the styles-module budget can cut mid-array.
-const MAX_TYPE_DECLARING_SIBLING_CHARS = 4_000;
-// Caps how many siblings get the enlarged budget, since a type is usually
-// declared in only one or two files.
-const MAX_ENLARGED_SIBLINGS = 2;
-// A token-resolution map sometimes lives behind a component that itself
-// re-exports another component's prop (A imports B, B imports B's own
-// styles module) rather than beside the component being classified. Two hops
-// covers "the component's own imports" plus "those imports' own imports"
-// without walking the whole dependency graph.
-const MAX_SIBLING_DEPTH = 2;
-// Caps total files read while *discovering* candidates (before the
-// MAX_SIBLING_FILES inlining cap applies), independent of how many end up
-// inlined — bounds cost when a hop-1 import is a barrel file with many
-// re-exports, each of which would otherwise be walked for a second hop.
-const MAX_SIBLING_CANDIDATES_EXPLORED = 25;
-const RELATIVE_IMPORT_PATTERN = /from\s+['"](\.[^'"]+)['"]/g;
-const SIBLING_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
-// TS node16/nodenext/bundler resolution requires the *emitted* extension in
-// the specifier (`./Badge.types.js` for a file named `Badge.types.ts`).
-const TS_ESM_EXTENSION_REWRITES: ReadonlyArray<readonly [string, readonly string[]]> = [
-  ['.js', ['.ts', '.tsx', '.js', '.jsx']],
-  ['.jsx', ['.tsx', '.jsx']],
-  ['.mjs', ['.mts', '.mjs']],
-  ['.cjs', ['.cts', '.cjs']],
-];
-
-// Candidate source paths for a specifier with an emitted extension, else [].
-function rewrittenSourcePaths(basePath: string): string[] {
-  for (const [emitted, sources] of TS_ESM_EXTENSION_REWRITES) {
-    if (!basePath.endsWith(emitted)) continue;
-    const stem = basePath.slice(0, -emitted.length);
-    return sources.map((ext) => `${stem}${ext}`);
-  }
-  return [];
-}
-
-// A prop typed as a named alias (`variant: BadgeVariantS1`) carries none of
-// its own members — the type name is a search name too, so we can window on it.
-const IDENTIFIER_PATTERN = /[A-Za-z_$][A-Za-z0-9_$]*/g;
-
-function identifiersIn(propTypes: string[]): string[] {
-  const names = new Set<string>();
-  for (const propType of propTypes) {
-    for (const match of propType.matchAll(IDENTIFIER_PATTERN)) names.add(match[0]);
-  }
-  return [...names];
-}
-
-// Whether this file is where one of these names is declared, as opposed to a
-// file that merely mentions it in a signature.
-function declaresAnyType(text: string, typeNames: string[]): boolean {
-  return typeNames.some((name) =>
-    new RegExp(`\\b(?:type|interface|enum|const|class)\\s+${escapeForRegExp(name)}\\b`).test(text),
-  );
-}
-
-function extractRelativeImportPaths(sourceText: string): string[] {
-  const specifiers = new Set<string>();
-  for (const match of sourceText.matchAll(RELATIVE_IMPORT_PATTERN)) {
-    if (match[1]) specifiers.add(match[1]);
-  }
-  return [...specifiers];
-}
-
-// Tries the specifier as a file directly, then with each known extension,
-// then as a directory's index file — same resolution order as Node's own
-// extension-less relative import resolution.
-async function resolveRelativeImport(specifier: string, fromDir: string): Promise<string | undefined> {
-  const basePath = resolve(fromDir, specifier);
-  const candidates = [
-    basePath,
-    ...rewrittenSourcePaths(basePath),
-    ...SIBLING_FILE_EXTENSIONS.map((ext) => `${basePath}${ext}`),
-    ...SIBLING_FILE_EXTENSIONS.map((ext) => resolve(basePath, `index${ext}`)),
-  ];
-  for (const candidate of candidates) {
-    try {
-      await readFile(candidate, 'utf8');
-      return candidate;
-    } catch {
-      // Not this candidate — try the next.
-    }
-  }
-  return undefined;
-}
-
-// Resolves every relative specifier a file imports, in source order. Bare
-// package specifiers (`react`, `@scope/pkg`) are deliberately not followed:
-// on a monorepo they resolve to built `dist/` bundles, which fill sibling
-// slots with minified output rather than the source line a classifier can
-// cite.
-async function resolveImportSpecifiers(sourceText: string, fromDir: string): Promise<string[]> {
-  const resolvedPaths: string[] = [];
-  for (const specifier of extractRelativeImportPaths(sourceText)) {
-    const resolvedPath = await resolveRelativeImport(specifier, fromDir);
-    if (resolvedPath) resolvedPaths.push(resolvedPath);
-  }
-  return resolvedPaths;
-}
-
-// Loads the content of files the component's source file relatively imports
-// — either directly (e.g. a co-located `.styles.ts`), or transitively through
-// a sibling that is itself imported (bounded by MAX_SIBLING_DEPTH). Token
-// resolution logic (e.g. a variant-to-token map)
-// sometimes lives behind a component that re-exports another component's
-// prop rather than beside the component being classified, so a single hop
-// of resolution can miss it. Breadth-first with a visited-set: a component
-// that imports another which imports it back (or any other cycle) is
-// walked exactly once. Returns the count of resolved candidates dropped
-// once the inlining cap was hit, so callers can surface that truncation to
-// the classifier instead of silently dropping evidence.
-async function loadSiblingFiles(
-  sourceText: string,
-  sourcePath: string,
-  propNames: string[],
-  candidateTypeNames: string[] = [],
-): Promise<{
-  siblings: Array<{ path: string; content: string }>;
-  truncatedCount: number;
-  /** Prop names with at least one use that fell outside a sibling's excerpt budget. */
-  usesNotShown: string[];
-  /** The candidate type names that the component's own source or a discovered sibling declares. */
-  declaredTypeNames: string[];
-}> {
-  const visited = new Set<string>([resolve(sourcePath)]);
-  const discovered: Array<{ path: string; content: string }> = [];
-
-  let frontier: Array<{ text: string; dir: string }> = [{ text: sourceText, dir: dirname(sourcePath) }];
-
-  for (let hop = 0; hop < MAX_SIBLING_DEPTH && discovered.length < MAX_SIBLING_CANDIDATES_EXPLORED; hop++) {
-    const nextFrontier: Array<{ text: string; dir: string }> = [];
-
-    for (const node of frontier) {
-      if (discovered.length >= MAX_SIBLING_CANDIDATES_EXPLORED) break;
-
-      const resolvedPaths = await resolveImportSpecifiers(node.text, node.dir);
-      for (const resolvedPath of resolvedPaths) {
-        if (visited.has(resolvedPath)) continue;
-        visited.add(resolvedPath);
-        if (discovered.length >= MAX_SIBLING_CANDIDATES_EXPLORED) break;
-
-        let content: string;
-        try {
-          content = await readFile(resolvedPath, 'utf8');
-        } catch {
-          // Resolved but became unreadable between the resolve check and this read — skip it.
-          continue;
-        }
-        discovered.push({ path: resolvedPath, content });
-        nextFrontier.push({ text: content, dir: dirname(resolvedPath) });
-      }
-    }
-
-    frontier = nextFrontier;
-  }
-
-  // Only the type names some file in hand declares are worth windowing on;
-  // the rest have no declaration to find (see IDENTIFIER_PATTERN above).
-  const inHand = [sourceText, ...discovered.map((d) => d.content)];
-  const declaredTypeNames = candidateTypeNames.filter((name) => inHand.some((text) => declaresAnyType(text, [name])));
-
-  // Excerpts are windowed around the prop names rather than cut from the
-  // head: a styles module's first lines are imports, and the line that decides
-  // a prop's classification is wherever that prop is interpolated.
-  const usesNotShown = new Set<string>();
-  const searchNames = [...new Set([...propNames, ...declaredTypeNames])];
-  let enlarged = 0;
-  const siblings = discovered.slice(0, MAX_SIBLING_FILES).map((d) => {
-    const enlarge = enlarged < MAX_ENLARGED_SIBLINGS && declaresAnyType(d.content, declaredTypeNames);
-    if (enlarge) enlarged++;
-    const budget = enlarge ? MAX_TYPE_DECLARING_SIBLING_CHARS : MAX_SIBLING_SNIPPET_CHARS;
-    const excerpt = excerptAroundNames(d.content, searchNames, budget);
-    for (const name of excerpt.usesNotShown) usesNotShown.add(name);
-    return { path: d.path, content: excerpt.content };
-  });
-  const truncatedCount = Math.max(0, discovered.length - MAX_SIBLING_FILES);
-
-  return {
-    siblings,
-    truncatedCount,
-    usesNotShown: propNames.filter((name) => usesNotShown.has(name)),
-    declaredTypeNames,
-  };
-}
-
-// Reads and inlines real file content here, at the last point this pipeline
-// has local filesystem access — the map-tokens/generate-components agent
-// invocations are deliberately filesystem-free (stdout-only tool-call
-// protocol), so a bare path is useless to them. Read failures (file moved or
-// deleted since extraction) resolve to `content: null`, not a thrown error —
-// callers fall back to inferring from the prop name and $token.kind alone.
-export async function loadComponentSourceRef(
-  name: string,
-  sourcePath: string,
-  propNames: string[] = [],
-  propTypes: string[] = [],
-): Promise<ComponentSourceRef> {
-  let content: string | null = null;
-  let siblingFiles: Array<{ path: string; content: string }> = [];
-  let truncatedSiblingCount = 0;
-  const usesNotShown = new Set<string>();
-  try {
-    const rawText = await readFile(sourcePath, 'utf8');
-    // Siblings first: the component's own excerpt is keyed on the same
-    // declared-type-name set.
-    let siblingUsesNotShown: string[];
-    let declaredTypeNames: string[];
-    ({
-      siblings: siblingFiles,
-      truncatedCount: truncatedSiblingCount,
-      usesNotShown: siblingUsesNotShown,
-      declaredTypeNames,
-    } = await loadSiblingFiles(rawText, sourcePath, propNames, identifiersIn(propTypes)));
-    // Prop names locate the *use* of a prop; the declared type names locate
-    // the *members* the classifier has to emit. Both are needed.
-    const mainExcerpt = excerptAroundNames(
-      rawText,
-      [...new Set([...propNames, ...declaredTypeNames])],
-      MAX_COMPONENT_SOURCE_CHARS,
-    );
-    content = mainExcerpt.content;
-    for (const name of mainExcerpt.usesNotShown) usesNotShown.add(name);
-    for (const name of siblingUsesNotShown) usesNotShown.add(name);
-  } catch {
-    // File no longer exists or unreadable — leave content null.
-  }
-  const ref: ComponentSourceRef = { component: name, sourcePath, content };
-  if (siblingFiles.length > 0) ref.siblingFiles = siblingFiles;
-  if (truncatedSiblingCount > 0) ref.truncatedSiblingCount = truncatedSiblingCount;
-  const notShown = propNames.filter((name) => usesNotShown.has(name));
-  if (notShown.length > 0) ref.usesNotShown = notShown;
-  return ref;
-}
-
-export async function loadComponentSourceRefs(db: DatabaseSync, sessionId: string): Promise<ComponentSourceRef[]> {
-  const rows = db
-    .prepare(
-      `SELECT component_id, name, source, source_path FROM raw_components WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
-    )
-    .all(sessionId) as Array<{ component_id: string; name: string; source: string; source_path: string | null }>;
-  const propsFor = db.prepare(
-    `SELECT name, type FROM raw_props WHERE session_id = ? AND component_id = ? ORDER BY position`,
-  );
-
-  return Promise.all(
-    rows.map((r) => {
-      const props = propsFor.all(sessionId, r.component_id) as Array<{ name: string; type: string }>;
-      return loadComponentSourceRef(
-        r.name,
-        r.source_path ?? r.source,
-        props.map((p) => p.name),
-        props.map((p) => p.type),
-      );
-    }),
-  );
 }
 
 export function findLatestSessionForCommand(db: DatabaseSync, command: CommandName): string | null {
