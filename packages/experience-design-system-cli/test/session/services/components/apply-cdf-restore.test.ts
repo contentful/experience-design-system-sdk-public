@@ -3,10 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { openPipelineDb, getOrCreateSession } from '../../../../src/session/db.js';
-import {
-  createRawComponent,
-  createRawProps,
-} from '../../../../src/session/repositories/components/raw/write.js';
+import { createRawComponent, createRawProps } from '../../../../src/session/repositories/components/raw/write.js';
 import { applyCdfRestore } from '../../../../src/session/services/components/apply-cdf-restore.js';
 import type { CdfRestorePlan } from '../../../../src/session/core/components/plan-cdf-restore.js';
 import type { RawComponentDefinition } from '../../../../src/types.js';
@@ -52,7 +49,14 @@ describe('applyCdfRestore', () => {
 
       const plan: CdfRestorePlan = {
         byName: [
-          { component_id: cid, name: 'variant', position: 0, cdf_type: 'enum', cdf_category: 'design', cdf_token_kind: null },
+          {
+            component_id: cid,
+            name: 'variant',
+            position: 0,
+            cdf_type: 'enum',
+            cdf_category: 'design',
+            cdf_token_kind: null,
+          },
         ],
         byPosition: [],
         descriptions: [],
@@ -79,7 +83,14 @@ describe('applyCdfRestore', () => {
       const plan: CdfRestorePlan = {
         byName: [],
         byPosition: [
-          { component_id: cid, name: 'onClick', position: 0, cdf_type: 'string', cdf_category: 'state', cdf_token_kind: null },
+          {
+            component_id: cid,
+            name: 'onClick',
+            position: 0,
+            cdf_type: 'string',
+            cdf_category: 'state',
+            cdf_token_kind: null,
+          },
         ],
         descriptions: [],
         allowedValues: [],
@@ -87,7 +98,9 @@ describe('applyCdfRestore', () => {
       applyCdfRestore(db, sessionId, plan);
 
       const row = db
-        .prepare('SELECT cdf_type, cdf_category FROM raw_props WHERE session_id = ? AND component_id = ? AND position = 0')
+        .prepare(
+          'SELECT cdf_type, cdf_category FROM raw_props WHERE session_id = ? AND component_id = ? AND position = 0',
+        )
         .get(sessionId, cid);
       expect(row).toEqual({ cdf_type: 'string', cdf_category: 'state' });
       db.close();
@@ -132,8 +145,8 @@ describe('applyCdfRestore', () => {
             componentId: cid,
             propName: 'variant',
             values: [
-              { position: 0, value: 'primary' },
-              { position: 1, value: 'ghost' },
+              { component_id: cid, prop_name: 'variant', position: 0, value: 'primary' },
+              { component_id: cid, prop_name: 'variant', position: 1, value: 'ghost' },
             ],
           },
         ],

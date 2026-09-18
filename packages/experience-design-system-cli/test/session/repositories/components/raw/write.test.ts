@@ -57,7 +57,9 @@ describe('createRawComponent', () => {
       const componentId = createRawComponent(db, sessionId, makeComponent(), '2026-01-01T00:00:00Z');
 
       const row = db
-        .prepare('SELECT component_id, name, source, framework, extracted_at, review_reasons, needs_review FROM raw_components WHERE session_id = ?')
+        .prepare(
+          'SELECT component_id, name, source, framework, extracted_at, review_reasons, needs_review FROM raw_components WHERE session_id = ?',
+        )
         .get(sessionId) as {
         component_id: string;
         name: string;
@@ -112,7 +114,9 @@ describe('createRawProps', () => {
       ]);
 
       const rows = db
-        .prepare('SELECT name, position, required FROM raw_props WHERE session_id = ? AND component_id = ? ORDER BY position')
+        .prepare(
+          'SELECT name, position, required FROM raw_props WHERE session_id = ? AND component_id = ? ORDER BY position',
+        )
         .all(sessionId, componentId) as Array<{ name: string; position: number; required: number }>;
       expect(rows).toEqual([
         { name: 'label', position: 0, required: 1 },
@@ -206,7 +210,9 @@ describe('deleteRawComponentsForSession', () => {
 
       deleteRawComponentsForSession(db, sessionId);
 
-      expect(db.prepare('SELECT COUNT(*) as c FROM raw_components WHERE session_id = ?').get(sessionId)).toEqual({ c: 0 });
+      expect(db.prepare('SELECT COUNT(*) as c FROM raw_components WHERE session_id = ?').get(sessionId)).toEqual({
+        c: 0,
+      });
       expect(db.prepare('SELECT COUNT(*) as c FROM raw_props WHERE session_id = ?').get(sessionId)).toEqual({ c: 0 });
       db.close();
     });
@@ -244,7 +250,9 @@ describe('updateRawPropCdfByName', () => {
 
       expect(changed).toBe(1);
       const row = db
-        .prepare('SELECT cdf_type, cdf_category, cdf_token_kind FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?')
+        .prepare(
+          'SELECT cdf_type, cdf_category, cdf_token_kind FROM raw_props WHERE session_id = ? AND component_id = ? AND name = ?',
+        )
         .get(sessionId, componentId, 'variant');
       expect(row).toEqual({ cdf_type: 'enum', cdf_category: 'design', cdf_token_kind: null });
       db.close();

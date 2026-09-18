@@ -63,7 +63,12 @@ describe('getRawComponents', () => {
     await withTempDb((dbPath) => {
       const db = openPipelineDb(dbPath);
       const sessionId = seedSession(db);
-      const cid = createRawComponent(db, sessionId, comp({ needsReview: true, reviewReasons: ['ambiguous-type'] }), '2026-01-01T00:00:00Z');
+      const cid = createRawComponent(
+        db,
+        sessionId,
+        comp({ needsReview: true, reviewReasons: ['ambiguous-type'] }),
+        '2026-01-01T00:00:00Z',
+      );
       createRawProps(db, sessionId, cid, [
         { name: 'label', type: 'string', required: true },
         { name: 'variant', type: 'string', required: false, allowedValues: ['primary', 'secondary'] },
@@ -127,7 +132,14 @@ describe('getClassifiedProps', () => {
 
       const classified = getClassifiedProps(db, sessionId);
       expect(classified).toEqual([
-        { component_id: cid, name: 'variant', position: 0, cdf_type: 'enum', cdf_category: 'design', cdf_token_kind: null },
+        {
+          component_id: cid,
+          name: 'variant',
+          position: 0,
+          cdf_type: 'enum',
+          cdf_category: 'design',
+          cdf_token_kind: null,
+        },
       ]);
       db.close();
     });
