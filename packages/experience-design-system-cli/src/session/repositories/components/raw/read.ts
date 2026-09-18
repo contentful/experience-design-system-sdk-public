@@ -155,7 +155,7 @@ export interface CdfSnapshotRow {
   cdf_token_kind: string | null;
 }
 
-export function getCdfSnapshot(db: DatabaseSync, sessionId: string): CdfSnapshotRow[] {
+export function getClassifiedProps(db: DatabaseSync, sessionId: string): CdfSnapshotRow[] {
   return db
     .prepare(
       `SELECT component_id, name, position, cdf_type, cdf_category, cdf_token_kind
@@ -177,7 +177,7 @@ export interface DescriptionSnapshotRow {
   description: string;
 }
 
-export function getComponentDescriptionSnapshot(db: DatabaseSync, sessionId: string): DescriptionSnapshotRow[] {
+export function getComponentDescriptions(db: DatabaseSync, sessionId: string): DescriptionSnapshotRow[] {
   return db
     .prepare(
       `SELECT component_id, description
@@ -197,7 +197,7 @@ export interface AllowedValueSnapshotRow {
   value: string;
 }
 
-export function getAllowedValueSnapshot(db: DatabaseSync, sessionId: string): AllowedValueSnapshotRow[] {
+export function getRawPropAllowedValues(db: DatabaseSync, sessionId: string): AllowedValueSnapshotRow[] {
   return db
     .prepare(
       `SELECT component_id, prop_name, position, value
@@ -212,7 +212,7 @@ export function getAllowedValueSnapshot(db: DatabaseSync, sessionId: string): Al
     }));
 }
 
-export function getPropNameAtPosition(
+export function getRawPropNameAtPosition(
   db: DatabaseSync,
   sessionId: string,
   componentId: string,
