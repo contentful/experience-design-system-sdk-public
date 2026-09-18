@@ -139,17 +139,27 @@ async function binaryExists(name: string): Promise<boolean> {
   }
 }
 
-function runSpawn(
+export function runSpawn(
   cmd: string,
   args: string[],
   opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, {
-      cwd: opts.cwd,
-      env: opts.env ?? process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    let child;
+    try {
+      child = spawn(cmd, args, {
+        cwd: opts.cwd,
+        env: opts.env ?? process.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (err) {
+      resolve({
+        exitCode: 1,
+        stdout: '',
+        stderr: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
     let settled = false;
     let stdout = '';
     let stderr = '';
@@ -308,13 +318,30 @@ async function setupNode(): Promise<boolean> {
 
 // ── Step 2: pnpm ─────────────────────────────────────────────────────────────
 
-async function setupPnpm(): Promise<boolean> {
+export async function verifyPnpm(): Promise<boolean> {
+  const versionResult = await runSpawn('pnpm', ['--version']);
+  if (versionResult.exitCode === 0 && versionResult.stdout.trim() !== '') {
+    return true;
+  }
+
+  fail('pnpm installed but not working');
+  info(versionResult.stderr.trim() || 'Try reinstalling: npm install -g pnpm --force');
+  return false;
+}
+
+export async function setupPnpm(): Promise<boolean> {
   section('Step 2: pnpm', '[required]');
 
   if (await binaryExists('pnpm')) {
     const v = await runSpawn('pnpm', ['--version']);
-    ok(`pnpm v${v.stdout.trim()} — already installed`);
-    return true;
+    if (v.exitCode === 0 && v.stdout.trim() !== '') {
+      ok(`pnpm v${v.stdout.trim()} — already installed`);
+      return true;
+    }
+
+    fail('pnpm found but not working');
+    info(v.stderr.trim() || 'Try reinstalling: npm install -g pnpm --force');
+    return false;
   }
 
   fail('pnpm not found');
@@ -332,6 +359,7 @@ async function setupPnpm(): Promise<boolean> {
         info('Try: npm install -g pnpm');
         return false;
       }
+      if (!(await verifyPnpm())) return false;
       ok('pnpm installed via corepack');
       return true;
     }
@@ -351,6 +379,7 @@ async function setupPnpm(): Promise<boolean> {
     return false;
   }
 
+  if (!(await verifyPnpm())) return false;
   ok('pnpm installed');
   return true;
 }
