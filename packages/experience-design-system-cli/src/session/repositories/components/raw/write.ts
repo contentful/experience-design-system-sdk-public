@@ -170,3 +170,176 @@ export function createRawPropAllowedValue(
      VALUES (?, ?, ?, ?, ?)`,
   ).run(sessionId, componentId, propName, position, value);
 }
+
+export function updateRawPropCdfClassification(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  propName: string,
+  cdfType: string,
+  cdfCategory: string,
+  cdfTokenKind: string | null,
+  required: boolean,
+  description: string | null,
+  rationale: string | null,
+): number {
+  const result = db
+    .prepare(
+      `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?, rationale = ?
+       WHERE session_id = ? AND component_id = ? AND name = ?`,
+    )
+    .run(
+      cdfType,
+      cdfCategory,
+      cdfTokenKind,
+      required ? 1 : 0,
+      description,
+      rationale,
+      sessionId,
+      componentId,
+      propName,
+    );
+  return Number(result.changes);
+}
+
+export function updateRawPropAsExcluded(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  propName: string,
+  rationale: string | null,
+): void {
+  db.prepare(
+    `UPDATE raw_props
+     SET cdf_type = CASE WHEN type = 'boolean' THEN 'boolean' ELSE 'string' END,
+         cdf_category = 'unattached',
+         cdf_token_kind = NULL,
+         required = 0,
+         rationale = ?
+     WHERE session_id = ? AND component_id = ? AND name = ?`,
+  ).run(rationale, sessionId, componentId, propName);
+}
+
+export function updateRawPropDefaultValue(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  propName: string,
+  defaultValue: string,
+): void {
+  db.prepare(`UPDATE raw_props SET default_value = ? WHERE session_id = ? AND component_id = ? AND name = ?`).run(
+    defaultValue,
+    sessionId,
+    componentId,
+    propName,
+  );
+}
+
+export function deleteRawPropTokenPathsForProp(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  propName: string,
+): void {
+  db.prepare(`DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ?`).run(
+    sessionId,
+    componentId,
+    propName,
+  );
+}
+
+export function updateRawComponentRationales(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  rationales: { description?: string; props?: string; slots?: string },
+): void {
+  if (rationales.description !== undefined) {
+    db.prepare(
+      'UPDATE raw_components SET component_description_rationale = ? WHERE session_id = ? AND component_id = ?',
+    ).run(rationales.description, sessionId, componentId);
+  }
+  if (rationales.props !== undefined) {
+    db.prepare('UPDATE raw_components SET props_rationale = ? WHERE session_id = ? AND component_id = ?').run(
+      rationales.props,
+      sessionId,
+      componentId,
+    );
+  }
+  if (rationales.slots !== undefined) {
+    db.prepare('UPDATE raw_components SET slots_rationale = ? WHERE session_id = ? AND component_id = ?').run(
+      rationales.slots,
+      sessionId,
+      componentId,
+    );
+  }
+}
+
+export function updateRawComponentAsGenerated(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  extractedAt: string,
+): void {
+  db.prepare(
+    `UPDATE raw_components SET status = 'generated', extracted_at = ? WHERE session_id = ? AND component_id = ?`,
+  ).run(extractedAt, sessionId, componentId);
+}
+
+export function updateRawSlotClassification(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  slotName: string,
+  required: boolean,
+  description: string | null,
+): number {
+  const result = db
+    .prepare(
+      `UPDATE raw_slots SET required = ?, description = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
+    )
+    .run(required ? 1 : 0, description, sessionId, componentId, slotName);
+  return Number(result.changes);
+}
+
+export function updateRawSlotRationale(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  slotName: string,
+  rationale: string,
+): void {
+  db.prepare('UPDATE raw_slots SET rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?').run(
+    rationale,
+    sessionId,
+    componentId,
+    slotName,
+  );
+}
+
+export function deleteRawSlotAllowedComponentsForSlot(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  slotName: string,
+): void {
+  db.prepare(`DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ? AND slot_name = ?`).run(
+    sessionId,
+    componentId,
+    slotName,
+  );
+}
+
+export function createRawSlotAllowedComponent(
+  db: DatabaseSync,
+  sessionId: string,
+  componentId: string,
+  slotName: string,
+  position: number,
+  allowedComponent: string,
+): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO raw_slot_allowed_components (session_id, component_id, slot_name, allowed_component, position)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(sessionId, componentId, slotName, allowedComponent, position);
+}
