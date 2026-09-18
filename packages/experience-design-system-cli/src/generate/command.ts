@@ -40,7 +40,10 @@ import {
   renameEmptySlots,
   type RawComponentWithId,
 } from '../session/db.js';
-import { hashPromptForSkill } from '../session/cache-keys.js';
+import { hashContent, hashPromptForSkill } from '../session/cache-keys.js';
+import { readExistingContentfulEntitiesFromSession } from '../helpers/read-existing-contentful-entities-from-session.js';
+import { summarizeForGenerateAgent, summarizeForMapTokens } from '../helpers/summarize-existing-contentful-entities.js';
+import type { ExistingContentfulEntities } from '../helpers/fetch-existing-contentful-entities.js';
 import { getRefineArtifactsRoot, getRefineSessionPaths } from '../analyze/select/persistence.js';
 import type { ReviewSessionSnapshot } from '../analyze/select/types.js';
 import type { RawComponentDefinition } from '../types.js';
@@ -66,6 +69,8 @@ interface GenerateSubcommandOptions {
   cache?: boolean;
   /** Feature 8: custom skill prompt path for `generate components`. */
   generatePromptPath?: string;
+  /** Path to .existing-entities.json (written by the orchestrator when CMA credentials are supplied). */
+  existingEntitiesPath?: string;
 }
 
 const invoker = createLocalCliAgentInvoker({
@@ -171,6 +176,8 @@ async function runOneComponent(
   noCache: boolean,
   skillPathOverride: string | undefined,
   promptHash: string,
+  existingContentfulEntities: ExistingContentfulEntities | undefined,
+  existingTokensInline: string | undefined,
 ): Promise<ComponentRunResult> {
   const pos = c.dim(`[${index + 1}/${total}]`);
 
@@ -245,6 +252,9 @@ async function runOneComponent(
     component.props.map((p) => p.name),
     component.props.map((p) => p.type),
   );
+  const existingComponentsInline = existingContentfulEntities
+    ? JSON.stringify(summarizeForGenerateAgent(existingContentfulEntities, component.name))
+    : undefined;
   const prompt = await buildPrompt({
     skill: 'components',
     mode: 'autonomous',
@@ -255,6 +265,8 @@ async function runOneComponent(
     componentName: component.name,
     componentSourceRefs: [sourceRef],
     skillPathOverride,
+    existingComponentsInline,
+    existingTokensInline,
   });
 
   const maxAttempts = 2;
@@ -345,6 +357,8 @@ async function runAllComponents(
   noCache: boolean,
   skillPathOverride: string | undefined,
   promptHash: string,
+  existingContentfulEntities: ExistingContentfulEntities | undefined,
+  existingTokensInline: string | undefined,
 ): Promise<ComponentRunResult[]> {
   const concurrency = Number(process.env.EDS_GENERATE_CONCURRENCY ?? DEFAULT_COMPONENT_CONCURRENCY);
   process.stderr.write(
@@ -374,6 +388,8 @@ async function runAllComponents(
         noCache,
         skillPathOverride,
         promptHash,
+        existingContentfulEntities,
+        existingTokensInline,
       );
       completed += 1;
       process.stderr.write(`${formatGenerateProgressLine(completed, components.length, results[i]!.componentName)}\n`);
@@ -474,6 +490,22 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     readFileInline(opts.tokenMap),
   ]);
 
+  // --existing-entities-path is optional enrichment written by the orchestrator's
+  // fetch step. Load once here; each component derives its own component-summary
+  // (fuzzy-matched likelyMatch), while the token summary is shared per run.
+  let existingContentfulEntities: ExistingContentfulEntities | undefined;
+  let existingTokensInline: string | undefined;
+  if (opts.existingEntitiesPath) {
+    existingContentfulEntities = await readExistingContentfulEntitiesFromSession(resolve(opts.existingEntitiesPath));
+    if (existingContentfulEntities) {
+      existingTokensInline = JSON.stringify(summarizeForMapTokens(existingContentfulEntities));
+    } else {
+      process.stderr.write(
+        `warn: --existing-entities-path ${opts.existingEntitiesPath} could not be read as JSON — proceeding without space-context enrichment\n`,
+      );
+    }
+  }
+
   // Load raw components from DB for the components skill
   let sessionId: string | undefined;
   let allComponents: RawComponentWithId[] | undefined;
@@ -538,6 +570,10 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
           sampleComponent.props.map((p) => p.type),
         )
       : undefined;
+    const dryRunExistingComponentsInline =
+      skill === 'components' && existingContentfulEntities && sampleComponent
+        ? JSON.stringify(summarizeForGenerateAgent(existingContentfulEntities, sampleComponent.name))
+        : undefined;
     const prompt = await buildPrompt({
       skill,
       mode: 'autonomous',
@@ -549,6 +585,8 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       outDir: process.cwd(),
       componentSourceRefs: sampleSourceRef ? [sampleSourceRef] : undefined,
       skillPathOverride: generatePromptPath,
+      existingComponentsInline: dryRunExistingComponentsInline,
+      existingTokensInline: skill === 'components' ? existingTokensInline : undefined,
     });
     process.stdout.write(prompt + '\n');
     await exitWithAnalytics(0);
@@ -568,7 +606,20 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     const db = openPipelineDb();
     let componentResults: ComponentRunResult[];
     try {
-      const promptHash = await hashPromptForSkill('components', agent, model, generatePromptPath);
+      // Fold the existing-entities inputs (tokens summary + presence of entities)
+      // into the prompt hash so cache entries invalidate when the target space
+      // changes. Per-component fuzzy match derives from component name, which
+      // is already part of computeComponentInputHash, so we don't need to fold
+      // per-component summaries here.
+      const existingContentfulEntitiesHashInputs: string[] = [];
+      if (existingTokensInline) existingContentfulEntitiesHashInputs.push(hashContent(existingTokensInline));
+      const promptHash = await hashPromptForSkill(
+        'components',
+        agent,
+        model,
+        generatePromptPath,
+        existingContentfulEntitiesHashInputs,
+      );
       componentResults = await runAllComponents(
         agent,
         model,
@@ -581,6 +632,8 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         opts.cache === false || process.env.EDS_NO_CACHE === '1',
         generatePromptPath,
         promptHash,
+        existingContentfulEntities,
+        existingTokensInline,
       );
     } finally {
       db.close();
@@ -782,6 +835,12 @@ export function registerGenerateCommand(program: Command): void {
     .option(
       '--generate-prompt-path <path>',
       'Path to a custom .md skill prompt for components generation (bypasses bundled prompt invariants)',
+    )
+    .option(
+      '--existing-entities-path <path>',
+      'Path to the .existing-entities.json file written by the orchestrator when CMA credentials are supplied. ' +
+        'When present, per-component prompts include a summary of the target space so classifications can align to existing prop names/tokens. ' +
+        'Missing/malformed files are treated as no-op.',
     );
   addAgentFlags(componentsCmd).action(async (opts: GenerateSubcommandOptions) => {
     await runGenerateSkill('components', opts, opts.verbose ?? false);

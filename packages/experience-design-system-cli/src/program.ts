@@ -6,7 +6,7 @@ import { Command } from 'commander';
 import { registerAnalyzeCommand } from './analyze/command.js';
 import { registerGenerateCommand } from './generate/command.js';
 import { registerApplyCommand } from './apply/command.js';
-import { registerSessionCommand } from './session/command.js';
+import { registerSessionCommand } from './session/cli.js';
 import { registerPrintCommand } from './print/command.js';
 import { registerMapTokensCommand } from './map-tokens/command.js';
 import { registerImportCommand } from './import/command.js';

@@ -549,3 +549,30 @@ If you are genuinely uncertain about every prop, classify each as:
 An imperfect classification is infinitely better than no classification. That is
 about **classifying a prop rather than dropping it** — it is not a licence to
 invent a `values` list. The uncertain answer is `cdf_type: "string"`, every time.
+
+---
+
+## Existing entities in the target space
+
+The preamble may include an "Existing components in the target Contentful space" JSON block with a `likelyMatch` (a fuzzy-matched space component that likely corresponds to the codebase component you're classifying), an `otherComponents` list, and a rolled-up token summary. Use it to align your classifications with what the customer already has.
+
+### When `likelyMatch` is present — align rename intent + categories + slot names
+
+Your goal is **consistency**: the customer will see the diff between what you propose and what already exists, and every unnecessary category flip or slot-shape mismatch becomes review friction.
+
+1. **Prop names**: `classify_prop.prop` MUST always be the codebase prop name — that's the DB lookup key. When a codebase prop looks like it corresponds to an existing space prop (e.g. codebase `kind` ↔ space `variant`, codebase `text` ↔ space `label`), keep `prop` as the codebase name and put the alignment note in `reason`, e.g. `"looks like existing space prop 'variant' — customer may want to reconcile at review"`. Never rewrite `prop` itself; reconciliation happens downstream, not in this tool call.
+2. **Categories**: match the space's category (`design` / `content`) for equivalent props, even if you'd normally categorize differently. Note the alignment in `reason`.
+3. **Slot names**: match slot IDs / names when the shape is equivalent.
+4. **Enum values**: never invent new values to bridge a mismatch. If the codebase's enum diverges from the space's, classify against your best-effort mapping and cite the divergence in `reason` — this is a signal for human review, not a green light to rewrite the space's enum.
+5. **Never realign silently.** Every classification influenced by the `likelyMatch` MUST cite it in `reason`.
+
+### When only `otherComponents` is present (no direct match)
+
+Use the list to constrain slot `allowed_components` — do not propose a slot that accepts component types the space doesn't have.
+
+### Token binding
+
+The preamble's "Existing design tokens" section lists tokens (by name + DTCG type) already in the space.
+
+1. When classifying a `design`-category, `token`-typed prop, prefer binding to an existing token name over inventing a new one. Cite the target token in `reason`.
+2. If no existing token semantically matches, proceed with the current rules — propose a new token. The diff surfaces this for review.

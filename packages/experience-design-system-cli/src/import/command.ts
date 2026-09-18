@@ -101,10 +101,6 @@ export function registerImportCommand(program: Command): void {
       [] as string[],
     )
     .option('--auto-reject-cycles', 'Automatically reject components involved in slot cycles and retry')
-    .option(
-      '--with-space-context',
-      'Fetch existing Components + DesignTokens from the target space+env and persist them under <out>/.existing-entities.json for future agent-context enrichment. Requires --space-id, --environment-id, and --cma-token.',
-    )
     .option('--auto-filter', 'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)')
     .option(
       '--no-auto-filter',
@@ -191,7 +187,6 @@ export function registerImportCommand(program: Command): void {
         generateMap?: string;
         prompt?: string[];
         autoRejectCycles?: boolean;
-        withSpaceContext?: boolean;
         autoFilter?: boolean;
         livePreview?: boolean;
         push?: boolean;
@@ -588,7 +583,6 @@ export function registerImportCommand(program: Command): void {
             dryRun: dryRunForward,
             selectPromptPath: opts.selectPromptPath,
             autoRejectCycles: opts.autoRejectCycles ?? false,
-            withSpaceContext: opts.withSpaceContext ?? false,
             allowDeletions: opts.allowDeletions ?? false,
             compositionMode: headlessCompositionMode,
             ...(opts.compositionMap ? { compositionMap: opts.compositionMap } : {}),

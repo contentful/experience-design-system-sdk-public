@@ -222,3 +222,14 @@ TextImageCard — card with rich text and background image
 SearchInput — search field with dropdown
 {"tool":"select_component","name":"SearchInput","reason":"search UI — configurable placeholder and state"}
 ```
+
+---
+
+## Existing entities in the target space
+
+The preamble may include an "Existing components in the target Contentful space" JSON block and a rolled-up token summary. Use them as **signal, not as a filter**. Rules:
+
+1. Never let a name overlap force a decision. Acceptance is still driven purely by "does the codebase component render visible, authorable UI?" — a name match does not auto-accept, and a name conflict does not auto-reject.
+2. When a codebase component appears to correspond to an existing space component (name overlap, semantic overlap in the description), note it in your `reason` — e.g. `"accepted; likely maps to existing space component 'Button'"`. This surfaces the mapping for downstream review.
+3. When the space is mature (many existing components, dozens of tokens) and the codebase has thin wrappers with no visible UI difference, lean harder toward rejecting the wrappers. Extra noise in a mature space is more costly than in an empty one.
+4. When no overlap exists, the acceptance decision is unchanged from the rules above.

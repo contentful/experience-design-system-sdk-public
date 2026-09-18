@@ -4,13 +4,45 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
-import { generateSessionId } from './session-id.js';
 import { escapeForRegExp, excerptAroundNames } from './source-excerpt.js';
 import type { RawComponentDefinition, RawPropDefinition, RawSlotDefinition } from '../types.js';
-import type { CDFComponentEntry, DTCGTokenEntry, DTCGTokenGroup } from '@contentful/experience-design-system-types';
-import type { ToolCall, TokenToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
+import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
+import type { ToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
 import type { SlotCycle, SlotEdge } from '../analyze/cycle-detection.js';
+import { deriveComponentId } from './core/components/derive-component-id.js';
+import { mapContentfulTypeToCdfType, resolveCdfCategory } from './core/cdf/cdf-mappers.js';
+import { indexRowsByKey } from './core/shared/index-rows-by-key.js';
+import {
+  getLatestCompletedSessionForCommand,
+  type MatchHints as SessionMatchHints,
+} from './repositories/sessions/read.js';
+import { updateSessionTimestamp } from './repositories/sessions/write.js';
+import { getSessionIdForStep } from './repositories/steps/read.js';
+import { createPendingStep, updatePendingStepsToInterrupted, updateStepStatus } from './repositories/steps/write.js';
+import { getOrCreateSessionForCommand, type SessionResolution } from './services/session-resolver.js';
+import { getRawTokenNamePaths, type RawTokenNamePathSource } from './repositories/tokens/read.js';
+import { type RawPropTokenPathSource } from './repositories/tokens/write.js';
+
+export { deriveComponentId } from './core/components/derive-component-id.js';
+export { hashComponentShape as computeComponentInputHash } from './core/components/hash-component-shape.js';
+export { hashTokenContent as computeTokenInputHash } from './core/tokens/hash-token-content.js';
+export { mapContentfulTypeToCdfType, resolveCdfCategory } from './core/cdf/cdf-mappers.js';
+
+// Tokens — repositories/tokens/{read,write}.ts and services/tokens/*
+export {
+  getDtcgTokensForSession as loadDTCGTokens,
+  getRawTokenNamePaths as loadRawTokenNamePaths,
+  getRawTokenNamePathRows as loadRawTokenNamePathRows,
+  type RawTokenNamePaths,
+  type RawTokenNamePathSource,
+  type RawTokenNamePath,
+} from './repositories/tokens/read.js';
+export { type RawPropTokenPathSource } from './repositories/tokens/write.js';
+export { storeDtcgTokens as storeDTCGTokens } from './services/tokens/store-dtcg-tokens.js';
+export { applyTokenToolCalls, type ApplyTokenToolCallsResult } from './services/tokens/apply-tool-calls.js';
+export { replaceRawTokenNamePaths } from './services/tokens/replace-raw-token-name-paths.js';
+export { replaceRawPropTokenPaths } from './services/tokens/replace-raw-prop-token-paths.js';
 
 export type StepStatus = 'pending' | 'complete' | 'failed' | 'interrupted';
 export type CommandName =
@@ -521,104 +553,6 @@ function applyDbMigrations(db: DatabaseSync): void {
   }
 }
 
-/** An exact source token reference paired with its canonical DTCG path. */
-export type RawTokenNamePaths = Record<string, string>;
-export type RawTokenNamePathSource = 'automatic' | 'manual';
-
-export interface RawTokenNamePath {
-  rawName: string;
-  path: string;
-  source: RawTokenNamePathSource;
-}
-
-/**
- * Replaces the session's exact source-reference-to-DTCG-path sidecar.
- * Source references are retained verbatim; normalisation belongs to the
- * deterministic resolver, not to persistence or CDF emission.
- */
-export function replaceRawTokenNamePaths(
-  db: DatabaseSync,
-  sessionId: string,
-  tokenNamePaths: RawTokenNamePaths,
-  source: RawTokenNamePathSource = 'automatic',
-): void {
-  const entries = Object.entries(tokenNamePaths);
-  const deletePaths = db.prepare('DELETE FROM raw_token_name_paths WHERE session_id = ? AND source = ?');
-  const insertPath = db.prepare(
-    'INSERT OR IGNORE INTO raw_token_name_paths (session_id, raw_name, path, source) VALUES (?, ?, ?, ?)',
-  );
-  const deleteAutomaticByName = db.prepare(
-    "DELETE FROM raw_token_name_paths WHERE session_id = ? AND raw_name = ? AND source = 'automatic'",
-  );
-
-  db.exec('BEGIN');
-  try {
-    deletePaths.run(sessionId, source);
-    for (const [rawName, path] of entries) {
-      if (source === 'manual') deleteAutomaticByName.run(sessionId, rawName);
-      insertPath.run(sessionId, rawName, path, source);
-    }
-    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), sessionId);
-    db.exec('COMMIT');
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
-  }
-}
-
-/** Loads the exact source-reference-to-DTCG-path sidecar for a session. */
-export function loadRawTokenNamePaths(db: DatabaseSync, sessionId: string): RawTokenNamePaths {
-  const rows = db
-    .prepare('SELECT raw_name, path FROM raw_token_name_paths WHERE session_id = ? ORDER BY raw_name')
-    .all(sessionId) as Array<{ raw_name: string; path: string }>;
-  return Object.fromEntries(rows.map((row) => [row.raw_name, row.path]));
-}
-
-export function loadRawTokenNamePathRows(db: DatabaseSync, sessionId: string): RawTokenNamePath[] {
-  return (
-    db
-      .prepare('SELECT raw_name, path, source FROM raw_token_name_paths WHERE session_id = ? ORDER BY raw_name')
-      .all(sessionId) as Array<{ raw_name: string; path: string; source: RawTokenNamePathSource }>
-  ).map((row) => ({ rawName: row.raw_name, path: row.path, source: row.source }));
-}
-
-/**
- * Where a prop's token-path list came from. 'agent' is a map-tokens suggestion,
- * which a later run of that step may revise. 'review' is a person's decision in
- * the review editor, which a re-run must leave alone.
- */
-export type RawPropTokenPathSource = 'agent' | 'review';
-
-export function replaceRawPropTokenPaths(
-  db: DatabaseSync,
-  sessionId: string,
-  componentId: string,
-  propName: string,
-  paths: string[],
-  source: RawPropTokenPathSource,
-): void {
-  const deletePaths = db.prepare(
-    `DELETE FROM raw_prop_token_paths
-     WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
-  );
-  const insertPath = db.prepare(
-    `INSERT INTO raw_prop_token_paths (session_id, component_id, prop_name, source, position, path)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  );
-
-  db.exec('BEGIN');
-  try {
-    deletePaths.run(sessionId, componentId, propName);
-    paths.forEach((path, position) => {
-      insertPath.run(sessionId, componentId, propName, source, position, path);
-    });
-    db.exec('COMMIT');
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
-  }
-}
-
 export interface ApplyToolCallsResult {
   classified: number;
   excluded: number;
@@ -928,42 +862,16 @@ export function applyToolCalls(
   return { classified, excluded, slots, warnings };
 }
 
-export interface MatchHints {
-  command: CommandName;
-  inputPath?: string;
-  outDir?: string;
-}
-
-export interface SessionResolution {
-  sessionId: string;
-  isNew: boolean;
-  isResumed: boolean;
-}
+export type MatchHints = SessionMatchHints;
+export type { SessionResolution };
 
 export function getOrCreateSession(
   db: DatabaseSync,
   sessionFlag: string | undefined,
   sessionName: string | undefined,
-  _hints: MatchHints,
+  hints: MatchHints,
 ): SessionResolution {
-  const now = new Date().toISOString();
-
-  if (sessionFlag === 'new' || sessionFlag === undefined) {
-    const id = generateSessionId();
-    db.prepare('INSERT INTO sessions (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(
-      id,
-      sessionName ?? null,
-      now,
-      now,
-    );
-    return { sessionId: id, isNew: true, isResumed: false };
-  }
-
-  const existing = db.prepare('SELECT id FROM sessions WHERE id = ?').get(sessionFlag) as { id: string } | undefined;
-  if (!existing) {
-    throw new Error(`session '${sessionFlag}' not found. Run 'session list' to see active sessions.`);
-  }
-  return { sessionId: sessionFlag, isNew: false, isResumed: false };
+  return getOrCreateSessionForCommand(db, sessionFlag, sessionName, hints);
 }
 
 export function createStep(
@@ -976,24 +884,11 @@ export function createStep(
 
   db.exec('BEGIN');
   try {
-    db.prepare(
-      `UPDATE steps SET status = 'interrupted', completed_at = ?, updated_at = ?
-       WHERE session_id = ? AND command = ? AND status = 'pending'`,
-    ).run(now, now, sessionId, command);
-
-    const result = db
-      .prepare(
-        `INSERT INTO steps (session_id, command, status, started_at, inputs, outputs, updated_at)
-         VALUES (?, ?, 'pending', ?, ?, '{}', ?)`,
-      )
-      .run(sessionId, command, now, JSON.stringify(inputs), now) as {
-      lastInsertRowid: number | bigint;
-    };
-
-    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
-
+    updatePendingStepsToInterrupted(db, sessionId, command, now);
+    const stepId = createPendingStep(db, sessionId, command, inputs, now);
+    updateSessionTimestamp(db, sessionId, now);
     db.exec('COMMIT');
-    return Number(result.lastInsertRowid);
+    return stepId;
   } catch (e) {
     db.exec('ROLLBACK');
     throw e;
@@ -1010,18 +905,11 @@ export function updateStep(
   const now = new Date().toISOString();
   db.exec('BEGIN');
   try {
-    const step = db.prepare('SELECT session_id FROM steps WHERE id = ?').get(stepId) as
-      | { session_id: string }
-      | undefined;
-
-    db.prepare(
-      `UPDATE steps SET status = ?, completed_at = ?, outputs = ?, error = ?, updated_at = ? WHERE id = ?`,
-    ).run(status, now, JSON.stringify(outputs), error ?? null, now, stepId);
-
-    if (step) {
-      db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, step.session_id);
+    const stepSessionId = getSessionIdForStep(db, stepId);
+    updateStepStatus(db, stepId, status, outputs, error ?? null, now);
+    if (stepSessionId) {
+      updateSessionTimestamp(db, stepSessionId, now);
     }
-
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
@@ -1320,10 +1208,10 @@ export function loadRawComponents(
     allowed_component: string;
   }>;
 
-  const propsByComponent = groupBy(props, (p) => p.component_id);
-  const allowedValuesByProp = groupBy(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
-  const slotsByComponent = groupBy(slots, (s) => s.component_id);
-  const allowedComponentsBySlot = groupBy(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
+  const propsByComponent = indexRowsByKey(props, (p) => p.component_id);
+  const allowedValuesByProp = indexRowsByKey(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
+  const slotsByComponent = indexRowsByKey(slots, (s) => s.component_id);
+  const allowedComponentsBySlot = indexRowsByKey(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
 
   return components.map(
     (c): RawComponentWithId => ({
@@ -1686,24 +1574,6 @@ function parseReviewReasons(raw: string | null | undefined): string[] {
   }
 }
 
-function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
-  const map = new Map<string, T[]>();
-  for (const item of items) {
-    const k = key(item);
-    let arr = map.get(k);
-    if (!arr) {
-      arr = [];
-      map.set(k, arr);
-    }
-    arr.push(item);
-  }
-  return map;
-}
-
-function deriveComponentId(name: string, source: string): string {
-  return createHash('sha256').update(`${name}:${source}`).digest('hex').slice(0, 12);
-}
-
 export function storeCDFComponents(
   db: DatabaseSync,
   sessionId: string,
@@ -1810,7 +1680,7 @@ export function storeCDFComponents(
           }
         }
       } else {
-        const componentId = createHash('sha256').update(`${key}:generated`).digest('hex').slice(0, 12);
+        const componentId = deriveComponentId(key, 'generated');
         db.prepare(
           `INSERT INTO raw_components (session_id, component_id, name, source, framework, extracted_at, status, description)
            VALUES (?, ?, ?, '', 'react', ?, 'generated', ?)`,
@@ -1950,7 +1820,7 @@ export function loadCDFComponents(
   // The extracted source default stays in raw_props. This sidecar is only
   // consulted for CDF projection, after confirming it still names a matching
   // DTCG leaf in this session.
-  const resolvedDefaultPaths = loadRawTokenNamePaths(db, sessionId);
+  const resolvedDefaultPaths = getRawTokenNamePaths(db, sessionId);
   const tokenTypeByPath = new Map(
     (
       db.prepare('SELECT path, type FROM raw_tokens WHERE session_id = ?').all(sessionId) as Array<{
@@ -1960,11 +1830,11 @@ export function loadCDFComponents(
     ).map((token) => [token.path, token.type]),
   );
 
-  const propsByComponent = groupBy(props, (p) => p.component_id);
-  const allowedValuesByProp = groupBy(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
-  const slotsByComponent = groupBy(slots, (s) => s.component_id);
-  const allowedComponentsBySlot = groupBy(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
-  const tokenPathsByProp = groupBy(tokenPaths, (t) => `${t.component_id}::${t.prop_name}`);
+  const propsByComponent = indexRowsByKey(props, (p) => p.component_id);
+  const allowedValuesByProp = indexRowsByKey(allowedValues, (av) => `${av.component_id}::${av.prop_name}`);
+  const slotsByComponent = indexRowsByKey(slots, (s) => s.component_id);
+  const allowedComponentsBySlot = indexRowsByKey(allowedComponents, (ac) => `${ac.component_id}::${ac.slot_name}`);
+  const tokenPathsByProp = indexRowsByKey(tokenPaths, (t) => `${t.component_id}::${t.prop_name}`);
   const toTokenPaths = (rows: typeof tokenPaths | undefined): string[] | undefined =>
     rows === undefined ? undefined : rows.map((r) => r.path);
 
@@ -2073,8 +1943,8 @@ export function loadScopeComponents(db: DatabaseSync, sessionId: string): ScopeC
     allowed_component: string;
   }>;
 
-  const slotsByComponent = groupBy(slotRows, (s) => s.component_id);
-  const allowedBySlot = groupBy(allowedRows, (a) => `${a.component_id}::${a.slot_name}`);
+  const slotsByComponent = indexRowsByKey(slotRows, (s) => s.component_id);
+  const allowedBySlot = indexRowsByKey(allowedRows, (a) => `${a.component_id}::${a.slot_name}`);
 
   return rows.map((r) => {
     const reviewReasons = parseReviewReasons(r.review_reasons);
@@ -2120,137 +1990,8 @@ export function applyScopeDecisions(
   db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 }
 
-export function storeDTCGTokens(
-  db: DatabaseSync,
-  sessionId: string,
-  groups: DTCGTokenGroup[],
-  tokens: DTCGTokenEntry[],
-): void {
-  const now = new Date().toISOString();
-
-  db.exec('BEGIN');
-  try {
-    db.prepare('DELETE FROM raw_token_groups WHERE session_id = ?').run(sessionId);
-    db.prepare('DELETE FROM raw_tokens WHERE session_id = ?').run(sessionId);
-
-    const insertGroup = db.prepare(`INSERT INTO raw_token_groups (session_id, path, description) VALUES (?, ?, ?)`);
-    for (const group of groups) {
-      insertGroup.run(sessionId, group.path, group.$description ?? null);
-    }
-
-    const insertToken = db.prepare(
-      `INSERT INTO raw_tokens (session_id, path, type, value, description) VALUES (?, ?, ?, ?, ?)`,
-    );
-    for (const token of tokens) {
-      insertToken.run(sessionId, token.path, token.$type, JSON.stringify(token.$value), token.$description ?? null);
-    }
-
-    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
-    db.exec('COMMIT');
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
-  }
-}
-
-export interface ApplyTokenToolCallsResult {
-  tokens: number;
-  groups: number;
-  warnings: string[];
-}
-
-export function applyTokenToolCalls(
-  db: DatabaseSync,
-  sessionId: string,
-  calls: TokenToolCall[],
-  incomingWarnings: string[],
-): ApplyTokenToolCallsResult {
-  const now = new Date().toISOString();
-  const warnings = [...incomingWarnings];
-  let tokens = 0;
-  let groups = 0;
-
-  const upsertToken = db.prepare(
-    `INSERT INTO raw_tokens (session_id, path, type, value, description) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(session_id, path) DO UPDATE SET type = excluded.type, value = excluded.value, description = excluded.description`,
-  );
-  const upsertGroup = db.prepare(
-    `INSERT INTO raw_token_groups (session_id, path, description) VALUES (?, ?, ?)
-     ON CONFLICT(session_id, path) DO UPDATE SET description = excluded.description`,
-  );
-
-  db.exec('BEGIN');
-  try {
-    for (const call of calls) {
-      if (call.tool === 'set_token') {
-        upsertToken.run(sessionId, call.path, call.type, JSON.stringify(call.value), call.description ?? null);
-        tokens++;
-      } else if (call.tool === 'set_group') {
-        upsertGroup.run(sessionId, call.path, call.description ?? null);
-        groups++;
-      }
-    }
-    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
-    db.exec('COMMIT');
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
-  }
-
-  return { tokens, groups, warnings };
-}
-
-export function loadDTCGTokens(
-  db: DatabaseSync,
-  sessionId: string,
-): { groups: DTCGTokenGroup[]; tokens: DTCGTokenEntry[] } {
-  const groupRows = db
-    .prepare('SELECT path, description FROM raw_token_groups WHERE session_id = ? ORDER BY path')
-    .all(sessionId) as Array<{ path: string; description: string | null }>;
-
-  const tokenRows = db
-    .prepare('SELECT path, type, value, description FROM raw_tokens WHERE session_id = ? ORDER BY path')
-    .all(sessionId) as Array<{
-    path: string;
-    type: string;
-    value: string;
-    description: string | null;
-  }>;
-
-  const groups: DTCGTokenGroup[] = groupRows.map((r) => {
-    const prefix = `${r.path}.`;
-    const tokenIds = tokenRows
-      .filter((t) => t.path.startsWith(prefix) && !t.path.slice(prefix.length).includes('.'))
-      .map((t) => t.path);
-    const g: DTCGTokenGroup = { path: r.path, tokenIds };
-    if (r.description !== null) g.$description = r.description;
-    return g;
-  });
-
-  const tokens: DTCGTokenEntry[] = tokenRows.map((r) => {
-    const t: DTCGTokenEntry = {
-      path: r.path,
-      $type: r.type as DTCGTokenEntry['$type'],
-      $value: JSON.parse(r.value) as unknown,
-    };
-    if (r.description !== null) t.$description = r.description;
-    return t;
-  });
-
-  return { groups, tokens };
-}
-
 export function findLatestSessionForCommand(db: DatabaseSync, command: CommandName): string | null {
-  const row = db
-    .prepare(
-      `SELECT s.id FROM sessions s
-       JOIN steps st ON st.session_id = s.id
-       WHERE st.command = ? AND st.status = 'complete'
-       ORDER BY st.started_at DESC, st.id DESC
-       LIMIT 1`,
-    )
-    .get(command) as { id: string } | undefined;
-  return row?.id ?? null;
+  return getLatestCompletedSessionForCommand(db, command);
 }
 
 export function seedCDFFromPriorSession(db: DatabaseSync, targetSessionId: string): number {
@@ -2347,16 +2088,8 @@ export function seedCDFFromPreviewResponse(
     const designProps = new Set(item.designProperties);
 
     for (const [propName, propSummary] of Object.entries(item.fullProperties)) {
-      const cdfType = mapServerTypeToCDFType(propSummary.type);
-      if (!cdfType) continue;
-
-      let cdfCategory = propSummary.category || null;
-      if (!cdfCategory || !['content', 'design', 'state'].includes(cdfCategory)) {
-        if (contentProps.has(propName)) cdfCategory = 'content';
-        else if (designProps.has(propName)) cdfCategory = 'design';
-        else cdfCategory = 'state';
-      }
-
+      const cdfType = mapContentfulTypeToCdfType(propSummary.type);
+      const cdfCategory = resolveCdfCategory(propSummary.category, propName, contentProps, designProps);
       const result = updateStmt.run(cdfType, cdfCategory, sessionId, localComponent.component_id, propName);
       totalSeeded += Number(result.changes);
     }
@@ -2404,16 +2137,8 @@ export function seedDefaultsFromChangedItems(
         totalSeeded += Number(result.changes);
       }
 
-      const cdfType = mapServerTypeToCDFType(propSummary.type);
-      if (!cdfType) continue;
-
-      let cdfCategory = propSummary.category || null;
-      if (!cdfCategory || !['content', 'design', 'state'].includes(cdfCategory)) {
-        if (contentProps.has(propName)) cdfCategory = 'content';
-        else if (designProps.has(propName)) cdfCategory = 'design';
-        else cdfCategory = 'state';
-      }
-
+      const cdfType = mapContentfulTypeToCdfType(propSummary.type);
+      const cdfCategory = resolveCdfCategory(propSummary.category, propName, contentProps, designProps);
       const result = updateCDFStmt.run(cdfType, cdfCategory, sessionId, localComponent.component_id, propName);
       totalSeeded += Number(result.changes);
     }
@@ -2446,29 +2171,6 @@ export function backfillUnclassifiedProps(db: DatabaseSync, sessionId: string): 
   return Number(withCategory.changes) + Number(withoutCategory.changes);
 }
 
-function mapServerTypeToCDFType(serverType: string): string | null {
-  switch (serverType.toLowerCase()) {
-    case 'string':
-    case 'text':
-      return 'string';
-    case 'richtext':
-      return 'richtext';
-    case 'media':
-      return 'media';
-    case 'link':
-      return 'link';
-    case 'enum':
-    case 'symbol':
-      return 'enum';
-    case 'token':
-      return 'token';
-    case 'boolean':
-      return 'boolean';
-    default:
-      return 'string';
-  }
-}
-
 export type CacheEntityType = 'component' | 'token_set' | 'token_mapping';
 
 export interface CacheEntry {
@@ -2480,28 +2182,6 @@ export interface CacheEntry {
   promptHash: string;
   createdAt: string;
   updatedAt: string;
-}
-
-export function computeComponentInputHash(component: RawComponentWithId): string {
-  const payload = {
-    framework: component.framework,
-    name: component.name,
-    source: component.source,
-    props: component.props.map((p) => ({
-      name: p.name,
-      type: p.type,
-    })),
-    slots: component.slots.map((s) => ({
-      name: s.name,
-      isDefault: s.isDefault,
-      allowedComponents: [...(s.allowedComponents ?? [])].sort(),
-    })),
-  };
-  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-}
-
-export function computeTokenInputHash(rawTokenContent: string): string {
-  return createHash('sha256').update(rawTokenContent.trim()).digest('hex');
 }
 
 export function computeMapTokensInputHash(

@@ -44,9 +44,11 @@ export async function hashPromptForSkill(
   agent: string,
   model: string | undefined,
   skillPathOverride?: string,
+  extraInputs: string[] = [],
 ): Promise<string> {
   const promptHash = skillPathOverride
     ? await hashFile(resolve(skillPathOverride))
     : await hashFile(resolveSkillPath(skill));
-  return hashContent(`${promptHash}|${agent}|${model ?? ''}`);
+  const extraSegment = extraInputs.length > 0 ? `|${extraInputs.join('|')}` : '';
+  return hashContent(`${promptHash}|${agent}|${model ?? ''}${extraSegment}`);
 }
