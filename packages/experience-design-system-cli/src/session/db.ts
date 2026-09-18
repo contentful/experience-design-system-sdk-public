@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { escapeForRegExp, excerptAroundNames } from './source-excerpt.js';
 import type { RawComponentDefinition } from '../types.js';
 import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
-import type { ToolCall, ComponentSourceRef } from '@contentful/experience-design-system-generation';
+import type { ComponentSourceRef } from '@contentful/experience-design-system-generation';
 import type { ComponentTypeSummary } from '@contentful/experience-design-system-types';
 import type { SlotCycle, SlotEdge } from '../analyze/cycle-detection.js';
 import { deriveComponentId } from './core/components/derive-component-id.js';
@@ -47,6 +47,7 @@ export { replaceRawPropTokenPaths } from './services/tokens/replace-raw-prop-tok
 // Components (raw) — repositories/components/raw/{read,write}.ts and services/components/*
 export { getRawComponents as loadRawComponents, type RawComponentWithId } from './repositories/components/raw/read.js';
 export { storeRawComponents } from './services/components/store-raw-components.js';
+export { applyToolCalls, type ApplyToolCallsResult } from './services/components/apply-tool-calls.js';
 
 export type StepStatus = 'pending' | 'complete' | 'failed' | 'interrupted';
 export type CommandName =
@@ -557,13 +558,6 @@ function applyDbMigrations(db: DatabaseSync): void {
   }
 }
 
-export interface ApplyToolCallsResult {
-  classified: number;
-  excluded: number;
-  slots: number;
-  warnings: string[];
-}
-
 export interface ComponentReviewMetadata {
   sourcePath: string | null;
   componentSource: string | null;
@@ -694,176 +688,6 @@ export function loadComponentRationale(
       rationale: s.rationale,
     })),
   };
-}
-
-export function applyToolCalls(
-  db: DatabaseSync,
-  sessionId: string,
-  componentId: string,
-  componentName: string,
-  calls: ToolCall[],
-  incomingWarnings: string[],
-): ApplyToolCallsResult {
-  const now = new Date().toISOString();
-  const warnings = [...incomingWarnings];
-  let classified = 0;
-  let excluded = 0;
-  let slots = 0;
-
-  const updateProp = db.prepare(
-    `UPDATE raw_props SET cdf_type = ?, cdf_category = ?, cdf_token_kind = ?, required = ?, description = ?, rationale = ?
-     WHERE session_id = ? AND component_id = ? AND name = ?`,
-  );
-  const clearProp = db.prepare(
-    `UPDATE raw_props
-     SET cdf_type = CASE WHEN type = 'boolean' THEN 'boolean' ELSE 'string' END,
-         cdf_category = 'unattached',
-         cdf_token_kind = NULL,
-         required = 0,
-         rationale = ?
-     WHERE session_id = ? AND component_id = ? AND name = ?`,
-  );
-  const deleteAllowedValues = db.prepare(
-    `DELETE FROM raw_prop_allowed_values WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
-  );
-  const deleteTokenPaths = db.prepare(
-    `DELETE FROM raw_prop_token_paths WHERE session_id = ? AND component_id = ? AND prop_name = ?`,
-  );
-  const insertAllowedValue = db.prepare(
-    `INSERT OR IGNORE INTO raw_prop_allowed_values (session_id, component_id, prop_name, value, position)
-     VALUES (?, ?, ?, ?, ?)`,
-  );
-  const deleteAllowedComponents = db.prepare(
-    `DELETE FROM raw_slot_allowed_components WHERE session_id = ? AND component_id = ? AND slot_name = ?`,
-  );
-  const insertAllowedComponent = db.prepare(
-    `INSERT OR IGNORE INTO raw_slot_allowed_components (session_id, component_id, slot_name, allowed_component, position)
-     VALUES (?, ?, ?, ?, ?)`,
-  );
-  const updateSlot = db.prepare(
-    `UPDATE raw_slots SET required = ?, description = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
-  );
-
-  db.exec('BEGIN');
-  try {
-    for (const call of calls) {
-      if (call.tool === 'classify_component') {
-        if (call.description !== undefined) {
-          db.prepare('UPDATE raw_components SET description = ? WHERE session_id = ? AND component_id = ?').run(
-            call.description,
-            sessionId,
-            componentId,
-          );
-        }
-        if (call.rationale) {
-          if (call.rationale.description !== undefined) {
-            db.prepare(
-              'UPDATE raw_components SET component_description_rationale = ? WHERE session_id = ? AND component_id = ?',
-            ).run(call.rationale.description, sessionId, componentId);
-          }
-          if (call.rationale.props !== undefined) {
-            db.prepare('UPDATE raw_components SET props_rationale = ? WHERE session_id = ? AND component_id = ?').run(
-              call.rationale.props,
-              sessionId,
-              componentId,
-            );
-          }
-          if (call.rationale.slots !== undefined) {
-            db.prepare('UPDATE raw_components SET slots_rationale = ? WHERE session_id = ? AND component_id = ?').run(
-              call.rationale.slots,
-              sessionId,
-              componentId,
-            );
-          }
-        }
-      } else if (call.tool === 'classify_prop') {
-        const changes = updateProp.run(
-          call.cdf_type,
-          call.cdf_category,
-          call.token_kind ?? null,
-          call.required !== undefined ? (call.required ? 1 : 0) : 0,
-          call.description ?? null,
-          call.reason ?? null,
-          sessionId,
-          componentId,
-          call.prop,
-        ) as { changes: number };
-        if (changes.changes === 0) {
-          warnings.push(`${componentName}: classify_prop '${call.prop}' — prop not found, skipped`);
-          continue;
-        }
-        if (call.cdf_type === 'token') {
-          // A token property's options list is design token paths, written by
-          // map tokens. An enum vocabulary is not part of that definition,
-          // whether it is left over from a prior classification or supplied on
-          // this very call against the tool contract — so it is dropped either
-          // way, and the caller is told when it was asked for explicitly.
-          deleteAllowedValues.run(sessionId, componentId, call.prop);
-          if (call.values && call.values.length > 0) {
-            const count = call.values.length;
-            warnings.push(
-              `${componentName}: classify_prop '${call.prop}' — dropped ${count} value${count === 1 ? '' : 's'} on a token property; its options list is $token.allowed, not $values`,
-            );
-          }
-        } else {
-          deleteTokenPaths.run(sessionId, componentId, call.prop);
-          if (call.values && call.values.length > 0) {
-            deleteAllowedValues.run(sessionId, componentId, call.prop);
-            call.values.forEach((v, i) => insertAllowedValue.run(sessionId, componentId, call.prop, v, i));
-          }
-        }
-        if (call.default !== undefined) {
-          const storedDefault = typeof call.default === 'boolean' ? String(call.default) : call.default;
-          db.prepare(
-            `UPDATE raw_props SET default_value = ? WHERE session_id = ? AND component_id = ? AND name = ?`,
-          ).run(storedDefault, sessionId, componentId, call.prop);
-        }
-        classified++;
-      } else if (call.tool === 'exclude_prop') {
-        clearProp.run(call.reason || null, sessionId, componentId, call.prop);
-        excluded++;
-      } else if (call.tool === 'classify_slot') {
-        const slotRequired = call.required !== undefined ? (call.required ? 1 : 0) : 1;
-        const slotChanges = updateSlot.run(
-          slotRequired,
-          call.description ?? null,
-          sessionId,
-          componentId,
-          call.slot,
-        ) as { changes: number };
-        if (slotChanges.changes === 0) {
-          warnings.push(`${componentName}: classify_slot '${call.slot}' — slot not found, skipped`);
-          continue;
-        }
-        if (call.rationale !== undefined) {
-          db.prepare('UPDATE raw_slots SET rationale = ? WHERE session_id = ? AND component_id = ? AND name = ?').run(
-            call.rationale,
-            sessionId,
-            componentId,
-            call.slot,
-          );
-        }
-        if (call.allowed_components !== undefined) {
-          deleteAllowedComponents.run(sessionId, componentId, call.slot);
-          call.allowed_components.forEach((ac, i) =>
-            insertAllowedComponent.run(sessionId, componentId, call.slot, ac, i),
-          );
-        }
-        slots++;
-      }
-    }
-
-    db.prepare(
-      `UPDATE raw_components SET status = 'generated', extracted_at = ? WHERE session_id = ? AND component_id = ?`,
-    ).run(now, sessionId, componentId);
-    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
-    db.exec('COMMIT');
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
-  }
-
-  return { classified, excluded, slots, warnings };
 }
 
 export type MatchHints = SessionMatchHints;
