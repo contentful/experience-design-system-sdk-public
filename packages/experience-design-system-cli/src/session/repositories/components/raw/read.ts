@@ -260,3 +260,79 @@ export function getRawPropNameAtPosition(
     .get(sessionId, componentId, position);
   return row ? String(row.name) : null;
 }
+
+export interface GeneratedComponentSourceRow {
+  component_id: string;
+  name: string;
+  source: string;
+  source_path: string | null;
+  props: Array<{ name: string; type: string }>;
+}
+
+export function getGeneratedComponentSources(db: DatabaseSync, sessionId: string): GeneratedComponentSourceRow[] {
+  const rows = db
+    .prepare(
+      `SELECT component_id, name, source, source_path FROM raw_components WHERE session_id = ? AND status = 'generated' ORDER BY rowid`,
+    )
+    .all(sessionId) as Array<{ component_id: string; name: string; source: string; source_path: string | null }>;
+  const propsFor = db.prepare(
+    `SELECT name, type FROM raw_props WHERE session_id = ? AND component_id = ? ORDER BY position`,
+  );
+
+  return rows.map((r) => {
+    const props = propsFor.all(sessionId, r.component_id) as Array<{ name: string; type: string }>;
+    return {
+      component_id: r.component_id,
+      name: r.name,
+      source: r.source,
+      source_path: r.source_path,
+      props: props.map((p) => ({ name: String(p.name), type: String(p.type) })),
+    };
+  });
+}
+
+export interface ComponentReviewSourceRow {
+  componentId: string;
+  source: string;
+  sourcePath: string | null;
+  props: Array<{
+    name: string;
+    rationale: string | null;
+    sourceStartLine: number | null;
+    sourceEndLine: number | null;
+  }>;
+}
+
+export function getComponentReviewSource(
+  db: DatabaseSync,
+  sessionId: string,
+  componentName: string,
+): ComponentReviewSourceRow | null {
+  const compRow = db
+    .prepare(`SELECT component_id, source, source_path FROM raw_components WHERE session_id = ? AND name = ?`)
+    .get(sessionId, componentName) as { component_id: string; source: string; source_path: string | null } | undefined;
+  if (!compRow) return null;
+
+  const propRows = db
+    .prepare(
+      `SELECT name, rationale, source_start_line, source_end_line FROM raw_props WHERE session_id = ? AND component_id = ?`,
+    )
+    .all(sessionId, compRow.component_id) as Array<{
+    name: string;
+    rationale: string | null;
+    source_start_line: number | null;
+    source_end_line: number | null;
+  }>;
+
+  return {
+    componentId: compRow.component_id,
+    source: compRow.source,
+    sourcePath: compRow.source_path,
+    props: propRows.map((r) => ({
+      name: String(r.name),
+      rationale: r.rationale,
+      sourceStartLine: r.source_start_line,
+      sourceEndLine: r.source_end_line,
+    })),
+  };
+}
