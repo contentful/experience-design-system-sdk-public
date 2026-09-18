@@ -31,19 +31,22 @@ export const CONTENT_NAME_EXCEPTIONS = new Set([
 
 const REACT_NODE_EXACT_PATTERNS = ['ReactNode', 'React.ReactNode', 'ReactElement', 'React.ReactElement', 'JSX.Element'];
 
+function normalizeReactNodeType(typeText: string): string {
+  return typeText
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split('|')
+    .map((part) => part.trim())
+    .filter((part) => part !== 'null' && part !== 'undefined')
+    .join(' | ');
+}
+
 /**
  * Checks if a type string represents a ReactNode/ReactElement/JSX.Element type,
  * including unions with null/undefined.
  */
 export function isReactNodeType(typeText: string): boolean {
-  const normalized = typeText.replace(/\s+/g, ' ').trim();
-
-  // Strip optional markers and union with null/undefined
-  const stripped = normalized
-    .split('|')
-    .map((part) => part.trim())
-    .filter((part) => part !== 'null' && part !== 'undefined')
-    .join(' | ');
+  const stripped = normalizeReactNodeType(typeText);
 
   // Check exact match (after stripping null/undefined union members)
   if (REACT_NODE_EXACT_PATTERNS.includes(stripped)) {
@@ -63,14 +66,7 @@ export function isReactNodeType(typeText: string): boolean {
  * Examples: ReactNode[], React.ReactNode[], Array<ReactNode>
  */
 export function isArrayReactNodeType(typeText: string): boolean {
-  const normalized = typeText.replace(/\s+/g, ' ').trim();
-
-  // Strip optional markers and union with null/undefined
-  const stripped = normalized
-    .split('|')
-    .map((part) => part.trim())
-    .filter((part) => part !== 'null' && part !== 'undefined')
-    .join(' | ');
+  const stripped = normalizeReactNodeType(typeText);
 
   // Pattern: ReactNode[] or React.ReactNode[] etc.
   for (const pattern of REACT_NODE_EXACT_PATTERNS) {

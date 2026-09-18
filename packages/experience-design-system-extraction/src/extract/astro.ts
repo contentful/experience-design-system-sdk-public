@@ -9,6 +9,7 @@ import type {
 } from '../types.js';
 import { createSortedExtractionResult, runFileExtractionWorkers } from './file-extraction-workers.js';
 import { resolveTypeProperty } from './resolve-type-property.js';
+import { getSourceLineMetadata } from './source-line-metadata.js';
 
 function extractAllowedValues(typeText: string): string[] | undefined {
   // Check if the type is a union of string literals like 'a' | 'b' | 'c'
@@ -149,12 +150,7 @@ function extractPropsFromFrontmatter(frontmatter: string): RawPropDefinition[] {
         type: typeText,
         required,
         ...(allowedValues && { allowedValues }),
-        ...(typeof (decl as { getStartLineNumber?: () => number }).getStartLineNumber === 'function'
-          ? {
-              sourceStartLine: (decl as { getStartLineNumber: () => number }).getStartLineNumber(),
-              sourceEndLine: (decl as { getEndLineNumber: () => number }).getEndLineNumber(),
-            }
-          : {}),
+        ...getSourceLineMetadata(decl),
       });
     }
   }
@@ -276,8 +272,11 @@ export async function extractAstroComponents(
   const { items: components, warnings } = await runFileExtractionWorkers(
     astroFiles,
     ASTRO_EXTRACT_CONCURRENCY,
-    async (filePath, source) => ({ item: extractFromAstroFile(filePath, source) }),
-    (filePath, error) => `Failed to extract from ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    async (filePath, source) => ({
+      item: extractFromAstroFile(filePath, source),
+    }),
+    (filePath, error) =>
+      `Failed to extract from ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
     onProgress,
   );
 

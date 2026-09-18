@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import type { Project, SourceFile } from 'ts-morph';
 
 export type FileExtractionOutcome<T, M = undefined> = {
   item: T | null;
@@ -57,4 +58,24 @@ export function createSortedExtractionResult<T extends { name: string }>(
     components: components.sort((a, b) => a.name.localeCompare(b.name)),
     warnings,
   };
+}
+
+export function extractProjectSourceFiles<T>(
+  project: Project,
+  extractFile: (sourceFile: SourceFile, warnings: string[]) => T[],
+): { items: T[]; warnings: string[] } {
+  const warnings: string[] = [];
+  const items: T[] = [];
+
+  for (const sourceFile of project.getSourceFiles()) {
+    try {
+      items.push(...extractFile(sourceFile, warnings));
+    } catch (error) {
+      warnings.push(
+        `Failed to extract from ${sourceFile.getFilePath()}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  return { items, warnings };
 }
