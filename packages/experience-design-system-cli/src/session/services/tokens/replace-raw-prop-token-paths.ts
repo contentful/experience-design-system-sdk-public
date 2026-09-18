@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { updateRawPropTokenPaths, type RawPropTokenPathSource } from '../../repositories/tokens/write.js';
+import { updateSessionTimestamp } from '../../repositories/sessions/write.js';
 import { withTransaction } from '../../repositories/shared/with-transaction.js';
 
 export function replaceRawPropTokenPaths(
@@ -12,5 +13,6 @@ export function replaceRawPropTokenPaths(
 ): void {
   withTransaction(db, () => {
     updateRawPropTokenPaths(db, sessionId, componentId, propName, paths, source);
+    updateSessionTimestamp(db, sessionId, new Date().toISOString());
   });
 }
