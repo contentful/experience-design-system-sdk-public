@@ -13,7 +13,7 @@ const workspacePackageManifestCache = new Map<string, WorkspacePackageManifest |
 const nearestTsConfigPathCache = new Map<string, string | null>();
 const tsConfigPathsCache = new Map<string, { baseUrl: string; paths: Record<string, readonly string[]> } | null>();
 
-export function createTsxProject(filePaths: string[]): Project {
+function createTsxProject(filePaths: string[]): Project {
   const project = new Project({
     compilerOptions: {
       jsx: 1,
@@ -33,7 +33,7 @@ export function createTsxProject(filePaths: string[]): Project {
   return project;
 }
 
-export function getTsxProjectFiles(filePaths: string[]): string[] {
+function getTsxProjectFiles(filePaths: string[]): string[] {
   return filePaths.filter((filePath) => /\.[jt]sx?$/.test(filePath) && !filePath.endsWith('.d.ts'));
 }
 
