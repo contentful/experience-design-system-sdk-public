@@ -8,7 +8,7 @@ const ARROW_UP = `${ESC}[A`;
 const ARROW_DOWN = `${ESC}[B`;
 const ENTER = '\r';
 
-const LABELS = ['Import', 'Saved Runs', 'Upgrade Version', 'Settings', 'Help'];
+const LABELS = ['Import', 'Saved Runs', 'Upgrade (source checkout)', 'Settings', 'Help'];
 
 const exit = vi.hoisted(() => vi.fn());
 const terminalWidth = vi.hoisted(() => ({ current: 0 }));

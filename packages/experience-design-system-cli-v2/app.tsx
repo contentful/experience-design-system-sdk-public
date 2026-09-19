@@ -6,7 +6,7 @@ import { HelpScreen } from './src/tui/help/PageContainer.js';
 import { SettingsScreen } from './src/tui/settings/PageContainer.js';
 import { OptInAnalyticsScreen } from './src/tui/settings/opt-in-analytics/screen.js';
 import { ConfigurationScreen } from './src/tui/settings/push-configuration/screen.js';
-import { UpgradeScreen } from './src/tui/upgrade/PageContainer.js';
+import { UpgradeScreen } from './src/tui/upgrade/ui/PageContainer.js';
 
 export type Screen =
   | 'start'
