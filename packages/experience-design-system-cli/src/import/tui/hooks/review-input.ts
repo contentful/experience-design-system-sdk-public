@@ -171,11 +171,7 @@ function rationalePanelForInput(input: string, propKey: string, componentKey: st
   return null;
 }
 
-function handleRationalePanelInput(
-  input: string,
-  key: ImmediateInputKey,
-  state: RationalePanelInputState,
-): boolean {
+function handleRationalePanelInput(input: string, key: ImmediateInputKey, state: RationalePanelInputState): boolean {
   if (state.panelOpen === 'none' || state.panelOpen === 'token-review') return false;
 
   const next = computeNextScrollOffset(state.panelScrollOffset, input, key, 9999, PANEL_CONTENT_HEIGHT);

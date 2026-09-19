@@ -57,7 +57,8 @@ export async function extractVueComponents(
       const { component, warnings: fileWarnings } = await extractFromVueSFC(filePath, source);
       return { item: component, warnings: fileWarnings };
     },
-    (filePath, error) => `Failed to extract from ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    (filePath, error) =>
+      `Failed to extract from ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
     onProgress,
   );
 
