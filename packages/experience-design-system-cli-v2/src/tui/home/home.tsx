@@ -2,12 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import type { Screen } from '../../../app.js';
 import { FOCUS_MARKER, PALETTE, brandBar } from './home.theme.js';
-import { readPackageVersion, isSourceCheckout } from '../version.js';
+import { readPackageVersion } from '../version.js';
 import { useTerminalWidth } from '../use-terminal-width.js';
 import { checkForUpgrade, type UpgradeCheckResult } from '../upgrade/services/version-check.js';
 
 const VERSION = readPackageVersion();
-const SOURCE_CHECKOUT = isSourceCheckout();
 const HEADING = 'Contentful Experiences';
 const SUBTITLE = "Let's import your design system into Contentful";
 
@@ -29,9 +28,6 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
   const tooNarrow = terminalWidth < MIN_TERMINAL_WIDTH;
 
   useEffect(() => {
-    if (SOURCE_CHECKOUT) {
-      return;
-    }
     let cancelled = false;
     void checkForUpgrade().then((result) => {
       if (!cancelled) {
@@ -43,7 +39,7 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
     };
   }, []);
 
-  const isUpgradeDisabled = SOURCE_CHECKOUT || upgradeCheck?.status === 'up-to-date';
+  const isUpgradeDisabled = upgradeCheck?.status === 'up-to-date';
 
   useInput((input, key) => {
     if (input === 'q' || key.escape) {
@@ -108,10 +104,10 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
             const upgradeAvailable = item.screen === 'upgrade' && upgradeCheck?.status === 'update-available';
 
             let label = item.label;
-            if (item.screen === 'upgrade' && SOURCE_CHECKOUT) {
-              label = 'Upgrade (source checkout)';
-            } else if (upgradeAvailable) {
-              label = `Upgrade (v${upgradeCheck.latest} available)`;
+            if (upgradeAvailable) {
+              label = upgradeCheck.isSourceCheckout
+                ? `Upgrade (v${upgradeCheck.latest} available, source checkout)`
+                : `Upgrade (v${upgradeCheck.latest} available)`;
             } else if (disabled) {
               label = 'Upgrade (up to date)';
             }

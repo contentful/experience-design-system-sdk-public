@@ -80,12 +80,13 @@ export function UpgradeExecutionScreen({ onDone }: { onDone: () => void }): Reac
         return;
       }
 
-      if (result.status === 'source-checkout') {
+      setLatest(result.latest);
+
+      if (result.isSourceCheckout) {
         setPhase('source-checkout');
         return;
       }
 
-      setLatest(result.latest);
       setPhase('upgrading');
 
       const { donePromise } = spawnInstall(result.latest);
@@ -164,7 +165,14 @@ export function UpgradeExecutionScreen({ onDone }: { onDone: () => void }): Reac
   if (phase === 'source-checkout') {
     return (
       <Box flexDirection="column" gap={1}>
-        <Text>Running from a source checkout (v{current}) — use `git pull` to update instead.</Text>
+        <Text>
+          v{latest} is available (you're on v{current}), but this is a source checkout — update manually:
+        </Text>
+        <Box flexDirection="column" paddingLeft={2}>
+          <Text>1. git pull</Text>
+          <Text>2. pnpm install</Text>
+          <Text>3. pnpm -F @contentful/experience-design-system-cli-v2 build</Text>
+        </Box>
         <Text dimColor>[Enter/B] Back to Start [Q] Quit</Text>
       </Box>
     );

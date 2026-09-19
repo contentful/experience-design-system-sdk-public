@@ -4,9 +4,8 @@ import { readPackageVersion, isSourceCheckout } from '../../version.js';
 const TAGS_URL = 'https://api.github.com/repos/contentful/experience-design-system-sdk-public/tags?per_page=10';
 
 export type UpgradeCheckResult =
-  | { status: 'update-available'; current: string; latest: string }
+  | { status: 'update-available'; current: string; latest: string; isSourceCheckout: boolean }
   | { status: 'up-to-date'; current: string }
-  | { status: 'source-checkout'; current: string }
   | { status: 'error' };
 
 export function getCurrentVersion(): string {
@@ -15,10 +14,6 @@ export function getCurrentVersion(): string {
 
 export async function checkForUpgrade(): Promise<UpgradeCheckResult> {
   const current = getCurrentVersion();
-
-  if (isSourceCheckout()) {
-    return { status: 'source-checkout', current };
-  }
 
   try {
     const response = await fetch(TAGS_URL, {
@@ -39,7 +34,7 @@ export async function checkForUpgrade(): Promise<UpgradeCheckResult> {
     }
 
     if (semver.gt(latest, current)) {
-      return { status: 'update-available', current, latest };
+      return { status: 'update-available', current, latest, isSourceCheckout: isSourceCheckout() };
     }
     return { status: 'up-to-date', current };
   } catch {
