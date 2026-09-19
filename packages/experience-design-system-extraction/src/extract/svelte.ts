@@ -1,6 +1,5 @@
 import { basename, dirname, resolve, join } from 'node:path';
-import { readFile } from 'node:fs/promises';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import { parse as parseSvelte } from 'svelte/compiler';
@@ -14,6 +13,8 @@ import type {
 } from '../types.js';
 import { computeExtractionScore, deriveNeedsReview } from './scoring.js';
 import { extractAllowedComponentsFromTypeText } from './slot-allowed-components.js';
+import { runFileExtractionWorkers } from './file-extraction-workers.js';
+import { resolveLocalModule } from './resolve-local-module.js';
 
 type RawSlotDefinitionInternal = RawSlotDefinition & {
   _rawTypeText?: string;
@@ -46,39 +47,21 @@ export async function extractSvelteComponents(
   opts?: ExtractorOptions,
 ): Promise<ComponentExtractionResult> {
   const svelteFiles = filePaths.filter((f) => f.endsWith('.svelte'));
-  if (svelteFiles.length === 0) return { components: [], warnings: [] };
-
-  const warnings: string[] = [];
-  const components: RawComponentDefinition[] = [];
   const retryContexts = new Map<string, RetryContext>();
-  let filesProcessed = 0;
-  let componentsFound = 0;
-
-  const queue = [...svelteFiles];
-  async function worker() {
-    while (queue.length > 0) {
-      const filePath = queue.shift();
-      if (!filePath) break;
-      try {
-        const source = await readFile(filePath, 'utf-8');
-        const { component, warnings: fileWarnings, retryContext } = await extractFromSvelteFile(filePath, source);
-        warnings.push(...fileWarnings);
-        if (component) {
-          components.push(component);
-          componentsFound++;
-        }
-        if (retryContext) retryContexts.set(filePath, retryContext);
-      } catch (e) {
-        warnings.push(
-          `${getSvelteComponentName(filePath)}: failed to extract from ${filePath} — ${e instanceof Error ? e.message : String(e)}`,
-        );
-      }
-      filesProcessed++;
-      onProgress?.({ filesProcessed, componentsFound });
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(SVELTE_EXTRACT_CONCURRENCY, svelteFiles.length) }, worker));
+  const { items: components, warnings } = await runFileExtractionWorkers(
+    svelteFiles,
+    SVELTE_EXTRACT_CONCURRENCY,
+    async (filePath, source) => {
+      const { component, warnings: fileWarnings, retryContext } = await extractFromSvelteFile(filePath, source);
+      return { item: component, warnings: fileWarnings, metadata: retryContext };
+    },
+    (filePath, error) =>
+      `${getSvelteComponentName(filePath)}: failed to extract from ${filePath} — ${error instanceof Error ? error.message : String(error)}`,
+    onProgress,
+    (filePath, outcome) => {
+      if (outcome.metadata) retryContexts.set(filePath, outcome.metadata);
+    },
+  );
 
   const finalWarnings = await maybeRunResolveUnreachableRetry(components, warnings, retryContexts, opts);
 
@@ -1276,33 +1259,10 @@ async function resolveImportedTypeMembers(
     }
     if (!importedExport) continue;
 
-    const resolvedFile = resolveLocalScriptModule(filePath, specifierValue);
+    const resolvedFile = resolveLocalModule(filePath, specifierValue, { allowJavaScriptExtensionFallback: true });
     if (!resolvedFile) continue;
 
     return readMembersFromExternalFile(resolvedFile, importedExport);
-  }
-  return null;
-}
-
-function resolveLocalScriptModule(importingFilePath: string, specifier: string): string | null {
-  const basePath = resolve(dirname(importingFilePath), specifier);
-  const candidates = [
-    basePath,
-    `${basePath}.js`,
-    `${basePath}.ts`,
-    `${basePath}.mjs`,
-    `${basePath}.cjs`,
-    join(basePath, 'index.js'),
-    join(basePath, 'index.ts'),
-    join(basePath, 'index.mjs'),
-    join(basePath, 'index.cjs'),
-  ];
-  for (const c of candidates) {
-    if (existsSync(c) && statSync(c).isFile()) return c;
-  }
-  if (basePath.endsWith('.js')) {
-    const tsPath = `${basePath.slice(0, -'.js'.length)}.ts`;
-    if (existsSync(tsPath) && statSync(tsPath).isFile()) return tsPath;
   }
   return null;
 }

@@ -10,6 +10,9 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
 } from '../types.js';
+import { createSortedExtractionResult, runFileExtractionWorkers } from './file-extraction-workers.js';
+import { resolveLocalModule } from './resolve-local-module.js';
+import { resolveTypeProperty } from './resolve-type-property.js';
 
 // @vue/compiler-core NodeTypes enum values (stable since Vue 3.0)
 const ELEMENT_TYPE = 1;
@@ -47,42 +50,19 @@ export async function extractVueComponents(
   onProgress?: (p: { filesProcessed: number; componentsFound: number }) => void,
 ): Promise<ComponentExtractionResult> {
   const vueFiles = filePaths.filter((f) => f.endsWith('.vue'));
-  if (vueFiles.length === 0) {
-    return { components: [], warnings: [] };
-  }
+  const { items: components, warnings } = await runFileExtractionWorkers(
+    vueFiles,
+    VUE_EXTRACT_CONCURRENCY,
+    async (filePath, source) => {
+      const { component, warnings: fileWarnings } = await extractFromVueSFC(filePath, source);
+      return { item: component, warnings: fileWarnings };
+    },
+    (filePath, error) =>
+      `Failed to extract from ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    onProgress,
+  );
 
-  const warnings: string[] = [];
-  const components: RawComponentDefinition[] = [];
-  let filesProcessed = 0;
-  let componentsFound = 0;
-
-  const queue = [...vueFiles];
-  async function worker() {
-    while (queue.length > 0) {
-      const filePath = queue.shift();
-      if (!filePath) break;
-      try {
-        const source = await readFile(filePath, 'utf-8');
-        const { component, warnings: fileWarnings } = await extractFromVueSFC(filePath, source);
-        warnings.push(...fileWarnings);
-        if (component) {
-          components.push(component);
-          componentsFound++;
-        }
-      } catch (e) {
-        warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
-      }
-      filesProcessed++;
-      onProgress?.({ filesProcessed, componentsFound });
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(VUE_EXTRACT_CONCURRENCY, vueFiles.length) }, worker));
-
-  return {
-    components: components.sort((a, b) => a.name.localeCompare(b.name)),
-    warnings,
-  };
+  return createSortedExtractionResult(components, warnings);
 }
 
 async function extractFromVueSFC(
@@ -252,21 +232,20 @@ function extractGenericProps(typeText: string): RawPropDefinition[] {
   const props: RawPropDefinition[] = [];
 
   for (const property of type.getProperties()) {
-    const name = property.getName();
-    const decl = property.getValueDeclaration() ?? property.getDeclarations()[0];
-    if (!decl) continue;
+    const resolved = resolveTypeProperty(property);
+    if (!resolved) continue;
 
-    const propType = property.getTypeAtLocation(decl);
+    const { name, typeText: resolvedTypeText, required } = resolved;
     // Strip `| undefined` from optional types for clean output
-    let resolvedTypeText = propType.getText(decl);
-    if (property.isOptional()) {
-      resolvedTypeText = resolvedTypeText.replace(/\s*\|\s*undefined$/, '').replace(/^undefined\s*\|\s*/, '');
+    let typeText = resolvedTypeText;
+    if (!required) {
+      typeText = typeText.replace(/\s*\|\s*undefined$/, '').replace(/^undefined\s*\|\s*/, '');
     }
 
     props.push({
       name,
-      type: resolvedTypeText,
-      required: !property.isOptional(),
+      type: typeText,
+      required,
     });
   }
 
@@ -283,7 +262,7 @@ function collectSetupImportedObjectRefs(
     const specifier = importDecl.getModuleSpecifierValue();
     if (!specifier.startsWith('.')) continue;
 
-    const resolvedImportPath = resolveLocalScriptModule(filePath, specifier);
+    const resolvedImportPath = resolveLocalModule(filePath, specifier);
     if (!resolvedImportPath) continue;
 
     for (const namedImport of importDecl.getNamedImports()) {
@@ -295,29 +274,6 @@ function collectSetupImportedObjectRefs(
   }
 
   return refs;
-}
-
-function resolveLocalScriptModule(importingFilePath: string, specifier: string): string | null {
-  const basePath = resolve(dirname(importingFilePath), specifier);
-  const candidates = [
-    basePath,
-    `${basePath}.js`,
-    `${basePath}.ts`,
-    `${basePath}.mjs`,
-    `${basePath}.cjs`,
-    join(basePath, 'index.js'),
-    join(basePath, 'index.ts'),
-    join(basePath, 'index.mjs'),
-    join(basePath, 'index.cjs'),
-  ];
-
-  for (const candidate of candidates) {
-    if (existsSync(candidate) && statSync(candidate).isFile()) {
-      return candidate;
-    }
-  }
-
-  return null;
 }
 
 async function parseSetupObjectProps(

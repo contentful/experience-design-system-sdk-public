@@ -9,7 +9,7 @@ import {
   type NodeStatus,
 } from '../../../composite-closure.js';
 import type { RenderStatus } from '../../../issue-inheritance.js';
-import { previewBadge } from './Sidebar.js';
+import { PreviewBadge, previewBadge } from './Sidebar.js';
 import { PALETTE } from '../theme.js';
 import type { PreviewAnnotation } from '../../types.js';
 
@@ -67,6 +67,15 @@ export interface VisibleRow {
 
 function isEmpty(entry: CDFComponentEntry): boolean {
   return Object.keys(entry.$properties ?? {}).length === 0 && Object.keys(entry.$slots ?? {}).length === 0;
+}
+
+function allowedComponentNames(entry: CDFComponentEntry): string[] {
+  const names: string[] = [];
+  for (const slot of Object.values(entry.$slots ?? {})) {
+    if (!Array.isArray(slot?.$allowedComponents)) continue;
+    names.push(...(slot.$allowedComponents as unknown[]).filter((value): value is string => typeof value === 'string'));
+  }
+  return names;
 }
 
 function aggregateGlyphFor(closure: Closure, statusByName: Map<string, NodeStatus>): string | null {
@@ -174,16 +183,11 @@ export function buildVisibleRows(props: {
       if (!parentItem) continue;
       const slotTargets: string[] = [];
       const seenTarget = new Set<string>();
-      for (const slot of Object.values(parentItem.entry.$slots ?? {})) {
-        const allowed = Array.isArray(slot?.$allowedComponents)
-          ? (slot.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
-          : [];
-        for (const target of allowed) {
-          if (!itemByKey.has(target)) continue;
-          if (seenTarget.has(target)) continue;
-          seenTarget.add(target);
-          slotTargets.push(target);
-        }
+      for (const target of allowedComponentNames(parentItem.entry)) {
+        if (!itemByKey.has(target)) continue;
+        if (seenTarget.has(target)) continue;
+        seenTarget.add(target);
+        slotTargets.push(target);
       }
       slotTargets.sort();
       for (const target of slotTargets) {
@@ -253,13 +257,8 @@ export function buildVisibleRows(props: {
   const hasCycleDepDirect = (name: string): boolean => {
     const it = itemByKey.get(name)?.it;
     if (!it) return false;
-    for (const slot of Object.values(it.entry.$slots ?? {})) {
-      const allowed = Array.isArray(slot?.$allowedComponents)
-        ? (slot.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
-        : [];
-      for (const target of allowed) {
-        if (cycleParticipants.has(target)) return true;
-      }
+    for (const target of allowedComponentNames(it.entry)) {
+      if (cycleParticipants.has(target)) return true;
     }
     return false;
   };
@@ -284,17 +283,12 @@ export function buildVisibleRows(props: {
     const countInjections = (parentName: string): void => {
       const parentItem = itemByKey.get(parentName)?.it;
       if (!parentItem) return;
-      for (const slot of Object.values(parentItem.entry.$slots ?? {})) {
-        const allowed = Array.isArray(slot?.$allowedComponents)
-          ? (slot.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
-          : [];
-        for (const target of allowed) {
-          if (!cycleParticipants.has(target)) continue;
-          const key = `${parentName}→${target}`;
-          if (seenInject.has(key)) continue;
-          seenInject.add(key);
-          injectedCycleCount += 1;
-        }
+      for (const target of allowedComponentNames(parentItem.entry)) {
+        if (!cycleParticipants.has(target)) continue;
+        const key = `${parentName}→${target}`;
+        if (seenInject.has(key)) continue;
+        seenInject.add(key);
+        injectedCycleCount += 1;
       }
     };
     countInjections(root);
@@ -331,20 +325,15 @@ export function buildVisibleRows(props: {
       const parentItem = itemByKey.get(parentName)?.it;
       if (!parentItem) return;
       const seen = new Set<string>();
-      for (const slot of Object.values(parentItem.entry.$slots ?? {})) {
-        const allowed = Array.isArray(slot?.$allowedComponents)
-          ? (slot.$allowedComponents as unknown[]).filter((v): v is string => typeof v === 'string')
-          : [];
-        for (const target of allowed) {
-          if (!cycleParticipants.has(target)) continue;
-          if (seen.has(target)) continue;
-          seen.add(target);
-          injectedChildren.push({
-            name: target,
-            depth: parentDepth + 1,
-            isCycleChild: true,
-          });
-        }
+      for (const target of allowedComponentNames(parentItem.entry)) {
+        if (!cycleParticipants.has(target)) continue;
+        if (seen.has(target)) continue;
+        seen.add(target);
+        injectedChildren.push({
+          name: target,
+          depth: parentDepth + 1,
+          isCycleChild: true,
+        });
       }
     };
     emitCycleChildrenOf(root, 0);
@@ -628,13 +617,7 @@ export function GroupedSidebar(props: GroupedSidebarProps): React.ReactElement {
             ) : (
               <Text>{'  '}</Text>
             )}
-            {badge ? (
-              <Text color={badge.color} bold={badge.bold} dimColor={badge.dim}>
-                {badge.char}
-              </Text>
-            ) : (
-              <Text> </Text>
-            )}
+            <PreviewBadge badge={badge} />
             {selectionStateByKey !== undefined &&
               (selGlyph && !isSynthetic ? (
                 <Text color={selColor} dimColor={selDim} bold={selBold}>

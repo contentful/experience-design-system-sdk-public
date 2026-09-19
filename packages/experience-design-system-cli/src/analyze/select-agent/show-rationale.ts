@@ -13,7 +13,7 @@ import { openPipelineDb, findLatestSessionForCommand } from '../../session/db.js
  * throw with a clear message pointing at the remediation step.
  */
 
-export interface RationaleRow {
+interface RationaleRow {
   name: string;
   decision: 'accepted' | 'rejected' | 'needs-review' | 'extracted';
   reason: string | null;
@@ -43,7 +43,7 @@ function assertSchema(dbPath?: string): void {
  * the session exists and has at least one raw component; otherwise falls back
  * to the most recent completed `analyze select` step.
  */
-export function resolveRationaleSession(sessionFlag: string | undefined, dbPath?: string): string {
+function resolveRationaleSession(sessionFlag: string | undefined, dbPath?: string): string {
   const db = openPipelineDb(dbPath);
   try {
     if (sessionFlag) {
@@ -70,7 +70,7 @@ export function resolveRationaleSession(sessionFlag: string | undefined, dbPath?
   }
 }
 
-export function loadRationaleRows(sessionId: string, dbPath?: string): RationaleRow[] {
+function loadRationaleRows(sessionId: string, dbPath?: string): RationaleRow[] {
   const db = openPipelineDb(dbPath);
   try {
     const rows = db
@@ -91,7 +91,7 @@ export function loadRationaleRows(sessionId: string, dbPath?: string): Rationale
   }
 }
 
-export function formatRationaleTable(rows: RationaleRow[]): string {
+function formatRationaleTable(rows: RationaleRow[]): string {
   if (rows.length === 0) {
     return 'No rationale rows found for this session.\n';
   }
@@ -113,7 +113,7 @@ export function formatRationaleTable(rows: RationaleRow[]): string {
   return lines.join('\n') + '\n';
 }
 
-export function formatRationaleJson(rows: RationaleRow[]): string {
+function formatRationaleJson(rows: RationaleRow[]): string {
   return (
     JSON.stringify(
       rows.map((r) => ({ name: r.name, decision: r.decision, reason: r.reason })),

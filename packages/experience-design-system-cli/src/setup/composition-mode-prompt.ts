@@ -1,4 +1,5 @@
 import type { CompositionMode } from '../lib/composition-mode.js';
+import { promptBooleanPreference } from './prompt-helpers.js';
 
 /**
  * Setup prompts for composition (spec T10). Parallels `promptAutoFilterPreference`
@@ -28,13 +29,5 @@ export async function promptAgenticResolutionPreference(
   ask: (q: string) => Promise<string>,
   current?: boolean,
 ): Promise<boolean> {
-  const defaultValue = current ?? false;
-  const hint = defaultValue ? '[Y/n]' : '[y/N]';
-  const answer = (await ask(`  Enable agentic mapping resolution when no groups are found? ${hint} `))
-    .trim()
-    .toLowerCase();
-  if (answer === '') return defaultValue;
-  if (answer.startsWith('y')) return true;
-  if (answer.startsWith('n')) return false;
-  return defaultValue;
+  return promptBooleanPreference(ask, current, false, 'Enable agentic mapping resolution when no groups are found?');
 }

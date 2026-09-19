@@ -1,3 +1,5 @@
+import { promptBooleanPreference } from './prompt-helpers.js';
+
 /**
  * Ask the operator whether to enable debug logging by default.
  *
@@ -12,11 +14,5 @@ export async function promptDebugModePreference(
   ask: (q: string) => Promise<string>,
   current?: boolean,
 ): Promise<boolean> {
-  const defaultValue = current ?? false;
-  const hint = defaultValue ? '[Y/n]' : '[y/N]';
-  const answer = (await ask(`  Enable debug logging by default? ${hint} `)).trim().toLowerCase();
-  if (answer === '') return defaultValue;
-  if (answer.startsWith('y')) return true;
-  if (answer.startsWith('n')) return false;
-  return defaultValue;
+  return promptBooleanPreference(ask, current, false, 'Enable debug logging by default?');
 }

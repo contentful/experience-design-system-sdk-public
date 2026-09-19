@@ -18,10 +18,3 @@ export function failureFromApiError(error: ApiError): CommandFailure {
     exit_code: 1,
   };
 }
-
-export function failureFromUnknown(error: unknown): CommandFailure {
-  if (error instanceof Error) {
-    return { error_name: error.name, exit_code: 1 };
-  }
-  return { error_name: 'Error', exit_code: 1 };
-}

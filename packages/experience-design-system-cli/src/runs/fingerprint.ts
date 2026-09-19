@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-export type SourceFileEntry = { mtime: string; componentName?: string };
+type SourceFileEntry = { mtime: string; componentName?: string };
 
 export type SourceFingerprint = {
   files: Record<string, SourceFileEntry>;

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Box, Text } from 'ink';
 import { readdirSync } from 'node:fs';
 import { dirname, basename, join } from 'node:path';
 import { useImmediateInput } from '../analyze/select/tui/hooks/useImmediateInput.js';
 import { normalizePath } from '../import/path-utils.js';
+import { useBlinkingCursor } from '../tui/use-blinking-cursor.js';
 
 export type PathPromptProps = {
   defaultPath: string;
@@ -42,12 +43,7 @@ export function PathPrompt({
   label = 'Save to',
 }: PathPromptProps): React.ReactElement {
   const [input, setInput] = useState('');
-  const [cursorVisible, setCursorVisible] = useState(true);
-
-  useEffect(() => {
-    const interval = setInterval(() => setCursorVisible((v) => !v), 500);
-    return () => clearInterval(interval);
-  }, []);
+  const cursorVisible = useBlinkingCursor();
 
   useImmediateInput((rawInput, key) => {
     if (key.return) {

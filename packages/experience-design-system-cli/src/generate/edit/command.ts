@@ -1,6 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { Command } from 'commander';
+import {
+  applyDotPath,
+  applyComponentPatch,
+  warnOnUnknownPatchComponents,
+  type ComponentPatchOperation,
+} from '../../lib/component-patch.js';
 
 type GenerateEditOptions = {
   session?: string;
@@ -9,74 +15,15 @@ type GenerateEditOptions = {
   patch?: string;
 };
 
-interface PatchOperation {
-  component: string;
-  status?: 'accepted' | 'rejected';
-  set?: Record<string, unknown>;
-}
-
-const SAFE_PATH_RE = /^[a-zA-Z0-9_.$[\]=]+$/;
-const PROTO_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-
-function applyDotPath(obj: Record<string, unknown>, path: string, value: unknown): void {
-  if (!SAFE_PATH_RE.test(path)) {
-    process.stderr.write(`Warning: --patch path contains invalid characters: '${path}', skipping\n`);
-    return;
-  }
-  const parts = path.split('.');
-  if (parts.some((p) => PROTO_KEYS.has(p))) {
-    process.stderr.write(`Warning: --patch path contains forbidden key: '${path}', skipping\n`);
-    return;
-  }
-  let current: Record<string, unknown> = obj;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const part = parts[i]!;
-    const arrayMatch = /^(.+)\[name=(.+)\]$/.exec(part);
-    if (arrayMatch) {
-      const [, fieldName, matchValue] = arrayMatch;
-      const arr = current[fieldName!] as Array<Record<string, unknown>>;
-      if (Array.isArray(arr)) {
-        const item = arr.find((el) => el['name'] === matchValue);
-        if (item) {
-          current = item;
-        } else {
-          process.stderr.write(
-            `Warning: --patch array item [name=${matchValue}] not found in '${fieldName}', skipping\n`,
-          );
-          return;
-        }
-      }
-    } else {
-      if (typeof current[part] !== 'object' || current[part] === null) {
-        process.stderr.write(`Warning: --patch path '${path}' — '${part}' is not an object, skipping\n`);
-        return;
-      }
-      current = current[part] as Record<string, unknown>;
-    }
-  }
-  const lastPart = parts[parts.length - 1]!;
-  current[lastPart] = value;
-}
-
 type ComponentEntry = { name: string; status?: string; [key: string]: unknown };
 
-function applyPatch(components: ComponentEntry[], ops: PatchOperation[]): ComponentEntry[] {
-  return components.map((c) => {
-    const op = ops.find((o) => o.component === c.name);
-    if (!op) return c;
-
-    let updated = { ...c };
-    if (op.status) {
-      updated = { ...updated, status: op.status };
+function applyPatch(components: ComponentEntry[], operations: ComponentPatchOperation[]): ComponentEntry[] {
+  return applyComponentPatch(components, operations, (component, values) => {
+    const clone = structuredClone(component) as unknown as Record<string, unknown>;
+    for (const [path, value] of Object.entries(values)) {
+      applyDotPath(clone, path, value);
     }
-    if (op.set) {
-      const clone = structuredClone(updated) as unknown as Record<string, unknown>;
-      for (const [path, value] of Object.entries(op.set)) {
-        applyDotPath(clone, path, value);
-      }
-      updated = clone as ComponentEntry;
-    }
-    return updated;
+    return clone as ComponentEntry;
   });
 }
 
@@ -101,23 +48,17 @@ async function runNonInteractive(opts: GenerateEditOptions, skill: string): Prom
   }
 
   if (opts.patch) {
-    let patchOps: PatchOperation[];
+    let patchOps: ComponentPatchOperation[];
     try {
       const raw = await readFile(resolve(opts.patch), 'utf8');
-      patchOps = JSON.parse(raw) as PatchOperation[];
+      patchOps = JSON.parse(raw) as ComponentPatchOperation[];
     } catch {
       process.stderr.write(`Error: cannot read or parse --patch file: ${opts.patch}\n`);
       process.exit(1);
       return;
     }
 
-    const knownNames = new Set(components.map((c) => c.name));
-    for (const op of patchOps) {
-      if (!knownNames.has(op.component)) {
-        process.stderr.write(`Warning: --patch targets unknown component '${op.component}', skipping\n`);
-      }
-    }
-
+    warnOnUnknownPatchComponents(components, patchOps);
     components = applyPatch(components, patchOps);
   }
 

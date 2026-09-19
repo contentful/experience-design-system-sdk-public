@@ -49,7 +49,7 @@ const DEFAULT_CLI_BIN = resolve(
  * Uses the new EDS_AGENT_BINARY_* override (see agent-runner.ts) —
  * no $PATH surgery required.
  */
-export function stubAgentEnv(base = {}) {
+function stubAgentEnv(base = {}) {
   return {
     ...base,
     EDS_AGENT_BINARY_CLAUDE: STUB_AGENT,

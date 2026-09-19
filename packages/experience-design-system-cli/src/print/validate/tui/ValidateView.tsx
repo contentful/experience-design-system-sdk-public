@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import type { ValidationDiagnostic } from '../validators/format-errors.js';
 import { TopBar } from '../../../analyze/select/tui/components/TopBar.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import { handleListScrollInput } from '../../../analyze/select/tui/hooks/list-scroll-input.js';
 
 export type ValidateViewEntry = {
   filePath: string;
@@ -22,19 +23,11 @@ export function ValidateView({ results, onExit }: ValidateViewProps): React.Reac
   const allValid = results.every((r) => r.valid);
 
   useImmediateInput((input, key) => {
-    if (input === 'q' || key.return) {
-      onExit();
-      return;
-    }
-    if (key.upArrow || input === 'k') {
-      setScrollOffset((o) => Math.max(0, o - 1));
-    } else if (key.downArrow || input === 'j') {
-      setScrollOffset((o) => o + 1);
-    } else if (input === 'g') {
-      setScrollOffset(0);
-    } else if (input === 'G') {
-      setScrollOffset(100);
-    }
+    handleListScrollInput(input, key, {
+      onExit,
+      onScroll: setScrollOffset,
+      endOffset: 100,
+    });
   });
 
   const invalidResults = results.filter((r) => !r.valid);

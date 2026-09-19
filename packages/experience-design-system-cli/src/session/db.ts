@@ -44,7 +44,6 @@ export { applyTokenToolCalls, type ApplyTokenToolCallsResult } from './services/
 export { replaceRawTokenNamePaths } from './services/tokens/replace-raw-token-name-paths.js';
 export { replaceRawPropTokenPaths } from './services/tokens/replace-raw-prop-token-paths.js';
 
-export type StepStatus = 'pending' | 'complete' | 'failed' | 'interrupted';
 export type CommandName =
   | 'analyze extract'
   | 'analyze select'
@@ -59,26 +58,6 @@ export type CommandName =
   | 'map tokens'
   | 'fetch existing entities'
   | 'import';
-
-export interface SessionRow {
-  id: string;
-  name: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface StepRow {
-  id: number;
-  session_id: string;
-  command: string;
-  status: StepStatus;
-  started_at: string;
-  completed_at: string | null;
-  inputs: string;
-  outputs: string;
-  error: string | null;
-  updated_at: string;
-}
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;

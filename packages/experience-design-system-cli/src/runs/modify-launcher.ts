@@ -4,6 +4,9 @@
  */
 
 import type { CompositionMode } from '../lib/composition-mode.js';
+import type { WizardAppProps } from '../import/tui/WizardApp.js';
+import { launchWizard } from './wizard-launcher.js';
+import { applyWizardSeedProps } from './wizard-seed.js';
 
 export type ModifyLauncherInput = {
   extractSessionId: string;
@@ -35,46 +38,21 @@ export type ModifyLauncherInput = {
 };
 
 export async function launchModifyWizard(input: ModifyLauncherInput): Promise<void> {
-  const { render } = await import('ink');
-  const { createElement } = await import('react');
-  const { WizardApp } = await import('../import/tui/WizardApp.js');
-  type WizardProps = {
-    initialProjectPath?: string;
-    outDirOverride?: string;
-    seedExtractSessionId?: string;
-    seedGenerateSessionId?: string;
-    seedTokenSessionId?: string;
-    seedTokensPath?: string;
-    initialStep?: 'scope-gate' | 'final-review';
-    initialSpaceId?: string;
-    initialEnvironmentId?: string;
-    initialHost?: string;
-    initialCmaToken?: string;
-    compositionMode?: CompositionMode;
-    allowDeletions?: boolean;
-  };
   // Modify entry: re-open the wizard with the prior run's sessions seeded so
   // extract + generate are skipped. The wizard short-circuits to `initialStep`
   // (typically `final-review`) using state derived from the seed IDs. Saved
   // credentials from the run record's `pushedTo` pre-fill the credentials
   // step (CMA token is never persisted, so it still falls through to the
   // env/credentials.json/prompt resolution path).
-  const props: WizardProps = {
+  const props: WizardAppProps = {
     initialProjectPath: input.projectPath,
     seedExtractSessionId: input.extractSessionId,
     initialStep: input.entryStep,
   };
-  if (input.generateSessionId) props.seedGenerateSessionId = input.generateSessionId;
-  if (input.tokenSessionId) props.seedTokenSessionId = input.tokenSessionId;
-  if (input.tokensPath) props.seedTokensPath = input.tokensPath;
+  applyWizardSeedProps(props, input);
   if (input.compositionMode) props.compositionMode = input.compositionMode;
   if (input.saveMode === 'overwrite') props.outDirOverride = input.savePath;
   if (input.outDirOverride) props.outDirOverride = input.outDirOverride;
-  if (input.initialSpaceId) props.initialSpaceId = input.initialSpaceId;
-  if (input.initialEnvironmentId) props.initialEnvironmentId = input.initialEnvironmentId;
-  if (input.initialHost) props.initialHost = input.initialHost;
-  if (input.initialCmaToken) props.initialCmaToken = input.initialCmaToken;
   if (input.allowDeletions !== undefined) props.allowDeletions = input.allowDeletions;
-  const { waitUntilExit } = render(createElement<WizardProps>(WizardApp, props));
-  await waitUntilExit();
+  await launchWizard(props);
 }

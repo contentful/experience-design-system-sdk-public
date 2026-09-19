@@ -4,7 +4,7 @@ import { useImmediateInput } from '../analyze/select/tui/hooks/useImmediateInput
 import type { RunRecord } from './store.js';
 import { disambiguateLabels, formatRelativeTime } from './picker-labels.js';
 
-export type RunPickerAction = 'push' | 'modify' | 'new';
+type RunPickerAction = 'push' | 'modify' | 'new';
 
 export type RunPickerSelection = {
   /** null only when `action === 'new'`. */

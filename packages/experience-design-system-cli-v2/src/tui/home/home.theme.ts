@@ -20,7 +20,7 @@ export const PALETTE = {
   border: BRAND.steel,
 } as const;
 
-export const BRAND_RAMP = [BRAND.blue, BRAND.orange, BRAND.yellow] as const;
+const BRAND_RAMP = [BRAND.blue, BRAND.orange, BRAND.yellow] as const;
 
 const BAR_CELL = '━';
 
@@ -39,5 +39,3 @@ export function brandBar(width: number, ramp: readonly string[] = BRAND_RAMP): {
 }
 
 export const FOCUS_MARKER = '❯';
-
-export const FRAME_BORDER_STYLE = 'round' as const;

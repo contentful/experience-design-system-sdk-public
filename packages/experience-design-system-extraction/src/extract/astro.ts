@@ -1,5 +1,4 @@
 import { basename } from 'node:path';
-import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import { Project, Node } from 'ts-morph';
 import type {
@@ -8,6 +7,9 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
 } from '../types.js';
+import { createSortedExtractionResult, runFileExtractionWorkers } from './file-extraction-workers.js';
+import { resolveTypeProperty } from './resolve-type-property.js';
+import { getSourceLineMetadata } from './source-line-metadata.js';
 
 function extractAllowedValues(typeText: string): string[] | undefined {
   // Check if the type is a union of string literals like 'a' | 'b' | 'c'
@@ -39,8 +41,8 @@ function extractBindingPropName(element: import('ts-morph').BindingElement): str
   return element.getPropertyNameNode()?.getText() ?? element.getNameNode().getText();
 }
 
-function extractFallbackPropsFromFrontmatter(frontmatter: string): RawPropDefinition[] {
-  const project = new Project({
+function createAstroFrontmatterProject(): Project {
+  return new Project({
     compilerOptions: {
       strict: false,
       target: 99,
@@ -50,29 +52,39 @@ function extractFallbackPropsFromFrontmatter(frontmatter: string): RawPropDefini
     useInMemoryFileSystem: true,
     skipAddingFilesFromTsConfig: true,
   });
+}
 
-  const sf = project.createSourceFile('__frontmatter__.ts', frontmatter);
-  const props = new Map<string, RawPropDefinition>();
+function forEachAstroPropsBinding(
+  frontmatter: string,
+  visit: (element: import('ts-morph').BindingElement) => void,
+): void {
+  const sf = createAstroFrontmatterProject().createSourceFile('__frontmatter__.ts', frontmatter);
 
   sf.forEachDescendant((node) => {
     if (!Node.isVariableDeclaration(node)) return;
 
     const initializer = node.getInitializer();
-    if (!usesAstroProps(initializer)) return;
+    if (!initializer || !usesAstroProps(initializer)) return;
 
     const nameNode = node.getNameNode();
     if (!Node.isObjectBindingPattern(nameNode)) return;
 
-    for (const element of nameNode.getElements()) {
-      const propName = extractBindingPropName(element);
-      if (!propName) continue;
+    for (const element of nameNode.getElements()) visit(element);
+  });
+}
 
-      props.set(propName, {
-        name: propName,
-        type: 'any',
-        required: !element.getInitializer(),
-      });
-    }
+function extractFallbackPropsFromFrontmatter(frontmatter: string): RawPropDefinition[] {
+  const props = new Map<string, RawPropDefinition>();
+
+  forEachAstroPropsBinding(frontmatter, (element) => {
+    const propName = extractBindingPropName(element);
+    if (!propName) return;
+
+    props.set(propName, {
+      name: propName,
+      type: 'any',
+      required: !element.getInitializer(),
+    });
   });
 
   return [...props.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -101,18 +113,7 @@ function mergeProps(...propGroups: RawPropDefinition[][]): RawPropDefinition[] {
 }
 
 function extractPropsFromFrontmatter(frontmatter: string): RawPropDefinition[] {
-  const project = new Project({
-    compilerOptions: {
-      strict: false,
-      target: 99, // ESNext
-      module: 99, // ESNext
-      allowJs: true,
-    },
-    useInMemoryFileSystem: true,
-    skipAddingFilesFromTsConfig: true,
-  });
-
-  const sf = project.createSourceFile('__frontmatter__.ts', frontmatter);
+  const sf = createAstroFrontmatterProject().createSourceFile('__frontmatter__.ts', frontmatter);
   const props: RawPropDefinition[] = [];
 
   // Find `interface Props` or `type Props = ...`
@@ -138,13 +139,10 @@ function extractPropsFromFrontmatter(frontmatter: string): RawPropDefinition[] {
   } else if (propsTypeAlias) {
     const type = propsTypeAlias.getType();
     for (const property of type.getProperties()) {
-      const name = property.getName();
-      const decl = property.getValueDeclaration() ?? property.getDeclarations()[0];
-      if (!decl) continue;
+      const resolved = resolveTypeProperty(property);
+      if (!resolved) continue;
 
-      const propType = property.getTypeAtLocation(decl);
-      const typeText = propType.getText(decl);
-      const required = !property.isOptional();
+      const { name, declaration: decl, typeText, required } = resolved;
       const allowedValues = extractAllowedValues(typeText);
 
       props.push({
@@ -152,12 +150,7 @@ function extractPropsFromFrontmatter(frontmatter: string): RawPropDefinition[] {
         type: typeText,
         required,
         ...(allowedValues && { allowedValues }),
-        ...(typeof (decl as { getStartLineNumber?: () => number }).getStartLineNumber === 'function'
-          ? {
-              sourceStartLine: (decl as { getStartLineNumber: () => number }).getStartLineNumber(),
-              sourceEndLine: (decl as { getEndLineNumber: () => number }).getEndLineNumber(),
-            }
-          : {}),
+        ...getSourceLineMetadata(decl),
       });
     }
   }
@@ -167,40 +160,14 @@ function extractPropsFromFrontmatter(frontmatter: string): RawPropDefinition[] {
 
 function extractDefaultsFromFrontmatter(frontmatter: string): Map<string, string> {
   const defaults = new Map<string, string>();
+  forEachAstroPropsBinding(frontmatter, (element) => {
+    const propName = extractBindingPropName(element);
+    if (!propName) return;
+    const elementInitializer = element.getInitializer();
+    if (!elementInitializer) return;
 
-  const project = new Project({
-    compilerOptions: {
-      strict: false,
-      target: 99,
-      module: 99,
-      allowJs: true,
-    },
-    useInMemoryFileSystem: true,
-    skipAddingFilesFromTsConfig: true,
-  });
-
-  const sf = project.createSourceFile('__frontmatter__.ts', frontmatter);
-
-  sf.forEachDescendant((node) => {
-    if (!Node.isVariableDeclaration(node)) return;
-
-    const initializer = node.getInitializer();
-    if (!initializer) return;
-
-    if (!usesAstroProps(initializer)) return;
-
-    const nameNode = node.getNameNode();
-    if (!Node.isObjectBindingPattern(nameNode)) return;
-
-    for (const element of nameNode.getElements()) {
-      const propName = extractBindingPropName(element);
-      if (!propName) continue;
-      const elementInitializer = element.getInitializer();
-      if (!elementInitializer) continue;
-
-      const value = elementInitializer.getText().replace(/^['"]|['"]$/g, '');
-      defaults.set(propName, value);
-    }
+    const value = elementInitializer.getText().replace(/^['"]|['"]$/g, '');
+    defaults.set(propName, value);
   });
 
   return defaults;
@@ -302,39 +269,16 @@ export async function extractAstroComponents(
   onProgress?: (p: { filesProcessed: number; componentsFound: number }) => void,
 ): Promise<ComponentExtractionResult> {
   const astroFiles = filePaths.filter((f) => f.endsWith('.astro'));
-  if (astroFiles.length === 0) {
-    return { components: [], warnings: [] };
-  }
+  const { items: components, warnings } = await runFileExtractionWorkers(
+    astroFiles,
+    ASTRO_EXTRACT_CONCURRENCY,
+    async (filePath, source) => ({
+      item: extractFromAstroFile(filePath, source),
+    }),
+    (filePath, error) =>
+      `Failed to extract from ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    onProgress,
+  );
 
-  const warnings: string[] = [];
-  const components: RawComponentDefinition[] = [];
-  let filesProcessed = 0;
-  let componentsFound = 0;
-
-  const queue = [...astroFiles];
-  async function worker() {
-    while (queue.length > 0) {
-      const filePath = queue.shift();
-      if (!filePath) break;
-      try {
-        const source = await readFile(filePath, 'utf-8');
-        const component = extractFromAstroFile(filePath, source);
-        if (component) {
-          components.push(component);
-          componentsFound++;
-        }
-      } catch (e) {
-        warnings.push(`Failed to extract from ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
-      }
-      filesProcessed++;
-      onProgress?.({ filesProcessed, componentsFound });
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(ASTRO_EXTRACT_CONCURRENCY, astroFiles.length) }, worker));
-
-  return {
-    components: components.sort((a, b) => a.name.localeCompare(b.name)),
-    warnings,
-  };
+  return createSortedExtractionResult(components, warnings);
 }

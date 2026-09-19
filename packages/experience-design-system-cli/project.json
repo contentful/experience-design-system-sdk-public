@@ -41,7 +41,6 @@
           "commander",
           "ink",
           "react",
-          "react-dom",
           "react-devtools-core",
           "@segment/analytics-node",
           "@contentful/experience-design-system-cli-v2",

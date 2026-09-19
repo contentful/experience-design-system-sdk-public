@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
 import { Box, Text, useStdout } from 'ink';
@@ -18,46 +18,22 @@ import { computeAllClosures, type ComponentGraphNode, type NodeStatus } from '..
 import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { computeCycleView, type CycleView } from '../../../analyze/cycle-view.js';
 import { computeRenderStatuses, pickDrillTarget, type RenderStatus } from '../../../analyze/issue-inheritance.js';
-import { JsonPanel } from '../../../analyze/select/tui/components/JsonPanel.js';
-import { FieldEditor } from '../../../analyze/select/tui/components/FieldEditor.js';
-import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
-import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
 import {
   removedComponentsHeader,
   removedComponentLine,
 } from '../../../analyze/select/tui/components/removed-components-text.js';
-import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
-import { readTokensFromPath } from '../../../apply/manifest.js';
 import {
   openPipelineDb,
-  loadCDFComponents,
-  loadDTCGTokens,
   storeCDFComponents,
-  loadComponentReviewMetadata,
-  loadComponentRationale,
-  loadSlotCycles,
   storeSlotCycles,
-  type ComponentReviewMetadata,
-  type ComponentRationale,
+  loadSlotCycles,
   type StoredSlotCycle,
 } from '../../../session/db.js';
 import { formatCyclePathSegments, findSlotCycles, suggestCycleBreakEdge } from '../../../analyze/cycle-detection.js';
 import { followCycleScroll } from '../cycle-panel-scroll.js';
-import { RationalePanel, type RationaleRow } from '../../../analyze/select/tui/components/RationalePanel.js';
-import { ComponentRationalePanel } from '../../../analyze/select/tui/components/ComponentRationalePanel.js';
-import {
-  TokenReviewPanel,
-  collectTokenSuggestions,
-  type TokenPropSuggestion,
-  type TokenReviewToken,
-} from '../../../analyze/select/tui/components/TokenReviewPanel.js';
-import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
-import type { PreviewAnnotation, ReviewComponentStatus } from '../../../analyze/select/types.js';
-import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
-import { useLivePreview } from '../useLivePreview.js';
-import { useFinalizePreview } from '../useFinalizePreview.js';
-import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
+import type { ReviewComponentStatus } from '../../../analyze/select/types.js';
+import { useReviewFinalizePreview } from '../useFinalizePreview.js';
 import { fuzzyMatches } from '../../../analyze/fuzzy-search.js';
 import {
   computeDirectNeighborhood,
@@ -76,31 +52,48 @@ import { legendEntry } from '../components/LegendEntry.js';
 import { computeAutoRejectDecision } from './auto-reject-decision.js';
 import { formatBreakingChange } from './breaking-change-format.js';
 import { enumerateCycleBreaks, shouldBreakOverlayGoFullScreen, type BreakEdge } from './enumerate-cycle-breaks.js';
-import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
-import { computeAutocomplete } from '../autocomplete.js';
+import type { HistorySnapshot } from '../history.js';
 import { resolveGroupRoot } from '../group-collapse.js';
 import { buildFlatDimPredicate, computeFilterKeys, intersectFilterKeys, type FilterCategory } from '../step-filters.js';
+import { createSidebarViewsHelpSection } from '../sidebar-help.js';
+import { handleSidebarSearchInput } from '../sidebar-input.js';
+import { collectExpandedGroupRoots, computeSidebarViewToggle } from '../sidebar-navigation.js';
+import { handleLineageNavigation } from '../lineage-input.js';
+import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
+import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
+import type { ReviewStepProps } from '../review-step-props.js';
+import {
+  buildReviewFieldEditor,
+  getReviewSelectionState,
+  ReviewEmptyComponentsWarning,
+  ReviewComponentPanel,
+  ReviewFinalizeError,
+  ReviewNoSelection,
+} from '../components/ReviewComponentPanel.js';
+import { ReviewLoadError, ReviewLoadingState, ReviewStatusBar } from '../components/ReviewStatus.js';
+import {
+  createReviewHistorySnapshot,
+  finalizeReviewSession,
+  loadReviewSessionState,
+  useReviewHistory,
+  useReviewMetadata,
+  useReviewSession,
+  type CdfReviewEntry,
+  type ReviewSessionLoadResult,
+} from '../hooks/useReviewSession.js';
+import { useReviewEditor } from '../hooks/useReviewEditor.js';
+import { useReviewSurfaceState } from '../hooks/useReviewSurfaceState.js';
+import { ReviewReloadDialog, ReviewStepDialogs } from '../components/ReviewDialogs.js';
+import {
+  handleJsonPanelInput,
+  handleReviewPanelShortcuts,
+  handleReviewOverlayInput,
+  handleReviewViewToggleInput,
+} from '../hooks/review-input.js';
+import { useReviewPreview } from '../hooks/useReviewPreview.js';
+import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
 
-type CdfReviewEntry = {
-  key: string;
-  entry: CDFComponentEntry;
-  status: ReviewComponentStatus;
-};
-
-type GenerateReviewStepProps = {
-  extractSessionId: string;
-  tokenSessionId?: string | null;
-  onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
-  onQuit: () => void;
-  livePreview?: boolean;
-  spaceId?: string;
-  environmentId?: string;
-  cmaToken?: string;
-  host?: string;
-  tokensPath?: string;
-  initialFinalizeError?: string | null;
-  allowDeletions?: boolean;
-};
+type GenerateReviewStepProps = ReviewStepProps;
 
 export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(
   components: T[],
@@ -123,6 +116,83 @@ export function sortComponentsForSidebar<T extends { key: string; entry: CDFComp
 
 const PANEL_HEIGHT = 22;
 
+type CursorMoveDirection = 'up' | 'down';
+
+function moveSelectableCursor({
+  direction,
+  previousRow,
+  previousScroll,
+  positions,
+  visibleCount,
+}: {
+  direction: CursorMoveDirection;
+  previousRow: number;
+  previousScroll: number;
+  positions: number[];
+  visibleCount: number;
+}): { cursorRowIdx: number; sidebarScrollOffset: number } {
+  if (positions.length === 0) {
+    return { cursorRowIdx: previousRow, sidebarScrollOffset: previousScroll };
+  }
+
+  const position = positions.indexOf(previousRow);
+  const currentSelectableIdx =
+    position >= 0
+      ? position
+      : Math.max(
+          0,
+          positions.reduce((acc, row, index) => (row <= previousRow ? index : acc), 0),
+        );
+  const nextSelectableIdx =
+    direction === 'up'
+      ? Math.max(0, currentSelectableIdx - 1)
+      : Math.min(positions.length - 1, currentSelectableIdx + 1);
+  const nextRow = positions[nextSelectableIdx] ?? previousRow;
+  const nextScroll =
+    direction === 'up'
+      ? Math.min(previousScroll, nextRow)
+      : nextRow >= previousScroll + visibleCount
+        ? nextRow - visibleCount + 1
+        : previousScroll;
+
+  return { cursorRowIdx: nextRow, sidebarScrollOffset: nextScroll };
+}
+
+type CyclePathSegments = ReturnType<typeof formatCyclePathSegments>;
+
+function CyclePathLine({
+  segments,
+  prefix,
+  highlightComponents = false,
+  highlightLine = false,
+}: {
+  segments: CyclePathSegments;
+  prefix: string;
+  highlightComponents?: boolean;
+  highlightLine?: boolean;
+}): React.ReactElement {
+  return (
+    <Text color={highlightLine ? PALETTE.warning : undefined}>
+      {prefix}
+      {segments.map((segment, index) =>
+        segment.kind === 'slot' ? (
+          <Text key={index} color={PALETTE.info}>
+            {segment.text}
+          </Text>
+        ) : segment.kind === 'arrow' ? (
+          <Text key={index} dimColor>
+            {segment.text}
+          </Text>
+        ) : (
+          <Text key={index} color={highlightComponents ? PALETTE.warning : undefined}>
+            {segment.text}
+          </Text>
+        ),
+      )}
+    </Text>
+  );
+}
+
 const HELP_SECTIONS: HelpSection[] = [
   {
     title: 'Navigation',
@@ -141,18 +211,7 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'F', label: 'Finalize' },
     ],
   },
-  {
-    title: 'Sidebar views',
-    entries: [
-      { keys: 'L', label: 'Flat view' },
-      { keys: 'l', label: 'Lineage' },
-      { keys: 'i', label: 'Focus lineage' },
-      { keys: 'w', label: 'Only breaking' },
-      { keys: 'o', label: 'Only cycles' },
-      { keys: 'space', label: 'Expand/collapse group' },
-      { keys: 'E / C', label: 'Expand/collapse all' },
-    ],
-  },
+  createSidebarViewsHelpSection(true),
   {
     title: 'Panels',
     entries: [
@@ -268,43 +327,58 @@ export function GenerateReviewStep({
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
 
-  const [components, setComponents] = useState<CdfReviewEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [slotCycles, setSlotCycles] = useState<StoredSlotCycle[]>([]);
+  const setLoadedSlotCycles = useCallback((cycles: StoredSlotCycle[] | undefined): void => {
+    setSlotCycles(cycles ?? []);
+  }, []);
+  const loadSessionState = useCallback(
+    (): ReviewSessionLoadResult<StoredSlotCycle[]> =>
+      loadReviewSessionState({
+        extractSessionId,
+        tokenSessionId,
+        loadExtra: (db, sessionId) => loadSlotCycles(db, sessionId),
+        sortEntries: (entries, cycles) => {
+          const cycleParticipants = new Set<string>();
+          for (const cycle of cycles ?? []) {
+            for (const participant of cycle.path) cycleParticipants.add(participant);
+          }
+          return sortComponentsForSidebar(entries, cycleParticipants);
+        },
+      }),
+    [extractSessionId, tokenSessionId],
+  );
+  const reviewSurface = useReviewSurfaceState(initialFinalizeError);
+  const {
+    components,
+    setComponents,
+    loading,
+    loadError,
+    availableTokens,
+    reloadFromSave: reloadSessionFromSave,
+  } = useReviewSession({
+    loadSession: loadSessionState,
+    tokensPath,
+    onExtraLoaded: setLoadedSlotCycles,
+  });
+
   const [nav, setNav] = useState<{ cursorRowIdx: number; sidebarScrollOffset: number }>({
     cursorRowIdx: 0,
     sidebarScrollOffset: 0,
   });
   const cursorRowIdx = nav.cursorRowIdx;
   const sidebarScrollOffset = nav.sidebarScrollOffset;
-  const [jsonScrollOffset, setJsonScrollOffset] = useState(0);
-  const [sidebarFocused, setSidebarFocused] = useState(true);
-  const [showFinalize, setShowFinalize] = useState(false);
-  const [showQuit, setShowQuit] = useState(false);
-  const [showJson, setShowJson] = useState(false);
-  const [showHiddenProps, setShowHiddenProps] = useState(false);
-  const [draftValue, setDraftValue] = useState('');
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [finalizeError, setFinalizeError] = useState<string | null>(initialFinalizeError);
-  const [reviewMetadata, setReviewMetadata] = useState<ComponentReviewMetadata | null>(null);
-  const [previewAnnotations, setPreviewAnnotations] = useState<Map<string, PreviewAnnotation>>(new Map());
-  const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
+  const {
+    sidebarFocused,
+    setSidebarFocused,
+    showFinalize,
+    setShowFinalize,
+    showQuit,
+    setShowQuit,
+    finalizeError,
+    setFinalizeError,
+  } = reviewSurface;
   const [removedBannerCollapsed, setRemovedBannerCollapsed] = useState(false);
   const removedBannerDefaultedRef = useRef(false);
-  const [panelOpen, setPanelOpen] = useState<
-    'none' | 'prop-rationale' | 'component-rationale' | 'source' | 'token-review'
-  >('none');
-  const [panelScrollOffset, setPanelScrollOffset] = useState(0);
-  const [textEntryActive, setTextEntryActive] = useState(false);
-  const [componentRationale, setComponentRationale] = useState<ComponentRationale | null>(null);
-  const [tokenReviewRow, setTokenReviewRow] = useState(0);
-  const [tokenReviewEditing, setTokenReviewEditing] = useState(false);
-  const [tokenReviewEditCursor, setTokenReviewEditCursor] = useState(0);
-  const [tokenReviewEditSelection, setTokenReviewEditSelection] = useState<Set<string>>(new Set());
-  const [availableTokens, setAvailableTokens] = useState<TokenReviewToken[]>([]);
-  const tokenReviewSuggestedRef = useRef(new Map<string, string[]>());
-  const pendingGRef = useRef(false);
-  const [slotCycles, setSlotCycles] = useState<StoredSlotCycle[]>([]);
   const [cyclePanelScroll, setCyclePanelScroll] = useState(0);
   const [cyclesCursor, setCyclesCursor] = useState(0);
   const cyclePanel = useOverlayPanel({
@@ -325,10 +399,22 @@ export function GenerateReviewStep({
   const [breakConfirm, setBreakConfirm] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const seededGroupsRef = useRef(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [autocompleteCandidates, setAutocompleteCandidates] = useState<string[]>([]);
-  const [jumpFilterTarget, setJumpFilterTarget] = useState<string | null>(null);
+  const {
+    searchOpen,
+    setSearchOpen,
+    searchQuery,
+    setSearchQuery,
+    autocompleteCandidates,
+    setAutocompleteCandidates,
+    jumpFilterTarget,
+    setJumpFilterTarget,
+    columnOneView,
+    setColumnOneView,
+    activeFilters,
+    setActiveFilters,
+    showHelp,
+    setShowHelp,
+  } = useSidebarSearchState();
   const lineagePanel = useOverlayPanel({ toggleKey: 'l' });
   const [lineageCursor, setLineageCursor] = useState(0);
   const breakingPanel = useOverlayPanel({ toggleKey: 'b', onClose: () => setBreakingDetailOpen(false) });
@@ -339,8 +425,6 @@ export function GenerateReviewStep({
     componentName: string;
     target: { kind: 'prop' | 'slot'; name: string };
   } | null>(null);
-  const [columnOneView, setColumnOneView] = useState<'grouped' | 'flat'>('grouped');
-  const [activeFilters, setActiveFilters] = useState<Set<FilterCategory>>(new Set());
   const [autoRejected, setAutoRejected] = useState<string[]>([]);
   const [undoSnapshot, setUndoSnapshot] = useState<Map<string, ReviewComponentStatus> | null>(null);
   const autoRejectFiredRef = useRef<boolean>(false);
@@ -350,129 +434,32 @@ export function GenerateReviewStep({
   const [pendingFocusAway, setPendingFocusAway] = useState<null | 'tab-to-sidebar'>(null);
   const [discardTrigger, setDiscardTrigger] = useState(0);
 
-  const historyRef = useRef<HistoryStack | null>(null);
-  const historySeededRef = useRef(false);
   const [showReloadDialog, setShowReloadDialog] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
-
-  const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
-    if (!response) return;
-    setPreviewAnnotations(
-      applyPreviewAnnotations(
-        response,
-        components.map((c) => c.key),
-      ),
-    );
-    const nextRemoved = response.components.removed ?? [];
-    setRemovedComponents(nextRemoved);
-    if (!removedBannerDefaultedRef.current && nextRemoved.length > 0) {
-      removedBannerDefaultedRef.current = true;
-      setRemovedBannerCollapsed(nextRemoved.length > 5);
-    }
-    setBreakingChanges(deriveBreakingChanges(response));
-  };
 
   const acceptedCountForPreview = components.filter((c) => c.status === 'accepted').length;
-  const livePreviewHook = useLivePreview({
-    enabled: livePreview,
+  const { previewAnnotations, removedComponents, livePreviewHook, livePreviewSpinner } = useReviewPreview({
+    components,
+    loading,
+    livePreview,
     sessionId: extractSessionId,
     tokensPath,
     spaceId,
     environmentId,
     cmaToken,
     host,
-    onResult: handleLivePreviewResult,
     deleteAllComponents: acceptedCountForPreview === 0,
     allowDeletions,
+    onResult: (response) => {
+      const nextRemoved = response.components.removed ?? [];
+      if (!removedBannerDefaultedRef.current && nextRemoved.length > 0) {
+        removedBannerDefaultedRef.current = true;
+        setRemovedBannerCollapsed(nextRemoved.length > 5);
+      }
+      setBreakingChanges(deriveBreakingChanges(response));
+    },
   });
 
-  const SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
-  const [spinnerTick, setSpinnerTick] = useState(0);
-  useEffect(() => {
-    if (livePreviewHook.status !== 'running') return;
-    const id = setInterval(() => setSpinnerTick((t) => t + 1), 80);
-    return () => clearInterval(id);
-  }, [livePreviewHook.status]);
-  const livePreviewSpinner = SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length];
-
-  const loadSessionState = (): {
-    entries: CdfReviewEntry[];
-    cycles: StoredSlotCycle[];
-    tokens: TokenReviewToken[];
-    error: string | null;
-  } => {
-    const db = openPipelineDb();
-    let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }> = [];
-    let cycles: StoredSlotCycle[] = [];
-    let tokens: TokenReviewToken[] = [];
-    try {
-      cdfComponents = loadCDFComponents(db, extractSessionId);
-      cycles = loadSlotCycles(db, extractSessionId);
-      tokens = loadDTCGTokens(db, tokenSessionId ?? extractSessionId).tokens.map((token) => ({
-        path: token.path,
-        kind: token.$type,
-      }));
-    } finally {
-      db.close();
-    }
-    if (cdfComponents.length === 0) {
-      return {
-        entries: [],
-        cycles: [],
-        tokens: [],
-        error: 'No generated definitions found for this session. Try re-running generate.',
-      };
-    }
-    const cycleParticipants = new Set<string>();
-    for (const c of cycles) for (const p of c.path) cycleParticipants.add(p);
-    const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
-      key,
-      entry,
-      status: 'needs-review',
-    }));
-    return {
-      entries: sortComponentsForSidebar(reviewEntries, cycleParticipants),
-      cycles,
-      tokens,
-      error: null,
-    };
-  };
-
-  useEffect(() => {
-    let disposed = false;
-    void (async () => {
-      try {
-        const { entries, cycles, tokens, error } = loadSessionState();
-        if (error) {
-          if (!disposed) setLoadError(error);
-          return;
-        }
-        const catalog = tokensPath
-          ? (await readTokensFromPath('tokens', tokensPath)).map((token) => ({ path: token.path, kind: token.$type }))
-          : tokens;
-        if (disposed) return;
-        setSlotCycles(cycles);
-        setAvailableTokens(catalog);
-        setComponents(entries);
-      } catch (e: unknown) {
-        if (!disposed) setLoadError(String(e));
-      } finally {
-        if (!disposed) setLoading(false);
-      }
-    })();
-    return () => {
-      disposed = true;
-    };
-  }, [extractSessionId, tokenSessionId, tokensPath]);
-
-  useEffect(() => {
-    if (loading) return;
-    if (!livePreview) return;
-    if (components.length === 0) return;
-    livePreviewHook.trigger();
-  }, [loading]);
-
-  const finalizePreview = useFinalizePreview({
+  const finalizePreview = useReviewFinalizePreview({
     open: showFinalize,
     extractSessionId,
     tokensPath,
@@ -480,36 +467,13 @@ export function GenerateReviewStep({
     environmentId,
     cmaToken,
     host,
-    acceptedKeys: new Set(components.filter((c) => c.status === 'accepted').map((c) => c.key)),
+    components,
     allowDeletions,
   });
 
   const handleFinalizeConfirm = () => {
-    const acceptedCount = components.filter((c) => c.status === 'accepted').length;
-    const explicitlyRejected = components.filter((c) => c.status === 'rejected').map((c) => c.key);
-    const unresolved = components.filter((c) => c.status === 'needs-review').map((c) => c.key);
-    const toReject = [...explicitlyRejected, ...unresolved];
-    if (toReject.length > 0) {
-      const db = openPipelineDb();
-      try {
-        const stmt = db.prepare(
-          `UPDATE raw_components SET status = 'generate-rejected' WHERE session_id = ? AND name = ?`,
-        );
-        db.exec('BEGIN');
-        try {
-          for (const name of toReject) {
-            stmt.run(extractSessionId, name);
-          }
-          db.exec('COMMIT');
-        } catch (e) {
-          db.exec('ROLLBACK');
-          throw e;
-        }
-      } finally {
-        db.close();
-      }
-    }
-    onFinalize(acceptedCount, explicitlyRejected.length, unresolved.length);
+    const counts = finalizeReviewSession(extractSessionId, components);
+    onFinalize(counts.accepted, counts.rejected, counts.unresolved);
   };
 
   const recomputeCycles = (currentComponents: CdfReviewEntry[]): void => {
@@ -547,9 +511,12 @@ export function GenerateReviewStep({
     if (seededGroupsRef.current) return;
     if (closures.size === 0 && slotCycles.length === 0) return;
     seededGroupsRef.current = true;
-    const seed = new Set<string>(closures.keys());
-    for (const cyc of slotCycles) for (const p of cyc.path) seed.add(p);
-    setExpandedGroups(seed);
+    setExpandedGroups(
+      collectExpandedGroupRoots(
+        closures,
+        slotCycles.flatMap((cycle) => cycle.path),
+      ),
+    );
   }, [closures, slotCycles]);
   const directIssues = useMemo<Map<string, NodeStatus>>(() => {
     const m = new Map<string, NodeStatus>();
@@ -584,44 +551,6 @@ export function GenerateReviewStep({
     setUndoSnapshot(flipped.length > 0 ? snapshot : null);
   }, [loading, cycleView, componentGraph, slotCycles]);
 
-  useEffect(() => {
-    if (loading) return;
-    if (historySeededRef.current) return;
-    historySeededRef.current = true;
-    historyRef.current = createHistoryStack({
-      components: components.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-      autoRejected: [],
-      undoSnapshot: null,
-    });
-  }, [loading, components]);
-
-  const pushHistorySnapshot = (
-    entries: CdfReviewEntry[],
-    autoRej: string[],
-    undoSnap: Map<string, ReviewComponentStatus> | null,
-    label: string,
-  ): void => {
-    if (!historyRef.current) return;
-    historyRef.current.push(
-      {
-        components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-        autoRejected: [...autoRej],
-        undoSnapshot: undoSnap === null ? null : new Map(undoSnap),
-      },
-      label,
-    );
-  };
-
-  const autoRejectPushedRef = useRef(false);
-  useEffect(() => {
-    if (loading) return;
-    if (!historySeededRef.current) return;
-    if (!autoRejectFiredRef.current) return;
-    if (autoRejectPushedRef.current) return;
-    autoRejectPushedRef.current = true;
-    pushHistorySnapshot(components, autoRejected, undoSnapshot, 'mount-auto-reject');
-  }, [autoRejected]);
-
   const applyHistorySnapshot = (snap: HistorySnapshot): void => {
     const restored: CdfReviewEntry[] = snap.components.map((c) => ({
       key: c.key,
@@ -634,53 +563,44 @@ export function GenerateReviewStep({
     recomputeCycles(restored);
   };
 
-  const handleUndo = (): void => {
-    const snap = historyRef.current?.undo();
-    if (!snap) return;
-    applyHistorySnapshot(snap);
-  };
+  const { historySeededRef, pushHistorySnapshot, handleUndo, handleRedo, resetHistory } = useReviewHistory({
+    loading,
+    components,
+    createSnapshot: (entries) =>
+      createReviewHistorySnapshot(entries, {
+        autoRejected,
+        undoSnapshot,
+      }),
+    applySnapshot: applyHistorySnapshot,
+  });
 
-  const handleRedo = (): void => {
-    const snap = historyRef.current?.redo();
-    if (!snap) return;
-    applyHistorySnapshot(snap);
-  };
+  const autoRejectPushedRef = useRef(false);
+  useEffect(() => {
+    if (loading) return;
+    if (!historySeededRef.current) return;
+    if (!autoRejectFiredRef.current) return;
+    if (autoRejectPushedRef.current) return;
+    autoRejectPushedRef.current = true;
+    pushHistorySnapshot(components, 'mount-auto-reject');
+  }, [autoRejected]);
 
   const reloadFromSave = (): void => {
-    try {
-      const { entries, cycles, tokens, error } = loadSessionState();
-      if (error) {
-        setLoadError(error);
-        return;
-      }
-      setSlotCycles(cycles);
-      setAvailableTokens(tokens);
-      setComponents(entries);
-      const reloadGraph = buildComponentGraph(entries);
-      const reloadClosures = computeAllClosures(reloadGraph);
-      const reloadCycleView = computeCycleView(entries);
-      const reloadSeed = new Set<string>();
-      for (const [name, closure] of reloadClosures.entries()) {
-        if (closure.nodes.length > 1) reloadSeed.add(name);
-      }
-      for (const name of reloadCycleView.structural) reloadSeed.add(name);
-      setExpandedGroups(reloadSeed);
-      seededGroupsRef.current = true;
-      setAutoRejected([]);
-      setUndoSnapshot(null);
-      autoRejectFiredRef.current = false;
-      autoRejectPushedRef.current = false;
-      historyRef.current?.reset({
-        components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-        autoRejected: [],
-        undoSnapshot: null,
-      });
-      setNav({ cursorRowIdx: 0, sidebarScrollOffset: 0 });
-      setSaveError(null);
-      setFinalizeError(null);
-    } catch (e: unknown) {
-      setLoadError(String(e));
-    }
+    const result = reloadSessionFromSave();
+    if (!result) return;
+    const { entries } = result;
+    const reloadGraph = buildComponentGraph(entries);
+    const reloadClosures = computeAllClosures(reloadGraph);
+    const reloadCycleView = computeCycleView(entries);
+    setExpandedGroups(collectExpandedGroupRoots(reloadClosures, reloadCycleView.structural));
+    seededGroupsRef.current = true;
+    setAutoRejected([]);
+    setUndoSnapshot(null);
+    autoRejectFiredRef.current = false;
+    autoRejectPushedRef.current = false;
+    resetHistory(createReviewHistorySnapshot(entries));
+    setNav({ cursorRowIdx: 0, sidebarScrollOffset: 0 });
+    reviewEditor.setSaveError(null);
+    setFinalizeError(null);
   };
   const groupedItemsMemo = useMemo(
     () =>
@@ -756,44 +676,27 @@ export function GenerateReviewStep({
     }));
   }, [selectableRowPositions, cursorRowIdx, sidebarScrollOffset, visibleRowsMemo.length, visibleCount]);
 
-  useEffect(() => {
-    const current = components[selectedIdx];
-    if (!current) {
-      setReviewMetadata(null);
-      return;
-    }
-    const db = openPipelineDb();
-    try {
-      setReviewMetadata(loadComponentReviewMetadata(db, extractSessionId, current.key));
-    } catch {
-      setReviewMetadata(null);
-    } finally {
-      db.close();
-    }
-  }, [selectedIdx, components, extractSessionId]);
+  const reviewEditor = useReviewEditor({
+    components,
+    selectedIdx,
+    extractSessionId,
+    availableTokens,
+    setComponents,
+    pushHistorySnapshot,
+    onEditSaved: (entries) => {
+      recomputeCycles(entries);
+      livePreviewHook.trigger();
+      pushHistorySnapshot(entries, 'edit-save');
+    },
+    onTokenSaved: () => livePreviewHook.trigger(),
+  });
 
-  useEffect(() => {
-    setTokenReviewRow(0);
-    setTokenReviewEditing(false);
-    setTokenReviewEditCursor(0);
-    setTokenReviewEditSelection(new Set());
-  }, [selectedIdx]);
+  const { reviewMetadata, componentRationale } = useReviewMetadata({
+    components,
+    selectedIdx,
+    extractSessionId,
+  });
 
-  useEffect(() => {
-    const current = components[selectedIdx];
-    if (!current) {
-      setComponentRationale(null);
-      return;
-    }
-    const db = openPipelineDb();
-    try {
-      setComponentRationale(loadComponentRationale(db, extractSessionId, current.key));
-    } catch {
-      setComponentRationale(null);
-    } finally {
-      db.close();
-    }
-  }, [selectedIdx, components, extractSessionId]);
   const renderStatusByKey = useMemo<Map<string, RenderStatus>>(() => {
     const merged = new Map<string, RenderStatus>();
     for (const closure of closures.values()) {
@@ -856,9 +759,9 @@ export function GenerateReviewStep({
       else if (rowIdx >= prev + visibleCount) nextOff = rowIdx - visibleCount + 1;
       return { cursorRowIdx: rowIdx, sidebarScrollOffset: nextOff };
     });
-    setJsonScrollOffset(0);
-    setDraftValue('');
-    setSaveError(null);
+    reviewEditor.setJsonScrollOffset(0);
+    reviewEditor.setDraftValue('');
+    reviewEditor.setSaveError(null);
     setPendingEditorFocus(null);
   };
   const jumpCursorToName = (name: string): void => {
@@ -870,48 +773,6 @@ export function GenerateReviewStep({
         return;
       }
     }
-  };
-
-  const handleEditSave = () => {
-    const current = components[selectedIdx];
-    if (!current) return;
-    try {
-      const parsed = JSON.parse(draftValue) as Record<string, unknown>;
-      const keys = Object.keys(parsed);
-      const entry =
-        keys.length === 1 && typeof parsed[keys[0]] === 'object' && parsed[keys[0]] !== null
-          ? (parsed[keys[0]] as CDFComponentEntry)
-          : (parsed as unknown as CDFComponentEntry);
-      if (entry.$type !== 'component' || typeof entry.$properties !== 'object' || entry.$properties === null) {
-        setSaveError('Invalid CDF entry: must have $type: "component" and $properties object');
-        return;
-      }
-      let updatedComponents: CdfReviewEntry[] = [];
-      setComponents((prev) => {
-        updatedComponents = prev.map((c, i) =>
-          i === selectedIdx ? { ...c, entry, status: c.status === 'needs-review' ? 'accepted' : c.status } : c,
-        );
-        return updatedComponents;
-      });
-      setDraftValue('');
-      setSaveError(null);
-      const db = openPipelineDb();
-      try {
-        storeCDFComponents(db, extractSessionId, [{ key: current.key, entry }]);
-      } finally {
-        db.close();
-      }
-      recomputeCycles(updatedComponents);
-      livePreviewHook.trigger();
-      pushHistorySnapshot(updatedComponents, autoRejected, undoSnapshot, 'edit-save');
-    } catch (e) {
-      setSaveError(String(e));
-    }
-  };
-
-  const handleEditDiscard = () => {
-    setDraftValue('');
-    setSaveError(null);
   };
 
   const breakEdges = useMemo<BreakEdge[]>(() => {
@@ -944,7 +805,7 @@ export function GenerateReviewStep({
     }
     recomputeCycles(next);
     livePreviewHook.trigger();
-    pushHistorySnapshot(next, autoRejected, undoSnapshot, 'break-cycle-edge');
+    pushHistorySnapshot(next, 'break-cycle-edge');
   };
 
   const handleRejectComponent = (key: string): void => {
@@ -961,104 +822,33 @@ export function GenerateReviewStep({
     });
     setComponents(next);
     recomputeCycles(next);
-    pushHistorySnapshot(next, autoRejected, undoSnapshot, 'reject-cascade');
-  };
-
-  const currentTokenSuggestions = (): TokenPropSuggestion[] => {
-    const current = components[selectedIdx];
-    if (!current) return [];
-    return collectTokenSuggestions(current.entry, availableTokens).map((suggestion) => {
-      const snapshotKey = `${current.key}::${suggestion.propName}`;
-      const suggested = tokenReviewSuggestedRef.current.get(snapshotKey) ?? [...suggestion.suggested];
-      tokenReviewSuggestedRef.current.set(snapshotKey, suggested);
-      return { ...suggestion, suggested };
-    });
-  };
-
-  const persistTokenFields = (propName: string, allowed: string[]): void => {
-    const current = components[selectedIdx];
-    if (!current) return;
-    const prop = current.entry.$properties[propName];
-    if (!prop) return;
-    const nextProp = { ...prop };
-    nextProp['$token.allowed'] = allowed;
-    const nextEntry: CDFComponentEntry = {
-      ...current.entry,
-      $properties: { ...current.entry.$properties, [propName]: nextProp },
-    };
-    const next = components.map((c, i) => (i === selectedIdx ? { ...c, entry: nextEntry } : c));
-    setComponents(next);
-    const db = openPipelineDb();
-    try {
-      storeCDFComponents(db, extractSessionId, [{ key: current.key, entry: nextEntry }]);
-    } finally {
-      db.close();
-    }
-    livePreviewHook.trigger();
-    pushHistorySnapshot(next, autoRejected, undoSnapshot, `token-review:${propName}`);
-  };
-
-  const handleTokenEditSave = (s: TokenPropSuggestion): void => {
-    const allowed = s.paths.filter((p) => tokenReviewEditSelection.has(p));
-    if (allowed.length === 0) return;
-    persistTokenFields(s.propName, allowed);
-    setTokenReviewEditing(false);
+    pushHistorySnapshot(next, 'reject-cascade');
   };
 
   const dialogOpen = showFinalize || showQuit;
 
   useImmediateInput((input, key) => {
-    if (loading) return;
-    // On a load error there's nothing to review — still let the operator quit
-    // (q / Esc / Enter) instead of trapping them on the error screen.
-    if (loadError) {
-      if (input === 'q' || key.escape || key.return) onQuit();
+    if (
+      handleReviewOverlayInput(input, key, {
+        loading,
+        loadError,
+        showFinalize,
+        dialogOpen,
+        showHelp,
+        showReloadDialog,
+        finalizePreview,
+        reloadFromSave,
+        setShowReloadDialog,
+        onQuit,
+        handleUndo,
+        handleRedo,
+      })
+    )
       return;
-    }
-    if (showFinalize) {
-      // The dialog owns y/n/Enter/Esc; here we own j/k scroll of its deletion list.
-      if (input === 'j' || key.downArrow) {
-        finalizePreview.scrollBy(1);
-        return;
-      }
-      if (input === 'k' || key.upArrow) {
-        finalizePreview.scrollBy(-1);
-        return;
-      }
-      return;
-    }
-    if (dialogOpen) return;
-    if (showHelp) return;
-
-    if (showReloadDialog) {
-      if (key.return) {
-        reloadFromSave();
-        setShowReloadDialog(false);
-        return;
-      }
-      if (key.escape) {
-        setShowReloadDialog(false);
-        return;
-      }
-      return;
-    }
-
-    if (key.ctrl && input === 'z') {
-      handleUndo();
-      return;
-    }
-    if (key.ctrl && input === 'y') {
-      handleRedo();
-      return;
-    }
-    if (key.ctrl && input === 'r') {
-      setShowReloadDialog(true);
-      return;
-    }
 
     if (showUnsavedWarning) {
       if (key.return) {
-        handleEditSave();
+        reviewEditor.handleEditSave();
         setShowUnsavedWarning(false);
         if (pendingFocusAway === 'tab-to-sidebar') setSidebarFocused(true);
         setPendingFocusAway(null);
@@ -1107,25 +897,15 @@ export function GenerateReviewStep({
         setSearchOpen(false);
         return;
       }
-      if (key.tab) {
-        const { completion, candidates } = computeAutocomplete(
-          searchQuery,
-          components.map((c) => c.key),
-        );
-        setSearchQuery(completion);
-        setAutocompleteCandidates(candidates);
+      if (
+        handleSidebarSearchInput(input, key, {
+          query: searchQuery,
+          names: components.map((c) => c.key),
+          setQuery: setSearchQuery,
+          setCandidates: setAutocompleteCandidates,
+        })
+      )
         return;
-      }
-      if (key.backspace) {
-        setAutocompleteCandidates([]);
-        setSearchQuery((q) => q.slice(0, -1));
-        return;
-      }
-      if (input && input.length === 1 && input >= ' ' && input !== '\r' && input !== '\n') {
-        setAutocompleteCandidates([]);
-        setSearchQuery((q) => q + input);
-        return;
-      }
       return;
     }
 
@@ -1161,26 +941,19 @@ export function GenerateReviewStep({
     }
     if (lineagePanel.isOpen) {
       if (lineagePanel.handleInput(input, key)) return;
-      if (key.upArrow || input === 'k') {
-        setLineageCursor((c) => Math.max(0, c - 1));
+      if (
+        handleLineageNavigation({
+          input,
+          key,
+          cursor: lineageCursor,
+          jumpables: lineageJumpables,
+          onCursorChange: setLineageCursor,
+          onJump: jumpCursorToName,
+          onClose: lineagePanel.close,
+          allowTab: true,
+        })
+      )
         return;
-      }
-      if (key.downArrow || input === 'j') {
-        setLineageCursor((c) => Math.min(Math.max(0, lineageJumpables.length - 1), c + 1));
-        return;
-      }
-      if (key.tab) {
-        setLineageCursor((c) => (lineageJumpables.length === 0 ? 0 : (c + 1) % lineageJumpables.length));
-        return;
-      }
-      if (key.return) {
-        const target = lineageJumpables[lineageCursor];
-        if (target && (target.entry.kind === 'ancestor' || target.entry.kind === 'descendant')) {
-          jumpCursorToName(target.entry.jumpTarget);
-        }
-        lineagePanel.close();
-        return;
-      }
       return;
     }
     if (breakPanel.isOpen) {
@@ -1285,136 +1058,7 @@ export function GenerateReviewStep({
       return;
     }
 
-    if (panelOpen === 'token-review') {
-      const suggestions = currentTokenSuggestions();
-      const row = suggestions[tokenReviewRow];
-
-      if (tokenReviewEditing) {
-        if (row && row.paths.length > 0) {
-          if (key.upArrow || input === 'k') {
-            setTokenReviewEditCursor((c) => Math.max(0, c - 1));
-            return;
-          }
-          if (key.downArrow || input === 'j') {
-            setTokenReviewEditCursor((c) => Math.min(row.paths.length - 1, c + 1));
-            return;
-          }
-          if (input === ' ' || key.return) {
-            const path = row.paths[tokenReviewEditCursor];
-            setTokenReviewEditSelection((prev) => {
-              const next = new Set(prev);
-              if (next.has(path) && next.size === 1) return next;
-              if (next.has(path)) next.delete(path);
-              else next.add(path);
-              return next;
-            });
-            return;
-          }
-          if (key.ctrl && input === 's') {
-            handleTokenEditSave(row);
-            return;
-          }
-        }
-        if (key.escape) {
-          setTokenReviewEditing(false);
-          return;
-        }
-        return;
-      }
-
-      if (key.upArrow || input === 'k') {
-        setTokenReviewRow((r) => Math.max(0, r - 1));
-        return;
-      }
-      if (key.downArrow || input === 'j') {
-        setTokenReviewRow((r) => Math.min(Math.max(0, suggestions.length - 1), r + 1));
-        return;
-      }
-      if (key.return && row) {
-        setTokenReviewEditCursor(0);
-        setTokenReviewEditSelection(new Set(row.allowed));
-        setTokenReviewEditing(true);
-        return;
-      }
-      if (key.escape) {
-        setPanelOpen('none');
-        return;
-      }
-      if (input === 't') {
-        setPanelOpen('none');
-        return;
-      }
-      return;
-    }
-
-    if (panelOpen !== 'none') {
-      const PANEL_HEIGHT_LOCAL = 12;
-      const next = computeNextScrollOffset(panelScrollOffset, input, key, 9999, PANEL_HEIGHT_LOCAL);
-      if (next !== null) {
-        setPanelScrollOffset(() => next);
-        return;
-      }
-      if (key.escape) {
-        setPanelOpen('none');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      const togglable = !key.ctrl && !key.tab && !key.meta && !key.return;
-      if (togglable && input === 'p' && panelOpen === 'prop-rationale') {
-        setPanelOpen('none');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (togglable && input === 'P' && panelOpen === 'component-rationale') {
-        setPanelOpen('none');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (togglable && input === 's' && panelOpen === 'source') {
-        setPanelOpen('none');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (togglable && input === 'p') {
-        setPanelOpen('prop-rationale');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (togglable && input === 'P') {
-        setPanelOpen('component-rationale');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (togglable && input === 's') {
-        setPanelOpen('source');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      return;
-    }
-    const rationaleKeyOk = !textEntryActive && !showJson && !key.ctrl && !key.tab && !key.meta && !key.return;
-    if (rationaleKeyOk) {
-      if (input === 'p') {
-        setPanelOpen('prop-rationale');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (input === 'P') {
-        setPanelOpen('component-rationale');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (input === 's') {
-        setPanelOpen('source');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (input === 't' && currentTokenSuggestions().length > 0) {
-        setPanelOpen('token-review');
-        setTokenReviewRow(0);
-        return;
-      }
-    }
+    if (handleReviewPanelShortcuts(input, key, { ...reviewEditor, propKey: 'p', componentKey: 'P' })) return;
 
     if (key.tab) {
       if (!sidebarFocused && editorDirty) {
@@ -1425,7 +1069,7 @@ export function GenerateReviewStep({
       setSidebarFocused((prev) => !prev);
       return;
     }
-    if (input === ' ' && sidebarFocused && !showJson) {
+    if (input === ' ' && sidebarFocused && !reviewEditor.showJson) {
       const current = components[selectedIdx];
       if (!current) return;
       const rootName = resolveGroupRoot(current.key, closures, cycleView.structural);
@@ -1439,31 +1083,16 @@ export function GenerateReviewStep({
       return;
     }
 
-    if (!sidebarFocused && showJson) {
-      const current = components[selectedIdx];
-      const currentJson = getReviewJsonPanelValue(current ?? null, showHiddenProps);
-      const totalLines = currentJson.split('\n').length;
-      const maxOffset = Math.max(0, totalLines - PANEL_HEIGHT);
-
-      if (input === 'g' && !key.ctrl) {
-        if (pendingGRef.current) {
-          pendingGRef.current = false;
-          setJsonScrollOffset(() => 0);
-          return;
-        }
-        pendingGRef.current = true;
-        return;
-      }
-
-      const next = computeNextScrollOffset(jsonScrollOffset, input, key, totalLines, PANEL_HEIGHT);
-      if (next !== null) {
-        pendingGRef.current = false;
-        const clamped = Math.min(maxOffset, Math.max(0, next));
-        setJsonScrollOffset(() => clamped);
-        return;
-      }
-      pendingGRef.current = false;
-    }
+    if (
+      handleJsonPanelInput(input, key, {
+        ...reviewEditor,
+        sidebarFocused,
+        showJson: reviewEditor.showJson,
+        jsonValue: getReviewJsonPanelValue(components[selectedIdx] ?? null, reviewEditor.showHiddenProps),
+        height: PANEL_HEIGHT,
+      })
+    )
+      return;
 
     if (!sidebarFocused) return;
 
@@ -1514,33 +1143,18 @@ export function GenerateReviewStep({
         cursorRowIdx >= 0 && cursorRowIdx < visibleRowsMemo.length
           ? (components[visibleRowsMemo[cursorRowIdx]?.itemIdx ?? -1]?.key ?? null)
           : null;
-      const nextView: 'grouped' | 'flat' = columnOneView === 'grouped' ? 'flat' : 'grouped';
-      const nextRows = buildVisibleRows({
+      const next = computeSidebarViewToggle({
+        currentView: columnOneView,
+        currentKey,
+        currentScroll: sidebarScrollOffset,
+        visibleCount,
         items: groupedItemsMemo,
         cycleParticipants: cycleView.structural,
         expandedGroups,
-        viewMode: nextView,
         graph: sidebarGraph,
       });
-      let nextCursor = 0;
-      if (currentKey) {
-        for (let i = 0; i < nextRows.length; i++) {
-          const r = nextRows[i];
-          if (r.itemIdx < 0) continue;
-          if (components[r.itemIdx]?.key === currentKey) {
-            nextCursor = i;
-            break;
-          }
-        }
-      }
-      const nextScroll =
-        nextCursor < sidebarScrollOffset
-          ? nextCursor
-          : nextCursor >= sidebarScrollOffset + visibleCount
-            ? nextCursor - visibleCount + 1
-            : sidebarScrollOffset;
-      setColumnOneView(nextView);
-      setNav({ cursorRowIdx: nextCursor, sidebarScrollOffset: nextScroll });
+      setColumnOneView(next.view);
+      setNav({ cursorRowIdx: next.cursor, sidebarScrollOffset: next.scroll });
       return;
     }
     if (input === 'a') {
@@ -1553,7 +1167,7 @@ export function GenerateReviewStep({
       setComponents(next);
       setFinalizeError(null);
       recomputeCycles(next);
-      pushHistorySnapshot(next, autoRejected, undoSnapshot, 'accept-cascade');
+      pushHistorySnapshot(next, 'accept-cascade');
       return;
     }
     if (input === 'r') {
@@ -1568,34 +1182,18 @@ export function GenerateReviewStep({
       );
       setComponents(next);
       setFinalizeError(null);
-      pushHistorySnapshot(next, autoRejected, undoSnapshot, 'bulk-accept');
+      pushHistorySnapshot(next, 'bulk-accept');
       return;
     }
     if (input === 'E') {
-      const roots = new Set<string>();
-      for (const [name, closure] of closures.entries()) {
-        if (closure.nodes.length > 1) roots.add(name);
-      }
-      for (const name of cycleView.structural) roots.add(name);
-      setExpandedGroups(roots);
+      setExpandedGroups(collectExpandedGroupRoots(closures, cycleView.structural));
       return;
     }
     if (input === 'C') {
       setExpandedGroups(new Set());
       return;
     }
-    if (input === 'J') {
-      setShowJson((prev) => !prev);
-      setJsonScrollOffset(0);
-      pendingGRef.current = false;
-      return;
-    }
-    if (input === 'H') {
-      setShowHiddenProps((prev) => !prev);
-      setJsonScrollOffset(0);
-      pendingGRef.current = false;
-      return;
-    }
+    if (handleReviewViewToggleInput(input, reviewEditor)) return;
 
     if (key.return) {
       const current = components[selectedIdx];
@@ -1614,65 +1212,42 @@ export function GenerateReviewStep({
     }
 
     if (key.upArrow || input === 'k') {
-      setNav(({ cursorRowIdx: prev, sidebarScrollOffset: off }) => {
-        const positions = selectableRowPositions;
-        if (positions.length === 0) return { cursorRowIdx: prev, sidebarScrollOffset: off };
-        const pos = positions.indexOf(prev);
-        const currentSelectableIdx =
-          pos >= 0
-            ? pos
-            : Math.max(
-                0,
-                positions.reduce((acc, p, i) => (p <= prev ? i : acc), 0),
-              );
-        const nextSelectableIdx = Math.max(0, currentSelectableIdx - 1);
-        const newRow = positions[nextSelectableIdx] ?? prev;
-        return { cursorRowIdx: newRow, sidebarScrollOffset: Math.min(off, newRow) };
-      });
-      setJsonScrollOffset(0);
-      setDraftValue('');
-      setSaveError(null);
+      setNav(({ cursorRowIdx: previousRow, sidebarScrollOffset: previousScroll }) =>
+        moveSelectableCursor({
+          direction: 'up',
+          previousRow,
+          previousScroll,
+          positions: selectableRowPositions,
+          visibleCount,
+        }),
+      );
+      reviewEditor.setJsonScrollOffset(0);
+      reviewEditor.setDraftValue('');
+      reviewEditor.setSaveError(null);
       setPendingEditorFocus(null);
     } else if (key.downArrow || input === 'j') {
-      setNav(({ cursorRowIdx: prev, sidebarScrollOffset: off }) => {
-        const positions = selectableRowPositions;
-        if (positions.length === 0) return { cursorRowIdx: prev, sidebarScrollOffset: off };
-        const pos = positions.indexOf(prev);
-        const currentSelectableIdx =
-          pos >= 0
-            ? pos
-            : Math.max(
-                0,
-                positions.reduce((acc, p, i) => (p <= prev ? i : acc), 0),
-              );
-        const nextSelectableIdx = Math.min(positions.length - 1, currentSelectableIdx + 1);
-        const newRow = positions[nextSelectableIdx] ?? prev;
-        const nextOff = newRow >= off + visibleCount ? newRow - visibleCount + 1 : off;
-        return { cursorRowIdx: newRow, sidebarScrollOffset: nextOff };
-      });
-      setJsonScrollOffset(0);
-      setDraftValue('');
-      setSaveError(null);
+      setNav(({ cursorRowIdx: previousRow, sidebarScrollOffset: previousScroll }) =>
+        moveSelectableCursor({
+          direction: 'down',
+          previousRow,
+          previousScroll,
+          positions: selectableRowPositions,
+          visibleCount,
+        }),
+      );
+      reviewEditor.setJsonScrollOffset(0);
+      reviewEditor.setDraftValue('');
+      reviewEditor.setSaveError(null);
       setPendingEditorFocus(null);
     }
   });
 
   if (loading) {
-    return (
-      <Box paddingX={2} paddingY={1}>
-        <Text dimColor>Loading generated definitions...</Text>
-      </Box>
-    );
+    return <ReviewLoadingState />;
   }
 
   if (loadError) {
-    return (
-      <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text color={PALETTE.error}>{loadError}</Text>
-        <Text> </Text>
-        <Text dimColor>[q / Enter / Esc] Quit</Text>
-      </Box>
-    );
+    return <ReviewLoadError message={loadError} />;
   }
 
   if (showHelp) {
@@ -1686,30 +1261,9 @@ export function GenerateReviewStep({
         <Text bold color={PALETTE.warning}>
           {`BREAK CYCLE ${cyclesCursor + 1} — remove a slot edge or reject a member`}
         </Text>
-        {highlightedCycle &&
-          (() => {
-            const segs = formatCyclePathSegments(highlightedCycle);
-            return (
-              <Text>
-                {'  '}
-                {segs.map((seg, si) =>
-                  seg.kind === 'slot' ? (
-                    <Text key={si} color={PALETTE.info}>
-                      {seg.text}
-                    </Text>
-                  ) : seg.kind === 'arrow' ? (
-                    <Text key={si} dimColor>
-                      {seg.text}
-                    </Text>
-                  ) : (
-                    <Text key={si} color={PALETTE.warning}>
-                      {seg.text}
-                    </Text>
-                  ),
-                )}
-              </Text>
-            );
-          })()}
+        {highlightedCycle && (
+          <CyclePathLine segments={formatCyclePathSegments(highlightedCycle)} prefix="  " highlightComponents />
+        )}
         <Text dimColor>
           {highlightedCycle
             ? 'Deleting an edge removes it from $allowedComponents (undo with Ctrl+Z).'
@@ -1748,9 +1302,11 @@ export function GenerateReviewStep({
     return renderBreakOverlay();
   }
 
-  const selected = components[selectedIdx] ?? null;
-  const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
-  const visibleJsonPanelValue = getReviewJsonPanelValue(selected, showHiddenProps);
+  const { selected, selectedJson, visibleJsonPanelValue } = getReviewSelectionState(
+    components,
+    selectedIdx,
+    reviewEditor.showHiddenProps,
+  );
 
   const isEmpty = (c: CdfReviewEntry): boolean =>
     Object.keys(c.entry.$properties).length === 0 && Object.keys(c.entry.$slots ?? {}).length === 0;
@@ -1792,27 +1348,15 @@ export function GenerateReviewStep({
     return false;
   })();
 
-  const accepted = components.filter((c) => c.status === 'accepted').length;
-  const rejected = components.filter((c) => c.status === 'rejected').length;
-  const needsReview = components.filter((c) => c.status === 'needs-review').length;
-  const propCount = selected ? Object.keys(selected.entry.$properties).length : 0;
-  const slotCount = selected?.entry.$slots ? Object.keys(selected.entry.$slots).length : 0;
-
   return (
     <Box flexDirection="column">
-      {showFinalize && (
-        <FinalizeDialog
-          accepted={accepted}
-          rejected={rejected}
-          needsReview={needsReview}
-          removed={finalizePreview.removed}
-          previewStatus={finalizePreview.status}
-          removedScrollOffset={finalizePreview.scrollOffset}
-          onConfirm={handleFinalizeConfirm}
-          onCancel={() => setShowFinalize(false)}
-        />
-      )}
-      {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
+      <ReviewStepDialogs
+        surfaceState={reviewSurface}
+        components={components}
+        finalizePreview={finalizePreview}
+        onFinalize={handleFinalizeConfirm}
+        onQuit={onQuit}
+      />
       {showUnsavedWarning && !dialogOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
           <Text bold color={PALETTE.warning}>
@@ -1825,17 +1369,7 @@ export function GenerateReviewStep({
           <Text>{'  [Tab]    Stay in the panel'}</Text>
         </Box>
       )}
-      {showReloadDialog && !dialogOpen && (
-        <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
-          <Text bold color={PALETTE.warning}>
-            Reload from saved state?
-          </Text>
-          <Text>Unsaved in-memory changes will be lost.</Text>
-          <Text> </Text>
-          <Text>{'  [Enter]  Confirm'}</Text>
-          <Text>{'  [Esc]    Cancel'}</Text>
-        </Box>
-      )}
+      <ReviewReloadDialog open={showReloadDialog && !dialogOpen} />
       {removedComponents.length > 0 && !dialogOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.error} paddingX={1}>
           <Text bold color={PALETTE.error}>
@@ -1915,24 +1449,8 @@ export function GenerateReviewStep({
                 inverse={isCursor}
               >{`${isCursor ? '▶' : ' '} Cycle ${idx + 1} (${nodeCount} component${nodeCount === 1 ? '' : 's'}):`}</Text>,
             );
-            const segs = formatCyclePathSegments(cycle, 16);
             lines.push(
-              <Text key={`cyc-p-${idx}`}>
-                {'    '}
-                {segs.map((seg, si) =>
-                  seg.kind === 'slot' ? (
-                    <Text key={si} color={PALETTE.info}>
-                      {seg.text}
-                    </Text>
-                  ) : seg.kind === 'arrow' ? (
-                    <Text key={si} dimColor>
-                      {seg.text}
-                    </Text>
-                  ) : (
-                    <Text key={si}>{seg.text}</Text>
-                  ),
-                )}
-              </Text>,
+              <CyclePathLine key={`cyc-p-${idx}`} segments={formatCyclePathSegments(cycle, 16)} prefix="    " />,
             );
             if (cycle.suggestedBreak) {
               const b = cycle.suggestedBreak;
@@ -1952,36 +1470,15 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {!dialogOpen &&
-        livePreview &&
-        (() => {
-          const counts = { new: 0, changed: 0, removed: 0, breaking: 0 };
-          for (const v of previewAnnotations.values()) {
-            counts[v] = (counts[v] ?? 0) + 1;
-          }
-          const hasCounts = counts.new + counts.changed + counts.removed + counts.breaking > 0;
-          if (livePreviewHook.disabled) {
-            return <Text dimColor>{'Preview: disabled (creds rejected)'}</Text>;
-          }
-          if (livePreviewHook.status === 'running' && !hasCounts) {
-            return <Text dimColor>{`Preview: ${livePreviewSpinner} running...`}</Text>;
-          }
-          if (!hasCounts) return null;
-          return (
-            <Box>
-              <Text>{'Preview: '}</Text>
-              <Text color={PALETTE.success}>{`${counts.new} new`}</Text>
-              <Text>{' · '}</Text>
-              <Text color={PALETTE.warning}>{`${counts.changed} changed`}</Text>
-              <Text>{' · '}</Text>
-              <Text dimColor>{`${counts.removed} removed`}</Text>
-              <Text>{' · '}</Text>
-              <Text color={PALETTE.error} bold>
-                {`${counts.breaking} breaking`}
-              </Text>
-            </Box>
-          );
-        })()}
+      {!dialogOpen && (
+        <LivePreviewSummary
+          enabled={livePreview}
+          previewAnnotations={previewAnnotations}
+          status={livePreviewHook.status}
+          disabled={livePreviewHook.disabled}
+          spinner={livePreviewSpinner}
+        />
+      )}
       {!dialogOpen &&
         autoRejected.length > 0 &&
         (() => {
@@ -2008,12 +1505,8 @@ export function GenerateReviewStep({
             </Box>
           );
         })()}
-      {!dialogOpen && emptyCount > 0 && (
-        <Text color={PALETTE.warning}>
-          {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
-        </Text>
-      )}
-      {!dialogOpen && finalizeError && <Text color={PALETTE.error}>{`⚠ ${finalizeError}`}</Text>}
+      <ReviewEmptyComponentsWarning count={emptyCount} hidden={dialogOpen} />
+      <ReviewFinalizeError message={finalizeError} hidden={dialogOpen} />
       {!dialogOpen && (
         <Box>
           {breakingPanel.isOpen ? (
@@ -2050,7 +1543,7 @@ export function GenerateReviewStep({
                     return;
                   }
                 }
-                setJsonScrollOffset(0);
+                reviewEditor.setJsonScrollOffset(0);
               }}
               expandedGroups={expandedGroups}
               onToggleExpanded={(rootName) => {
@@ -2074,182 +1567,41 @@ export function GenerateReviewStep({
               graph={sidebarGraph}
             />
           )}
-          <Box flexGrow={1} paddingLeft={1} flexDirection="column">
-            {selected ? (
-              <>
-                <Box>
-                  <Text bold>{selected.key}</Text>
-                  <Box flexGrow={1} />
-                  <Text dimColor>
-                    {propCount} prop{propCount !== 1 ? 's' : ''}
-                    {slotCount > 0 ? ` · ${slotCount} slot${slotCount !== 1 ? 's' : ''}` : ''}
-                    {'  '}
-                    {sidebarFocused ? '[Tab] focus panel' : '[Tab] focus list'}
-                  </Text>
-                </Box>
-                {panelOpen === 'prop-rationale' ? (
-                  (() => {
-                    const rows: RationaleRow[] = [
-                      ...(componentRationale?.props ?? []).map<RationaleRow>((p) => ({
-                        name: p.name,
-                        kind: 'prop',
-                        rationale: p.rationale ?? '',
-                      })),
-                      ...(componentRationale?.slots ?? []).map<RationaleRow>((s) => ({
-                        name: s.name,
-                        kind: 'slot',
-                        rationale: s.rationale ?? '',
-                      })),
-                    ];
-                    return (
-                      <RationalePanel
-                        componentName={componentRationale?.name ?? selected.key}
-                        rows={rows}
-                        scrollOffset={panelScrollOffset}
-                        width={panelWidth}
-                        height={PANEL_HEIGHT}
-                        active={true}
-                      />
-                    );
-                  })()
-                ) : panelOpen === 'component-rationale' ? (
-                  <ComponentRationalePanel
-                    data={
-                      componentRationale ?? {
-                        name: selected.key,
-                        description: null,
-                        descriptionRationale: null,
-                        propsRationale: null,
-                        slotsRationale: null,
-                        props: [],
-                        slots: [],
-                      }
-                    }
-                    scrollOffset={panelScrollOffset}
-                    width={panelWidth}
-                    height={PANEL_HEIGHT}
-                    active={true}
-                  />
-                ) : panelOpen === 'source' ? (
-                  (() => {
-                    const path = reviewMetadata?.sourcePath ?? null;
-                    const src = reviewMetadata?.componentSource ?? null;
-                    const headerPath = path ?? '<unknown source path>';
-                    const lines = src ? src.split('\n').slice(panelScrollOffset, panelScrollOffset + PANEL_HEIGHT) : [];
-                    return (
-                      <Box
-                        flexDirection="column"
-                        width={panelWidth}
-                        borderStyle="single"
-                        borderColor="gray"
-                        paddingX={1}
-                      >
-                        <Text dimColor bold>{`source: ${headerPath}`}</Text>
-                        {src ? (
-                          lines.map((ln, i) => (
-                            <Text key={`source-line-${i}`} dimColor>
-                              {ln}
-                            </Text>
-                          ))
-                        ) : (
-                          <Text dimColor>{'(no source captured)'}</Text>
-                        )}
-                        <Text dimColor>{'[s/Esc] close'}</Text>
-                      </Box>
-                    );
-                  })()
-                ) : panelOpen === 'token-review' ? (
-                  <TokenReviewPanel
-                    componentName={selected.key}
-                    suggestions={currentTokenSuggestions()}
-                    selectedRow={tokenReviewRow}
-                    editing={tokenReviewEditing}
-                    editCursor={tokenReviewEditCursor}
-                    editSelection={tokenReviewEditSelection}
-                    width={panelWidth}
-                    height={PANEL_HEIGHT}
-                    active={true}
-                  />
-                ) : showJson ? (
-                  <JsonPanel
-                    label="GENERATED DEFINITION (read-only)"
-                    value={visibleJsonPanelValue}
-                    scrollOffset={jsonScrollOffset}
-                    width={panelWidth}
-                    height={PANEL_HEIGHT}
-                    active={!sidebarFocused}
-                  />
-                ) : (
-                  <FieldEditor
-                    key={
-                      pendingEditorFocus && pendingEditorFocus.componentName === selected.key
-                        ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
-                        : selected.key
-                    }
-                    value={draftValue || selectedJson}
-                    showHiddenProps={showHiddenProps}
-                    width={panelWidth}
-                    height={PANEL_HEIGHT}
-                    active={!sidebarFocused}
-                    onChange={setDraftValue}
-                    onSave={handleEditSave}
-                    onDiscard={handleEditDiscard}
-                    onExit={() => setSidebarFocused(true)}
-                    metadata={
-                      reviewMetadata
-                        ? ({
-                            sourcePath: reviewMetadata.sourcePath,
-                            componentSource: reviewMetadata.componentSource,
-                            props: reviewMetadata.props,
-                          } as FieldEditorMetadata)
-                        : undefined
-                    }
-                    onTogglePropRationale={() => {
-                      setPanelOpen('prop-rationale');
-                      setPanelScrollOffset(() => 0);
-                    }}
-                    propRationaleKey="p"
-                    componentRationaleKey="P"
-                    onToggleComponentRationale={() => {
-                      setPanelOpen('component-rationale');
-                      setPanelScrollOffset(() => 0);
-                    }}
-                    onToggleSourceExternal={() => {
-                      setPanelOpen('source');
-                      setPanelScrollOffset(() => 0);
-                    }}
-                    onTextEntryActiveChange={setTextEntryActive}
-                    projectSlotGraph={projectSlotGraph}
-                    currentComponentName={selected.key}
-                    onDirtyChange={setEditorDirty}
-                    discardTrigger={discardTrigger}
-                    initialFocusTarget={
-                      pendingEditorFocus && pendingEditorFocus.componentName === selected.key
-                        ? pendingEditorFocus.target
-                        : { kind: 'description' }
-                    }
-                  />
-                )}
-                {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
-                <Text dimColor>
-                  {panelOpen === 'token-review'
-                    ? '  [↑/↓] move  [Enter] edit allowed  [Esc] close'
-                    : sidebarFocused
-                      ? hasGroupRoots
-                        ? '  [Space] expand/collapse group  [E/C] expand/collapse all'
-                        : ''
-                      : showJson
-                        ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
-                        : '  [Tab] focus list  (edit fields)' +
-                          (currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
-                  {livePreviewHook.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
-                  {livePreviewHook.disabled && <Text>{'  · live preview disabled'}</Text>}
-                </Text>
-              </>
-            ) : (
-              <Text dimColor>No component selected</Text>
-            )}
-          </Box>
+          {selected ? (
+            <ReviewComponentPanel
+              selectedKey={selected.key}
+              selectedEntry={selected.entry}
+              componentRationale={componentRationale}
+              reviewMetadata={reviewMetadata}
+              reviewEditor={reviewEditor}
+              width={panelWidth}
+              height={PANEL_HEIGHT}
+              jsonValue={visibleJsonPanelValue}
+              sidebarFocused={sidebarFocused}
+              fieldEditor={buildReviewFieldEditor(reviewEditor, selectedJson, () => setSidebarFocused(true), {
+                key:
+                  pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                    ? `${selected.key}::${pendingEditorFocus.target.kind}:${pendingEditorFocus.target.name}`
+                    : selected.key,
+                propRationaleKey: 'p',
+                componentRationaleKey: 'P',
+                projectSlotGraph,
+                currentComponentName: selected.key,
+                onDirtyChange: setEditorDirty,
+                discardTrigger,
+                initialFocusTarget:
+                  pendingEditorFocus && pendingEditorFocus.componentName === selected.key
+                    ? pendingEditorFocus.target
+                    : { kind: 'description' },
+              })}
+              saveError={reviewEditor.saveError}
+              sidebarFooter={hasGroupRoots ? '  [Space] expand/collapse group  [E/C] expand/collapse all' : ''}
+              livePreview={livePreviewHook}
+              livePreviewSpinner={livePreviewSpinner}
+            />
+          ) : (
+            <ReviewNoSelection />
+          )}
         </Box>
       )}
       {breakPanel.isOpen && !breakOverlayFullScreen && !dialogOpen && renderBreakOverlay()}
@@ -2259,52 +1611,31 @@ export function GenerateReviewStep({
             {`⚠ ${slotCycles.length} slot dependency cycle${slotCycles.length === 1 ? '' : 's'} detected — push will fail`}
           </Text>
           {slotCycles.slice(0, 3).map((cycle, idx) => {
-            const segs = formatCyclePathSegments(cycle);
             return (
-              <Text key={`cyc-banner-${idx}`} color={PALETTE.warning}>
-                {'  Cycle: '}
-                {segs.map((seg, si) =>
-                  seg.kind === 'slot' ? (
-                    <Text key={si} color={PALETTE.info}>
-                      {seg.text}
-                    </Text>
-                  ) : seg.kind === 'arrow' ? (
-                    <Text key={si} dimColor>
-                      {seg.text}
-                    </Text>
-                  ) : (
-                    <Text key={si} color={PALETTE.warning}>
-                      {seg.text}
-                    </Text>
-                  ),
-                )}
-              </Text>
+              <CyclePathLine
+                key={`cyc-banner-${idx}`}
+                segments={formatCyclePathSegments(cycle)}
+                prefix="  Cycle: "
+                highlightComponents
+                highlightLine
+              />
             );
           })}
           {slotCycles.length > 3 && <Text color={PALETTE.warning}>{`  …${slotCycles.length - 3} more`}</Text>}
           <Text dimColor>{'  press [c] for detail'}</Text>
         </Box>
       )}
-      {!dialogOpen && searchOpen && (
-        <Box flexDirection="column">
-          <Text>
-            {`/${searchQuery}`}
-            <Text color={PALETTE.info}>{'▎'}</Text>
-            {searchQuery && <Text dimColor>{`  (${searchMatchCount}/${components.length} matches)`}</Text>}
-          </Text>
-          {autocompleteCandidates.length > 1 && (
-            <Text dimColor>{`  possibilities: ${autocompleteCandidates.join(' · ').slice(0, 120)}`}</Text>
-          )}
-        </Box>
-      )}
-      {!dialogOpen && !searchOpen && searchQuery && (
-        <Box>
-          <Text dimColor>{`/${searchQuery}  (${searchMatchCount}/${components.length} matches) · [Esc] clear`}</Text>
-        </Box>
-      )}
+      <SearchMatchSummary
+        open={searchOpen}
+        query={searchQuery}
+        matches={searchMatchCount}
+        total={components.length}
+        autocompleteCandidates={autocompleteCandidates}
+        hidden={dialogOpen}
+      />
       {!dialogOpen && sidebarFocused && (
         <Box columnGap={2} flexWrap="wrap">
-          {panelOpen === 'token-review' ? (
+          {reviewEditor.panelOpen === 'token-review' ? (
             <>
               {legendEntry('[↑/↓]', 'move')}
               {legendEntry('[Enter]', 'edit allowed')}
@@ -2323,12 +1654,16 @@ export function GenerateReviewStep({
               {legendEntry('[w]', 'only breaking', activeFilters.has('broken'))}
               {slotCycles.length > 0 && legendEntry('[o]', 'only cycles', activeFilters.has('cycles'))}
               {slotCycles.length > 0 && legendEntry('[c]', 'cycle list', cyclePanel.isOpen)}
-              {legendEntry('[p]', 'prop rationale', panelOpen === 'prop-rationale')}
-              {legendEntry('[P]', 'component rationale', panelOpen === 'component-rationale')}
-              {legendEntry('[s]', 'source', panelOpen === 'source')}
-              {currentTokenSuggestions().length > 0 && legendEntry('[t]', 'token review')}
-              {legendEntry('[J]', showJson ? 'hide JSON' : 'show JSON', showJson)}
-              {legendEntry('[H]', showHiddenProps ? 'hide state/unattached' : 'show state/unattached', showHiddenProps)}
+              {legendEntry('[p]', 'prop rationale', reviewEditor.panelOpen === 'prop-rationale')}
+              {legendEntry('[P]', 'component rationale', reviewEditor.panelOpen === 'component-rationale')}
+              {legendEntry('[s]', 'source', reviewEditor.panelOpen === 'source')}
+              {reviewEditor.currentTokenSuggestions().length > 0 && legendEntry('[t]', 'token review')}
+              {legendEntry('[J]', reviewEditor.showJson ? 'hide JSON' : 'show JSON', reviewEditor.showJson)}
+              {legendEntry(
+                '[H]',
+                reviewEditor.showHiddenProps ? 'hide state/unattached' : 'show state/unattached',
+                reviewEditor.showHiddenProps,
+              )}
               {breakingChanges.length > 0 && legendEntry('[b]', 'see breaking changes', breakingPanel.isOpen)}
               {removedComponents.length > 0 &&
                 legendEntry('[d]', removedBannerCollapsed ? 'show removed' : 'hide removed', !removedBannerCollapsed)}
@@ -2344,11 +1679,8 @@ export function GenerateReviewStep({
         </Box>
       )}
       {!dialogOpen && (
-        <StatusBar
-          accepted={accepted}
-          rejected={rejected}
-          reviewed={0}
-          needsReview={needsReview}
+        <ReviewStatusBar
+          entries={components}
           onApproveAll={() => {
             setComponents((prev) => prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c)));
           }}

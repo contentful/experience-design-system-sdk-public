@@ -1,10 +1,11 @@
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
 import React, { useMemo, useState } from 'react';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { AutoFilterBanner } from '../components/AutoFilterBanner.js';
 import { CounterStrip } from '../components/CounterStrip.js';
 import { isAiFlagged } from '../ai-flag.js';
+import { useTerminalColumns } from './useTerminalColumns.js';
 import type { ScopeComponent, ScopeGateStepProps } from './ScopeGateStep.js';
 
 // Atomic-mode scope gate (spec T9). Recovered from the pre-composite `main`
@@ -33,8 +34,7 @@ export function AtomicScopeGateStep({
   aiFilterError = null,
   onCancelAutoFilter,
 }: ScopeGateStepProps): React.ReactElement {
-  const { stdout } = useStdout();
-  const totalWidth = stdout?.columns ?? 80;
+  const totalWidth = useTerminalColumns();
 
   // Inverted "included" model, kept from `main` (deliberately NOT the
   // composite step's userDecisions Map — see spec T9 "what to NOT share").

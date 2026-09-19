@@ -1,55 +1,44 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text, useStdout } from 'ink';
-import type {
-  CDFComponentEntry,
-  ComponentTypeSummary,
-  ServerPreviewResponse,
-} from '@contentful/experience-design-system-types';
+import React, { useCallback, useState } from 'react';
+import { Box, Text } from 'ink';
+import type { CDFComponentEntry } from '@contentful/experience-design-system-types';
 import { Sidebar } from '../../../analyze/select/tui/components/Sidebar.js';
-import { JsonPanel } from '../../../analyze/select/tui/components/JsonPanel.js';
-import { FieldEditor } from '../../../analyze/select/tui/components/FieldEditor.js';
-import { StatusBar } from '../../../analyze/select/tui/components/StatusBar.js';
-import { FinalizeDialog } from '../../../analyze/select/tui/components/FinalizeDialog.js';
-import { QuitDialog } from '../../../analyze/select/tui/components/QuitDialog.js';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
-import { readTokensFromPath } from '../../../apply/manifest.js';
-import {
-  openPipelineDb,
-  loadCDFComponents,
-  loadDTCGTokens,
-  storeCDFComponents,
-  loadComponentReviewMetadata,
-  loadComponentRationale,
-  type ComponentReviewMetadata,
-  type ComponentRationale,
-} from '../../../session/db.js';
-import { RationalePanel, type RationaleRow } from '../../../analyze/select/tui/components/RationalePanel.js';
-import { ComponentRationalePanel } from '../../../analyze/select/tui/components/ComponentRationalePanel.js';
-import {
-  TokenReviewPanel,
-  collectTokenSuggestions,
-  type TokenPropSuggestion,
-  type TokenReviewToken,
-} from '../../../analyze/select/tui/components/TokenReviewPanel.js';
-import type { FieldEditorMetadata } from '../../../analyze/select/tui/components/FieldEditor.js';
-import type {
-  PreviewAnnotation,
-  ReviewComponentStatus,
-  ReviewComponentSummary,
-} from '../../../analyze/select/types.js';
-import { applyPreviewAnnotations } from '../../../analyze/select/preview-annotations.js';
-import { createHistoryStack, type HistoryStack, type HistorySnapshot } from '../history.js';
-import { useLivePreview } from '../useLivePreview.js';
-import { useFinalizePreview } from '../useFinalizePreview.js';
-import { computeNextScrollOffset } from '../../../analyze/select/tui/hooks/scroll-offset.js';
+import type { ReviewComponentStatus, ReviewComponentSummary } from '../../../analyze/select/types.js';
+import type { HistorySnapshot } from '../history.js';
+import { useReviewFinalizePreview } from '../useFinalizePreview.js';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
+import {
+  buildReviewFieldEditor,
+  getReviewSelectionState,
+  ReviewEmptyComponentsWarning,
+  ReviewComponentPanel,
+  ReviewFinalizeError,
+  ReviewNoSelection,
+} from '../components/ReviewComponentPanel.js';
 import { getReviewJsonPanelValue } from './review-json-panel.js';
-
-type CdfReviewEntry = {
-  key: string;
-  entry: CDFComponentEntry;
-  status: ReviewComponentStatus;
-};
+import { LivePreviewSummary } from '../components/LivePreviewSummary.js';
+import { ReviewLoadError, ReviewLoadingState, ReviewStatusBar } from '../components/ReviewStatus.js';
+import {
+  handleJsonPanelInput,
+  handleReviewPanelShortcuts,
+  handleReviewOverlayInput,
+  handleReviewViewToggleInput,
+} from '../hooks/review-input.js';
+import {
+  createReviewHistorySnapshot,
+  finalizeReviewSession,
+  loadReviewSessionState,
+  useReviewHistory,
+  useReviewMetadata,
+  useReviewSession,
+  type CdfReviewEntry,
+  type ReviewSessionLoadResult,
+} from '../hooks/useReviewSession.js';
+import { useReviewEditor } from '../hooks/useReviewEditor.js';
+import { useReviewSurfaceState } from '../hooks/useReviewSurfaceState.js';
+import { useReviewPreview } from '../hooks/useReviewPreview.js';
+import { ReviewReloadDialog, ReviewStepDialogs } from '../components/ReviewDialogs.js';
+import { useTerminalColumns } from './useTerminalColumns.js';
 
 type GenerateReviewStepProps = {
   extractSessionId: string;
@@ -90,7 +79,7 @@ type GenerateReviewStepProps = {
  *
  * Within each tier (empty / non-empty) we tie-break alphabetically by `key`.
  */
-export function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(components: T[]): T[] {
+function sortComponentsForSidebar<T extends { key: string; entry: CDFComponentEntry }>(components: T[]): T[] {
   return [...components].sort((a, b) => {
     const aEmpty = Object.keys(a.entry.$properties ?? {}).length === 0;
     const bEmpty = Object.keys(b.entry.$properties ?? {}).length === 0;
@@ -115,262 +104,102 @@ export function AtomicGenerateReviewStep({
   tokensPath = '',
   initialFinalizeError = null,
 }: GenerateReviewStepProps): React.ReactElement {
-  const { stdout } = useStdout();
-  const terminalWidth = stdout?.columns ?? 80;
+  const terminalWidth = useTerminalColumns();
 
-  const [components, setComponents] = useState<CdfReviewEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadSessionState = useCallback(
+    (): ReviewSessionLoadResult =>
+      loadReviewSessionState({
+        extractSessionId,
+        tokenSessionId,
+        sortEntries: (entries) => sortComponentsForSidebar(entries),
+      }),
+    [extractSessionId, tokenSessionId],
+  );
+  const reviewSurface = useReviewSurfaceState(initialFinalizeError);
+  const {
+    components,
+    setComponents,
+    loading,
+    loadError,
+    availableTokens,
+    reloadFromSave: reloadSessionFromSave,
+  } = useReviewSession({
+    loadSession: loadSessionState,
+    tokensPath,
+  });
+
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [sidebarScrollOffset, setSidebarScrollOffset] = useState(0);
-  const [jsonScrollOffset, setJsonScrollOffset] = useState(0);
-  const [sidebarFocused, setSidebarFocused] = useState(true);
-  const [showFinalize, setShowFinalize] = useState(false);
-  const [showQuit, setShowQuit] = useState(false);
-  // FieldEditor is the default editor. JSON view is an opt-in read-only toggle.
-  const [showJson, setShowJson] = useState(false);
-  const [showHiddenProps, setShowHiddenProps] = useState(false);
-  const [draftValue, setDraftValue] = useState('');
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const {
+    sidebarFocused,
+    setSidebarFocused,
+    showFinalize,
+    setShowFinalize,
+    showQuit,
+    setShowQuit,
+    finalizeError,
+    setFinalizeError,
+  } = reviewSurface;
   // INTEG-4411: inline banner shown when the operator tries to finalize
   // with zero accepted components. Cleared on the next 'a' or 'A' press.
-  const [finalizeError, setFinalizeError] = useState<string | null>(initialFinalizeError);
   // Feature 1: per-component review metadata (rationale + source location)
   // for the currently-selected component. Reloaded when selection changes.
-  const [reviewMetadata, setReviewMetadata] = useState<ComponentReviewMetadata | null>(null);
-  // Feature 2: per-component preview annotations refreshed after every
-  // FieldEditor save via the useLivePreview hook below. Empty when live
-  // preview is disabled, when creds are missing, or before the first response.
-  const [previewAnnotations, setPreviewAnnotations] = useState<Map<string, PreviewAnnotation>>(new Map());
   // Pilot-2026-06-24: raw removed list for the `d` detail panel. The
   // annotation map only carries kind, not the rich summaries we need to list
   // names/ids when the operator asks "which ones?".
-  const [removedComponents, setRemovedComponents] = useState<ComponentTypeSummary[]>([]);
   const [showRemovedPanel, setShowRemovedPanel] = useState(false);
-  // Lifted rationale + source panels (replaces FieldEditor's right pane).
-  // Mutually exclusive states.
-  const [panelOpen, setPanelOpen] = useState<
-    'none' | 'prop-rationale' | 'component-rationale' | 'source' | 'token-review'
-  >('none');
-  const [panelScrollOffset, setPanelScrollOffset] = useState(0);
-  const [textEntryActive, setTextEntryActive] = useState(false);
-  const [componentRationale, setComponentRationale] = useState<ComponentRationale | null>(null);
-  const [tokenReviewRow, setTokenReviewRow] = useState(0);
-  const [tokenReviewEditing, setTokenReviewEditing] = useState(false);
-  const [tokenReviewEditCursor, setTokenReviewEditCursor] = useState(0);
-  const [tokenReviewEditSelection, setTokenReviewEditSelection] = useState<Set<string>>(new Set());
-  const [availableTokens, setAvailableTokens] = useState<TokenReviewToken[]>([]);
-  const tokenReviewSuggestedRef = useRef(new Map<string, string[]>());
-  // Tracks the first `g` of a potential `gg` double-tap (jumps to top in
-  // JSON-view + panel-focused state). Reset on any non-`g` key.
-  const pendingGRef = useRef(false);
-
   const [showReloadDialog, setShowReloadDialog] = useState(false);
-  const historyRef = useRef<HistoryStack | null>(null);
-  const historySeededRef = useRef(false);
 
-  const handleLivePreviewResult = (response: ServerPreviewResponse | null): void => {
-    if (!response) return;
-    setPreviewAnnotations(
-      applyPreviewAnnotations(
-        response,
-        components.map((c) => c.key),
-      ),
+  const applyHistorySnapshot = (snapshot: HistorySnapshot): void => {
+    setComponents(
+      snapshot.components.map((component) => ({
+        key: component.key,
+        entry: component.entry,
+        status: component.status,
+      })),
     );
-    setRemovedComponents(response.components.removed ?? []);
   };
+  const { pushHistorySnapshot, handleUndo, handleRedo, resetHistory } = useReviewHistory({
+    loading,
+    components,
+    createSnapshot: (entries) => createReviewHistorySnapshot(entries),
+    applySnapshot: applyHistorySnapshot,
+  });
 
-  const livePreviewHook = useLivePreview({
-    enabled: livePreview,
+  const { previewAnnotations, removedComponents, livePreviewHook, livePreviewSpinner } = useReviewPreview({
+    components,
+    loading,
+    livePreview,
     sessionId: extractSessionId,
     tokensPath,
     spaceId,
     environmentId,
     cmaToken,
     host,
-    onResult: handleLivePreviewResult,
   });
 
-  // Manual spinner cycling (no extra dep) for the sidebar status-row
-  // indicator. Runs only while the live-preview hook reports `running`.
-  const SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
-  const [spinnerTick, setSpinnerTick] = useState(0);
-  useEffect(() => {
-    if (livePreviewHook.status !== 'running') return;
-    const id = setInterval(() => setSpinnerTick((t) => t + 1), 80);
-    return () => clearInterval(id);
-  }, [livePreviewHook.status]);
-  const livePreviewSpinner = SPINNER_FRAMES[spinnerTick % SPINNER_FRAMES.length];
-
-  const loadEntries = (): { entries: CdfReviewEntry[]; tokens: TokenReviewToken[]; error: string | null } => {
-    const db = openPipelineDb();
-    let cdfComponents: Array<{ key: string; entry: CDFComponentEntry }>;
-    let tokens: TokenReviewToken[] = [];
-    try {
-      cdfComponents = loadCDFComponents(db, extractSessionId);
-      tokens = loadDTCGTokens(db, tokenSessionId ?? extractSessionId).tokens.map((token) => ({
-        path: token.path,
-        kind: token.$type,
-      }));
-    } finally {
-      db.close();
-    }
-    if (cdfComponents.length === 0) {
-      return {
-        entries: [],
-        tokens: [],
-        error: 'No generated definitions found for this session. Try re-running generate.',
-      };
-    }
-    const reviewEntries: CdfReviewEntry[] = cdfComponents.map(({ key, entry }) => ({
-      key,
-      entry,
-      status: 'needs-review',
-    }));
-    return { entries: sortComponentsForSidebar(reviewEntries), tokens, error: null };
-  };
-
-  useEffect(() => {
-    let disposed = false;
-    void (async () => {
-      try {
-        const { entries, tokens, error } = loadEntries();
-        if (error) {
-          if (!disposed) setLoadError(error);
-          return;
-        }
-        const catalog = tokensPath
-          ? (await readTokensFromPath('tokens', tokensPath)).map((token) => ({ path: token.path, kind: token.$type }))
-          : tokens;
-        if (disposed) return;
-        setComponents(entries);
-        setAvailableTokens(catalog);
-      } catch (e: unknown) {
-        if (!disposed) setLoadError(String(e));
-      } finally {
-        if (!disposed) setLoading(false);
-      }
-    })();
-    return () => {
-      disposed = true;
-    };
-  }, [extractSessionId, tokenSessionId, tokensPath]);
-
-  // Seed the undo/redo history once components are loaded.
-  useEffect(() => {
-    if (loading) return;
-    if (historySeededRef.current) return;
-    historySeededRef.current = true;
-    historyRef.current = createHistoryStack({
-      components: components.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-      autoRejected: [],
-      undoSnapshot: null,
-    });
-  }, [loading, components]);
-
-  const pushHistorySnapshot = (entries: CdfReviewEntry[], label: string): void => {
-    if (!historyRef.current) return;
-    historyRef.current.push(
-      {
-        components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-        autoRejected: [],
-        undoSnapshot: null,
-      },
-      label,
-    );
-  };
-
-  const applyHistorySnapshot = (snap: HistorySnapshot): void => {
-    setComponents(snap.components.map((c) => ({ key: c.key, entry: c.entry, status: c.status })));
-  };
-
-  const handleUndo = (): void => {
-    const snap = historyRef.current?.undo();
-    if (snap) applyHistorySnapshot(snap);
-  };
-
-  const handleRedo = (): void => {
-    const snap = historyRef.current?.redo();
-    if (snap) applyHistorySnapshot(snap);
-  };
+  const reviewEditor = useReviewEditor({
+    components,
+    selectedIdx,
+    extractSessionId,
+    availableTokens,
+    setComponents,
+    pushHistorySnapshot,
+    onEditSaved: () => livePreviewHook.trigger(),
+    onTokenSaved: () => livePreviewHook.trigger(),
+  });
 
   const reloadFromSave = (): void => {
-    try {
-      const { entries, tokens, error } = loadEntries();
-      if (error) {
-        setLoadError(error);
-        return;
-      }
-      setComponents(entries);
-      setAvailableTokens(tokens);
-      historyRef.current?.reset({
-        components: entries.map((c) => ({ key: c.key, entry: c.entry, status: c.status })),
-        autoRejected: [],
-        undoSnapshot: null,
-      });
-    } catch (e: unknown) {
-      setLoadError(String(e));
-    }
+    const result = reloadSessionFromSave();
+    if (!result) return;
+    resetHistory(createReviewHistorySnapshot(result.entries));
   };
 
-  // Pilot-2026-06-23 R2: fire the live preview once on entry to final-review
-  // so diff badges populate before the operator's first save. We gate on the
-  // livePreview prop to honor --no-live-preview without depending on the
-  // hook's internal short-circuit. Cred-missing is still handled by the
-  // hook's own no-op path.
-  useEffect(() => {
-    if (loading) return;
-    if (!livePreview) return;
-    if (components.length === 0) return;
-    livePreviewHook.trigger();
-    // Intentionally only on load completion — subsequent fires happen via
-    // handleEditSave. Adding livePreviewHook to deps would re-fire on every
-    // hook re-creation.
-  }, [loading]);
-
-  // Feature 1: load review metadata (rationale + source location) for the
-  // selected component when selection changes.
-  useEffect(() => {
-    const current = components[selectedIdx];
-    if (!current) {
-      setReviewMetadata(null);
-      return;
-    }
-    const db = openPipelineDb();
-    try {
-      setReviewMetadata(loadComponentReviewMetadata(db, extractSessionId, current.key));
-    } catch {
-      setReviewMetadata(null);
-    } finally {
-      db.close();
-    }
-  }, [selectedIdx, components, extractSessionId]);
-
-  useEffect(() => {
-    setTokenReviewRow(0);
-    setTokenReviewEditing(false);
-    setTokenReviewEditCursor(0);
-    setTokenReviewEditSelection(new Set());
-  }, [selectedIdx]);
-
-  // Load component-level rationale for the selected component (drives the
-  // `I` ComponentRationalePanel). Decoupled from review metadata so the data
-  // contracts can evolve independently.
-  useEffect(() => {
-    const current = components[selectedIdx];
-    if (!current) {
-      setComponentRationale(null);
-      return;
-    }
-    const db = openPipelineDb();
-    try {
-      setComponentRationale(loadComponentRationale(db, extractSessionId, current.key));
-    } catch {
-      setComponentRationale(null);
-    } finally {
-      db.close();
-    }
-  }, [selectedIdx, components, extractSessionId]);
+  const { reviewMetadata, componentRationale } = useReviewMetadata({
+    components,
+    selectedIdx,
+    extractSessionId,
+  });
 
   const updateStatus = (idx: number, status: ReviewComponentStatus) => {
     setComponents((prev) => {
@@ -380,7 +209,15 @@ export function AtomicGenerateReviewStep({
     });
   };
 
-  const finalizePreview = useFinalizePreview({
+  const acceptAll = (): void => {
+    setComponents((prev) => {
+      const next: CdfReviewEntry[] = prev.map((c) => (c.status === 'needs-review' ? { ...c, status: 'accepted' } : c));
+      pushHistorySnapshot(next, 'accept-all');
+      return next;
+    });
+  };
+
+  const finalizePreview = useReviewFinalizePreview({
     open: showFinalize,
     extractSessionId,
     tokensPath,
@@ -388,183 +225,33 @@ export function AtomicGenerateReviewStep({
     environmentId,
     cmaToken,
     host,
-    acceptedKeys: new Set(components.filter((c) => c.status === 'accepted').map((c) => c.key)),
+    components,
   });
 
   const handleFinalizeConfirm = () => {
-    // Strict opt-in: only EXPLICITLY ACCEPTED components ship. Anything left
-    // in 'needs-review' OR explicitly 'rejected' is downgraded to
-    // 'generate-rejected' so loadCDFComponents excludes it from the manifest.
-    // The operator told us they want accept-to-ship semantics — leaving a
-    // component unresolved should NOT silently push it (Pilot-2026-06-24 R2).
-    const acceptedCount = components.filter((c) => c.status === 'accepted').length;
-    // INTEG-4411 refined: DO NOT block on `acceptedCount === 0` up-front.
-    // A push with zero accepted but one or more rejections targeting a
-    // component that exists server-side still produces REMOVALS — a valid
-    // push, not a no-op. Same for token-only diffs. The load-bearing no-op
-    // check lives downstream in WizardApp.runPreview, which consults the
-    // preview response and only blocks when every diff bucket is empty.
-    // We keep the `finalizeError` state so the wizard can route back here
-    // with an inline banner when that downstream check fires.
-    const explicitlyRejected = components.filter((c) => c.status === 'rejected').map((c) => c.key);
-    const unresolved = components.filter((c) => c.status === 'needs-review').map((c) => c.key);
-    const toReject = [...explicitlyRejected, ...unresolved];
-    if (toReject.length > 0) {
-      const db = openPipelineDb();
-      try {
-        const stmt = db.prepare(
-          `UPDATE raw_components SET status = 'generate-rejected' WHERE session_id = ? AND name = ?`,
-        );
-        db.exec('BEGIN');
-        try {
-          for (const name of toReject) {
-            stmt.run(extractSessionId, name);
-          }
-          db.exec('COMMIT');
-        } catch (e) {
-          db.exec('ROLLBACK');
-          throw e;
-        }
-      } finally {
-        db.close();
-      }
-    }
-    onFinalize(acceptedCount, explicitlyRejected.length, unresolved.length);
-  };
-
-  const handleEditSave = () => {
-    const current = components[selectedIdx];
-    if (!current) return;
-    try {
-      const parsed = JSON.parse(draftValue) as Record<string, unknown>;
-      // Accept both bare entry and wrapped { [key]: entry } forms
-      const keys = Object.keys(parsed);
-      const entry =
-        keys.length === 1 && typeof parsed[keys[0]] === 'object' && parsed[keys[0]] !== null
-          ? (parsed[keys[0]] as CDFComponentEntry)
-          : (parsed as unknown as CDFComponentEntry);
-      if (entry.$type !== 'component' || typeof entry.$properties !== 'object' || entry.$properties === null) {
-        setSaveError('Invalid CDF entry: must have $type: "component" and $properties object');
-        return;
-      }
-      setComponents((prev) =>
-        prev.map((c, i) =>
-          i === selectedIdx ? { ...c, entry, status: c.status === 'needs-review' ? 'accepted' : c.status } : c,
-        ),
-      );
-      setDraftValue('');
-      setSaveError(null);
-      const db = openPipelineDb();
-      try {
-        storeCDFComponents(db, extractSessionId, [{ key: current.key, entry }]);
-      } finally {
-        db.close();
-      }
-      // Feature 2: re-fire the live preview now that pipeline.db reflects
-      // the new state. The hook owns debounce + cred-missing short-circuit.
-      livePreviewHook.trigger();
-    } catch (e) {
-      setSaveError(String(e));
-    }
-  };
-
-  const handleEditDiscard = () => {
-    setDraftValue('');
-    setSaveError(null);
-  };
-
-  const currentTokenSuggestions = (): TokenPropSuggestion[] => {
-    const current = components[selectedIdx];
-    if (!current) return [];
-    return collectTokenSuggestions(current.entry, availableTokens).map((suggestion) => {
-      const snapshotKey = `${current.key}::${suggestion.propName}`;
-      const suggested = tokenReviewSuggestedRef.current.get(snapshotKey) ?? [...suggestion.suggested];
-      tokenReviewSuggestedRef.current.set(snapshotKey, suggested);
-      return { ...suggestion, suggested };
-    });
-  };
-
-  const persistTokenFields = (propName: string, allowed: string[]): void => {
-    const current = components[selectedIdx];
-    if (!current) return;
-    const prop = current.entry.$properties[propName];
-    if (!prop) return;
-    const nextProp = { ...prop };
-    nextProp['$token.allowed'] = allowed;
-    const nextEntry: CDFComponentEntry = {
-      ...current.entry,
-      $properties: { ...current.entry.$properties, [propName]: nextProp },
-    };
-    setComponents((prev) => {
-      const next = prev.map((c, i) => (i === selectedIdx ? { ...c, entry: nextEntry } : c));
-      pushHistorySnapshot(next, `token-review:${propName}`);
-      return next;
-    });
-    const db = openPipelineDb();
-    try {
-      storeCDFComponents(db, extractSessionId, [{ key: current.key, entry: nextEntry }]);
-    } finally {
-      db.close();
-    }
-    livePreviewHook.trigger();
-  };
-
-  const handleTokenEditSave = (s: TokenPropSuggestion): void => {
-    const allowed = s.paths.filter((p) => tokenReviewEditSelection.has(p));
-    if (allowed.length === 0) return;
-    persistTokenFields(s.propName, allowed);
-    setTokenReviewEditing(false);
+    const counts = finalizeReviewSession(extractSessionId, components);
+    onFinalize(counts.accepted, counts.rejected, counts.unresolved);
   };
 
   const dialogOpen = showFinalize || showQuit;
 
   useImmediateInput((input, key) => {
-    if (loading) return;
-    // On a load error there's nothing to review — still let the operator quit
-    // (q / Esc / Enter) instead of trapping them on the error screen.
-    if (loadError) {
-      if (input === 'q' || key.escape || key.return) onQuit();
+    if (
+      handleReviewOverlayInput(input, key, {
+        loading,
+        loadError,
+        showFinalize,
+        dialogOpen,
+        showReloadDialog,
+        finalizePreview,
+        reloadFromSave,
+        setShowReloadDialog,
+        onQuit,
+        handleUndo,
+        handleRedo,
+      })
+    )
       return;
-    }
-    if (showFinalize) {
-      // The dialog owns y/n/Enter/Esc; here we own j/k scroll of its deletion list.
-      if (input === 'j' || key.downArrow) {
-        finalizePreview.scrollBy(1);
-        return;
-      }
-      if (input === 'k' || key.upArrow) {
-        finalizePreview.scrollBy(-1);
-        return;
-      }
-      return;
-    }
-    if (dialogOpen) return;
-
-    if (showReloadDialog) {
-      if (key.return) {
-        reloadFromSave();
-        setShowReloadDialog(false);
-        return;
-      }
-      if (key.escape) {
-        setShowReloadDialog(false);
-        return;
-      }
-      return;
-    }
-
-    if (key.ctrl && input === 'z') {
-      handleUndo();
-      return;
-    }
-    if (key.ctrl && input === 'y') {
-      handleRedo();
-      return;
-    }
-    if (key.ctrl && input === 'r') {
-      setShowReloadDialog(true);
-      return;
-    }
 
     // Pilot-2026-06-24: removed-detail panel. When open, only `d` (toggle)
     // and Esc (close) respond — all other input is swallowed so j/k/Enter/
@@ -584,144 +271,7 @@ export function AtomicGenerateReviewStep({
       return;
     }
 
-    if (panelOpen === 'token-review') {
-      const suggestions = currentTokenSuggestions();
-      const row = suggestions[tokenReviewRow];
-
-      if (tokenReviewEditing) {
-        if (row && row.paths.length > 0) {
-          if (key.upArrow || input === 'k') {
-            setTokenReviewEditCursor((c) => Math.max(0, c - 1));
-            return;
-          }
-          if (key.downArrow || input === 'j') {
-            setTokenReviewEditCursor((c) => Math.min(row.paths.length - 1, c + 1));
-            return;
-          }
-          if (input === ' ' || key.return) {
-            const path = row.paths[tokenReviewEditCursor];
-            setTokenReviewEditSelection((prev) => {
-              const next = new Set(prev);
-              if (next.has(path) && next.size === 1) return next;
-              if (next.has(path)) next.delete(path);
-              else next.add(path);
-              return next;
-            });
-            return;
-          }
-          if (key.ctrl && input === 's') {
-            handleTokenEditSave(row);
-            return;
-          }
-        }
-        if (key.escape) {
-          setTokenReviewEditing(false);
-          return;
-        }
-        return;
-      }
-
-      if (key.upArrow || input === 'k') {
-        setTokenReviewRow((r) => Math.max(0, r - 1));
-        return;
-      }
-      if (key.downArrow || input === 'j') {
-        setTokenReviewRow((r) => Math.min(Math.max(0, suggestions.length - 1), r + 1));
-        return;
-      }
-      if (key.return && row) {
-        setTokenReviewEditCursor(0);
-        setTokenReviewEditSelection(new Set(row.allowed));
-        setTokenReviewEditing(true);
-        return;
-      }
-      if (key.escape) {
-        setPanelOpen('none');
-        return;
-      }
-      if (input === 't') {
-        setPanelOpen('none');
-        return;
-      }
-      return;
-    }
-
-    // Lifted rationale + source panels: i/I/s fire from anywhere (sidebar OR
-    // panel focus). Gated against text-entry surfaces inside FieldEditor
-    // (description editors, string-default editor, value-list text entry)
-    // via the `onTextEntryActiveChange` callback, plus the help/finalize/quit
-    // overlays and the JSON view.
-    if (panelOpen !== 'none') {
-      const PANEL_HEIGHT_LOCAL = 12;
-      const next = computeNextScrollOffset(panelScrollOffset, input, key, 9999, PANEL_HEIGHT_LOCAL);
-      if (next !== null) {
-        setPanelScrollOffset(() => next);
-        return;
-      }
-      if (key.escape) {
-        setPanelOpen('none');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      // Guard against Ctrl-letter aliases (Tab is Ctrl+I in ASCII, Ctrl+S would
-      // collide with save in nested editors). Only react to bare keystrokes.
-      const togglable = !key.ctrl && !key.tab && !key.meta && !key.return;
-      if (togglable && input === 'i' && panelOpen === 'prop-rationale') {
-        setPanelOpen('none');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (togglable && input === 'I' && panelOpen === 'component-rationale') {
-        setPanelOpen('none');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (togglable && input === 's' && panelOpen === 'source') {
-        setPanelOpen('none');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      // Cross-panel toggles while one is open.
-      if (togglable && input === 'i') {
-        setPanelOpen('prop-rationale');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (togglable && input === 'I') {
-        setPanelOpen('component-rationale');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (togglable && input === 's') {
-        setPanelOpen('source');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      return;
-    }
-    const rationaleKeyOk = !textEntryActive && !showJson && !key.ctrl && !key.tab && !key.meta && !key.return;
-    if (rationaleKeyOk) {
-      if (input === 'i') {
-        setPanelOpen('prop-rationale');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (input === 'I') {
-        setPanelOpen('component-rationale');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (input === 's') {
-        setPanelOpen('source');
-        setPanelScrollOffset(() => 0);
-        return;
-      }
-      if (input === 't' && currentTokenSuggestions().length > 0) {
-        setPanelOpen('token-review');
-        setTokenReviewRow(0);
-        return;
-      }
-    }
+    if (handleReviewPanelShortcuts(input, key, { ...reviewEditor, propKey: 'i', componentKey: 'I' })) return;
 
     // Tab toggles focus bidirectionally between sidebar and panel. `e` is a
     // sidebar-only alias for crossing INTO the panel — gating it to the
@@ -738,38 +288,17 @@ export function AtomicGenerateReviewStep({
     }
 
     // JSON view + panel focused: own j/k/arrows/PageUp/PageDown/Ctrl+u/d/gg/G for scrolling.
-    if (!sidebarFocused && showJson) {
-      const current = components[selectedIdx];
-      const currentJson = getReviewJsonPanelValue(current ?? null, showHiddenProps);
-      const totalLines = currentJson.split('\n').length;
-      const maxOffset = Math.max(0, totalLines - PANEL_HEIGHT);
-
-      // `gg` double-tap to jump to top; single `g` arms the pending flag.
-      if (input === 'g' && !key.ctrl) {
-        if (pendingGRef.current) {
-          pendingGRef.current = false;
-          setJsonScrollOffset(() => 0);
-          return;
-        }
-        pendingGRef.current = true;
-        return;
-      }
-
-      const next = computeNextScrollOffset(jsonScrollOffset, input, key, totalLines, PANEL_HEIGHT);
-      if (next !== null) {
-        pendingGRef.current = false;
-        // Functional setState mirrors the cursor-stutter fix (commit 5d11e60).
-        // Clamp against maxOffset re-computed at apply time in case totalLines
-        // shifted between events (defensive — helper already clamps).
-        const clamped = Math.min(maxOffset, Math.max(0, next));
-        setJsonScrollOffset(() => clamped);
-        return;
-      }
-      // Any other key in this slice resets the gg-pending flag, then falls
-      // through to the early-return below so the panel-focused state still
-      // swallows non-scroll input.
-      pendingGRef.current = false;
-    }
+    const current = components[selectedIdx];
+    if (
+      handleJsonPanelInput(input, key, {
+        ...reviewEditor,
+        sidebarFocused,
+        showJson: reviewEditor.showJson,
+        jsonValue: getReviewJsonPanelValue(current ?? null, reviewEditor.showHiddenProps),
+        height: PANEL_HEIGHT,
+      })
+    )
+      return;
 
     // When the panel is focused, FieldEditor (or JsonPanel) owns the keys.
     // Only Tab (handled above) should escape from the panel-focused state.
@@ -794,29 +323,11 @@ export function AtomicGenerateReviewStep({
       return;
     }
     if (input === 'A') {
-      setComponents((prev) => {
-        const next: CdfReviewEntry[] = prev.map((c) =>
-          c.status === 'needs-review' ? { ...c, status: 'accepted' } : c,
-        );
-        pushHistorySnapshot(next, 'accept-all');
-        return next;
-      });
+      acceptAll();
       setFinalizeError(null);
       return;
     }
-    if (input === 'J') {
-      // Toggle read-only JSON view.
-      setShowJson((prev) => !prev);
-      setJsonScrollOffset(0);
-      pendingGRef.current = false;
-      return;
-    }
-    if (input === 'H') {
-      setShowHiddenProps((prev) => !prev);
-      setJsonScrollOffset(0);
-      pendingGRef.current = false;
-      return;
-    }
+    if (handleReviewViewToggleInput(input, reviewEditor)) return;
 
     if (key.upArrow || input === 'k') {
       // Pilot-2026-06-23 bug: rapid k/j bursts could lose cursor position
@@ -833,42 +344,34 @@ export function AtomicGenerateReviewStep({
         setSidebarScrollOffset((off) => Math.min(off, newIdx));
         return newIdx;
       });
-      setJsonScrollOffset(0);
-      setDraftValue('');
-      setSaveError(null);
+      reviewEditor.setJsonScrollOffset(0);
+      reviewEditor.setDraftValue('');
+      reviewEditor.setSaveError(null);
     } else if (key.downArrow || input === 'j') {
       setSelectedIdx((prev) => {
         const newIdx = Math.min(components.length - 1, prev + 1);
         setSidebarScrollOffset((off) => (newIdx >= off + VISIBLE_COUNT ? newIdx - VISIBLE_COUNT + 1 : off));
         return newIdx;
       });
-      setJsonScrollOffset(0);
-      setDraftValue('');
-      setSaveError(null);
+      reviewEditor.setJsonScrollOffset(0);
+      reviewEditor.setDraftValue('');
+      reviewEditor.setSaveError(null);
     }
   });
 
   if (loading) {
-    return (
-      <Box paddingX={2} paddingY={1}>
-        <Text dimColor>Loading generated definitions...</Text>
-      </Box>
-    );
+    return <ReviewLoadingState />;
   }
 
   if (loadError) {
-    return (
-      <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text color={PALETTE.error}>{loadError}</Text>
-        <Text> </Text>
-        <Text dimColor>[q / Enter / Esc] Quit</Text>
-      </Box>
-    );
+    return <ReviewLoadError message={loadError} />;
   }
 
-  const selected = components[selectedIdx] ?? null;
-  const selectedJson = selected ? JSON.stringify({ [selected.key]: selected.entry }, null, 2) : '';
-  const visibleJsonPanelValue = getReviewJsonPanelValue(selected, showHiddenProps);
+  const { selected, selectedJson, visibleJsonPanelValue } = getReviewSelectionState(
+    components,
+    selectedIdx,
+    reviewEditor.showHiddenProps,
+  );
 
   // A component with zero classified $properties is a real defensibility issue —
   // it can't be pushed to Contentful (no fields). Surface it in the sidebar via
@@ -898,38 +401,16 @@ export function AtomicGenerateReviewStep({
   const sidebarWidth = Math.min(Math.max(longestName + 5, 14), 30);
   const panelWidth = Math.max(10, terminalWidth - sidebarWidth - 4);
 
-  const accepted = components.filter((c) => c.status === 'accepted').length;
-  const rejected = components.filter((c) => c.status === 'rejected').length;
-  const needsReview = components.filter((c) => c.status === 'needs-review').length;
-  const propCount = selected ? Object.keys(selected.entry.$properties).length : 0;
-  const slotCount = selected?.entry.$slots ? Object.keys(selected.entry.$slots).length : 0;
-
   return (
     <Box flexDirection="column">
-      {showFinalize && (
-        <FinalizeDialog
-          accepted={accepted}
-          rejected={rejected}
-          needsReview={needsReview}
-          removed={finalizePreview.removed}
-          previewStatus={finalizePreview.status}
-          removedScrollOffset={finalizePreview.scrollOffset}
-          onConfirm={handleFinalizeConfirm}
-          onCancel={() => setShowFinalize(false)}
-        />
-      )}
-      {showQuit && <QuitDialog hasUnsavedDrafts={false} onConfirm={onQuit} onCancel={() => setShowQuit(false)} />}
-      {showReloadDialog && !dialogOpen && (
-        <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warning} paddingX={1}>
-          <Text bold color={PALETTE.warning}>
-            Reload from saved state?
-          </Text>
-          <Text>Unsaved in-memory changes will be lost.</Text>
-          <Text> </Text>
-          <Text>{'  [Enter]  Confirm'}</Text>
-          <Text>{'  [Esc]    Cancel'}</Text>
-        </Box>
-      )}
+      <ReviewStepDialogs
+        surfaceState={reviewSurface}
+        components={components}
+        finalizePreview={finalizePreview}
+        onFinalize={handleFinalizeConfirm}
+        onQuit={onQuit}
+      />
+      <ReviewReloadDialog open={showReloadDialog && !dialogOpen} />
       {showRemovedPanel && !dialogOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.info} paddingX={1}>
           <Text bold color={PALETTE.info}>{`Removed components (${removedComponents.length})`}</Text>
@@ -942,49 +423,19 @@ export function AtomicGenerateReviewStep({
           <Text dimColor>press d or Esc to close</Text>
         </Box>
       )}
-      {!dialogOpen &&
-        livePreview &&
-        (() => {
-          // Pilot-2026-06-23 R2: at-a-glance diff summary at the top of the
-          // step. Mutually exclusive states:
-          //   - hook running (and we don't yet have annotations) → spinner.
-          //   - hook disabled (creds rejected) → static disabled hint.
-          //   - annotations populated → counts.
-          //   - idle, no annotations, not disabled → render nothing.
-          const counts = { new: 0, changed: 0, removed: 0, breaking: 0 };
-          for (const v of previewAnnotations.values()) {
-            counts[v] = (counts[v] ?? 0) + 1;
-          }
-          const hasCounts = counts.new + counts.changed + counts.removed + counts.breaking > 0;
-          if (livePreviewHook.disabled) {
-            return <Text dimColor>{'Preview: disabled (creds rejected)'}</Text>;
-          }
-          if (livePreviewHook.status === 'running' && !hasCounts) {
-            return <Text dimColor>{`Preview: ${livePreviewSpinner} running...`}</Text>;
-          }
-          if (!hasCounts) return null;
-          return (
-            <Box>
-              <Text>{'Preview: '}</Text>
-              <Text color={PALETTE.success}>{`${counts.new} new`}</Text>
-              <Text>{' · '}</Text>
-              <Text color={PALETTE.warning}>{`${counts.changed} changed`}</Text>
-              <Text>{' · '}</Text>
-              <Text dimColor>{`${counts.removed} removed`}</Text>
-              {removedComponents.length > 0 && <Text dimColor>{' ([d] removed list)'}</Text>}
-              <Text>{' · '}</Text>
-              <Text color={PALETTE.error} bold>
-                {`${counts.breaking} breaking`}
-              </Text>
-            </Box>
-          );
-        })()}
-      {!dialogOpen && emptyCount > 0 && (
-        <Text color={PALETTE.warning}>
-          {`⚠ ${emptyCount} component${emptyCount === 1 ? '' : 's'} had no classifiable props — review with care`}
-        </Text>
+      {!dialogOpen && (
+        <LivePreviewSummary
+          enabled={livePreview}
+          previewAnnotations={previewAnnotations}
+          status={livePreviewHook.status}
+          disabled={livePreviewHook.disabled}
+          spinner={livePreviewSpinner}
+          removedCount={removedComponents.length}
+          showRemovedListHint
+        />
       )}
-      {!dialogOpen && finalizeError && <Text color={PALETTE.error}>{`⚠ ${finalizeError}`}</Text>}
+      <ReviewEmptyComponentsWarning count={emptyCount} hidden={dialogOpen} />
+      <ReviewFinalizeError message={finalizeError} hidden={dialogOpen} />
       {!dialogOpen && (
         <Box>
           <Sidebar
@@ -997,198 +448,46 @@ export function AtomicGenerateReviewStep({
               const idx = components.findIndex((c) => c.key === id);
               if (idx >= 0) {
                 setSelectedIdx(idx);
-                setJsonScrollOffset(0);
+                reviewEditor.setJsonScrollOffset(0);
               }
             }}
             onScrollChange={setSidebarScrollOffset}
             width={sidebarWidth}
           />
-          <Box flexGrow={1} paddingLeft={1} flexDirection="column">
-            {selected ? (
-              <>
-                <Box>
-                  <Text bold>{selected.key}</Text>
-                  <Box flexGrow={1} />
-                  <Text dimColor>
-                    {propCount} prop{propCount !== 1 ? 's' : ''}
-                    {slotCount > 0 ? ` · ${slotCount} slot${slotCount !== 1 ? 's' : ''}` : ''}
-                    {'  '}
-                    {sidebarFocused ? '[e/Tab] focus panel' : '[Tab] focus list'}
-                  </Text>
-                </Box>
-                {panelOpen === 'prop-rationale' ? (
-                  (() => {
-                    const rows: RationaleRow[] = [
-                      ...(componentRationale?.props ?? []).map<RationaleRow>((p) => ({
-                        name: p.name,
-                        kind: 'prop',
-                        rationale: p.rationale ?? '',
-                      })),
-                      ...(componentRationale?.slots ?? []).map<RationaleRow>((s) => ({
-                        name: s.name,
-                        kind: 'slot',
-                        rationale: s.rationale ?? '',
-                      })),
-                    ];
-                    return (
-                      <RationalePanel
-                        componentName={componentRationale?.name ?? selected.key}
-                        rows={rows}
-                        scrollOffset={panelScrollOffset}
-                        width={panelWidth}
-                        height={PANEL_HEIGHT}
-                        active={true}
-                      />
-                    );
-                  })()
-                ) : panelOpen === 'component-rationale' ? (
-                  <ComponentRationalePanel
-                    data={
-                      componentRationale ?? {
-                        name: selected.key,
-                        description: null,
-                        descriptionRationale: null,
-                        propsRationale: null,
-                        slotsRationale: null,
-                        props: [],
-                        slots: [],
-                      }
-                    }
-                    scrollOffset={panelScrollOffset}
-                    width={panelWidth}
-                    height={PANEL_HEIGHT}
-                    active={true}
-                  />
-                ) : panelOpen === 'source' ? (
-                  (() => {
-                    const path = reviewMetadata?.sourcePath ?? null;
-                    const src = reviewMetadata?.componentSource ?? null;
-                    const headerPath = path ?? '<unknown source path>';
-                    const lines = src ? src.split('\n').slice(panelScrollOffset, panelScrollOffset + PANEL_HEIGHT) : [];
-                    return (
-                      <Box
-                        flexDirection="column"
-                        width={panelWidth}
-                        borderStyle="single"
-                        borderColor={PALETTE.border}
-                        paddingX={1}
-                      >
-                        <Text dimColor bold>{`source: ${headerPath}`}</Text>
-                        {src ? (
-                          lines.map((ln, i) => (
-                            <Text key={`source-line-${i}`} dimColor>
-                              {ln}
-                            </Text>
-                          ))
-                        ) : (
-                          <Text dimColor>{'(no source captured)'}</Text>
-                        )}
-                        <Text dimColor>{'[s/Esc] close'}</Text>
-                      </Box>
-                    );
-                  })()
-                ) : panelOpen === 'token-review' ? (
-                  <TokenReviewPanel
-                    componentName={selected.key}
-                    suggestions={currentTokenSuggestions()}
-                    selectedRow={tokenReviewRow}
-                    editing={tokenReviewEditing}
-                    editCursor={tokenReviewEditCursor}
-                    editSelection={tokenReviewEditSelection}
-                    width={panelWidth}
-                    height={PANEL_HEIGHT}
-                    active={true}
-                  />
-                ) : showJson ? (
-                  <JsonPanel
-                    label="GENERATED DEFINITION (read-only)"
-                    value={visibleJsonPanelValue}
-                    scrollOffset={jsonScrollOffset}
-                    width={panelWidth}
-                    height={PANEL_HEIGHT}
-                    active={!sidebarFocused}
-                  />
-                ) : (
-                  <FieldEditor
-                    key={selected.key}
-                    value={draftValue || selectedJson}
-                    showHiddenProps={showHiddenProps}
-                    width={panelWidth}
-                    height={PANEL_HEIGHT}
-                    active={!sidebarFocused}
-                    onChange={setDraftValue}
-                    onSave={handleEditSave}
-                    onDiscard={handleEditDiscard}
-                    onExit={() => setSidebarFocused(true)}
-                    metadata={
-                      reviewMetadata
-                        ? ({
-                            sourcePath: reviewMetadata.sourcePath,
-                            componentSource: reviewMetadata.componentSource,
-                            props: reviewMetadata.props,
-                          } as FieldEditorMetadata)
-                        : undefined
-                    }
-                    onTogglePropRationale={() => {
-                      setPanelOpen('prop-rationale');
-                      setPanelScrollOffset(() => 0);
-                    }}
-                    onToggleComponentRationale={() => {
-                      setPanelOpen('component-rationale');
-                      setPanelScrollOffset(() => 0);
-                    }}
-                    onToggleSourceExternal={() => {
-                      setPanelOpen('source');
-                      setPanelScrollOffset(() => 0);
-                    }}
-                    onTextEntryActiveChange={setTextEntryActive}
-                    initialFocusTarget={{ kind: 'description' }}
-                  />
-                )}
-                {saveError && <Text color={PALETTE.error}>{'✗ ' + saveError}</Text>}
-                <Text dimColor>
-                  {panelOpen === 'token-review'
-                    ? '  [↑/↓] move  [Enter] edit allowed  [Esc] close'
-                    : sidebarFocused
-                      ? '  [a] accept  [r] reject  [A] accept all  [i] prop rationale  [I] component rationale  [s] source  [J] ' +
-                        (showJson ? 'hide JSON' : 'show JSON') +
-                        '  [H] ' +
-                        (showHiddenProps ? 'hide state/unattached' : 'show state/unattached') +
-                        (currentTokenSuggestions().length > 0 ? '  [t] token review' : '') +
-                        '  [^z] undo  [^y] redo  [^r] reload  [F] finalize  [e/Tab] focus panel' +
-                        (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
-                        '  [q] quit'
-                      : showJson
-                        ? '  [j/k] scroll  [Ctrl+u/d] half-page  [gg/G] top/bottom  [Tab] focus list'
-                        : '  [Tab] focus list  (edit fields)' +
-                          (currentTokenSuggestions().length > 0 ? '  [t] token review' : '')}
-                  {livePreviewHook.status === 'running' && <Text>{`  ${livePreviewSpinner} live preview`}</Text>}
-                  {livePreviewHook.disabled && <Text>{'  · live preview disabled'}</Text>}
-                </Text>
-              </>
-            ) : (
-              <Text dimColor>No component selected</Text>
-            )}
-          </Box>
+          {selected ? (
+            <ReviewComponentPanel
+              selectedKey={selected.key}
+              selectedEntry={selected.entry}
+              componentRationale={componentRationale}
+              reviewMetadata={reviewMetadata}
+              reviewEditor={reviewEditor}
+              width={panelWidth}
+              height={PANEL_HEIGHT}
+              sourceBorderColor={PALETTE.border}
+              jsonValue={visibleJsonPanelValue}
+              sidebarFocused={sidebarFocused}
+              fieldEditor={buildReviewFieldEditor(reviewEditor, selectedJson, () => setSidebarFocused(true))}
+              saveError={reviewEditor.saveError}
+              sidebarFooter={
+                '  [a] accept  [r] reject  [A] accept all  [i] prop rationale  [I] component rationale  [s] source  [J] ' +
+                (reviewEditor.showJson ? 'hide JSON' : 'show JSON') +
+                '  [H] ' +
+                (reviewEditor.showHiddenProps ? 'hide state/unattached' : 'show state/unattached') +
+                (reviewEditor.currentTokenSuggestions().length > 0 ? '  [t] token review' : '') +
+                '  [^z] undo  [^y] redo  [^r] reload  [F] finalize  [e/Tab] focus panel' +
+                (livePreview && removedComponents.length > 0 ? '  [d] removed list' : '') +
+                '  [q] quit'
+              }
+              livePreview={livePreviewHook}
+              livePreviewSpinner={livePreviewSpinner}
+            />
+          ) : (
+            <ReviewNoSelection />
+          )}
         </Box>
       )}
       {!dialogOpen && (
-        <StatusBar
-          accepted={accepted}
-          rejected={rejected}
-          reviewed={0}
-          needsReview={needsReview}
-          onApproveAll={() => {
-            setComponents((prev) => {
-              const next: CdfReviewEntry[] = prev.map((c) =>
-                c.status === 'needs-review' ? { ...c, status: 'accepted' } : c,
-              );
-              pushHistorySnapshot(next, 'accept-all');
-              return next;
-            });
-          }}
-          onFinalize={() => setShowFinalize(true)}
-        />
+        <ReviewStatusBar entries={components} onApproveAll={acceptAll} onFinalize={() => setShowFinalize(true)} />
       )}
     </Box>
   );

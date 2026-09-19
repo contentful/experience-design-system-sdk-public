@@ -300,6 +300,47 @@ function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; std
   });
 }
 
+type SpawnedCliResult = { exitCode: number; stdout: string; stderr: string };
+
+function runSpawnedCli(args: string[], onStderr?: (chunk: string) => void): Promise<SpawnedCliResult> {
+  return new Promise((res) => {
+    const child = spawn('node', args);
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d: Buffer) => {
+      stdout += String(d);
+    });
+    child.stderr.on('data', (d: Buffer) => {
+      const chunk = String(d);
+      stderr += chunk;
+      onStderr?.(chunk);
+    });
+    child.on('exit', (code) => res({ exitCode: code ?? 0, stdout, stderr }));
+  });
+}
+
+function buildGenerateProcessArgs(opts: Parameters<typeof buildGenerateComponentsArgs>[0]): string[] {
+  return [findCliPath(), ...buildGenerateComponentsArgs(opts)];
+}
+
+function parseGenerateResult(
+  result: Pick<SpawnedCliResult, 'stdout' | 'stderr'>,
+  fallbackCount: number,
+): {
+  generateSessionId: string | null;
+  generatedCount: number;
+  renamedSlotsCount: number;
+} {
+  const sessionMatch = /^session=(.+)$/m.exec(result.stdout);
+  const countMatch = /(\d+) components?/.exec(result.stderr);
+  const renamedMatch = /^renamed-slots:\s*(\d+)$/m.exec(result.stdout);
+  return {
+    generateSessionId: sessionMatch ? sessionMatch[1]!.trim() : null,
+    generatedCount: countMatch ? Number(countMatch[1]) : fallbackCount,
+    renamedSlotsCount: renamedMatch ? Number(renamedMatch[1]) : 0,
+  };
+}
+
 export function parsePrintTokensCount(stdout: string): number {
   const m = /\((\d+)\s+token/.exec(stdout);
   return m ? Number(m[1]) : 0;
@@ -597,25 +638,10 @@ export function WizardApp({
   };
 
   const runGenerateTokens = async (rawTokensPath: string, outDir: string) => {
-    const result = await new Promise<{
-      exitCode: number;
-      stdout: string;
-      stderr: string;
-    }>((res) => {
-      const tokenArgs = [findCliPath(), 'generate', 'tokens', '--agent', state.agent, '--raw-tokens', rawTokensPath];
-      if (state.agentModel) tokenArgs.push('--model', state.agentModel);
-      if (state.bedrock) tokenArgs.push('--bedrock');
-      const child = spawn('node', tokenArgs);
-      let stdout = '';
-      let stderr = '';
-      child.stdout.on('data', (d: Buffer) => {
-        stdout += String(d);
-      });
-      child.stderr.on('data', (d: Buffer) => {
-        stderr += String(d);
-      });
-      child.on('exit', (code) => res({ exitCode: code ?? 0, stdout, stderr }));
-    });
+    const tokenArgs = [findCliPath(), 'generate', 'tokens', '--agent', state.agent, '--raw-tokens', rawTokensPath];
+    if (state.agentModel) tokenArgs.push('--model', state.agentModel);
+    if (state.bedrock) tokenArgs.push('--bedrock');
+    const result = await runSpawnedCli(tokenArgs);
     if (result.exitCode !== 0) {
       update({
         step: 'error',
@@ -738,72 +764,57 @@ export function WizardApp({
   const runExtract = async (projectPath: string) => {
     const outDir = join(resolve(projectPath), '.contentful');
     update({ step: 'extracting', outDir, extractProgress: null, compositionPhase: null });
-    const r = await new Promise<{
-      exitCode: number;
-      stdout: string;
-      stderr: string;
-    }>((res) => {
-      const extractArgs = [findCliPath(), 'analyze', 'extract', '--project', projectPath];
-      if (compositionMode === 'composite') {
-        extractArgs.push('--composite');
-        if (compositionMap) extractArgs.push('--composition-map', compositionMap);
-        if (compositionAgent) extractArgs.push('--composition-agent');
-        if (compositionAgentMode) extractArgs.push('--composition-agent-mode', compositionAgentMode);
-        if (compositionRefresh) extractArgs.push('--composition-refresh');
-        if (generateMap) extractArgs.push('--generate-map', generateMap);
-        for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
-        // Composition resolution uses the same agent the user picked for the run.
-        if (state.agent) extractArgs.push('--agent', state.agent);
-        if (state.bedrock) extractArgs.push('--bedrock');
-      }
-      const child = spawn('node', extractArgs);
-      let stdout = '';
-      let stderr = '';
-      child.stdout.on('data', (d: Buffer) => {
-        stdout += String(d);
-      });
-      child.stderr.on('data', (d: Buffer) => {
-        const chunk = String(d);
-        stderr += chunk;
-        for (const line of chunk.split('\n')) {
-          const scanMatch = /^progress=scan:(\d+)$/.exec(line.trim());
-          if (scanMatch) {
-            const scanned = Number(scanMatch[1]);
-            setState((prev) => ({
-              ...prev,
-              extractProgress: {
-                scanned,
-                filesProcessed: prev.extractProgress?.filesProcessed ?? 0,
-                totalFiles: prev.extractProgress?.totalFiles ?? 0,
-                componentsFound: prev.extractProgress?.componentsFound ?? 0,
-              },
-            }));
-            continue;
-          }
-          const extractMatch = /^progress=extract:(\d+)\/(\d+):(\d+)$/.exec(line.trim());
-          if (extractMatch) {
-            const filesProcessed = Number(extractMatch[1]);
-            const totalFiles = Number(extractMatch[2]);
-            const componentsFound = Number(extractMatch[3]);
-            setState((prev) => ({
-              ...prev,
-              extractProgress: {
-                scanned: prev.extractProgress?.scanned ?? 0,
-                filesProcessed,
-                totalFiles,
-                componentsFound,
-              },
-            }));
-            continue;
-          }
-          const compositionMatch = /^progress=composition:(.+)$/.exec(line.trim());
-          if (compositionMatch) {
-            const phase = compositionMatch[1];
-            setState((prev) => ({ ...prev, compositionPhase: phase }));
-          }
+    const extractArgs = [findCliPath(), 'analyze', 'extract', '--project', projectPath];
+    if (compositionMode === 'composite') {
+      extractArgs.push('--composite');
+      if (compositionMap) extractArgs.push('--composition-map', compositionMap);
+      if (compositionAgent) extractArgs.push('--composition-agent');
+      if (compositionAgentMode) extractArgs.push('--composition-agent-mode', compositionAgentMode);
+      if (compositionRefresh) extractArgs.push('--composition-refresh');
+      if (generateMap) extractArgs.push('--generate-map', generateMap);
+      for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
+      // Composition resolution uses the same agent the user picked for the run.
+      if (state.agent) extractArgs.push('--agent', state.agent);
+      if (state.bedrock) extractArgs.push('--bedrock');
+    }
+    const r = await runSpawnedCli(extractArgs, (chunk) => {
+      for (const line of chunk.split('\n')) {
+        const scanMatch = /^progress=scan:(\d+)$/.exec(line.trim());
+        if (scanMatch) {
+          const scanned = Number(scanMatch[1]);
+          setState((prev) => ({
+            ...prev,
+            extractProgress: {
+              scanned,
+              filesProcessed: prev.extractProgress?.filesProcessed ?? 0,
+              totalFiles: prev.extractProgress?.totalFiles ?? 0,
+              componentsFound: prev.extractProgress?.componentsFound ?? 0,
+            },
+          }));
+          continue;
         }
-      });
-      child.on('exit', (code) => res({ exitCode: code ?? 0, stdout, stderr }));
+        const extractMatch = /^progress=extract:(\d+)\/(\d+):(\d+)$/.exec(line.trim());
+        if (extractMatch) {
+          const filesProcessed = Number(extractMatch[1]);
+          const totalFiles = Number(extractMatch[2]);
+          const componentsFound = Number(extractMatch[3]);
+          setState((prev) => ({
+            ...prev,
+            extractProgress: {
+              scanned: prev.extractProgress?.scanned ?? 0,
+              filesProcessed,
+              totalFiles,
+              componentsFound,
+            },
+          }));
+          continue;
+        }
+        const compositionMatch = /^progress=composition:(.+)$/.exec(line.trim());
+        if (compositionMatch) {
+          const phase = compositionMatch[1];
+          setState((prev) => ({ ...prev, compositionPhase: phase }));
+        }
+      }
     });
     if (r.exitCode !== 0) {
       update({
@@ -944,6 +955,18 @@ export function WizardApp({
     }));
   };
 
+  const buildGenerateArgs = (extractSessionId: string, tokensPath: string, generatePromptPath?: string): string[] =>
+    buildGenerateProcessArgs({
+      sessionId: extractSessionId,
+      tokensPath,
+      agent: state.agent,
+      ...(state.agentModel ? { model: state.agentModel } : {}),
+      ...(state.bedrock ? { bedrock: true } : {}),
+      noCache: effectiveNoCache,
+      ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
+      ...(generatePromptPath ? { generatePromptPath } : {}),
+    });
+
   const startGeneratePrefetch = (
     extractSessionId: string,
     tokensPath: string,
@@ -953,18 +976,7 @@ export function WizardApp({
     stdout: string;
     stderr: string;
   }> => {
-    const args = [
-      findCliPath(),
-      ...buildGenerateComponentsArgs({
-        sessionId: extractSessionId,
-        tokensPath,
-        agent: state.agent,
-        ...(state.agentModel ? { model: state.agentModel } : {}),
-        ...(state.bedrock ? { bedrock: true } : {}),
-        noCache: effectiveNoCache,
-        ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
-      }),
-    ];
+    const args = buildGenerateArgs(extractSessionId, tokensPath);
     let progressCursor: GenerateProgressState = null;
     const { child, donePromise } = spawnGenerateChild({
       command: 'node',
@@ -1000,12 +1012,7 @@ export function WizardApp({
           }));
           return;
         }
-        const sessionMatch = /^session=(.+)$/m.exec(result.stdout);
-        const generateSessionId = sessionMatch ? sessionMatch[1]!.trim() : null;
-        const countMatch = /(\d+) components?/.exec(result.stderr);
-        const generatedCount = countMatch ? Number(countMatch[1]) : 0;
-        const renamedMatch = /^renamed-slots:\s*(\d+)$/m.exec(result.stdout);
-        const renamedSlotsCount = renamedMatch ? Number(renamedMatch[1]) : 0;
+        const { generateSessionId, generatedCount, renamedSlotsCount } = parseGenerateResult(result, 0);
         setState((prev) => ({
           ...prev,
           generateSessionId,
@@ -1027,19 +1034,7 @@ export function WizardApp({
   };
 
   const runGenerate = async (extractSessionId: string, tokensPath: string, acceptedCount: number) => {
-    const args = [
-      findCliPath(),
-      ...buildGenerateComponentsArgs({
-        sessionId: extractSessionId,
-        tokensPath,
-        agent: state.agent,
-        ...(state.agentModel ? { model: state.agentModel } : {}),
-        ...(state.bedrock ? { bedrock: true } : {}),
-        noCache: effectiveNoCache,
-        generatePromptPath,
-        ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
-      }),
-    ];
+    const args = buildGenerateArgs(extractSessionId, tokensPath, generatePromptPath);
     let progressCursor: GenerateProgressState = state.generateProgress;
     const { donePromise } = spawnGenerateChild({
       command: 'node',
@@ -1062,12 +1057,7 @@ export function WizardApp({
       });
       return;
     }
-    const sessionMatch = /^session=(.+)$/m.exec(result.stdout);
-    const generateSessionId = sessionMatch ? sessionMatch[1]!.trim() : null;
-    const countMatch = /(\d+) components?/.exec(result.stderr);
-    const generatedCount = countMatch ? Number(countMatch[1]) : acceptedCount;
-    const renamedMatch = /^renamed-slots:\s*(\d+)$/m.exec(result.stdout);
-    const renamedSlotsCount = renamedMatch ? Number(renamedMatch[1]) : 0;
+    const { generateSessionId, generatedCount, renamedSlotsCount } = parseGenerateResult(result, acceptedCount);
     const mappedSessionId = generateSessionId ?? extractSessionId;
     update({
       generateSessionId: mappedSessionId,

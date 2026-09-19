@@ -9,11 +9,9 @@ import {
   designSystemImportApply,
   designSystemImportGetOperation,
 } from '@contentful/experience-design-system-client';
-import { DEFAULT_API_HOST, toApiHost } from '../host-utils.js';
+import { toApiHost } from '../host-utils.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
 import { buildUserAgent } from '../lib/user-agent.js';
-
-export const DEFAULT_HOST = DEFAULT_API_HOST;
 
 export const PREVIEW_ERROR_PREFIX = 'preview failed:';
 export const APPLY_ERROR_PREFIX = 'apply failed:';
@@ -158,7 +156,7 @@ const PROPERTY_BREAKING_REASONS = new Set([
 ]);
 const SLOT_BREAKING_REASONS = new Set(['slot_removed', 'slot_allowed_components_narrowed']);
 
-export function sanitizeBreakingChanges(raw: unknown): BreakingChange[] {
+function sanitizeBreakingChanges(raw: unknown): BreakingChange[] {
   if (!Array.isArray(raw)) return [];
   const out: BreakingChange[] = [];
   for (const bc of raw) {

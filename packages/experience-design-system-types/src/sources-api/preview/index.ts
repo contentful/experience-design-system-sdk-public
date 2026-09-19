@@ -1,12 +1,12 @@
 import type { CDFComponentEntry } from '../../cdf/index.js';
 import type { DTCGTokenEntry } from '../../dtcg/index.js';
 
-export interface PropertyBreakingChange {
+interface PropertyBreakingChange {
   propertyId: string;
   reason: 'removed' | 'added_required_no_default' | 'type_changed' | 'validation_narrowed';
 }
 
-export interface SlotBreakingChange {
+interface SlotBreakingChange {
   slotId: string;
   reason: 'slot_removed' | 'slot_allowed_components_narrowed';
 }

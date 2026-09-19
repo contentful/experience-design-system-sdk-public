@@ -8,7 +8,7 @@ import type { CompositionMode } from '../../lib/composition-mode.js';
 
 export type { ScopeComponent };
 
-export type AutoFilterStatus = 'idle' | 'running' | 'complete' | 'cancelled' | 'failed';
+type AutoFilterStatus = 'idle' | 'running' | 'complete' | 'cancelled' | 'failed';
 
 export type ScopeGateHostProps = {
   components: ReadonlyArray<ScopeComponent>;

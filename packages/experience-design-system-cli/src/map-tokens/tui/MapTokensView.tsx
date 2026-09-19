@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Text } from 'ink';
+import { CommandCompletionView } from '../../tui/CommandCompletionView.js';
 
 export interface MapTokensViewResult {
   agent: string;
@@ -24,27 +24,15 @@ export function MapTokensView({ result, onExit }: MapTokensViewProps): React.Rea
     : `${result.applied} mapping${result.applied === 1 ? '' : 's'} applied`;
 
   return (
-    <Box flexDirection="column" padding={1}>
-      <Text color="green">✓ map tokens complete</Text>
-      <Box flexDirection="column" marginTop={1}>
-        <Text>
-          <Text dimColor>agent </Text>
-          <Text>{result.agent}</Text>
-        </Text>
-        <Text>
-          <Text dimColor>session </Text>
-          <Text>{result.sessionId}</Text>
-        </Text>
-        <Text>
-          <Text dimColor>result </Text>
-          <Text>{summary}</Text>
-        </Text>
-      </Box>
-      <Box marginTop={1}>
-        <Text dimColor>Run </Text>
-        <Text>experience-design-system-cli print components</Text>
-        <Text dimColor> to write components.json with the new mappings.</Text>
-      </Box>
-    </Box>
+    <CommandCompletionView
+      title="map tokens"
+      rows={[
+        { label: 'agent', value: result.agent },
+        { label: 'session', value: result.sessionId },
+        { label: 'result', value: summary },
+      ]}
+      command="experience-design-system-cli print components"
+      instruction="to write components.json with the new mappings."
+    />
   );
 }

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { parseImportedNames as parseImportClauseNames } from '@contentful/experience-design-system-extraction';
 import type { RawComponentDefinition } from '../../types.js';
 
 export type SelectionContextSummary = {
@@ -23,20 +24,20 @@ const MAX_SIBLING_SNIPPET_CHARS = 1_200;
 const MAX_REFERENCE_SNIPPETS = 3;
 const MAX_REFERENCE_CHARS = 800;
 
-export type SelectionImportSummary = {
+type SelectionImportSummary = {
   source: string;
   names: string[];
   local: boolean;
   resolvedPath?: string;
 };
 
-export type SelectionFileSummary = {
+type SelectionFileSummary = {
   path: string;
   exports: string[];
   codeSnippet: string;
 };
 
-export type SelectionReference = {
+type SelectionReference = {
   path: string;
   snippet: string;
 };
@@ -86,28 +87,7 @@ function toPosixPath(path: string): string {
 }
 
 function parseImportedNames(importClause: string): string[] {
-  const names: string[] = [];
-  const parts = importClause.split(',').map((part) => part.trim());
-
-  for (const part of parts) {
-    if (!part) continue;
-    if (part.startsWith('{') && part.endsWith('}')) {
-      for (const named of part
-        .slice(1, -1)
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean)) {
-        const [local] = named.split(/\s+as\s+/i);
-        if (local) names.push(local.trim());
-      }
-      continue;
-    }
-
-    const [local] = part.split(/\s+as\s+/i);
-    if (local) names.push(local.trim());
-  }
-
-  return [...new Set(names)];
+  return [...new Set(parseImportClauseNames(importClause))];
 }
 
 function resolveLocalImportPath(

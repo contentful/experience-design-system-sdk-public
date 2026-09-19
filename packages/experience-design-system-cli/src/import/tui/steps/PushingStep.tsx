@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import type { PushProgress } from '../push-progress.js';
-
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+import { StepHeader } from '../components/StepHeader.js';
+import { useTimedSpinner } from '../../../tui/use-timed-spinner.js';
 
 type PushingStepProps = {
   stepNumber: number;
@@ -12,21 +12,7 @@ type PushingStepProps = {
 };
 
 export function PushingStep({ stepNumber, totalSteps, progress }: PushingStepProps): React.ReactElement {
-  const [frame, setFrame] = useState(0);
-  const [elapsed, setElapsed] = useState(0);
-
-  useEffect(() => {
-    const spinner = setInterval(() => setFrame((f) => (f + 1) % SPINNER_FRAMES.length), 80);
-    const timer = setInterval(() => setElapsed((s) => s + 1), 1000);
-    return () => {
-      clearInterval(spinner);
-      clearInterval(timer);
-    };
-  }, []);
-
-  const mins = Math.floor(elapsed / 60);
-  const secs = elapsed % 60;
-  const elapsedStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+  const { spinner, elapsed } = useTimedSpinner();
 
   const operationId = progress && progress.kind === 'queued' ? progress.operationId : null;
 
@@ -35,17 +21,7 @@ export function PushingStep({ stepNumber, totalSteps, progress }: PushingStepPro
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Box flexDirection="column" gap={0}>
-        <Text dimColor>{'─'.repeat(40)}</Text>
-        <Box gap={1}>
-          <Text bold>
-            Step {stepNumber} of {totalSteps}
-          </Text>
-          <Text bold>—</Text>
-          <Text bold>Push to Contentful</Text>
-        </Box>
-        <Text dimColor>{'─'.repeat(40)}</Text>
-      </Box>
+      <StepHeader stepNumber={stepNumber} totalSteps={totalSteps} title="Push to Contentful" />
 
       <Text>Writing component types and design tokens to your Contentful space...</Text>
 
@@ -58,7 +34,7 @@ export function PushingStep({ stepNumber, totalSteps, progress }: PushingStepPro
 
       {showGlobal && progress && progress.kind === 'progress' && (
         <Box gap={1}>
-          <Text color={PALETTE.info}>{SPINNER_FRAMES[frame]}</Text>
+          <Text color={PALETTE.info}>{spinner}</Text>
           <Text dimColor>
             {progress.processed}/{progress.total} entities
           </Text>
@@ -73,7 +49,7 @@ export function PushingStep({ stepNumber, totalSteps, progress }: PushingStepPro
       )}
 
       <Box marginTop={1}>
-        <Text dimColor>Elapsed: {elapsedStr}</Text>
+        <Text dimColor>Elapsed: {elapsed}</Text>
       </Box>
     </Box>
   );

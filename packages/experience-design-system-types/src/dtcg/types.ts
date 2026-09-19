@@ -18,7 +18,7 @@ export interface DTCGTokenGroup {
 
 export type DTCGTokenNode = DTCGTokenLeaf | DTCGTokenGroupNode;
 
-export interface DTCGTokenLeaf {
+interface DTCGTokenLeaf {
   $type: string;
   $value: unknown;
   $description?: string;
