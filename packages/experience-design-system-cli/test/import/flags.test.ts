@@ -78,7 +78,6 @@ describe('import — help output lists all flags', () => {
       '--out',
       '--agent',
       '--model',
-      '--select',
       '--deselect',
       '--skip-analyze',
       '--skip-generate',
@@ -287,21 +286,9 @@ describe('import — selection flags', () => {
     expect(stderr).toContain("unknown option '--select-all'");
   });
 
-  it('--select <pattern> is accepted without error', async () => {
-    const { stderr, code } = await run([...skipAll(), '--select', 'Button'], baseEnv());
-    expect(stderr).not.toContain("unknown option '--select'");
-    expect(code).toBe(0);
-  });
-
   it('--deselect <pattern> is accepted without error', async () => {
     const { stderr, code } = await run([...skipAll(), '--deselect', 'Icon'], baseEnv());
     expect(stderr).not.toContain("unknown option '--deselect'");
-    expect(code).toBe(0);
-  });
-
-  it('--select can be repeated multiple times', async () => {
-    const { stderr, code } = await run([...skipAll(), '--select', 'Button', '--select', 'Card'], baseEnv());
-    expect(stderr).not.toContain('unknown option');
     expect(code).toBe(0);
   });
 
@@ -311,15 +298,15 @@ describe('import — selection flags', () => {
     expect(code).toBe(0);
   });
 
-  it('--select and --deselect can be combined', async () => {
-    const { stderr, code } = await run([...skipAll(), '--select', 'Button', '--deselect', 'Icon'], baseEnv());
-    expect(stderr).not.toContain('unknown option');
-    expect(code).toBe(0);
-  });
-
 });
 
 describe('import — removed flags', () => {
+  it('--select is rejected as an unknown option', async () => {
+    const { stderr, code } = await run([...skipAll(), '--select', 'Button'], baseEnv());
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown option '--select'");
+  });
+
   it('--tokens is rejected as an unknown option', async () => {
     const { stderr, code } = await run([...skipAll(), '--tokens', '/dev/null'], baseEnv());
     expect(code).not.toBe(0);
@@ -444,7 +431,7 @@ describe('import — ~ expansion for --project and --raw-tokens', () => {
     const outDir = await createTempDir('project-tilde-out-');
 
     const { stdout, code } = await run(
-      ['import', '--project', '~/myproj', '--select', 'Button', '--skip-generate', '--skip-apply', '--out', outDir],
+      ['import', '--project', '~/myproj', '--skip-generate', '--skip-apply', '--out', outDir],
       { EDS_PIPELINE_DB_PATH: freshDbPath, NODE_NO_WARNINGS: '1', HOME: fakeHome },
       55000,
     );

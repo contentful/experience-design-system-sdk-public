@@ -38,7 +38,6 @@ export interface PipelineOptions {
   host?: string;
   dryRun?: boolean;
   excludeInvalid?: boolean;
-  select?: string[];
   deselect?: string[];
   /** Forwarded to the spawned `analyze select-agent` subprocess. */
   selectPromptPath?: string;
@@ -370,7 +369,7 @@ export async function runPipeline(
     });
     const t0Edit = Date.now();
 
-    const useAgentSelect = (!opts.select || opts.select.length === 0) && (!opts.deselect || opts.deselect.length === 0);
+    const useAgentSelect = !opts.deselect || opts.deselect.length === 0;
 
     let editArgs: string[];
     if (useAgentSelect) {
@@ -383,9 +382,7 @@ export async function runPipeline(
       if (existingEntitiesPath) editArgs.push('--existing-entities-path', existingEntitiesPath);
     } else {
       editArgs = ['analyze', 'select', '--session', extractSessionId];
-      if (opts.select && opts.select.length > 0) {
-        for (const p of opts.select) editArgs.push('--select', p);
-      } else if (opts.deselect && opts.deselect.length > 0) {
+      if (opts.deselect && opts.deselect.length > 0) {
         for (const p of opts.deselect) editArgs.push('--deselect', p);
         editArgs.push('--select-all');
       } else {

@@ -48,12 +48,6 @@ export function registerImportCommand(program: Command): void {
       'Path to a raw token source file (SCSS, CSS variables, JS/TS, Style Dictionary, etc.) to classify and import alongside components. Bypasses the interactive token prompt.',
     )
     .option(
-      '--select <pattern>',
-      'Select components matching pattern (repeatable)',
-      (v, a: string[]) => [...a, v],
-      [] as string[],
-    )
-    .option(
       '--deselect <pattern>',
       'Deselect components matching pattern (repeatable)',
       (v, a: string[]) => [...a, v],
@@ -163,7 +157,6 @@ export function registerImportCommand(program: Command): void {
         model?: string;
         bedrock?: boolean;
         rawTokens?: string;
-        select: string[];
         deselect: string[];
         skipAnalyze?: boolean;
         skipGenerate?: boolean;
@@ -537,7 +530,6 @@ export function registerImportCommand(program: Command): void {
             agent: headlessAgent,
             model: headlessModel,
             ...(opts.bedrock ? { bedrock: true } : {}),
-            select: opts.select.length > 0 ? opts.select : undefined,
             deselect: opts.deselect.length > 0 ? opts.deselect : undefined,
             skipAnalyze: opts.skipAnalyze ?? false,
             skipGenerate: opts.skipGenerate ?? false,
