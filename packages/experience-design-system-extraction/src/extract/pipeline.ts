@@ -278,7 +278,7 @@ function choosePreferredComponent(
   };
 }
 
-export type ExtractProgress = {
+type ExtractProgress = {
   filesProcessed: number;
   componentsFound: number;
 };

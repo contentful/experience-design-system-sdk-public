@@ -1,10 +1,10 @@
-export type TerminalInput = {
+type TerminalInput = {
   isTTY?: boolean;
   isRaw?: boolean;
   setRawMode?: (enabled: boolean) => unknown;
 };
 
-export type TerminalOutput = {
+type TerminalOutput = {
   isTTY?: boolean;
 };
 

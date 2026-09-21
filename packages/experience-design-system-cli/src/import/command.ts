@@ -16,8 +16,18 @@ import { pickerPushRun } from '../runs/push-launcher.js';
 import { resolvePromptFlags } from './print-prompt.js';
 import { shouldShowRunPicker } from '../runs/run-picker-mount.js';
 import type { RunPickerSelection } from '../runs/run-picker.js';
-import { dispatchPickerSelection } from './picker-dispatch.js';
+import { buildPickerCredentialOptions, buildPickerModifyOptions, dispatchPickerSelection } from './picker-dispatch.js';
+import { buildCompositionForwardingOptions } from './composition-options.js';
 import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
+
+async function runImportAction(action: () => Promise<void>): Promise<void> {
+  try {
+    await action();
+  } catch (err) {
+    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+  }
+}
 
 export function registerImportCommand(program: Command): void {
   const cmd = program
@@ -266,9 +276,10 @@ export function registerImportCommand(program: Command): void {
             process.exit(1);
             return;
           }
-          try {
-            await replayRun({
-              runIdOrPath: opts.pushFromRun,
+          const runIdOrPath = opts.pushFromRun;
+          await runImportAction(() =>
+            replayRun({
+              runIdOrPath,
               ...(opts.spaceId ? { spaceId: opts.spaceId } : {}),
               ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
               ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
@@ -276,13 +287,9 @@ export function registerImportCommand(program: Command): void {
               interactive: interactiveTerminalSupported,
               ...(opts.force ? { force: true } : {}),
               ...(opts.allowDeletions ? { allowDeletions: true } : {}),
-            });
-            return;
-          } catch (err) {
-            process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-            process.exit(1);
-            return;
-          }
+            }),
+          );
+          return;
         }
 
         if (opts.modify !== undefined) {
@@ -301,21 +308,18 @@ export function registerImportCommand(program: Command): void {
           requireInteractiveTerminal({
             alternative: 'start a fresh headless import with `--yes` and the required credentials',
           });
-          try {
-            await modifyRun({
-              runIdOrPath: opts.modify,
+          const runIdOrPath = opts.modify;
+          await runImportAction(() =>
+            modifyRun({
+              runIdOrPath,
               ...(opts.overwrite ? { overwrite: true } : {}),
               ...(opts.saveAsNew ? { saveAsNew: true } : {}),
               ...(opts.outDir ? { outDir: opts.outDir } : {}),
               ...(opts.force ? { force: true } : {}),
               ...(opts.allowDeletions ? { allowDeletions: true } : {}),
-            });
-            return;
-          } catch (err) {
-            process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-            process.exit(1);
-            return;
-          }
+            }),
+          );
+          return;
         }
 
         if (opts.overwrite || opts.saveAsNew) {
@@ -485,12 +489,7 @@ export function registerImportCommand(program: Command): void {
               autoAcceptScope,
               autoRejectCycles: opts.autoRejectCycles ?? false,
               compositionMode: resolvedCompositionMode,
-              ...(opts.compositionMap ? { compositionMap: opts.compositionMap } : {}),
-              ...(opts.compositionAgent ? { compositionAgent: true } : {}),
-              ...(opts.compositionAgentMode ? { compositionAgentMode: opts.compositionAgentMode } : {}),
-              ...(opts.compositionRefresh ? { compositionRefresh: true } : {}),
-              ...(opts.generateMap ? { generateMap: opts.generateMap } : {}),
-              ...(opts.prompt && opts.prompt.length > 0 ? { promptOverrides: opts.prompt } : {}),
+              ...buildCompositionForwardingOptions(opts),
               noCache: opts.cache === false,
               skipMapTokens: opts.skipMapTokens ?? false,
               autoFilter: resolveAutoFilter({ autoFilter: opts.autoFilter }, creds.autoFilter),
@@ -512,14 +511,8 @@ export function registerImportCommand(program: Command): void {
             await dispatchPickerSelection(
               pickerSelection,
               {
-                ...(opts.spaceId ? { spaceId: opts.spaceId } : {}),
-                ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
-                ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
-                ...(opts.host ? { host: opts.host } : {}),
-                ...(opts.outDir ? { outDir: opts.outDir } : {}),
-                ...(opts.overwrite ? { overwrite: true } : {}),
-                ...(opts.saveAsNew ? { saveAsNew: true } : {}),
-                ...(opts.force ? { force: true } : {}),
+                ...buildPickerCredentialOptions(opts),
+                ...buildPickerModifyOptions(opts),
               },
               { replayRun, modifyRun, pickerPushRun },
             );
@@ -585,12 +578,7 @@ export function registerImportCommand(program: Command): void {
             autoRejectCycles: opts.autoRejectCycles ?? false,
             allowDeletions: opts.allowDeletions ?? false,
             compositionMode: headlessCompositionMode,
-            ...(opts.compositionMap ? { compositionMap: opts.compositionMap } : {}),
-            ...(opts.compositionAgent ? { compositionAgent: true } : {}),
-            ...(opts.compositionAgentMode ? { compositionAgentMode: opts.compositionAgentMode } : {}),
-            ...(opts.compositionRefresh ? { compositionRefresh: true } : {}),
-            ...(opts.generateMap ? { generateMap: opts.generateMap } : {}),
-            ...(opts.prompt && opts.prompt.length > 0 ? { promptOverrides: opts.prompt } : {}),
+            ...buildCompositionForwardingOptions(opts),
           },
           (line) => process.stderr.write(line + '\n'),
         );

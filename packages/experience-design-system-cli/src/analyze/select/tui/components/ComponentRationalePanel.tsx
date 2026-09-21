@@ -2,6 +2,8 @@ import React from 'react';
 import { PALETTE } from '../theme.js';
 import { Box, Text } from 'ink';
 import type { ComponentRationale } from '../../../../session/db.js';
+import { wrapText } from './wrap-text.js';
+import { RationaleLine, type RationaleLineData } from './RationaleLine.js';
 
 export type ComponentRationalePanelProps = {
   data: ComponentRationale;
@@ -13,73 +15,28 @@ export type ComponentRationalePanelProps = {
 
 const PLACEHOLDER = '(no rationale captured)';
 
-function wrapText(text: string, innerWidth: number): string[] {
-  if (!text) return [''];
-  const width = Math.max(1, innerWidth);
-  const words = text.split(/\s+/).filter((w) => w.length > 0);
-  if (words.length === 0) return [''];
-  const lines: string[] = [];
-  let current = '';
-  for (const w of words) {
-    if (current.length === 0) {
-      if (w.length > width) {
-        let rest = w;
-        while (rest.length > width) {
-          lines.push(rest.slice(0, width));
-          rest = rest.slice(width);
-        }
-        current = rest;
-      } else {
-        current = w;
-      }
-      continue;
-    }
-    if (current.length + 1 + w.length <= width) {
-      current += ' ' + w;
-    } else {
-      lines.push(current);
-      if (w.length > width) {
-        let rest = w;
-        while (rest.length > width) {
-          lines.push(rest.slice(0, width));
-          rest = rest.slice(width);
-        }
-        current = rest;
-      } else {
-        current = w;
-      }
-    }
-  }
-  if (current.length > 0) lines.push(current);
-  return lines.length > 0 ? lines : [''];
-}
+type RenderedLine = RationaleLineData;
 
-type RenderedLine =
-  | { kind: 'heading'; text: string }
-  | { kind: 'text'; text: string; dim?: boolean }
-  | { kind: 'list-name'; text: string; sublabel?: string }
-  | { kind: 'blank' };
-
-export function renderComponentRationaleLines(data: ComponentRationale, innerWidth: number): RenderedLine[] {
+function renderComponentRationaleLines(data: ComponentRationale, innerWidth: number): RenderedLine[] {
   const out: RenderedLine[] = [];
 
   const pushSection = (heading: string, body: string | null) => {
     out.push({ kind: 'heading', text: heading });
     const text = body && body.trim().length > 0 ? body : PLACEHOLDER;
-    for (const ln of wrapText(text, Math.max(1, innerWidth - 2))) {
-      out.push({ kind: 'text', text: '  ' + ln, dim: !body });
+    for (const line of wrapText(text, Math.max(1, innerWidth - 2))) {
+      out.push({ kind: 'text', text: '  ' + line, dim: !body });
     }
     out.push({ kind: 'blank' });
   };
 
   out.push({ kind: 'heading', text: 'Description' });
   const descBody = data.description && data.description.trim().length > 0 ? data.description : PLACEHOLDER;
-  for (const ln of wrapText(descBody, Math.max(1, innerWidth - 2))) {
-    out.push({ kind: 'text', text: '  ' + ln, dim: !data.description });
+  for (const line of wrapText(descBody, Math.max(1, innerWidth - 2))) {
+    out.push({ kind: 'text', text: '  ' + line, dim: !data.description });
   }
   if (data.descriptionRationale && data.descriptionRationale.trim().length > 0) {
-    for (const ln of wrapText(`why: ${data.descriptionRationale}`, Math.max(1, innerWidth - 2))) {
-      out.push({ kind: 'text', text: '  ' + ln, dim: true });
+    for (const line of wrapText(`why: ${data.descriptionRationale}`, Math.max(1, innerWidth - 2))) {
+      out.push({ kind: 'text', text: '  ' + line, dim: true });
     }
   }
   out.push({ kind: 'blank' });
@@ -92,10 +49,10 @@ export function renderComponentRationaleLines(data: ComponentRationale, innerWid
   } else {
     for (const p of data.props) {
       const sub = p.category ? `(${p.category})` : undefined;
-      out.push({ kind: 'list-name', text: p.name, sublabel: sub });
+      out.push({ kind: 'label', text: p.name, prefix: '  - ', suffix: sub ? ' ' + sub : undefined });
       const text = p.rationale && p.rationale.trim().length > 0 ? p.rationale : PLACEHOLDER;
-      for (const ln of wrapText(text, Math.max(1, innerWidth - 4))) {
-        out.push({ kind: 'text', text: '    ' + ln, dim: !p.rationale });
+      for (const line of wrapText(text, Math.max(1, innerWidth - 4))) {
+        out.push({ kind: 'text', text: '    ' + line, dim: !p.rationale });
       }
     }
   }
@@ -106,10 +63,10 @@ export function renderComponentRationaleLines(data: ComponentRationale, innerWid
     out.push({ kind: 'text', text: '  ' + PLACEHOLDER, dim: true });
   } else {
     for (const s of data.slots) {
-      out.push({ kind: 'list-name', text: s.name });
+      out.push({ kind: 'label', text: s.name, prefix: '  - ' });
       const text = s.rationale && s.rationale.trim().length > 0 ? s.rationale : PLACEHOLDER;
-      for (const ln of wrapText(text, Math.max(1, innerWidth - 4))) {
-        out.push({ kind: 'text', text: '    ' + ln, dim: !s.rationale });
+      for (const line of wrapText(text, Math.max(1, innerWidth - 4))) {
+        out.push({ kind: 'text', text: '    ' + line, dim: !s.rationale });
       }
     }
   }
@@ -146,40 +103,9 @@ export function ComponentRationalePanel({
           {`Component rationale: ${data.name}`}
         </Text>
       </Box>
-      {visible.map((line, i) => {
-        if (line.kind === 'blank') {
-          return (
-            <Box key={i}>
-              <Text> </Text>
-            </Box>
-          );
-        }
-        if (line.kind === 'heading') {
-          return (
-            <Box key={i}>
-              <Text bold color={PALETTE.info} dimColor={!active}>
-                {line.text}
-              </Text>
-            </Box>
-          );
-        }
-        if (line.kind === 'list-name') {
-          return (
-            <Box key={i}>
-              <Text>{'  - '}</Text>
-              <Text bold dimColor={!active}>
-                {line.text}
-              </Text>
-              {line.sublabel ? <Text dimColor>{' ' + line.sublabel}</Text> : null}
-            </Box>
-          );
-        }
-        return (
-          <Box key={i}>
-            <Text dimColor={!active || line.dim}>{line.text}</Text>
-          </Box>
-        );
-      })}
+      {visible.map((line, i) => (
+        <RationaleLine key={i} line={line} active={active} />
+      ))}
       <Box>
         {overflowed ? (
           <Text dimColor>{`${visibleStart}-${visibleEnd}/${totalLines}    [j/k] scroll    [I/Esc] close`}</Text>

@@ -10,6 +10,10 @@
  * scripted / non-TTY use.
  */
 
+import { applyWizardSeedProps } from './wizard-seed.js';
+import type { WizardAppProps } from '../import/tui/WizardApp.js';
+import { launchWizard } from './wizard-launcher.js';
+
 export type PushLauncherInput = {
   extractSessionId: string;
   generateSessionId: string | null;
@@ -33,35 +37,13 @@ export type PushLauncherInput = {
 };
 
 export async function launchPushWizard(input: PushLauncherInput): Promise<void> {
-  const { render } = await import('ink');
-  const { createElement } = await import('react');
-  const { WizardApp } = await import('../import/tui/WizardApp.js');
-  type WizardProps = {
-    initialProjectPath?: string;
-    seedExtractSessionId?: string;
-    seedGenerateSessionId?: string;
-    seedTokenSessionId?: string;
-    seedTokensPath?: string;
-    initialStep?: 'scope-gate' | 'final-review' | 'push-from-picker';
-    initialSpaceId?: string;
-    initialEnvironmentId?: string;
-    initialHost?: string;
-    initialCmaToken?: string;
-  };
-  const props: WizardProps = {
+  const props: WizardAppProps = {
     initialProjectPath: input.projectPath,
     seedExtractSessionId: input.extractSessionId,
     initialStep: 'push-from-picker',
   };
-  if (input.generateSessionId) props.seedGenerateSessionId = input.generateSessionId;
-  if (input.tokenSessionId) props.seedTokenSessionId = input.tokenSessionId;
-  if (input.tokensPath) props.seedTokensPath = input.tokensPath;
-  if (input.initialSpaceId) props.initialSpaceId = input.initialSpaceId;
-  if (input.initialEnvironmentId) props.initialEnvironmentId = input.initialEnvironmentId;
-  if (input.initialHost) props.initialHost = input.initialHost;
-  if (input.initialCmaToken) props.initialCmaToken = input.initialCmaToken;
-  const { waitUntilExit } = render(createElement<WizardProps>(WizardApp, props));
-  await waitUntilExit();
+  applyWizardSeedProps(props, input);
+  await launchWizard(props);
 }
 
 export type PickerPushRunOptions = {

@@ -12,9 +12,9 @@ export interface DTCGTokenLeaf {
   type: string;
 }
 
-export type UnresolvedTokenDefaultReason = 'no_match' | 'ambiguous' | 'type_mismatch';
+type UnresolvedTokenDefaultReason = 'no_match' | 'ambiguous' | 'type_mismatch';
 
-export interface UnresolvedTokenDefault {
+interface UnresolvedTokenDefault {
   rawDefault: string;
   tokenKind: string | null;
   reason: UnresolvedTokenDefaultReason;

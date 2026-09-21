@@ -1,5 +1,4 @@
 import {
-  Project,
   Node,
   SyntaxKind,
   type SourceFile,
@@ -9,6 +8,7 @@ import {
   type VariableDeclaration,
   type ParameterDeclaration,
   type Type,
+  type Symbol as MorphSymbol,
 } from 'ts-morph';
 import type {
   RawComponentDefinition,
@@ -21,12 +21,15 @@ import {
   getNodeDefinitions,
   getTypeReferenceName,
   getTypeTargetDeclarations,
+  getTsxExtractionContext,
   getValueTargetDeclarations,
   getJsxTagNameNode,
   isIntrinsicJsxElement,
+  resolveDefaultExportName,
 } from './tsx-shared.js';
 import { shouldBeSlot } from './slot-detection.js';
 import { extractAllowedComponentsFromTypeText, extractAllowedComponentsFromJsdoc } from './slot-allowed-components.js';
+import { getSourceLineMetadata } from './source-line-metadata.js';
 import {
   collectTypePredicateComponentReferences,
   collectRuntimeTypeCheckComponentReferences,
@@ -85,6 +88,24 @@ type ExpandableDomAttributeWrapperContext = {
   name: ExpandableDomAttributeWrapperName;
   excludedProps: Set<string>;
 };
+
+function createTextControlSurface(onChangeType: string, specificProps: RawPropDefinition[]): RawPropDefinition[] {
+  return [
+    { name: 'autoComplete', type: 'string', required: false },
+    ...specificProps,
+    { name: 'disabled', type: 'boolean', required: false },
+    { name: 'name', type: 'string', required: false },
+    { name: 'onChange', type: onChangeType, required: false },
+    { name: 'placeholder', type: 'string', required: false },
+    { name: 'readOnly', type: 'boolean', required: false },
+    { name: 'required', type: 'boolean', required: false },
+    {
+      name: 'value',
+      type: 'string | number | readonly string[]',
+      required: false,
+    },
+  ];
+}
 
 const DOM_ATTRIBUTE_PROP_SURFACES: Record<ExpandableDomAttributeWrapperName, RawPropDefinition[]> = {
   HTMLProps: [],
@@ -151,30 +172,14 @@ const DOM_ATTRIBUTE_PROP_SURFACES: Record<ExpandableDomAttributeWrapperName, Raw
       required: false,
     },
   ],
-  InputHTMLAttributes: [
-    { name: 'autoComplete', type: 'string', required: false },
+  InputHTMLAttributes: createTextControlSurface('ChangeEventHandler<HTMLInputElement>', [
     { name: 'checked', type: 'boolean', required: false },
-    { name: 'disabled', type: 'boolean', required: false },
     { name: 'max', type: 'number | string', required: false },
     { name: 'maxLength', type: 'number', required: false },
     { name: 'min', type: 'number | string', required: false },
     { name: 'minLength', type: 'number', required: false },
-    { name: 'name', type: 'string', required: false },
-    {
-      name: 'onChange',
-      type: 'ChangeEventHandler<HTMLInputElement>',
-      required: false,
-    },
-    { name: 'placeholder', type: 'string', required: false },
-    { name: 'readOnly', type: 'boolean', required: false },
-    { name: 'required', type: 'boolean', required: false },
     { name: 'type', type: 'string', required: false },
-    {
-      name: 'value',
-      type: 'string | number | readonly string[]',
-      required: false,
-    },
-  ],
+  ]),
   FieldsetHTMLAttributes: [
     { name: 'disabled', type: 'boolean', required: false },
     { name: 'form', type: 'string', required: false },
@@ -215,29 +220,11 @@ const DOM_ATTRIBUTE_PROP_SURFACES: Record<ExpandableDomAttributeWrapperName, Raw
     { name: 'width', type: 'number | string', required: false },
   ],
   SVGProps: [],
-  TextareaHTMLAttributes: [
-    { name: 'autoComplete', type: 'string', required: false },
+  TextareaHTMLAttributes: createTextControlSurface('ChangeEventHandler<HTMLTextAreaElement>', [
     { name: 'cols', type: 'number', required: false },
-    { name: 'disabled', type: 'boolean', required: false },
-    { name: 'maxLength', type: 'number', required: false },
-    { name: 'minLength', type: 'number', required: false },
-    { name: 'name', type: 'string', required: false },
-    {
-      name: 'onChange',
-      type: 'ChangeEventHandler<HTMLTextAreaElement>',
-      required: false,
-    },
-    { name: 'placeholder', type: 'string', required: false },
-    { name: 'readOnly', type: 'boolean', required: false },
-    { name: 'required', type: 'boolean', required: false },
     { name: 'rows', type: 'number', required: false },
-    {
-      name: 'value',
-      type: 'string | number | readonly string[]',
-      required: false,
-    },
     { name: 'wrap', type: 'string', required: false },
-  ],
+  ]),
   TdHTMLAttributes: [
     {
       name: 'align',
@@ -616,12 +603,7 @@ function extractPropsFromTypeSymbols(
       type: typeText,
       required,
       ...(allowedValues && { allowedValues }),
-      ...(typeof (declaration as { getStartLineNumber?: () => number }).getStartLineNumber === 'function'
-        ? {
-            sourceStartLine: (declaration as { getStartLineNumber: () => number }).getStartLineNumber(),
-            sourceEndLine: (declaration as { getEndLineNumber: () => number }).getEndLineNumber(),
-          }
-        : {}),
+      ...getSourceLineMetadata(declaration),
     });
   }
 
@@ -689,12 +671,7 @@ function extractPropsFromInterfaceDeclaration(
               type: typeText,
               required,
               ...(allowedValues && { allowedValues }),
-              ...(typeof (decl as { getStartLineNumber?: () => number }).getStartLineNumber === 'function'
-                ? {
-                    sourceStartLine: (decl as { getStartLineNumber: () => number }).getStartLineNumber(),
-                    sourceEndLine: (decl as { getEndLineNumber: () => number }).getEndLineNumber(),
-                  }
-                : {}),
+              ...getSourceLineMetadata(decl),
             });
             return acc;
           },
@@ -774,6 +751,19 @@ function getMappedOmitEquivalentArgs(typeNode: Node): { wrappedType: Node; omitt
   return undefined;
 }
 
+function getTypeReferenceTargetNode(typeNode: Node): Node | undefined {
+  if (Node.isTypeReference(typeNode)) return typeNode.getTypeName();
+  if (Node.isExpressionWithTypeArguments(typeNode)) return typeNode.getExpression();
+  return undefined;
+}
+
+function getTypeReferenceArguments(typeNode: Node): Node[] {
+  if (Node.isTypeReference(typeNode) || Node.isExpressionWithTypeArguments(typeNode)) {
+    return typeNode.getTypeArguments();
+  }
+  return [];
+}
+
 function extractPropsFromTypeNode(
   typeNode: Node,
   slotNames: Set<string>,
@@ -836,12 +826,14 @@ function extractPropsFromTypeNode(
     );
   }
 
-  if (Node.isTypeReference(typeNode)) {
+  const typeReferenceTarget = getTypeReferenceTargetNode(typeNode);
+  if (typeReferenceTarget) {
     const typeName = getTypeReferenceName(typeNode);
     if (!typeName) return { props: [], hasChildren: false };
+    const typeArguments = getTypeReferenceArguments(typeNode);
 
     if (typeName === 'PropsWithChildren') {
-      const wrappedType = typeNode.getTypeArguments()[0];
+      const wrappedType = typeArguments[0];
       if (!wrappedType) return { props: [], hasChildren: true };
 
       const extracted = extractPropsFromTypeNode(
@@ -871,12 +863,12 @@ function extractPropsFromTypeNode(
       typeName === 'Required' ||
       typeName === 'NonNullable'
     ) {
-      const wrappedType = typeNode.getTypeArguments()[0];
+      const wrappedType = typeArguments[0];
       if (!wrappedType) return { props: [], hasChildren: false };
 
       const nextExcludedProps = new Set(excludedProps);
       if (typeName === 'Omit') {
-        const omittedProps = typeNode.getTypeArguments()[1];
+        const omittedProps = typeArguments[1];
         if (omittedProps) {
           for (const value of getStringLiteralTypeValues(omittedProps)) {
             nextExcludedProps.add(value);
@@ -929,129 +921,7 @@ function extractPropsFromTypeNode(
       return { props: [], hasChildren: false };
     }
 
-    for (const declaration of getTypeTargetDeclarations(typeNode.getTypeName(), allowImportedOmitWorkspaceFallback)) {
-      if (!declaration) continue;
-
-      if (Node.isInterfaceDeclaration(declaration)) {
-        return extractPropsFromInterfaceDeclaration(
-          declaration,
-          slotNames,
-          seen,
-          excludedProps,
-          allowImportedOmitWorkspaceFallback,
-          suppressNeverChildrenSlot,
-        );
-      }
-
-      if (Node.isTypeAliasDeclaration(declaration)) {
-        const aliasedTypeNode = declaration.getTypeNode();
-        if (!aliasedTypeNode) continue;
-        return extractPropsFromTypeNode(
-          aliasedTypeNode,
-          slotNames,
-          seen,
-          excludedProps,
-          allowImportedOmitWorkspaceFallback,
-          suppressNeverChildrenSlot,
-        );
-      }
-    }
-  }
-
-  if (Node.isExpressionWithTypeArguments(typeNode)) {
-    const typeName = getTypeReferenceName(typeNode);
-    if (!typeName) return { props: [], hasChildren: false };
-
-    if (typeName === 'PropsWithChildren') {
-      const wrappedType = typeNode.getTypeArguments()[0];
-      if (!wrappedType) return { props: [], hasChildren: true };
-
-      const extracted = extractPropsFromTypeNode(
-        wrappedType,
-        slotNames,
-        seen,
-        excludedProps,
-        allowImportedOmitWorkspaceFallback,
-        suppressNeverChildrenSlot,
-      );
-      return { props: extracted.props, hasChildren: true };
-    }
-
-    if (isExpandableDomAttributeWrapperName(typeName) || typeName === 'Pick') {
-      return typeName === 'Pick'
-        ? {
-            props: extractPickedPropsFromTypeNode(typeNode, slotNames, excludedProps),
-            hasChildren: false,
-          }
-        : { props: [], hasChildren: false };
-    }
-
-    if (
-      typeName === 'Omit' ||
-      typeName === 'Partial' ||
-      typeName === 'Readonly' ||
-      typeName === 'Required' ||
-      typeName === 'NonNullable'
-    ) {
-      const wrappedType = typeNode.getTypeArguments()[0];
-      if (!wrappedType) return { props: [], hasChildren: false };
-
-      const nextExcludedProps = new Set(excludedProps);
-      if (typeName === 'Omit') {
-        const omittedProps = typeNode.getTypeArguments()[1];
-        if (omittedProps) {
-          for (const value of getStringLiteralTypeValues(omittedProps)) {
-            nextExcludedProps.add(value);
-          }
-        }
-      }
-
-      return extractPropsFromTypeNode(
-        wrappedType,
-        slotNames,
-        seen,
-        nextExcludedProps,
-        allowImportedOmitWorkspaceFallback || typeName === 'Omit',
-        suppressNeverChildrenSlot,
-      );
-    }
-
-    const mappedOmitArgs = allowImportedOmitWorkspaceFallback ? getMappedOmitEquivalentArgs(typeNode) : undefined;
-    if (mappedOmitArgs) {
-      const nextExcludedProps = new Set(excludedProps);
-      for (const value of getStringLiteralTypeValues(mappedOmitArgs.omittedProps)) {
-        nextExcludedProps.add(value);
-      }
-
-      return extractPropsFromTypeNode(
-        mappedOmitArgs.wrappedType,
-        slotNames,
-        seen,
-        nextExcludedProps,
-        true,
-        suppressNeverChildrenSlot,
-      );
-    }
-
-    const wrappedTypeNode =
-      unwrapRepoLocalTransparentPolymorphicWrapper(typeNode, allowImportedOmitWorkspaceFallback) ??
-      (!allowImportedOmitWorkspaceFallback ? unwrapRepoLocalTransparentPolymorphicWrapper(typeNode, true) : undefined);
-    if (wrappedTypeNode) {
-      return extractPropsFromTypeNode(
-        wrappedTypeNode,
-        slotNames,
-        seen,
-        excludedProps,
-        allowImportedOmitWorkspaceFallback,
-        true,
-      );
-    }
-
-    if (TRANSPARENT_POLYMORPHIC_TYPE_NAMES.has(typeName)) {
-      return { props: [], hasChildren: false };
-    }
-
-    for (const declaration of getTypeTargetDeclarations(typeNode.getExpression(), allowImportedOmitWorkspaceFallback)) {
+    for (const declaration of getTypeTargetDeclarations(typeReferenceTarget, allowImportedOmitWorkspaceFallback)) {
       if (!declaration) continue;
 
       if (Node.isInterfaceDeclaration(declaration)) {
@@ -1086,18 +956,19 @@ function extractPropsFromTypeNode(
 function collectRenderPropSlotNames(type: Type): Set<string> {
   const names = new Set<string>();
   for (const property of type.getProperties()) {
-    const name = property.getName();
-    if (!name.startsWith('render')) continue;
-
-    const declaration = property.getValueDeclaration() ?? property.getDeclarations()[0];
-    if (!declaration) continue;
-
-    const propType = property.getTypeAtLocation(declaration);
-    if (isRenderPropType(propType)) {
-      names.add(name);
-    }
+    if (getRenderPropType(property)) names.add(property.getName());
   }
   return names;
+}
+
+function getRenderPropType(property: MorphSymbol): Type | undefined {
+  if (!property.getName().startsWith('render')) return undefined;
+
+  const declaration = property.getValueDeclaration() ?? property.getDeclarations()[0];
+  if (!declaration) return undefined;
+
+  const propType = property.getTypeAtLocation(declaration);
+  return isRenderPropType(propType) ? propType : undefined;
 }
 
 function recordBindingPatternDefaults(nameNode: Node, defaults: Map<string, string>): void {
@@ -1489,13 +1360,7 @@ function extractDestructuredBindingFallbackProps(
         name: propName,
         type: propertyType === 'unknown' ? 'any' : propertyType,
         required: property ? !property.isOptional() : false,
-        ...(declaration &&
-        typeof (declaration as { getStartLineNumber?: () => number }).getStartLineNumber === 'function'
-          ? {
-              sourceStartLine: (declaration as { getStartLineNumber: () => number }).getStartLineNumber(),
-              sourceEndLine: (declaration as { getEndLineNumber: () => number }).getEndLineNumber(),
-            }
-          : {}),
+        ...getSourceLineMetadata(declaration),
       });
     }
   }
@@ -1513,13 +1378,7 @@ function extractSlots(type: Type, hasChildren: boolean): RawSlotDefinition[] {
   for (const property of type.getProperties()) {
     const name = property.getName();
     if (name === 'children') continue;
-    if (!name.startsWith('render')) continue;
-
-    const declaration = property.getValueDeclaration() ?? property.getDeclarations()[0];
-    if (!declaration) continue;
-
-    const propType = property.getTypeAtLocation(declaration);
-    if (!isRenderPropType(propType)) continue;
+    if (!getRenderPropType(property)) continue;
 
     const slotName = name.replace(/^render/, '');
     slots.push({
@@ -1635,62 +1494,62 @@ function containsImportedOmitWrappedCustomProps(
   return false;
 }
 
-function containsSupportedDomPickType(typeNode: Node, seen = new Set<Node>()): boolean {
+function containsPickType(typeNode: Node, seen: Set<Node>, mode: 'supported' | 'any'): boolean {
   if (seen.has(typeNode)) return false;
   seen.add(typeNode);
 
   if (Node.isParenthesizedTypeNode(typeNode) || Node.isTypeOperatorTypeNode(typeNode)) {
-    return containsSupportedDomPickType(typeNode.getTypeNode(), seen);
+    return containsPickType(typeNode.getTypeNode(), seen, mode);
   }
 
   if (Node.isIntersectionTypeNode(typeNode) || Node.isUnionTypeNode(typeNode)) {
-    return typeNode.getTypeNodes().some((child) => containsSupportedDomPickType(child, seen));
+    return typeNode.getTypeNodes().some((child) => containsPickType(child, seen, mode));
   }
 
-  if (Node.isTypeReference(typeNode) || Node.isExpressionWithTypeArguments(typeNode)) {
-    const typeName = getTypeReferenceName(typeNode);
-    if (!typeName) return false;
+  const typeReferenceTarget = getTypeReferenceTargetNode(typeNode);
+  if (!typeReferenceTarget) return false;
 
-    if (typeName === 'Pick') {
-      const sourceTypeNode = typeNode.getTypeArguments()[0];
-      return sourceTypeNode
-        ? collectExpandableDomAttributeWrapperContexts(sourceTypeNode).length > 0 ||
-            containsSupportedDomPickType(sourceTypeNode, seen)
-        : false;
-    }
+  const typeName = getTypeReferenceName(typeNode);
+  if (!typeName) return false;
+  const typeArguments = getTypeReferenceArguments(typeNode);
 
-    if (
-      typeName === 'Omit' ||
-      typeName === 'Partial' ||
-      typeName === 'Readonly' ||
-      typeName === 'Required' ||
-      typeName === 'NonNullable'
-    ) {
-      const wrappedType = typeNode.getTypeArguments()[0];
-      return wrappedType ? containsSupportedDomPickType(wrappedType, seen) : false;
-    }
+  if (typeName === 'Pick') {
+    if (mode === 'any') return true;
+    const sourceTypeNode = typeArguments[0];
+    return sourceTypeNode
+      ? collectExpandableDomAttributeWrapperContexts(sourceTypeNode).length > 0 ||
+          containsPickType(sourceTypeNode, seen, mode)
+      : false;
+  }
 
-    const targetNode = Node.isTypeReference(typeNode) ? typeNode.getTypeName() : typeNode.getExpression();
-    for (const declaration of getTypeTargetDeclarations(targetNode)) {
-      if (!declaration) continue;
+  const wrappedTypeNames =
+    mode === 'any'
+      ? ['PropsWithChildren', 'Omit', 'Partial', 'Readonly', 'Required', 'NonNullable']
+      : ['Omit', 'Partial', 'Readonly', 'Required', 'NonNullable'];
+  if (wrappedTypeNames.includes(typeName)) {
+    const wrappedType = typeArguments[0];
+    return wrappedType ? containsPickType(wrappedType, seen, mode) : false;
+  }
 
-      if (Node.isInterfaceDeclaration(declaration)) {
-        if (
-          declaration
-            .getHeritageClauses()
-            .some((clause) =>
-              clause.getTypeNodes().some((heritageTypeNode) => containsSupportedDomPickType(heritageTypeNode, seen)),
-            )
-        ) {
-          return true;
-        }
+  for (const declaration of getTypeTargetDeclarations(typeReferenceTarget, mode === 'any')) {
+    if (!declaration) continue;
+
+    if (Node.isInterfaceDeclaration(declaration)) {
+      if (
+        declaration
+          .getHeritageClauses()
+          .some((clause) =>
+            clause.getTypeNodes().some((heritageTypeNode) => containsPickType(heritageTypeNode, seen, mode)),
+          )
+      ) {
+        return true;
       }
+    }
 
-      if (Node.isTypeAliasDeclaration(declaration)) {
-        const aliasedTypeNode = declaration.getTypeNode();
-        if (aliasedTypeNode && containsSupportedDomPickType(aliasedTypeNode, seen)) {
-          return true;
-        }
+    if (Node.isTypeAliasDeclaration(declaration)) {
+      const aliasedTypeNode = declaration.getTypeNode();
+      if (aliasedTypeNode && containsPickType(aliasedTypeNode, seen, mode)) {
+        return true;
       }
     }
   }
@@ -1698,65 +1557,12 @@ function containsSupportedDomPickType(typeNode: Node, seen = new Set<Node>()): b
   return false;
 }
 
+function containsSupportedDomPickType(typeNode: Node, seen = new Set<Node>()): boolean {
+  return containsPickType(typeNode, seen, 'supported');
+}
+
 function containsAnyPickType(typeNode: Node, seen = new Set<Node>()): boolean {
-  if (seen.has(typeNode)) return false;
-  seen.add(typeNode);
-
-  if (Node.isParenthesizedTypeNode(typeNode) || Node.isTypeOperatorTypeNode(typeNode)) {
-    return containsAnyPickType(typeNode.getTypeNode(), seen);
-  }
-
-  if (Node.isIntersectionTypeNode(typeNode) || Node.isUnionTypeNode(typeNode)) {
-    return typeNode.getTypeNodes().some((child) => containsAnyPickType(child, seen));
-  }
-
-  if (Node.isTypeReference(typeNode) || Node.isExpressionWithTypeArguments(typeNode)) {
-    const typeName = getTypeReferenceName(typeNode);
-    if (!typeName) return false;
-
-    if (typeName === 'Pick') {
-      return true;
-    }
-
-    const wrappedType = typeNode.getTypeArguments()[0];
-    if (
-      (typeName === 'PropsWithChildren' ||
-        typeName === 'Omit' ||
-        typeName === 'Partial' ||
-        typeName === 'Readonly' ||
-        typeName === 'Required' ||
-        typeName === 'NonNullable') &&
-      wrappedType
-    ) {
-      return containsAnyPickType(wrappedType, seen);
-    }
-
-    const targetNode = Node.isTypeReference(typeNode) ? typeNode.getTypeName() : typeNode.getExpression();
-    for (const declaration of getTypeTargetDeclarations(targetNode, true)) {
-      if (!declaration) continue;
-
-      if (Node.isInterfaceDeclaration(declaration)) {
-        if (
-          declaration
-            .getHeritageClauses()
-            .some((clause) =>
-              clause.getTypeNodes().some((heritageTypeNode) => containsAnyPickType(heritageTypeNode, seen)),
-            )
-        ) {
-          return true;
-        }
-      }
-
-      if (Node.isTypeAliasDeclaration(declaration)) {
-        const aliasedTypeNode = declaration.getTypeNode();
-        if (aliasedTypeNode && containsAnyPickType(aliasedTypeNode, seen)) {
-          return true;
-        }
-      }
-    }
-  }
-
-  return false;
+  return containsPickType(typeNode, seen, 'any');
 }
 
 function collectExpandableDomAttributeWrapperContexts(
@@ -1781,16 +1587,18 @@ function collectExpandableDomAttributeWrapperContexts(
       .flatMap((child) => collectExpandableDomAttributeWrapperContexts(child, seen, excludedProps));
   }
 
-  if (Node.isTypeReference(typeNode)) {
+  const typeReferenceTarget = getTypeReferenceTargetNode(typeNode);
+  if (typeReferenceTarget) {
     const typeName = getTypeReferenceName(typeNode);
     if (!typeName) return [];
+    const typeArguments = getTypeReferenceArguments(typeNode);
 
     if (isExpandableDomAttributeWrapperName(typeName)) {
       return [{ name: typeName, excludedProps: new Set(excludedProps) }];
     }
 
     if (typeName === 'Omit') {
-      const [wrappedType, omittedProps] = typeNode.getTypeArguments();
+      const [wrappedType, omittedProps] = typeArguments;
       if (!wrappedType) return [];
 
       const nextExcludedProps = new Set(excludedProps);
@@ -1804,64 +1612,12 @@ function collectExpandableDomAttributeWrapperContexts(
     }
 
     if (typeName === 'Partial' || typeName === 'Readonly' || typeName === 'Required' || typeName === 'NonNullable') {
-      const wrappedType = typeNode.getTypeArguments()[0];
+      const wrappedType = typeArguments[0];
       if (!wrappedType) return [];
       return collectExpandableDomAttributeWrapperContexts(wrappedType, seen, excludedProps);
     }
 
-    for (const definition of getNodeDefinitions(typeNode.getTypeName())) {
-      const declaration = definition.getDeclarationNode();
-      if (!declaration) continue;
-
-      if (Node.isInterfaceDeclaration(declaration)) {
-        return declaration
-          .getHeritageClauses()
-          .flatMap((clause) =>
-            clause
-              .getTypeNodes()
-              .flatMap((heritageTypeNode) =>
-                collectExpandableDomAttributeWrapperContexts(heritageTypeNode, seen, excludedProps),
-              ),
-          );
-      }
-
-      if (Node.isTypeAliasDeclaration(declaration)) {
-        const aliasedTypeNode = declaration.getTypeNode();
-        if (!aliasedTypeNode) return [];
-        return collectExpandableDomAttributeWrapperContexts(aliasedTypeNode, seen, excludedProps);
-      }
-    }
-  }
-
-  if (Node.isExpressionWithTypeArguments(typeNode)) {
-    const typeName = getTypeReferenceName(typeNode);
-    if (!typeName) return [];
-
-    if (isExpandableDomAttributeWrapperName(typeName)) {
-      return [{ name: typeName, excludedProps: new Set(excludedProps) }];
-    }
-
-    if (typeName === 'Omit') {
-      const [wrappedType, omittedProps] = typeNode.getTypeArguments();
-      if (!wrappedType) return [];
-
-      const nextExcludedProps = new Set(excludedProps);
-      if (omittedProps) {
-        for (const value of getStringLiteralTypeValues(omittedProps)) {
-          nextExcludedProps.add(value);
-        }
-      }
-
-      return collectExpandableDomAttributeWrapperContexts(wrappedType, seen, nextExcludedProps);
-    }
-
-    if (typeName === 'Partial' || typeName === 'Readonly' || typeName === 'Required' || typeName === 'NonNullable') {
-      const wrappedType = typeNode.getTypeArguments()[0];
-      if (!wrappedType) return [];
-      return collectExpandableDomAttributeWrapperContexts(wrappedType, seen, excludedProps);
-    }
-
-    for (const definition of getNodeDefinitions(typeNode.getExpression())) {
+    for (const definition of getNodeDefinitions(typeReferenceTarget)) {
       const declaration = definition.getDeclarationNode();
       if (!declaration) continue;
 
@@ -1911,9 +1667,11 @@ function isPureExpandableDomAttributeWrapperTypeNode(typeNode: Node, seen = new 
     );
   }
 
-  if (Node.isTypeReference(typeNode)) {
+  const typeReferenceTarget = getTypeReferenceTargetNode(typeNode);
+  if (typeReferenceTarget) {
     const typeName = getTypeReferenceName(typeNode);
     if (!typeName) return false;
+    const typeArguments = getTypeReferenceArguments(typeNode);
 
     if (isExpandableDomAttributeWrapperName(typeName)) {
       return true;
@@ -1926,60 +1684,13 @@ function isPureExpandableDomAttributeWrapperTypeNode(typeNode: Node, seen = new 
       typeName === 'Required' ||
       typeName === 'NonNullable'
     ) {
-      const wrappedType = typeNode.getTypeArguments()[0];
+      const wrappedType = typeArguments[0];
       return wrappedType ? isPureExpandableDomAttributeWrapperTypeNode(wrappedType, seen) : false;
     }
 
-    if (typeName === 'Pick') {
-      return false;
-    }
+    if (typeName === 'Pick') return false;
 
-    for (const definition of getNodeDefinitions(typeNode.getTypeName())) {
-      const declaration = definition.getDeclarationNode();
-      if (!declaration) continue;
-
-      if (Node.isInterfaceDeclaration(declaration)) {
-        if (declaration.getMembers().length > 0) return false;
-
-        const heritageClauses = declaration.getHeritageClauses();
-        return (
-          heritageClauses.length > 0 &&
-          heritageClauses.every((clause) =>
-            clause
-              .getTypeNodes()
-              .every((heritageTypeNode) => isPureExpandableDomAttributeWrapperTypeNode(heritageTypeNode, seen)),
-          )
-        );
-      }
-
-      if (Node.isTypeAliasDeclaration(declaration)) {
-        const aliasedTypeNode = declaration.getTypeNode();
-        if (!aliasedTypeNode) return false;
-        return isPureExpandableDomAttributeWrapperTypeNode(aliasedTypeNode, seen);
-      }
-    }
-  }
-
-  if (Node.isExpressionWithTypeArguments(typeNode)) {
-    const typeName = getTypeReferenceName(typeNode);
-    if (!typeName) return false;
-
-    if (isExpandableDomAttributeWrapperName(typeName)) {
-      return true;
-    }
-
-    if (
-      typeName === 'Omit' ||
-      typeName === 'Partial' ||
-      typeName === 'Readonly' ||
-      typeName === 'Required' ||
-      typeName === 'NonNullable'
-    ) {
-      const wrappedType = typeNode.getTypeArguments()[0];
-      return wrappedType ? isPureExpandableDomAttributeWrapperTypeNode(wrappedType, seen) : false;
-    }
-
-    for (const definition of getNodeDefinitions(typeNode.getExpression())) {
+    for (const definition of getNodeDefinitions(typeReferenceTarget)) {
       const declaration = definition.getDeclarationNode();
       if (!declaration) continue;
 
@@ -2047,7 +1758,10 @@ function getDomAttributeSurface(
   // Every prop on these surfaces is a DOM attribute by construction, so the
   // provenance is known here without tracing the implementation. Copy each prop
   // so that later provenance propagation cannot mutate the shared surface table.
-  return [...propsByName.values()].map((prop) => ({ ...prop, domAttribute: true }));
+  return [...propsByName.values()].map((prop) => ({
+    ...prop,
+    domAttribute: true,
+  }));
 }
 
 function hasSyntheticDomChildren(typeNode: Node | undefined): boolean {
@@ -2056,6 +1770,29 @@ function hasSyntheticDomChildren(typeNode: Node | undefined): boolean {
   return collectExpandableDomAttributeWrapperContexts(typeNode).some((context) =>
     DOM_ATTRIBUTE_WRAPPERS_WITH_SYNTHETIC_CHILDREN.has(context.name),
   );
+}
+
+function collectRestBindingNames(nameNode: Node): Set<string> {
+  const names = new Set<string>();
+  if (!Node.isObjectBindingPattern(nameNode)) return names;
+
+  for (const element of nameNode.getElements()) {
+    if (!element.getDotDotDotToken()) continue;
+    const restNameNode = element.getNameNode();
+    if (Node.isIdentifier(restNameNode)) names.add(restNameNode.getText());
+  }
+
+  return names;
+}
+
+function isComponentSpreadAttribute(attribute: Node, bindingNames: Set<string>): boolean {
+  if (!Node.isJsxSpreadAttribute(attribute)) return false;
+
+  const expression = attribute.getExpression();
+  if (!Node.isIdentifier(expression) || !bindingNames.has(expression.getText())) return false;
+
+  const tagName = getJsxTagNameNode(attribute)?.getText();
+  return tagName ? /^[A-Z]/.test(tagName) : false;
 }
 
 function inferPrimitiveDomPropsFromImplementation(
@@ -2069,15 +1806,7 @@ function inferPrimitiveDomPropsFromImplementation(
     candidatePropNames.add(propsParam.getName());
   }
 
-  if (Node.isObjectBindingPattern(propsParamNameNode)) {
-    for (const element of propsParamNameNode.getElements()) {
-      if (!element.getDotDotDotToken()) continue;
-      const restNameNode = element.getNameNode();
-      if (Node.isIdentifier(restNameNode)) {
-        candidatePropNames.add(restNameNode.getText());
-      }
-    }
-  }
+  for (const restName of collectRestBindingNames(propsParamNameNode)) candidatePropNames.add(restName);
 
   for (const variableDeclaration of funcNode.getDescendantsOfKind(SyntaxKind.VariableDeclaration)) {
     const initializer = variableDeclaration.getInitializer();
@@ -2088,13 +1817,7 @@ function inferPrimitiveDomPropsFromImplementation(
     const nameNode = variableDeclaration.getNameNode();
     if (!Node.isObjectBindingPattern(nameNode)) continue;
 
-    for (const element of nameNode.getElements()) {
-      if (!element.getDotDotDotToken()) continue;
-      const restNameNode = element.getNameNode();
-      if (Node.isIdentifier(restNameNode)) {
-        candidatePropNames.add(restNameNode.getText());
-      }
-    }
+    for (const restName of collectRestBindingNames(nameNode)) candidatePropNames.add(restName);
   }
 
   if (candidatePropNames.size === 0) return [];
@@ -2300,28 +2023,18 @@ function hasImplementationChildrenHint(funcNode: FunctionLike, param: ParameterD
   if (!body) return false;
 
   if (Node.isObjectBindingPattern(nameNode)) {
-    const restBindingNames = new Set<string>();
     for (const element of nameNode.getElements()) {
       if (element.getNameNode().getText() === 'children') {
         return true;
       }
-      if (element.getDotDotDotToken()) {
-        restBindingNames.add(element.getNameNode().getText());
-      }
     }
 
+    const restBindingNames = collectRestBindingNames(nameNode);
     if (restBindingNames.size === 0) return false;
 
-    return body.getDescendantsOfKind(SyntaxKind.JsxSpreadAttribute).some((attr) => {
-      const expression = attr.getExpression();
-      if (!expression || !Node.isIdentifier(expression)) return false;
-      if (!restBindingNames.has(expression.getText())) return false;
-
-      const openingElement = attr.getFirstAncestorByKind(SyntaxKind.JsxOpeningElement);
-      const selfClosingElement = attr.getFirstAncestorByKind(SyntaxKind.JsxSelfClosingElement);
-      const tagName = openingElement?.getTagNameNode().getText() ?? selfClosingElement?.getTagNameNode().getText();
-      return tagName ? /^[A-Z]/.test(tagName) : false;
-    });
+    return body
+      .getDescendantsOfKind(SyntaxKind.JsxSpreadAttribute)
+      .some((attr) => isComponentSpreadAttribute(attr, restBindingNames));
   }
 
   if (!Node.isIdentifier(nameNode)) return false;
@@ -2335,40 +2048,18 @@ function hasImplementationChildrenHint(funcNode: FunctionLike, param: ParameterD
     return true;
   }
 
-  return body.getDescendantsOfKind(SyntaxKind.JsxSpreadAttribute).some((attr) => {
-    const expression = attr.getExpression();
-    if (!expression || !Node.isIdentifier(expression) || expression.getText() !== paramName) return false;
-
-    const openingElement = attr.getFirstAncestorByKind(SyntaxKind.JsxOpeningElement);
-    const selfClosingElement = attr.getFirstAncestorByKind(SyntaxKind.JsxSelfClosingElement);
-    const tagName = openingElement?.getTagNameNode().getText() ?? selfClosingElement?.getTagNameNode().getText();
-    return tagName ? /^[A-Z]/.test(tagName) : false;
-  });
+  return body
+    .getDescendantsOfKind(SyntaxKind.JsxSpreadAttribute)
+    .some((attr) => isComponentSpreadAttribute(attr, new Set([paramName])));
 }
 
 export async function extractReactComponents(filePaths: string[]): Promise<ComponentExtractionResult> {
-  const componentFiles = filePaths.filter((f) => /\.[jt]sx$/.test(f));
-  if (componentFiles.length === 0) {
+  const extractionContext = getTsxExtractionContext(filePaths, /\.[jt]sx$/);
+  if (!extractionContext) {
     return { components: [], warnings: [] };
   }
 
-  const projectFiles = filePaths.filter((f) => /\.[jt]sx?$/.test(f) && !f.endsWith('.d.ts'));
-
-  const project = new Project({
-    compilerOptions: {
-      jsx: 1, // JsxEmit.Preserve
-      target: 99, // ScriptTarget.ESNext
-      module: 99, // ModuleKind.ESNext
-      moduleResolution: 100, // ModuleResolutionKind.Bundler
-      skipLibCheck: true,
-      allowJs: true,
-    },
-    skipAddingFilesFromTsConfig: true,
-  });
-
-  for (const filePath of projectFiles) {
-    project.addSourceFileAtPath(filePath);
-  }
+  const { componentFiles, project } = extractionContext;
 
   const warnings: string[] = [];
   const components: RawComponentDefinitionInternal[] = [];
@@ -2499,18 +2190,9 @@ function extractFromSourceFile(sourceFile: SourceFile, isNext: boolean): RawComp
     let name = exportKey;
 
     if (exportKey === 'default') {
-      const decl = declarations[0];
-      let declName: string | undefined;
-
-      if (Node.isFunctionDeclaration(decl)) {
-        declName = decl.getName();
-      } else if (Node.isVariableDeclaration(decl)) {
-        declName = (decl as VariableDeclaration).getName();
-      }
-
-      if (!declName || !/^[A-Z]/.test(declName)) continue;
-      if (exported.has(declName)) continue;
-      name = declName;
+      const defaultExportName = resolveDefaultExportName(declarations, exported, true);
+      if (!defaultExportName) continue;
+      name = defaultExportName;
     }
 
     if (!/^[A-Z]/.test(name)) continue;

@@ -6,14 +6,8 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
 } from '../types.js';
-
-function kebabToPascal(input: string): string {
-  return input
-    .split('-')
-    .filter(Boolean)
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join('');
-}
+import { createSortedExtractionResult, extractProjectSourceFiles } from './file-extraction-workers.js';
+import { kebabToPascal } from './tsx-shared.js';
 
 function normalizeComponentName(input: string): string {
   return input.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
@@ -89,6 +83,26 @@ function loadSourceFile(project: Project, filePath: string): SourceFile | null {
   }
 }
 
+function resolveImportSpecifierSource(
+  declarationNode: Node,
+  sourceFile: SourceFile,
+  project: Project,
+): { sourceFile: SourceFile; importedName: string } | undefined {
+  if (!Node.isImportSpecifier(declarationNode)) return undefined;
+
+  const importDecl = declarationNode.getImportDeclaration();
+  const resolvedImportPath = resolveImportSourcePath(sourceFile.getFilePath(), importDecl.getModuleSpecifierValue());
+  if (!resolvedImportPath) return undefined;
+
+  const importedFile = loadSourceFile(project, resolvedImportPath);
+  if (!importedFile) return undefined;
+
+  return {
+    sourceFile: importedFile,
+    importedName: declarationNode.getNameNode().getText(),
+  };
+}
+
 function resolveStaticStringExpression(
   node: Node | undefined,
   sourceFile: SourceFile,
@@ -129,21 +143,17 @@ function resolveStaticStringExpression(
       }
 
       if (Node.isImportSpecifier(declarationNode)) {
-        const importDecl = declarationNode.getImportDeclaration();
-        const resolvedImportPath = resolveImportSourcePath(
-          sourceFile.getFilePath(),
-          importDecl.getModuleSpecifierValue(),
-        );
-        if (!resolvedImportPath) continue;
+        const importedSource = resolveImportSpecifierSource(declarationNode, sourceFile, project);
+        if (!importedSource) continue;
 
-        const importedFile = loadSourceFile(project, resolvedImportPath);
-        if (!importedFile) continue;
-
-        const importedName = declarationNode.getNameNode().getText();
-        const importedDeclaration = importedFile.getVariableDeclaration(importedName);
+        const importedDeclaration = importedSource.sourceFile.getVariableDeclaration(importedSource.importedName);
         if (!importedDeclaration) continue;
 
-        const resolved = resolveStaticStringExpression(importedDeclaration.getInitializer(), importedFile, project);
+        const resolved = resolveStaticStringExpression(
+          importedDeclaration.getInitializer(),
+          importedSource.sourceFile,
+          project,
+        );
         if (resolved) return resolved;
       }
     }
@@ -169,18 +179,9 @@ function resolveStaticStringExpression(
       if (Node.isVariableDeclaration(declarationNode)) {
         variableDeclaration = declarationNode;
       } else if (Node.isImportSpecifier(declarationNode)) {
-        const importDecl = declarationNode.getImportDeclaration();
-        const resolvedImportPath = resolveImportSourcePath(
-          sourceFile.getFilePath(),
-          importDecl.getModuleSpecifierValue(),
-        );
-        if (!resolvedImportPath) continue;
-
-        const importedFile = loadSourceFile(project, resolvedImportPath);
-        if (!importedFile) continue;
-
-        const importedName = declarationNode.getNameNode().getText();
-        variableDeclaration = importedFile.getVariableDeclaration(importedName);
+        const importedSource = resolveImportSpecifierSource(declarationNode, sourceFile, project);
+        if (!importedSource) continue;
+        variableDeclaration = importedSource.sourceFile.getVariableDeclaration(importedSource.importedName);
       }
 
       if (!variableDeclaration) continue;
@@ -1060,22 +1061,9 @@ export async function extractWebComponentDefinitions(filePaths: string[]): Promi
     project.addSourceFileAtPath(filePath);
   }
 
-  const warnings: string[] = [];
-  const components: RawComponentDefinition[] = [];
+  const { items: components, warnings } = extractProjectSourceFiles(project, (sourceFile) =>
+    extractFromSourceFile(sourceFile, project),
+  );
 
-  for (const sourceFile of project.getSourceFiles()) {
-    try {
-      const extracted = extractFromSourceFile(sourceFile, project);
-      components.push(...extracted);
-    } catch (e) {
-      warnings.push(
-        `Failed to extract from ${sourceFile.getFilePath()}: ${e instanceof Error ? e.message : String(e)}`,
-      );
-    }
-  }
-
-  return {
-    components: components.sort((a, b) => a.name.localeCompare(b.name)),
-    warnings,
-  };
+  return createSortedExtractionResult(components, warnings);
 }

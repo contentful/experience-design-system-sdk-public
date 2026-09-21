@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
-
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+import { StepHeader } from '../components/StepHeader.js';
+import { useTimedSpinner } from '../../../tui/use-timed-spinner.js';
 
 type RunningStepProps = {
   stepNumber: number;
@@ -23,50 +23,26 @@ export function RunningStep({
   detail,
   secondaryDetail,
 }: RunningStepProps): React.ReactElement {
-  const [frame, setFrame] = useState(0);
-  const [elapsed, setElapsed] = useState(0);
-
-  useEffect(() => {
-    const spinner = setInterval(() => setFrame((f) => (f + 1) % SPINNER_FRAMES.length), 80);
-    const timer = setInterval(() => setElapsed((s) => s + 1), 1000);
-    return () => {
-      clearInterval(spinner);
-      clearInterval(timer);
-    };
-  }, []);
-
-  const mins = Math.floor(elapsed / 60);
-  const secs = elapsed % 60;
-  const elapsedStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+  const { spinner, secondarySpinner, elapsed } = useTimedSpinner();
 
   return (
     <Box flexDirection="column" gap={1} paddingX={2} paddingY={1}>
-      <Box flexDirection="column" gap={0}>
-        <Text dimColor>{'─'.repeat(40)}</Text>
-        <Box gap={1}>
-          <Text bold>
-            Step {stepNumber} of {totalSteps}
-          </Text>
-          <Text bold>—</Text>
-          <Text bold>{title}</Text>
-        </Box>
-        <Text dimColor>{'─'.repeat(40)}</Text>
-      </Box>
+      <StepHeader stepNumber={stepNumber} totalSteps={totalSteps} title={title} />
 
       <Text>{description}</Text>
 
       <Box gap={1} marginTop={1}>
-        <Text color={PALETTE.info}>{SPINNER_FRAMES[frame]}</Text>
+        <Text color={PALETTE.info}>{spinner}</Text>
         <Text dimColor>{detail ?? 'Running...'}</Text>
       </Box>
       {secondaryDetail !== undefined && (
         <Box gap={1}>
-          <Text color={PALETTE.info}>{SPINNER_FRAMES[(frame + 5) % SPINNER_FRAMES.length]}</Text>
+          <Text color={PALETTE.info}>{secondarySpinner}</Text>
           <Text dimColor>{secondaryDetail}</Text>
         </Box>
       )}
       <Box marginTop={1}>
-        <Text dimColor>Elapsed: {elapsedStr}</Text>
+        <Text dimColor>Elapsed: {elapsed}</Text>
       </Box>
     </Box>
   );

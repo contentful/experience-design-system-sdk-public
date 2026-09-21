@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
+import { useBlinkingCursor } from '../../../tui/use-blinking-cursor.js';
 
 type WelcomeStepProps = {
   onContinue: (projectPath: string) => void;
@@ -10,12 +11,7 @@ type WelcomeStepProps = {
 
 export function WelcomeStep({ onContinue, onQuit }: WelcomeStepProps): React.ReactElement {
   const [inputValue, setInputValue] = useState('');
-  const [cursorVisible, setCursorVisible] = useState(true);
-
-  useEffect(() => {
-    const interval = setInterval(() => setCursorVisible((v) => !v), 500);
-    return () => clearInterval(interval);
-  }, []);
+  const cursorVisible = useBlinkingCursor();
 
   useImmediateInput((input, key) => {
     if (key.return) {

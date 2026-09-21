@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../../../host-utils.js';
+import { useBlinkingCursor } from '../../../tui/use-blinking-cursor.js';
 
 type Field = 'spaceId' | 'environmentId' | 'cmaToken' | 'host';
 
@@ -67,13 +68,8 @@ export function CredentialsStep({
   const [host, setHost] = useState(normalizedInitialHost);
   const [activeField, setActiveField] = useState<Field>('spaceId');
   const [inlineError, setInlineError] = useState<string | null>(null);
-  const [cursorVisible, setCursorVisible] = useState(true);
+  const cursorVisible = useBlinkingCursor();
   const hasTypedRef = useRef(false);
-
-  useEffect(() => {
-    const interval = setInterval(() => setCursorVisible((v) => !v), 500);
-    return () => clearInterval(interval);
-  }, []);
 
   useImmediateInput((input, key) => {
     if (validating) {

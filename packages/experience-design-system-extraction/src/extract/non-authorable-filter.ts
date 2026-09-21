@@ -1,6 +1,6 @@
 import type { RawComponentDefinition, RawPropDefinition } from '../types.js';
 
-export interface NonAuthorableResult {
+interface NonAuthorableResult {
   skip: boolean;
   reason?: string;
 }

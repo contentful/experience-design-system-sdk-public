@@ -1,10 +1,5 @@
 import type { Closure, NodeStatus } from './composite-closure.js';
 
-export interface IssueLocation {
-  component: string;
-  status: NodeStatus;
-}
-
 export interface RenderStatus {
   status: NodeStatus;
   isOwn: boolean;

@@ -74,10 +74,6 @@ export function enrichCommandResult(fields: CommandCompletion): void {
   mergeContext(pending.context, fields);
 }
 
-export function getBoundSessionId(): string | undefined {
-  return sessionId;
-}
-
 /** Bind the pipeline session and emit invoked once both command and session are known. */
 export async function bindAnalyticsSession(id: string, context?: CommandContext): Promise<void> {
   sessionId = id;

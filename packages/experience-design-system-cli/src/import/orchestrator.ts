@@ -121,7 +121,7 @@ async function runStep(
 
 const MAX_VALIDATION_RETRIES = Number(process.env['EDS_MAX_VALIDATION_RETRIES'] ?? 2);
 
-export const SLOT_CYCLE_MARKER = 'manifest:components/slot-cycles';
+const SLOT_CYCLE_MARKER = 'manifest:components/slot-cycles';
 
 export function isSlotCycleError(result: { exitCode: number; stderr: string }): boolean {
   return result.exitCode !== 0 && result.stderr.includes(SLOT_CYCLE_MARKER);
@@ -233,6 +233,26 @@ export async function runPipeline(
 
   let existingEntitiesPath: string | undefined;
 
+  const failStep = (args: {
+    stepId: number;
+    step: string;
+    label: string;
+    durationMs: number;
+    error: string;
+  }): PipelineResult => {
+    if (args.error) process.stderr.write(args.error);
+    updateStep(db, args.stepId, 'failed', {}, args.error);
+    progressWriter(`${args.label}✗  failed (${(args.durationMs / 1000).toFixed(1)}s)`);
+    steps.push({
+      step: args.step,
+      status: 'failed',
+      durationMs: args.durationMs,
+      error: args.error,
+    });
+    db.close();
+    return { session: sessionId, project: projectRoot, steps };
+  };
+
   if (canFetchExistingContentfulEntities) {
     const fetchLabel = stepLabel('Fetching existing components + design tokens');
     const fetchStepId = createStep(db, sessionId, 'fetch existing entities', {
@@ -316,17 +336,13 @@ export async function runPipeline(
     const durationMs = Date.now() - t0;
 
     if (r.exitCode !== 0) {
-      if (r.stderr) process.stderr.write(r.stderr);
-      updateStep(db, stepId, 'failed', {}, r.stderr);
-      progressWriter(`${analyzeLabel}✗  failed (${(durationMs / 1000).toFixed(1)}s)`);
-      steps.push({
+      return failStep({
+        stepId,
         step: 'analyze extract',
-        status: 'failed',
+        label: analyzeLabel,
         durationMs,
         error: r.stderr,
       });
-      db.close();
-      return { session: sessionId, project: projectRoot, steps };
     }
 
     extractSessionId = findLatestSessionForCommand(db, 'analyze extract') ?? null;
@@ -608,17 +624,13 @@ export async function runPipeline(
     const durationMs = Date.now() - t0;
 
     if (r.exitCode !== 0) {
-      if (r.stderr) process.stderr.write(r.stderr);
-      updateStep(db, stepId, 'failed', {}, r.stderr);
-      progressWriter(`${printLabel}✗  failed (${(durationMs / 1000).toFixed(1)}s)`);
-      steps.push({
+      return failStep({
+        stepId,
         step: 'print components',
-        status: 'failed',
+        label: printLabel,
         durationMs,
         error: r.stderr,
       });
-      db.close();
-      return { session: sessionId, project: projectRoot, steps };
     }
 
     updateStep(db, stepId, 'complete', { components: componentsPath });
@@ -734,6 +746,34 @@ export async function runPipeline(
       : Number(/(\d+) failed/.exec(r.stdout + r.stderr)?.[1] ?? 0);
     const totalPushed = created + updated + failed;
 
+    const finishPushFailure = (args: {
+      result: { stderr: string };
+      durationMs: number;
+      excludedByRetry: string[];
+      cycleReport?: string[];
+    }): PipelineResult => {
+      updateStep(db, pushStepId, 'failed', {}, args.result.stderr);
+      progressWriter(`${pushLabel}✗  failed (${(args.durationMs / 1000).toFixed(1)}s)`);
+      steps.push(
+        buildPushStepResult({
+          created,
+          updated,
+          failed,
+          durationMs: args.durationMs,
+          stderr: args.result.stderr,
+          excludedByRetry: args.excludedByRetry,
+          totalFailure: true,
+        }),
+      );
+      db.close();
+      return {
+        session: sessionId,
+        project: projectRoot,
+        steps,
+        ...(args.cycleReport ? { cycleError: { report: args.cycleReport } } : {}),
+      };
+    };
+
     if (isSlotCycleError(r)) {
       const report = extractCycleReport(r.stderr);
 
@@ -763,37 +803,20 @@ export async function runPipeline(
                 'Slot cycle detected after auto-reject retry. The manifest still contains circular slot references.',
               );
               for (const line of retryReport) progressWriter(line);
-              steps.push(
-                buildPushStepResult({
-                  created,
-                  updated,
-                  failed,
-                  durationMs: retryDurationMs,
-                  stderr: retryR.stderr,
-                  excludedByRetry: [...excludedByRetry, ...cycleNames],
-                  totalFailure: true,
-                }),
-              );
-              db.close();
-              return { session: sessionId, project: projectRoot, steps, cycleError: { report: retryReport } };
+              return finishPushFailure({
+                result: retryR,
+                durationMs: retryDurationMs,
+                excludedByRetry: [...excludedByRetry, ...cycleNames],
+                cycleReport: retryReport,
+              });
             }
 
             if (retryR.exitCode !== 0) {
-              updateStep(db, pushStepId, 'failed', {}, retryR.stderr);
-              progressWriter(`${pushLabel}✗  failed (${(retryDurationMs / 1000).toFixed(1)}s)`);
-              steps.push(
-                buildPushStepResult({
-                  created,
-                  updated,
-                  failed,
-                  durationMs: retryDurationMs,
-                  stderr: retryR.stderr,
-                  excludedByRetry: [...excludedByRetry, ...cycleNames],
-                  totalFailure: true,
-                }),
-              );
-              db.close();
-              return { session: sessionId, project: projectRoot, steps };
+              return finishPushFailure({
+                result: retryR,
+                durationMs: retryDurationMs,
+                excludedByRetry: [...excludedByRetry, ...cycleNames],
+              });
             }
 
             excludedByRetry.push(...cycleNames);
@@ -803,45 +826,17 @@ export async function runPipeline(
       }
 
       if (isSlotCycleError(r)) {
-        updateStep(db, pushStepId, 'failed', {}, r.stderr);
-        progressWriter(`${pushLabel}✗  failed (${(durationMs / 1000).toFixed(1)}s)`);
         progressWriter(
           'Slot cycle detected. The manifest contains circular slot references that would block the push.',
         );
         for (const line of report) progressWriter(line);
-        steps.push(
-          buildPushStepResult({
-            created,
-            updated,
-            failed,
-            durationMs,
-            stderr: r.stderr,
-            excludedByRetry,
-            totalFailure: true,
-          }),
-        );
-        db.close();
-        return { session: sessionId, project: projectRoot, steps, cycleError: { report } };
+        return finishPushFailure({ result: r, durationMs, excludedByRetry, cycleReport: report });
       }
     }
 
     if (r.exitCode !== 0 && (totalPushed === 0 || failed === totalPushed)) {
       // Total failure — nothing was pushed
-      updateStep(db, pushStepId, 'failed', {}, r.stderr);
-      progressWriter(`${pushLabel}✗  failed (${(durationMs / 1000).toFixed(1)}s)`);
-      steps.push(
-        buildPushStepResult({
-          created,
-          updated,
-          failed,
-          durationMs,
-          stderr: r.stderr,
-          excludedByRetry,
-          totalFailure: true,
-        }),
-      );
-      db.close();
-      return { session: sessionId, project: projectRoot, steps };
+      return finishPushFailure({ result: r, durationMs, excludedByRetry });
     }
 
     const stepResult = buildPushStepResult({

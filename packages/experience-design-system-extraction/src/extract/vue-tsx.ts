@@ -1,4 +1,4 @@
-import { Node, Project, SyntaxKind, type SourceFile } from 'ts-morph';
+import { Node, SyntaxKind, type SourceFile } from 'ts-morph';
 import type {
   RawComponentDefinition,
   RawPropDefinition,
@@ -9,31 +9,18 @@ import {
   extractAllowedValues,
   getTypeReferenceName,
   getTypeTargetDeclarations,
+  getTsxExtractionContext,
   getValueTargetDeclarations,
+  resolveDefaultExportName,
 } from './tsx-shared.js';
 
 export async function extractVueTsxComponents(filePaths: string[]): Promise<ComponentExtractionResult> {
-  const componentFiles = filePaths.filter((f) => f.endsWith('.tsx'));
-  if (componentFiles.length === 0) {
+  const extractionContext = getTsxExtractionContext(filePaths, /\.tsx$/);
+  if (!extractionContext) {
     return { components: [], warnings: [] };
   }
 
-  const projectFiles = filePaths.filter((f) => /\.[jt]sx?$/.test(f) && !f.endsWith('.d.ts'));
-  const project = new Project({
-    compilerOptions: {
-      jsx: 1,
-      target: 99,
-      module: 99,
-      moduleResolution: 100,
-      skipLibCheck: true,
-      allowJs: true,
-    },
-    skipAddingFilesFromTsConfig: true,
-  });
-
-  for (const filePath of projectFiles) {
-    project.addSourceFileAtPath(filePath);
-  }
+  const { componentFiles, project } = extractionContext;
 
   const warnings: string[] = [];
   const components: RawComponentDefinition[] = [];
@@ -62,11 +49,9 @@ function extractFromSourceFile(sourceFile: SourceFile): RawComponentDefinition[]
     let name = exportKey;
 
     if (exportKey === 'default') {
-      const decl = declarations[0];
-      const declName = Node.isFunctionDeclaration(decl) ? decl.getName() : undefined;
-      if (!declName || !/^[A-Z]/.test(declName)) continue;
-      if (exported.has(declName)) continue;
-      name = declName;
+      const defaultExportName = resolveDefaultExportName(declarations, exported);
+      if (!defaultExportName) continue;
+      name = defaultExportName;
     }
 
     if (!/^[A-Z]/.test(name)) continue;
@@ -490,19 +475,22 @@ function extractStringLiteralArrayValues(node: Node): string[] | undefined {
   return keys;
 }
 
+function extractSlotMembers(members: Node[], allowMethods: boolean): RawSlotDefinition[] {
+  return members
+    .flatMap((member) => {
+      if (!Node.isPropertySignature(member) && (!allowMethods || !Node.isMethodSignature(member))) return [];
+      const slotName = member.getName();
+      return [{ name: slotName, isDefault: slotName === 'default' }];
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function extractVueSlotsFromTypeNode(typeNode: Node | undefined, seen: Set<Node>): RawSlotDefinition[] {
   if (!typeNode || seen.has(typeNode)) return [];
   seen.add(typeNode);
 
   if (Node.isTypeLiteral(typeNode)) {
-    return typeNode
-      .getMembers()
-      .flatMap((member) => {
-        if (!Node.isPropertySignature(member)) return [];
-        const slotName = member.getName();
-        return [{ name: slotName, isDefault: slotName === 'default' }];
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return extractSlotMembers(typeNode.getMembers(), false);
   }
 
   if (Node.isTypeReference(typeNode)) {
@@ -511,14 +499,7 @@ function extractVueSlotsFromTypeNode(typeNode: Node | undefined, seen: Set<Node>
         return extractVueSlotsFromTypeNode(declaration.getTypeNode(), seen);
       }
       if (Node.isInterfaceDeclaration(declaration)) {
-        return declaration
-          .getMembers()
-          .flatMap((member) => {
-            if (!Node.isPropertySignature(member) && !Node.isMethodSignature(member)) return [];
-            const slotName = member.getName();
-            return [{ name: slotName, isDefault: slotName === 'default' }];
-          })
-          .sort((a, b) => a.name.localeCompare(b.name));
+        return extractSlotMembers(declaration.getMembers(), true);
       }
     }
   }

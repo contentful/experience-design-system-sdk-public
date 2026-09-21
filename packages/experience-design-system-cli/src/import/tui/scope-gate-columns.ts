@@ -7,7 +7,7 @@ export interface ScopeComponentLike {
 
 export type Decision = 'accepted' | 'rejected' | 'undecided';
 
-export const THREE_COLUMN_MIN_WIDTH = 120;
+const THREE_COLUMN_MIN_WIDTH = 120;
 
 export function computeColumnWidths(totalWidth: number): {
   layout: 'single' | 'three-column';
@@ -36,6 +36,12 @@ export interface AddedGroupEntry {
   isCycle: boolean;
 }
 
+function sortTieredEntries<T extends { name: string }>(cycleTier: T[], restTier: T[]): T[] {
+  cycleTier.sort((a, b) => a.name.localeCompare(b.name));
+  restTier.sort((a, b) => a.name.localeCompare(b.name));
+  return [...cycleTier, ...restTier];
+}
+
 export function buildAddedComponentsList(
   components: ScopeComponentLike[],
   stateByKey: Map<string, Decision>,
@@ -54,9 +60,7 @@ export function buildAddedComponentsList(
     if (cycleParticipants.has(c.name)) cycleTier.push({ name: c.name, isCycle: true });
     else restTier.push({ name: c.name, isCycle: false });
   }
-  cycleTier.sort((a, b) => a.name.localeCompare(b.name));
-  restTier.sort((a, b) => a.name.localeCompare(b.name));
-  return [...cycleTier, ...restTier];
+  return sortTieredEntries(cycleTier, restTier);
 }
 
 export function buildAddedGroupsList(
@@ -91,9 +95,7 @@ export function buildAddedGroupsList(
       cycleTier.push({ name: member, depCount: unit.size - 1, isCycle: true });
     }
   }
-  cycleTier.sort((a, b) => a.name.localeCompare(b.name));
-  restTier.sort((a, b) => a.name.localeCompare(b.name));
-  return [...cycleTier, ...restTier];
+  return sortTieredEntries(cycleTier, restTier);
 }
 
 export function computeCounters(

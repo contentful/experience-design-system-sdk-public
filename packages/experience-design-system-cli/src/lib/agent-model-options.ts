@@ -8,7 +8,7 @@ export const MODEL_DESCRIPTION =
 
 const BEDROCK_AGENTS = AGENT_NAMES.filter((agent) => agentSupportsBedrock(agent)).join(', ');
 
-export const BEDROCK_DESCRIPTION = `Route the selected agent through AWS Bedrock instead of its default model provider (requires AWS credentials in the environment: AWS_PROFILE, or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_SESSION_TOKEN, plus AWS_REGION). Only supported by agents with a Bedrock routing mechanism (currently: ${BEDROCK_AGENTS}).`;
+const BEDROCK_DESCRIPTION = `Route the selected agent through AWS Bedrock instead of its default model provider (requires AWS credentials in the environment: AWS_PROFILE, or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_SESSION_TOKEN, plus AWS_REGION). Only supported by agents with a Bedrock routing mechanism (currently: ${BEDROCK_AGENTS}).`;
 
 export interface AgentModelOptionsConfig {
   agentDescription?: string;

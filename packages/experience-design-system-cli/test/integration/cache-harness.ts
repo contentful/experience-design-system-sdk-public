@@ -11,7 +11,7 @@
  */
 import { mkdtemp, rm, writeFile, chmod, mkdir, readFile, appendFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
 import {
@@ -24,14 +24,12 @@ import {
 } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 
-export type AgentInvocation = {
+type AgentInvocation = {
   /** Full prompt passed as the last positional arg to `claude --print --model X <prompt>`. */
   prompt: string;
   /** Names appearing in the prompt rawComponents block (cheap heuristic for select/generate skills). */
   componentNames: string[];
 };
-
-export type AgentResponder = (inv: AgentInvocation) => string;
 
 export type ScriptedAgent = {
   dir: string;
@@ -388,12 +386,3 @@ export function baseEnv(
     ...extra,
   };
 }
-
-export function bumpCliVersionRow(dbPath: string): void {
-  // Force-corrupt the cli_version of any existing select_cache rows so the
-  // next lookupSelectCache misses; used to guard the cli_version invariant.
-  corruptSelectCacheCliVersion(dbPath);
-}
-
-// Re-export resolve so test files don't all need their own import.
-export { resolve as resolvePath };

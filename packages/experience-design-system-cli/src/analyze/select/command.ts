@@ -9,6 +9,7 @@ import { loadReviewInput } from './parser.js';
 import { App } from './tui/App.js';
 import type { ReviewSessionPaths, ReviewSessionSnapshot } from './types.js';
 import { openPipelineDb, loadRawComponents, storeRawComponents, createStep, updateStep } from '../../session/db.js';
+import { resolveExtractSessionId } from '../../session/resolve-session-id.js';
 import {
   validateExtractedComponents,
   shouldExcludeDueToValidation,
@@ -17,6 +18,12 @@ import {
 import type { PreviewValidationError } from '../../apply/api-client.js';
 import type { ExtractionValidationIssue } from '../../types.js';
 import { bindAnalyticsSessionId, enrichCommandResult, exitWithAnalytics } from '../../analytics/index.js';
+import {
+  applyDotPath,
+  applyComponentPatch,
+  warnOnUnknownPatchComponents,
+  type ComponentPatchOperation,
+} from '../../lib/component-patch.js';
 
 type RefineCommandOptions = {
   session?: string;
@@ -31,78 +38,20 @@ type RefineCommandOptions = {
   excludeComponents?: string;
 };
 
-interface PatchOperation {
-  component: string;
-  status?: 'accepted' | 'rejected';
-  set?: Record<string, unknown>;
-}
-
-const SAFE_PATH_RE = /^[a-zA-Z0-9_.$[\]=]+$/;
-const PROTO_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-
-function applyDotPath(obj: Record<string, unknown>, path: string, value: unknown): void {
-  if (!SAFE_PATH_RE.test(path)) {
-    process.stderr.write(`Warning: --patch path contains invalid characters: '${path}', skipping\n`);
-    return;
-  }
-  const parts = path.split('.');
-  if (parts.some((p) => PROTO_KEYS.has(p))) {
-    process.stderr.write(`Warning: --patch path contains forbidden key: '${path}', skipping\n`);
-    return;
-  }
-  let current: Record<string, unknown> = obj;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const part = parts[i]!;
-    // Handle array predicate syntax: field[name=value]
-    const arrayMatch = /^(.+)\[name=(.+)\]$/.exec(part);
-    if (arrayMatch) {
-      const [, fieldName, matchValue] = arrayMatch;
-      const arr = current[fieldName!] as Array<Record<string, unknown>>;
-      if (Array.isArray(arr)) {
-        const item = arr.find((el) => el['name'] === matchValue);
-        if (item) {
-          current = item;
-        } else {
-          process.stderr.write(
-            `Warning: --patch array item [name=${matchValue}] not found in '${fieldName}', skipping\n`,
-          );
-          return;
-        }
-      }
-    } else {
-      if (typeof current[part] !== 'object' || current[part] === null) {
-        process.stderr.write(`Warning: --patch path '${path}' — '${part}' is not an object, skipping\n`);
-        return;
-      }
-      current = current[part] as Record<string, unknown>;
-    }
-  }
-  const lastPart = parts[parts.length - 1]!;
-  current[lastPart] = value;
-}
-
-function applyPatch(snapshot: ReviewSessionSnapshot, ops: PatchOperation[]): ReviewSessionSnapshot {
-  const components = snapshot.components.map((c) => {
-    const op = ops.find((o) => o.component === c.name);
-    if (!op) return c;
-
-    let updated = { ...c };
-    if (op.status) {
-      updated = { ...updated, status: op.status };
-    }
-    if (op.set) {
-      const editedProposal = structuredClone(updated.editedProposal) as unknown as Record<string, unknown>;
-      for (const [path, value] of Object.entries(op.set)) {
+function applyPatch(snapshot: ReviewSessionSnapshot, operations: ComponentPatchOperation[]): ReviewSessionSnapshot {
+  return {
+    ...snapshot,
+    components: applyComponentPatch(snapshot.components, operations, (component, values) => {
+      const editedProposal = structuredClone(component.editedProposal) as unknown as Record<string, unknown>;
+      for (const [path, value] of Object.entries(values)) {
         applyDotPath(editedProposal, path, value);
       }
-      updated = {
-        ...updated,
-        editedProposal: editedProposal as unknown as typeof updated.editedProposal,
+      return {
+        ...component,
+        editedProposal: editedProposal as unknown as typeof component.editedProposal,
       };
-    }
-    return updated;
-  });
-  return { ...snapshot, components };
+    }),
+  };
 }
 
 async function runNonInteractive(
@@ -220,7 +169,7 @@ async function runNonInteractive(
 
   // Apply --patch
   if (opts.patch) {
-    let patchOps: PatchOperation[];
+    let patchOps: ComponentPatchOperation[];
     try {
       const raw = await readFile(resolve(opts.patch), 'utf8');
       const parsed = JSON.parse(raw) as unknown;
@@ -229,7 +178,7 @@ async function runNonInteractive(
         await exitWithAnalytics(1);
         return;
       }
-      patchOps = parsed as PatchOperation[];
+      patchOps = parsed as ComponentPatchOperation[];
     } catch {
       process.stderr.write(`Error: cannot read or parse --patch file: ${opts.patch}\n`);
       await exitWithAnalytics(1);
@@ -237,12 +186,7 @@ async function runNonInteractive(
     }
 
     // Warn on unknown component names
-    const knownNames = new Set(result.components.map((c) => c.name));
-    for (const op of patchOps) {
-      if (!knownNames.has(op.component)) {
-        process.stderr.write(`Warning: --patch targets unknown component '${op.component}', skipping\n`);
-      }
-    }
+    warnOnUnknownPatchComponents(result.components, patchOps);
 
     result = applyPatch(result, patchOps);
   }
@@ -428,31 +372,7 @@ export async function rejectComponentsByName(
 }
 
 async function resolveSessionId(sessionFlag: string | undefined): Promise<string> {
-  if (sessionFlag) return sessionFlag;
-
-  const db = openPipelineDb();
-  try {
-    const row = db
-      .prepare(
-        `SELECT s.id FROM sessions s
-         JOIN steps st ON st.session_id = s.id
-         WHERE st.command = 'analyze extract'
-           AND st.status = 'complete'
-         ORDER BY st.started_at DESC
-         LIMIT 1`,
-      )
-      .get() as { id: string } | undefined;
-
-    if (!row) {
-      process.stderr.write(
-        'Error: no completed analyze extract session found. Run analyze extract first, or pass --session <id>.\n',
-      );
-      return await exitWithAnalytics(1);
-    }
-    return row.id;
-  } finally {
-    db.close();
-  }
+  return resolveExtractSessionId(sessionFlag, () => exitWithAnalytics(1));
 }
 
 export function registerAnalyzeEditCommand(program: Command): void {

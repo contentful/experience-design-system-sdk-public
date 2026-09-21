@@ -15,6 +15,7 @@ import {
 import { hashContent, hashPromptForSkill } from '../../session/cache-keys.js';
 import { readExistingContentfulEntitiesFromSession } from '../../helpers/read-existing-contentful-entities-from-session.js';
 import { summarizeForSelectAgent } from '../../helpers/summarize-existing-contentful-entities.js';
+import { resolveExtractSessionId } from '../../session/resolve-session-id.js';
 import {
   appendReviewEvent,
   getRefineArtifactsRoot,
@@ -38,16 +39,18 @@ import {
 import { access } from 'node:fs/promises';
 import type { RawComponentDefinition } from '../../types.js';
 import { readExperiencesCredentials } from '../../credentials-store.js';
-import { OutputFormatter, c } from '../../output/format.js';
+import { c } from '../../output/format.js';
 import { buildRepoContextIndex, buildSelectionContext, type SelectionContext } from './context-builder.js';
 import { runShowRationale } from './show-rationale.js';
 import { isAbsolute, resolve } from 'node:path';
 import { getDebugLogger } from '../../lib/debug-logger.js';
+import { invokeAgentWithOutput } from '../../lib/agent-output.js';
 import { bindAnalyticsSessionId, enrichCommandResult, exitWithAnalytics } from '../../analytics/index.js';
 import {
   validateExtractedComponents,
   shouldExcludeDueToValidation,
   formatExclusionWarning,
+  formatExcludedComponentLines,
 } from '@contentful/experience-design-system-extraction';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
@@ -67,31 +70,7 @@ function resolveBatchSize(): number {
 }
 
 async function resolveSessionId(sessionFlag: string | undefined): Promise<string> {
-  if (sessionFlag) return sessionFlag;
-
-  const db = openPipelineDb();
-  try {
-    const row = db
-      .prepare(
-        `SELECT s.id FROM sessions s
-         JOIN steps st ON st.session_id = s.id
-         WHERE st.command = 'analyze extract'
-           AND st.status = 'complete'
-         ORDER BY st.started_at DESC
-         LIMIT 1`,
-      )
-      .get() as { id: string } | undefined;
-
-    if (!row) {
-      process.stderr.write(
-        'Error: no completed analyze extract session found. Run analyze extract first, or pass --session <id>.\n',
-      );
-      return await exitWithAnalytics(1);
-    }
-    return row.id;
-  } finally {
-    db.close();
-  }
+  return resolveExtractSessionId(sessionFlag, () => exitWithAnalytics(1));
 }
 
 interface SelectOneResult {
@@ -190,19 +169,11 @@ async function selectBatch(
     existingComponentsInline,
   });
 
-  let outputBuf = '';
-  const formatter = new OutputFormatter(verbose, (s) => {
-    outputBuf += s;
-  });
-
-  const result = await invoker.invoke({
-    agent,
-    model,
-    prompt,
-    timeoutMs: DEFAULT_TIMEOUT_MS,
-    onOutput: (chunk) => formatter.push(chunk),
-  });
-  formatter.flush();
+  const { result, output: outputBuf } = await invokeAgentWithOutput(
+    invoker,
+    { agent, model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS },
+    verbose,
+  );
 
   if (verbose) {
     const names = batch.map((b) => b.candidate.component.name).join(', ');
@@ -573,14 +544,8 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         if (invalidComponents.length > 0 && !opts.excludeInvalid) {
           const lines = [
             `Error: ${invalidComponents.length} component(s) failed validation; refusing select-agent without --exclude-invalid:`,
+            ...formatExcludedComponentLines(invalidComponents),
           ];
-          for (const comp of invalidComponents) {
-            const codes = (comp.validationIssues ?? [])
-              .filter((i) => i.severity === 'error')
-              .map((i) => i.code)
-              .join(', ');
-            lines.push(`  ✗  ${comp.name}  ${codes}`);
-          }
           lines.push('');
           lines.push('Re-run with --exclude-invalid to auto-reject these components, or fix them in source first.');
           process.stderr.write(lines.join('\n') + '\n');

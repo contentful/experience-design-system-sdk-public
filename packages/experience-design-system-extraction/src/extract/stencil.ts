@@ -5,18 +5,11 @@ import type {
   RawSlotDefinition,
   ComponentExtractionResult,
 } from '../types.js';
-import { getJsxTagNameNode, isIntrinsicJsxElement } from './tsx-shared.js';
+import { getJsxTagNameNode, isIntrinsicJsxElement, kebabToPascal } from './tsx-shared.js';
+import { createSortedExtractionResult, extractProjectSourceFiles } from './file-extraction-workers.js';
 
 function isStencilFile(sourceFile: SourceFile): boolean {
   return sourceFile.getImportDeclarations().some((imp) => imp.getModuleSpecifierValue() === '@stencil/core');
-}
-
-function kebabToPascal(input: string): string {
-  return input
-    .split('-')
-    .filter(Boolean)
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join('');
 }
 
 function getComponentTag(classDecl: ClassDeclaration): string | undefined {
@@ -363,24 +356,12 @@ export async function extractStencilComponents(filePaths: string[]): Promise<Com
     project.addSourceFileAtPath(filePath);
   }
 
-  const warnings: string[] = [];
-  const components: RawComponentDefinition[] = [];
+  const { items: components, warnings } = extractProjectSourceFiles(project, (sourceFile, sourceWarnings) => {
+    if (!isStencilFile(sourceFile)) return [];
+    const extracted = extractFromSourceFile(sourceFile, sourceWarnings);
+    detectFunctionalComponents(sourceFile, sourceWarnings);
+    return extracted;
+  });
 
-  for (const sourceFile of project.getSourceFiles()) {
-    try {
-      if (!isStencilFile(sourceFile)) continue;
-      const extracted = extractFromSourceFile(sourceFile, warnings);
-      components.push(...extracted);
-      detectFunctionalComponents(sourceFile, warnings);
-    } catch (e) {
-      warnings.push(
-        `Failed to extract from ${sourceFile.getFilePath()}: ${e instanceof Error ? e.message : String(e)}`,
-      );
-    }
-  }
-
-  return {
-    components: components.sort((a, b) => a.name.localeCompare(b.name)),
-    warnings,
-  };
+  return createSortedExtractionResult(components, warnings);
 }

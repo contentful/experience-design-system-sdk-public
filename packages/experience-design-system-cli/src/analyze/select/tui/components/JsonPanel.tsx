@@ -1,5 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { HighlightedLine, type HighlightPart } from './HighlightedLine.js';
+import { ScrollablePanel } from './ScrollablePanel.js';
 
 type JsonPanelProps = {
   label: string;
@@ -12,7 +14,7 @@ type JsonPanelProps = {
 
 function highlightJson(line: string): React.ReactElement {
   // Simple regex-based syntax highlighting
-  const parts: Array<{ text: string; color?: string; dim?: boolean }> = [];
+  const parts: HighlightPart[] = [];
   let remaining = line;
 
   while (remaining.length > 0) {
@@ -61,15 +63,7 @@ function highlightJson(line: string): React.ReactElement {
     remaining = remaining.slice(1);
   }
 
-  return (
-    <>
-      {parts.map((part, i) => (
-        <Text key={i} color={part.color} dimColor={part.dim}>
-          {part.text}
-        </Text>
-      ))}
-    </>
-  );
+  return <HighlightedLine parts={parts} />;
 }
 
 function truncateLine(line: string, maxWidth: number): string {
@@ -82,33 +76,28 @@ export function JsonPanel({ label, value, scrollOffset, width, height, active }:
   const visibleLines = allLines.slice(scrollOffset, scrollOffset + height);
   const innerWidth = Math.max(1, width - 2); // subtract border
   const totalLines = allLines.length;
-  const truncated = totalLines > height;
   const visibleStart = totalLines === 0 ? 0 : scrollOffset + 1;
   const visibleEnd = Math.min(totalLines, scrollOffset + height);
 
   return (
-    <Box
-      flexDirection="column"
-      width={width}
-      height={height + 2} // +2 for borders
-      borderStyle="single"
-      borderColor={active ? 'white' : undefined}
-    >
-      <Box>
+    <ScrollablePanel
+      header={
         <Text bold dimColor={!active}>
           {label}
         </Text>
-        {truncated && (
-          <>
-            <Box flexGrow={1} />
-            <Text dimColor={!active}>{`↕ ${visibleStart}-${visibleEnd}/${totalLines}`}</Text>
-          </>
-        )}
-      </Box>
+      }
+      width={width}
+      height={height}
+      active={active}
+      totalLines={totalLines}
+      visibleStart={visibleStart}
+      visibleEnd={visibleEnd}
+      borderColor={active ? 'white' : undefined}
+    >
       {visibleLines.map((line, i) => {
         const truncated = truncateLine(line, innerWidth);
         return <Box key={i}>{highlightJson(truncated)}</Box>;
       })}
-    </Box>
+    </ScrollablePanel>
   );
 }

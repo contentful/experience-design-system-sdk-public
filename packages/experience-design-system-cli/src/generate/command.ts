@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { render } from 'ink';
-import { access, readFile, readdir, stat } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Command } from 'commander';
 import {
@@ -19,8 +19,9 @@ import {
   buildPrompt,
   type Skill,
 } from '@contentful/experience-design-system-generation';
-import { OutputFormatter, c } from '../output/format.js';
+import { c } from '../output/format.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
+import { invokeAgentWithOutput } from '../lib/agent-output.js';
 import { GenerateView } from './tui/GenerateView.js';
 import type { GenerateViewResult } from './tui/GenerateView.js';
 import { registerGenerateEditCommand } from './edit/command.js';
@@ -44,6 +45,7 @@ import { hashContent, hashPromptForSkill } from '../session/cache-keys.js';
 import { readExistingContentfulEntitiesFromSession } from '../helpers/read-existing-contentful-entities-from-session.js';
 import { summarizeForGenerateAgent, summarizeForMapTokens } from '../helpers/summarize-existing-contentful-entities.js';
 import type { ExistingContentfulEntities } from '../helpers/fetch-existing-contentful-entities.js';
+import { resolveExtractSessionId } from '../session/resolve-session-id.js';
 import { getRefineArtifactsRoot, getRefineSessionPaths } from '../analyze/select/persistence.js';
 import type { ReviewSessionSnapshot } from '../analyze/select/types.js';
 import type { RawComponentDefinition } from '../types.js';
@@ -51,6 +53,7 @@ import { readExperiencesCredentials } from '../credentials-store.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js';
 import { die, assertBinaryInPath } from '../lib/cli-errors.js';
+import { pathExists } from '../lib/path-exists.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 const DEFAULT_COMPONENT_CONCURRENCY = 10;
@@ -76,12 +79,6 @@ interface GenerateSubcommandOptions {
 const invoker = createLocalCliAgentInvoker({
   onDebugEvent: (name, payload) => getDebugLogger().event('agent', name, payload),
 });
-
-async function pathExists(p: string): Promise<boolean> {
-  return access(p)
-    .then(() => true)
-    .catch(() => false);
-}
 
 async function assertFileExists(flag: string, p: string): Promise<void> {
   if (!(await pathExists(p))) die(`Error: file not found: ${p} (from ${flag})`);
@@ -274,18 +271,11 @@ async function runOneComponent(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     if (attempt > 1) await new Promise((res) => setTimeout(res, RETRY_BACKOFF_MS));
-    let outputBuf = '';
-    const formatter = new OutputFormatter(verbose, (s) => {
-      outputBuf += s;
-    });
-    const result = await invoker.invoke({
-      agent,
-      model,
-      prompt,
-      timeoutMs: DEFAULT_TIMEOUT_MS,
-      onOutput: (chunk) => formatter.push(chunk),
-    });
-    formatter.flush();
+    const { result, output: outputBuf } = await invokeAgentWithOutput(
+      invoker,
+      { agent, model, prompt, timeoutMs: DEFAULT_TIMEOUT_MS },
+      verbose,
+    );
 
     // Write header + all tool-call output as one block so concurrent workers don't interleave.
     const retryNote = attempt > 1 ? `  ${c.yellow(`retrying (${attempt}/${maxAttempts})`)}` : '';
@@ -400,33 +390,11 @@ async function runAllComponents(
   return results;
 }
 
-function resolveSessionId(sessionFlag: string | undefined): string {
-  if (sessionFlag) return sessionFlag;
-
-  const db = openPipelineDb();
-  try {
-    const row = db
-      .prepare(
-        `SELECT s.id FROM sessions s
-         JOIN steps st ON st.session_id = s.id
-         WHERE st.command = 'analyze extract'
-           AND st.status = 'complete'
-         ORDER BY st.started_at DESC
-         LIMIT 1`,
-      )
-      .get() as { id: string } | undefined;
-
-    if (!row) {
-      process.stderr.write(
-        'Error: no completed analyze extract session found. Run analyze extract first, or pass --session <id>.\n',
-      );
-      void exitWithAnalytics(1);
-      throw new Error('exit');
-    }
-    return row.id;
-  } finally {
-    db.close();
-  }
+async function resolveSessionId(sessionFlag: string | undefined): Promise<string> {
+  return resolveExtractSessionId(sessionFlag, () => {
+    void exitWithAnalytics(1);
+    throw new Error('exit');
+  });
 }
 
 async function loadAcceptedNames(sessionId: string): Promise<Set<string> | null> {
@@ -510,7 +478,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
   let sessionId: string | undefined;
   let allComponents: RawComponentWithId[] | undefined;
   if (skill === 'components') {
-    sessionId = resolveSessionId(opts.session);
+    sessionId = await resolveSessionId(opts.session);
     await bindAnalyticsSessionId(sessionId);
     const acceptedNames = await loadAcceptedNames(sessionId);
     const db = openPipelineDb();

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { Box, Text } from 'ink';
 import { statSync } from 'node:fs';
 import { useImmediateInput } from '../../../analyze/select/tui/hooks/useImmediateInput.js';
 import { normalizePath } from '../../path-utils.js';
+import { useBlinkingCursor } from '../../../tui/use-blinking-cursor.js';
 
 type TokenInputStepProps = {
   onConfirm: (rawTokensPath: string) => void;
@@ -13,15 +14,10 @@ type TokenInputStepProps = {
 
 export function TokenInputStep({ onConfirm, onSkip, onQuit }: TokenInputStepProps): React.ReactElement {
   const [inputValue, setInputValue] = useState('');
-  const [cursorVisible, setCursorVisible] = useState(true);
+  const cursorVisible = useBlinkingCursor();
   const [error, setError] = useState<string | null>(null);
   const [resolvedPath, setResolvedPath] = useState<string | null>(null);
   const [typingMode, setTypingMode] = useState(false);
-
-  useEffect(() => {
-    const interval = setInterval(() => setCursorVisible((v) => !v), 500);
-    return () => clearInterval(interval);
-  }, []);
 
   useImmediateInput((input, key) => {
     if (key.return) {

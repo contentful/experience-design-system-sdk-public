@@ -1,6 +1,6 @@
 import React, { createElement, useState } from 'react';
 import { render, useInput } from 'ink';
-import { access, readFile, readdir, stat } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Command } from 'commander';
 import {
@@ -39,16 +39,15 @@ import {
   recordContentfulContext,
 } from '../analytics/index.js';
 import type { CommandFailure } from '../analytics/index.js';
+import { pathExists } from '../lib/path-exists.js';
 
 async function die(message: string, fields: CommandFailure = {}): Promise<never> {
   process.stderr.write(`${message}\n`);
   return exitWithAnalytics(1, fields);
 }
 
-async function pathExists(p: string): Promise<boolean> {
-  return access(p)
-    .then(() => true)
-    .catch(() => false);
+function dieWithApiError(error: ApiError, verbose?: boolean): Promise<never> {
+  return die(`Error: ${formatApiError(error, verbose)}`, failureFromApiError(error));
 }
 
 async function assertFileExists(flag: string, p: string): Promise<void> {
@@ -179,6 +178,192 @@ interface SelectOptions extends SharedImportOptions {
   deselect?: string[];
   force?: boolean;
   allowDeletions?: boolean;
+}
+
+type SharedInputs = Awaited<ReturnType<typeof resolveSharedInputs>>;
+
+function addSharedApplyOptions(command: Command): void {
+  addArtifactInputOptions(command);
+  addContentfulTargetOptions(command);
+  addCompositionOptions(command);
+}
+
+function splitSelectedKeys(selectedKeys: Set<string>): {
+  selectedComponentKeys: Set<string>;
+  selectedTokenPaths: Set<string>;
+} {
+  const selectedComponentKeys = new Set<string>();
+  const selectedTokenPaths = new Set<string>();
+  for (const key of selectedKeys) {
+    const [kind, ...idParts] = key.split(':');
+    const id = idParts.join(':');
+    if (kind === 'component') selectedComponentKeys.add(id);
+    else if (kind === 'token') selectedTokenPaths.add(id);
+  }
+  return { selectedComponentKeys, selectedTokenPaths };
+}
+
+async function resolveSharedInputsOrDie(opts: SharedImportOptions, verbose?: boolean): Promise<SharedInputs> {
+  try {
+    return await resolveSharedInputs(opts);
+  } catch (e) {
+    if (e instanceof ApiError) return await dieWithApiError(e, verbose);
+    throw e;
+  }
+}
+
+type ApplyProgressStatus = 'applying' | 'polling' | 'error';
+
+function renderApplyProgress(
+  rerender: (element: React.ReactElement) => void,
+  spaceId: string,
+  environmentId: string,
+  status: ApplyProgressStatus,
+  details: { operationId?: string; error?: string } = {},
+): void {
+  rerender(
+    createElement(ServerApplyProgress, {
+      spaceId,
+      environmentId,
+      status,
+      ...details,
+    }),
+  );
+}
+
+interface ApplyAndPollOptions {
+  acknowledgeBreakingChanges: boolean;
+  allowDeletions: boolean;
+  onProgress?: (status: 'applying' | 'polling', operationId?: string) => void;
+  onStarted?: (operationId: string) => void;
+  onApiError: (error: ApiError) => Promise<void> | void;
+}
+
+function createApplyProgressHandlers(
+  rerender: (element: React.ReactElement) => void,
+  spaceId: string,
+  environmentId: string,
+  formatError: (error: ApiError) => string,
+): Pick<ApplyAndPollOptions, 'onProgress' | 'onApiError'> {
+  return {
+    onProgress: (status, operationId) => {
+      renderApplyProgress(rerender, spaceId, environmentId, status, { operationId });
+    },
+    onApiError: (error) => {
+      renderApplyProgress(rerender, spaceId, environmentId, 'error', { error: formatError(error) });
+    },
+  };
+}
+
+async function applyAndPoll(
+  client: ImportApiClient,
+  manifest: Parameters<ImportApiClient['applyImport']>[0],
+  options: ApplyAndPollOptions,
+): Promise<ApplyOperationResponse | null> {
+  options.onProgress?.('applying');
+
+  let operation: ApplyOperationResponse;
+  try {
+    operation = await client.applyImport(manifest, {
+      acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
+      allowDeletions: options.allowDeletions,
+    });
+  } catch (e) {
+    if (e instanceof ApiError) {
+      await options.onApiError(e);
+      return null;
+    }
+    throw e;
+  }
+
+  options.onStarted?.(operation.sys.id);
+  options.onProgress?.('polling', operation.sys.id);
+
+  try {
+    operation = await client.pollOperation(operation.sys.id);
+  } catch (e) {
+    if (e instanceof ApiError) {
+      await options.onApiError(e);
+      return null;
+    }
+    throw e;
+  }
+
+  return operation;
+}
+
+function buildSelectedApply(
+  fullManifest: Parameters<typeof buildFilteredManifest>[0],
+  entities: SelectableEntity[],
+  selectedKeys: Set<string>,
+): { filteredManifest: ReturnType<typeof buildFilteredManifest>; hasBreaking: boolean } {
+  const { selectedComponentKeys, selectedTokenPaths } = splitSelectedKeys(selectedKeys);
+  const filteredManifest = buildFilteredManifest(fullManifest, selectedComponentKeys, selectedTokenPaths);
+  const hasBreaking = entities.some((e) => e.isBreaking && selectedKeys.has(makeSelectKey(e.kind, e.id)));
+  return { filteredManifest, hasBreaking };
+}
+
+interface NonInteractiveApplyOptions {
+  client: ImportApiClient;
+  manifest: Parameters<ImportApiClient['applyImport']>[0];
+  spaceId: string;
+  environmentId: string;
+  host?: string;
+  acknowledgeBreakingChanges: boolean;
+  allowDeletions: boolean;
+  verbose?: boolean;
+}
+
+async function runNonInteractiveApply(options: NonInteractiveApplyOptions): Promise<void> {
+  const operation = await applyAndPoll(options.client, options.manifest, {
+    acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
+    allowDeletions: options.allowDeletions,
+    onStarted: (operationId) => {
+      process.stderr.write(`Apply operation started: ${operationId}\n`);
+    },
+    onApiError: (error) => dieWithApiError(error, options.verbose),
+  });
+  if (!operation) return;
+
+  const summary = buildApplyOutput(operation, options.spaceId, options.environmentId, options.host);
+  recordApplyOutcome(options.client, options.spaceId, options.environmentId, operation);
+  process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
+  await exitWithAnalytics(operation.sys.status === 'succeeded' ? 0 : 1);
+}
+
+interface InteractiveApplyOptions {
+  client: ImportApiClient;
+  manifest: Parameters<ImportApiClient['applyImport']>[0];
+  spaceId: string;
+  environmentId: string;
+  host?: string;
+  acknowledgeBreakingChanges: boolean;
+  allowDeletions: boolean;
+  verbose?: boolean;
+  rerender: (element: React.ReactElement) => void;
+  onDone: () => void;
+}
+
+async function runInteractiveApply(options: InteractiveApplyOptions): Promise<void> {
+  const operation = await applyAndPoll(options.client, options.manifest, {
+    acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
+    allowDeletions: options.allowDeletions,
+    ...createApplyProgressHandlers(options.rerender, options.spaceId, options.environmentId, (error) =>
+      formatApiError(error, options.verbose),
+    ),
+  });
+  if (!operation) return;
+
+  recordApplyOutcome(options.client, options.spaceId, options.environmentId, operation);
+  options.rerender(
+    createElement(ServerApplyDone, {
+      operation,
+      spaceId: options.spaceId,
+      environmentId: options.environmentId,
+      host: options.host,
+    }),
+  );
+  options.onDone();
 }
 
 async function resolveSharedInputs(opts: SharedImportOptions): Promise<{
@@ -526,17 +711,9 @@ export function registerApplyCommand(program: Command): void {
     .description('Preview, select, or push design system entities to Contentful ExO');
 
   const previewCmd = applyCmd.command('preview').description('Show a read-only diff of what apply push would do');
-  addArtifactInputOptions(previewCmd);
-  addContentfulTargetOptions(previewCmd);
-  addCompositionOptions(previewCmd);
+  addSharedApplyOptions(previewCmd);
   previewCmd.action(async (opts: PreviewOptions) => {
-    let inputs: Awaited<ReturnType<typeof resolveSharedInputs>>;
-    try {
-      inputs = await resolveSharedInputs(opts);
-    } catch (e) {
-      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
-      throw e;
-    }
+    const inputs = await resolveSharedInputsOrDie(opts);
 
     const { components, tokens, client } = inputs;
     const spaceId = opts.spaceId!;
@@ -583,9 +760,7 @@ export function registerApplyCommand(program: Command): void {
   });
 
   const pushCmd = applyCmd.command('push').description('Write component types and design tokens to Contentful ExO');
-  addArtifactInputOptions(pushCmd);
-  addContentfulTargetOptions(pushCmd);
-  addCompositionOptions(pushCmd);
+  addSharedApplyOptions(pushCmd);
   addAllowDeletionsOption(pushCmd);
   pushCmd
     .option('--yes', 'Skip interactive confirmation')
@@ -600,14 +775,7 @@ export function registerApplyCommand(program: Command): void {
         await exitWithAnalytics(1);
       }
 
-      let inputs: Awaited<ReturnType<typeof resolveSharedInputs>>;
-      try {
-        inputs = await resolveSharedInputs(opts);
-      } catch (e) {
-        if (e instanceof ApiError)
-          return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
-        throw e;
-      }
+      const inputs = await resolveSharedInputsOrDie(opts, opts.verbose);
 
       const { components, tokens, client } = inputs;
       const spaceId = opts.spaceId!;
@@ -682,103 +850,33 @@ export function registerApplyCommand(program: Command): void {
           process.stderr.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
         }
 
-        let operation: ApplyOperationResponse;
-        try {
-          operation = await client.applyImport(manifest, {
-            acknowledgeBreakingChanges: breakingWithImpact || opts.force === true,
-            allowDeletions: opts.allowDeletions === true,
-          });
-        } catch (e) {
-          if (e instanceof ApiError)
-            return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
-          throw e;
-        }
-
-        process.stderr.write(`Apply operation started: ${operation.sys.id}\n`);
-
-        try {
-          operation = await client.pollOperation(operation.sys.id);
-        } catch (e) {
-          if (e instanceof ApiError)
-            return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
-          throw e;
-        }
-
-        const summary = buildApplyOutput(operation, spaceId, environmentId, opts.host);
-        recordApplyOutcome(client, spaceId, environmentId, operation);
-        process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
-        const exitCode = operation.sys.status === 'succeeded' ? 0 : 1;
-        await exitWithAnalytics(exitCode);
+        await runNonInteractiveApply({
+          client,
+          manifest,
+          spaceId,
+          environmentId,
+          acknowledgeBreakingChanges: breakingWithImpact || opts.force === true,
+          allowDeletions: opts.allowDeletions === true,
+          host: opts.host,
+          verbose: opts.verbose,
+        });
         return;
       }
 
       await new Promise<void>((resolvePromise) => {
         const runApply = async (acknowledge: boolean, applyDeletions: boolean) => {
-          instance.rerender(
-            createElement(ServerApplyProgress, {
-              spaceId,
-              environmentId,
-              status: 'applying',
-            }),
-          );
-
-          let operation: ApplyOperationResponse;
-          try {
-            operation = await client.applyImport(manifest, {
-              acknowledgeBreakingChanges: acknowledge,
-              allowDeletions: applyDeletions,
-            });
-          } catch (e) {
-            if (e instanceof ApiError) {
-              instance.rerender(
-                createElement(ServerApplyProgress, {
-                  spaceId,
-                  environmentId,
-                  status: 'error',
-                  error: formatApiError(e, opts.verbose),
-                }),
-              );
-              return;
-            }
-            throw e;
-          }
-
-          instance.rerender(
-            createElement(ServerApplyProgress, {
-              spaceId,
-              environmentId,
-              status: 'polling',
-              operationId: operation.sys.id,
-            }),
-          );
-
-          try {
-            operation = await client.pollOperation(operation.sys.id);
-          } catch (e) {
-            if (e instanceof ApiError) {
-              instance.rerender(
-                createElement(ServerApplyProgress, {
-                  spaceId,
-                  environmentId,
-                  status: 'error',
-                  error: formatApiError(e, opts.verbose),
-                }),
-              );
-              return;
-            }
-            throw e;
-          }
-
-          recordApplyOutcome(client, spaceId, environmentId, operation);
-          instance.rerender(
-            createElement(ServerApplyDone, {
-              operation,
-              spaceId,
-              environmentId,
-              host: opts.host,
-            }),
-          );
-          resolvePromise();
+          await runInteractiveApply({
+            client,
+            manifest,
+            spaceId,
+            environmentId,
+            host: opts.host,
+            acknowledgeBreakingChanges: acknowledge,
+            allowDeletions: applyDeletions,
+            verbose: opts.verbose,
+            rerender: (element) => instance.rerender(element),
+            onDone: resolvePromise,
+          });
         };
 
         const instance = render(
@@ -802,9 +900,7 @@ export function registerApplyCommand(program: Command): void {
     });
 
   const selectCmd = applyCmd.command('select').description('Select a subset of entities and push to Contentful ExO');
-  addArtifactInputOptions(selectCmd);
-  addContentfulTargetOptions(selectCmd);
-  addCompositionOptions(selectCmd);
+  addSharedApplyOptions(selectCmd);
   addSelectionOptions(selectCmd);
   addAllowDeletionsOption(selectCmd);
   selectCmd.option('--force', 'Skip confirmation for breaking changes').action(async (opts: SelectOptions) => {
@@ -816,13 +912,7 @@ export function registerApplyCommand(program: Command): void {
       });
     }
 
-    let inputs: Awaited<ReturnType<typeof resolveSharedInputs>>;
-    try {
-      inputs = await resolveSharedInputs(opts);
-    } catch (e) {
-      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
-      throw e;
-    }
+    const inputs = await resolveSharedInputsOrDie(opts);
 
     const { components, tokens, client } = inputs;
 
@@ -867,129 +957,39 @@ export function registerApplyCommand(program: Command): void {
         await exitWithAnalytics(0);
       }
 
-      const selectedComponentKeys = new Set<string>();
-      const selectedTokenPaths = new Set<string>();
-      for (const key of selectedKeys) {
-        const [kind, ...idParts] = key.split(':');
-        const id = idParts.join(':');
-        if (kind === 'component') selectedComponentKeys.add(id);
-        else if (kind === 'token') selectedTokenPaths.add(id);
-      }
-
-      const filteredManifest = buildFilteredManifest(fullManifest, selectedComponentKeys, selectedTokenPaths);
-      const hasBreaking = entities.some((e) => e.isBreaking && selectedKeys.has(makeSelectKey(e.kind, e.id)));
+      const { filteredManifest, hasBreaking } = buildSelectedApply(fullManifest, entities, selectedKeys);
 
       if (hasBreaking && !opts.force) {
         process.stderr.write('Error: selection includes breaking changes. Use --force to acknowledge.\n');
         await exitWithAnalytics(1);
       }
 
-      let operation: ApplyOperationResponse;
-      try {
-        operation = await client.applyImport(filteredManifest, {
-          acknowledgeBreakingChanges: hasBreaking || opts.force === true,
-          allowDeletions: opts.allowDeletions === true,
-        });
-      } catch (e) {
-        if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
-        throw e;
-      }
-
-      process.stderr.write(`Apply operation started: ${operation.sys.id}\n`);
-
-      try {
-        operation = await client.pollOperation(operation.sys.id);
-      } catch (e) {
-        if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
-        throw e;
-      }
-
-      const summary = buildApplyOutput(operation, spaceId, environmentId, opts.host);
-      recordApplyOutcome(client, spaceId, environmentId, operation);
-      process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
-      await exitWithAnalytics(operation.sys.status === 'succeeded' ? 0 : 1);
+      await runNonInteractiveApply({
+        client,
+        manifest: filteredManifest,
+        spaceId,
+        environmentId,
+        acknowledgeBreakingChanges: hasBreaking || opts.force === true,
+        allowDeletions: opts.allowDeletions === true,
+        host: opts.host,
+      });
       return;
     }
 
     await new Promise<void>((resolvePromise) => {
       const runSelectApply = async (selectedKeys: Set<string>) => {
-        const selectedComponentKeys = new Set<string>();
-        const selectedTokenPaths = new Set<string>();
-        for (const key of selectedKeys) {
-          const [kind, ...idParts] = key.split(':');
-          const id = idParts.join(':');
-          if (kind === 'component') selectedComponentKeys.add(id);
-          else if (kind === 'token') selectedTokenPaths.add(id);
-        }
-
-        const filteredManifest = buildFilteredManifest(fullManifest, selectedComponentKeys, selectedTokenPaths);
-        const hasBreaking = entities.some((e) => e.isBreaking && selectedKeys.has(makeSelectKey(e.kind, e.id)));
-
-        instance.rerender(
-          createElement(ServerApplyProgress, {
-            spaceId,
-            environmentId,
-            status: 'applying',
-          }),
-        );
-
-        let operation: ApplyOperationResponse;
-        try {
-          operation = await client.applyImport(filteredManifest, {
-            acknowledgeBreakingChanges: hasBreaking,
-            allowDeletions: opts.allowDeletions === true,
-          });
-        } catch (e) {
-          if (e instanceof ApiError) {
-            instance.rerender(
-              createElement(ServerApplyProgress, {
-                spaceId,
-                environmentId,
-                status: 'error',
-                error: formatApiError(e),
-              }),
-            );
-            return;
-          }
-          throw e;
-        }
-
-        instance.rerender(
-          createElement(ServerApplyProgress, {
-            spaceId,
-            environmentId,
-            status: 'polling',
-            operationId: operation.sys.id,
-          }),
-        );
-
-        try {
-          operation = await client.pollOperation(operation.sys.id);
-        } catch (e) {
-          if (e instanceof ApiError) {
-            instance.rerender(
-              createElement(ServerApplyProgress, {
-                spaceId,
-                environmentId,
-                status: 'error',
-                error: formatApiError(e),
-              }),
-            );
-            return;
-          }
-          throw e;
-        }
-
-        recordApplyOutcome(client, spaceId, environmentId, operation);
-        instance.rerender(
-          createElement(ServerApplyDone, {
-            operation,
-            spaceId,
-            environmentId,
-            host: opts.host,
-          }),
-        );
-        resolvePromise();
+        const { filteredManifest, hasBreaking } = buildSelectedApply(fullManifest, entities, selectedKeys);
+        await runInteractiveApply({
+          client,
+          manifest: filteredManifest,
+          spaceId,
+          environmentId,
+          host: opts.host,
+          acknowledgeBreakingChanges: hasBreaking,
+          allowDeletions: opts.allowDeletions === true,
+          rerender: (element) => instance.rerender(element),
+          onDone: resolvePromise,
+        });
       };
 
       const instance = render(

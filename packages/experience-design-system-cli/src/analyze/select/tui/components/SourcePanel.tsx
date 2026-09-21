@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { HighlightedLine, type HighlightPart } from './HighlightedLine.js';
 
 type SourcePanelProps = {
   sourceCode: string | null;
@@ -14,7 +15,7 @@ const KEYWORDS =
   /\b(function|export|const|let|import|return|interface|type|default|class|extends|implements|from|async|await)\b/;
 
 function highlightSourceLine(line: string): React.ReactElement {
-  const parts: Array<{ text: string; color?: string }> = [];
+  const parts: HighlightPart[] = [];
   let remaining = line;
 
   while (remaining.length > 0) {
@@ -38,15 +39,7 @@ function highlightSourceLine(line: string): React.ReactElement {
     remaining = remaining.slice(1);
   }
 
-  return (
-    <>
-      {parts.map((part, i) => (
-        <Text key={i} color={part.color}>
-          {part.text}
-        </Text>
-      ))}
-    </>
-  );
+  return <HighlightedLine parts={parts} />;
 }
 
 function truncateFilePath(filePath: string, maxWidth: number): string {

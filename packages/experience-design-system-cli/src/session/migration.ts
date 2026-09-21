@@ -7,14 +7,14 @@ import { generateSessionId } from './session-id.js';
 
 const MIGRATION_NAME = 'v1_import_and_reviews';
 
-export function getReviewsDir(): string {
+function getReviewsDir(): string {
   if (process.env.EDS_REVIEW_ARTIFACTS_DIR) {
     return resolve(process.env.EDS_REVIEW_ARTIFACTS_DIR);
   }
   return resolve(homedir(), '.contentful', 'experience-design-system-cli', 'reviews');
 }
 
-export function getLegacyImportDbPath(): string {
+function getLegacyImportDbPath(): string {
   if (process.env.EDS_IMPORT_DB_PATH) {
     return resolve(process.env.EDS_IMPORT_DB_PATH);
   }

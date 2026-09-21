@@ -416,7 +416,7 @@ export async function promptCodexModel(ask: (q: string) => Promise<string> = pro
   return trimmed || undefined;
 }
 
-export async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel: string | undefined }> {
+async function setupAgent(): Promise<{ agent: AgentName | undefined; agentModel: string | undefined }> {
   section('Step 4: Coding agent (claude, codex, opencode, or copilot)', '[required]');
   info('experiences import uses a coding agent to generate component definitions.');
   info('');

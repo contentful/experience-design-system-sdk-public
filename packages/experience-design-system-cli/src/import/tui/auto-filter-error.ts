@@ -15,7 +15,7 @@ const ANSI_RE = /\x1b\[[0-9;]*m/g;
 const PROGRESS_RE = /^progress=/;
 const PER_COMPONENT_RE = /\[\d+\/\d+\]/;
 
-export function stripAnsi(s: string): string {
+function stripAnsi(s: string): string {
   return s.replace(ANSI_RE, '');
 }
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { TopBar } from '../select/tui/components/TopBar.js';
 import { useImmediateInput } from '../select/tui/hooks/useImmediateInput.js';
+import { handleListScrollInput } from '../select/tui/hooks/list-scroll-input.js';
 
 export type AnalyzeViewResult = {
   sourceDirectory: string;
@@ -56,19 +57,12 @@ export function AnalyzeView({ result, onExit }: AnalyzeViewProps): React.ReactEl
   const maxOffset = Math.max(0, result.components.length - visibleCount);
 
   useImmediateInput((input, key) => {
-    if (input === 'q' || key.return) {
-      onExit();
-      return;
-    }
-    if (key.upArrow || input === 'k') {
-      setScrollOffset((o) => Math.max(0, o - 1));
-    } else if (key.downArrow || input === 'j') {
-      setScrollOffset((o) => Math.min(maxOffset, o + 1));
-    } else if (input === 'g') {
-      setScrollOffset(0);
-    } else if (input === 'G') {
-      setScrollOffset(maxOffset);
-    }
+    handleListScrollInput(input, key, {
+      onExit,
+      onScroll: setScrollOffset,
+      maxOffset,
+      endOffset: maxOffset,
+    });
   });
 
   const visible = result.components.slice(scrollOffset, scrollOffset + visibleCount);

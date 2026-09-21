@@ -11,8 +11,13 @@ import {
 import { computeAllClosures, type ComponentGraphNode, type NodeStatus } from '../../../analyze/composite-closure.js';
 import { buildComponentGraph } from '../../../analyze/slot-graph.js';
 import { findSlotCycles, type SlotCycle } from '../../../analyze/cycle-detection.js';
-import { computeAutocomplete } from '../autocomplete.js';
-import { buildFlatDimPredicate, computeFilterKeys, intersectFilterKeys, type FilterCategory } from '../step-filters.js';
+import { buildFlatDimPredicate, computeFilterKeys, intersectFilterKeys } from '../step-filters.js';
+import { createSidebarViewsHelpSection } from '../sidebar-help.js';
+import { handleSidebarSearchInput } from '../sidebar-input.js';
+import { collectExpandedGroupRoots, computeSidebarViewToggle } from '../sidebar-navigation.js';
+import { handleLineageNavigation } from '../lineage-input.js';
+import { useSidebarSearchState } from '../hooks/sidebar-search-state.js';
+import { SearchMatchSummary } from '../components/SearchMatchSummary.js';
 import { useLineage } from '../hooks/useLineage.js';
 import { useOverlayPanel } from '../hooks/useOverlayPanel.js';
 import { computeSidebarBudget, FALLBACK_ROWS } from '../lineage-layout.js';
@@ -80,17 +85,7 @@ const HELP_SECTIONS: HelpSection[] = [
       { keys: 'Y', label: 'Accept non-flagged' },
     ],
   },
-  {
-    title: 'Sidebar views',
-    entries: [
-      { keys: 'L', label: 'Flat view' },
-      { keys: 'l', label: 'Lineage' },
-      { keys: 'i', label: 'Focus lineage' },
-      { keys: 'o', label: 'Only cycles' },
-      { keys: 'space', label: 'Expand/collapse group' },
-      { keys: 'E / C', label: 'Expand/collapse all' },
-    ],
-  },
+  createSidebarViewsHelpSection(false),
   {
     title: 'Panels',
     entries: [
@@ -167,13 +162,22 @@ export function ScopeGateStep({
     ancestors: string[];
     descendants: string[];
   } | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [autocompleteCandidates, setAutocompleteCandidates] = useState<string[]>([]);
-  const [jumpFilterTarget, setJumpFilterTarget] = useState<string | null>(null);
-  const [columnOneView, setColumnOneView] = useState<'grouped' | 'flat'>('grouped');
-  const [activeFilters, setActiveFilters] = useState<Set<FilterCategory>>(new Set());
-  const [showHelp, setShowHelp] = useState(false);
+  const {
+    searchOpen,
+    setSearchOpen,
+    searchQuery,
+    setSearchQuery,
+    autocompleteCandidates,
+    setAutocompleteCandidates,
+    jumpFilterTarget,
+    setJumpFilterTarget,
+    columnOneView,
+    setColumnOneView,
+    activeFilters,
+    setActiveFilters,
+    showHelp,
+    setShowHelp,
+  } = useSidebarSearchState();
 
   const getState = (name: string): Decision => {
     const v = userDecisions.get(name);
@@ -484,25 +488,15 @@ export function ScopeGateStep({
         setSearchOpen(false);
         return;
       }
-      if (key.tab) {
-        const { completion, candidates } = computeAutocomplete(
-          searchQuery,
-          components.map((c) => c.name),
-        );
-        setSearchQuery(completion);
-        setAutocompleteCandidates(candidates);
+      if (
+        handleSidebarSearchInput(input, key, {
+          query: searchQuery,
+          names: components.map((c) => c.name),
+          setQuery: setSearchQuery,
+          setCandidates: setAutocompleteCandidates,
+        })
+      )
         return;
-      }
-      if (key.backspace) {
-        setAutocompleteCandidates([]);
-        setSearchQuery((q) => q.slice(0, -1));
-        return;
-      }
-      if (input && input.length === 1 && input >= ' ' && input !== '\r' && input !== '\n') {
-        setAutocompleteCandidates([]);
-        setSearchQuery((q) => q + input);
-        return;
-      }
       return;
     }
 
@@ -536,22 +530,19 @@ export function ScopeGateStep({
         return;
       }
       if (lineagePanel.handleInput(input, key)) return;
-      if (key.upArrow || input === 'k') {
-        setLineageCursor((c) => Math.max(0, c - 1));
+      if (
+        handleLineageNavigation({
+          input,
+          key,
+          cursor: lineageCursor,
+          jumpables: lineageJumpables,
+          onCursorChange: setLineageCursor,
+          onJump: jumpCursorTo,
+          onClose: lineagePanel.close,
+          allowTab: false,
+        })
+      )
         return;
-      }
-      if (key.downArrow || input === 'j') {
-        setLineageCursor((c) => Math.min(Math.max(0, lineageJumpables.length - 1), c + 1));
-        return;
-      }
-      if (key.return) {
-        const target = lineageJumpables[lineageCursor];
-        if (target && (target.entry.kind === 'ancestor' || target.entry.kind === 'descendant')) {
-          jumpCursorTo(target.entry.jumpTarget);
-        }
-        lineagePanel.close();
-        return;
-      }
       return;
     }
 
@@ -664,12 +655,7 @@ export function ScopeGateStep({
       return;
     }
     if (input === 'E' && focusedColumn === 'main') {
-      const roots = new Set<string>();
-      for (const [name, closure] of closures.entries()) {
-        if (closure.nodes.length > 1) roots.add(name);
-      }
-      for (const p of cycleParticipants) roots.add(p);
-      setExpandedGroups(roots);
+      setExpandedGroups(collectExpandedGroupRoots(closures, cycleParticipants));
       return;
     }
     if (input === 'C' && focusedColumn === 'main') {
@@ -697,35 +683,18 @@ export function ScopeGateStep({
       return;
     }
     if (input === 'L') {
-      const currentKey = currentRowKey;
-      const nextView: 'grouped' | 'flat' = columnOneView === 'grouped' ? 'flat' : 'grouped';
-      const nextRows = buildVisibleRows({
+      const next = computeSidebarViewToggle({
+        currentView: columnOneView,
+        currentKey: currentRowKey,
+        currentScroll: scrollOffset,
+        visibleCount,
         items: groupedItems,
         cycleParticipants,
         expandedGroups,
-        showFlatTier: false,
-        viewMode: nextView,
         graph,
       });
-      let nextCursor = 0;
-      if (currentKey) {
-        for (let i = 0; i < nextRows.length; i++) {
-          const r = nextRows[i];
-          if (r.itemIdx < 0) continue;
-          if (groupedItems[r.itemIdx]?.key === currentKey) {
-            nextCursor = i;
-            break;
-          }
-        }
-      }
-      const nextScroll =
-        nextCursor < scrollOffset
-          ? nextCursor
-          : nextCursor >= scrollOffset + visibleCount
-            ? nextCursor - visibleCount + 1
-            : scrollOffset;
-      setColumnOneView(nextView);
-      setNav({ cursor: nextCursor, scrollOffset: nextScroll });
+      setColumnOneView(next.view);
+      setNav({ cursor: next.cursor, scrollOffset: next.scroll });
       return;
     }
     if (input === 'A') {
@@ -1041,23 +1010,14 @@ export function ScopeGateStep({
         </Box>
       )}
 
-      {searchOpen && (
-        <Box marginTop={1} flexDirection="column">
-          <Text>
-            {`/${searchQuery}`}
-            <Text color={PALETTE.info}>{'▎'}</Text>
-            {searchQuery && <Text dimColor>{`  (${totalMatches}/${totalComponents} matches)`}</Text>}
-          </Text>
-          {autocompleteCandidates.length > 1 && (
-            <Text dimColor>{`  possibilities: ${autocompleteCandidates.join(' · ').slice(0, 120)}`}</Text>
-          )}
-        </Box>
-      )}
-      {!searchOpen && searchQuery && (
-        <Box marginTop={1}>
-          <Text dimColor>{`/${searchQuery}  (${totalMatches}/${totalComponents} matches) · [Esc] clear`}</Text>
-        </Box>
-      )}
+      <SearchMatchSummary
+        open={searchOpen}
+        query={searchQuery}
+        matches={totalMatches}
+        total={totalComponents}
+        autocompleteCandidates={autocompleteCandidates}
+        marginTop={1}
+      />
 
       <Box columnGap={2} marginTop={1} flexWrap="wrap">
         {includedCount > 0 ? (
@@ -1174,15 +1134,21 @@ export function computeColumnWindow(
   return { start, end, above: start, below: total - end };
 }
 
-function AddedComponentsColumn(props: {
+type AddedColumnEntry = { name: string; isCycle: boolean };
+
+type AddedColumnProps<T extends AddedColumnEntry> = {
+  title: string;
   width: number;
-  entries: AddedComponentEntry[];
+  entries: T[];
   cursor: number;
   focused: boolean;
   aiFlaggedByKey?: Map<string, boolean>;
   visibleCount: number;
-}): React.ReactElement {
-  const { width, entries, cursor, focused, aiFlaggedByKey, visibleCount } = props;
+  renderSuffix?: (entry: T, style: ReturnType<typeof sideColumnLabelStyle>) => React.ReactNode;
+};
+
+function AddedColumn<T extends AddedColumnEntry>(props: AddedColumnProps<T>): React.ReactElement {
+  const { title, width, entries, cursor, focused, aiFlaggedByKey, visibleCount, renderSuffix } = props;
   const reserveAiBadge = entries.some((e) => aiFlaggedByKey?.get(e.name) === true);
   const firstNonCycleIdx = entries.findIndex((e) => !e.isCycle);
   const window = computeColumnWindow(entries.length, cursor, Math.max(1, visibleCount));
@@ -1194,7 +1160,7 @@ function AddedComponentsColumn(props: {
       borderStyle="single"
       borderColor={focused ? PALETTE.inverse : undefined}
     >
-      <ColumnHeader title="Added components" width={width} focused={focused} />
+      <ColumnHeader title={title} width={width} focused={focused} />
       {entries.length === 0 ? (
         <Text dimColor>(none)</Text>
       ) : (
@@ -1249,6 +1215,7 @@ function AddedComponentsColumn(props: {
                   >
                     {' ' + entry.name}
                   </Text>
+                  {renderSuffix?.(entry, style)}
                 </Box>
               </React.Fragment>
             );
@@ -1260,6 +1227,17 @@ function AddedComponentsColumn(props: {
   );
 }
 
+function AddedComponentsColumn(props: {
+  width: number;
+  entries: AddedComponentEntry[];
+  cursor: number;
+  focused: boolean;
+  aiFlaggedByKey?: Map<string, boolean>;
+  visibleCount: number;
+}): React.ReactElement {
+  return <AddedColumn title="Added components" {...props} />;
+}
+
 function AddedGroupsColumn(props: {
   width: number;
   entries: AddedGroupEntry[];
@@ -1268,91 +1246,25 @@ function AddedGroupsColumn(props: {
   aiFlaggedByKey?: Map<string, boolean>;
   visibleCount: number;
 }): React.ReactElement {
-  const { width, entries, cursor, focused, aiFlaggedByKey, visibleCount } = props;
-  const reserveAiBadge = entries.some((g) => aiFlaggedByKey?.get(g.name) === true);
-  const firstNonCycleIdx = entries.findIndex((e) => !e.isCycle);
-  const window = computeColumnWindow(entries.length, cursor, Math.max(1, visibleCount));
   return (
-    <Box
-      flexDirection="column"
-      width={width}
-      flexShrink={0}
-      borderStyle="single"
-      borderColor={focused ? PALETTE.inverse : undefined}
-    >
-      <ColumnHeader title="Added groups" width={width} focused={focused} />
-      {entries.length === 0 ? (
-        <Text dimColor>(none)</Text>
-      ) : (
-        <>
-          {window.above > 0 && <Text dimColor>{`↑ ${window.above} more`}</Text>}
-          {entries.slice(window.start, window.end).map((g, vi) => {
-            const i = window.start + vi;
-            const isSelected = i === cursor;
-            const isCursor = focused && isSelected;
-            const suffix = ` (${g.depCount} dep${g.depCount === 1 ? '' : 's'})`;
-            const aiFlagged = aiFlaggedByKey?.get(g.name) === true;
-            const showSeparator = firstNonCycleIdx > 0 && i === firstNonCycleIdx;
-            const style = sideColumnLabelStyle({
-              isCycle: g.isCycle,
-              isSelected,
-              focused,
-            });
-            return (
-              <React.Fragment key={g.name}>
-                {showSeparator && <Text dimColor>{'─'.repeat(Math.max(0, width - 2))}</Text>}
-                <Box>
-                  {isCursor ? (
-                    <Text color={PALETTE.info} bold>
-                      {'▶'}
-                    </Text>
-                  ) : (
-                    <Text> </Text>
-                  )}
-                  {reserveAiBadge &&
-                    (aiFlagged ? (
-                      <Text color={PALETTE.warning} bold>
-                        {' [×]'}
-                      </Text>
-                    ) : (
-                      <Text>{'    '}</Text>
-                    ))}
-                  {g.isCycle && (
-                    <Text
-                      color={isCursor ? PALETTE.inverse : PALETTE.warning}
-                      bold
-                      inverse={isCursor}
-                      underline={style.nameUnderline}
-                    >
-                      {' ⚠'}
-                    </Text>
-                  )}
-                  <Text
-                    color={style.nameColor}
-                    bold={style.nameBold}
-                    inverse={style.nameInverse}
-                    underline={style.nameUnderline}
-                    wrap="truncate"
-                  >
-                    {' ' + g.name}
-                  </Text>
-                  <Text
-                    color={style.suffixColor}
-                    dimColor={style.suffixDim}
-                    inverse={style.suffixInverse}
-                    underline={style.suffixUnderline}
-                    bold={style.nameBold}
-                    wrap="truncate"
-                  >
-                    {suffix}
-                  </Text>
-                </Box>
-              </React.Fragment>
-            );
-          })}
-          {window.below > 0 && <Text dimColor>{`↓ ${window.below} more`}</Text>}
-        </>
-      )}
-    </Box>
+    <AddedColumn
+      title="Added groups"
+      {...props}
+      renderSuffix={(entry, style) => {
+        const suffix = ` (${entry.depCount} dep${entry.depCount === 1 ? '' : 's'})`;
+        return (
+          <Text
+            color={style.suffixColor}
+            dimColor={style.suffixDim}
+            inverse={style.suffixInverse}
+            underline={style.suffixUnderline}
+            bold={style.nameBold}
+            wrap="truncate"
+          >
+            {suffix}
+          </Text>
+        );
+      }}
+    />
   );
 }

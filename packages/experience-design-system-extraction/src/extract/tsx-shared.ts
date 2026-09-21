@@ -13,6 +13,67 @@ const workspacePackageManifestCache = new Map<string, WorkspacePackageManifest |
 const nearestTsConfigPathCache = new Map<string, string | null>();
 const tsConfigPathsCache = new Map<string, { baseUrl: string; paths: Record<string, readonly string[]> } | null>();
 
+function createTsxProject(filePaths: string[]): Project {
+  const project = new Project({
+    compilerOptions: {
+      jsx: 1,
+      target: 99,
+      module: 99,
+      moduleResolution: 100,
+      skipLibCheck: true,
+      allowJs: true,
+    },
+    skipAddingFilesFromTsConfig: true,
+  });
+
+  for (const filePath of filePaths) {
+    project.addSourceFileAtPath(filePath);
+  }
+
+  return project;
+}
+
+function getTsxProjectFiles(filePaths: string[]): string[] {
+  return filePaths.filter((filePath) => /\.[jt]sx?$/.test(filePath) && !filePath.endsWith('.d.ts'));
+}
+
+export function getTsxExtractionContext(
+  filePaths: string[],
+  componentFilePattern: RegExp,
+): { componentFiles: string[]; project: Project } | undefined {
+  const componentFiles = filePaths.filter((filePath) => componentFilePattern.test(filePath));
+  if (componentFiles.length === 0) return undefined;
+
+  return {
+    componentFiles,
+    project: createTsxProject(getTsxProjectFiles(filePaths)),
+  };
+}
+
+export function resolveDefaultExportName(
+  declarations: Node[],
+  exported: { has(name: string): boolean },
+  allowVariableDeclaration = false,
+): string | undefined {
+  const declaration = declarations[0];
+  const name = Node.isFunctionDeclaration(declaration)
+    ? declaration.getName()
+    : allowVariableDeclaration && Node.isVariableDeclaration(declaration)
+      ? declaration.getName()
+      : undefined;
+
+  if (!name || !/^[A-Z]/.test(name) || exported.has(name)) return undefined;
+  return name;
+}
+
+export function kebabToPascal(input: string): string {
+  return input
+    .split('-')
+    .filter(Boolean)
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join('');
+}
+
 export function extractAllowedValues(type: Type): string[] | undefined {
   if (!type.isUnion()) return undefined;
 

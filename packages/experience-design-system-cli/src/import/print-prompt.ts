@@ -14,7 +14,7 @@
  * spawning the full pipeline.
  */
 
-export const DRY_RUN_DEPRECATION_NOTICE =
+const DRY_RUN_DEPRECATION_NOTICE =
   "Warning: '--dry-run' on 'experiences import' will change semantics in a future release; " +
   "use '--print-prompt' to print the prompt or '--dry-run --no-push' to preview the manifest.\n";
 

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { openPipelineDb, storeRawComponents, storeScannedFiles, getOrCreateSession } from '../../src/session/db.js';
 import type { RawComponentDefinition } from '../../src/types.js';
 
-export const SAMPLE_COMPONENTS: RawComponentDefinition[] = [
+const SAMPLE_COMPONENTS: RawComponentDefinition[] = [
   {
     name: 'Button',
     source: 'src/Button.tsx',

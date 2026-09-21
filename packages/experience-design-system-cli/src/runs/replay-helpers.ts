@@ -16,6 +16,17 @@ function formatStalenessRefusal(run: RunRecord, detail: string[]): string {
   ].join('\n');
 }
 
+async function resolveRunForAction(runIdOrPath: string, force?: boolean): Promise<RunRecord> {
+  const run = await resolveRunTarget(runIdOrPath);
+  if (!force) {
+    const staleness = await checkRunStaleness(run);
+    if (staleness.stale) {
+      throw new Error(formatStalenessRefusal(run, formatStalenessDetail(staleness)));
+    }
+  }
+  return run;
+}
+
 export type ReplayRunOptions = {
   runIdOrPath: string;
   /** From `--space-id` flag. */
@@ -69,16 +80,7 @@ const MISSING_CREDS_ERROR =
  *      credentials step. If non-TTY: error.
  */
 export async function replayRun(opts: ReplayRunOptions): Promise<void> {
-  const run = await resolveRunTarget(opts.runIdOrPath);
-
-  // Staleness gate: refuse before any push side effect when source files or
-  // saved artifacts have drifted. Bypassed by --force.
-  if (!opts.force) {
-    const staleness = await checkRunStaleness(run);
-    if (staleness.stale) {
-      throw new Error(formatStalenessRefusal(run, formatStalenessDetail(staleness)));
-    }
-  }
+  const run = await resolveRunForAction(opts.runIdOrPath, opts.force);
 
   const sessionId = run.generateSessionId ?? run.extractSessionId;
 
@@ -180,13 +182,7 @@ export async function modifyRun(opts: ModifyRunOptions): Promise<void> {
   if (opts.saveAsNew && opts.overwrite) {
     throw new Error('--save-as-new and --overwrite are mutually exclusive.');
   }
-  const run = await resolveRunTarget(opts.runIdOrPath);
-  if (!opts.force) {
-    const staleness = await checkRunStaleness(run);
-    if (staleness.stale) {
-      throw new Error(formatStalenessRefusal(run, formatStalenessDetail(staleness)));
-    }
-  }
+  const run = await resolveRunForAction(opts.runIdOrPath, opts.force);
   const saveMode: ModifyLauncherInput['saveMode'] = opts.overwrite ? 'overwrite' : opts.saveAsNew ? 'new' : 'prompt';
   // Credentials pre-fill precedence: run.pushedTo field-by-field, then
   // credentials.json (which itself falls back to env vars). The modify entry

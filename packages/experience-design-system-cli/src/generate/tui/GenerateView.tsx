@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Text } from 'ink';
+import { CommandCompletionView } from '../../tui/CommandCompletionView.js';
 
 export interface GenerateViewResult {
   skill: string;
@@ -19,27 +19,15 @@ export function GenerateView({ result, onExit }: GenerateViewProps): React.React
   }, [onExit]);
 
   return (
-    <Box flexDirection="column" padding={1}>
-      <Text color="green">✓ generate complete</Text>
-      <Box flexDirection="column" marginTop={1}>
-        <Text>
-          <Text dimColor>skill </Text>
-          <Text>{result.skill}</Text>
-        </Text>
-        <Text>
-          <Text dimColor>agent </Text>
-          <Text>{result.agent}</Text>
-        </Text>
-        <Text>
-          <Text dimColor>session </Text>
-          <Text>{result.sessionId}</Text>
-        </Text>
-      </Box>
-      <Box marginTop={1}>
-        <Text dimColor>Run </Text>
-        <Text>experience-design-system-cli print {result.skill}</Text>
-        <Text dimColor> to write the output file.</Text>
-      </Box>
-    </Box>
+    <CommandCompletionView
+      title="generate"
+      rows={[
+        { label: 'skill', value: result.skill },
+        { label: 'agent', value: result.agent },
+        { label: 'session', value: result.sessionId },
+      ]}
+      command={`experience-design-system-cli print ${result.skill}`}
+      instruction="to write the output file."
+    />
   );
 }
