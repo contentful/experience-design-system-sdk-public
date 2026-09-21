@@ -100,12 +100,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: ['--tokens'],
   },
   {
-    flag: '--select-all',
-    kind: 'boolean',
-    modes: ['headless'],
-    incompatibleWith: [],
-  },
-  {
     flag: '--select',
     kind: 'value',
     sampleValue: 'Button',

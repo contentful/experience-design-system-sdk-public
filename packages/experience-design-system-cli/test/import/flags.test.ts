@@ -79,7 +79,6 @@ describe('import — help output lists all flags', () => {
       '--agent',
       '--model',
       '--tokens',
-      '--select-all',
       '--select',
       '--deselect',
       '--skip-analyze',
@@ -283,10 +282,10 @@ describe('import — output flags', () => {
 });
 
 describe('import — selection flags', () => {
-  it('--select-all is accepted without error', async () => {
+  it('--select-all is rejected as an unknown option', async () => {
     const { stderr, code } = await run([...skipAll(), '--select-all'], baseEnv());
-    expect(stderr).not.toContain("unknown option '--select-all'");
-    expect(code).toBe(0);
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown option '--select-all'");
   });
 
   it('--select <pattern> is accepted without error', async () => {
@@ -319,11 +318,6 @@ describe('import — selection flags', () => {
     expect(code).toBe(0);
   });
 
-  it('--select-all and --select can be combined', async () => {
-    const { stderr, code } = await run([...skipAll(), '--select-all', '--select', 'Button'], baseEnv());
-    expect(stderr).not.toContain('unknown option');
-    expect(code).toBe(0);
-  });
 });
 
 describe('import — push-related flags', () => {
@@ -457,7 +451,7 @@ describe('import — ~ expansion for --project and --raw-tokens', () => {
     const outDir = await createTempDir('project-tilde-out-');
 
     const { stdout, code } = await run(
-      ['import', '--project', '~/myproj', '--select-all', '--skip-generate', '--skip-apply', '--out', outDir],
+      ['import', '--project', '~/myproj', '--select', 'Button', '--skip-generate', '--skip-apply', '--out', outDir],
       { EDS_PIPELINE_DB_PATH: freshDbPath, NODE_NO_WARNINGS: '1', HOME: fakeHome },
       55000,
     );
