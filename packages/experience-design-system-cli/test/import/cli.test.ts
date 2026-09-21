@@ -39,15 +39,16 @@ describe('import command — help', () => {
     expect(stdout).toContain('--tokens');
     expect(stdout).toContain('--skip-analyze');
     expect(stdout).toContain('--skip-generate');
-    expect(stdout).toContain('--print');
     expect(stdout).toContain('--skip-apply');
     expect(stdout).toContain('--yes');
     expect(stdout).toContain('--verbose');
   });
 
-  it('does not expose --skip-print (replaced by --print)', async () => {
+  it('does not expose removed output flags', async () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
+    expect(stdout).not.toMatch(/--print(?:\s|$)/);
+    expect(stdout).not.toContain('--select-all');
     expect(stdout).not.toContain('--skip-print');
   });
 

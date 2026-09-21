@@ -104,7 +104,6 @@ function baseOpts(overrides: Partial<PipelineOptions> = {}): PipelineOptions {
     agent: 'claude',
     skipAnalyze: false,
     skipGenerate: false,
-    print: false,
     skipApply: false,
     noCache: false,
     yes: false,
@@ -127,8 +126,8 @@ function useTestDb(dir: string): () => void {
   };
 }
 
-describe('runPipeline — print step', () => {
-  it('omits print components step when opts.print is false', async () => {
+describe('runPipeline — apply step', () => {
+  it('does not include a print components step', async () => {
     const dir = await makeTempDir('orch-no-print-');
 
     const cliPath = await makeFakeCli(dir, {
@@ -148,32 +147,6 @@ describe('runPipeline — print step', () => {
 
     expect(result.steps.map((s) => s.step)).not.toContain('print components');
     expect(result.steps.map((s) => s.step)).toContain('apply push');
-  });
-
-  it('includes print components step when opts.print is true', async () => {
-    const dir = await makeTempDir('orch-with-print-');
-
-    const cliPath = await makeFakeCli(dir, {
-      'analyze extract': { stdout: 'session=test-session-1\n', stderr: 'Extracted 1 component\n' },
-      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
-      'generate components': { stdout: 'session=test-session-2\n', stderr: 'Done: 1/1 components\n' },
-      'print components': {},
-      'apply push': {
-        stdout: JSON.stringify({
-          componentTypes: { created: 1, updated: 0, failed: 0 },
-          designTokens: { created: 0, updated: 0, failed: 0 },
-        }),
-      },
-    });
-
-    const lines: string[] = [];
-    const result = await runPipeline(
-      { ...baseOpts({ out: dir, print: true }), project: dir },
-      (line) => lines.push(line),
-      cliPath,
-    );
-
-    expect(result.steps.map((s) => s.step)).toContain('print components');
   });
 });
 
@@ -283,34 +256,6 @@ describe('runPipeline — step count in progress output', () => {
 
     const stepLines = lines.filter((l) => l.includes('Step '));
     expect(stepLines.every((l) => l.includes('/5'))).toBe(true);
-  });
-
-  it('shows 6 total steps when print is true', async () => {
-    const dir = await makeTempDir('orch-6steps-');
-
-    const cliPath = await makeFakeCli(dir, {
-      'analyze extract': { stdout: 'session=s1\n', stderr: 'Extracted 1 component\n' },
-      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
-      'generate components': { stdout: 'session=s2\n', stderr: 'Done: 1/1 components\n' },
-      'print components': {},
-      'apply push': {
-        stdout: JSON.stringify({
-          componentTypes: { created: 1, updated: 0, failed: 0 },
-          designTokens: { created: 0, updated: 0, failed: 0 },
-        }),
-      },
-    });
-
-    const opts = baseOpts({ out: dir, print: true, skipApply: true });
-    delete opts.spaceId;
-    delete opts.environmentId;
-    delete opts.cmaToken;
-
-    const lines: string[] = [];
-    await runPipeline({ ...opts, project: dir }, (line) => lines.push(line), cliPath);
-
-    const stepLines = lines.filter((l) => l.includes('Step '));
-    expect(stepLines.every((l) => l.includes('/6'))).toBe(true);
   });
 });
 
