@@ -78,7 +78,6 @@ describe('import — help output lists all flags', () => {
       '--out',
       '--agent',
       '--model',
-      '--deselect',
       '--skip-analyze',
       '--skip-generate',
       '--skip-apply',
@@ -286,18 +285,6 @@ describe('import — selection flags', () => {
     expect(stderr).toContain("unknown option '--select-all'");
   });
 
-  it('--deselect <pattern> is accepted without error', async () => {
-    const { stderr, code } = await run([...skipAll(), '--deselect', 'Icon'], baseEnv());
-    expect(stderr).not.toContain("unknown option '--deselect'");
-    expect(code).toBe(0);
-  });
-
-  it('--deselect can be repeated multiple times', async () => {
-    const { stderr, code } = await run([...skipAll(), '--deselect', 'Icon', '--deselect', 'Avatar'], baseEnv());
-    expect(stderr).not.toContain('unknown option');
-    expect(code).toBe(0);
-  });
-
 });
 
 describe('import — removed flags', () => {
@@ -305,6 +292,12 @@ describe('import — removed flags', () => {
     const { stderr, code } = await run([...skipAll(), '--select', 'Button'], baseEnv());
     expect(code).not.toBe(0);
     expect(stderr).toContain("unknown option '--select'");
+  });
+
+  it('--deselect is rejected as an unknown option', async () => {
+    const { stderr, code } = await run([...skipAll(), '--deselect', 'Icon'], baseEnv());
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown option '--deselect'");
   });
 
   it('--tokens is rejected as an unknown option', async () => {
