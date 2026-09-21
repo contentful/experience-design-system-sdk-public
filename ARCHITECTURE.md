@@ -494,7 +494,7 @@ welcome → extracting → [auto-filter (select-agent)] → scope-gate
 
 A single human review gate (`scope-gate`) replaces the older two-step extract + generate-edit gates. The final-review step is a minimum-viable port of the standalone `JsonEditor` with lifted rationale + source panels, inline `$default` and `$allowedComponents` editing, and live preview re-runs after each save (`--no-live-preview` to disable). Generate runs in parallel with the credentials step (`spawn-generate.ts`) so the operator does not wait on the agent. The push-decision-gate defaults to save AND push; `--no-save` and `--no-push` carve out the alternatives. `--out-dir <path>` short-circuits the save-path prompt.
 
-The wizard's AI auto-filter (auto-invocation of `analyze select-agent` before scope-gate) is configurable per run via `--auto-filter` / `--no-auto-filter` and persisted to `~/.config/experiences/credentials.json`.
+The wizard's AI auto-filter (auto-invocation of `analyze select-agent` before scope-gate) is force-enabled per run via `--auto-filter` and otherwise follows `~/.config/experiences/credentials.json`.
 
 ### Headless orchestrator
 

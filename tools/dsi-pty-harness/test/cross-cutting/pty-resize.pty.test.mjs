@@ -24,7 +24,7 @@ describe('PTY resize', () => {
     const t = makeTmpHome();
     cleanups.push(t.cleanup);
     const w = await spawnWizard(
-      ['import', '--project', REACT_MINIMAL, '--no-push', '--no-auto-filter'],
+      ['import', '--project', REACT_MINIMAL, '--no-push'],
       { env: t.env, cols: 200, rows: 60 },
     );
     cleanups.push(() => w.close());

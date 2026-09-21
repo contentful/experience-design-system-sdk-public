@@ -25,7 +25,7 @@ describe('experiences import — atomic vs composite scope-gate (PTY)', () => {
     const t = makeTmpHome();
     cleanups.push(t.cleanup);
     const w = await spawnWizard(
-      ['import', '--project', REACT_COMPOSITE_CYCLE, '--no-push', '--no-auto-filter', ...extraArgs],
+      ['import', '--project', REACT_COMPOSITE_CYCLE, '--no-push', ...extraArgs],
       { env: t.env, cols: 200, rows: 60 },
     );
     cleanups.push(() => w.close());

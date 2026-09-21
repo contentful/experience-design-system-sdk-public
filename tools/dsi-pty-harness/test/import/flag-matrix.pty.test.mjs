@@ -39,7 +39,7 @@ suite('flag-matrix: composition flags in the INTERACTIVE (PTY) dispatcher', () =
     const t = makeTmpHome();
     cleanups.push(t.cleanup);
     const w = await spawnWizard(
-      ['import', '--project', REACT_COMPOSITE_CYCLE, '--no-push', '--no-auto-filter', ...extraArgs],
+      ['import', '--project', REACT_COMPOSITE_CYCLE, '--no-push', ...extraArgs],
       { env: t.env, cols: 200, rows: 60 },
     );
     cleanups.push(() => w.close());
@@ -70,7 +70,7 @@ suite('flag-matrix: composition flags in the INTERACTIVE (PTY) dispatcher', () =
     cleanups.push(t.cleanup);
     const skeleton = `${t.home}/skeleton.json`;
     const w = await spawnWizard(
-      ['import', '--project', REACT_COMPOSITE_CYCLE, '--no-push', '--no-auto-filter', '--generate-map', skeleton],
+      ['import', '--project', REACT_COMPOSITE_CYCLE, '--no-push', '--generate-map', skeleton],
       { env: t.env, cols: 200, rows: 60 },
     );
     cleanups.push(() => w.close());
@@ -95,7 +95,7 @@ suite('flag-matrix: --auto-reject-cycles in the INTERACTIVE (PTY) dispatcher', (
     const t = makeTmpHome();
     cleanups.push(t.cleanup);
     const w = await spawnWizard(
-      ['import', '--project', REACT_COMPOSITE_CYCLE, '--no-push', '--no-auto-filter', '--composite', ...extraArgs],
+      ['import', '--project', REACT_COMPOSITE_CYCLE, '--no-push', '--composite', ...extraArgs],
       { env: t.env, cols: 200, rows: 60 },
     );
     cleanups.push(() => w.close());

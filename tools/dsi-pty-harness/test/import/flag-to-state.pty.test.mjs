@@ -158,7 +158,7 @@ describe('experiences import — flag → wizard state (PTY)', () => {
 
   // ── Scope-gate keystroke coverage (Tier 4) ──────────────────────────────
   //
-  // Uses `--no-auto-filter` so the AI section is empty and all 3 components
+  // The isolated PTY home persists autoFilter=false so the AI section is empty and all 3 components
   // from react-minimal appear in the scope gate. Assertions target the
   // counter legend (tri-state rework: "N/3 included" / "none included").
   //
@@ -178,7 +178,6 @@ describe('experiences import — flag → wizard state (PTY)', () => {
         '--project',
         REACT_MINIMAL,
         '--no-push',
-        '--no-auto-filter',
         '--composite',
       ]);
       await w.waitFor('Design tokens', { timeout: 10000 });
@@ -229,7 +228,7 @@ describe('experiences import — flag → wizard state (PTY)', () => {
       // step highlights via inverse video instead). Drive the atomic step —
       // the default mode — and compare the LINE the glyph sits on so the
       // assertion is robust to shared row indentation.
-      const w = await spawn(['import', '--project', REACT_MINIMAL, '--no-push', '--no-auto-filter']);
+      const w = await spawn(['import', '--project', REACT_MINIMAL, '--no-push']);
       await w.waitFor('Design tokens', { timeout: 10000 });
       w.writeKey('s');
       await w.waitFor(/Found \d+ files/, { timeout: 8000 });
@@ -273,7 +272,7 @@ describe('experiences import — flag → wizard state (PTY)', () => {
 
     // ── D2-1: [Y] bulk-accept ────────────────────────────────────────────────
     it('[Y] bulk-accepts all non-AI-flagged components', async () => {
-      // react-minimal has no AI-flagged components (--no-auto-filter), so [Y]
+      // react-minimal has no AI-flagged components, so [Y]
       // accepts all 3 components → "3/3 included".
       const w = await reachScopeGate();
       w.writeText('Y');
@@ -302,7 +301,7 @@ describe('experiences import — flag → wizard state (PTY)', () => {
 
     // ── D2-5: [w] only-breaking filter ────────────────────────────────────────
     it('[w] filter: keybinding is advertised or filter activates', async () => {
-      // react-minimal has no breaking changes (--no-auto-filter suppresses AI
+      // react-minimal has no breaking changes (the isolated home disables AI
       // section), so [w] may produce an empty list. We assert that the [w]
       // keybinding is visible in the legend (proving it is wired) or that some
       // visual indicator of the filter activating appears.
