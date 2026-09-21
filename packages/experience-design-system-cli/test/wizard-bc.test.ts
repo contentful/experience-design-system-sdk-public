@@ -38,7 +38,6 @@ describe('backwards-compat: standalone subcommand flags', () => {
     const out = await help(['apply', 'push']);
     for (const flag of [
       '--components',
-      '--tokens',
       '--session',
       '--space-id',
       '--environment-id',

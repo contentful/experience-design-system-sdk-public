@@ -78,7 +78,6 @@ describe('import — help output lists all flags', () => {
       '--out',
       '--agent',
       '--model',
-      '--tokens',
       '--select',
       '--deselect',
       '--skip-analyze',
@@ -320,6 +319,14 @@ describe('import — selection flags', () => {
 
 });
 
+describe('import — removed flags', () => {
+  it('--tokens is rejected as an unknown option', async () => {
+    const { stderr, code } = await run([...skipAll(), '--tokens', '/dev/null'], baseEnv());
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown option '--tokens'");
+  });
+});
+
 describe('import — push-related flags', () => {
   it('--yes is accepted as a flag', async () => {
     const { stderr, code } = await run([...skipAll(), '--yes'], baseEnv());
@@ -363,12 +370,6 @@ describe('import — push-related flags', () => {
     // The important assertion is that the flag is recognized and acted upon
   });
 
-  it('--tokens <path> is accepted without error', async () => {
-    const { stderr, code } = await run([...skipAll(), '--tokens', '/dev/null'], baseEnv());
-    expect(stderr).not.toContain("unknown option '--tokens'");
-    expect(code).toBe(0);
-  });
-
   it('--raw-tokens <path> is accepted when the file exists', async () => {
     const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/dev/null'], baseEnv());
     expect(stderr).not.toContain("unknown option '--raw-tokens'");
@@ -381,14 +382,6 @@ describe('import — push-related flags', () => {
     expect(stderr).toContain('--raw-tokens');
     expect(stderr).toContain('file not found');
     expect(stderr).toContain('/nonexistent/raw-tokens.scss');
-    expect(code).not.toBe(0);
-  });
-
-  it('--raw-tokens and --tokens together error as mutually exclusive', async () => {
-    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/dev/null', '--tokens', '/dev/null'], baseEnv());
-    expect(stderr).toContain('mutually exclusive');
-    expect(stderr).toContain('--raw-tokens');
-    expect(stderr).toContain('--tokens');
     expect(code).not.toBe(0);
   });
 

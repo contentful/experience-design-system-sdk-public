@@ -81,11 +81,6 @@ const rejectionCells: RejectionCell[] = [
     args: ['import', '--no-save', '--on-conflict', 'overwrite'],
     expectStderr: /--no-save and --on-conflict are mutually exclusive/,
   },
-  {
-    name: '--raw-tokens ⊗ --tokens',
-    args: ['import', '--raw-tokens', '/tmp/raw.scss', '--tokens', '/tmp/t.json'],
-    expectStderr: /--raw-tokens and --tokens are mutually exclusive/,
-  },
 ];
 
 describe('flag-matrix: incompatible flag pairs REJECT with exit 1 and the right message', () => {
