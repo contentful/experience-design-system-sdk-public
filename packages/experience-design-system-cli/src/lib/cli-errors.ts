@@ -1,8 +1,5 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { binaryExists } from '@contentful/experience-design-system-generation';
 import { exitWithAnalytics } from '../analytics/index.js';
-
-const execFileAsync = promisify(execFile);
 
 export function die(message: string): never {
   process.stderr.write(`${message}\n`);
@@ -11,10 +8,8 @@ export function die(message: string): never {
 }
 
 export async function assertBinaryInPath(binary: string): Promise<boolean> {
-  try {
-    await execFileAsync('which', [binary]);
-    return true;
-  } catch {
-    return false;
-  }
+  // Was `which <binary>`, which doesn't exist on Windows and so reported every
+  // agent as missing there. binaryExists also matches `.cmd`/`.bat` shims, which
+  // is how npm installs these CLIs on Windows.
+  return binaryExists(binary);
 }

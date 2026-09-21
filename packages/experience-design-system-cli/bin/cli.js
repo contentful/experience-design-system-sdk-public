@@ -11,6 +11,7 @@ process.on("warning", (w) => {
 // Skipped when src/ doesn't exist (e.g. npm-installed users).
 import { existsSync, statSync, readdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 
@@ -42,12 +43,19 @@ if (
   const distMtime = statSync(distEntry).mtimeMs;
   if (newestMtime(srcDir) > distMtime) {
     process.stderr.write("⚙ Source changed — rebuilding...\n");
-    const tsc = join(pkgRoot, "node_modules", ".bin", "tsc");
+    // Run the compiler's own entry script with this Node rather than the
+    // node_modules/.bin/tsc shim: on Windows the extensionless shim is a POSIX
+    // sh script (the runnable one is tsc.CMD), so exec'ing it fails there.
+    const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
     try {
-      execFileSync(tsc, ["-p", join(pkgRoot, "tsconfig.build.json")], {
-        stdio: ["ignore", "ignore", "inherit"],
-        cwd: pkgRoot,
-      });
+      execFileSync(
+        process.execPath,
+        [tsc, "-p", join(pkgRoot, "tsconfig.build.json")],
+        {
+          stdio: ["ignore", "ignore", "inherit"],
+          cwd: pkgRoot,
+        },
+      );
       process.stderr.write("✓ Build complete\n");
     } catch {
       process.stderr.write("✗ Build failed — running with existing dist\n");

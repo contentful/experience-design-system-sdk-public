@@ -87,7 +87,9 @@ async function runStep(
   const startedAt = Date.now();
   debug.event('import', 'subprocess.spawn', { cliPath, args });
   return new Promise((res) => {
-    const child = execFile('node', [cliPath, ...args], {
+    // process.execPath, not 'node': the bare name needs a PATH lookup that fails
+    // on Windows when node isn't on PATH, and this is our own .js either way.
+    const child = execFile(process.execPath, [cliPath, ...args], {
       env: pipelineSubprocessEnv({ ...process.env, ...env }, analyticsSessionId),
     });
 

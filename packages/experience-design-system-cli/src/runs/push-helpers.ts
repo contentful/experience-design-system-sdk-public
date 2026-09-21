@@ -14,7 +14,8 @@ function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; std
     });
   }
   return new Promise((res) => {
-    execFile('node', [cliPath, ...args], (err, stdout, stderr) => {
+    // process.execPath rather than a bare 'node' — exact, and PATH-independent.
+    execFile(process.execPath, [cliPath, ...args], (err, stdout, stderr) => {
       res({
         exitCode: err && 'code' in err && typeof err.code === 'number' ? err.code : err ? 1 : 0,
         stdout,

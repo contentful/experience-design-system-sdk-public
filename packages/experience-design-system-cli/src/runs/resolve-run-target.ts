@@ -37,11 +37,24 @@ export async function resolveRunTarget(arg: string): Promise<RunRecord> {
 
 function looksLikePath(arg: string): boolean {
   if (arg === '.' || arg === '~') return true;
-  return arg.startsWith('/') || arg.startsWith('./') || arg.startsWith('../') || arg.startsWith('~/');
+  // Windows shapes as well as POSIX: a drive-qualified path (C:\work, C:/work),
+  // a UNC share (\\server\share), and backslash-separated relative paths. Without
+  // these, `experiences runs C:\projects\lib` was treated as a run id, not a path.
+  if (/^[A-Za-z]:[\\/]/.test(arg) || arg.startsWith('\\\\')) return true;
+  return (
+    arg.startsWith('/') ||
+    arg.startsWith('./') ||
+    arg.startsWith('../') ||
+    arg.startsWith('.\\') ||
+    arg.startsWith('..\\') ||
+    arg.startsWith('~/') ||
+    arg.startsWith('~\\')
+  );
 }
 
 function expandHome(arg: string): string {
   if (arg === '~') return homedir();
-  if (arg.startsWith('~/')) return resolvePath(homedir(), arg.slice(2));
+  // Accept both separators: a Windows user types ~\runs, not ~/runs.
+  if (arg.startsWith('~/') || arg.startsWith('~\\')) return resolvePath(homedir(), arg.slice(2));
   return arg;
 }

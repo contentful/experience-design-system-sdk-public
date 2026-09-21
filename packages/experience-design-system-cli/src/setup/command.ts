@@ -1,10 +1,9 @@
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { appendFile, readFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
-import { promisify } from 'node:util';
 import type { Command } from 'commander';
 import {
   readExperiencesCredentials,
@@ -17,9 +16,7 @@ import { promptDebugModePreference } from './debug-mode-prompt.js';
 import { promptAnalyticsPreference } from './analytics-prompt.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { findPkgRoot } from '../lib/cli-path.js';
-import type { AgentName } from '@contentful/experience-design-system-generation';
-
-const execFileAsync = promisify(execFile);
+import { findBinary, resolveSpawn, type AgentName } from '@contentful/experience-design-system-generation';
 
 const REQUIRED_NODE_MAJOR = 24;
 
@@ -131,12 +128,9 @@ async function confirm(question: string, defaultYes = true): Promise<boolean> {
 // ── Shell helpers ─────────────────────────────────────────────────────────────
 
 async function binaryExists(name: string): Promise<boolean> {
-  try {
-    await execFileAsync('which', [name]);
-    return true;
-  } catch {
-    return false;
-  }
+  // Was `which <name>`, which doesn't exist on Windows. findBinary also matches
+  // the `.cmd` shims npm creates there for pnpm, claude, codex and friends.
+  return findBinary(name) !== null;
 }
 
 function runSpawn(
@@ -145,10 +139,16 @@ function runSpawn(
   opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, {
+    // pnpm/corepack/npm are `.cmd` shims on Windows: spawn can't find them
+    // (libuv ignores PATHEXT) and can't start them directly (EINVAL). This was
+    // the reported `experiences setup` failure at "Step 2: pnpm". Fall back to
+    // the bare name so a missing binary still lands in the 'error' handler below.
+    const launch = resolveSpawn(cmd, args) ?? { command: cmd, args };
+    const child = spawn(launch.command, launch.args, {
       cwd: opts.cwd,
       env: opts.env ?? process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
+      ...(launch.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
     });
     let settled = false;
     let stdout = '';

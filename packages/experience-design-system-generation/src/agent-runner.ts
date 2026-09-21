@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { AgentName } from './agent-names.js';
+import { findBinary, resolveSpawn, spawnSpec } from './lib/binary-launch.js';
 
 export { AGENT_NAMES, DEFAULT_AGENT_NAME, isAgentName, type AgentName } from './agent-names.js';
 
@@ -584,8 +585,14 @@ export async function runAgent(options: {
 
   return new Promise((resolve) => {
     const bedrockEnv = bedrock ? BEDROCK_ENV_BY_AGENT[agent] : undefined;
-    const child = spawn(binary, args, {
+    // On Windows the agent CLIs are `.cmd` shims, which spawn can neither find
+    // (libuv ignores PATHEXT) nor start directly (EINVAL). Resolve and wrap.
+    // Falling back to the bare name keeps the existing 'error' handling path,
+    // which reports a missing binary far better than throwing from here.
+    const launch = resolveSpawn(binary, args) ?? { command: binary, args };
+    const child = spawn(launch.command, launch.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
+      ...(launch.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
       ...(bedrockEnv ? { env: { ...process.env, ...bedrockEnv } } : {}),
     });
     if (useStdin && child.stdin) {
@@ -648,24 +655,12 @@ export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus>
   const binary = resolveBinary(agent);
 
   // Verify the selected agent's binary exists first — for EVERY agent, not
-  // just claude. When `binary` is an absolute path (e.g. set via
-  // EDS_AGENT_BINARY_<AGENT>=/opt/custom/bin), `which` on some shells doesn't
-  // resolve it — check the filesystem directly for absolute paths, and fall
-  // back to `which` for bare names on $PATH.
-  const binaryExists = await new Promise<boolean>((resolve) => {
-    if (binary.startsWith('/')) {
-      import('node:fs/promises').then((fs) =>
-        fs.access(binary).then(
-          () => resolve(true),
-          () => resolve(false),
-        ),
-      );
-      return;
-    }
-    const child = spawn('which', [binary], { stdio: 'ignore' });
-    child.on('close', (code) => resolve(code === 0));
-  });
-  if (!binaryExists) return 'not-found';
+  // just claude. findBinary handles both shapes this has to cover: an absolute
+  // path (e.g. EDS_AGENT_BINARY_<AGENT>=/opt/custom/bin, or C:\tools\claude.cmd)
+  // and a bare name on PATH. It replaces shelling out to `which`, which doesn't
+  // exist on Windows, and recognises Windows `.cmd` shims.
+  const resolvedBinary = findBinary(binary);
+  if (!resolvedBinary) return 'not-found';
 
   // Only Claude exposes `auth status --json`. Non-Claude agents are considered
   // authenticated once their binary is present — never gate them on claude
@@ -675,8 +670,11 @@ export async function checkAgentAuth(agent: AgentName): Promise<AgentAuthStatus>
   // Use `claude auth status` — fast, no API call, works regardless of which
   // auth provider (direct, Bedrock, Vertex) or whether AWS_PROFILE is set.
   return new Promise((resolve) => {
-    const child = spawn(binary, ['auth', 'status', '--json'], {
+    // Already resolved above, so wrap the real path rather than looking it up again.
+    const launch = spawnSpec(resolvedBinary, ['auth', 'status', '--json']);
+    const child = spawn(launch.command, launch.args, {
       stdio: ['ignore', 'pipe', 'pipe'],
+      ...(launch.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
     });
 
     let stdout = '';
