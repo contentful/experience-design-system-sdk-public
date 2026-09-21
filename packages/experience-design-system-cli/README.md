@@ -123,7 +123,7 @@ welcome
 extracting             — runs analyze extract (atomic by default; resolves composition
                          under --composite, see below); spawns generate in parallel (prefetch)
   ↓
-[auto-filter]          — analyze select-agent runs automatically (skip with --no-auto-filter)
+[auto-filter]          — analyze select-agent runs automatically
   ↓
 scope-gate             — single human review gate: confirm AI selection, toggle components
   ↓
@@ -144,7 +144,7 @@ There is now a single human review gate (`scope-gate`) before generation; the le
 
 ### Configurable AI auto-filter
 
-The auto-filter (`analyze select-agent` invoked before scope-gate) is on by default. Override per-run with `--auto-filter` / `--no-auto-filter`; the value last selected in the wizard is persisted to `credentials.json` so subsequent runs default to your last choice.
+The auto-filter (`analyze select-agent` invoked before scope-gate) is on by default. Override per-run with `--auto-filter`; the value selected in setup is persisted to `credentials.json` so subsequent runs default to your saved preference.
 
 ### Save-and-push default
 
@@ -186,7 +186,7 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--composition-refresh`           | —                                      | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`)   |
 | `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
 | `--auto-reject-cycles`            | off (fail loud)                        | Auto-reject components in slot cycles and retry, instead of stopping with the cycle path                     |
-| `--auto-filter` / `--no-auto-filter` | persisted in `credentials.json`     | Force AI auto-filter on or off; overrides saved preference                                                   |
+| `--auto-filter`                    | persisted in `credentials.json`     | Force AI auto-filter on; overrides the saved preference                                                    |
 | `--no-live-preview`               | live preview on                        | Skip the automatic preview re-run after each FieldEditor save                                                |
 | `--no-push`                       | push on                                | Run extract → scope-gate → generate → final-review and exit without pushing                                  |
 | `--no-save`                       | save on                                | Push without writing `components.json` / `tokens.json` to disk                                               |

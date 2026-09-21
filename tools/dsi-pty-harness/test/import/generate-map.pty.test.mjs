@@ -31,7 +31,6 @@ describe('experiences import --generate-map (PTY)', () => {
         '--project',
         REACT_COMPOSITE_CYCLE,
         '--no-push',
-        '--no-auto-filter',
         '--composite',
         '--generate-map',
         mapPath,

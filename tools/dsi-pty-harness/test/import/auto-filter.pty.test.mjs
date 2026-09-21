@@ -1,10 +1,10 @@
 /**
- * Tier 3b — `--auto-filter` / `--no-auto-filter` steer the scope-gate.
+ * Tier 3b — the auto-filter preference steers the scope-gate.
  *
  * Default (no flag): the wizard runs the AI-filter step before showing
  * the scope-gate, which renders an "[AI filtering (N/M)…]" banner and
- * an "AI recommended exclusions" section. With --no-auto-filter, both
- * are absent — the scope-gate lists components without AI input.
+ * an "AI recommended exclusions" section. With a persisted false preference,
+ * both are absent — the scope-gate lists components without AI input.
  * With --auto-filter, the banner + section appear (overrides any
  * stored autoFilter=false preference).
  */
@@ -54,13 +54,12 @@ describe('experiences import — AI-filter flags (PTY)', () => {
     expect(anywhere).toMatch(/AI filtering|AI recommended exclusions|excluded.*by AI/i);
   });
 
-  it('--no-auto-filter shows the scope-gate with NO filter banner and NO AI-recommended-exclusions section', async () => {
+  it('a persisted false preference shows the scope-gate without AI filtering', async () => {
     const w = await reachScopeGate([
       'import',
       '--project',
       REACT_MINIMAL,
       '--no-push',
-      '--no-auto-filter',
     ]);
     await new Promise((r) => setTimeout(r, 2500));
     const stripped = w.getScreen();

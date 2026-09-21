@@ -32,7 +32,6 @@ describe('experiences import — --generate-prompt-path (PTY)', () => {
         REACT_MINIMAL,
         '--auto-accept-scope',
         '--no-push',
-        '--no-auto-filter',
         '--generate-prompt-path',
         promptPath,
       ],

@@ -31,6 +31,11 @@ import { seedRuns } from './seed-runs.mjs';
 export function makeTmpHome({ seed } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'eds-pty-home-'));
   const env = { HOME: home, XDG_CONFIG_HOME: join(home, '.config') };
+  mkdirSync(join(home, '.config', 'experiences'), { recursive: true });
+  writeFileSync(
+    join(home, '.config', 'experiences', 'credentials.json'),
+    JSON.stringify({ autoFilter: false }) + '\n',
+  );
   const cleanup = () => {
     try {
       rmSync(home, { recursive: true, force: true });

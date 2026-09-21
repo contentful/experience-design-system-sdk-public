@@ -94,10 +94,6 @@ export function registerImportCommand(program: Command): void {
     .option('--auto-reject-cycles', 'Automatically reject components involved in slot cycles and retry')
     .option('--auto-filter', 'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)')
     .option(
-      '--no-auto-filter',
-      'Skip the automatic AI pre-filter; jump straight to manual scope-gate (overrides the credentials.json autoFilter preference)',
-    )
-    .option(
       '--no-live-preview',
       'Skip the automatic preview re-run after each FieldEditor save',
     )

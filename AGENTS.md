@@ -175,7 +175,7 @@ Keep the orchestrator thin. Logic belongs in the individual command implementati
 
 `src/import/tui/WizardApp.tsx` is the TTY counterpart to the headless orchestrator. State transitions live in `wizard-state-transitions.ts`; the step components are in `src/import/tui/steps/`. Hosts (`scope-gate-host.tsx`, `final-review-host.tsx`) bridge step UIs to underlying pipeline DB reads/writes. `spawn-generate.ts` runs `generate components` in parallel with the credentials step so the operator does not wait on the agent. `runLivePreview.ts` re-runs the diff after each FieldEditor save (disable with `--no-live-preview`).
 
-Auto-filter resolution lives in `src/import/auto-filter-resolve.ts`: `--auto-filter` / `--no-auto-filter` flag wins over the `autoFilter` value persisted in `credentials.json`. The wizard writes the operator's last choice back to `credentials.json` so subsequent runs default to it.
+Auto-filter resolution lives in `src/import/auto-filter-resolve.ts`: `--auto-filter` wins over the `autoFilter` value persisted in `credentials.json`. The wizard writes the operator's last choice back to `credentials.json` so subsequent runs default to it.
 
 ## TUI Components
 

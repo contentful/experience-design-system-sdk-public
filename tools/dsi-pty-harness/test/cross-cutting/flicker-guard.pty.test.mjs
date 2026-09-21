@@ -22,7 +22,7 @@ describe('flicker guard — no ESC[2J on navigation keystrokes', () => {
     const t = makeTmpHome();
     cleanups.push(t.cleanup);
     const w = await spawnWizard(
-      ['import', '--project', REACT_MINIMAL, '--no-push', '--no-auto-filter'],
+      ['import', '--project', REACT_MINIMAL, '--no-push'],
       { env: t.env, cols, rows },
     );
     cleanups.push(() => w.close());
