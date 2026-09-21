@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import type { Command } from 'commander';
 import {
   AGENT_NAMES,
+  agentSupportsStdinPrompt,
   buildPrompt,
   createLocalCliAgentInvoker,
   describeAgentFailure,
@@ -257,6 +258,17 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
         `Error: agent '${agent}' not found in $PATH (looked for binary: ${binary}).\n` +
           `Install it, choose another agent with --agent, or use --print-prompt to run the mapping manually via:\n` +
           `  ${resolveSkillPath('map-tokens')}`,
+      );
+    }
+
+    // See generate/command.ts: agents that need the prompt on argv can't carry a
+    // ~50KB skill prompt within the Windows 8191-character command-line limit.
+    if (process.platform === 'win32' && !agentSupportsStdinPrompt(agent)) {
+      die(
+        `Error: the '${agent}' agent is not supported on Windows.\n` +
+          `Its CLI requires the prompt as a command-line argument, and these prompts exceed the\n` +
+          `Windows command-line limit of 8191 characters.\n` +
+          `Use --agent claude or --agent codex instead.`,
       );
     }
 

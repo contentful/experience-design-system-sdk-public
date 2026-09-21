@@ -61,10 +61,19 @@ export async function createScriptedAgent(responderSource: string): Promise<Scri
   const scriptPath = join(dir, 'claude');
 
   const body = `#!/usr/bin/env node
-// Fake \`claude\`: parse last arg as prompt, log it, echo responder output.
+// Fake \`claude\`: read the prompt, log it, echo responder output.
+//
+// The prompt arrives on stdin for anything large (a real skill prompt is ~50KB,
+// which no Windows command line can carry) and on argv for short ones. Real agent
+// CLIs accept both, so this stub does too — reading argv only would see an empty
+// prompt on the stdin path.
 const { writeFileSync, appendFileSync, readFileSync, existsSync } = require('node:fs');
 const args = process.argv.slice(2);
-const prompt = args[args.length - 1] ?? '';
+let stdinPrompt = '';
+try {
+  stdinPrompt = readFileSync(0, 'utf8');
+} catch {}
+const prompt = stdinPrompt || args[args.length - 1] || '';
 // Restrict name extraction to the fenced raw-components JSON block so example
 // JSON fragments elsewhere in the prompt don't pollute the responder.
 const componentNames = [];

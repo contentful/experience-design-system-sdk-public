@@ -7,6 +7,7 @@ import {
   type AgentName,
   AGENT_NAMES,
   agentSupportsBedrock,
+  agentSupportsStdinPrompt,
   createLocalCliAgentInvoker,
   describeAgentFailure,
   formatCustomPromptBanner,
@@ -568,6 +569,21 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       sessionId: sessionId ?? '',
     });
     await exitWithAnalytics(1);
+  }
+
+  // Skill prompts run to ~50KB. Agents that accept the prompt on stdin are fine
+  // anywhere, but copilot requires it as a command-line argument, and Windows caps
+  // a command line at 8191 characters — so this combination cannot work at all.
+  // Fail with a clear message instead of letting the agent reject a truncated
+  // command line. Checked by capability rather than measured size: the prompt is
+  // built later, per skill, and every skill prompt exceeds the limit.
+  if (process.platform === 'win32' && !agentSupportsStdinPrompt(agent)) {
+    die(
+      `Error: the '${agent}' agent is not supported on Windows.\n` +
+        `Its CLI requires the prompt as a command-line argument, and these prompts exceed the\n` +
+        `Windows command-line limit of 8191 characters.\n` +
+        `Use --agent claude or --agent codex instead.`,
+    );
   }
 
   if (skill === 'components' && allComponents && sessionId) {

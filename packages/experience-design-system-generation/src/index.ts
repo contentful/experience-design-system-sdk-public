@@ -5,6 +5,7 @@ export type { AgentName } from './agent-names.js';
 // Agent invocation (low-level)
 export {
   agentSupportsBedrock,
+  agentSupportsStdinPrompt,
   buildArgs,
   checkAgentAuth,
   describeAgentFailure,
@@ -13,9 +14,11 @@ export {
   parseSelectToolCallLines,
   parseTokenToolCallLines,
   parseToolCallLines,
+  promptExceedsArgvLimit,
   resolveAgentModel,
   resolveBinary,
   runAgent,
+  shouldUseStdinPrompt,
 } from './agent-runner.js';
 export type {
   AgentAuthStatus,
