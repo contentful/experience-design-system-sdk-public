@@ -1,15 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { FOCUS_MARKER, PALETTE } from '../home/home.theme.js';
-import { checkForUpgrade, isSourceCheckout, type UpgradeCheckResult } from './version.js';
+import { checkForUpgrade, type UpgradeCheckResult } from './version.js';
 
 const GLOBAL_INSTALL_COMMANDS = [
   'npm install -g @contentful/experience-design-system-cli-v2@latest --@contentful:registry=https://npm.pkg.github.com',
-];
-const SOURCE_CHECKOUT_COMMANDS = [
-  'git pull origin main',
-  'pnpm install',
-  'pnpm -F @contentful/experience-design-system-cli-v2 build',
 ];
 
 export function UpgradeScreen({ onDone }: { onDone: () => void }): React.ReactElement {
@@ -56,8 +51,6 @@ function renderBody(upgradeCheck: UpgradeCheckResult | undefined): React.ReactEl
     return <Text color={PALETTE.success}>You're already on the latest version (v{upgradeCheck.current}).</Text>;
   }
 
-  const commands = isSourceCheckout() ? SOURCE_CHECKOUT_COMMANDS : GLOBAL_INSTALL_COMMANDS;
-
   return (
     <Box flexDirection="column">
       <Text color={PALETTE.muted}>
@@ -69,7 +62,7 @@ function renderBody(upgradeCheck: UpgradeCheckResult | undefined): React.ReactEl
       </Text>
       <Text> </Text>
       <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.border} paddingX={1}>
-        {commands.map((cmd) => (
+        {GLOBAL_INSTALL_COMMANDS.map((cmd) => (
           <Text bold key={cmd}>
             {cmd}
           </Text>

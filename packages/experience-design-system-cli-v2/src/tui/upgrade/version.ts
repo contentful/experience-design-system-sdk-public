@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import semver from 'semver';
@@ -6,17 +6,17 @@ import semver from 'semver';
 const PACKAGE_NAME = '@contentful/experience-design-system-cli-v2';
 const TAGS_URL = 'https://api.github.com/repos/contentful/experience-design-system-sdk-public/tags?per_page=10';
 
+// version.js is nested a few directories below the package root (e.g. dist/src/tui/upgrade/),
+// so this has to walk up until it finds the manifest, not just check the immediate parent.
 function findPackageRoot(): string | undefined {
   let dir = dirname(fileURLToPath(import.meta.url));
 
-  for (;;) {
-    try {
-      const raw = readFileSync(join(dir, 'package.json'), 'utf8');
-      const pkg = JSON.parse(raw) as { name?: string; version?: string };
+  while (true) {
+    const manifestPath = join(dir, 'package.json');
+    if (existsSync(manifestPath)) {
+      const pkg = JSON.parse(readFileSync(manifestPath, 'utf8')) as { name?: string; version?: string };
       // Skip nested or unrelated manifests found on the way up.
       if (pkg.name === PACKAGE_NAME && pkg.version) return dir;
-    } catch {
-      // No readable manifest here; keep walking.
     }
 
     const parent = dirname(dir);
@@ -31,15 +31,6 @@ export function readPackageVersion(): string {
 
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version?: string };
   return pkg.version ?? 'unknown';
-}
-
-/**
- * A source checkout runs straight out of `packages/experience-design-system-cli-v2`
- * in the monorepo, not out of a `node_modules` install (global or workspace-symlinked).
- */
-export function isSourceCheckout(): boolean {
-  const root = findPackageRoot();
-  return root !== undefined && !root.includes('node_modules');
 }
 
 export type UpgradeCheckResult =
