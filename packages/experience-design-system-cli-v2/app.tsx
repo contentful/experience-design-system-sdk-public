@@ -37,7 +37,7 @@ export function App(): React.ReactElement {
     return <OptInAnalyticsScreen onDone={() => setScreen('settings')} />;
   }
   if (screen === 'settings-configuration') {
-    return <ConfigurationScreen onDone={() => setScreen('settings')} />;
+    return <ConfigurationScreen onDone={() => setScreen('start')} />;
   }
   if (screen === 'upgrade') {
     return <UpgradeScreen onDone={() => setScreen('start')} />;
