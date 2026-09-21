@@ -174,13 +174,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     forcesHeadless: true,
   },
   {
-    flag: '--auto-accept-scope',
-    kind: 'boolean',
-    modes: ['pty', 'headless'],
-    incompatibleWith: [],
-    notes: 'Passes the non-TTY guard; in a non-TTY run it falls through to the headless dispatcher.',
-  },
-  {
     flag: '--composite',
     kind: 'boolean',
     modes: ['pty', 'headless'],
@@ -249,7 +242,7 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     kind: 'boolean',
     modes: ['pty', 'headless'],
     incompatibleWith: [],
-    notes: 'No-op when paired with --auto-accept-scope; not a hard rejection with --auto-filter.',
+    notes: 'Not a hard rejection when paired with --auto-filter.',
   },
   {
     flag: '--no-live-preview',

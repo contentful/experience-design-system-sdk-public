@@ -162,7 +162,6 @@ describe('flag-matrix: composition flags forwarded through the HEADLESS dispatch
     { name: '--yes', opts: { yes: true, skipApply: true } },
     { name: '--dry-run', opts: { dryRun: true, skipApply: true } },
     { name: '--print-prompt (dryRunForward)', opts: { dryRun: true, skipApply: true } },
-    { name: '--auto-accept-scope (falls to headless)', opts: { skipApply: true } },
   ];
 
   it.each(headlessTriggerCells)('composition survives alongside headless-trigger %s', async ({ opts }) => {

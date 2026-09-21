@@ -18,7 +18,7 @@ The rest of this README uses `experiences`.
 
 There are two ways to use the CLI:
 
-1. **`experiences import`** — the wizard. Drives the full pipeline (extract → AI select → scope-gate → generate → final-review → save/push) from a single command. Works in two modes: a full-screen interactive TUI in a real terminal, and a non-interactive headless mode when you pass `--auto-accept-scope` plus credentials. **This is the recommended path for almost everyone.**
+1. **`experiences import`** — the wizard. Drives the full pipeline (extract → AI select → scope-gate → generate → final-review → save/push) from a single command. Works in two modes: a full-screen interactive TUI in a real terminal and a non-interactive headless mode when you pass credentials or another headless flag. **This is the recommended path for almost everyone.**
 
 2. **Standalone subcommands** — for piping into other tools, CI parity with the wizard, or for debugging individual steps:
 
@@ -113,7 +113,7 @@ In the wizard's credentials step you can press `[s] Skip` to save-only without p
 experiences import [flags]
 ```
 
-`experiences import` is the primary entry point. In a TTY it launches a full-screen wizard. In headless mode (any of `--auto-accept-scope`, `--skip-apply`, `--skip-analyze`, `--skip-generate`, `--yes`, `--dry-run`, or credential flags) it runs non-interactively. Without either, it fails loud rather than hanging.
+`experiences import` is the primary entry point. In a TTY it launches a full-screen wizard. In headless mode (any of `--skip-apply`, `--skip-analyze`, `--skip-generate`, `--yes`, `--dry-run`, or credential flags) it runs non-interactively. Without either, it fails loud rather than hanging.
 
 ### Wizard step machine
 
@@ -178,7 +178,6 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--out-dir <path>`                | _(prompt)_                             | Save directory for `components.json` / `tokens.json`; bypasses inline save-path prompt                       |
 | `--agent <name>`                  | saved by setup / `claude`              | Agent for `analyze select-agent` and `generate components`                                                   |
 | `--model <name>`                  | agent default                          | Model name                                                                                                   |
-| `--auto-accept-scope`             | off                                    | Accept all extracted components without prompting (required for non-TTY without other headless flags)        |
 | `--atomic`                        | **default**                            | Flat import, no embedded-component hierarchy (composition stripped on push)                                   |
 | `--composite`                     | —                                      | Import the embedded-component hierarchy (any composition flag implies this)                                   |
 | `--composition-map <path>`        | —                                      | Consume a hand-authored parent→children interchange map (implies `--composite`)                              |
@@ -401,7 +400,7 @@ Wizard run history is separate: `~/.config/experiences/runs.json`.
 - `NO_COLOR=1` suppresses all ANSI color output
 - Interactive views require both stdin and stdout to be TTYs and stdin to support raw mode. Read-only views fall back to plain or JSON output when those capabilities are unavailable; commands that require input stop with the relevant non-interactive flags in the error message.
 - On Windows, use Windows Terminal with PowerShell. Older ConEmu and cmd.exe hosts may not provide the raw-mode support the interactive UI needs.
-- To avoid the interactive UI, use the command's non-interactive options: `import --yes` (with credentials) or `import --no-push --auto-accept-scope`, `analyze select --select-all`, and `apply push --yes`.
+- To avoid the interactive UI, use the command's non-interactive options: `import --yes` (with credentials) or `import --no-push`, `analyze select --select-all`, and `apply push --yes`.
 
 ---
 
