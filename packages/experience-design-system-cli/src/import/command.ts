@@ -68,7 +68,7 @@ export function registerImportCommand(program: Command): void {
       '--print-prompt',
       'Print the generate components prompt without invoking the agent. Replaces the legacy --dry-run prompt-print behaviour on this command.',
     )
-    .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)');
+    ;
   addCompositionOptions(cmd);
   addAllowDeletionsOption(cmd);
   cmd
@@ -95,11 +95,11 @@ export function registerImportCommand(program: Command): void {
     .option('--auto-filter', 'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)')
     .option(
       '--no-auto-filter',
-      'Skip the automatic AI pre-filter; jump straight to manual scope-gate (overrides the credentials.json autoFilter preference; no-op when paired with --auto-accept-scope)',
+      'Skip the automatic AI pre-filter; jump straight to manual scope-gate (overrides the credentials.json autoFilter preference)',
     )
     .option(
       '--no-live-preview',
-      'Skip the automatic preview re-run after each FieldEditor save (no-op when paired with --auto-accept-scope)',
+      'Skip the automatic preview re-run after each FieldEditor save',
     )
     .option(
       '--no-push',
@@ -163,7 +163,6 @@ export function registerImportCommand(program: Command): void {
         host?: string;
         dryRun?: boolean;
         printPrompt?: boolean;
-        autoAcceptScope?: boolean;
         composite?: boolean;
         atomic?: boolean;
         compositionMap?: string;
@@ -360,11 +359,9 @@ export function registerImportCommand(program: Command): void {
           dryRunForward ||
           false;
 
-        const autoAcceptScope = opts.autoAcceptScope ?? false;
-
-        if (!interactiveTerminalSupported && !isHeadless && !autoAcceptScope) {
+        if (!interactiveTerminalSupported && !isHeadless) {
           requireInteractiveTerminal({
-            alternative: 'use headless flags such as `--yes` with credentials, or `--no-push --auto-accept-scope`',
+            alternative: 'use headless flags such as `--yes` with credentials or `--no-push`',
           });
         }
 
@@ -382,7 +379,6 @@ export function registerImportCommand(program: Command): void {
             bedrock?: boolean;
             initialProjectPath?: string;
             host?: string;
-            autoAcceptScope?: boolean;
             autoRejectCycles?: boolean;
             compositionMode?: CompositionMode;
             compositionMap?: string;
@@ -420,7 +416,6 @@ export function registerImportCommand(program: Command): void {
               ...(opts.pushFromRun !== undefined ? { pushFromRun: opts.pushFromRun } : {}),
               ...(opts.modify !== undefined ? { modify: opts.modify } : {}),
               ...(opts.project !== '.' ? { project: opts.project } : {}),
-              ...(opts.autoAcceptScope ? { autoAcceptScope: true } : {}),
               ...(opts.dryRun ? { dryRun: true } : {}),
             },
             isTTY: !!process.stdin.isTTY,
@@ -451,7 +446,6 @@ export function registerImportCommand(program: Command): void {
               ...(opts.bedrock ? { bedrock: true } : {}),
               initialProjectPath: opts.project !== '.' ? normalizePath(opts.project) : undefined,
               host: opts.host,
-              autoAcceptScope,
               autoRejectCycles: opts.autoRejectCycles ?? false,
               compositionMode: resolvedCompositionMode,
               ...buildCompositionForwardingOptions(opts),

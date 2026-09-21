@@ -365,14 +365,6 @@ describe('import — push-related flags', () => {
     expect(code).not.toBe(0);
   });
 
-  it('--raw-tokens coexists with --auto-accept-scope', async () => {
-    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/dev/null', '--auto-accept-scope'], baseEnv());
-    expect(stderr).not.toContain('unknown option');
-    expect(stderr).not.toContain('mutually exclusive');
-    expect(stderr).not.toContain('file not found');
-    expect(code).toBe(0);
-  });
-
   it('--viewports <path> is accepted without error', async () => {
     const { stderr, code } = await run([...skipAll(), '--viewports', '/dev/null'], baseEnv());
     expect(stderr).not.toContain("unknown option '--viewports'");

@@ -346,10 +346,10 @@ describe('CLI entry point', () => {
 });
 
 describe('experiences import flag surface', () => {
-  it('exposes --auto-accept-scope in --help', async () => {
+  it('does not expose --auto-accept-scope in --help', async () => {
     const { stdout, code } = await run('import', '--help');
     expect(code).toBe(0);
-    expect(stdout).toContain('--auto-accept-scope');
+    expect(stdout).not.toContain('--auto-accept-scope');
   });
 
   it('exposes --no-cache in experiences import --help', async () => {
@@ -376,11 +376,11 @@ describe('experiences import flag surface', () => {
     expect(stdout).toContain('--no-live-preview');
   });
 
-  it('fails loud on non-TTY without --auto-accept-scope or other headless flags', async () => {
+  it('fails loud on non-TTY without other headless flags', async () => {
     // execFile gives us a non-TTY stdin/stdout by definition.
     const { code, stderr } = await run('import', '--project', '/tmp');
     expect(code).not.toBe(0);
-    expect(stderr).toMatch(/auto-accept-scope|TTY/i);
+    expect(stderr).toMatch(/TTY/i);
   });
 
   it('exposes --no-save in experiences import --help (Feature 2 save AND push)', async () => {

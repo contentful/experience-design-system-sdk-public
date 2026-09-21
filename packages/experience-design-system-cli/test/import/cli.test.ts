@@ -50,6 +50,7 @@ describe('import command — help', () => {
     expect(stdout).not.toContain('--select-all');
     expect(stdout).not.toContain('--select <pattern>');
     expect(stdout).not.toContain('--deselect <pattern>');
+    expect(stdout).not.toContain('--auto-accept-scope');
     expect(stdout).not.toContain('--skip-print');
   });
 
