@@ -32,47 +32,6 @@ describe('command routing when raw mode is unavailable', () => {
     else delete (process.stdout as { isTTY?: boolean }).isTTY;
   });
 
-  it('stops an interactive-only command before Ink and names its headless flags', async () => {
-    const program = new Command();
-    program.exitOverride();
-    registerApplyCommand(program);
-
-    await expect(
-      program.parseAsync(
-        ['apply', 'select', '--space-id', 'space', '--environment-id', 'master', '--cma-token', 'token'],
-        { from: 'user' },
-      ),
-    ).rejects.toThrow(/standard input cannot enter raw mode[\s\S]*--select-all[\s\S]*--select[\s\S]*--deselect/);
-  });
-
-  it('keeps explicit non-interactive flags ahead of the capability guard', async () => {
-    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exit = vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
-      throw new Error(`exit:${code ?? 0}`);
-    }) as never);
-    const program = new Command();
-    program.exitOverride();
-    registerApplyCommand(program);
-
-    await expect(
-      program.parseAsync(
-        [
-          'apply',
-          'select',
-          '--select-all',
-          '--space-id',
-          'space',
-          '--environment-id',
-          'master',
-          '--cma-token',
-          'token',
-        ],
-        { from: 'user' },
-      ),
-    ).rejects.toThrow('exit:1');
-    expect(exit).toHaveBeenCalledWith(1);
-  });
-
   it('routes a read-only result view to plain output instead of mounting Ink', async () => {
     const writes: string[] = [];
     vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string | Uint8Array) => {

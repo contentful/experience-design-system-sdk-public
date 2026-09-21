@@ -86,18 +86,11 @@ export const IMPORT_FLAGS: FlagSpec[] = [
       'Only valid with an agent that supports Bedrock routing (currently: claude [default], codex, opencode); rejected otherwise.',
   },
   {
-    flag: '--tokens',
-    kind: 'value',
-    sampleValue: '/tmp/tokens.json',
-    modes: ['pty', 'headless'],
-    incompatibleWith: ['--raw-tokens'],
-  },
-  {
     flag: '--raw-tokens',
     kind: 'value',
     sampleValue: '/tmp/raw-tokens.scss',
     modes: ['pty', 'headless'],
-    incompatibleWith: ['--tokens'],
+    incompatibleWith: [],
   },
   {
     flag: '--select',

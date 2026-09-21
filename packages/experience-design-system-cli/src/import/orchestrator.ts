@@ -8,10 +8,8 @@ import {
   updateStep,
   findLatestSessionForCommand,
   loadCDFComponents,
-  storeDTCGTokens,
 } from '../session/db.js';
 import { detectSlotCycles, formatSlotCycleReport } from '../apply/command.js';
-import { readTokensFromPath } from '../apply/manifest.js';
 import { PREVIEW_ERROR_PREFIX, VALIDATION_FAILED_CODE, parsePreviewValidationErrors } from '../apply/api-client.js';
 import { fetchAndPersistExistingContentfulEntities } from '../helpers/fetch-and-persist-existing-contentful-entities.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
@@ -36,7 +34,6 @@ export interface PipelineOptions {
   noCache: boolean;
   yes: boolean;
   verbose: boolean;
-  tokens?: string;
   viewports?: string;
   host?: string;
   dryRun?: boolean;
@@ -491,14 +488,6 @@ export async function runPipeline(
     steps.push({ step: 'generate components', status: 'complete', durationMs });
   }
 
-  // --tokens is already-classified DTCG input for apply, but map-tokens
-  // resolves defaults from the generated component session. Materialize the
-  // same leaves there before invoking its deterministic prepass.
-  if (extractSessionId && opts.tokens) {
-    const tokens = await readTokensFromPath('--tokens', opts.tokens);
-    storeDTCGTokens(db, extractSessionId, [], tokens);
-  }
-
   const mapTokensLabel = stepLabel('Mapping design tokens');
   const hasGeneratedComponents = extractSessionId !== null && loadCDFComponents(db, extractSessionId).length > 0;
   if (!extractSessionId || (opts.skipGenerate && !hasGeneratedComponents)) {
@@ -646,7 +635,6 @@ export async function runPipeline(
       pushArgs.push('--components', componentsPath);
     }
 
-    if (opts.tokens) pushArgs.push('--tokens', opts.tokens);
     if (opts.viewports) pushArgs.push('--viewports', opts.viewports);
     if (opts.host) pushArgs.push('--host', opts.host);
     if (opts.verbose) pushArgs.push('--verbose');
