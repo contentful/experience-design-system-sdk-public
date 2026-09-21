@@ -39,7 +39,7 @@
     "semver": "^7.7.2"
   },
   "devDependencies": {
-    "@tsconfig/node24": "^24.0.4",
+    "@tsconfig/node24": "^24.0.5",
     "@types/node": "^24.0.3",
     "@types/react": "^18.3.24",
     "@types/semver": "^7.7.1",
