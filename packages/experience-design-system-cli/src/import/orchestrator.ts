@@ -41,7 +41,6 @@ export interface PipelineOptions {
   host?: string;
   dryRun?: boolean;
   excludeInvalid?: boolean;
-  selectAll?: boolean;
   select?: string[];
   deselect?: string[];
   /** Forwarded to the spawned `analyze select-agent` subprocess. */
@@ -374,8 +373,7 @@ export async function runPipeline(
     });
     const t0Edit = Date.now();
 
-    const useAgentSelect =
-      !opts.selectAll && (!opts.select || opts.select.length === 0) && (!opts.deselect || opts.deselect.length === 0);
+    const useAgentSelect = (!opts.select || opts.select.length === 0) && (!opts.deselect || opts.deselect.length === 0);
 
     let editArgs: string[];
     if (useAgentSelect) {

@@ -192,10 +192,10 @@ describe('--agent accepts all documented agent names', () => {
 // ---------------------------------------------------------------------------
 
 describe('import --project runs analyze extract against the specified path', () => {
-  it('exits 0 when project has real TSX components (with --skip-generate --skip-apply --select-all)', async () => {
+  it('exits 0 when project has real TSX components (with --skip-generate --skip-apply --select)', async () => {
     const dbPath = await makeFreshDbPath();
     const { code } = await runCliWithEnv(
-      ['import', '--project', REAL_PROJECT_DIR, '--skip-generate', '--skip-apply', '--select-all'],
+      ['import', '--project', REAL_PROJECT_DIR, '--skip-generate', '--skip-apply', '--select', 'Button'],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
       30000,
     );
@@ -205,7 +205,7 @@ describe('import --project runs analyze extract against the specified path', () 
   it('JSON output shows analyze extract step as complete (not skipped)', async () => {
     const dbPath = await makeFreshDbPath();
     const { stdout, code } = await runCliWithEnv(
-      ['import', '--project', REAL_PROJECT_DIR, '--skip-generate', '--skip-apply', '--select-all'],
+      ['import', '--project', REAL_PROJECT_DIR, '--skip-generate', '--skip-apply', '--select', 'Button'],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
       30000,
     );
@@ -219,7 +219,7 @@ describe('import --project runs analyze extract against the specified path', () 
   it('JSON output shows analyze extract found at least one component', async () => {
     const dbPath = await makeFreshDbPath();
     const { stdout, code } = await runCliWithEnv(
-      ['import', '--project', REAL_PROJECT_DIR, '--skip-generate', '--skip-apply', '--select-all'],
+      ['import', '--project', REAL_PROJECT_DIR, '--skip-generate', '--skip-apply', '--select', 'Button'],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
       30000,
     );
@@ -240,7 +240,8 @@ describe('import --project runs analyze extract against the specified path', () 
         '/tmp/nonexistent-experiences-dir-xyz-import-test',
         '--skip-generate',
         '--skip-apply',
-        '--select-all',
+        '--select',
+        'Button',
       ],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
       30000,
@@ -251,7 +252,7 @@ describe('import --project runs analyze extract against the specified path', () 
   it('JSON output has session and project fields', async () => {
     const dbPath = await makeFreshDbPath();
     const { stdout, code } = await runCliWithEnv(
-      ['import', '--project', REAL_PROJECT_DIR, '--skip-generate', '--skip-apply', '--select-all'],
+      ['import', '--project', REAL_PROJECT_DIR, '--skip-generate', '--skip-apply', '--select', 'Button'],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
       30000,
     );
