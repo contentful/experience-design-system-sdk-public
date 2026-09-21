@@ -38,7 +38,6 @@ export interface PipelineOptions {
   host?: string;
   dryRun?: boolean;
   excludeInvalid?: boolean;
-  deselect?: string[];
   /** Forwarded to the spawned `analyze select-agent` subprocess. */
   selectPromptPath?: string;
   /** When true, auto-reject cycle participants and retry push instead of surfacing an error. */
@@ -371,7 +370,7 @@ export async function runPipeline(
     });
     const t0Edit = Date.now();
 
-    const useAgentSelect = !opts.deselect || opts.deselect.length === 0;
+    const useAgentSelect = true;
 
     let editArgs: string[];
     if (useAgentSelect) {
@@ -384,12 +383,7 @@ export async function runPipeline(
       if (existingEntitiesPath) editArgs.push('--existing-entities-path', existingEntitiesPath);
     } else {
       editArgs = ['analyze', 'select', '--session', extractSessionId];
-      if (opts.deselect && opts.deselect.length > 0) {
-        for (const p of opts.deselect) editArgs.push('--deselect', p);
-        editArgs.push('--select-all');
-      } else {
-        editArgs.push('--select-all');
-      }
+      editArgs.push('--select-all');
     }
 
     const rEdit = await runStep(editArgs, cliPath, sessionId, { FORCE_COLOR: '1' }, useAgentSelect);

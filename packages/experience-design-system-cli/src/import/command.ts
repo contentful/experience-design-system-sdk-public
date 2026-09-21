@@ -47,12 +47,6 @@ export function registerImportCommand(program: Command): void {
       '--raw-tokens <path>',
       'Path to a raw token source file (SCSS, CSS variables, JS/TS, Style Dictionary, etc.) to classify and import alongside components. Bypasses the interactive token prompt.',
     )
-    .option(
-      '--deselect <pattern>',
-      'Deselect components matching pattern (repeatable)',
-      (v, a: string[]) => [...a, v],
-      [] as string[],
-    )
     .option('--skip-analyze', 'Skip the analyze step (uses most recent extract session)')
     .option('--skip-generate', 'Skip the generate step (uses most recent generate session)')
     .option('--skip-apply', '(deprecated alias for --no-push) Skip pushing to Contentful')
@@ -161,7 +155,6 @@ export function registerImportCommand(program: Command): void {
         model?: string;
         bedrock?: boolean;
         rawTokens?: string;
-        deselect: string[];
         skipAnalyze?: boolean;
         skipGenerate?: boolean;
         skipApply?: boolean;
@@ -538,7 +531,6 @@ export function registerImportCommand(program: Command): void {
             agent: headlessAgent,
             model: headlessModel,
             ...(opts.bedrock ? { bedrock: true } : {}),
-            deselect: opts.deselect.length > 0 ? opts.deselect : undefined,
             skipAnalyze: opts.skipAnalyze ?? false,
             skipGenerate: opts.skipGenerate ?? false,
             skipMapTokens: opts.skipMapTokens ?? false,

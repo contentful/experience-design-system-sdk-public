@@ -94,13 +94,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--deselect',
-    kind: 'value',
-    sampleValue: 'Icon',
-    modes: ['headless'],
-    incompatibleWith: [],
-  },
-  {
     flag: '--skip-analyze',
     kind: 'boolean',
     modes: ['headless'],
