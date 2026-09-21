@@ -10,16 +10,19 @@ import { computeCycleAutoRejectTargets } from '../../../src/import/cycle-auto-re
 import type { ComponentGraphNode } from '../../../src/analyze/composite-closure.js';
 
 describe('nextStepAfterScopeGate', () => {
-  it('routes to credentials when accepted > 0 and push is enabled', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 5, noPush: false })).toBe('credentials');
+  // Credentials are collected at the front of the wizard (before extract),
+  // so scope-gate never routes back through 'credentials'. Any 'credentials'
+  // return would skip the generate step entirely — the regression fixed here.
+  it('routes to generating when accepted > 0 and push is enabled', () => {
+    expect(nextStepAfterScopeGate({ acceptedCount: 5, noPush: false })).toBe('generating');
   });
 
-  it('routes directly to generating when accepted > 0 and --no-push is set (skips credentials)', () => {
+  it('routes to generating when accepted > 0 and --no-push is set', () => {
     expect(nextStepAfterScopeGate({ acceptedCount: 5, noPush: true })).toBe('generating');
   });
 
-  it('routes to credentials when accepted === 0 and push is enabled (still need creds for tokens/removals)', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 0, noPush: false })).toBe('credentials');
+  it('routes to push-decision-gate when accepted === 0 and push is enabled', () => {
+    expect(nextStepAfterScopeGate({ acceptedCount: 0, noPush: false })).toBe('push-decision-gate');
   });
 
   it('routes to print-gate when accepted === 0 and --no-push is set (nothing to do; let operator save files)', () => {

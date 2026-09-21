@@ -1971,19 +1971,12 @@ export function WizardApp({
                 cancelAutoFilter: state.aiFilterStatus === 'running' ? cancelAutoFilterAndWait : undefined,
                 onAdvanceToGenerate: async ({ sessionId: sid, acceptedCount }) => {
                   update({ acceptedCount, autoRejectedCount: 0 });
-                  const next = nextStepAfterScopeGate({ acceptedCount, noPush });
-                  if (next === 'generating') {
-                    if (await runAgentAuthCheck('generating')) {
-                      void runGenerate(sid, state.tokensPath, acceptedCount);
-                    }
-                    return;
+                  // runScopeGate only invokes this handler when acceptedCount > 0,
+                  // and credentials are already collected at the front of the wizard,
+                  // so the next step is always 'generating'.
+                  if (await runAgentAuthCheck('generating')) {
+                    void runGenerate(sid, state.tokensPath, acceptedCount);
                   }
-                  // Credentials are collected at the front of the wizard, so
-                  // by the time we reach this branch we either have them or
-                  // the user opted to skip. If skipped, credentialsSkipped is
-                  // set and downstream push gates handle the missing-creds
-                  // case; otherwise proceed straight to the push decision.
-                  update({ step: 'push-decision-gate' });
                 },
                 onAdvanceToPushFlow: (count) => {
                   update({ acceptedCount: count, autoRejectedCount: 0 });

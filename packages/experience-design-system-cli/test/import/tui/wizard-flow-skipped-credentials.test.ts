@@ -28,14 +28,13 @@ describe('wizard flow — credentials skipped end-to-end', () => {
     const applyImport = vi.fn();
 
     // ── Step: scope-gate confirmed with accepted > 0, push enabled.
-    //   noPush flag is the pre-launch path; this spec is the in-screen
-    //   skip path, so noPush stays false (push is enabled at flag level).
+    //   With credentials collected at the front of the wizard, scope-gate
+    //   routes directly to generating. The 'credentialsSkipped' state was
+    //   already set earlier when the operator pressed `s` on the front-of-flow
+    //   credentials screen; downstream preview/push gates read that flag.
     const afterScope = nextStepAfterScopeGate({ acceptedCount: 5, noPush: false });
-    expect(afterScope).toBe('credentials');
+    expect(afterScope).toBe('generating');
 
-    // ── Step: operator presses `s` on the credentials screen. Wizard sets
-    //   `credentialsSkipped: true` and runs the same post-credentials
-    //   advance helper as the validated path.
     const state = { credentialsSkipped: true, acceptedCount: 5 };
     const afterCreds = nextStepAfterCredentialsValidated({ acceptedCount: state.acceptedCount });
     expect(afterCreds).toBe('generating');
