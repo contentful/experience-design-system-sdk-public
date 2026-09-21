@@ -292,11 +292,19 @@ jobs:
           # per-package to retarget npmjs.org. The nx release step above has
           # already published to GitHub Packages, so mutating the working-tree
           # manifests here is safe (the checkout is discarded after the job).
-          for pkg in types cli; do
+          #
+          # cli-v2 must ship here too: the cli package depends on it, so omitting
+          # it left every public `npm install` of the cli failing with a 404 on
+          # @contentful/experience-design-system-cli-v2. Publish order follows the
+          # dependency order (types, cli-v2, then cli) so the registry never holds
+          # a cli version whose dependencies aren't resolvable yet.
+          for pkg in types cli-v2 cli; do
             npm pkg set publishConfig.registry=https://registry.npmjs.org \
               --prefix "packages/experience-design-system-$pkg"
           done
           pnpm --filter @contentful/experience-design-system-types run build
+          pnpm --filter @contentful/experience-design-system-cli-v2 run build
           pnpm --filter @contentful/experience-design-system-cli run build
           pnpm --filter @contentful/experience-design-system-types publish --access public --no-git-checks --@contentful:registry=https://registry.npmjs.org
+          pnpm --filter @contentful/experience-design-system-cli-v2 publish --access public --no-git-checks --@contentful:registry=https://registry.npmjs.org
           pnpm --filter @contentful/experience-design-system-cli publish --access public --no-git-checks --@contentful:registry=https://registry.npmjs.org
