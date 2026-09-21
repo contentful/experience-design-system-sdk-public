@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import type { Screen } from '../../../app.js';
 import { FOCUS_MARKER, PALETTE, brandBar } from './home.theme.js';
-import { readPackageVersion } from '../version.js';
+import { checkForUpgrade, readPackageVersion, type UpgradeCheckResult } from '../upgrade/version.js';
 import { useTerminalWidth } from '../use-terminal-width.js';
 
 const VERSION = readPackageVersion();
@@ -19,11 +19,29 @@ const START_ITEMS: { label: string; screen: Screen }[] = [
   { label: 'Help', screen: 'help' },
 ];
 
+function upgradeItemDisplay(upgradeCheck: UpgradeCheckResult | undefined): { label: string; color?: string } {
+  if (upgradeCheck?.status === 'update-available') {
+    return { label: `Upgrade Version (v${upgradeCheck.latest} available)`, color: PALETTE.success };
+  }
+  if (upgradeCheck?.status === 'up-to-date') {
+    return { label: 'Upgrade Version (up to date)', color: PALETTE.muted };
+  }
+  return { label: 'Upgrade Version' };
+}
+
 export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }): React.ReactElement {
   const [focusIdx, setFocusIdx] = useState(0);
+  const [upgradeCheck, setUpgradeCheck] = useState<UpgradeCheckResult>();
   const { exit } = useApp();
   const terminalWidth = useTerminalWidth();
   const tooNarrow = terminalWidth < MIN_TERMINAL_WIDTH;
+  const upgradeDisabled = upgradeCheck?.status === 'up-to-date';
+
+  useEffect(() => {
+    checkForUpgrade()
+      .then(setUpgradeCheck)
+      .catch(() => setUpgradeCheck({ status: 'error' }));
+  }, []);
 
   useInput((input, key) => {
     if (input === 'q' || key.escape) {
@@ -41,7 +59,9 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
       return;
     }
     if (key.return) {
-      onNavigate(START_ITEMS[focusIdx]!.screen);
+      const item = START_ITEMS[focusIdx]!;
+      if (item.screen === 'upgrade' && upgradeDisabled) return;
+      onNavigate(item.screen);
       return;
     }
   });
@@ -80,10 +100,18 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
         <Box flexDirection="column">
           {START_ITEMS.map((item, i) => {
             const focused = i === focusIdx;
+            const isUpgradeItem = item.screen === 'upgrade';
+            const display = isUpgradeItem ? upgradeItemDisplay(upgradeCheck) : { label: item.label };
+            const dimmed = isUpgradeItem && upgradeDisabled;
             return (
-              <Text key={item.label} bold={focused} color={focused ? PALETTE.accent : undefined}>
+              <Text
+                key={item.label}
+                bold={focused && !dimmed}
+                dimColor={dimmed}
+                color={focused && !dimmed ? PALETTE.accent : display.color}
+              >
                 {focused ? `${FOCUS_MARKER} ` : '  '}
-                {item.label}
+                {display.label}
               </Text>
             );
           })}
