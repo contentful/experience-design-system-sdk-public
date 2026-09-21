@@ -56,7 +56,6 @@ function baseOptsWithCredentials(): PipelineOptions {
     agent: 'fake-agent',
     skipAnalyze: false,
     skipGenerate: false,
-    print: false,
     skipApply: true,
     noCache: false,
     yes: true,

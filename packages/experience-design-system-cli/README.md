@@ -205,7 +205,6 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--deselect <pattern>`            | —                                      | Headless: reject components matching pattern (repeatable; bypasses agentic select)                           |
 | `--skip-analyze`                  | —                                      | Reuse most recent `analyze extract` session                                                                  |
 | `--skip-generate`                 | —                                      | Reuse most recent `generate components` session                                                              |
-| `--print`                         | —                                      | Headless: write `components.json` to `--out` after generation                                                |
 | `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between generate and apply                                                        |
 | `--skip-apply`                    | —                                      | Stop after generate; do not push                                                                             |
 | `--no-cache`                      | cache on                               | Bypass extract/select/generate/map-tokens fine-grained caches and force re-run; forwarded to `analyze select-agent`, `generate components`, and `map tokens` |
