@@ -215,7 +215,7 @@ describe('runPipeline — select-agent argv forwarding', () => {
 
       const calls = await readCalls(dir);
       const selectAgentCall = calls.find((c) => c[0] === 'analyze' && c[1] === 'select-agent');
-      const generateCall = calls.find((c) => c[0] === 'generate' && c[1] === 'components');
+      const generateCall = calls.find((c) => c[0] === '__generate' && c[1] === 'components');
       expect(selectAgentCall).toContain('--bedrock');
       expect(generateCall).toContain('--bedrock');
     } finally {

@@ -308,7 +308,7 @@ describe('runPipeline — verbose flag propagation', () => {
     await runPipeline({ ...baseOpts({ out: dir, verbose: true }), project: dir }, () => {}, cliPath);
 
     const calls = await readCalls(dir);
-    const genCall = calls.find((c) => c[0] === 'generate' && c[1] === 'components');
+    const genCall = calls.find((c) => c[0] === '__generate' && c[1] === 'components');
     const pushCall = calls.find((c) => c[0] === 'apply' && c[1] === 'push');
     expect(genCall).toContain('--verbose');
     expect(pushCall).toContain('--verbose');
@@ -332,7 +332,7 @@ describe('runPipeline — verbose flag propagation', () => {
     await runPipeline({ ...baseOpts({ out: dir, verbose: false }), project: dir }, () => {}, cliPath);
 
     const calls = await readCalls(dir);
-    const genCall = calls.find((c) => c[0] === 'generate' && c[1] === 'components');
+    const genCall = calls.find((c) => c[0] === '__generate' && c[1] === 'components');
     const pushCall = calls.find((c) => c[0] === 'apply' && c[1] === 'push');
     expect(genCall).not.toContain('--verbose');
     expect(pushCall).not.toContain('--verbose');

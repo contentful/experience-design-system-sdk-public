@@ -28,11 +28,10 @@ Design system codebase
     ├── import (headless)       → orchestrator that shells out to the subcommands below
     ├── runs                    → list/detail/replay prior wizard runs from ~/.config/experiences/runs.json
     │                              (positional <id-or-path>, --json, --pushed, --not-pushed)
-    ├── generate tokens (optional) → session DB (DTCG artifact via coding agent; before component generation)
+    ├── import generation (internal) → session DB (CDF/DTCG artifacts via coding agent)
     ├── analyze extract         → session DB (raw components)
     ├── analyze select          → session DB (accepted/rejected decisions, standalone JsonEditor TUI)
     ├── analyze select-agent    → session DB (agentic accept/reject + per-component rationale)
-    ├── generate components     → session DB (CDF artifact via coding agent; can consume tokens.json)
     ├── map tokens (standalone)  → deterministic default paths, then optional agentic $token.allowed inference
     ├── print validate          → validates CDF / DTCG files, exits 0/1
     ├── print components|tokens → write artifacts from the session DB
@@ -76,7 +75,7 @@ Component extraction engine: per-framework parsers (React, Vue, Astro, Stencil, 
 
 ### `experience-design-system-generation`
 
-Agent-invocation (`agent-invoker.ts`, `agent-runner.ts`), skill-prompt building (`prompt-builder.ts`), and progress reporting for coding-agent subprocesses. Consumed by the CLI's `generate components` and `generate tokens` commands — this is where the sentinel-marker-vs-tool-call-line output protocol described under "The Generate Command" below actually lives now.
+Agent-invocation (`agent-invoker.ts`, `agent-runner.ts`), skill-prompt building (`prompt-builder.ts`), and progress reporting for coding-agent subprocesses. Consumed by the import wizard's internal generation step.
 
 ### `experience-design-system-client`
 

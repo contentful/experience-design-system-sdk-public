@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
 import { registerAnalyzeCommand } from './analyze/command.js';
-import { registerGenerateCommand } from './generate/command.js';
+import { registerInternalGenerateCommand } from './generate/command.js';
 import { registerApplyCommand } from './apply/command.js';
 import { registerSessionCommand } from './session/cli.js';
 import { registerPrintCommand } from './print/command.js';
@@ -108,7 +108,7 @@ export function createProgram(): Command {
     .version(pkg.version, '--version', 'Print version number');
 
   registerAnalyzeCommand(program);
-  registerGenerateCommand(program);
+  registerInternalGenerateCommand(program);
   registerPrintCommand(program);
   registerMapTokensCommand(program);
   registerApplyCommand(program);
