@@ -47,7 +47,6 @@ export function registerImportCommand(program: Command): void {
       '--raw-tokens <path>',
       'Path to a raw token source file (SCSS, CSS variables, JS/TS, Style Dictionary, etc.) to classify and import alongside components. Bypasses the interactive token prompt.',
     )
-    .option('--skip-analyze', 'Skip the analyze step (uses most recent extract session)')
     .option('--skip-generate', 'Skip the generate step (uses most recent generate session)')
     .option('--skip-apply', '(deprecated alias for --no-push) Skip pushing to Contentful')
     .option(
@@ -350,7 +349,6 @@ export function registerImportCommand(program: Command): void {
         const noPushRequested = opts.push === false || opts.skipApply === true;
 
         const isHeadless =
-          opts.skipAnalyze ||
           opts.skipGenerate ||
           // A "don't push" request on a non-TTY is a headless intent (the wizard
           // needs a TTY); in a TTY it stays interactive and is NOT headless.
@@ -521,7 +519,7 @@ export function registerImportCommand(program: Command): void {
             agent: headlessAgent,
             model: headlessModel,
             ...(opts.bedrock ? { bedrock: true } : {}),
-            skipAnalyze: opts.skipAnalyze ?? false,
+            skipAnalyze: false,
             skipGenerate: opts.skipGenerate ?? false,
             skipMapTokens: opts.skipMapTokens ?? false,
             skipApply,

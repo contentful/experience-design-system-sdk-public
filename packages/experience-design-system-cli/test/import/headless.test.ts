@@ -18,48 +18,6 @@ describe('import — headless mode', () => {
     NODE_NO_WARNINGS: '1',
   });
 
-  it('runs with --skip-analyze --skip-generate --skip-apply and exits 0', async () => {
-    const { code } = await runCliWithEnv(
-      ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', fixture.projectDir],
-      baseEnv(),
-    );
-    expect(code).toBe(0);
-  });
-
-  it('outputs JSON to stdout when not a TTY', async () => {
-    const { code, stdout } = await runCliWithEnv(
-      ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', fixture.projectDir],
-      baseEnv(),
-    );
-    expect(code).toBe(0);
-    const parsed = JSON.parse(stdout);
-    expect(parsed).toHaveProperty('steps');
-    expect(Array.isArray(parsed.steps)).toBe(true);
-  });
-
-  it('JSON output includes session and project fields', async () => {
-    const { code, stdout } = await runCliWithEnv(
-      ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', fixture.projectDir],
-      baseEnv(),
-    );
-    expect(code).toBe(0);
-    const parsed = JSON.parse(stdout);
-    expect(parsed).toHaveProperty('session');
-    expect(typeof parsed.session).toBe('string');
-    expect(parsed).toHaveProperty('project');
-    expect(typeof parsed.project).toBe('string');
-  });
-
-  it('all steps are skipped when --skip-analyze --skip-generate --skip-apply are set', async () => {
-    const { code, stdout } = await runCliWithEnv(
-      ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', fixture.projectDir],
-      baseEnv(),
-    );
-    expect(code).toBe(0);
-    const parsed = JSON.parse(stdout) as { steps: { step: string; status: string }[] };
-    expect(parsed.steps.every((s) => s.status === 'skipped')).toBe(true);
-  });
-
   it('fails when --project points to nonexistent directory', async () => {
     // analyze extract will fail when the project directory doesn't exist
     const { code } = await runCliWithEnv(
