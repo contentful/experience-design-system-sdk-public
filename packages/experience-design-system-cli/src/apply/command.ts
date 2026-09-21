@@ -1,5 +1,5 @@
-import React, { createElement, useState } from 'react';
-import { render, useInput } from 'ink';
+import React, { createElement } from 'react';
+import { render } from 'ink';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Command } from 'commander';
@@ -8,7 +8,6 @@ import {
   flattenDTCG,
   validateDTCG,
   buildManifest,
-  buildFilteredManifest,
 } from '@contentful/experience-design-system-types';
 import type { CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
 import { ApiError, ImportApiClient } from './api-client.js';
@@ -18,7 +17,6 @@ import { findSlotCycles, suggestCycleBreakEdge, formatCyclePath } from '../analy
 import type { ServerPreviewResponse, ApplyOperationResponse } from '@contentful/experience-design-system-types';
 import { isEmptyPreview } from './preview-utils.js';
 import { ServerPreviewApp, ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
-import { SelectView, makeSelectKey, type SelectableEntity } from './tui/SelectView.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import {
@@ -26,11 +24,10 @@ import {
   addArtifactInputOptions,
   addCompositionOptions,
   addContentfulTargetOptions,
-  addSelectionOptions,
 } from '../lib/command-options.js';
 import { stripAllowedComponents } from '../import/strip-allowed-components.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
-import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
+import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
 import {
   bindAnalyticsSessionId,
   exitWithAnalytics,
@@ -160,23 +157,11 @@ interface SharedImportOptions {
   atomic?: boolean;
 }
 
-interface PreviewOptions extends SharedImportOptions {
-  includeUnchanged?: boolean;
-}
-
 interface ApplyOptions extends SharedImportOptions {
   yes?: boolean;
   verbose?: boolean;
   force?: boolean;
   dryRun?: boolean;
-  allowDeletions?: boolean;
-}
-
-interface SelectOptions extends SharedImportOptions {
-  selectAll?: boolean;
-  select?: string[];
-  deselect?: string[];
-  force?: boolean;
   allowDeletions?: boolean;
 }
 
@@ -186,21 +171,6 @@ function addSharedApplyOptions(command: Command): void {
   addArtifactInputOptions(command);
   addContentfulTargetOptions(command);
   addCompositionOptions(command);
-}
-
-function splitSelectedKeys(selectedKeys: Set<string>): {
-  selectedComponentKeys: Set<string>;
-  selectedTokenPaths: Set<string>;
-} {
-  const selectedComponentKeys = new Set<string>();
-  const selectedTokenPaths = new Set<string>();
-  for (const key of selectedKeys) {
-    const [kind, ...idParts] = key.split(':');
-    const id = idParts.join(':');
-    if (kind === 'component') selectedComponentKeys.add(id);
-    else if (kind === 'token') selectedTokenPaths.add(id);
-  }
-  return { selectedComponentKeys, selectedTokenPaths };
 }
 
 async function resolveSharedInputsOrDie(opts: SharedImportOptions, verbose?: boolean): Promise<SharedInputs> {
@@ -290,17 +260,6 @@ async function applyAndPoll(
   }
 
   return operation;
-}
-
-function buildSelectedApply(
-  fullManifest: Parameters<typeof buildFilteredManifest>[0],
-  entities: SelectableEntity[],
-  selectedKeys: Set<string>,
-): { filteredManifest: ReturnType<typeof buildFilteredManifest>; hasBreaking: boolean } {
-  const { selectedComponentKeys, selectedTokenPaths } = splitSelectedKeys(selectedKeys);
-  const filteredManifest = buildFilteredManifest(fullManifest, selectedComponentKeys, selectedTokenPaths);
-  const hasBreaking = entities.some((e) => e.isBreaking && selectedKeys.has(makeSelectKey(e.kind, e.id)));
-  return { filteredManifest, hasBreaking };
 }
 
 interface NonInteractiveApplyOptions {
@@ -571,193 +530,10 @@ function buildApplyOutput(
   };
 }
 
-function getSelectableEntities(preview: ServerPreviewResponse): SelectableEntity[] {
-  const entities: SelectableEntity[] = [];
-
-  for (const token of preview.tokens.new) {
-    entities.push({
-      id: (token as { path?: string }).path ?? (token as { id?: string }).id ?? '',
-      kind: 'token',
-      status: 'new',
-    });
-  }
-  for (const item of preview.tokens.changed) {
-    entities.push({ id: item.current.id, kind: 'token', status: 'changed' });
-  }
-
-  for (const comp of preview.components.new) {
-    entities.push({
-      id: (comp as { key?: string }).key ?? (comp as { id?: string }).id ?? '',
-      kind: 'component',
-      status: 'new',
-    });
-  }
-  for (const item of preview.components.changed) {
-    entities.push({
-      id: item.current.id,
-      kind: 'component',
-      status: 'changed',
-      isBreaking: item.changeClassification?.classification === 'breaking',
-    });
-  }
-
-  return entities;
-}
-
-function resolveNonInteractiveSelection(entities: SelectableEntity[], opts: SelectOptions): Set<string> {
-  const allKeys = new Set(entities.map((e) => makeSelectKey(e.kind, e.id)));
-
-  if (opts.selectAll) {
-    if ((opts.select ?? []).length > 0 || (opts.deselect ?? []).length > 0) {
-      process.stderr.write('Warning: --select-all overrides --select and --deselect\n');
-    }
-    return allKeys;
-  }
-
-  const hasSelectPatterns = (opts.select ?? []).length > 0;
-  const selected = new Set<string>();
-
-  if (!hasSelectPatterns) {
-    for (const key of allKeys) selected.add(key);
-  } else {
-    for (const pattern of opts.select ?? []) {
-      for (const key of allKeys) {
-        if (key.includes(pattern)) selected.add(key);
-      }
-    }
-  }
-
-  for (const pattern of opts.deselect ?? []) {
-    for (const key of [...selected]) {
-      if (key.includes(pattern)) selected.delete(key);
-    }
-  }
-
-  return selected;
-}
-
-interface SelectAppProps {
-  entities: SelectableEntity[];
-  spaceId: string;
-  environmentId: string;
-  onApply: (selectedKeys: Set<string>) => void;
-}
-
-function SelectApp({ entities, spaceId, environmentId, onApply }: SelectAppProps): React.ReactElement {
-  const allKeys = new Set(entities.map((e) => makeSelectKey(e.kind, e.id)));
-
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(allKeys));
-  const [importing, setImporting] = useState(false);
-
-  useInput((input, key) => {
-    if (importing) return;
-
-    if (key.upArrow) {
-      setSelectedIndex((prev) => Math.max(0, prev - 1));
-      return;
-    }
-    if (key.downArrow) {
-      setSelectedIndex((prev) => Math.min(entities.length - 1, prev + 1));
-      return;
-    }
-
-    if (input === ' ') {
-      const entity = entities[selectedIndex];
-      if (!entity) return;
-      const k = makeSelectKey(entity.kind, entity.id);
-      setSelected((prev) => {
-        const next = new Set(prev);
-        if (next.has(k)) next.delete(k);
-        else next.add(k);
-        return next;
-      });
-      return;
-    }
-
-    if (input === 'a' || input === 'A') {
-      setSelected(new Set(allKeys));
-      return;
-    }
-    if (input === 'n' || input === 'N') {
-      setSelected(new Set());
-      return;
-    }
-
-    if ((input === 'i' || input === 'I') && selected.size > 0) {
-      setImporting(true);
-      onApply(selected);
-      return;
-    }
-
-    if (input === 'q' || input === 'Q') {
-      process.exit(0);
-    }
-  });
-
-  return createElement(SelectView, {
-    entities,
-    spaceId,
-    environmentId,
-    selectedIndex,
-    selected,
-    importing,
-  });
-}
-
 export function registerApplyCommand(program: Command): void {
   const applyCmd = program
     .command('apply')
-    .description('Preview, select, or push design system entities to Contentful ExO');
-
-  const previewCmd = applyCmd.command('preview').description('Show a read-only diff of what apply push would do');
-  addSharedApplyOptions(previewCmd);
-  previewCmd.action(async (opts: PreviewOptions) => {
-    const inputs = await resolveSharedInputsOrDie(opts);
-
-    const { components, tokens, client } = inputs;
-    const spaceId = opts.spaceId!;
-    const environmentId = opts.environmentId!;
-    await bindAnalyticsSessionId(opts.session, {
-      space_key: spaceId,
-      environment_key: environmentId,
-    });
-
-    try {
-      await client.validateToken();
-    } catch (e) {
-      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
-      const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : '';
-      return await die(`Error: unable to connect to API host${cause ? `: ${cause}` : ''}`);
-    }
-
-    const manifest = buildManifest(components, tokens);
-
-    let preview: ServerPreviewResponse;
-    try {
-      preview = await client.previewImport(manifest);
-    } catch (e) {
-      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
-      throw e;
-    }
-
-    recordContentfulContext(client, spaceId, environmentId);
-
-    if (getInteractiveTerminalSupport().supported) {
-      const { waitUntilExit } = render(
-        createElement(ServerPreviewApp, {
-          preview,
-          spaceId,
-          environmentId,
-          allowDeletions: false,
-        }),
-      );
-      await waitUntilExit();
-    } else {
-      process.stdout.write(JSON.stringify(buildPreviewOutput(preview, spaceId, environmentId), null, 2) + '\n');
-      await exitWithAnalytics(0);
-    }
-  });
+    .description('Preview or push design system entities to Contentful ExO');
 
   const pushCmd = applyCmd.command('push').description('Write component types and design tokens to Contentful ExO');
   addSharedApplyOptions(pushCmd);
@@ -899,111 +675,4 @@ export function registerApplyCommand(program: Command): void {
       });
     });
 
-  const selectCmd = applyCmd.command('select').description('Select a subset of entities and push to Contentful ExO');
-  addSharedApplyOptions(selectCmd);
-  addSelectionOptions(selectCmd);
-  addAllowDeletionsOption(selectCmd);
-  selectCmd.option('--force', 'Skip confirmation for breaking changes').action(async (opts: SelectOptions) => {
-    const nonInteractive = opts.selectAll || (opts.select ?? []).length > 0 || (opts.deselect ?? []).length > 0;
-
-    if (!nonInteractive) {
-      requireInteractiveTerminal({
-        alternative: 'pass `--select-all`, `--select`, or `--deselect`',
-      });
-    }
-
-    const inputs = await resolveSharedInputsOrDie(opts);
-
-    const { components, tokens, client } = inputs;
-
-    await assertNoSlotCycles(components);
-
-    try {
-      await client.validateToken();
-    } catch (e) {
-      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
-      throw e;
-    }
-
-    const fullManifest = buildManifest(components, tokens);
-
-    let preview: ServerPreviewResponse;
-    try {
-      preview = await client.previewImport(fullManifest, opts.allowDeletions === true);
-    } catch (e) {
-      if (e instanceof ApiError) return await die(`Error: ${formatApiError(e)}`, failureFromApiError(e));
-      throw e;
-    }
-
-    const spaceId = opts.spaceId!;
-    const environmentId = opts.environmentId!;
-    await bindAnalyticsSessionId(opts.session, {
-      space_key: spaceId,
-      environment_key: environmentId,
-    });
-    recordContentfulContext(client, spaceId, environmentId);
-    const entities = getSelectableEntities(preview);
-
-    if (entities.length === 0) {
-      process.stderr.write('Nothing to change — design system is up to date.\n');
-      await exitWithAnalytics(0);
-    }
-
-    if (nonInteractive) {
-      const selectedKeys = resolveNonInteractiveSelection(entities, opts);
-
-      if (selectedKeys.size === 0) {
-        process.stderr.write('No entities matched selection criteria.\n');
-        await exitWithAnalytics(0);
-      }
-
-      const { filteredManifest, hasBreaking } = buildSelectedApply(fullManifest, entities, selectedKeys);
-
-      if (hasBreaking && !opts.force) {
-        process.stderr.write('Error: selection includes breaking changes. Use --force to acknowledge.\n');
-        await exitWithAnalytics(1);
-      }
-
-      await runNonInteractiveApply({
-        client,
-        manifest: filteredManifest,
-        spaceId,
-        environmentId,
-        acknowledgeBreakingChanges: hasBreaking || opts.force === true,
-        allowDeletions: opts.allowDeletions === true,
-        host: opts.host,
-      });
-      return;
-    }
-
-    await new Promise<void>((resolvePromise) => {
-      const runSelectApply = async (selectedKeys: Set<string>) => {
-        const { filteredManifest, hasBreaking } = buildSelectedApply(fullManifest, entities, selectedKeys);
-        await runInteractiveApply({
-          client,
-          manifest: filteredManifest,
-          spaceId,
-          environmentId,
-          host: opts.host,
-          acknowledgeBreakingChanges: hasBreaking,
-          allowDeletions: opts.allowDeletions === true,
-          rerender: (element) => instance.rerender(element),
-          onDone: resolvePromise,
-        });
-      };
-
-      const instance = render(
-        createElement(SelectApp, {
-          entities,
-          spaceId,
-          environmentId,
-          onApply: (selectedKeys) => {
-            void runSelectApply(selectedKeys);
-          },
-        }),
-      );
-
-      void instance.waitUntilExit().then(() => resolvePromise());
-    });
-  });
 }

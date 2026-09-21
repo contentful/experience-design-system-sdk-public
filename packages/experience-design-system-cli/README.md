@@ -93,7 +93,7 @@ The CLI invokes the agent non-interactively in a subprocess. If the binary is no
 
 ### Contentful credentials
 
-`apply preview`, `apply select`, `apply push`, and `import` (when pushing) require access to a Contentful space. Set these environment variables or pass the equivalent flags:
+`apply push` and `import` (when pushing) require access to a Contentful space. Set these environment variables or pass the equivalent flags:
 
 ```bash
 export CONTENTFUL_MANAGEMENT_TOKEN=<your-cma-token>   # required
@@ -404,19 +404,17 @@ experiences print validate   [--components <path>] [--tokens <path>]
 
 ---
 
-### `apply preview` / `apply select` / `apply push`
+### `apply push`
 
 These subcommands are the non-wizard route to the same diff and push logic. Flag surfaces are unchanged.
 
-`apply push` and `apply select` now emit a Contentful webapp view URL for the imported components in their JSON summary (`viewUrl`) so callers can deep-link into the management UI after a successful push.
+`apply push` emits a Contentful webapp view URL for the imported components in its JSON summary (`viewUrl`) so callers can deep-link into the management UI after a successful push.
 
 ```bash
-experiences apply preview --space-id <id> --environment-id <env> --session <id>
-experiences apply select  --space-id <id> --environment-id <env> --session <id>
 experiences apply push    --space-id <id> --environment-id <env> --session <id> [--yes]
 ```
 
-Shared flags: `--components`, `--tokens`, `--session`, `--space-id`, `--environment-id`, `--cma-token`, `--host`, `--viewports`. `apply preview` adds `--include-unchanged`. `apply select` adds `--select-all`, `--select`, `--deselect`, `--force`, `--allow-deletions`. `apply push` adds `--yes`, `--verbose`, `--force`, `--dry-run`, `--allow-deletions`. By default, remote ComponentTypes and DesignTokens missing from the pushed manifest are skipped, not deleted; pass `--allow-deletions` to restore the prior delete behavior.
+Shared flags: `--components`, `--tokens`, `--session`, `--space-id`, `--environment-id`, `--cma-token`, `--host`, `--viewports`. `apply push` adds `--yes`, `--verbose`, `--force`, `--dry-run`, `--allow-deletions`. By default, remote ComponentTypes and DesignTokens missing from the pushed manifest are skipped, not deleted; pass `--allow-deletions` to restore the prior delete behavior.
 
 Design tokens are written first (component types may reference token kinds). Each entity write is recorded in the session database atomically — interrupted pushes resume from where they left off.
 
@@ -444,7 +442,7 @@ Wizard run history is separate: `~/.config/experiences/runs.json`.
 - `NO_COLOR=1` suppresses all ANSI color output
 - Interactive views require both stdin and stdout to be TTYs and stdin to support raw mode. Read-only views fall back to plain or JSON output when those capabilities are unavailable; commands that require input stop with the relevant non-interactive flags in the error message.
 - On Windows, use Windows Terminal with PowerShell. Older ConEmu and cmd.exe hosts may not provide the raw-mode support the interactive UI needs.
-- To avoid the interactive UI, use the command's non-interactive options: `import --yes` (with credentials) or `import --no-push --auto-accept-scope`, `analyze select --select-all`, `apply select --select-all`, and `apply push --yes`.
+- To avoid the interactive UI, use the command's non-interactive options: `import --yes` (with credentials) or `import --no-push --auto-accept-scope`, `analyze select --select-all`, and `apply push --yes`.
 
 ---
 
