@@ -199,7 +199,6 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--save-as-new`                   | —                                      | With `--modify`: always save to a new path                                                                   |
 | `--select-prompt-path <path>`     | saved by setup                         | Custom `.md` skill prompt for `analyze select-agent`                                                         |
 | `--generate-prompt-path <path>`   | saved by setup                         | Custom `.md` skill prompt for `generate components`                                                          |
-| `--select <pattern>`              | —                                      | Headless: accept components matching pattern (repeatable; bypasses agentic select)                           |
 | `--deselect <pattern>`            | —                                      | Headless: reject components matching pattern (repeatable; bypasses agentic select)                           |
 | `--skip-analyze`                  | —                                      | Reuse most recent `analyze extract` session                                                                  |
 | `--skip-generate`                 | —                                      | Reuse most recent `generate components` session                                                              |
