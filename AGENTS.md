@@ -115,14 +115,13 @@ When adding a new DOM attribute wrapper type (e.g., `TableHTMLAttributes`):
 2. Specify its curated prop list and optional parent type
 3. Write a test that verifies the prop count stays bounded
 
-## The Generate Command
+## Import Generation Internals
 
-`src/generate/` contains the generate command pipeline:
+`src/generate/` contains the generation pipeline used internally by `experiences import`:
 
 - `command.ts` — validation, session resolution, agent invocation, sentinel extraction, file writes
 - `prompt-builder.ts` — combines a skill file with a runtime preamble; uses `existsSync` walk to locate `skills/` regardless of compiled vs. source context
 - `agent-runner.ts` — spawns the agent via `sh -c`; autonomous mode pipes stdout/stderr, interactive inherits stdio
-- `edit/command.ts` — `generate components edit` / `generate tokens edit` subcommands; non-interactive flags (`--accept-all`, `--reject`, `--patch`) are implemented; the interactive TUI is not yet available
 - `skills/generate-components.md` and `skills/generate-tokens.md` — the actual skill instructions shipped with the package
 - `skills/select-components.md` — skill instructions for the `analyze select-agent` command
 

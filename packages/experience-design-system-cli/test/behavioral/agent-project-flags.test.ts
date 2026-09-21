@@ -137,7 +137,7 @@ describe('--agent accepts all documented agent names', () => {
 
   it.each(agentNames)('generate components --agent %s --dry-run exits 0', async (agent) => {
     const { code, stderr } = await runCliWithEnv(
-      ['generate', 'components', '--agent', agent, '--session', fixture.sessionId, '--dry-run'],
+      ['__generate', 'components', '--agent', agent, '--session', fixture.sessionId, '--dry-run'],
       baseEnv(),
     );
     expect(code).toBe(0);
@@ -146,7 +146,7 @@ describe('--agent accepts all documented agent names', () => {
 
   it.each(agentNames)('generate components --agent %s produces a prompt on stdout', async (agent) => {
     const { stdout, code } = await runCliWithEnv(
-      ['generate', 'components', '--agent', agent, '--session', fixture.sessionId, '--dry-run'],
+      ['__generate', 'components', '--agent', agent, '--session', fixture.sessionId, '--dry-run'],
       baseEnv(),
     );
     expect(code).toBe(0);
@@ -157,7 +157,7 @@ describe('--agent accepts all documented agent names', () => {
 
   it.each(agentNames)('generate tokens --agent %s --dry-run exits 0', async (agent) => {
     const { code, stderr } = await runCliWithEnv(
-      ['generate', 'tokens', '--agent', agent, '--raw-tokens', '/dev/null', '--dry-run'],
+      ['__generate', 'tokens', '--agent', agent, '--raw-tokens', '/dev/null', '--dry-run'],
       baseEnv(),
     );
     expect(code).toBe(0);
@@ -179,7 +179,7 @@ describe('--agent accepts all documented agent names', () => {
 
   it('an unrecognised agent name exits non-zero', async () => {
     const { code, stderr } = await runCliWithEnv(
-      ['generate', 'components', '--agent', 'fake-agent-xyz', '--session', fixture.sessionId, '--dry-run'],
+      ['__generate', 'components', '--agent', 'fake-agent-xyz', '--session', fixture.sessionId, '--dry-run'],
       baseEnv(),
     );
     expect(code).not.toBe(0);

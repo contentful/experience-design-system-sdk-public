@@ -29,20 +29,9 @@ describe('backwards-compat: standalone subcommand flags', () => {
     }
   });
 
-  it('generate components flags are stable', async () => {
-    const out = await help(['generate', 'components']);
-    for (const flag of [
-      '--session',
-      '--tokens',
-      '--token-map',
-      '--agent',
-      '--model',
-      '--verbose',
-      '--dry-run',
-      '--no-cache',
-    ]) {
-      expect(out).toContain(flag);
-    }
+  it('standalone generate command is removed', async () => {
+    const out = await help([]);
+    expect(out).not.toMatch(/\n\s+generate(?:\s|$)/);
   });
 
   it('apply push flags are stable', async () => {

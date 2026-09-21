@@ -24,7 +24,6 @@ import { getDebugLogger } from '../lib/debug-logger.js';
 import { invokeAgentWithOutput } from '../lib/agent-output.js';
 import { GenerateView } from './tui/GenerateView.js';
 import type { GenerateViewResult } from './tui/GenerateView.js';
-import { registerGenerateEditCommand } from './edit/command.js';
 import {
   openPipelineDb,
   loadRawComponents,
@@ -790,8 +789,10 @@ function addAgentFlags(cmd: Command): Command {
     );
 }
 
-export function registerGenerateCommand(program: Command): void {
-  const generate = program.command('generate').description('Generate CDF/DTCG artifacts or correct generation output');
+export function registerInternalGenerateCommand(program: Command): void {
+  const generate = program
+    .command('__generate', { hidden: true })
+    .description('Internal import pipeline generation command');
 
   // generate components subcommand
   const componentsCmd = generate
@@ -813,7 +814,6 @@ export function registerGenerateCommand(program: Command): void {
   addAgentFlags(componentsCmd).action(async (opts: GenerateSubcommandOptions) => {
     await runGenerateSkill('components', opts, opts.verbose ?? false);
   });
-  registerGenerateEditCommand(componentsCmd, 'components');
 
   // generate tokens subcommand
   const tokensCmd = generate
@@ -823,5 +823,4 @@ export function registerGenerateCommand(program: Command): void {
   addAgentFlags(tokensCmd).action(async (opts: GenerateSubcommandOptions) => {
     await runGenerateSkill('tokens', opts, opts.verbose ?? false);
   });
-  registerGenerateEditCommand(tokensCmd, 'tokens');
 }

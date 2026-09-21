@@ -100,7 +100,7 @@ describe('runPipeline forwards --existing-entities-path after fetch', () => {
     expect(selectAgentCall, 'analyze select-agent subprocess was invoked').toBeDefined();
     expect(selectAgentCall!.join(' ')).toContain(`--existing-entities-path ${expectedPath}`);
 
-    const generateCall = calls.find((c) => c.includes('generate') && c.includes('components'));
+    const generateCall = calls.find((c) => c.includes('__generate') && c.includes('components'));
     expect(generateCall, 'generate components subprocess was invoked').toBeDefined();
     expect(generateCall!.join(' ')).toContain(`--existing-entities-path ${expectedPath}`);
 

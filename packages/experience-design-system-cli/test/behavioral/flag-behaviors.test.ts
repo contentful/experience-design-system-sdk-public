@@ -112,7 +112,7 @@ describe('--verbose shows prose output from the agent', () => {
     };
 
     const withoutVerbose = await runCliWithEnv(
-      ['generate', 'components', '--agent', 'claude', '--session', sessionId],
+      ['__generate', 'components', '--agent', 'claude', '--session', sessionId],
       agentEnv,
     );
     expect(withoutVerbose.code).toBe(0);
@@ -122,7 +122,7 @@ describe('--verbose shows prose output from the agent', () => {
     const agentEnv2 = { ...agentEnv, EDS_PIPELINE_DB_PATH: dbPath2 };
 
     const withVerbose = await runCliWithEnv(
-      ['generate', 'components', '--agent', 'claude', '--session', sessionId2, '--verbose'],
+      ['__generate', 'components', '--agent', 'claude', '--session', sessionId2, '--verbose'],
       agentEnv2,
     );
     expect(withVerbose.code).toBe(0);
@@ -194,7 +194,7 @@ describe('--no-cache bypasses cached component results', () => {
 
     // Without cache bypass: should use the cache (agent is NOT invoked, "cached" in stderr)
     const withCache = await runCliWithEnv(
-      ['generate', 'components', '--agent', 'claude', '--session', extractSession],
+      ['__generate', 'components', '--agent', 'claude', '--session', extractSession],
       baseRunEnv,
     );
     expect(withCache.code).toBe(0);
@@ -204,7 +204,7 @@ describe('--no-cache bypasses cached component results', () => {
 
     // With EDS_NO_CACHE=1 env var: skips cache, agent IS invoked
     const withNoCacheEnv = await runCliWithEnv(
-      ['generate', 'components', '--agent', 'claude', '--session', extractSession],
+      ['__generate', 'components', '--agent', 'claude', '--session', extractSession],
       { ...baseRunEnv, EDS_NO_CACHE: '1' },
     );
     expect(withNoCacheEnv.code).toBe(0);
@@ -251,7 +251,7 @@ describe('--no-cache bypasses cached component results', () => {
 
     // With --no-cache flag: agent IS invoked (cache bypassed)
     const result = await runCliWithEnv(
-      ['generate', 'components', '--agent', 'claude', '--session', extractSession, '--no-cache'],
+      ['__generate', 'components', '--agent', 'claude', '--session', extractSession, '--no-cache'],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1', EDS_RETRY_BACKOFF_MS: '0', ...envPatch },
     );
     expect(result.code).toBe(0);
@@ -300,7 +300,7 @@ describe('--no-cache bypasses cached component results', () => {
 
     // Re-run with a different --model: must miss the cache and invoke the agent.
     const result = await runCliWithEnv(
-      ['generate', 'components', '--agent', 'claude', '--model', 'model-b', '--session', extractSession],
+      ['__generate', 'components', '--agent', 'claude', '--model', 'model-b', '--session', extractSession],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1', EDS_RETRY_BACKOFF_MS: '0', ...envPatch },
     );
     expect(result.code).toBe(0);
@@ -339,7 +339,7 @@ describe('--model name is forwarded to the agent binary as a CLI argument', () =
     const { dbPath, sessionId } = await makeFreshDb();
 
     const result = await runCliWithEnv(
-      ['generate', 'components', '--agent', 'claude', '--session', sessionId, '--model', MODEL_NAME],
+      ['__generate', 'components', '--agent', 'claude', '--session', sessionId, '--model', MODEL_NAME],
       {
         EDS_PIPELINE_DB_PATH: dbPath,
         NODE_NO_WARNINGS: '1',
@@ -366,13 +366,13 @@ describe('--model name is forwarded to the agent binary as a CLI argument', () =
     const env = { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' };
 
     const withModel = await runCliWithEnv(
-      ['generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run', '--model', 'some-model'],
+      ['__generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run', '--model', 'some-model'],
       env,
     );
     expect(withModel.code).toBe(0);
 
     const withoutModel = await runCliWithEnv(
-      ['generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run'],
+      ['__generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run'],
       env,
     );
     expect(withoutModel.code).toBe(0);
@@ -395,7 +395,7 @@ describe('--token-map file content is embedded in the generated prompt', () => {
     const { dbPath, sessionId } = await makeFreshDb();
 
     const result = await runCliWithEnv(
-      ['generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run', '--token-map', tokenMapPath],
+      ['__generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run', '--token-map', tokenMapPath],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
     );
 
@@ -410,7 +410,7 @@ describe('--token-map file content is embedded in the generated prompt', () => {
     const { dbPath, sessionId } = await makeFreshDb();
 
     const result = await runCliWithEnv(
-      ['generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run'],
+      ['__generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run'],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
     );
 
