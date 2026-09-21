@@ -43,15 +43,6 @@ const NON_EMPTY_ROUTES = {
   },
 };
 
-const EMPTY_PREVIEW_ROUTES = {
-  ...NON_EMPTY_ROUTES,
-  'POST /spaces/test-space/environments/master/design_systems/imports/preview': {
-    components: { new: [], changed: [], removed: [], unchanged: [] },
-    tokens: { new: [], changed: [], removed: [], unchanged: [] },
-    taxonomies: { new: [], changed: [], removed: [], unchanged: [] },
-  },
-};
-
 const baseEnv = () => ({
   NODE_NO_WARNINGS: '1',
   CONTENTFUL_SPACE_ID: '',
@@ -59,20 +50,15 @@ const baseEnv = () => ({
   CONTENTFUL_MANAGEMENT_TOKEN: '',
 });
 
-describe('apply push / select — viewUrl emission (Gap 4)', () => {
+describe('apply push — viewUrl emission (Gap 4)', () => {
   let pushServer: MockCMAServer;
-  let previewServer: MockCMAServer;
 
   beforeAll(async () => {
-    [pushServer, previewServer] = await Promise.all([
-      createMockCMAServer(NON_EMPTY_ROUTES),
-      createMockCMAServer(EMPTY_PREVIEW_ROUTES),
-    ]);
+    pushServer = await createMockCMAServer(NON_EMPTY_ROUTES);
   });
 
   afterAll(() => {
     pushServer.close();
-    previewServer.close();
   });
 
   it('non-TTY apply push JSON summary includes viewUrl', async () => {
@@ -98,53 +84,6 @@ describe('apply push / select — viewUrl emission (Gap 4)', () => {
     expect(payload.viewUrl).toMatch(/^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/components$/);
     expect(typeof payload.tokensUrl).toBe('string');
     expect(payload.tokensUrl).toMatch(/^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/design_tokens$/);
-  });
-
-  it('non-TTY apply select JSON summary includes viewUrl', async () => {
-    const args = [
-      'apply',
-      'select',
-      '--components',
-      componentsPath,
-      '--space-id',
-      'test-space',
-      '--environment-id',
-      'master',
-      '--cma-token',
-      'test-token',
-      '--select-all',
-      '--host',
-      pushServer.url,
-    ];
-    const { stdout, code } = await runCliWithEnv(args, baseEnv());
-    expect(code).toBe(0);
-    const payload = JSON.parse(stdout);
-    expect(typeof payload.viewUrl).toBe('string');
-    expect(payload.viewUrl).toMatch(/^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/components$/);
-    expect(typeof payload.tokensUrl).toBe('string');
-    expect(payload.tokensUrl).toMatch(/^https:\/\/.+\/spaces\/test-space\/environments\/master\/views\/design_tokens$/);
-  });
-
-  it('non-TTY apply preview JSON output does NOT include viewUrl', async () => {
-    const args = [
-      'apply',
-      'preview',
-      '--components',
-      componentsPath,
-      '--space-id',
-      'test-space',
-      '--environment-id',
-      'master',
-      '--cma-token',
-      'test-token',
-      '--host',
-      previewServer.url,
-    ];
-    const { stdout, code } = await runCliWithEnv(args, baseEnv());
-    expect(code).toBe(0);
-    const payload = JSON.parse(stdout);
-    expect(payload).not.toHaveProperty('viewUrl');
-    expect(payload).not.toHaveProperty('tokensUrl');
   });
 
   it('interactive ServerApplyDone renders the view URL on success', () => {

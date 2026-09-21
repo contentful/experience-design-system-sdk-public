@@ -46,17 +46,6 @@ describe('apply command — help', () => {
         .options.map((option) => option.long)
         .sort();
 
-    expect(flags('preview')).toEqual([
-      '--atomic',
-      '--cma-token',
-      '--components',
-      '--composite',
-      '--environment-id',
-      '--host',
-      '--session',
-      '--space-id',
-      '--tokens',
-    ]);
     expect(flags('push')).toEqual([
       '--allow-deletions',
       '--atomic',
@@ -73,40 +62,13 @@ describe('apply command — help', () => {
       '--verbose',
       '--yes',
     ]);
-    expect(flags('select')).toEqual([
-      '--allow-deletions',
-      '--atomic',
-      '--cma-token',
-      '--components',
-      '--composite',
-      '--deselect',
-      '--environment-id',
-      '--force',
-      '--host',
-      '--select',
-      '--select-all',
-      '--session',
-      '--space-id',
-      '--tokens',
-    ]);
   });
 
   it('prints apply help', async () => {
     const { stdout, code } = await run(['apply', '--help']);
     expect(code).toBe(0);
-    expect(stdout).toContain('preview');
     expect(stdout).toContain('push');
-    expect(stdout).toContain('select');
-  });
-
-  it('prints apply preview help', async () => {
-    const { stdout, code } = await run(['apply', 'preview', '--help']);
-    expect(code).toBe(0);
-    expect(stdout).toContain('--components');
-    expect(stdout).toContain('--tokens');
-    expect(stdout).toContain('--space-id');
-    expect(stdout).toContain('--environment-id');
-    expect(stdout).toContain('--cma-token');
+    expect(stdout).not.toContain('select');
   });
 
   it('prints apply push help', async () => {
@@ -115,125 +77,6 @@ describe('apply command — help', () => {
     expect(stdout).toContain('--yes');
   });
 
-  it('prints apply select help with non-interactive flags', async () => {
-    const { stdout, code } = await run(['apply', 'select', '--help']);
-    expect(code).toBe(0);
-    expect(stdout).toContain('--select-all');
-    expect(stdout).toContain('--select');
-    expect(stdout).toContain('--deselect');
-  });
-});
-
-describe('apply preview — input validation', () => {
-  it('exits 1 when neither --components nor --tokens provided', async () => {
-    const { stderr, code } = await run([
-      'apply',
-      'preview',
-      '--space-id',
-      'space1',
-      '--environment-id',
-      'master',
-      '--cma-token',
-      'tok',
-    ]);
-    expect(code).toBe(1);
-    expect(stderr).toContain('at least one of --components');
-  });
-
-  it('exits 1 when --session and --components are both provided', async () => {
-    const { stderr, code } = await run([
-      'apply',
-      'preview',
-      '--session',
-      'some-session-id',
-      '--components',
-      componentsPath,
-      '--space-id',
-      'space1',
-      '--environment-id',
-      'master',
-      '--cma-token',
-      'tok',
-    ]);
-    expect(code).toBe(1);
-    expect(stderr).toContain('mutually exclusive');
-  });
-
-  it('exits 1 when --space-id missing', async () => {
-    const { stderr, code } = await run([
-      'apply',
-      'preview',
-      '--components',
-      componentsPath,
-      '--environment-id',
-      'master',
-      '--cma-token',
-      'tok',
-    ]);
-    expect(code).toBe(1);
-    expect(stderr).toContain('--space-id');
-  });
-
-  it('exits 1 when --environment-id missing', async () => {
-    const { stderr, code } = await run([
-      'apply',
-      'preview',
-      '--components',
-      componentsPath,
-      '--space-id',
-      'space1',
-      '--cma-token',
-      'tok',
-    ]);
-    expect(code).toBe(1);
-    expect(stderr).toContain('--environment-id');
-  });
-
-  it('exits 1 when CMA token missing', async () => {
-    const { stderr, code } = await run(
-      ['apply', 'preview', '--components', componentsPath, '--space-id', 'space1', '--environment-id', 'master'],
-      { CONTENTFUL_MANAGEMENT_TOKEN: '' },
-    );
-    expect(code).toBe(1);
-    expect(stderr).toContain('CMA token is required');
-  });
-
-  it('exits 1 when --components path does not exist', async () => {
-    const { stderr, code } = await run([
-      'apply',
-      'preview',
-      '--components',
-      '/no/such/file.json',
-      '--space-id',
-      'space1',
-      '--environment-id',
-      'master',
-      '--cma-token',
-      'tok',
-    ]);
-    expect(code).toBe(1);
-    expect(stderr).toContain('file not found');
-  });
-
-  it('exits 1 when --components is not valid JSON', async () => {
-    const dir = await createTempDir('apply-bad-json-');
-    const badJson = join(dir, 'bad.json');
-    await writeFile(badJson, '{bad');
-    const { stderr, code } = await run([
-      'apply',
-      'preview',
-      '--components',
-      badJson,
-      '--space-id',
-      'space1',
-      '--environment-id',
-      'master',
-      '--cma-token',
-      'tok',
-    ]);
-    expect(code).toBe(1);
-    expect(stderr).toContain('not valid JSON');
-  });
 });
 
 describe('apply push — input validation', () => {

@@ -50,8 +50,6 @@ export type CommandName =
   | 'generate components'
   | 'generate tokens'
   | 'generate edit'
-  | 'apply preview'
-  | 'apply select'
   | 'apply push'
   | 'print components'
   | 'print tokens'

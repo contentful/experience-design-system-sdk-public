@@ -21,17 +21,6 @@ export function addCompositionOptions(cmd: Command): Command {
     .option('--atomic', 'Import flat components with no embedded-component hierarchy (default)');
 }
 
-function collectOptionValue(value: string, previous: string[]): string[] {
-  return [...previous, value];
-}
-
-export function addSelectionOptions(cmd: Command): Command {
-  return cmd
-    .option('--select-all', 'Select all entities without launching TUI')
-    .option('--select <pattern>', 'Select entities by ID pattern (repeatable)', collectOptionValue, [])
-    .option('--deselect <pattern>', 'Deselect entities by ID pattern (repeatable)', collectOptionValue, []);
-}
-
 export function addAllowDeletionsOption(cmd: Command): Command {
   return cmd.option(
     '--allow-deletions',
