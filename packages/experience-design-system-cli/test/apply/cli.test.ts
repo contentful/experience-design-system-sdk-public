@@ -47,10 +47,8 @@ describe('apply command — help', () => {
         .sort();
 
     expect(flags('preview')).toEqual([
-      '--atomic',
       '--cma-token',
       '--components',
-      '--composite',
       '--environment-id',
       '--host',
       '--session',
@@ -59,10 +57,8 @@ describe('apply command — help', () => {
     ]);
     expect(flags('push')).toEqual([
       '--allow-deletions',
-      '--atomic',
       '--cma-token',
       '--components',
-      '--composite',
       '--dry-run',
       '--environment-id',
       '--force',
@@ -75,10 +71,8 @@ describe('apply command — help', () => {
     ]);
     expect(flags('select')).toEqual([
       '--allow-deletions',
-      '--atomic',
       '--cma-token',
       '--components',
-      '--composite',
       '--deselect',
       '--environment-id',
       '--force',

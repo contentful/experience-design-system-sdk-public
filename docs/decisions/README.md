@@ -1,6 +1,6 @@
 # Decision Records
 
-This directory holds architecture decisions that shape this SDK package: the entity reference format, the TUI import/review flow, and the composite-vs-atomic component graph model.
+This directory holds architecture decisions that shape this SDK package: the entity reference format, the TUI import/review flow, and the composite component graph model.
 
 ## Curation note
 
@@ -9,7 +9,7 @@ This package has a larger internal set of decision records. Only decisions still
 ## How to use this directory
 
 - Read the ADR that matches the concern before changing a major boundary.
-- Add a new ADR when a change affects the entity reference model, the TUI review flow, or the composite/atomic graph policies.
+- Add a new ADR when a change affects the entity reference model, the TUI review flow, or the composite graph policies.
 
 ## Current ADR set
 
