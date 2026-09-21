@@ -43,7 +43,6 @@ export function registerImportCommand(program: Command): void {
     modelDescription:
       'Model to use for generate components (defaults to a lightweight per-agent model; override with EDS_AGENT_MODEL_<AGENT>)',
   })
-    .option('--tokens <path>', 'Path to a DTCG tokens.json file to push alongside generated components')
     .option(
       '--raw-tokens <path>',
       'Path to a raw token source file (SCSS, CSS variables, JS/TS, Style Dictionary, etc.) to classify and import alongside components. Bypasses the interactive token prompt.',
@@ -167,7 +166,6 @@ export function registerImportCommand(program: Command): void {
         agent?: string;
         model?: string;
         bedrock?: boolean;
-        tokens?: string;
         rawTokens?: string;
         select: string[];
         deselect: string[];
@@ -345,13 +343,6 @@ export function registerImportCommand(program: Command): void {
         }
 
         if (opts.rawTokens !== undefined) {
-          if (opts.tokens !== undefined) {
-            process.stderr.write(
-              'Error: --raw-tokens and --tokens are mutually exclusive: --raw-tokens is the source file to classify, --tokens is a pre-classified DTCG sidecar.\n',
-            );
-            process.exit(1);
-            return;
-          }
           const { access } = await import('node:fs/promises');
           try {
             await access(normalizePath(opts.rawTokens));
@@ -554,7 +545,6 @@ export function registerImportCommand(program: Command): void {
             agent: headlessAgent,
             model: headlessModel,
             ...(opts.bedrock ? { bedrock: true } : {}),
-            tokens: opts.tokens,
             select: opts.select.length > 0 ? opts.select : undefined,
             deselect: opts.deselect.length > 0 ? opts.deselect : undefined,
             skipAnalyze: opts.skipAnalyze ?? false,

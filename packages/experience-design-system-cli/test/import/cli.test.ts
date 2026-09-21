@@ -36,7 +36,6 @@ describe('import command — help', () => {
     expect(stdout).toContain('--project');
     expect(stdout).toContain('--out');
     expect(stdout).toContain('--agent');
-    expect(stdout).toContain('--tokens');
     expect(stdout).toContain('--skip-analyze');
     expect(stdout).toContain('--skip-generate');
     expect(stdout).toContain('--skip-apply');

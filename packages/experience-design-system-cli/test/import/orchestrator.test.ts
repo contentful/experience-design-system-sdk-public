@@ -175,34 +175,8 @@ describe('runPipeline — apply push always gets --yes', () => {
   });
 });
 
-describe('runPipeline — tokens flag', () => {
-  it('passes --tokens to apply push when opts.tokens is set', async () => {
-    const dir = await makeTempDir('orch-tokens-');
-    const tokensPath = join(dir, 'tokens.json');
-    await writeFile(tokensPath, '{}');
-
-    const cliPath = await makeFakeCli(dir, {
-      'analyze extract': { stdout: 'session=test-session-1\n', stderr: 'Extracted 1 component\n' },
-      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
-      'generate components': { stdout: 'session=test-session-2\n', stderr: 'Done: 1/1 components\n' },
-      'apply push': {
-        stdout: JSON.stringify({
-          componentTypes: { created: 1, updated: 0, failed: 0 },
-          designTokens: { created: 1, updated: 0, failed: 0 },
-        }),
-      },
-    });
-
-    await runPipeline({ ...baseOpts({ out: dir, tokens: tokensPath }), project: dir }, () => {}, cliPath);
-
-    const calls = await readCalls(dir);
-    const pushCall = calls.find((c) => c[0] === 'apply' && c[1] === 'push');
-    expect(pushCall).toBeDefined();
-    expect(pushCall).toContain('--tokens');
-    expect(pushCall).toContain(tokensPath);
-  });
-
-  it('does not pass --tokens when opts.tokens is not set', async () => {
+describe('runPipeline — token arguments', () => {
+  it('does not pass --tokens to apply push', async () => {
     const dir = await makeTempDir('orch-no-tokens-');
 
     const cliPath = await makeFakeCli(dir, {
