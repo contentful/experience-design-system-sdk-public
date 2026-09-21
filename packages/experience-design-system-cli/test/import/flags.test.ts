@@ -84,7 +84,6 @@ describe('import — help output lists all flags', () => {
       '--deselect',
       '--skip-analyze',
       '--skip-generate',
-      '--print',
       '--skip-apply',
       '--skip-map-tokens',
       '--no-cache',
@@ -263,12 +262,10 @@ describe('import — agent and model flags', () => {
 });
 
 describe('import — output flags', () => {
-  it('--print is accepted without error', async () => {
-    const { stderr } = await run([...skipAll(), '--print'], baseEnv());
-    // --print is a valid flag; it should never be rejected as an unknown option.
-    // The step itself may fail if there is no prior generate session in the DB —
-    // that is expected for an empty test DB and is not a flag-acceptance failure.
-    expect(stderr).not.toContain("unknown option '--print'");
+  it('--print is rejected as an unknown option', async () => {
+    const { stderr, code } = await run([...skipAll(), '--print'], baseEnv());
+    expect(code).not.toBe(0);
+    expect(stderr).toContain("unknown option '--print'");
   });
 
   it('--out <path> is accepted without error', async () => {

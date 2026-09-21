@@ -86,7 +86,6 @@ function baseOpts(overrides: Partial<PipelineOptions> = {}): PipelineOptions {
     agent: 'claude',
     skipAnalyze: false,
     skipGenerate: false,
-    print: false,
     skipApply: false,
     noCache: false,
     yes: false,

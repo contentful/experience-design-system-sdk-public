@@ -63,7 +63,6 @@ export function registerImportCommand(program: Command): void {
     )
     .option('--skip-analyze', 'Skip the analyze step (uses most recent extract session)')
     .option('--skip-generate', 'Skip the generate step (uses most recent generate session)')
-    .option('--print', 'Write components.json to --out after generation')
     .option('--skip-apply', '(deprecated alias for --no-push) Skip pushing to Contentful')
     .option(
       '--skip-map-tokens',
@@ -172,7 +171,6 @@ export function registerImportCommand(program: Command): void {
         deselect: string[];
         skipAnalyze?: boolean;
         skipGenerate?: boolean;
-        print?: boolean;
         skipApply?: boolean;
         skipMapTokens?: boolean;
         cache?: boolean;
@@ -557,7 +555,6 @@ export function registerImportCommand(program: Command): void {
             skipAnalyze: opts.skipAnalyze ?? false,
             skipGenerate: opts.skipGenerate ?? false,
             skipMapTokens: opts.skipMapTokens ?? false,
-            print: opts.print ?? false,
             skipApply,
             noCache: opts.cache === false,
             yes: opts.yes ?? false,

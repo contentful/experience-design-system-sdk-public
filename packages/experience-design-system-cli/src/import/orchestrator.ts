@@ -32,7 +32,6 @@ export interface PipelineOptions {
   bedrock?: boolean;
   skipAnalyze: boolean;
   skipGenerate: boolean;
-  print: boolean;
   skipApply: boolean;
   noCache: boolean;
   yes: boolean;
@@ -223,7 +222,7 @@ export async function runPipeline(
 
   const canFetchExistingContentfulEntities = !!opts.spaceId && !!opts.environmentId && !!opts.cmaToken;
 
-  const totalSteps = 5 + (opts.print ? 1 : 0) + (canFetchExistingContentfulEntities ? 1 : 0);
+  const totalSteps = 5 + (canFetchExistingContentfulEntities ? 1 : 0);
 
   function stepLabel(name: string): string {
     stepNum++;
@@ -607,33 +606,6 @@ export async function runPipeline(
       db.close();
       return { session: sessionId, project: projectRoot, steps, cycleError: { report } };
     }
-  }
-
-  if (opts.print) {
-    const printLabel = stepLabel('Writing components.json');
-    const printArgs = ['print', 'components', '--out', componentsPath];
-    if (extractSessionId) printArgs.push('--session', extractSessionId);
-
-    const stepId = createStep(db, sessionId, 'print components', {
-      out: componentsPath,
-    });
-    const t0 = Date.now();
-    const r = await runStep(printArgs, cliPath, sessionId);
-    const durationMs = Date.now() - t0;
-
-    if (r.exitCode !== 0) {
-      return failStep({
-        stepId,
-        step: 'print components',
-        label: printLabel,
-        durationMs,
-        error: r.stderr,
-      });
-    }
-
-    updateStep(db, stepId, 'complete', { components: componentsPath });
-    progressWriter(`${printLabel}✓  components.json written  (${(durationMs / 1000).toFixed(1)}s)`);
-    steps.push({ step: 'print components', status: 'complete', durationMs });
   }
 
   const applyLabelText =

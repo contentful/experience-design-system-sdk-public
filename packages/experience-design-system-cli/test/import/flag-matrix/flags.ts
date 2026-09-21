@@ -134,12 +134,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     forcesHeadless: true,
   },
   {
-    flag: '--print',
-    kind: 'boolean',
-    modes: ['headless'],
-    incompatibleWith: [],
-  },
-  {
     flag: '--skip-apply',
     kind: 'boolean',
     modes: ['headless'],
