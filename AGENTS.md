@@ -167,7 +167,7 @@ The apply flow validates the target, and `command.ts` builds a `ManifestPayload`
 
 By default, headless `import` runs `analyze select-agent` to select components automatically. If `--select-all`, `--select`, or `--deselect` flags are provided, the orchestrator bypasses the agent and uses `analyze select` with those flags instead.
 
-Headless mode is entered when any of these flags are set: `--auto-accept-scope`, `--skip-generate`, `--skip-apply`, `--yes`, `--dry-run`, or any credential flag. In a non-TTY without one of these flags the command exits 1 with a fail-loud message rather than hanging.
+Headless mode is entered when any of these flags are set: `--auto-accept-scope`, `--skip-apply`, `--yes`, `--dry-run`, or any credential flag. In a non-TTY without one of these flags the command exits 1 with a fail-loud message rather than hanging.
 
 Keep the orchestrator thin. Logic belongs in the individual command implementations.
 
