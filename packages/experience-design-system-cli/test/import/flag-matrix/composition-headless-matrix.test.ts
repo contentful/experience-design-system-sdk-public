@@ -159,7 +159,6 @@ describe('flag-matrix: composition flags forwarded through the HEADLESS dispatch
   // Each headless-trigger flag maps onto the PipelineOptions the command
   // dispatcher would produce for that flag; composite forwarding must survive.
   const headlessTriggerCells: Array<{ name: string; opts: Partial<PipelineOptions> }> = [
-    { name: '--skip-generate', opts: { skipGenerate: true } },
     { name: '--skip-apply', opts: { skipApply: true } },
     { name: '--yes', opts: { yes: true, skipApply: true } },
     { name: '--dry-run', opts: { dryRun: true, skipApply: true } },

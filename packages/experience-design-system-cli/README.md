@@ -114,7 +114,7 @@ In the wizard's credentials step you can press `[s] Skip` to save-only without p
 experiences import [flags]
 ```
 
-`experiences import` is the primary entry point. In a TTY it launches a full-screen wizard. In headless mode (any of `--skip-apply`, `--skip-generate`, `--yes`, `--dry-run`, or credential flags) it runs non-interactively. Without either, it fails loud rather than hanging.
+`experiences import` is the primary entry point. In a TTY it launches a full-screen wizard. In headless mode (any of `--skip-apply`, `--yes`, `--dry-run`, or credential flags) it runs non-interactively. Without either, it fails loud rather than hanging.
 
 ### Wizard step machine
 
@@ -198,7 +198,6 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--save-as-new`                   | —                                      | With `--modify`: always save to a new path                                                                   |
 | `--select-prompt-path <path>`     | saved by setup                         | Custom `.md` skill prompt for `analyze select-agent`                                                         |
 | `--generate-prompt-path <path>`   | saved by setup                         | Custom `.md` skill prompt for `generate components`                                                          |
-| `--skip-generate`                 | —                                      | Reuse most recent `generate components` session                                                              |
 | `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between generate and apply                                                        |
 | `--skip-apply`                    | —                                      | Stop after generate; do not push                                                                             |
 | `--no-cache`                      | cache on                               | Bypass extract/select/generate/map-tokens fine-grained caches and force re-run; forwarded to `analyze select-agent`, `generate components`, and `map tokens` |

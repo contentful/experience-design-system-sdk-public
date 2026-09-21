@@ -24,7 +24,6 @@ describe('experiences import --on-conflict — parse-time mutex errors', () => {
   it('errors with invalid --on-conflict value', async () => {
     const { stderr, code } = await run([
       'import',
-      '--skip-generate',
       '--skip-apply',
       '--on-conflict',
       'bogus',
