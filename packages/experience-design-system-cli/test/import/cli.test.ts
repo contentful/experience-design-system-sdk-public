@@ -37,7 +37,7 @@ describe('import command — help', () => {
     expect(stdout).toContain('--out');
     expect(stdout).toContain('--agent');
     expect(stdout).not.toContain('--skip-analyze');
-    expect(stdout).toContain('--skip-generate');
+    expect(stdout).not.toContain('--skip-generate');
     expect(stdout).toContain('--skip-apply');
     expect(stdout).toContain('--yes');
     expect(stdout).toContain('--verbose');
@@ -77,7 +77,6 @@ describe('import command — help', () => {
     const { stderr } = await run([
       'import',
       '--skip-apply',
-      '--skip-generate',
       '--project',
       '/nonexistent',
     ]);
