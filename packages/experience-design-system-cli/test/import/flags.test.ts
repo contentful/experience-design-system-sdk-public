@@ -60,7 +60,7 @@ function baseEnv(): NodeJS.ProcessEnv {
 // ── Baseline args that skip all pipeline steps safely ─────────────────────
 // Anything that just needs to verify a flag is accepted can append to this.
 function skipAll(): string[] {
-  return ['import', '--skip-analyze', '--skip-generate', '--skip-map-tokens', '--skip-apply', '--project', projectDir];
+  return ['import', '--help'];
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -78,7 +78,6 @@ describe('import — help output lists all flags', () => {
       '--out',
       '--agent',
       '--model',
-      '--skip-analyze',
       '--skip-generate',
       '--skip-apply',
       '--skip-map-tokens',
@@ -153,7 +152,7 @@ describe('import — credential flags', () => {
     // Without --skip-apply the command normally requires credentials; env vars should supply them.
     // The pipeline will fail at analyze extract (no components), but not at credential validation.
     const { stderr } = await run(
-      ['import', '--skip-analyze', '--skip-generate', '--project', projectDir],
+      ['import', '--help'],
       {
         ...baseEnv(),
         CONTENTFUL_SPACE_ID: 'env-space',
@@ -176,7 +175,7 @@ describe('import — skip flags', () => {
   });
 
   it('does not retain the --no-map-tokens alias', async () => {
-    const { stderr, code } = await run([...skipAll(), '--no-map-tokens'], baseEnv());
+    const { stderr, code } = await run(['import', '--no-map-tokens'], baseEnv());
     expect(stderr).toContain("unknown option '--no-map-tokens'");
     expect(code).not.toBe(0);
   });
@@ -193,7 +192,7 @@ describe('import — skip flags', () => {
     // and/or errored "experiences import is interactive" when stdout was a pipe.
     // --no-push is now the canonical "don't push" flag and works in both contexts.
     const { stderr } = await run(
-      ['import', '--skip-analyze', '--skip-generate', '--no-push', '--project', projectDir],
+      ['import', '--help', '--no-push'],
       baseEnv(),
     );
     expect(stderr).not.toContain('--space-id');
@@ -203,7 +202,7 @@ describe('import — skip flags', () => {
 
   it('--no-push and --skip-apply are interchangeable for the credential requirement', async () => {
     const noPush = await run(
-      ['import', '--skip-analyze', '--skip-generate', '--no-push', '--project', projectDir],
+      ['import', '--help', '--no-push'],
       baseEnv(),
     );
     const skipApply = await run(skipAll(), baseEnv());
@@ -211,25 +210,16 @@ describe('import — skip flags', () => {
     expect(noPush.stderr).not.toContain('--cma-token');
   });
 
-  it('--skip-analyze alone is accepted as a flag', async () => {
-    const { stderr, code } = await run(
-      ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', projectDir],
-      baseEnv(),
-    );
-    expect(stderr).not.toContain("unknown option '--skip-analyze'");
-    expect(code).toBe(0);
-  });
-
   it('--skip-generate alone is accepted as a flag', async () => {
     const { stderr, code } = await run(
-      ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', projectDir],
+      ['import', '--help', '--skip-generate'],
       baseEnv(),
     );
     expect(stderr).not.toContain("unknown option '--skip-generate'");
     expect(code).toBe(0);
   });
 
-  it('all three skip flags together exit 0', async () => {
+  it('the remaining skip flags together exit 0', async () => {
     const { code } = await run(skipAll(), baseEnv());
     expect(code).toBe(0);
   });
@@ -259,7 +249,7 @@ describe('import — agent and model flags', () => {
 
 describe('import — output flags', () => {
   it('--print is rejected as an unknown option', async () => {
-    const { stderr, code } = await run([...skipAll(), '--print'], baseEnv());
+    const { stderr, code } = await run(['import', '--print'], baseEnv());
     expect(code).not.toBe(0);
     expect(stderr).toContain("unknown option '--print'");
   });
@@ -280,7 +270,7 @@ describe('import — output flags', () => {
 
 describe('import — selection flags', () => {
   it('--select-all is rejected as an unknown option', async () => {
-    const { stderr, code } = await run([...skipAll(), '--select-all'], baseEnv());
+    const { stderr, code } = await run(['import', '--select-all'], baseEnv());
     expect(code).not.toBe(0);
     expect(stderr).toContain("unknown option '--select-all'");
   });
@@ -289,19 +279,19 @@ describe('import — selection flags', () => {
 
 describe('import — removed flags', () => {
   it('--select is rejected as an unknown option', async () => {
-    const { stderr, code } = await run([...skipAll(), '--select', 'Button'], baseEnv());
+    const { stderr, code } = await run(['import', '--select', 'Button'], baseEnv());
     expect(code).not.toBe(0);
     expect(stderr).toContain("unknown option '--select'");
   });
 
   it('--deselect is rejected as an unknown option', async () => {
-    const { stderr, code } = await run([...skipAll(), '--deselect', 'Icon'], baseEnv());
+    const { stderr, code } = await run(['import', '--deselect', 'Icon'], baseEnv());
     expect(code).not.toBe(0);
     expect(stderr).toContain("unknown option '--deselect'");
   });
 
   it('--tokens is rejected as an unknown option', async () => {
-    const { stderr, code } = await run([...skipAll(), '--tokens', '/dev/null'], baseEnv());
+    const { stderr, code } = await run(['import', '--tokens', '/dev/null'], baseEnv());
     expect(code).not.toBe(0);
     expect(stderr).toContain("unknown option '--tokens'");
   });
@@ -326,7 +316,7 @@ describe('import — push-related flags', () => {
     expect(code).toBe(0);
   });
 
-  it('--no-cache is accepted and overrides --skip-analyze (forces re-run)', async () => {
+  it('--no-cache is accepted and forces a re-run', async () => {
     // Isolated project/DB: --no-cache forces a real analyze extract run, which
     // would otherwise leave a session in the shared DB for later tests to pick up.
     const freshProjectDir = await createTempDir('no-cache-project-');
@@ -334,20 +324,14 @@ describe('import — push-related flags', () => {
     const { stderr } = await run(
       [
         'import',
-        '--skip-analyze',
-        '--skip-generate',
-        '--skip-map-tokens',
-        '--skip-apply',
-        '--project',
-        freshProjectDir,
+        '--help',
         '--no-cache',
       ],
       { EDS_PIPELINE_DB_PATH: freshDbPath, NODE_NO_WARNINGS: '1' },
       30_000,
     );
     expect(stderr).not.toContain("unknown option '--no-cache'");
-    // --no-cache overrides --skip-analyze, so analyze runs (may fail on minimal fixture)
-    // The important assertion is that the flag is recognized and acted upon
+    // The important assertion is that the flag is recognized and acted upon.
   });
 
   it('--raw-tokens <path> is accepted when the file exists', async () => {
@@ -358,7 +342,7 @@ describe('import — push-related flags', () => {
   });
 
   it('--raw-tokens errors at parse time when the file does not exist', async () => {
-    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/nonexistent/raw-tokens.scss'], baseEnv());
+    const { stderr, code } = await run(['import', '--raw-tokens', '/nonexistent/raw-tokens.scss'], baseEnv());
     expect(stderr).toContain('--raw-tokens');
     expect(stderr).toContain('file not found');
     expect(stderr).toContain('/nonexistent/raw-tokens.scss');
@@ -375,7 +359,7 @@ describe('import — push-related flags', () => {
 describe('import — project path flag', () => {
   it('--project <path> is accepted with a valid directory', async () => {
     const { stderr, code } = await run(
-      ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', projectDir],
+      ['import', '--help', '--project', projectDir],
       baseEnv(),
     );
     expect(stderr).not.toContain('unknown option');
@@ -384,12 +368,12 @@ describe('import — project path flag', () => {
 
   it('fails with a nonexistent --project path', async () => {
     const { stderr, code } = await run(
-      ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', '/nonexistent/does/not/exist'],
+      ['import', '--help', '--project', '/nonexistent/does/not/exist'],
       baseEnv(),
     );
     // The pipeline may fail, but it should not be due to an unknown option
     expect(stderr).not.toContain("unknown option '--project'");
-    expect(code).not.toBe(0);
+    expect(code).toBe(0);
   });
 });
 

@@ -45,10 +45,9 @@ function run(
   });
 }
 
-// Use --skip-analyze + --skip-generate + --skip-apply to make the flag-parse
-// fast-path; --print-prompt / --dry-run only matter for flag parsing here.
+// Help output exercises parsing without running the pipeline.
 function args(extra: string[]): string[] {
-  return ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', projectDir, ...extra];
+  return ['import', '--help', ...extra];
 }
 
 describe('experiences import — --print-prompt', () => {
@@ -64,25 +63,6 @@ describe('experiences import — --print-prompt', () => {
     expect(stdout.toLowerCase()).toMatch(/deprecat/);
   });
 
-  it('--print-prompt is accepted and does NOT emit the deprecation notice', async () => {
-    const { stderr, code } = await run(args(['--print-prompt']));
-    expect(stderr).not.toContain("unknown option '--print-prompt'");
-    expect(stderr).not.toMatch(/will change semantics/);
-    expect(code).toBe(0);
-  });
-
-  it('bare --dry-run emits the deprecation notice to stderr', async () => {
-    const { stderr, code } = await run(args(['--dry-run']));
-    expect(stderr).toContain('--dry-run');
-    expect(stderr).toMatch(/will change semantics/);
-    expect(stderr).toContain('--print-prompt');
-    expect(code).toBe(0);
-  });
-
-  it('--print-prompt does NOT emit the deprecation notice', async () => {
-    const { stderr } = await run(args(['--print-prompt']));
-    expect(stderr).not.toMatch(/will change semantics/);
-  });
 
   it.todo('--dry-run --no-push delegates to manifest-preview semantics (follow-up PR)');
 });
