@@ -1,7 +1,6 @@
-import { readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { findPackageRoot } from '../../package-root.js';
 
 const PACKAGE_NAME = '@contentful/experience-design-system-cli-v2';
 
@@ -19,26 +18,8 @@ const EMPTY_CONFIGURATION: DsiConfiguration = {
   api_endpoint: '',
 };
 
-function findPackageRoot(): string {
-  let dir = dirname(fileURLToPath(import.meta.url));
-
-  for (;;) {
-    try {
-      const raw = readFileSync(join(dir, 'package.json'), 'utf8');
-      const pkg = JSON.parse(raw) as { name?: string };
-      if (pkg.name === PACKAGE_NAME) return dir;
-    } catch {
-      // No readable manifest here; keep walking.
-    }
-
-    const parent = dirname(dir);
-    if (parent === dir) return dir;
-    dir = parent;
-  }
-}
-
 export function dsiConfigurationPath(): string {
-  return join(findPackageRoot(), '.contentful', 'config', 'dsi_configuration.json');
+  return join(findPackageRoot(import.meta.url, PACKAGE_NAME), '.contentful', 'config', 'dsi_configuration.json');
 }
 
 export async function readDsiConfiguration(): Promise<DsiConfiguration> {
