@@ -93,13 +93,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--skip-analyze',
-    kind: 'boolean',
-    modes: ['headless'],
-    incompatibleWith: [],
-    forcesHeadless: true,
-  },
-  {
     flag: '--skip-generate',
     kind: 'boolean',
     modes: ['headless'],

@@ -109,26 +109,6 @@ describe('experiences import — headless flows', () => {
     expect(stderr).not.toMatch(/will change semantics/);
   });
 
-  // ── --skip-analyze / --skip-generate follow their names ────────────────
-  it('--skip-analyze omits the analyze step from the report', async () => {
-    // --skip-analyze needs a prior extract session in pipeline.db.
-    // With a fresh HOME there is none, so the CLI reports a failure —
-    // but the failure is *reported*, not a crash. Assert the shape.
-    const { code, stdout } = await runCli(
-      ['import', '--project', REACT_MINIMAL, '--skip-analyze', '--skip-apply'],
-      { env: isolated() },
-    );
-    // Exits non-zero because there's nothing to skip forward from.
-    expect(code).toBe(1);
-    const jsonStart = stdout.indexOf('{');
-    if (jsonStart >= 0) {
-      const report = JSON.parse(stdout.slice(jsonStart));
-      const extract = report.steps.find((s) => s.step === 'analyze extract');
-      // Either the step is absent or marked skipped/failed — never "complete".
-      expect(extract?.status).not.toBe('complete');
-    }
-  });
-
   // ── --agent flag routes through the resolver ────────────────────────────
   it('--agent codex routes to the codex binary override', async () => {
     // Bind ONLY the codex stub; --print-prompt sidesteps actually invoking it.

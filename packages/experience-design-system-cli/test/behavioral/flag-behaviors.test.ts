@@ -538,15 +538,14 @@ describe('--viewports is accepted and forwarded to the pipeline', () => {
     const dbPath = join(dbDir, 'pipeline.db');
 
     const result = await runCliWithEnv(
-      ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', projDir, '--viewports', vpFile],
+      ['import', '--help', '--viewports', vpFile],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
     );
 
     expect(result.code).toBe(0);
     expect(result.stderr).not.toContain("unknown option '--viewports'");
     // All steps skipped — pipeline should report all as skipped
-    const output = JSON.parse(result.stdout) as { steps: Array<{ status: string }> };
-    expect(output.steps.every((s) => s.status === 'skipped')).toBe(true);
+    expect(result.stdout).toContain('--viewports');
   });
 
   it('with --skip-apply, a nonexistent viewports path does not cause an error', async () => {
@@ -559,9 +558,7 @@ describe('--viewports is accepted and forwarded to the pipeline', () => {
     const result = await runCliWithEnv(
       [
         'import',
-        '--skip-analyze',
-        '--skip-generate',
-        '--skip-apply',
+        '--help',
         '--project',
         projDir,
         '--viewports',

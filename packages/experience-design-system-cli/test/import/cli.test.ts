@@ -36,7 +36,7 @@ describe('import command — help', () => {
     expect(stdout).toContain('--project');
     expect(stdout).toContain('--out');
     expect(stdout).toContain('--agent');
-    expect(stdout).toContain('--skip-analyze');
+    expect(stdout).not.toContain('--skip-analyze');
     expect(stdout).toContain('--skip-generate');
     expect(stdout).toContain('--skip-apply');
     expect(stdout).toContain('--yes');
@@ -78,7 +78,6 @@ describe('import command — help', () => {
       'import',
       '--skip-apply',
       '--skip-generate',
-      '--skip-analyze',
       '--project',
       '/nonexistent',
     ]);
