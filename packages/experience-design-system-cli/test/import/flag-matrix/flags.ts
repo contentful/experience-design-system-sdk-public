@@ -235,14 +235,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     kind: 'boolean',
     modes: ['pty', 'headless'],
     incompatibleWith: [],
-    notes: 'Commander folds --auto-filter/--no-auto-filter into one boolean; last wins, no rejection guard.',
-  },
-  {
-    flag: '--no-auto-filter',
-    kind: 'boolean',
-    modes: ['pty', 'headless'],
-    incompatibleWith: [],
-    notes: 'Not a hard rejection when paired with --auto-filter.',
   },
   {
     flag: '--no-live-preview',

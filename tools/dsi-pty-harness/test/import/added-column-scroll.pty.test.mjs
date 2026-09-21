@@ -23,7 +23,7 @@ describe('scope-gate added-components column scroll (PTY)', () => {
     // Wide enough for the three-column layout (>=120), short enough that 24
     // accepted rows overflow the added-components window.
     const w = await spawnWizard(
-      ['import', '--project', REACT_COMPOSITE_CYCLE, '--no-push', '--no-auto-filter', '--composite'],
+      ['import', '--project', REACT_COMPOSITE_CYCLE, '--no-push', '--composite'],
       { env: t.env, cols: 200, rows: 24 },
     );
     cleanups.push(() => w.close());
