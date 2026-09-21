@@ -48,6 +48,7 @@ describe('import command — help', () => {
     expect(code).toBe(0);
     expect(stdout).not.toMatch(/--print(?:\s|$)/);
     expect(stdout).not.toContain('--select-all');
+    expect(stdout).not.toContain('--select <pattern>');
     expect(stdout).not.toContain('--skip-print');
   });
 
