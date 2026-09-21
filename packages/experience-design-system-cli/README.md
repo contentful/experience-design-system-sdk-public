@@ -23,12 +23,12 @@ There are two ways to use the CLI:
 2. **Standalone subcommands** — for piping into other tools, CI parity with the wizard, or for debugging individual steps:
 
    ```
-   analyze extract   →   analyze select-agent   →   generate components   →   apply push
+   analyze extract   →   analyze select-agent   →   apply push
    ```
 
    `analyze select-agent` is the agent-driven selection step the wizard uses. You can replace it with `analyze select` for the older manual JsonEditor TUI.
 
-**Determinism boundary.** `analyze extract` is fully deterministic: ts-morph AST parsing produces the same component list and prop shape on every run, then a deterministic pre-classifier and a structural non-authorable filter shape the output. AI enters the pipeline at `analyze select-agent` and `generate components`, where coding agents make per-component decisions. This split keeps the extracted artifact reproducible — if an extracted component looks wrong, the cause is in the rules, not in agent variability.
+**Determinism boundary.** `analyze extract` is fully deterministic: ts-morph AST parsing produces the same component list and prop shape on every run, then a deterministic pre-classifier and a structural non-authorable filter shape the output. AI enters the pipeline at `analyze select-agent` and the import wizard's generation step. This split keeps the extracted artifact reproducible — if an extracted component looks wrong, the cause is in the rules, not in agent variability.
 
 All intermediate data flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). No JSON files are written between steps — each command reads its inputs from the session and writes its outputs back to it. Use `print` to export session data to JSON files on demand. The wizard additionally maintains a separate **runs.json** file (`~/.config/experiences/runs.json`) that records each successful wizard session so it can be replayed later with `--push-from-run` or `--modify`.
 
@@ -77,7 +77,7 @@ If the resolved graph contains a circular slot dependency (A slots B, B slots A)
 
 ### Coding agent
 
-`generate components` (and `generate tokens`) requires a coding agent CLI in your `$PATH`. Choose one:
+The import wizard's generation steps require a coding agent CLI in your `$PATH`. Choose one:
 
 | Agent | Install | Auth |
 |---|---|---|
@@ -348,47 +348,9 @@ experiences analyze select-agent [--agent <name>] [--session <id>]
 | `--show-rationale` | — | Read-only mode. Print the recorded accept / reject rationale for every component in the session and exit. Reads `raw_components.reject_reason` from the pipeline DB — no LLM call, no schema change. |
 | `--json` | — | With `--show-rationale`: emit the rationale rows as JSON for scripting. |
 
-Decisions are written to the same review state file used by `analyze select`, so `generate components` picks them up automatically. Each `(component-hash, prompt-hash, cli-version)` triple is cached; changing the prompt file via `--select-prompt-path` already busts the corresponding cache entries.
+Decisions are written to the same review state file used by `analyze select`, so the import wizard's generation step picks them up automatically. Each `(component-hash, prompt-hash, cli-version)` triple is cached; changing the prompt file via `--select-prompt-path` already busts the corresponding cache entries.
 
 `--show-rationale` is a separate read-only mode — it does not invoke the agent and is safe to run against a completed session at any time. Pair with `--session <id>` to target a specific session; otherwise it auto-resolves to the most recent completed `analyze extract`.
-
----
-
-### `generate components`
-
-Invoke a coding agent to generate CDF component definitions. Results are stored in the session database.
-
-```bash
-experiences generate components [--agent <name>] [--session <id>]
-```
-
-| Option | Default | Description |
-|---|---|---|
-| `--agent <name>` | saved by setup | Agent: `claude`, `codex`, `opencode`, `cursor`, or `copilot` |
-| `--session <id>` | most recent completed `analyze extract` | Session ID from `analyze extract` |
-| `--tokens <path>` | — | Path to `tokens.json` for token-linked prop resolution |
-| `--token-map <path>` | — | Path to `token-name-map.json` sidecar |
-| `--model <name>` | agent default | Model to use |
-| `--verbose` | — | Show full agent output |
-| `--dry-run` | — | Print the prompt without invoking the agent |
-| `--generate-prompt-path <path>` | saved by setup | Custom `.md` skill prompt; emits a banner at invocation |
-| `--no-cache` | cache on | Bypass all fine-grained caches and force re-run |
-
-Raw components are loaded from the session database and embedded directly in the prompt — no intermediate file is read. The agent emits one JSON tool-call object per line; per-component results (CDF body + LLM rationale + source location) are persisted to the session DB.
-
----
-
-### `generate components edit` / `generate tokens edit`
-
-Non-interactive correction of generated output via `--accept-all`, `--reject`, or `--patch`. The interactive TUI variant is not currently shipped.
-
----
-
-### `generate tokens`
-
-Same shape as `generate components`, plus `--raw-tokens <path>`.
-
----
 
 ### `print components` / `print tokens` / `print validate`
 

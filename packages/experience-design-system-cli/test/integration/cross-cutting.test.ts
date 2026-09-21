@@ -59,7 +59,7 @@ const SELECT_ARGS = (fix: CacheFixture, extra: string[] = []) => [
 ];
 
 const GEN_ARGS = (fix: CacheFixture, extra: string[] = []) => [
-  'generate',
+  '__generate',
   'components',
   '--agent',
   'claude',

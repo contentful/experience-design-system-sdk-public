@@ -444,7 +444,7 @@ export async function runPipeline(
     });
   } else {
     const generateLabel = stepLabel('Categorizing component props');
-    const generateArgs = ['generate', 'components', '--agent', opts.agent];
+    const generateArgs = ['__generate', 'components', '--agent', opts.agent];
     if (opts.model) generateArgs.push('--model', opts.model);
     if (opts.bedrock) generateArgs.push('--bedrock');
     if (extractSessionId) generateArgs.push('--session', extractSessionId);

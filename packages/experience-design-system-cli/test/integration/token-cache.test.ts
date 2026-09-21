@@ -44,7 +44,7 @@ async function setup(): Promise<{
 }
 
 const TOKEN_ARGS = (_fix: CacheFixture, tokensPath: string, extra: string[] = []): string[] => [
-  'generate',
+  '__generate',
   'tokens',
   '--agent',
   'claude',
