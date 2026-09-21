@@ -166,12 +166,12 @@ export function UpgradeExecutionScreen({ onDone }: { onDone: () => void }): Reac
     return (
       <Box flexDirection="column" gap={1}>
         <Text>
-          v{latest} is available (you're on v{current}), but this is a source checkout — update manually:
+          v{latest} is available (you're on v{current}), but this is a source checkout — update manually by running:
         </Text>
-        <Box flexDirection="column" paddingLeft={2}>
-          <Text>1. git pull</Text>
-          <Text>2. pnpm install</Text>
-          <Text>3. pnpm -F @contentful/experience-design-system-cli-v2 build</Text>
+        <Box paddingLeft={2}>
+          <Text color="cyan">
+            git pull && pnpm install && pnpm -F @contentful/experience-design-system-cli-v2 build
+          </Text>
         </Box>
         <Text dimColor>[Enter/B] Back to Start [Q] Quit</Text>
       </Box>
