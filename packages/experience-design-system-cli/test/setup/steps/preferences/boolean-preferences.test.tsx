@@ -106,7 +106,7 @@ describe('AnalyticsScreen', () => {
     const { lastFrame, stdin, onDone, write } = setup(AnalyticsScreen);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Usage analytics'),
+      (f) => f.includes('Anonymous usage analytics'),
     );
     await acceptDefault(stdin);
 
@@ -118,9 +118,9 @@ describe('AnalyticsScreen', () => {
     const { lastFrame, stdin, write } = setup(AnalyticsScreen);
     await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Usage analytics'),
+      (f) => f.includes('Anonymous usage analytics'),
     );
-    await choose(stdin, lastFrame, 'Stop sharing usage data');
+    await choose(stdin, lastFrame, "Don't share usage data");
 
     expect(write).toHaveBeenCalledWith(expect.objectContaining({ analyticsDisabled: true }));
   });

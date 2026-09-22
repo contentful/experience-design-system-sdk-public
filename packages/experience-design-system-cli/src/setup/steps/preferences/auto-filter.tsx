@@ -2,7 +2,8 @@ import React from 'react';
 import type { StepDone } from '../StepLayout.js';
 import { BooleanPreference } from './BooleanPreference.js';
 
-export const AUTO_FILTER_HELP = 'Filters out components irrelevant to experience orchestration during extraction. Don\'t worry you can review these components later on.';
+export const AUTO_FILTER_HELP =
+  "Filters out components irrelevant to experience orchestration during extraction. Don't worry you can review these components later on.";
 
 export function AutoFilterScreen({ onDone }: { onDone: StepDone }): React.ReactElement {
   return (
