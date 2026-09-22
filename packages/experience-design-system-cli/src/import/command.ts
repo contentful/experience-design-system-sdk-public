@@ -15,8 +15,7 @@ export function registerImportCommand(program: Command): void {
   const cmd = program
     .command('import')
     .description('Run the full pipeline: analyze → select → generate → push')
-    .option('--project <path>', 'Path to the project root to analyze', '.')
-    .option('--out <path>', 'Output directory for pipeline artifacts');
+    .option('--project <path>', 'Path to the project root to analyze', '.');
   addAgentModelOptions(cmd, {
     agentDescription: 'Agent to use for generate components (overrides credentials.json; falls back to "claude")',
     modelDescription:
@@ -60,7 +59,6 @@ export function registerImportCommand(program: Command): void {
     .action(
       async (opts: {
         project: string;
-        out?: string;
         agent?: string;
         model?: string;
         bedrock?: boolean;

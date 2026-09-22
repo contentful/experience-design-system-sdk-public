@@ -30,14 +30,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--out',
-    kind: 'value',
-    sampleValue: '/tmp/eds-out',
-    modes: ['headless'],
-    incompatibleWith: [],
-    notes: 'Headless-only artifact directory; the wizard manages its own output.',
-  },
-  {
     flag: '--agent',
     kind: 'value',
     sampleValue: 'claude',

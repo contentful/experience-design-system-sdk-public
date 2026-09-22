@@ -166,7 +166,6 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 | Flag                              | Default                                | Description                                                                                                  |
 | --------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `--project <path>`                | `.`                                    | Project root to analyze                                                                                      |
-| `--out <path>`                    | `<project>/.contentful`                | Headless-mode output directory                                                                               |
 | `--agent <name>`                  | saved by setup / `claude`              | Agent for `analyze select-agent` and internal generation                                                     |
 | `--model <name>`                  | agent default                          | Model name                                                                                                   |
 | `--atomic`                        | **default**                            | Flat import, no embedded-component hierarchy (composition stripped on push)                                   |
