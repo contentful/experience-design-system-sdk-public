@@ -46,14 +46,10 @@ experiences import
 
 In an interactive terminal this launches a full-screen TUI that walks you through extraction, AI selection, manual scope review, generation, final review, and push. Credentials and project path are pre-filled from `experiences setup`. Component generation runs in parallel with credentials entry so the wizard does not block on the agent.
 
-For scripted or CI use, pass credentials; the import command selects components through the agent automatically:
+The wizard uses the credentials and project path saved by `experiences setup`:
 
 ```bash
-experiences import \
-  --project /path/to/your/component-library \
-  --space-id $CONTENTFUL_SPACE_ID \
-  --environment-id master \
-  --cma-token $CONTENTFUL_MANAGEMENT_TOKEN
+experiences import --project /path/to/your/component-library
 ```
 
 ## How it works

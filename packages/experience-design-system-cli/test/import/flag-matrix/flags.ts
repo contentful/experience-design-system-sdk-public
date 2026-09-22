@@ -23,32 +23,6 @@ export const COMPOSITION_FLAGS = [
 
 export const IMPORT_FLAGS: FlagSpec[] = [
   {
-    flag: '--space-id',
-    kind: 'value',
-    sampleValue: 'test-space',
-    modes: ['headless'],
-    incompatibleWith: [],
-    forcesHeadless: true,
-    requiresCredentials: false,
-    notes: 'Providing credentials forces the headless dispatcher.',
-  },
-  {
-    flag: '--environment-id',
-    kind: 'value',
-    sampleValue: 'master',
-    modes: ['headless'],
-    incompatibleWith: [],
-    forcesHeadless: true,
-  },
-  {
-    flag: '--cma-token',
-    kind: 'value',
-    sampleValue: 'test-token',
-    modes: ['headless'],
-    incompatibleWith: [],
-    forcesHeadless: true,
-  },
-  {
     flag: '--project',
     kind: 'value',
     sampleValue: '.',
