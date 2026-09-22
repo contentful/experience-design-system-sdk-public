@@ -9,12 +9,8 @@ import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import { addCompositionOptions } from '../lib/command-options.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
+import { modifyRun } from '../runs/replay-helpers.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
-import { replayRun, modifyRun } from '../runs/replay-helpers.js';
-import { pickerPushRun } from '../runs/push-launcher.js';
-import { shouldShowRunPicker } from '../runs/run-picker-mount.js';
-import type { RunPickerSelection } from '../runs/run-picker.js';
-import { buildPickerCredentialOptions, dispatchPickerSelection } from './picker-dispatch.js';
 import { buildCompositionForwardingOptions } from './composition-options.js';
 import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
 
@@ -73,10 +69,6 @@ export function registerImportCommand(program: Command): void {
       [] as string[],
     )
     .option(
-      '--push-from-run <id-or-path>',
-      "Push a prior run's recorded pipeline.db session to Contentful WITHOUT writing components.json / tokens.json to disk. Accepts a run-id or filesystem path that matches a recorded savePath. Credentials are resolved from flags, then the run record, then 'experiences setup', then (in a TTY) an interactive prompt.",
-    )
-    .option(
       '--modify <id-or-path>',
       'Re-open the wizard at final-review with a prior run pre-populated for field edits. Accepts a run-id or filesystem path.',
     )
@@ -105,16 +97,15 @@ export function registerImportCommand(program: Command): void {
         generateMap?: string;
         prompt?: string[];
         livePreview?: boolean;
-        pushFromRun?: string;
         modify?: string;
         allowDeletions?: boolean;
       }) => {
         const interactiveTerminalSupported = getInteractiveTerminalSupport().supported;
 
-        // --modify and --push-from-run resume a recorded session; the composition
-        // mode comes from that run's record, so composition flags on the command
+        // --modify resumes a recorded session; the composition mode comes from
+        // that run's record, so composition flags on the command
         // line don't apply. Warn and clear them rather than let them mislead.
-        if (opts.modify !== undefined || opts.pushFromRun !== undefined) {
+        if (opts.modify !== undefined) {
           const passedCompositionFlags = [
             opts.composite ? '--composite' : null,
             opts.atomic ? '--atomic' : null,
@@ -124,9 +115,8 @@ export function registerImportCommand(program: Command): void {
             opts.generateMap ? '--generate-map' : null,
           ].filter((f): f is string => f !== null);
           if (passedCompositionFlags.length > 0) {
-            const entry = opts.modify !== undefined ? '--modify' : '--push-from-run';
             process.stderr.write(
-              `Note: ${passedCompositionFlags.join(', ')} ignored with ${entry} — composition mode comes from the recorded run.\n`,
+              `Note: ${passedCompositionFlags.join(', ')} ignored with --modify — composition mode comes from the recorded run.\n`,
             );
             opts.composite = undefined;
             opts.atomic = undefined;
@@ -135,35 +125,6 @@ export function registerImportCommand(program: Command): void {
             opts.compositionRefresh = undefined;
             opts.generateMap = undefined;
           }
-        }
-
-        if (opts.pushFromRun !== undefined) {
-          if (opts.modify !== undefined) {
-            process.stderr.write(
-              'Error: --push-from-run and --modify are mutually exclusive. --push-from-run pushes the recorded session; --modify re-opens the wizard for edits.\n',
-            );
-            process.exit(1);
-            return;
-          }
-          if (opts.project !== '.') {
-            process.stderr.write(
-              'Error: --push-from-run and --project are mutually exclusive. The project path is read from the recorded run.\n',
-            );
-            process.exit(1);
-            return;
-          }
-          const runIdOrPath = opts.pushFromRun;
-          await runImportAction(() =>
-            replayRun({
-              runIdOrPath,
-              ...(opts.spaceId ? { spaceId: opts.spaceId } : {}),
-              ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
-              ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
-              ...(opts.host ? { host: opts.host } : {}),
-              interactive: interactiveTerminalSupported,
-            }),
-          );
-          return;
         }
 
         if (opts.modify !== undefined) {
@@ -235,8 +196,6 @@ export function registerImportCommand(program: Command): void {
             selectPromptPath?: string;
             generatePromptPath?: string;
             initialRawTokensPath?: string;
-            initialRuns?: typeof pickerDecision.runs;
-            onRunPicked?: (selection: RunPickerSelection) => void;
           };
           const creds = await readExperiencesCredentials();
           const resolvedAgent = resolveAgent(opts.agent, creds.agent);
@@ -248,30 +207,7 @@ export function registerImportCommand(program: Command): void {
             process.exit(1);
           }
 
-          const pickerDecision = await shouldShowRunPicker({
-            flags: {
-              ...(opts.pushFromRun !== undefined ? { pushFromRun: opts.pushFromRun } : {}),
-              ...(opts.modify !== undefined ? { modify: opts.modify } : {}),
-              ...(opts.project !== '.' ? { project: opts.project } : {}),
-            },
-            isTTY: !!process.stdin.isTTY,
-          });
-
-          let pickerSelection: RunPickerSelection | null = null;
-          let unmountInk: (() => void) | null = null;
-          const pickerProps: {
-            initialRuns?: typeof pickerDecision.runs;
-            onRunPicked?: (s: RunPickerSelection) => void;
-          } = {};
-          if (pickerDecision.shouldShow) {
-            pickerProps.initialRuns = pickerDecision.runs;
-            pickerProps.onRunPicked = (selection) => {
-              pickerSelection = selection;
-              unmountInk?.();
-            };
-          }
-
-          const { waitUntilExit, unmount } = render(
+          const { waitUntilExit } = render(
             createElement<WizardProps>(WizardApp, {
               initialSpaceId: creds.spaceId,
               initialEnvironmentId: creds.environmentId || 'master',
@@ -290,20 +226,9 @@ export function registerImportCommand(program: Command): void {
               livePreview: true,
               selectPromptPath: creds.selectPromptPath,
               ...(opts.rawTokens ? { initialRawTokensPath: normalizePath(opts.rawTokens) } : {}),
-              ...pickerProps,
             }),
           );
-          unmountInk = unmount;
           await waitUntilExit();
-          if (pickerSelection) {
-            await dispatchPickerSelection(
-              pickerSelection,
-              {
-                ...buildPickerCredentialOptions(opts),
-              },
-              { replayRun, modifyRun, pickerPushRun },
-            );
-          }
           return;
         }
 
