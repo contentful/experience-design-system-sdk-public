@@ -8,7 +8,6 @@ import { resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import { addAllowDeletionsOption, addCompositionOptions } from '../lib/command-options.js';
-import { isConflictMode, type ConflictMode } from '../runs/save-path-resolver.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { replayRun, modifyRun } from '../runs/replay-helpers.js';
@@ -103,17 +102,6 @@ export function registerImportCommand(program: Command): void {
       'Save components.json / tokens.json to this directory; bypasses the inline save-path prompt',
     )
     .option(
-      '--on-conflict <mode>',
-      "How to handle existing components.json / tokens.json at the save path: 'overwrite' replaces files, 'skip' writes to a timestamped subdirectory, 'fail' exits non-zero. Skips the wizard's interactive conflict gate when set.",
-      (value: string): ConflictMode => {
-        if (!isConflictMode(value)) {
-          process.stderr.write(`Error: invalid --on-conflict value '${value}'. Use one of: overwrite, skip, fail.\n`);
-          process.exit(1);
-        }
-        return value;
-      },
-    )
-    .option(
       '--select-prompt-path <path>',
       'Path to a custom .md skill prompt for analyze select-agent (bypasses bundled invariants)',
     )
@@ -168,7 +156,6 @@ export function registerImportCommand(program: Command): void {
         push?: boolean;
         save?: boolean;
         outDir?: string;
-        onConflict?: ConflictMode;
         selectPromptPath?: string;
         generatePromptPath?: string;
         pushFromRun?: string;
@@ -306,13 +293,6 @@ export function registerImportCommand(program: Command): void {
           process.exit(1);
           return;
         }
-        if (opts.save === false && opts.onConflict) {
-          process.stderr.write(
-            'Error: --no-save and --on-conflict are mutually exclusive. --no-save disables disk writes; --on-conflict only applies when files are being written.\n',
-          );
-          process.exit(1);
-          return;
-        }
 
         if (opts.rawTokens !== undefined) {
           const { access } = await import('node:fs/promises');
@@ -385,7 +365,6 @@ export function registerImportCommand(program: Command): void {
             noPush?: boolean;
             noSave?: boolean;
             outDirOverride?: string;
-            onConflictMode?: ConflictMode;
             selectPromptPath?: string;
             generatePromptPath?: string;
             initialRawTokensPath?: string;
@@ -448,7 +427,6 @@ export function registerImportCommand(program: Command): void {
               noPush: noPushRequested,
               noSave: opts.save === false,
               ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
-              ...(opts.onConflict ? { onConflictMode: opts.onConflict } : {}),
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
               ...(opts.rawTokens ? { initialRawTokensPath: normalizePath(opts.rawTokens) } : {}),
