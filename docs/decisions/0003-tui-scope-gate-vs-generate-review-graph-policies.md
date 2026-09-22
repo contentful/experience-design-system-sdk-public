@@ -4,9 +4,11 @@
 
 Accepted — implemented via a graph consolidation plan (milestones M1-M5).
 
-Revised 2026-07-15: added the `compositionMode` axis (`composite | atomic`, default `atomic`). The matrix below describes `composite`; atomic degenerates every graph-derived rule to its trivial value (see "The `compositionMode` axis"). This is a provenance-noted revision, not a new competing decision.
+Revised 2026-07-15: added the `compositionMode` axis (`composite | atomic`, default `atomic`). The matrix below describes `composite`; atomic degenerates every graph-derived rule to its trivial value.
 
-Revised 2026-08-11: the resolution precedence has since grown a step. An explicit `--atomic` flag was added for symmetry with `--composite`, and passing any composition-source option (`--composition-map`, `--composition-agent`, `--composition-refresh`, `--generate-map`) now implies composite without a separate `--composite` flag. Current precedence is `explicit flag > implied composition-source option > env > persisted config > default`, with `--atomic` winning over an implied source if both are present. See `lib/composition-mode.ts`. This does not change the composite/atomic behavior matrix below — only how the mode is selected.
+Revised 2026-08-11: the resolution precedence grew a step. An explicit `--atomic` flag was added for symmetry with `--composite`, and passing any composition-source option (`--composition-map`, `--composition-agent`, `--composition-refresh`, `--generate-map`) implied composite without a separate `--composite` flag.
+
+Revised 2026-09-21: **atomic mode was removed.** Composite is now the only mode — `--atomic`, `--composite`, `resolveCompositionMode`, `EXPERIENCES_COMPOSITION_MODE`, the persisted `compositionMode` field, and the setup-time composition-mode prompt are all gone. The `compositionMode` axis section that described atomic degeneration is superseded; every step of the flow now runs the composite policies below. Passing a composition-source option (`--composition-map`, `--composition-agent`, etc.) still gates whether the composition-agent runs, but the mode itself is no longer selectable.
 
 ## Date
 
@@ -22,12 +24,7 @@ Curated into this repo as ADR-0003 (original numbering, planning workspace: ADR-
 
 ## Context
 
-Import runs under one of two composition modes, resolved once at command preamble (see "Revised 2026-08-11" above for the current precedence order; default remains **`atomic`**) and consumed at each step *host* (`ScopeGateHost`, `final-review-host`):
-
-- **`composite`** (opt-in, `--composite`) — embedded-component hierarchy is honored: the two review screens run against a shared slot-dependency graph with the divergent semantics this ADR specifies. Everything below describes this mode.
-- **`atomic`** (default) — components import flat, with no embedded-component hierarchy. The hosts render the pre-composite step implementations, which never build the graph; every graph-derived rule degenerates (see "The `compositionMode` axis" at the end of the Decision). Atomic is orthogonal to the ScopeGate/GenerateReview split — it crosses both.
-
-In `composite` mode the DSI TUI runs two review screens against the same slot-dependency graph but with divergent semantics:
+Import honors embedded-component hierarchy: the two review screens run against a shared slot-dependency graph with the divergent semantics this ADR specifies. The DSI TUI runs two review screens against that graph but with divergent semantics:
 
 - **ScopeGateStep** — pre-generation. User is scoping WHICH components to send to AI generation. Read-only source. Cycles are EXPECTED — sending cyclic components to generate is how the user gets them fixed.
 - **GenerateReviewStep** — post-generation. User is reviewing / editing AI-generated CDF definitions before push. Full editor. Cycles MUST be resolved (edit or reject) before push — the API rejects cyclic manifests.
@@ -42,9 +39,7 @@ We need a canonical rule set the code can conform to, and a shared graph-buildin
 
 ## Decision
 
-> **All of Part 1 and Part 2 describe `compositionMode: composite`.** The `atomic` default collapses every graph-derived rule below; see "The `compositionMode` axis" after Part 3.
-
-### Part 1 — Policy matrix (behavioral rules per step, `composite` mode)
+### Part 1 — Policy matrix (behavioral rules per step)
 
 **Selection state:**
 
@@ -77,9 +72,9 @@ We need a canonical rule set the code can conform to, and a shared graph-buildin
 |---|---|
 | None — source is read-only | FieldEditor (Ctrl+S). `recomputeCycles` re-runs on save. Slot edits can BREAK cycles → `slotCycles` clears, `cycleParticipantsMemo` updates, auto-reject signature resets. |
 
-### Part 2 — Canonical scenario semantics (`composite` mode only)
+### Part 2 — Canonical scenario semantics
 
-Three topology scenarios that surfaced ambiguity. Frozen behavior. **All three are vacuous under `atomic` mode** — they presuppose cycles/slots, which atomic never computes:
+Three topology scenarios that surfaced ambiguity. Frozen behavior:
 
 **Scenario A — Parent P and Child C form a cycle with each other (`P.slots⊃C`, `C.slots⊃P`)**
 
@@ -120,24 +115,9 @@ Three topology scenarios that surfaced ambiguity. Frozen behavior. **All three a
 
 The refactor operates OVER these primitives; it does not rewrite them.
 
-### The `compositionMode` axis
+### The `compositionMode` axis (superseded 2026-09-21)
 
-The matrix in Part 1 describes `compositionMode: composite` — the **opt-in, non-default** mode (`--composite`). The **default is `atomic`**: resolved once at command preamble (current precedence: see "Revised 2026-08-11" above; default `atomic`) and consumed at the step *host* (`ScopeGateHost`, `final-review-host`), which renders the pre-composite step implementation (`AtomicScopeGateStep`, `AtomicGenerateReviewStep`). Atomic is orthogonal to the ScopeGate/GenerateReview split — it applies to both. In atomic mode every graph-derived rule degenerates:
-
-| Axis | ScopeGate (atomic) | GenerateReview (atomic) |
-|---|---|---|
-| Selection states | `included` / `excluded` (binary; the pre-composite sticky include/exclude model) | `needs-review` / `accepted` / `rejected` (unchanged) |
-| Default at entry | all included-by-default (AI-flag may pre-exclude) | all `needs-review`; **NO mount auto-reject** (nothing cyclic to reject) |
-| Accept/reject cascade | **none** — each row is independent (plain setter) | **none** — per-component; no `computeClosure` walk |
-| Cycle-unit cohesion | N/A — graph not built | N/A — graph not built |
-| Cycles allowed? | N/A — cycles never computed | N/A — cycles never computed |
-| Auto-reject at mount? | No | No |
-| Push-safety filtering | N/A (no push at scope-gate) | N/A — no cycle set; two-graph split not computed |
-| Advance gate | any non-empty included set | any accepted set — **no `[F]` cycle gate** |
-| Edit affordance | none (read-only source) | FieldEditor YES (prop editing); **slot-composition editing hidden** (host does not pass `projectSlotGraph` to `FieldEditor`) |
-| Closures | singletons | singletons |
-
-The "do not touch" primitives (`composite-closure`, `cycle-detection`, `lineage`, `selection-cascade`, `scope-gate-cascade`, `slot-graph`) are simply **not invoked** in atomic mode — the atomic steps never import them. Atomic is therefore a *bypass*, not a new policy over the primitives. **Atomic bypasses the canonical `buildComponentGraph` seam (Part 3) entirely** — it needs no graph builder of its own; a future reader should not add one. On the push path the same guarantee holds structurally: atomic strips `$allowedComponents` at the single serialization point (`loadCDFComponents` / a normalization pass over the components array), so cycle detection operates on empty slot data and returns zero.
+This section originally described the atomic-mode degeneration of the matrix above. Atomic mode has been removed; the axis no longer exists. Composite is the only mode, and every rule in Parts 1–3 applies unconditionally. Retained here as a pointer for readers arriving from older links.
 
 ## Consequences
 

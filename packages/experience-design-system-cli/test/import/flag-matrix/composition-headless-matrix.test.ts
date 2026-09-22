@@ -90,33 +90,8 @@ describe('flag-matrix: composition flags forwarded through the HEADLESS dispatch
     mockLoadCDFComponents.mockReturnValue([]);
   });
 
-  // ── composition × mode: --composite reaches the spawned analyze extract ────
-  const modeCells: Array<{ name: string; opts: Partial<PipelineOptions>; expectComposite: boolean }> = [
-    { name: 'compositionMode composite', opts: { compositionMode: 'composite' }, expectComposite: true },
-    { name: 'compositionMode atomic', opts: { compositionMode: 'atomic' }, expectComposite: false },
-    { name: 'compositionMode unset', opts: {}, expectComposite: false },
-  ];
-
-  it.each(modeCells)(
-    '$name → --composite presence on the extract subprocess is correct',
-    async ({ opts, expectComposite }) => {
-      const { runPipeline } = await import('../../../src/import/orchestrator.js');
-      const calls: string[][] = [];
-      stubExecFile(calls);
-      await runPipeline(baseOpts(opts), () => {}, 'fake-cli-path');
-      const extractCall = findExtractCall(calls);
-      expect(extractCall).toBeDefined();
-      if (expectComposite) {
-        expect(extractCall).toContain('--composite');
-      } else {
-        expect(extractCall).not.toContain('--composite');
-      }
-    },
-  );
-
-  // ── composition sub-flags × composite mode → each sub-flag forwarded ───────
+  // ── composition sub-flags → each one forwarded to analyze extract ──────────
   const subFlagCells: Array<{ flag: string; assert: (joined: string, call: string[]) => void }> = [
-    { flag: '--composite', assert: (j) => expect(j).toContain('--composite') },
     { flag: '--composition-map', assert: (j) => expect(j).toContain('--composition-map /tmp/map.json') },
     { flag: '--composition-agent', assert: (j) => expect(j).toContain('--composition-agent') },
     { flag: '--composition-agent-mode', assert: (j) => expect(j).toContain('--composition-agent-mode edges') },
@@ -131,34 +106,24 @@ describe('flag-matrix: composition flags forwarded through the HEADLESS dispatch
     },
   ];
 
-  it.each(subFlagCells)(
-    'composition sub-flag $flag is forwarded to analyze extract under composite mode',
-    async ({ assert }) => {
-      const { runPipeline } = await import('../../../src/import/orchestrator.js');
-      const calls: string[][] = [];
-      stubExecFile(calls);
-      await runPipeline(
-        baseOpts({ compositionMode: 'composite', ...COMPOSITE_SUBFLAG_OPTS }),
-        () => {},
-        'fake-cli-path',
-      );
-      const extractCall = findExtractCall(calls);
-      expect(extractCall).toBeDefined();
-      assert(extractCall!.join(' '), extractCall!);
-    },
-  );
+  it.each(subFlagCells)('composition sub-flag $flag is forwarded to analyze extract', async ({ assert }) => {
+    const { runPipeline } = await import('../../../src/import/orchestrator.js');
+    const calls: string[][] = [];
+    stubExecFile(calls);
+    await runPipeline(baseOpts(COMPOSITE_SUBFLAG_OPTS), () => {}, 'fake-cli-path');
+    const extractCall = findExtractCall(calls);
+    expect(extractCall).toBeDefined();
+    assert(extractCall!.join(' '), extractCall!);
+  });
 
   it('inventory composition flags are all represented in the sub-flag matrix', () => {
     const covered = new Set(subFlagCells.map((c) => c.flag));
-    covered.add('--atomic');
     for (const f of COMPOSITION_FLAGS) {
       expect(covered.has(f), `composition flag ${f} lacks a headless-forwarding cell`).toBe(true);
     }
   });
 
-  // ── composition × headless-trigger flags (the exact miss) ──────────────────
-  // Each headless-trigger flag maps onto the PipelineOptions the command
-  // dispatcher would produce for that flag; composite forwarding must survive.
+  // ── composition × headless-trigger flags ─────────────────────────────────
   const headlessTriggerCells: Array<{ name: string; opts: Partial<PipelineOptions> }> = [
     { name: '--skip-generate', opts: { skipGenerate: true } },
     { name: '--skip-apply', opts: { skipApply: true } },
@@ -172,26 +137,18 @@ describe('flag-matrix: composition flags forwarded through the HEADLESS dispatch
     const { runPipeline } = await import('../../../src/import/orchestrator.js');
     const calls: string[][] = [];
     stubExecFile(calls);
-    await runPipeline(
-      baseOpts({ compositionMode: 'composite', compositionMap: '/tmp/map.json', ...opts }),
-      () => {},
-      'fake-cli-path',
-    );
+    await runPipeline(baseOpts({ compositionMap: '/tmp/map.json', ...opts }), () => {}, 'fake-cli-path');
     const extractCall = findExtractCall(calls);
     expect(extractCall).toBeDefined();
-    expect(extractCall).toContain('--composite');
     expect(extractCall!.join(' ')).toContain('--composition-map /tmp/map.json');
   });
 
-  // ── composition × --no-push / --no-save / --skip-apply forks ───────────────
-  // In the headless dispatcher these forks affect apply push, not the extract
-  // subprocess. Composition forwarding to extract must be independent of them.
   it('composition forwards under --skip-apply (no push subprocess spawned)', async () => {
     const { runPipeline } = await import('../../../src/import/orchestrator.js');
     const calls: string[][] = [];
     stubExecFile(calls);
-    await runPipeline(baseOpts({ compositionMode: 'composite', skipApply: true }), () => {}, 'fake-cli-path');
-    expect(findExtractCall(calls)).toContain('--composite');
+    await runPipeline(baseOpts({ compositionMap: '/tmp/map.json', skipApply: true }), () => {}, 'fake-cli-path');
+    expect(findExtractCall(calls)!.join(' ')).toContain('--composition-map /tmp/map.json');
     expect(findPushCalls(calls).length).toBe(0);
   });
 
@@ -201,7 +158,7 @@ describe('flag-matrix: composition flags forwarded through the HEADLESS dispatch
     stubExecFile(calls);
     await runPipeline(
       baseOpts({
-        compositionMode: 'composite',
+        compositionMap: '/tmp/map.json',
         skipApply: false,
         spaceId: 'sp',
         environmentId: 'master',
@@ -210,7 +167,7 @@ describe('flag-matrix: composition flags forwarded through the HEADLESS dispatch
       () => {},
       'fake-cli-path',
     );
-    expect(findExtractCall(calls)).toContain('--composite');
+    expect(findExtractCall(calls)!.join(' ')).toContain('--composition-map /tmp/map.json');
     expect(findPushCalls(calls).length).toBeGreaterThanOrEqual(1);
   });
 });
