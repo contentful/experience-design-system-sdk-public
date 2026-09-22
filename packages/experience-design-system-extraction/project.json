@@ -59,7 +59,7 @@
     "clean": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "node ../../scripts/fs-util.mjs rm dist",
+        "command": "rm -rf dist",
         "cwd": "packages/experience-design-system-extraction"
       }
     },
