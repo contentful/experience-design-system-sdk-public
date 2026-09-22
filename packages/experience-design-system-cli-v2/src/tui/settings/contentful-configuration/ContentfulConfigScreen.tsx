@@ -81,10 +81,15 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
             const displayValue = field.maskable && !revealToken ? mask(rawValue) : rawValue;
 
             return (
-              <Text key={field.key} bold={focused} color={focused ? PALETTE.accent : undefined}>
+              <Text key={field.key}>
                 {focused ? `${FOCUS_MARKER} ` : '  '}
-                {field.label}: {displayValue}
-                {editing ? '▌' : ''}
+                <Text bold={focused} color={focused ? PALETTE.accent : PALETTE.muted}>
+                  {field.label}:
+                </Text>{' '}
+                <Text bold={editing} color={editing ? PALETTE.heading : undefined}>
+                  {displayValue}
+                  {editing ? '▌' : ''}
+                </Text>
               </Text>
             );
           })}
@@ -92,7 +97,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
           <Text dimColor>Config file: {configPath}</Text>
           {status && <Text color={status.kind === 'success' ? PALETTE.success : PALETTE.error}>{status.message}</Text>}
           <Text> </Text>
-          <Text dimColor>
+          <Text color={PALETTE.muted}>
             {mode === 'edit'
               ? '⏎/Esc commit edit'
               : `↑/↓ move · ⏎ edit · ${
