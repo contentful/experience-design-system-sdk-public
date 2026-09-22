@@ -11,7 +11,7 @@ export type DsiConfiguration = {
   host: string;
 };
 
-const EMPTY_CONFIGURATION: DsiConfiguration = {
+export const EMPTY_CONFIGURATION: DsiConfiguration = {
   space_id: '',
   env_id: '',
   cma_token: '',

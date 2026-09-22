@@ -5,24 +5,20 @@ import {
   dsiConfigurationPath,
   readDsiConfiguration,
   writeDsiConfiguration,
+  EMPTY_CONFIGURATION,
   type DsiConfiguration,
 } from './config-store.js';
 
 type FieldKey = keyof DsiConfiguration;
 
-const FIELDS: { key: FieldKey; label: string; maskable?: boolean }[] = [
+type Field = { key: FieldKey; label: string; maskable?: boolean };
+
+const FIELDS: Field[] = [
   { key: 'space_id', label: 'Space ID' },
   { key: 'env_id', label: 'Environment ID' },
   { key: 'cma_token', label: 'CMA Token', maskable: true },
   { key: 'host', label: 'Host' },
 ];
-
-const EMPTY_CONFIGURATION: DsiConfiguration = {
-  space_id: '',
-  env_id: '',
-  cma_token: '',
-  host: '',
-};
 
 function mask(value: string): string {
   return '•'.repeat(value.length);
