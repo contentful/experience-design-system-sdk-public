@@ -35,7 +35,6 @@ export interface PipelineOptions {
   yes: boolean;
   host?: string;
   dryRun?: boolean;
-  excludeInvalid?: boolean;
   /** Forwarded to the spawned `analyze select-agent` subprocess. */
   selectPromptPath?: string;
   /** When true, auto-reject cycle participants and retry push instead of surfacing an error. */
@@ -373,7 +372,6 @@ export async function runPipeline(
       editArgs = ['analyze', 'select-agent', '--session', extractSessionId, '--agent', opts.agent];
       if (opts.model) editArgs.push('--model', opts.model);
       if (opts.bedrock) editArgs.push('--bedrock');
-      if (opts.excludeInvalid) editArgs.push('--exclude-invalid');
       if (opts.noCache) editArgs.push('--no-cache');
       if (opts.selectPromptPath) editArgs.push('--select-prompt-path', opts.selectPromptPath);
       if (existingEntitiesPath) editArgs.push('--existing-entities-path', existingEntitiesPath);

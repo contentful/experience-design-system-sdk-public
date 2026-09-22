@@ -105,12 +105,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--exclude-invalid',
-    kind: 'boolean',
-    modes: ['pty', 'headless'],
-    incompatibleWith: [],
-  },
-  {
     flag: '--host',
     kind: 'value',
     sampleValue: 'http://127.0.0.1:9999',
