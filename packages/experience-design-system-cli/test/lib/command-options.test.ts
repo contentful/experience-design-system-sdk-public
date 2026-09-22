@@ -62,5 +62,4 @@ describe('command option builders', () => {
       },
     ]);
   });
-
 });

@@ -3,12 +3,7 @@ import { render } from 'ink';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Command } from 'commander';
-import {
-  validateCDF,
-  flattenDTCG,
-  validateDTCG,
-  buildManifest,
-} from '@contentful/experience-design-system-types';
+import { validateCDF, flattenDTCG, validateDTCG, buildManifest } from '@contentful/experience-design-system-types';
 import type { CDFComponentEntry, DTCGTokenEntry } from '@contentful/experience-design-system-types';
 import { ApiError, ImportApiClient } from './api-client.js';
 import { formatApiError, formatEdsiError } from '../lib/error-parser.js';
@@ -531,9 +526,7 @@ function buildApplyOutput(
 }
 
 export function registerApplyCommand(program: Command): void {
-  const applyCmd = program
-    .command('apply')
-    .description('Preview or push design system entities to Contentful ExO');
+  const applyCmd = program.command('apply').description('Preview or push design system entities to Contentful ExO');
 
   const pushCmd = applyCmd.command('push').description('Write component types and design tokens to Contentful ExO');
   addSharedApplyOptions(pushCmd);
@@ -674,5 +667,4 @@ export function registerApplyCommand(program: Command): void {
         void instance.waitUntilExit().then(() => resolvePromise());
       });
     });
-
 }

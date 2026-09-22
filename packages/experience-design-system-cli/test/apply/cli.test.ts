@@ -1,26 +1,12 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Command } from 'commander';
 import { registerApplyCommand } from '../../src/apply/command.js';
 
 const bin = resolve(import.meta.dirname, '../../bin/cli.js');
 const fixturesDir = resolve(import.meta.dirname, '../fixtures/import');
 const componentsPath = join(fixturesDir, 'components.json');
-
-const tempDirs: string[] = [];
-
-async function createTempDir(prefix: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
-afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
-});
 
 function run(
   args: string[],
@@ -76,7 +62,6 @@ describe('apply command — help', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('--yes');
   });
-
 });
 
 describe('apply push — input validation', () => {
