@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
+import { PasswordInput } from '@inkjs/ui';
 import { FOCUS_MARKER, PALETTE } from '../../home/home.theme.js';
 import {
   dsiConfigurationPath,
@@ -79,6 +80,26 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
             const editing = focused && mode === 'edit';
             const rawValue = editing ? editBuffer : config[field.key];
             const displayValue = field.maskable && !revealToken ? mask(rawValue) : rawValue;
+
+            if (editing && field.key === 'cma_token') {
+              return (
+                <Box key={field.key}>
+                  <Text>
+                    {`${FOCUS_MARKER} `}
+                    <Text bold color={PALETTE.accent}>
+                      {field.label}:
+                    </Text>{' '}
+                  </Text>
+                  <PasswordInput
+                    onSubmit={(value) => {
+                      setConfig((c) => ({ ...c, cma_token: value }));
+                      setMode('navigate');
+                      setFocusIdx((idx) => (idx + 1) % FIELDS.length);
+                    }}
+                  />
+                </Box>
+              );
+            }
 
             return (
               <Text key={field.key}>

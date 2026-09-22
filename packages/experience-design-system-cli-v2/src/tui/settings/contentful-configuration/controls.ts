@@ -44,13 +44,23 @@ export function useConfigurationControls({
     if (loading) return;
 
     if (mode === 'edit') {
-      if (key.return || key.escape) {
+      const usesPasswordInput = fields[focusIdx]!.key === 'cma_token';
+
+      if (key.escape) {
         const field = fields[focusIdx]!.key;
         setConfig((c) => ({ ...c, [field]: editBuffer }));
         setMode('navigate');
-        if (key.return) {
-          setFocusIdx((i) => (i + 1) % fields.length);
-        }
+        return;
+      }
+      if (usesPasswordInput) {
+        // PasswordInput owns Enter/Backspace/typing via its own useInput while active.
+        return;
+      }
+      if (key.return) {
+        const field = fields[focusIdx]!.key;
+        setConfig((c) => ({ ...c, [field]: editBuffer }));
+        setMode('navigate');
+        setFocusIdx((i) => (i + 1) % fields.length);
         return;
       }
       if (key.backspace || key.delete) {
