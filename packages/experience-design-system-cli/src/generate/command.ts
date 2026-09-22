@@ -52,7 +52,7 @@ import type { RawComponentDefinition } from '../types.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js';
-import { die, assertAgentCanReceivePrompt, assertBinaryInPath } from '../lib/cli-errors.js';
+import { die, assertBinaryInPath } from '../lib/cli-errors.js';
 import { pathExists } from '../lib/path-exists.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
@@ -569,8 +569,6 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     });
     await exitWithAnalytics(1);
   }
-
-  assertAgentCanReceivePrompt(agent);
 
   if (skill === 'components' && allComponents && sessionId) {
     const db = openPipelineDb();

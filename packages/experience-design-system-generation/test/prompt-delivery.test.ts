@@ -2,13 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, writeFile, rm, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import {
-  agentSupportsStdinPrompt,
-  buildArgs,
-  promptExceedsArgvLimit,
-  runAgent,
-  shouldUseStdinPrompt,
-} from '../src/agent-runner.js';
+import { agentSupportsStdinPrompt, buildArgs, runAgent, shouldUseStdinPrompt } from '../src/agent-runner.js';
 
 // Echoes back where the prompt arrived, so we can assert delivery rather than
 // trusting the flag we passed in.
@@ -65,25 +59,6 @@ describe('shouldUseStdinPrompt', () => {
 
   it('never routes copilot to stdin, however large the prompt', () => {
     expect(shouldUseStdinPrompt('copilot', BIG)).toBe(false);
-  });
-});
-
-describe('promptExceedsArgvLimit', () => {
-  it('flags a large copilot prompt on Windows as undeliverable', () => {
-    // Nothing can carry this: copilot needs argv, and Windows argv is too small.
-    expect(promptExceedsArgvLimit('copilot', BIG, 'win32')).toBe(true);
-  });
-
-  it('does not flag it on POSIX, where ARG_MAX is ~1MB', () => {
-    expect(promptExceedsArgvLimit('copilot', BIG, 'darwin')).toBe(false);
-  });
-
-  it('does not flag a small copilot prompt on Windows', () => {
-    expect(promptExceedsArgvLimit('copilot', SMALL, 'win32')).toBe(false);
-  });
-
-  it('never flags a stdin-capable agent', () => {
-    expect(promptExceedsArgvLimit('claude', BIG, 'win32')).toBe(false);
   });
 });
 

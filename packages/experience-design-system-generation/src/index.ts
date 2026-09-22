@@ -14,7 +14,6 @@ export {
   parseSelectToolCallLines,
   parseTokenToolCallLines,
   parseToolCallLines,
-  promptExceedsArgvLimit,
   resolveAgentModel,
   resolveBinary,
   runAgent,

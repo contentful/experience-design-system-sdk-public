@@ -39,7 +39,7 @@ import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js
 import { MapTokensView } from './tui/MapTokensView.js';
 import type { MapTokensViewResult } from './tui/MapTokensView.js';
 import { resolveTokenDefaults } from './resolve-defaults.js';
-import { die, assertAgentCanReceivePrompt, assertBinaryInPath } from '../lib/cli-errors.js';
+import { die, assertBinaryInPath } from '../lib/cli-errors.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 
@@ -259,8 +259,6 @@ async function runMapTokens(opts: MapTokensOptions): Promise<void> {
           `  ${resolveSkillPath('map-tokens')}`,
       );
     }
-
-    assertAgentCanReceivePrompt(agent);
 
     const stepId = createStep(db, sessionId, 'map tokens', { agent, model: model ?? '' });
 

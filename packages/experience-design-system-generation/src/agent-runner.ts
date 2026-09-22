@@ -530,17 +530,6 @@ export function shouldUseStdinPrompt(agent: AgentName, prompt: string): boolean 
   return agentSupportsStdinPrompt(agent) && prompt.length > ARGV_PROMPT_LIMIT;
 }
 
-/** True when the prompt cannot be delivered to this agent on this platform. */
-export function promptExceedsArgvLimit(
-  agent: AgentName,
-  prompt: string,
-  platform: NodeJS.Platform = process.platform,
-): boolean {
-  if (agentSupportsStdinPrompt(agent)) return false;
-  // 8191 is the cmd.exe ceiling; every Windows launch of a .cmd shim goes through it.
-  return platform === 'win32' && prompt.length > 8191;
-}
-
 export function buildArgs(
   agent: AgentName,
   prompt: string,
