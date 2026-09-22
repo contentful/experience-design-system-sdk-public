@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,9 +11,11 @@ export function findPackageRoot(startUrl: string, packageName: string): string {
   let dir = dirname(fileURLToPath(startUrl));
 
   while (true) {
-    const raw = readFileSync(join(dir, 'package.json'), 'utf8');
-    const pkg = JSON.parse(raw) as { name?: string };
-    if (pkg.name === packageName) return dir;
+    const manifestPath = join(dir, 'package.json');
+    if (existsSync(manifestPath)) {
+      const pkg = JSON.parse(readFileSync(manifestPath, 'utf8')) as { name?: string };
+      if (pkg.name === packageName) return dir;
+    }
 
     const parent = dirname(dir);
     if (parent === dir) return dir;

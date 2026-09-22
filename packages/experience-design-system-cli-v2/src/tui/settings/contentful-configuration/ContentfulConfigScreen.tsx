@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
 import { FOCUS_MARKER, PALETTE } from '../../home/home.theme.js';
 import {
   dsiConfigurationPath,
@@ -8,10 +8,7 @@ import {
   EMPTY_CONFIGURATION,
   type DsiConfiguration,
 } from './config-store.js';
-
-type FieldKey = keyof DsiConfiguration;
-
-type Field = { key: FieldKey; label: string; maskable?: boolean };
+import { useConfigurationControls, type Field } from './controls.js';
 
 const FIELDS: Field[] = [
   { key: 'space_id', label: 'Space ID' },
@@ -32,8 +29,10 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
   const [editBuffer, setEditBuffer] = useState('');
   const [revealToken, setRevealToken] = useState(false);
   const [status, setStatus] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+  const [configPath, setConfigPath] = useState('');
 
   useEffect(() => {
+    setConfigPath(dsiConfigurationPath());
     readDsiConfiguration().then((loaded) => {
       setConfig(loaded);
       setLoading(false);
@@ -50,62 +49,21 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
     }
   };
 
-  useInput((input, key) => {
-    if (loading) return;
-
-    if (mode === 'edit') {
-      if (key.return || key.escape) {
-        const field = FIELDS[focusIdx]!.key;
-        setConfig((c) => ({ ...c, [field]: editBuffer }));
-        setMode('navigate');
-        return;
-      }
-      if (key.backspace || key.delete) {
-        setEditBuffer((b) => b.slice(0, -1));
-        return;
-      }
-      if (input && !key.ctrl && !key.meta) {
-        setEditBuffer((b) => b + input);
-      }
-      return;
-    }
-
-    if (key.upArrow) {
-      setFocusIdx((i) => (i - 1 + FIELDS.length) % FIELDS.length);
-      setStatus(null);
-      return;
-    }
-    if (key.downArrow) {
-      setFocusIdx((i) => (i + 1) % FIELDS.length);
-      setStatus(null);
-      return;
-    }
-    if (key.return) {
-      setEditBuffer(config[FIELDS[focusIdx]!.key]);
-      setMode('edit');
-      setStatus(null);
-      return;
-    }
-    if (input === 'v' && FIELDS[focusIdx]!.maskable) {
-      setRevealToken((r) => !r);
-      return;
-    }
-    if (input === 's') {
-      save(config).then((ok) => {
-        if (ok) setStatus({ kind: 'success', message: 'Saved' });
-      });
-      return;
-    }
-    if (input === 'S') {
-      save(config).then((ok) => {
-        if (ok) onDone();
-      });
-      return;
-    }
-    if (input === 'q' || key.escape) {
-      onDone();
-      return;
-    }
+  useConfigurationControls({
+    loading,
+    mode,
+    setMode,
+    focusIdx,
+    setFocusIdx,
+    editBuffer,
+    setEditBuffer,
+    config,
+    setConfig,
+    setStatus,
+    setRevealToken,
+    fields: FIELDS,
+    save,
+    onDone,
   });
 
   return (
@@ -131,7 +89,7 @@ export function ConfigurationScreen({ onDone }: { onDone: () => void }): React.R
             );
           })}
           <Text> </Text>
-          <Text dimColor>Config file: {dsiConfigurationPath()}</Text>
+          <Text dimColor>Config file: {configPath}</Text>
           {status && <Text color={status.kind === 'success' ? PALETTE.success : PALETTE.error}>{status.message}</Text>}
           <Text> </Text>
           <Text dimColor>
