@@ -24,12 +24,6 @@ describe('experiences import --push-from-run — parse-time mutex errors', () =>
     expect(stderr).toMatch(/--push-from-run.*--project|--project.*--push-from-run/);
   });
 
-  it('errors when --push-from-run is combined with --no-save', async () => {
-    const { stderr, code } = await run(['import', '--push-from-run', '01HXYZ', '--no-save']);
-    expect(code).not.toBe(0);
-    expect(stderr).toMatch(/--push-from-run.*--no-save|--no-save.*--push-from-run/);
-  });
-
   it('errors when --push-from-run is combined with --no-push', async () => {
     const { stderr, code } = await run(['import', '--push-from-run', '01HXYZ', '--no-push']);
     expect(code).not.toBe(0);

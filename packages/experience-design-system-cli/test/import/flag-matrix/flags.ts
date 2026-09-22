@@ -198,20 +198,14 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     flag: '--no-push',
     kind: 'boolean',
     modes: ['pty', 'headless'],
-    incompatibleWith: ['--no-save', '--push-from-run'],
-  },
-  {
-    flag: '--no-save',
-    kind: 'boolean',
-    modes: ['pty', 'headless'],
-    incompatibleWith: ['--no-push', '--out-dir', '--push-from-run'],
+    incompatibleWith: ['--push-from-run'],
   },
   {
     flag: '--out-dir',
     kind: 'value',
     sampleValue: '/tmp/eds-save',
     modes: ['pty', 'headless'],
-    incompatibleWith: ['--no-save'],
+    incompatibleWith: [],
   },
   {
     flag: '--select-prompt-path',
@@ -232,7 +226,7 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     kind: 'value',
     sampleValue: 'run-123',
     modes: ['pty', 'headless'],
-    incompatibleWith: ['--modify', '--project', '--no-save', '--no-push'],
+    incompatibleWith: ['--modify', '--project', '--no-push'],
   },
   {
     flag: '--modify',

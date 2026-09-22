@@ -377,7 +377,6 @@ export type WizardAppProps = {
   autoFilter?: boolean;
   livePreview?: boolean;
   noPush?: boolean;
-  noSave?: boolean;
   outDirOverride?: string;
   onConflictMode?: ConflictMode;
   selectPromptPath?: string;
@@ -417,7 +416,6 @@ export function WizardApp({
   autoFilter = true,
   livePreview = true,
   noPush = false,
-  noSave = false,
   outDirOverride,
   onConflictMode,
   selectPromptPath,
@@ -2135,19 +2133,6 @@ export function WizardApp({
               if (noPush) {
                 update({ generatedAcceptedCount: acceptedCount });
                 void startSaveFlow();
-                return;
-              }
-              if (noSave) {
-                update({ generatedAcceptedCount: acceptedCount });
-                const { extractSessionId, tokensPath } = sessionRef.current;
-                void runPreview(
-                  extractSessionId,
-                  tokensPath,
-                  state.spaceId,
-                  state.environmentId,
-                  state.cmaToken,
-                  state.host,
-                );
                 return;
               }
               if (autoAcceptScope) {

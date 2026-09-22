@@ -86,7 +86,6 @@ export function registerImportCommand(program: Command): void {
       '--no-push',
       'Import without pushing to Contentful. Interactive: runs the full wizard (extract → scope-gate → generate → final-review) and stops before push. Non-interactive (piped/CI): runs headless through generate. No credentials needed either way.',
     )
-    .option('--no-save', 'Push without writing components.json / tokens.json to disk (default: save AND push)')
     .option(
       '--out-dir <path>',
       'Save components.json / tokens.json to this directory; bypasses the inline save-path prompt',
@@ -138,7 +137,6 @@ export function registerImportCommand(program: Command): void {
         autoFilter?: boolean;
         livePreview?: boolean;
         push?: boolean;
-        save?: boolean;
         outDir?: string;
         selectPromptPath?: string;
         generatePromptPath?: string;
@@ -191,13 +189,6 @@ export function registerImportCommand(program: Command): void {
             process.exit(1);
             return;
           }
-          if (opts.save === false) {
-            process.stderr.write(
-              'Error: --push-from-run and --no-save are mutually exclusive. --push-from-run never writes to disk.\n',
-            );
-            process.exit(1);
-            return;
-          }
           if (opts.push === false) {
             process.stderr.write(
               'Error: --push-from-run and --no-push are mutually exclusive. Pushing is the whole point of --push-from-run.\n',
@@ -242,18 +233,6 @@ export function registerImportCommand(program: Command): void {
           return;
         }
 
-        if (opts.save === false && opts.push === false) {
-          process.stderr.write('Error: --no-save and --no-push together would do nothing. Pick one or neither.\n');
-          process.exit(1);
-          return;
-        }
-        if (opts.save === false && opts.outDir) {
-          process.stderr.write(
-            'Error: --no-save and --out-dir are mutually exclusive. --no-save disables disk writes; --out-dir picks a directory for them.\n',
-          );
-          process.exit(1);
-          return;
-        }
 
         if (opts.rawTokens !== undefined) {
           const { access } = await import('node:fs/promises');
@@ -317,7 +296,6 @@ export function registerImportCommand(program: Command): void {
             autoFilter?: boolean;
             livePreview?: boolean;
             noPush?: boolean;
-            noSave?: boolean;
             outDirOverride?: string;
             selectPromptPath?: string;
             generatePromptPath?: string;
@@ -378,7 +356,6 @@ export function registerImportCommand(program: Command): void {
               autoFilter: resolveAutoFilter({ autoFilter: opts.autoFilter }, creds.autoFilter),
               livePreview: true,
               noPush: noPushRequested,
-              noSave: opts.save === false,
               ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
