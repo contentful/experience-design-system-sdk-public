@@ -694,7 +694,7 @@ export function WizardApp({
         // normal wizard run can have a separate token session. The map-tokens
         // command operates on one session; copy that token universe into the
         // generated-component session while leaving the recorded token session
-        // intact for save/push and --modify replay.
+        // intact for save/push.
         if (state.tokenSessionId && state.tokenSessionId !== sessionId) {
           copyTokensFromCache(db, state.tokenSessionId, sessionId);
         } else if (!state.tokenSessionId && state.tokensPath) {
