@@ -18,7 +18,7 @@ The rest of this README uses `experiences`.
 
 There are two ways to use the CLI:
 
-1. **`experiences import`** — the wizard. Drives the full pipeline (extract → AI select → scope-gate → generate → final-review → save/push) from a single command. Works in two modes: a full-screen interactive TUI in a real terminal and a non-interactive headless mode when you pass credentials or another headless flag. **This is the recommended path for almost everyone.**
+1. **`experiences import`** — the wizard. Drives the full pipeline (extract → AI select → scope-gate → internal generation → final-review → save/push) from a single command. Works in two modes: a full-screen interactive TUI in a real terminal and a non-interactive headless mode when you pass credentials or `--no-push`. **This is the recommended path for almost everyone.**
 
 2. **Standalone subcommands** — for piping into other tools, CI parity with the wizard, or for debugging individual steps:
 
@@ -113,7 +113,7 @@ In the wizard's credentials step you can press `[s] Skip` to save-only without p
 experiences import [flags]
 ```
 
-`experiences import` is the primary entry point. In a TTY it launches a full-screen wizard. In headless mode (any of `--dry-run` or credential flags) it runs non-interactively. Without either, it fails loud rather than hanging.
+`experiences import` is the primary entry point. In a TTY it launches a full-screen wizard. In headless mode (with credentials or `--no-push`) it runs non-interactively. Without a supported headless entry point, it fails loud rather than hanging.
 
 ### Wizard step machine
 
@@ -121,13 +121,13 @@ experiences import [flags]
 welcome
   ↓
 extracting             — runs analyze extract (atomic by default; resolves composition
-                         under --composite, see below); spawns generate in parallel (prefetch)
+                         under --composite, see below); spawns internal generation in parallel (prefetch)
   ↓
 [auto-filter]          — analyze select-agent runs automatically
   ↓
 scope-gate             — single human review gate: confirm AI selection, toggle components
   ↓
-credentials            — operator types space-id / env / token (generate is already running)
+credentials            — operator types space-id / env / token (internal generation is already running)
                          press [s] Skip to save-only without pushing
   ↓
 final-review           — minimum-viable port of the JsonEditor; edit names, $description,
@@ -148,7 +148,7 @@ The auto-filter (`analyze select-agent` invoked before scope-gate) is on by defa
 
 ### Save-and-push default
 
-The push-decision-gate defaults to **save AND push**: it writes `components.json` and `tokens.json` to disk *and* pushes to Contentful in one step. Use `--no-save` to push-only or `--no-push` to save-only. `--out-dir <path>` picks the save directory non-interactively (otherwise the wizard prompts).
+The push-decision-gate defaults to **save AND push**: it writes `components.json` and `tokens.json` to disk *and* pushes to Contentful in one step. Use `--no-push` to save without pushing. `--out-dir <path>` picks the save directory non-interactively (otherwise the wizard prompts).
 
 ### Replaying prior runs
 
@@ -156,9 +156,8 @@ After every successful wizard session, the CLI appends a record to `~/.config/ex
 
 | Flag                              | What it does                                                                                                            |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `--push-from-run <id-or-path>`    | Re-push the recorded session to Contentful without re-opening the wizard or writing to disk. Mutually exclusive with `--modify`, `--project`, `--no-save`, `--no-push`. |
-| `--modify <id-or-path>`           | Re-open the wizard at final-review with the prior run pre-populated. Pair with `--overwrite` (save back to recorded `savePath`) or `--save-as-new` (prompt for new path). |
-| `--overwrite` / `--save-as-new`   | Save-mode selector for `--modify`; mutually exclusive with each other.                                                  |
+| `--push-from-run <id-or-path>`    | Re-push the recorded session to Contentful without re-opening the wizard or writing to disk. Mutually exclusive with `--modify`, `--project`, and `--no-push`. |
+| `--modify <id-or-path>`           | Re-open the wizard at final-review with the prior run pre-populated. |
 
 Both flags accept either a run id or a filesystem path that matches a recorded `savePath`.
 
@@ -170,13 +169,13 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 
 | Flag                              | Default                                | Description                                                                                                  |
 | --------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `--space-id <id>`                 | `CONTENTFUL_SPACE_ID` env / saved      | Contentful space ID (required unless `--skip-apply` / `--no-push`)                                           |
+| `--space-id <id>`                 | `CONTENTFUL_SPACE_ID` env / saved      | Contentful space ID (required unless `--no-push`)                                                          |
 | `--environment-id <id>`           | `CONTENTFUL_ENVIRONMENT_ID` env        | Contentful environment ID                                                                                    |
 | `--cma-token <token>`             | `CONTENTFUL_MANAGEMENT_TOKEN` env      | CMA personal access token                                                                                    |
 | `--project <path>`                | `.`                                    | Project root to analyze                                                                                      |
 | `--out <path>`                    | `<project>/.contentful`                | Headless-mode output directory                                                                               |
 | `--out-dir <path>`                | _(prompt)_                             | Save directory for `components.json` / `tokens.json`; bypasses inline save-path prompt                       |
-| `--agent <name>`                  | saved by setup / `claude`              | Agent for `analyze select-agent` and `generate components`                                                   |
+| `--agent <name>`                  | saved by setup / `claude`              | Agent for `analyze select-agent` and internal generation                                                     |
 | `--model <name>`                  | agent default                          | Model name                                                                                                   |
 | `--atomic`                        | **default**                            | Flat import, no embedded-component hierarchy (composition stripped on push)                                   |
 | `--composite`                     | —                                      | Import the embedded-component hierarchy (any composition flag implies this)                                   |
@@ -186,20 +185,14 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--composition-refresh`           | —                                      | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`)   |
 | `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
 | `--auto-filter`                    | persisted in `credentials.json`     | Force AI auto-filter on; overrides the saved preference                                                    |
-| `--no-live-preview`               | live preview on                        | Skip the automatic preview re-run after each FieldEditor save                                                |
-| `--no-push`                       | push on                                | Run extract → scope-gate → generate → final-review and exit without pushing                                  |
-| `--no-save`                       | save on                                | Push without writing `components.json` / `tokens.json` to disk                                               |
+| `--no-push`                       | push on                                | Run extract → scope-gate → internal generation → final-review and exit without pushing                     |
 | `--push-from-run <id-or-path>`    | —                                      | Re-push a prior run; never writes to disk                                                                    |
 | `--modify <id-or-path>`           | —                                      | Re-open the wizard at final-review with a prior run loaded                                                   |
-| `--overwrite`                     | —                                      | With `--modify`: save back to recorded `savePath`                                                            |
-| `--save-as-new`                   | —                                      | With `--modify`: always save to a new path                                                                   |
 | `--select-prompt-path <path>`     | saved by setup                         | Custom `.md` skill prompt for `analyze select-agent`                                                         |
-| `--generate-prompt-path <path>`   | saved by setup                         | Custom `.md` skill prompt for `generate components`                                                          |
-| `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between generate and apply                                                        |
-| `--no-cache`                      | cache on                               | Bypass extract/select/generate/map-tokens fine-grained caches and force re-run; forwarded to `analyze select-agent`, `generate components`, and `map tokens` |
-| `--verbose`                       | —                                      | Show full agent output and all entity progress                                                               |
+| `--generate-prompt-path <path>`   | saved by setup                         | Custom `.md` skill prompt for internal component generation                                                  |
+| `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between internal generation and apply                                             |
+| `--no-cache`                      | cache on                               | Bypass extract/select/internal-generation/map-tokens fine-grained caches and force re-run                    |
 | `--exclude-invalid`               | off (fail loud)                        | Auto-reject components with validation errors instead of refusing to proceed                                 |
-| `--viewports <path>`              | catch-all viewport                     | JSON file with viewport array (passed to `apply push`)                                                       |
 | `--host <url>`                    | `https://api.contentful.com`           | Override API base URL                                                                                        |
 | `--allow-deletions`               | off (non-destructive)                  | Allow the push to delete remote ComponentTypes/DesignTokens missing from the manifest. Default skips them instead of deleting. Without this flag, preview responses suppress the removed-entity list and return a count instead; interactive confirm screens show an opt-out toggle (never opt-in) only when the flag is passed. Forwarded to headless subprocess pushes and `--push-from-run`. |
 
@@ -215,7 +208,7 @@ The mount decision is deterministic — passing any of `--push-from-run`, `--mod
 
 ### `--modify` end-to-end behavior
 
-`--modify <id-or-path>` is fully wired: the wizard loads the recorded session from `pipeline.db` (skipping extract and generate entirely), pre-fills credentials from the run record's `pushedTo` target, and lands directly on `final-review` — or on `scope-gate` if the run record carries an `entryStep` hint. Pair with `--overwrite` or `--save-as-new` to control the save target.
+`--modify <id-or-path>` is fully wired: the wizard loads the recorded session from `pipeline.db` (skipping extract and internal generation), pre-fills credentials from the run record's `pushedTo` target, and lands directly on `final-review` — or on `scope-gate` if the run record carries an `entryStep` hint.
 
 ### `--model` and `--agent` overrides
 
@@ -392,7 +385,7 @@ Wizard run history is separate: `~/.config/experiences/runs.json`.
 - `NO_COLOR=1` suppresses all ANSI color output
 - Interactive views require both stdin and stdout to be TTYs and stdin to support raw mode. Read-only views fall back to plain or JSON output when those capabilities are unavailable; commands that require input stop with the relevant non-interactive flags in the error message.
 - On Windows, use Windows Terminal with PowerShell. Older ConEmu and cmd.exe hosts may not provide the raw-mode support the interactive UI needs.
-- To avoid the interactive UI, use the command's non-interactive options: `import --yes` (with credentials) or `import --no-push`, `analyze select --select-all`, and `apply push --yes`.
+- To avoid the interactive UI, use `import` with credentials or `--no-push`, and use `apply push --yes` for a non-interactive push.
 
 ---
 

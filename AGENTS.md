@@ -8,13 +8,13 @@ Nx monorepo with five packages:
 
 - `packages/experience-design-system-cli` — the CLI and TUI (the main package)
 - `packages/experience-design-system-extraction` — component extraction engine (ts-morph, framework parsers); a runtime dependency of the CLI
-- `packages/experience-design-system-generation` — agent-invocation and skill-prompt engine; a runtime dependency of the CLI's `generate` command
+- `packages/experience-design-system-generation` — agent-invocation and skill-prompt engine; used internally by the import wizard
 - `packages/experience-design-system-client` — generated API client for the Experience Design System Integrations API (from `openapi.json` via `@hey-api/openapi-ts`); a runtime dependency of the CLI's `apply` command
 - `packages/experience-design-system-types` — shared types, schemas, validation
 
 The CLI extracts React/Vue/Astro/Stencil/Web Component definitions from customer codebases using the TypeScript compiler API (ts-morph), invokes a coding agent to produce CDF artifacts, validates them against JSON schemas, and provides interactive terminal UIs (Ink) for reviewing, finalizing, and pushing them to Contentful ExO.
 
-These commands form a pipeline. The simple step-by-step import pipeline is: **analyze extract → analyze select-agent → generate components → print/validate → apply preview/select/push.** When a raw token source is supplied, the wizard runs `generate tokens` before component extraction and generation; standalone `map tokens` runs only after CDF and DTCG data are available in the same session, and `experiences import` does not invoke it. `analyze select-agent` runs one agent invocation per component to decide which components belong in Contentful ExO; `analyze select` (the standalone JsonEditor TUI) is the manual alternative.
+The supported import pipeline is: **analyze extract → analyze select-agent → internal generation → print/validate → apply push.** When a raw token source is supplied, the wizard performs token generation internally before component extraction and generation; standalone `map tokens` runs only after CDF and DTCG data are available in the same session, and `experiences import` does not invoke it. `analyze select-agent` runs one agent invocation per component to decide which components belong in Contentful ExO; `analyze select` (the standalone JsonEditor TUI) is the manual alternative.
 
 ### Wizard step machine (`src/import/tui/`)
 
@@ -32,7 +32,7 @@ Each successful wizard run appends a record to `~/.config/experiences/runs.json`
 
 - `experiences runs` lists prior runs; `experiences runs <id-or-path>` prints the single-run detail view; `--json`, `--pushed` / `--not-pushed` filters apply
 - `experiences import --push-from-run <id-or-path>` re-pushes the recorded session without re-opening the wizard or writing to disk
-- `experiences import --modify <id-or-path>` is fully wired: loads the recorded session from `pipeline.db` (skipping extract and generate), pre-fills credentials from `pushedTo`, and lands on `final-review` (or `scope-gate` if the run record sets `entryStep`). Pair with `--overwrite` or `--save-as-new`.
+- `experiences import --modify <id-or-path>` is fully wired: loads the recorded session from `pipeline.db` (skipping extract and internal generation), pre-fills credentials from `pushedTo`, and lands on `final-review` (or `scope-gate` if the run record sets `entryStep`).
 
 Replay helpers live in `src/runs/`: `replay-helpers.ts` (replayRun / modifyRun), `store.ts` (runs.json reader/writer), `resolve-run-target.ts` (id-or-path resolution), `save-path-resolver.ts`, plus the `runs ls` command (`ls-command.ts`). The `runs` table columns auto-expand to fit content (no truncation of long project / save paths); a copy-friendly footer prints command hints for the newest run.
 
@@ -44,10 +44,8 @@ Replay helpers live in `src/runs/`: `replay-helpers.ts` (replayRun / modifyRun),
 
 `experiences analyze select-agent --show-rationale [--json] [--session <id>]` prints the recorded accept / reject rationale for every component in a session. It reads `raw_components.reject_reason` from `pipeline.db` — no LLM call, no schema change, no agent subprocess. `--json` emits a machine-readable array for scripting.
 
-### `--on-conflict` and prompt-print
+### Import overrides
 
-- `experiences import --on-conflict <overwrite|skip|fail>` bypasses the wizard's interactive `<SaveConflictGate>` when a file already exists at the save path. Mutex with `--no-save`.
-- `experiences import --print-prompt` prints the generate prompt to stdout and exits. It replaces the prompt-print semantics of `--dry-run`, which is now deprecated and prints a stderr deprecation notice.
 - `experiences import --model <name>` overrides the stored model with fallback order `flag → credentials.json → built-in default`. `--agent <name>` works the same way and is now a functional wizard override.
 
 ## Build System
@@ -95,7 +93,7 @@ The standalone `map tokens` stage (`src/map-tokens/`) runs after generated CDF a
 
 The session stores the default projection in the `raw_token_name_paths` sidecar (`raw_name`, canonical DTCG `path`, and `source` of `automatic` or `manual`). `raw_prop_token_paths` stores ordered token-path lists per component property and records whether a list is an agent suggestion or a review decision. CDF loading projects a compatible resolved path into `$default` while retaining the raw extracted default when no valid resolution exists; only non-empty allowed lists are projected as `$token.allowed`.
 
-**Do not write intermediary JSON files for extracted component data.** The handoff from `analyze extract` to `generate components` flows through the session DB. The explicit `tokens.json` produced by optional token preparation is a separate input sidecar for component generation or apply.
+**Do not write intermediary JSON files for extracted component data.** The handoff from `analyze extract` to internal generation flows through the session DB. The explicit `tokens.json` produced by optional token preparation is a separate input sidecar for component generation or apply.
 
 **`DatabaseSync` synchronous write invariant:** all multi-statement operations use explicit `BEGIN`/`COMMIT`/`ROLLBACK`. SIGINT and crash cannot produce partially-written state. Do not add async alternatives to this path.
 
@@ -127,11 +125,11 @@ When adding a new DOM attribute wrapper type (e.g., `TableHTMLAttributes`):
 
 Raw components are loaded from the session DB and embedded as an inline JSON block in the prompt — the agent never reads a file path. `PromptOptions.rawComponentsInline` carries this string; `rawComponentsPath` does not exist.
 
-The output protocol for `generate components` and `generate tokens`: the agent emits one JSON tool-call object per line to stdout (no sentinel markers). `parseToolCallLines()` in `agent-runner.ts` handles line-by-line parsing.
+The output protocol for internal component and token generation: the agent emits one JSON tool-call object per line to stdout (no sentinel markers). `parseToolCallLines()` in `agent-runner.ts` handles line-by-line parsing.
 
 The output protocol for `analyze select-agent`: the agent emits exactly one JSON object on a single line — either `{"tool":"select_component",...}` or `{"tool":"reject_component",...}`. `parseSelectToolCallLines()` in `agent-runner.ts` handles parsing.
 
-**Do not use agent SDKs or APIs** — the generate command invokes agents as subprocesses only. This is a firm constraint.
+**Do not use agent SDKs or APIs** — the import wizard invokes agents as subprocesses only. This is a firm constraint.
 
 ## The Analyze Select-Agent Command
 
@@ -151,31 +149,29 @@ The skill file `skills/select-components.md` provides detailed instructions and 
 
 `src/apply/` contains:
 
-- `command.ts` — registers `preview`, `select`, and `push`; loads CDF/DTCG artifacts or a session, builds manifests, and drives preview/apply operation polling
+- `command.ts` — registers `push`; loads CDF/DTCG artifacts or a session, builds manifests, and drives preview/apply operation polling
 - `manifest.ts` — compatibility re-exports for apply input helpers
 - `api-client.ts` — `ImportApiClient` calls the generated sources API client for token validation, manifest preview, manifest apply, and operation polling
 - `preview-utils.ts` — detects empty server previews before confirmation or apply
 - `tui/` — server preview, selection, and apply-progress views
 
-The apply flow validates the target, and `command.ts` builds a `ManifestPayload` through the shared manifest utilities from the selected CDF components and DTCG token entries. `preview` submits that manifest to the read-only sources API preview endpoint. `push` previews it, optionally confirms, submits the same manifest to the apply endpoint, and polls the returned operation to completion; `--allow-deletions` and breaking-change acknowledgement are sent as operation options. `select` previews the full manifest, filters the selected entries, then submits and polls the filtered manifest.
-
-**`apply select` non-interactive flags:** `--select-all`, `--select <pattern>` (repeatable), `--deselect <pattern>` (repeatable). These skip the TUI.
+The apply flow validates the target, builds a `ManifestPayload` through the shared manifest utilities from the CDF components and DTCG token entries, previews it, optionally confirms, submits it to the apply endpoint, and polls the returned operation to completion. `--allow-deletions` and breaking-change acknowledgement are sent as operation options.
 
 ## The Import Orchestrator (headless)
 
 `src/import/orchestrator.ts` runs the full pipeline in non-interactive mode by shelling out to the CLI binary — it does not re-implement step logic. It captures `session=<id>` from `analyze extract` stdout via `/^session=(.+)$/m` and passes it as `--session` to downstream commands.
 
-By default, headless `import` runs `analyze select-agent` to select components automatically. If `--select-all`, `--select`, or `--deselect` flags are provided, the orchestrator bypasses the agent and uses `analyze select` with those flags instead.
+By default, headless `import` runs `analyze select-agent` to select components automatically. Manual selection is available through the standalone `analyze select` command.
 
-Headless mode is entered when any of these flags are set: `--auto-accept-scope`, `--dry-run`, or any credential flag. In a non-TTY without one of these flags the command exits 1 with a fail-loud message rather than hanging.
+Headless mode is entered when credentials or `--no-push` are provided. In a non-TTY without a supported headless entry point the command exits 1 with a fail-loud message rather than hanging.
 
 Keep the orchestrator thin. Logic belongs in the individual command implementations.
 
 ## The Wizard (interactive)
 
-`src/import/tui/WizardApp.tsx` is the TTY counterpart to the headless orchestrator. State transitions live in `wizard-state-transitions.ts`; the step components are in `src/import/tui/steps/`. Hosts (`scope-gate-host.tsx`, `final-review-host.tsx`) bridge step UIs to underlying pipeline DB reads/writes. `spawn-generate.ts` runs `generate components` in parallel with the credentials step so the operator does not wait on the agent. `runLivePreview.ts` re-runs the diff after each FieldEditor save.
+`src/import/tui/WizardApp.tsx` is the TTY counterpart to the headless orchestrator. State transitions live in `wizard-state-transitions.ts`; the step components are in `src/import/tui/steps/`. Hosts (`scope-gate-host.tsx`, `final-review-host.tsx`) bridge step UIs to underlying pipeline DB reads/writes. `spawn-generate.ts` runs internal component generation in parallel with the credentials step so the operator does not wait on the agent. `runLivePreview.ts` re-runs the diff after each FieldEditor save.
 
-Auto-filter resolution lives in `src/import/auto-filter-resolve.ts`: `--auto-filter` wins over the `autoFilter` value persisted in `credentials.json`. The wizard writes the operator's last choice back to `credentials.json` so subsequent runs default to it.
+Auto-filter resolution lives in `src/import/auto-filter-resolve.ts`: the persisted `autoFilter` value controls whether the agentic pre-filter runs. The wizard writes the operator's last choice back to `credentials.json` so subsequent runs default to it.
 
 ## TUI Components
 
@@ -183,9 +179,8 @@ All TUI components are standard React functional components rendered by Ink. The
 
 - `src/analyze/tui/` — single `AnalyzeView` component
 - `src/analyze/select/tui/` — full standalone JsonEditor (`App`, hooks, 10+ components); shared by `validate` and other commands that need `TopBar`/`useImmediateInput`. **Untouched by the wizard rebuild** — pinned by `test/analyze/select-flags.test.ts` snapshot for backwards-compat.
-- `src/generate/tui/` — single `GenerateView` component
 - `src/print/tui/` — `ValidateView` for `print validate`
-- `src/apply/tui/` — `SummaryView`, `EntityDiffView`, `SelectView`, `ApplyView`
+- `src/apply/tui/` — `SummaryView`, `EntityDiffView`, `ServerApplyView`
 - `src/import/tui/` — the wizard: `WizardApp`, hosts (`scope-gate-host`, `final-review-host`), and step components in `steps/` (`WelcomeStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PreviewValidationErrorStep`, `PushDecisionGateStep`, `PushingStep`, `DoneStep`, `ErrorStep`, etc.)
 
 When writing TUI tests, use `ink-testing-library`. Set `NO_COLOR=1` in the environment before running tests to suppress ANSI escape codes. Strip ANSI before snapshot assertions if the test renders raw strings.
@@ -197,7 +192,7 @@ Terminal width thresholds for `analyze edit`:
 
 ## Session Persistence
 
-**Pipeline sessions** (analyze, generate, edit) are in `pipeline.db` as described above. Override with `EDS_PIPELINE_DB_PATH`.
+**Pipeline sessions** (analyze, internal generation, edit) are in `pipeline.db` as described above. Override with `EDS_PIPELINE_DB_PATH`.
 
 The legacy `import.db` is read only by the session migration when present; the current apply flow does not use it for per-entity push resumption.
 
@@ -209,7 +204,7 @@ The legacy `import.db` is read only by the session migration when present; the c
 - Vitest, no Jest
 - CLI integration tests require `dist/` to exist — the test setup compiles if missing
 - Snapshot files are committed; update with `--update-snapshots`
-- Tests that call `analyze extract` or `generate components` must set `EDS_PIPELINE_DB_PATH` to an isolated temp path
+- Tests that call `analyze extract` or internal generation must set `EDS_PIPELINE_DB_PATH` to an isolated temp path
 
 ## Commit Convention
 
@@ -229,7 +224,7 @@ Valid types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `ci`, `
 ## Sharp Edges
 
 - **DOM prop inflation**: The single most common source of bugs in the React extractor. Always verify extracted prop counts after changing extraction logic. `Button` should have ~32 props, `Input` ~28, SVG icon components ~11.
-- **No intermediary JSON files**: `analyze extract` does not write `raw-components.json`. `generate components` reads from the session DB. If you see file-based handoffs, they are wrong.
+- **No intermediary JSON files**: `analyze extract` does not write `raw-components.json`. Internal generation reads from the session DB. If you see file-based handoffs, they are wrong.
 - **Session auto-resolution**: Commands that accept `--session` will auto-resolve to the most recent completed `analyze extract` step if the flag is omitted. Tests must always pass an explicit `--session` or set `EDS_PIPELINE_DB_PATH` to a seeded temp DB.
 - **Stacked PRs and Nx affected**: When a base branch is merged to `development` before the stacked branch, `pnpm affected:*` may report "no packages changed" because `NX_BASE` points to the merged tip. This is expected — not a test failure.
 - **ESM import paths**: TypeScript source imports `.js` extensions. Do not change them to `.ts`. The TypeScript compiler resolves them correctly.

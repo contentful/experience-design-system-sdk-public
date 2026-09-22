@@ -46,16 +46,14 @@ experiences import
 
 In an interactive terminal this launches a full-screen TUI that walks you through extraction, AI selection, manual scope review, generation, final review, and push. Credentials and project path are pre-filled from `experiences setup`. Component generation runs in parallel with credentials entry so the wizard does not block on the agent.
 
-For scripted or CI use, pass `--auto-accept-scope` plus credentials:
+For scripted or CI use, pass credentials; the import command selects components through the agent automatically:
 
 ```bash
 experiences import \
   --project /path/to/your/component-library \
   --space-id $CONTENTFUL_SPACE_ID \
   --environment-id master \
-  --cma-token $CONTENTFUL_MANAGEMENT_TOKEN \
-  --auto-accept-scope \
-  --yes
+  --cma-token $CONTENTFUL_MANAGEMENT_TOKEN
 ```
 
 ## How it works
@@ -74,7 +72,7 @@ The wizard saves a run record after each session. Use `experiences runs` to list
 
 When prior runs exist and the wizard is launched without `--push-from-run`, `--modify`, or `--project`, the TUI opens with an interactive **run picker** so the operator can pick "push", "modify", or "start a new run" up front. Pass `--project` to skip the picker and go straight into a fresh extraction.
 
-For headless operation alongside an existing checked-in `components.json`, pass `--on-conflict <overwrite|skip|fail>` to bypass the interactive save-conflict gate. Use `--print-prompt` to inspect the generate prompt without invoking the agent (replaces the deprecated `--dry-run`).
+For headless operation alongside an existing checked-in `components.json`, use the supported save-path options described in the CLI reference.
 
 ## Packages
 
@@ -91,15 +89,11 @@ Full documentation for every flag and every subcommand lives in [`packages/exper
 | ---------------------------------- | ---------------------------------------------------------------------------------- |
 | `experiences setup`                | Interactive setup — installs prerequisites and saves credentials + agent           |
 | `experiences doctor`               | Health check — verify Node version, credentials, and agent binaries                |
-| `experiences import`               | Run the full wizard or a headless pipeline (extract → select → generate → push)    |
+| `experiences import`               | Run the full wizard or a headless pipeline (extract → select → internal generation → push) |
 | `experiences runs`                 | List prior wizard runs, or pass `<id-or-path>` for a single-run detail view (supports `--json`, `--pushed`, `--not-pushed`) |
 | `experiences analyze extract`      | Scan source files and extract raw component definitions                            |
 | `experiences analyze select`       | Interactively pick which components to include (standalone JsonEditor TUI)         |
 | `experiences analyze select-agent` | AI agent picks which components belong in Experiences; pass `--show-rationale [--json]` for read-only rationale output |
-| `experiences generate components`  | AI agent generates CDF definitions from raw analysis                               |
-| `experiences generate tokens`      | AI agent generates DTCG design tokens from raw token data                          |
-| `experiences apply preview`        | Read-only diff — what would change in Contentful                                   |
-| `experiences apply select`         | Checkbox TUI to pick a subset of entities to push                                  |
 | `experiences apply push`           | Write component types and design tokens to Contentful; emits webapp view URL       |
 | `experiences print components`     | Export generated components to `components.json`                                   |
 | `experiences print tokens`         | Export generated tokens to `tokens.json`                                           |
