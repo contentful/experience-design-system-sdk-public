@@ -11,19 +11,11 @@ import type { ComponentGraphNode } from '../../../src/analyze/composite-closure.
 
 describe('nextStepAfterScopeGate', () => {
   it('routes to generating when accepted > 0 and push is enabled', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 5, noPush: false })).toBe('generating');
-  });
-
-  it('routes directly to generating when accepted > 0 and --no-push is set', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 5, noPush: true })).toBe('generating');
+    expect(nextStepAfterScopeGate({ acceptedCount: 5 })).toBe('generating');
   });
 
   it('routes to push-decision-gate when accepted === 0 and push is enabled', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 0, noPush: false })).toBe('push-decision-gate');
-  });
-
-  it('routes to print-gate when accepted === 0 and --no-push is set (nothing to do; let operator save files)', () => {
-    expect(nextStepAfterScopeGate({ acceptedCount: 0, noPush: true })).toBe('print-gate');
+    expect(nextStepAfterScopeGate({ acceptedCount: 0 })).toBe('push-decision-gate');
   });
 });
 
@@ -105,10 +97,8 @@ describe('inline-validation flow — no transition targets "validating-credentia
   // would silently restore the dropped dedicated render screen).
   it('nextStepAfterScopeGate never returns "validating-credentials"', () => {
     for (const acceptedCount of [0, 1, 5]) {
-      for (const noPush of [false, true]) {
-        const next = nextStepAfterScopeGate({ acceptedCount, noPush });
-        expect(next).not.toBe('validating-credentials');
-      }
+      const next = nextStepAfterScopeGate({ acceptedCount });
+      expect(next).not.toBe('validating-credentials');
     }
   });
 
