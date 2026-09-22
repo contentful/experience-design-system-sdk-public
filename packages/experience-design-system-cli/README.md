@@ -127,7 +127,7 @@ extracting             — runs analyze extract (atomic by default; resolves com
   ↓
 scope-gate             — single human review gate: confirm AI selection, toggle components
   ↓
-credentials            — operator types space-id / env / token (internal generation is already running)
+credentials            — operator reviews the prefilled space-id / env / token (internal generation is already running)
                          press [s] Skip to save-only without pushing
   ↓
 final-review           — minimum-viable port of the JsonEditor; edit names, $description,
@@ -165,9 +165,6 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 
 | Flag                              | Default                                | Description                                                                                                  |
 | --------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `--space-id <id>`                 | `CONTENTFUL_SPACE_ID` env / saved      | Contentful space ID (required for headless import)                                                          |
-| `--environment-id <id>`           | `CONTENTFUL_ENVIRONMENT_ID` env        | Contentful environment ID                                                                                    |
-| `--cma-token <token>`             | `CONTENTFUL_MANAGEMENT_TOKEN` env      | CMA personal access token                                                                                    |
 | `--project <path>`                | `.`                                    | Project root to analyze                                                                                      |
 | `--out <path>`                    | `<project>/.contentful`                | Headless-mode output directory                                                                               |
 | `--agent <name>`                  | saved by setup / `claude`              | Agent for `analyze select-agent` and internal generation                                                     |

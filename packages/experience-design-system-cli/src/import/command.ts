@@ -1,8 +1,6 @@
 import type { Command } from 'commander';
-import { resolve, join } from 'node:path';
 import { agentSupportsBedrock, isAgentName } from '@contentful/experience-design-system-generation';
 import { normalizePath } from './path-utils.js';
-import { runPipeline } from './orchestrator.js';
 import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
@@ -17,9 +15,6 @@ export function registerImportCommand(program: Command): void {
   const cmd = program
     .command('import')
     .description('Run the full pipeline: analyze → select → generate → push')
-    .option('--space-id <id>', 'Contentful space ID (required for headless import)')
-    .option('--environment-id <id>', 'Contentful environment ID (required for headless import)')
-    .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--project <path>', 'Path to the project root to analyze', '.')
     .option('--out <path>', 'Output directory for pipeline artifacts');
   addAgentModelOptions(cmd, {
@@ -64,9 +59,6 @@ export function registerImportCommand(program: Command): void {
     )
     .action(
       async (opts: {
-        spaceId?: string;
-        environmentId?: string;
-        cmaToken?: string;
         project: string;
         out?: string;
         agent?: string;
@@ -88,7 +80,6 @@ export function registerImportCommand(program: Command): void {
         generateMap?: string;
         prompt?: string[];
         livePreview?: boolean;
-        allowDeletions?: boolean;
       }) => {
         const interactiveTerminalSupported = getInteractiveTerminalSupport().supported;
 
@@ -103,15 +94,13 @@ export function registerImportCommand(program: Command): void {
           }
         }
 
-        const isHeadless = !!opts.spaceId || !!opts.environmentId || !!opts.cmaToken;
-
-        if (!interactiveTerminalSupported && !isHeadless) {
+        if (!interactiveTerminalSupported) {
           requireInteractiveTerminal({
-            alternative: 'use Contentful credentials for headless import',
+            alternative: 'run experiences import in an interactive terminal',
           });
         }
 
-        if (interactiveTerminalSupported && !isHeadless) {
+        {
           const { render } = await import('ink');
           const { createElement } = await import('react');
           const { WizardApp } = await import('./tui/WizardApp.js');
@@ -174,63 +163,6 @@ export function registerImportCommand(program: Command): void {
           await waitUntilExit();
           return;
         }
-
-        const spaceId = opts.spaceId ?? process.env['CONTENTFUL_SPACE_ID'];
-        const environmentId = opts.environmentId ?? process.env['CONTENTFUL_ENVIRONMENT_ID'];
-        const cmaToken = opts.cmaToken ?? process.env['CONTENTFUL_MANAGEMENT_TOKEN'];
-
-        if (!spaceId || !environmentId || !cmaToken) {
-          process.stderr.write(
-            'Error: --space-id (or CONTENTFUL_SPACE_ID), --environment-id (or CONTENTFUL_ENVIRONMENT_ID), and --cma-token (or CONTENTFUL_MANAGEMENT_TOKEN) are required for headless import.\n',
-          );
-          process.exit(1);
-          return;
-        }
-
-        const projectRoot = normalizePath(opts.project);
-        const outDir = opts.out ? resolve(opts.out) : join(projectRoot, '.contentful');
-
-        const headlessCreds = await readExperiencesCredentials();
-        const headlessAgent = resolveAgent(opts.agent, headlessCreds.agent);
-        const headlessModel = resolveModel(opts.model, headlessCreds.agentModel);
-        const headlessCompositionMode = resolveCompositionMode(opts, headlessCreds.compositionMode);
-
-        if (opts.bedrock && !(isAgentName(headlessAgent) && agentSupportsBedrock(headlessAgent))) {
-          process.stderr.write(`Error: --bedrock is not supported for --agent ${headlessAgent}\n`);
-          process.exit(1);
-        }
-
-        const result = await runPipeline(
-          {
-            project: projectRoot,
-            out: outDir,
-            spaceId,
-            environmentId,
-            cmaToken,
-            agent: headlessAgent,
-            model: headlessModel,
-            ...(opts.bedrock ? { bedrock: true } : {}),
-            skipAnalyze: false,
-            skipGenerate: false,
-            skipMapTokens: opts.skipMapTokens ?? false,
-            skipApply: false,
-            noCache: opts.cache === false,
-            yes: false,
-            host: opts.host,
-            selectPromptPath: headlessCreds.selectPromptPath,
-            allowDeletions: opts.allowDeletions ?? false,
-            compositionMode: headlessCompositionMode,
-            ...buildCompositionForwardingOptions(opts),
-          },
-          (line) => process.stderr.write(line + '\n'),
-        );
-
-        const hasFailed = result.steps.some((s) => s.status === 'failed');
-        if (!process.stdout.isTTY) {
-          const json = JSON.stringify(result, null, 2) + '\n';
-          await new Promise<void>((res) => process.stdout.write(json, () => res()));
-        }
-        process.exit(hasFailed ? 1 : 0);
       },
     );
 }
