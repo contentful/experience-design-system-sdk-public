@@ -39,7 +39,7 @@ describe('import command — help', () => {
     expect(stdout).not.toContain('--skip-analyze');
     expect(stdout).not.toContain('--skip-generate');
     expect(stdout).toContain('--skip-apply');
-    expect(stdout).toContain('--yes');
+    expect(stdout).not.toContain('--yes');
     expect(stdout).toContain('--verbose');
   });
 

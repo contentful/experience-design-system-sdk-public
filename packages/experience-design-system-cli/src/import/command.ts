@@ -53,7 +53,6 @@ export function registerImportCommand(program: Command): void {
       'Skip agentic token restrictions while still resolving deterministic token-default paths',
     )
     .option('--no-cache', 'Re-run all steps even if output already exists')
-    .option('--yes', 'Skip interactive confirmation in apply push')
     .option('--verbose', 'Show full agent output and all entity progress')
     .option('--exclude-invalid', 'Automatically reject components with validation errors (empty names, collisions)')
     .option('--viewports <path>', 'JSON file with viewport array (passed to apply push)')
@@ -275,7 +274,7 @@ export function registerImportCommand(program: Command): void {
             return;
           }
           requireInteractiveTerminal({
-            alternative: 'start a fresh headless import with `--yes` and the required credentials',
+            alternative: 'start a fresh headless import with the required credentials',
           });
           const runIdOrPath = opts.modify;
           await runImportAction(() =>
@@ -350,13 +349,12 @@ export function registerImportCommand(program: Command): void {
           !!opts.spaceId ||
           !!opts.environmentId ||
           !!opts.cmaToken ||
-          opts.yes ||
           dryRunForward ||
           false;
 
         if (!interactiveTerminalSupported && !isHeadless) {
           requireInteractiveTerminal({
-            alternative: 'use headless flags such as `--yes` with credentials or `--no-push`',
+            alternative: 'use credentials or `--no-push`',
           });
         }
 
@@ -518,7 +516,7 @@ export function registerImportCommand(program: Command): void {
             skipMapTokens: opts.skipMapTokens ?? false,
             skipApply,
             noCache: opts.cache === false,
-            yes: opts.yes ?? false,
+            yes: false,
             verbose: opts.verbose ?? false,
             excludeInvalid: opts.excludeInvalid ?? false,
             viewports: opts.viewports,
