@@ -18,7 +18,7 @@ The rest of this README uses `experiences`.
 
 There are two ways to use the CLI:
 
-1. **`experiences import`** — the wizard. Drives the full pipeline (extract → AI select → scope-gate → internal generation → final-review → save/push) from a single command. Works in two modes: a full-screen interactive TUI in a real terminal and a non-interactive headless mode when you pass credentials or `--no-push`. **This is the recommended path for almost everyone.**
+1. **`experiences import`** — the wizard. Drives the full pipeline (extract → AI select → scope-gate → internal generation → final-review → save/push) from a single command. It runs as a full-screen interactive TUI in a real terminal or non-interactively when you pass credentials. **This is the recommended path for almost everyone.**
 
 2. **Standalone subcommands** — for piping into other tools, CI parity with the wizard, or for debugging individual steps:
 
@@ -113,7 +113,7 @@ In the wizard's credentials step you can press `[s] Skip` to save-only without p
 experiences import [flags]
 ```
 
-`experiences import` is the primary entry point. In a TTY it launches a full-screen wizard. In headless mode (with credentials or `--no-push`) it runs non-interactively. Without a supported headless entry point, it fails loud rather than hanging.
+`experiences import` is the primary entry point. In a TTY it launches a full-screen wizard. With credentials it runs non-interactively. Without a supported headless entry point, it fails loud rather than hanging.
 
 ### Wizard step machine
 
@@ -148,7 +148,7 @@ The auto-filter (`analyze select-agent` invoked before scope-gate) is on by defa
 
 ### Save-and-push default
 
-The push-decision-gate defaults to **save AND push**: it writes `components.json` and `tokens.json` to disk *and* pushes to Contentful in one step. Use `--no-push` to save without pushing. `--out-dir <path>` picks the save directory non-interactively (otherwise the wizard prompts).
+The push-decision-gate defaults to **save AND push**: it writes `components.json` and `tokens.json` to disk *and* pushes to Contentful in one step.
 
 ### Replaying prior runs
 
@@ -169,7 +169,7 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 
 | Flag                              | Default                                | Description                                                                                                  |
 | --------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `--space-id <id>`                 | `CONTENTFUL_SPACE_ID` env / saved      | Contentful space ID (required unless `--no-push`)                                                          |
+| `--space-id <id>`                 | `CONTENTFUL_SPACE_ID` env / saved      | Contentful space ID (required for headless import)                                                          |
 | `--environment-id <id>`           | `CONTENTFUL_ENVIRONMENT_ID` env        | Contentful environment ID                                                                                    |
 | `--cma-token <token>`             | `CONTENTFUL_MANAGEMENT_TOKEN` env      | CMA personal access token                                                                                    |
 | `--project <path>`                | `.`                                    | Project root to analyze                                                                                      |
@@ -184,7 +184,6 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--composition-agent`             | —                                      | Opt into agentic resolution when deterministic sources find no groups (implies `--composite`)                |
 | `--composition-refresh`           | —                                      | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`)   |
 | `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
-| `--no-push`                       | push on                                | Run extract → scope-gate → internal generation → final-review and exit without pushing                     |
 | `--push-from-run <id-or-path>`    | —                                      | Re-push a prior run; never writes to disk                                                                    |
 | `--modify <id-or-path>`           | —                                      | Re-open the wizard at final-review with a prior run loaded                                                   |
 | `--select-prompt-path <path>`     | saved by setup                         | Custom `.md` skill prompt for `analyze select-agent`                                                         |
@@ -381,7 +380,7 @@ Wizard run history is separate: `~/.config/experiences/runs.json`.
 - `NO_COLOR=1` suppresses all ANSI color output
 - Interactive views require both stdin and stdout to be TTYs and stdin to support raw mode. Read-only views fall back to plain or JSON output when those capabilities are unavailable; commands that require input stop with the relevant non-interactive flags in the error message.
 - On Windows, use Windows Terminal with PowerShell. Older ConEmu and cmd.exe hosts may not provide the raw-mode support the interactive UI needs.
-- To avoid the interactive UI, use `import` with credentials or `--no-push`, and use `apply push --yes` for a non-interactive push.
+- To avoid the interactive UI, use `import` with credentials, and use `apply push --yes` for a non-interactive push.
 
 ---
 

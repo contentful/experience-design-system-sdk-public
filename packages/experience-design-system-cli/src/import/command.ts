@@ -31,8 +31,8 @@ export function registerImportCommand(program: Command): void {
   const cmd = program
     .command('import')
     .description('Run the full pipeline: analyze → select → generate → push')
-    .option('--space-id <id>', 'Contentful space ID (required unless --no-push)')
-    .option('--environment-id <id>', 'Contentful environment ID (required unless --no-push)')
+    .option('--space-id <id>', 'Contentful space ID (required for headless import)')
+    .option('--environment-id <id>', 'Contentful environment ID (required for headless import)')
     .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--project <path>', 'Path to the project root to analyze', '.')
     .option('--out <path>', 'Output directory for pipeline artifacts');
@@ -71,10 +71,6 @@ export function registerImportCommand(program: Command): void {
       'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
       (v: string, acc: string[]) => [...acc, v],
       [] as string[],
-    )
-    .option(
-      '--no-push',
-      'Import without pushing to Contentful. Interactive: runs the full wizard (extract → scope-gate → generate → final-review) and stops before push. Non-interactive (piped/CI): runs headless through generate. No credentials needed either way.',
     )
     .option(
       '--out-dir <path>',
@@ -121,7 +117,6 @@ export function registerImportCommand(program: Command): void {
         generateMap?: string;
         prompt?: string[];
         livePreview?: boolean;
-        push?: boolean;
         outDir?: string;
         selectPromptPath?: string;
         generatePromptPath?: string;
@@ -172,13 +167,6 @@ export function registerImportCommand(program: Command): void {
             process.exit(1);
             return;
           }
-          if (opts.push === false) {
-            process.stderr.write(
-              'Error: --push-from-run and --no-push are mutually exclusive. Pushing is the whole point of --push-from-run.\n',
-            );
-            process.exit(1);
-            return;
-          }
           const runIdOrPath = opts.pushFromRun;
           await runImportAction(() =>
             replayRun({
@@ -225,27 +213,14 @@ export function registerImportCommand(program: Command): void {
           }
         }
 
-        const dryRunForward = false;
-
-        // "Don't push" is one user intent (--no-push); --skip-apply is a
-        // deprecated alias. Interactive runs (TTY) take the wizard and stop
-        // before push; non-interactive runs take the headless pipeline and stop
-        // after generate. Either way no credentials are required.
-        const noPushRequested = opts.push === false;
-
         const isHeadless =
-          // A "don't push" request on a non-TTY is a headless intent (the wizard
-          // needs a TTY); in a TTY it stays interactive and is NOT headless.
-          (noPushRequested && !interactiveTerminalSupported) ||
           !!opts.spaceId ||
           !!opts.environmentId ||
-          !!opts.cmaToken ||
-          dryRunForward ||
-          false;
+          !!opts.cmaToken;
 
         if (!interactiveTerminalSupported && !isHeadless) {
           requireInteractiveTerminal({
-            alternative: 'use credentials or `--no-push`',
+            alternative: 'use Contentful credentials for headless import',
           });
         }
 
@@ -273,7 +248,6 @@ export function registerImportCommand(program: Command): void {
             skipMapTokens?: boolean;
             autoFilter?: boolean;
             livePreview?: boolean;
-            noPush?: boolean;
             outDirOverride?: string;
             selectPromptPath?: string;
             generatePromptPath?: string;
@@ -331,7 +305,6 @@ export function registerImportCommand(program: Command): void {
               skipMapTokens: opts.skipMapTokens ?? false,
               autoFilter: resolveAutoFilter({}, creds.autoFilter),
               livePreview: true,
-              noPush: noPushRequested,
               ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
@@ -354,16 +327,13 @@ export function registerImportCommand(program: Command): void {
           return;
         }
 
-        // --no-push (and its deprecated alias --skip-apply) both mean "stop
-        // before the push" on the headless path — so neither requires credentials.
-        const skipApply = noPushRequested;
         const spaceId = opts.spaceId ?? process.env['CONTENTFUL_SPACE_ID'];
         const environmentId = opts.environmentId ?? process.env['CONTENTFUL_ENVIRONMENT_ID'];
         const cmaToken = opts.cmaToken ?? process.env['CONTENTFUL_MANAGEMENT_TOKEN'];
 
-        if (!skipApply && (!spaceId || !environmentId || !cmaToken)) {
+        if (!spaceId || !environmentId || !cmaToken) {
           process.stderr.write(
-            'Error: --space-id (or CONTENTFUL_SPACE_ID), --environment-id (or CONTENTFUL_ENVIRONMENT_ID), and --cma-token (or CONTENTFUL_MANAGEMENT_TOKEN) are required unless --no-push is set.\n',
+            'Error: --space-id (or CONTENTFUL_SPACE_ID), --environment-id (or CONTENTFUL_ENVIRONMENT_ID), and --cma-token (or CONTENTFUL_MANAGEMENT_TOKEN) are required for headless import.\n',
           );
           process.exit(1);
           return;
@@ -395,11 +365,10 @@ export function registerImportCommand(program: Command): void {
             skipAnalyze: false,
             skipGenerate: false,
             skipMapTokens: opts.skipMapTokens ?? false,
-            skipApply,
+            skipApply: false,
             noCache: opts.cache === false,
             yes: false,
             host: opts.host,
-            dryRun: dryRunForward,
             selectPromptPath: opts.selectPromptPath,
             allowDeletions: opts.allowDeletions ?? false,
             compositionMode: headlessCompositionMode,

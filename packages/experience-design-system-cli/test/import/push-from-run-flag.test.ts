@@ -24,12 +24,6 @@ describe('experiences import --push-from-run — parse-time mutex errors', () =>
     expect(stderr).toMatch(/--push-from-run.*--project|--project.*--push-from-run/);
   });
 
-  it('errors when --push-from-run is combined with --no-push', async () => {
-    const { stderr, code } = await run(['import', '--push-from-run', '01HXYZ', '--no-push']);
-    expect(code).not.toBe(0);
-    expect(stderr).toMatch(/--push-from-run.*--no-push|--no-push.*--push-from-run/);
-  });
-
   it('errors when --push-from-run is combined with --modify', async () => {
     const { stderr, code } = await run(['import', '--push-from-run', '01HXYZ', '--modify', '01HXYZ']);
     expect(code).not.toBe(0);
@@ -137,33 +131,5 @@ describe('experiences import --modify — delegation', () => {
     await program.parseAsync(['import', '--modify', '01HXYZ'], { from: 'user' });
     expect(mockModifyRun).toHaveBeenCalledWith(expect.objectContaining({ runIdOrPath: '01HXYZ' }));
     expect(mockReplayRun).not.toHaveBeenCalled();
-  });
-});
-
-describe('experiences import --allow-deletions — forwarding', () => {
-  it('forwards --allow-deletions to replayRun under --push-from-run', async () => {
-    const program = buildProgram();
-    await program.parseAsync(['import', '--push-from-run', '01HXYZ', '--allow-deletions'], { from: 'user' });
-    expect(mockReplayRun).toHaveBeenCalledWith(expect.objectContaining({ allowDeletions: true }));
-  });
-
-  it('forwards --allow-deletions to modifyRun under --modify', async () => {
-    const program = buildProgram();
-    await program.parseAsync(['import', '--modify', '01HXYZ', '--allow-deletions'], { from: 'user' });
-    expect(mockModifyRun).toHaveBeenCalledWith(expect.objectContaining({ allowDeletions: true }));
-  });
-
-  it('omits allowDeletions when the flag is absent under --push-from-run', async () => {
-    const program = buildProgram();
-    await program.parseAsync(['import', '--push-from-run', '01HXYZ'], { from: 'user' });
-    const call = mockReplayRun.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(call['allowDeletions']).toBeUndefined();
-  });
-
-  it('omits allowDeletions when the flag is absent under --modify', async () => {
-    const program = buildProgram();
-    await program.parseAsync(['import', '--modify', '01HXYZ'], { from: 'user' });
-    const call = mockModifyRun.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(call['allowDeletions']).toBeUndefined();
   });
 });
