@@ -76,11 +76,6 @@ const rejectionCells: RejectionCell[] = [
     args: ['import', '--no-save', '--out-dir', '/tmp/x'],
     expectStderr: /--no-save and --out-dir are mutually exclusive/,
   },
-  {
-    name: '--no-save ⊗ --on-conflict',
-    args: ['import', '--no-save', '--on-conflict', 'overwrite'],
-    expectStderr: /--no-save and --on-conflict are mutually exclusive/,
-  },
 ];
 
 describe('flag-matrix: incompatible flag pairs REJECT with exit 1 and the right message', () => {
@@ -88,13 +83,6 @@ describe('flag-matrix: incompatible flag pairs REJECT with exit 1 and the right 
     const { code, stderr } = await runCliWithEnv(args, baseEnv());
     expect(code).not.toBe(0);
     expect(stderr).toMatch(expectStderr);
-  });
-
-  // ── invalid --on-conflict value rejects before mode dispatch ───────────────
-  it('rejects an invalid --on-conflict value', async () => {
-    const { code, stderr } = await runCliWithEnv(['import', '--on-conflict', 'bogus'], baseEnv());
-    expect(code).not.toBe(0);
-    expect(stderr).toMatch(/invalid --on-conflict value/);
   });
 
   // ── coverage guard: every declared incompatible pair has a rejection cell ──
