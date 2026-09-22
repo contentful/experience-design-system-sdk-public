@@ -8,9 +8,9 @@
  */
 import { getDebugLogger } from '../lib/debug-logger.js';
 
-export function resolveAutoFilter(opts: { autoFilter?: boolean }, configAutoFilter?: boolean): boolean {
-  const source = opts.autoFilter !== undefined ? 'flag' : configAutoFilter !== undefined ? 'config' : 'default';
-  const value = opts.autoFilter ?? configAutoFilter ?? true;
+export function resolveAutoFilter(configAutoFilter?: boolean): boolean {
+  const source = configAutoFilter !== undefined ? 'config' : 'default';
+  const value = configAutoFilter ?? true;
   getDebugLogger().event('filter', 'auto-filter.resolve', { source, value });
   return value;
 }
