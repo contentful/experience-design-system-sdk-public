@@ -506,7 +506,7 @@ The wizard's AI auto-filter (auto-invocation of `analyze select-agent` before sc
 4. `map tokens --session <id> --agent <name>` — suggests `$token.allowed` for generated design-token props; skippable via `--skip-map-tokens`
 5. `apply push --components <components.json> --space-id ... --environment-id ... --yes`
 
-Headless mode is entered when any of `--auto-accept-scope`, `--skip-apply`, `--dry-run`, or a credential flag is set. In non-TTY without one of those flags, the command exits 1 with a fail-loud message.
+Headless mode is entered when any of `--auto-accept-scope`, `--dry-run`, or a credential flag is set. In non-TTY without one of those flags, the command exits 1 with a fail-loud message.
 
 `--no-cache` bypasses extract/select/generate fine-grained caches and is forwarded to `analyze select-agent`, `generate components`, and `map tokens`.
 

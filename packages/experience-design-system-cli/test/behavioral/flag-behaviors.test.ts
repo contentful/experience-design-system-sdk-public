@@ -548,7 +548,7 @@ describe('--viewports is accepted and forwarded to the pipeline', () => {
     expect(result.stdout).toContain('--viewports');
   });
 
-  it('with --skip-apply, a nonexistent viewports path does not cause an error', async () => {
+  it('a nonexistent viewports path does not cause a parse error', async () => {
     // The import command does not validate the viewports path itself —
     // it is only passed to apply push (which is skipped here).
     const projDir = await createTempDir('vp-nofile-proj-');

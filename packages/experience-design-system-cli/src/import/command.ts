@@ -33,8 +33,8 @@ export function registerImportCommand(program: Command): void {
   const cmd = program
     .command('import')
     .description('Run the full pipeline: analyze → select → generate → push')
-    .option('--space-id <id>', 'Contentful space ID (required unless --skip-apply)')
-    .option('--environment-id <id>', 'Contentful environment ID (required unless --skip-apply)')
+    .option('--space-id <id>', 'Contentful space ID (required unless --no-push)')
+    .option('--environment-id <id>', 'Contentful environment ID (required unless --no-push)')
     .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--project <path>', 'Path to the project root to analyze', '.')
     .option('--out <path>', 'Output directory for pipeline artifacts');
@@ -47,7 +47,6 @@ export function registerImportCommand(program: Command): void {
       '--raw-tokens <path>',
       'Path to a raw token source file (SCSS, CSS variables, JS/TS, Style Dictionary, etc.) to classify and import alongside components. Bypasses the interactive token prompt.',
     )
-    .option('--skip-apply', '(deprecated alias for --no-push) Skip pushing to Contentful')
     .option(
       '--skip-map-tokens',
       'Skip agentic token restrictions while still resolving deterministic token-default paths',
@@ -142,7 +141,6 @@ export function registerImportCommand(program: Command): void {
         rawTokens?: string;
         skipAnalyze?: boolean;
         skipGenerate?: boolean;
-        skipApply?: boolean;
         skipMapTokens?: boolean;
         cache?: boolean;
         yes?: boolean;
@@ -333,7 +331,7 @@ export function registerImportCommand(program: Command): void {
         // deprecated alias. Interactive runs (TTY) take the wizard and stop
         // before push; non-interactive runs take the headless pipeline and stop
         // after generate. Either way no credentials are required.
-        const noPushRequested = opts.push === false || opts.skipApply === true;
+        const noPushRequested = opts.push === false;
 
         const isHeadless =
           // A "don't push" request on a non-TTY is a headless intent (the wizard
