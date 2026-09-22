@@ -24,23 +24,17 @@ import { getOrCreateSessionForCommand, type SessionResolution } from './services
 import { getRawTokenNamePaths, type RawTokenNamePathSource } from './repositories/tokens/read.js';
 import { type RawPropTokenPathSource } from './repositories/tokens/write.js';
 
-export { deriveComponentId } from './core/components/derive-component-id.js';
 export { hashComponentShape as computeComponentInputHash } from './core/components/hash-component-shape.js';
 export { hashTokenContent as computeTokenInputHash } from './core/tokens/hash-token-content.js';
-export { mapContentfulTypeToCdfType, resolveCdfCategory } from './core/cdf/cdf-mappers.js';
 
 // Tokens — repositories/tokens/{read,write}.ts and services/tokens/*
 export {
   getDtcgTokensForSession as loadDTCGTokens,
   getRawTokenNamePaths as loadRawTokenNamePaths,
   getRawTokenNamePathRows as loadRawTokenNamePathRows,
-  type RawTokenNamePaths,
-  type RawTokenNamePathSource,
-  type RawTokenNamePath,
 } from './repositories/tokens/read.js';
-export { type RawPropTokenPathSource } from './repositories/tokens/write.js';
 export { storeDtcgTokens as storeDTCGTokens } from './services/tokens/store-dtcg-tokens.js';
-export { applyTokenToolCalls, type ApplyTokenToolCallsResult } from './services/tokens/apply-tool-calls.js';
+export { applyTokenToolCalls } from './services/tokens/apply-tool-calls.js';
 export { replaceRawTokenNamePaths } from './services/tokens/replace-raw-token-name-paths.js';
 export { replaceRawPropTokenPaths } from './services/tokens/replace-raw-prop-token-paths.js';
 
