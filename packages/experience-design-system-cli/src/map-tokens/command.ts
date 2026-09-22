@@ -315,7 +315,7 @@ export function registerMapTokensCommand(program: Command): void {
     .option('--token-map <path>', 'Path to token-name-map.json sidecar')
     .option(
       '--existing-entities-path <path>',
-      'Path to the .existing-entities.json file written by the orchestrator when CMA credentials are supplied. ' +
+      'Path to the .existing-entities.json file written after CMA credentials are supplied. ' +
         "When present, the agent gets a list of the space's existing design tokens so it can prefer binding to them. " +
         'Missing/malformed files are treated as no-op.',
     );

@@ -1,7 +1,7 @@
 /**
  * Shared Contentful webapp URL builders.
  *
- * The wizard's `done` step and the `experiences import` orchestrator both used
+ * The wizard's `done` step uses
  * to inline the same post-push URL formatter. This module centralizes that
  * formatter so the wizard and `apply push` emit the same
  * URL shape.

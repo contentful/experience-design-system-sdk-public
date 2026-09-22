@@ -80,6 +80,8 @@ export interface PromptOptions {
    * appropriate warning banner.
    */
   skillPathOverride?: string;
+  /** Inline prompt instructions, taking precedence over the bundled skill or path override. */
+  skillContentOverride?: string;
   /** JSON-serialized summary of existing space Components. Callers pre-project the shape per skill. */
   existingComponentsInline?: string;
   /** JSON-serialized summary of existing space DesignTokens. Callers pre-project the shape per skill. */
@@ -94,7 +96,7 @@ const SKILL_FILES: Record<Skill, string> = {
 };
 
 export async function buildPrompt(options: PromptOptions): Promise<string> {
-  const skillContent = await readSkillFile(options.skill, options.skillPathOverride);
+  const skillContent = options.skillContentOverride ?? (await readSkillFile(options.skill, options.skillPathOverride));
   const preamble = buildPreamble(options);
   return `${preamble}\n\nSkill instructions follow:\n---\n${skillContent}`;
 }

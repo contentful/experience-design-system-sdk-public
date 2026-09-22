@@ -68,7 +68,7 @@ The wizard saves a run record after each session. Use `experiences runs` to list
 
 Pass `--project` to start a fresh extraction.
 
-For headless operation alongside an existing checked-in `components.json`, use the supported save-path options described in the CLI reference.
+For scripted operation alongside an existing checked-in `components.json`, use the standalone analyze, print, and apply commands described in the CLI reference.
 
 ## Packages
 
@@ -85,7 +85,7 @@ Full documentation for every flag and every subcommand lives in [`packages/exper
 | ---------------------------------- | ---------------------------------------------------------------------------------- |
 | `experiences setup`                | Interactive setup — installs prerequisites and saves credentials + agent           |
 | `experiences doctor`               | Health check — verify Node version, credentials, and agent binaries                |
-| `experiences import`               | Run the full wizard or a headless pipeline (extract → select → internal generation → push) |
+| `experiences import`               | Run the full interactive wizard (extract → select → internal generation → push) |
 | `experiences runs`                 | List prior wizard runs, or pass `<id-or-path>` for a single-run detail view (supports `--json`, `--pushed`, `--not-pushed`) |
 | `experiences analyze extract`      | Scan source files and extract raw component definitions                            |
 | `experiences analyze select`       | Interactively pick which components to include (standalone JsonEditor TUI)         |

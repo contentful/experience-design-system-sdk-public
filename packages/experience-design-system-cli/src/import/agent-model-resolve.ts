@@ -8,7 +8,7 @@
  * registered but never threaded into the wizard subprocesses at all.
  *
  * These helpers produce the resolved values to feed into `WizardApp` /
- * `runPipeline`:
+ * the import wizard:
  *
  *   1. CLI flag wins when provided.
  *   2. Otherwise, the value persisted in `credentials.json` (written by

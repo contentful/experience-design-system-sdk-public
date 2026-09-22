@@ -1,11 +1,10 @@
 /**
- * Resolve the effective auto-filter setting from a CLI flag plus the persisted
- * config preference.
+ * Resolve the effective auto-filter setting from the persisted config
+ * preference.
  *
  * Precedence (highest first):
- *   1. CLI flag (`--auto-filter`) — wins when set
- *   2. Config (`credentials.json` `autoFilter` field) — used when flag absent
- *   3. Default ON — when neither is set
+ *   1. Config (`credentials.json` `autoFilter` field)
+ *   2. Default ON — when config does not specify a preference
  */
 import { getDebugLogger } from '../lib/debug-logger.js';
 

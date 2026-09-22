@@ -85,7 +85,7 @@ describe('import — help output lists all flags', () => {
 });
 
 describe('import — skip flags', () => {
-  it('--skip-map-tokens is accepted in headless mode', async () => {
+  it('--skip-map-tokens is accepted by the import wizard', async () => {
     const { stderr, code } = await run([...skipAll(), '--skip-map-tokens'], baseEnv());
     expect(stderr).not.toContain("unknown option '--skip-map-tokens'");
     expect(code).toBe(0);
@@ -161,12 +161,6 @@ describe('import — removed flags', () => {
 });
 
 describe('import — push-related flags', () => {
-  it('--yes is accepted as a flag', async () => {
-    const { stderr, code } = await run([...skipAll(), '--yes'], baseEnv());
-    expect(stderr).not.toContain("unknown option '--yes'");
-    expect(code).toBe(0);
-  });
-
   it('--host <url> is accepted without error', async () => {
     const { stderr, code } = await run([...skipAll(), '--host', 'https://api.contentful.com'], baseEnv());
     expect(stderr).not.toContain("unknown option '--host'");
