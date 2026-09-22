@@ -460,16 +460,13 @@ The wizard's AI auto-filter (auto-invocation of `analyze select-agent` before sc
 
 ### Replay
 
-After every successful wizard session, the CLI appends a record to `~/.config/experiences/runs.json`. The replay helpers in `src/runs/replay-helpers.ts` power two `import` flags:
-
-- `--push-from-run <id-or-path>` — re-push the recorded session without re-opening the wizard. Never writes to disk. Mutually exclusive with `--modify`, `--project`, and `--no-push`.
-- `--modify <id-or-path>` — fully wired re-open: loads the recorded session from `pipeline.db` (skipping extract and internal generation), pre-fills credentials from the run record's `pushedTo` target, and lands directly on `final-review` (or `scope-gate` if the run record sets `entryStep`).
+After every successful wizard session, the CLI appends a record to `~/.config/experiences/runs.json`. The `runs` command reads these records for list and detail views.
 
 `experiences runs` (alias `ls`) lists the contents of `runs.json` for use with either flag. A positional `<id-or-path>` argument switches it into single-run detail mode; `--json`, `--pushed`, and `--not-pushed` filter the output. Table columns auto-expand to fit long project / save paths; a copy-friendly footer prints command hints for the newest run.
 
 ### Run-picker
 
-When `runs.json` is non-empty, stdin is a TTY, and none of `--push-from-run`, `--modify`, or `--project` was passed, the wizard mounts an interactive **run-picker** (`src/runs/tui/RunPicker.tsx`) before the `welcome` step. The picker lets the operator push or modify a recent run, expand to "show all", or start a new run; selecting an existing run routes through the `--push-from-run` or `--modify` code path. Mount-decision logic lives in `src/runs/run-picker-mount.ts`.
+When prior runs are available, the wizard can mount an interactive **run-picker** (`src/runs/run-picker.tsx`) before the `welcome` step. The picker lets the operator inspect prior runs or start a new run.
 
 ### Model / agent overrides
 

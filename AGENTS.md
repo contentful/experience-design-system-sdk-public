@@ -31,14 +31,12 @@ A single human review gate (`scope-gate`) replaces the older two-step extract-re
 Each successful wizard run appends a record to `~/.config/experiences/runs.json`:
 
 - `experiences runs` lists prior runs; `experiences runs <id-or-path>` prints the single-run detail view; `--json`, `--pushed` / `--not-pushed` filters apply
-- `experiences import --push-from-run <id-or-path>` re-pushes the recorded session without re-opening the wizard or writing to disk
-- `experiences import --modify <id-or-path>` is fully wired: loads the recorded session from `pipeline.db` (skipping extract and internal generation), pre-fills credentials from `pushedTo`, and lands on `final-review` (or `scope-gate` if the run record sets `entryStep`).
 
-Replay helpers live in `src/runs/`: `replay-helpers.ts` (replayRun / modifyRun), `store.ts` (runs.json reader/writer), `resolve-run-target.ts` (id-or-path resolution), `save-path-resolver.ts`, plus the `runs ls` command (`ls-command.ts`). The `runs` table columns auto-expand to fit content (no truncation of long project / save paths); a copy-friendly footer prints command hints for the newest run.
+Run records are managed by `src/runs/store.ts` and inspected with the `runs ls` command (`ls-command.ts`). The `runs` table columns auto-expand to fit content (no truncation of long project / save paths); a copy-friendly footer prints command hints for the newest run.
 
 ### Run-picker mount
 
-`src/runs/run-picker-mount.ts` decides whether the wizard opens with the interactive run-picker TUI (`src/runs/tui/RunPicker.tsx`) before `welcome`. It mounts when `runs.json` has entries, stdin is a TTY, and none of `--push-from-run`, `--modify`, or `--project` was passed. Selecting a run routes into the `--push-from-run` or `--modify` code path without re-invoking the CLI.
+The wizard can display the interactive run-picker TUI (`src/runs/run-picker.tsx`) before `welcome` when prior run records are available.
 
 ### Read-only rationale view
 
