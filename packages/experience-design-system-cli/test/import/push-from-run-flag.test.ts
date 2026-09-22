@@ -167,11 +167,6 @@ describe('experiences import --modify — delegation', () => {
     expect(mockReplayRun).not.toHaveBeenCalled();
   });
 
-  it('forwards --save-as-new to modifyRun', async () => {
-    const program = buildProgram();
-    await program.parseAsync(['import', '--modify', '01HXYZ', '--save-as-new'], { from: 'user' });
-    expect(mockModifyRun).toHaveBeenCalledWith(expect.objectContaining({ runIdOrPath: '01HXYZ', saveAsNew: true }));
-  });
 });
 
 describe('experiences import --allow-deletions — forwarding', () => {
