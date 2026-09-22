@@ -94,13 +94,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--skip-apply',
-    kind: 'boolean',
-    modes: ['headless'],
-    incompatibleWith: [],
-    forcesHeadless: true,
-  },
-  {
     flag: '--skip-map-tokens',
     kind: 'boolean',
     modes: ['headless'],
