@@ -83,6 +83,31 @@ describe('launchModifyWizard prop wiring', () => {
     expect(captured.props?.['initialStep']).toBe('final-review');
   });
 
+  it('threads compositionMode through so modify resumes in the same mode', async () => {
+    await launchModifyWizard({
+      extractSessionId: 'e1',
+      generateSessionId: 'g1',
+      projectPath: '/p',
+      savePath: '/p/dist',
+      entryStep: 'final-review',
+      saveMode: 'prompt',
+      compositionMode: 'composite',
+    });
+    expect(captured.props?.['compositionMode']).toBe('composite');
+  });
+
+  it('omits compositionMode when the run record has none (wizard defaults to atomic)', async () => {
+    await launchModifyWizard({
+      extractSessionId: 'e1',
+      generateSessionId: 'g1',
+      projectPath: '/p',
+      savePath: '/p/dist',
+      entryStep: 'final-review',
+      saveMode: 'prompt',
+    });
+    expect(captured.props?.['compositionMode']).toBeUndefined();
+  });
+
   it('threads tokenSessionId as seedTokenSessionId when set', async () => {
     await launchModifyWizard({
       extractSessionId: 'e1',

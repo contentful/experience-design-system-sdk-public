@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Command } from 'commander';
 import {
   addArtifactInputOptions,
+  addCompositionOptions,
   addContentfulTargetOptions,
   addSelectionOptions,
 } from '../../src/lib/command-options.js';
@@ -42,6 +43,24 @@ describe('command option builders', () => {
         defaultValue: undefined,
       },
       { flag: '--host', description: 'Override API base URL', mandatory: false, defaultValue: undefined },
+    ]);
+  });
+
+  it('registers composition flags with their existing help text', () => {
+    const command = addCompositionOptions(new Command());
+    expect(options(command)).toEqual([
+      {
+        flag: '--composite',
+        description: 'Import embedded-component hierarchy (opt in; default is atomic)',
+        mandatory: false,
+        defaultValue: undefined,
+      },
+      {
+        flag: '--atomic',
+        description: 'Import flat components with no embedded-component hierarchy (default)',
+        mandatory: false,
+        defaultValue: undefined,
+      },
     ]);
   });
 

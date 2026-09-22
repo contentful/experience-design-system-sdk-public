@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { toConfiguredHost } from './host-utils.js';
+import { isCompositionMode, type CompositionMode } from './lib/composition-mode.js';
 
 export type ExperiencesCredentials = {
   spaceId: string;
@@ -19,6 +20,12 @@ export type ExperiencesCredentials = {
   debug?: boolean;
   /** Persisted opt-out for anonymous CLI usage analytics, set via `experiences setup`. */
   analyticsDisabled?: boolean;
+  /**
+   * Feature (atomic mode): default composition mode. `atomic` (default) imports
+   * flat components with no embedded-component hierarchy; `composite` opts into
+   * the slot-graph machinery. Resolved `flag > env > this > default`.
+   */
+  compositionMode?: CompositionMode;
 };
 
 const CREDENTIALS_DIR = join(homedir(), '.config', 'experiences');
@@ -56,6 +63,9 @@ export async function readExperiencesCredentials(): Promise<ExperiencesCredentia
       ...(typeof parsed.autoFilter === 'boolean' ? { autoFilter: parsed.autoFilter } : {}),
       ...(typeof parsed.debug === 'boolean' ? { debug: parsed.debug } : {}),
       ...(typeof parsed.analyticsDisabled === 'boolean' ? { analyticsDisabled: parsed.analyticsDisabled } : {}),
+      ...(typeof parsed.compositionMode === 'string' && isCompositionMode(parsed.compositionMode)
+        ? { compositionMode: parsed.compositionMode }
+        : {}),
     };
   } catch {
     const host = toConfiguredHost(process.env['EDS_HOST']);
@@ -78,6 +88,7 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
     autoFilter,
     debug,
     analyticsDisabled,
+    compositionMode,
     ...rest
   } = creds;
   const host = toConfiguredHost(creds.host);
@@ -95,6 +106,7 @@ export async function writeExperiencesCredentials(creds: ExperiencesCredentials)
         ...(typeof autoFilter === 'boolean' ? { autoFilter } : {}),
         ...(typeof debug === 'boolean' ? { debug } : {}),
         ...(typeof analyticsDisabled === 'boolean' ? { analyticsDisabled } : {}),
+        ...(compositionMode && isCompositionMode(compositionMode) ? { compositionMode } : {}),
       },
       null,
       2,

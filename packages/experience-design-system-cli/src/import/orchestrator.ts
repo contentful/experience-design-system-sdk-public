@@ -18,6 +18,7 @@ import { buildPostPushUrl } from '../lib/contentful-urls.js';
 import { getDebugLogger } from '../lib/debug-logger.js';
 import { bindAnalyticsSession, emitSessionStarted } from '../analytics/index.js';
 import { pipelineSubprocessEnv } from '../analytics/env.js';
+import type { CompositionMode } from '../lib/composition-mode.js';
 import { findCliPath } from '../lib/cli-path.js';
 
 export interface PipelineOptions {
@@ -49,6 +50,7 @@ export interface PipelineOptions {
   /** When true, auto-reject cycle participants and retry push instead of surfacing an error. */
   autoRejectCycles?: boolean;
   allowDeletions?: boolean;
+  compositionMode?: CompositionMode;
   compositionMap?: string;
   compositionAgent?: boolean;
   compositionAgentMode?: string;
@@ -319,14 +321,17 @@ export async function runPipeline(
     });
     const t0 = Date.now();
     const analyzeArgs = ['analyze', 'extract', '--project', projectRoot];
-    if (opts.compositionMap) analyzeArgs.push('--composition-map', opts.compositionMap);
-    if (opts.compositionAgent) analyzeArgs.push('--composition-agent');
-    if (opts.compositionAgentMode) analyzeArgs.push('--composition-agent-mode', opts.compositionAgentMode);
-    if (opts.compositionRefresh) analyzeArgs.push('--composition-refresh');
-    if (opts.generateMap) analyzeArgs.push('--generate-map', opts.generateMap);
-    for (const p of opts.promptOverrides ?? []) analyzeArgs.push('--prompt', p);
-    if (opts.agent) analyzeArgs.push('--agent', opts.agent);
-    if (opts.bedrock) analyzeArgs.push('--bedrock');
+    if (opts.compositionMode === 'composite') {
+      analyzeArgs.push('--composite');
+      if (opts.compositionMap) analyzeArgs.push('--composition-map', opts.compositionMap);
+      if (opts.compositionAgent) analyzeArgs.push('--composition-agent');
+      if (opts.compositionAgentMode) analyzeArgs.push('--composition-agent-mode', opts.compositionAgentMode);
+      if (opts.compositionRefresh) analyzeArgs.push('--composition-refresh');
+      if (opts.generateMap) analyzeArgs.push('--generate-map', opts.generateMap);
+      for (const p of opts.promptOverrides ?? []) analyzeArgs.push('--prompt', p);
+      if (opts.agent) analyzeArgs.push('--agent', opts.agent);
+      if (opts.bedrock) analyzeArgs.push('--bedrock');
+    }
     const r = await runStep(analyzeArgs, cliPath, sessionId);
     const durationMs = Date.now() - t0;
 
