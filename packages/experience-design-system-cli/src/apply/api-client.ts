@@ -16,15 +16,6 @@ import { buildUserAgent } from '../lib/user-agent.js';
 export const PREVIEW_ERROR_PREFIX = 'preview failed:';
 export const APPLY_ERROR_PREFIX = 'apply failed:';
 
-// Substring match callers use to distinguish a parseable
-// component-level validation failure from generic 422s. Quoted because the
-// match runs against the raw JSON body (which contains `"code":"ValidationFailed"`).
-// If the server ever changes the casing or naming, isPreviewValidationError
-// silently returns false and the retry loop never fires — so this lives next
-// to the prefixes as a deliberate, named contract rather than an inline
-// magic string at the call site.
-export const VALIDATION_FAILED_CODE = '"ValidationFailed"';
-
 export interface ApiClientOptions {
   host?: string;
   cmaToken: string;
