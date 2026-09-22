@@ -14,12 +14,7 @@ import { isEmptyPreview } from './preview-utils.js';
 import { ServerPreviewApp, ServerPreviewConfirm, ServerApplyProgress, ServerApplyDone } from './tui/ServerApplyView.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
-import {
-  addAllowDeletionsOption,
-  addArtifactInputOptions,
-  addCompositionOptions,
-  addContentfulTargetOptions,
-} from '../lib/command-options.js';
+import { addArtifactInputOptions, addCompositionOptions, addContentfulTargetOptions } from '../lib/command-options.js';
 import { stripAllowedComponents } from '../import/strip-allowed-components.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { getInteractiveTerminalSupport } from '../lib/terminal-capabilities.js';
@@ -157,7 +152,6 @@ interface ApplyOptions extends SharedImportOptions {
   verbose?: boolean;
   force?: boolean;
   dryRun?: boolean;
-  allowDeletions?: boolean;
 }
 
 type SharedInputs = Awaited<ReturnType<typeof resolveSharedInputs>>;
@@ -198,7 +192,6 @@ function renderApplyProgress(
 
 interface ApplyAndPollOptions {
   acknowledgeBreakingChanges: boolean;
-  allowDeletions: boolean;
   onProgress?: (status: 'applying' | 'polling', operationId?: string) => void;
   onStarted?: (operationId: string) => void;
   onApiError: (error: ApiError) => Promise<void> | void;
@@ -231,7 +224,6 @@ async function applyAndPoll(
   try {
     operation = await client.applyImport(manifest, {
       acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
-      allowDeletions: options.allowDeletions,
     });
   } catch (e) {
     if (e instanceof ApiError) {
@@ -264,14 +256,12 @@ interface NonInteractiveApplyOptions {
   environmentId: string;
   host?: string;
   acknowledgeBreakingChanges: boolean;
-  allowDeletions: boolean;
   verbose?: boolean;
 }
 
 async function runNonInteractiveApply(options: NonInteractiveApplyOptions): Promise<void> {
   const operation = await applyAndPoll(options.client, options.manifest, {
     acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
-    allowDeletions: options.allowDeletions,
     onStarted: (operationId) => {
       process.stderr.write(`Apply operation started: ${operationId}\n`);
     },
@@ -292,7 +282,6 @@ interface InteractiveApplyOptions {
   environmentId: string;
   host?: string;
   acknowledgeBreakingChanges: boolean;
-  allowDeletions: boolean;
   verbose?: boolean;
   rerender: (element: React.ReactElement) => void;
   onDone: () => void;
@@ -301,7 +290,6 @@ interface InteractiveApplyOptions {
 async function runInteractiveApply(options: InteractiveApplyOptions): Promise<void> {
   const operation = await applyAndPoll(options.client, options.manifest, {
     acknowledgeBreakingChanges: options.acknowledgeBreakingChanges,
-    allowDeletions: options.allowDeletions,
     ...createApplyProgressHandlers(options.rerender, options.spaceId, options.environmentId, (error) =>
       formatApiError(error, options.verbose),
     ),
@@ -530,7 +518,6 @@ export function registerApplyCommand(program: Command): void {
 
   const pushCmd = applyCmd.command('push').description('Write component types and design tokens to Contentful ExO');
   addSharedApplyOptions(pushCmd);
-  addAllowDeletionsOption(pushCmd);
   pushCmd
     .option('--yes', 'Skip interactive confirmation')
     .option('--verbose', 'Show all entity progress including skipped/unchanged')
@@ -568,7 +555,7 @@ export function registerApplyCommand(program: Command): void {
 
       let preview: ServerPreviewResponse;
       try {
-        preview = await client.previewImport(manifest, opts.allowDeletions === true);
+        preview = await client.previewImport(manifest);
       } catch (e) {
         if (e instanceof ApiError)
           return await die(`Error: ${formatApiError(e, opts.verbose)}`, failureFromApiError(e));
@@ -584,7 +571,6 @@ export function registerApplyCommand(program: Command): void {
               preview,
               spaceId,
               environmentId,
-              allowDeletions: opts.allowDeletions === true,
             }),
           );
           await waitUntilExit();
@@ -625,7 +611,6 @@ export function registerApplyCommand(program: Command): void {
           spaceId,
           environmentId,
           acknowledgeBreakingChanges: breakingWithImpact || opts.force === true,
-          allowDeletions: opts.allowDeletions === true,
           host: opts.host,
           verbose: opts.verbose,
         });
@@ -633,7 +618,7 @@ export function registerApplyCommand(program: Command): void {
       }
 
       await new Promise<void>((resolvePromise) => {
-        const runApply = async (acknowledge: boolean, applyDeletions: boolean) => {
+        const runApply = async (acknowledge: boolean) => {
           await runInteractiveApply({
             client,
             manifest,
@@ -641,7 +626,6 @@ export function registerApplyCommand(program: Command): void {
             environmentId,
             host: opts.host,
             acknowledgeBreakingChanges: acknowledge,
-            allowDeletions: applyDeletions,
             verbose: opts.verbose,
             rerender: (element) => instance.rerender(element),
             onDone: resolvePromise,
@@ -654,9 +638,8 @@ export function registerApplyCommand(program: Command): void {
             spaceId,
             environmentId,
             breakingWithImpact,
-            allowDeletions: opts.allowDeletions === true,
-            onConfirm: (acknowledge: boolean, applyDeletions: boolean) => {
-              void runApply(acknowledge, applyDeletions);
+            onConfirm: (acknowledge: boolean) => {
+              void runApply(acknowledge);
             },
             onCancel: () => {
               void exitWithAnalytics(0);

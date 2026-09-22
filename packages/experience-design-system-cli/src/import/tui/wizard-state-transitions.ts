@@ -30,11 +30,11 @@ export function buildSkippedPreviewTransition(): { step: 'push-decision-gate'; s
   return { step: 'push-decision-gate', serverPreview: null };
 }
 
-export type CycleGateAction = 'block' | 'auto-reject' | 'proceed';
+export type CycleGateAction = 'block' | 'proceed';
 
-export function resolveCycleGateAction(opts: { hasCycles: boolean; autoRejectCycles: boolean }): CycleGateAction {
+export function resolveCycleGateAction(opts: { hasCycles: boolean }): CycleGateAction {
   if (!opts.hasCycles) return 'proceed';
-  return opts.autoRejectCycles ? 'auto-reject' : 'block';
+  return 'block';
 }
 
 export function shouldRefusePush(state: { credentialsSkipped: boolean }): boolean {

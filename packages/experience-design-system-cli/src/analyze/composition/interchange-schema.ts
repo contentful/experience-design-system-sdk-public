@@ -3,7 +3,7 @@
  *
  * Two views of the same data:
  *  - `InterchangeMap` — the human-authored / on-disk `{ version, groups }`
- *    shape (parent → children). This is what `--composition-map` consumes and
+ *    shape (parent → children), used for generated map artifacts and tests.
  *    `--generate-map` emits.
  *  - `CompositionEdge[]` — the flat internal runtime view, one edge per
  *    parent→child relationship, carrying optional `slot` (T7), `confidence`,

@@ -33,7 +33,7 @@ import {
 import { findSlotCycles, suggestCycleBreakEdge } from './cycle-detection.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import { resolveMapping } from './composition/resolve-mapping.js';
-import { loadUserMap, resolveCompositionSources } from './composition/resolve-mapping-cli.js';
+import { resolveCompositionSources } from './composition/resolve-mapping-cli.js';
 import { selectCandidateFiles, capCandidatesToPromptBudget } from './composition/candidate-files.js';
 import { buildCompositionInputHash } from './composition/composition-cache-key.js';
 import { collectManifestDocEdges } from './composition/manifest-doc-evidence.js';
@@ -65,7 +65,6 @@ interface AnalyzeExtractOptions {
   resolveUnreachable?: 'auto' | 'always' | 'never';
   composite?: boolean;
   atomic?: boolean;
-  compositionMap?: string;
   compositionRefresh?: boolean;
   generateMap?: string;
   prompt?: string[];
@@ -287,7 +286,6 @@ export function registerAnalyzeCommand(program: Command): void {
     )
     .option('--composite', 'Resolve embedded-component composition (opt in; default is atomic)')
     .option('--atomic', 'Skip composition resolution — flat components only (default)')
-    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
     .option(
       '--composition-refresh',
       'Force the mapping agent to run even where deterministic sources answered (implies --composite)',
@@ -537,9 +535,7 @@ export function registerAnalyzeCommand(program: Command): void {
         });
         const result = await resolveMapping({
           components: validatedComponents,
-          ...(userMap ? { userMap } : {}),
           ...(extraEdges.length > 0 ? { extraEdges } : {}),
-          useAgent: sources.useAgent,
           forceAgent: sources.forceAgent,
           files: promptFiles,
           ...(compositionPrompt ? { promptOverride: compositionPrompt } : {}),

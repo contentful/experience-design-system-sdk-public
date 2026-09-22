@@ -11,13 +11,12 @@ export function isCompositionMode(value: string): value is CompositionMode {
  * clear opt-in, so requiring an explicit `--composite` alongside is redundant.
  */
 export type CompositionSourceOptions = {
-  compositionMap?: string;
   compositionRefresh?: boolean;
   generateMap?: string;
 };
 
 function hasCompositionSource(opts: CompositionSourceOptions): boolean {
-  return !!opts.compositionMap || !!opts.compositionRefresh || !!opts.generateMap;
+  return !!opts.compositionRefresh || !!opts.generateMap;
 }
 
 /**
@@ -29,7 +28,7 @@ function hasCompositionSource(opts: CompositionSourceOptions): boolean {
  * `--atomic` is accepted for symmetry and wins when passed — even alongside a
  * composition source, since it's an explicit "no" that overrides the implicit
  * opt-in. If both `--composite` and `--atomic` are present, `--composite`
- * wins. Passing a composition source (`--composition-map/-agent`,
+ * wins. Passing a composition source (
  * `--composition-refresh`, or `--generate-map`) implies composite without a
  * separate `--composite`.
  */

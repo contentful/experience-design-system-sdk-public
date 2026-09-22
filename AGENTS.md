@@ -153,7 +153,7 @@ The skill file `skills/select-components.md` provides detailed instructions and 
 - `preview-utils.ts` — detects empty server previews before confirmation or apply
 - `tui/` — server preview, selection, and apply-progress views
 
-The apply flow validates the target, builds a `ManifestPayload` through the shared manifest utilities from the CDF components and DTCG token entries, previews it, optionally confirms, submits it to the apply endpoint, and polls the returned operation to completion. `--allow-deletions` and breaking-change acknowledgement are sent as operation options.
+The apply flow validates the target, builds a `ManifestPayload` through the shared manifest utilities from the CDF components and DTCG token entries, previews it, optionally confirms, submits it to the apply endpoint, and polls the returned operation to completion. Breaking-change acknowledgement is sent as an operation option; entities absent from the manifest are skipped.
 
 ## The Import Orchestrator (headless)
 

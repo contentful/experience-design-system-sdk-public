@@ -275,9 +275,7 @@ describe('ImportApiClient — previewImport', () => {
     expect(request.method).toBe('POST');
     const requestUrl = new URL(request.url);
     expect(requestUrl.pathname).toBe('/spaces/space1/environments/master/design_systems/imports/preview');
-    await expect(request.text()).resolves.toBe(
-      JSON.stringify({ componentsManifest: { Button: {} }, allowDeletions: false }),
-    );
+    await expect(request.text()).resolves.toBe(JSON.stringify({ componentsManifest: { Button: {} } }));
   });
 
   it('throws ApiError on non-200 response', async () => {
@@ -430,22 +428,7 @@ describe('ImportApiClient — previewImport', () => {
     ]);
   });
 
-  it('sends allowDeletions=true in the preview request body when passed', async () => {
-    const serverResponse: ServerPreviewResponse = {
-      components: { new: [], changed: [], unchanged: [], removed: [] },
-      tokens: { new: [], changed: [], unchanged: [], removed: [] },
-      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
-    };
-    mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
-
-    const client = createClient();
-    await client.previewImport({ componentsManifest: { Button: {} } }, true);
-    const request = mockFetch.mock.calls[0][0] as Request;
-    const callBody = JSON.parse(await request.text());
-    expect(callBody.allowDeletions).toBe(true);
-  });
-
-  it('defaults to allowDeletions=false in the preview request body when omitted', async () => {
+  it('does not send deletion controls in the preview request body', async () => {
     const serverResponse: ServerPreviewResponse = {
       components: { new: [], changed: [], unchanged: [], removed: [] },
       tokens: { new: [], changed: [], unchanged: [], removed: [] },
@@ -457,12 +440,27 @@ describe('ImportApiClient — previewImport', () => {
     await client.previewImport({ componentsManifest: { Button: {} } });
     const request = mockFetch.mock.calls[0][0] as Request;
     const callBody = JSON.parse(await request.text());
-    expect(callBody.allowDeletions).toBe(false);
+    expect(callBody.allowDeletions).toBeUndefined();
+  });
+
+  it('omits allowDeletions from the preview request body', async () => {
+    const serverResponse: ServerPreviewResponse = {
+      components: { new: [], changed: [], unchanged: [], removed: [] },
+      tokens: { new: [], changed: [], unchanged: [], removed: [] },
+      taxonomies: { new: [], changed: [], unchanged: [], removed: [] },
+    };
+    mockFetch.mockResolvedValue(jsonResponse(200, serverResponse));
+
+    const client = createClient();
+    await client.previewImport({ componentsManifest: { Button: {} } });
+    const request = mockFetch.mock.calls[0][0] as Request;
+    const callBody = JSON.parse(await request.text());
+    expect(callBody.allowDeletions).toBeUndefined();
   });
 });
 
 describe('ImportApiClient — applyImport', () => {
-  it('sends POST with manifest + acknowledgeBreakingChanges + allowDeletions and returns 202 response', async () => {
+  it('sends POST with manifest + acknowledgeBreakingChanges and returns 202 response', async () => {
     const opResponse: ApplyOperationResponse = {
       sys: {
         type: 'ApplyOperation',
@@ -478,17 +476,17 @@ describe('ImportApiClient — applyImport', () => {
     const client = createClient();
     const result = await client.applyImport(
       { componentsManifest: { Button: {} } },
-      { acknowledgeBreakingChanges: true, allowDeletions: true },
+      { acknowledgeBreakingChanges: true },
     );
 
     expect(result).toEqual(opResponse);
     const request = mockFetch.mock.calls[0][0] as Request;
     const callBody = JSON.parse(await request.text());
     expect(callBody.acknowledgeBreakingChanges).toBe(true);
-    expect(callBody.allowDeletions).toBe(true);
+    expect(callBody.allowDeletions).toBeUndefined();
   });
 
-  it('defaults allowDeletions to false in the request body when omitted', async () => {
+  it('omits allowDeletions from the request body when omitted', async () => {
     const opResponse: ApplyOperationResponse = {
       sys: {
         type: 'ApplyOperation',
@@ -506,7 +504,7 @@ describe('ImportApiClient — applyImport', () => {
 
     const request = mockFetch.mock.calls[0][0] as Request;
     const callBody = JSON.parse(await request.text());
-    expect(callBody.allowDeletions).toBe(false);
+    expect(callBody.allowDeletions).toBeUndefined();
   });
 
   it('throws ApiError with gate details on 422', async () => {

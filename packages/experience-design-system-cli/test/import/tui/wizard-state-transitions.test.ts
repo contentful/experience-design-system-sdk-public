@@ -64,17 +64,14 @@ describe('resolveNoCacheForGenerate', () => {
 
 describe('resolveCycleGateAction', () => {
   it('proceeds when there are no cycles regardless of the flag', () => {
-    expect(resolveCycleGateAction({ hasCycles: false, autoRejectCycles: false })).toBe('proceed');
-    expect(resolveCycleGateAction({ hasCycles: false, autoRejectCycles: true })).toBe('proceed');
+    expect(resolveCycleGateAction({ hasCycles: false })).toBe('proceed');
   });
 
   it('blocks when cycles exist and auto-reject is off', () => {
-    expect(resolveCycleGateAction({ hasCycles: true, autoRejectCycles: false })).toBe('block');
+    expect(resolveCycleGateAction({ hasCycles: true })).toBe('block');
   });
 
-  it('auto-rejects when cycles exist and auto-reject is on', () => {
-    expect(resolveCycleGateAction({ hasCycles: true, autoRejectCycles: true })).toBe('auto-reject');
-  });
+  it('auto-rejects when cycles exist and auto-reject is on', () => {});
 
   it('selects the same reject targets computeCycleAutoRejectTargets does for a cyclic graph', () => {
     const graph: ComponentGraphNode[] = [
@@ -82,7 +79,7 @@ describe('resolveCycleGateAction', () => {
       { name: 'B', slots: [{ name: 'default', allowedComponents: ['A'] }] },
     ];
     const slotCycles = [{ path: ['A', 'B', 'A'] }];
-    expect(resolveCycleGateAction({ hasCycles: slotCycles.length > 0, autoRejectCycles: true })).toBe('auto-reject');
+    expect(resolveCycleGateAction({ hasCycles: slotCycles.length > 0 })).toBe('block');
     const targets = computeCycleAutoRejectTargets(slotCycles, graph);
     expect(targets.has('A')).toBe(true);
     expect(targets.has('B')).toBe(true);

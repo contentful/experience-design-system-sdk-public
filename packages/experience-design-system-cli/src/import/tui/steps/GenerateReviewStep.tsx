@@ -323,7 +323,6 @@ export function GenerateReviewStep({
   host = '',
   tokensPath = '',
   initialFinalizeError = null,
-  allowDeletions = false,
 }: GenerateReviewStepProps): React.ReactElement {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
@@ -449,7 +448,6 @@ export function GenerateReviewStep({
     cmaToken,
     host,
     deleteAllComponents: acceptedCountForPreview === 0,
-    allowDeletions,
     onResult: (response) => {
       const nextRemoved = response.components.removed ?? [];
       if (!removedBannerDefaultedRef.current && nextRemoved.length > 0) {
@@ -469,7 +467,6 @@ export function GenerateReviewStep({
     cmaToken,
     host,
     components,
-    allowDeletions,
   });
 
   const handleFinalizeConfirm = () => {
