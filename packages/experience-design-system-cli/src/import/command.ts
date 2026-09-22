@@ -73,10 +73,6 @@ export function registerImportCommand(program: Command): void {
       [] as string[],
     )
     .option(
-      '--generate-prompt-path <path>',
-      'Path to a custom .md skill prompt for generate components (bypasses bundled invariants)',
-    )
-    .option(
       '--push-from-run <id-or-path>',
       "Push a prior run's recorded pipeline.db session to Contentful WITHOUT writing components.json / tokens.json to disk. Accepts a run-id or filesystem path that matches a recorded savePath. Credentials are resolved from flags, then the run record, then 'experiences setup', then (in a TTY) an interactive prompt.",
     )
@@ -109,7 +105,6 @@ export function registerImportCommand(program: Command): void {
         generateMap?: string;
         prompt?: string[];
         livePreview?: boolean;
-        generatePromptPath?: string;
         pushFromRun?: string;
         modify?: string;
         allowDeletions?: boolean;
@@ -294,7 +289,6 @@ export function registerImportCommand(program: Command): void {
               autoFilter: resolveAutoFilter({}, creds.autoFilter),
               livePreview: true,
               selectPromptPath: creds.selectPromptPath,
-              generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
               ...(opts.rawTokens ? { initialRawTokensPath: normalizePath(opts.rawTokens) } : {}),
               ...pickerProps,
             }),

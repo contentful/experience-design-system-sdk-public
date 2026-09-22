@@ -163,13 +163,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--generate-prompt-path',
-    kind: 'value',
-    sampleValue: '/tmp/generate-prompt.md',
-    modes: ['pty', 'headless'],
-    incompatibleWith: [],
-  },
-  {
     flag: '--push-from-run',
     kind: 'value',
     sampleValue: 'run-123',
