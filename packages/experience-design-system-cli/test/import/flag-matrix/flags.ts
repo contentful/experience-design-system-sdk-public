@@ -9,17 +9,6 @@ export interface FlagSpec {
   notes?: string;
 }
 
-export const COMPOSITION_FLAGS = [
-  '--composite',
-  '--atomic',
-  '--composition-map',
-  '--composition-agent',
-  '--composition-agent-mode',
-  '--composition-refresh',
-  '--generate-map',
-  '--prompt',
-] as const;
-
 export const IMPORT_FLAGS: FlagSpec[] = [
   {
     flag: '--project',
