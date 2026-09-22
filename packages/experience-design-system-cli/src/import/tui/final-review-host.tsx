@@ -8,16 +8,12 @@ import type { ReviewStepProps } from './review-step-props.js';
 
 export type FinalReviewHostProps = Omit<ReviewStepProps, 'extractSessionId'> & {
   extractSessionId: string | null;
-  generatedCount: number;
-  autoAccept?: boolean;
   compositionMode?: CompositionMode;
 };
 
 export function FinalReviewHost({
   extractSessionId,
   tokenSessionId,
-  generatedCount,
-  autoAccept = false,
   compositionMode = 'atomic',
   onFinalize,
   onQuit,
@@ -35,10 +31,6 @@ export function FinalReviewHost({
         <Text color={PALETTE.error}>Error: no session ID — cannot load generated definitions.</Text>
       </Box>
     );
-  }
-
-  if (autoAccept) {
-    return <FinalReviewAutoAccept generatedCount={generatedCount} onFinalize={onFinalize} />;
   }
 
   // Atomic mode (spec T9): render the pre-composite flat review step. It never
@@ -60,22 +52,5 @@ export function FinalReviewHost({
       tokensPath={tokensPath}
       initialFinalizeError={initialFinalizeError}
     />
-  );
-}
-
-function FinalReviewAutoAccept({
-  generatedCount,
-  onFinalize,
-}: {
-  generatedCount: number;
-  onFinalize: (accepted: number, rejected: number, unresolved: number) => void;
-}): React.ReactElement {
-  React.useEffect(() => {
-    onFinalize(generatedCount, 0, 0);
-  }, []);
-  return (
-    <Box paddingX={2} paddingY={1}>
-      <Text dimColor>Auto-accepting {generatedCount} generated components...</Text>
-    </Box>
   );
 }

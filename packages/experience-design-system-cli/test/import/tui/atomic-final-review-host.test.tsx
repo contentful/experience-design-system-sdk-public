@@ -10,14 +10,7 @@ describe('FinalReviewHost — compositionMode fork', () => {
   it('mounts the atomic step without auto-finalizing', async () => {
     const onFinalize = vi.fn();
     const { lastFrame } = render(
-      <FinalReviewHost
-        extractSessionId="abc-123"
-        generatedCount={3}
-        autoAccept={false}
-        compositionMode="atomic"
-        onFinalize={onFinalize}
-        onQuit={() => {}}
-      />,
+      <FinalReviewHost extractSessionId="abc-123" compositionMode="atomic" onFinalize={onFinalize} onQuit={() => {}} />,
     );
     await new Promise((r) => setImmediate(r));
     // Renders something (not the missing-session error), does not auto-finalize.
@@ -30,8 +23,6 @@ describe('FinalReviewHost — compositionMode fork', () => {
     const { lastFrame } = render(
       <FinalReviewHost
         extractSessionId="abc-123"
-        generatedCount={3}
-        autoAccept={false}
         compositionMode="composite"
         onFinalize={onFinalize}
         onQuit={() => {}}
@@ -44,15 +35,7 @@ describe('FinalReviewHost — compositionMode fork', () => {
 
   it('defaults to atomic when compositionMode is omitted (still no auto-finalize)', async () => {
     const onFinalize = vi.fn();
-    render(
-      <FinalReviewHost
-        extractSessionId="abc-123"
-        generatedCount={3}
-        autoAccept={false}
-        onFinalize={onFinalize}
-        onQuit={() => {}}
-      />,
-    );
+    render(<FinalReviewHost extractSessionId="abc-123" onFinalize={onFinalize} onQuit={() => {}} />);
     await new Promise((r) => setImmediate(r));
     expect(onFinalize).not.toHaveBeenCalled();
   });
