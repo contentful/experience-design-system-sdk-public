@@ -39,10 +39,6 @@ export function registerImportCommand(program: Command): void {
       'Opt into agentic mapping resolution when deterministic sources find no groups (implies --composite)',
     )
     .option(
-      '--composition-refresh',
-      'Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies --composite)',
-    )
-    .option(
       '--composition-agent-mode <mode>',
       "Agent mode: 'parser' (agent writes a sandboxed parser, default) or 'edges' (agent lists edges)",
     )
@@ -70,7 +66,6 @@ export function registerImportCommand(program: Command): void {
         compositionMap?: string;
         compositionAgent?: boolean;
         compositionAgentMode?: string;
-        compositionRefresh?: boolean;
         generateMap?: string;
         prompt?: string[];
       }) => {
@@ -111,7 +106,6 @@ export function registerImportCommand(program: Command): void {
             compositionMap?: string;
             compositionAgent?: boolean;
             compositionAgentMode?: string;
-            compositionRefresh?: boolean;
             generateMap?: string;
             promptOverrides?: string[];
             noCache?: boolean;

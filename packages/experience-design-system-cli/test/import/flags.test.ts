@@ -76,6 +76,7 @@ describe('import — help output lists all flags', () => {
       expect(stdout, `expected ${flag} in help output`).toContain(flag);
     }
     expect(stdout).not.toContain('--atomic');
+    expect(stdout).not.toContain('--composition-refresh');
   });
 
   it('shows default agent value as "claude" in --help output', async () => {
