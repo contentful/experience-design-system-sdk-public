@@ -12,7 +12,6 @@ type AutoFilterStatus = 'idle' | 'running' | 'complete' | 'cancelled' | 'failed'
 
 export type ScopeGateHostProps = {
   components: ReadonlyArray<ScopeComponent>;
-  autoAccept?: boolean;
   compositionMode?: CompositionMode;
   onConfirm: (decisions: { accepted: string[]; rejected: string[] }) => void;
   onQuit: () => void;
@@ -24,7 +23,6 @@ export type ScopeGateHostProps = {
 
 export function ScopeGateHost({
   components,
-  autoAccept = false,
   compositionMode = 'atomic',
   onConfirm,
   onQuit,
@@ -39,10 +37,6 @@ export function ScopeGateHost({
         <Text color={PALETTE.error}>Error: no components found for this session — please re-run analyze extract.</Text>
       </Box>
     );
-  }
-
-  if (autoAccept) {
-    return <ScopeGateAutoAccept components={components} onConfirm={onConfirm} />;
   }
 
   // Atomic mode (spec T9): render the pre-composite flat step. It never imports
@@ -73,22 +67,5 @@ export function ScopeGateHost({
       aiFilterError={aiFilterError}
       onCancelAutoFilter={onCancelAutoFilter}
     />
-  );
-}
-
-function ScopeGateAutoAccept({
-  components,
-  onConfirm,
-}: {
-  components: ReadonlyArray<ScopeComponent>;
-  onConfirm: (decisions: { accepted: string[]; rejected: string[] }) => void;
-}): React.ReactElement {
-  React.useEffect(() => {
-    onConfirm({ accepted: components.map((c) => c.name), rejected: [] });
-  }, []);
-  return (
-    <Box paddingX={2} paddingY={1}>
-      <Text dimColor>Auto-accepting {components.length} components...</Text>
-    </Box>
   );
 }

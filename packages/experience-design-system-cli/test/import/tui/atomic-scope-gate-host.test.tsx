@@ -10,13 +10,7 @@ const TWO = [
 describe('ScopeGateHost — compositionMode fork', () => {
   it('atomic mode renders the flat step with NO hierarchy affordances', () => {
     const { lastFrame } = render(
-      <ScopeGateHost
-        components={TWO}
-        autoAccept={false}
-        compositionMode="atomic"
-        onConfirm={() => {}}
-        onQuit={() => {}}
-      />,
+      <ScopeGateHost components={TWO} compositionMode="atomic" onConfirm={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
     // components render
@@ -32,9 +26,7 @@ describe('ScopeGateHost — compositionMode fork', () => {
   });
 
   it('defaults to atomic when compositionMode is omitted', () => {
-    const { lastFrame } = render(
-      <ScopeGateHost components={TWO} autoAccept={false} onConfirm={() => {}} onQuit={() => {}} />,
-    );
+    const { lastFrame } = render(<ScopeGateHost components={TWO} onConfirm={() => {}} onQuit={() => {}} />);
     const out = lastFrame() ?? '';
     expect(out).not.toMatch(/Added groups/i);
     expect(out).not.toMatch(/lineage/i);
@@ -52,7 +44,6 @@ describe('ScopeGateHost — compositionMode fork', () => {
             aiReason: 'source uses createContext and component has no props',
           },
         ]}
-        autoAccept={false}
         compositionMode="atomic"
         onConfirm={onConfirm}
         onQuit={() => {}}
@@ -79,7 +70,6 @@ describe('ScopeGateHost — compositionMode fork', () => {
           { name: 'Provider', componentId: 'c0', needsReview: true, aiReason: 'flagged by AI' },
           { name: 'Button', componentId: 'c1' },
         ]}
-        autoAccept={false}
         compositionMode="atomic"
         aiFilterStatus="complete"
         onConfirm={() => {}}
@@ -97,13 +87,7 @@ describe('ScopeGateHost — compositionMode fork', () => {
 
   it('composite mode renders the hierarchy-aware step', () => {
     const { lastFrame } = render(
-      <ScopeGateHost
-        components={TWO}
-        autoAccept={false}
-        compositionMode="composite"
-        onConfirm={() => {}}
-        onQuit={() => {}}
-      />,
+      <ScopeGateHost components={TWO} compositionMode="composite" onConfirm={() => {}} onQuit={() => {}} />,
     );
     const out = lastFrame() ?? '';
     expect(out).toContain('Button');

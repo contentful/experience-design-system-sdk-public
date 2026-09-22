@@ -16,8 +16,6 @@ describe('FinalReviewHost — token catalog session', () => {
     const commonProps = {
       extractSessionId: 'extract-session',
       tokenSessionId: 'token-session',
-      generatedCount: 1,
-      autoAccept: false,
       onFinalize: vi.fn(),
       onQuit: vi.fn(),
     };

@@ -1956,7 +1956,6 @@ export function WizardApp({
           <FinalReviewHost
             extractSessionId={state.extractSessionId}
             tokenSessionId={state.tokenSessionId}
-            generatedCount={state.generatedCount}
             compositionMode={compositionMode}
             livePreview={livePreview}
             spaceId={state.spaceId}
