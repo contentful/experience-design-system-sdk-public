@@ -183,12 +183,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--auto-reject-cycles',
-    kind: 'boolean',
-    modes: ['pty', 'headless'],
-    incompatibleWith: [],
-  },
-  {
     flag: '--auto-filter',
     kind: 'boolean',
     modes: ['pty', 'headless'],

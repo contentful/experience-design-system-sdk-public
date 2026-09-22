@@ -70,7 +70,7 @@ Because the agent path spawns a coding agent, it adds latency and cost and is be
 
 ### Slot cycles
 
-If the resolved graph contains a circular slot dependency (A slots B, B slots A), it is detected before push. `apply push` and the wizard's push path **refuse to send a manifest with cycles**; the cycle path is reported so you can break it. In headless `import`, pass `--auto-reject-cycles` to auto-reject the components in a cycle and retry instead of failing.
+If the resolved graph contains a circular slot dependency (A slots B, B slots A), it is detected before push. `apply push` and the wizard's push path **refuse to send a manifest with cycles**; the cycle path is reported so you can break it.
 
 ---
 
@@ -187,7 +187,6 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--composition-refresh`           | —                                      | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`)   |
 | `--composition-agent-mode <mode>` | `parser`                               | `parser` (agent writes a sandboxed parser) or `edges` (agent lists edges directly)                           |
 | `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
-| `--auto-reject-cycles`            | off (fail loud)                        | Auto-reject components in slot cycles and retry, instead of stopping with the cycle path                     |
 | `--auto-filter`                    | persisted in `credentials.json`     | Force AI auto-filter on; overrides the saved preference                                                    |
 | `--no-live-preview`               | live preview on                        | Skip the automatic preview re-run after each FieldEditor save                                                |
 | `--no-push`                       | push on                                | Run extract → scope-gate → generate → final-review and exit without pushing                                  |
