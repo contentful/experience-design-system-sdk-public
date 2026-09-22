@@ -17,16 +17,6 @@ interface RejectionCell {
 
 const rejectionCells: RejectionCell[] = [
   {
-    name: '--push-from-run ⊗ --modify',
-    args: ['import', '--push-from-run', 'run-1', '--modify', 'run-2'],
-    expectStderr: /--push-from-run and --modify are mutually exclusive/,
-  },
-  {
-    name: '--push-from-run ⊗ --project',
-    args: ['import', '--push-from-run', 'run-1', '--project', '/tmp/x'],
-    expectStderr: /--push-from-run and --project are mutually exclusive/,
-  },
-  {
     name: '--modify ⊗ --project',
     args: ['import', '--modify', 'run-1', '--project', '/tmp/x'],
     expectStderr: /--modify and --project are mutually exclusive/,

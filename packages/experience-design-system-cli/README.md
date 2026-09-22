@@ -30,7 +30,7 @@ There are two ways to use the CLI:
 
 **Determinism boundary.** `analyze extract` is fully deterministic: ts-morph AST parsing produces the same component list and prop shape on every run, then a deterministic pre-classifier and a structural non-authorable filter shape the output. AI enters the pipeline at `analyze select-agent` and the import wizard's generation step. This split keeps the extracted artifact reproducible — if an extracted component looks wrong, the cause is in the rules, not in agent variability.
 
-All intermediate data flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). No JSON files are written between steps — each command reads its inputs from the session and writes its outputs back to it. Use `print` to export session data to JSON files on demand. The wizard additionally maintains a separate **runs.json** file (`~/.config/experiences/runs.json`) that records each successful wizard session so it can be replayed later with `--push-from-run` or `--modify`.
+All intermediate data flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). No JSON files are written between steps — each command reads its inputs from the session and writes its outputs back to it. Use `print` to export session data to JSON files on demand. The wizard additionally maintains a separate **runs.json** file (`~/.config/experiences/runs.json`) that records each successful wizard session.
 
 ---
 
@@ -156,10 +156,9 @@ After every successful wizard session, the CLI appends a record to `~/.config/ex
 
 | Flag                              | What it does                                                                                                            |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `--push-from-run <id-or-path>`    | Re-push the recorded session to Contentful without re-opening the wizard or writing to disk. Mutually exclusive with `--modify`, `--project`, and `--no-push`. |
 | `--modify <id-or-path>`           | Re-open the wizard at final-review with the prior run pre-populated. |
 
-Both flags accept either a run id or a filesystem path that matches a recorded `savePath`.
+The flag accepts either a run id or a filesystem path that matches a recorded `savePath`.
 
 ### Custom skill prompts
 
@@ -183,21 +182,12 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 | `--composition-agent`             | —                                      | Opt into agentic resolution when deterministic sources find no groups (implies `--composite`)                |
 | `--composition-refresh`           | —                                      | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`)   |
 | `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
-| `--push-from-run <id-or-path>`    | —                                      | Re-push a prior run; never writes to disk                                                                    |
 | `--modify <id-or-path>`           | —                                      | Re-open the wizard at final-review with a prior run loaded                                                   |
 | `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between internal generation and apply                                             |
 | `--no-cache`                      | cache on                               | Bypass extract/select/internal-generation/map-tokens fine-grained caches and force re-run                    |
 | `--host <url>`                    | `https://api.contentful.com`           | Override API base URL                                                                                        |
 
 ### Run-picker at wizard start
-
-When `~/.config/experiences/runs.json` contains one or more entries, none of `--push-from-run`, `--modify`, or `--project` was passed, and stdin is a TTY, the wizard opens with an interactive **run picker** before the welcome step. The operator can:
-
-- Pick a recent run, then choose **Push** or **Modify** — equivalent to invoking `--push-from-run` or `--modify` for that run id
-- Select **Show all** to expand beyond the most-recent rows
-- Select **Start a new run** to fall through to the normal `welcome → extracting → ...` flow
-
-The mount decision is deterministic — passing any of `--push-from-run`, `--modify`, or `--project` skips the picker and lands on the existing step machine.
 
 ### `--modify` end-to-end behavior
 
@@ -232,9 +222,9 @@ experiences runs [<id-or-path>] [--project <path>] [--limit <n>] [--pushed | --n
 | `--not-pushed`      | Show only runs that were never pushed. Mutex with `--pushed`.                            |
 | `--json`            | Emit machine-readable output: `RunRecord[]` for the list view; a single `RunRecord` object when combined with `<id-or-path>`. |
 
-Each row prints the run id, creation time, project path, save path, component count, and push target (or `(not pushed)`). Table columns auto-expand to fit content — long project / save paths are no longer truncated. Below the table, a copy-friendly footer prints command hints (`--push-from-run`, `--modify`) for the newest run.
+Each row prints the run id, creation time, project path, save path, component count, and push target (or `(not pushed)`). Table columns auto-expand to fit content — long project / save paths are no longer truncated.
 
-Pair with `--push-from-run` or `--modify` on `experiences import` to replay a row.
+Use `experiences runs` to inspect prior session records.
 
 ---
 

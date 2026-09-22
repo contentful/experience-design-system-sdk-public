@@ -53,7 +53,7 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     kind: 'value',
     sampleValue: '.',
     modes: ['pty', 'headless'],
-    incompatibleWith: ['--push-from-run', '--modify'],
+    incompatibleWith: ['--modify'],
   },
   {
     flag: '--out',
@@ -163,17 +163,10 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--push-from-run',
-    kind: 'value',
-    sampleValue: 'run-123',
-    modes: ['pty', 'headless'],
-    incompatibleWith: ['--modify', '--project'],
-  },
-  {
     flag: '--modify',
     kind: 'value',
     sampleValue: 'run-123',
     modes: ['pty'],
-    incompatibleWith: ['--push-from-run', '--project'],
+    incompatibleWith: ['--project'],
   },
 ];
