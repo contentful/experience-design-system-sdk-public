@@ -46,7 +46,7 @@ Design system codebase
 
 Component-analysis data between pipeline steps flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). Optional token preparation writes the explicit `tokens.json` sidecar for internal generation or apply. The standalone `map tokens` command enriches its session before `print components` / `print tokens` write artifacts on demand; `experiences import` does not invoke it. `apply push` reads those files (or reads directly from the session DB via `--session`) and builds a manifest for the sources API.
 
-A separate JSON file at `~/.config/experiences/runs.json` records each successful wizard session (id, project path, save path, push target, component count) so it can be replayed with `experiences import --push-from-run` or `experiences import --modify`.
+A separate JSON file at `~/.config/experiences/runs.json` records each successful wizard session (id, project path, save path, push target, component count) for list and detail views.
 
 When a raw token source is supplied, the wizard performs token generation internally and writes `tokens.json` before it extracts and generates components. For standalone `map tokens`, the generated CDF and DTCG artifacts must be present in the same pipeline session before mapping.
 
@@ -452,9 +452,9 @@ welcome → extracting → [auto-filter (select-agent)] → scope-gate
         → preview → push-decision-gate → pushing → done
 ```
 
-A single human review gate (`scope-gate`) replaces the older two-step extract + generate-edit gates. The final-review step is a minimum-viable port of the standalone `JsonEditor` with lifted rationale + source panels, inline `$default` and `$allowedComponents` editing, and live preview re-runs after each save. Internal generation runs in parallel with the credentials step (`spawn-generate.ts`) so the operator does not wait on the agent. The push-decision-gate defaults to save AND push; `--no-push` selects save-only mode. `--out-dir <path>` short-circuits the save-path prompt.
+A single human review gate (`scope-gate`) replaces the older two-step extract + generate-edit gates. The final-review step is a minimum-viable port of the standalone `JsonEditor` with lifted rationale + source panels, inline `$default` and `$allowedComponents` editing, and live preview re-runs after each save. Internal generation runs in parallel with the credentials step (`spawn-generate.ts`) so the operator does not wait on the agent. The push-decision-gate defaults to save AND push; the interactive gate also supports save-only mode.
 
-The wizard's AI auto-filter (auto-invocation of `analyze select-agent` before scope-gate) is force-enabled per run via `--auto-filter` and otherwise follows `~/.config/experiences/credentials.json`.
+The wizard's AI auto-filter runs according to the configured wizard behavior before scope-gate.
 
 `--no-cache` bypasses extract/select/internal-generation fine-grained caches and is forwarded to the relevant internal stages and `map tokens`.
 

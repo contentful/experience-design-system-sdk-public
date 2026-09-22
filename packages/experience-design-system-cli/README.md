@@ -52,10 +52,9 @@ Imports are **atomic by default** — flat components, no embedded hierarchy. Th
 Under `--composite`, relationships are resolved from the highest-confidence source available, in this precedence order:
 
 1. **Typed slots (code)** — slots the source already declares, e.g. React `ReactElement<XProps>` / `children`, Svelte `Snippet<[XProps]>`, or an explicit `@allowedComponents` JSDoc tag. Fully deterministic; picked up automatically.
-2. **Mapping map** — a hand-authored parent→children interchange map you feed with `--composition-map <path>`. Use `--generate-map <path>` to emit a skeleton from whatever was resolved, then hand-edit it and feed it back.
-3. **Agent** — direct edge emission for codebases that encode composition in *code patterns* rather than typed slots (common in real-world design systems). It is enabled automatically in composite mode and only runs when the deterministic sources above find nothing.
+2. **Agent** — direct edge emission for codebases that encode composition in *code patterns* rather than typed slots (common in real-world design systems). It is enabled automatically in composite mode and only runs when the deterministic sources above find nothing.
 
-When more than one source speaks to the same relationship, the higher-precedence one wins (**code slots > map > agent**).
+When more than one source speaks to the same relationship, the higher-precedence one wins (**code slots > agent**).
 
 ### The composition agent
 
@@ -65,7 +64,7 @@ The composition agent emits one structured edge per relationship. The CLI valida
 - `--agent <name>` — which coding agent authors the parser (`claude`, `codex`, `opencode`, `cursor`, `copilot`).
 - `--prompt composition=<file-or-text>` — override the composition stage's prompt.
 
-Because the agent path spawns a coding agent, it adds latency and cost and is best-effort (parser quality can vary run to run). For reproducible results, prefer `--composition-map`.
+Because the agent path spawns a coding agent, it adds latency and cost and is best-effort.
 
 ### Slot cycles
 
@@ -169,7 +168,6 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 | `--agent <name>`                  | saved by setup / `claude`              | Agent for `analyze select-agent` and internal generation                                                     |
 | `--model <name>`                  | agent default                          | Model name                                                                                                   |
 | `--composite`                     | —                                      | Import the embedded-component hierarchy (any composition flag implies this)                                   |
-| `--composition-map <path>`        | —                                      | Consume a hand-authored parent→children interchange map (implies `--composite`)                              |
 | `--generate-map <path>`           | —                                      | Also write a composition-map skeleton from the resolved composition (implies `--composite`)                  |
 | `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
 | `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between internal generation and apply                                             |
@@ -232,7 +230,6 @@ experiences analyze extract --project <path> [--dir <src-dir>] [composition flag
 | `--resolve-unreachable <mode>` | `auto` | Retry pass for unresolved Svelte `Props` types: `auto`, `always`, or `never` |
 | `--atomic` | **default** | Skip composition resolution — flat components only |
 | `--composite` | — | Resolve embedded-component composition (any composition flag implies this) |
-| `--composition-map <path>` | — | Consume a hand-authored parent→children interchange map (implies `--composite`) |
 | `--generate-map <path>` | — | Write a skeleton interchange map from the resolved composition (implies `--composite`) |
 | `--composition-refresh` | — | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`) |
 | `--agent <name>` | saved by setup | Coding agent for composition resolution: `claude`, `codex`, `opencode`, `cursor`, `copilot` |
@@ -323,7 +320,7 @@ These subcommands are the non-wizard route to the same diff and push logic. Flag
 experiences apply push    --space-id <id> --environment-id <env> --session <id> [--yes]
 ```
 
-Shared flags: `--components`, `--tokens`, `--session`, `--space-id`, `--environment-id`, `--cma-token`, `--host`. `apply push` adds `--yes`, `--verbose`, `--force`, `--dry-run`, `--allow-deletions`. By default, remote ComponentTypes and DesignTokens missing from the pushed manifest are skipped, not deleted; pass `--allow-deletions` to restore the prior delete behavior.
+Shared flags: `--components`, `--tokens`, `--session`, `--space-id`, `--environment-id`, `--cma-token`, `--host`. `apply push` adds `--yes`, `--verbose`, `--force`, and `--dry-run`. Remote ComponentTypes and DesignTokens missing from the pushed manifest are always skipped.
 
 Design tokens are written first (component types may reference token kinds). Each entity write is recorded in the session database atomically — interrupted pushes resume from where they left off.
 

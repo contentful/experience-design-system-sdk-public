@@ -104,7 +104,7 @@ export function App({ sessionId, artifactsRoot, reviewRoot }: AppProps): React.R
       // This preview is display-only (component-picker annotations); it never
       // triggers an apply, so always request the full diff to keep the
       // existing "removed" annotation working.
-      const preview: ServerPreviewResponse = await client.previewImport(manifest, true);
+      const preview: ServerPreviewResponse = await client.previewImport(manifest);
 
       const annotations: Record<string, PreviewAnnotation> = {};
       for (const item of preview.components.new) {

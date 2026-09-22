@@ -122,11 +122,7 @@ type WizardPreviewStepProps = {
   environmentId: string;
   stepNumber: number;
   totalSteps: number;
-  /** The value the preview was actually fetched with — not a hint. When
-   *  `false`, the server never returned removed entities, so there is
-   *  nothing to render item-by-item or toggle over. */
-  allowDeletions?: boolean;
-  onConfirm: (acknowledge: boolean, allowDeletions: boolean) => void;
+  onConfirm: (acknowledge: boolean) => void;
   onEdit?: () => void;
   onSaveFiles?: () => void;
   onQuit: () => void;
@@ -138,7 +134,6 @@ export function WizardPreviewStep({
   environmentId,
   stepNumber,
   totalSteps,
-  allowDeletions: fetchedAllowDeletions = false,
   onConfirm,
   onEdit,
   onSaveFiles,
@@ -147,10 +142,6 @@ export function WizardPreviewStep({
   const breakingWithImpact = hasBreakingChangesWithImpact(preview);
   const [diffExpanded, setDiffExpanded] = useState(false);
   const [scrollOffset, setScrollOffset] = useState(0);
-  // Local state exists only to let the user opt OUT of a deletion the fetch
-  // already surfaced — it can never turn true when the fetch used false,
-  // because there's nothing in `preview` to reveal in that case.
-  const [allowDeletions, setAllowDeletions] = useState(fetchedAllowDeletions);
   const { stdout } = useStdout();
   const terminalRows = stdout?.rows ?? 40;
   const viewportHeight = Math.max(terminalRows - 14, 10);
@@ -168,15 +159,7 @@ export function WizardPreviewStep({
   }, [diffExpanded, preview]);
 
   const maxScroll = Math.max(0, allDiffLines.length - viewportHeight);
-  const removedCount = preview.components.removed.length + preview.tokens.removed.length;
-  const handlePreviewInput = usePreviewConfirmationInput(
-    breakingWithImpact,
-    allowDeletions,
-    fetchedAllowDeletions,
-    removedCount,
-    onConfirm,
-    setAllowDeletions,
-  );
+  const handlePreviewInput = usePreviewConfirmationInput(breakingWithImpact, onConfirm);
 
   useImmediateInput((input, key) => {
     if (handlePreviewInput(input, key)) {
@@ -276,19 +259,13 @@ export function WizardPreviewStep({
               {components.removed.length > 0 && (
                 <Box flexDirection="column">
                   <Box gap={1}>
-                    <Text color={allowDeletions ? PALETTE.error : PALETTE.warning}>{allowDeletions ? ' ✗' : ' ⊘'}</Text>
-                    <Text>
-                      {components.removed.length} will be {allowDeletions ? 'deleted' : 'skipped'}
-                    </Text>
+                    <Text color={PALETTE.warning}>⊘</Text>
+                    <Text>{components.removed.length} will be skipped</Text>
                   </Box>
                   {components.removed.map((item, i) => (
-                    <Text
-                      key={`rm-${i}`}
-                      color={allowDeletions ? PALETTE.error : PALETTE.warning}
-                      dimColor={!allowDeletions}
-                    >
+                    <Text key={`rm-${i}`} color={PALETTE.warning} dimColor>
                       {' '}
-                      {allowDeletions ? '✗' : '⊘'} {item.name}
+                      ⊘ {item.name}
                     </Text>
                   ))}
                 </Box>
@@ -323,10 +300,8 @@ export function WizardPreviewStep({
               )}
               {tokens.removed.length > 0 && (
                 <Box gap={1}>
-                  <Text color={allowDeletions ? PALETTE.error : PALETTE.warning}>{allowDeletions ? ' ✗' : ' ⊘'}</Text>
-                  <Text>
-                    {tokens.removed.length} will be {allowDeletions ? 'deleted' : 'skipped'}
-                  </Text>
+                  <Text color={PALETTE.warning}>⊘</Text>
+                  <Text>{tokens.removed.length} will be skipped</Text>
                 </Box>
               )}
               {tokens.unchanged.length > 0 && (
@@ -375,15 +350,6 @@ export function WizardPreviewStep({
         </Box>
       )}
 
-      {allowDeletions && removedCount > 0 && (
-        <Box marginTop={1}>
-          <Text color={PALETTE.error} bold>
-            ⚠ {removedCount} missing {removedCount === 1 ? 'entity' : 'entities'} will be permanently deleted. Press
-            Enter to confirm.
-          </Text>
-        </Box>
-      )}
-
       <SpaceEnvironment spaceId={spaceId} environmentId={environmentId} />
 
       <Box gap={3} marginTop={1}>
@@ -392,9 +358,6 @@ export function WizardPreviewStep({
         {diffExpanded && <Text dimColor>[j/k] Scroll [f/b] Page</Text>}
         {onEdit && <Text dimColor>[e] Edit definitions</Text>}
         {onSaveFiles && <Text dimColor>[s] Save files instead</Text>}
-        {fetchedAllowDeletions && removedCount > 0 && (
-          <Text dimColor>[x] {allowDeletions ? '[✓]' : '[ ]'} Allow deletions</Text>
-        )}
         <Text dimColor>[q] Cancel</Text>
       </Box>
     </Box>

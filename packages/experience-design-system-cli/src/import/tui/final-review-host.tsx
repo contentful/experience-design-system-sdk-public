@@ -28,7 +28,6 @@ export function FinalReviewHost({
   host,
   tokensPath,
   initialFinalizeError,
-  allowDeletions,
 }: FinalReviewHostProps): React.ReactElement {
   if (!extractSessionId) {
     return (
@@ -60,7 +59,6 @@ export function FinalReviewHost({
       host={host}
       tokensPath={tokensPath}
       initialFinalizeError={initialFinalizeError}
-      {...(compositionMode !== 'atomic' ? { allowDeletions } : {})}
     />
   );
 }

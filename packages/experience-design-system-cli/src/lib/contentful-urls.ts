@@ -1,10 +1,8 @@
 /**
  * Shared Contentful webapp URL builders.
  *
- * The wizard's `done` step uses
- * to inline the same post-push URL formatter. This module centralizes that
- * formatter so the wizard and `apply push` emit the same
- * URL shape.
+ * This module centralizes the formatter so the wizard and `apply push` emit
+ * the same URL shape.
  */
 
 type PostPushView = 'components' | 'design_tokens';

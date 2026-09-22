@@ -61,13 +61,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     notes: 'Composition opt-in; atomic mode remains the default.',
   },
   {
-    flag: '--composition-map',
-    kind: 'value',
-    sampleValue: '/tmp/map.json',
-    incompatibleWith: [],
-    notes: 'Implies --composite.',
-  },
-  {
     flag: '--generate-map',
     kind: 'value',
     sampleValue: '/tmp/skeleton.json',

@@ -22,10 +22,3 @@ export function addCompositionOptions(cmd: Command, options: { includeAtomic?: b
   }
   return cmd;
 }
-
-export function addAllowDeletionsOption(cmd: Command): Command {
-  return cmd.option(
-    '--allow-deletions',
-    'Allow the push to delete remote ComponentTypes/DesignTokens missing from the manifest (default: skip them)',
-  );
-}

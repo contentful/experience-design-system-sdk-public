@@ -33,7 +33,6 @@ export function registerImportCommand(program: Command): void {
     .option('--host <url>', 'Override API base URL (passed to apply push)');
   addCompositionOptions(cmd, { includeAtomic: false });
   cmd
-    .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
     .option(
       '--generate-map <path>',
       'Also write a composition-map skeleton from resolved edges during extract (implies --composite)',
@@ -55,7 +54,6 @@ export function registerImportCommand(program: Command): void {
         cache?: boolean;
         host?: string;
         composite?: boolean;
-        compositionMap?: string;
         generateMap?: string;
         prompt?: string[];
       }) => {
@@ -93,7 +91,6 @@ export function registerImportCommand(program: Command): void {
             initialProjectPath?: string;
             host?: string;
             compositionMode?: CompositionMode;
-            compositionMap?: string;
             generateMap?: string;
             promptOverrides?: string[];
             noCache?: boolean;

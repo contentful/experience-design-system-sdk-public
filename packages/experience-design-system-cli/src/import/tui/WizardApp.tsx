@@ -78,7 +78,6 @@ import {
   resolveNoCacheForGenerate,
   resolveCycleGateAction,
 } from './wizard-state-transitions.js';
-import { computeCycleAutoRejectTargets } from '../cycle-auto-reject.js';
 import { findCliPath } from '../../lib/cli-path.js';
 
 type WizardStep =
@@ -357,9 +356,7 @@ export type WizardAppProps = {
   bedrock?: boolean;
   initialProjectPath?: string;
   host?: string;
-  autoRejectCycles?: boolean;
   compositionMode?: CompositionMode;
-  compositionMap?: string;
   generateMap?: string;
   promptOverrides?: string[];
   noCache?: boolean;
@@ -376,7 +373,6 @@ export type WizardAppProps = {
   initialRawTokensPath?: string;
   initialRuns?: RunRecord[];
   onRunPicked?: (selection: RunPickerSelection) => void;
-  allowDeletions?: boolean;
 };
 
 export function WizardApp({
@@ -389,9 +385,7 @@ export function WizardApp({
   bedrock = false,
   initialProjectPath,
   host,
-  autoRejectCycles = false,
   compositionMode = 'atomic',
-  compositionMap,
   generateMap,
   promptOverrides,
   noCache = false,
@@ -408,7 +402,6 @@ export function WizardApp({
   initialRawTokensPath,
   initialRuns,
   onRunPicked,
-  allowDeletions = false,
 }: WizardAppProps = {}): React.ReactElement {
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
@@ -736,7 +729,6 @@ export function WizardApp({
     const extractArgs = [findCliPath(), 'analyze', 'extract', '--project', projectPath];
     if (compositionMode === 'composite') {
       extractArgs.push('--composite');
-      if (compositionMap) extractArgs.push('--composition-map', compositionMap);
       if (noCache) extractArgs.push('--composition-refresh');
       if (generateMap) extractArgs.push('--generate-map', generateMap);
       for (const p of promptOverrides ?? []) extractArgs.push('--prompt', p);
@@ -1221,7 +1213,7 @@ export function WizardApp({
         tokens = await readTokensFromPath('tokens', tokensPath);
       }
       let manifest = buildManifest(components, tokens, { deleteAllComponents: allowEmptyDeleteAllRef.current });
-      let preview = await client.previewImport(manifest, allowDeletions);
+      let preview = await client.previewImport(manifest);
 
       if (extractSessionId) {
         let needsRepreview = false;
@@ -1250,7 +1242,7 @@ export function WizardApp({
           if (needsRepreview) {
             components = loadCDFComponents(db, extractSessionId);
             manifest = buildManifest(components, tokens, { deleteAllComponents: allowEmptyDeleteAllRef.current });
-            preview = await client.previewImport(manifest, allowDeletions);
+            preview = await client.previewImport(manifest);
           }
         } finally {
           db.close();
@@ -1351,7 +1343,6 @@ export function WizardApp({
     cmaToken: string,
     host: string,
     acknowledgeBreakingChanges: boolean,
-    allowDeletions: boolean,
     preview?: ServerPreviewResponse | null,
   ) => {
     if (shouldRefusePush(state)) {
@@ -1397,7 +1388,7 @@ export function WizardApp({
         environmentId,
         host: resolvedHost,
       });
-      let operation = await client.applyImport(manifest, { acknowledgeBreakingChanges, allowDeletions });
+      let operation = await client.applyImport(manifest, { acknowledgeBreakingChanges });
       try {
         logStep({
           applyResponse: {
@@ -1976,10 +1967,9 @@ export function WizardApp({
             host={state.host}
             tokensPath={state.tokensPath}
             initialFinalizeError={state.finalizeErrorBanner}
-            allowDeletions={allowDeletions}
             onFinalize={(accepted, rejected, unresolved) => {
               process.stderr.write(`Accepted: ${accepted}  Rejected: ${rejected}  Unresolved: ${unresolved}\n`);
-              let acceptedCount = accepted;
+              const acceptedCount = accepted;
               const detectAcceptedCycles = (): ReturnType<typeof findSlotCycles> => {
                 if (!state.extractSessionId) return [];
                 try {
@@ -1994,10 +1984,9 @@ export function WizardApp({
                   return [];
                 }
               };
-              let acceptedCycles = detectAcceptedCycles();
+              const acceptedCycles = detectAcceptedCycles();
               const gateAction = resolveCycleGateAction({
                 hasCycles: acceptedCycles.length > 0,
-                autoRejectCycles,
               });
               const routeToCycleError = (): void => {
                 update({
@@ -2010,64 +1999,6 @@ export function WizardApp({
               if (gateAction === 'block') {
                 routeToCycleError();
                 return;
-              }
-              if (gateAction === 'auto-reject' && state.extractSessionId) {
-                const sessionId = state.extractSessionId;
-                let excluded: string[] = [];
-                try {
-                  const db = openPipelineDb();
-                  try {
-                    const acceptedComponents = loadCDFComponents(db, sessionId);
-                    const targets = computeCycleAutoRejectTargets(
-                      acceptedCycles,
-                      buildComponentGraph(acceptedComponents),
-                    );
-                    excluded = [...targets];
-                    if (excluded.length > 0) {
-                      const stmt = db.prepare(
-                        `UPDATE raw_components SET status = 'generate-rejected' WHERE session_id = ? AND name = ?`,
-                      );
-                      db.exec('BEGIN');
-                      try {
-                        for (const name of excluded) {
-                          stmt.run(sessionId, name);
-                        }
-                        db.exec('COMMIT');
-                      } catch (e) {
-                        db.exec('ROLLBACK');
-                        throw e;
-                      }
-                    }
-                  } finally {
-                    db.close();
-                  }
-                } catch {
-                  routeToCycleError();
-                  return;
-                }
-                if (excluded.length > 0) {
-                  process.stderr.write(`Auto-rejected cycle participants: ${excluded.join(', ')}\n`);
-                  logStep({ event: 'cycle-auto-reject', excluded });
-                }
-                acceptedCycles = detectAcceptedCycles();
-                if (acceptedCycles.length > 0) {
-                  routeToCycleError();
-                  return;
-                }
-                const remaining = (() => {
-                  if (!state.extractSessionId) return acceptedCount;
-                  try {
-                    const db = openPipelineDb();
-                    try {
-                      return loadCDFComponents(db, sessionId).length;
-                    } finally {
-                      db.close();
-                    }
-                  } catch {
-                    return acceptedCount;
-                  }
-                })();
-                acceptedCount = remaining;
               }
               const allowEmptyDeleteAll = acceptedCount === 0;
               allowEmptyDeleteAllRef.current = allowEmptyDeleteAll;
@@ -2182,8 +2113,7 @@ export function WizardApp({
             environmentId={state.environmentId}
             stepNumber={totalSteps}
             totalSteps={totalSteps}
-            allowDeletions={allowDeletions}
-            onConfirm={(acknowledge, deleteMissing) => {
+            onConfirm={(acknowledge) => {
               void runPush(
                 state.manifest!,
                 state.spaceId,
@@ -2191,7 +2121,6 @@ export function WizardApp({
                 state.cmaToken,
                 state.host,
                 acknowledge,
-                deleteMissing,
                 state.serverPreview,
               );
             }}

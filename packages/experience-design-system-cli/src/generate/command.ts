@@ -709,7 +709,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
           );
           db.close();
           // Skip agent invocation — jump to view
-          const viewResult: GenerateViewResult = { skill, agent, sessionId: sessionId };
+          const viewResult: GenerateViewResult = { skill, agent, sessionId: sessionId ?? '' };
           if (process.stdout.isTTY) {
             const { waitUntilExit } = render(
               createElement(GenerateView, { result: viewResult, onExit: () => void exitWithAnalytics(0) }),
