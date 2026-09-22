@@ -6,7 +6,7 @@ import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { profileContains } from '../../lib/shell.js';
 import { StepLayout, type StepDone } from '../StepLayout.js';
 import { PREFERENCE_OPTIONS, type PreferenceKey } from './index.js';
-import { PROFILE_VARIABLE as CONCURRENCY_VARIABLE } from './concurrency.js';
+import { DEFAULT_LABEL as CONCURRENCY_DEFAULT_LABEL } from './concurrency.js';
 import { PROFILE_VARIABLE as NO_COLOR_VARIABLE } from './no-color.js';
 
 /** The value the trailing row reports; no PreferenceKey contains a colon. */
@@ -34,11 +34,13 @@ type PreferencesMenuProps = {
  */
 export function summarisePreferences(
   credentials: ExperiencesCredentials,
-  profile: { concurrency: boolean; noColor: boolean },
+  profile: { noColor: boolean },
 ): PreferenceSummary {
   return {
     autoFilter: (credentials.autoFilter ?? true) ? 'Filtering irrelevant components' : 'Keeping every component',
-    concurrency: profile.concurrency ? 'More components at once' : 'Default',
+    concurrency: credentials.extractConcurrency
+      ? `${credentials.extractConcurrency} files at once`
+      : CONCURRENCY_DEFAULT_LABEL,
     customPrompts: describeCustomPrompts(credentials),
     debug: (credentials.debug ?? false) ? 'Verbose traces' : 'Quiet',
     analytics: (credentials.analyticsDisabled ?? false) ? 'Not sharing usage data' : 'Sharing usage data',
@@ -60,12 +62,11 @@ export function PreferencesMenu({ profilePath, changed, onOpen, onDone }: Prefer
   const [summary, setSummary] = useState<PreferenceSummary | null>(null);
 
   const load = useCallback(async (): Promise<PreferenceSummary> => {
-    const [credentials, concurrency, noColor] = await Promise.all([
+    const [credentials, noColor] = await Promise.all([
       readExperiencesCredentials(),
-      profileContains(profilePath, CONCURRENCY_VARIABLE),
       profileContains(profilePath, NO_COLOR_VARIABLE),
     ]);
-    return summarisePreferences(credentials, { concurrency, noColor });
+    return summarisePreferences(credentials, { noColor });
   }, [profilePath]);
 
   // The step unmounts this menu while a preference screen is open, so mounting is

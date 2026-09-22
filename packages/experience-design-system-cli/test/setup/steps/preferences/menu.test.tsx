@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PREFERENCE_OPTIONS } from '../../../../src/setup/steps/preferences/index.js';
 import { summarisePreferences } from '../../../../src/setup/steps/preferences/PreferencesMenu.js';
 
-const NO_PROFILE = { concurrency: false, noColor: false };
+const NO_PROFILE = { noColor: false };
 
 describe('PREFERENCE_OPTIONS', () => {
   it('lists every preference in the order the menu shows them', () => {
@@ -30,7 +30,7 @@ describe('summarisePreferences', () => {
 
     expect(summary).toEqual({
       autoFilter: 'Filtering irrelevant components',
-      concurrency: 'Default',
+      concurrency: 'One per CPU core',
       customPrompts: 'Built-in prompts',
       debug: 'Quiet',
       analytics: 'Sharing usage data',
@@ -56,14 +56,20 @@ describe('summarisePreferences', () => {
     expect(summary.analytics).toBe('Not sharing usage data');
   });
 
-  it('reports profile-backed preferences from the shell profile, not the credentials', () => {
+  it('reports NO_COLOR from the shell profile, not the credentials', () => {
+    const summary = summarisePreferences({ spaceId: '', environmentId: '', cmaToken: '' }, { noColor: true });
+
+    expect(summary.noColor).toBe('Colors off');
+  });
+
+  it('reports a stored extract concurrency from the credentials file', () => {
+    // Concurrency moved out of the shell profile so it works on Windows too.
     const summary = summarisePreferences(
-      { spaceId: '', environmentId: '', cmaToken: '' },
-      { concurrency: true, noColor: true },
+      { spaceId: '', environmentId: '', cmaToken: '', extractConcurrency: 8 },
+      NO_PROFILE,
     );
 
-    expect(summary.concurrency).toBe('More components at once');
-    expect(summary.noColor).toBe('Colors off');
+    expect(summary.concurrency).toBe('8 files at once');
   });
 
   it('counts how many custom prompt paths are set', () => {

@@ -159,8 +159,16 @@ export function createProgram(): Command {
     const chain: string[] = [];
     for (let c: Command | null = actionCommand; c && c.parent; c = c.parent) chain.unshift(c.name());
     const commandChain = chain.join(' ') || actionCommand.name();
-    const { analyticsDisabled } = await readExperiencesCredentials();
+    const { analyticsDisabled, extractConcurrency } = await readExperiencesCredentials();
     setPersistedAnalyticsDisabled(analyticsDisabled ?? false);
+
+    // The extractor reads this from the environment, which also carries it to
+    // spawned subcommands. Setting it here rather than in a shell profile keeps
+    // the preference working on Windows, and an operator who exports it
+    // themselves still wins.
+    if (extractConcurrency !== undefined && process.env['EDS_EXTRACT_CONCURRENCY'] === undefined) {
+      process.env['EDS_EXTRACT_CONCURRENCY'] = String(extractConcurrency);
+    }
     noteCommandStart(commandChain);
     await beginCommand(commandChain, { ...(debug !== undefined ? { debug } : {}) });
   });

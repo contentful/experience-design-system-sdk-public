@@ -1,7 +1,6 @@
 import { basename, dirname, resolve, join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import os from 'node:os';
 import { parse as parseSvelte } from 'svelte/compiler';
 import { Project, Node, ScriptTarget, ModuleKind, ts } from 'ts-morph';
 import type {
@@ -13,14 +12,12 @@ import type {
 } from '../types.js';
 import { computeExtractionScore, deriveNeedsReview } from './scoring.js';
 import { extractAllowedComponentsFromTypeText } from './slot-allowed-components.js';
-import { runFileExtractionWorkers } from './file-extraction-workers.js';
+import { runFileExtractionWorkers, extractConcurrency } from './file-extraction-workers.js';
 import { resolveLocalModule } from './resolve-local-module.js';
 
 type RawSlotDefinitionInternal = RawSlotDefinition & {
   _rawTypeText?: string;
 };
-
-const SVELTE_EXTRACT_CONCURRENCY = Number(process.env['EDS_EXTRACT_CONCURRENCY'] ?? 0) || os.cpus().length;
 
 interface AstNode {
   type: string;
@@ -50,7 +47,7 @@ export async function extractSvelteComponents(
   const retryContexts = new Map<string, RetryContext>();
   const { items: components, warnings } = await runFileExtractionWorkers(
     svelteFiles,
-    SVELTE_EXTRACT_CONCURRENCY,
+    extractConcurrency(),
     async (filePath, source) => {
       const { component, warnings: fileWarnings, retryContext } = await extractFromSvelteFile(filePath, source);
       return { item: component, warnings: fileWarnings, metadata: retryContext };

@@ -25,9 +25,7 @@ export const PREFERENCE_OPTIONS = [
   {
     key: 'concurrency',
     label: 'Performance concurrency',
-    Screen: ({ profilePath, onDone }: PreferenceScreenProps) => (
-      <ConcurrencyScreen profilePath={profilePath} onDone={onDone} />
-    ),
+    Screen: ({ onDone }: PreferenceScreenProps) => <ConcurrencyScreen onDone={onDone} />,
   },
   {
     key: 'customPrompts',

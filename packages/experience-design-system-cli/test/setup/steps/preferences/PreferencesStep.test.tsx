@@ -63,12 +63,41 @@ describe('PreferencesStep', () => {
     // The value column is padded clear of the longest name, so short names get a
     // wide gap rather than sitting against their value.
     expect(frame).toMatch(/AI auto-filter {10,}Filtering irrelevant components/);
-    expect(frame).toMatch(/Performance concurrency {2,}Default/);
+    expect(frame).toMatch(/Performance concurrency {2,}One per CPU core/);
   });
 
   it('opens a profile preference whose variable is already set', async () => {
     // Regression: the screen used to report back the moment it saw the variable,
     // which bounced the operator to the menu and looked like the row would not open.
+    // NO_COLOR is the remaining profile-backed preference.
+    shell.profileContains.mockResolvedValue(true);
+    const { lastFrame, stdin } = renderStep();
+
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Preferences — open one'),
+    );
+    await choose(stdin, lastFrame, 'Terminal colors', 8);
+
+    const opened = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('already set'),
+    );
+    expect(opened).toContain('NO_COLOR is already set');
+    expect(opened).not.toContain('Preferences — open one');
+
+    // And Back returns to the menu.
+    await acceptDefault(stdin);
+    const back = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Preferences — open one'),
+    );
+    expect(back).toContain('Terminal colors');
+  });
+
+  it('opens the concurrency preference, which no longer touches the shell profile', async () => {
+    // It used to auto-skip whenever EDS_EXTRACT_CONCURRENCY was exported; now the
+    // value lives in the credentials file, so the row always opens.
     shell.profileContains.mockResolvedValue(true);
     const { lastFrame, stdin } = renderStep();
 
@@ -80,18 +109,10 @@ describe('PreferencesStep', () => {
 
     const opened = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('already set'),
+      (f) => f.includes('Extract 8 files at once'),
     );
-    expect(opened).toContain('EDS_EXTRACT_CONCURRENCY is already set');
-    expect(opened).not.toContain('Preferences — open one');
-
-    // And Back returns to the menu.
-    await acceptDefault(stdin);
-    const back = await waitForFrame(
-      () => lastFrame(),
-      (f) => f.includes('Preferences — open one'),
-    );
-    expect(back).toContain('Performance concurrency');
+    expect(opened).not.toContain('already set');
+    expect(opened).not.toContain('.zshrc');
   });
 
   it('reflects a changed preference in the menu row after returning', async () => {
