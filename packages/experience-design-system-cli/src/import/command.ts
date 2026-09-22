@@ -7,7 +7,7 @@ import { resolveAutoFilter } from './auto-filter-resolve.js';
 import { resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
-import { addAllowDeletionsOption, addCompositionOptions } from '../lib/command-options.js';
+import { addCompositionOptions } from '../lib/command-options.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { replayRun, modifyRun } from '../runs/replay-helpers.js';
@@ -52,7 +52,6 @@ export function registerImportCommand(program: Command): void {
     .option('--no-cache', 'Re-run all steps even if output already exists')
     .option('--host <url>', 'Override API base URL (passed to apply push)');
   addCompositionOptions(cmd);
-  addAllowDeletionsOption(cmd);
   cmd
     .option('--composition-map <path>', 'Consume a hand-authored parent→children interchange map (implies --composite)')
     .option(
@@ -73,7 +72,6 @@ export function registerImportCommand(program: Command): void {
       (v: string, acc: string[]) => [...acc, v],
       [] as string[],
     )
-    .option('--auto-filter', 'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)')
     .option(
       '--no-push',
       'Import without pushing to Contentful. Interactive: runs the full wizard (extract → scope-gate → generate → final-review) and stops before push. Non-interactive (piped/CI): runs headless through generate. No credentials needed either way.',
@@ -122,7 +120,6 @@ export function registerImportCommand(program: Command): void {
         compositionRefresh?: boolean;
         generateMap?: string;
         prompt?: string[];
-        autoFilter?: boolean;
         livePreview?: boolean;
         push?: boolean;
         outDir?: string;
@@ -191,7 +188,6 @@ export function registerImportCommand(program: Command): void {
               ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
               ...(opts.host ? { host: opts.host } : {}),
               interactive: interactiveTerminalSupported,
-              ...(opts.allowDeletions ? { allowDeletions: true } : {}),
             }),
           );
           return;
@@ -213,7 +209,6 @@ export function registerImportCommand(program: Command): void {
             modifyRun({
               runIdOrPath,
               ...(opts.outDir ? { outDir: opts.outDir } : {}),
-              ...(opts.allowDeletions ? { allowDeletions: true } : {}),
             }),
           );
           return;
@@ -283,7 +278,6 @@ export function registerImportCommand(program: Command): void {
             selectPromptPath?: string;
             generatePromptPath?: string;
             initialRawTokensPath?: string;
-            allowDeletions?: boolean;
             initialRuns?: typeof pickerDecision.runs;
             onRunPicked?: (selection: RunPickerSelection) => void;
           };
@@ -335,14 +329,13 @@ export function registerImportCommand(program: Command): void {
               ...buildCompositionForwardingOptions(opts),
               noCache: opts.cache === false,
               skipMapTokens: opts.skipMapTokens ?? false,
-              autoFilter: resolveAutoFilter({ autoFilter: opts.autoFilter }, creds.autoFilter),
+              autoFilter: resolveAutoFilter({}, creds.autoFilter),
               livePreview: true,
               noPush: noPushRequested,
               ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
               ...(opts.rawTokens ? { initialRawTokensPath: normalizePath(opts.rawTokens) } : {}),
-              allowDeletions: opts.allowDeletions === true,
               ...pickerProps,
             }),
           );

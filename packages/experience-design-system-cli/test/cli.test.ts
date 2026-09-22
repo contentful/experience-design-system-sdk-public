@@ -364,10 +364,10 @@ describe('experiences import flag surface', () => {
     expect(stdout).not.toContain('--no-auto-filter');
   });
 
-  it('exposes --auto-filter in experiences import --help (Feature 7)', async () => {
+  it('does not expose --auto-filter in experiences import --help', async () => {
     const { stdout, code } = await run('import', '--help');
     expect(code).toBe(0);
-    expect(stdout).toContain('--auto-filter');
+    expect(stdout).not.toContain('--auto-filter');
   });
 
   it('does not expose --no-live-preview in experiences import --help', async () => {

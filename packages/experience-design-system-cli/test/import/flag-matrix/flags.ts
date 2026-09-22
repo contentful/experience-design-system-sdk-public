@@ -163,12 +163,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--auto-filter',
-    kind: 'boolean',
-    modes: ['pty', 'headless'],
-    incompatibleWith: [],
-  },
-  {
     flag: '--no-push',
     kind: 'boolean',
     modes: ['pty', 'headless'],
@@ -208,13 +202,5 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     sampleValue: 'run-123',
     modes: ['pty'],
     incompatibleWith: ['--push-from-run', '--project'],
-  },
-  {
-    flag: '--allow-deletions',
-    kind: 'boolean',
-    modes: ['pty', 'headless'],
-    incompatibleWith: [],
-    notes:
-      'Forwarded to apply push (interactive wizard, headless subprocess, and --push-from-run). Default is non-destructive: missing remote entities are skipped, not deleted.',
   },
 ];

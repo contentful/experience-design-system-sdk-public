@@ -144,7 +144,7 @@ There is now a single human review gate (`scope-gate`) before generation; the le
 
 ### Configurable AI auto-filter
 
-The auto-filter (`analyze select-agent` invoked before scope-gate) is on by default. Override per-run with `--auto-filter`; the value selected in setup is persisted to `credentials.json` so subsequent runs default to your saved preference.
+The auto-filter (`analyze select-agent` invoked before scope-gate) is on by default; the value selected in setup is persisted to `credentials.json` so subsequent runs default to your saved preference.
 
 ### Save-and-push default
 
@@ -184,7 +184,6 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--composition-agent`             | —                                      | Opt into agentic resolution when deterministic sources find no groups (implies `--composite`)                |
 | `--composition-refresh`           | —                                      | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`)   |
 | `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
-| `--auto-filter`                    | persisted in `credentials.json`     | Force AI auto-filter on; overrides the saved preference                                                    |
 | `--no-push`                       | push on                                | Run extract → scope-gate → internal generation → final-review and exit without pushing                     |
 | `--push-from-run <id-or-path>`    | —                                      | Re-push a prior run; never writes to disk                                                                    |
 | `--modify <id-or-path>`           | —                                      | Re-open the wizard at final-review with a prior run loaded                                                   |
@@ -193,7 +192,6 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between internal generation and apply                                             |
 | `--no-cache`                      | cache on                               | Bypass extract/select/internal-generation/map-tokens fine-grained caches and force re-run                    |
 | `--host <url>`                    | `https://api.contentful.com`           | Override API base URL                                                                                        |
-| `--allow-deletions`               | off (non-destructive)                  | Allow the push to delete remote ComponentTypes/DesignTokens missing from the manifest. Default skips them instead of deleting. Without this flag, preview responses suppress the removed-entity list and return a count instead; interactive confirm screens show an opt-out toggle (never opt-in) only when the flag is passed. Forwarded to headless subprocess pushes and `--push-from-run`. |
 
 ### Run-picker at wizard start
 
@@ -321,7 +319,6 @@ experiences analyze select-agent [--agent <name>] [--session <id>]
 | `--model <name>` | agent default | Model to use |
 | `--verbose` | — | Show full agent output including reasoning text |
 | `--dry-run` | — | Print the prompt for the first component without invoking the agent |
-| `--exclude-invalid` | — | Auto-reject components with validation errors instead of failing loud |
 | `--select-prompt-path <path>` | saved by setup | Custom `.md` skill prompt (bypasses bundled invariants); emits a banner at invocation |
 | `--no-select-cache` | cache on | Skip the per-component select cache and re-LLM every component |
 | `--no-cache` | cache on | Skip all fine-grained caches (extract, select, generate) |
