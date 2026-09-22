@@ -42,17 +42,6 @@ describe('experiences import --push-from-run — parse-time mutex errors', () =>
     expect(stderr).toMatch(/--push-from-run.*--modify|--modify.*--push-from-run/);
   });
 
-  it('errors when --overwrite and --save-as-new are combined under --modify', async () => {
-    const { stderr, code } = await run(['import', '--modify', '01HXYZ', '--overwrite', '--save-as-new']);
-    expect(code).not.toBe(0);
-    expect(stderr).toMatch(/--overwrite.*--save-as-new|--save-as-new.*--overwrite|mutually exclusive/);
-  });
-
-  it('errors when --overwrite is passed without --modify', async () => {
-    const { stderr, code } = await run(['import', '--overwrite']);
-    expect(code).not.toBe(0);
-    expect(stderr).toMatch(/--overwrite.*--modify|require --modify/);
-  });
 });
 
 // ── Unit: delegation to replayRun / modifyRun helpers ───────────────────────
@@ -176,12 +165,6 @@ describe('experiences import --modify — delegation', () => {
     await program.parseAsync(['import', '--modify', '01HXYZ'], { from: 'user' });
     expect(mockModifyRun).toHaveBeenCalledWith(expect.objectContaining({ runIdOrPath: '01HXYZ' }));
     expect(mockReplayRun).not.toHaveBeenCalled();
-  });
-
-  it('forwards --overwrite to modifyRun', async () => {
-    const program = buildProgram();
-    await program.parseAsync(['import', '--modify', '01HXYZ', '--overwrite'], { from: 'user' });
-    expect(mockModifyRun).toHaveBeenCalledWith(expect.objectContaining({ runIdOrPath: '01HXYZ', overwrite: true }));
   });
 
   it('forwards --save-as-new to modifyRun', async () => {

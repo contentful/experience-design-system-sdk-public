@@ -231,7 +231,7 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     kind: 'value',
     sampleValue: 'run-123',
     modes: ['pty', 'headless'],
-    incompatibleWith: ['--modify', '--project', '--no-save', '--no-push', '--overwrite', '--save-as-new'],
+    incompatibleWith: ['--modify', '--project', '--no-save', '--no-push', '--save-as-new'],
   },
   {
     flag: '--modify',
@@ -241,17 +241,10 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: ['--push-from-run', '--project'],
   },
   {
-    flag: '--overwrite',
-    kind: 'boolean',
-    modes: ['pty'],
-    incompatibleWith: ['--save-as-new', '--push-from-run'],
-    notes: 'Only valid with --modify.',
-  },
-  {
     flag: '--save-as-new',
     kind: 'boolean',
     modes: ['pty'],
-    incompatibleWith: ['--overwrite', '--push-from-run'],
+    incompatibleWith: ['--push-from-run'],
     notes: 'Only valid with --modify.',
   },
   {
