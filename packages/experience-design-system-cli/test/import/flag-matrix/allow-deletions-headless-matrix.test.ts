@@ -47,7 +47,6 @@ function baseOpts(overrides: Partial<PipelineOptions>): PipelineOptions {
     skipApply: false,
     noCache: false,
     yes: true,
-    verbose: false,
     ...overrides,
   };
 }

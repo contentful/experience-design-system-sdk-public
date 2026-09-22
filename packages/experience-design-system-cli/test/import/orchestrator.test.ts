@@ -107,7 +107,6 @@ function baseOpts(overrides: Partial<PipelineOptions> = {}): PipelineOptions {
     skipApply: false,
     noCache: false,
     yes: false,
-    verbose: false,
     ...overrides,
   };
 }
@@ -260,56 +259,6 @@ describe('runPipeline — apply push uses session not components file', () => {
     // Components are stored under the extract session, so that's what apply push receives
     expect(pushCall).toContain('extract-session');
     expect(pushCall).not.toContain('--components');
-  });
-});
-
-describe('runPipeline — verbose flag propagation', () => {
-  it('passes --verbose to generate and apply when opts.verbose is true', async () => {
-    const dir = await makeTempDir('orch-verbose-');
-
-    const cliPath = await makeFakeCli(dir, {
-      'analyze extract': { stdout: 'session=s1\n', stderr: 'Extracted 1 component\n' },
-      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
-      'generate components': { stdout: 'session=s2\n', stderr: 'Done: 1/1 components\n' },
-      'apply push': {
-        stdout: JSON.stringify({
-          componentTypes: { created: 1, updated: 0, failed: 0 },
-          designTokens: { created: 0, updated: 0, failed: 0 },
-        }),
-      },
-    });
-
-    await runPipeline({ ...baseOpts({ out: dir, verbose: true }), project: dir }, () => {}, cliPath);
-
-    const calls = await readCalls(dir);
-    const genCall = calls.find((c) => c[0] === '__generate' && c[1] === 'components');
-    const pushCall = calls.find((c) => c[0] === 'apply' && c[1] === 'push');
-    expect(genCall).toContain('--verbose');
-    expect(pushCall).toContain('--verbose');
-  });
-
-  it('does not pass --verbose when opts.verbose is false', async () => {
-    const dir = await makeTempDir('orch-no-verbose-');
-
-    const cliPath = await makeFakeCli(dir, {
-      'analyze extract': { stdout: 'session=s1\n', stderr: 'Extracted 1 component\n' },
-      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
-      'generate components': { stdout: 'session=s2\n', stderr: 'Done: 1/1 components\n' },
-      'apply push': {
-        stdout: JSON.stringify({
-          componentTypes: { created: 1, updated: 0, failed: 0 },
-          designTokens: { created: 0, updated: 0, failed: 0 },
-        }),
-      },
-    });
-
-    await runPipeline({ ...baseOpts({ out: dir, verbose: false }), project: dir }, () => {}, cliPath);
-
-    const calls = await readCalls(dir);
-    const genCall = calls.find((c) => c[0] === '__generate' && c[1] === 'components');
-    const pushCall = calls.find((c) => c[0] === 'apply' && c[1] === 'push');
-    expect(genCall).not.toContain('--verbose');
-    expect(pushCall).not.toContain('--verbose');
   });
 });
 

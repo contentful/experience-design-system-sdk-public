@@ -102,7 +102,6 @@ describe('runPipeline cycle error', () => {
       skipApply: false,
       noCache: false,
       yes: true,
-      verbose: false,
     };
 
     const result = await runPipeline(opts, () => {}, 'fake-cli-path');
@@ -175,7 +174,6 @@ describe('runPipeline auto-reject-cycles', () => {
       skipApply: false,
       noCache: false,
       yes: true,
-      verbose: false,
       autoRejectCycles: true,
     };
 
@@ -223,7 +221,6 @@ describe('runPipeline auto-reject-cycles', () => {
       skipApply: false,
       noCache: false,
       yes: true,
-      verbose: false,
       autoRejectCycles: false,
     };
 
@@ -274,7 +271,6 @@ describe('runPipeline pre-save cycle gate', () => {
       skipApply: true,
       noCache: false,
       yes: true,
-      verbose: false,
     };
 
     const result = await runPipeline(opts, () => {}, 'fake-cli-path');
@@ -304,7 +300,6 @@ describe('runPipeline pre-save cycle gate', () => {
       skipApply: true,
       noCache: false,
       yes: true,
-      verbose: false,
     };
 
     const result = await runPipeline(opts, () => {}, 'fake-cli-path');

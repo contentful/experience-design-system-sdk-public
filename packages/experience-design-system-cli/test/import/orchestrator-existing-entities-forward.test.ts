@@ -59,7 +59,6 @@ function baseOptsWithCredentials(): PipelineOptions {
     skipApply: true,
     noCache: false,
     yes: true,
-    verbose: false,
   };
 }
 
