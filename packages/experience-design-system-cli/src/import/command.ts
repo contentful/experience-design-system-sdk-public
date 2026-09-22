@@ -30,6 +30,7 @@ async function runImportAction(action: () => Promise<void>): Promise<void> {
 export function registerImportCommand(program: Command): void {
   const cmd = program
     .command('import')
+    .helpOption('--help')
     .description('Run the full pipeline: analyze → select → generate → push')
     .option('--space-id <id>', 'Contentful space ID (required unless --no-push)')
     .option('--environment-id <id>', 'Contentful environment ID (required unless --no-push)')
@@ -421,7 +422,6 @@ export function registerImportCommand(program: Command): void {
             yes: false,
             verbose: opts.verbose ?? false,
             excludeInvalid: opts.excludeInvalid ?? false,
-            viewports: opts.viewports,
             host: opts.host,
             dryRun: dryRunForward,
             selectPromptPath: opts.selectPromptPath,
