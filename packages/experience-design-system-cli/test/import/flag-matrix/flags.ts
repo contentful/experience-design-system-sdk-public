@@ -231,13 +231,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: [],
   },
   {
-    flag: '--no-live-preview',
-    kind: 'boolean',
-    modes: ['pty'],
-    incompatibleWith: [],
-    notes: 'Only meaningful in the interactive wizard (live preview re-run after FieldEditor save).',
-  },
-  {
     flag: '--no-push',
     kind: 'boolean',
     modes: ['pty', 'headless'],

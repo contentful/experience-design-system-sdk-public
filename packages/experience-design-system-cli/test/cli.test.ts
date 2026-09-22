@@ -370,10 +370,10 @@ describe('experiences import flag surface', () => {
     expect(stdout).toContain('--auto-filter');
   });
 
-  it('exposes --no-live-preview in experiences import --help (Feature 2)', async () => {
+  it('does not expose --no-live-preview in experiences import --help', async () => {
     const { stdout, code } = await run('import', '--help');
     expect(code).toBe(0);
-    expect(stdout).toContain('--no-live-preview');
+    expect(stdout).not.toContain('--no-live-preview');
   });
 
   it('fails loud on non-TTY without other headless flags', async () => {
