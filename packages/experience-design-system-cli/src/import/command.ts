@@ -409,7 +409,6 @@ export function registerImportCommand(program: Command): void {
             skipApply,
             noCache: opts.cache === false,
             yes: false,
-            verbose: opts.verbose ?? false,
             excludeInvalid: opts.excludeInvalid ?? false,
             host: opts.host,
             dryRun: dryRunForward,
