@@ -1884,7 +1884,6 @@ export function WizardApp({
         return (
           <ScopeGateHost
             components={components}
-            autoAccept={false}
             compositionMode={compositionMode}
             aiFilterStatus={state.aiFilterStatus}
             aiFilterProgress={state.aiFilterProgress}
@@ -1958,7 +1957,6 @@ export function WizardApp({
             extractSessionId={state.extractSessionId}
             tokenSessionId={state.tokenSessionId}
             generatedCount={state.generatedCount}
-            autoAccept={false}
             compositionMode={compositionMode}
             livePreview={livePreview}
             spaceId={state.spaceId}

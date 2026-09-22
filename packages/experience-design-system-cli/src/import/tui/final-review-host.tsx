@@ -9,7 +9,7 @@ import type { ReviewStepProps } from './review-step-props.js';
 export type FinalReviewHostProps = Omit<ReviewStepProps, 'extractSessionId'> & {
   extractSessionId: string | null;
   generatedCount: number;
-  autoAccept: boolean;
+  autoAccept?: boolean;
   compositionMode?: CompositionMode;
 };
 
@@ -17,7 +17,7 @@ export function FinalReviewHost({
   extractSessionId,
   tokenSessionId,
   generatedCount,
-  autoAccept,
+  autoAccept = false,
   compositionMode = 'atomic',
   onFinalize,
   onQuit,

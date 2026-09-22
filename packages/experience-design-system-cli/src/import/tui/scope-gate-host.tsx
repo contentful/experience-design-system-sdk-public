@@ -12,7 +12,7 @@ type AutoFilterStatus = 'idle' | 'running' | 'complete' | 'cancelled' | 'failed'
 
 export type ScopeGateHostProps = {
   components: ReadonlyArray<ScopeComponent>;
-  autoAccept: boolean;
+  autoAccept?: boolean;
   compositionMode?: CompositionMode;
   onConfirm: (decisions: { accepted: string[]; rejected: string[] }) => void;
   onQuit: () => void;
@@ -24,7 +24,7 @@ export type ScopeGateHostProps = {
 
 export function ScopeGateHost({
   components,
-  autoAccept,
+  autoAccept = false,
   compositionMode = 'atomic',
   onConfirm,
   onQuit,
