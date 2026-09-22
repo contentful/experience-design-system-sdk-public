@@ -1,0 +1,115 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { Box, Text } from 'ink';
+import { Select } from '@inkjs/ui';
+import { readExperiencesCredentials, type ExperiencesCredentials } from '../../../credentials-store.js';
+import { profileContains } from '../../lib/shell.js';
+import { StepLayout, type StepDone } from '../StepLayout.js';
+import { PREFERENCE_OPTIONS, type PreferenceKey } from './index.js';
+import { PROFILE_VARIABLE as CONCURRENCY_VARIABLE } from './concurrency.js';
+import { PROFILE_VARIABLE as NO_COLOR_VARIABLE } from './no-color.js';
+
+/** The value the trailing row reports; no PreferenceKey contains a colon. */
+const DONE_VALUE = 'menu:done';
+
+export const PREFERENCES_MENU_HELP = 'Every preference already has a working default — open one only to change it.';
+
+/** What each preference currently resolves to, for the menu's summary column. */
+export type PreferenceSummary = Record<PreferenceKey, string>;
+
+type PreferencesMenuProps = {
+  profilePath: string;
+  /** Preferences changed so far this visit; decides what Done reports. */
+  changed: ReadonlySet<PreferenceKey>;
+  onOpen: (key: PreferenceKey) => void;
+  onDone: StepDone;
+};
+
+/**
+ * Describe each preference the way the operator reads it, so a row says what the
+ * setting currently does rather than which field stores it.
+ */
+export function summarisePreferences(
+  credentials: ExperiencesCredentials,
+  profile: { concurrency: boolean; noColor: boolean },
+): PreferenceSummary {
+  return {
+    autoFilter: (credentials.autoFilter ?? true) ? 'Filtering irrelevant components' : 'Keeping every component',
+    concurrency: profile.concurrency ? 'More components at once' : 'Default',
+    customPrompts: describeCustomPrompts(credentials),
+    debug: (credentials.debug ?? false) ? 'Verbose traces' : 'Quiet',
+    analytics: (credentials.analyticsDisabled ?? false) ? 'Not sharing usage data' : 'Sharing usage data',
+    noColor: profile.noColor ? 'Colors off' : 'Colors on',
+  };
+}
+
+function describeCustomPrompts(credentials: ExperiencesCredentials): string {
+  const count = [credentials.selectPromptPath, credentials.generatePromptPath].filter(Boolean).length;
+  if (count === 0) return 'Built-in prompts';
+  return count === 2 ? 'Custom select and generate' : 'One custom prompt';
+}
+
+/**
+ * The preferences step opens here instead of walking every setting, so the
+ * operator reads the current values and opens only what they want to change.
+ */
+export function PreferencesMenu({ profilePath, changed, onOpen, onDone }: PreferencesMenuProps): React.ReactElement {
+  const [summary, setSummary] = useState<PreferenceSummary | null>(null);
+
+  const load = useCallback(async (): Promise<PreferenceSummary> => {
+    const [credentials, concurrency, noColor] = await Promise.all([
+      readExperiencesCredentials(),
+      profileContains(profilePath, CONCURRENCY_VARIABLE),
+      profileContains(profilePath, NO_COLOR_VARIABLE),
+    ]);
+    return summarisePreferences(credentials, { concurrency, noColor });
+  }, [profilePath]);
+
+  // The step unmounts this menu while a preference screen is open, so mounting is
+  // what refreshes the rows — a setting the operator just changed reads back here.
+  useEffect(() => {
+    let active = true;
+    void load().then((next) => {
+      if (active) setSummary(next);
+    });
+    return () => {
+      active = false;
+    };
+  }, [load]);
+
+  if (!summary) return <Text dimColor>Reading saved preferences…</Text>;
+
+  const labelWidth = Math.max(...PREFERENCE_OPTIONS.map((option) => option.label.length));
+  const options = [
+    ...PREFERENCE_OPTIONS.map((option) => ({
+      label: `${option.label.padEnd(labelWidth)}  ${summary[option.key]}`,
+      value: option.key as string,
+    })),
+    { label: 'Done', value: DONE_VALUE },
+  ];
+
+  return (
+    <StepLayout
+      helpText={PREFERENCES_MENU_HELP}
+      prompt={
+        <Box flexDirection="column">
+          <Text>Preferences — open one to change it, or choose Done</Text>
+          <Box marginTop={1}>
+            <Select
+              options={options}
+              visibleOptionCount={options.length}
+              onChange={(value) => {
+                if (value === DONE_VALUE) {
+                  onDone(changed.size > 0 ? 'completed' : 'skipped');
+                  return;
+                }
+                onOpen(value as PreferenceKey);
+              }}
+            />
+          </Box>
+        </Box>
+      }
+    >
+      {null}
+    </StepLayout>
+  );
+}

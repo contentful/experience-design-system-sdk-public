@@ -13,7 +13,7 @@ import { SetupStepper } from './SetupStepper.js';
 import { CodingAgentScreen } from '../steps/coding-agent.js';
 import { ContentfulScreen } from '../steps/contentful-credentials.js';
 import type { StepStatus } from '../steps/StepLayout.js';
-import { PREFERENCE_OPTIONS } from '../steps/preferences/index.js';
+import { PreferencesStep } from '../steps/preferences/PreferencesStep.js';
 import { PrerequisitesScreen } from '../steps/prerequisites/PrerequisitesScreen.js';
 import type { PrerequisitesOutcome } from '../steps/prerequisites/deps.js';
 
@@ -151,14 +151,12 @@ export function SetupScreen({
       if (skip.skipOptional) {
         results.push({ name: 'Preferences', status: 'skipped', required: false });
       } else {
-        // Each preference owns its screen, so the wizard walks them in order
-        // and reports the step as completed if any of them changed something.
-        let changed = false;
-        for (const { key, Screen } of PREFERENCE_OPTIONS) {
-          const status = await runScreen((done) => <Screen key={key} profilePath={profilePath} onDone={done} />);
-          if (status === 'completed') changed = true;
-        }
-        results.push({ name: 'Preferences', status: changed ? 'completed' : 'skipped', required: false });
+        // Preferences open on a menu rather than a forced walk: the operator
+        // picks the ones they want and the step owns returning to the list.
+        const status = await runScreen<StepStatus>((done) => (
+          <PreferencesStep profilePath={profilePath} onDone={done} />
+        ));
+        results.push({ name: 'Preferences', status, required: false });
       }
 
       const exitCode = countRequiredFailures(results) === 0 ? 0 : 1;

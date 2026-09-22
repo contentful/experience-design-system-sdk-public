@@ -4,7 +4,7 @@ import { ProfilePreference } from './ProfilePreference.js';
 
 export const CONCURRENCY_HELP = 'Analyzes more components at once, which is faster on machines with spare cores.';
 
-const PROFILE_VARIABLE = 'EDS_EXTRACT_CONCURRENCY';
+export const PROFILE_VARIABLE = 'EDS_EXTRACT_CONCURRENCY';
 
 export function ConcurrencyScreen({
   profilePath,

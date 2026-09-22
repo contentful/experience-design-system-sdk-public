@@ -4,7 +4,7 @@ import { ProfilePreference } from './ProfilePreference.js';
 
 export const NO_COLOR_HELP = 'Prints plain text with no color, which suits CI logs and basic terminals.';
 
-const PROFILE_VARIABLE = 'NO_COLOR';
+export const PROFILE_VARIABLE = 'NO_COLOR';
 
 export function NoColorScreen({ profilePath, onDone }: { profilePath: string; onDone: StepDone }): React.ReactElement {
   return (

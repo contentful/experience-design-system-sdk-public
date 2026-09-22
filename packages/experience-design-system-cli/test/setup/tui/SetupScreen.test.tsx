@@ -3,7 +3,7 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { SetupScreen } from '../../../src/setup/tui/SetupScreen.js';
 import { waitForFrame } from '../../helpers/wait-for-frame.js';
-import { acceptDefault } from '../steps/select-helpers.js';
+import { acceptDefault, choose } from '../steps/select-helpers.js';
 
 /**
  * Each step now reads and writes for itself, so the wizard's own tests stub the
@@ -198,31 +198,62 @@ describe('SetupScreen', () => {
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ runDoctor: true, exitCode: 0 }));
   });
 
-  it('walks every preference in order without asking which to configure', async () => {
+  it('opens preferences on a menu rather than walking each setting', async () => {
     const { lastFrame } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
 
     const frame = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('AI auto-filter'),
+      (f) => f.includes('Preferences — open one'),
     );
 
-    expect(frame).not.toContain('Choose preferences to configure');
-    expect(frame).toContain('Filters out components irrelevant to experience orchestration');
+    // Every preference is listed with its current value, and none of their
+    // prompts has been asked yet.
+    expect(frame).toContain('AI auto-filter');
+    expect(frame).toContain('Debug logging');
+    expect(frame).toContain('Done');
+    expect(frame).not.toContain('Filters out components irrelevant to experience orchestration');
   });
 
-  it('clears a finished preference from the screen before the next one', async () => {
+  it('returns to the menu after a preference is changed', async () => {
     const { lastFrame, stdin } = renderScreen({ skip: { skipAgent: true, skipCredentials: true } });
 
     await waitForFrame(
       () => lastFrame(),
+      (f) => f.includes('Preferences — open one'),
+    );
+    // The first row leads the menu, so accepting opens AI auto-filter.
+    await acceptDefault(stdin);
+    const opened = await waitForFrame(
+      () => lastFrame(),
       (f) => f.includes('Filters out components irrelevant'),
     );
-    await acceptDefault(stdin);
+    expect(opened).not.toContain('Preferences — open one');
 
-    const frame = await waitForFrame(
+    await acceptDefault(stdin);
+    const back = await waitForFrame(
       () => lastFrame(),
-      (f) => f.includes('Analyzes more components at once'),
+      (f) => f.includes('Preferences — open one'),
     );
-    expect(frame).not.toContain('Filters out components irrelevant');
+    expect(back).toContain('AI auto-filter');
+  });
+
+  it('leaves preferences skipped when the operator chooses Done without changing anything', async () => {
+    const { lastFrame, stdin, onComplete } = renderScreen({
+      skip: { skipAgent: true, skipCredentials: true },
+    });
+
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Preferences — open one'),
+    );
+    await choose(stdin, lastFrame, 'Done', 8);
+
+    await waitForFrame(
+      () => (onComplete.mock.calls.length > 0 ? 'done' : ''),
+      (f) => f === 'done',
+    );
+    const outcome = onComplete.mock.calls[0]![0] as { results: Array<{ name: string; status: string }> };
+    expect(outcome.results.find((result) => result.name === 'Preferences')?.status).toBe('skipped');
+    expect(store.write).not.toHaveBeenCalled();
   });
 });

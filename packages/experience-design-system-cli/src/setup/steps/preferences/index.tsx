@@ -46,7 +46,7 @@ export const PREFERENCE_OPTIONS = [
   },
   {
     key: 'noColor',
-    label: 'Disable terminal colors',
+    label: 'Terminal colors',
     Screen: ({ profilePath, onDone }: PreferenceScreenProps) => (
       <NoColorScreen profilePath={profilePath} onDone={onDone} />
     ),
