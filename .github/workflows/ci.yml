@@ -72,8 +72,17 @@ jobs:
         run: pnpm affected:lint
 
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # The Windows leg is advisory: its steps carry continue-on-error so it reports
+    # what breaks without blocking merges. Step-level rather than job-level on
+    # purpose — a job-level continue-on-error still shows as 'failure' in
+    # needs.test.result, which test-summary and release gate on. Once Windows is
+    # reliably green, drop those and it gates like any other leg.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || (github.event_name == 'push' && github.event.head_commit.author.name != 'contentful-automation[bot]')
     permissions:
       contents: read
@@ -93,18 +102,22 @@ jobs:
           node-version: "lts/*"
 
       - name: Install dependencies
+        continue-on-error: ${{ matrix.os == 'windows-latest' }}
         run: pnpm install --frozen-lockfile
 
       - name: Set NX SHAs
         uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
 
       - name: Typecheck
+        continue-on-error: ${{ matrix.os == 'windows-latest' }}
         run: pnpm typecheck
 
       - name: Run tests
+        continue-on-error: ${{ matrix.os == 'windows-latest' }}
         run: pnpm affected:test
 
       - name: Build
+        continue-on-error: ${{ matrix.os == 'windows-latest' }}
         run: pnpm affected:build
 
   # PTY smoke tests are intentionally NOT run in CI. node-pty on the
