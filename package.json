@@ -77,7 +77,7 @@
     ],
     "overrides": {
       "picomatch@<4.0.4": ">=4.0.4",
-      "brace-expansion@<5.0.9": ">=5.0.9",
+      "brace-expansion@<5.0.9": ">=5.0.12",
       "@contentful/rich-text-types": "https://registry.npmjs.org/@contentful/rich-text-types/-/rich-text-types-16.8.5.tgz"
     }
   }
