@@ -136,8 +136,7 @@ function runSpawn(
   opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    // spawnBinary, not spawn: pnpm/corepack/npm are `.cmd` shims on Windows, which
-    // was the reported `experiences setup` failure at "Step 2: pnpm".
+    // spawnBinary, not spawn: pnpm/corepack/npm are `.cmd` shims on Windows.
     const child = spawnBinary(cmd, args, {
       cwd: opts.cwd,
       env: opts.env ?? process.env,
