@@ -373,7 +373,6 @@ export type WizardAppProps = {
   noCache?: boolean;
   autoFilter?: boolean;
   livePreview?: boolean;
-  noPush?: boolean;
   outDirOverride?: string;
   onConflictMode?: ConflictMode;
   selectPromptPath?: string;
@@ -411,7 +410,6 @@ export function WizardApp({
   noCache = false,
   autoFilter = true,
   livePreview = true,
-  noPush = false,
   outDirOverride,
   onConflictMode,
   selectPromptPath,
@@ -669,11 +667,7 @@ export function WizardApp({
         acceptedCount: 0,
         outDir: state.outDir || join(process.cwd(), '.contentful'),
       });
-      if (noPush) {
-        void startSaveFlow();
-      } else {
-        update({ step: 'credentials' });
-      }
+      update({ step: 'credentials' });
       return;
     }
     update({ step: 'path-validation', tokensPath, tokenSessionId, tokenCount });
@@ -1876,11 +1870,6 @@ export function WizardApp({
               update({ projectPath: path, step: 'credentials' });
             }}
             onSkipComponents={() => {
-              if (noPush) {
-                update({ skipComponents: true, acceptedCount: 0 });
-                void startSaveFlow();
-                return;
-              }
               update({ step: 'credentials', skipComponents: true, acceptedCount: 0 });
             }}
             onChangePath={() => update({ step: 'welcome' })}
@@ -1952,7 +1941,7 @@ export function WizardApp({
                 cancelAutoFilter: state.aiFilterStatus === 'running' ? cancelAutoFilterAndWait : undefined,
                 onAdvanceToGenerate: async ({ sessionId: sid, acceptedCount }) => {
                   update({ acceptedCount, autoRejectedCount: 0 });
-                  const next = nextStepAfterScopeGate({ acceptedCount, noPush });
+                  const next = nextStepAfterScopeGate({ acceptedCount });
                   if (next === 'generating') {
                     if (await runAgentAuthCheck('generating')) {
                       void runGenerate(sid, state.tokensPath, acceptedCount);
@@ -1968,11 +1957,7 @@ export function WizardApp({
                 },
                 onAdvanceToPushFlow: (count) => {
                   update({ acceptedCount: count, autoRejectedCount: 0 });
-                  const next = nextStepAfterScopeGate({ acceptedCount: count, noPush });
-                  if (next === 'print-gate') {
-                    void startSaveFlow();
-                    return;
-                  }
+                  const next = nextStepAfterScopeGate({ acceptedCount: count });
                   advanceToPushFlow(count);
                 },
               });
@@ -2123,11 +2108,6 @@ export function WizardApp({
               const allowEmptyDeleteAll = acceptedCount === 0;
               allowEmptyDeleteAllRef.current = allowEmptyDeleteAll;
               update({ finalReviewPassed: true });
-              if (noPush) {
-                update({ generatedAcceptedCount: acceptedCount });
-                void startSaveFlow();
-                return;
-              }
               if (autoAcceptScope) {
                 update({ generatedAcceptedCount: acceptedCount });
                 void runSaveAndPush();

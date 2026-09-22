@@ -1,10 +1,10 @@
-export type WizardStepAfterScope = 'credentials' | 'generating' | 'push-decision-gate' | 'print-gate';
+export type WizardStepAfterScope = 'generating' | 'push-decision-gate';
 
 export type WizardStepAfterCredentials = 'generating' | 'push-decision-gate';
 
-export function nextStepAfterScopeGate(opts: { acceptedCount: number; noPush: boolean }): WizardStepAfterScope {
+export function nextStepAfterScopeGate(opts: { acceptedCount: number }): WizardStepAfterScope {
   if (opts.acceptedCount > 0) return 'generating';
-  return opts.noPush ? 'print-gate' : 'push-decision-gate';
+  return 'push-decision-gate';
 }
 
 export function nextStepAfterCredentialsValidated(opts: { acceptedCount: number }): WizardStepAfterCredentials {

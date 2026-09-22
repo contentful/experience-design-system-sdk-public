@@ -153,7 +153,7 @@ describe('WizardApp reused token catalog', () => {
 
     const { WizardApp } = await import('../../../src/import/tui/WizardApp.js');
     const app = render(
-      <WizardApp initialProjectPath={projectPath} initialRawTokensPath={join(dir, 'raw-tokens.json')} noPush />,
+      <WizardApp initialProjectPath={projectPath} initialRawTokensPath={join(dir, 'raw-tokens.json')} />,
     );
     await new Promise((resolve) => setTimeout(resolve, 100));
     // Frame 1: token-reuse-gate — press Enter to reuse the pre-generated tokens.
