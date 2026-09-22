@@ -52,6 +52,53 @@ describe('PreferencesStep', () => {
     expect(frame).toContain('Colors on');
   });
 
+  it('marks defaults hollow and changed settings filled, with a legend', async () => {
+    store.read.mockResolvedValue({
+      spaceId: '',
+      environmentId: '',
+      cmaToken: '',
+      debug: true,
+    });
+    const { lastFrame } = renderStep();
+
+    const frame = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Preferences — open one'),
+    );
+
+    expect(frame).toMatch(/○ AI auto-filter\s+Filtering irrelevant components/);
+    expect(frame).toMatch(/● Debug logging\s+Verbose traces/);
+    expect(frame).toContain('○ default   ● changed');
+  });
+
+  it('opens a profile preference whose variable is already set', async () => {
+    // Regression: the screen used to report back the moment it saw the variable,
+    // which bounced the operator to the menu and looked like the row would not open.
+    shell.profileContains.mockResolvedValue(true);
+    const { lastFrame, stdin } = renderStep();
+
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Preferences — open one'),
+    );
+    await choose(stdin, lastFrame, 'Performance concurrency');
+
+    const opened = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('already set'),
+    );
+    expect(opened).toContain('EDS_EXTRACT_CONCURRENCY is already set');
+    expect(opened).not.toContain('Preferences — open one');
+
+    // And Back returns to the menu.
+    await acceptDefault(stdin);
+    const back = await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('Preferences — open one'),
+    );
+    expect(back).toContain('Performance concurrency');
+  });
+
   it('reflects a changed preference in the menu row after returning', async () => {
     // The screen writes through to the store, so the menu's re-read must see the
     // new value rather than the one it first loaded.

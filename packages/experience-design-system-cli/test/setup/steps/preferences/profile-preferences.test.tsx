@@ -48,15 +48,29 @@ describe('ConcurrencyScreen', () => {
     expect(onDone).toHaveBeenCalledWith('skipped');
   });
 
-  it('never asks when the profile already sets the variable', async () => {
+  it('explains an already-set variable and waits instead of returning on its own', async () => {
     const { lastFrame, onDone, append } = setup(ConcurrencyScreen, true);
     const frame = await waitForFrame(
       () => lastFrame(),
       (f) => f.includes('already set'),
     );
 
-    expect(frame).toContain('EDS_EXTRACT_CONCURRENCY — already set');
-    expect(frame).not.toContain('Performance concurrency');
+    expect(frame).toContain(`EDS_EXTRACT_CONCURRENCY is already set in ${PROFILE}`);
+    expect(frame).toContain('Remove that line from your profile');
+    expect(append).not.toHaveBeenCalled();
+    // The screen stays put so the operator can read it; it only reports back
+    // once they choose Back.
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('returns to the caller when the operator leaves an already-set variable', async () => {
+    const { lastFrame, stdin, onDone, append } = setup(ConcurrencyScreen, true);
+    await waitForFrame(
+      () => lastFrame(),
+      (f) => f.includes('already set'),
+    );
+    await acceptDefault(stdin);
+
     expect(append).not.toHaveBeenCalled();
     expect(onDone).toHaveBeenCalledWith('skipped');
   });

@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import { Select } from '@inkjs/ui';
 import { readExperiencesCredentials, type ExperiencesCredentials } from '../../../credentials-store.js';
 import { profileContains } from '../../lib/shell.js';
+import { PALETTE } from '../../../analyze/select/tui/theme.js';
 import { StepLayout, type StepDone } from '../StepLayout.js';
 import { PREFERENCE_OPTIONS, type PreferenceKey } from './index.js';
 import { PROFILE_VARIABLE as CONCURRENCY_VARIABLE } from './concurrency.js';
@@ -13,8 +14,23 @@ const DONE_VALUE = 'menu:done';
 
 export const PREFERENCES_MENU_HELP = 'Every preference already has a working default — open one only to change it.';
 
+/**
+ * Whether a preference still sits on its default or the operator has moved it.
+ * The menu marks the two differently so a glance shows what has been touched.
+ */
+export type PreferenceState = 'default' | 'changed';
+
+export type PreferenceValue = {
+  /** What the setting currently does, in the operator's words. */
+  text: string;
+  state: PreferenceState;
+};
+
 /** What each preference currently resolves to, for the menu's summary column. */
-export type PreferenceSummary = Record<PreferenceKey, string>;
+export type PreferenceSummary = Record<PreferenceKey, PreferenceValue>;
+
+/** Filled when a setting is off its default, hollow when it is untouched. */
+const MARKER: Record<PreferenceState, string> = { default: '○', changed: '●' };
 
 type PreferencesMenuProps = {
   profilePath: string;
@@ -32,20 +48,31 @@ export function summarisePreferences(
   credentials: ExperiencesCredentials,
   profile: { concurrency: boolean; noColor: boolean },
 ): PreferenceSummary {
+  // Each preference names its default, so "changed" means the stored value
+  // differs from what an untouched install would do — not merely that a field
+  // is present in the credentials file.
+  const autoFilter = credentials.autoFilter ?? true;
+  const debug = credentials.debug ?? false;
+  const analyticsDisabled = credentials.analyticsDisabled ?? false;
+
   return {
-    autoFilter: (credentials.autoFilter ?? true) ? 'Filtering irrelevant components' : 'Keeping every component',
-    concurrency: profile.concurrency ? 'More components at once' : 'Default',
+    autoFilter: value(autoFilter ? 'Filtering irrelevant components' : 'Keeping every component', autoFilter === true),
+    concurrency: value(profile.concurrency ? 'More components at once' : 'Default', !profile.concurrency),
     customPrompts: describeCustomPrompts(credentials),
-    debug: (credentials.debug ?? false) ? 'Verbose traces' : 'Quiet',
-    analytics: (credentials.analyticsDisabled ?? false) ? 'Not sharing usage data' : 'Sharing usage data',
-    noColor: profile.noColor ? 'Colors off' : 'Colors on',
+    debug: value(debug ? 'Verbose traces' : 'Quiet', debug === false),
+    analytics: value(analyticsDisabled ? 'Not sharing usage data' : 'Sharing usage data', analyticsDisabled === false),
+    noColor: value(profile.noColor ? 'Colors off' : 'Colors on', !profile.noColor),
   };
 }
 
-function describeCustomPrompts(credentials: ExperiencesCredentials): string {
+function value(text: string, isDefault: boolean): PreferenceValue {
+  return { text, state: isDefault ? 'default' : 'changed' };
+}
+
+function describeCustomPrompts(credentials: ExperiencesCredentials): PreferenceValue {
   const count = [credentials.selectPromptPath, credentials.generatePromptPath].filter(Boolean).length;
-  if (count === 0) return 'Built-in prompts';
-  return count === 2 ? 'Custom select and generate' : 'One custom prompt';
+  if (count === 0) return value('Built-in prompts', true);
+  return value(count === 2 ? 'Custom select and generate' : 'One custom prompt', false);
 }
 
 /**
@@ -80,10 +107,13 @@ export function PreferencesMenu({ profilePath, changed, onOpen, onDone }: Prefer
 
   const labelWidth = Math.max(...PREFERENCE_OPTIONS.map((option) => option.label.length));
   const options = [
-    ...PREFERENCE_OPTIONS.map((option) => ({
-      label: `${option.label.padEnd(labelWidth)}  ${summary[option.key]}`,
-      value: option.key as string,
-    })),
+    ...PREFERENCE_OPTIONS.map((option) => {
+      const { text, state } = summary[option.key];
+      return {
+        label: `${MARKER[state]} ${option.label.padEnd(labelWidth)}  ${text}`,
+        value: option.key as string,
+      };
+    }),
     { label: 'Done', value: DONE_VALUE },
   ];
 
@@ -105,6 +135,13 @@ export function PreferencesMenu({ profilePath, changed, onOpen, onDone }: Prefer
                 onOpen(value as PreferenceKey);
               }}
             />
+          </Box>
+          <Box marginTop={1}>
+            {/* Select styles its own option labels, so the rows carry the state
+                as a symbol and only this legend can be colored. */}
+            <Text dimColor>{`${MARKER.default} default   `}</Text>
+            <Text color={PALETTE.info}>{MARKER.changed}</Text>
+            <Text dimColor> changed</Text>
           </Box>
         </Box>
       }

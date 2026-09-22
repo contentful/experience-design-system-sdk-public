@@ -25,20 +25,20 @@ describe('PREFERENCE_OPTIONS', () => {
 });
 
 describe('summarisePreferences', () => {
-  it('describes the defaults an untouched install runs with', () => {
+  it('describes the defaults an untouched install runs with, all marked default', () => {
     const summary = summarisePreferences({ spaceId: '', environmentId: '', cmaToken: '' }, NO_PROFILE);
 
     expect(summary).toEqual({
-      autoFilter: 'Filtering irrelevant components',
-      concurrency: 'Default',
-      customPrompts: 'Built-in prompts',
-      debug: 'Quiet',
-      analytics: 'Sharing usage data',
-      noColor: 'Colors on',
+      autoFilter: { text: 'Filtering irrelevant components', state: 'default' },
+      concurrency: { text: 'Default', state: 'default' },
+      customPrompts: { text: 'Built-in prompts', state: 'default' },
+      debug: { text: 'Quiet', state: 'default' },
+      analytics: { text: 'Sharing usage data', state: 'default' },
+      noColor: { text: 'Colors on', state: 'default' },
     });
   });
 
-  it('reports stored credential preferences', () => {
+  it('marks credential preferences moved off their default as changed', () => {
     const summary = summarisePreferences(
       {
         spaceId: '',
@@ -51,9 +51,20 @@ describe('summarisePreferences', () => {
       NO_PROFILE,
     );
 
-    expect(summary.autoFilter).toBe('Keeping every component');
-    expect(summary.debug).toBe('Verbose traces');
-    expect(summary.analytics).toBe('Not sharing usage data');
+    expect(summary.autoFilter).toEqual({ text: 'Keeping every component', state: 'changed' });
+    expect(summary.debug).toEqual({ text: 'Verbose traces', state: 'changed' });
+    expect(summary.analytics).toEqual({ text: 'Not sharing usage data', state: 'changed' });
+  });
+
+  it('treats a stored value equal to the default as unchanged', () => {
+    // autoFilter defaults to on, so an explicit `true` is still the default.
+    const summary = summarisePreferences(
+      { spaceId: '', environmentId: '', cmaToken: '', autoFilter: true, debug: false },
+      NO_PROFILE,
+    );
+
+    expect(summary.autoFilter.state).toBe('default');
+    expect(summary.debug.state).toBe('default');
   });
 
   it('reports profile-backed preferences from the shell profile, not the credentials', () => {
@@ -62,19 +73,20 @@ describe('summarisePreferences', () => {
       { concurrency: true, noColor: true },
     );
 
-    expect(summary.concurrency).toBe('More components at once');
-    expect(summary.noColor).toBe('Colors off');
+    expect(summary.concurrency).toEqual({ text: 'More components at once', state: 'changed' });
+    expect(summary.noColor).toEqual({ text: 'Colors off', state: 'changed' });
   });
 
   it('counts how many custom prompt paths are set', () => {
     const base = { spaceId: '', environmentId: '', cmaToken: '' };
 
-    expect(summarisePreferences({ ...base, selectPromptPath: '/tmp/s.md' }, NO_PROFILE).customPrompts).toBe(
-      'One custom prompt',
-    );
+    expect(summarisePreferences({ ...base, selectPromptPath: '/tmp/s.md' }, NO_PROFILE).customPrompts).toEqual({
+      text: 'One custom prompt',
+      state: 'changed',
+    });
     expect(
       summarisePreferences({ ...base, selectPromptPath: '/tmp/s.md', generatePromptPath: '/tmp/g.md' }, NO_PROFILE)
         .customPrompts,
-    ).toBe('Custom select and generate');
+    ).toEqual({ text: 'Custom select and generate', state: 'changed' });
   });
 });

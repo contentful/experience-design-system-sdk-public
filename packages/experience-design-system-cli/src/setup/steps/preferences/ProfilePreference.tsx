@@ -37,14 +37,34 @@ export function ProfilePreference({
   const [present, setPresent] = useState<boolean | null>(null);
 
   useEffect(() => {
-    void profileContains(profilePath, variable).then((found) => {
-      setPresent(found);
-      if (found) onDone('skipped');
-    });
-  }, [profilePath, variable, onDone]);
+    void profileContains(profilePath, variable).then(setPresent);
+  }, [profilePath, variable]);
 
   if (present === null) return <Text dimColor>Checking your shell profile…</Text>;
-  if (present) return <StepSuccess>{`${variable} — already set`}</StepSuccess>;
+
+  // Opening an already-set preference is a deliberate request, so it explains
+  // itself and waits rather than returning on its own. Setup only ever appends
+  // to the profile, so undoing this means editing the file by hand.
+  if (present) {
+    return (
+      <StepLayout
+        helpText={helpText}
+        prompt={
+          <Box flexDirection="column">
+            <StepSuccess>{`${variable} is already set in ${profilePath}`}</StepSuccess>
+            <Box marginTop={1}>
+              <Text dimColor>Remove that line from your profile to turn it back off.</Text>
+            </Box>
+            <Box marginTop={1}>
+              <Select options={[{ label: 'Back', value: SKIP }]} onChange={() => onDone('skipped')} />
+            </Box>
+          </Box>
+        }
+      >
+        {null}
+      </StepLayout>
+    );
+  }
 
   return (
     <StepLayout
