@@ -81,7 +81,6 @@ describe('import — help output lists all flags', () => {
       '--skip-apply',
       '--skip-map-tokens',
       '--no-cache',
-      '--yes',
       '--verbose',
       '--viewports',
       '--host',
