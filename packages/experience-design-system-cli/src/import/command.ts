@@ -63,11 +63,8 @@ export function registerImportCommand(program: Command): void {
         model?: string;
         bedrock?: boolean;
         rawTokens?: string;
-        skipAnalyze?: boolean;
-        skipGenerate?: boolean;
         skipMapTokens?: boolean;
         cache?: boolean;
-        yes?: boolean;
         host?: string;
         composite?: boolean;
         atomic?: boolean;
@@ -77,7 +74,6 @@ export function registerImportCommand(program: Command): void {
         compositionRefresh?: boolean;
         generateMap?: string;
         prompt?: string[];
-        livePreview?: boolean;
       }) => {
         const interactiveTerminalSupported = getInteractiveTerminalSupport().supported;
 

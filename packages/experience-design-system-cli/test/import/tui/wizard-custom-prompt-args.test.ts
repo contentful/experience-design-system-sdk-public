@@ -58,3 +58,27 @@ describe('buildGenerateComponentsArgs — custom prompt path (Feature 8)', () =>
     expect(args).not.toContain('--generate-prompt-path');
   });
 });
+
+describe('stage prompt forwarding', () => {
+  it('forwards repeatable prompt overrides to select-agent', () => {
+    const args = buildSelectAgentArgs({
+      sessionId: 's1',
+      agent: 'claude',
+      promptOverrides: ['select=focus on visible UI', 'composition=./composition.md'],
+    });
+    expect(args).toContain('--prompt');
+    expect(args).toContain('select=focus on visible UI');
+    expect(args).toContain('composition=./composition.md');
+  });
+
+  it('forwards repeatable prompt overrides to generation', () => {
+    const args = buildGenerateComponentsArgs({
+      sessionId: 's1',
+      agent: 'claude',
+      promptOverrides: ['generate=preserve descriptions', 'select=unused here'],
+    });
+    expect(args).toContain('--prompt');
+    expect(args).toContain('generate=preserve descriptions');
+    expect(args).toContain('select=unused here');
+  });
+});

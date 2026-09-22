@@ -1,10 +1,12 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { exitWithAnalytics } from '../analytics/index.js';
+import { getDebugLogger } from './debug-logger.js';
 
 const execFileAsync = promisify(execFile);
 
 export function die(message: string): never {
+  getDebugLogger().event('other', 'cli.die', { message });
   process.stderr.write(`${message}\n`);
   void exitWithAnalytics(1);
   throw new Error('exit');

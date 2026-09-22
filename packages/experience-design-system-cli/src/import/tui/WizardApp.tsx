@@ -137,12 +137,10 @@ type WizardState = {
   tokenCount: number;
   extractSessionId: string | null;
   generateSessionId: string | null;
-  extractedCount: number;
   acceptedCount: number;
   autoRejectedCount: number;
   generatedCount: number;
   generatedAcceptedCount: number;
-  renamedSlotsCount: number;
   generateProgress: { done: number; total: number; current: string } | null;
   extractProgress: {
     scanned: number;
@@ -186,10 +184,6 @@ type WizardState = {
   lastRunId: string | null;
   finalizeErrorBanner: string | null;
   finalReviewPassed: boolean;
-  /** True when the user finalized with zero accepted components (confirmed via
-   *  the FinalizeDialog warning). Save/push then emit an empty-but-present
-   *  components manifest so the target space's components are all deleted. */
-  allowEmptyDeleteAll: boolean;
 };
 
 export function buildSelectAgentArgs(opts: {
@@ -198,6 +192,7 @@ export function buildSelectAgentArgs(opts: {
   model?: string;
   bedrock?: boolean;
   selectPromptPath?: string;
+  promptOverrides?: string[];
   noCache?: boolean;
   existingEntitiesPath?: string;
 }): string[] {
@@ -205,6 +200,7 @@ export function buildSelectAgentArgs(opts: {
   if (opts.model) args.push('--model', opts.model);
   if (opts.bedrock) args.push('--bedrock');
   if (opts.selectPromptPath) args.push('--select-prompt-path', opts.selectPromptPath);
+  for (const prompt of opts.promptOverrides ?? []) args.push('--prompt', prompt);
   if (opts.noCache) args.push('--no-cache');
   if (opts.existingEntitiesPath) args.push('--existing-entities-path', opts.existingEntitiesPath);
   return args;
@@ -254,6 +250,7 @@ export function buildGenerateComponentsArgs(opts: {
   bedrock?: boolean;
   noCache?: boolean;
   generatePromptPath?: string;
+  promptOverrides?: string[];
   existingEntitiesPath?: string;
 }): string[] {
   const args = ['__generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
@@ -262,6 +259,7 @@ export function buildGenerateComponentsArgs(opts: {
   if (opts.bedrock) args.push('--bedrock');
   if (opts.noCache) args.push('--no-cache');
   if (opts.generatePromptPath) args.push('--generate-prompt-path', opts.generatePromptPath);
+  for (const prompt of opts.promptOverrides ?? []) args.push('--prompt', prompt);
   if (opts.existingEntitiesPath) args.push('--existing-entities-path', opts.existingEntitiesPath);
   return args;
 }
@@ -432,7 +430,7 @@ export function WizardApp({
   const defaultConfiguredHost = toConfiguredHost(host || process.env['EDS_HOST']) ?? DEFAULT_CONFIGURED_HOST;
   const resolveWizardHost = (hostValue?: string): string => hostValue || defaultConfiguredHost;
   const { stdout } = useStdout();
-  const terminalWidth = stdout?.columns ?? 80;
+  const terminalWidth = stdout.columns;
   const logInit = useRef(false);
   if (!logInit.current) {
     writeFileSync(WIZARD_LOG, `--- experiences import session ${new Date().toISOString()} ---\n`);
@@ -506,12 +504,10 @@ export function WizardApp({
     tokenCount: 0,
     extractSessionId: seedExtractSessionId ?? null,
     generateSessionId: seedGenerateSessionId ?? null,
-    extractedCount: 0,
     acceptedCount: 0,
     autoRejectedCount: 0,
     generatedCount: 0,
     generatedAcceptedCount: 0,
-    renamedSlotsCount: 0,
     generateProgress: null,
     extractProgress: null,
     compositionPhase: null,
@@ -547,7 +543,6 @@ export function WizardApp({
     lastRunId: null,
     finalizeErrorBanner: null,
     finalReviewPassed: modifyEntryReady || pushFromPickerReady,
-    allowEmptyDeleteAll: false,
   });
 
   useEffect(() => {
@@ -708,9 +703,8 @@ export function WizardApp({
         mappablePropCount = cdfEntries.reduce(
           (count, { entry }) =>
             count +
-            Object.values(entry.$properties ?? {}).filter(
-              (prop) => prop.$type === 'token' && prop.$category === 'design',
-            ).length,
+            Object.values(entry.$properties).filter((prop) => prop.$type === 'token' && prop.$category === 'design')
+              .length,
           0,
         );
         rawTokenCount = loadDTCGTokens(db, sessionId).tokens.length;
@@ -834,7 +828,6 @@ export function WizardApp({
     update({
       step: 'scope-gate',
       extractSessionId,
-      extractedCount,
       aiFilterStatus: autoFilter ? 'running' : 'idle',
       aiFilterProgress: autoFilter ? { done: 0, total: extractedCount } : null,
       aiDecisions: {},
@@ -853,6 +846,7 @@ export function WizardApp({
         ...(state.agentModel ? { model: state.agentModel } : {}),
         ...(state.bedrock ? { bedrock: true } : {}),
         selectPromptPath,
+        promptOverrides,
         noCache,
         ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
       });
@@ -960,6 +954,7 @@ export function WizardApp({
       noCache: effectiveNoCache,
       ...(state.existingEntitiesPath ? { existingEntitiesPath: state.existingEntitiesPath } : {}),
       ...(generatePromptPath ? { generatePromptPath } : {}),
+      promptOverrides,
     });
 
   const startGeneratePrefetch = (
@@ -1007,12 +1002,11 @@ export function WizardApp({
           }));
           return;
         }
-        const { generateSessionId, generatedCount, renamedSlotsCount } = parseGenerateResult(result, 0);
+        const { generateSessionId, generatedCount } = parseGenerateResult(result, 0);
         setState((prev) => ({
           ...prev,
           generateSessionId,
           generatedCount,
-          renamedSlotsCount,
           generateProgress: null,
           generatePrefetchStatus: 'complete',
         }));
@@ -1052,12 +1046,11 @@ export function WizardApp({
       });
       return;
     }
-    const { generateSessionId, generatedCount, renamedSlotsCount } = parseGenerateResult(result, acceptedCount);
+    const { generateSessionId, generatedCount } = parseGenerateResult(result, acceptedCount);
     const mappedSessionId = generateSessionId ?? extractSessionId;
     update({
       generateSessionId: mappedSessionId,
       generatedCount,
-      renamedSlotsCount,
       generateProgress: null,
     });
     if (await runMapTokens(mappedSessionId)) update({ step: 'final-review' });
@@ -1169,7 +1162,12 @@ export function WizardApp({
       void runExtract(state.projectPath);
       return;
     }
-    if (shouldSkipFinalReviewAfterCredentials(state)) {
+    if (
+      shouldSkipFinalReviewAfterCredentials({
+        generateSessionId: state.generateSessionId,
+        finalReviewPassed: state.finalReviewPassed,
+      })
+    ) {
       update({ step: 'push-decision-gate' });
       return;
     }
@@ -1425,9 +1423,9 @@ export function WizardApp({
       try {
         logStep({
           applyResponse: {
-            status: operation?.sys?.status,
-            id: operation?.sys?.id,
-            keys: Object.keys(operation ?? {}),
+            status: operation.sys.status,
+            id: operation.sys.id,
+            keys: Object.keys(operation),
           },
         });
       } catch (err) {
@@ -1467,8 +1465,8 @@ export function WizardApp({
       try {
         logStep({
           pollResult: {
-            status: operation?.sys?.status,
-            keys: Object.keys(operation ?? {}),
+            status: operation.sys.status,
+            keys: Object.keys(operation),
             itemCount: operation.items?.length,
             summary: operation.summary,
             sampleItems: operation.items?.slice(0, 3),
@@ -1515,7 +1513,7 @@ export function WizardApp({
             })),
         };
       } else {
-        const summary = operation.summary ?? { total: 0, pending: 0, succeeded: 0, failed: 0 };
+        const summary = operation.summary;
         const anyFailure =
           summary.failed > 0 || operation.sys.status === 'failed' || operation.sys.status === 'partial';
         pushResult = {
@@ -2124,7 +2122,7 @@ export function WizardApp({
               }
               const allowEmptyDeleteAll = acceptedCount === 0;
               allowEmptyDeleteAllRef.current = allowEmptyDeleteAll;
-              update({ finalReviewPassed: true, allowEmptyDeleteAll });
+              update({ finalReviewPassed: true });
               if (noPush) {
                 update({ generatedAcceptedCount: acceptedCount });
                 void startSaveFlow();

@@ -53,6 +53,7 @@ import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { bindAnalyticsSessionId, exitWithAnalytics } from '../analytics/index.js';
 import { die, assertBinaryInPath } from '../lib/cli-errors.js';
 import { pathExists } from '../lib/path-exists.js';
+import { parsePromptOverrides, resolvePromptOverride } from '../lib/prompt-overrides.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.EDS_AGENT_TIMEOUT_MS ?? 5 * 60 * 1000);
 const DEFAULT_COMPONENT_CONCURRENCY = 10;
@@ -71,7 +72,8 @@ interface GenerateSubcommandOptions {
   cache?: boolean;
   /** Feature 8: custom skill prompt path for `generate components`. */
   generatePromptPath?: string;
-  /** Path to .existing-entities.json (written by the orchestrator when CMA credentials are supplied). */
+  prompt?: string[];
+  /** Path to .existing-entities.json written after CMA credentials are supplied. */
   existingEntitiesPath?: string;
 }
 
@@ -171,6 +173,7 @@ async function runOneComponent(
   verbose: boolean,
   noCache: boolean,
   skillPathOverride: string | undefined,
+  skillContentOverride: string | undefined,
   promptHash: string,
   existingContentfulEntities: ExistingContentfulEntities | undefined,
   existingTokensInline: string | undefined,
@@ -261,6 +264,7 @@ async function runOneComponent(
     componentName: component.name,
     componentSourceRefs: [sourceRef],
     skillPathOverride,
+    skillContentOverride,
     existingComponentsInline,
     existingTokensInline,
   });
@@ -345,6 +349,7 @@ async function runAllComponents(
   verbose: boolean,
   noCache: boolean,
   skillPathOverride: string | undefined,
+  skillContentOverride: string | undefined,
   promptHash: string,
   existingContentfulEntities: ExistingContentfulEntities | undefined,
   existingTokensInline: string | undefined,
@@ -376,6 +381,7 @@ async function runAllComponents(
         verbose,
         noCache,
         skillPathOverride,
+        skillContentOverride,
         promptHash,
         existingContentfulEntities,
         existingTokensInline,
@@ -428,8 +434,20 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
   // Feature 8: resolve custom-prompt path for `components` (flag wins over
   // saved credentials), validate, and emit the warning banner once at action
   // entry.
-  const generatePromptPath =
+  const configuredGeneratePromptPath =
     skill === 'components' ? (opts.generatePromptPath ?? savedCreds.generatePromptPath) : undefined;
+  const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
+  if (promptErrors.length > 0) die(`Error: ${promptErrors.join('; ')}`);
+  let generatePrompt: string | undefined;
+  const generateOverride = promptOverrides.get('generate');
+  if (generateOverride) {
+    try {
+      generatePrompt = await resolvePromptOverride(generateOverride);
+    } catch (error) {
+      die(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  const generatePromptPath = generatePrompt === undefined ? configuredGeneratePromptPath : undefined;
   if (generatePromptPath) {
     if (!(await pathExists(resolve(generatePromptPath)))) {
       die(`Error: custom prompt path not found: ${resolve(generatePromptPath)}`);
@@ -457,7 +475,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
     readFileInline(opts.tokenMap),
   ]);
 
-  // --existing-entities-path is optional enrichment written by the orchestrator's
+  // --existing-entities-path is optional enrichment written by the credential
   // fetch step. Load once here; each component derives its own component-summary
   // (fuzzy-matched likelyMatch), while the token summary is shared per run.
   let existingContentfulEntities: ExistingContentfulEntities | undefined;
@@ -552,6 +570,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
       outDir: process.cwd(),
       componentSourceRefs: sampleSourceRef ? [sampleSourceRef] : undefined,
       skillPathOverride: generatePromptPath,
+      skillContentOverride: generatePrompt,
       existingComponentsInline: dryRunExistingComponentsInline,
       existingTokensInline: skill === 'components' ? existingTokensInline : undefined,
     });
@@ -586,6 +605,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         model,
         generatePromptPath,
         existingContentfulEntitiesHashInputs,
+        generatePrompt,
       );
       componentResults = await runAllComponents(
         agent,
@@ -598,6 +618,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         verbose,
         opts.cache === false || process.env.EDS_NO_CACHE === '1',
         generatePromptPath,
+        generatePrompt,
         promptHash,
         existingContentfulEntities,
         existingTokensInline,
@@ -633,7 +654,7 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
         c.dim(`  ${totalClassified} classified, ${totalExcluded} unattached`) +
         '\n',
     );
-    // Machine-parseable summary on stdout for the wizard / orchestrator.
+    // Machine-parseable summary on stdout for the wizard.
     process.stdout.write(`renamed-slots: ${totalRenamedSlots}\n`);
 
     if (generated.length === 0 && cachedResults.length === 0) {
@@ -688,14 +709,14 @@ async function runGenerateSkill(skill: Skill, opts: GenerateSubcommandOptions, v
           );
           db.close();
           // Skip agent invocation — jump to view
-          const viewResult: GenerateViewResult = { skill, agent, sessionId: sessionId ?? '' };
+          const viewResult: GenerateViewResult = { skill, agent, sessionId: sessionId };
           if (process.stdout.isTTY) {
             const { waitUntilExit } = render(
               createElement(GenerateView, { result: viewResult, onExit: () => void exitWithAnalytics(0) }),
             );
             await waitUntilExit();
           } else {
-            process.stdout.write(`generate complete\nskill: ${skill}\nagent: ${agent}\nsession=${sessionId ?? ''}\n`);
+            process.stdout.write(`generate complete\nskill: ${skill}\nagent: ${agent}\nsession=${sessionId}\n`);
             await exitWithAnalytics(0);
           }
           return;
@@ -806,8 +827,14 @@ export function registerInternalGenerateCommand(program: Command): void {
       'Path to a custom .md skill prompt for components generation (bypasses bundled prompt invariants)',
     )
     .option(
+      '--prompt <stage=value>',
+      'Override a stage prompt (repeatable). Used here for the generate stage.',
+      (v: string, acc: string[]) => [...acc, v],
+      [] as string[],
+    )
+    .option(
       '--existing-entities-path <path>',
-      'Path to the .existing-entities.json file written by the orchestrator when CMA credentials are supplied. ' +
+      'Path to the .existing-entities.json file written after CMA credentials are supplied. ' +
         'When present, per-component prompts include a summary of the target space so classifications can align to existing prop names/tokens. ' +
         'Missing/malformed files are treated as no-op.',
     );

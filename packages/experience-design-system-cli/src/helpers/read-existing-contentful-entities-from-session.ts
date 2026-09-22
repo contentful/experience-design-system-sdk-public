@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import type { ExistingContentfulEntities } from './fetch-existing-contentful-entities.js';
 
 /**
- * Read the session file the orchestrator writes after
+ * Read the session file written after
  * `fetchExistingContentfulEntitiesFromContentful()`. Returns undefined on
  * any failure — this is optional enrichment and must never block the step.
  */

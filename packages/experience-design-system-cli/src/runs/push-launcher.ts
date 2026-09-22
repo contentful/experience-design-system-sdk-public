@@ -6,7 +6,7 @@
  * bars → done with view URL).
  *
  * This is deliberately parallel to `modify-launcher.ts`. The `--push-from-run`
- * CLI flag path (headless shell-out via `replayRun`) is preserved for
+ * CLI flag path via `replayRun` is preserved for
  * scripted / non-TTY use.
  */
 

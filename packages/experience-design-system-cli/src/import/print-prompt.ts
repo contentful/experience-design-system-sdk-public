@@ -2,7 +2,7 @@
  * `experiences import --print-prompt` / `--dry-run` — prompt-print helpers.
  *
  * Both flags currently surface the same behaviour: print the generate-prompt
- * (delegated downstream by the orchestrator via `generate components --dry-run`)
+ * (delegated downstream via `generate components --dry-run`)
  * and exit before invoking the agent. `--print-prompt` is the new, explicit
  * name. `--dry-run` is preserved for one deprecation cycle: it keeps working
  * but emits a stderr notice signalling that its semantics will change in a

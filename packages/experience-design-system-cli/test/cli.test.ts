@@ -376,7 +376,7 @@ describe('experiences import flag surface', () => {
     expect(stdout).not.toContain('--no-live-preview');
   });
 
-  it('fails loud on non-TTY without other headless flags', async () => {
+  it('fails loud when import runs without a TTY', async () => {
     // execFile gives us a non-TTY stdin/stdout by definition.
     const { code, stderr } = await run('import', '--project', '/tmp');
     expect(code).not.toBe(0);

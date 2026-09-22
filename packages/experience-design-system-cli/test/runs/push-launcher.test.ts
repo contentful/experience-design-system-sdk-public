@@ -119,7 +119,7 @@ describe('launchPushWizard prop wiring', () => {
   });
 });
 
-// pickerPushRun (the entry point wired into picker-dispatch) resolves the run
+// pickerPushRun resolves the run
 // record and layers credentials before delegating to launchPushWizard. We
 // mock the helper modules and the launcher itself so the test focuses on
 // dispatch decisions, not internals.

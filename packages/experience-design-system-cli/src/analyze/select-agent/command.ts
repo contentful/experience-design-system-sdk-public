@@ -45,6 +45,7 @@ import { runShowRationale } from './show-rationale.js';
 import { isAbsolute, resolve } from 'node:path';
 import { getDebugLogger } from '../../lib/debug-logger.js';
 import { invokeAgentWithOutput } from '../../lib/agent-output.js';
+import { parsePromptOverrides, resolvePromptOverride } from '../../lib/prompt-overrides.js';
 import { bindAnalyticsSessionId, enrichCommandResult, exitWithAnalytics } from '../../analytics/index.js';
 import {
   validateExtractedComponents,
@@ -154,6 +155,7 @@ async function selectBatch(
   total: number,
   verbose: boolean,
   skillPathOverride: string | undefined,
+  skillContentOverride: string | undefined,
   existingComponentsInline: string | undefined,
 ): Promise<SelectOneResult[]> {
   const prompt = await buildPrompt({
@@ -166,6 +168,7 @@ async function selectBatch(
     ),
     outDir: process.cwd(),
     skillPathOverride,
+    skillContentOverride,
     existingComponentsInline,
   });
 
@@ -274,6 +277,7 @@ async function selectAllComponents(
   components: SelectionCandidate[],
   verbose: boolean,
   skillPathOverride: string | undefined,
+  skillContentOverride: string | undefined,
   existingComponentsInline: string | undefined,
   cacheConfig: { noCache: boolean; dbPath?: string } = { noCache: true },
 ): Promise<SelectOneResult[]> {
@@ -295,6 +299,7 @@ async function selectAllComponents(
         model,
         skillPathOverride,
         existingComponentsInline ? [hashContent(existingComponentsInline)] : [],
+        skillContentOverride,
       );
       cliVersion = await getCliCacheVersion();
       const db = openPipelineDb(cacheConfig.dbPath);
@@ -374,6 +379,7 @@ async function selectAllComponents(
         total,
         verbose,
         skillPathOverride,
+        skillContentOverride,
         existingComponentsInline,
       );
       for (let k = 0; k < batch.length; k++) {
@@ -425,11 +431,17 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
       '--select-prompt-path <path>',
       'Path to a custom .md skill prompt for select-agent (bypasses bundled prompt invariants)',
     )
+    .option(
+      '--prompt <stage=value>',
+      'Override a stage prompt (repeatable). Used here for the select stage.',
+      (v: string, acc: string[]) => [...acc, v],
+      [] as string[],
+    )
     .option('--no-select-cache', 'Skip the per-component select cache and re-LLM every component')
     .option('--no-cache', 'Skip ALL fine-grained caches (extract, select, generate)')
     .option(
       '--existing-entities-path <path>',
-      'Path to the .existing-entities.json file written by the orchestrator when CMA credentials are supplied. ' +
+      'Path to the .existing-entities.json file written after CMA credentials are supplied. ' +
         'When present, the agent gets an existing-components summary to align rejection/acceptance ' +
         'reasoning with the target space. Missing/malformed files are treated as no-op.',
     )
@@ -450,6 +462,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
         dryRun?: boolean;
         excludeInvalid?: boolean;
         selectPromptPath?: string;
+        prompt?: string[];
         selectCache?: boolean;
         cache?: boolean;
         existingEntitiesPath?: string;
@@ -493,7 +506,25 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
 
         // Feature 8: validate + announce custom prompt path before any heavy
         // work. Flag wins over saved credentials.
-        const selectPromptPath = opts.selectPromptPath ?? savedCreds.selectPromptPath;
+        const configuredSelectPromptPath = opts.selectPromptPath ?? savedCreds.selectPromptPath;
+        const { overrides: promptOverrides, errors: promptErrors } = parsePromptOverrides(opts.prompt ?? []);
+        if (promptErrors.length > 0) {
+          process.stderr.write(`Error: ${promptErrors.join('; ')}\n`);
+          await exitWithAnalytics(1);
+          return;
+        }
+        let selectPrompt: string | undefined;
+        const selectOverride = promptOverrides.get('select');
+        if (selectOverride) {
+          try {
+            selectPrompt = await resolvePromptOverride(selectOverride);
+          } catch (error) {
+            process.stderr.write(`Error: ${error instanceof Error ? error.message : String(error)}\n`);
+            await exitWithAnalytics(1);
+            return;
+          }
+        }
+        const selectPromptPath = selectPrompt === undefined ? configuredSelectPromptPath : undefined;
         if (selectPromptPath) {
           const resolvedPath = resolve(selectPromptPath);
           const exists = await access(resolvedPath)
@@ -610,6 +641,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
             rawComponentsInline: JSON.stringify([buildComponentData(first)], null, 2),
             outDir: process.cwd(),
             skillPathOverride: selectPromptPath ? resolve(selectPromptPath) : undefined,
+            skillContentOverride: selectPrompt,
             existingComponentsInline,
           });
           process.stdout.write(prompt + '\n');
@@ -627,6 +659,7 @@ export function registerAnalyzeSelectAgentCommand(program: Command): void {
           selectionCandidates,
           opts.verbose ?? false,
           selectPromptPath ? resolve(selectPromptPath) : undefined,
+          selectPrompt,
           existingComponentsInline,
           { noCache },
         );

@@ -18,7 +18,7 @@ The rest of this README uses `experiences`.
 
 There are two ways to use the CLI:
 
-1. **`experiences import`** — the wizard. Drives the full pipeline (extract → AI select → scope-gate → internal generation → final-review → save/push) from a single command. It runs as a full-screen interactive TUI in a real terminal or non-interactively when you pass credentials. **This is the recommended path for almost everyone.**
+1. **`experiences import`** — the wizard. Drives the full pipeline (extract → AI select → scope-gate → internal generation → final-review → save/push) from a single command in a full-screen interactive TUI. **This is the recommended path for almost everyone.**
 
 2. **Standalone subcommands** — for piping into other tools, CI parity with the wizard, or for debugging individual steps:
 
@@ -113,7 +113,7 @@ In the wizard's credentials step you can press `[s] Skip` to save-only without p
 experiences import [flags]
 ```
 
-`experiences import` is the primary entry point. In a TTY it launches a full-screen wizard. With credentials it runs non-interactively. Without a supported headless entry point, it fails loud rather than hanging.
+`experiences import` is the primary entry point and launches a full-screen wizard in a supported interactive terminal.
 
 ### Wizard step machine
 
@@ -273,7 +273,7 @@ experiences analyze select [--session <id>] [--project-root <path>]
 | `--exclude-invalid` | — | With `--select-all`: auto-reject components with validation errors |
 | `--exclude-components <names>` | — | Comma-separated names to force-reject regardless of other flags |
 
-Without any non-interactive flag, launches a full-screen TUI requiring 60+ columns. Keyboard reference and patch-file format are unchanged from prior releases.
+Launches a full-screen TUI requiring 60+ columns. Keyboard reference and patch-file format are unchanged from prior releases.
 
 ---
 
@@ -327,7 +327,7 @@ These subcommands are the non-wizard route to the same diff and push logic. Flag
 experiences apply push    --space-id <id> --environment-id <env> --session <id> [--yes]
 ```
 
-Shared flags: `--components`, `--tokens`, `--session`, `--space-id`, `--environment-id`, `--cma-token`, `--host`, `--viewports`. `apply push` adds `--yes`, `--verbose`, `--force`, `--dry-run`, `--allow-deletions`. By default, remote ComponentTypes and DesignTokens missing from the pushed manifest are skipped, not deleted; pass `--allow-deletions` to restore the prior delete behavior.
+Shared flags: `--components`, `--tokens`, `--session`, `--space-id`, `--environment-id`, `--cma-token`, `--host`. `apply push` adds `--yes`, `--verbose`, `--force`, `--dry-run`, `--allow-deletions`. By default, remote ComponentTypes and DesignTokens missing from the pushed manifest are skipped, not deleted; pass `--allow-deletions` to restore the prior delete behavior.
 
 Design tokens are written first (component types may reference token kinds). Each entity write is recorded in the session database atomically — interrupted pushes resume from where they left off.
 
@@ -353,9 +353,9 @@ Wizard run history is separate: `~/.config/experiences/runs.json`.
 - 80+ columns recommended for full sidebar + detail view
 - 120+ columns required to show the source code panel in `analyze select`
 - `NO_COLOR=1` suppresses all ANSI color output
-- Interactive views require both stdin and stdout to be TTYs and stdin to support raw mode. Read-only views fall back to plain or JSON output when those capabilities are unavailable; commands that require input stop with the relevant non-interactive flags in the error message.
+- Interactive views require both stdin and stdout to be TTYs and stdin to support raw mode.
 - On Windows, use Windows Terminal with PowerShell. Older ConEmu and cmd.exe hosts may not provide the raw-mode support the interactive UI needs.
-- To avoid the interactive UI, use `import` with credentials, and use `apply push --yes` for a non-interactive push.
+- `experiences import` does not provide a non-interactive execution mode.
 
 ---
 

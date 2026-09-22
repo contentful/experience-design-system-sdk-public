@@ -16,13 +16,13 @@ import { buildUserAgent } from '../lib/user-agent.js';
 export const PREVIEW_ERROR_PREFIX = 'preview failed:';
 export const APPLY_ERROR_PREFIX = 'apply failed:';
 
-// Substring match the orchestrator uses to distinguish a parseable
+// Substring match callers use to distinguish a parseable
 // component-level validation failure from generic 422s. Quoted because the
 // match runs against the raw JSON body (which contains `"code":"ValidationFailed"`).
 // If the server ever changes the casing or naming, isPreviewValidationError
 // silently returns false and the retry loop never fires — so this lives next
 // to the prefixes as a deliberate, named contract rather than an inline
-// magic string in the orchestrator.
+// magic string at the call site.
 export const VALIDATION_FAILED_CODE = '"ValidationFailed"';
 
 export interface ApiClientOptions {
@@ -82,7 +82,7 @@ function stringifyError(error: unknown): string {
 // 16384 so realistic 422 ValidationFailed reports (which list every
 // offending component, ~100 chars per error, easily exceeds 1KB once you
 // cross ~10 components) survive intact through subprocess stderr. The
-// orchestrator's parseOffendingComponentNames does JSON.parse on this slice
+// validation parsers do JSON.parse on this slice
 // and silently fails to recover any offenders if the JSON is mid-truncated.
 // The cap stays in place to keep a runaway server response from blowing up
 // log output.
@@ -119,7 +119,7 @@ const COMPONENT_PATH_PREFIX = 'manifest:components/';
  * Path shape: `manifest:components/<Name>/$slots/<key>` or
  * `manifest:components/<Name>/$properties/<key>`. Only the component
  * name is extracted today; `path` and `message` are kept verbatim so
- * future surfaces (debug logging, headless retry in SP-4) can render
+ * future diagnostic surfaces can render
  * the field-level detail.
  */
 export function parsePreviewValidationErrors(body: string): PreviewValidationError[] {

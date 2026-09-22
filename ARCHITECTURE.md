@@ -25,7 +25,6 @@ Design system codebase
         ▼
   experience-design-system-cli  (binaries: experiences | exo | experience-design-system-cli)
     ├── import (wizard)         → interactive TUI; drives the full pipeline + scope-gate + final-review + save/push
-    ├── import (headless)       → orchestrator that shells out to the subcommands below
     ├── runs                    → list/detail/replay prior wizard runs from ~/.config/experiences/runs.json
     │                              (positional <id-or-path>, --json, --pushed, --not-pushed)
     ├── import generation (internal) → session DB (CDF/DTCG artifacts via coding agent)
@@ -367,39 +366,6 @@ sequenceDiagram
     AP-->>Dev: Operation summary
 ```
 
-### Autonomous import — Sequence Diagram
-
-The `import` command orchestrates the full pipeline in a single invocation, using the individual analysis and apply stages internally:
-
-```mermaid
-sequenceDiagram
-    actor Dev as Developer
-    participant Orch as import orchestrator
-    participant AE as analyze extract<br/>(subprocess)
-    participant AnEdit as analyze edit<br/>(subprocess)
-    participant GC as internal generation<br/>(subprocess)
-    participant AP as apply push<br/>(subprocess)
-
-    Dev->>Orch: experiences import --project ./src --agent claude --space-id ...
-
-    Orch->>AE: execFile experiences analyze extract --project ./src
-    AE-->>Orch: stdout: session=<id>
-    Orch->>Orch: Parse session=<id> from stdout
-
-    alt manual selection requested
-        Orch->>AnEdit: analyze edit --session <id> [flags]
-        AnEdit-->>Orch: exit 0
-    end
-
-    Orch->>GC: run internal generation with agent claude
-    GC-->>Orch: exit 0
-
-    Orch->>AP: execFile experiences apply push --components .contentful/components.json --yes ...
-    AP-->>Orch: exit 0
-
-    Orch-->>Dev: Pipeline complete
-```
-
 ---
 
 ## React Extractor Architecture
@@ -472,7 +438,7 @@ Do not use agent SDKs or APIs — the import wizard invokes agents as subprocess
 
 ---
 
-## The Import Command — Wizard and Orchestrator
+## The Import Command — Wizard
 
 `experiences import` has two modes:
 
@@ -489,18 +455,6 @@ welcome → extracting → [auto-filter (select-agent)] → scope-gate
 A single human review gate (`scope-gate`) replaces the older two-step extract + generate-edit gates. The final-review step is a minimum-viable port of the standalone `JsonEditor` with lifted rationale + source panels, inline `$default` and `$allowedComponents` editing, and live preview re-runs after each save. Internal generation runs in parallel with the credentials step (`spawn-generate.ts`) so the operator does not wait on the agent. The push-decision-gate defaults to save AND push; `--no-push` selects save-only mode. `--out-dir <path>` short-circuits the save-path prompt.
 
 The wizard's AI auto-filter (auto-invocation of `analyze select-agent` before scope-gate) is force-enabled per run via `--auto-filter` and otherwise follows `~/.config/experiences/credentials.json`.
-
-### Headless orchestrator
-
-`src/import/orchestrator.ts` is the non-interactive sibling. It shells out to the individual CLI subcommands in sequence via `child_process.execFile`:
-
-1. `analyze extract --project <path>` → captures `session=<id>` from stdout
-2. `analyze select-agent` by default, or the standalone `analyze select --session <id>` for manual selection
-3. Internal component generation
-4. `map tokens --session <id> --agent <name>` — suggests `$token.allowed` for generated design-token props; skippable via `--skip-map-tokens`
-5. `apply push --components <components.json> --space-id ... --environment-id ... --yes`
-
-Headless mode is entered when credentials or `--no-push` are provided. In non-TTY without a supported headless entry point, the command exits 1 with a fail-loud message.
 
 `--no-cache` bypasses extract/select/internal-generation fine-grained caches and is forwarded to the relevant internal stages and `map tokens`.
 
@@ -543,7 +497,7 @@ All commands have two output modes:
 | `analyze select` (alias `analyze edit`) | Standalone JsonEditor: `App`, `Sidebar`, `ComponentDetail`, `JsonEditor`, `SourcePanel`, dialogs (untouched by wizard rebuild; pinned by snapshot test) |
 | `import` internal generation | `GenerateView` |
 | `print validate` | `ValidateView` |
-| `apply push` | `ApplyView` (confirmation + progress + result), `SummaryView`, `EntityDiffView` |
+| `apply push` | `ServerPreviewView`, `ServerApplyView` |
 | `import` (wizard) | `WizardApp` + step components in `src/import/tui/steps/` (`WelcomeStep`, `CredentialsStep`, `ScopeGateStep`, `GenerateReviewStep`, `WizardPreviewStep`, `PushDecisionGateStep`, `PushingStep`, `DoneStep`, `ErrorStep`, `PreviewValidationErrorStep`), plus hosts (`scope-gate-host`, `final-review-host`) |
 
 The TUI uses React hooks for state (`useState`, `useReducer`), Ink's `useInput` for keyboard, and a custom `useUndo` hook for the JSON editor.

@@ -61,7 +61,7 @@ async function runNonInteractive(
   sessionId: string,
 ): Promise<void> {
   // --exclude-components on its own (no --select-all / --select / --deselect /
-  // --reject / --patch) is the orchestrator's 422 retry-loop invocation: only
+  // --reject / --patch) is a 422 retry-loop invocation: only
   // the named components should change. The rebuild path below calls
   // storeRawComponents which DELETEs all rows and re-inserts with default
   // status='extracted', wiping the post-generate state required by
@@ -102,7 +102,7 @@ async function runNonInteractive(
 
   // Fail-loud gate: --select-all stops with a non-zero exit when ANY component
   // has error-severity validation issues. The user must opt in to auto-rejection
-  // with --exclude-invalid. Silent exclusion in CI / orchestrator contexts is
+  // with --exclude-invalid. Silent exclusion in CI / scripted contexts is
   // dangerous — the caller should see and acknowledge that components are
   // being dropped from the import.
   if (selectAll && !opts.excludeInvalid) {
@@ -149,7 +149,7 @@ async function runNonInteractive(
 
   // Apply --exclude-components: force-reject the named components regardless of
   // how --select-all / --select / --deselect classified them. Used by the
-  // orchestrator's 422 retry loop to exclude server-validation offenders.
+  // retry loop to exclude server-validation offenders.
   if (opts.excludeComponents) {
     const excludeNames = new Set(
       opts.excludeComponents
@@ -195,7 +195,7 @@ async function runNonInteractive(
   const rejected = result.components.filter((c) => c.status === 'rejected');
 
   // Surface what was excluded by --select-all --exclude-invalid so the
-  // non-interactive caller (CI, orchestrator, scripted pipeline) doesn't
+  // non-interactive caller (CI or scripted pipeline) doesn't
   // have to guess what failed validation. The warning is printed BEFORE
   // saveReviewState so the message lands ahead of the bare counts.
   if (selectAll && opts.excludeInvalid) {
@@ -205,7 +205,7 @@ async function runNonInteractive(
     process.stderr.write(formatExclusionWarning(autoRejected));
   }
 
-  // Persist decisions to session state so pipeline orchestrator can read them
+  // Persist decisions to session state so downstream pipeline steps can read them
   await saveReviewState(paths.statePath, result);
 
   // Sync edited proposals back to the DB so generation uses the user's edits.
