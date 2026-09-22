@@ -44,7 +44,7 @@ Imports are **atomic by default** — flat components, no embedded hierarchy. Th
 
 | Mode | Flag | Behavior |
 |---|---|---|
-| Atomic | `--atomic` (default) | Flat import; composition stripped before push |
+| Atomic | default | Flat import; composition stripped before push |
 | Composite | `--composite` | Resolve and import the parent→child hierarchy |
 
 ### How composition is resolved
@@ -168,7 +168,6 @@ Custom `.md` skill prompt paths can be saved via `experiences setup`; the CLI em
 | `--project <path>`                | `.`                                    | Project root to analyze                                                                                      |
 | `--agent <name>`                  | saved by setup / `claude`              | Agent for `analyze select-agent` and internal generation                                                     |
 | `--model <name>`                  | agent default                          | Model name                                                                                                   |
-| `--atomic`                        | **default**                            | Flat import, no embedded-component hierarchy (composition stripped on push)                                   |
 | `--composite`                     | —                                      | Import the embedded-component hierarchy (any composition flag implies this)                                   |
 | `--composition-map <path>`        | —                                      | Consume a hand-authored parent→children interchange map (implies `--composite`)                              |
 | `--generate-map <path>`           | —                                      | Also write a composition-map skeleton from the resolved composition (implies `--composite`)                  |

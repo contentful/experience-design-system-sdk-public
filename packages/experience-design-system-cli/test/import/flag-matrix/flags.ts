@@ -70,14 +70,7 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     kind: 'boolean',
     modes: ['pty'],
     incompatibleWith: [],
-    notes: 'Composition opt-in; wins over --atomic when both are passed (precedence, not an error).',
-  },
-  {
-    flag: '--atomic',
-    kind: 'boolean',
-    modes: ['pty'],
-    incompatibleWith: [],
-    notes: 'Default mode. Accepted for symmetry; --composite wins if both passed.',
+    notes: 'Composition opt-in; atomic mode remains the default.',
   },
   {
     flag: '--composition-map',
