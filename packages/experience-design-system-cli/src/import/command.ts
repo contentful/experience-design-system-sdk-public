@@ -76,7 +76,6 @@ export function registerImportCommand(program: Command): void {
       (v: string, acc: string[]) => [...acc, v],
       [] as string[],
     )
-    .option('--auto-reject-cycles', 'Automatically reject components involved in slot cycles and retry')
     .option('--auto-filter', 'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)')
     .option(
       '--no-push',
@@ -128,7 +127,6 @@ export function registerImportCommand(program: Command): void {
         compositionRefresh?: boolean;
         generateMap?: string;
         prompt?: string[];
-        autoRejectCycles?: boolean;
         autoFilter?: boolean;
         livePreview?: boolean;
         push?: boolean;
@@ -276,7 +274,6 @@ export function registerImportCommand(program: Command): void {
             bedrock?: boolean;
             initialProjectPath?: string;
             host?: string;
-            autoRejectCycles?: boolean;
             compositionMode?: CompositionMode;
             compositionMap?: string;
             compositionAgent?: boolean;
@@ -340,7 +337,6 @@ export function registerImportCommand(program: Command): void {
               ...(opts.bedrock ? { bedrock: true } : {}),
               initialProjectPath: opts.project !== '.' ? normalizePath(opts.project) : undefined,
               host: opts.host,
-              autoRejectCycles: opts.autoRejectCycles ?? false,
               compositionMode: resolvedCompositionMode,
               ...buildCompositionForwardingOptions(opts),
               noCache: opts.cache === false,
@@ -421,7 +417,6 @@ export function registerImportCommand(program: Command): void {
             host: opts.host,
             dryRun: dryRunForward,
             selectPromptPath: opts.selectPromptPath,
-            autoRejectCycles: opts.autoRejectCycles ?? false,
             allowDeletions: opts.allowDeletions ?? false,
             compositionMode: headlessCompositionMode,
             ...buildCompositionForwardingOptions(opts),
