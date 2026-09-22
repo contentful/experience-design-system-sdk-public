@@ -241,13 +241,6 @@ export const IMPORT_FLAGS: FlagSpec[] = [
     incompatibleWith: ['--push-from-run', '--project'],
   },
   {
-    flag: '--force',
-    kind: 'boolean',
-    modes: ['pty', 'headless'],
-    incompatibleWith: [],
-    notes: 'Bypasses staleness checks; paired with --push-from-run or --modify.',
-  },
-  {
     flag: '--allow-deletions',
     kind: 'boolean',
     modes: ['pty', 'headless'],
