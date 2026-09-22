@@ -70,18 +70,7 @@ describe('import — help output lists all flags', () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
 
-    const flags = [
-      '--space-id',
-      '--environment-id',
-      '--cma-token',
-      '--project',
-      '--out',
-      '--agent',
-      '--model',
-      '--skip-map-tokens',
-      '--no-cache',
-      '--host',
-    ];
+    const flags = ['--project', '--agent', '--model', '--skip-map-tokens', '--no-cache', '--host'];
 
     for (const flag of flags) {
       expect(stdout, `expected ${flag} in help output`).toContain(flag);
@@ -92,72 +81,6 @@ describe('import — help output lists all flags', () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('claude');
-  });
-});
-
-describe('import — credential flags', () => {
-  it('accepts --space-id in headless (skip-all) mode', async () => {
-    const { stderr, code } = await run([...skipAll(), '--space-id', 'testspace'], baseEnv());
-    expect(stderr).not.toContain('unknown option');
-    expect(code).toBe(0);
-  });
-
-  it('accepts --environment-id in headless (skip-all) mode', async () => {
-    const { stderr, code } = await run([...skipAll(), '--environment-id', 'master'], baseEnv());
-    expect(stderr).not.toContain('unknown option');
-    expect(code).toBe(0);
-  });
-
-  it('accepts --cma-token in headless (skip-all) mode', async () => {
-    const { stderr, code } = await run([...skipAll(), '--cma-token', 'fake-token'], baseEnv());
-    expect(stderr).not.toContain('unknown option');
-    expect(code).toBe(0);
-  });
-
-  it('reads CONTENTFUL_SPACE_ID env var when --space-id is not provided', async () => {
-    // --skip-apply means credentials aren't required; env var should be accepted silently
-    const { stderr, code } = await run(skipAll(), {
-      ...baseEnv(),
-      CONTENTFUL_SPACE_ID: 'env-space',
-    });
-    expect(stderr).not.toContain('CONTENTFUL_SPACE_ID');
-    expect(code).toBe(0);
-  });
-
-  it('reads CONTENTFUL_ENVIRONMENT_ID env var when --environment-id is not provided', async () => {
-    const { stderr, code } = await run(skipAll(), {
-      ...baseEnv(),
-      CONTENTFUL_ENVIRONMENT_ID: 'env-env',
-    });
-    expect(stderr).not.toContain('CONTENTFUL_ENVIRONMENT_ID');
-    expect(code).toBe(0);
-  });
-
-  it('reads CONTENTFUL_MANAGEMENT_TOKEN env var when --cma-token is not provided', async () => {
-    const { stderr, code } = await run(skipAll(), {
-      ...baseEnv(),
-      CONTENTFUL_MANAGEMENT_TOKEN: 'env-token',
-    });
-    expect(stderr).not.toContain('CONTENTFUL_MANAGEMENT_TOKEN');
-    expect(code).toBe(0);
-  });
-
-  it('uses all three credential env vars together to satisfy requirements', async () => {
-    // Without --skip-apply the command normally requires credentials; env vars should supply them.
-    // The pipeline will fail at analyze extract (no components), but not at credential validation.
-    const { stderr } = await run(
-      ['import', '--help'],
-      {
-        ...baseEnv(),
-        CONTENTFUL_SPACE_ID: 'env-space',
-        CONTENTFUL_ENVIRONMENT_ID: 'env-env',
-        CONTENTFUL_MANAGEMENT_TOKEN: 'env-token',
-      },
-      30_000,
-    );
-    expect(stderr).not.toContain('--space-id');
-    expect(stderr).not.toContain('--environment-id');
-    expect(stderr).not.toContain('--cma-token');
   });
 });
 
@@ -206,13 +129,6 @@ describe('import — output flags', () => {
     const { stderr, code } = await run(['import', '--print'], baseEnv());
     expect(code).not.toBe(0);
     expect(stderr).toContain("unknown option '--print'");
-  });
-
-  it('--out <path> is accepted without error', async () => {
-    const outDir = await createTempDir('import-out-test-');
-    const { stderr, code } = await run([...skipAll(), '--out', outDir], baseEnv());
-    expect(stderr).not.toContain("unknown option '--out'");
-    expect(code).toBe(0);
   });
 });
 

@@ -30,11 +30,7 @@ describe('import command — help', () => {
   it('prints import help with --help', async () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
-    expect(stdout).toContain('--space-id');
-    expect(stdout).toContain('--environment-id');
-    expect(stdout).toContain('--cma-token');
     expect(stdout).toContain('--project');
-    expect(stdout).toContain('--out');
     expect(stdout).toContain('--agent');
     expect(stdout).not.toContain('--skip-analyze');
     expect(stdout).not.toContain('--skip-generate');
@@ -51,22 +47,5 @@ describe('import command — help', () => {
     expect(stdout).not.toContain('--deselect <pattern>');
     expect(stdout).not.toContain('--auto-accept-scope');
     expect(stdout).not.toContain('--skip-print');
-  });
-
-  it('fails when --space-id is missing', async () => {
-    const { stderr, code } = await run(['import', '--environment-id', 'master', '--cma-token', 'token']);
-    expect(code).not.toBe(0);
-    expect(stderr).toContain('space-id');
-  });
-
-  it('fails when --environment-id is missing', async () => {
-    const { stderr, code } = await run(['import', '--space-id', 'abc123', '--cma-token', 'token']);
-    expect(code).not.toBe(0);
-    expect(stderr).toContain('environment-id');
-  });
-
-  it('fails when --cma-token is missing and env var is not set', async () => {
-    const { code } = await run(['import', '--space-id', 'abc123', '--environment-id', 'master']);
-    expect(code).not.toBe(0);
   });
 });
