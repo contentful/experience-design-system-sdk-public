@@ -15,8 +15,7 @@ interface RejectionCell {
   expectStderr: RegExp;
 }
 
-const rejectionCells: RejectionCell[] = [
-];
+const rejectionCells: RejectionCell[] = [];
 
 describe('flag-matrix: incompatible flag pairs REJECT with exit 1 and the right message', () => {
   it.each(rejectionCells)('rejects $name', async ({ args, expectStderr }) => {
