@@ -16,11 +16,6 @@ interface RejectionCell {
 }
 
 const rejectionCells: RejectionCell[] = [
-  {
-    name: '--modify ⊗ --project',
-    args: ['import', '--modify', 'run-1', '--project', '/tmp/x'],
-    expectStderr: /--modify and --project are mutually exclusive/,
-  },
 ];
 
 describe('flag-matrix: incompatible flag pairs REJECT with exit 1 and the right message', () => {

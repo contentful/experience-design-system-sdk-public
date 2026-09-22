@@ -9,19 +9,9 @@ import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import { addCompositionOptions } from '../lib/command-options.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
-import { modifyRun } from '../runs/replay-helpers.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { buildCompositionForwardingOptions } from './composition-options.js';
 import { getInteractiveTerminalSupport, requireInteractiveTerminal } from '../lib/terminal-capabilities.js';
-
-async function runImportAction(action: () => Promise<void>): Promise<void> {
-  try {
-    await action();
-  } catch (err) {
-    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-    process.exit(1);
-  }
-}
 
 export function registerImportCommand(program: Command): void {
   const cmd = program
@@ -59,6 +49,10 @@ export function registerImportCommand(program: Command): void {
       'Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies --composite)',
     )
     .option(
+      '--composition-agent-mode <mode>',
+      "Agent mode: 'parser' (agent writes a sandboxed parser, default) or 'edges' (agent lists edges)",
+    )
+    .option(
       '--generate-map <path>',
       'Also write a composition-map skeleton from resolved edges during extract (implies --composite)',
     )
@@ -67,10 +61,6 @@ export function registerImportCommand(program: Command): void {
       'Override a stage prompt (repeatable). value is a file path or literal text, e.g. --prompt composition=./p.md',
       (v: string, acc: string[]) => [...acc, v],
       [] as string[],
-    )
-    .option(
-      '--modify <id-or-path>',
-      'Re-open the wizard at final-review with a prior run pre-populated for field edits. Accepts a run-id or filesystem path.',
     )
     .action(
       async (opts: {
@@ -93,59 +83,14 @@ export function registerImportCommand(program: Command): void {
         atomic?: boolean;
         compositionMap?: string;
         compositionAgent?: boolean;
+        compositionAgentMode?: string;
         compositionRefresh?: boolean;
         generateMap?: string;
         prompt?: string[];
         livePreview?: boolean;
-        modify?: string;
         allowDeletions?: boolean;
       }) => {
         const interactiveTerminalSupported = getInteractiveTerminalSupport().supported;
-
-        // --modify resumes a recorded session; the composition mode comes from
-        // that run's record, so composition flags on the command
-        // line don't apply. Warn and clear them rather than let them mislead.
-        if (opts.modify !== undefined) {
-          const passedCompositionFlags = [
-            opts.composite ? '--composite' : null,
-            opts.atomic ? '--atomic' : null,
-            opts.compositionMap ? '--composition-map' : null,
-            opts.compositionAgent ? '--composition-agent' : null,
-            opts.compositionRefresh ? '--composition-refresh' : null,
-            opts.generateMap ? '--generate-map' : null,
-          ].filter((f): f is string => f !== null);
-          if (passedCompositionFlags.length > 0) {
-            process.stderr.write(
-              `Note: ${passedCompositionFlags.join(', ')} ignored with --modify — composition mode comes from the recorded run.\n`,
-            );
-            opts.composite = undefined;
-            opts.atomic = undefined;
-            opts.compositionMap = undefined;
-            opts.compositionAgent = undefined;
-            opts.compositionRefresh = undefined;
-            opts.generateMap = undefined;
-          }
-        }
-
-        if (opts.modify !== undefined) {
-          if (opts.project !== '.') {
-            process.stderr.write(
-              'Error: --modify and --project are mutually exclusive. The project path is read from the recorded run.\n',
-            );
-            process.exit(1);
-            return;
-          }
-          requireInteractiveTerminal({
-            alternative: 'start a fresh headless import with the required credentials',
-          });
-          const runIdOrPath = opts.modify;
-          await runImportAction(() =>
-            modifyRun({
-              runIdOrPath,
-            }),
-          );
-          return;
-        }
 
         if (opts.rawTokens !== undefined) {
           const { access } = await import('node:fs/promises');
@@ -186,6 +131,7 @@ export function registerImportCommand(program: Command): void {
             compositionMode?: CompositionMode;
             compositionMap?: string;
             compositionAgent?: boolean;
+            compositionAgentMode?: string;
             compositionRefresh?: boolean;
             generateMap?: string;
             promptOverrides?: string[];

@@ -68,9 +68,9 @@ The CLI runs your component library through four stages:
 
 **4. Apply** — Shows a diff of what will change in your Contentful space, then pushes (and by default also saves `components.json` / `tokens.json` to disk for source control).
 
-The wizard saves a run record after each session. Use `experiences runs` to list prior sessions (or `experiences runs <id-or-path>` for a single-run detail view), `experiences import --modify <id-or-path>` to re-open the wizard pre-populated, or `experiences import --push-from-run <id-or-path>` to re-push without re-opening the wizard.
+The wizard saves a run record after each session. Use `experiences runs` to list prior sessions (or `experiences runs <id-or-path>` for a single-run detail view).
 
-When prior runs exist and the wizard is launched without `--push-from-run`, `--modify`, or `--project`, the TUI opens with an interactive **run picker** so the operator can pick "push", "modify", or "start a new run" up front. Pass `--project` to skip the picker and go straight into a fresh extraction.
+Pass `--project` to start a fresh extraction.
 
 For headless operation alongside an existing checked-in `components.json`, use the supported save-path options described in the CLI reference.
 
