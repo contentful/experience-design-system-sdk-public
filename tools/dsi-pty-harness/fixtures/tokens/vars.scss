@@ -1,0 +1,18 @@
+// Minimal SCSS token fixture for tier 5 tests.
+// Mixed color/spacing/typography so the generate-tokens prompt has enough
+// signal to classify tokens across common DTCG $type values.
+$color-primary: #0066ff;
+$color-danger: #d00020;
+$color-text: #111827;
+
+$space-xs: 4px;
+$space-sm: 8px;
+$space-md: 16px;
+$space-lg: 24px;
+
+$font-family-body: 'Inter', system-ui, sans-serif;
+$font-size-base: 16px;
+$font-weight-bold: 700;
+
+$radius-sm: 4px;
+$radius-lg: 12px;

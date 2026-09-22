@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { buildSelectAgentArgs, parseAutoFilterProgressLine } from '../../../src/import/tui/WizardApp.js';
 
-// The import command threads the resolved auto-filter preference into
-// WizardAppProps. The Wizard runtime gates `runAutoFilter` on this prop.
+// `--no-auto-filter` flag plumbing: Commander turns `--no-auto-filter` into
+// `opts.autoFilter = false`; the import command threads
+// `autoFilter: opts.autoFilter !== false` into WizardAppProps. The Wizard
+// runtime gates `runAutoFilter` on this prop. That gating is exercised
+// indirectly: this test confirms the prop's default and threading shape.
 
 describe('wizard auto-filter — buildSelectAgentArgs (Feature 3)', () => {
   it('passes --session and --exclude-invalid by default', () => {

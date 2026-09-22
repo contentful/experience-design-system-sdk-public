@@ -1,0 +1,29 @@
+{
+  "name": "dsi-pty-harness",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "tools/dsi-pty-harness/src",
+  "projectType": "application",
+  "tags": [],
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run",
+        "cwd": "tools/dsi-pty-harness"
+      }
+    },
+    "pty-test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "PTY_TESTS=1 vitest run",
+        "cwd": "tools/dsi-pty-harness"
+      },
+      "dependsOn": [
+        {
+          "projects": ["experience-design-system-cli"],
+          "target": "build"
+        }
+      ]
+    }
+  }
+}

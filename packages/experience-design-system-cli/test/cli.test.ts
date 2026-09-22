@@ -346,10 +346,10 @@ describe('CLI entry point', () => {
 });
 
 describe('experiences import flag surface', () => {
-  it('does not expose --auto-accept-scope in --help', async () => {
+  it('exposes --auto-accept-scope in --help', async () => {
     const { stdout, code } = await run('import', '--help');
     expect(code).toBe(0);
-    expect(stdout).not.toContain('--auto-accept-scope');
+    expect(stdout).toContain('--auto-accept-scope');
   });
 
   it('exposes --no-cache in experiences import --help', async () => {
@@ -358,10 +358,10 @@ describe('experiences import flag surface', () => {
     expect(stdout).toContain('--no-cache');
   });
 
-  it('does not expose --no-auto-filter in experiences import --help', async () => {
+  it('exposes --no-auto-filter in experiences import --help (Feature 3)', async () => {
     const { stdout, code } = await run('import', '--help');
     expect(code).toBe(0);
-    expect(stdout).not.toContain('--no-auto-filter');
+    expect(stdout).toContain('--no-auto-filter');
   });
 
   it('exposes --auto-filter in experiences import --help (Feature 7)', async () => {
@@ -370,17 +370,28 @@ describe('experiences import flag surface', () => {
     expect(stdout).toContain('--auto-filter');
   });
 
-  it('does not expose --no-live-preview in experiences import --help', async () => {
+  it('exposes --no-live-preview in experiences import --help (Feature 2)', async () => {
     const { stdout, code } = await run('import', '--help');
     expect(code).toBe(0);
-    expect(stdout).not.toContain('--no-live-preview');
+    expect(stdout).toContain('--no-live-preview');
   });
 
-  it('fails loud on non-TTY without other headless flags', async () => {
+  it('fails loud on non-TTY without --auto-accept-scope or other headless flags', async () => {
     // execFile gives us a non-TTY stdin/stdout by definition.
     const { code, stderr } = await run('import', '--project', '/tmp');
     expect(code).not.toBe(0);
-    expect(stderr).toMatch(/TTY/i);
+    expect(stderr).toMatch(/auto-accept-scope|TTY/i);
   });
 
+  it('exposes --no-save in experiences import --help (Feature 2 save AND push)', async () => {
+    const { stdout, code } = await run('import', '--help');
+    expect(code).toBe(0);
+    expect(stdout).toContain('--no-save');
+  });
+
+  it('exits with an error when --no-save and --no-push are combined', async () => {
+    const { stderr, code } = await run('import', '--no-save', '--no-push');
+    expect(code).toBe(1);
+    expect(stderr).toContain('--no-save and --no-push together would do nothing');
+  });
 });

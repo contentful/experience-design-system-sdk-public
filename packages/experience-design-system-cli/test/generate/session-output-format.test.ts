@@ -75,7 +75,7 @@ describe('generate — session output format (INTEG-4409)', () => {
     }>((res) => {
       execFile(
         'node',
-        [bin, '__generate', 'components', '--agent', 'claude', '--session', sid],
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid],
         {
           env: {
             ...process.env,
@@ -128,7 +128,7 @@ process.exit(0);
     }>((res) => {
       execFile(
         'node',
-        [bin, '__generate', 'tokens', '--agent', 'claude', '--raw-tokens', rawTokensPath],
+        [bin, 'generate', 'tokens', '--agent', 'claude', '--raw-tokens', rawTokensPath],
         {
           env: {
             ...process.env,

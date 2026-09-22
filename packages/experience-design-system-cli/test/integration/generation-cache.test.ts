@@ -29,7 +29,7 @@ import {
 import { resolveSkillPath } from '@contentful/experience-design-system-generation';
 
 const GEN_ARGS = (fix: CacheFixture, extra: string[] = []): string[] => [
-  '__generate',
+  'generate',
   'components',
   '--agent',
   'claude',

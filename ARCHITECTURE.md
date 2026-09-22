@@ -28,10 +28,11 @@ Design system codebase
     ├── import (headless)       → orchestrator that shells out to the subcommands below
     ├── runs                    → list/detail/replay prior wizard runs from ~/.config/experiences/runs.json
     │                              (positional <id-or-path>, --json, --pushed, --not-pushed)
-    ├── import generation (internal) → session DB (CDF/DTCG artifacts via coding agent)
+    ├── generate tokens (optional) → session DB (DTCG artifact via coding agent; before component generation)
     ├── analyze extract         → session DB (raw components)
     ├── analyze select          → session DB (accepted/rejected decisions, standalone JsonEditor TUI)
     ├── analyze select-agent    → session DB (agentic accept/reject + per-component rationale)
+    ├── generate components     → session DB (CDF artifact via coding agent; can consume tokens.json)
     ├── map tokens (standalone)  → deterministic default paths, then optional agentic $token.allowed inference
     ├── print validate          → validates CDF / DTCG files, exits 0/1
     ├── print components|tokens → write artifacts from the session DB
@@ -75,7 +76,7 @@ Component extraction engine: per-framework parsers (React, Vue, Astro, Stencil, 
 
 ### `experience-design-system-generation`
 
-Agent-invocation (`agent-invoker.ts`, `agent-runner.ts`), skill-prompt building (`prompt-builder.ts`), and progress reporting for coding-agent subprocesses. Consumed by the import wizard's internal generation step.
+Agent-invocation (`agent-invoker.ts`, `agent-runner.ts`), skill-prompt building (`prompt-builder.ts`), and progress reporting for coding-agent subprocesses. Consumed by the CLI's `generate components` and `generate tokens` commands — this is where the sentinel-marker-vs-tool-call-line output protocol described under "The Generate Command" below actually lives now.
 
 ### `experience-design-system-client`
 
@@ -492,9 +493,9 @@ welcome → extracting → [auto-filter (select-agent)] → scope-gate
         → preview → push-decision-gate → pushing → done
 ```
 
-A single human review gate (`scope-gate`) replaces the older two-step extract + generate-edit gates. The final-review step is a minimum-viable port of the standalone `JsonEditor` with lifted rationale + source panels, inline `$default` and `$allowedComponents` editing, and live preview re-runs after each save. Generate runs in parallel with the credentials step (`spawn-generate.ts`) so the operator does not wait on the agent. The push-decision-gate defaults to save AND push; `--no-save` and `--no-push` carve out the alternatives. `--out-dir <path>` short-circuits the save-path prompt.
+A single human review gate (`scope-gate`) replaces the older two-step extract + generate-edit gates. The final-review step is a minimum-viable port of the standalone `JsonEditor` with lifted rationale + source panels, inline `$default` and `$allowedComponents` editing, and live preview re-runs after each save (`--no-live-preview` to disable). Generate runs in parallel with the credentials step (`spawn-generate.ts`) so the operator does not wait on the agent. The push-decision-gate defaults to save AND push; `--no-save` and `--no-push` carve out the alternatives. `--out-dir <path>` short-circuits the save-path prompt.
 
-The wizard's AI auto-filter (auto-invocation of `analyze select-agent` before scope-gate) is force-enabled per run via `--auto-filter` and otherwise follows `~/.config/experiences/credentials.json`.
+The wizard's AI auto-filter (auto-invocation of `analyze select-agent` before scope-gate) is configurable per run via `--auto-filter` / `--no-auto-filter` and persisted to `~/.config/experiences/credentials.json`.
 
 ### Headless orchestrator
 
@@ -506,9 +507,9 @@ The wizard's AI auto-filter (auto-invocation of `analyze select-agent` before sc
 4. `map tokens --session <id> --agent <name>` — suggests `$token.allowed` for generated design-token props; skippable via `--skip-map-tokens`
 5. `apply push --components <components.json> --space-id ... --environment-id ... --yes`
 
-Headless mode is entered when any of `--auto-accept-scope`, `--dry-run`, or a credential flag is set. In non-TTY without one of those flags, the command exits 1 with a fail-loud message.
+Headless mode is entered when any of `--auto-accept-scope`, `--skip-analyze`, `--skip-generate`, `--skip-apply`, `--yes`, `--dry-run`, or a credential flag is set. In non-TTY without one of those flags, the command exits 1 with a fail-loud message.
 
-`--no-cache` bypasses extract/select/generate fine-grained caches and is forwarded to `analyze select-agent`, `generate components`, and `map tokens`.
+`--skip-analyze` and `--skip-generate` reuse the most recent session for the respective step. `--no-cache` bypasses extract/select/generate fine-grained caches and is forwarded to `analyze select-agent`, `generate components`, and `map tokens`.
 
 ### Replay
 

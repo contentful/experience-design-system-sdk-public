@@ -22,7 +22,7 @@ describe('generate components — flag variations', () => {
   });
 
   it('prints help with --help', async () => {
-    const { stdout, code } = await runCli(['__generate', 'components', '--help']);
+    const { stdout, code } = await runCli(['generate', 'components', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('--session');
     expect(stdout).toContain('--agent');
@@ -31,7 +31,7 @@ describe('generate components — flag variations', () => {
 
   it('--dry-run prints the prompt without invoking agent', async () => {
     const { stdout, stderr, code } = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', fixture.sessionId, '--dry-run'],
+      ['generate', 'components', '--agent', 'claude', '--session', fixture.sessionId, '--dry-run'],
       baseEnv(),
     );
     expect(code).toBe(0);
@@ -40,7 +40,7 @@ describe('generate components — flag variations', () => {
 
   it('fails with invalid --session', async () => {
     const { code } = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', 'nonexistent-session-id'],
+      ['generate', 'components', '--agent', 'claude', '--session', 'nonexistent-session-id'],
       baseEnv(),
     );
     expect(code).not.toBe(0);
@@ -48,7 +48,7 @@ describe('generate components — flag variations', () => {
 
   it('fails when --agent is not recognized', async () => {
     const { code } = await runCliWithEnv(
-      ['__generate', 'components', '--session', fixture.sessionId, '--agent', 'fake-agent-xyz'],
+      ['generate', 'components', '--session', fixture.sessionId, '--agent', 'fake-agent-xyz'],
       baseEnv(),
     );
     expect(code).not.toBe(0);
@@ -57,7 +57,7 @@ describe('generate components — flag variations', () => {
   it('--tokens flag is accepted with valid path', async () => {
     const { code } = await runCliWithEnv(
       [
-        '__generate',
+        'generate',
         'components',
         '--agent',
         'claude',
@@ -73,7 +73,7 @@ describe('generate components — flag variations', () => {
   });
 
   it('--token-map flag appears in help', async () => {
-    const { stdout, code } = await runCli(['__generate', 'components', '--help']);
+    const { stdout, code } = await runCli(['generate', 'components', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('--token-map');
   });
@@ -81,7 +81,7 @@ describe('generate components — flag variations', () => {
   it('--model flag is accepted (with --dry-run)', async () => {
     const { code } = await runCliWithEnv(
       [
-        '__generate',
+        'generate',
         'components',
         '--agent',
         'claude',
@@ -98,7 +98,7 @@ describe('generate components — flag variations', () => {
 
   it('--no-cache flag is accepted (with --dry-run)', async () => {
     const { code } = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', fixture.sessionId, '--dry-run', '--no-cache'],
+      ['generate', 'components', '--agent', 'claude', '--session', fixture.sessionId, '--dry-run', '--no-cache'],
       baseEnv(),
     );
     expect(code).toBe(0);
@@ -106,7 +106,7 @@ describe('generate components — flag variations', () => {
 
   it('--verbose flag is accepted (with --dry-run)', async () => {
     const { code } = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', fixture.sessionId, '--dry-run', '--verbose'],
+      ['generate', 'components', '--agent', 'claude', '--session', fixture.sessionId, '--dry-run', '--verbose'],
       baseEnv(),
     );
     expect(code).toBe(0);
@@ -115,7 +115,7 @@ describe('generate components — flag variations', () => {
   it('--dry-run + --tokens + --model combined', async () => {
     const { code } = await runCliWithEnv(
       [
-        '__generate',
+        'generate',
         'components',
         '--agent',
         'claude',
@@ -134,7 +134,7 @@ describe('generate components — flag variations', () => {
 
   describe('--generate-prompt-path (Feature 8)', () => {
     it('lists the flag in --help', async () => {
-      const { stdout, code } = await runCli(['__generate', 'components', '--help']);
+      const { stdout, code } = await runCli(['generate', 'components', '--help']);
       expect(code).toBe(0);
       expect(stdout).toContain('--generate-prompt-path');
     });
@@ -142,7 +142,7 @@ describe('generate components — flag variations', () => {
     it('exits 1 with a clear not-found error when the path does not exist', async () => {
       const { stderr, code } = await runCliWithEnv(
         [
-          '__generate',
+          'generate',
           'components',
           '--agent',
           'claude',
@@ -169,7 +169,7 @@ describe('generate components — flag variations', () => {
         await fs.writeFile(customPath, '# Custom generate prompt\n', 'utf8');
         const { stderr, code } = await runCliWithEnv(
           [
-            '__generate',
+            'generate',
             'components',
             '--agent',
             'claude',
@@ -193,20 +193,20 @@ describe('generate components — flag variations', () => {
 
   describe('generate tokens', () => {
     it('prints help with --help', async () => {
-      const { stdout, code } = await runCli(['__generate', 'tokens', '--help']);
+      const { stdout, code } = await runCli(['generate', 'tokens', '--help']);
       expect(code).toBe(0);
       expect(stdout).toContain('--raw-tokens');
       expect(stdout).toContain('--agent');
     });
 
     it('fails without --raw-tokens', async () => {
-      const { code } = await runCliWithEnv(['__generate', 'tokens', '--agent', 'claude'], baseEnv());
+      const { code } = await runCliWithEnv(['generate', 'tokens', '--agent', 'claude'], baseEnv());
       expect(code).not.toBe(0);
     });
 
     it('--dry-run prints prompt without invoking agent', async () => {
       const { stdout, stderr, code } = await runCliWithEnv(
-        ['__generate', 'tokens', '--agent', 'claude', '--raw-tokens', '/dev/null', '--dry-run'],
+        ['generate', 'tokens', '--agent', 'claude', '--raw-tokens', '/dev/null', '--dry-run'],
         baseEnv(),
       );
       expect(code).toBe(0);
@@ -216,7 +216,7 @@ describe('generate components — flag variations', () => {
     it('--model flag is accepted (with --dry-run)', async () => {
       const { code } = await runCliWithEnv(
         [
-          '__generate',
+          'generate',
           'tokens',
           '--agent',
           'claude',
@@ -233,7 +233,7 @@ describe('generate components — flag variations', () => {
 
     it('--verbose flag is accepted (with --dry-run)', async () => {
       const { code } = await runCliWithEnv(
-        ['__generate', 'tokens', '--agent', 'claude', '--raw-tokens', '/dev/null', '--dry-run', '--verbose'],
+        ['generate', 'tokens', '--agent', 'claude', '--raw-tokens', '/dev/null', '--dry-run', '--verbose'],
         baseEnv(),
       );
       expect(code).toBe(0);
@@ -241,7 +241,7 @@ describe('generate components — flag variations', () => {
 
     it('--no-cache flag is accepted (with --dry-run)', async () => {
       const { code } = await runCliWithEnv(
-        ['__generate', 'tokens', '--agent', 'claude', '--raw-tokens', '/dev/null', '--dry-run', '--no-cache'],
+        ['generate', 'tokens', '--agent', 'claude', '--raw-tokens', '/dev/null', '--dry-run', '--no-cache'],
         baseEnv(),
       );
       expect(code).toBe(0);

@@ -6,6 +6,8 @@ export type DsiCliCommand =
   | 'generate_tokens'
   | 'generate_edit'
   | 'map_tokens'
+  | 'apply_preview'
+  | 'apply_select'
   | 'apply_push'
   | 'print_components'
   | 'print_tokens'

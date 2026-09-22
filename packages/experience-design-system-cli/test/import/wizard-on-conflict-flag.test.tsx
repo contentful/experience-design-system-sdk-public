@@ -14,6 +14,33 @@ function run(args: string[]): Promise<{ stdout: string; stderr: string; code: nu
   });
 }
 
+describe('experiences import --on-conflict — parse-time mutex errors', () => {
+  it('errors when --no-save and --on-conflict are combined', async () => {
+    const { stderr, code } = await run(['import', '--no-save', '--on-conflict', 'overwrite']);
+    expect(code).not.toBe(0);
+    expect(stderr).toMatch(/--no-save.*--on-conflict|--on-conflict.*--no-save/);
+  });
+
+  it('errors with invalid --on-conflict value', async () => {
+    const { stderr, code } = await run([
+      'import',
+      '--skip-analyze',
+      '--skip-generate',
+      '--skip-apply',
+      '--on-conflict',
+      'bogus',
+    ]);
+    expect(code).not.toBe(0);
+    expect(stderr).toMatch(/on-conflict|overwrite|skip|fail/i);
+  });
+
+  it('lists --on-conflict in --help', async () => {
+    const { stdout, code } = await run(['import', '--help']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('--on-conflict');
+  });
+});
+
 // ── Unit: planSaveFlow honours --on-conflict ──────────────────────────────
 
 const { mockAccess } = vi.hoisted(() => ({

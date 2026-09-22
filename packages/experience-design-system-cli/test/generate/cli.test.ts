@@ -110,14 +110,14 @@ function injectSession(args: string[], sessionId: string): string[] {
 
 describe('generate command — help', () => {
   it('prints subcommands with --help', async () => {
-    const { stdout, code } = await run(['__generate', '--help']);
+    const { stdout, code } = await run(['generate', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('components');
     expect(stdout).toContain('tokens');
   });
 
   it('prints components help with --help', async () => {
-    const { stdout, code } = await run(['__generate', 'components', '--help']);
+    const { stdout, code } = await run(['generate', 'components', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('--agent');
     expect(stdout).toContain('--session');
@@ -126,7 +126,7 @@ describe('generate command — help', () => {
   });
 
   it('prints tokens help with --help', async () => {
-    const { stdout, code } = await run(['__generate', 'tokens', '--help']);
+    const { stdout, code } = await run(['generate', 'tokens', '--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('--agent');
     expect(stdout).toContain('--raw-tokens');
@@ -149,7 +149,7 @@ describe('generate components — input validation', () => {
     }>((res) => {
       execFile(
         'node',
-        [bin, '__generate', 'components', '--agent', 'foo', '--session', sid],
+        [bin, 'generate', 'components', '--agent', 'foo', '--session', sid],
         { env },
         (err, stdout, stderr) => res({ stdout, stderr, code: err?.code ? Number(err.code) : 0 }),
       );
@@ -171,7 +171,7 @@ describe('generate components — input validation', () => {
     }>((res) => {
       execFile(
         'node',
-        [bin, '__generate', 'components', '--agent', 'claude', '--session', sid, '--tokens', '/no/such/tokens.json'],
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid, '--tokens', '/no/such/tokens.json'],
         { env },
         (err, stdout, stderr) => res({ stdout, stderr, code: err?.code ? Number(err.code) : 0 }),
       );
@@ -193,7 +193,7 @@ describe('generate components — input validation', () => {
     }>((res) => {
       execFile(
         'node',
-        [bin, '__generate', 'components', '--agent', 'claude', '--session', sid, '--out', '/some/path'],
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid, '--out', '/some/path'],
         { env },
         (err, stdout, stderr) => res({ stdout, stderr, code: err?.code ? Number(err.code) : 0 }),
       );
@@ -205,7 +205,7 @@ describe('generate components — input validation', () => {
 
 describe('generate tokens — input validation', () => {
   it('exits 1 when --raw-tokens is missing', async () => {
-    const { stderr, code } = await run(['__generate', 'tokens', '--agent', 'claude']);
+    const { stderr, code } = await run(['generate', 'tokens', '--agent', 'claude']);
     expect(code).toBe(1);
     expect(stderr).toContain('--raw-tokens is required');
   });
@@ -225,7 +225,7 @@ describe('generate components — --dry-run', () => {
     }>((res) => {
       execFile(
         'node',
-        [bin, '__generate', 'components', '--agent', 'claude', '--session', sid, '--dry-run'],
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid, '--dry-run'],
         { env },
         (err, stdout, stderr) => res({ stdout, stderr, code: err?.code ? Number(err.code) : 0 }),
       );
@@ -262,7 +262,7 @@ describe('generate components — --dry-run', () => {
     }>((res) => {
       execFile(
         'node',
-        [bin, '__generate', 'components', '--agent', 'claude', '--session', sid, '--dry-run'],
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid, '--dry-run'],
         { env },
         (err, stdout, stderr) => res({ stdout, stderr, code: err?.code ? Number(err.code) : 0 }),
       );
@@ -291,7 +291,7 @@ describe('generate components — agent binary not found', () => {
     }>((res) => {
       execFile(
         'node',
-        [bin, '__generate', 'components', '--agent', 'claude', '--session', sid],
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid],
         {
           env: {
             ...process.env,
@@ -327,7 +327,7 @@ describe('generate components — tool-call protocol output', () => {
     }>((res) => {
       execFile(
         'node',
-        [bin, '__generate', 'components', '--agent', 'claude', '--session', sid],
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid],
         {
           env: {
             ...process.env,
@@ -389,7 +389,7 @@ process.exit(0);
     }>((res) => {
       execFile(
         'node',
-        [bin, '__generate', 'components', '--agent', 'claude', '--session', sid],
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid],
         {
           env: {
             ...process.env,
@@ -432,7 +432,7 @@ process.exit(0);
     }>((res) => {
       execFile(
         'node',
-        [bin, '__generate', 'components', '--agent', 'claude', '--session', sid],
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid],
         {
           env: {
             ...process.env,
@@ -466,7 +466,7 @@ process.exit(0);
     }>((res) => {
       execFile(
         'node',
-        [bin, '__generate', 'components', '--agent', 'claude', '--session', sid],
+        [bin, 'generate', 'components', '--agent', 'claude', '--session', sid],
         {
           env: {
             ...process.env,

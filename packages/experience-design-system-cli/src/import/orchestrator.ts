@@ -8,8 +8,10 @@ import {
   updateStep,
   findLatestSessionForCommand,
   loadCDFComponents,
+  storeDTCGTokens,
 } from '../session/db.js';
 import { detectSlotCycles, formatSlotCycleReport } from '../apply/command.js';
+import { readTokensFromPath } from '../apply/manifest.js';
 import { PREVIEW_ERROR_PREFIX, VALIDATION_FAILED_CODE, parsePreviewValidationErrors } from '../apply/api-client.js';
 import { fetchAndPersistExistingContentfulEntities } from '../helpers/fetch-and-persist-existing-contentful-entities.js';
 import { buildPostPushUrl } from '../lib/contentful-urls.js';
@@ -30,13 +32,19 @@ export interface PipelineOptions {
   bedrock?: boolean;
   skipAnalyze: boolean;
   skipGenerate: boolean;
+  print: boolean;
   skipApply: boolean;
   noCache: boolean;
   yes: boolean;
   verbose: boolean;
+  tokens?: string;
+  viewports?: string;
   host?: string;
   dryRun?: boolean;
   excludeInvalid?: boolean;
+  selectAll?: boolean;
+  select?: string[];
+  deselect?: string[];
   /** Forwarded to the spawned `analyze select-agent` subprocess. */
   selectPromptPath?: string;
   /** When true, auto-reject cycle participants and retry push instead of surfacing an error. */
@@ -216,7 +224,7 @@ export async function runPipeline(
 
   const canFetchExistingContentfulEntities = !!opts.spaceId && !!opts.environmentId && !!opts.cmaToken;
 
-  const totalSteps = 5 + (canFetchExistingContentfulEntities ? 1 : 0);
+  const totalSteps = 5 + (opts.print ? 1 : 0) + (canFetchExistingContentfulEntities ? 1 : 0);
 
   function stepLabel(name: string): string {
     stepNum++;
@@ -369,7 +377,8 @@ export async function runPipeline(
     });
     const t0Edit = Date.now();
 
-    const useAgentSelect = true;
+    const useAgentSelect =
+      !opts.selectAll && (!opts.select || opts.select.length === 0) && (!opts.deselect || opts.deselect.length === 0);
 
     let editArgs: string[];
     if (useAgentSelect) {
@@ -382,7 +391,14 @@ export async function runPipeline(
       if (existingEntitiesPath) editArgs.push('--existing-entities-path', existingEntitiesPath);
     } else {
       editArgs = ['analyze', 'select', '--session', extractSessionId];
-      editArgs.push('--select-all');
+      if (opts.select && opts.select.length > 0) {
+        for (const p of opts.select) editArgs.push('--select', p);
+      } else if (opts.deselect && opts.deselect.length > 0) {
+        for (const p of opts.deselect) editArgs.push('--deselect', p);
+        editArgs.push('--select-all');
+      } else {
+        editArgs.push('--select-all');
+      }
     }
 
     const rEdit = await runStep(editArgs, cliPath, sessionId, { FORCE_COLOR: '1' }, useAgentSelect);
@@ -433,7 +449,7 @@ export async function runPipeline(
     });
   } else {
     const generateLabel = stepLabel('Categorizing component props');
-    const generateArgs = ['__generate', 'components', '--agent', opts.agent];
+    const generateArgs = ['generate', 'components', '--agent', opts.agent];
     if (opts.model) generateArgs.push('--model', opts.model);
     if (opts.bedrock) generateArgs.push('--bedrock');
     if (extractSessionId) generateArgs.push('--session', extractSessionId);
@@ -478,6 +494,14 @@ export async function runPipeline(
     });
     progressWriter(`${generateLabel}✓  components stored locally  (${(durationMs / 1000).toFixed(1)}s)`);
     steps.push({ step: 'generate components', status: 'complete', durationMs });
+  }
+
+  // --tokens is already-classified DTCG input for apply, but map-tokens
+  // resolves defaults from the generated component session. Materialize the
+  // same leaves there before invoking its deterministic prepass.
+  if (extractSessionId && opts.tokens) {
+    const tokens = await readTokensFromPath('--tokens', opts.tokens);
+    storeDTCGTokens(db, extractSessionId, [], tokens);
   }
 
   const mapTokensLabel = stepLabel('Mapping design tokens');
@@ -587,6 +611,33 @@ export async function runPipeline(
     }
   }
 
+  if (opts.print) {
+    const printLabel = stepLabel('Writing components.json');
+    const printArgs = ['print', 'components', '--out', componentsPath];
+    if (extractSessionId) printArgs.push('--session', extractSessionId);
+
+    const stepId = createStep(db, sessionId, 'print components', {
+      out: componentsPath,
+    });
+    const t0 = Date.now();
+    const r = await runStep(printArgs, cliPath, sessionId);
+    const durationMs = Date.now() - t0;
+
+    if (r.exitCode !== 0) {
+      return failStep({
+        stepId,
+        step: 'print components',
+        label: printLabel,
+        durationMs,
+        error: r.stderr,
+      });
+    }
+
+    updateStep(db, stepId, 'complete', { components: componentsPath });
+    progressWriter(`${printLabel}✓  components.json written  (${(durationMs / 1000).toFixed(1)}s)`);
+    steps.push({ step: 'print components', status: 'complete', durationMs });
+  }
+
   const applyLabelText =
     opts.spaceId && opts.environmentId
       ? `Applying changes to Space: ${opts.spaceId} Environment: ${opts.environmentId}`
@@ -627,6 +678,8 @@ export async function runPipeline(
       pushArgs.push('--components', componentsPath);
     }
 
+    if (opts.tokens) pushArgs.push('--tokens', opts.tokens);
+    if (opts.viewports) pushArgs.push('--viewports', opts.viewports);
     if (opts.host) pushArgs.push('--host', opts.host);
     if (opts.verbose) pushArgs.push('--verbose');
     if (opts.allowDeletions) pushArgs.push('--allow-deletions');

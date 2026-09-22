@@ -45,24 +45,44 @@ function run(
   });
 }
 
-// Help output exercises parsing without running the pipeline.
+// Use --skip-analyze + --skip-generate + --skip-apply to make the flag-parse
+// fast-path; --print-prompt / --dry-run only matter for flag parsing here.
 function args(extra: string[]): string[] {
-  return ['import', '--help', ...extra];
+  return ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', projectDir, ...extra];
 }
 
-describe('experiences import prompt flags', () => {
-  it('does not list --print-prompt in --help', async () => {
+describe('experiences import — --print-prompt', () => {
+  it('lists --print-prompt in --help', async () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
-    expect(stdout).not.toContain('--print-prompt');
+    expect(stdout).toContain('--print-prompt');
   });
 
-  it('does not list --dry-run in --help text', async () => {
+  it('marks --dry-run as deprecated in --help text', async () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
-    expect(stdout).not.toContain('--dry-run');
+    expect(stdout.toLowerCase()).toMatch(/deprecat/);
   });
 
+  it('--print-prompt is accepted and does NOT emit the deprecation notice', async () => {
+    const { stderr, code } = await run(args(['--print-prompt']));
+    expect(stderr).not.toContain("unknown option '--print-prompt'");
+    expect(stderr).not.toMatch(/will change semantics/);
+    expect(code).toBe(0);
+  });
+
+  it('bare --dry-run emits the deprecation notice to stderr', async () => {
+    const { stderr, code } = await run(args(['--dry-run']));
+    expect(stderr).toContain('--dry-run');
+    expect(stderr).toMatch(/will change semantics/);
+    expect(stderr).toContain('--print-prompt');
+    expect(code).toBe(0);
+  });
+
+  it('--print-prompt does NOT emit the deprecation notice', async () => {
+    const { stderr } = await run(args(['--print-prompt']));
+    expect(stderr).not.toMatch(/will change semantics/);
+  });
 
   it.todo('--dry-run --no-push delegates to manifest-preview semantics (follow-up PR)');
 });

@@ -41,6 +41,7 @@ function baseOpts(overrides: Partial<PipelineOptions>): PipelineOptions {
     agent: 'fake-agent',
     skipAnalyze: false,
     skipGenerate: true,
+    print: false,
     skipApply: true,
     noCache: false,
     yes: true,

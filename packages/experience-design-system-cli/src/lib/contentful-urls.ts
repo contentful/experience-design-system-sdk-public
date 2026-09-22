@@ -3,7 +3,7 @@
  *
  * The wizard's `done` step and the `experiences import` orchestrator both used
  * to inline the same post-push URL formatter. This module centralizes that
- * formatter so the wizard and `apply push` emit the same
+ * formatter so the wizard, `apply push`, and `apply select` all emit the same
  * URL shape.
  */
 

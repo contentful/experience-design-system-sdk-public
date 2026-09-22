@@ -104,6 +104,7 @@ function baseOpts(overrides: Partial<PipelineOptions> = {}): PipelineOptions {
     agent: 'claude',
     skipAnalyze: false,
     skipGenerate: false,
+    print: false,
     skipApply: false,
     noCache: false,
     yes: false,
@@ -126,8 +127,8 @@ function useTestDb(dir: string): () => void {
   };
 }
 
-describe('runPipeline — apply step', () => {
-  it('does not include a print components step', async () => {
+describe('runPipeline — print step', () => {
+  it('omits print components step when opts.print is false', async () => {
     const dir = await makeTempDir('orch-no-print-');
 
     const cliPath = await makeFakeCli(dir, {
@@ -147,6 +148,32 @@ describe('runPipeline — apply step', () => {
 
     expect(result.steps.map((s) => s.step)).not.toContain('print components');
     expect(result.steps.map((s) => s.step)).toContain('apply push');
+  });
+
+  it('includes print components step when opts.print is true', async () => {
+    const dir = await makeTempDir('orch-with-print-');
+
+    const cliPath = await makeFakeCli(dir, {
+      'analyze extract': { stdout: 'session=test-session-1\n', stderr: 'Extracted 1 component\n' },
+      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
+      'generate components': { stdout: 'session=test-session-2\n', stderr: 'Done: 1/1 components\n' },
+      'print components': {},
+      'apply push': {
+        stdout: JSON.stringify({
+          componentTypes: { created: 1, updated: 0, failed: 0 },
+          designTokens: { created: 0, updated: 0, failed: 0 },
+        }),
+      },
+    });
+
+    const lines: string[] = [];
+    const result = await runPipeline(
+      { ...baseOpts({ out: dir, print: true }), project: dir },
+      (line) => lines.push(line),
+      cliPath,
+    );
+
+    expect(result.steps.map((s) => s.step)).toContain('print components');
   });
 });
 
@@ -175,8 +202,34 @@ describe('runPipeline — apply push always gets --yes', () => {
   });
 });
 
-describe('runPipeline — token arguments', () => {
-  it('does not pass --tokens to apply push', async () => {
+describe('runPipeline — tokens flag', () => {
+  it('passes --tokens to apply push when opts.tokens is set', async () => {
+    const dir = await makeTempDir('orch-tokens-');
+    const tokensPath = join(dir, 'tokens.json');
+    await writeFile(tokensPath, '{}');
+
+    const cliPath = await makeFakeCli(dir, {
+      'analyze extract': { stdout: 'session=test-session-1\n', stderr: 'Extracted 1 component\n' },
+      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
+      'generate components': { stdout: 'session=test-session-2\n', stderr: 'Done: 1/1 components\n' },
+      'apply push': {
+        stdout: JSON.stringify({
+          componentTypes: { created: 1, updated: 0, failed: 0 },
+          designTokens: { created: 1, updated: 0, failed: 0 },
+        }),
+      },
+    });
+
+    await runPipeline({ ...baseOpts({ out: dir, tokens: tokensPath }), project: dir }, () => {}, cliPath);
+
+    const calls = await readCalls(dir);
+    const pushCall = calls.find((c) => c[0] === 'apply' && c[1] === 'push');
+    expect(pushCall).toBeDefined();
+    expect(pushCall).toContain('--tokens');
+    expect(pushCall).toContain(tokensPath);
+  });
+
+  it('does not pass --tokens when opts.tokens is not set', async () => {
     const dir = await makeTempDir('orch-no-tokens-');
 
     const cliPath = await makeFakeCli(dir, {
@@ -231,6 +284,34 @@ describe('runPipeline — step count in progress output', () => {
     const stepLines = lines.filter((l) => l.includes('Step '));
     expect(stepLines.every((l) => l.includes('/5'))).toBe(true);
   });
+
+  it('shows 6 total steps when print is true', async () => {
+    const dir = await makeTempDir('orch-6steps-');
+
+    const cliPath = await makeFakeCli(dir, {
+      'analyze extract': { stdout: 'session=s1\n', stderr: 'Extracted 1 component\n' },
+      'analyze select': { stderr: 'Accepted: 1  Rejected: 0\n' },
+      'generate components': { stdout: 'session=s2\n', stderr: 'Done: 1/1 components\n' },
+      'print components': {},
+      'apply push': {
+        stdout: JSON.stringify({
+          componentTypes: { created: 1, updated: 0, failed: 0 },
+          designTokens: { created: 0, updated: 0, failed: 0 },
+        }),
+      },
+    });
+
+    const opts = baseOpts({ out: dir, print: true, skipApply: true });
+    delete opts.spaceId;
+    delete opts.environmentId;
+    delete opts.cmaToken;
+
+    const lines: string[] = [];
+    await runPipeline({ ...opts, project: dir }, (line) => lines.push(line), cliPath);
+
+    const stepLines = lines.filter((l) => l.includes('Step '));
+    expect(stepLines.every((l) => l.includes('/6'))).toBe(true);
+  });
 });
 
 describe('runPipeline — apply push uses session not components file', () => {
@@ -282,7 +363,7 @@ describe('runPipeline — verbose flag propagation', () => {
     await runPipeline({ ...baseOpts({ out: dir, verbose: true }), project: dir }, () => {}, cliPath);
 
     const calls = await readCalls(dir);
-    const genCall = calls.find((c) => c[0] === '__generate' && c[1] === 'components');
+    const genCall = calls.find((c) => c[0] === 'generate' && c[1] === 'components');
     const pushCall = calls.find((c) => c[0] === 'apply' && c[1] === 'push');
     expect(genCall).toContain('--verbose');
     expect(pushCall).toContain('--verbose');
@@ -306,7 +387,7 @@ describe('runPipeline — verbose flag propagation', () => {
     await runPipeline({ ...baseOpts({ out: dir, verbose: false }), project: dir }, () => {}, cliPath);
 
     const calls = await readCalls(dir);
-    const genCall = calls.find((c) => c[0] === '__generate' && c[1] === 'components');
+    const genCall = calls.find((c) => c[0] === 'generate' && c[1] === 'components');
     const pushCall = calls.find((c) => c[0] === 'apply' && c[1] === 'push');
     expect(genCall).not.toContain('--verbose');
     expect(pushCall).not.toContain('--verbose');

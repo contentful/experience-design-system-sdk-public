@@ -1,0 +1,6 @@
+{
+  "name": "react-composite-cycle-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "description": "React fixture with a NodeA↔NodeB slot cycle. Used by PTY harness tests."
+}

@@ -60,7 +60,7 @@ function baseEnv(): NodeJS.ProcessEnv {
 // ── Baseline args that skip all pipeline steps safely ─────────────────────
 // Anything that just needs to verify a flag is accepted can append to this.
 function skipAll(): string[] {
-  return ['import', '--help'];
+  return ['import', '--skip-analyze', '--skip-generate', '--skip-map-tokens', '--skip-apply', '--project', projectDir];
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -78,9 +78,21 @@ describe('import — help output lists all flags', () => {
       '--out',
       '--agent',
       '--model',
+      '--tokens',
+      '--select-all',
+      '--select',
+      '--deselect',
+      '--skip-analyze',
+      '--skip-generate',
+      '--print',
+      '--skip-apply',
       '--skip-map-tokens',
       '--no-cache',
+      '--yes',
+      '--verbose',
+      '--viewports',
       '--host',
+      '--dry-run',
     ];
 
     for (const flag of flags) {
@@ -146,7 +158,7 @@ describe('import — credential flags', () => {
     // Without --skip-apply the command normally requires credentials; env vars should supply them.
     // The pipeline will fail at analyze extract (no components), but not at credential validation.
     const { stderr } = await run(
-      ['import', '--help'],
+      ['import', '--skip-analyze', '--skip-generate', '--project', projectDir],
       {
         ...baseEnv(),
         CONTENTFUL_SPACE_ID: 'env-space',
@@ -169,7 +181,7 @@ describe('import — skip flags', () => {
   });
 
   it('does not retain the --no-map-tokens alias', async () => {
-    const { stderr, code } = await run(['import', '--no-map-tokens'], baseEnv());
+    const { stderr, code } = await run([...skipAll(), '--no-map-tokens'], baseEnv());
     expect(stderr).toContain("unknown option '--no-map-tokens'");
     expect(code).not.toBe(0);
   });
@@ -186,7 +198,7 @@ describe('import — skip flags', () => {
     // and/or errored "experiences import is interactive" when stdout was a pipe.
     // --no-push is now the canonical "don't push" flag and works in both contexts.
     const { stderr } = await run(
-      ['import', '--help', '--no-push'],
+      ['import', '--skip-analyze', '--skip-generate', '--no-push', '--project', projectDir],
       baseEnv(),
     );
     expect(stderr).not.toContain('--space-id');
@@ -196,7 +208,7 @@ describe('import — skip flags', () => {
 
   it('--no-push and --skip-apply are interchangeable for the credential requirement', async () => {
     const noPush = await run(
-      ['import', '--help', '--no-push'],
+      ['import', '--skip-analyze', '--skip-generate', '--no-push', '--project', projectDir],
       baseEnv(),
     );
     const skipApply = await run(skipAll(), baseEnv());
@@ -204,7 +216,25 @@ describe('import — skip flags', () => {
     expect(noPush.stderr).not.toContain('--cma-token');
   });
 
-  it('the remaining skip flags together exit 0', async () => {
+  it('--skip-analyze alone is accepted as a flag', async () => {
+    const { stderr, code } = await run(
+      ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', projectDir],
+      baseEnv(),
+    );
+    expect(stderr).not.toContain("unknown option '--skip-analyze'");
+    expect(code).toBe(0);
+  });
+
+  it('--skip-generate alone is accepted as a flag', async () => {
+    const { stderr, code } = await run(
+      ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', projectDir],
+      baseEnv(),
+    );
+    expect(stderr).not.toContain("unknown option '--skip-generate'");
+    expect(code).toBe(0);
+  });
+
+  it('all three skip flags together exit 0', async () => {
     const { code } = await run(skipAll(), baseEnv());
     expect(code).toBe(0);
   });
@@ -223,13 +253,22 @@ describe('import — agent and model flags', () => {
     expect(code).toBe(0);
   });
 
+  it('--dry-run is accepted with --skip-apply (no external deps)', async () => {
+    // --dry-run tells the pipeline to print the generate prompt rather than invoking the agent.
+    // With --skip-generate the generate step is skipped entirely, so the flag is parsed but unused.
+    const { stderr, code } = await run([...skipAll(), '--dry-run'], baseEnv());
+    expect(stderr).not.toContain("unknown option '--dry-run'");
+    expect(code).toBe(0);
+  });
 });
 
 describe('import — output flags', () => {
-  it('--print is rejected as an unknown option', async () => {
-    const { stderr, code } = await run(['import', '--print'], baseEnv());
-    expect(code).not.toBe(0);
-    expect(stderr).toContain("unknown option '--print'");
+  it('--print is accepted without error', async () => {
+    const { stderr } = await run([...skipAll(), '--print'], baseEnv());
+    // --print is a valid flag; it should never be rejected as an unknown option.
+    // The step itself may fail if there is no prior generate session in the DB —
+    // that is expected for an empty test DB and is not a flag-acceptance failure.
+    expect(stderr).not.toContain("unknown option '--print'");
   });
 
   it('--out <path> is accepted without error', async () => {
@@ -239,34 +278,54 @@ describe('import — output flags', () => {
     expect(code).toBe(0);
   });
 
+  it('--verbose is accepted without error', async () => {
+    const { stderr, code } = await run([...skipAll(), '--verbose'], baseEnv());
+    expect(stderr).not.toContain("unknown option '--verbose'");
+    expect(code).toBe(0);
+  });
 });
 
 describe('import — selection flags', () => {
-  it('--select-all is rejected as an unknown option', async () => {
-    const { stderr, code } = await run(['import', '--select-all'], baseEnv());
-    expect(code).not.toBe(0);
-    expect(stderr).toContain("unknown option '--select-all'");
+  it('--select-all is accepted without error', async () => {
+    const { stderr, code } = await run([...skipAll(), '--select-all'], baseEnv());
+    expect(stderr).not.toContain("unknown option '--select-all'");
+    expect(code).toBe(0);
   });
 
-});
-
-describe('import — removed flags', () => {
-  it('--select is rejected as an unknown option', async () => {
-    const { stderr, code } = await run(['import', '--select', 'Button'], baseEnv());
-    expect(code).not.toBe(0);
-    expect(stderr).toContain("unknown option '--select'");
+  it('--select <pattern> is accepted without error', async () => {
+    const { stderr, code } = await run([...skipAll(), '--select', 'Button'], baseEnv());
+    expect(stderr).not.toContain("unknown option '--select'");
+    expect(code).toBe(0);
   });
 
-  it('--deselect is rejected as an unknown option', async () => {
-    const { stderr, code } = await run(['import', '--deselect', 'Icon'], baseEnv());
-    expect(code).not.toBe(0);
-    expect(stderr).toContain("unknown option '--deselect'");
+  it('--deselect <pattern> is accepted without error', async () => {
+    const { stderr, code } = await run([...skipAll(), '--deselect', 'Icon'], baseEnv());
+    expect(stderr).not.toContain("unknown option '--deselect'");
+    expect(code).toBe(0);
   });
 
-  it('--tokens is rejected as an unknown option', async () => {
-    const { stderr, code } = await run(['import', '--tokens', '/dev/null'], baseEnv());
-    expect(code).not.toBe(0);
-    expect(stderr).toContain("unknown option '--tokens'");
+  it('--select can be repeated multiple times', async () => {
+    const { stderr, code } = await run([...skipAll(), '--select', 'Button', '--select', 'Card'], baseEnv());
+    expect(stderr).not.toContain('unknown option');
+    expect(code).toBe(0);
+  });
+
+  it('--deselect can be repeated multiple times', async () => {
+    const { stderr, code } = await run([...skipAll(), '--deselect', 'Icon', '--deselect', 'Avatar'], baseEnv());
+    expect(stderr).not.toContain('unknown option');
+    expect(code).toBe(0);
+  });
+
+  it('--select and --deselect can be combined', async () => {
+    const { stderr, code } = await run([...skipAll(), '--select', 'Button', '--deselect', 'Icon'], baseEnv());
+    expect(stderr).not.toContain('unknown option');
+    expect(code).toBe(0);
+  });
+
+  it('--select-all and --select can be combined', async () => {
+    const { stderr, code } = await run([...skipAll(), '--select-all', '--select', 'Button'], baseEnv());
+    expect(stderr).not.toContain('unknown option');
+    expect(code).toBe(0);
   });
 });
 
@@ -289,7 +348,7 @@ describe('import — push-related flags', () => {
     expect(code).toBe(0);
   });
 
-  it('--no-cache is accepted and forces a re-run', async () => {
+  it('--no-cache is accepted and overrides --skip-analyze (forces re-run)', async () => {
     // Isolated project/DB: --no-cache forces a real analyze extract run, which
     // would otherwise leave a session in the shared DB for later tests to pick up.
     const freshProjectDir = await createTempDir('no-cache-project-');
@@ -297,14 +356,26 @@ describe('import — push-related flags', () => {
     const { stderr } = await run(
       [
         'import',
-        '--help',
+        '--skip-analyze',
+        '--skip-generate',
+        '--skip-map-tokens',
+        '--skip-apply',
+        '--project',
+        freshProjectDir,
         '--no-cache',
       ],
       { EDS_PIPELINE_DB_PATH: freshDbPath, NODE_NO_WARNINGS: '1' },
       30_000,
     );
     expect(stderr).not.toContain("unknown option '--no-cache'");
-    // The important assertion is that the flag is recognized and acted upon.
+    // --no-cache overrides --skip-analyze, so analyze runs (may fail on minimal fixture)
+    // The important assertion is that the flag is recognized and acted upon
+  });
+
+  it('--tokens <path> is accepted without error', async () => {
+    const { stderr, code } = await run([...skipAll(), '--tokens', '/dev/null'], baseEnv());
+    expect(stderr).not.toContain("unknown option '--tokens'");
+    expect(code).toBe(0);
   });
 
   it('--raw-tokens <path> is accepted when the file exists', async () => {
@@ -315,19 +386,40 @@ describe('import — push-related flags', () => {
   });
 
   it('--raw-tokens errors at parse time when the file does not exist', async () => {
-    const { stderr, code } = await run(['import', '--raw-tokens', '/nonexistent/raw-tokens.scss'], baseEnv());
+    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/nonexistent/raw-tokens.scss'], baseEnv());
     expect(stderr).toContain('--raw-tokens');
     expect(stderr).toContain('file not found');
     expect(stderr).toContain('/nonexistent/raw-tokens.scss');
     expect(code).not.toBe(0);
   });
 
+  it('--raw-tokens and --tokens together error as mutually exclusive', async () => {
+    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/dev/null', '--tokens', '/dev/null'], baseEnv());
+    expect(stderr).toContain('mutually exclusive');
+    expect(stderr).toContain('--raw-tokens');
+    expect(stderr).toContain('--tokens');
+    expect(code).not.toBe(0);
+  });
+
+  it('--raw-tokens coexists with --auto-accept-scope', async () => {
+    const { stderr, code } = await run([...skipAll(), '--raw-tokens', '/dev/null', '--auto-accept-scope'], baseEnv());
+    expect(stderr).not.toContain('unknown option');
+    expect(stderr).not.toContain('mutually exclusive');
+    expect(stderr).not.toContain('file not found');
+    expect(code).toBe(0);
+  });
+
+  it('--viewports <path> is accepted without error', async () => {
+    const { stderr, code } = await run([...skipAll(), '--viewports', '/dev/null'], baseEnv());
+    expect(stderr).not.toContain("unknown option '--viewports'");
+    expect(code).toBe(0);
+  });
 });
 
 describe('import — project path flag', () => {
   it('--project <path> is accepted with a valid directory', async () => {
     const { stderr, code } = await run(
-      ['import', '--help', '--project', projectDir],
+      ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', projectDir],
       baseEnv(),
     );
     expect(stderr).not.toContain('unknown option');
@@ -336,12 +428,12 @@ describe('import — project path flag', () => {
 
   it('fails with a nonexistent --project path', async () => {
     const { stderr, code } = await run(
-      ['import', '--help', '--project', '/nonexistent/does/not/exist'],
+      ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', '/nonexistent/does/not/exist'],
       baseEnv(),
     );
     // The pipeline may fail, but it should not be due to an unknown option
     expect(stderr).not.toContain("unknown option '--project'");
-    expect(code).toBe(0);
+    expect(code).not.toBe(0);
   });
 });
 
@@ -364,12 +456,21 @@ describe('import — ~ expansion for --project and --raw-tokens', () => {
   it('--project ~/myproj resolves against $HOME, not a literal ~ directory', async () => {
     const fakeHome = await createTempDir('fake-home-');
     await cp(REAL_PROJECT_DIR, join(fakeHome, 'myproj'), { recursive: true });
+    const freshDbPath = join(await createTempDir('project-tilde-db-'), 'pipeline.db');
+    const outDir = await createTempDir('project-tilde-out-');
+
     const { stdout, code } = await run(
-      ['import', '--help', '--project', '~/myproj'],
-      { NODE_NO_WARNINGS: '1', HOME: fakeHome },
+      ['import', '--project', '~/myproj', '--select-all', '--skip-generate', '--skip-apply', '--out', outDir],
+      { EDS_PIPELINE_DB_PATH: freshDbPath, NODE_NO_WARNINGS: '1', HOME: fakeHome },
+      55000,
     );
 
     expect(code).toBe(0);
-    expect(stdout).toContain('--project');
+    const result = JSON.parse(stdout) as {
+      steps: Array<{ step: string; status: string; detail?: { components?: number } }>;
+    };
+    const extractStep = result.steps.find((s) => s.step === 'analyze extract');
+    expect(extractStep?.status).toBe('complete');
+    expect(extractStep?.detail?.components ?? 0).toBeGreaterThanOrEqual(1);
   }, 60000);
 });

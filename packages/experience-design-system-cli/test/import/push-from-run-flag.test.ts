@@ -24,6 +24,12 @@ describe('experiences import --push-from-run — parse-time mutex errors', () =>
     expect(stderr).toMatch(/--push-from-run.*--project|--project.*--push-from-run/);
   });
 
+  it('errors when --push-from-run is combined with --no-save', async () => {
+    const { stderr, code } = await run(['import', '--push-from-run', '01HXYZ', '--no-save']);
+    expect(code).not.toBe(0);
+    expect(stderr).toMatch(/--push-from-run.*--no-save|--no-save.*--push-from-run/);
+  });
+
   it('errors when --push-from-run is combined with --no-push', async () => {
     const { stderr, code } = await run(['import', '--push-from-run', '01HXYZ', '--no-push']);
     expect(code).not.toBe(0);
@@ -36,6 +42,17 @@ describe('experiences import --push-from-run — parse-time mutex errors', () =>
     expect(stderr).toMatch(/--push-from-run.*--modify|--modify.*--push-from-run/);
   });
 
+  it('errors when --overwrite and --save-as-new are combined under --modify', async () => {
+    const { stderr, code } = await run(['import', '--modify', '01HXYZ', '--overwrite', '--save-as-new']);
+    expect(code).not.toBe(0);
+    expect(stderr).toMatch(/--overwrite.*--save-as-new|--save-as-new.*--overwrite|mutually exclusive/);
+  });
+
+  it('errors when --overwrite is passed without --modify', async () => {
+    const { stderr, code } = await run(['import', '--overwrite']);
+    expect(code).not.toBe(0);
+    expect(stderr).toMatch(/--overwrite.*--modify|require --modify/);
+  });
 });
 
 // ── Unit: delegation to replayRun / modifyRun helpers ───────────────────────
@@ -132,6 +149,27 @@ describe('experiences import --push-from-run — delegation', () => {
   });
 });
 
+describe('experiences import --force — forwarding', () => {
+  it('forwards --force to replayRun under --push-from-run', async () => {
+    const program = buildProgram();
+    await program.parseAsync(['import', '--push-from-run', '01HXYZ', '--force'], { from: 'user' });
+    expect(mockReplayRun).toHaveBeenCalledWith(expect.objectContaining({ force: true }));
+  });
+
+  it('forwards --force to modifyRun under --modify', async () => {
+    const program = buildProgram();
+    await program.parseAsync(['import', '--modify', '01HXYZ', '--force'], { from: 'user' });
+    expect(mockModifyRun).toHaveBeenCalledWith(expect.objectContaining({ force: true }));
+  });
+
+  it('omits force when the flag is absent', async () => {
+    const program = buildProgram();
+    await program.parseAsync(['import', '--push-from-run', '01HXYZ'], { from: 'user' });
+    const call = mockReplayRun.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(call['force']).toBeUndefined();
+  });
+});
+
 describe('experiences import --modify — delegation', () => {
   it('calls modifyRun with the positional', async () => {
     const program = buildProgram();
@@ -140,6 +178,17 @@ describe('experiences import --modify — delegation', () => {
     expect(mockReplayRun).not.toHaveBeenCalled();
   });
 
+  it('forwards --overwrite to modifyRun', async () => {
+    const program = buildProgram();
+    await program.parseAsync(['import', '--modify', '01HXYZ', '--overwrite'], { from: 'user' });
+    expect(mockModifyRun).toHaveBeenCalledWith(expect.objectContaining({ runIdOrPath: '01HXYZ', overwrite: true }));
+  });
+
+  it('forwards --save-as-new to modifyRun', async () => {
+    const program = buildProgram();
+    await program.parseAsync(['import', '--modify', '01HXYZ', '--save-as-new'], { from: 'user' });
+    expect(mockModifyRun).toHaveBeenCalledWith(expect.objectContaining({ runIdOrPath: '01HXYZ', saveAsNew: true }));
+  });
 });
 
 describe('experiences import --allow-deletions — forwarding', () => {

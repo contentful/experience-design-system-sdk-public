@@ -8,10 +8,12 @@ import { resolveAgent, resolveModel } from './agent-model-resolve.js';
 import { addAgentModelOptions } from '../lib/agent-model-options.js';
 import { resolveCompositionMode, type CompositionMode } from '../lib/composition-mode.js';
 import { addAllowDeletionsOption, addCompositionOptions } from '../lib/command-options.js';
+import { isConflictMode, type ConflictMode } from '../runs/save-path-resolver.js';
 import { readExperiencesCredentials } from '../credentials-store.js';
 import { DEFAULT_CONFIGURED_HOST, toConfiguredHost } from '../host-utils.js';
 import { replayRun, modifyRun } from '../runs/replay-helpers.js';
 import { pickerPushRun } from '../runs/push-launcher.js';
+import { resolvePromptFlags } from './print-prompt.js';
 import { shouldShowRunPicker } from '../runs/run-picker-mount.js';
 import type { RunPickerSelection } from '../runs/run-picker.js';
 import { buildPickerCredentialOptions, buildPickerModifyOptions, dispatchPickerSelection } from './picker-dispatch.js';
@@ -31,8 +33,8 @@ export function registerImportCommand(program: Command): void {
   const cmd = program
     .command('import')
     .description('Run the full pipeline: analyze → select → generate → push')
-    .option('--space-id <id>', 'Contentful space ID (required unless --no-push)')
-    .option('--environment-id <id>', 'Contentful environment ID (required unless --no-push)')
+    .option('--space-id <id>', 'Contentful space ID (required unless --skip-apply)')
+    .option('--environment-id <id>', 'Contentful environment ID (required unless --skip-apply)')
     .option('--cma-token <token>', 'CMA personal access token (or set CONTENTFUL_MANAGEMENT_TOKEN)')
     .option('--project <path>', 'Path to the project root to analyze', '.')
     .option('--out <path>', 'Output directory for pipeline artifacts');
@@ -41,18 +43,47 @@ export function registerImportCommand(program: Command): void {
     modelDescription:
       'Model to use for generate components (defaults to a lightweight per-agent model; override with EDS_AGENT_MODEL_<AGENT>)',
   })
+    .option('--tokens <path>', 'Path to a DTCG tokens.json file to push alongside generated components')
     .option(
       '--raw-tokens <path>',
       'Path to a raw token source file (SCSS, CSS variables, JS/TS, Style Dictionary, etc.) to classify and import alongside components. Bypasses the interactive token prompt.',
     )
+    .option('--select-all', 'Select all extracted components for generation (default)')
+    .option(
+      '--select <pattern>',
+      'Select components matching pattern (repeatable)',
+      (v, a: string[]) => [...a, v],
+      [] as string[],
+    )
+    .option(
+      '--deselect <pattern>',
+      'Deselect components matching pattern (repeatable)',
+      (v, a: string[]) => [...a, v],
+      [] as string[],
+    )
+    .option('--skip-analyze', 'Skip the analyze step (uses most recent extract session)')
+    .option('--skip-generate', 'Skip the generate step (uses most recent generate session)')
+    .option('--print', 'Write components.json to --out after generation')
+    .option('--skip-apply', '(deprecated alias for --no-push) Skip pushing to Contentful')
     .option(
       '--skip-map-tokens',
       'Skip agentic token restrictions while still resolving deterministic token-default paths',
     )
     .option('--no-cache', 'Re-run all steps even if output already exists')
+    .option('--yes', 'Skip interactive confirmation in apply push')
+    .option('--verbose', 'Show full agent output and all entity progress')
     .option('--exclude-invalid', 'Automatically reject components with validation errors (empty names, collisions)')
+    .option('--viewports <path>', 'JSON file with viewport array (passed to apply push)')
     .option('--host <url>', 'Override API base URL (passed to apply push)')
-    ;
+    .option(
+      '--dry-run',
+      "(deprecated, will change semantics in a future release) Print generate components prompt without invoking the agent. Use --print-prompt for the same behaviour explicitly, or '--dry-run --no-push' for the upcoming manifest-preview semantics.",
+    )
+    .option(
+      '--print-prompt',
+      'Print the generate components prompt without invoking the agent. Replaces the legacy --dry-run prompt-print behaviour on this command.',
+    )
+    .option('--auto-accept-scope', 'Accept all extracted components without prompting (for scripted/non-TTY callers)');
   addCompositionOptions(cmd);
   addAllowDeletionsOption(cmd);
   cmd
@@ -79,14 +110,35 @@ export function registerImportCommand(program: Command): void {
       (v: string, acc: string[]) => [...acc, v],
       [] as string[],
     )
+    .option('--auto-reject-cycles', 'Automatically reject components involved in slot cycles and retry')
     .option('--auto-filter', 'Force the AI auto-filter ON (overrides the credentials.json autoFilter preference)')
+    .option(
+      '--no-auto-filter',
+      'Skip the automatic AI pre-filter; jump straight to manual scope-gate (overrides the credentials.json autoFilter preference; no-op when paired with --auto-accept-scope)',
+    )
+    .option(
+      '--no-live-preview',
+      'Skip the automatic preview re-run after each FieldEditor save (no-op when paired with --auto-accept-scope)',
+    )
     .option(
       '--no-push',
       'Import without pushing to Contentful. Interactive: runs the full wizard (extract → scope-gate → generate → final-review) and stops before push. Non-interactive (piped/CI): runs headless through generate. No credentials needed either way.',
     )
+    .option('--no-save', 'Push without writing components.json / tokens.json to disk (default: save AND push)')
     .option(
       '--out-dir <path>',
       'Save components.json / tokens.json to this directory; bypasses the inline save-path prompt',
+    )
+    .option(
+      '--on-conflict <mode>',
+      "How to handle existing components.json / tokens.json at the save path: 'overwrite' replaces files, 'skip' writes to a timestamped subdirectory, 'fail' exits non-zero. Skips the wizard's interactive conflict gate when set.",
+      (value: string): ConflictMode => {
+        if (!isConflictMode(value)) {
+          process.stderr.write(`Error: invalid --on-conflict value '${value}'. Use one of: overwrite, skip, fail.\n`);
+          process.exit(1);
+        }
+        return value;
+      },
     )
     .option(
       '--select-prompt-path <path>',
@@ -102,8 +154,11 @@ export function registerImportCommand(program: Command): void {
     )
     .option(
       '--modify <id-or-path>',
-      'Re-open the wizard at final-review with a prior run pre-populated for field edits. Accepts a run-id or filesystem path.',
+      'Re-open the wizard at final-review with a prior run pre-populated for field edits. Accepts a run-id or filesystem path. Pair with --overwrite or --save-as-new to pick the save mode.',
     )
+    .option('--overwrite', "Only valid with --modify: save back to the run's recorded savePath")
+    .option('--save-as-new', 'Only valid with --modify: always save to a new path (prompts for one)')
+    .option('--force', 'Bypass staleness checks when paired with --push-from-run or --modify.')
     .action(
       async (opts: {
         spaceId?: string;
@@ -114,14 +169,25 @@ export function registerImportCommand(program: Command): void {
         agent?: string;
         model?: string;
         bedrock?: boolean;
+        tokens?: string;
         rawTokens?: string;
+        selectAll?: boolean;
+        select: string[];
+        deselect: string[];
         skipAnalyze?: boolean;
         skipGenerate?: boolean;
+        print?: boolean;
+        skipApply?: boolean;
         skipMapTokens?: boolean;
         cache?: boolean;
         yes?: boolean;
+        verbose?: boolean;
         excludeInvalid?: boolean;
+        viewports?: string;
         host?: string;
+        dryRun?: boolean;
+        printPrompt?: boolean;
+        autoAcceptScope?: boolean;
         composite?: boolean;
         atomic?: boolean;
         compositionMap?: string;
@@ -130,14 +196,20 @@ export function registerImportCommand(program: Command): void {
         compositionRefresh?: boolean;
         generateMap?: string;
         prompt?: string[];
+        autoRejectCycles?: boolean;
         autoFilter?: boolean;
         livePreview?: boolean;
         push?: boolean;
+        save?: boolean;
         outDir?: string;
+        onConflict?: ConflictMode;
         selectPromptPath?: string;
         generatePromptPath?: string;
         pushFromRun?: string;
         modify?: string;
+        overwrite?: boolean;
+        saveAsNew?: boolean;
+        force?: boolean;
         allowDeletions?: boolean;
       }) => {
         const interactiveTerminalSupported = getInteractiveTerminalSupport().supported;
@@ -185,10 +257,22 @@ export function registerImportCommand(program: Command): void {
             process.exit(1);
             return;
           }
+          if (opts.save === false) {
+            process.stderr.write(
+              'Error: --push-from-run and --no-save are mutually exclusive. --push-from-run never writes to disk.\n',
+            );
+            process.exit(1);
+            return;
+          }
           if (opts.push === false) {
             process.stderr.write(
               'Error: --push-from-run and --no-push are mutually exclusive. Pushing is the whole point of --push-from-run.\n',
             );
+            process.exit(1);
+            return;
+          }
+          if (opts.overwrite || opts.saveAsNew) {
+            process.stderr.write('Error: --overwrite and --save-as-new only apply with --modify.\n');
             process.exit(1);
             return;
           }
@@ -201,6 +285,7 @@ export function registerImportCommand(program: Command): void {
               ...(opts.cmaToken ? { cmaToken: opts.cmaToken } : {}),
               ...(opts.host ? { host: opts.host } : {}),
               interactive: interactiveTerminalSupported,
+              ...(opts.force ? { force: true } : {}),
               ...(opts.allowDeletions ? { allowDeletions: true } : {}),
             }),
           );
@@ -215,22 +300,62 @@ export function registerImportCommand(program: Command): void {
             process.exit(1);
             return;
           }
+          if (opts.overwrite && opts.saveAsNew) {
+            process.stderr.write('Error: --overwrite and --save-as-new are mutually exclusive.\n');
+            process.exit(1);
+            return;
+          }
           requireInteractiveTerminal({
-            alternative: 'start a fresh headless import with the required credentials',
+            alternative: 'start a fresh headless import with `--yes` and the required credentials',
           });
           const runIdOrPath = opts.modify;
           await runImportAction(() =>
             modifyRun({
               runIdOrPath,
+              ...(opts.overwrite ? { overwrite: true } : {}),
+              ...(opts.saveAsNew ? { saveAsNew: true } : {}),
               ...(opts.outDir ? { outDir: opts.outDir } : {}),
+              ...(opts.force ? { force: true } : {}),
               ...(opts.allowDeletions ? { allowDeletions: true } : {}),
             }),
           );
           return;
         }
 
+        if (opts.overwrite || opts.saveAsNew) {
+          process.stderr.write('Error: --overwrite and --save-as-new require --modify.\n');
+          process.exit(1);
+          return;
+        }
+
+        if (opts.save === false && opts.push === false) {
+          process.stderr.write('Error: --no-save and --no-push together would do nothing. Pick one or neither.\n');
+          process.exit(1);
+          return;
+        }
+        if (opts.save === false && opts.outDir) {
+          process.stderr.write(
+            'Error: --no-save and --out-dir are mutually exclusive. --no-save disables disk writes; --out-dir picks a directory for them.\n',
+          );
+          process.exit(1);
+          return;
+        }
+        if (opts.save === false && opts.onConflict) {
+          process.stderr.write(
+            'Error: --no-save and --on-conflict are mutually exclusive. --no-save disables disk writes; --on-conflict only applies when files are being written.\n',
+          );
+          process.exit(1);
+          return;
+        }
 
         if (opts.rawTokens !== undefined) {
+          if (opts.tokens !== undefined) {
+            process.stderr.write(
+              'Error: --raw-tokens and --tokens are mutually exclusive: --raw-tokens is the source file to classify, --tokens is a pre-classified DTCG sidecar.\n',
+            );
+            process.exit(1);
+            return;
+          }
           const { access } = await import('node:fs/promises');
           try {
             await access(normalizePath(opts.rawTokens));
@@ -241,27 +366,39 @@ export function registerImportCommand(program: Command): void {
           }
         }
 
-        const dryRunForward = false;
+        const promptFlags = resolvePromptFlags({
+          ...(opts.dryRun !== undefined ? { dryRun: opts.dryRun } : {}),
+          ...(opts.printPrompt !== undefined ? { printPrompt: opts.printPrompt } : {}),
+        });
+        if (promptFlags.deprecationNotice) {
+          process.stderr.write(promptFlags.deprecationNotice);
+        }
+        const dryRunForward = promptFlags.forwardDryRun;
 
         // "Don't push" is one user intent (--no-push); --skip-apply is a
         // deprecated alias. Interactive runs (TTY) take the wizard and stop
         // before push; non-interactive runs take the headless pipeline and stop
         // after generate. Either way no credentials are required.
-        const noPushRequested = opts.push === false;
+        const noPushRequested = opts.push === false || opts.skipApply === true;
 
         const isHeadless =
+          opts.skipAnalyze ||
+          opts.skipGenerate ||
           // A "don't push" request on a non-TTY is a headless intent (the wizard
           // needs a TTY); in a TTY it stays interactive and is NOT headless.
           (noPushRequested && !interactiveTerminalSupported) ||
           !!opts.spaceId ||
           !!opts.environmentId ||
           !!opts.cmaToken ||
+          opts.yes ||
           dryRunForward ||
           false;
 
-        if (!interactiveTerminalSupported && !isHeadless) {
+        const autoAcceptScope = opts.autoAcceptScope ?? false;
+
+        if (!interactiveTerminalSupported && !isHeadless && !autoAcceptScope) {
           requireInteractiveTerminal({
-            alternative: 'use credentials or `--no-push`',
+            alternative: 'use headless flags such as `--yes` with credentials, or `--no-push --auto-accept-scope`',
           });
         }
 
@@ -279,6 +416,8 @@ export function registerImportCommand(program: Command): void {
             bedrock?: boolean;
             initialProjectPath?: string;
             host?: string;
+            autoAcceptScope?: boolean;
+            autoRejectCycles?: boolean;
             compositionMode?: CompositionMode;
             compositionMap?: string;
             compositionAgent?: boolean;
@@ -291,7 +430,9 @@ export function registerImportCommand(program: Command): void {
             autoFilter?: boolean;
             livePreview?: boolean;
             noPush?: boolean;
+            noSave?: boolean;
             outDirOverride?: string;
+            onConflictMode?: ConflictMode;
             selectPromptPath?: string;
             generatePromptPath?: string;
             initialRawTokensPath?: string;
@@ -314,6 +455,8 @@ export function registerImportCommand(program: Command): void {
               ...(opts.pushFromRun !== undefined ? { pushFromRun: opts.pushFromRun } : {}),
               ...(opts.modify !== undefined ? { modify: opts.modify } : {}),
               ...(opts.project !== '.' ? { project: opts.project } : {}),
+              ...(opts.autoAcceptScope ? { autoAcceptScope: true } : {}),
+              ...(opts.dryRun ? { dryRun: true } : {}),
             },
             isTTY: !!process.stdin.isTTY,
           });
@@ -343,14 +486,18 @@ export function registerImportCommand(program: Command): void {
               ...(opts.bedrock ? { bedrock: true } : {}),
               initialProjectPath: opts.project !== '.' ? normalizePath(opts.project) : undefined,
               host: opts.host,
+              autoAcceptScope,
+              autoRejectCycles: opts.autoRejectCycles ?? false,
               compositionMode: resolvedCompositionMode,
               ...buildCompositionForwardingOptions(opts),
               noCache: opts.cache === false,
               skipMapTokens: opts.skipMapTokens ?? false,
               autoFilter: resolveAutoFilter({ autoFilter: opts.autoFilter }, creds.autoFilter),
-              livePreview: true,
+              livePreview: opts.livePreview !== false,
               noPush: noPushRequested,
+              noSave: opts.save === false,
               ...(opts.outDir ? { outDirOverride: resolve(opts.outDir) } : {}),
+              ...(opts.onConflict ? { onConflictMode: opts.onConflict } : {}),
               selectPromptPath: opts.selectPromptPath ?? creds.selectPromptPath,
               generatePromptPath: opts.generatePromptPath ?? creds.generatePromptPath,
               ...(opts.rawTokens ? { initialRawTokensPath: normalizePath(opts.rawTokens) } : {}),
@@ -411,17 +558,24 @@ export function registerImportCommand(program: Command): void {
             agent: headlessAgent,
             model: headlessModel,
             ...(opts.bedrock ? { bedrock: true } : {}),
-            skipAnalyze: false,
-            skipGenerate: false,
+            tokens: opts.tokens,
+            selectAll: opts.selectAll,
+            select: opts.select.length > 0 ? opts.select : undefined,
+            deselect: opts.deselect.length > 0 ? opts.deselect : undefined,
+            skipAnalyze: opts.skipAnalyze ?? false,
+            skipGenerate: opts.skipGenerate ?? false,
             skipMapTokens: opts.skipMapTokens ?? false,
+            print: opts.print ?? false,
             skipApply,
             noCache: opts.cache === false,
-            yes: false,
+            yes: opts.yes ?? false,
             verbose: opts.verbose ?? false,
             excludeInvalid: opts.excludeInvalid ?? false,
+            viewports: opts.viewports,
             host: opts.host,
             dryRun: dryRunForward,
             selectPromptPath: opts.selectPromptPath,
+            autoRejectCycles: opts.autoRejectCycles ?? false,
             allowDeletions: opts.allowDeletions ?? false,
             compositionMode: headlessCompositionMode,
             ...buildCompositionForwardingOptions(opts),

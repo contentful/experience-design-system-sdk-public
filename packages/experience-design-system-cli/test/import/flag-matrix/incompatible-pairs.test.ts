@@ -27,14 +27,64 @@ const rejectionCells: RejectionCell[] = [
     expectStderr: /--push-from-run and --project are mutually exclusive/,
   },
   {
+    name: '--push-from-run ⊗ --no-save',
+    args: ['import', '--push-from-run', 'run-1', '--no-save'],
+    expectStderr: /--push-from-run and --no-save are mutually exclusive/,
+  },
+  {
     name: '--push-from-run ⊗ --no-push',
     args: ['import', '--push-from-run', 'run-1', '--no-push'],
     expectStderr: /--push-from-run and --no-push are mutually exclusive/,
   },
   {
+    name: '--push-from-run ⊗ --overwrite',
+    args: ['import', '--push-from-run', 'run-1', '--overwrite'],
+    expectStderr: /--overwrite and --save-as-new only apply with --modify/,
+  },
+  {
+    name: '--push-from-run ⊗ --save-as-new',
+    args: ['import', '--push-from-run', 'run-1', '--save-as-new'],
+    expectStderr: /--overwrite and --save-as-new only apply with --modify/,
+  },
+  {
     name: '--modify ⊗ --project',
     args: ['import', '--modify', 'run-1', '--project', '/tmp/x'],
     expectStderr: /--modify and --project are mutually exclusive/,
+  },
+  {
+    name: '--modify + --overwrite + --save-as-new',
+    args: ['import', '--modify', 'run-1', '--overwrite', '--save-as-new'],
+    expectStderr: /--overwrite and --save-as-new are mutually exclusive/,
+  },
+  {
+    name: '--overwrite requires --modify',
+    args: ['import', '--overwrite'],
+    expectStderr: /--overwrite and --save-as-new require --modify/,
+  },
+  {
+    name: '--save-as-new requires --modify',
+    args: ['import', '--save-as-new'],
+    expectStderr: /--overwrite and --save-as-new require --modify/,
+  },
+  {
+    name: '--no-save ⊗ --no-push',
+    args: ['import', '--no-save', '--no-push'],
+    expectStderr: /--no-save and --no-push together would do nothing/,
+  },
+  {
+    name: '--no-save ⊗ --out-dir',
+    args: ['import', '--no-save', '--out-dir', '/tmp/x'],
+    expectStderr: /--no-save and --out-dir are mutually exclusive/,
+  },
+  {
+    name: '--no-save ⊗ --on-conflict',
+    args: ['import', '--no-save', '--on-conflict', 'overwrite'],
+    expectStderr: /--no-save and --on-conflict are mutually exclusive/,
+  },
+  {
+    name: '--raw-tokens ⊗ --tokens',
+    args: ['import', '--raw-tokens', '/tmp/raw.scss', '--tokens', '/tmp/t.json'],
+    expectStderr: /--raw-tokens and --tokens are mutually exclusive/,
   },
 ];
 
@@ -43,6 +93,13 @@ describe('flag-matrix: incompatible flag pairs REJECT with exit 1 and the right 
     const { code, stderr } = await runCliWithEnv(args, baseEnv());
     expect(code).not.toBe(0);
     expect(stderr).toMatch(expectStderr);
+  });
+
+  // ── invalid --on-conflict value rejects before mode dispatch ───────────────
+  it('rejects an invalid --on-conflict value', async () => {
+    const { code, stderr } = await runCliWithEnv(['import', '--on-conflict', 'bogus'], baseEnv());
+    expect(code).not.toBe(0);
+    expect(stderr).toMatch(/invalid --on-conflict value/);
   });
 
   // ── coverage guard: every declared incompatible pair has a rejection cell ──

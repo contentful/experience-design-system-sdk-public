@@ -112,7 +112,7 @@ describe('--verbose shows prose output from the agent', () => {
     };
 
     const withoutVerbose = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', sessionId],
+      ['generate', 'components', '--agent', 'claude', '--session', sessionId],
       agentEnv,
     );
     expect(withoutVerbose.code).toBe(0);
@@ -122,7 +122,7 @@ describe('--verbose shows prose output from the agent', () => {
     const agentEnv2 = { ...agentEnv, EDS_PIPELINE_DB_PATH: dbPath2 };
 
     const withVerbose = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', sessionId2, '--verbose'],
+      ['generate', 'components', '--agent', 'claude', '--session', sessionId2, '--verbose'],
       agentEnv2,
     );
     expect(withVerbose.code).toBe(0);
@@ -194,7 +194,7 @@ describe('--no-cache bypasses cached component results', () => {
 
     // Without cache bypass: should use the cache (agent is NOT invoked, "cached" in stderr)
     const withCache = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', extractSession],
+      ['generate', 'components', '--agent', 'claude', '--session', extractSession],
       baseRunEnv,
     );
     expect(withCache.code).toBe(0);
@@ -204,7 +204,7 @@ describe('--no-cache bypasses cached component results', () => {
 
     // With EDS_NO_CACHE=1 env var: skips cache, agent IS invoked
     const withNoCacheEnv = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', extractSession],
+      ['generate', 'components', '--agent', 'claude', '--session', extractSession],
       { ...baseRunEnv, EDS_NO_CACHE: '1' },
     );
     expect(withNoCacheEnv.code).toBe(0);
@@ -251,7 +251,7 @@ describe('--no-cache bypasses cached component results', () => {
 
     // With --no-cache flag: agent IS invoked (cache bypassed)
     const result = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', extractSession, '--no-cache'],
+      ['generate', 'components', '--agent', 'claude', '--session', extractSession, '--no-cache'],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1', EDS_RETRY_BACKOFF_MS: '0', ...envPatch },
     );
     expect(result.code).toBe(0);
@@ -300,7 +300,7 @@ describe('--no-cache bypasses cached component results', () => {
 
     // Re-run with a different --model: must miss the cache and invoke the agent.
     const result = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--model', 'model-b', '--session', extractSession],
+      ['generate', 'components', '--agent', 'claude', '--model', 'model-b', '--session', extractSession],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1', EDS_RETRY_BACKOFF_MS: '0', ...envPatch },
     );
     expect(result.code).toBe(0);
@@ -339,7 +339,7 @@ describe('--model name is forwarded to the agent binary as a CLI argument', () =
     const { dbPath, sessionId } = await makeFreshDb();
 
     const result = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', sessionId, '--model', MODEL_NAME],
+      ['generate', 'components', '--agent', 'claude', '--session', sessionId, '--model', MODEL_NAME],
       {
         EDS_PIPELINE_DB_PATH: dbPath,
         NODE_NO_WARNINGS: '1',
@@ -366,13 +366,13 @@ describe('--model name is forwarded to the agent binary as a CLI argument', () =
     const env = { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' };
 
     const withModel = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run', '--model', 'some-model'],
+      ['generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run', '--model', 'some-model'],
       env,
     );
     expect(withModel.code).toBe(0);
 
     const withoutModel = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run'],
+      ['generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run'],
       env,
     );
     expect(withoutModel.code).toBe(0);
@@ -395,7 +395,7 @@ describe('--token-map file content is embedded in the generated prompt', () => {
     const { dbPath, sessionId } = await makeFreshDb();
 
     const result = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run', '--token-map', tokenMapPath],
+      ['generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run', '--token-map', tokenMapPath],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
     );
 
@@ -410,7 +410,7 @@ describe('--token-map file content is embedded in the generated prompt', () => {
     const { dbPath, sessionId } = await makeFreshDb();
 
     const result = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run'],
+      ['generate', 'components', '--agent', 'claude', '--session', sessionId, '--dry-run'],
       { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
     );
 
@@ -512,5 +512,66 @@ describe('--out writes generated components to a JSON file on disk', () => {
 
     // The status message confirms the specific filename was used
     expect(result.stdout).toContain('my-specific-output.json');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. --viewports: path is accepted and forwarded (not validated until apply)
+// ---------------------------------------------------------------------------
+
+describe('--viewports is accepted and forwarded to the pipeline', () => {
+  it('accepts a valid viewports JSON file path and completes without error', async () => {
+    // Use a prefix that does NOT contain "viewports" to avoid false positives in stderr checks.
+    const vpDir = await createTempDir('vp-valid-');
+    const vpFile = join(vpDir, 'vp.json');
+    await writeFile(
+      vpFile,
+      JSON.stringify([
+        { id: 'desktop', query: '(min-width: 1024px)', displayName: 'Desktop', previewSize: '100%' },
+        { id: 'mobile', query: '*', displayName: 'Mobile', previewSize: '375px' },
+      ]),
+      'utf8',
+    );
+
+    const projDir = await createTempDir('vp-proj-');
+    const dbDir = await createTempDir('vp-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+
+    const result = await runCliWithEnv(
+      ['import', '--skip-analyze', '--skip-generate', '--skip-apply', '--project', projDir, '--viewports', vpFile],
+      { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).not.toContain("unknown option '--viewports'");
+    // All steps skipped — pipeline should report all as skipped
+    const output = JSON.parse(result.stdout) as { steps: Array<{ status: string }> };
+    expect(output.steps.every((s) => s.status === 'skipped')).toBe(true);
+  });
+
+  it('with --skip-apply, a nonexistent viewports path does not cause an error', async () => {
+    // The import command does not validate the viewports path itself —
+    // it is only passed to apply push (which is skipped here).
+    const projDir = await createTempDir('vp-nofile-proj-');
+    const dbDir = await createTempDir('vp-nofile-db-');
+    const dbPath = join(dbDir, 'pipeline.db');
+
+    const result = await runCliWithEnv(
+      [
+        'import',
+        '--skip-analyze',
+        '--skip-generate',
+        '--skip-apply',
+        '--project',
+        projDir,
+        '--viewports',
+        '/nonexistent/path/does-not-exist.json',
+      ],
+      { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
+    );
+
+    // File is not read at this stage — no error expected
+    expect(result.code).toBe(0);
+    expect(result.stderr).not.toContain("unknown option '--viewports'");
   });
 });

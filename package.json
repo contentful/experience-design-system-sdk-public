@@ -38,7 +38,8 @@
     "quality:baseline": "pnpm quality:knip:v1:baseline && pnpm quality:knip:cli-v2:baseline",
     "release": "node ./scripts/release.js",
     "prepare": "[ -n \"$CI\" ] || husky",
-    "postbuild": "[ -n \"$CI\" ] || node scripts/link-cli.js"
+    "postbuild": "[ -n \"$CI\" ] || node scripts/link-cli.js",
+    "postinstall": "node tools/dsi-pty-harness/scripts/fix-spawn-helper.mjs"
   },
   "commitlint": {
     "extends": [
@@ -72,6 +73,7 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "node-pty"
     ],
     "overrides": {
       "picomatch@<4.0.4": ">=4.0.4",

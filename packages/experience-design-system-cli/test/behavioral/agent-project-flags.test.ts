@@ -137,7 +137,7 @@ describe('--agent accepts all documented agent names', () => {
 
   it.each(agentNames)('generate components --agent %s --dry-run exits 0', async (agent) => {
     const { code, stderr } = await runCliWithEnv(
-      ['__generate', 'components', '--agent', agent, '--session', fixture.sessionId, '--dry-run'],
+      ['generate', 'components', '--agent', agent, '--session', fixture.sessionId, '--dry-run'],
       baseEnv(),
     );
     expect(code).toBe(0);
@@ -146,7 +146,7 @@ describe('--agent accepts all documented agent names', () => {
 
   it.each(agentNames)('generate components --agent %s produces a prompt on stdout', async (agent) => {
     const { stdout, code } = await runCliWithEnv(
-      ['__generate', 'components', '--agent', agent, '--session', fixture.sessionId, '--dry-run'],
+      ['generate', 'components', '--agent', agent, '--session', fixture.sessionId, '--dry-run'],
       baseEnv(),
     );
     expect(code).toBe(0);
@@ -157,7 +157,7 @@ describe('--agent accepts all documented agent names', () => {
 
   it.each(agentNames)('generate tokens --agent %s --dry-run exits 0', async (agent) => {
     const { code, stderr } = await runCliWithEnv(
-      ['__generate', 'tokens', '--agent', agent, '--raw-tokens', '/dev/null', '--dry-run'],
+      ['generate', 'tokens', '--agent', agent, '--raw-tokens', '/dev/null', '--dry-run'],
       baseEnv(),
     );
     expect(code).toBe(0);
@@ -179,10 +179,85 @@ describe('--agent accepts all documented agent names', () => {
 
   it('an unrecognised agent name exits non-zero', async () => {
     const { code, stderr } = await runCliWithEnv(
-      ['__generate', 'components', '--agent', 'fake-agent-xyz', '--session', fixture.sessionId, '--dry-run'],
+      ['generate', 'components', '--agent', 'fake-agent-xyz', '--session', fixture.sessionId, '--dry-run'],
       baseEnv(),
     );
     expect(code).not.toBe(0);
     expect(stderr).toContain('no agent configured');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3. import --project <path> runs extraction (not skipped)
+// ---------------------------------------------------------------------------
+
+describe('import --project runs analyze extract against the specified path', () => {
+  it('exits 0 when project has real TSX components (with --skip-generate --skip-apply --select-all)', async () => {
+    const dbPath = await makeFreshDbPath();
+    const { code } = await runCliWithEnv(
+      ['import', '--project', REAL_PROJECT_DIR, '--skip-generate', '--skip-apply', '--select-all'],
+      { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
+      30000,
+    );
+    expect(code).toBe(0);
+  });
+
+  it('JSON output shows analyze extract step as complete (not skipped)', async () => {
+    const dbPath = await makeFreshDbPath();
+    const { stdout, code } = await runCliWithEnv(
+      ['import', '--project', REAL_PROJECT_DIR, '--skip-generate', '--skip-apply', '--select-all'],
+      { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
+      30000,
+    );
+    expect(code).toBe(0);
+    const parsed = JSON.parse(stdout) as { steps: Array<{ step: string; status: string }> };
+    const analyzeStep = parsed.steps.find((s) => s.step === 'analyze extract');
+    expect(analyzeStep).toBeDefined();
+    expect(analyzeStep?.status).toBe('complete');
+  });
+
+  it('JSON output shows analyze extract found at least one component', async () => {
+    const dbPath = await makeFreshDbPath();
+    const { stdout, code } = await runCliWithEnv(
+      ['import', '--project', REAL_PROJECT_DIR, '--skip-generate', '--skip-apply', '--select-all'],
+      { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
+      30000,
+    );
+    expect(code).toBe(0);
+    const parsed = JSON.parse(stdout) as {
+      steps: Array<{ step: string; status: string; detail?: { components?: number } }>;
+    };
+    const analyzeStep = parsed.steps.find((s) => s.step === 'analyze extract');
+    expect(analyzeStep?.detail?.components).toBeGreaterThan(0);
+  });
+
+  it('import --project <nonexistent> fails at analyze extract step', async () => {
+    const dbPath = await makeFreshDbPath();
+    const { code } = await runCliWithEnv(
+      [
+        'import',
+        '--project',
+        '/tmp/nonexistent-experiences-dir-xyz-import-test',
+        '--skip-generate',
+        '--skip-apply',
+        '--select-all',
+      ],
+      { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
+      30000,
+    );
+    expect(code).not.toBe(0);
+  });
+
+  it('JSON output has session and project fields', async () => {
+    const dbPath = await makeFreshDbPath();
+    const { stdout, code } = await runCliWithEnv(
+      ['import', '--project', REAL_PROJECT_DIR, '--skip-generate', '--skip-apply', '--select-all'],
+      { EDS_PIPELINE_DB_PATH: dbPath, NODE_NO_WARNINGS: '1' },
+      30000,
+    );
+    expect(code).toBe(0);
+    const parsed = JSON.parse(stdout) as Record<string, unknown>;
+    expect(typeof parsed['session']).toBe('string');
+    expect(typeof parsed['project']).toBe('string');
   });
 });

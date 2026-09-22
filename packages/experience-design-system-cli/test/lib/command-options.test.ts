@@ -4,6 +4,7 @@ import {
   addArtifactInputOptions,
   addCompositionOptions,
   addContentfulTargetOptions,
+  addSelectionOptions,
 } from '../../src/lib/command-options.js';
 
 function options(command: Command) {
@@ -63,4 +64,29 @@ describe('command option builders', () => {
     ]);
   });
 
+  it('collects repeated selection patterns with existing defaults', () => {
+    const command = addSelectionOptions(new Command());
+    command.parse(['node', 'test', '--select', 'Button', '--select', 'Card', '--deselect', 'Icon']);
+    expect(command.opts()).toMatchObject({ select: ['Button', 'Card'], deselect: ['Icon'] });
+    expect(options(command)).toEqual([
+      {
+        flag: '--select-all',
+        description: 'Select all entities without launching TUI',
+        mandatory: false,
+        defaultValue: undefined,
+      },
+      {
+        flag: '--select',
+        description: 'Select entities by ID pattern (repeatable)',
+        mandatory: false,
+        defaultValue: [],
+      },
+      {
+        flag: '--deselect',
+        description: 'Deselect entities by ID pattern (repeatable)',
+        mandatory: false,
+        defaultValue: [],
+      },
+    ]);
+  });
 });

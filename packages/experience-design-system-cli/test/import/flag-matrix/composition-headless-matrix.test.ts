@@ -42,6 +42,7 @@ function baseOpts(overrides: Partial<PipelineOptions>): PipelineOptions {
     agent: 'fake-agent',
     skipAnalyze: false,
     skipGenerate: true,
+    print: false,
     skipApply: true,
     noCache: false,
     yes: true,
@@ -159,10 +160,12 @@ describe('flag-matrix: composition flags forwarded through the HEADLESS dispatch
   // Each headless-trigger flag maps onto the PipelineOptions the command
   // dispatcher would produce for that flag; composite forwarding must survive.
   const headlessTriggerCells: Array<{ name: string; opts: Partial<PipelineOptions> }> = [
+    { name: '--skip-generate', opts: { skipGenerate: true } },
     { name: '--skip-apply', opts: { skipApply: true } },
     { name: '--yes', opts: { yes: true, skipApply: true } },
     { name: '--dry-run', opts: { dryRun: true, skipApply: true } },
     { name: '--print-prompt (dryRunForward)', opts: { dryRun: true, skipApply: true } },
+    { name: '--auto-accept-scope (falls to headless)', opts: { skipApply: true } },
   ];
 
   it.each(headlessTriggerCells)('composition survives alongside headless-trigger %s', async ({ opts }) => {
@@ -180,7 +183,7 @@ describe('flag-matrix: composition flags forwarded through the HEADLESS dispatch
     expect(extractCall!.join(' ')).toContain('--composition-map /tmp/map.json');
   });
 
-  // ── composition × --no-push fork ───────────────────────────────────────────
+  // ── composition × --no-push / --no-save / --skip-apply forks ───────────────
   // In the headless dispatcher these forks affect apply push, not the extract
   // subprocess. Composition forwarding to extract must be independent of them.
   it('composition forwards under --skip-apply (no push subprocess spawned)', async () => {

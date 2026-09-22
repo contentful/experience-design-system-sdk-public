@@ -18,17 +18,17 @@ The rest of this README uses `experiences`.
 
 There are two ways to use the CLI:
 
-1. **`experiences import`** — the wizard. Drives the full pipeline (extract → AI select → scope-gate → generate → final-review → save/push) from a single command. Works in two modes: a full-screen interactive TUI in a real terminal and a non-interactive headless mode when you pass credentials or another headless flag. **This is the recommended path for almost everyone.**
+1. **`experiences import`** — the wizard. Drives the full pipeline (extract → AI select → scope-gate → generate → final-review → save/push) from a single command. Works in two modes: a full-screen interactive TUI in a real terminal, and a non-interactive headless mode when you pass `--auto-accept-scope` plus credentials. **This is the recommended path for almost everyone.**
 
 2. **Standalone subcommands** — for piping into other tools, CI parity with the wizard, or for debugging individual steps:
 
    ```
-   analyze extract   →   analyze select-agent   →   apply push
+   analyze extract   →   analyze select-agent   →   generate components   →   apply push
    ```
 
    `analyze select-agent` is the agent-driven selection step the wizard uses. You can replace it with `analyze select` for the older manual JsonEditor TUI.
 
-**Determinism boundary.** `analyze extract` is fully deterministic: ts-morph AST parsing produces the same component list and prop shape on every run, then a deterministic pre-classifier and a structural non-authorable filter shape the output. AI enters the pipeline at `analyze select-agent` and the import wizard's generation step. This split keeps the extracted artifact reproducible — if an extracted component looks wrong, the cause is in the rules, not in agent variability.
+**Determinism boundary.** `analyze extract` is fully deterministic: ts-morph AST parsing produces the same component list and prop shape on every run, then a deterministic pre-classifier and a structural non-authorable filter shape the output. AI enters the pipeline at `analyze select-agent` and `generate components`, where coding agents make per-component decisions. This split keeps the extracted artifact reproducible — if an extracted component looks wrong, the cause is in the rules, not in agent variability.
 
 All intermediate data flows through a local SQLite session database (`~/.contentful/experience-design-system-cli/pipeline.db`). No JSON files are written between steps — each command reads its inputs from the session and writes its outputs back to it. Use `print` to export session data to JSON files on demand. The wizard additionally maintains a separate **runs.json** file (`~/.config/experiences/runs.json`) that records each successful wizard session so it can be replayed later with `--push-from-run` or `--modify`.
 
@@ -70,7 +70,7 @@ Because the agent path spawns a coding agent, it adds latency and cost and is be
 
 ### Slot cycles
 
-If the resolved graph contains a circular slot dependency (A slots B, B slots A), it is detected before push. `apply push` and the wizard's push path **refuse to send a manifest with cycles**; the cycle path is reported so you can break it.
+If the resolved graph contains a circular slot dependency (A slots B, B slots A), it is detected before push. `apply push` and the wizard's push path **refuse to send a manifest with cycles**; the cycle path is reported so you can break it. In headless `import`, pass `--auto-reject-cycles` to auto-reject the components in a cycle and retry instead of failing.
 
 ---
 
@@ -78,7 +78,7 @@ If the resolved graph contains a circular slot dependency (A slots B, B slots A)
 
 ### Coding agent
 
-The import wizard's generation steps require a coding agent CLI in your `$PATH`. Choose one:
+`generate components` (and `generate tokens`) requires a coding agent CLI in your `$PATH`. Choose one:
 
 | Agent | Install | Auth |
 |---|---|---|
@@ -94,7 +94,7 @@ The CLI invokes the agent non-interactively in a subprocess. If the binary is no
 
 ### Contentful credentials
 
-`apply push` and `import` (when pushing) require access to a Contentful space. Set these environment variables or pass the equivalent flags:
+`apply preview`, `apply select`, `apply push`, and `import` (when pushing) require access to a Contentful space. Set these environment variables or pass the equivalent flags:
 
 ```bash
 export CONTENTFUL_MANAGEMENT_TOKEN=<your-cma-token>   # required
@@ -114,7 +114,7 @@ In the wizard's credentials step you can press `[s] Skip` to save-only without p
 experiences import [flags]
 ```
 
-`experiences import` is the primary entry point. In a TTY it launches a full-screen wizard. In headless mode (any of `--dry-run` or credential flags) it runs non-interactively. Without either, it fails loud rather than hanging.
+`experiences import` is the primary entry point. In a TTY it launches a full-screen wizard. In headless mode (any of `--auto-accept-scope`, `--skip-apply`, `--skip-analyze`, `--skip-generate`, `--yes`, `--dry-run`, or credential flags) it runs non-interactively. Without either, it fails loud rather than hanging.
 
 ### Wizard step machine
 
@@ -124,7 +124,7 @@ welcome
 extracting             — runs analyze extract (atomic by default; resolves composition
                          under --composite, see below); spawns generate in parallel (prefetch)
   ↓
-[auto-filter]          — analyze select-agent runs automatically
+[auto-filter]          — analyze select-agent runs automatically (skip with --no-auto-filter)
   ↓
 scope-gate             — single human review gate: confirm AI selection, toggle components
   ↓
@@ -145,7 +145,7 @@ There is now a single human review gate (`scope-gate`) before generation; the le
 
 ### Configurable AI auto-filter
 
-The auto-filter (`analyze select-agent` invoked before scope-gate) is on by default. Override per-run with `--auto-filter`; the value selected in setup is persisted to `credentials.json` so subsequent runs default to your saved preference.
+The auto-filter (`analyze select-agent` invoked before scope-gate) is on by default. Override per-run with `--auto-filter` / `--no-auto-filter`; the value last selected in the wizard is persisted to `credentials.json` so subsequent runs default to your last choice.
 
 ### Save-and-push default
 
@@ -179,6 +179,8 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--out-dir <path>`                | _(prompt)_                             | Save directory for `components.json` / `tokens.json`; bypasses inline save-path prompt                       |
 | `--agent <name>`                  | saved by setup / `claude`              | Agent for `analyze select-agent` and `generate components`                                                   |
 | `--model <name>`                  | agent default                          | Model name                                                                                                   |
+| `--tokens <path>`                 | —                                      | DTCG `tokens.json` to push alongside generated components                                                    |
+| `--auto-accept-scope`             | off                                    | Accept all extracted components without prompting (required for non-TTY without other headless flags)        |
 | `--atomic`                        | **default**                            | Flat import, no embedded-component hierarchy (composition stripped on push)                                   |
 | `--composite`                     | —                                      | Import the embedded-component hierarchy (any composition flag implies this)                                   |
 | `--composition-map <path>`        | —                                      | Consume a hand-authored parent→children interchange map (implies `--composite`)                              |
@@ -187,7 +189,8 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--composition-refresh`           | —                                      | Bypass the composition cache and re-resolve from scratch, forcing the agent to run (implies `--composite`)   |
 | `--composition-agent-mode <mode>` | `parser`                               | `parser` (agent writes a sandboxed parser) or `edges` (agent lists edges directly)                           |
 | `--prompt <stage=value>`          | —                                      | Override a stage prompt (repeatable); value is a file path or literal text, e.g. `--prompt composition=./p.md` |
-| `--auto-filter`                    | persisted in `credentials.json`     | Force AI auto-filter on; overrides the saved preference                                                    |
+| `--auto-reject-cycles`            | off (fail loud)                        | Auto-reject components in slot cycles and retry, instead of stopping with the cycle path                     |
+| `--auto-filter` / `--no-auto-filter` | persisted in `credentials.json`     | Force AI auto-filter on or off; overrides saved preference                                                   |
 | `--no-live-preview`               | live preview on                        | Skip the automatic preview re-run after each FieldEditor save                                                |
 | `--no-push`                       | push on                                | Run extract → scope-gate → generate → final-review and exit without pushing                                  |
 | `--no-save`                       | save on                                | Push without writing `components.json` / `tokens.json` to disk                                               |
@@ -197,13 +200,24 @@ Pass `--select-prompt-path <path>` and/or `--generate-prompt-path <path>` to swa
 | `--save-as-new`                   | —                                      | With `--modify`: always save to a new path                                                                   |
 | `--select-prompt-path <path>`     | saved by setup                         | Custom `.md` skill prompt for `analyze select-agent`                                                         |
 | `--generate-prompt-path <path>`   | saved by setup                         | Custom `.md` skill prompt for `generate components`                                                          |
+| `--select-all`                    | —                                      | Headless: accept all extracted components (bypasses agentic select)                                          |
+| `--select <pattern>`              | —                                      | Headless: accept components matching pattern (repeatable; bypasses agentic select)                           |
+| `--deselect <pattern>`            | —                                      | Headless: reject components matching pattern (repeatable; bypasses agentic select)                           |
+| `--skip-analyze`                  | —                                      | Reuse most recent `analyze extract` session                                                                  |
+| `--skip-generate`                 | —                                      | Reuse most recent `generate components` session                                                              |
+| `--print`                         | —                                      | Headless: write `components.json` to `--out` after generation                                                |
 | `--skip-map-tokens`               | —                                      | Skip the `map tokens` step between generate and apply                                                        |
+| `--skip-apply`                    | —                                      | Stop after generate; do not push                                                                             |
 | `--no-cache`                      | cache on                               | Bypass extract/select/generate/map-tokens fine-grained caches and force re-run; forwarded to `analyze select-agent`, `generate components`, and `map tokens` |
+| `--yes`                           | —                                      | Skip interactive confirmation in `apply push`                                                                |
 | `--verbose`                       | —                                      | Show full agent output and all entity progress                                                               |
 | `--exclude-invalid`               | off (fail loud)                        | Auto-reject components with validation errors instead of refusing to proceed                                 |
 | `--viewports <path>`              | catch-all viewport                     | JSON file with viewport array (passed to `apply push`)                                                       |
 | `--host <url>`                    | `https://api.contentful.com`           | Override API base URL                                                                                        |
+| `--on-conflict <mode>`            | _(prompt via `<SaveConflictGate>`)_    | Headless conflict resolution when a file already exists at the save path: `overwrite`, `skip`, or `fail`. Bypasses the wizard's interactive save-conflict gate. Mutex with `--no-save`. |
+| `--print-prompt`                  | —                                      | Print the generate prompt to stdout and exit. Replaces the prompt-print semantics of `--dry-run`.            |
 | `--allow-deletions`               | off (non-destructive)                  | Allow the push to delete remote ComponentTypes/DesignTokens missing from the manifest. Default skips them instead of deleting. Without this flag, preview responses suppress the removed-entity list and return a count instead; interactive confirm screens show an opt-out toggle (never opt-in) only when the flag is passed. Forwarded to headless subprocess pushes and `--push-from-run`. |
+| `--dry-run`                       | _(deprecated)_                         | Deprecated alias for `--print-prompt`. Emits a stderr deprecation notice; prompt-print semantics will be removed in a future release. |
 
 ### Run-picker at wizard start
 
@@ -339,9 +353,47 @@ experiences analyze select-agent [--agent <name>] [--session <id>]
 | `--show-rationale` | — | Read-only mode. Print the recorded accept / reject rationale for every component in the session and exit. Reads `raw_components.reject_reason` from the pipeline DB — no LLM call, no schema change. |
 | `--json` | — | With `--show-rationale`: emit the rationale rows as JSON for scripting. |
 
-Decisions are written to the same review state file used by `analyze select`, so the import wizard's generation step picks them up automatically. Each `(component-hash, prompt-hash, cli-version)` triple is cached; changing the prompt file via `--select-prompt-path` already busts the corresponding cache entries.
+Decisions are written to the same review state file used by `analyze select`, so `generate components` picks them up automatically. Each `(component-hash, prompt-hash, cli-version)` triple is cached; changing the prompt file via `--select-prompt-path` already busts the corresponding cache entries.
 
 `--show-rationale` is a separate read-only mode — it does not invoke the agent and is safe to run against a completed session at any time. Pair with `--session <id>` to target a specific session; otherwise it auto-resolves to the most recent completed `analyze extract`.
+
+---
+
+### `generate components`
+
+Invoke a coding agent to generate CDF component definitions. Results are stored in the session database.
+
+```bash
+experiences generate components [--agent <name>] [--session <id>]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--agent <name>` | saved by setup | Agent: `claude`, `codex`, `opencode`, `cursor`, or `copilot` |
+| `--session <id>` | most recent completed `analyze extract` | Session ID from `analyze extract` |
+| `--tokens <path>` | — | Path to `tokens.json` for token-linked prop resolution |
+| `--token-map <path>` | — | Path to `token-name-map.json` sidecar |
+| `--model <name>` | agent default | Model to use |
+| `--verbose` | — | Show full agent output |
+| `--dry-run` | — | Print the prompt without invoking the agent |
+| `--generate-prompt-path <path>` | saved by setup | Custom `.md` skill prompt; emits a banner at invocation |
+| `--no-cache` | cache on | Bypass all fine-grained caches and force re-run |
+
+Raw components are loaded from the session database and embedded directly in the prompt — no intermediate file is read. The agent emits one JSON tool-call object per line; per-component results (CDF body + LLM rationale + source location) are persisted to the session DB.
+
+---
+
+### `generate components edit` / `generate tokens edit`
+
+Non-interactive correction of generated output via `--accept-all`, `--reject`, or `--patch`. The interactive TUI variant is not currently shipped.
+
+---
+
+### `generate tokens`
+
+Same shape as `generate components`, plus `--raw-tokens <path>`.
+
+---
 
 ### `print components` / `print tokens` / `print validate`
 
@@ -357,17 +409,19 @@ experiences print validate   [--components <path>] [--tokens <path>]
 
 ---
 
-### `apply push`
+### `apply preview` / `apply select` / `apply push`
 
 These subcommands are the non-wizard route to the same diff and push logic. Flag surfaces are unchanged.
 
-`apply push` emits a Contentful webapp view URL for the imported components in its JSON summary (`viewUrl`) so callers can deep-link into the management UI after a successful push.
+`apply push` and `apply select` now emit a Contentful webapp view URL for the imported components in their JSON summary (`viewUrl`) so callers can deep-link into the management UI after a successful push.
 
 ```bash
+experiences apply preview --space-id <id> --environment-id <env> --session <id>
+experiences apply select  --space-id <id> --environment-id <env> --session <id>
 experiences apply push    --space-id <id> --environment-id <env> --session <id> [--yes]
 ```
 
-Shared flags: `--components`, `--tokens`, `--session`, `--space-id`, `--environment-id`, `--cma-token`, `--host`, `--viewports`. `apply push` adds `--yes`, `--verbose`, `--force`, `--dry-run`, `--allow-deletions`. By default, remote ComponentTypes and DesignTokens missing from the pushed manifest are skipped, not deleted; pass `--allow-deletions` to restore the prior delete behavior.
+Shared flags: `--components`, `--tokens`, `--session`, `--space-id`, `--environment-id`, `--cma-token`, `--host`, `--viewports`. `apply preview` adds `--include-unchanged`. `apply select` adds `--select-all`, `--select`, `--deselect`, `--force`, `--allow-deletions`. `apply push` adds `--yes`, `--verbose`, `--force`, `--dry-run`, `--allow-deletions`. By default, remote ComponentTypes and DesignTokens missing from the pushed manifest are skipped, not deleted; pass `--allow-deletions` to restore the prior delete behavior.
 
 Design tokens are written first (component types may reference token kinds). Each entity write is recorded in the session database atomically — interrupted pushes resume from where they left off.
 
@@ -395,7 +449,7 @@ Wizard run history is separate: `~/.config/experiences/runs.json`.
 - `NO_COLOR=1` suppresses all ANSI color output
 - Interactive views require both stdin and stdout to be TTYs and stdin to support raw mode. Read-only views fall back to plain or JSON output when those capabilities are unavailable; commands that require input stop with the relevant non-interactive flags in the error message.
 - On Windows, use Windows Terminal with PowerShell. Older ConEmu and cmd.exe hosts may not provide the raw-mode support the interactive UI needs.
-- To avoid the interactive UI, use the command's non-interactive options: `import --yes` (with credentials) or `import --no-push`, `analyze select --select-all`, and `apply push --yes`.
+- To avoid the interactive UI, use the command's non-interactive options: `import --yes` (with credentials) or `import --no-push --auto-accept-scope`, `analyze select --select-all`, `apply select --select-all`, and `apply push --yes`.
 
 ---
 

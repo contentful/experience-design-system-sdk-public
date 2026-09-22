@@ -256,7 +256,7 @@ export function buildGenerateComponentsArgs(opts: {
   generatePromptPath?: string;
   existingEntitiesPath?: string;
 }): string[] {
-  const args = ['__generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
+  const args = ['generate', 'components', '--agent', opts.agent, '--session', opts.sessionId];
   if (opts.tokensPath) args.push('--tokens', opts.tokensPath);
   if (opts.model) args.push('--model', opts.model);
   if (opts.bedrock) args.push('--bedrock');
@@ -377,6 +377,7 @@ export type WizardAppProps = {
   autoFilter?: boolean;
   livePreview?: boolean;
   noPush?: boolean;
+  noSave?: boolean;
   outDirOverride?: string;
   onConflictMode?: ConflictMode;
   selectPromptPath?: string;
@@ -416,6 +417,7 @@ export function WizardApp({
   autoFilter = true,
   livePreview = true,
   noPush = false,
+  noSave = false,
   outDirOverride,
   onConflictMode,
   selectPromptPath,
@@ -636,7 +638,7 @@ export function WizardApp({
   };
 
   const runGenerateTokens = async (rawTokensPath: string, outDir: string) => {
-    const tokenArgs = [findCliPath(), '__generate', 'tokens', '--agent', state.agent, '--raw-tokens', rawTokensPath];
+    const tokenArgs = [findCliPath(), 'generate', 'tokens', '--agent', state.agent, '--raw-tokens', rawTokensPath];
     if (state.agentModel) tokenArgs.push('--model', state.agentModel);
     if (state.bedrock) tokenArgs.push('--bedrock');
     const result = await runSpawnedCli(tokenArgs);
@@ -2133,6 +2135,19 @@ export function WizardApp({
               if (noPush) {
                 update({ generatedAcceptedCount: acceptedCount });
                 void startSaveFlow();
+                return;
+              }
+              if (noSave) {
+                update({ generatedAcceptedCount: acceptedCount });
+                const { extractSessionId, tokensPath } = sessionRef.current;
+                void runPreview(
+                  extractSessionId,
+                  tokensPath,
+                  state.spaceId,
+                  state.environmentId,
+                  state.cmaToken,
+                  state.host,
+                );
                 return;
               }
               if (autoAcceptScope) {

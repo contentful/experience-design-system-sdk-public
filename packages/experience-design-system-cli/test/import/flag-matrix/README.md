@@ -16,7 +16,10 @@ in both modes. This matrix does.
 | `flags.ts` | Source-of-truth inventory: every import flag + metadata (`kind`, `sampleValue`, `modes`, `incompatibleWith`, `forcesHeadless`, …). |
 | `inventory.test.ts` | **Trip-wire.** Registers the real import command and asserts its flags EXACTLY equal the inventory keys. Also checks value flags have samples and incompatibilities are symmetric. |
 | `composition-headless-matrix.test.ts` | Behavioral: composition flags × mode, composition sub-flags forwarded to the spawned `analyze extract`, composition × headless-trigger flags, and save/push forks. Uses the `execFile`-mock pattern to inspect forwarded subprocess argv. |
+| `auto-reject-cycles-headless-matrix.test.ts` | Behavioral: `--auto-reject-cycles` × `{--composite, --no-push, on/off}` in the headless dispatcher. |
 | `incompatible-pairs.test.ts` | Behavioral: every declared incompatible pair REJECTS (exit 1 + right message) via the real CLI subprocess. Includes a coverage guard that fails if a declared `incompatibleWith` edge lacks a rejection cell. |
+| `pty-coverage.test.ts` | Marker that reports PTY cells as **NOT verified** (skipped-with-label) unless `PTY_TESTS=1`. Never green-by-default. |
+| `../../../tools/dsi-pty-harness/test/import/flag-matrix.pty.test.mjs` | The interactive halves: composition × PTY and `--auto-reject-cycles` × PTY. Opt-in via `PTY_TESTS=1`, runs against `dist/`. |
 
 ## How to add a flag
 
@@ -31,7 +34,8 @@ in both modes. This matrix does.
 4. **Add a behavioral cell:**
    - Headless single-flag/pair → extend `composition-headless-matrix.test.ts`
      (subprocess-argv assertion) or add a `runCli` cell.
-   - Interactive → add a focused Ink component test under the CLI package.
+   - Interactive → extend `flag-matrix.pty.test.mjs` (drive the wizard, assert
+     an on-screen effect).
    - Incompatible pair → add a rejection cell to `incompatible-pairs.test.ts`
      (the coverage guard will otherwise fail).
 5. **Green again.**
@@ -42,7 +46,13 @@ in both modes. This matrix does.
 # Headless matrix + inventory (main suite)
 ./node_modules/.bin/vitest run test/import/flag-matrix
 
+# PTY cells (opt-in, against dist/)
+pnpm exec nx build experience-design-system-cli
+cd tools/dsi-pty-harness && PTY_TESTS=1 ./node_modules/.bin/vitest run test/import/flag-matrix.pty.test.mjs
 ```
+
+Without `PTY_TESTS=1`, `pty-coverage.test.ts` reports the PTY cells as **NOT
+verified** (a skipped, labelled marker) — it never silently passes as green.
 
 ## Revert-check (proving the net catches the fish)
 
@@ -52,6 +62,9 @@ To prove the firewall actually fails when the bug returns:
    (and the composition sub-flag pushes) in the `analyze extract` arg builder.
 2. Run `composition-headless-matrix.test.ts` → a composition × headless cell
    goes RED ("expected [...] to contain '--composite'"). Restore, re-run, green.
+3. Same for `--auto-reject-cycles`: revert the wizard `resolveCycleGateAction`
+   wiring in `WizardApp.tsx`, run the PTY cell → the accept routes to the cycle
+   BLOCK screen (RED). Restore, green.
 
 ## Phase 2 (follow-up — NOT implemented here)
 

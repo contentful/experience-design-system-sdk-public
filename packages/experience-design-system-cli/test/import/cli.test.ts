@@ -36,20 +36,18 @@ describe('import command — help', () => {
     expect(stdout).toContain('--project');
     expect(stdout).toContain('--out');
     expect(stdout).toContain('--agent');
-    expect(stdout).not.toContain('--skip-analyze');
-    expect(stdout).not.toContain('--skip-generate');
-    expect(stdout).not.toContain('--skip-apply');
-    expect(stdout).not.toContain('--yes');
+    expect(stdout).toContain('--tokens');
+    expect(stdout).toContain('--skip-analyze');
+    expect(stdout).toContain('--skip-generate');
+    expect(stdout).toContain('--print');
+    expect(stdout).toContain('--skip-apply');
+    expect(stdout).toContain('--yes');
+    expect(stdout).toContain('--verbose');
   });
 
-  it('does not expose removed output flags', async () => {
+  it('does not expose --skip-print (replaced by --print)', async () => {
     const { stdout, code } = await run(['import', '--help']);
     expect(code).toBe(0);
-    expect(stdout).not.toMatch(/--print(?:\s|$)/);
-    expect(stdout).not.toContain('--select-all');
-    expect(stdout).not.toContain('--select <pattern>');
-    expect(stdout).not.toContain('--deselect <pattern>');
-    expect(stdout).not.toContain('--auto-accept-scope');
     expect(stdout).not.toContain('--skip-print');
   });
 
@@ -70,4 +68,19 @@ describe('import command — help', () => {
     expect(code).not.toBe(0);
   });
 
+  it('accepts --skip-apply without credentials', async () => {
+    // With --skip-apply, the credential check is skipped; the pipeline will fail at analyze
+    // (no project), but the credential check itself should not fire.
+    const { stderr } = await run([
+      'import',
+      '--skip-apply',
+      '--skip-generate',
+      '--skip-analyze',
+      '--project',
+      '/nonexistent',
+    ]);
+    expect(stderr).not.toContain('--space-id');
+    expect(stderr).not.toContain('--environment-id');
+    expect(stderr).not.toContain('--cma-token');
+  });
 });

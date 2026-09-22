@@ -7,8 +7,8 @@ import { describe, expect, it } from 'vitest';
  *
  * Contract: `--no-push` is registered as a Commander negation flag and parsed
  * as `opts.push === false` when set. command.ts threads it into WizardApp as a
- * positive `noPush` prop (default false). Mirrors the --no-cache and
- * --no-live-preview precedent.
+ * positive `noPush` prop (default false). Mirrors --no-cache / --no-auto-filter
+ * / --no-live-preview precedent.
  */
 describe('wizard --no-push flag plumbing', () => {
   it('translates Commander opts.push undefined → noPush false (default; push enabled)', () => {
