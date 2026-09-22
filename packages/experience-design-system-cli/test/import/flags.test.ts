@@ -78,7 +78,6 @@ describe('import — help output lists all flags', () => {
       '--out',
       '--agent',
       '--model',
-      '--skip-apply',
       '--skip-map-tokens',
       '--no-cache',
       '--verbose',
