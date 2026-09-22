@@ -33,7 +33,6 @@ export interface PipelineOptions {
   skipApply: boolean;
   noCache: boolean;
   yes: boolean;
-  verbose: boolean;
   host?: string;
   dryRun?: boolean;
   excludeInvalid?: boolean;
@@ -436,7 +435,6 @@ export async function runPipeline(
     if (opts.bedrock) generateArgs.push('--bedrock');
     if (extractSessionId) generateArgs.push('--session', extractSessionId);
     if (opts.dryRun) generateArgs.push('--dry-run');
-    if (opts.verbose) generateArgs.push('--verbose');
     if (existingEntitiesPath) generateArgs.push('--existing-entities-path', existingEntitiesPath);
 
     const stepId = createStep(db, sessionId, 'generate components', {
@@ -626,7 +624,6 @@ export async function runPipeline(
     }
 
     if (opts.host) pushArgs.push('--host', opts.host);
-    if (opts.verbose) pushArgs.push('--verbose');
     if (opts.allowDeletions) pushArgs.push('--allow-deletions');
     pushArgs.push('--yes');
 
